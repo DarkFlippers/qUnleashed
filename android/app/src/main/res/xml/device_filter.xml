@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Flipper Zero: STM32 Virtual COM Port (VID=0x0483=1155, PID=0x5740=22336) -->
+    <usb-device vendor-id="1155" product-id="22336" />
+    <!-- Generic CDC ACM -->
+    <usb-device class="2" subclass="2" protocol="1" />
+    <!-- Any USB serial device (fallback) -->
+    <usb-device class="255" />
+</resources>

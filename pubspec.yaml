@@ -1,5 +1,5 @@
 name: qunleashed
-description: "A new Flutter project."
+description: "Flipper Zero BLE/USB companion app."
 publish_to: 'none'
 version: 0.1.0+1
 
@@ -9,13 +9,15 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flipperzero:
+    path: packages/protobuf
+  flutter_blue_plus: ^1.35.5
+  usb_serial: ^0.5.2
+  permission_handler: ^11.3.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flipperzero:
-    path: packages/protobuf
-
   flutter_lints: ^6.0.0
 
 flutter:
