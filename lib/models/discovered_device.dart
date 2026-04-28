@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:usb_serial/usb_serial.dart';
 
@@ -38,19 +37,17 @@ class BleDiscoveredDevice implements DiscoveredDevice {
 
   @override
   Future<ConnectedDevice> connect() async {
-    final device = scanResult.device;
     LogService.log('[BLE] connecting to $name...');
-    await device.connect(autoConnect: false);
+    await scanResult.device.connect(autoConnect: false);
     LogService.log('[BLE] discovering services...');
-    final services = await device.discoverServices();
-    LogService.log('[BLE] services found: ${services.length}');
+    final services = await scanResult.device.discoverServices();
     for (final s in services) {
       LogService.log('[BLE]  svc ${s.uuid.str}');
       for (final c in s.characteristics) {
         LogService.log('[BLE]    chr ${c.uuid.str} props=${c.properties}');
       }
     }
-    return BleConnectedDevice(device, services);
+    return BleConnectedDevice(scanResult.device, services);
   }
 }
 
@@ -76,41 +73,34 @@ class UsbDiscoveredDevice implements DiscoveredDevice {
 
   @override
   Future<ConnectedDevice> connect() async {
-    LogService.log('[USB] creating port for $name...');
+    LogService.log('[USB] opening port for $name...');
     final port = await usbDevice.create();
-    if (port == null) throw Exception('Failed to create USB port — permission denied?');
-
+    if (port == null) throw Exception('USB permission denied or port unavailable');
     final opened = await port.open();
     if (!opened) throw Exception('Failed to open USB port');
-
-    await port.setDTR(true);
-    await port.setRTS(true);
+    // No DTR/RTS — Flipper Zero CDC ACM does not need hardware flow control
     await port.setPortParameters(
       230400, UsbPort.DATABITS_8, UsbPort.STOPBITS_1, UsbPort.PARITY_NONE,
     );
-    LogService.log('[USB] port opened at 230400 baud');
-
-    // Flipper Zero USB requires CLI "start_rpc_session" to enter RPC mode
-    await Future.delayed(const Duration(milliseconds: 300));
-    final cmd = Uint8List.fromList(utf8.encode('start_rpc_session\r\n'));
-    await port.write(cmd);
-    LogService.log('[USB] sent start_rpc_session');
-
-    // Give device time to switch modes
-    await Future.delayed(const Duration(milliseconds: 500));
-
+    LogService.log('[USB] port opened');
+    // UsbConnectedDevice subscribes to inputStream immediately in its constructor.
+    // init() is called later from the screen (after log subscription is active).
     return UsbConnectedDevice(usbDevice, port);
   }
 }
 
 // ================================================================
-// Connected device — common interface
+// Connected device abstraction
 // ================================================================
 
 abstract class ConnectedDevice {
   String get name;
   DeviceTransport get transport;
   Stream<List<int>> get dataStream;
+
+  /// Called once from DeviceInfoScreen.initState after subscriptions are ready.
+  Future<void> init() async {}
+
   Future<void> sendBytes(Uint8List bytes);
   Future<void> disconnect();
 }
@@ -136,7 +126,6 @@ class BleConnectedDevice implements ConnectedDevice {
 
   void _setup() {
     BluetoothCharacteristic? tx, rx;
-
     for (final svc in services) {
       final sid = svc.uuid.str.toLowerCase();
       for (final ch in svc.characteristics) {
@@ -147,30 +136,21 @@ class BleConnectedDevice implements ConnectedDevice {
         }
       }
     }
-
-    // Fallback to first writable + first notifiable characteristic
     if (tx == null || rx == null) {
-      LogService.log('[BLE] Flipper UUIDs not found, using fallback characteristics');
+      LogService.log('[BLE] Flipper UUIDs not found — trying fallback');
       for (final svc in services) {
         for (final ch in svc.characteristics) {
-          if (tx == null && (ch.properties.write || ch.properties.writeWithoutResponse)) {
-            tx = ch;
-          }
+          if (tx == null && (ch.properties.write || ch.properties.writeWithoutResponse)) tx = ch;
           if (rx == null && ch.properties.notify) rx = ch;
         }
       }
     }
-
-    if (tx == null || rx == null) {
-      throw Exception('No suitable BLE characteristics found');
-    }
-
+    if (tx == null || rx == null) throw Exception('No suitable BLE characteristics');
     _tx = tx;
     _rx = rx;
     LogService.log('[BLE] TX=${_tx.uuid.str} RX=${_rx.uuid.str}');
-
     _rx.setNotifyValue(true).then((_) {
-      LogService.log('[BLE] notifications enabled on ${_rx.uuid.str}');
+      LogService.log('[BLE] notifications enabled');
       _rx.onValueReceived.listen(
         (d) { LogService.log('[BLE RX] ${d.length} bytes'); _ctrl.add(d); },
         onError: (e) => LogService.log('[BLE RX error] $e'),
@@ -191,14 +171,17 @@ class BleConnectedDevice implements ConnectedDevice {
   Stream<List<int>> get dataStream => _ctrl.stream;
 
   @override
+  Future<void> init() async {
+    LogService.log('[BLE] init — no extra step needed for BLE');
+  }
+
+  @override
   Future<void> sendBytes(Uint8List bytes) async {
     const chunk = 512;
     for (int i = 0; i < bytes.length; i += chunk) {
       final end = (i + chunk).clamp(0, bytes.length);
-      await _tx.write(
-        bytes.sublist(i, end),
-        withoutResponse: _tx.properties.writeWithoutResponse,
-      );
+      await _tx.write(bytes.sublist(i, end),
+          withoutResponse: _tx.properties.writeWithoutResponse);
       LogService.log('[BLE TX] ${end - i} bytes');
     }
   }
@@ -214,17 +197,63 @@ class BleConnectedDevice implements ConnectedDevice {
 // ── USB connected ─────────────────────────────────────────────────
 
 class UsbConnectedDevice implements ConnectedDevice {
+  static const _cliPrompt = '\r\n\r\n>: ';
+  static const _startRpcCmd = 'start_rpc_session\r';
+
   final UsbDevice usbDevice;
   final UsbPort port;
+
+  void Function(List<int>)? _initHandler;
+  bool _rpcReady = false;
 
   final _ctrl = StreamController<List<int>>.broadcast();
 
   UsbConnectedDevice(this.usbDevice, this.port) {
+    // Subscribe to inputStream IMMEDIATELY in constructor — before anything is sent
     port.inputStream?.listen(
-      (d) { LogService.log('[USB RX] ${d.length} bytes'); _ctrl.add(d); },
+      (data) {
+        if (_initHandler != null) {
+          _initHandler!(data);
+          return;
+        }
+        if (!_rpcReady) {
+          LogService.log('[USB] discard ${data.length} bytes (not ready)');
+          return;
+        }
+        if (_looksLikeCliNoise(data)) {
+          LogService.log('[USB] drop CLI noise ${data.length} bytes: ${_escapeAscii(data)}');
+          return;
+        }
+        final hex = data.take(32).map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ');
+        LogService.log('[USB RX] ${data.length} bytes: $hex');
+        _ctrl.add(data);
+      },
       onError: (e) => LogService.log('[USB RX error] $e'),
       onDone: () => LogService.log('[USB] stream done'),
     );
+  }
+
+  /// Send `start_rpc_session`, wait for CLI echo to settle, then open RPC gate.
+  /// Called from DeviceInfoScreen.initState AFTER log subscription is active.
+  @override
+  Future<void> init() async {
+    if (_rpcReady) return;
+
+    final initBuffer = <int>[];
+    _initHandler = (data) {
+      initBuffer.addAll(data);
+      LogService.log('[USB INIT] ${data.length} bytes: ${_escapeAscii(data)}');
+    };
+
+    try {
+      await _enterCli(initBuffer);
+      await _startRpc(initBuffer);
+      await Future.delayed(const Duration(milliseconds: 100));
+      _rpcReady = true;
+      LogService.log('[USB] RPC gate OPEN — ready for protobuf');
+    } finally {
+      _initHandler = null;
+    }
   }
 
   @override
@@ -240,8 +269,9 @@ class UsbConnectedDevice implements ConnectedDevice {
 
   @override
   Future<void> sendBytes(Uint8List bytes) async {
+    final hex = bytes.take(32).map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ');
+    LogService.log('[USB TX] ${bytes.length} bytes: $hex');
     await port.write(bytes);
-    LogService.log('[USB TX] ${bytes.length} bytes');
   }
 
   @override
@@ -250,4 +280,92 @@ class UsbConnectedDevice implements ConnectedDevice {
     await _ctrl.close();
     LogService.log('[USB] disconnected');
   }
+
+  bool _looksLikeCliNoise(List<int> data) {
+    if (data.isEmpty) return false;
+    for (final b in data) {
+      final printable = b >= 0x20 && b <= 0x7E;
+      const allowedControl = {0x07, 0x08, 0x09, 0x0A, 0x0D};
+      if (!printable && !allowedControl.contains(b)) return false;
+    }
+    final text = String.fromCharCodes(data);
+    return text.contains('>:') ||
+        text.contains('^C') ||
+        text.contains('start_rpc_session');
+  }
+
+  String _escapeAscii(List<int> data) {
+    return String.fromCharCodes(data)
+        .replaceAll('\r', '\\r')
+        .replaceAll('\n', '\\n');
+  }
+
+  Future<void> _enterCli(List<int> initBuffer) async {
+    LogService.log('[USB] entering CLI session...');
+
+    await port.setDTR(false);
+    await Future.delayed(const Duration(milliseconds: 50));
+    await port.setDTR(true);
+
+    final cliReady = Completer<void>();
+    Timer? timeout;
+    timeout = Timer(const Duration(seconds: 3), () {
+      if (!cliReady.isCompleted) {
+        cliReady.completeError(Exception('Timeout waiting for Flipper CLI prompt'));
+      }
+    });
+
+    Timer.periodic(const Duration(milliseconds: 25), (timer) {
+      if (cliReady.isCompleted) {
+        timer.cancel();
+        return;
+      }
+      if (_asciiBuffer(initBuffer).contains(_cliPrompt)) {
+        cliReady.complete();
+        timer.cancel();
+      }
+    });
+
+    try {
+      await cliReady.future;
+      LogService.log('[USB] CLI prompt detected');
+    } finally {
+      timeout.cancel();
+    }
+  }
+
+  Future<void> _startRpc(List<int> initBuffer) async {
+    initBuffer.clear();
+    final cmd = Uint8List.fromList(utf8.encode(_startRpcCmd));
+    await port.write(cmd);
+    LogService.log('[USB] → start_rpc_session sent (${cmd.length} bytes)');
+
+    final rpcReady = Completer<void>();
+    Timer? timeout;
+    timeout = Timer(const Duration(seconds: 3), () {
+      if (!rpcReady.isCompleted) {
+        rpcReady.completeError(Exception('Timeout waiting for start_rpc_session echo'));
+      }
+    });
+
+    Timer.periodic(const Duration(milliseconds: 25), (timer) {
+      if (rpcReady.isCompleted) {
+        timer.cancel();
+        return;
+      }
+      if (_asciiBuffer(initBuffer).endsWith('$_startRpcCmd\n')) {
+        rpcReady.complete();
+        timer.cancel();
+      }
+    });
+
+    try {
+      await rpcReady.future;
+      LogService.log('[USB] RPC start echo detected');
+    } finally {
+      timeout.cancel();
+    }
+  }
+
+  String _asciiBuffer(List<int> bytes) => String.fromCharCodes(bytes);
 }

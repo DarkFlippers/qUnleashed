@@ -2,11 +2,13 @@ import 'dart:typed_data';
 
 import 'package:flipperzero/flipperzero.dart';
 
+import 'log_service.dart';
+
 class FlipperProtocol {
   static int _nextId = 1;
   static int nextCommandId() => _nextId++;
 
-  // Varint-prefixed protobuf frame (Flipper Zero RPC wire format)
+  /// Encode a Main message with varint length prefix (Flipper Zero RPC framing).
   static Uint8List encode(Main msg) {
     final payload = msg.writeToBuffer();
     final header = _encodeVarint(payload.length);
@@ -25,29 +27,9 @@ class FlipperProtocol {
     r.add(value & 0x7F);
     return r;
   }
-
-  static Uint8List deviceInfoRequest() => encode(
-        Main(commandId: nextCommandId(), hasNext: false,
-             systemDeviceInfoRequest: DeviceInfoRequest()));
-
-  static Uint8List powerInfoRequest() => encode(
-        Main(commandId: nextCommandId(), hasNext: false,
-             systemPowerInfoRequest: PowerInfoRequest()));
-
-  static Uint8List protobufVersionRequest() => encode(
-        Main(commandId: nextCommandId(), hasNext: false,
-             systemProtobufVersionRequest: ProtobufVersionRequest()));
-
-  static Uint8List getDateTimeRequest() => encode(
-        Main(commandId: nextCommandId(), hasNext: false,
-             systemGetDatetimeRequest: GetDateTimeRequest()));
-
-  static Uint8List pingRequest() => encode(
-        Main(commandId: nextCommandId(), hasNext: false,
-             systemPingRequest: PingRequest(data: [0x01, 0x02, 0x03])));
 }
 
-// Reassembles length-prefixed frames from a byte stream
+/// Reassembles varint-length-prefixed protobuf frames from a byte stream.
 class FlipperFrameBuffer {
   final List<int> _buf = [];
 
@@ -63,20 +45,40 @@ class FlipperFrameBuffer {
   }
 
   Main? _tryParse() {
+    if (_buf.isEmpty) return null;
+
     int len = 0, shift = 0, i = 0;
     while (i < _buf.length) {
       final b = _buf[i++];
       len |= (b & 0x7F) << shift;
       shift += 7;
       if ((b & 0x80) == 0) {
-        if (_buf.length < i + len) return null;
+        // Varint complete — do we have the full payload?
+        if (len > 4096) {
+          // Unreasonably large frame: buffer is desynchronised, discard 1 byte and retry
+          LogService.log('[FrameBuffer] bad length=$len, dropping 1 byte (0x${_buf[0].toRadixString(16)})');
+          _buf.removeAt(0);
+          return null;
+        }
+        if (_buf.length < i + len) return null; // wait for more bytes
+
         final payload = Uint8List.fromList(_buf.sublist(i, i + len));
         _buf.removeRange(0, i + len);
-        return Main.fromBuffer(payload);
+
+        try {
+          return Main.fromBuffer(payload);
+        } catch (e) {
+          LogService.log('[FrameBuffer] parse error: $e — skipping $len bytes');
+          return null;
+        }
       }
-      if (shift >= 35) { _buf.clear(); return null; }
+      if (shift >= 35) {
+        LogService.log('[FrameBuffer] varint overflow, dropping 1 byte');
+        _buf.removeAt(0);
+        return null;
+      }
     }
-    return null;
+    return null; // not enough bytes for varint yet
   }
 
   void clear() => _buf.clear();

@@ -19,29 +19,25 @@ class _DeviceInfoScreenState extends State<DeviceInfoScreen> {
   final Map<String, String> _info = {};
   final List<String> _logs = [];
 
-  String _status = 'Requesting device info…';
+  String _status = 'Initializing…';
   bool _loading = true;
   bool _disconnected = false;
 
   StreamSubscription<List<int>>? _dataSub;
   StreamSubscription<String>? _logSub;
-  final FlipperFrameBuffer _buf = FlipperFrameBuffer();
+  final _buf = FlipperFrameBuffer();
 
-  // Pending: set of command IDs we're waiting on
   final Set<int> _pending = {};
   Timer? _timeoutTimer;
 
   final _logScrollCtrl = ScrollController();
-  final _infoScrollCtrl = ScrollController();
-
-  // Show logs panel by default
   bool _showLogs = true;
 
   @override
   void initState() {
     super.initState();
 
-    // Subscribe to global log stream
+    // 1. Log subscription FIRST so we see everything
     _logSub = LogService.stream.listen((line) {
       if (!mounted) return;
       setState(() => _logs.add(line));
@@ -52,7 +48,7 @@ class _DeviceInfoScreenState extends State<DeviceInfoScreen> {
       });
     });
 
-    // Subscribe to device data
+    // 2. Data subscription
     _dataSub = widget.device.dataStream.listen(
       _onData,
       onError: (e) {
@@ -65,69 +61,58 @@ class _DeviceInfoScreenState extends State<DeviceInfoScreen> {
       },
     );
 
-    _requestAll();
+    // 3. Init then request (async, so build() runs first)
+    _initAndRequest();
   }
 
-  @override
-  void dispose() {
-    _timeoutTimer?.cancel();
-    _logSub?.cancel();
-    _dataSub?.cancel();
-    _logScrollCtrl.dispose();
-    _infoScrollCtrl.dispose();
-    if (!_disconnected) widget.device.disconnect();
-    super.dispose();
+  Future<void> _initAndRequest() async {
+    try {
+      await widget.device.init();
+    } catch (e) {
+      LogService.log('[DeviceInfo] init error: $e');
+      if (mounted) {
+        setState(() {
+          _status = 'USB init error: $e';
+          _loading = false;
+        });
+      }
+      return;
+    }
+    if (mounted) setState(() => _status = 'Requesting device info…');
+    await _requestAll();
   }
 
   Future<void> _requestAll() async {
     try {
-      // Ping first to verify RPC channel is alive
-      final pingId = FlipperProtocol.nextCommandId();
-      await widget.device.sendBytes(
-          FlipperProtocol.encode(Main(
-            commandId: pingId, hasNext: false,
-            systemPingRequest: PingRequest(data: [0xDE, 0xAD]),
-          )));
-      await Future.delayed(const Duration(milliseconds: 300));
-
       final protoId = FlipperProtocol.nextCommandId();
       _pending.add(protoId);
-      await widget.device.sendBytes(
-          FlipperProtocol.encode(Main(
-            commandId: protoId, hasNext: false,
-            systemProtobufVersionRequest: ProtobufVersionRequest(),
-          )));
+      await widget.device.sendBytes(FlipperProtocol.encode(
+          Main(commandId: protoId, systemProtobufVersionRequest: ProtobufVersionRequest())));
 
       final devId = FlipperProtocol.nextCommandId();
       _pending.add(devId);
-      await widget.device.sendBytes(
-          FlipperProtocol.encode(Main(
-            commandId: devId, hasNext: false,
-            systemDeviceInfoRequest: DeviceInfoRequest(),
-          )));
+      await widget.device.sendBytes(FlipperProtocol.encode(
+          Main(commandId: devId, systemDeviceInfoRequest: DeviceInfoRequest())));
 
       final pwrId = FlipperProtocol.nextCommandId();
       _pending.add(pwrId);
-      await widget.device.sendBytes(
-          FlipperProtocol.encode(Main(
-            commandId: pwrId, hasNext: false,
-            systemPowerInfoRequest: PowerInfoRequest(),
-          )));
+      await widget.device.sendBytes(FlipperProtocol.encode(
+          Main(commandId: pwrId, systemPowerInfoRequest: PowerInfoRequest())));
 
       final dtId = FlipperProtocol.nextCommandId();
       _pending.add(dtId);
-      await widget.device.sendBytes(
-          FlipperProtocol.encode(Main(
-            commandId: dtId, hasNext: false,
-            systemGetDatetimeRequest: GetDateTimeRequest(),
-          )));
+      await widget.device.sendBytes(FlipperProtocol.encode(
+          Main(commandId: dtId, systemGetDatetimeRequest: GetDateTimeRequest())));
 
-      // Timeout: after 10 seconds show whatever we have
-      _timeoutTimer = Timer(const Duration(seconds: 10), () {
+      LogService.log('[DeviceInfo] sent ${_pending.length} requests, pending: $_pending');
+
+      _timeoutTimer = Timer(const Duration(seconds: 15), () {
         if (mounted && _loading) {
-          LogService.log('[DeviceInfo] timeout — showing partial data');
+          LogService.log('[DeviceInfo] timeout — pending=$_pending');
           setState(() {
-            _status = 'Timeout — showing partial data for ${widget.device.name}';
+            _status = _info.isEmpty
+                ? 'Timeout — no response from device'
+                : 'Timeout — partial data for ${widget.device.name}';
             _loading = false;
           });
         }
@@ -139,20 +124,34 @@ class _DeviceInfoScreenState extends State<DeviceInfoScreen> {
   }
 
   void _onData(List<int> raw) {
-    LogService.log('[DeviceInfo] raw ${raw.length} bytes');
+    final hex = raw.take(32).map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ');
+    LogService.log('[DeviceInfo] raw ${raw.length} bytes: $hex');
     final messages = _buf.push(raw);
     for (final msg in messages) {
-      LogService.log('[DeviceInfo] parsed cmd=${msg.commandId} '
-          'status=${msg.commandStatus} content=${msg.whichContent()}');
+      LogService.log('[DeviceInfo] msg cmd=${msg.commandId} '
+          'status=${msg.commandStatus.name} '
+          'hasNext=${msg.hasNext} '
+          'content=${msg.whichContent().name}');
       if (mounted) setState(() => _handleMessage(msg));
     }
   }
 
   void _handleMessage(Main msg) {
-    switch (msg.whichContent()) {
-      case Main_Content.systemPingResponse:
-        LogService.log('[DeviceInfo] pong OK');
+    // ERROR_DECODE: Flipper couldn't parse our message.
+    // Log it, clear the corresponding pending entry if possible, and continue.
+    if (msg.commandStatus == CommandStatus.ERROR_DECODE) {
+      LogService.log('[DeviceInfo] ERROR_DECODE from device — possible protocol mismatch');
+      // commandId=0 means Flipper doesn't know which command failed;
+      // remove all pending to avoid infinite wait only if nothing else expected.
+      if (msg.commandId == 0 && _pending.isNotEmpty) {
+        LogService.log('[DeviceInfo] clearing all pending due to ERROR_DECODE');
+        _pending.clear();
+        _checkDone();
+      }
+      return;
+    }
 
+    switch (msg.whichContent()) {
       case Main_Content.systemProtobufVersionResponse:
         final r = msg.systemProtobufVersionResponse;
         _info['protobuf_version'] = '${r.major}.${r.minor}';
@@ -170,19 +169,25 @@ class _DeviceInfoScreenState extends State<DeviceInfoScreen> {
 
       case Main_Content.systemGetDatetimeResponse:
         final dt = msg.systemGetDatetimeResponse.datetime;
-        _info['datetime'] =
-            '${dt.year}-${_p(dt.month)}-${_p(dt.day)} '
-            '${_p(dt.hour)}:${_p(dt.minute)}:${_p(dt.second)}';
+        _info['datetime'] = '${dt.year}-${_p(dt.month)}-${_p(dt.day)}'
+            ' ${_p(dt.hour)}:${_p(dt.minute)}:${_p(dt.second)}';
         _markDone(msg.commandId);
 
+      case Main_Content.systemPingResponse:
+        LogService.log('[DeviceInfo] pong');
+
       default:
-        LogService.log('[DeviceInfo] unhandled: ${msg.whichContent()}');
+        LogService.log('[DeviceInfo] unhandled content: ${msg.whichContent().name}');
     }
   }
 
   void _markDone(int commandId) {
     _pending.remove(commandId);
-    LogService.log('[DeviceInfo] command $commandId done, pending=${_pending.length}');
+    LogService.log('[DeviceInfo] cmd $commandId done, pending=${_pending.length}');
+    _checkDone();
+  }
+
+  void _checkDone() {
     if (_pending.isEmpty && _loading) {
       _timeoutTimer?.cancel();
       _status = 'Connected — ${widget.device.name}';
@@ -192,6 +197,16 @@ class _DeviceInfoScreenState extends State<DeviceInfoScreen> {
 
   String _p(int n) => n.toString().padLeft(2, '0');
 
+  @override
+  void dispose() {
+    _timeoutTimer?.cancel();
+    _logSub?.cancel();
+    _dataSub?.cancel();
+    _logScrollCtrl.dispose();
+    if (!_disconnected) widget.device.disconnect();
+    super.dispose();
+  }
+
   Future<void> _disconnect() async {
     _timeoutTimer?.cancel();
     await widget.device.disconnect();
@@ -200,8 +215,7 @@ class _DeviceInfoScreenState extends State<DeviceInfoScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final entries = _info.entries.toList()
-      ..sort((a, b) => a.key.compareTo(b.key));
+    final entries = _info.entries.toList()..sort((a, b) => a.key.compareTo(b.key));
 
     return Scaffold(
       appBar: AppBar(
@@ -221,15 +235,12 @@ class _DeviceInfoScreenState extends State<DeviceInfoScreen> {
       ),
       body: Column(
         children: [
-          // Status bar
           _StatusBar(
             status: _status,
             loading: _loading,
             disconnected: _disconnected,
             transport: widget.device.transport,
           ),
-
-          // Device info
           Expanded(
             flex: _showLogs ? 1 : 2,
             child: entries.isEmpty
@@ -240,35 +251,29 @@ class _DeviceInfoScreenState extends State<DeviceInfoScreen> {
                             style: TextStyle(color: Colors.grey.shade500)),
                   )
                 : ListView.builder(
-                    controller: _infoScrollCtrl,
                     padding: const EdgeInsets.symmetric(vertical: 4),
                     itemCount: entries.length,
-                    itemBuilder: (_, i) => _InfoRow(
-                      k: entries[i].key,
-                      v: entries[i].value,
-                    ),
+                    itemBuilder: (_, i) =>
+                        _InfoRow(k: entries[i].key, v: entries[i].value),
                   ),
           ),
-
-          // Log panel
           if (_showLogs) ...[
             const Divider(height: 1, color: Colors.orange),
             Container(
               color: const Color(0xFF0A0A0A),
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              child: Row(
-                children: [
-                  const Icon(Icons.terminal, size: 14, color: Colors.orange),
-                  const SizedBox(width: 6),
-                  const Text('Logs', style: TextStyle(color: Colors.orange, fontSize: 12)),
-                  const Spacer(),
-                  GestureDetector(
-                    onTap: () => setState(() => _logs.clear()),
-                    child: const Text('clear',
-                        style: TextStyle(color: Colors.grey, fontSize: 11)),
-                  ),
-                ],
-              ),
+              child: Row(children: [
+                const Icon(Icons.terminal, size: 14, color: Colors.orange),
+                const SizedBox(width: 6),
+                Text('Logs (${_logs.length})',
+                    style: const TextStyle(color: Colors.orange, fontSize: 12)),
+                const Spacer(),
+                GestureDetector(
+                  onTap: () => setState(() => _logs.clear()),
+                  child: const Text('clear',
+                      style: TextStyle(color: Colors.grey, fontSize: 11)),
+                ),
+              ]),
             ),
             Expanded(
               flex: 1,
@@ -301,16 +306,13 @@ class _DeviceInfoScreenState extends State<DeviceInfoScreen> {
 
 class _StatusBar extends StatelessWidget {
   final String status;
-  final bool loading;
-  final bool disconnected;
+  final bool loading, disconnected;
   final DeviceTransport transport;
-
-  const _StatusBar({
-    required this.status,
-    required this.loading,
-    required this.disconnected,
-    required this.transport,
-  });
+  const _StatusBar(
+      {required this.status,
+      required this.loading,
+      required this.disconnected,
+      required this.transport});
 
   @override
   Widget build(BuildContext context) {
@@ -319,63 +321,51 @@ class _StatusBar extends StatelessWidget {
         : disconnected
             ? Colors.red.shade900
             : Colors.green.shade900;
-
     return Container(
       width: double.infinity,
       color: color,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-      child: Row(
-        children: [
-          if (loading) ...[
-            const SizedBox(
-              width: 14, height: 14,
-              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-            ),
-            const SizedBox(width: 8),
-          ],
-          Expanded(
-            child: Text(status,
-                style: const TextStyle(color: Colors.white, fontSize: 12)),
-          ),
-          Text(
-            transport == DeviceTransport.ble ? 'BLE' : 'USB',
-            style: const TextStyle(
-                color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold),
-          ),
+      child: Row(children: [
+        if (loading) ...[
+          const SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
+          const SizedBox(width: 8),
         ],
-      ),
+        Expanded(
+            child: Text(status,
+                style: const TextStyle(color: Colors.white, fontSize: 12))),
+        Text(transport == DeviceTransport.ble ? 'BLE' : 'USB',
+            style: const TextStyle(
+                color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold)),
+      ]),
     );
   }
 }
 
 class _InfoRow extends StatelessWidget {
-  final String k;
-  final String v;
+  final String k, v;
   const _InfoRow({required this.k, required this.v});
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        SizedBox(
             width: 180,
             child: Text(k,
                 style: TextStyle(
                     color: Colors.orange.shade300,
                     fontFamily: 'monospace',
-                    fontSize: 12)),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
+                    fontSize: 12))),
+        const SizedBox(width: 8),
+        Expanded(
             child: Text(v,
                 style: const TextStyle(
-                    color: Colors.white, fontFamily: 'monospace', fontSize: 12)),
-          ),
-        ],
-      ),
+                    color: Colors.white, fontFamily: 'monospace', fontSize: 12))),
+      ]),
     );
   }
 }

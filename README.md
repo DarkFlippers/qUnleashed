@@ -61,3 +61,6 @@ export 'src/generated/desktop.pb.dart';
 "@ | Set-Content packages\protobuf\lib\flipperzero.dart -Encoding UTF8
 
 на основе этих команд написать линукс макос и виндовс сборщик
+
+# Зеркало 
+https://git.aperturefox.ru/FlutterAPPs/qUnleashed
