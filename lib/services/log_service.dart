@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 
 class LogService {
   static final _ctrl = StreamController<String>.broadcast();
@@ -7,8 +8,7 @@ class LogService {
   static void log(String msg) {
     final ts = DateTime.now().toIso8601String().substring(11, 19);
     final line = '[$ts] $msg';
-    // ignore: avoid_print
-    print(line);
+    debugPrint(line);
     if (!_ctrl.isClosed) _ctrl.add(line);
   }
 }

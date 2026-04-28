@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../models/discovered_device.dart';
 import '../services/ble_service.dart';
+import '../services/log_service.dart';
 import '../services/usb_service.dart';
 import 'device_info_screen.dart';
 
@@ -27,7 +28,6 @@ class _DeviceListScreenState extends State<DeviceListScreen>
   StreamSubscription<List<BleDiscoveredDevice>>? _bleSub;
   bool _bleScanning = false;
   bool _usbLoading = false;
-  String? _error;
 
   @override
   void initState() {
@@ -47,10 +47,11 @@ class _DeviceListScreenState extends State<DeviceListScreen>
   }
 
   Future<void> _startBleScan() async {
-    setState(() { _bleScanning = true; _error = null; _bleDevices = []; });
+    setState(() { _bleScanning = true; _bleDevices = []; });
     final ok = await _ble.requestPermissions();
     if (!ok) {
-      setState(() { _bleScanning = false; _error = 'Bluetooth permissions denied'; });
+      LogService.log('[DeviceList] bluetooth permissions denied');
+      setState(() { _bleScanning = false; });
       return;
     }
     await _ble.startScan(timeout: const Duration(seconds: 10));
@@ -58,17 +59,17 @@ class _DeviceListScreenState extends State<DeviceListScreen>
   }
 
   Future<void> _refreshUsb() async {
-    setState(() { _usbLoading = true; _error = null; });
+    setState(() { _usbLoading = true; });
     try {
       final list = await _usb.listDevices();
       if (mounted) setState(() { _usbDevices = list; _usbLoading = false; });
     } catch (e) {
-      if (mounted) setState(() { _usbLoading = false; _error = 'USB error: $e'; });
+      LogService.log('[DeviceList] USB error: $e');
+      if (mounted) setState(() { _usbLoading = false; });
     }
   }
 
   Future<void> _connectTo(DiscoveredDevice dev) async {
-    final messenger = ScaffoldMessenger.of(context);
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -90,10 +91,7 @@ class _DeviceListScreenState extends State<DeviceListScreen>
     } catch (e) {
       if (!mounted) return;
       Navigator.of(context).pop();
-      messenger.showSnackBar(SnackBar(
-        content: Text('Connection failed: $e'),
-        backgroundColor: Colors.red,
-      ));
+      LogService.log('[DeviceList] connection failed: $e');
     }
   }
 
@@ -112,22 +110,9 @@ class _DeviceListScreenState extends State<DeviceListScreen>
           ],
         ),
       ),
-      body: Column(
-        children: [
-          if (_error != null)
-            Container(
-              width: double.infinity,
-              color: Colors.red.shade900,
-              padding: const EdgeInsets.all(8),
-              child: Text(_error!, style: const TextStyle(color: Colors.white)),
-            ),
-          Expanded(
-            child: TabBarView(
-              controller: _tabs,
-              children: [_buildBleTab(), _buildUsbTab()],
-            ),
-          ),
-        ],
+      body: TabBarView(
+        controller: _tabs,
+        children: [_buildBleTab(), _buildUsbTab()],
       ),
     );
   }

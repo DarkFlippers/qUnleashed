@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:universal_ble/universal_ble.dart' as uble;
 import 'package:permission_handler/permission_handler.dart';
 
 import '../models/discovered_device.dart';
@@ -28,7 +28,6 @@ class BleService {
       return s.isGranted;
     }
 
-    // Android — request new (API 31+) permissions
     final results = await [
       Permission.bluetoothScan,
       Permission.bluetoothConnect,
@@ -41,7 +40,6 @@ class BleService {
     );
     if (coreGranted) return true;
 
-    // Fallback for Android < 12: request location
     final loc = await Permission.locationWhenInUse.request();
     LogService.log('[BLE] location fallback: $loc');
     return loc.isGranted;
@@ -50,9 +48,9 @@ class BleService {
   Future<void> startScan({Duration timeout = const Duration(seconds: 10)}) async {
     if (_scanning) return;
 
-    final state = await FlutterBluePlus.adapterState.first;
+    final state = await uble.UniversalBle.getBluetoothAvailabilityState();
     LogService.log('[BLE] adapter state: $state');
-    if (state != BluetoothAdapterState.on) {
+    if (state != uble.AvailabilityState.poweredOn) {
       LogService.log('[BLE] adapter not ON, aborting scan');
       return;
     }
@@ -61,27 +59,27 @@ class BleService {
     _scanning = true;
     LogService.log('[BLE] scan started');
 
-    final sub = FlutterBluePlus.onScanResults.listen((results) {
-      for (final r in results) {
-        final prev = _found[r.device.remoteId.str];
-        if (prev == null) {
-          LogService.log('[BLE] found: ${r.advertisementData.advName} '
-              '(${r.device.remoteId.str}) rssi=${r.rssi}');
-        }
-        _found[r.device.remoteId.str] = BleDiscoveredDevice(r);
+    uble.UniversalBle.onScanResult = (device) {
+      final isNew = !_found.containsKey(device.deviceId);
+      if (isNew) {
+        LogService.log(
+            '[BLE] found: ${device.name} (${device.deviceId}) rssi=${device.rssi}');
       }
+      _found[device.deviceId] = BleDiscoveredDevice(device);
       _devicesCtrl.add(List.unmodifiable(_found.values.toList()));
-    }, onError: (e) => LogService.log('[BLE scan error] $e'));
+    };
 
-    await FlutterBluePlus.startScan(timeout: timeout);
-    await sub.cancel();
-    _scanning = false;
-    LogService.log('[BLE] scan done — ${_found.length} device(s)');
+    await uble.UniversalBle.startScan();
+    await Future.delayed(timeout);
+    await stopScan();
   }
 
   Future<void> stopScan() async {
-    await FlutterBluePlus.stopScan();
+    if (!_scanning) return;
+    await uble.UniversalBle.stopScan();
+    uble.UniversalBle.onScanResult = null;
     _scanning = false;
+    LogService.log('[BLE] scan done — ${_found.length} device(s)');
   }
 
   List<BleDiscoveredDevice> get currentDevices =>

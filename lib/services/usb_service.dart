@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:flutter_libserialport/flutter_libserialport.dart';
 import 'package:usb_serial/usb_serial.dart';
 
 import '../models/discovered_device.dart';
@@ -9,6 +12,13 @@ class UsbService {
   UsbService._();
 
   Future<List<UsbDiscoveredDevice>> listDevices() async {
+    if (Platform.isAndroid) {
+      return _listAndroid();
+    }
+    return _listDesktop();
+  }
+
+  Future<List<UsbDiscoveredDevice>> _listAndroid() async {
     final devices = await UsbSerial.listDevices();
     LogService.log('[USB] found ${devices.length} device(s)');
     for (final d in devices) {
@@ -17,6 +27,20 @@ class UsbService {
           'product="${d.productName}" '
           'manufacturer="${d.manufacturerName}"');
     }
-    return devices.map(UsbDiscoveredDevice.new).toList();
+    return devices.map(AndroidUsbDiscoveredDevice.new).toList();
+  }
+
+  Future<List<UsbDiscoveredDevice>> _listDesktop() async {
+    final portNames = SerialPort.availablePorts;
+    LogService.log('[USB] found ${portNames.length} serial port(s)');
+    final result = <UsbDiscoveredDevice>[];
+    for (final name in portNames) {
+      final port = SerialPort(name);
+      final desc = port.description ?? '';
+      LogService.log('[USB] port=$name desc="$desc"');
+      port.dispose();
+      result.add(DesktopUsbDiscoveredDevice(name, desc));
+    }
+    return result;
   }
 }

@@ -11,9 +11,10 @@ dependencies:
     sdk: flutter
   flipperzero:
     path: packages/protobuf
-  flutter_blue_plus: ^1.35.5
+  universal_ble: ^1.0.0
   usb_serial: ^0.5.2
   permission_handler: ^11.3.1
+  flutter_libserialport: ^0.6.0
 
 dev_dependencies:
   flutter_test:
