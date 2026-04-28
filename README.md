@@ -1,10 +1,29 @@
 # qUnleashed
 
-# Sources
-1. git clone https://github.com/flipperdevices/qFlipper.git .sources/qflipper
-2. git clone https://github.com/flipperdevices/lab.flipper.net.git .sources/labflipper
+## Mirror
+https://git.aperturefox.ru/FlutterAPPs/qUnleashed
 
-# Установка протобафа как делал я 
+## TODO
+1. I do not want to spend time fighting with certificates on iOS and macOS. I have a MacBook, but I would appreciate it if someone could set up USB and BLE drivers for Apple devices and test them.
+2. Support for Android, Windows, Web, and Linux will be added when I have free time. iOS and macOS support can also be added if someone contributes a commit.
+3. Rework the default firmware channels for Unlshd:
+   `2-ofw`, `3-moment`, `4-chronos`.
+   Each channel should have a rounded square logo, a name label, and a gray version label.
+4. Support both release and development builds.
+5. Add controls and a gaming mode.
+6. Add a file manager.
+7. Make the last tab a terminal in debugger mode, plus a logger and a terminal for CLI mode.
+8. By default, `cli -> proto`. The flow still needs to be designed properly so switching between modes is fast and convenient.
+9. The app color theme should match the installed firmware, or the firmware selected during installation.
+
+## Notes for Developers
+
+### Sources
+1. `git clone https://github.com/flipperdevices/qFlipper.git .sources/qflipper`
+2. `git clone https://github.com/flipperdevices/lab.flipper.net.git .sources/labflipper`
+
+### Proto
+```powershell
 flutter pub global activate protoc_plugin
 
 $PLUGIN = "$env:LOCALAPPDATA\Pub\Cache\bin\protoc-gen-dart.bat"
@@ -59,8 +78,6 @@ export 'src/generated/gpio.pb.dart';
 export 'src/generated/property.pb.dart';
 export 'src/generated/desktop.pb.dart';
 "@ | Set-Content packages\protobuf\lib\flipperzero.dart -Encoding UTF8
+```
 
-на основе этих команд написать линукс макос и виндовс сборщик
-
-# Зеркало 
-https://git.aperturefox.ru/FlutterAPPs/qUnleashed
+Based on these commands, a generator/build script should be written for Linux, macOS, and Windows.
