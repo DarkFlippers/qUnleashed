@@ -6,15 +6,14 @@ import '../models/discovered_device.dart';
 import '../services/ble_service.dart';
 import '../services/log_service.dart';
 import '../services/usb_service.dart';
+import '../widgets/flipper_original_ui.dart';
 import 'device_info_screen.dart';
 
-// Flipper Zero BLE MAC prefixes: 80:E1:27 (new hw), 80:E1:26 (old hw)
 bool _isFlipperBle(BleDiscoveredDevice d) {
   final mac = d.id.replaceAll(':', '').toUpperCase();
   return mac.startsWith('80E127') || mac.startsWith('80E126');
 }
 
-// USB filter mirrors qflipper: STMicroelectronics VID 0x0483
 bool _isFlipperUsb(UsbDiscoveredDevice d) {
   if (d is DesktopUsbDiscoveredDevice) {
     if (d.vendorId == 0x0483) return true;
@@ -36,6 +35,8 @@ class DeviceListScreen extends StatefulWidget {
 }
 
 class _DeviceListScreenState extends State<DeviceListScreen> {
+  FlipperRootTab _tab = FlipperRootTab.device;
+
   Future<void> _openPicker() async {
     final selected = await showDialog<DiscoveredDevice>(
       context: context,
@@ -50,20 +51,22 @@ class _DeviceListScreenState extends State<DeviceListScreen> {
       context: context,
       barrierDismissible: false,
       builder: (_) => const AlertDialog(
-        content: Row(children: [
-          CircularProgressIndicator(),
-          SizedBox(width: 16),
-          Text('Connecting…'),
-        ]),
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 16),
+            Text('Connecting...'),
+          ],
+        ),
       ),
     );
     try {
       final connected = await dev.connect();
       if (!mounted) return;
       Navigator.of(context).pop();
-      Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => DeviceInfoScreen(device: connected),
-      ));
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => DeviceInfoScreen(device: connected)),
+      );
     } catch (e) {
       if (!mounted) return;
       Navigator.of(context).pop();
@@ -73,27 +76,154 @@ class _DeviceListScreenState extends State<DeviceListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Qunleashed')),
-      body: Center(
-        child: ElevatedButton.icon(
-          onPressed: _openPicker,
-          icon: const Icon(Icons.devices),
-          label: const Text('Connect device'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.orange,
-            foregroundColor: Colors.black,
-            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-            textStyle: const TextStyle(
-                fontSize: 16, fontWeight: FontWeight.bold),
-          ),
+    return FlipperRootScaffold(
+      currentTab: _tab,
+      onTabSelected: (tab) => setState(() => _tab = tab),
+      deviceIconAsset: 'assets/flipper_svg/connection/ic_no_device_filled.svg',
+      deviceLabel: 'No device',
+      child: SafeArea(
+        child: IndexedStack(
+          index: _tab.index,
+          children: [
+            _DisconnectedDevicePage(onConnect: _openPicker),
+            const _PlaceholderPage(title: 'Archive'),
+            const _PlaceholderPage(title: 'Apps'),
+            const _PlaceholderPage(title: 'Tools'),
+          ],
         ),
       ),
     );
   }
 }
 
-// ── Device picker dialog ──────────────────────────────────────────────────────
+class _DisconnectedDevicePage extends StatelessWidget {
+  const _DisconnectedDevicePage({required this.onConnect});
+
+  final VoidCallback onConnect;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      children: [
+        Container(
+          color: FlipperOriginalColors.accent,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 7, right: 18, bottom: 7),
+                child: SizedBox(
+                  height: 100,
+                  child: const FlipperMockupWidget(active: false),
+                ),
+              ),
+              const Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'No device',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: FlipperOriginalColors.card,
+                    ),
+                  ),
+                  SizedBox(height: 3),
+                  Text(
+                    'Flipper Zero',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: FlipperOriginalColors.card,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        FlipperPageCard(
+          title: 'Firmware Update',
+          child: Column(
+            children: [
+              const FlipperInfoLine(
+                label: 'Update Channel',
+                value: 'Connect',
+                valueColor: FlipperOriginalColors.text30,
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                child: Container(
+                  width: double.infinity,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: FlipperOriginalColors.text16,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  alignment: Alignment.center,
+                  child: const Text(
+                    'UPDATE',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        const FlipperPageCard(
+          title: 'Device Info',
+          child: Column(
+            children: [
+              FlipperInfoLine(label: 'Firmware Version', value: '-'),
+              Divider(height: 1, color: FlipperOriginalColors.divider),
+              FlipperInfoLine(label: 'Build Date', value: '-'),
+              Divider(height: 1, color: FlipperOriginalColors.divider),
+              FlipperInfoLine(label: 'SD Card (Used/Total)', value: '-'),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        FlipperPageCard(
+          child: Column(
+            children: [
+              FlipperActionRow(
+                iconAsset: 'assets/flipper_svg/core/ic_bluetooth.svg',
+                label: 'Connect',
+                color: FlipperOriginalColors.blue,
+                onTap: onConnect,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+      ],
+    );
+  }
+}
+
+class _PlaceholderPage extends StatelessWidget {
+  const _PlaceholderPage({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Text(
+        title,
+        style: const TextStyle(
+          fontSize: 20,
+          color: FlipperOriginalColors.text60,
+        ),
+      ),
+    );
+  }
+}
 
 class _DevicePickerDialog extends StatefulWidget {
   const _DevicePickerDialog();
@@ -122,7 +252,7 @@ class _DevicePickerDialogState extends State<_DevicePickerDialog> {
   @override
   void dispose() {
     _bleSub?.cancel();
-    _ble.stopScan(); // fire-and-forget: stop any running scan
+    _ble.stopScan();
     super.dispose();
   }
 
@@ -161,13 +291,8 @@ class _DevicePickerDialogState extends State<_DevicePickerDialog> {
     setState(() => _displayed = all);
   }
 
-  void _removeFilter() {
-    _filterEnabled = false;
-    _rebuild();
-  }
-
-  void _restoreFilter() {
-    _filterEnabled = true;
+  void _toggleFilter() {
+    _filterEnabled = !_filterEnabled;
     _rebuild();
   }
 
@@ -181,39 +306,38 @@ class _DevicePickerDialogState extends State<_DevicePickerDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _buildHeader(),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Select device',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                  if (_scanning)
+                    const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.orange),
+                    ),
+                ],
+              ),
+            ),
             const Divider(height: 1, color: Color(0xFF2C2C2C)),
             Flexible(child: _buildList()),
             const Divider(height: 1, color: Color(0xFF2C2C2C)),
-            _buildFooter(),
+            TextButton(
+              onPressed: _toggleFilter,
+              child: Text(_filterEnabled ? "Can't find my device" : 'Show only Flipper devices'),
+            ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildHeader() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
-      child: Row(
-        children: [
-          const Expanded(
-            child: Text(
-              'Select device',
-              style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white),
-            ),
-          ),
-          if (_scanning)
-            const SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                  strokeWidth: 2.5, color: Colors.orange),
-            ),
-        ],
       ),
     );
   }
@@ -223,7 +347,7 @@ class _DevicePickerDialogState extends State<_DevicePickerDialog> {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
         child: Text(
-          _scanning ? 'Searching for devices…' : 'No Flipper devices found.',
+          _scanning ? 'Searching for devices...' : 'No Flipper devices found.',
           textAlign: TextAlign.center,
           style: TextStyle(color: Colors.grey.shade500, fontSize: 14),
         ),
@@ -232,100 +356,30 @@ class _DevicePickerDialogState extends State<_DevicePickerDialog> {
     return ListView.separated(
       shrinkWrap: true,
       itemCount: _displayed.length,
-      separatorBuilder: (_, _) =>
-          const Divider(height: 1, color: Color(0xFF2C2C2C), indent: 60),
+      separatorBuilder: (_, _) => const Divider(height: 1, color: Color(0xFF2C2C2C), indent: 60),
       itemBuilder: (_, i) => _DeviceListItem(
         device: _displayed[i],
         onTap: () => Navigator.of(context).pop(_displayed[i]),
       ),
     );
   }
-
-  Widget _buildFooter() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      child: _filterEnabled
-          ? TextButton(
-              onPressed: _removeFilter,
-              style: TextButton.styleFrom(
-                  foregroundColor: Colors.grey.shade500),
-              child: const Text("Can't find my device"),
-            )
-          : TextButton(
-              onPressed: _restoreFilter,
-              style: TextButton.styleFrom(
-                  foregroundColor: Colors.grey.shade500),
-              child: const Text('Show only Flipper devices'),
-            ),
-    );
-  }
 }
 
-// ── Device list item ──────────────────────────────────────────────────────────
-
 class _DeviceListItem extends StatelessWidget {
+  const _DeviceListItem({required this.device, required this.onTap});
+
   final DiscoveredDevice device;
   final VoidCallback onTap;
 
-  const _DeviceListItem({required this.device, required this.onTap});
-
   @override
   Widget build(BuildContext context) {
-    final isBle = device.transport == DeviceTransport.ble;
-
-    String displayName;
-    String subtitle;
-
-    if (device is BleDiscoveredDevice) {
-      final d = device as BleDiscoveredDevice;
-      displayName = d.name;
-      subtitle = d.id;
-    } else if (device is DesktopUsbDiscoveredDevice) {
-      final d = device as DesktopUsbDiscoveredDevice;
-      displayName = d.description.isNotEmpty ? d.description : d.portName;
-      subtitle = d.serialNumber ?? d.portName;
-    } else {
-      displayName = device.name;
-      subtitle = device.id;
-    }
-
-    return InkWell(
+    return ListTile(
       onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        child: Row(
-          children: [
-            Icon(
-              isBle ? Icons.bluetooth : Icons.usb,
-              color: isBle ? Colors.blue.shade300 : Colors.orange,
-              size: 28,
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    displayName,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.grey.shade500,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+      title: Text(device.name, style: const TextStyle(color: Colors.white)),
+      subtitle: Text(device.id, style: const TextStyle(color: Colors.white70)),
+      trailing: Text(
+        device.transport == DeviceTransport.ble ? 'BLE' : 'USB',
+        style: const TextStyle(color: Colors.white54),
       ),
     );
   }

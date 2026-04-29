@@ -15,6 +15,7 @@ dependencies:
   usb_serial: ^0.5.2
   permission_handler: ^11.3.1
   flutter_libserialport: ^0.6.0
+  flutter_svg: ^2.0.10+1
 
 dev_dependencies:
   flutter_test:
@@ -23,3 +24,10 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/flipper_svg/
+    - assets/flipper_svg/bottombar/
+    - assets/flipper_svg/connection/
+    - assets/flipper_svg/core/
+    - assets/flipper_svg/info/
+    - assets/flipper_svg/mockup/

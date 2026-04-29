@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import 'screens/device_list_screen.dart';
 
 void main() {
@@ -13,16 +14,14 @@ class QunleashedApp extends StatelessWidget {
     return MaterialApp(
       title: 'Qunleashed',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData.dark().copyWith(
-        colorScheme: const ColorScheme.dark(
-          primary: Colors.orange,
-          secondary: Colors.orangeAccent,
+      theme: ThemeData(
+        useMaterial3: false,
+        colorScheme: const ColorScheme.light(
+          primary: Color(0xFFFF8200),
+          secondary: Color(0xFF589DFF),
+          surface: Color(0xFFFFFFFF),
         ),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF1A1A1A),
-          foregroundColor: Colors.orange,
-        ),
-        scaffoldBackgroundColor: const Color(0xFF121212),
+        scaffoldBackgroundColor: const Color(0xFFFBFBFB),
       ),
       home: const DeviceListScreen(),
     );
