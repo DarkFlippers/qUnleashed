@@ -15,6 +15,7 @@ https://git.aperturefox.ru/FlutterAPPs/qUnleashed
 7. Make the last tab a terminal in debugger mode, plus a logger and a terminal for CLI mode.
 8. By default, `cli -> proto`. The flow still needs to be designed properly so switching between modes is fast and convenient.
 9. The app color theme should match the installed firmware, or the firmware selected during installation.
+10. https://pub.dev/packages/dynamic_app_icon_flutter_plus
 
 ## Notes for Developers
 

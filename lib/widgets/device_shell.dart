@@ -15,6 +15,9 @@ class FlipperOriginalColors {
   static const blue = Color(0xFF589DFF);
   static const green = Color(0xFF2ED34A);
   static const danger = Color(0xFFE85858);
+  static const flipperScreenBackground = Color(0xFFDFDFDF);
+  static const flipperScreenBorder = Color(0xFF000000);
+  static const flipperScreenOptionsBackground = Color(0xFFFFF0DE);
 }
 
 class FlipperRootScaffold extends StatelessWidget {
@@ -197,16 +200,19 @@ class FlipperMockupWidget extends StatelessWidget {
             children: [
               SvgPicture.asset(
                 active
-                    ? 'assets/flipper_svg/mockup/template_black_flipper_active.svg'
-                    : 'assets/flipper_svg/mockup/template_black_flipper_disabled.svg',
+                    ? 'assets/flipper_svg/mockup/template_white_flipper_active.svg'
+                    : 'assets/flipper_svg/mockup/template_white_flipper_disabled.svg',
               ),
               Positioned(
                 left: w * (60.56 / 238),
                 top: h * (10.54 / 100),
                 width: w * (85.33 / 238),
                 height: h * (46.96 / 100),
-                child: const RepaintBoundary(
-                  child: _MockupInnerScreen(),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(w * (3.4 / 238)),
+                  child: const RepaintBoundary(
+                    child: _MockupInnerScreen(),
+                  ),
                 ),
               ),
             ],

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'screens/device_list_screen.dart';
+import 'pages/device_list_page.dart';
 
 void main() {
   runApp(const QunleashedApp());
