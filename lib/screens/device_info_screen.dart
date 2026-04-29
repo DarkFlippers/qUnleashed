@@ -1,15 +1,18 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
 import 'package:flipperzero/flipperzero.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../models/discovered_device.dart';
 import '../services/flipper_protocol.dart';
 import '../services/log_service.dart';
+import '../widgets/flipper_original_ui.dart';
 
 class DeviceInfoScreen extends StatefulWidget {
-  final ConnectedDevice device;
   const DeviceInfoScreen({super.key, required this.device});
+
+  final ConnectedDevice device;
 
   @override
   State<DeviceInfoScreen> createState() => _DeviceInfoScreenState();
@@ -18,49 +21,48 @@ class DeviceInfoScreen extends StatefulWidget {
 class _DeviceInfoScreenState extends State<DeviceInfoScreen> {
   final Map<String, String> _info = {};
   final List<String> _logs = [];
+  final _buf = FlipperFrameBuffer();
+  final Set<int> _pending = {};
 
-  String _status = 'Initializing…';
+  String _status = 'Initializing...';
   bool _loading = true;
   bool _disconnected = false;
+  FlipperRootTab _tab = FlipperRootTab.device;
 
   StreamSubscription<List<int>>? _dataSub;
   StreamSubscription<String>? _logSub;
-  final _buf = FlipperFrameBuffer();
-
-  final Set<int> _pending = {};
   Timer? _timeoutTimer;
-  final _logScrollCtrl = ScrollController();
-  bool _showLogs = true;
 
   @override
   void initState() {
     super.initState();
 
-    // 1. Log subscription FIRST so we see everything
     _logSub = LogService.stream.listen((line) {
       if (!mounted) return;
       setState(() => _logs.add(line));
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_logScrollCtrl.hasClients) {
-          _logScrollCtrl.jumpTo(_logScrollCtrl.position.maxScrollExtent);
-        }
-      });
     });
 
-    // 2. Data subscription
     _dataSub = widget.device.dataStream.listen(
       _onData,
       onError: (e) {
         LogService.log('[DeviceInfo] stream error: $e');
-        if (mounted) setState(() { _status = 'Connection failed'; _loading = false; });
+        if (!mounted) return;
+        setState(() {
+          _status = 'Connection failed';
+          _loading = false;
+        });
       },
       onDone: () {
         LogService.log('[DeviceInfo] stream closed');
-        if (mounted) setState(() { _status = 'Disconnected'; _disconnected = true; _loading = false; });
+        if (!mounted) return;
+        setState(() {
+          _status = 'Disconnected';
+          _disconnected = true;
+          _loading = false;
+        });
       },
     );
 
-    // 3. Init then request (async, so build() runs first)
     _initAndRequest();
   }
 
@@ -69,15 +71,14 @@ class _DeviceInfoScreenState extends State<DeviceInfoScreen> {
       await widget.device.init();
     } catch (e) {
       LogService.log('[DeviceInfo] init error: $e');
-      if (mounted) {
-        setState(() {
-          _status = 'Initialization failed';
-          _loading = false;
-        });
-      }
+      if (!mounted) return;
+      setState(() {
+        _status = 'Initialization failed';
+        _loading = false;
+      });
       return;
     }
-    if (mounted) setState(() => _status = 'Requesting device info…');
+    if (mounted) setState(() => _status = 'Requesting device info...');
     await _requestAll();
   }
 
@@ -85,65 +86,65 @@ class _DeviceInfoScreenState extends State<DeviceInfoScreen> {
     try {
       final protoId = FlipperProtocol.nextCommandId();
       _pending.add(protoId);
-      await widget.device.sendBytes(FlipperProtocol.encode(
-          Main(commandId: protoId, systemProtobufVersionRequest: ProtobufVersionRequest())));
+      await widget.device.sendBytes(
+        FlipperProtocol.encode(
+          Main(commandId: protoId, systemProtobufVersionRequest: ProtobufVersionRequest()),
+        ),
+      );
 
       final devId = FlipperProtocol.nextCommandId();
       _pending.add(devId);
-      await widget.device.sendBytes(FlipperProtocol.encode(
-          Main(commandId: devId, systemDeviceInfoRequest: DeviceInfoRequest())));
+      await widget.device.sendBytes(
+        FlipperProtocol.encode(
+          Main(commandId: devId, systemDeviceInfoRequest: DeviceInfoRequest()),
+        ),
+      );
 
       final pwrId = FlipperProtocol.nextCommandId();
       _pending.add(pwrId);
-      await widget.device.sendBytes(FlipperProtocol.encode(
-          Main(commandId: pwrId, systemPowerInfoRequest: PowerInfoRequest())));
+      await widget.device.sendBytes(
+        FlipperProtocol.encode(
+          Main(commandId: pwrId, systemPowerInfoRequest: PowerInfoRequest()),
+        ),
+      );
 
       final dtId = FlipperProtocol.nextCommandId();
       _pending.add(dtId);
-      await widget.device.sendBytes(FlipperProtocol.encode(
-          Main(commandId: dtId, systemGetDatetimeRequest: GetDateTimeRequest())));
-
-      LogService.log('[DeviceInfo] sent ${_pending.length} requests, pending: $_pending');
+      await widget.device.sendBytes(
+        FlipperProtocol.encode(
+          Main(commandId: dtId, systemGetDatetimeRequest: GetDateTimeRequest()),
+        ),
+      );
 
       _timeoutTimer = Timer(const Duration(seconds: 15), () {
-        if (mounted && _loading) {
-          LogService.log('[DeviceInfo] timeout — pending=$_pending');
-          setState(() {
-            _status = _info.isEmpty
-                ? 'Timeout — no response from device'
-                : 'Timeout — partial data for ${widget.device.name}';
-            _loading = false;
-          });
-        }
+        if (!mounted || !_loading) return;
+        setState(() {
+          _status = _info.isEmpty
+              ? 'Timeout - no response from device'
+              : 'Timeout - partial data for ${widget.device.name}';
+          _loading = false;
+        });
       });
     } catch (e) {
       LogService.log('[DeviceInfo] send error: $e');
-      if (mounted) setState(() { _status = 'Request failed'; _loading = false; });
+      if (!mounted) return;
+      setState(() {
+        _status = 'Request failed';
+        _loading = false;
+      });
     }
   }
 
   void _onData(List<int> raw) {
-    final hex = raw.take(32).map((b) => b.toRadixString(16).padLeft(2, '0')).join(' ');
-    LogService.log('[DeviceInfo] raw ${raw.length} bytes: $hex');
     final messages = _buf.push(raw);
     for (final msg in messages) {
-      LogService.log('[DeviceInfo] msg cmd=${msg.commandId} '
-          'status=${msg.commandStatus.name} '
-          'hasNext=${msg.hasNext} '
-          'content=${msg.whichContent().name}');
       if (mounted) setState(() => _handleMessage(msg));
     }
   }
 
   void _handleMessage(Main msg) {
-    // ERROR_DECODE: Flipper couldn't parse our message.
-    // Log it, clear the corresponding pending entry if possible, and continue.
     if (msg.commandStatus == CommandStatus.ERROR_DECODE) {
-      LogService.log('[DeviceInfo] ERROR_DECODE from device — possible protocol mismatch');
-      // commandId=0 means Flipper doesn't know which command failed;
-      // remove all pending to avoid infinite wait only if nothing else expected.
       if (msg.commandId == 0 && _pending.isNotEmpty) {
-        LogService.log('[DeviceInfo] clearing all pending due to ERROR_DECODE');
         _pending.clear();
         _checkDone();
       }
@@ -155,53 +156,59 @@ class _DeviceInfoScreenState extends State<DeviceInfoScreen> {
         final r = msg.systemProtobufVersionResponse;
         _info['protobuf_version'] = '${r.major}.${r.minor}';
         _markDone(msg.commandId);
-
       case Main_Content.systemDeviceInfoResponse:
         final r = msg.systemDeviceInfoResponse;
         _info[r.key] = r.value;
         if (!msg.hasNext) _markDone(msg.commandId);
-
       case Main_Content.systemPowerInfoResponse:
         final r = msg.systemPowerInfoResponse;
         _info['power.${r.key}'] = r.value;
         if (!msg.hasNext) _markDone(msg.commandId);
-
       case Main_Content.systemGetDatetimeResponse:
         final dt = msg.systemGetDatetimeResponse.datetime;
-        _info['datetime'] = '${dt.year}-${_p(dt.month)}-${_p(dt.day)}'
-            ' ${_p(dt.hour)}:${_p(dt.minute)}:${_p(dt.second)}';
+        _info['datetime'] =
+            '${dt.year}-${_pad(dt.month)}-${_pad(dt.day)} ${_pad(dt.hour)}:${_pad(dt.minute)}:${_pad(dt.second)}';
         _markDone(msg.commandId);
-
-      case Main_Content.systemPingResponse:
-        LogService.log('[DeviceInfo] pong');
-
       default:
-        LogService.log('[DeviceInfo] unhandled content: ${msg.whichContent().name}');
+        break;
     }
   }
 
+  String _pad(int n) => n.toString().padLeft(2, '0');
+
   void _markDone(int commandId) {
     _pending.remove(commandId);
-    LogService.log('[DeviceInfo] cmd $commandId done, pending=${_pending.length}');
     _checkDone();
   }
 
   void _checkDone() {
     if (_pending.isEmpty && _loading) {
       _timeoutTimer?.cancel();
-      _status = 'Connected — ${widget.device.name}';
+      _status = 'Connected';
       _loading = false;
     }
   }
 
-  String _p(int n) => n.toString().padLeft(2, '0');
+  String get _deviceInfoVersion =>
+      _info['firmware_version'] ??
+      _info['firmware.version'] ??
+      _info['software_revision'] ??
+      _info['protobuf_version'] ??
+      '-';
+
+  String get _buildDate =>
+      _info['firmware_build_date'] ?? _info['build_date'] ?? _info['datetime'] ?? '-';
+
+  String get _sdCard =>
+      _info['storage.sdcard.used'] != null || _info['storage.sdcard.total'] != null
+          ? '${_info['storage.sdcard.used'] ?? '?'} / ${_info['storage.sdcard.total'] ?? '?'}'
+          : '-';
 
   @override
   void dispose() {
     _timeoutTimer?.cancel();
     _logSub?.cancel();
     _dataSub?.cancel();
-    _logScrollCtrl.dispose();
     if (!_disconnected) widget.device.disconnect();
     super.dispose();
   }
@@ -213,154 +220,252 @@ class _DeviceInfoScreenState extends State<DeviceInfoScreen> {
     if (mounted) Navigator.of(context).pop();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final entries = _info.entries.toList()..sort((a, b) => a.key.compareTo(b.key));
-
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.device.name),
-        actions: [
-          IconButton(
-            icon: Icon(_showLogs ? Icons.terminal : Icons.terminal_outlined),
-            tooltip: _showLogs ? 'Hide logs' : 'Show logs',
-            onPressed: () => setState(() => _showLogs = !_showLogs),
-          ),
-          IconButton(
-            icon: const Icon(Icons.link_off),
-            tooltip: 'Disconnect',
-            onPressed: _disconnect,
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          _StatusBar(
-            status: _status,
-            loading: _loading,
-            disconnected: _disconnected,
-            transport: widget.device.transport,
-          ),
-          Expanded(
-            flex: _showLogs ? 1 : 2,
-            child: entries.isEmpty
-                ? Center(
-                    child: _loading
-                        ? const CircularProgressIndicator(color: Colors.orange)
-                        : Text('No data received.',
-                            style: TextStyle(color: Colors.grey.shade500)),
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    itemCount: entries.length,
-                    itemBuilder: (_, i) =>
-                        _InfoRow(k: entries[i].key, v: entries[i].value),
-                  ),
-          ),
-          if (_showLogs) ...[
-            const Divider(height: 1, color: Colors.orange),
-            Container(
-              color: const Color(0xFF0A0A0A),
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              child: Row(children: [
-                const Icon(Icons.terminal, size: 14, color: Colors.orange),
-                const SizedBox(width: 6),
-                Text('Logs (${_logs.length})',
-                    style: const TextStyle(color: Colors.orange, fontSize: 12)),
-                const Spacer(),
-                GestureDetector(
-                  onTap: () => setState(() => _logs.clear()),
-                  child: const Text('clear',
-                      style: TextStyle(color: Colors.grey, fontSize: 11)),
+  void _openTerminal() {
+    showDialog<void>(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: const Color(0xFF090909),
+        child: SizedBox(
+          width: 900,
+          height: 560,
+          child: Column(
+            children: [
+              Container(
+                color: const Color(0xFF151515),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                child: Row(
+                  children: [
+                    const Text(
+                      'Terminal',
+                      style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700),
+                    ),
+                    const Spacer(),
+                    TextButton(
+                      onPressed: () => setState(_logs.clear),
+                      child: const Text('Clear'),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Close'),
+                    ),
+                  ],
                 ),
-              ]),
-            ),
-            Expanded(
-              flex: 1,
-              child: _logs.isEmpty
-                  ? const Center(
-                      child: Text('No logs yet.',
-                          style: TextStyle(color: Colors.grey, fontSize: 12)),
-                    )
-                  : ListView.builder(
-                      controller: _logScrollCtrl,
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      itemCount: _logs.length,
-                      itemBuilder: (_, i) => Text(
-                        _logs[i],
-                        style: const TextStyle(
-                          fontFamily: 'monospace',
-                          fontSize: 11,
-                          color: Color(0xFF90EE90),
-                          height: 1.4,
+              ),
+              Expanded(
+                child: _logs.isEmpty
+                    ? const Center(
+                        child: Text('No logs yet.', style: TextStyle(color: Colors.white54)),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(12),
+                        itemCount: _logs.length,
+                        itemBuilder: (_, i) => Text(
+                          _logs[i],
+                          style: const TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 12,
+                            height: 1.4,
+                            color: Color(0xFF90EE90),
+                          ),
                         ),
                       ),
-                    ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FlipperRootScaffold(
+      currentTab: _tab,
+      onTabSelected: (tab) => setState(() => _tab = tab),
+      deviceIconAsset: _disconnected
+          ? 'assets/flipper_svg/connection/ic_disconnected_filled.svg'
+          : 'assets/flipper_svg/connection/ic_connected_filled.svg',
+      deviceLabel: _disconnected ? 'Not connected' : 'Connected',
+      child: SafeArea(
+        child: IndexedStack(
+          index: _tab.index,
+          children: [
+            _ConnectedDevicePage(
+              deviceName: widget.device.name,
+              status: _status,
+              loading: _loading,
+              version: _deviceInfoVersion,
+              buildDate: _buildDate,
+              sdCard: _sdCard,
+              onSynchronize: _loading
+                  ? null
+                  : () {
+                      setState(() {
+                        _loading = true;
+                        _status = 'Refreshing...';
+                        _pending.clear();
+                        _info.clear();
+                      });
+                      _requestAll();
+                    },
+              onOpenTerminal: _openTerminal,
+              onDisconnect: _disconnect,
             ),
+            const Center(child: Text('Archive')),
+            const Center(child: Text('Apps')),
+            const Center(child: Text('Tools')),
           ],
-        ],
+        ),
       ),
     );
   }
 }
 
-class _StatusBar extends StatelessWidget {
+class _ConnectedDevicePage extends StatelessWidget {
+  const _ConnectedDevicePage({
+    required this.deviceName,
+    required this.status,
+    required this.loading,
+    required this.version,
+    required this.buildDate,
+    required this.sdCard,
+    required this.onSynchronize,
+    required this.onOpenTerminal,
+    required this.onDisconnect,
+  });
+
+  final String deviceName;
   final String status;
-  final bool loading, disconnected;
-  final DeviceTransport transport;
-  const _StatusBar(
-      {required this.status,
-      required this.loading,
-      required this.disconnected,
-      required this.transport});
+  final bool loading;
+  final String version;
+  final String buildDate;
+  final String sdCard;
+  final VoidCallback? onSynchronize;
+  final VoidCallback onOpenTerminal;
+  final VoidCallback onDisconnect;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      color: const Color(0xFF202020),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-      child: Row(children: [
-        if (loading) ...[
-          const SizedBox(
+    return ListView(
+      children: [
+        Container(
+          color: FlipperOriginalColors.accent,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 7, right: 18, bottom: 7),
+                child: SizedBox(height: 100, child: const FlipperMockupWidget(active: true)),
+              ),
+              Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    deviceName,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: FlipperOriginalColors.card,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  const Text(
+                    'Flipper Zero',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: FlipperOriginalColors.card,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        FlipperPageCard(
+          title: 'Firmware Update',
+          child: Column(
+            children: [
+              FlipperInfoLine(
+                label: 'Update Channel',
+                value: loading ? 'Loading' : status,
+                valueColor: FlipperOriginalColors.text60,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        FlipperPageCard(
+          title: 'Device Info',
+          trailing: Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: SizedBox(
               width: 14,
               height: 14,
-              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)),
-          const SizedBox(width: 8),
-        ],
-        Expanded(
-            child: Text(status,
-                style: const TextStyle(color: Colors.white, fontSize: 12))),
-        Text(transport == DeviceTransport.ble ? 'BLE' : 'USB',
-            style: const TextStyle(
-                color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold)),
-      ]),
-    );
-  }
-}
-
-class _InfoRow extends StatelessWidget {
-  final String k, v;
-  const _InfoRow({required this.k, required this.v});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
-      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        SizedBox(
-            width: 180,
-            child: Text(k,
-                style: TextStyle(
-                    color: Colors.orange.shade300,
-                    fontFamily: 'monospace',
-                    fontSize: 12))),
-        const SizedBox(width: 8),
-        Expanded(
-            child: Text(v,
-                style: const TextStyle(
-                    color: Colors.white, fontFamily: 'monospace', fontSize: 12))),
-      ]),
+              child: SvgPicture.asset('assets/flipper_svg/core/ic_navigate.svg'),
+            ),
+          ),
+          child: Column(
+            children: [
+              FlipperInfoLine(label: 'Firmware Version', value: version),
+              const Divider(height: 1, color: FlipperOriginalColors.divider),
+              FlipperInfoLine(label: 'Build Date', value: buildDate),
+              const Divider(height: 1, color: FlipperOriginalColors.divider),
+              FlipperInfoLine(label: 'SD Card (Used/Total)', value: sdCard),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        FlipperPageCard(
+          child: Column(
+            children: [
+              FlipperActionRow(
+                iconAsset: 'assets/flipper_svg/core/ic_syncing.svg',
+                label: 'Synchronize',
+                color: onSynchronize == null
+                    ? FlipperOriginalColors.text16
+                    : FlipperOriginalColors.blue,
+                onTap: onSynchronize,
+              ),
+              const Divider(height: 1, color: FlipperOriginalColors.divider),
+              FlipperActionRow(
+                iconAsset: 'assets/flipper_svg/info/ic_ring.svg',
+                label: 'Play Alert on Flipper',
+                color: FlipperOriginalColors.text16,
+                onTap: null,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        FlipperPageCard(
+          child: Column(
+            children: [
+              FlipperActionRow(
+                iconAsset: 'assets/flipper_svg/info/ic_controller.svg',
+                label: 'Remote Control',
+                color: FlipperOriginalColors.blue,
+                onTap: onOpenTerminal,
+              ),
+              const Divider(height: 1, color: FlipperOriginalColors.divider),
+              FlipperActionRow(
+                iconAsset: 'assets/flipper_svg/core/ic_bluetooth_disable.svg',
+                label: 'Disconnect',
+                color: FlipperOriginalColors.blue,
+                onTap: onDisconnect,
+              ),
+              const Divider(height: 1, color: FlipperOriginalColors.divider),
+              FlipperActionRow(
+                iconAsset: 'assets/flipper_svg/info/ic_disconnection.svg',
+                label: 'Forget Flipper',
+                color: FlipperOriginalColors.danger,
+                onTap: null,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+      ],
     );
   }
 }
