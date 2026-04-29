@@ -24,7 +24,13 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  fonts:
+    - family: FlipperBold
+      fonts:
+        - asset: assets/fonts/flipper_bold.ttf
+          weight: 500
   assets:
+    - assets/firmware/
     - assets/flipper_svg/
     - assets/flipper_svg/bottombar/
     - assets/flipper_svg/connection/
