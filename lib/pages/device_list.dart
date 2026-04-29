@@ -3,30 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../models/discovered_device.dart';
-import '../pages/widgets/connection.dart';
-import '../services/ble_service.dart';
+import 'widgets/connection.dart';
 import '../services/log_service.dart';
-import '../services/usb_service.dart';
 import '../widgets/device_shell.dart';
-import 'device_info_screen.dart';
-
-bool _isFlipperBle(BleDiscoveredDevice d) {
-  final mac = d.id.replaceAll(':', '').toUpperCase();
-  return mac.startsWith('80E127') || mac.startsWith('80E126');
-}
-
-bool _isFlipperUsb(UsbDiscoveredDevice d) {
-  if (d is DesktopUsbDiscoveredDevice) {
-    if (d.vendorId == 0x0483) return true;
-
-    final desc = d.description.toLowerCase();
-    return desc.contains('stmicroelectronics') ||
-        desc.contains('virtual com port') ||
-        desc.contains('flipper');
-  }
-  if (d is AndroidUsbDiscoveredDevice) return d.usbDevice.vid == 0x0483;
-  return false;
-}
+import 'device_info.dart';
 
 class DeviceListScreen extends StatefulWidget {
   const DeviceListScreen({super.key});

@@ -8,7 +8,7 @@ import '../models/discovered_device.dart';
 import '../services/flipper_protocol.dart';
 import '../services/log_service.dart';
 import '../widgets/device_shell.dart';
-import 'remote_control_screen.dart';
+import 'remote_control.dart';
 
 class DeviceInfoScreen extends StatefulWidget {
   const DeviceInfoScreen({super.key, required this.device});
