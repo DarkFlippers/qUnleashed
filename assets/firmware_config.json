@@ -1,0 +1,15 @@
+{
+  "firmwares": [
+    {
+      "name": "Unleashed",
+      "shortName": "unlshd",
+      "icon": "unleashed.jpg",
+      "releaseUrl": "https://github.com/DarkFlippers/unleashed-firmware/releases",
+      "colors": {
+        "primary": "#FF0000",
+        "secondary": "#CC5F00",
+        "tertiary": "#FFB347"
+      }
+    }
+  ]
+}
