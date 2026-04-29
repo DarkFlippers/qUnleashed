@@ -1,12 +1,11 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
 
 import 'package:flipperzero/flipperzero.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../models/discovered_device.dart';
+import '../models/firmware_config.dart';
 import '../services/flipper_protocol.dart';
 import '../services/log_service.dart';
 import '../widgets/device_shell.dart';
@@ -741,29 +740,19 @@ class _Header extends StatelessWidget {
 }
 
 // =============================================================================
-// Firmware carousel card
+// Firmware update card
+//
+// Driven entirely by assets/firmware_config.json.
+//
+// • 1 firmware  → "original" layout: info-row style, no carousel
+// • N firmwares → horizontal carousel with per-firmware icon + theme colors
+//
+// deviceVersion:
+//   null  = disconnected
+//   '-'   = connected, device info still loading
+//   'X.Y' = actual firmware version on device
 // =============================================================================
 
-const _kFirmwareApiUrl = 'https://update.flipperzero.one/firmware/directory.json';
-
-class _FirmwareOption {
-  final String name;
-  final String assetPath;
-  const _FirmwareOption(this.name, this.assetPath);
-}
-
-const _kFirmwares = [
-  _FirmwareOption('Unleashed', 'assets/firmware/unleashed.png'),
-  _FirmwareOption('Flipper', 'assets/firmware/flipper.png'),
-  _FirmwareOption('Momentum', 'assets/firmware/momentum.png'),
-  _FirmwareOption('RogueMaster', 'assets/firmware/master.png'),
-  _FirmwareOption('Chronos', 'assets/firmware/chronos.png'),
-];
-
-/// [deviceVersion] — версия прошивки на устройстве.
-/// null  = нет устройства (disconnected)
-/// '-'   = устройство подключено, данные ещё загружаются
-/// 'X.Y' = реальная версия
 class _FirmwareCarouselCard extends StatefulWidget {
   const _FirmwareCarouselCard({required this.deviceVersion});
 
@@ -776,42 +765,53 @@ class _FirmwareCarouselCard extends StatefulWidget {
 class _FirmwareCarouselCardState extends State<_FirmwareCarouselCard> {
   final _controller = PageController();
   int _page = 0;
-  String? _latestVersion; // fetched from server
-  bool _fetchLoading = true;
+
+  FirmwareConfig? _config;
+  // GitHub release cache keyed by releaseUrl
+  final Map<String, FirmwareRelease?> _releaseCache = {};
+  final Set<String> _fetching = {};
 
   @override
   void initState() {
     super.initState();
-    _fetchVersion();
+    _loadConfig();
   }
 
-  Future<void> _fetchVersion() async {
+  Future<void> _loadConfig() async {
     try {
-      final client = HttpClient();
-      final req = await client.getUrl(Uri.parse(_kFirmwareApiUrl));
-      final res = await req.close();
-      final body = await res.transform(utf8.decoder).join();
-      client.close();
-
-      final data = jsonDecode(body) as Map<String, dynamic>;
-      final channels = data['channels'] as List<dynamic>;
-
-      String? version;
-      int latestTs = -1;
-      for (final ch in channels) {
-        if (ch['id'] == 'release') {
-          for (final v in ch['versions'] as List<dynamic>) {
-            final ts = (v['timestamp'] as num).toInt();
-            if (ts > latestTs) {
-              latestTs = ts;
-              version = v['version'] as String;
-            }
-          }
-        }
+      final cfg = await FirmwareConfig.load();
+      if (!mounted) return;
+      setState(() => _config = cfg);
+      if (cfg.firmwares.isNotEmpty) {
+        _ensureRelease(cfg.firmwares.first);
       }
-      if (mounted) setState(() { _latestVersion = version; _fetchLoading = false; });
     } catch (_) {
-      if (mounted) setState(() { _fetchLoading = false; });
+      if (mounted) setState(() => _config = FirmwareConfig(firmwares: const []));
+    }
+  }
+
+  void _ensureRelease(FirmwareEntry entry) {
+    final url = entry.releaseUrl;
+    if (_releaseCache.containsKey(url) || _fetching.contains(url)) return;
+    _fetching.add(url);
+    _fetchRelease(entry);
+  }
+
+  Future<void> _fetchRelease(FirmwareEntry entry) async {
+    final release = await entry.fetchRelease();
+    if (mounted) {
+      setState(() {
+        _releaseCache[entry.releaseUrl] = release;
+        _fetching.remove(entry.releaseUrl);
+      });
+    }
+  }
+
+  void _onPageChanged(int p) {
+    setState(() => _page = p);
+    final cfg = _config;
+    if (cfg != null && p < cfg.firmwares.length) {
+      _ensureRelease(cfg.firmwares[p]);
     }
   }
 
@@ -823,51 +823,131 @@ class _FirmwareCarouselCardState extends State<_FirmwareCarouselCard> {
 
   @override
   Widget build(BuildContext context) {
+    final cfg = _config;
+
+    // Config still loading
+    if (cfg == null) return const FlipperPageCard(title: 'Firmware Update', child: _LoadingRow());
+
+    // No firmwares defined
+    if (cfg.firmwares.isEmpty) return const SizedBox.shrink();
+
+    final entry = cfg.firmwares[_page.clamp(0, cfg.firmwares.length - 1)];
+    final url = entry.releaseUrl;
+    final fetchLoading = !_releaseCache.containsKey(url);
+    final latestVersion = _releaseCache[url]?.version;
+
+    if (cfg.isSingle) {
+      // ── Original-style single-firmware layout ─────────────────────────────
+      return FlipperPageCard(
+        title: 'Firmware Update',
+        child: Column(children: [
+          _SingleChannelRow(entry: entry, fetchLoading: fetchLoading, latestVersion: latestVersion),
+          const Divider(height: 1, color: FlipperOriginalColors.divider),
+          _FirmwareButton(
+            fetchLoading: fetchLoading,
+            latestVersion: latestVersion,
+            deviceVersion: widget.deviceVersion,
+            primaryColor: entry.colors.primary,
+          ),
+        ]),
+      );
+    }
+
+    // ── Multi-firmware carousel layout ──────────────────────────────────────
     return FlipperPageCard(
       title: 'Firmware Update',
-      child: Column(
+      child: Column(children: [
+        SizedBox(
+          height: 80,
+          child: PageView.builder(
+            controller: _controller,
+            itemCount: cfg.firmwares.length,
+            onPageChanged: _onPageChanged,
+            itemBuilder: (_, i) {
+              final fw = cfg.firmwares[i];
+              final fwLoading = !_releaseCache.containsKey(fw.releaseUrl);
+              return _FirmwareSlide(
+                entry: fw,
+                fetchLoading: fwLoading,
+                latestVersion: _releaseCache[fw.releaseUrl]?.version,
+              );
+            },
+          ),
+        ),
+
+        // Dots
+        Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(cfg.firmwares.length, (i) {
+              final active = i == _page;
+              return AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                margin: const EdgeInsets.symmetric(horizontal: 3),
+                width: active ? 8 : 5,
+                height: active ? 8 : 5,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: active ? entry.colors.primary : FlipperOriginalColors.text16,
+                ),
+              );
+            }),
+          ),
+        ),
+
+        _FirmwareButton(
+          fetchLoading: fetchLoading,
+          latestVersion: latestVersion,
+          deviceVersion: widget.deviceVersion,
+          primaryColor: entry.colors.primary,
+        ),
+      ]),
+    );
+  }
+}
+
+// =============================================================================
+// Single-firmware channel row  (original Flipper app "Update Channel" style)
+// =============================================================================
+
+class _SingleChannelRow extends StatelessWidget {
+  const _SingleChannelRow({
+    required this.entry,
+    required this.fetchLoading,
+    required this.latestVersion,
+  });
+
+  final FirmwareEntry entry;
+  final bool fetchLoading;
+  final String? latestVersion;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: Row(
         children: [
-          // — Carousel slides —
-          SizedBox(
-            height: 80,
-            child: PageView.builder(
-              controller: _controller,
-              itemCount: _kFirmwares.length,
-              onPageChanged: (p) => setState(() => _page = p),
-              itemBuilder: (_, i) => _FirmwareSlide(
-                option: _kFirmwares[i],
-                latestVersion: _latestVersion,
-                fetchLoading: _fetchLoading,
+          const Expanded(
+            child: Text('Update Channel',
+              style: TextStyle(fontSize: 14, color: FlipperOriginalColors.text30)),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                entry.name,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: entry.colors.primary,
+                ),
               ),
-            ),
-          ),
-
-          // — Dot indicators —
-          Padding(
-            padding: const EdgeInsets.only(bottom: 6),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(_kFirmwares.length, (i) {
-                final active = i == _page;
-                return AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  margin: const EdgeInsets.symmetric(horizontal: 3),
-                  width: active ? 8 : 5,
-                  height: active ? 8 : 5,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: active ? FlipperOriginalColors.accent : FlipperOriginalColors.text16,
-                  ),
-                );
-              }),
-            ),
-          ),
-
-          // — Action button —
-          _FirmwareButton(
-            fetchLoading: _fetchLoading,
-            latestVersion: _latestVersion,
-            deviceVersion: widget.deviceVersion,
+              Text(
+                fetchLoading ? 'Checking…' : (latestVersion ?? '—'),
+                style: const TextStyle(fontSize: 12, color: FlipperOriginalColors.text30),
+              ),
+            ],
           ),
         ],
       ),
@@ -876,19 +956,19 @@ class _FirmwareCarouselCardState extends State<_FirmwareCarouselCard> {
 }
 
 // =============================================================================
-// Single carousel slide
+// Multi-firmware carousel slide
 // =============================================================================
 
 class _FirmwareSlide extends StatelessWidget {
   const _FirmwareSlide({
-    required this.option,
-    required this.latestVersion,
+    required this.entry,
     required this.fetchLoading,
+    required this.latestVersion,
   });
 
-  final _FirmwareOption option;
-  final String? latestVersion;
+  final FirmwareEntry entry;
   final bool fetchLoading;
+  final String? latestVersion;
 
   @override
   Widget build(BuildContext context) {
@@ -898,7 +978,7 @@ class _FirmwareSlide extends StatelessWidget {
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(14),
-            child: Image.asset(option.assetPath, width: 62, height: 62, fit: BoxFit.cover),
+            child: Image.asset(entry.assetPath, width: 62, height: 62, fit: BoxFit.cover),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -907,9 +987,12 @@ class _FirmwareSlide extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  option.name,
-                  style: const TextStyle(
-                    fontSize: 22, fontWeight: FontWeight.w700, color: FlipperOriginalColors.accent),
+                  entry.name,
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    color: entry.colors.primary,
+                  ),
                 ),
                 const SizedBox(height: 2),
                 Text(
@@ -926,14 +1009,31 @@ class _FirmwareSlide extends StatelessWidget {
 }
 
 // =============================================================================
+// Loading skeleton row (while config loads)
+// =============================================================================
+
+class _LoadingRow extends StatelessWidget {
+  const _LoadingRow();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+      child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
+    );
+  }
+}
+
+// =============================================================================
 // Firmware action button
 //
-// Button states (mirrors original Flipper app UpdateCardState logic):
-//   fetchLoading                          → orange  INSTALL  "Checking for updates…"
-//   latestVersion == null  (server error) → orange  INSTALL  "Can't connect to update server"
-//   deviceVersion == null  (disconnected) → orange  INSTALL  "…will be installed"
-//   deviceVersion == latestVersion        → gray    NO UPDATES  "There are no updates…"
-//   deviceVersion != latestVersion        → green   UPDATE      "Update Flipper to the latest version"
+// States (mirrors original Flipper app UpdateCardState):
+//   fetchLoading               → primaryColor  INSTALL   "Checking for updates…"
+//   latestVersion == null      → primaryColor  INSTALL   "Can't connect to update server"
+//   deviceVersion == null      → primaryColor  INSTALL   "…will be installed"
+//   deviceVersion == '-'       → primaryColor  INSTALL   "Checking device version…"
+//   deviceVersion == latest    → text16 (gray) NO UPDATES  "There are no updates…"
+//   deviceVersion != latest    → green         UPDATE    "Update Flipper to the latest version"
 // =============================================================================
 
 const _kFlipperBold = TextStyle(
@@ -948,107 +1048,64 @@ class _FirmwareButton extends StatelessWidget {
     required this.fetchLoading,
     required this.latestVersion,
     required this.deviceVersion,
+    required this.primaryColor,
   });
 
   final bool fetchLoading;
   final String? latestVersion;
-
-  /// null  = no device (disconnected)
-  /// '-'   = device connected, info still loading
-  /// 'X.Y' = actual device firmware version
   final String? deviceVersion;
+  final Color primaryColor;
 
   @override
   Widget build(BuildContext context) {
-    final _ButtonState state = _resolve();
-
+    final s = _resolve();
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
-      child: Column(
-        children: [
-          GestureDetector(
-            onTap: state.enabled ? () {} : null,
-            child: Container(
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: state.color,
-                borderRadius: BorderRadius.circular(9),
-              ),
-              alignment: Alignment.center,
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Text(state.label, style: _kFlipperBold),
-            ),
+      child: Column(children: [
+        GestureDetector(
+          onTap: s.enabled ? () {} : null,
+          child: Container(
+            width: double.infinity,
+            decoration: BoxDecoration(color: s.color, borderRadius: BorderRadius.circular(9)),
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Text(s.label, style: _kFlipperBold),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(4, 4, 4, 12),
-            child: Text(
-              state.description,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w400, color: FlipperOriginalColors.text30),
-            ),
-          ),
-        ],
-      ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 4, 4, 12),
+          child: Text(s.description,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 12, color: FlipperOriginalColors.text30)),
+        ),
+      ]),
     );
   }
 
   _ButtonState _resolve() {
-    // Server still fetching
     if (fetchLoading) {
-      return _ButtonState(
-        label: 'INSTALL',
-        color: FlipperOriginalColors.accent,
-        description: 'Checking for updates…',
-        enabled: false,
-      );
+      return _ButtonState(label: 'INSTALL', color: primaryColor,
+        description: 'Checking for updates…', enabled: false);
     }
-
-    // Server fetch failed
     if (latestVersion == null) {
-      return _ButtonState(
-        label: 'INSTALL',
-        color: FlipperOriginalColors.accent,
-        description: 'Can\'t connect to update server',
-        enabled: false,
-      );
+      return _ButtonState(label: 'INSTALL', color: primaryColor,
+        description: 'Can\'t connect to update server', enabled: false);
     }
-
-    // No device connected
     if (deviceVersion == null) {
-      return _ButtonState(
-        label: 'INSTALL',
-        color: FlipperOriginalColors.accent,
+      return _ButtonState(label: 'INSTALL', color: primaryColor,
         description: 'Firmware on Flipper doesn\'t match the selected update channel.\nSelected version will be installed.',
-        enabled: true,
-      );
+        enabled: true);
     }
-
-    // Device info still loading (deviceVersion == '-')
     if (deviceVersion == '-') {
-      return _ButtonState(
-        label: 'INSTALL',
-        color: FlipperOriginalColors.accent,
-        description: 'Checking device firmware version…',
-        enabled: false,
-      );
+      return _ButtonState(label: 'INSTALL', color: primaryColor,
+        description: 'Checking device firmware version…', enabled: false);
     }
-
-    // Compare versions
     if (deviceVersion == latestVersion) {
-      return _ButtonState(
-        label: 'NO UPDATES',
-        color: FlipperOriginalColors.text16,
-        description: 'There are no updates in the selected channel',
-        enabled: false,
-      );
+      return _ButtonState(label: 'NO UPDATES', color: FlipperOriginalColors.text16,
+        description: 'There are no updates in the selected channel', enabled: false);
     }
-
-    return _ButtonState(
-      label: 'UPDATE',
-      color: FlipperOriginalColors.green,
-      description: 'Update Flipper to the latest version',
-      enabled: true,
-    );
+    return _ButtonState(label: 'UPDATE', color: FlipperOriginalColors.green,
+      description: 'Update Flipper to the latest version', enabled: true);
   }
 }
 
@@ -1058,10 +1115,8 @@ class _ButtonState {
   final String description;
   final bool enabled;
   const _ButtonState({
-    required this.label,
-    required this.color,
-    required this.description,
-    required this.enabled,
+    required this.label, required this.color,
+    required this.description, required this.enabled,
   });
 }
 
