@@ -37,9 +37,14 @@ class UsbService {
     for (final name in portNames) {
       final port = SerialPort(name);
       final desc = port.description ?? '';
-      LogService.log('[USB] port=$name desc="$desc"');
+      final vid = port.vendorId;
+      final pid = port.productId;
+      final serial = port.serialNumber;
+      LogService.log('[USB] port=$name desc="$desc" '
+          'vid=0x${vid?.toRadixString(16)} pid=0x${pid?.toRadixString(16)} serial=$serial');
       port.dispose();
-      result.add(DesktopUsbDiscoveredDevice(name, desc));
+      result.add(DesktopUsbDiscoveredDevice(name, desc,
+          vendorId: vid, productId: pid, serialNumber: serial));
     }
     return result;
   }

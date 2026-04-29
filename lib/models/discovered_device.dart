@@ -100,16 +100,22 @@ class AndroidUsbDiscoveredDevice extends UsbDiscoveredDevice {
 
 class DesktopUsbDiscoveredDevice extends UsbDiscoveredDevice {
   final String portName;
-  final String _description;
+  final String description;
+  final int? vendorId;
+  final int? productId;
+  final String? serialNumber;
 
-  DesktopUsbDiscoveredDevice(this.portName, this._description);
+  DesktopUsbDiscoveredDevice(this.portName, this.description, {
+    this.vendorId,
+    this.productId,
+    this.serialNumber,
+  });
 
   @override
   String get id => portName;
 
   @override
-  String get name =>
-      _description.isNotEmpty ? '$_description ($portName)' : portName;
+  String get name => description.isNotEmpty ? description : portName;
 
   @override
   Future<ConnectedDevice> connect() async {
