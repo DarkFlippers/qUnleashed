@@ -17,22 +17,37 @@ class DeviceInfoScreen extends StatefulWidget {
 
 class _DeviceInfoScreenState extends State<DeviceInfoScreen> {
   final Map<String, String> _info = {};
+  final List<String> _logs = [];
 
   String _status = 'Initializing…';
   bool _loading = true;
   bool _disconnected = false;
 
   StreamSubscription<List<int>>? _dataSub;
+  StreamSubscription<String>? _logSub;
   final _buf = FlipperFrameBuffer();
 
   final Set<int> _pending = {};
   Timer? _timeoutTimer;
+  final _logScrollCtrl = ScrollController();
+  bool _showLogs = true;
 
   @override
   void initState() {
     super.initState();
 
-    // 1. Data subscription
+    // 1. Log subscription FIRST so we see everything
+    _logSub = LogService.stream.listen((line) {
+      if (!mounted) return;
+      setState(() => _logs.add(line));
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_logScrollCtrl.hasClients) {
+          _logScrollCtrl.jumpTo(_logScrollCtrl.position.maxScrollExtent);
+        }
+      });
+    });
+
+    // 2. Data subscription
     _dataSub = widget.device.dataStream.listen(
       _onData,
       onError: (e) {
@@ -45,7 +60,7 @@ class _DeviceInfoScreenState extends State<DeviceInfoScreen> {
       },
     );
 
-    // 2. Init then request (async, so build() runs first)
+    // 3. Init then request (async, so build() runs first)
     _initAndRequest();
   }
 
@@ -184,7 +199,9 @@ class _DeviceInfoScreenState extends State<DeviceInfoScreen> {
   @override
   void dispose() {
     _timeoutTimer?.cancel();
+    _logSub?.cancel();
     _dataSub?.cancel();
+    _logScrollCtrl.dispose();
     if (!_disconnected) widget.device.disconnect();
     super.dispose();
   }
@@ -205,6 +222,11 @@ class _DeviceInfoScreenState extends State<DeviceInfoScreen> {
         title: Text(widget.device.name),
         actions: [
           IconButton(
+            icon: Icon(_showLogs ? Icons.terminal : Icons.terminal_outlined),
+            tooltip: _showLogs ? 'Hide logs' : 'Show logs',
+            onPressed: () => setState(() => _showLogs = !_showLogs),
+          ),
+          IconButton(
             icon: const Icon(Icons.link_off),
             tooltip: 'Disconnect',
             onPressed: _disconnect,
@@ -220,6 +242,7 @@ class _DeviceInfoScreenState extends State<DeviceInfoScreen> {
             transport: widget.device.transport,
           ),
           Expanded(
+            flex: _showLogs ? 1 : 2,
             child: entries.isEmpty
                 ? Center(
                     child: _loading
@@ -234,6 +257,47 @@ class _DeviceInfoScreenState extends State<DeviceInfoScreen> {
                         _InfoRow(k: entries[i].key, v: entries[i].value),
                   ),
           ),
+          if (_showLogs) ...[
+            const Divider(height: 1, color: Colors.orange),
+            Container(
+              color: const Color(0xFF0A0A0A),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              child: Row(children: [
+                const Icon(Icons.terminal, size: 14, color: Colors.orange),
+                const SizedBox(width: 6),
+                Text('Logs (${_logs.length})',
+                    style: const TextStyle(color: Colors.orange, fontSize: 12)),
+                const Spacer(),
+                GestureDetector(
+                  onTap: () => setState(() => _logs.clear()),
+                  child: const Text('clear',
+                      style: TextStyle(color: Colors.grey, fontSize: 11)),
+                ),
+              ]),
+            ),
+            Expanded(
+              flex: 1,
+              child: _logs.isEmpty
+                  ? const Center(
+                      child: Text('No logs yet.',
+                          style: TextStyle(color: Colors.grey, fontSize: 12)),
+                    )
+                  : ListView.builder(
+                      controller: _logScrollCtrl,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      itemCount: _logs.length,
+                      itemBuilder: (_, i) => Text(
+                        _logs[i],
+                        style: const TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 11,
+                          color: Color(0xFF90EE90),
+                          height: 1.4,
+                        ),
+                      ),
+                    ),
+            ),
+          ],
         ],
       ),
     );
