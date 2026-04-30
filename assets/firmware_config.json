@@ -10,6 +10,17 @@
         "secondary": "#CC5F00",
         "tertiary": "#FFB347"
       }
+    },
+    {
+      "name": "Flipper",
+      "shortName": "ofw",
+      "icon": "flipper.png",
+      "releaseUrl": "https://github.com/flipperdevices/flipperzero-firmware/releases",
+      "colors": {
+        "primary": "#FF8200",
+        "secondary": "#CC5F00",
+        "tertiary": "#FFD580"
+      }
     }
   ]
 }

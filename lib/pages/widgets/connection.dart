@@ -6,6 +6,7 @@ import '../../models/discovered_device.dart';
 import '../../services/ble_service.dart';
 import '../../services/log_service.dart';
 import '../../services/usb_service.dart';
+import '../../theme.dart';
 
 bool _isFlipperBle(BleDiscoveredDevice d) {
   final mac = d.id.replaceAll(':', '').toUpperCase();
@@ -28,7 +29,7 @@ bool _isFlipperUsb(UsbDiscoveredDevice d) {
 Future<DiscoveredDevice?> showConnectionDialog(BuildContext context) {
   return showDialog<DiscoveredDevice>(
     context: context,
-    barrierColor: Colors.black54,
+    barrierColor: FlipperOriginalColors.barrier,
     builder: (_) => const ConnectionDialog(),
   );
 }
@@ -111,8 +112,9 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.appColors;
     return Dialog(
-      backgroundColor: const Color(0xFF1A1A1A),
+      backgroundColor: colors.dialogBackground,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 420, maxHeight: 520),
@@ -120,9 +122,9 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
           mainAxisSize: MainAxisSize.min,
           children: [
             _buildHeader(),
-            const Divider(height: 1, color: Color(0xFF2C2C2C)),
+            Divider(height: 1, color: colors.dialogDivider),
             Flexible(child: _buildList()),
-            const Divider(height: 1, color: Color(0xFF2C2C2C)),
+            Divider(height: 1, color: colors.dialogDivider),
             _buildFooter(),
           ],
         ),
@@ -131,28 +133,34 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
   }
 
   Widget _buildHeader() {
+    final colors = context.appColors;
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
       child: Row(
         children: [
-          const Expanded(
+          Expanded(
             child: Text(
               'Select device',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
-                color: Colors.white,
+                color: colors.dialogText,
               ),
             ),
           ),
           if (_scanning)
-            const SizedBox(
+            SizedBox(
               width: 20,
               height: 20,
               child: CircularProgressIndicator(
                 strokeWidth: 2.5,
-                color: Colors.orange,
+                color: colors.accent,
               ),
+            )
+          else
+            TextButton(
+              onPressed: _startScan,
+              child: const Text('Search again'),
             ),
         ],
       ),
@@ -160,22 +168,23 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
   }
 
   Widget _buildList() {
+    final colors = context.appColors;
     if (_displayed.isEmpty) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
         child: Text(
           _scanning ? 'Searching for devices…' : 'No Flipper devices found.',
           textAlign: TextAlign.center,
-          style: TextStyle(color: Colors.grey.shade500, fontSize: 14),
+          style: TextStyle(color: colors.dialogMuted, fontSize: 14),
         ),
       );
     }
     return ListView.separated(
       shrinkWrap: true,
       itemCount: _displayed.length,
-      separatorBuilder: (_, _) => const Divider(
+      separatorBuilder: (_, _) => Divider(
         height: 1,
-        color: Color(0xFF2C2C2C),
+        color: FlipperOriginalColors.dialogDivider,
         indent: 60,
       ),
       itemBuilder: (_, i) => _DeviceListItem(
@@ -186,20 +195,21 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
   }
 
   Widget _buildFooter() {
+    final colors = context.appColors;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: _filterEnabled
           ? TextButton(
               onPressed: _removeFilter,
               style: TextButton.styleFrom(
-                foregroundColor: Colors.grey.shade500,
+                foregroundColor: colors.dialogMuted,
               ),
               child: const Text("Can't find my device"),
             )
           : TextButton(
               onPressed: _restoreFilter,
               style: TextButton.styleFrom(
-                foregroundColor: Colors.grey.shade500,
+                foregroundColor: colors.dialogMuted,
               ),
               child: const Text('Show only Flipper devices'),
             ),
@@ -215,6 +225,7 @@ class _DeviceListItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.appColors;
     final isBle = device.transport == DeviceTransport.ble;
 
     String displayName;
@@ -241,7 +252,7 @@ class _DeviceListItem extends StatelessWidget {
           children: [
             Icon(
               isBle ? Icons.bluetooth : Icons.usb,
-              color: isBle ? Colors.blue.shade300 : Colors.orange,
+              color: isBle ? colors.info : colors.accent,
               size: 28,
             ),
             const SizedBox(width: 16),
@@ -251,10 +262,10 @@ class _DeviceListItem extends StatelessWidget {
                 children: [
                   Text(
                     displayName,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                      color: colors.dialogText,
                     ),
                   ),
                   const SizedBox(height: 2),
@@ -262,7 +273,7 @@ class _DeviceListItem extends StatelessWidget {
                     subtitle,
                     style: TextStyle(
                       fontSize: 11,
-                      color: Colors.grey.shade500,
+                      color: colors.dialogMuted,
                     ),
                   ),
                 ],
