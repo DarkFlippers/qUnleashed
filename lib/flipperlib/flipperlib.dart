@@ -1,10 +1,9 @@
-library flipper_client;
+library flipperlib;
 
-export 'package:flipperzero/flipperzero.dart';
+export 'protobuf.dart';
+export 'flipper_client.dart';
 
-export 'src/flipper_client.dart';
-
-import 'src/flipper_client.dart';
+import 'flipper_client.dart';
 
 class FlipperOneClient {
   static final FlipperOneClient _singleton = FlipperOneClient._internal();
