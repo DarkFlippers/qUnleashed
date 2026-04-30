@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flipperzero/flipperzero.dart';
+import 'package:qunleashed/flipperlib/protobuf.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/discovered_device.dart';

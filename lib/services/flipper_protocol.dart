@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import 'package:flipperzero/flipperzero.dart';
+import 'package:qunleashed/flipperlib/protobuf.dart';
 
 import 'log_service.dart';
 

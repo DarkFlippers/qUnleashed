@@ -3,7 +3,7 @@ import 'dart:io' as io;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:flipperzero/flipperzero.dart' hide DateTime, File;
+import 'package:qunleashed/flipperlib/protobuf.dart' hide DateTime, File;
 import 'package:flutter/material.dart';
 
 import '../../models/discovered_device.dart';
