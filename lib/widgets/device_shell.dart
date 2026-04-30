@@ -1,24 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-enum FlipperRootTab { device, archive, apps, tools }
+import '../theme.dart';
 
-class FlipperOriginalColors {
-  static const background = Color(0xFFFBFBFB);
-  static const card = Color(0xFFFFFFFF);
-  static const accent = Color(0xFFFF8200);
-  static const text100 = Color(0xFF000000);
-  static const text60 = Color(0xFF616161);
-  static const text30 = Color(0xFFAAAAAA);
-  static const text16 = Color(0xFFCCCCCC);
-  static const divider = Color(0xFFDFDFDF);
-  static const blue = Color(0xFF589DFF);
-  static const green = Color(0xFF2ED34A);
-  static const danger = Color(0xFFE85858);
-  static const flipperScreenBackground = Color(0xFFDFDFDF);
-  static const flipperScreenBorder = Color(0xFF000000);
-  static const flipperScreenOptionsBackground = Color(0xFFFFF0DE);
-}
+enum FlipperRootTab { device, archive, apps, tools }
 
 class FlipperRootScaffold extends StatelessWidget {
   const FlipperRootScaffold({
@@ -38,11 +23,12 @@ class FlipperRootScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.appColors;
     return Scaffold(
-      backgroundColor: FlipperOriginalColors.background,
+      backgroundColor: colors.background,
       body: child,
       bottomNavigationBar: Container(
-        color: FlipperOriginalColors.card,
+        color: colors.card,
         child: SafeArea(
           top: false,
           child: Padding(
@@ -54,6 +40,7 @@ class FlipperRootScaffold extends StatelessWidget {
                   asset: deviceIconAsset,
                   label: deviceLabel,
                   selected: currentTab == FlipperRootTab.device,
+                  applyTint: false,
                   onTap: () => onTabSelected(FlipperRootTab.device),
                 ),
                 _BottomTab(
@@ -94,17 +81,21 @@ class _BottomTab extends StatelessWidget {
     required this.asset,
     required this.label,
     required this.selected,
+    this.applyTint = true,
     required this.onTap,
   });
 
   final String asset;
   final String label;
   final bool selected;
+  final bool applyTint;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final color = selected ? FlipperOriginalColors.text100 : FlipperOriginalColors.text30;
+    final colors = context.appColors;
+    final color = selected ? colors.textPrimary : colors.textMuted;
+    final iconColor = colors.textMuted;
     return InkWell(
       onTap: onTap,
       child: Column(
@@ -113,7 +104,12 @@ class _BottomTab extends StatelessWidget {
           SizedBox(
             width: 42,
             height: 24,
-            child: SvgPicture.asset(asset),
+            child: applyTint
+                ? SvgPicture.asset(
+                    asset,
+                    colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
+                  )
+                : SvgPicture.asset(asset),
           ),
           const SizedBox(height: 4),
           Text(
@@ -144,11 +140,12 @@ class FlipperPageCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.appColors;
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.symmetric(horizontal: 14),
       decoration: BoxDecoration(
-        color: FlipperOriginalColors.card,
+        color: colors.card,
         borderRadius: BorderRadius.circular(10),
       ),
       child: Column(
@@ -161,10 +158,10 @@ class FlipperPageCard extends StatelessWidget {
                   Expanded(
                     child: Text(
                       title!,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
-                        color: FlipperOriginalColors.text100,
+                        color: colors.textPrimary,
                       ),
                     ),
                   ),
@@ -189,6 +186,7 @@ class FlipperMockupWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.appColors;
     return AspectRatio(
       aspectRatio: 238 / 100,
       child: LayoutBuilder(
@@ -199,9 +197,13 @@ class FlipperMockupWidget extends StatelessWidget {
             fit: StackFit.expand,
             children: [
               SvgPicture.asset(
-                active
-                    ? 'assets/flipper_svg/mockup/template_white_flipper_active.svg'
-                    : 'assets/flipper_svg/mockup/template_white_flipper_disabled.svg',
+                colors.isDark
+                    ? (active
+                        ? 'assets/flipper_svg/mockup/template_black_flipper_active.svg'
+                        : 'assets/flipper_svg/mockup/template_black_flipper_disabled.svg')
+                    : (active
+                        ? 'assets/flipper_svg/mockup/template_white_flipper_active.svg'
+                        : 'assets/flipper_svg/mockup/template_white_flipper_disabled.svg'),
               ),
               Positioned(
                 left: w * (60.56 / 238),
@@ -295,6 +297,7 @@ class FlipperInfoLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.appColors;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       child: Row(
@@ -302,9 +305,9 @@ class FlipperInfoLine extends StatelessWidget {
           Expanded(
             child: Text(
               label,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 14,
-                color: FlipperOriginalColors.text30,
+                color: colors.textMuted,
               ),
             ),
           ),
@@ -314,7 +317,7 @@ class FlipperInfoLine extends StatelessWidget {
               textAlign: TextAlign.end,
               style: TextStyle(
                 fontSize: 14,
-                color: valueColor ?? FlipperOriginalColors.text100,
+                color: valueColor ?? colors.textPrimary,
               ),
             ),
           ),
