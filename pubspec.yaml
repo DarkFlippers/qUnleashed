@@ -18,6 +18,8 @@ dependencies:
   flutter_svg: ^2.0.10+1
   protobuf: ^6.0.0
   fixnum: ^1.1.1
+  saver_gallery: ^4.1.1
+  super_clipboard: ^0.9.1
 
 dev_dependencies:
   flutter_test:

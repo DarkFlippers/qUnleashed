@@ -16,12 +16,16 @@ class RemoteControlView extends StatelessWidget {
     required this.lockReady,
     required this.isSavingScreenshot,
     required this.isStreaming,
-    required this.onTakeScreenshot,
-    required this.onToggleLock,
-    required this.onPressButton,
-    required this.onLongPressButton,
-    required this.onPressBack,
-    required this.onLongPressBack,
+    required this.onCopyScreenshot,
+    required this.onSaveScreenshot,
+    required this.onUnlock,
+    required this.onTapButton,
+    required this.onHoldButtonStart,
+    required this.onHoldButtonEnd,
+    required this.onTapBack,
+    required this.onHoldBackStart,
+    required this.onHoldBackEnd,
+    required this.onClose,
   });
 
   final ui.Image? image;
@@ -31,91 +35,104 @@ class RemoteControlView extends StatelessWidget {
   final bool lockReady;
   final bool isSavingScreenshot;
   final bool isStreaming;
-  final VoidCallback onTakeScreenshot;
-  final VoidCallback onToggleLock;
-  final Future<void> Function(RemoteButton button) onPressButton;
-  final Future<void> Function(RemoteButton button) onLongPressButton;
-  final Future<void> Function() onPressBack;
-  final Future<void> Function() onLongPressBack;
+  final VoidCallback onCopyScreenshot;
+  final VoidCallback onSaveScreenshot;
+  final VoidCallback onUnlock;
+  final Future<void> Function(RemoteButton button) onTapButton;
+  final Future<void> Function(RemoteButton button) onHoldButtonStart;
+  final Future<void> Function(RemoteButton button) onHoldButtonEnd;
+  final Future<void> Function() onTapBack;
+  final Future<void> Function() onHoldBackStart;
+  final Future<void> Function() onHoldBackEnd;
+  final Future<void> Function() onClose;
 
   @override
   Widget build(BuildContext context) {
     final topInset = MediaQuery.paddingOf(context).top;
-    return Scaffold(
-      backgroundColor: FlipperOriginalColors.background,
-      body: Column(
-        children: [
-          Container(
-            color: FlipperOriginalColors.accent,
-            padding: EdgeInsets.only(top: topInset),
-            child: SizedBox(
-              height: 56,
-              child: Row(
-                children: [
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: Icon(Icons.arrow_back, color: FlipperOriginalColors.onAccent),
-                  ),
-                  Expanded(
-                    child: Text(
-                      'Remote Control',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: FlipperOriginalColors.onAccent,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
+    return WillPopScope(
+      onWillPop: () async {
+        await onClose();
+        return false;
+      },
+      child: Scaffold(
+        backgroundColor: FlipperOriginalColors.background,
+        body: Column(
+          children: [
+            Container(
+              color: FlipperOriginalColors.accent,
+              padding: EdgeInsets.only(top: topInset),
+              child: SizedBox(
+                height: 56,
+                child: Row(
+                  children: [
+                    IconButton(
+                      onPressed: onClose,
+                      icon: Icon(Icons.arrow_back, color: FlipperOriginalColors.onAccent),
+                    ),
+                    Expanded(
+                      child: Text(
+                        'Remote Control',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: FlipperOriginalColors.onAccent,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 48),
-                ],
+                    const SizedBox(width: 48),
+                  ],
+                ),
               ),
             ),
-          ),
-          Expanded(
-            child: SafeArea(
-              top: false,
-              child: Column(
-                children: [
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(24, 14, 24, 12),
-                      child: _RemoteScreenWithOptions(
-                        image: image,
-                        queue: queue,
-                        orientation: orientation,
-                        isLocked: isLocked,
-                        lockReady: lockReady,
-                        isSavingScreenshot: isSavingScreenshot,
-                        onTakeScreenshot: onTakeScreenshot,
-                        onToggleLock: onToggleLock,
+            Expanded(
+              child: SafeArea(
+                top: false,
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 14, 24, 12),
+                        child: _RemoteScreenWithOptions(
+                          image: image,
+                          queue: queue,
+                          orientation: orientation,
+                          isLocked: isLocked,
+                          lockReady: lockReady,
+                          isSavingScreenshot: isSavingScreenshot,
+                          onCopyScreenshot: onCopyScreenshot,
+                          onSaveScreenshot: onSaveScreenshot,
+                          onUnlock: onUnlock,
+                        ),
                       ),
                     ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 20),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        _RemoteDPad(
-                          onPress: onPressButton,
-                          onLongPress: onLongPressButton,
-                        ),
-                        const SizedBox(width: 30),
-                        _RemoteBackButton(
-                          onPress: onPressBack,
-                          onLongPress: onLongPressBack,
-                        ),
-                      ],
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 20),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          _RemoteDPad(
+                            onTapButton: onTapButton,
+                            onHoldStart: onHoldButtonStart,
+                            onHoldEnd: onHoldButtonEnd,
+                          ),
+                          const SizedBox(width: 30),
+                          _RemoteBackButton(
+                            onTap: onTapBack,
+                            onHoldStart: onHoldBackStart,
+                            onHoldEnd: onHoldBackEnd,
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  if (isStreaming) const SizedBox.shrink(),
-                ],
+                    if (isStreaming) const SizedBox.shrink(),
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -129,8 +146,9 @@ class _RemoteScreenWithOptions extends StatelessWidget {
     required this.isLocked,
     required this.lockReady,
     required this.isSavingScreenshot,
-    required this.onTakeScreenshot,
-    required this.onToggleLock,
+    required this.onCopyScreenshot,
+    required this.onSaveScreenshot,
+    required this.onUnlock,
   });
 
   final ui.Image? image;
@@ -139,8 +157,9 @@ class _RemoteScreenWithOptions extends StatelessWidget {
   final bool isLocked;
   final bool lockReady;
   final bool isSavingScreenshot;
-  final VoidCallback onTakeScreenshot;
-  final VoidCallback onToggleLock;
+  final VoidCallback onCopyScreenshot;
+  final VoidCallback onSaveScreenshot;
+  final VoidCallback onUnlock;
 
   @override
   Widget build(BuildContext context) {
@@ -158,9 +177,14 @@ class _RemoteScreenWithOptions extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   _RemoteOptionButton(
-                    asset: 'assets/flipper_svg/screenstreaming/ic_camera.svg',
-                    label: isSavingScreenshot ? 'Saving...' : 'Screenshot',
-                    onTap: onTakeScreenshot,
+                    icon: Icons.copy_rounded,
+                    label: isSavingScreenshot ? 'Saving...' : 'Copy',
+                    onTap: onCopyScreenshot,
+                  ),
+                  _RemoteOptionButton(
+                    icon: Icons.download_rounded,
+                    label: isSavingScreenshot ? 'Saving...' : 'Save',
+                    onTap: onSaveScreenshot,
                   ),
                   _RemoteOptionButton(
                     asset: isLocked
@@ -170,8 +194,8 @@ class _RemoteScreenWithOptions extends StatelessWidget {
                         ? 'Loading...'
                         : isLocked
                             ? 'Unlock Flipper'
-                            : 'Unlocked',
-                    onTap: onToggleLock,
+                            : 'Already unlocked',
+                    onTap: lockReady && isLocked ? onUnlock : null,
                   ),
                 ],
               ),
@@ -348,14 +372,16 @@ class _LiveFrame extends StatelessWidget {
 
 class _RemoteOptionButton extends StatelessWidget {
   const _RemoteOptionButton({
-    required this.asset,
+    this.asset,
+    this.icon,
     required this.label,
     required this.onTap,
   });
 
-  final String asset;
+  final String? asset;
+  final IconData? icon;
   final String label;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -371,13 +397,19 @@ class _RemoteOptionButton extends StatelessWidget {
               shape: BoxShape.circle,
             ),
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-            child: SvgPicture.asset(
-              asset,
-              colorFilter: ColorFilter.mode(
-                FlipperOriginalColors.accent,
-                BlendMode.srcIn,
-              ),
-            ),
+            child: asset != null
+                ? SvgPicture.asset(
+                    asset!,
+                    colorFilter: ColorFilter.mode(
+                      FlipperOriginalColors.accent,
+                      BlendMode.srcIn,
+                    ),
+                  )
+                : Icon(
+                    icon,
+                    color: FlipperOriginalColors.accent,
+                    size: 24,
+                  ),
           ),
         ),
         const SizedBox(height: 8),
@@ -395,12 +427,14 @@ class _RemoteOptionButton extends StatelessWidget {
 
 class _RemoteDPad extends StatelessWidget {
   const _RemoteDPad({
-    required this.onPress,
-    required this.onLongPress,
+    required this.onTapButton,
+    required this.onHoldStart,
+    required this.onHoldEnd,
   });
 
-  final Future<void> Function(RemoteButton button) onPress;
-  final Future<void> Function(RemoteButton button) onLongPress;
+  final Future<void> Function(RemoteButton button) onTapButton;
+  final Future<void> Function(RemoteButton button) onHoldStart;
+  final Future<void> Function(RemoteButton button) onHoldEnd;
 
   @override
   Widget build(BuildContext context) {
@@ -425,8 +459,9 @@ class _RemoteDPad extends StatelessWidget {
                       child: _RemotePadButton(
                         button: RemoteButton.up,
                         asset: 'assets/flipper_svg/screenstreaming/ic_control_up.svg',
-                        onPress: onPress,
-                        onLongPress: onLongPress,
+                        onTap: onTapButton,
+                        onHoldStart: onHoldStart,
+                        onHoldEnd: onHoldEnd,
                       ),
                     ),
                     const Expanded(child: SizedBox.shrink()),
@@ -440,24 +475,27 @@ class _RemoteDPad extends StatelessWidget {
                       child: _RemotePadButton(
                         button: RemoteButton.left,
                         asset: 'assets/flipper_svg/screenstreaming/ic_control_left.svg',
-                        onPress: onPress,
-                        onLongPress: onLongPress,
+                        onTap: onTapButton,
+                        onHoldStart: onHoldStart,
+                        onHoldEnd: onHoldEnd,
                       ),
                     ),
                     Expanded(
                       child: _RemotePadButton(
                         button: RemoteButton.ok,
                         asset: 'assets/flipper_svg/screenstreaming/ic_control_ok.svg',
-                        onPress: onPress,
-                        onLongPress: onLongPress,
+                        onTap: onTapButton,
+                        onHoldStart: onHoldStart,
+                        onHoldEnd: onHoldEnd,
                       ),
                     ),
                     Expanded(
                       child: _RemotePadButton(
                         button: RemoteButton.right,
                         asset: 'assets/flipper_svg/screenstreaming/ic_control_right.svg',
-                        onPress: onPress,
-                        onLongPress: onLongPress,
+                        onTap: onTapButton,
+                        onHoldStart: onHoldStart,
+                        onHoldEnd: onHoldEnd,
                       ),
                     ),
                   ],
@@ -471,8 +509,9 @@ class _RemoteDPad extends StatelessWidget {
                       child: _RemotePadButton(
                         button: RemoteButton.down,
                         asset: 'assets/flipper_svg/screenstreaming/ic_control_down.svg',
-                        onPress: onPress,
-                        onLongPress: onLongPress,
+                        onTap: onTapButton,
+                        onHoldStart: onHoldStart,
+                        onHoldEnd: onHoldEnd,
                       ),
                     ),
                     const Expanded(child: SizedBox.shrink()),
@@ -491,21 +530,24 @@ class _RemotePadButton extends StatelessWidget {
   const _RemotePadButton({
     required this.button,
     required this.asset,
-    required this.onPress,
-    required this.onLongPress,
+    required this.onTap,
+    required this.onHoldStart,
+    required this.onHoldEnd,
   });
 
   final RemoteButton button;
   final String asset;
-  final Future<void> Function(RemoteButton button) onPress;
-  final Future<void> Function(RemoteButton button) onLongPress;
+  final Future<void> Function(RemoteButton button) onTap;
+  final Future<void> Function(RemoteButton button) onHoldStart;
+  final Future<void> Function(RemoteButton button) onHoldEnd;
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => onPress(button),
-      onLongPress: () => onLongPress(button),
+      onTap: () => onTap(button),
+      onLongPressStart: (_) => onHoldStart(button),
+      onLongPressEnd: (_) => onHoldEnd(button),
       child: Center(
         child: SizedBox(
           width: 44,
@@ -527,18 +569,21 @@ class _RemotePadButton extends StatelessWidget {
 
 class _RemoteBackButton extends StatelessWidget {
   const _RemoteBackButton({
-    required this.onPress,
-    required this.onLongPress,
+    required this.onTap,
+    required this.onHoldStart,
+    required this.onHoldEnd,
   });
 
-  final Future<void> Function() onPress;
-  final Future<void> Function() onLongPress;
+  final Future<void> Function() onTap;
+  final Future<void> Function() onHoldStart;
+  final Future<void> Function() onHoldEnd;
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onPress,
-      onLongPress: onLongPress,
+      onTap: onTap,
+      onLongPressStart: (_) => onHoldStart(),
+      onLongPressEnd: (_) => onHoldEnd(),
       child: Container(
         width: 54,
         height: 54,

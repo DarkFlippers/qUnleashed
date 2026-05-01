@@ -5,6 +5,9 @@ import 'dart:ui' as ui;
 
 import 'package:flipperlib/flipperlib.dart' hide DateTime, File;
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:saver_gallery/saver_gallery.dart';
+import 'package:super_clipboard/super_clipboard.dart';
 
 import '../../theme.dart';
 import 'remote_control_models.dart';
@@ -37,6 +40,9 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
   bool _isLocked = true;
   bool _lockReady = false;
   bool _isSavingScreenshot = false;
+  bool _isClosing = false;
+  final Set<RemoteButton> _heldButtons = {};
+  bool _backHeld = false;
 
   @override
   void initState() {
@@ -51,7 +57,9 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
     _frameSub?.cancel();
     _statusSub?.cancel();
     _disposeFrame();
-    _stopRemoteSession();
+    if (!_isClosing) {
+      unawaited(_stopRemoteSession());
+    }
     super.dispose();
   }
 
@@ -80,6 +88,15 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
       await _client.guiStopScreenStream();
       await _client.desktopStatusUnsubscribe();
     } catch (_) {}
+  }
+
+  Future<void> _closePage() async {
+    if (_isClosing) return;
+    _isClosing = true;
+    await _stopRemoteSession();
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
   }
 
   void _onStatus(Status status) {
@@ -195,9 +212,47 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
     await _inputChain;
   }
 
+  Future<void> _startHold(RemoteButton button) async {
+    if (!_heldButtons.add(button)) return;
+    _showQueuedButton(_queueAssetForButton(button));
+    await _sendRawInput(_mapButton(button), InputType.PRESS);
+  }
+
+  Future<void> _endHold(RemoteButton button) async {
+    if (!_heldButtons.remove(button)) return;
+    await _sendRawInput(_mapButton(button), InputType.RELEASE);
+  }
+
+  Future<void> _startBackHold() async {
+    if (_backHeld) return;
+    _backHeld = true;
+    _showQueuedButton(_queueAssetForButton(RemoteButton.back));
+    await _sendRawInput(InputKey.BACK, InputType.PRESS);
+  }
+
+  Future<void> _endBackHold() async {
+    if (!_backHeld) return;
+    _backHeld = false;
+    await _sendRawInput(InputKey.BACK, InputType.RELEASE);
+  }
+
   Future<void> _unlock() async {
     _showQueuedButton('assets/flipper_svg/screenstreaming/ic_anim_unlock_light.svg');
     await _client.desktopUnlock(UnlockRequest());
+    try {
+      final frames = await _client.desktopIsLocked();
+      for (final frame in frames) {
+        if (frame.hasDesktopStatus()) {
+          _onStatus(frame.desktopStatus);
+        }
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _isLocked = false;
+        _lockReady = true;
+      });
+    }
   }
 
   void _showQueuedButton(String asset) {
@@ -218,6 +273,15 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
         RemoteButton.back => 'assets/flipper_svg/screenstreaming/ic_anim_back_button_light.svg',
       };
 
+  InputKey _mapButton(RemoteButton button) => switch (button) {
+        RemoteButton.up => InputKey.UP,
+        RemoteButton.down => InputKey.DOWN,
+        RemoteButton.left => InputKey.LEFT,
+        RemoteButton.right => InputKey.RIGHT,
+        RemoteButton.ok => InputKey.OK,
+        RemoteButton.back => InputKey.BACK,
+      };
+
   Future<void> _sendRawInput(InputKey key, InputType type) async {
     await _client.guiSendInput(
       SendInputEventRequest(
@@ -227,22 +291,98 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
     );
   }
 
+  Future<void> _copyScreenshot() async {
+    final png = _lastPngBytes;
+    if (png == null || _isSavingScreenshot) return;
+    setState(() => _isSavingScreenshot = true);
+    try {
+      final clipboard = SystemClipboard.instance;
+      if (clipboard == null) {
+        throw StateError('Clipboard is not available on this platform');
+      }
+      final item = DataWriterItem();
+      item.add(Formats.png(png));
+      await clipboard.write([item]);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Screenshot copied to clipboard')),
+      );
+    } finally {
+      if (mounted) setState(() => _isSavingScreenshot = false);
+    }
+  }
+
   Future<void> _saveScreenshot() async {
     final png = _lastPngBytes;
     if (png == null || _isSavingScreenshot) return;
     setState(() => _isSavingScreenshot = true);
     try {
-      final file = io.File(
-        '${io.Directory.systemTemp.path}/flipper_screenshot_${DateTime.now().millisecondsSinceEpoch}.png',
-      );
-      await file.writeAsBytes(png, flush: true);
+      final path = await _saveScreenshotToPictures(png);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Screenshot saved: ${file.path}')),
+        SnackBar(content: Text('Screenshot saved: $path')),
       );
     } finally {
       if (mounted) setState(() => _isSavingScreenshot = false);
     }
+  }
+
+  Future<String> _saveScreenshotToPictures(Uint8List png) async {
+    final fileName = 'flipper_screenshot_${DateTime.now().millisecondsSinceEpoch}.png';
+
+    if (io.Platform.isAndroid || io.Platform.isIOS) {
+      final granted = await _ensureGalleryPermission();
+      if (!granted) {
+        throw StateError('Gallery permission denied');
+      }
+      await SaverGallery.saveImage(
+        png,
+        quality: 100,
+        fileName: fileName,
+        skipIfExists: false,
+        androidRelativePath: 'Pictures/Qunleashed',
+      );
+      return io.Platform.isAndroid ? 'Pictures/Qunleashed/$fileName' : 'Photos';
+    }
+
+    final picturesDir = _systemPicturesDirectory();
+    await picturesDir.create(recursive: true);
+    final file = io.File(io.Platform.pathSeparator == '\\'
+        ? '${picturesDir.path}\\$fileName'
+        : '${picturesDir.path}/$fileName');
+    await file.writeAsBytes(png, flush: true);
+    return file.path;
+  }
+
+  Future<bool> _ensureGalleryPermission() async {
+    if (io.Platform.isIOS) {
+      final status = await Permission.photosAddOnly.request();
+      return status.isGranted || status.isLimited;
+    }
+    if (io.Platform.isAndroid) {
+      final photos = await Permission.photos.request();
+      if (photos.isGranted || photos.isLimited) return true;
+      final storage = await Permission.storage.request();
+      return storage.isGranted;
+    }
+    return true;
+  }
+
+  io.Directory _systemPicturesDirectory() {
+    final home = io.Platform.environment['HOME'];
+    final userProfile = io.Platform.environment['USERPROFILE'];
+    final picturesEnv = io.Platform.environment['XDG_PICTURES_DIR'];
+
+    if (picturesEnv != null && picturesEnv.isNotEmpty) {
+      return io.Directory(picturesEnv);
+    }
+    if (io.Platform.isWindows && userProfile != null && userProfile.isNotEmpty) {
+      return io.Directory('$userProfile\\Pictures');
+    }
+    if (home != null && home.isNotEmpty) {
+      return io.Directory('$home/Pictures');
+    }
+    return io.Directory.current;
   }
 
   void _disposeFrame() {
@@ -260,12 +400,16 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
       lockReady: _lockReady,
       isSavingScreenshot: _isSavingScreenshot,
       isStreaming: _isStreaming,
-      onTakeScreenshot: _saveScreenshot,
-      onToggleLock: _unlock,
-      onPressButton: (button) => _sendInput(button, InputType.SHORT),
-      onLongPressButton: (button) => _sendInput(button, InputType.LONG),
-      onPressBack: () => _sendInput(RemoteButton.back, InputType.SHORT),
-      onLongPressBack: () => _sendInput(RemoteButton.back, InputType.LONG),
+      onCopyScreenshot: _copyScreenshot,
+      onSaveScreenshot: _saveScreenshot,
+      onUnlock: _unlock,
+      onTapButton: (button) => _sendInput(button, InputType.SHORT),
+      onHoldButtonStart: _startHold,
+      onHoldButtonEnd: _endHold,
+      onTapBack: () => _sendInput(RemoteButton.back, InputType.SHORT),
+      onHoldBackStart: _startBackHold,
+      onHoldBackEnd: _endBackHold,
+      onClose: _closePage,
     );
   }
 }
