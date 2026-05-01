@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 
 import 'package:flipperlib/flipperlib.dart' hide DateTime, File;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:saver_gallery/saver_gallery.dart';
 import 'package:super_clipboard/super_clipboard.dart';
@@ -43,6 +44,7 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
   bool _isClosing = false;
   final Set<RemoteButton> _heldButtons = {};
   bool _backHeld = false;
+  bool _okHeld = false;
 
   @override
   void initState() {
@@ -236,6 +238,19 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
     await _sendRawInput(InputKey.BACK, InputType.RELEASE);
   }
 
+  Future<void> _startOkHold() async {
+    if (_okHeld) return;
+    _okHeld = true;
+    _showQueuedButton(_queueAssetForButton(RemoteButton.ok));
+    await _sendRawInput(InputKey.OK, InputType.PRESS);
+  }
+
+  Future<void> _endOkHold() async {
+    if (!_okHeld) return;
+    _okHeld = false;
+    await _sendRawInput(InputKey.OK, InputType.RELEASE);
+  }
+
   Future<void> _unlock() async {
     _showQueuedButton('assets/flipper_svg/screenstreaming/ic_anim_unlock_light.svg');
     await _client.desktopUnlock(UnlockRequest());
@@ -385,6 +400,80 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
     return io.Directory.current;
   }
 
+  KeyEventResult _handleKeyEvent(KeyEvent event) {
+    final logical = event.logicalKey;
+
+    if (event is KeyDownEvent) {
+      if (logical == LogicalKeyboardKey.keyW ||
+          logical == LogicalKeyboardKey.arrowUp) {
+        unawaited(_startHold(RemoteButton.up));
+        return KeyEventResult.handled;
+      }
+      if (logical == LogicalKeyboardKey.keyA ||
+          logical == LogicalKeyboardKey.arrowLeft) {
+        unawaited(_startHold(RemoteButton.left));
+        return KeyEventResult.handled;
+      }
+      if (logical == LogicalKeyboardKey.keyS ||
+          logical == LogicalKeyboardKey.arrowDown) {
+        unawaited(_startHold(RemoteButton.down));
+        return KeyEventResult.handled;
+      }
+      if (logical == LogicalKeyboardKey.keyD ||
+          logical == LogicalKeyboardKey.arrowRight) {
+        unawaited(_startHold(RemoteButton.right));
+        return KeyEventResult.handled;
+      }
+      if (logical == LogicalKeyboardKey.space ||
+          logical == LogicalKeyboardKey.enter ||
+          logical == LogicalKeyboardKey.numpadEnter) {
+        unawaited(_startOkHold());
+        return KeyEventResult.handled;
+      }
+      if (logical == LogicalKeyboardKey.escape ||
+          logical == LogicalKeyboardKey.backspace) {
+        unawaited(_startBackHold());
+        return KeyEventResult.handled;
+      }
+    }
+
+    if (event is KeyUpEvent) {
+      if (logical == LogicalKeyboardKey.keyW ||
+          logical == LogicalKeyboardKey.arrowUp) {
+        unawaited(_endHold(RemoteButton.up));
+        return KeyEventResult.handled;
+      }
+      if (logical == LogicalKeyboardKey.keyA ||
+          logical == LogicalKeyboardKey.arrowLeft) {
+        unawaited(_endHold(RemoteButton.left));
+        return KeyEventResult.handled;
+      }
+      if (logical == LogicalKeyboardKey.keyS ||
+          logical == LogicalKeyboardKey.arrowDown) {
+        unawaited(_endHold(RemoteButton.down));
+        return KeyEventResult.handled;
+      }
+      if (logical == LogicalKeyboardKey.keyD ||
+          logical == LogicalKeyboardKey.arrowRight) {
+        unawaited(_endHold(RemoteButton.right));
+        return KeyEventResult.handled;
+      }
+      if (logical == LogicalKeyboardKey.space ||
+          logical == LogicalKeyboardKey.enter ||
+          logical == LogicalKeyboardKey.numpadEnter) {
+        unawaited(_endOkHold());
+        return KeyEventResult.handled;
+      }
+      if (logical == LogicalKeyboardKey.escape ||
+          logical == LogicalKeyboardKey.backspace) {
+        unawaited(_endBackHold());
+        return KeyEventResult.handled;
+      }
+    }
+
+    return KeyEventResult.ignored;
+  }
+
   void _disposeFrame() {
     _frameImage?.dispose();
     _frameImage = null;
@@ -410,6 +499,7 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
       onHoldBackStart: _startBackHold,
       onHoldBackEnd: _endBackHold,
       onClose: _closePage,
+      onKeyEvent: _handleKeyEvent,
     );
   }
 }
