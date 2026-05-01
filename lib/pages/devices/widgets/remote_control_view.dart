@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme.dart';
@@ -26,6 +27,7 @@ class RemoteControlView extends StatelessWidget {
     required this.onHoldBackStart,
     required this.onHoldBackEnd,
     required this.onClose,
+    required this.onKeyEvent,
   });
 
   final ui.Image? image;
@@ -45,6 +47,7 @@ class RemoteControlView extends StatelessWidget {
   final Future<void> Function() onHoldBackStart;
   final Future<void> Function() onHoldBackEnd;
   final Future<void> Function() onClose;
+  final KeyEventResult Function(KeyEvent event) onKeyEvent;
 
   @override
   Widget build(BuildContext context) {
@@ -54,84 +57,88 @@ class RemoteControlView extends StatelessWidget {
         await onClose();
         return false;
       },
-      child: Scaffold(
-        backgroundColor: FlipperOriginalColors.background,
-        body: Column(
-          children: [
-            Container(
-              color: FlipperOriginalColors.accent,
-              padding: EdgeInsets.only(top: topInset),
-              child: SizedBox(
-                height: 56,
-                child: Row(
-                  children: [
-                    IconButton(
-                      onPressed: onClose,
-                      icon: Icon(Icons.arrow_back, color: FlipperOriginalColors.onAccent),
-                    ),
-                    Expanded(
-                      child: Text(
-                        'Remote Control',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: FlipperOriginalColors.onAccent,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
+      child: Focus(
+        autofocus: true,
+        onKeyEvent: (_, event) => onKeyEvent(event),
+        child: Scaffold(
+          backgroundColor: FlipperOriginalColors.background,
+          body: Column(
+            children: [
+              Container(
+                color: FlipperOriginalColors.accent,
+                padding: EdgeInsets.only(top: topInset),
+                child: SizedBox(
+                  height: 56,
+                  child: Row(
+                    children: [
+                      IconButton(
+                        onPressed: onClose,
+                        icon: Icon(Icons.arrow_back, color: FlipperOriginalColors.onAccent),
+                      ),
+                      Expanded(
+                        child: Text(
+                          'Remote Control',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: FlipperOriginalColors.onAccent,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 48),
-                  ],
+                      const SizedBox(width: 48),
+                    ],
+                  ),
                 ),
               ),
-            ),
-            Expanded(
-              child: SafeArea(
-                top: false,
-                child: Column(
-                  children: [
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(24, 14, 24, 12),
-                        child: _RemoteScreenWithOptions(
-                          image: image,
-                          queue: queue,
-                          orientation: orientation,
-                          isLocked: isLocked,
-                          lockReady: lockReady,
-                          isSavingScreenshot: isSavingScreenshot,
-                          onCopyScreenshot: onCopyScreenshot,
-                          onSaveScreenshot: onSaveScreenshot,
-                          onUnlock: onUnlock,
+              Expanded(
+                child: SafeArea(
+                  top: false,
+                  child: Column(
+                    children: [
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(24, 14, 24, 12),
+                          child: _RemoteScreenWithOptions(
+                            image: image,
+                            queue: queue,
+                            orientation: orientation,
+                            isLocked: isLocked,
+                            lockReady: lockReady,
+                            isSavingScreenshot: isSavingScreenshot,
+                            onCopyScreenshot: onCopyScreenshot,
+                            onSaveScreenshot: onSaveScreenshot,
+                            onUnlock: onUnlock,
+                          ),
                         ),
                       ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 20),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          _RemoteDPad(
-                            onTapButton: onTapButton,
-                            onHoldStart: onHoldButtonStart,
-                            onHoldEnd: onHoldButtonEnd,
-                          ),
-                          const SizedBox(width: 30),
-                          _RemoteBackButton(
-                            onTap: onTapBack,
-                            onHoldStart: onHoldBackStart,
-                            onHoldEnd: onHoldBackEnd,
-                          ),
-                        ],
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 20),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            _RemoteDPad(
+                              onTapButton: onTapButton,
+                              onHoldStart: onHoldButtonStart,
+                              onHoldEnd: onHoldButtonEnd,
+                            ),
+                            const SizedBox(width: 30),
+                            _RemoteBackButton(
+                              onTap: onTapBack,
+                              onHoldStart: onHoldBackStart,
+                              onHoldEnd: onHoldBackEnd,
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                    if (isStreaming) const SizedBox.shrink(),
-                  ],
+                      if (isStreaming) const SizedBox.shrink(),
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
