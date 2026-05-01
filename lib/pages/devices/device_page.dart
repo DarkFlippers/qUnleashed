@@ -1,11 +1,8 @@
 import 'dart:async';
 
-import 'package:flipperlib/discovered_device.dart';
-import 'package:flipperlib/log_service.dart';
-import 'package:flipperlib/protobuf.dart';
+import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
-import '../../services/flipper_protocol.dart';
 import '../../theme.dart';
 import '../../widgets/device_full_info_sheet.dart';
 import '../../widgets/device_logs_sheet.dart';
@@ -26,35 +23,35 @@ class DevicePage extends StatefulWidget {
 }
 
 class _DevicePageState extends State<DevicePage> {
+  final FlipperClient _client = FlipperOneClient().get();
+
   FlipperRootTab _tab = FlipperRootTab.device;
-
-  ConnectedDevice? _device;
+  FlipperDevice? _device;
   bool _deviceDisconnected = false;
-
+  bool _deviceLoading = false;
   Map<String, String> _info = {};
   final List<String> _logs = [];
-  FlipperFrameBuffer _buffer = FlipperFrameBuffer();
-  final Set<int> _pending = {};
-  String _deviceStatus = '';
-  bool _deviceLoading = false;
 
-  StreamSubscription<List<int>>? _dataSub;
+  StreamSubscription<FlipperConnectionState>? _connectionSub;
   StreamSubscription<String>? _logSub;
-  Timer? _timeoutTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _device = _client.connectedDevice;
+    _connectionSub = _client.connectionStream.listen(_onConnectionState);
+    _logSub = LogService.stream.listen((line) {
+      if (!mounted) return;
+      setState(() => _logs.add(line));
+    });
+  }
 
   @override
   void dispose() {
-    _cleanupDevice(disconnect: true);
-    super.dispose();
-  }
-
-  void _cleanupDevice({required bool disconnect}) {
-    _timeoutTimer?.cancel();
+    _connectionSub?.cancel();
     _logSub?.cancel();
-    _dataSub?.cancel();
-    if (disconnect && !_deviceDisconnected) {
-      _device?.disconnect();
-    }
+    _client.disconnect();
+    super.dispose();
   }
 
   Future<void> _openPicker() async {
@@ -64,7 +61,7 @@ class _DevicePageState extends State<DevicePage> {
     }
   }
 
-  Future<void> _connectTo(DiscoveredDevice device) async {
+  Future<void> _connectTo(FlipperDevice device) async {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -80,7 +77,7 @@ class _DevicePageState extends State<DevicePage> {
     );
 
     try {
-      final connected = await device.connect();
+      final connected = await _client.connect(device);
       if (!mounted) return;
       Navigator.of(context).pop();
       _setupDevice(connected);
@@ -91,174 +88,73 @@ class _DevicePageState extends State<DevicePage> {
     }
   }
 
-  void _setupDevice(ConnectedDevice connected) {
-    _cleanupDevice(disconnect: false);
+  void _setupDevice(FlipperDevice device) {
     setState(() {
-      _device = connected;
+      _device = device;
       _deviceDisconnected = false;
-      _info = {};
-      _buffer = FlipperFrameBuffer();
-      _pending.clear();
-      _deviceStatus = 'Initializing...';
       _deviceLoading = true;
+      _info = {};
     });
-
-    _logSub = LogService.stream.listen((line) {
-      if (!mounted) return;
-      setState(() => _logs.add(line));
-    });
-
-    _dataSub = connected.dataStream.listen(
-      _onData,
-      onError: (e) {
-        LogService.log('[DevicePage] stream error: $e');
-        if (!mounted) return;
-        setState(() {
-          _deviceStatus = 'Connection failed';
-          _deviceLoading = false;
-        });
-      },
-      onDone: () {
-        LogService.log('[DevicePage] stream closed');
-        if (!mounted) return;
-        setState(() {
-          _deviceStatus = 'Disconnected';
-          _deviceDisconnected = true;
-          _deviceLoading = false;
-        });
-      },
-    );
-
-    _initDevice(connected);
+    _requestAll();
   }
 
-  Future<void> _initDevice(ConnectedDevice connected) async {
+  Future<void> _requestAll() async {
     try {
-      await connected.init();
-    } catch (e) {
-      LogService.log('[DevicePage] init error: $e');
+      final results = await Future.wait([
+        _client.protobufVersion(timeout: const Duration(seconds: 15)),
+        _client.deviceInfo(timeout: const Duration(seconds: 15)),
+        _client.powerInfo(timeout: const Duration(seconds: 15)),
+        _client.getDateTime(timeout: const Duration(seconds: 15)),
+      ]);
+
+      final protobuf = results[0] as FlipperRpcBatch<ProtobufVersionResponse>;
+      final deviceInfo = results[1] as FlipperRpcBatch<DeviceInfoResponse>;
+      final powerInfo = results[2] as FlipperRpcBatch<PowerInfoResponse>;
+      final dateTime = results[3] as FlipperRpcBatch<GetDateTimeResponse>;
+
+      final info = <String, String>{
+        'protobuf_version': '${protobuf.single.major}.${protobuf.single.minor}',
+      };
+
+      for (final item in deviceInfo.items) {
+        info[item.key] = item.value;
+      }
+      for (final item in powerInfo.items) {
+        info['power.${item.key}'] = item.value;
+      }
+
+      final dt = dateTime.single.datetime;
+      info['datetime'] =
+          '${dt.year}-${_pad(dt.month)}-${_pad(dt.day)} ${_pad(dt.hour)}:${_pad(dt.minute)}:${_pad(dt.second)}';
+
       if (!mounted) return;
       setState(() {
-        _deviceStatus = 'Initialization failed';
+        _info = info;
         _deviceLoading = false;
       });
-      return;
-    }
-
-    if (mounted) {
-      setState(() => _deviceStatus = 'Requesting device info...');
-    }
-    await _requestAll(connected);
-  }
-
-  Future<void> _requestAll(ConnectedDevice connected) async {
-    try {
-      final protoId = FlipperProtocol.nextCommandId();
-      _pending.add(protoId);
-      await connected.sendBytes(
-        FlipperProtocol.encode(
-          Main(commandId: protoId, systemProtobufVersionRequest: ProtobufVersionRequest()),
-        ),
-      );
-
-      final deviceId = FlipperProtocol.nextCommandId();
-      _pending.add(deviceId);
-      await connected.sendBytes(
-        FlipperProtocol.encode(
-          Main(commandId: deviceId, systemDeviceInfoRequest: DeviceInfoRequest()),
-        ),
-      );
-
-      final powerId = FlipperProtocol.nextCommandId();
-      _pending.add(powerId);
-      await connected.sendBytes(
-        FlipperProtocol.encode(
-          Main(commandId: powerId, systemPowerInfoRequest: PowerInfoRequest()),
-        ),
-      );
-
-      final datetimeId = FlipperProtocol.nextCommandId();
-      _pending.add(datetimeId);
-      await connected.sendBytes(
-        FlipperProtocol.encode(
-          Main(commandId: datetimeId, systemGetDatetimeRequest: GetDateTimeRequest()),
-        ),
-      );
-
-      _timeoutTimer = Timer(const Duration(seconds: 15), () {
-        if (!mounted || !_deviceLoading) return;
-        setState(() {
-          _deviceStatus = _info.isEmpty ? 'Timeout — no response' : 'Timeout — partial data';
-          _deviceLoading = false;
-        });
-      });
+      QAppThemeController.instance.syncFirmwareFromDeviceInfo(info);
     } catch (e) {
-      LogService.log('[DevicePage] send error: $e');
+      LogService.log('[DevicePage] request failed: $e');
       if (!mounted) return;
       setState(() {
-        _deviceStatus = 'Request failed';
         _deviceLoading = false;
       });
     }
   }
 
-  void _onData(List<int> raw) {
-    final messages = _buffer.push(raw);
-    for (final msg in messages) {
-      if (mounted) {
-        setState(() => _handleMessage(msg));
-      }
-    }
-  }
-
-  void _handleMessage(Main msg) {
-    if (msg.commandStatus == CommandStatus.ERROR_DECODE) {
-      if (msg.commandId == 0 && _pending.isNotEmpty) {
-        _pending.clear();
-        _checkDone();
-      }
+  void _onConnectionState(FlipperConnectionState state) {
+    if (!mounted) return;
+    if (state.connected) {
+      setState(() {
+        _device = state.device;
+        _deviceDisconnected = false;
+      });
       return;
     }
-
-    switch (msg.whichContent()) {
-      case Main_Content.systemProtobufVersionResponse:
-        final response = msg.systemProtobufVersionResponse;
-        _info['protobuf_version'] = '${response.major}.${response.minor}';
-        _markDone(msg.commandId);
-        break;
-      case Main_Content.systemDeviceInfoResponse:
-        final response = msg.systemDeviceInfoResponse;
-        _info[response.key] = response.value;
-        if (!msg.hasNext) _markDone(msg.commandId);
-        break;
-      case Main_Content.systemPowerInfoResponse:
-        final response = msg.systemPowerInfoResponse;
-        _info['power.${response.key}'] = response.value;
-        if (!msg.hasNext) _markDone(msg.commandId);
-        break;
-      case Main_Content.systemGetDatetimeResponse:
-        final dt = msg.systemGetDatetimeResponse.datetime;
-        _info['datetime'] =
-            '${dt.year}-${_pad(dt.month)}-${_pad(dt.day)} ${_pad(dt.hour)}:${_pad(dt.minute)}:${_pad(dt.second)}';
-        _markDone(msg.commandId);
-        break;
-      default:
-        break;
-    }
-  }
-
-  void _markDone(int id) {
-    _pending.remove(id);
-    _checkDone();
-  }
-
-  void _checkDone() {
-    if (_pending.isEmpty && _deviceLoading) {
-      _timeoutTimer?.cancel();
-      _deviceStatus = 'Connected';
+    setState(() {
+      _deviceDisconnected = true;
       _deviceLoading = false;
-      QAppThemeController.instance.syncFirmwareFromDeviceInfo(_info);
-    }
+    });
   }
 
   String _pad(int n) => n.toString().padLeft(2, '0');
@@ -283,8 +179,10 @@ class _DevicePageState extends State<DevicePage> {
           ? '${_info['storage.internal.used'] ?? '?'} / ${_info['storage.internal.total'] ?? '?'}'
           : '-';
 
-  String get _deviceName =>
-      _firstInfo(['hardware_name', 'device_name', 'name'], fallback: _device?.name ?? 'Flipper Zero');
+  String get _deviceName => _firstInfo(
+        ['hardware_name', 'device_name', 'name'],
+        fallback: _device?.name ?? 'Flipper Zero',
+      );
 
   String _firstInfo(List<String> keys, {String fallback = '-'}) {
     for (final key in keys) {
@@ -297,21 +195,20 @@ class _DevicePageState extends State<DevicePage> {
   }
 
   Future<void> _disconnect() async {
-    _timeoutTimer?.cancel();
-    _deviceDisconnected = true;
-    await _device?.disconnect();
+    await _client.disconnect();
     if (!mounted) return;
     setState(() {
       _device = null;
       _deviceDisconnected = false;
+      _deviceLoading = false;
+      _info = {};
     });
   }
 
   Future<void> _openRemoteControl() async {
-    final device = _device;
-    if (device == null) return;
+    if (_device == null) return;
     await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => RemoteControlPage(device: device)),
+      MaterialPageRoute(builder: (_) => const RemoteControlPage()),
     );
   }
 
@@ -347,14 +244,12 @@ class _DevicePageState extends State<DevicePage> {
     );
   }
 
-  void _synchronizeDevice(ConnectedDevice device) {
+  void _synchronizeDevice() {
     setState(() {
       _deviceLoading = true;
-      _deviceStatus = 'Refreshing...';
-      _pending.clear();
-      _info.clear();
+      _info = {};
     });
-    _requestAll(device);
+    _requestAll();
   }
 
   @override
@@ -380,7 +275,7 @@ class _DevicePageState extends State<DevicePage> {
                   buildDate: _buildDate,
                   internalFlash: _internalFlash,
                   sdCard: _sdCard,
-                  onSynchronize: _deviceLoading ? null : () => _synchronizeDevice(device),
+                  onSynchronize: _deviceLoading ? null : _synchronizeDevice,
                   onOpenRemoteControl: _openRemoteControl,
                   onOpenFullInfo: _openFullInfo,
                   onDisconnect: _disconnect,

@@ -3,22 +3,15 @@ import 'dart:io' as io;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:flipperlib/discovered_device.dart';
-import 'package:flipperlib/protobuf.dart' hide DateTime, File;
+import 'package:flipperlib/flipperlib.dart' hide DateTime, File;
 import 'package:flutter/material.dart';
 
-import '../../services/flipper_protocol.dart';
 import '../../theme.dart';
 import 'remote_control_models.dart';
 import 'widgets/remote_control_view.dart';
 
 class RemoteControlPage extends StatefulWidget {
-  const RemoteControlPage({
-    super.key,
-    required this.device,
-  });
-
-  final ConnectedDevice device;
+  const RemoteControlPage({super.key});
 
   @override
   State<RemoteControlPage> createState() => _RemoteControlPageState();
@@ -30,8 +23,10 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
   static const Duration _shortReleaseDelay = Duration(milliseconds: 60);
   static const Duration _longReleaseDelay = Duration(milliseconds: 140);
 
-  StreamSubscription<List<int>>? _dataSub;
-  final _buffer = FlipperFrameBuffer();
+  final FlipperClient _client = FlipperOneClient().get();
+
+  StreamSubscription<ScreenFrame>? _frameSub;
+  StreamSubscription<Status>? _statusSub;
   Future<void> _inputChain = Future<void>.value();
 
   ui.Image? _frameImage;
@@ -46,88 +41,53 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
   @override
   void initState() {
     super.initState();
-    _dataSub = widget.device.dataStream.listen(_onData);
+    _frameSub = _client.screenFrameStream().listen(_updateFrame);
+    _statusSub = _client.desktopStatusStream().listen(_onStatus);
     _startRemoteSession();
   }
 
   @override
   void dispose() {
-    _dataSub?.cancel();
+    _frameSub?.cancel();
+    _statusSub?.cancel();
     _disposeFrame();
     _stopRemoteSession();
     super.dispose();
   }
 
   Future<void> _startRemoteSession() async {
-    await widget.device.sendBytes(
-      FlipperProtocol.encode(
-        Main(
-          commandId: FlipperProtocol.nextCommandId(),
-          guiStartScreenStreamRequest: StartScreenStreamRequest(),
-        ),
-      ),
-    );
-    await widget.device.sendBytes(
-      FlipperProtocol.encode(
-        Main(
-          commandId: FlipperProtocol.nextCommandId(),
-          desktopStatusSubscribeRequest: StatusSubscribeRequest(),
-        ),
-      ),
-    );
-    await widget.device.sendBytes(
-      FlipperProtocol.encode(
-        Main(
-          commandId: FlipperProtocol.nextCommandId(),
-          desktopIsLockedRequest: IsLockedRequest(),
-        ),
-      ),
-    );
-    if (!mounted) return;
-    setState(() => _isStreaming = true);
+    try {
+      await _client.guiStartScreenStream();
+      await _client.desktopStatusSubscribe();
+      final frames = await _client.desktopIsLocked();
+      for (final frame in frames) {
+        if (frame.hasDesktopStatus()) {
+          _onStatus(frame.desktopStatus);
+        }
+      }
+      if (!mounted) return;
+      setState(() => _isStreaming = true);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Remote control unavailable: $e')),
+      );
+    }
   }
 
   Future<void> _stopRemoteSession() async {
-    await widget.device.sendBytes(
-      FlipperProtocol.encode(
-        Main(
-          commandId: FlipperProtocol.nextCommandId(),
-          guiStopScreenStreamRequest: StopScreenStreamRequest(),
-        ),
-      ),
-    );
-    await widget.device.sendBytes(
-      FlipperProtocol.encode(
-        Main(
-          commandId: FlipperProtocol.nextCommandId(),
-          desktopStatusUnsubscribeRequest: StatusUnsubscribeRequest(),
-        ),
-      ),
-    );
+    try {
+      await _client.guiStopScreenStream();
+      await _client.desktopStatusUnsubscribe();
+    } catch (_) {}
   }
 
-  void _onData(List<int> raw) {
-    final messages = _buffer.push(raw);
-    for (final msg in messages) {
-      _handleMessage(msg);
-    }
-  }
-
-  void _handleMessage(Main msg) {
-    switch (msg.whichContent()) {
-      case Main_Content.guiScreenFrame:
-        _updateFrame(msg.guiScreenFrame);
-        break;
-      case Main_Content.desktopStatus:
-        if (!mounted) return;
-        setState(() {
-          _isLocked = msg.desktopStatus.locked;
-          _lockReady = true;
-        });
-        break;
-      default:
-        break;
-    }
+  void _onStatus(Status status) {
+    if (!mounted) return;
+    setState(() {
+      _isLocked = status.locked;
+      _lockReady = true;
+    });
   }
 
   Future<void> _updateFrame(ScreenFrame frame) async {
@@ -227,7 +187,9 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
     _inputChain = _inputChain.then((_) async {
       await _sendRawInput(key, InputType.PRESS);
       await _sendRawInput(key, type);
-      await Future<void>.delayed(type == InputType.LONG ? _longReleaseDelay : _shortReleaseDelay);
+      await Future<void>.delayed(
+        type == InputType.LONG ? _longReleaseDelay : _shortReleaseDelay,
+      );
       await _sendRawInput(key, InputType.RELEASE);
     });
     await _inputChain;
@@ -235,14 +197,7 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
 
   Future<void> _unlock() async {
     _showQueuedButton('assets/flipper_svg/screenstreaming/ic_anim_unlock_light.svg');
-    await widget.device.sendBytes(
-      FlipperProtocol.encode(
-        Main(
-          commandId: FlipperProtocol.nextCommandId(),
-          desktopUnlockRequest: UnlockRequest(),
-        ),
-      ),
-    );
+    await _client.desktopUnlock(UnlockRequest());
   }
 
   void _showQueuedButton(String asset) {
@@ -264,16 +219,10 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
       };
 
   Future<void> _sendRawInput(InputKey key, InputType type) async {
-    final req = SendInputEventRequest(
-      key: key,
-      type: type,
-    );
-    await widget.device.sendBytes(
-      FlipperProtocol.encode(
-        Main(
-          commandId: FlipperProtocol.nextCommandId(),
-          guiSendInputEventRequest: req,
-        ),
+    await _client.guiSendInput(
+      SendInputEventRequest(
+        key: key,
+        type: type,
       ),
     );
   }
