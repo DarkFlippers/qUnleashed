@@ -1,3 +1,6 @@
 [submodule "packages/protobuf/proto/flipperzero"]
 	path = packages/protobuf/proto/flipperzero
 	url = https://github.com/flipperdevices/flipperzero-protobuf.git
+[submodule "lib/flipperlib"]
+	path = lib/flipperlib
+	url = https://github.com/apfxtech/FlipperDartAPI.git

@@ -1,8 +1,7 @@
 import 'dart:typed_data';
 
-import 'package:qunleashed/flipperlib/protobuf.dart';
-
-import 'log_service.dart';
+import 'package:flipperlib/log_service.dart';
+import 'package:flipperlib/protobuf.dart';
 
 class FlipperProtocol {
   static int _nextId = 1;
