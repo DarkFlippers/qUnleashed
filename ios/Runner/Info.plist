@@ -12,6 +12,10 @@
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
 	<string>Qunleashed</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>This app saves Flipper screenshots to your photo library.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>This app saves Flipper screenshots to your photo library.</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
