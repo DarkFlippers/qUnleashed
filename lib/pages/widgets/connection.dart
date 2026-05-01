@@ -1,33 +1,27 @@
 import 'dart:async';
 
-import 'package:flipperlib/discovered_device.dart';
-import 'package:flipperlib/log_service.dart';
+import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
-import '../../services/ble_service.dart';
-import '../../services/usb_service.dart';
 import '../../theme.dart';
 
-bool _isFlipperBle(BleDiscoveredDevice d) {
-  final mac = d.id.replaceAll(':', '').toUpperCase();
+bool _isFlipperBle(FlipperDevice device) {
+  final mac = device.id.replaceAll(':', '').toUpperCase();
   return mac.startsWith('80E127') || mac.startsWith('80E126');
 }
 
-bool _isFlipperUsb(UsbDiscoveredDevice d) {
-  if (d is DesktopUsbDiscoveredDevice) {
-    if (d.vendorId == 0x0483) return true;
+bool _isFlipperUsb(FlipperDevice device) {
+  if (!device.isUsb) return false;
+  if (device.vendorId == 0x0483) return true;
 
-    final desc = d.description.toLowerCase();
-    return desc.contains('stmicroelectronics') ||
-        desc.contains('virtual com port') ||
-        desc.contains('flipper');
-  }
-  if (d is AndroidUsbDiscoveredDevice) return d.usbDevice.vid == 0x0483;
-  return false;
+  final name = device.name.toLowerCase();
+  return name.contains('stmicroelectronics') ||
+      name.contains('virtual com port') ||
+      name.contains('flipper');
 }
 
-Future<DiscoveredDevice?> showConnectionDialog(BuildContext context) {
-  return showDialog<DiscoveredDevice>(
+Future<FlipperDevice?> showConnectionDialog(BuildContext context) {
+  return showDialog<FlipperDevice>(
     context: context,
     barrierColor: FlipperOriginalColors.barrier,
     builder: (_) => const ConnectionDialog(),
@@ -42,72 +36,72 @@ class ConnectionDialog extends StatefulWidget {
 }
 
 class _ConnectionDialogState extends State<ConnectionDialog> {
-  final _ble = BleService();
-  final _usb = UsbService();
+  final FlipperClient _client = FlipperOneClient().get();
 
-  List<UsbDiscoveredDevice> _usbCache = [];
-  StreamSubscription<List<BleDiscoveredDevice>>? _bleSub;
+  StreamSubscription<List<FlipperDevice>>? _devicesSub;
   bool _scanning = false;
   bool _filterEnabled = true;
-  List<DiscoveredDevice> _displayed = [];
+  List<FlipperDevice> _displayed = [];
 
   @override
   void initState() {
     super.initState();
-    _bleSub = _ble.devicesStream.listen(_onBleUpdate);
+    _devicesSub = _client.devicesStream.listen(_onDevicesUpdate);
+    _displayed = _filterDevices(_client.devices);
     _startScan();
   }
 
   @override
   void dispose() {
-    _bleSub?.cancel();
-    _ble.stopScan();
+    _devicesSub?.cancel();
+    _client.stopScan();
     super.dispose();
   }
 
   Future<void> _startScan() async {
+    if (_scanning) return;
     if (mounted) setState(() => _scanning = true);
     try {
-      _usbCache = await _usb.listDevices();
+      await _client.initialize();
+      await _client.refreshDevices(bleTimeout: const Duration(seconds: 10));
     } catch (e) {
-      LogService.log('[Picker] USB error: $e');
+      LogService.log('[Picker] scan error: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _scanning = false;
+          _displayed = _filterDevices(_client.devices);
+        });
+      }
     }
-    _rebuild();
-
-    final ok = await _ble.requestPermissions();
-    if (!mounted) return;
-    if (!ok) {
-      setState(() => _scanning = false);
-      return;
-    }
-    await _ble.startScan(timeout: const Duration(seconds: 10));
-    if (mounted) setState(() => _scanning = false);
   }
 
-  void _onBleUpdate(List<BleDiscoveredDevice> ble) => _rebuild(bleDevices: ble);
-
-  void _rebuild({List<BleDiscoveredDevice>? bleDevices}) {
+  void _onDevicesUpdate(List<FlipperDevice> devices) {
     if (!mounted) return;
-    final ble = bleDevices ?? _ble.currentDevices;
-    List<DiscoveredDevice> all = [..._usbCache, ...ble];
-    if (_filterEnabled) {
-      all = all.where((d) {
-        if (d is BleDiscoveredDevice) return _isFlipperBle(d);
-        if (d is UsbDiscoveredDevice) return _isFlipperUsb(d);
-        return true;
-      }).toList();
-    }
-    setState(() => _displayed = all);
+    setState(() => _displayed = _filterDevices(devices));
+  }
+
+  List<FlipperDevice> _filterDevices(List<FlipperDevice> devices) {
+    if (!_filterEnabled) return List<FlipperDevice>.from(devices);
+    return devices.where((device) {
+      if (device.isBle) return _isFlipperBle(device);
+      if (device.isUsb) return _isFlipperUsb(device);
+      return true;
+    }).toList();
   }
 
   void _removeFilter() {
-    _filterEnabled = false;
-    _rebuild();
+    setState(() {
+      _filterEnabled = false;
+      _displayed = _filterDevices(_client.devices);
+    });
   }
 
   void _restoreFilter() {
-    _filterEnabled = true;
-    _rebuild();
+    setState(() {
+      _filterEnabled = true;
+      _displayed = _filterDevices(_client.devices);
+    });
   }
 
   @override
@@ -218,31 +212,21 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
 }
 
 class _DeviceListItem extends StatelessWidget {
-  final DiscoveredDevice device;
-  final VoidCallback onTap;
+  const _DeviceListItem({
+    required this.device,
+    required this.onTap,
+  });
 
-  const _DeviceListItem({required this.device, required this.onTap});
+  final FlipperDevice device;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final isBle = device.transport == DeviceTransport.ble;
+    final isBle = device.isBle;
 
-    String displayName;
-    String subtitle;
-
-    if (device is BleDiscoveredDevice) {
-      final d = device as BleDiscoveredDevice;
-      displayName = d.name;
-      subtitle = d.id;
-    } else if (device is DesktopUsbDiscoveredDevice) {
-      final d = device as DesktopUsbDiscoveredDevice;
-      displayName = d.description.isNotEmpty ? d.description : d.portName;
-      subtitle = d.serialNumber ?? d.portName;
-    } else {
-      displayName = device.name;
-      subtitle = device.id;
-    }
+    final displayName = device.name;
+    final subtitle = isBle ? device.id : (device.serialNumber ?? device.id);
 
     return InkWell(
       onTap: onTap,
@@ -262,23 +246,38 @@ class _DeviceListItem extends StatelessWidget {
                 children: [
                   Text(
                     displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 15,
-                      fontWeight: FontWeight.bold,
+                      fontWeight: FontWeight.w600,
                       color: colors.dialogText,
                     ),
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 4),
                   Text(
                     subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 11,
+                      fontSize: 12,
                       color: colors.dialogMuted,
                     ),
                   ),
                 ],
               ),
             ),
+            if (device.rssi != null)
+              Padding(
+                padding: const EdgeInsets.only(left: 12),
+                child: Text(
+                  '${device.rssi} dBm',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: colors.dialogMuted,
+                  ),
+                ),
+              ),
           ],
         ),
       ),
