@@ -1,10 +1,9 @@
+import 'package:flipperlib/discovered_device.dart';
+import 'package:flipperlib/log_service.dart';
 import 'dart:io';
 
 import 'package:flutter_libserialport/flutter_libserialport.dart';
 import 'package:usb_serial/usb_serial.dart';
-
-import '../models/discovered_device.dart';
-import 'log_service.dart';
 
 class UsbService {
   static final UsbService _instance = UsbService._();

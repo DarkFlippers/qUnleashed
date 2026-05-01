@@ -9,6 +9,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flipperlib:
+    path: lib/flipperlib
   universal_ble: ^1.0.0
   usb_serial: ^0.5.2
   permission_handler: ^11.3.1

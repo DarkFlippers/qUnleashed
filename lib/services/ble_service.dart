@@ -1,11 +1,10 @@
+import 'package:flipperlib/discovered_device.dart';
+import 'package:flipperlib/log_service.dart';
 import 'dart:async';
 import 'dart:io';
 
 import 'package:universal_ble/universal_ble.dart' as uble;
 import 'package:permission_handler/permission_handler.dart';
-
-import '../models/discovered_device.dart';
-import 'log_service.dart';
 
 class BleService {
   static final BleService _instance = BleService._();

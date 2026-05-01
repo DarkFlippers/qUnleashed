@@ -1,10 +1,10 @@
 import 'dart:async';
 
+import 'package:flipperlib/discovered_device.dart';
+import 'package:flipperlib/log_service.dart';
 import 'package:flutter/material.dart';
 
-import '../../models/discovered_device.dart';
 import '../../services/ble_service.dart';
-import '../../services/log_service.dart';
 import '../../services/usb_service.dart';
 import '../../theme.dart';
 

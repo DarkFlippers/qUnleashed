@@ -1,11 +1,11 @@
 import 'dart:async';
 
-import 'package:qunleashed/flipperlib/protobuf.dart';
+import 'package:flipperlib/discovered_device.dart';
+import 'package:flipperlib/log_service.dart';
+import 'package:flipperlib/protobuf.dart';
 import 'package:flutter/material.dart';
 
-import '../../models/discovered_device.dart';
 import '../../services/flipper_protocol.dart';
-import '../../services/log_service.dart';
 import '../../theme.dart';
 import '../../widgets/device_full_info_sheet.dart';
 import '../../widgets/device_logs_sheet.dart';

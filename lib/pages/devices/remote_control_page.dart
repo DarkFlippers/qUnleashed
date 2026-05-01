@@ -3,10 +3,10 @@ import 'dart:io' as io;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:qunleashed/flipperlib/protobuf.dart' hide DateTime, File;
+import 'package:flipperlib/discovered_device.dart';
+import 'package:flipperlib/protobuf.dart' hide DateTime, File;
 import 'package:flutter/material.dart';
 
-import '../../models/discovered_device.dart';
 import '../../services/flipper_protocol.dart';
 import '../../theme.dart';
 import 'remote_control_models.dart';
