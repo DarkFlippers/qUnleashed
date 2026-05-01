@@ -31,20 +31,24 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
 
   StreamSubscription<ScreenFrame>? _frameSub;
   StreamSubscription<Status>? _statusSub;
+
+  // All button inputs are serialized through this chain so PRESS/SHORT/RELEASE
+  // sequences from concurrent taps never interleave on the device.
   Future<void> _inputChain = Future<void>.value();
 
   ui.Image? _frameImage;
   Uint8List? _lastPngBytes;
   final List<QueuedButton> _buttonQueue = [];
   StreamOrientation _orientation = StreamOrientation.horizontal;
-  bool _isStreaming = false;
   bool _isLocked = true;
-  bool _lockReady = false;
   bool _isSavingScreenshot = false;
   bool _isClosing = false;
+
+  // Tracks which buttons are currently held via touch long-press so that
+  // a second finger on the same button does not re-send PRESS.
   final Set<RemoteButton> _heldButtons = {};
-  bool _backHeld = false;
-  bool _okHeld = false;
+
+  // ──────────────────────────── lifecycle ────────────────────────────
 
   @override
   void initState() {
@@ -59,11 +63,11 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
     _frameSub?.cancel();
     _statusSub?.cancel();
     _disposeFrame();
-    if (!_isClosing) {
-      unawaited(_stopRemoteSession());
-    }
+    if (!_isClosing) unawaited(_stopRemoteSession());
     super.dispose();
   }
+
+  // ──────────────────────────── session ──────────────────────────────
 
   Future<void> _startRemoteSession() async {
     try {
@@ -71,12 +75,8 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
       await _client.desktopStatusSubscribe();
       final frames = await _client.desktopIsLocked();
       for (final frame in frames) {
-        if (frame.hasDesktopStatus()) {
-          _onStatus(frame.desktopStatus);
-        }
+        if (frame.hasDesktopStatus()) _onStatus(frame.desktopStatus);
       }
-      if (!mounted) return;
-      setState(() => _isStreaming = true);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -96,18 +96,17 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
     if (_isClosing) return;
     _isClosing = true;
     await _stopRemoteSession();
-    if (mounted) {
-      Navigator.of(context).pop();
-    }
+    if (mounted) Navigator.of(context).pop();
   }
+
+  // ──────────────────────────── status ───────────────────────────────
 
   void _onStatus(Status status) {
     if (!mounted) return;
-    setState(() {
-      _isLocked = status.locked;
-      _lockReady = true;
-    });
+    setState(() => _isLocked = status.locked);
   }
+
+  // ──────────────────────────── frame decoding ───────────────────────
 
   Future<void> _updateFrame(ScreenFrame frame) async {
     final decoded = await _decodeFrame(frame);
@@ -127,8 +126,8 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
   Future<DecodedFrame> _decodeFrame(ScreenFrame frame) async {
     final pixels = Uint8List(_screenWidth * _screenHeight * 4);
     final raw = frame.data;
-    final backgroundColor = FlipperOriginalColors.flipperScreenBackground.toARGB32();
-    final foregroundColor = FlipperOriginalColors.flipperScreenBorder.toARGB32();
+    final bg = FlipperOriginalColors.flipperScreenBackground.toARGB32();
+    final fg = FlipperOriginalColors.flipperScreenBorder.toARGB32();
 
     final orientation = switch (frame.orientation) {
       ScreenOrientation.HORIZONTAL => StreamOrientation.horizontal,
@@ -145,64 +144,74 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
         final isSet = idx < raw.length && (raw[idx] & bit) != 0;
 
         final bitmapX = switch (orientation) {
-          StreamOrientation.horizontalFlip => _screenWidth - x - 1,
-          StreamOrientation.verticalFlip => _screenWidth - x - 1,
+          StreamOrientation.horizontalFlip || StreamOrientation.verticalFlip =>
+            _screenWidth - x - 1,
           _ => x,
         };
         final bitmapY = switch (orientation) {
-          StreamOrientation.horizontalFlip => _screenHeight - y - 1,
-          StreamOrientation.verticalFlip => _screenHeight - y - 1,
+          StreamOrientation.horizontalFlip || StreamOrientation.verticalFlip =>
+            _screenHeight - y - 1,
           _ => y,
         };
 
-        final pixelIndex = ((bitmapY * _screenWidth) + bitmapX) * 4;
-        final color = isSet ? foregroundColor : backgroundColor;
-        pixels[pixelIndex] = (color >> 16) & 0xFF;
-        pixels[pixelIndex + 1] = (color >> 8) & 0xFF;
-        pixels[pixelIndex + 2] = color & 0xFF;
-        pixels[pixelIndex + 3] = (color >> 24) & 0xFF;
+        final pi = ((bitmapY * _screenWidth) + bitmapX) * 4;
+        final color = isSet ? fg : bg;
+        pixels[pi] = (color >> 16) & 0xFF;
+        pixels[pi + 1] = (color >> 8) & 0xFF;
+        pixels[pi + 2] = color & 0xFF;
+        pixels[pi + 3] = (color >> 24) & 0xFF;
       }
     }
 
-    final image = await _imageFromPixels(
-      pixels,
-      width: _screenWidth,
-      height: _screenHeight,
-    );
-    final pngBytes = (await image.toByteData(format: ui.ImageByteFormat.png))!.buffer.asUint8List();
-    return DecodedFrame(
-      image: image,
-      pngBytes: pngBytes,
-      orientation: orientation,
-    );
+    final image = await _imageFromPixels(pixels, width: _screenWidth, height: _screenHeight);
+    final pngBytes =
+        (await image.toByteData(format: ui.ImageByteFormat.png))!.buffer.asUint8List();
+    return DecodedFrame(image: image, pngBytes: pngBytes, orientation: orientation);
   }
 
-  Future<ui.Image> _imageFromPixels(
-    Uint8List pixels, {
-    required int width,
-    required int height,
-  }) {
+  Future<ui.Image> _imageFromPixels(Uint8List pixels, {required int width, required int height}) {
     final completer = Completer<ui.Image>();
-    ui.decodeImageFromPixels(
-      pixels,
-      width,
-      height,
-      ui.PixelFormat.rgba8888,
-      completer.complete,
-    );
+    ui.decodeImageFromPixels(pixels, width, height, ui.PixelFormat.rgba8888, completer.complete);
     return completer.future;
   }
 
+  void _disposeFrame() {
+    _frameImage?.dispose();
+    _frameImage = null;
+  }
+
+  // ──────────────────────────── input ────────────────────────────────
+
+  InputKey _mapButton(RemoteButton button) => switch (button) {
+        RemoteButton.up => InputKey.UP,
+        RemoteButton.down => InputKey.DOWN,
+        RemoteButton.left => InputKey.LEFT,
+        RemoteButton.right => InputKey.RIGHT,
+        RemoteButton.ok => InputKey.OK,
+        RemoteButton.back => InputKey.BACK,
+      };
+
+  String _queueAsset(RemoteButton button) => switch (button) {
+        RemoteButton.up =>
+          'assets/flipper_svg/screenstreaming/ic_anim_up_button_light.svg',
+        RemoteButton.down =>
+          'assets/flipper_svg/screenstreaming/ic_anim_down_button_light.svg',
+        RemoteButton.left =>
+          'assets/flipper_svg/screenstreaming/ic_anim_left_button_light.svg',
+        RemoteButton.right =>
+          'assets/flipper_svg/screenstreaming/ic_anim_right_button_light.svg',
+        RemoteButton.ok =>
+          'assets/flipper_svg/screenstreaming/ic_anim_ok_button_light.svg',
+        RemoteButton.back =>
+          'assets/flipper_svg/screenstreaming/ic_anim_back_button_light.svg',
+      };
+
+  // Single entry point for all tap/keyboard inputs.
+  // Serializes PRESS → type → RELEASE through _inputChain so sequences
+  // from rapid taps never interleave.
   Future<void> _sendInput(RemoteButton button, InputType type) async {
-    _showQueuedButton(_queueAssetForButton(button));
-    final key = switch (button) {
-      RemoteButton.up => InputKey.UP,
-      RemoteButton.down => InputKey.DOWN,
-      RemoteButton.left => InputKey.LEFT,
-      RemoteButton.right => InputKey.RIGHT,
-      RemoteButton.ok => InputKey.OK,
-      RemoteButton.back => InputKey.BACK,
-    };
+    _showQueuedButton(_queueAsset(button));
+    final key = _mapButton(button);
     _inputChain = _inputChain.then((_) async {
       await _sendRawInput(key, InputType.PRESS);
       await _sendRawInput(key, type);
@@ -214,9 +223,10 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
     await _inputChain;
   }
 
+  // Used only for touch long-press (hold) gestures on the D-pad.
   Future<void> _startHold(RemoteButton button) async {
     if (!_heldButtons.add(button)) return;
-    _showQueuedButton(_queueAssetForButton(button));
+    _showQueuedButton(_queueAsset(button));
     await _sendRawInput(_mapButton(button), InputType.PRESS);
   }
 
@@ -225,31 +235,11 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
     await _sendRawInput(_mapButton(button), InputType.RELEASE);
   }
 
-  Future<void> _startBackHold() async {
-    if (_backHeld) return;
-    _backHeld = true;
-    _showQueuedButton(_queueAssetForButton(RemoteButton.back));
-    await _sendRawInput(InputKey.BACK, InputType.PRESS);
+  Future<void> _sendRawInput(InputKey key, InputType type) async {
+    await _client.guiSendInput(SendInputEventRequest(key: key, type: type));
   }
 
-  Future<void> _endBackHold() async {
-    if (!_backHeld) return;
-    _backHeld = false;
-    await _sendRawInput(InputKey.BACK, InputType.RELEASE);
-  }
-
-  Future<void> _startOkHold() async {
-    if (_okHeld) return;
-    _okHeld = true;
-    _showQueuedButton(_queueAssetForButton(RemoteButton.ok));
-    await _sendRawInput(InputKey.OK, InputType.PRESS);
-  }
-
-  Future<void> _endOkHold() async {
-    if (!_okHeld) return;
-    _okHeld = false;
-    await _sendRawInput(InputKey.OK, InputType.RELEASE);
-  }
+  // ──────────────────────────── unlock ───────────────────────────────
 
   Future<void> _unlock() async {
     _showQueuedButton('assets/flipper_svg/screenstreaming/ic_anim_unlock_light.svg');
@@ -257,54 +247,58 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
     try {
       final frames = await _client.desktopIsLocked();
       for (final frame in frames) {
-        if (frame.hasDesktopStatus()) {
-          _onStatus(frame.desktopStatus);
-        }
+        if (frame.hasDesktopStatus()) _onStatus(frame.desktopStatus);
       }
     } catch (_) {
       if (!mounted) return;
-      setState(() {
-        _isLocked = false;
-        _lockReady = true;
-      });
+      setState(() => _isLocked = false);
     }
   }
+
+  // ──────────────────────────── queue UI ─────────────────────────────
 
   void _showQueuedButton(String asset) {
     final item = QueuedButton(asset: asset);
     setState(() => _buttonQueue.add(item));
     Future<void>.delayed(const Duration(milliseconds: 650), () {
       if (!mounted) return;
-      setState(() => _buttonQueue.removeWhere((element) => element.id == item.id));
+      setState(() => _buttonQueue.removeWhere((e) => e.id == item.id));
     });
   }
 
-  String _queueAssetForButton(RemoteButton button) => switch (button) {
-        RemoteButton.up => 'assets/flipper_svg/screenstreaming/ic_anim_up_button_light.svg',
-        RemoteButton.down => 'assets/flipper_svg/screenstreaming/ic_anim_down_button_light.svg',
-        RemoteButton.left => 'assets/flipper_svg/screenstreaming/ic_anim_left_button_light.svg',
-        RemoteButton.right => 'assets/flipper_svg/screenstreaming/ic_anim_right_button_light.svg',
-        RemoteButton.ok => 'assets/flipper_svg/screenstreaming/ic_anim_ok_button_light.svg',
-        RemoteButton.back => 'assets/flipper_svg/screenstreaming/ic_anim_back_button_light.svg',
-      };
+  // ──────────────────────────── keyboard ─────────────────────────────
 
-  InputKey _mapButton(RemoteButton button) => switch (button) {
-        RemoteButton.up => InputKey.UP,
-        RemoteButton.down => InputKey.DOWN,
-        RemoteButton.left => InputKey.LEFT,
-        RemoteButton.right => InputKey.RIGHT,
-        RemoteButton.ok => InputKey.OK,
-        RemoteButton.back => InputKey.BACK,
-      };
+  // Keyboard uses the same SHORT path as button taps so the device receives a
+  // valid PRESS → SHORT → RELEASE sequence. KeyRepeatEvent allows holding a
+  // key for continuous navigation.
+  static final _keyToButton = <LogicalKeyboardKey, RemoteButton>{
+    LogicalKeyboardKey.keyW: RemoteButton.up,
+    LogicalKeyboardKey.arrowUp: RemoteButton.up,
+    LogicalKeyboardKey.keyA: RemoteButton.left,
+    LogicalKeyboardKey.arrowLeft: RemoteButton.left,
+    LogicalKeyboardKey.keyS: RemoteButton.down,
+    LogicalKeyboardKey.arrowDown: RemoteButton.down,
+    LogicalKeyboardKey.keyD: RemoteButton.right,
+    LogicalKeyboardKey.arrowRight: RemoteButton.right,
+    LogicalKeyboardKey.space: RemoteButton.ok,
+    LogicalKeyboardKey.enter: RemoteButton.ok,
+    LogicalKeyboardKey.numpadEnter: RemoteButton.ok,
+    LogicalKeyboardKey.escape: RemoteButton.back,
+    LogicalKeyboardKey.backspace: RemoteButton.back,
+  };
 
-  Future<void> _sendRawInput(InputKey key, InputType type) async {
-    await _client.guiSendInput(
-      SendInputEventRequest(
-        key: key,
-        type: type,
-      ),
-    );
+  KeyEventResult _handleKeyEvent(KeyEvent event) {
+    final button = _keyToButton[event.logicalKey];
+    if (button == null) return KeyEventResult.ignored;
+
+    if (event is KeyDownEvent || event is KeyRepeatEvent) {
+      unawaited(_sendInput(button, InputType.SHORT));
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
   }
+
+  // ──────────────────────────── screenshot ───────────────────────────
 
   Future<void> _copyScreenshot() async {
     final png = _lastPngBytes;
@@ -312,16 +306,12 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
     setState(() => _isSavingScreenshot = true);
     try {
       final clipboard = SystemClipboard.instance;
-      if (clipboard == null) {
-        throw StateError('Clipboard is not available on this platform');
-      }
-      final item = DataWriterItem();
-      item.add(Formats.png(png));
+      if (clipboard == null) throw StateError('Clipboard not available');
+      final item = DataWriterItem()..add(Formats.png(png));
       await clipboard.write([item]);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Screenshot copied to clipboard')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Screenshot copied to clipboard')));
     } finally {
       if (mounted) setState(() => _isSavingScreenshot = false);
     }
@@ -334,9 +324,8 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
     try {
       final path = await _saveScreenshotToPictures(png);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Screenshot saved: $path')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Screenshot saved: $path')));
     } finally {
       if (mounted) setState(() => _isSavingScreenshot = false);
     }
@@ -346,10 +335,7 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
     final fileName = 'flipper_screenshot_${DateTime.now().millisecondsSinceEpoch}.png';
 
     if (io.Platform.isAndroid || io.Platform.isIOS) {
-      final granted = await _ensureGalleryPermission();
-      if (!granted) {
-        throw StateError('Gallery permission denied');
-      }
+      if (!await _ensureGalleryPermission()) throw StateError('Gallery permission denied');
       await SaverGallery.saveImage(
         png,
         quality: 100,
@@ -360,124 +346,40 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
       return io.Platform.isAndroid ? 'Pictures/Qunleashed/$fileName' : 'Photos';
     }
 
-    final picturesDir = _systemPicturesDirectory();
-    await picturesDir.create(recursive: true);
-    final file = io.File(io.Platform.pathSeparator == '\\'
-        ? '${picturesDir.path}\\$fileName'
-        : '${picturesDir.path}/$fileName');
+    final dir = _systemPicturesDirectory();
+    await dir.create(recursive: true);
+    final sep = io.Platform.pathSeparator;
+    final file = io.File('${dir.path}$sep$fileName');
     await file.writeAsBytes(png, flush: true);
     return file.path;
   }
 
   Future<bool> _ensureGalleryPermission() async {
     if (io.Platform.isIOS) {
-      final status = await Permission.photosAddOnly.request();
-      return status.isGranted || status.isLimited;
+      final s = await Permission.photosAddOnly.request();
+      return s.isGranted || s.isLimited;
     }
     if (io.Platform.isAndroid) {
       final photos = await Permission.photos.request();
       if (photos.isGranted || photos.isLimited) return true;
-      final storage = await Permission.storage.request();
-      return storage.isGranted;
+      return (await Permission.storage.request()).isGranted;
     }
     return true;
   }
 
   io.Directory _systemPicturesDirectory() {
-    final home = io.Platform.environment['HOME'];
-    final userProfile = io.Platform.environment['USERPROFILE'];
     final picturesEnv = io.Platform.environment['XDG_PICTURES_DIR'];
-
-    if (picturesEnv != null && picturesEnv.isNotEmpty) {
-      return io.Directory(picturesEnv);
-    }
+    if (picturesEnv != null && picturesEnv.isNotEmpty) return io.Directory(picturesEnv);
+    final userProfile = io.Platform.environment['USERPROFILE'];
     if (io.Platform.isWindows && userProfile != null && userProfile.isNotEmpty) {
       return io.Directory('$userProfile\\Pictures');
     }
-    if (home != null && home.isNotEmpty) {
-      return io.Directory('$home/Pictures');
-    }
+    final home = io.Platform.environment['HOME'];
+    if (home != null && home.isNotEmpty) return io.Directory('$home/Pictures');
     return io.Directory.current;
   }
 
-  KeyEventResult _handleKeyEvent(KeyEvent event) {
-    final logical = event.logicalKey;
-
-    if (event is KeyDownEvent) {
-      if (logical == LogicalKeyboardKey.keyW ||
-          logical == LogicalKeyboardKey.arrowUp) {
-        unawaited(_startHold(RemoteButton.up));
-        return KeyEventResult.handled;
-      }
-      if (logical == LogicalKeyboardKey.keyA ||
-          logical == LogicalKeyboardKey.arrowLeft) {
-        unawaited(_startHold(RemoteButton.left));
-        return KeyEventResult.handled;
-      }
-      if (logical == LogicalKeyboardKey.keyS ||
-          logical == LogicalKeyboardKey.arrowDown) {
-        unawaited(_startHold(RemoteButton.down));
-        return KeyEventResult.handled;
-      }
-      if (logical == LogicalKeyboardKey.keyD ||
-          logical == LogicalKeyboardKey.arrowRight) {
-        unawaited(_startHold(RemoteButton.right));
-        return KeyEventResult.handled;
-      }
-      if (logical == LogicalKeyboardKey.space ||
-          logical == LogicalKeyboardKey.enter ||
-          logical == LogicalKeyboardKey.numpadEnter) {
-        unawaited(_startOkHold());
-        return KeyEventResult.handled;
-      }
-      if (logical == LogicalKeyboardKey.escape ||
-          logical == LogicalKeyboardKey.backspace) {
-        unawaited(_startBackHold());
-        return KeyEventResult.handled;
-      }
-    }
-
-    if (event is KeyUpEvent) {
-      if (logical == LogicalKeyboardKey.keyW ||
-          logical == LogicalKeyboardKey.arrowUp) {
-        unawaited(_endHold(RemoteButton.up));
-        return KeyEventResult.handled;
-      }
-      if (logical == LogicalKeyboardKey.keyA ||
-          logical == LogicalKeyboardKey.arrowLeft) {
-        unawaited(_endHold(RemoteButton.left));
-        return KeyEventResult.handled;
-      }
-      if (logical == LogicalKeyboardKey.keyS ||
-          logical == LogicalKeyboardKey.arrowDown) {
-        unawaited(_endHold(RemoteButton.down));
-        return KeyEventResult.handled;
-      }
-      if (logical == LogicalKeyboardKey.keyD ||
-          logical == LogicalKeyboardKey.arrowRight) {
-        unawaited(_endHold(RemoteButton.right));
-        return KeyEventResult.handled;
-      }
-      if (logical == LogicalKeyboardKey.space ||
-          logical == LogicalKeyboardKey.enter ||
-          logical == LogicalKeyboardKey.numpadEnter) {
-        unawaited(_endOkHold());
-        return KeyEventResult.handled;
-      }
-      if (logical == LogicalKeyboardKey.escape ||
-          logical == LogicalKeyboardKey.backspace) {
-        unawaited(_endBackHold());
-        return KeyEventResult.handled;
-      }
-    }
-
-    return KeyEventResult.ignored;
-  }
-
-  void _disposeFrame() {
-    _frameImage?.dispose();
-    _frameImage = null;
-  }
+  // ──────────────────────────── build ────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -486,18 +388,13 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
       queue: _buttonQueue,
       orientation: _orientation,
       isLocked: _isLocked,
-      lockReady: _lockReady,
       isSavingScreenshot: _isSavingScreenshot,
-      isStreaming: _isStreaming,
       onCopyScreenshot: _copyScreenshot,
       onSaveScreenshot: _saveScreenshot,
       onUnlock: _unlock,
       onTapButton: (button) => _sendInput(button, InputType.SHORT),
       onHoldButtonStart: _startHold,
       onHoldButtonEnd: _endHold,
-      onTapBack: () => _sendInput(RemoteButton.back, InputType.SHORT),
-      onHoldBackStart: _startBackHold,
-      onHoldBackEnd: _endBackHold,
       onClose: _closePage,
       onKeyEvent: _handleKeyEvent,
     );

@@ -14,18 +14,13 @@ class RemoteControlView extends StatelessWidget {
     required this.queue,
     required this.orientation,
     required this.isLocked,
-    required this.lockReady,
     required this.isSavingScreenshot,
-    required this.isStreaming,
     required this.onCopyScreenshot,
     required this.onSaveScreenshot,
     required this.onUnlock,
     required this.onTapButton,
     required this.onHoldButtonStart,
     required this.onHoldButtonEnd,
-    required this.onTapBack,
-    required this.onHoldBackStart,
-    required this.onHoldBackEnd,
     required this.onClose,
     required this.onKeyEvent,
   });
@@ -34,38 +29,34 @@ class RemoteControlView extends StatelessWidget {
   final List<QueuedButton> queue;
   final StreamOrientation orientation;
   final bool isLocked;
-  final bool lockReady;
   final bool isSavingScreenshot;
-  final bool isStreaming;
   final VoidCallback onCopyScreenshot;
   final VoidCallback onSaveScreenshot;
   final VoidCallback onUnlock;
-  final Future<void> Function(RemoteButton button) onTapButton;
-  final Future<void> Function(RemoteButton button) onHoldButtonStart;
-  final Future<void> Function(RemoteButton button) onHoldButtonEnd;
-  final Future<void> Function() onTapBack;
-  final Future<void> Function() onHoldBackStart;
-  final Future<void> Function() onHoldBackEnd;
+  final Future<void> Function(RemoteButton) onTapButton;
+  final Future<void> Function(RemoteButton) onHoldButtonStart;
+  final Future<void> Function(RemoteButton) onHoldButtonEnd;
   final Future<void> Function() onClose;
-  final KeyEventResult Function(KeyEvent event) onKeyEvent;
+  final KeyEventResult Function(KeyEvent) onKeyEvent;
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.appColors;
     final topInset = MediaQuery.paddingOf(context).top;
-    return WillPopScope(
-      onWillPop: () async {
-        await onClose();
-        return false;
-      },
+
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (_, _) => onClose(),
       child: Focus(
         autofocus: true,
         onKeyEvent: (_, event) => onKeyEvent(event),
         child: Scaffold(
-          backgroundColor: FlipperOriginalColors.background,
+          backgroundColor: colors.background,
           body: Column(
             children: [
+              // ── App bar ──────────────────────────────────────────────
               Container(
-                color: FlipperOriginalColors.accent,
+                color: colors.accent,
                 padding: EdgeInsets.only(top: topInset),
                 child: SizedBox(
                   height: 56,
@@ -73,14 +64,14 @@ class RemoteControlView extends StatelessWidget {
                     children: [
                       IconButton(
                         onPressed: onClose,
-                        icon: Icon(Icons.arrow_back, color: FlipperOriginalColors.onAccent),
+                        icon: Icon(Icons.arrow_back, color: colors.onAccent),
                       ),
                       Expanded(
                         child: Text(
                           'Remote Control',
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            color: FlipperOriginalColors.onAccent,
+                            color: colors.onAccent,
                             fontSize: 16,
                             fontWeight: FontWeight.w700,
                           ),
@@ -91,20 +82,25 @@ class RemoteControlView extends StatelessWidget {
                   ),
                 ),
               ),
+
+              // ── Screen + controls ────────────────────────────────────
               Expanded(
-                child: SafeArea(
-                  top: false,
-                  child: Column(
-                    children: [
-                      Expanded(
+                child: Column(
+                  children: [
+                    // Screen section expands to fill remaining space.
+                    // SafeArea bottom: false so we control bottom inset below.
+                    Expanded(
+                      child: SafeArea(
+                        top: false,
+                        bottom: false,
                         child: Padding(
                           padding: const EdgeInsets.fromLTRB(24, 14, 24, 12),
-                          child: _RemoteScreenWithOptions(
+                          child: _ScreenWithOptions(
+                            colors: colors,
                             image: image,
                             queue: queue,
                             orientation: orientation,
                             isLocked: isLocked,
-                            lockReady: lockReady,
                             isSavingScreenshot: isSavingScreenshot,
                             onCopyScreenshot: onCopyScreenshot,
                             onSaveScreenshot: onSaveScreenshot,
@@ -112,29 +108,37 @@ class RemoteControlView extends StatelessWidget {
                           ),
                         ),
                       ),
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 20),
+                    ),
+
+                    // Controls get their own SafeArea so the D-pad
+                    // is not cut off by the home indicator.
+                    SafeArea(
+                      top: false,
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
-                            _RemoteDPad(
+                            _DPad(
+                              colors: colors,
                               onTapButton: onTapButton,
                               onHoldStart: onHoldButtonStart,
                               onHoldEnd: onHoldButtonEnd,
                             ),
                             const SizedBox(width: 30),
-                            _RemoteBackButton(
-                              onTap: onTapBack,
-                              onHoldStart: onHoldBackStart,
-                              onHoldEnd: onHoldBackEnd,
+                            // Back button uses the same callbacks as D-pad.
+                            _BackButton(
+                              colors: colors,
+                              onTap: () => onTapButton(RemoteButton.back),
+                              onHoldStart: (_) => onHoldButtonStart(RemoteButton.back),
+                              onHoldEnd: (_) => onHoldButtonEnd(RemoteButton.back),
                             ),
                           ],
                         ),
                       ),
-                      if (isStreaming) const SizedBox.shrink(),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -145,24 +149,28 @@ class RemoteControlView extends StatelessWidget {
   }
 }
 
-class _RemoteScreenWithOptions extends StatelessWidget {
-  const _RemoteScreenWithOptions({
+// ─────────────────────────────────────────────────────────────────────────────
+// Screen section: option row + queue + live frame + logo
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _ScreenWithOptions extends StatelessWidget {
+  const _ScreenWithOptions({
+    required this.colors,
     required this.image,
     required this.queue,
     required this.orientation,
     required this.isLocked,
-    required this.lockReady,
     required this.isSavingScreenshot,
     required this.onCopyScreenshot,
     required this.onSaveScreenshot,
     required this.onUnlock,
   });
 
+  final QAppColors colors;
   final ui.Image? image;
   final List<QueuedButton> queue;
   final StreamOrientation orientation;
   final bool isLocked;
-  final bool lockReady;
   final bool isSavingScreenshot;
   final VoidCallback onCopyScreenshot;
   final VoidCallback onSaveScreenshot;
@@ -172,50 +180,53 @@ class _RemoteScreenWithOptions extends StatelessWidget {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final availableHeightForCenter = constraints.maxHeight - 74;
+        // Width of the screen widget so its 2:1 aspect fits the available height.
         final screenWidth =
-            ((availableHeightForCenter - 85) * 2).clamp(0.0, constraints.maxWidth).toDouble();
+            ((constraints.maxHeight - 74 - 85) * 2).clamp(0.0, constraints.maxWidth);
 
         return Column(
           children: [
+            // ── Option buttons ─────────────────────────────────────
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  _RemoteOptionButton(
+                  _OptionButton(
+                    colors: colors,
                     icon: Icons.copy_rounded,
                     label: isSavingScreenshot ? 'Saving...' : 'Copy',
                     onTap: onCopyScreenshot,
                   ),
-                  _RemoteOptionButton(
+                  _OptionButton(
+                    colors: colors,
                     icon: Icons.download_rounded,
                     label: isSavingScreenshot ? 'Saving...' : 'Save',
                     onTap: onSaveScreenshot,
                   ),
-                  _RemoteOptionButton(
+                  // Lock: always tappable when locked — no loading state.
+                  _OptionButton(
+                    colors: colors,
                     asset: isLocked
                         ? 'assets/flipper_svg/screenstreaming/ic_unlock.svg'
                         : 'assets/flipper_svg/screenstreaming/ic_lock.svg',
-                    label: !lockReady
-                        ? 'Loading...'
-                        : isLocked
-                            ? 'Unlock Flipper'
-                            : 'Already unlocked',
-                    onTap: lockReady && isLocked ? onUnlock : null,
+                    label: isLocked ? 'Unlock Flipper' : 'Already unlocked',
+                    onTap: isLocked ? onUnlock : null,
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 18),
+
+            // ── Live frame ─────────────────────────────────────────
             Expanded(
               child: Center(
                 child: SizedBox(
                   width: screenWidth,
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
-                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
+                      // Input queue icons
                       SizedBox(
                         height: 28,
                         child: Align(
@@ -223,51 +234,47 @@ class _RemoteScreenWithOptions extends StatelessWidget {
                           child: ListView.separated(
                             scrollDirection: Axis.horizontal,
                             physics: const NeverScrollableScrollPhysics(),
-                            itemCount: queue.length,
                             shrinkWrap: true,
+                            itemCount: queue.length,
                             separatorBuilder: (_, _) => const SizedBox(width: 4),
-                            itemBuilder: (_, index) => _QueuedButtonIcon(
-                              key: ValueKey(queue[index].id),
-                              asset: queue[index].asset,
+                            itemBuilder: (_, i) => _QueueIcon(
+                              key: ValueKey(queue[i].id),
+                              colors: colors,
+                              asset: queue[i].asset,
                             ),
                           ),
                         ),
                       ),
                       const SizedBox(height: 4),
+
+                      // Screen border
                       Container(
                         decoration: BoxDecoration(
-                          border: Border.all(
-                            color: FlipperOriginalColors.flipperScreenBorder,
-                            width: 3,
-                          ),
+                          border: Border.all(color: colors.screenBorder, width: 3),
                           borderRadius: BorderRadius.circular(16),
                         ),
                         padding: const EdgeInsets.all(6),
                         child: Container(
                           decoration: BoxDecoration(
-                            border: Border.all(
-                              color: FlipperOriginalColors.flipperScreenBorder,
-                              width: 2,
-                            ),
+                            border: Border.all(color: colors.screenBorder, width: 2),
                             borderRadius: BorderRadius.circular(12),
-                            color: FlipperOriginalColors.flipperScreenBackground,
+                            color: colors.screenBackground,
                           ),
                           padding: const EdgeInsets.all(8),
                           child: _LiveFrame(
+                            colors: colors,
                             image: image,
                             orientation: orientation,
                           ),
                         ),
                       ),
                       const SizedBox(height: 12),
+
                       SvgPicture.asset(
                         'assets/flipper_svg/screenstreaming/ic_flipper_logo.svg',
                         width: 183,
                         height: 22,
-                        colorFilter: ColorFilter.mode(
-                          FlipperOriginalColors.accent,
-                          BlendMode.srcIn,
-                        ),
+                        colorFilter: ColorFilter.mode(colors.accent, BlendMode.srcIn),
                       ),
                     ],
                   ),
@@ -281,30 +288,69 @@ class _RemoteScreenWithOptions extends StatelessWidget {
   }
 }
 
-class _QueuedButtonIcon extends StatefulWidget {
-  const _QueuedButtonIcon({
-    super.key,
-    required this.asset,
-  });
+// ─────────────────────────────────────────────────────────────────────────────
+// Live frame
+// ─────────────────────────────────────────────────────────────────────────────
 
+class _LiveFrame extends StatelessWidget {
+  static const _w = 128;
+  static const _h = 64;
+
+  const _LiveFrame({required this.colors, required this.image, required this.orientation});
+
+  final QAppColors colors;
+  final ui.Image? image;
+  final StreamOrientation orientation;
+
+  @override
+  Widget build(BuildContext context) {
+    if (image == null) {
+      return SvgPicture.asset(
+        'assets/flipper_svg/screenstreaming/pic_not_connected_light.svg',
+        fit: BoxFit.fitWidth,
+        colorFilter: ColorFilter.mode(colors.textMuted, BlendMode.srcIn),
+      );
+    }
+
+    final isVertical =
+        orientation == StreamOrientation.vertical || orientation == StreamOrientation.verticalFlip;
+
+    return Center(
+      child: AspectRatio(
+        aspectRatio: isVertical ? (_h / _w).toDouble() : (_w / _h).toDouble(),
+        child: RotatedBox(
+          quarterTurns: isVertical ? 1 : 0,
+          child: RawImage(image: image, fit: BoxFit.fill, filterQuality: FilterQuality.none),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Queued button icon (animated pop-in)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _QueueIcon extends StatefulWidget {
+  const _QueueIcon({super.key, required this.colors, required this.asset});
+
+  final QAppColors colors;
   final String asset;
 
   @override
-  State<_QueuedButtonIcon> createState() => _QueuedButtonIconState();
+  State<_QueueIcon> createState() => _QueueIconState();
 }
 
-class _QueuedButtonIconState extends State<_QueuedButtonIcon> with SingleTickerProviderStateMixin {
-  late final AnimationController _controller = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 180),
-  )..forward();
+class _QueueIconState extends State<_QueueIcon> with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl =
+      AnimationController(vsync: this, duration: const Duration(milliseconds: 180))..forward();
   late final Animation<double> _scale = Tween<double>(begin: 0.86, end: 1).animate(
-    CurvedAnimation(parent: _controller, curve: Curves.easeOutBack),
+    CurvedAnimation(parent: _ctrl, curve: Curves.easeOutBack),
   );
 
   @override
   void dispose() {
-    _controller.dispose();
+    _ctrl.dispose();
     super.dispose();
   }
 
@@ -317,74 +363,27 @@ class _QueuedButtonIconState extends State<_QueuedButtonIcon> with SingleTickerP
         height: 24,
         child: SvgPicture.asset(
           widget.asset,
-          colorFilter: ColorFilter.mode(
-            FlipperOriginalColors.accent,
-            BlendMode.srcIn,
-          ),
+          colorFilter: ColorFilter.mode(widget.colors.accent, BlendMode.srcIn),
         ),
       ),
     );
   }
 }
 
-class _LiveFrame extends StatelessWidget {
-  static const int _screenWidth = 128;
-  static const int _screenHeight = 64;
+// ─────────────────────────────────────────────────────────────────────────────
+// Option button (Copy / Save / Unlock)
+// ─────────────────────────────────────────────────────────────────────────────
 
-  const _LiveFrame({
-    required this.image,
-    required this.orientation,
-  });
-
-  final ui.Image? image;
-  final StreamOrientation orientation;
-
-  @override
-  Widget build(BuildContext context) {
-    if (image == null) {
-      return SvgPicture.asset(
-        'assets/flipper_svg/screenstreaming/pic_not_connected_light.svg',
-        fit: BoxFit.fitWidth,
-        colorFilter: ColorFilter.mode(
-          FlipperOriginalColors.text30,
-          BlendMode.srcIn,
-        ),
-      );
-    }
-
-    final quarterTurns = switch (orientation) {
-      StreamOrientation.vertical => 1,
-      StreamOrientation.verticalFlip => 1,
-      _ => 0,
-    };
-
-    final aspectRatio =
-        quarterTurns == 0 ? (_screenWidth / _screenHeight) : (_screenHeight / _screenWidth);
-
-    return Center(
-      child: AspectRatio(
-        aspectRatio: aspectRatio,
-        child: RotatedBox(
-          quarterTurns: quarterTurns,
-          child: RawImage(
-            image: image,
-            fit: BoxFit.fill,
-            filterQuality: FilterQuality.none,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _RemoteOptionButton extends StatelessWidget {
-  const _RemoteOptionButton({
+class _OptionButton extends StatelessWidget {
+  const _OptionButton({
+    required this.colors,
     this.asset,
     this.icon,
     required this.label,
     required this.onTap,
   });
 
+  final QAppColors colors;
   final String? asset;
   final IconData? icon;
   final String label;
@@ -400,48 +399,41 @@ class _RemoteOptionButton extends StatelessWidget {
             width: 48,
             height: 48,
             decoration: BoxDecoration(
-              color: FlipperOriginalColors.flipperScreenOptionsBackground,
+              color: colors.screenOptionBackground,
               shape: BoxShape.circle,
             ),
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
             child: asset != null
                 ? SvgPicture.asset(
                     asset!,
-                    colorFilter: ColorFilter.mode(
-                      FlipperOriginalColors.accent,
-                      BlendMode.srcIn,
-                    ),
+                    colorFilter: ColorFilter.mode(colors.accent, BlendMode.srcIn),
                   )
-                : Icon(
-                    icon,
-                    color: FlipperOriginalColors.accent,
-                    size: 24,
-                  ),
+                : Icon(icon, color: colors.accent, size: 24),
           ),
         ),
         const SizedBox(height: 8),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 14,
-            color: FlipperOriginalColors.accent,
-          ),
-        ),
+        Text(label, style: TextStyle(fontSize: 14, color: colors.accent)),
       ],
     );
   }
 }
 
-class _RemoteDPad extends StatelessWidget {
-  const _RemoteDPad({
+// ─────────────────────────────────────────────────────────────────────────────
+// D-pad
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _DPad extends StatelessWidget {
+  const _DPad({
+    required this.colors,
     required this.onTapButton,
     required this.onHoldStart,
     required this.onHoldEnd,
   });
 
-  final Future<void> Function(RemoteButton button) onTapButton;
-  final Future<void> Function(RemoteButton button) onHoldStart;
-  final Future<void> Function(RemoteButton button) onHoldEnd;
+  final QAppColors colors;
+  final Future<void> Function(RemoteButton) onTapButton;
+  final Future<void> Function(RemoteButton) onHoldStart;
+  final Future<void> Function(RemoteButton) onHoldEnd;
 
   @override
   Widget build(BuildContext context) {
@@ -450,91 +442,53 @@ class _RemoteDPad extends StatelessWidget {
       height: 162,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        border: Border.all(color: FlipperOriginalColors.flipperScreenBorder, width: 3),
+        border: Border.all(color: colors.screenBorder, width: 3),
       ),
       padding: const EdgeInsets.all(3),
       child: ClipOval(
         child: Container(
-          color: FlipperOriginalColors.accent,
+          color: colors.accent,
           child: Column(
             children: [
+              Expanded(child: _row(RemoteButton.up, 'ic_control_up')),
               Expanded(
-                child: Row(
-                  children: [
-                    const Expanded(child: SizedBox.shrink()),
-                    Expanded(
-                      child: _RemotePadButton(
-                        button: RemoteButton.up,
-                        asset: 'assets/flipper_svg/screenstreaming/ic_control_up.svg',
-                        onTap: onTapButton,
-                        onHoldStart: onHoldStart,
-                        onHoldEnd: onHoldEnd,
-                      ),
-                    ),
-                    const Expanded(child: SizedBox.shrink()),
-                  ],
-                ),
+                child: Row(children: [
+                  Expanded(child: _btn(RemoteButton.left, 'ic_control_left')),
+                  Expanded(child: _btn(RemoteButton.ok, 'ic_control_ok')),
+                  Expanded(child: _btn(RemoteButton.right, 'ic_control_right')),
+                ]),
               ),
-              Expanded(
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _RemotePadButton(
-                        button: RemoteButton.left,
-                        asset: 'assets/flipper_svg/screenstreaming/ic_control_left.svg',
-                        onTap: onTapButton,
-                        onHoldStart: onHoldStart,
-                        onHoldEnd: onHoldEnd,
-                      ),
-                    ),
-                    Expanded(
-                      child: _RemotePadButton(
-                        button: RemoteButton.ok,
-                        asset: 'assets/flipper_svg/screenstreaming/ic_control_ok.svg',
-                        onTap: onTapButton,
-                        onHoldStart: onHoldStart,
-                        onHoldEnd: onHoldEnd,
-                      ),
-                    ),
-                    Expanded(
-                      child: _RemotePadButton(
-                        button: RemoteButton.right,
-                        asset: 'assets/flipper_svg/screenstreaming/ic_control_right.svg',
-                        onTap: onTapButton,
-                        onHoldStart: onHoldStart,
-                        onHoldEnd: onHoldEnd,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: Row(
-                  children: [
-                    const Expanded(child: SizedBox.shrink()),
-                    Expanded(
-                      child: _RemotePadButton(
-                        button: RemoteButton.down,
-                        asset: 'assets/flipper_svg/screenstreaming/ic_control_down.svg',
-                        onTap: onTapButton,
-                        onHoldStart: onHoldStart,
-                        onHoldEnd: onHoldEnd,
-                      ),
-                    ),
-                    const Expanded(child: SizedBox.shrink()),
-                  ],
-                ),
-              ),
+              Expanded(child: _row(RemoteButton.down, 'ic_control_down')),
             ],
           ),
         ),
       ),
     );
   }
+
+  Widget _row(RemoteButton center, String asset) {
+    return Row(children: [
+      const Expanded(child: SizedBox.shrink()),
+      Expanded(child: _btn(center, asset)),
+      const Expanded(child: SizedBox.shrink()),
+    ]);
+  }
+
+  Widget _btn(RemoteButton button, String iconName) {
+    return _PadButton(
+      colors: colors,
+      button: button,
+      asset: 'assets/flipper_svg/screenstreaming/$iconName.svg',
+      onTap: onTapButton,
+      onHoldStart: onHoldStart,
+      onHoldEnd: onHoldEnd,
+    );
+  }
 }
 
-class _RemotePadButton extends StatelessWidget {
-  const _RemotePadButton({
+class _PadButton extends StatelessWidget {
+  const _PadButton({
+    required this.colors,
     required this.button,
     required this.asset,
     required this.onTap,
@@ -542,11 +496,12 @@ class _RemotePadButton extends StatelessWidget {
     required this.onHoldEnd,
   });
 
+  final QAppColors colors;
   final RemoteButton button;
   final String asset;
-  final Future<void> Function(RemoteButton button) onTap;
-  final Future<void> Function(RemoteButton button) onHoldStart;
-  final Future<void> Function(RemoteButton button) onHoldEnd;
+  final Future<void> Function(RemoteButton) onTap;
+  final Future<void> Function(RemoteButton) onHoldStart;
+  final Future<void> Function(RemoteButton) onHoldEnd;
 
   @override
   Widget build(BuildContext context) {
@@ -562,10 +517,7 @@ class _RemotePadButton extends StatelessWidget {
           child: Center(
             child: SvgPicture.asset(
               asset,
-              colorFilter: ColorFilter.mode(
-                FlipperOriginalColors.onAccent,
-                BlendMode.srcIn,
-              ),
+              colorFilter: ColorFilter.mode(colors.onAccent, BlendMode.srcIn),
             ),
           ),
         ),
@@ -574,41 +526,44 @@ class _RemotePadButton extends StatelessWidget {
   }
 }
 
-class _RemoteBackButton extends StatelessWidget {
-  const _RemoteBackButton({
+// ─────────────────────────────────────────────────────────────────────────────
+// Back button
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _BackButton extends StatelessWidget {
+  const _BackButton({
+    required this.colors,
     required this.onTap,
     required this.onHoldStart,
     required this.onHoldEnd,
   });
 
-  final Future<void> Function() onTap;
-  final Future<void> Function() onHoldStart;
-  final Future<void> Function() onHoldEnd;
+  final QAppColors colors;
+  final VoidCallback onTap;
+  final void Function(LongPressStartDetails) onHoldStart;
+  final void Function(LongPressEndDetails) onHoldEnd;
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      onLongPressStart: (_) => onHoldStart(),
-      onLongPressEnd: (_) => onHoldEnd(),
+      onLongPressStart: onHoldStart,
+      onLongPressEnd: onHoldEnd,
       child: Container(
         width: 54,
         height: 54,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          border: Border.all(color: FlipperOriginalColors.flipperScreenBorder, width: 3),
+          border: Border.all(color: colors.screenBorder, width: 3),
         ),
         padding: const EdgeInsets.all(3),
         child: ClipOval(
           child: Container(
-            color: FlipperOriginalColors.accent,
+            color: colors.accent,
             padding: const EdgeInsets.all(12),
             child: SvgPicture.asset(
               'assets/flipper_svg/screenstreaming/ic_control_back.svg',
-              colorFilter: ColorFilter.mode(
-                FlipperOriginalColors.onAccent,
-                BlendMode.srcIn,
-              ),
+              colorFilter: ColorFilter.mode(colors.onAccent, BlendMode.srcIn),
             ),
           ),
         ),

@@ -206,9 +206,9 @@ class FlipperMockupWidget extends StatelessWidget {
                         : 'assets/flipper_svg/mockup/template_white_flipper_disabled.svg'),
               ),
               Positioned(
-                left: w * (60.56 / 238),
-                top: h * (10.54 / 100),
-                width: w * (85.33 / 238),
+                left: w * (59.56 / 238),
+                top: h * (9.54 / 100),
+                width: w * (85.33 / 119),
                 height: h * (46.96 / 100),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(w * (3.4 / 238)),
