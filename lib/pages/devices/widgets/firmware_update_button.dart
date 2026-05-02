@@ -169,7 +169,7 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
     final progressValue = (progress?.value?.clamp(0.0, 1.0) as double?) ?? 1.0;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
       child: Column(
         children: [
           GestureDetector(
