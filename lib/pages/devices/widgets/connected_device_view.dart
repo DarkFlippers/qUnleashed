@@ -11,25 +11,21 @@ class ConnectedDeviceView extends StatelessWidget {
     super.key,
     required this.deviceName,
     required this.infoLoading,
-    required this.deviceFirmwareVersion,
-    required this.buildDate,
-    required this.internalFlash,
-    required this.sdCard,
+    required this.deviceInfoEntries,
     required this.onSynchronize,
     required this.onOpenRemoteControl,
     required this.onOpenFullInfo,
+    required this.onExport,
     required this.onDisconnect,
   });
 
   final String deviceName;
   final bool infoLoading;
-  final String deviceFirmwareVersion;
-  final String buildDate;
-  final String internalFlash;
-  final String sdCard;
+  final List<MapEntry<String, String>> deviceInfoEntries;
   final VoidCallback? onSynchronize;
   final VoidCallback onOpenRemoteControl;
   final VoidCallback onOpenFullInfo;
+  final VoidCallback onExport;
   final VoidCallback onDisconnect;
 
   static const double _headerContentHeight = 114;
@@ -47,7 +43,7 @@ class ConnectedDeviceView extends StatelessWidget {
             padding: EdgeInsets.only(top: headerHeight + 14, bottom: 14),
             children: [
               FirmwareCarouselCard(
-                deviceVersion: infoLoading ? '-' : deviceFirmwareVersion,
+                deviceVersion: infoLoading || deviceInfoEntries.isEmpty ? '-' : deviceInfoEntries.first.value,
               ),
               const SizedBox(height: 14),
               FlipperPageCard(
@@ -82,19 +78,48 @@ class ConnectedDeviceView extends StatelessWidget {
                 ),
                 child: Column(
                   children: [
-                    FlipperInfoLine(label: 'Firmware Version', value: deviceFirmwareVersion),
-                    Divider(height: 1, color: colors.divider),
-                    FlipperInfoLine(label: 'Build Date', value: buildDate),
-                    Divider(height: 1, color: colors.divider),
-                    FlipperInfoLine(label: 'Int. Flash (Used/Total)', value: internalFlash),
-                    Divider(height: 1, color: colors.divider),
-                    FlipperInfoLine(label: 'SD Card (Used/Total)', value: sdCard),
+                    for (var i = 0; i < deviceInfoEntries.length; i++) ...[
+                      FlipperInfoLine(
+                        label: deviceInfoEntries[i].key,
+                        value: deviceInfoEntries[i].value,
+                      ),
+                      if (i != deviceInfoEntries.length - 1)
+                        Divider(height: 1, color: colors.divider),
+                    ],
                     Divider(height: 1, color: colors.divider),
                     FlipperActionRow(
                       iconAsset: 'assets/flipper_svg/core/ic_navigate.svg',
                       label: 'Full Info',
                       color: colors.accent,
                       onTap: onOpenFullInfo,
+                    ),
+                    Divider(height: 1, color: colors.divider),
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: onExport,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                          child: Row(
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.only(right: 10),
+                                child: Icon(Icons.copy, color: colors.accent, size: 20),
+                              ),
+                              Expanded(
+                                child: Text(
+                                  'Export',
+                                  style: TextStyle(
+                                    color: colors.accent,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
                   ],
                 ),
