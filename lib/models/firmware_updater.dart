@@ -72,6 +72,7 @@ class FirmwareUpdater {
     required FirmwareEntry entry,
     required FirmwareChannel channel,
     String target = 'f7',
+    UnleashedVariant variant = UnleashedVariant.base,
     required FlipperClient client,
     required void Function(UpdateState) onState,
   }) async {
@@ -87,7 +88,12 @@ class FirmwareUpdater {
         return;
       }
 
-      final tgzFile = version.updatePackageFor(target);
+      final FirmwareFile? tgzFile;
+      if (parser is UnleashedParser) {
+        tgzFile = parser.getUpdatePackage(channel, target: target, variant: variant);
+      } else {
+        tgzFile = version.updatePackageFor(target);
+      }
       if (tgzFile == null) {
         onState(UpdateError('No update_tgz for target=$target'));
         return;

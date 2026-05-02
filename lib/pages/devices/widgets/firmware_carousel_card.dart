@@ -34,6 +34,7 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
   final Set<String> _fetching = {};
 
   final Map<String, FirmwareChannel> _channelByEntry = {};
+  final Map<String, UnleashedVariant> _variantByEntry = {};
 
   @override
   void initState() {
@@ -125,6 +126,11 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
   FirmwareChannel _selectedChannel(FirmwareEntry entry) =>
       _channelByEntry[entry.shortName] ?? FirmwareChannel.release;
 
+  UnleashedVariant _selectedVariant(FirmwareEntry entry) =>
+      _variantByEntry[entry.shortName] ?? UnleashedVariant.base;
+
+  bool _hasVariants(FirmwareEntry entry) => entry.shortName == 'unlshd';
+
   String? _latestVersionFor(FirmwareEntry entry) {
     final dir = _directories[entry.shortName];
     if (dir == null) return null;
@@ -150,6 +156,7 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
     }
 
     final channel = _selectedChannel(entry);
+    final variant = _selectedVariant(entry);
     final parser = _parserFor(entry);
 
     final controller = ValueNotifier<UpdateState>(const UpdateFetching());
@@ -170,6 +177,7 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
       await FirmwareUpdater.install(
         entry: entry,
         channel: channel,
+        variant: variant,
         client: _client,
         onState: (state) {
           controller.value = state;
@@ -207,15 +215,22 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
     final body = <Widget>[];
 
     if (config.isSingle) {
-      body.add(_SingleChannelRow(
+      body.add(_FirmwareSlide(
         entry: entry,
         fetchLoading: loading,
         latestVersion: latestVersion,
+        channel: _selectedChannel(entry),
+        variant: _selectedVariant(entry),
+        showVariant: _hasVariants(entry),
+        onChannelChanged: (c) =>
+            setState(() => _channelByEntry[entry.shortName] = c),
+        onVariantChanged: (v) =>
+            setState(() => _variantByEntry[entry.shortName] = v),
       ));
       body.add(Divider(height: 1, color: colors.divider));
     } else {
       body.add(SizedBox(
-        height: 80,
+        height: 110,
         child: PageView.builder(
           controller: _controller,
           itemCount: config.firmwares.length,
@@ -227,6 +242,13 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
               fetchLoading: _fetching.contains(firmware.shortName) ||
                   !_directories.containsKey(firmware.shortName),
               latestVersion: _latestVersionFor(firmware),
+              channel: _selectedChannel(firmware),
+              variant: _selectedVariant(firmware),
+              showVariant: _hasVariants(firmware),
+              onChannelChanged: (c) =>
+                  setState(() => _channelByEntry[firmware.shortName] = c),
+              onVariantChanged: (v) =>
+                  setState(() => _variantByEntry[firmware.shortName] = v),
             );
           },
         ),
@@ -252,12 +274,6 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
       ));
     }
 
-    body.add(_ChannelSelector(
-      value: _selectedChannel(entry),
-      accent: entry.colors.primary,
-      onChanged: (c) => setState(() => _channelByEntry[entry.shortName] = c),
-    ));
-
     body.add(_FirmwareButton(
       fetchLoading: loading,
       latestVersion: latestVersion,
@@ -272,150 +288,26 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
   }
 }
 
-class _ChannelSelector extends StatelessWidget {
-  const _ChannelSelector({
-    required this.value,
-    required this.accent,
-    required this.onChanged,
-  });
-
-  final FirmwareChannel value;
-  final Color accent;
-  final ValueChanged<FirmwareChannel> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.appColors;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-      child: Row(
-        children: [
-          Text('Channel', style: TextStyle(fontSize: 13, color: colors.textMuted)),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Wrap(
-              alignment: WrapAlignment.end,
-              spacing: 6,
-              runSpacing: 4,
-              children: FirmwareChannel.values.map((c) {
-                final selected = c == value;
-                return _Chip(
-                  label: _channelShort(c),
-                  selected: selected,
-                  accent: accent,
-                  onTap: () => onChanged(c),
-                );
-              }).toList(),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  static String _channelShort(FirmwareChannel c) => switch (c) {
-        FirmwareChannel.release => 'Release',
-        FirmwareChannel.releaseCandidate => 'RC',
-        FirmwareChannel.development => 'Dev',
-      };
-}
-
-
-class _Chip extends StatelessWidget {
-  const _Chip({
-    required this.label,
-    required this.selected,
-    required this.accent,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final Color accent;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.appColors;
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: BoxDecoration(
-          color: selected ? accent : Colors.transparent,
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: selected ? accent : colors.divider),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: selected ? Colors.white : colors.textMuted,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SingleChannelRow extends StatelessWidget {
-  const _SingleChannelRow({
-    required this.entry,
-    required this.fetchLoading,
-    required this.latestVersion,
-  });
-
-  final FirmwareEntry entry;
-  final bool fetchLoading;
-  final String? latestVersion;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.appColors;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              'Update Channel',
-              style: TextStyle(fontSize: 14, color: colors.textMuted),
-            ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                entry.name,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: entry.colors.primary,
-                ),
-              ),
-              Text(
-                fetchLoading ? 'Checking…' : (latestVersion ?? '—'),
-                style: TextStyle(fontSize: 12, color: colors.textMuted),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _FirmwareSlide extends StatelessWidget {
   const _FirmwareSlide({
     required this.entry,
     required this.fetchLoading,
     required this.latestVersion,
+    required this.channel,
+    required this.variant,
+    required this.showVariant,
+    required this.onChannelChanged,
+    required this.onVariantChanged,
   });
 
   final FirmwareEntry entry;
   final bool fetchLoading;
   final String? latestVersion;
+  final FirmwareChannel channel;
+  final UnleashedVariant variant;
+  final bool showVariant;
+  final ValueChanged<FirmwareChannel> onChannelChanged;
+  final ValueChanged<UnleashedVariant> onVariantChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -428,7 +320,7 @@ class _FirmwareSlide extends StatelessWidget {
             borderRadius: BorderRadius.circular(14),
             child: Image.asset(entry.assetPath, width: 62, height: 62, fit: BoxFit.cover),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -450,7 +342,96 @@ class _FirmwareSlide extends StatelessWidget {
               ],
             ),
           ),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 130,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _MiniDropdown<FirmwareChannel>(
+                  value: channel,
+                  items: FirmwareChannel.values,
+                  labelOf: _channelLabel,
+                  accent: entry.colors.primary,
+                  onChanged: onChannelChanged,
+                ),
+                if (showVariant) ...[
+                  const SizedBox(height: 4),
+                  _MiniDropdown<UnleashedVariant>(
+                    value: variant,
+                    items: UnleashedVariant.values,
+                    labelOf: _variantLabel,
+                    accent: entry.colors.primary,
+                    onChanged: onVariantChanged,
+                  ),
+                ],
+              ],
+            ),
+          ),
         ],
+      ),
+    );
+  }
+
+  static String _channelLabel(FirmwareChannel c) => switch (c) {
+        FirmwareChannel.release => 'Release',
+        FirmwareChannel.releaseCandidate => 'PreRelease',
+        FirmwareChannel.development => 'Development',
+      };
+
+  static String _variantLabel(UnleashedVariant v) => switch (v) {
+        UnleashedVariant.base => 'Default',
+        UnleashedVariant.compact => 'Compact',
+        UnleashedVariant.extraPacks => 'Extra',
+      };
+}
+
+class _MiniDropdown<T> extends StatelessWidget {
+  const _MiniDropdown({
+    required this.value,
+    required this.items,
+    required this.labelOf,
+    required this.accent,
+    required this.onChanged,
+  });
+
+  final T value;
+  final List<T> items;
+  final String Function(T) labelOf;
+  final Color accent;
+  final ValueChanged<T> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: colors.divider),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<T>(
+          value: value,
+          isDense: true,
+          isExpanded: true,
+          icon: Icon(Icons.arrow_drop_down, size: 18, color: colors.textMuted),
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: accent,
+          ),
+          items: items
+              .map((v) => DropdownMenuItem<T>(
+                    value: v,
+                    child: Text(labelOf(v)),
+                  ))
+              .toList(),
+          onChanged: (v) {
+            if (v != null) onChanged(v);
+          },
+        ),
       ),
     );
   }
