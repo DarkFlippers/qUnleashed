@@ -82,12 +82,17 @@ class FirmwareVersion {
 
   DateTime get releaseDate => DateTime.fromMillisecondsSinceEpoch(timestamp * 1000);
 
-  FirmwareFile? fileOfType(String type) {
+  FirmwareFile? fileOfType(String type, {String? target}) {
     for (final f in files) {
-      if (f.type == type) return f;
+      if (f.type != type) continue;
+      if (target != null && f.target != target) continue;
+      return f;
     }
     return null;
   }
+
+  FirmwareFile? updatePackageFor(String target) =>
+      fileOfType('update_tgz', target: target);
 
   FirmwareFile? get updatePackage => fileOfType('update_tgz');
 
