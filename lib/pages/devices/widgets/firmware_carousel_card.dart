@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
@@ -32,6 +33,7 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
   final Map<String, FirmwareParser> _parsers = {};
   final Map<String, FirmwareDirectory?> _directories = {};
   final Set<String> _fetching = {};
+  final Map<String, Timer> _retryTimers = {};
 
   final Map<String, FirmwareChannel> _channelByEntry = {};
   final Map<String, UnleashedVariant> _variantByEntry = {};
@@ -84,6 +86,25 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
     _fetchDirectory(entry);
   }
 
+  void _scheduleRetry(FirmwareEntry entry) {
+    final key = entry.shortName;
+    if (_retryTimers.containsKey(key)) return;
+    _retryTimers[key] = Timer.periodic(const Duration(seconds: 5), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        _retryTimers.remove(key);
+        return;
+      }
+      if (_fetching.contains(key)) return;
+      _fetching.add(key);
+      _fetchDirectory(entry);
+    });
+  }
+
+  void _cancelRetry(String key) {
+    _retryTimers.remove(key)?.cancel();
+  }
+
   Future<void> _fetchDirectory(FirmwareEntry entry) async {
     final parser = _parserFor(entry);
     FirmwareDirectory? dir;
@@ -98,6 +119,11 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
       _fetching.remove(entry.shortName);
       _channelByEntry.putIfAbsent(entry.shortName, () => FirmwareChannel.release);
     });
+    if (dir == null) {
+      _scheduleRetry(entry);
+    } else {
+      _cancelRetry(entry.shortName);
+    }
   }
 
   void _onPageChanged(int page) {
@@ -140,6 +166,9 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
 
   @override
   void dispose() {
+    for (final timer in _retryTimers.values) {
+      timer.cancel();
+    }
     _controller.dispose();
     super.dispose();
   }
@@ -275,9 +304,11 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
     }
 
     body.add(_FirmwareButton(
+      entry: entry,
       fetchLoading: loading,
       latestVersion: latestVersion,
       deviceVersion: widget.deviceVersion,
+      selectedVariant: _selectedVariant(entry),
       onTap: () => _startUpdate(entry),
     ));
 
@@ -463,15 +494,19 @@ const _kFlipperBold = TextStyle(
 
 class _FirmwareButton extends StatelessWidget {
   const _FirmwareButton({
+    required this.entry,
     required this.fetchLoading,
     required this.latestVersion,
     required this.deviceVersion,
+    required this.selectedVariant,
     required this.onTap,
   });
 
+  final FirmwareEntry entry;
   final bool fetchLoading;
   final String? latestVersion;
   final String? deviceVersion;
+  final UnleashedVariant selectedVariant;
   final VoidCallback onTap;
 
   @override
@@ -550,12 +585,23 @@ class _FirmwareButton extends StatelessWidget {
       );
     }
 
-    if (deviceVersion == latestVersion) {
+    final match = _matchSelectedFirmware();
+    if (match == _SelectedFirmwareMatch.exact) {
       return _ButtonState(
         label: 'NO UPDATES',
         color: FlipperOriginalColors.text16,
         description: 'There are no updates in the selected channel',
         enabled: false,
+      );
+    }
+
+    if (match == _SelectedFirmwareMatch.versionOnly) {
+      return _ButtonState(
+        label: 'INSTALL',
+        color: FlipperOriginalColors.accent,
+        description:
+            'Firmware version matches, but the selected modification is different.\nSelected firmware will be installed.',
+        enabled: true,
       );
     }
 
@@ -566,6 +612,66 @@ class _FirmwareButton extends StatelessWidget {
       enabled: true,
     );
   }
+
+  _SelectedFirmwareMatch _matchSelectedFirmware() {
+    final installed = _parseInstalledFirmware();
+    if (installed == null) return _SelectedFirmwareMatch.noMatch;
+
+    if (installed.version != latestVersion) {
+      return _SelectedFirmwareMatch.noMatch;
+    }
+
+    if (entry.shortName != 'unlshd') {
+      return _SelectedFirmwareMatch.exact;
+    }
+
+    final selectedVariant = this.selectedVariant;
+    final installedVariant = installed.variant ?? UnleashedVariant.base;
+    return installedVariant == selectedVariant
+        ? _SelectedFirmwareMatch.exact
+        : _SelectedFirmwareMatch.versionOnly;
+  }
+
+  _InstalledFirmwareSelection? _parseInstalledFirmware() {
+    final raw = deviceVersion?.trim();
+    final latest = latestVersion?.trim();
+    if (raw == null || raw.isEmpty || latest == null || latest.isEmpty) return null;
+
+    if (entry.shortName != 'unlshd') {
+      return _InstalledFirmwareSelection(version: raw);
+    }
+
+    final normalized = raw.toLowerCase();
+    final latestNormalized = latest.toLowerCase();
+    if (!normalized.startsWith(latestNormalized)) {
+      return _InstalledFirmwareSelection(version: raw);
+    }
+
+    final suffix = normalized.substring(latestNormalized.length);
+    final variant = switch (suffix) {
+      'c' => UnleashedVariant.compact,
+      'e' => UnleashedVariant.extraPacks,
+      '' => UnleashedVariant.base,
+      _ => null,
+    };
+    return _InstalledFirmwareSelection(version: latest, variant: variant);
+  }
+}
+
+enum _SelectedFirmwareMatch {
+  exact,
+  versionOnly,
+  noMatch,
+}
+
+class _InstalledFirmwareSelection {
+  const _InstalledFirmwareSelection({
+    required this.version,
+    this.variant,
+  });
+
+  final String version;
+  final UnleashedVariant? variant;
 }
 
 class _ButtonState {
