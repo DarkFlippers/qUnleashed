@@ -37,6 +37,7 @@ class FirmwareUpdateButton extends StatefulWidget {
 }
 
 class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
+  static const double _idleOpacity = 0.38;
   UpdateState? _updateState;
   String? _inlineMessage;
 
@@ -160,6 +161,12 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
   Widget build(BuildContext context) {
     final state = _resolve();
     final progress = _progressFor(state);
+    final borderColor = state.color;
+    final baseColor = progress == null
+        ? state.color
+        : state.color.withOpacity(_idleOpacity);
+    final fillColor = progress?.color ?? borderColor;
+    final progressValue = (progress?.value?.clamp(0.0, 1.0) as double?) ?? 1.0;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
@@ -170,27 +177,63 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(9),
               child: SizedBox(
+                height: 50,
                 width: double.infinity,
                 child: Stack(
                   alignment: Alignment.center,
                   children: [
                     Positioned.fill(
-                      child: ColoredBox(color: state.color),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: baseColor,
+                          border: Border.all(
+                            color: borderColor,
+                            width: 1.25,
+                          ),
+                          borderRadius: BorderRadius.circular(9),
+                        ),
+                      ),
                     ),
                     if (progress != null)
                       Positioned.fill(
-                        child: LinearProgressIndicator(
-                          value: progress.value,
-                          backgroundColor: state.color,
-                          valueColor: AlwaysStoppedAnimation<Color>(progress.color),
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            return Align(
+                              alignment: Alignment.centerLeft,
+                              child: SizedBox(
+                                width: constraints.maxWidth * progressValue,
+                                height: constraints.maxHeight,
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    color: fillColor,
+                                    borderRadius: BorderRadius.circular(9),
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
                         ),
                       ),
+                    Positioned.fill(
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                            color: borderColor,
+                            width: 1.25,
+                          ),
+                          borderRadius: BorderRadius.circular(9),
+                        ),
+                      ),
+                    ),
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 6),
-                      child: Text(
-                        state.label,
-                        style: _kFlipperButtonText.copyWith(
-                          color: FlipperOriginalColors.onAccent,
+                      child: Center(
+                        child: Text(
+                          state.label.toUpperCase(),
+                          textAlign: TextAlign.center,
+                          style: _kFlipperButtonText.copyWith(
+                            color: Colors.white,
+                          ),
                         ),
                       ),
                     ),
@@ -271,27 +314,27 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
     return switch (updateState) {
       UpdateFetching() => _ProgressVisual(
           value: null,
-          color: FlipperOriginalColors.blue,
+          color: state.color,
         ),
       UpdateDownloading(:final progress) => _ProgressVisual(
           value: progress,
-          color: FlipperOriginalColors.blue,
+          color: state.color,
         ),
       UpdateUploading(:final progress) => _ProgressVisual(
           value: progress,
-          color: const Color(0xFF7DFFAE),
+          color: state.color,
         ),
       UpdateStarting() => _ProgressVisual(
           value: null,
-          color: const Color(0xFF7DFFAE),
+          color: state.color,
         ),
       UpdateDone() => _ProgressVisual(
           value: 1,
-          color: const Color(0xFF7DFFAE),
+          color: state.color,
         ),
       _ when state.description == 'Checking for updates…' => _ProgressVisual(
           value: null,
-          color: FlipperOriginalColors.blue,
+          color: state.color,
         ),
       _ => null,
     };
