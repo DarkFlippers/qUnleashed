@@ -154,7 +154,7 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
           else
             TextButton(
               onPressed: _startScan,
-              child: const Text('Search again'),
+              child: const Icon(Icons.refresh),
             ),
         ],
       ),
