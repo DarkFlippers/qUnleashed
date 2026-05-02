@@ -21,6 +21,9 @@ dependencies:
   saver_gallery: ^4.1.1
   super_clipboard: ^0.9.1
   archive: ^4.0.0
+  markdown: ^7.3.0
+  flutter_html: ^3.0.0-beta.2
+  flutter_html_table: ^3.0.0-beta.2
 
 dev_dependencies:
   flutter_test:
