@@ -154,6 +154,7 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
         : config.firmwares.indexWhere((entry) => entry.shortName == active.shortName);
     final targetPage = index < 0 ? 0 : index;
     _page = targetPage;
+    _themeController.setActiveFirmware(config.firmwares[targetPage]);
     _ensureDirectory(config.firmwares[targetPage]);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_controller.hasClients) return;
@@ -217,7 +218,6 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
         onVariantChanged: (v) =>
             setState(() => _variantByEntry[entry.shortName] = v),
       ));
-      body.add(Divider(height: 1, color: colors.divider));
     } else {
       body.add(SizedBox(
         height: 110,
@@ -257,25 +257,6 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
               onTap: () => _goToPage(_page + 1),
             ),
           ],
-        ),
-      ));
-      body.add(Padding(
-        padding: const EdgeInsets.only(bottom: 6),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: List.generate(config.firmwares.length, (i) {
-            final active = i == _page;
-            return AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              margin: const EdgeInsets.symmetric(horizontal: 3),
-              width: active ? 8 : 5,
-              height: active ? 8 : 5,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: active ? entry.colors.primary : colors.textMuted,
-              ),
-            );
-          }),
         ),
       ));
     }
