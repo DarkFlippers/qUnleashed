@@ -1,13 +1,14 @@
 import 'package:flipperlib/flipperlib.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../../models/firmware_config.dart';
 import '../../../models/firmware_directory.dart';
 import '../../../theme.dart';
-import '../../../widgets/simple_markdown.dart';
+import '../../../widgets/changelog_renderer.dart';
 import 'firmware_update_button.dart';
 
-class FirmwareChangelogPage extends StatelessWidget {
+class FirmwareChangelogPage extends StatefulWidget {
   const FirmwareChangelogPage({
     super.key,
     required this.entry,
@@ -30,6 +31,22 @@ class FirmwareChangelogPage extends StatelessWidget {
   final FirmwareChannel selectedChannel;
   final UnleashedVariant selectedVariant;
   final FlipperClient client;
+
+  @override
+  State<FirmwareChangelogPage> createState() => _FirmwareChangelogPageState();
+}
+
+class _FirmwareChangelogPageState extends State<FirmwareChangelogPage> {
+  late final Future<String> _preparedHtml;
+
+  @override
+  void initState() {
+    super.initState();
+    _preparedHtml = compute(
+      buildChangelogHtml,
+      widget.changelog.trim().isEmpty ? 'Empty changelog' : widget.changelog,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -56,11 +73,11 @@ class FirmwareChangelogPage extends StatelessWidget {
             ),
             const SizedBox(height: 2),
             Text(
-              version.version,
+              widget.version.version,
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
-                color: entry.colors.primary,
+                color: widget.entry.colors.primary,
               ),
             ),
           ],
@@ -71,26 +88,41 @@ class FirmwareChangelogPage extends StatelessWidget {
         child: Column(
           children: [
             Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(18, 14, 18, 8),
-                child: SimpleMarkdown(
-                  data: changelog.trim().isEmpty ? 'Empty changelog' : changelog,
-                  textColor: colors.textPrimary,
-                  mutedColor: colors.textSecondary,
-                ),
+              child: FutureBuilder<String>(
+                future: _preparedHtml,
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) {
+                    return const Center(
+                      child: SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    );
+                  }
+
+                  return SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(18, 14, 18, 8),
+                    child: ChangelogRenderer(
+                      html: snapshot.data!,
+                      textColor: colors.textPrimary,
+                      mutedColor: colors.textSecondary,
+                    ),
+                  );
+                },
               ),
             ),
             Container(
               color: colors.card,
               padding: const EdgeInsets.only(bottom: 8),
               child: FirmwareUpdateButton(
-                entry: entry,
-                fetchLoading: fetchLoading,
-                latestVersion: latestVersion,
-                deviceVersion: deviceVersion,
-                selectedChannel: selectedChannel,
-                selectedVariant: selectedVariant,
-                client: client,
+                entry: widget.entry,
+                fetchLoading: widget.fetchLoading,
+                latestVersion: widget.latestVersion,
+                deviceVersion: widget.deviceVersion,
+                selectedChannel: widget.selectedChannel,
+                selectedVariant: widget.selectedVariant,
+                client: widget.client,
               ),
             ),
           ],
