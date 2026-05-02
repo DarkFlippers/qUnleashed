@@ -96,31 +96,40 @@ class _BottomTab extends StatelessWidget {
     final colors = context.appColors;
     final color = selected ? colors.textPrimary : colors.textMuted;
     final iconColor = colors.textMuted;
-    return InkWell(
-      onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-            width: 42,
-            height: 24,
-            child: applyTint
-                ? SvgPicture.asset(
-                    asset,
-                    colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
-                  )
-                : SvgPicture.asset(asset),
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(10),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 42,
+                height: 24,
+                child: applyTint
+                    ? SvgPicture.asset(
+                        asset,
+                        colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
+                      )
+                    : SvgPicture.asset(asset),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  color: color,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              color: color,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -144,33 +153,34 @@ class FlipperPageCard extends StatelessWidget {
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.symmetric(horizontal: 14),
-      decoration: BoxDecoration(
+      child: Material(
         color: colors.card,
         borderRadius: BorderRadius.circular(10),
-      ),
-      child: Column(
-        children: [
-          if (title != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      title!,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: colors.textPrimary,
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          children: [
+            if (title != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        title!,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: colors.textPrimary,
+                        ),
                       ),
                     ),
-                  ),
-                  if (trailing != null) trailing!,
-                ],
+                    if (trailing != null) trailing!,
+                  ],
+                ),
               ),
-            ),
-          child,
-        ],
+            child,
+          ],
+        ),
       ),
     );
   }
@@ -279,7 +289,13 @@ class FlipperActionRow extends StatelessWidget {
       ],
     );
     if (onTap == null) return row;
-    return InkWell(onTap: onTap, child: row);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: row,
+      ),
+    );
   }
 }
 
