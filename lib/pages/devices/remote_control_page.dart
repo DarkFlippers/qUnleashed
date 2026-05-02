@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io' as io;
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flipperlib/flipperlib.dart' hide DateTime, File;
