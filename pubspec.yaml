@@ -20,6 +20,7 @@ dependencies:
   fixnum: ^1.1.1
   saver_gallery: ^4.1.1
   super_clipboard: ^0.9.1
+  archive: ^4.0.0
 
 dev_dependencies:
   flutter_test:
