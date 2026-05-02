@@ -134,6 +134,18 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
     _ensureDirectory(config.firmwares[page]);
   }
 
+  void _goToPage(int page) {
+    final config = _config;
+    if (config == null || config.firmwares.isEmpty) return;
+    final targetPage = page.clamp(0, config.firmwares.length - 1);
+    if (targetPage == _page) return;
+    _controller.animateToPage(
+      targetPage,
+      duration: const Duration(milliseconds: 220),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
   void _syncPageToTheme(FirmwareConfig config) {
     if (config.firmwares.isEmpty) return;
     final active = _themeController.activeFirmware;
@@ -209,26 +221,42 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
     } else {
       body.add(SizedBox(
         height: 110,
-        child: PageView.builder(
-          controller: _controller,
-          itemCount: config.firmwares.length,
-          onPageChanged: _onPageChanged,
-          itemBuilder: (_, i) {
-            final firmware = config.firmwares[i];
-            return _FirmwareSlide(
-              entry: firmware,
-              fetchLoading: _fetching.contains(firmware.shortName) ||
-                  !_directories.containsKey(firmware.shortName),
-              latestVersion: _latestVersionFor(firmware),
-              channel: _selectedChannel(firmware),
-              variant: _selectedVariant(firmware),
-              showVariant: _hasVariants(firmware),
-              onChannelChanged: (c) =>
-                  setState(() => _channelByEntry[firmware.shortName] = c),
-              onVariantChanged: (v) =>
-                  setState(() => _variantByEntry[firmware.shortName] = v),
-            );
-          },
+        child: Row(
+          children: [
+            _CarouselNavButton(
+              icon: Icons.chevron_left,
+              enabled: _page > 0,
+              onTap: () => _goToPage(_page - 1),
+            ),
+            Expanded(
+              child: PageView.builder(
+                controller: _controller,
+                itemCount: config.firmwares.length,
+                onPageChanged: _onPageChanged,
+                itemBuilder: (_, i) {
+                  final firmware = config.firmwares[i];
+                  return _FirmwareSlide(
+                    entry: firmware,
+                    fetchLoading: _fetching.contains(firmware.shortName) ||
+                        !_directories.containsKey(firmware.shortName),
+                    latestVersion: _latestVersionFor(firmware),
+                    channel: _selectedChannel(firmware),
+                    variant: _selectedVariant(firmware),
+                    showVariant: _hasVariants(firmware),
+                    onChannelChanged: (c) =>
+                        setState(() => _channelByEntry[firmware.shortName] = c),
+                    onVariantChanged: (v) =>
+                        setState(() => _variantByEntry[firmware.shortName] = v),
+                  );
+                },
+              ),
+            ),
+            _CarouselNavButton(
+              icon: Icons.chevron_right,
+              enabled: _page < config.firmwares.length - 1,
+              onTap: () => _goToPage(_page + 1),
+            ),
+          ],
         ),
       ));
       body.add(Padding(
@@ -415,6 +443,40 @@ class _MiniDropdown<T> extends StatelessWidget {
           onChanged: (v) {
             if (v != null) onChanged(v);
           },
+        ),
+      ),
+    );
+  }
+}
+
+class _CarouselNavButton extends StatelessWidget {
+  const _CarouselNavButton({
+    required this.icon,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    return SizedBox(
+      width: 28,
+      child: Center(
+        child: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: enabled ? onTap : null,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 18),
+            child: Icon(
+              icon,
+              size: 20,
+              color: enabled ? colors.textPrimary : colors.textMuted,
+            ),
+          ),
         ),
       ),
     );
