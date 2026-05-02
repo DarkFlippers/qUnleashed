@@ -4,11 +4,11 @@ import 'package:flutter/material.dart';
 
 import '../../../models/firmware_config.dart';
 import '../../../models/firmware_directory.dart';
-import '../../../models/firmware_updater.dart';
 import '../../../models/ofw_parser.dart';
 import '../../../models/unleashed_parser.dart';
 import '../../../theme.dart';
 import '../../../widgets/device_shell.dart';
+import 'firmware_update_button.dart';
 
 class FirmwareCarouselCard extends StatefulWidget {
   const FirmwareCarouselCard({
@@ -173,57 +173,6 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
     super.dispose();
   }
 
-  Future<void> _startUpdate(FirmwareEntry entry) async {
-    if (!_client.isConnected) {
-      _toast('Connect a Flipper first');
-      return;
-    }
-    final dir = _directories[entry.shortName];
-    if (dir == null) {
-      _toast('Update directory not loaded');
-      return;
-    }
-
-    final channel = _selectedChannel(entry);
-    final variant = _selectedVariant(entry);
-    final parser = _parserFor(entry);
-
-    final controller = ValueNotifier<UpdateState>(const UpdateFetching());
-    final dialogFuture = showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => _UpdateProgressDialog(controller: controller),
-    );
-
-    try {
-      final version = parser.getLatestVersion(channel);
-      final pkg = version?.updatePackageFor('f7');
-      if (pkg == null) {
-        controller.value = UpdateError('No build for ${channel.displayName}');
-        return;
-      }
-
-      await FirmwareUpdater.install(
-        entry: entry,
-        channel: channel,
-        variant: variant,
-        client: _client,
-        onState: (state) {
-          controller.value = state;
-        },
-      );
-    } catch (e) {
-      controller.value = UpdateError(e.toString());
-    } finally {
-      await dialogFuture;
-      controller.dispose();
-    }
-  }
-
-  void _toast(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
-  }
-
   @override
   Widget build(BuildContext context) {
     final config = _config;
@@ -303,13 +252,17 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
       ));
     }
 
-    body.add(_FirmwareButton(
+    body.add(FirmwareUpdateButton(
+      key: ValueKey(
+        '${entry.shortName}:${_selectedChannel(entry).id}:${_selectedVariant(entry).name}:${latestVersion ?? ''}:${widget.deviceVersion ?? ''}',
+      ),
       entry: entry,
       fetchLoading: loading,
       latestVersion: latestVersion,
       deviceVersion: widget.deviceVersion,
+      selectedChannel: _selectedChannel(entry),
       selectedVariant: _selectedVariant(entry),
-      onTap: () => _startUpdate(entry),
+      client: _client,
     ));
 
     return FlipperPageCard(
@@ -484,262 +437,4 @@ class _LoadingRow extends StatelessWidget {
       ),
     );
   }
-}
-
-const _kFlipperBold = TextStyle(
-  fontFamily: 'FlipperBold',
-  fontSize: 40,
-  fontWeight: FontWeight.w500,
-);
-
-class _FirmwareButton extends StatelessWidget {
-  const _FirmwareButton({
-    required this.entry,
-    required this.fetchLoading,
-    required this.latestVersion,
-    required this.deviceVersion,
-    required this.selectedVariant,
-    required this.onTap,
-  });
-
-  final FirmwareEntry entry;
-  final bool fetchLoading;
-  final String? latestVersion;
-  final String? deviceVersion;
-  final UnleashedVariant selectedVariant;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final state = _resolve();
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 0, 12, 0),
-      child: Column(
-        children: [
-          GestureDetector(
-            onTap: state.enabled ? onTap : null,
-            child: Container(
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: state.color,
-                borderRadius: BorderRadius.circular(9),
-              ),
-              alignment: Alignment.center,
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Text(state.label, style: _kFlipperBold),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(4, 4, 4, 12),
-            child: Text(
-              state.description,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w400,
-                color: FlipperOriginalColors.text30,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  _ButtonState _resolve() {
-    if (fetchLoading) {
-      return _ButtonState(
-        label: 'INSTALL',
-        color: FlipperOriginalColors.accent,
-        description: 'Checking for updates…',
-        enabled: false,
-      );
-    }
-
-    if (latestVersion == null) {
-      return _ButtonState(
-        label: 'INSTALL',
-        color: FlipperOriginalColors.accent,
-        description: 'Can\'t connect to update server',
-        enabled: false,
-      );
-    }
-
-    if (deviceVersion == null) {
-      return _ButtonState(
-        label: 'INSTALL',
-        color: FlipperOriginalColors.accent,
-        description:
-            'Firmware on Flipper doesn\'t match the selected update channel.\nSelected version will be installed.',
-        enabled: true,
-      );
-    }
-
-    if (deviceVersion == '-') {
-      return _ButtonState(
-        label: 'INSTALL',
-        color: FlipperOriginalColors.accent,
-        description: 'Checking device firmware version…',
-        enabled: false,
-      );
-    }
-
-    final match = _matchSelectedFirmware();
-    if (match == _SelectedFirmwareMatch.exact) {
-      return _ButtonState(
-        label: 'NO UPDATES',
-        color: FlipperOriginalColors.text16,
-        description: 'There are no updates in the selected channel',
-        enabled: false,
-      );
-    }
-
-    if (match == _SelectedFirmwareMatch.versionOnly) {
-      return _ButtonState(
-        label: 'INSTALL',
-        color: FlipperOriginalColors.accent,
-        description:
-            'Firmware version matches, but the selected modification is different.\nSelected firmware will be installed.',
-        enabled: true,
-      );
-    }
-
-    return _ButtonState(
-      label: 'UPDATE',
-      color: FlipperOriginalColors.green,
-      description: 'Update Flipper to the latest version',
-      enabled: true,
-    );
-  }
-
-  _SelectedFirmwareMatch _matchSelectedFirmware() {
-    final installed = _parseInstalledFirmware();
-    if (installed == null) return _SelectedFirmwareMatch.noMatch;
-
-    if (installed.version != latestVersion) {
-      return _SelectedFirmwareMatch.noMatch;
-    }
-
-    if (entry.shortName != 'unlshd') {
-      return _SelectedFirmwareMatch.exact;
-    }
-
-    final selectedVariant = this.selectedVariant;
-    final installedVariant = installed.variant ?? UnleashedVariant.base;
-    return installedVariant == selectedVariant
-        ? _SelectedFirmwareMatch.exact
-        : _SelectedFirmwareMatch.versionOnly;
-  }
-
-  _InstalledFirmwareSelection? _parseInstalledFirmware() {
-    final raw = deviceVersion?.trim();
-    final latest = latestVersion?.trim();
-    if (raw == null || raw.isEmpty || latest == null || latest.isEmpty) return null;
-
-    if (entry.shortName != 'unlshd') {
-      return _InstalledFirmwareSelection(version: raw);
-    }
-
-    final normalized = raw.toLowerCase();
-    final latestNormalized = latest.toLowerCase();
-    if (!normalized.startsWith(latestNormalized)) {
-      return _InstalledFirmwareSelection(version: raw);
-    }
-
-    final suffix = normalized.substring(latestNormalized.length);
-    final variant = switch (suffix) {
-      'c' => UnleashedVariant.compact,
-      'e' => UnleashedVariant.extraPacks,
-      '' => UnleashedVariant.base,
-      _ => null,
-    };
-    return _InstalledFirmwareSelection(version: latest, variant: variant);
-  }
-}
-
-enum _SelectedFirmwareMatch {
-  exact,
-  versionOnly,
-  noMatch,
-}
-
-class _InstalledFirmwareSelection {
-  const _InstalledFirmwareSelection({
-    required this.version,
-    this.variant,
-  });
-
-  final String version;
-  final UnleashedVariant? variant;
-}
-
-class _ButtonState {
-  const _ButtonState({
-    required this.label,
-    required this.color,
-    required this.description,
-    required this.enabled,
-  });
-
-  final String label;
-  final Color color;
-  final String description;
-  final bool enabled;
-}
-
-class _UpdateProgressDialog extends StatelessWidget {
-  const _UpdateProgressDialog({required this.controller});
-
-  final ValueNotifier<UpdateState> controller;
-
-  @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<UpdateState>(
-      valueListenable: controller,
-      builder: (context, state, _) {
-        final done = state is UpdateDone || state is UpdateError;
-        final (title, body, progress) = _describe(state);
-        return AlertDialog(
-          title: Text(title),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(body),
-              const SizedBox(height: 12),
-              if (progress != null)
-                LinearProgressIndicator(value: progress)
-              else if (!done)
-                const LinearProgressIndicator(),
-            ],
-          ),
-          actions: [
-            if (done)
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('OK'),
-              ),
-          ],
-        );
-      },
-    );
-  }
-
-  (String, String, double?) _describe(UpdateState state) => switch (state) {
-        UpdateIdle() => ('Update', 'Idle', null),
-        UpdateFetching() => ('Update', 'Fetching directory…', null),
-        UpdateDownloading(:final progress) =>
-          ('Update', 'Downloading firmware…', progress),
-        UpdateUploading(:final progress) =>
-          ('Update', 'Uploading to Flipper…', progress),
-        UpdateStarting() =>
-          ('Update', 'Starting updater on Flipper…', null),
-        UpdateDone() => (
-            'Update started',
-            'Flipper will reboot and apply the update.',
-            1.0,
-          ),
-        UpdateError(:final message) => ('Error', message, null),
-      };
 }
