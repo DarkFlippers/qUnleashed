@@ -189,7 +189,6 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
   @override
   Widget build(BuildContext context) {
     final config = _config;
-    final colors = context.appColors;
 
     if (config == null) {
       return const FlipperPageCard(title: 'Firmware Update', child: _LoadingRow());

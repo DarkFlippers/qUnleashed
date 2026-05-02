@@ -164,9 +164,9 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
     final borderColor = state.color;
     final baseColor = progress == null
         ? state.color
-        : state.color.withOpacity(_idleOpacity);
+        : state.color.withValues(alpha: _idleOpacity);
     final fillColor = progress?.color ?? borderColor;
-    final progressValue = (progress?.value?.clamp(0.0, 1.0) as double?) ?? 1.0;
+    final progressValue = progress?.value?.clamp(0.0, 1.0) ?? 1.0;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),

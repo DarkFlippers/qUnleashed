@@ -174,7 +174,7 @@ class FlipperPageCard extends StatelessWidget {
                         ),
                       ),
                     ),
-                    if (trailing != null) trailing!,
+                    ?trailing,
                   ],
                 ),
               ),
@@ -285,7 +285,7 @@ class FlipperActionRow extends StatelessWidget {
             ),
           ),
         ),
-        if (trailing != null) trailing!,
+        ?trailing,
       ],
     );
     if (onTap == null) return row;
