@@ -30,6 +30,7 @@ class _DevicePageState extends State<DevicePage> {
   FlipperDevice? _device;
   bool _deviceDisconnected = false;
   bool _deviceLoading = false;
+  bool _alertPlaying = false;
   Map<String, String> _info = {};
   final List<String> _logs = [];
 
@@ -496,6 +497,35 @@ class _DevicePageState extends State<DevicePage> {
     _requestAll();
   }
 
+  Future<void> _playAlertOnFlipper() async {
+    if (_device == null || _deviceDisconnected || _alertPlaying) {
+      return;
+    }
+
+    setState(() => _alertPlaying = true);
+
+    try {
+      await _client.playAudiovisualAlert(
+        PlayAudiovisualAlertRequest(),
+        timeout: const Duration(seconds: 8),
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Alert sent to Flipper')),
+      );
+    } catch (e) {
+      LogService.log('[DevicePage] play alert failed: $e');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to play alert: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _alertPlaying = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final device = _device;
@@ -517,6 +547,7 @@ class _DevicePageState extends State<DevicePage> {
                   infoLoading: _deviceLoading,
                   deviceInfoEntries: _deviceInfoEntries,
                   onSynchronize: _deviceLoading ? null : _synchronizeDevice,
+                  onPlayAlert: _alertPlaying ? null : _playAlertOnFlipper,
                   onOpenRemoteControl: _openRemoteControl,
                   onOpenFullInfo: _openFullInfo,
                   onExport: _exportDeviceInfo,
