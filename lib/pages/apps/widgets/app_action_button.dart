@@ -76,6 +76,25 @@ class AppActionButton extends StatelessWidget {
             size: size,
             onTap: () => service.installOrUpdate(app, category: category, detail: detail),
           ),
+          secondary: _DeleteButton(
+            size: size,
+            onTap: () => _confirmDelete(context),
+          ),
+        );
+      case AppButtonState.preinstalled:
+        return _ActionRow(
+          size: size,
+          primary: _Pill(
+            label: 'BUILT-IN',
+            background: colors.success,
+            foreground: colors.onAccent,
+            size: size,
+            onTap: () => service.installOrUpdate(app, category: category, detail: detail),
+          ),
+          secondary: _DeleteButton(
+            size: size,
+            onTap: () => _confirmDelete(context),
+          ),
         );
       case AppButtonState.installed:
         return _ActionRow(
@@ -113,11 +132,19 @@ class AppActionButton extends StatelessWidget {
             size: size,
             onTap: null,
           ),
+          secondary: _DeleteButton(
+            size: size,
+            onTap: () => _confirmDelete(context),
+          ),
         );
       case AppButtonState.inProgress:
         return _ActionRow(
           size: size,
           primary: _ProgressButton(progress: 0, type: AppActionType.install, size: size),
+          secondary: _DeleteButton(
+            size: size,
+            onTap: () => _confirmDelete(context),
+          ),
         );
     }
   }
