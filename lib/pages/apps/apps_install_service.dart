@@ -14,6 +14,7 @@ import 'models/app_manifest.dart';
 const String kAppsRoot = '/ext/apps';
 const String kManifestsRoot = '/ext/apps_manifests';
 const String kTempRoot = '/ext/.tmp/qunleashed';
+const Duration kPreinstalledScanDelay = Duration(milliseconds: 100);
 
 enum AppActionType { install, update, delete }
 
@@ -39,7 +40,14 @@ class AppAction {
       );
 }
 
-enum AppButtonState { install, update, installed, unsupported, inProgress }
+enum AppButtonState {
+  install,
+  update,
+  preinstalled,
+  installed,
+  unsupported,
+  inProgress,
+}
 
 class AppsInstallService extends ChangeNotifier {
   AppsInstallService({required this.client, required this.api});
@@ -50,6 +58,8 @@ class AppsInstallService extends ChangeNotifier {
   final Set<String> _installedAliases = {};
   Set<String> get installedAliases => Set.unmodifiable(_installedAliases);
   final Map<String, AppManifest> _installedManifests = {};
+  final Set<String> _preinstalledAliases = {};
+  final Map<String, String> _preinstalledPaths = {};
   final Map<String, String> _categoryNamesById = {};
 
   final Map<String, AppAction> _actions = {};
@@ -61,7 +71,14 @@ class AppsInstallService extends ChangeNotifier {
   bool get isReady => client.isConnected && client.mode == FlipperMode.rpc;
 
   bool isInstalled(AppCard app) =>
-      app.alias.isNotEmpty && _installedAliases.contains(app.alias);
+      app.alias.isNotEmpty &&
+      (_installedAliases.contains(app.alias) ||
+          _preinstalledAliases.contains(app.alias));
+
+  bool isPreinstalled(AppCard app) =>
+      app.alias.isNotEmpty &&
+      _preinstalledAliases.contains(app.alias) &&
+      !_installedAliases.contains(app.alias);
 
   AppAction? actionFor(AppCard app) =>
       app.alias.isEmpty ? null : _actions[app.alias];
@@ -71,15 +88,28 @@ class AppsInstallService extends ChangeNotifier {
     final action = _actions[app.alias];
     if (action != null) return AppButtonState.inProgress;
     final manifest = _installedManifests[app.alias];
+    final preinstalled = isPreinstalled(app);
 
     final cv = app.currentVersion;
     if (cv == null) {
-      return isInstalled(app) ? AppButtonState.installed : AppButtonState.unsupported;
+      return preinstalled
+          ? AppButtonState.preinstalled
+          : isInstalled(app)
+              ? AppButtonState.installed
+              : AppButtonState.unsupported;
     }
 
     final build = cv.currentBuild;
     if (build == null || build.sdk == null) {
-      return isInstalled(app) ? AppButtonState.installed : AppButtonState.unsupported;
+      return preinstalled
+          ? AppButtonState.preinstalled
+          : isInstalled(app)
+              ? AppButtonState.installed
+              : AppButtonState.unsupported;
+    }
+
+    if (preinstalled) {
+      return AppButtonState.preinstalled;
     }
 
     if (manifest != null) {
@@ -104,6 +134,8 @@ class AppsInstallService extends ChangeNotifier {
     if (!isReady) {
       _installedAliases.clear();
       _installedManifests.clear();
+      _preinstalledAliases.clear();
+      _preinstalledPaths.clear();
       notifyListeners();
       return;
     }
@@ -116,6 +148,8 @@ class AppsInstallService extends ChangeNotifier {
       );
       _installedAliases.clear();
       _installedManifests.clear();
+      _preinstalledAliases.clear();
+      _preinstalledPaths.clear();
       for (final item in list.items) {
         for (final f in item.file) {
           if (f.type != File_FileType.FILE) continue;
@@ -129,6 +163,7 @@ class AppsInstallService extends ChangeNotifier {
           }
         }
       }
+      await _scanPreinstalledApps();
     } catch (e) {
       LogService.log('[AppsInstall] refresh failed: $e');
     } finally {
@@ -144,7 +179,8 @@ class AppsInstallService extends ChangeNotifier {
   }) async {
     if (!isReady || app.alias.isEmpty) return false;
 
-    final wasInstalled = _installedAliases.contains(app.alias);
+    final wasInstalled =
+        _installedAliases.contains(app.alias) || _preinstalledAliases.contains(app.alias);
     final action = AppAction(
       appId: app.alias,
       type: wasInstalled ? AppActionType.update : AppActionType.install,
@@ -232,6 +268,8 @@ class AppsInstallService extends ChangeNotifier {
 
       _installedAliases.add(app.alias);
       _installedManifests[app.alias] = manifest;
+      _preinstalledAliases.remove(app.alias);
+      _preinstalledPaths.remove(app.alias);
       _actions.remove(app.alias);
       notifyListeners();
       return true;
@@ -254,11 +292,14 @@ class AppsInstallService extends ChangeNotifier {
     try {
       final fimPath = '$kManifestsRoot/${app.alias}.fim';
       final fapPath = _installedManifests[app.alias]?.path ??
+          _preinstalledPaths[app.alias] ??
           '${await _resolveInstallDir(app, category: category)}/${app.alias}.fap';
       await _safeDelete(fimPath);
       await _safeDelete(fapPath);
       _installedAliases.remove(app.alias);
       _installedManifests.remove(app.alias);
+      _preinstalledAliases.remove(app.alias);
+      _preinstalledPaths.remove(app.alias);
       _actions.remove(app.alias);
       notifyListeners();
       return true;
@@ -278,6 +319,7 @@ class AppsInstallService extends ChangeNotifier {
       throw StateError('Flipper is not connected');
     }
     final path = _installedManifests[app.alias]?.path ??
+        _preinstalledPaths[app.alias] ??
         '${await _resolveInstallDir(app, category: category)}/${app.alias}.fap';
     await client.appStart(
       StartRequest(name: path, args: ''),
@@ -345,6 +387,66 @@ class AppsInstallService extends ChangeNotifier {
     } catch (_) {}
   }
 
+  Future<void> _scanPreinstalledApps() async {
+    try {
+      final root = await client.storageList(
+        ListRequest(path: kAppsRoot),
+        timeout: const Duration(seconds: 20),
+      );
+      final categoryDirs = <String>[];
+      for (final item in root.items) {
+        for (final f in item.file) {
+          if (f.type == File_FileType.DIR && f.name.isNotEmpty) {
+            categoryDirs.add(f.name);
+          }
+        }
+      }
+      LogService.log(
+        '[AppsInstall] preinstalled scan: ${categoryDirs.length} categories in $kAppsRoot',
+      );
+
+      for (var i = 0; i < categoryDirs.length; i++) {
+        final dirName = categoryDirs[i];
+        LogService.log(
+          '[AppsInstall] preinstalled scan category ${i + 1}/${categoryDirs.length}: $dirName',
+        );
+        await _scanPreinstalledCategory('$kAppsRoot/$dirName');
+        if (i != categoryDirs.length - 1) {
+          await Future<void>.delayed(kPreinstalledScanDelay);
+        }
+      }
+      LogService.log(
+        '[AppsInstall] preinstalled scan done: ${_preinstalledAliases.length} manifestless apps found',
+      );
+    } catch (e) {
+      LogService.log('[AppsInstall] preinstalled scan failed: $e');
+    }
+  }
+
+  Future<void> _scanPreinstalledCategory(String path) async {
+    try {
+      final list = await client.storageList(
+        ListRequest(path: path),
+        timeout: const Duration(seconds: 20),
+      );
+      for (final item in list.items) {
+        for (final f in item.file) {
+          if (f.type != File_FileType.FILE) continue;
+          if (!f.name.endsWith('.fap')) continue;
+          final alias = f.name.substring(0, f.name.length - 4);
+          if (alias.isEmpty || _installedAliases.contains(alias)) continue;
+          _preinstalledAliases.add(alias);
+          _preinstalledPaths[alias] = '$path/${f.name}';
+          LogService.log(
+            '[AppsInstall] preinstalled found: alias=$alias path=${_preinstalledPaths[alias]}',
+          );
+        }
+      }
+    } catch (e) {
+      LogService.log('[AppsInstall] preinstalled category "$path" failed: $e');
+    }
+  }
+
   void _setProgress(String appId, double value) {
     final current = _actions[appId];
     if (current == null) return;
@@ -396,7 +498,9 @@ class AppsInstallService extends ChangeNotifier {
     AppCategory? category,
     AppManifest? manifest,
   }) async {
-    final manifestPath = manifest?.path ?? _installedManifests[app.alias]?.path;
+    final manifestPath = manifest?.path ??
+        _installedManifests[app.alias]?.path ??
+        _preinstalledPaths[app.alias];
     if (manifestPath != null && manifestPath.isNotEmpty) {
       final lastSlash = manifestPath.lastIndexOf('/');
       if (lastSlash > 0) return manifestPath.substring(0, lastSlash);
