@@ -1,17 +1,34 @@
+import 'dart:async';
+
+import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flutter/foundation.dart';
 
 import 'apps_catalog_api.dart';
+import 'apps_install_service.dart';
 import 'models/app_card.dart';
 import 'models/app_category.dart';
 
 class AppsCatalogController extends ChangeNotifier {
-  AppsCatalogController({AppsCatalogApi? api, this.pageSize = 48})
-      : _api = api ?? AppsCatalogApi(),
-        _ownsApi = api == null;
+  AppsCatalogController({
+    AppsCatalogApi? api,
+    FlipperClient? client,
+    this.pageSize = 48,
+  })  : _api = api ?? AppsCatalogApi(),
+        _ownsApi = api == null,
+        _client = client ?? FlipperOneClient().get() {
+    install = AppsInstallService(client: _client, api: _api);
+    install.addListener(notifyListeners);
+    _connectionSub = _client.connectionStream.listen(_onConnection);
+  }
 
   final AppsCatalogApi _api;
   final bool _ownsApi;
+  final FlipperClient _client;
   final int pageSize;
+  late final AppsInstallService install;
+  StreamSubscription<FlipperConnectionState>? _connectionSub;
+
+  FlipperClient get client => _client;
 
   List<AppCategory> _categories = const [];
   List<AppCategory> get categories => _categories;
@@ -50,6 +67,16 @@ class AppsCatalogController extends ChangeNotifier {
     if (_apps.isEmpty) {
       await refresh();
     }
+  }
+
+  void _onConnection(FlipperConnectionState state) {
+    if (!state.connected || state.mode != FlipperMode.rpc) {
+      _api.target = null;
+      _api.api = null;
+    } else {
+      install.rescanInstalled();
+    }
+    notifyListeners();
   }
 
   Future<void> loadCategories() async {
@@ -129,6 +156,9 @@ class AppsCatalogController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _connectionSub?.cancel();
+    install.removeListener(notifyListeners);
+    install.dispose();
     if (_ownsApi) _api.close();
     super.dispose();
   }

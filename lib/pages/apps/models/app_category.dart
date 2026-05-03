@@ -17,7 +17,7 @@ class AppCategory {
 
   factory AppCategory.fromJson(Map<String, dynamic> json) {
     return AppCategory(
-      id: (json['id'] ?? '') as String,
+      id: (json['id'] ?? json['_id'] ?? '') as String,
       name: (json['name'] ?? '') as String,
       color: (json['color'] ?? '') as String,
       iconUri: json['icon_uri'] as String?,
