@@ -11,7 +11,6 @@
 #include <permission_handler_windows/permission_handler_windows_plugin.h>
 #include <super_native_extensions/super_native_extensions_plugin_c_api.h>
 #include <universal_ble/universal_ble_plugin_c_api.h>
-#include <url_launcher_windows/url_launcher_windows.h>
 
 void RegisterPlugins(flutter::PluginRegistry* registry) {
   FlutterLibserialportPluginRegisterWithRegistrar(
@@ -24,6 +23,4 @@ void RegisterPlugins(flutter::PluginRegistry* registry) {
       registry->GetRegistrarForPlugin("SuperNativeExtensionsPluginCApi"));
   UniversalBlePluginCApiRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("UniversalBlePluginCApi"));
-  UrlLauncherWindowsRegisterWithRegistrar(
-      registry->GetRegistrarForPlugin("UrlLauncherWindows"));
 }

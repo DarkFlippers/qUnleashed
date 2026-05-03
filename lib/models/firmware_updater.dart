@@ -70,7 +70,7 @@ class FirmwareUpdater {
 
   static Future<void> install({
     required FirmwareEntry entry,
-    required FirmwareChannel channel,
+    required String channelId,
     String target = 'f7',
     UnleashedVariant variant = UnleashedVariant.base,
     required FlipperClient client,
@@ -82,7 +82,7 @@ class FirmwareUpdater {
       final parser = parserFor(entry);
       await parser.get();
 
-      final version = parser.getLatestVersion(channel);
+      final version = parser.getLatestVersionById(channelId);
       if (version == null) {
         onState(const UpdateError('No version found for selected channel'));
         return;
@@ -90,7 +90,9 @@ class FirmwareUpdater {
 
       final FirmwareFile? tgzFile;
       if (parser is UnleashedParser) {
-        tgzFile = parser.getUpdatePackage(channel, target: target, variant: variant);
+        tgzFile = parser.getUpdatePackage(channelId, target: target, variant: variant);
+      } else if (parser is OfwParser) {
+        tgzFile = parser.getUpdatePackage(channelId);
       } else {
         tgzFile = version.updatePackageFor(target);
       }

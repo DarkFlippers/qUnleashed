@@ -16,11 +16,33 @@ enum FirmwareChannel {
         FirmwareChannel.development => 'development',
       };
 
+  Set<String> get aliases => switch (this) {
+        FirmwareChannel.release => const {'release', 'stable'},
+        FirmwareChannel.releaseCandidate => const {
+            'release-candidate',
+            'release_candidate',
+            'rc',
+            'candidate',
+          },
+        FirmwareChannel.development => const {'development', 'dev'},
+      };
+
   String get displayName => switch (this) {
         FirmwareChannel.release => 'Stable Release',
         FirmwareChannel.releaseCandidate => 'Release Candidate',
         FirmwareChannel.development => 'Development',
       };
+
+  static FirmwareChannel? fromId(String? rawId) {
+    final id = rawId?.trim().toLowerCase();
+    if (id == null || id.isEmpty) return null;
+    for (final channel in FirmwareChannel.values) {
+      if (channel.aliases.contains(id)) {
+        return channel;
+      }
+    }
+    return null;
+  }
 }
 
 enum UnleashedVariant {
@@ -120,6 +142,7 @@ class FirmwareDirectoryChannel {
   final List<FirmwareVersion> versions;
 
   FirmwareVersion? get latest => versions.isNotEmpty ? versions.first : null;
+  bool get hasVersions => versions.isNotEmpty;
 
   factory FirmwareDirectoryChannel.fromJson(Map<String, dynamic> json) =>
       FirmwareDirectoryChannel(
@@ -138,8 +161,12 @@ class FirmwareDirectory {
   final List<FirmwareDirectoryChannel> channels;
 
   FirmwareDirectoryChannel? channelById(String id) {
+    final normalized = FirmwareChannel.fromId(id);
     for (final c in channels) {
       if (c.id == id) return c;
+      if (normalized != null && FirmwareChannel.fromId(c.id) == normalized) {
+        return c;
+      }
     }
     return null;
   }
@@ -193,17 +220,33 @@ abstract class FirmwareParser {
   FirmwareDirectoryChannel? getChannel(FirmwareChannel channel) =>
       _cache?.channelById(channel.id);
 
+  /// Returns the channel for the given raw server [channelId].
+  FirmwareDirectoryChannel? getChannelById(String channelId) =>
+      _cache?.channelById(channelId);
+
   /// Returns the latest [FirmwareVersion] for the given channel.
   FirmwareVersion? getLatestVersion(FirmwareChannel channel) =>
       getChannel(channel)?.latest;
+
+  /// Returns the latest [FirmwareVersion] for the given raw server [channelId].
+  FirmwareVersion? getLatestVersionById(String channelId) =>
+      getChannelById(channelId)?.latest;
 
   /// Returns the changelog of the latest version for the given channel.
   String? getChangelog(FirmwareChannel channel) =>
       getLatestVersion(channel)?.changelog;
 
+  /// Returns the changelog of the latest version for the given raw server [channelId].
+  String? getChangelogById(String channelId) =>
+      getLatestVersionById(channelId)?.changelog;
+
   /// Returns all download files for the latest version of the given channel.
   List<FirmwareFile> getDownloadFiles(FirmwareChannel channel) =>
       getLatestVersion(channel)?.files ?? [];
+
+  /// Returns all download files for the latest version of the given raw server [channelId].
+  List<FirmwareFile> getDownloadFilesById(String channelId) =>
+      getLatestVersionById(channelId)?.files ?? [];
 
   /// Downloads [file] and saves it to [savePath].
   Future<void> downloadFile(FirmwareFile file, String savePath) async {

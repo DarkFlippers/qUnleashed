@@ -9,11 +9,11 @@ class UnleashedParser extends FirmwareParser {
   String get directoryUrl => 'https://up.unleashedflip.com/directory.json';
 
   FirmwareFile? getUpdatePackage(
-    FirmwareChannel channel, {
+    String channelId, {
     String target = 'f7',
     UnleashedVariant variant = UnleashedVariant.base,
   }) {
-    final base = getLatestVersion(channel)?.updatePackageFor(target);
+    final base = getLatestVersionById(channelId)?.updatePackageFor(target);
     if (base == null) return null;
     if (variant == UnleashedVariant.base) return base;
     final suffix = variant == UnleashedVariant.compact ? 'c' : 'e';
