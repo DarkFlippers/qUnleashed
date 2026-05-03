@@ -72,7 +72,7 @@ class AppCurrentVersion {
             .toList(growable: false) ??
         const <String>[];
     return AppCurrentVersion(
-      id: (json['id'] ?? '') as String,
+      id: (json['id'] ?? json['_id'] ?? '') as String,
       status: (json['status'] ?? '') as String,
       name: (json['name'] ?? '') as String,
       version: (json['version'] ?? '') as String,
@@ -109,7 +109,7 @@ class AppCard {
 
   factory AppCard.fromJson(Map<String, dynamic> json) {
     return AppCard(
-      id: (json['id'] ?? '') as String,
+      id: (json['id'] ?? json['_id'] ?? '') as String,
       alias: (json['alias'] ?? '') as String,
       categoryId: (json['category_id'] ?? '') as String,
       author: (json['author'] ?? '') as String,

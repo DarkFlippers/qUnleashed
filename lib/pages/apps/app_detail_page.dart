@@ -3,10 +3,14 @@ import 'package:flutter/services.dart';
 
 import '../../theme.dart';
 import '../../widgets/changelog_renderer.dart';
+import '../devices/remote_control_page.dart';
 import 'apps_catalog_api.dart';
+import 'apps_install_service.dart';
+import 'models/app_card.dart';
 import 'models/app_category.dart';
 import 'models/app_detail.dart';
 import 'screenshots_viewer.dart';
+import 'widgets/app_action_button.dart';
 import 'widgets/category_chip.dart';
 import 'widgets/flipper_image.dart';
 import 'widgets/screenshot_frame.dart';
@@ -16,11 +20,13 @@ class AppDetailPage extends StatefulWidget {
     super.key,
     required this.alias,
     required this.api,
+    required this.installService,
     this.knownCategory,
   });
 
   final String alias;
   final AppsCatalogApi api;
+  final AppsInstallService installService;
   final AppCategory? knownCategory;
 
   @override
@@ -59,32 +65,64 @@ class _AppDetailPageState extends State<AppDetailPage> {
     }
   }
 
+  void _onLaunched() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const RemoteControlPage()),
+    );
+  }
+
+  Future<void> _confirmDelete(AppCard card, AppCategory? cat) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete app?'),
+        content: Text('Remove "${card.name}" from your Flipper?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await widget.installService.uninstall(card, category: cat);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    return Scaffold(
-      backgroundColor: colors.background,
-      appBar: AppBar(
-        backgroundColor: colors.accent,
-        foregroundColor: colors.onAccent,
-        title: Text(_detail?.card.name ?? 'App'),
-        actions: [
-          if (_detail != null)
-            IconButton(
-              icon: const Icon(Icons.share_outlined),
-              onPressed: () {
-                final url = _detail!.links?.manifestUri ?? '';
-                if (url.isNotEmpty) {
-                  Clipboard.setData(ClipboardData(text: url));
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Link copied')),
-                  );
-                }
-              },
-            ),
-        ],
+    return AnimatedBuilder(
+      animation: widget.installService,
+      builder: (context, _) => Scaffold(
+        backgroundColor: colors.background,
+        appBar: AppBar(
+          backgroundColor: colors.accent,
+          foregroundColor: colors.onAccent,
+          title: Text(_detail?.card.name ?? 'App'),
+          actions: [
+            if (_detail != null) ...[
+              if (widget.installService.isInstalled(_detail!.card))
+                IconButton(
+                  icon: const Icon(Icons.delete_outline),
+                  onPressed: () => _confirmDelete(_detail!.card, widget.knownCategory),
+                ),
+              IconButton(
+                icon: const Icon(Icons.share_outlined),
+                onPressed: () {
+                  final url = _detail!.links?.manifestUri ?? '';
+                  if (url.isNotEmpty) {
+                    Clipboard.setData(ClipboardData(text: url));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Link copied')),
+                    );
+                  }
+                },
+              ),
+            ],
+          ],
+        ),
+        body: _buildBody(context),
       ),
-      body: _buildBody(context),
     );
   }
 
@@ -115,7 +153,12 @@ class _AppDetailPageState extends State<AppDetailPage> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
       children: [
-        _Header(detail: detail, knownCategory: widget.knownCategory),
+        _Header(
+          detail: detail,
+          knownCategory: widget.knownCategory,
+          installService: widget.installService,
+          onLaunched: _onLaunched,
+        ),
         const SizedBox(height: 18),
         if (cv != null && cv.screenshots.isNotEmpty) ...[
           _ScreenshotsRow(
@@ -160,10 +203,17 @@ class _AppDetailPageState extends State<AppDetailPage> {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.detail, this.knownCategory});
+  const _Header({
+    required this.detail,
+    required this.installService,
+    this.knownCategory,
+    this.onLaunched,
+  });
 
   final AppDetail detail;
+  final AppsInstallService installService;
   final AppCategory? knownCategory;
+  final VoidCallback? onLaunched;
 
   @override
   Widget build(BuildContext context) {
@@ -229,23 +279,13 @@ class _Header extends StatelessWidget {
         const SizedBox(height: 16),
         SizedBox(
           width: double.infinity,
-          height: 48,
-          child: ElevatedButton.icon(
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Connect Flipper to install apps')),
-              );
-            },
-            icon: const Icon(Icons.download_rounded),
-            label: const Text(
-              'INSTALL',
-              style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: 1),
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: colors.accent,
-              foregroundColor: colors.onAccent,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
+          child: AppActionButton(
+            service: installService,
+            app: card,
+            category: knownCategory,
+            detail: detail,
+            onLaunched: onLaunched,
+            size: AppActionButtonSize.large,
           ),
         ),
       ],

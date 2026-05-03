@@ -1,0 +1,442 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io' as io;
+
+import 'package:flipperlib/flipperlib.dart' hide File;
+import 'package:flutter/foundation.dart';
+
+import 'apps_catalog_api.dart';
+import 'models/app_card.dart';
+import 'models/app_category.dart';
+import 'models/app_detail.dart';
+import 'models/app_manifest.dart';
+
+const String kAppsRoot = '/ext/apps';
+const String kManifestsRoot = '/ext/apps_manifests';
+const String kTempRoot = '/ext/.tmp/qunleashed';
+
+enum AppActionType { install, update, delete }
+
+@immutable
+class AppAction {
+  final String appId;
+  final AppActionType type;
+  final double progress;
+  final String? error;
+
+  const AppAction({
+    required this.appId,
+    required this.type,
+    this.progress = 0,
+    this.error,
+  });
+
+  AppAction copyWith({double? progress, String? error}) => AppAction(
+        appId: appId,
+        type: type,
+        progress: progress ?? this.progress,
+        error: error,
+      );
+}
+
+enum AppButtonState { install, update, installed, unsupported, inProgress }
+
+class AppsInstallService extends ChangeNotifier {
+  AppsInstallService({required this.client, required this.api});
+
+  final FlipperClient client;
+  final AppsCatalogApi api;
+
+  final Set<String> _installedAliases = {};
+  Set<String> get installedAliases => Set.unmodifiable(_installedAliases);
+  final Map<String, AppManifest> _installedManifests = {};
+  final Map<String, String> _categoryNamesById = {};
+
+  final Map<String, AppAction> _actions = {};
+  Map<String, AppAction> get actions => Map.unmodifiable(_actions);
+
+  bool _scanning = false;
+  bool get scanning => _scanning;
+
+  bool get isReady => client.isConnected && client.mode == FlipperMode.rpc;
+
+  bool isInstalled(AppCard app) =>
+      app.alias.isNotEmpty && _installedAliases.contains(app.alias);
+
+  AppAction? actionFor(AppCard app) =>
+      app.alias.isEmpty ? null : _actions[app.alias];
+
+  AppButtonState buttonState(AppCard app) {
+    if (app.alias.isEmpty) return AppButtonState.install;
+    final action = _actions[app.alias];
+    if (action != null) return AppButtonState.inProgress;
+    final manifest = _installedManifests[app.alias];
+
+    final cv = app.currentVersion;
+    if (cv == null) {
+      return isInstalled(app) ? AppButtonState.installed : AppButtonState.unsupported;
+    }
+
+    final build = cv.currentBuild;
+    if (build == null || build.sdk == null) {
+      return isInstalled(app) ? AppButtonState.installed : AppButtonState.unsupported;
+    }
+
+    if (manifest != null) {
+      final deviceApi = api.api;
+      if (manifest.versionUid.isNotEmpty &&
+          cv.id.isNotEmpty &&
+          manifest.versionUid != cv.id) {
+        return AppButtonState.update;
+      }
+      if (deviceApi != null &&
+          deviceApi.isNotEmpty &&
+          manifest.sdkApi.isNotEmpty &&
+          manifest.sdkApi != deviceApi) {
+        return AppButtonState.update;
+      }
+    }
+
+    return isInstalled(app) ? AppButtonState.installed : AppButtonState.install;
+  }
+
+  Future<void> refreshInstalled() async {
+    if (!isReady) {
+      _installedAliases.clear();
+      _installedManifests.clear();
+      notifyListeners();
+      return;
+    }
+    _scanning = true;
+    notifyListeners();
+    try {
+      final list = await client.storageList(
+        ListRequest(path: kManifestsRoot),
+        timeout: const Duration(seconds: 20),
+      );
+      _installedAliases.clear();
+      _installedManifests.clear();
+      for (final item in list.items) {
+        for (final f in item.file) {
+          if (f.type != File_FileType.FILE) continue;
+          if (!f.name.endsWith('.fim')) continue;
+          final alias = f.name.substring(0, f.name.length - 4);
+          if (alias.isEmpty) continue;
+          _installedAliases.add(alias);
+          final manifest = await _readManifest('$kManifestsRoot/${f.name}');
+          if (manifest != null) {
+            _installedManifests[alias] = manifest;
+          }
+        }
+      }
+    } catch (e) {
+      LogService.log('[AppsInstall] refresh failed: $e');
+    } finally {
+      _scanning = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> installOrUpdate(
+    AppCard app, {
+    AppCategory? category,
+    AppDetail? detail,
+  }) async {
+    if (!isReady || app.alias.isEmpty) return false;
+
+    final wasInstalled = _installedAliases.contains(app.alias);
+    final action = AppAction(
+      appId: app.alias,
+      type: wasInstalled ? AppActionType.update : AppActionType.install,
+    );
+    _actions[app.alias] = action;
+    notifyListeners();
+
+    await _ensureDeviceFilters();
+
+    final existingManifest = _installedManifests[app.alias];
+    final installDir = await _resolveInstallDir(
+      app,
+      category: category,
+      manifest: existingManifest,
+    );
+    final fapPath = existingManifest?.path.isNotEmpty == true
+        ? existingManifest!.path
+        : '$installDir/${app.alias}.fap';
+    final fimPath = '$kManifestsRoot/${app.alias}.fim';
+    final tempFap = _tempFapPath(app);
+    final tempFim = _tempFimPath(app);
+
+    try {
+      _setProgress(app.alias, 0.02);
+
+      var cv = detail?.card.currentVersion ?? app.currentVersion;
+      var build = cv?.currentBuild;
+      if (cv == null || cv.id.isEmpty || build == null) {
+        final fetched = await api.fetchApp(app.alias);
+        cv = fetched.card.currentVersion;
+        build = cv?.currentBuild;
+      }
+      if (cv == null || cv.id.isEmpty || build == null) {
+        throw StateError('No installable version available');
+      }
+
+      _setProgress(app.alias, 0.05);
+      final fapBytes = await api.fetchFapBuild(cv.id);
+      _setProgress(app.alias, 0.45);
+
+      final iconBase64 = await _fetchIconBase64(cv.iconUri);
+      _setProgress(app.alias, 0.5);
+
+      final manifest = AppManifest(
+        uid: app.id,
+        versionUid: cv.id,
+        fullName: cv.name.isNotEmpty ? cv.name : app.name,
+        path: fapPath,
+        iconBase64: iconBase64,
+        sdkApi: api.api ?? build.sdk?.api ?? '',
+        devCatalog: false,
+      );
+
+      await _ensureDir(kTempRoot);
+      await _ensureDir(kAppsRoot);
+      await _ensureDir(installDir);
+      await _ensureDir(kManifestsRoot);
+
+      await _safeDelete(tempFap);
+      await _safeDelete(tempFim);
+
+      await client.storageWriteChunked(
+        tempFap,
+        fapBytes,
+        onProgress: (p) => _setProgress(app.alias, 0.5 + p * 0.4),
+      );
+
+      await client.storageWriteChunked(
+        tempFim,
+        utf8.encode(manifest.encode()),
+      );
+      _setProgress(app.alias, 0.92);
+
+      await _safeDelete(fapPath);
+      await _safeDelete(fimPath);
+
+      await client.storageRename(
+        RenameRequest(oldPath: tempFap, newPath: fapPath),
+        timeout: const Duration(seconds: 30),
+      );
+      await client.storageRename(
+        RenameRequest(oldPath: tempFim, newPath: fimPath),
+        timeout: const Duration(seconds: 30),
+      );
+
+      _installedAliases.add(app.alias);
+      _installedManifests[app.alias] = manifest;
+      _actions.remove(app.alias);
+      notifyListeners();
+      return true;
+    } catch (e) {
+      LogService.log('[AppsInstall] install ${app.alias} failed: $e');
+      _actions[app.alias] = action.copyWith(error: '$e');
+      notifyListeners();
+      await Future<void>.delayed(const Duration(seconds: 2));
+      _actions.remove(app.alias);
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> uninstall(AppCard app, {AppCategory? category}) async {
+    if (!isReady || app.alias.isEmpty) return false;
+    final action = AppAction(appId: app.alias, type: AppActionType.delete);
+    _actions[app.alias] = action;
+    notifyListeners();
+    try {
+      final fimPath = '$kManifestsRoot/${app.alias}.fim';
+      final fapPath = _installedManifests[app.alias]?.path ??
+          '${await _resolveInstallDir(app, category: category)}/${app.alias}.fap';
+      await _safeDelete(fimPath);
+      await _safeDelete(fapPath);
+      _installedAliases.remove(app.alias);
+      _installedManifests.remove(app.alias);
+      _actions.remove(app.alias);
+      notifyListeners();
+      return true;
+    } catch (e) {
+      LogService.log('[AppsInstall] uninstall ${app.alias} failed: $e');
+      _actions[app.alias] = action.copyWith(error: '$e');
+      notifyListeners();
+      await Future<void>.delayed(const Duration(seconds: 2));
+      _actions.remove(app.alias);
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<void> launch(AppCard app, {AppCategory? category}) async {
+    if (!isReady) {
+      throw StateError('Flipper is not connected');
+    }
+    final path = _installedManifests[app.alias]?.path ??
+        '${await _resolveInstallDir(app, category: category)}/${app.alias}.fap';
+    await client.appStart(
+      StartRequest(name: path, args: ''),
+      timeout: const Duration(seconds: 15),
+    );
+  }
+
+  bool _scannedOnce = false;
+
+  Future<void> ensureScanned() async {
+    if (!isReady) return;
+    if (_scannedOnce) return;
+    await _ensureDeviceFilters();
+    await refreshInstalled();
+    _scannedOnce = true;
+  }
+
+  Future<void> rescanInstalled() async {
+    if (!isReady) return;
+    await _ensureDeviceFilters();
+    await refreshInstalled();
+    _scannedOnce = true;
+  }
+
+  Future<void> _ensureDeviceFilters() async {
+    if (api.target != null && api.api != null) return;
+    try {
+      final res = await client.deviceInfo(timeout: const Duration(seconds: 10));
+      String? target;
+      String? major;
+      String? minor;
+      for (final item in res.items) {
+        switch (item.key) {
+          case 'hardware_target':
+          case 'hardware.target':
+          case 'target':
+            target = item.value;
+            break;
+          case 'firmware_api_major':
+          case 'firmware.api.major':
+            major = item.value;
+            break;
+          case 'firmware_api_minor':
+          case 'firmware.api.minor':
+            minor = item.value;
+            break;
+        }
+      }
+      if (target != null) api.target = 'f$target';
+      if (major != null) api.api = '$major.${minor ?? '0'}';
+    } catch (e) {
+      LogService.log('[AppsInstall] deviceInfo failed: $e');
+    }
+  }
+
+  Future<void> _ensureDir(String path) async {
+    try {
+      await client.storageMkdir(MkdirRequest(path: path));
+    } catch (_) {}
+  }
+
+  Future<void> _safeDelete(String path) async {
+    try {
+      await client.storageDelete(DeleteRequest(path: path, recursive: false));
+    } catch (_) {}
+  }
+
+  void _setProgress(String appId, double value) {
+    final current = _actions[appId];
+    if (current == null) return;
+    _actions[appId] = current.copyWith(progress: value.clamp(0, 1).toDouble());
+    notifyListeners();
+  }
+
+  Future<String> _fetchIconBase64(String url) async {
+    if (url.isEmpty) return '';
+    try {
+      final http = io.HttpClient();
+      try {
+        final req = await http.getUrl(Uri.parse(url));
+        final res = await req.close();
+        if (res.statusCode != 200) return '';
+        final bytes = <int>[];
+        await for (final chunk in res) {
+          bytes.addAll(chunk);
+        }
+        return base64Encode(bytes);
+      } finally {
+        http.close(force: true);
+      }
+    } catch (_) {
+      return '';
+    }
+  }
+
+  Future<AppManifest?> _readManifest(String path) async {
+    try {
+      final res = await client.storageRead(
+        ReadRequest(path: path),
+        timeout: const Duration(seconds: 20),
+      );
+      final bytes = <int>[];
+      for (final item in res.items) {
+        if (item.hasFile()) bytes.addAll(item.file.data);
+      }
+      if (bytes.isEmpty) return null;
+      return AppManifest.tryParse(utf8.decode(bytes, allowMalformed: true));
+    } catch (e) {
+      LogService.log('[AppsInstall] read manifest "$path" failed: $e');
+      return null;
+    }
+  }
+
+  Future<String> _resolveInstallDir(
+    AppCard app, {
+    AppCategory? category,
+    AppManifest? manifest,
+  }) async {
+    final manifestPath = manifest?.path ?? _installedManifests[app.alias]?.path;
+    if (manifestPath != null && manifestPath.isNotEmpty) {
+      final lastSlash = manifestPath.lastIndexOf('/');
+      if (lastSlash > 0) return manifestPath.substring(0, lastSlash);
+    }
+    final categoryAlias = await _resolveCategoryAlias(category, app.categoryId);
+    return '$kAppsRoot/$categoryAlias';
+  }
+
+  Future<String> _resolveCategoryAlias(
+    AppCategory? category,
+    String categoryId,
+  ) async {
+    final direct = category?.name.trim();
+    if (direct != null && direct.isNotEmpty) return direct;
+    final cached = _categoryNamesById[categoryId];
+    if (cached != null && cached.isNotEmpty) return cached;
+    if (categoryId.isNotEmpty) {
+      try {
+        final categories = await api.fetchCategories();
+        for (final item in categories) {
+          if (item.id.isNotEmpty && item.name.isNotEmpty) {
+            _categoryNamesById[item.id] = item.name;
+          }
+        }
+        final resolved = _categoryNamesById[categoryId];
+        if (resolved != null && resolved.isNotEmpty) return resolved;
+      } catch (e) {
+        LogService.log('[AppsInstall] resolve category "$categoryId" failed: $e');
+      }
+    }
+    if (categoryId.isNotEmpty) return categoryId;
+    return 'Misc';
+  }
+
+  String _tempFapPath(AppCard app) => '$kTempRoot/${_tempKey(app)}.fap';
+  String _tempFimPath(AppCard app) => '$kTempRoot/${_tempKey(app)}.fim';
+
+  String _tempKey(AppCard app) {
+    final raw = app.id.isNotEmpty ? app.id : app.alias;
+    return raw.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+  }
+
+}

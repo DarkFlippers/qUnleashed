@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../../theme.dart';
+import '../devices/remote_control_page.dart';
 import 'app_detail_page.dart';
 import 'apps_controller.dart';
 import 'models/app_card.dart';
+import 'widgets/app_action_button.dart';
 import 'widgets/app_card.dart';
 import 'widgets/categories_filter.dart';
 import 'widgets/sort_dropdown.dart';
@@ -26,6 +28,7 @@ class _AppsPageState extends State<AppsPage> {
     super.initState();
     _scroll.addListener(_onScroll);
     _ctrl.initialize();
+    _ctrl.install.ensureScanned();
   }
 
   void _onScroll() {
@@ -36,6 +39,12 @@ class _AppsPageState extends State<AppsPage> {
     }
   }
 
+  void _onLaunched() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const RemoteControlPage()),
+    );
+  }
+
   void _openApp(AppCard app) {
     final cat = _ctrl.categoryById(app.categoryId);
     Navigator.of(context).push(
@@ -43,6 +52,7 @@ class _AppsPageState extends State<AppsPage> {
         builder: (_) => AppDetailPage(
           alias: app.alias,
           api: _ctrl.api,
+          installService: _ctrl.install,
           knownCategory: cat,
         ),
       ),
@@ -214,6 +224,12 @@ class _AppsPageState extends State<AppsPage> {
                   app: app,
                   category: cat,
                   onTap: () => _openApp(app),
+                  action: AppActionButton(
+                    service: _ctrl.install,
+                    app: app,
+                    category: cat,
+                    onLaunched: _onLaunched,
+                  ),
                 );
               },
               childCount: apps.length,
