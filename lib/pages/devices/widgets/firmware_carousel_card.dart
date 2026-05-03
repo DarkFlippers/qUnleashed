@@ -513,82 +513,138 @@ class _SettingsDropdown<T> extends StatelessWidget {
           Material(
             color: Colors.transparent,
             child: InkWell(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(12),
               onTap: items.isEmpty ? null : () async {
-                final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
-                final button = context.findRenderObject() as RenderBox;
-                final topRight = button.localToGlobal(
-                  Offset(button.size.width, button.size.height),
-                  ancestor: overlay,
-                );
-                final topLeft = button.localToGlobal(
-                  Offset(button.size.width - 240, button.size.height),
-                  ancestor: overlay,
-                );
-
-                final selected = await showMenu<T>(
+                final selected = await showDialog<T>(
                   context: context,
-                  color: colors.card,
-                  elevation: 8,
-                  position: RelativeRect.fromLTRB(
-                    topLeft.dx,
-                    topRight.dy + 2,
-                    overlay.size.width - topRight.dx,
-                    0,
-                  ),
-                  items: [
-                    for (var i = 0; i < items.length; i++) ...[
-                      PopupMenuItem<T>(
-                        value: items[i],
-                        padding: EdgeInsets.zero,
-                        child: SizedBox(
-                          width: 240,
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  labelOf(items[i]),
+                  builder: (context) {
+                    return Dialog(
+                      backgroundColor: colors.card,
+                      insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 420),
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 14, 12, 12),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
+                                child: Text(
+                                  title,
                                   style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                    color: items[i] == value ? accent : colors.textPrimary,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    color: colors.textPrimary,
                                   ),
                                 ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  descriptionOf(items[i]),
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w400,
-                                    color: colors.textSecondary,
+                              ),
+                              Flexible(
+                                child: SingleChildScrollView(
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      for (var i = 0; i < items.length; i++) ...[
+                                        Material(
+                                          color: Colors.transparent,
+                                          child: InkWell(
+                                            borderRadius: BorderRadius.circular(10),
+                                            onTap: () => Navigator.of(context).pop(items[i]),
+                                            child: Padding(
+                                              padding: const EdgeInsets.symmetric(
+                                                horizontal: 12,
+                                                vertical: 12,
+                                              ),
+                                              child: Row(
+                                                crossAxisAlignment: CrossAxisAlignment.center,
+                                                children: [
+                                                  Expanded(
+                                                    child: Column(
+                                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                                      mainAxisSize: MainAxisSize.min,
+                                                      children: [
+                                                        Text(
+                                                          labelOf(items[i]),
+                                                          style: TextStyle(
+                                                            fontSize: 14,
+                                                            fontWeight: FontWeight.w700,
+                                                            color: items[i] == value
+                                                                ? accent
+                                                                : colors.textPrimary,
+                                                          ),
+                                                        ),
+                                                        const SizedBox(height: 3),
+                                                        Text(
+                                                          descriptionOf(items[i]),
+                                                          style: TextStyle(
+                                                            fontSize: 12,
+                                                            color: colors.textSecondary,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 10),
+                                                  Icon(
+                                                    items[i] == value
+                                                        ? Icons.radio_button_checked
+                                                        : Icons.radio_button_off,
+                                                    size: 18,
+                                                    color: items[i] == value
+                                                        ? accent
+                                                        : colors.textMuted,
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        if (i != items.length - 1)
+                                          Divider(height: 1, color: colors.divider),
+                                      ],
+                                    ],
                                   ),
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
-                      if (i != items.length - 1)
-                        const PopupMenuDivider(height: 1),
-                    ],
-                  ],
+                    );
+                  },
                 );
                 if (selected != null) {
                   onChanged(selected);
                 }
               },
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-                child: Text(
-                  value == null ? placeholder : labelOf(value as T),
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: value == null ? colors.textMuted : accent,
-                  ),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  border: Border.all(color: colors.divider),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      value == null ? placeholder : labelOf(value as T),
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: value == null ? colors.textMuted : accent,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Icon(
+                      Icons.expand_more,
+                      size: 18,
+                      color: value == null ? colors.textMuted : colors.textSecondary,
+                    ),
+                  ],
                 ),
               ),
             ),
