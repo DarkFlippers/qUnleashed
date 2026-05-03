@@ -13,6 +13,7 @@ class ConnectedDeviceView extends StatelessWidget {
     required this.infoLoading,
     required this.deviceInfoEntries,
     required this.onSynchronize,
+    required this.onPlayAlert,
     required this.onOpenRemoteControl,
     required this.onOpenFullInfo,
     required this.onExport,
@@ -23,6 +24,7 @@ class ConnectedDeviceView extends StatelessWidget {
   final bool infoLoading;
   final List<MapEntry<String, String>> deviceInfoEntries;
   final VoidCallback? onSynchronize;
+  final VoidCallback? onPlayAlert;
   final VoidCallback onOpenRemoteControl;
   final VoidCallback onOpenFullInfo;
   final VoidCallback onExport;
@@ -138,8 +140,8 @@ class ConnectedDeviceView extends StatelessWidget {
                     FlipperActionRow(
                       iconAsset: 'assets/flipper_svg/info/ic_ring.svg',
                       label: 'Play Alert on Flipper',
-                      color: colors.textMuted,
-                      onTap: null,
+                      color: onPlayAlert == null ? colors.textMuted : colors.accent,
+                      onTap: onPlayAlert,
                     ),
                   ],
                 ),
