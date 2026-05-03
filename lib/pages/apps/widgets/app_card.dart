@@ -138,8 +138,7 @@ class _CardHeader extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 8),
-        SizedBox(
-          width: 88,
+        Flexible(
           child: Align(
             alignment: Alignment.centerRight,
             child: action ?? const _DefaultInstallButton(),
