@@ -4,6 +4,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../../../theme.dart';
 import '../models/app_card.dart';
 import '../models/app_category.dart';
+import 'flipper_image.dart';
 import 'screenshot_frame.dart';
 
 class AppCardView extends StatefulWidget {
@@ -13,7 +14,6 @@ class AppCardView extends StatefulWidget {
     this.category,
     this.action,
     this.onTap,
-    this.cardWidth = 256,
     this.padding = 12,
   });
 
@@ -21,7 +21,6 @@ class AppCardView extends StatefulWidget {
   final AppCategory? category;
   final Widget? action;
   final VoidCallback? onTap;
-  final double cardWidth;
   final double padding;
 
   @override
@@ -35,7 +34,6 @@ class _AppCardViewState extends State<AppCardView> {
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final shots = widget.app.screenshots;
-    final firstScreenshot = shots.isNotEmpty ? shots.first : widget.app.iconUri;
 
     return MouseRegion(
       onEnter: (_) => setState(() => _hover = true),
@@ -43,7 +41,6 @@ class _AppCardViewState extends State<AppCardView> {
       cursor: SystemMouseCursors.click,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 250),
-        width: widget.cardWidth + widget.padding * 2,
         decoration: BoxDecoration(
           color: colors.card,
           borderRadius: BorderRadius.circular(14),
@@ -74,59 +71,106 @@ class _AppCardViewState extends State<AppCardView> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  ScreenshotFrame(url: firstScreenshot),
-                  const SizedBox(height: 10),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          widget.app.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                            color: colors.textPrimary,
-                            height: 1.15,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      _CategoryInline(category: widget.category),
-                    ],
+                  _CardHeader(
+                    app: widget.app,
+                    category: widget.category,
+                    action: widget.action,
                   ),
-                  const SizedBox(height: 6),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          widget.app.shortDescription,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 12,
-                            height: 1.25,
-                            color: colors.textSecondary,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      SizedBox(
-                        width: 80,
-                        child: Align(
-                          alignment: Alignment.centerRight,
-                          child: widget.action ?? const _DefaultInstallButton(),
-                        ),
-                      ),
-                    ],
+                  const SizedBox(height: 8),
+                  Text(
+                    widget.app.shortDescription,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      height: 1.3,
+                      color: colors.textSecondary,
+                    ),
                   ),
+                  if (shots.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    _ScreenshotsStrip(screenshots: shots),
+                  ],
                 ],
               ),
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _CardHeader extends StatelessWidget {
+  const _CardHeader({required this.app, required this.category, required this.action});
+
+  final AppCard app;
+  final AppCategory? category;
+  final Widget? action;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        AppIconBadge(url: app.iconUri, size: 48),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                app.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: colors.textPrimary,
+                  height: 1.2,
+                ),
+              ),
+              const SizedBox(height: 2),
+              _CategoryInline(category: category),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        SizedBox(
+          width: 88,
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: action ?? const _DefaultInstallButton(),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class AppIconBadge extends StatelessWidget {
+  const AppIconBadge({super.key, required this.url, this.size = 48});
+
+  final String url;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: colors.accent,
+        border: Border.all(color: Colors.black, width: 1.5),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      padding: const EdgeInsets.all(4),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(5),
+        child: FlipperRemoteImage(url: url, fit: BoxFit.contain),
       ),
     );
   }
@@ -146,8 +190,8 @@ class _CategoryInline extends StatelessWidget {
       children: [
         if (cat.iconUri != null && cat.iconUri!.isNotEmpty) ...[
           SizedBox(
-            width: 14,
-            height: 14,
+            width: 12,
+            height: 12,
             child: SvgPicture.network(
               cat.iconUri!,
               colorFilter: ColorFilter.mode(colors.textSecondary, BlendMode.srcIn),
@@ -155,15 +199,43 @@ class _CategoryInline extends StatelessWidget {
           ),
           const SizedBox(width: 4),
         ],
-        Text(
-          cat.name,
-          style: TextStyle(
-            fontSize: 12,
-            color: colors.textSecondary,
-            fontWeight: FontWeight.w500,
+        Flexible(
+          child: Text(
+            cat.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 11,
+              color: colors.textSecondary,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ),
       ],
+    );
+  }
+}
+
+class _ScreenshotsStrip extends StatelessWidget {
+  const _ScreenshotsStrip({required this.screenshots});
+  final List<String> screenshots;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 84,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        physics: const ClampingScrollPhysics(),
+        itemCount: screenshots.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 6),
+        itemBuilder: (context, i) {
+          return SizedBox(
+            width: 168,
+            child: ScreenshotFrame(url: screenshots[i]),
+          );
+        },
+      ),
     );
   }
 }
@@ -176,6 +248,7 @@ class _DefaultInstallButton extends StatelessWidget {
     final colors = context.appColors;
     return Container(
       height: 32,
+      width: double.infinity,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: colors.accent,

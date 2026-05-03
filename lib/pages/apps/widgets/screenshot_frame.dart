@@ -24,11 +24,12 @@ class ScreenshotFrame extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
+    final bg = colors.isDark ? colors.screenBackground : colors.accent;
     return AspectRatio(
       aspectRatio: aspectRatio,
       child: Container(
         decoration: BoxDecoration(
-          color: colors.accent,
+          color: bg,
           border: Border.all(color: borderColor, width: borderWidth),
           borderRadius: BorderRadius.circular(borderRadius),
         ),

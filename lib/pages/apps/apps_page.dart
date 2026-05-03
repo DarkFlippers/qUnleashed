@@ -197,14 +197,14 @@ class _AppsPageState extends State<AppsPage> {
       padding: const EdgeInsets.symmetric(horizontal: 16),
       sliver: SliverLayoutBuilder(
         builder: (context, constraints) {
-          const cardWidth = 280.0;
+          const cardWidth = 360.0;
           final cross = (constraints.crossAxisExtent / cardWidth).floor().clamp(1, 6);
           return SliverGrid(
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: cross,
               mainAxisSpacing: 12,
               crossAxisSpacing: 12,
-              childAspectRatio: 280 / 240,
+              mainAxisExtent: 220,
             ),
             delegate: SliverChildBuilderDelegate(
               (context, index) {
