@@ -16,8 +16,8 @@ class OfwParser extends FirmwareParser {
   String get directoryUrl => 'https://update.flipperzero.one/firmware/directory.json';
 
   /// Returns the update package (.tgz) for the given channel.
-  FirmwareFile? getUpdatePackage(FirmwareChannel channel) =>
-      getLatestVersion(channel)?.updatePackage;
+  FirmwareFile? getUpdatePackage(String channelId) =>
+      getLatestVersionById(channelId)?.updatePackage;
 
   /// Returns all available channels that have at least one version.
   List<FirmwareDirectoryChannel> getAvailableChannels() =>

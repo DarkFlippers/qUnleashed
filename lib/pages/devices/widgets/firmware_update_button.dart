@@ -19,7 +19,7 @@ class FirmwareUpdateButton extends StatefulWidget {
     required this.fetchLoading,
     required this.latestVersion,
     required this.deviceVersion,
-    required this.selectedChannel,
+    required this.selectedChannelId,
     required this.selectedVariant,
     required this.client,
   });
@@ -28,7 +28,7 @@ class FirmwareUpdateButton extends StatefulWidget {
   final bool fetchLoading;
   final String? latestVersion;
   final String? deviceVersion;
-  final FirmwareChannel selectedChannel;
+  final String selectedChannelId;
   final UnleashedVariant selectedVariant;
   final FlipperClient client;
 
@@ -135,7 +135,7 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
     try {
       await FirmwareUpdater.install(
         entry: widget.entry,
-        channel: widget.selectedChannel,
+        channelId: widget.selectedChannelId,
         variant: widget.selectedVariant,
         client: widget.client,
         onState: (state) {

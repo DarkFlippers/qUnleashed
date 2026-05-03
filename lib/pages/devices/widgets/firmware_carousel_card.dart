@@ -36,7 +36,7 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
   final Set<String> _fetching = {};
   final Map<String, Timer> _retryTimers = {};
 
-  final Map<String, FirmwareChannel> _channelByEntry = {};
+  final Map<String, String> _channelIdByEntry = {};
   final Map<String, UnleashedVariant> _variantByEntry = {};
 
   @override
@@ -111,6 +111,12 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
     FirmwareDirectory? dir;
     try {
       dir = await parser.fetch();
+      final channelSummary = dir.channels
+          .map((channel) => '${channel.id}(${channel.title})')
+          .join(', ');
+      LogService.log(
+        '[FirmwareCarousel] ${entry.shortName} channels from ${parser.directoryUrl}: $channelSummary',
+      );
     } catch (_) {
       dir = null;
     }
@@ -118,7 +124,15 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
     setState(() {
       _directories[entry.shortName] = dir;
       _fetching.remove(entry.shortName);
-      _channelByEntry.putIfAbsent(entry.shortName, () => FirmwareChannel.release);
+      final selectedChannelId = _channelIdByEntry[entry.shortName];
+      final channels = _channelsForEntry(dir);
+      if (selectedChannelId == null || !channels.any((channel) => channel.id == selectedChannelId)) {
+        final fallbackChannel = channels.firstWhere(
+          (channel) => channel.id == 'release',
+          orElse: () => channels.first,
+        );
+        _channelIdByEntry[entry.shortName] = fallbackChannel.id;
+      }
     });
     if (dir == null) {
       _scheduleRetry(entry);
@@ -163,25 +177,50 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
     });
   }
 
-  FirmwareChannel _selectedChannel(FirmwareEntry entry) =>
-      _channelByEntry[entry.shortName] ?? FirmwareChannel.release;
+  String _selectedChannelId(FirmwareEntry entry) {
+    final selected = _channelIdByEntry[entry.shortName];
+    if (selected != null && selected.isNotEmpty) {
+      return selected;
+    }
+
+    final channels = _channelsFor(entry);
+    if (channels.isEmpty) {
+      return 'release';
+    }
+    final fallback = channels.firstWhere(
+      (channel) => channel.id == 'release',
+      orElse: () => channels.first,
+    );
+    return fallback.id;
+  }
 
   UnleashedVariant _selectedVariant(FirmwareEntry entry) =>
       _variantByEntry[entry.shortName] ?? UnleashedVariant.base;
 
   bool _hasVariants(FirmwareEntry entry) => entry.shortName == 'unlshd';
 
+  List<FirmwareDirectoryChannel> _channelsFor(FirmwareEntry entry) {
+    final dir = _directories[entry.shortName];
+    return _channelsForEntry(dir);
+  }
+
+  List<FirmwareDirectoryChannel> _channelsForEntry(FirmwareDirectory? dir) {
+    return (dir?.channels ?? const <FirmwareDirectoryChannel>[])
+        .where((channel) => channel.hasVersions)
+        .toList();
+  }
+
   String? _latestVersionFor(FirmwareEntry entry) {
     final dir = _directories[entry.shortName];
     if (dir == null) return null;
-    final ch = dir.channelById(_selectedChannel(entry).id);
+    final ch = dir.channelById(_selectedChannelId(entry));
     return ch?.latest?.version;
   }
 
   FirmwareVersion? _latestFirmwareFor(FirmwareEntry entry) {
     final dir = _directories[entry.shortName];
     if (dir == null) return null;
-    return dir.channelById(_selectedChannel(entry).id)?.latest;
+    return dir.channelById(_selectedChannelId(entry))?.latest;
   }
 
   @override
@@ -258,23 +297,25 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
     body.add(
       _FirmwareControls(
         entry: entry,
-        channel: _selectedChannel(entry),
+        fetchLoading: loading,
+        channelId: _selectedChannelId(entry),
+        channels: _channelsFor(entry),
         variant: _selectedVariant(entry),
         showVariant: _hasVariants(entry),
-        onChannelChanged: (c) => setState(() => _channelByEntry[entry.shortName] = c),
+        onChannelChanged: (channelId) => setState(() => _channelIdByEntry[entry.shortName] = channelId),
         onVariantChanged: (v) => setState(() => _variantByEntry[entry.shortName] = v),
       ),
     );
 
     body.add(FirmwareUpdateButton(
       key: ValueKey(
-        '${entry.shortName}:${_selectedChannel(entry).id}:${_selectedVariant(entry).name}:${latestVersion ?? ''}:${widget.deviceVersion ?? ''}',
+        '${entry.shortName}:${_selectedChannelId(entry)}:${_selectedVariant(entry).name}:${latestVersion ?? ''}:${widget.deviceVersion ?? ''}',
       ),
       entry: entry,
       fetchLoading: loading,
       latestVersion: latestVersion,
       deviceVersion: widget.deviceVersion,
-      selectedChannel: _selectedChannel(entry),
+      selectedChannelId: _selectedChannelId(entry),
       selectedVariant: _selectedVariant(entry),
       client: _client,
     ));
@@ -294,7 +335,7 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
                       fetchLoading: loading,
                       latestVersion: latestVersion,
                       deviceVersion: widget.deviceVersion,
-                      selectedChannel: _selectedChannel(entry),
+                      selectedChannelId: _selectedChannelId(entry),
                       selectedVariant: _selectedVariant(entry),
                       client: _client,
                     ),
@@ -357,12 +398,6 @@ class _FirmwareSlide extends StatelessWidget {
     );
   }
 
-  static String _channelLabel(FirmwareChannel c) => switch (c) {
-        FirmwareChannel.release => 'Release',
-        FirmwareChannel.releaseCandidate => 'PreRelease',
-        FirmwareChannel.development => 'Development',
-      };
-
   static String _variantLabel(UnleashedVariant v) => switch (v) {
         UnleashedVariant.base => 'Default',
         UnleashedVariant.compact => 'Compact',
@@ -373,7 +408,9 @@ class _FirmwareSlide extends StatelessWidget {
 class _FirmwareControls extends StatelessWidget {
   const _FirmwareControls({
     required this.entry,
-    required this.channel,
+    required this.fetchLoading,
+    required this.channelId,
+    required this.channels,
     required this.variant,
     required this.showVariant,
     required this.onChannelChanged,
@@ -381,30 +418,36 @@ class _FirmwareControls extends StatelessWidget {
   });
 
   final FirmwareEntry entry;
-  final FirmwareChannel channel;
+  final bool fetchLoading;
+  final String channelId;
+  final List<FirmwareDirectoryChannel> channels;
   final UnleashedVariant variant;
   final bool showVariant;
-  final ValueChanged<FirmwareChannel> onChannelChanged;
+  final ValueChanged<String> onChannelChanged;
   final ValueChanged<UnleashedVariant> onVariantChanged;
 
   @override
   Widget build(BuildContext context) {
+    final selectedChannel = channels.isEmpty
+        ? null
+        : channels.firstWhere(
+            (channel) => channel.id == channelId,
+            orElse: () => channels.first,
+          );
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 0, 12, 2),
       child: Column(
         children: [
-          _SettingsDropdown<FirmwareChannel>(
+          _SettingsDropdown<FirmwareDirectoryChannel>(
             title: 'Update Channel',
-            value: channel,
-            items: FirmwareChannel.values,
-            labelOf: _FirmwareSlide._channelLabel,
-            descriptionOf: (channel) => switch (channel) {
-              FirmwareChannel.release => 'Stable public release',
-              FirmwareChannel.releaseCandidate => 'Preview before release',
-              FirmwareChannel.development => 'Latest commit',
-            },
+            value: selectedChannel,
+            items: channels,
+            labelOf: (channel) => channel.title,
+            descriptionOf: (channel) => channel.description,
             accent: entry.colors.primary,
-            onChanged: onChannelChanged,
+            placeholder: fetchLoading ? 'Loading…' : 'Unavailable',
+            onChanged: (channel) => onChannelChanged(channel.id),
           ),
           if (showVariant) ...[
             const SizedBox(height: 8),
@@ -419,6 +462,7 @@ class _FirmwareControls extends StatelessWidget {
                 UnleashedVariant.extraPacks => 'Extended pack with many apps',
               },
               accent: entry.colors.primary,
+              placeholder: 'Unavailable',
               onChanged: onVariantChanged,
             ),
           ],
@@ -436,15 +480,17 @@ class _SettingsDropdown<T> extends StatelessWidget {
     required this.labelOf,
     required this.descriptionOf,
     required this.accent,
+    required this.placeholder,
     required this.onChanged,
   });
 
   final String title;
-  final T value;
+  final T? value;
   final List<T> items;
   final String Function(T) labelOf;
   final String Function(T) descriptionOf;
   final Color accent;
+  final String placeholder;
   final ValueChanged<T> onChanged;
 
   @override
@@ -468,7 +514,7 @@ class _SettingsDropdown<T> extends StatelessWidget {
             color: Colors.transparent,
             child: InkWell(
               borderRadius: BorderRadius.circular(8),
-              onTap: () async {
+              onTap: items.isEmpty ? null : () async {
                 final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
                 final button = context.findRenderObject() as RenderBox;
                 final topRight = button.localToGlobal(
@@ -537,11 +583,11 @@ class _SettingsDropdown<T> extends StatelessWidget {
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
                 child: Text(
-                  labelOf(value),
+                  value == null ? placeholder : labelOf(value as T),
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
-                    color: accent,
+                    color: value == null ? colors.textMuted : accent,
                   ),
                 ),
               ),
