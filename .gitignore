@@ -1,5 +1,6 @@
 .sources/
 .codex
+.agents
 
 # Miscellaneous
 *.class
