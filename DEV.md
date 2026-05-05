@@ -64,3 +64,14 @@ export 'src/generated/desktop.pb.dart';
 ```
 
 Based on these commands, a generator/build script should be written for Linux, macOS, and Windows.
+
+сброс кеша 
+flutter clean
+Remove-Item -Recurse -Force build, .dart_tool -ErrorAction SilentlyContinue
+flutter pub get
+ie4uinit.exe -show
+# если не помогло — жёсткий сброс:
+taskkill /IM explorer.exe /F
+Remove-Item "$env:LOCALAPPDATA\IconCache.db" -Force -ErrorAction SilentlyContinue
+Remove-Item "$env:LOCALAPPDATA\Microsoft\Windows\Explorer\iconcache_*.db" -Force -ErrorAction SilentlyContinue
+Start-Process explorer.exe
