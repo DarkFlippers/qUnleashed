@@ -15,10 +15,16 @@ class UnleashedParser extends FirmwareParser {
   }) {
     final base = getLatestVersionById(channelId)?.updatePackageFor(target);
     if (base == null) return null;
+
+    final channel = FirmwareChannel.fromId(channelId);
     if (variant == UnleashedVariant.base) return base;
+    if (channel != FirmwareChannel.release) return null;
+
+    final version = getLatestVersionById(channelId)?.version;
+    if (version == null || version.isEmpty) return null;
     final suffix = variant == UnleashedVariant.compact ? 'c' : 'e';
     return FirmwareFile(
-      url: _withVariantSuffix(base.url, suffix),
+      url: _buildReleaseVariantUrl(version, target, suffix),
       target: base.target,
       type: base.type,
       sha256: '',
@@ -28,10 +34,6 @@ class UnleashedParser extends FirmwareParser {
   List<FirmwareDirectoryChannel> getAvailableChannels() =>
       (cached?.channels ?? []).where((c) => c.versions.isNotEmpty).toList();
 
-  static String _withVariantSuffix(String url, String suffix) {
-    final re = RegExp(r'(.+-update-\d+)(\.tgz)$');
-    final m = re.firstMatch(url);
-    if (m == null) return url;
-    return '${m.group(1)}$suffix${m.group(2)}';
-  }
+  static String _buildReleaseVariantUrl(String version, String target, String suffix) =>
+      'https://unleashedflip.com/fw_extra_apps/flipper-z-$target-update-$version$suffix.tgz';
 }
