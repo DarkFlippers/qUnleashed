@@ -18,23 +18,32 @@ const Duration kPreinstalledScanDelay = Duration(milliseconds: 100);
 
 enum AppActionType { install, update, delete }
 
+enum AppActionStage { download, upload }
+
 @immutable
 class AppAction {
   final String appId;
   final AppActionType type;
+  final AppActionStage stage;
   final double progress;
   final String? error;
 
   const AppAction({
     required this.appId,
     required this.type,
+    this.stage = AppActionStage.download,
     this.progress = 0,
     this.error,
   });
 
-  AppAction copyWith({double? progress, String? error}) => AppAction(
+  AppAction copyWith({
+    AppActionStage? stage,
+    double? progress,
+    String? error,
+  }) => AppAction(
         appId: appId,
         type: type,
+        stage: stage ?? this.stage,
         progress: progress ?? this.progress,
         error: error,
       );
@@ -204,8 +213,6 @@ class AppsInstallService extends ChangeNotifier {
     final tempFim = _tempFimPath(app);
 
     try {
-      _setProgress(app.alias, 0.02);
-
       var cv = detail?.card.currentVersion ?? app.currentVersion;
       var build = cv?.currentBuild;
       if (cv == null || cv.id.isEmpty || build == null) {
@@ -217,13 +224,7 @@ class AppsInstallService extends ChangeNotifier {
         throw StateError('No installable version available');
       }
 
-      _setProgress(app.alias, 0.05);
-      final fapBytes = await api.fetchFapBuild(cv.id);
-      _setProgress(app.alias, 0.45);
-
       final iconBase64 = await _fetchIconBase64(cv.iconUri);
-      _setProgress(app.alias, 0.5);
-
       final manifest = AppManifest(
         uid: app.id,
         versionUid: cv.id,
@@ -233,6 +234,19 @@ class AppsInstallService extends ChangeNotifier {
         sdkApi: api.api ?? build.sdk?.api ?? '',
         devCatalog: false,
       );
+      final manifestBytes = utf8.encode(manifest.encode());
+      final fapBytes = await api.fetchFapBuild(
+        cv.id,
+        onProgress: (receivedBytes, totalBytes) {
+          if (totalBytes == null || totalBytes <= 0) return;
+          _setActionState(
+            app.alias,
+            stage: AppActionStage.download,
+            progress: receivedBytes / totalBytes,
+          );
+        },
+      );
+      _setActionState(app.alias, stage: AppActionStage.download, progress: 1.0);
 
       await _ensureDir(kTempRoot);
       await _ensureDir(kAppsRoot);
@@ -245,14 +259,15 @@ class AppsInstallService extends ChangeNotifier {
       await client.storageWriteChunked(
         tempFap,
         fapBytes,
-        onProgress: (p) => _setProgress(app.alias, 0.5 + p * 0.4),
+        onProgress: (p) =>
+            _setActionState(app.alias, stage: AppActionStage.upload, progress: p),
       );
 
       await client.storageWriteChunked(
         tempFim,
-        utf8.encode(manifest.encode()),
+        manifestBytes,
       );
-      _setProgress(app.alias, 0.92);
+      _setActionState(app.alias, stage: AppActionStage.upload, progress: 1.0);
 
       await _safeDelete(fapPath);
       await _safeDelete(fimPath);
@@ -448,9 +463,20 @@ class AppsInstallService extends ChangeNotifier {
   }
 
   void _setProgress(String appId, double value) {
+    _setActionState(appId, progress: value);
+  }
+
+  void _setActionState(
+    String appId, {
+    AppActionStage? stage,
+    double? progress,
+  }) {
     final current = _actions[appId];
     if (current == null) return;
-    _actions[appId] = current.copyWith(progress: value.clamp(0, 1).toDouble());
+    _actions[appId] = current.copyWith(
+      stage: stage,
+      progress: (progress ?? current.progress).clamp(0, 1).toDouble(),
+    );
     notifyListeners();
   }
 

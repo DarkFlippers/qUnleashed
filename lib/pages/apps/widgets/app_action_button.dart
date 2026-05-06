@@ -36,6 +36,7 @@ class AppActionButton extends StatelessWidget {
         primary: _ProgressButton(
           progress: action.progress,
           type: action.type,
+          stage: action.stage,
           size: size,
         ),
       );
@@ -140,7 +141,12 @@ class AppActionButton extends StatelessWidget {
       case AppButtonState.inProgress:
         return _ActionRow(
           size: size,
-          primary: _ProgressButton(progress: 0, type: AppActionType.install, size: size),
+          primary: _ProgressButton(
+            progress: 0,
+            type: AppActionType.install,
+            stage: AppActionStage.download,
+            size: size,
+          ),
           secondary: _DeleteButton(
             size: size,
             onTap: () => _confirmDelete(context),
@@ -270,16 +276,22 @@ class _Pill extends StatelessWidget {
 }
 
 class _ProgressButton extends StatelessWidget {
-  const _ProgressButton({required this.progress, required this.type, required this.size});
+  const _ProgressButton({
+    required this.progress,
+    required this.type,
+    required this.stage,
+    required this.size,
+  });
 
   final double progress;
   final AppActionType type;
+  final AppActionStage stage;
   final AppActionButtonSize size;
 
   @override
   Widget build(BuildContext context) {
     final isLarge = size == AppActionButtonSize.large;
-    final state = _ProgressState.resolve(type);
+    final state = _ProgressState.resolve(type, stage);
     final borderColor = state.color;
     final baseColor = state.color.withValues(alpha: 0.18);
     final progressValue = progress.clamp(0.0, 1.0);
@@ -393,18 +405,28 @@ class _ProgressState {
   final String label;
   final Color color;
 
-  static _ProgressState resolve(AppActionType type) {
+  static _ProgressState resolve(AppActionType type, AppActionStage stage) {
+    if (stage == AppActionStage.upload) {
+      return _ProgressState(
+        label: 'UPLOAD',
+        color: switch (type) {
+          AppActionType.update => FlipperOriginalColors.green,
+          AppActionType.delete => FlipperOriginalColors.danger,
+          AppActionType.install => FlipperOriginalColors.accent,
+        },
+      );
+    }
     return switch (type) {
       AppActionType.update => _ProgressState(
-          label: 'UPDATE',
+          label: 'DOWNLOAD',
           color: FlipperOriginalColors.green,
         ),
       AppActionType.delete => _ProgressState(
-          label: 'DELETE',
+          label: 'DOWNLOAD',
           color: FlipperOriginalColors.danger,
         ),
       AppActionType.install => _ProgressState(
-          label: 'INSTALL',
+          label: 'DOWNLOAD',
           color: FlipperOriginalColors.accent,
         ),
     };
