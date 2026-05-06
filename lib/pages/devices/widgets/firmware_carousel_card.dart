@@ -195,9 +195,17 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
   }
 
   UnleashedVariant _selectedVariant(FirmwareEntry entry) =>
-      _variantByEntry[entry.shortName] ?? UnleashedVariant.base;
+      _supportsVariantSelection(entry, _selectedChannelId(entry))
+          ? (_variantByEntry[entry.shortName] ?? UnleashedVariant.base)
+          : UnleashedVariant.base;
 
-  bool _hasVariants(FirmwareEntry entry) => entry.shortName == 'unlshd';
+  bool _hasVariants(FirmwareEntry entry) =>
+      _supportsVariantSelection(entry, _selectedChannelId(entry));
+
+  bool _supportsVariantSelection(FirmwareEntry entry, String channelId) {
+    if (entry.shortName != 'unlshd') return false;
+    return FirmwareChannel.fromId(channelId) == FirmwareChannel.release;
+  }
 
   List<FirmwareDirectoryChannel> _channelsFor(FirmwareEntry entry) {
     final dir = _directories[entry.shortName];
@@ -302,7 +310,12 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
         channels: _channelsFor(entry),
         variant: _selectedVariant(entry),
         showVariant: _hasVariants(entry),
-        onChannelChanged: (channelId) => setState(() => _channelIdByEntry[entry.shortName] = channelId),
+        onChannelChanged: (channelId) => setState(() {
+          _channelIdByEntry[entry.shortName] = channelId;
+          if (!_supportsVariantSelection(entry, channelId)) {
+            _variantByEntry[entry.shortName] = UnleashedVariant.base;
+          }
+        }),
         onVariantChanged: (v) => setState(() => _variantByEntry[entry.shortName] = v),
       ),
     );
