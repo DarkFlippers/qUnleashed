@@ -137,7 +137,10 @@ class AppsCatalogApi {
     return AppDetail.fromJson(body);
   }
 
-  Future<List<int>> fetchFapBuild(String versionId) async {
+  Future<List<int>> fetchFapBuild(
+    String versionId, {
+    void Function(int receivedBytes, int? totalBytes)? onProgress,
+  }) async {
     final t = target;
     final a = api;
     if (t == null || a == null) {
@@ -148,7 +151,7 @@ class AppsCatalogApi {
       '/application/version/$versionId/build/compatible',
       {'target': t, 'api': a},
     );
-    return _getBytes(uri);
+    return _getBytes(uri, onProgress: onProgress);
   }
 
   Uri _uri(String path, Map<String, String> query) {
@@ -169,15 +172,23 @@ class AppsCatalogApi {
     return jsonDecode(text);
   }
 
-  Future<List<int>> _getBytes(Uri uri) async {
+  Future<List<int>> _getBytes(
+    Uri uri, {
+    void Function(int receivedBytes, int? totalBytes)? onProgress,
+  }) async {
     final res = await _send(uri);
     if (res.statusCode < 200 || res.statusCode >= 300) {
       final text = await res.transform(utf8.decoder).join();
       throw AppsCatalogException(res.statusCode, uri.toString(), text);
     }
+    final totalBytes = res.contentLength > 0 ? res.contentLength : null;
     final out = <int>[];
+    var receivedBytes = 0;
+    onProgress?.call(0, totalBytes);
     await for (final chunk in res) {
       out.addAll(chunk);
+      receivedBytes += chunk.length;
+      onProgress?.call(receivedBytes, totalBytes);
     }
     return out;
   }
