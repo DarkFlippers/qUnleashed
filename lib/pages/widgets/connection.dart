@@ -152,9 +152,21 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
               ),
             )
           else
-            TextButton(
-              onPressed: _startScan,
-              child: const Icon(Icons.refresh),
+            SizedBox(
+              width: 20,
+              height: 20,
+              child: IconButton(
+                onPressed: _startScan,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(
+                  minWidth: 20,
+                  minHeight: 20,
+                ),
+                iconSize: 20,
+                splashRadius: 14,
+                color: colors.accent,
+                icon: const Icon(Icons.refresh),
+              ),
             ),
         ],
       ),
