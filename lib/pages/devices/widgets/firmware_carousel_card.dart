@@ -206,7 +206,9 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
 
   bool _supportsVariantSelection(FirmwareEntry entry, String channelId) {
     if (entry.shortName != 'unlshd') return false;
-    return FirmwareChannel.fromId(channelId) == FirmwareChannel.release;
+    final channel = FirmwareChannel.fromId(channelId);
+    return channel == FirmwareChannel.release ||
+        channel == FirmwareChannel.development;
   }
 
   List<FirmwareDirectoryChannel> _channelsFor(FirmwareEntry entry) {
