@@ -192,13 +192,20 @@ class FlipperMockupWidget extends StatelessWidget {
     required this.active,
   });
 
+  static const _templateWidth = 238.0;
+  static const _templateHeight = 100.0;
+  static const _screenLeft = 60.65;
+  static const _screenTop = 10.54;
+  static const _screenWidth = 85.32;
+  static const _screenHeight = 46.95;
+
   final bool active;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
     return AspectRatio(
-      aspectRatio: 238 / 100,
+      aspectRatio: _templateWidth / _templateHeight,
       child: LayoutBuilder(
         builder: (context, constraints) {
           final w = constraints.maxWidth;
@@ -216,14 +223,31 @@ class FlipperMockupWidget extends StatelessWidget {
                         : 'assets/flipper_svg/mockup/template_white_flipper_disabled.svg'),
               ),
               Positioned(
-                left: w * (59.56 / 238),
-                top: h * (9.54 / 100),
-                width: w * (85.33 / 119),
-                height: h * (46.96 / 100),
+                left: w * (_screenLeft / _templateWidth),
+                top: h * (_screenTop / _templateHeight),
+                width: w * (_screenWidth / _templateWidth),
+                height: h * (_screenHeight / _templateHeight),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(w * (3.4 / 238)),
-                  child: const RepaintBoundary(
-                    child: _MockupInnerScreen(),
+                  child: RepaintBoundary(
+                    child: OverflowBox(
+                      alignment: Alignment.topLeft,
+                      minWidth: w,
+                      maxWidth: w,
+                      minHeight: h,
+                      maxHeight: h,
+                      child: Transform.translate(
+                        offset: Offset(
+                          -w * (_screenLeft / _templateWidth),
+                          -h * (_screenTop / _templateHeight),
+                        ),
+                        child: SizedBox(
+                          width: w,
+                          height: h,
+                          child: const _MockupInnerScreen(),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ),
