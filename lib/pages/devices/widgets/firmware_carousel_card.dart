@@ -15,9 +15,11 @@ class FirmwareCarouselCard extends StatefulWidget {
   const FirmwareCarouselCard({
     super.key,
     required this.deviceVersion,
+    required this.deviceInfo,
   });
 
   final String? deviceVersion;
+  final Map<String, String> deviceInfo;
 
   @override
   State<FirmwareCarouselCard> createState() => _FirmwareCarouselCardState();
@@ -328,6 +330,7 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
       fetchLoading: loading,
       latestVersion: latestVersion,
       deviceVersion: widget.deviceVersion,
+      deviceInfo: widget.deviceInfo,
       selectedChannelId: _selectedChannelId(entry),
       selectedVariant: _selectedVariant(entry),
       client: _client,
@@ -348,6 +351,7 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
                       fetchLoading: loading,
                       latestVersion: latestVersion,
                       deviceVersion: widget.deviceVersion,
+                      deviceInfo: widget.deviceInfo,
                       selectedChannelId: _selectedChannelId(entry),
                       selectedVariant: _selectedVariant(entry),
                       client: _client,

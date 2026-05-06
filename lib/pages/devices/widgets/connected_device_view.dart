@@ -11,6 +11,7 @@ class ConnectedDeviceView extends StatelessWidget {
     super.key,
     required this.deviceName,
     required this.infoLoading,
+    required this.deviceInfo,
     required this.deviceInfoEntries,
     required this.onSynchronize,
     required this.onPlayAlert,
@@ -22,6 +23,7 @@ class ConnectedDeviceView extends StatelessWidget {
 
   final String deviceName;
   final bool infoLoading;
+  final Map<String, String> deviceInfo;
   final List<MapEntry<String, String>> deviceInfoEntries;
   final VoidCallback? onSynchronize;
   final VoidCallback? onPlayAlert;
@@ -46,6 +48,7 @@ class ConnectedDeviceView extends StatelessWidget {
             children: [
               FirmwareCarouselCard(
                 deviceVersion: infoLoading || deviceInfoEntries.isEmpty ? '-' : deviceInfoEntries.first.value,
+                deviceInfo: deviceInfo,
               ),
               const SizedBox(height: 14),
               FlipperPageCard(

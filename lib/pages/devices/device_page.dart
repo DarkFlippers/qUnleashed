@@ -545,6 +545,7 @@ class _DevicePageState extends State<DevicePage> {
               ? ConnectedDeviceView(
                   deviceName: _deviceName,
                   infoLoading: _deviceLoading,
+                  deviceInfo: _info,
                   deviceInfoEntries: _deviceInfoEntries,
                   onSynchronize: _deviceLoading ? null : _synchronizeDevice,
                   onPlayAlert: _alertPlaying ? null : _playAlertOnFlipper,

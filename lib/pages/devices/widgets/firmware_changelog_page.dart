@@ -17,6 +17,7 @@ class FirmwareChangelogPage extends StatefulWidget {
     required this.fetchLoading,
     required this.latestVersion,
     required this.deviceVersion,
+    required this.deviceInfo,
     required this.selectedChannelId,
     required this.selectedVariant,
     required this.client,
@@ -28,6 +29,7 @@ class FirmwareChangelogPage extends StatefulWidget {
   final bool fetchLoading;
   final String? latestVersion;
   final String? deviceVersion;
+  final Map<String, String> deviceInfo;
   final String selectedChannelId;
   final UnleashedVariant selectedVariant;
   final FlipperClient client;
@@ -120,6 +122,7 @@ class _FirmwareChangelogPageState extends State<FirmwareChangelogPage> {
                 fetchLoading: widget.fetchLoading,
                 latestVersion: widget.latestVersion,
                 deviceVersion: widget.deviceVersion,
+                deviceInfo: widget.deviceInfo,
                 selectedChannelId: widget.selectedChannelId,
                 selectedVariant: widget.selectedVariant,
                 client: widget.client,

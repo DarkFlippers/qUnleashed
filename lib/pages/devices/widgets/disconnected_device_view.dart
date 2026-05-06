@@ -26,7 +26,10 @@ class DisconnectedDeviceView extends StatelessWidget {
           child: ListView(
             padding: EdgeInsets.only(top: headerHeight + 14, bottom: 14),
             children: [
-              const FirmwareCarouselCard(deviceVersion: null),
+              const FirmwareCarouselCard(
+                deviceVersion: null,
+                deviceInfo: {},
+              ),
               const SizedBox(height: 14),
               FlipperPageCard(
                 child: Column(
