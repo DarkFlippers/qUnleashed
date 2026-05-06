@@ -2,10 +2,10 @@ import 'dart:async';
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
-import '../../../models/firmware_config.dart';
-import '../../../models/firmware_directory.dart';
-import '../../../models/ofw_parser.dart';
-import '../../../models/unleashed_parser.dart';
+import '../models/firmware_config.dart';
+import '../models/firmware_directory.dart';
+import '../models/ofw_parser.dart';
+import '../models/unleashed_parser.dart';
 import '../../../theme.dart';
 import '../../../widgets/device_shell.dart';
 import 'firmware_changelog_page.dart';
