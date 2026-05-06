@@ -75,3 +75,8 @@ taskkill /IM explorer.exe /F
 Remove-Item "$env:LOCALAPPDATA\IconCache.db" -Force -ErrorAction SilentlyContinue
 Remove-Item "$env:LOCALAPPDATA\Microsoft\Windows\Explorer\iconcache_*.db" -Force -ErrorAction SilentlyContinue
 Start-Process explorer.exe
+
+- base -> https://unleashedflip.com/fw/unlshd-087/flipper-z-f7-update-unlshd-087.tgz -> 200
+- extra -> https://unleashedflip.com/fw_extra_apps/flipper-z-f7-update-unlshd-087e.tgz -> 200
+- compact -> https://unleashedflip.com/fw_extra_apps/flipper-z-f7-update-unlshd-087c.tgz -> 200
+- dev -> https://unleashedflip.com/fw/dev/flipper-z-f7-update-1288.tgz -> 200
