@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'models/firmware_config.dart';
+import 'pages/devices/models/firmware_config.dart';
 
 class QAppThemeController extends ChangeNotifier {
   QAppThemeController._();
