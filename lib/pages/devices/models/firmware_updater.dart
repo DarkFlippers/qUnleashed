@@ -3,7 +3,6 @@ import 'dart:io' as io;
 
 import 'package:archive/archive_io.dart';
 import 'package:flipperlib/flipperlib.dart';
-import 'package:flutter/foundation.dart';
 
 import 'firmware_config.dart';
 import 'firmware_directory.dart';
@@ -15,7 +14,6 @@ const _remoteRoot = '/ext/update';
 
 void _log(String msg) {
   LogService.log('$_tag $msg');
-  debugPrint('$_tag $msg');
 }
 
 sealed class UpdateState {
