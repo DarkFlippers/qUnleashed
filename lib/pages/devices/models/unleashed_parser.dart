@@ -35,6 +35,16 @@ class UnleashedParser extends FirmwareParser {
   List<FirmwareDirectoryChannel> getAvailableChannels() =>
       (cached?.channels ?? []).where((c) => c.versions.isNotEmpty).toList();
 
+  String? getDisplayVersion(
+    String channelId, {
+    String target = 'f7',
+    UnleashedVariant variant = UnleashedVariant.base,
+  }) {
+    final file = getUpdatePackage(channelId, target: target, variant: variant);
+    if (file == null) return null;
+    return _extractVersionFromUrl(file.url);
+  }
+
   static String _buildVariantUrl(String baseUrl, String suffix) {
     final uri = Uri.tryParse(baseUrl);
     if (uri == null) return baseUrl;
@@ -53,5 +63,11 @@ class UnleashedParser extends FirmwareParser {
         variantFileName,
       ],
     ).toString();
+  }
+
+  static String? _extractVersionFromUrl(String url) {
+    final fileName = Uri.tryParse(url)?.pathSegments.last ?? url.split('/').last;
+    final match = RegExp(r'^flipper-z-[^-]+-update-([^.]+)\.tgz$').firstMatch(fileName);
+    return match?.group(1);
   }
 }
