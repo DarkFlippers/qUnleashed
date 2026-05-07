@@ -11,6 +11,7 @@ class RemoteControlView extends StatelessWidget {
   static const double _queueSpacing = 4;
   static const double _logoSpacing = 12;
   static const double _logoHeight = 22;
+  static const double _logoWidth = 183;
   static const double _frameChrome = 28;
 
   const RemoteControlView({
@@ -33,74 +34,108 @@ class RemoteControlView extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final frameMaxWidth = (constraints.maxWidth - _frameChrome).clamp(0.0, double.infinity);
-        final frameMaxHeight = (constraints.maxHeight -
-                _queueHeight -
-                _queueSpacing -
-                _logoSpacing -
-                _logoHeight -
-                _frameChrome)
-            .clamp(0.0, double.infinity);
+        final frameMaxWidth =
+            (constraints.maxWidth - _frameChrome).clamp(0.0, double.infinity);
+        final fixedHeight = _queueHeight + _queueSpacing + _logoSpacing + _logoHeight;
+        final frameMaxHeight =
+            (constraints.maxHeight - fixedHeight - _frameChrome)
+                .clamp(0.0, double.infinity);
         final frameWidth = (frameMaxHeight * frameAspectRatio).clamp(0.0, frameMaxWidth);
-        final screenWidth = frameWidth + _frameChrome;
+        final shellWidth = frameWidth + _frameChrome;
 
         return Center(
-          child: SizedBox(
-            width: screenWidth,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  height: _queueHeight,
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      physics: const NeverScrollableScrollPhysics(),
-                      shrinkWrap: true,
-                      itemCount: queue.length,
-                      separatorBuilder: (_, _) => const SizedBox(width: 4),
-                      itemBuilder: (_, i) => _QueueIcon(
-                        key: ValueKey(queue[i].id),
-                        colors: colors,
-                        asset: queue[i].asset,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: SizedBox(
+              width: shellWidth,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: frameWidth,
+                    height: _queueHeight,
+                    child: queue.isEmpty
+                        ? const SizedBox.shrink()
+                        : ListView.separated(
+                            scrollDirection: Axis.horizontal,
+                            physics: const NeverScrollableScrollPhysics(),
+                            shrinkWrap: true,
+                            itemCount: queue.length,
+                            separatorBuilder: (_, _) => const SizedBox(width: 4),
+                            itemBuilder: (_, i) => _QueueIcon(
+                              key: ValueKey(queue[i].id),
+                              colors: colors,
+                              asset: queue[i].asset,
+                            ),
+                          ),
+                  ),
+                  const SizedBox(height: _queueSpacing),
+                  _ScreenShell(
+                    colors: colors,
+                    image: image,
+                    orientation: orientation,
+                    frameWidth: frameWidth,
+                  ),
+                  const SizedBox(height: _logoSpacing),
+                  SizedBox(
+                    height: _logoHeight,
+                    child: FittedBox(
+                      fit: BoxFit.contain,
+                      child: SvgPicture.asset(
+                        'assets/flipper_svg/screenstreaming/ic_flipper_logo.svg',
+                        width: _logoWidth,
+                        height: _logoHeight,
+                        colorFilter: ColorFilter.mode(colors.accent, BlendMode.srcIn),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: _queueSpacing),
-                Container(
-                  decoration: BoxDecoration(
-                    border: Border.all(color: colors.screenBorder, width: 3),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  padding: const EdgeInsets.all(6),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      border: Border.all(color: colors.screenBorder, width: 2),
-                      borderRadius: BorderRadius.circular(12),
-                      color: colors.screenBackground,
-                    ),
-                    padding: const EdgeInsets.all(8),
-                    child: _LiveFrame(
-                      colors: colors,
-                      image: image,
-                      orientation: orientation,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: _logoSpacing),
-                SvgPicture.asset(
-                  'assets/flipper_svg/screenstreaming/ic_flipper_logo.svg',
-                  width: 183,
-                  height: _logoHeight,
-                  colorFilter: ColorFilter.mode(colors.accent, BlendMode.srcIn),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         );
       },
+    );
+  }
+}
+
+class _ScreenShell extends StatelessWidget {
+  const _ScreenShell({
+    required this.colors,
+    required this.image,
+    required this.orientation,
+    required this.frameWidth,
+  });
+
+  final QAppColors colors;
+  final ui.Image? image;
+  final StreamOrientation orientation;
+  final double frameWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        border: Border.all(color: colors.screenBorder, width: 3),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      padding: const EdgeInsets.all(6),
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border.all(color: colors.screenBorder, width: 2),
+          borderRadius: BorderRadius.circular(12),
+          color: colors.screenBackground,
+        ),
+        padding: const EdgeInsets.all(8),
+        child: SizedBox(
+          width: frameWidth,
+          child: _LiveFrame(
+            colors: colors,
+            image: image,
+            orientation: orientation,
+          ),
+        ),
+      ),
     );
   }
 }

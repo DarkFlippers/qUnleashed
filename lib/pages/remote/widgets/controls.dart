@@ -5,6 +5,9 @@ import '../../../theme.dart';
 import '../models/models.dart';
 
 class RemoteControlControls extends StatelessWidget {
+  static const double _layoutWidth = 246;
+  static const double _layoutHeight = 162;
+
   const RemoteControlControls({
     super.key,
     required this.onTapButton,
@@ -20,24 +23,32 @@ class RemoteControlControls extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.appColors;
 
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        _DPad(
-          colors: colors,
-          onTapButton: onTapButton,
-          onHoldStart: onHoldButtonStart,
-          onHoldEnd: onHoldButtonEnd,
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.bottomCenter,
+      child: SizedBox(
+        width: _layoutWidth,
+        height: _layoutHeight,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            _DPad(
+              colors: colors,
+              onTapButton: onTapButton,
+              onHoldStart: onHoldButtonStart,
+              onHoldEnd: onHoldButtonEnd,
+            ),
+            const SizedBox(width: 30),
+            _BackButton(
+              colors: colors,
+              onTap: () => onTapButton(RemoteButton.back),
+              onHoldStart: (_) => onHoldButtonStart(RemoteButton.back),
+              onHoldEnd: (_) => onHoldButtonEnd(RemoteButton.back),
+            ),
+          ],
         ),
-        const SizedBox(width: 30),
-        _BackButton(
-          colors: colors,
-          onTap: () => onTapButton(RemoteButton.back),
-          onHoldStart: (_) => onHoldButtonStart(RemoteButton.back),
-          onHoldEnd: (_) => onHoldButtonEnd(RemoteButton.back),
-        ),
-      ],
+      ),
     );
   }
 }
