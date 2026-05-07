@@ -69,7 +69,7 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
 
     if (widget.latestVersion == null) {
       return _ResolvedButtonState(
-        label: 'INSTALL',
+        label: 'NO UPDATE',
         color: _inactiveColor,
         description: 'Can\'t connect to update server',
         enabled: false,
@@ -353,10 +353,14 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
     final channel = FirmwareChannel.fromId(widget.selectedChannelId);
     if (latestVersion == null || latestVersion.isEmpty || channel == null) return null;
 
+    final normalizedVersion = widget.entry.shortName == 'unlshd'
+        ? _normalizeUnleashedVersion(latestVersion)
+        : latestVersion;
+
     return _SelectedFirmware(
       type: widget.entry.shortName,
       channel: channel,
-      version: latestVersion,
+      version: normalizedVersion,
       variant: widget.entry.shortName == 'unlshd' ? widget.selectedVariant : null,
     );
   }
@@ -407,7 +411,7 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
 
   _InstalledFirmware _parseInstalledUnleashed(String rawVersion, String? branchName) {
     final normalized = rawVersion.trim().toLowerCase();
-    final releaseMatch = RegExp(r'(unlshd-\d+)([ce]?)').firstMatch(normalized);
+    final releaseMatch = RegExp(r'((?:unlshd-\d+)|(?:\d+))([ce]?)').firstMatch(normalized);
     final channel = _detectUnleashedChannel(normalized, branchName);
     if (releaseMatch != null) {
       final suffix = releaseMatch.group(2) ?? '';
@@ -505,6 +509,12 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
       .allMatches(value)
       .map((match) => int.tryParse(match.group(0) ?? '') ?? 0)
       .toList();
+
+  String _normalizeUnleashedVersion(String value) {
+    final match = RegExp(r'^((?:unlshd-\d+)|(?:\d+))(?:[ce])?$',
+        caseSensitive: false).firstMatch(value.trim());
+    return match?.group(1) ?? value.trim();
+  }
 }
 
 class _ResolvedButtonState {

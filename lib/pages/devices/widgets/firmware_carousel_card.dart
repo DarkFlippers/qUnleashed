@@ -223,6 +223,13 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
   }
 
   String? _latestVersionFor(FirmwareEntry entry) {
+    final parser = _parserFor(entry);
+    if (entry.shortName == 'unlshd' && parser is UnleashedParser) {
+      return parser.getDisplayVersion(
+        _selectedChannelId(entry),
+        variant: _selectedVariant(entry),
+      );
+    }
     final dir = _directories[entry.shortName];
     if (dir == null) return null;
     final ch = dir.channelById(_selectedChannelId(entry));
