@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme.dart';
-import '../remote/remote_control_page.dart';
+import '../remote/page.dart';
 import 'app_detail_page.dart';
 import 'apps_controller.dart';
 import 'models/app_card.dart';
