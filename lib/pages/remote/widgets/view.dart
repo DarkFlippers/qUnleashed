@@ -7,6 +7,12 @@ import '../../../theme.dart';
 import '../models/models.dart';
 
 class RemoteControlView extends StatelessWidget {
+  static const double _queueHeight = 28;
+  static const double _queueSpacing = 4;
+  static const double _logoSpacing = 12;
+  static const double _logoHeight = 22;
+  static const double _frameChrome = 28;
+
   const RemoteControlView({
     super.key,
     required this.image,
@@ -21,11 +27,22 @@ class RemoteControlView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
+    final isVertical =
+        orientation == StreamOrientation.vertical || orientation == StreamOrientation.verticalFlip;
+    final frameAspectRatio = isVertical ? 0.5 : 2.0;
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final screenWidth =
-            ((constraints.maxHeight - 74 - 85) * 2).clamp(0.0, constraints.maxWidth);
+        final frameMaxWidth = (constraints.maxWidth - _frameChrome).clamp(0.0, double.infinity);
+        final frameMaxHeight = (constraints.maxHeight -
+                _queueHeight -
+                _queueSpacing -
+                _logoSpacing -
+                _logoHeight -
+                _frameChrome)
+            .clamp(0.0, double.infinity);
+        final frameWidth = (frameMaxHeight * frameAspectRatio).clamp(0.0, frameMaxWidth);
+        final screenWidth = frameWidth + _frameChrome;
 
         return Center(
           child: SizedBox(
@@ -34,7 +51,7 @@ class RemoteControlView extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 SizedBox(
-                  height: 28,
+                  height: _queueHeight,
                   child: Align(
                     alignment: Alignment.centerLeft,
                     child: ListView.separated(
@@ -51,7 +68,7 @@ class RemoteControlView extends StatelessWidget {
                     ),
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: _queueSpacing),
                 Container(
                   decoration: BoxDecoration(
                     border: Border.all(color: colors.screenBorder, width: 3),
@@ -72,11 +89,11 @@ class RemoteControlView extends StatelessWidget {
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: _logoSpacing),
                 SvgPicture.asset(
                   'assets/flipper_svg/screenstreaming/ic_flipper_logo.svg',
                   width: 183,
-                  height: 22,
+                  height: _logoHeight,
                   colorFilter: ColorFilter.mode(colors.accent, BlendMode.srcIn),
                 ),
               ],
