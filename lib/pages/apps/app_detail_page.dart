@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../theme.dart';
 import '../../widgets/changelog_renderer.dart';
-import '../devices/remote_control_page.dart';
+import '../remote/remote_control_page.dart';
 import 'apps_catalog_api.dart';
 import 'apps_install_service.dart';
 import 'models/app_card.dart';
