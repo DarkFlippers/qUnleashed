@@ -6,7 +6,6 @@ import 'package:super_clipboard/super_clipboard.dart';
 
 import '../../theme.dart';
 import '../../widgets/device_full_info_sheet.dart';
-import '../../widgets/device_logs_sheet.dart';
 import '../../widgets/device_shell.dart';
 import '../apps/apps_page.dart';
 import '../archive/archive_page.dart';
@@ -32,26 +31,19 @@ class _DevicePageState extends State<DevicePage> {
   bool _deviceLoading = false;
   bool _alertPlaying = false;
   Map<String, String> _info = {};
-  final List<String> _logs = [];
 
   StreamSubscription<FlipperConnectionState>? _connectionSub;
-  StreamSubscription<String>? _logSub;
 
   @override
   void initState() {
     super.initState();
     _device = _client.connectedDevice;
     _connectionSub = _client.connectionStream.listen(_onConnectionState);
-    _logSub = LogService.stream.listen((line) {
-      if (!mounted) return;
-      setState(() => _logs.add(line));
-    });
   }
 
   @override
   void dispose() {
     _connectionSub?.cancel();
-    _logSub?.cancel();
     _client.disconnect();
     super.dispose();
   }
@@ -481,14 +473,6 @@ class _DevicePageState extends State<DevicePage> {
     );
   }
 
-  void _openLogs() {
-    showDeviceLogsSheet(
-      context,
-      logs: _logs,
-      onClear: () => setState(_logs.clear),
-    );
-  }
-
   void _synchronizeDevice() {
     setState(() {
       _deviceLoading = true;
@@ -557,10 +541,7 @@ class _DevicePageState extends State<DevicePage> {
               : DisconnectedDeviceView(onConnect: _openPicker),
           const ArchivePage(),
           const AppsPage(),
-          ToolsPage(
-            connected: isConnected,
-            onOpenLogs: _openLogs,
-          ),
+          const ToolsPage(),
         ],
       ),
     );
