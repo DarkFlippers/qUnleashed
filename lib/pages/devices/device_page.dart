@@ -12,7 +12,7 @@ import '../apps/apps_page.dart';
 import '../archive/archive_page.dart';
 import '../tools/tools_page.dart';
 import '../widgets/connection.dart';
-import '../remote/remote_control_page.dart';
+import '../remote/page.dart';
 import 'widgets/connected_device_view.dart';
 import 'widgets/disconnected_device_view.dart';
 

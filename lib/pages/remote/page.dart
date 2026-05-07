@@ -11,7 +11,9 @@ import 'package:super_clipboard/super_clipboard.dart';
 
 import '../../theme.dart';
 import 'models/models.dart';
-import 'widgets/remote_control_view.dart';
+import 'widgets/action_button.dart';
+import 'widgets/controls.dart';
+import 'widgets/view.dart';
 
 class RemoteControlPage extends StatefulWidget {
   const RemoteControlPage({super.key});
@@ -382,20 +384,113 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
 
   @override
   Widget build(BuildContext context) {
-    return RemoteControlView(
-      image: _frameImage,
-      queue: _buttonQueue,
-      orientation: _orientation,
-      isLocked: _isLocked,
-      isSavingScreenshot: _isSavingScreenshot,
-      onCopyScreenshot: _copyScreenshot,
-      onSaveScreenshot: _saveScreenshot,
-      onUnlock: _unlock,
-      onTapButton: (button) => _sendInput(button, InputType.SHORT),
-      onHoldButtonStart: _startHold,
-      onHoldButtonEnd: _endHold,
-      onClose: _closePage,
-      onKeyEvent: _handleKeyEvent,
+    final colors = context.appColors;
+    final topInset = MediaQuery.paddingOf(context).top;
+
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (_, _) => _closePage(),
+      child: Focus(
+        autofocus: true,
+        onKeyEvent: (_, event) => _handleKeyEvent(event),
+        child: Scaffold(
+          backgroundColor: colors.background,
+          body: Column(
+            children: [
+              Container(
+                color: colors.accent,
+                padding: EdgeInsets.only(top: topInset),
+                child: SizedBox(
+                  height: 56,
+                  child: Row(
+                    children: [
+                      IconButton(
+                        onPressed: _closePage,
+                        icon: Icon(Icons.arrow_back, color: colors.onAccent),
+                      ),
+                      Expanded(
+                        child: Text(
+                          'Remote Control',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: colors.onAccent,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 48),
+                    ],
+                  ),
+                ),
+              ),
+              Expanded(
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: SafeArea(
+                        top: false,
+                        bottom: false,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(24, 14, 24, 12),
+                          child: Column(
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 12),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    RemoteControlActionButton(
+                                      icon: Icons.copy_rounded,
+                                      label: _isSavingScreenshot ? 'Saving...' : 'Copy',
+                                      onTap: _copyScreenshot,
+                                    ),
+                                    RemoteControlActionButton(
+                                      icon: Icons.download_rounded,
+                                      label: _isSavingScreenshot ? 'Saving...' : 'Save',
+                                      onTap: _saveScreenshot,
+                                    ),
+                                    RemoteControlActionButton(
+                                      asset: _isLocked
+                                          ? 'assets/flipper_svg/screenstreaming/ic_unlock.svg'
+                                          : 'assets/flipper_svg/screenstreaming/ic_lock.svg',
+                                      label: _isLocked ? 'Unlock Flipper' : 'Already unlocked',
+                                      onTap: _isLocked ? _unlock : null,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 18),
+                              Expanded(
+                                child: RemoteControlView(
+                                  image: _frameImage,
+                                  queue: _buttonQueue,
+                                  orientation: _orientation,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    SafeArea(
+                      top: false,
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: RemoteControlControls(
+                          onTapButton: (button) => _sendInput(button, InputType.SHORT),
+                          onHoldButtonStart: _startHold,
+                          onHoldButtonEnd: _endHold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
