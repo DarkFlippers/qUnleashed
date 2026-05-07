@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:io' as io;
 import 'dart:ui' as ui;
 
@@ -386,6 +387,8 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final topInset = MediaQuery.paddingOf(context).top;
+    final isVertical =
+        _orientation == StreamOrientation.vertical || _orientation == StreamOrientation.verticalFlip;
 
     return PopScope(
       canPop: false,
@@ -425,66 +428,94 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
                 ),
               ),
               Expanded(
-                child: Column(
-                  children: [
-                    Expanded(
-                      child: SafeArea(
-                        top: false,
-                        bottom: false,
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(24, 14, 24, 12),
-                          child: Column(
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 12),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    RemoteControlActionButton(
-                                      icon: Icons.copy_rounded,
-                                      label: _isSavingScreenshot ? 'Saving...' : 'Copy',
-                                      onTap: _copyScreenshot,
-                                    ),
-                                    RemoteControlActionButton(
-                                      icon: Icons.download_rounded,
-                                      label: _isSavingScreenshot ? 'Saving...' : 'Save',
-                                      onTap: _saveScreenshot,
-                                    ),
-                                    RemoteControlActionButton(
-                                      asset: _isLocked
-                                          ? 'assets/flipper_svg/screenstreaming/ic_unlock.svg'
-                                          : 'assets/flipper_svg/screenstreaming/ic_lock.svg',
-                                      label: _isLocked ? 'Unlock Flipper' : 'Already unlocked',
-                                      onTap: _isLocked ? _unlock : null,
-                                    ),
-                                  ],
-                                ),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final controlsHeight = isVertical
+                        ? math.min(150.0, constraints.maxHeight * 0.28)
+                        : math.min(174.0, constraints.maxHeight * 0.32);
+                    final horizontalPadding = isVertical ? 12.0 : 24.0;
+
+                    return Column(
+                      children: [
+                        Expanded(
+                          child: SafeArea(
+                            top: false,
+                            bottom: false,
+                            child: Padding(
+                              padding: EdgeInsets.fromLTRB(
+                                horizontalPadding,
+                                14,
+                                horizontalPadding,
+                                8,
                               ),
-                              const SizedBox(height: 18),
-                              Expanded(
-                                child: RemoteControlView(
-                                  image: _frameImage,
-                                  queue: _buttonQueue,
-                                  orientation: _orientation,
-                                ),
+                              child: Column(
+                                children: [
+                                  Padding(
+                                    padding: EdgeInsets.symmetric(horizontal: isVertical ? 0 : 12),
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                          child: Center(
+                                            child: RemoteControlActionButton(
+                                              icon: Icons.copy_rounded,
+                                              label: _isSavingScreenshot ? 'Saving' : 'Copy',
+                                              onTap: _copyScreenshot,
+                                            ),
+                                          ),
+                                        ),
+                                        Expanded(
+                                          child: Center(
+                                            child: RemoteControlActionButton(
+                                              icon: Icons.download_rounded,
+                                              label: _isSavingScreenshot ? 'Saving' : 'Save',
+                                              onTap: _saveScreenshot,
+                                            ),
+                                          ),
+                                        ),
+                                        Expanded(
+                                          child: Center(
+                                            child: RemoteControlActionButton(
+                                              asset: _isLocked
+                                                  ? 'assets/flipper_svg/screenstreaming/ic_unlock.svg'
+                                                  : 'assets/flipper_svg/screenstreaming/ic_lock.svg',
+                                              label: _isLocked ? 'Unlock' : 'Unlocked',
+                                              onTap: _isLocked ? _unlock : null,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Expanded(
+                                    child: RemoteControlView(
+                                      image: _frameImage,
+                                      queue: _buttonQueue,
+                                      orientation: _orientation,
+                                    ),
+                                  ),
+                                ],
                               ),
-                            ],
+                            ),
                           ),
                         ),
-                      ),
-                    ),
-                    SafeArea(
-                      top: false,
-                      child: Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: RemoteControlControls(
-                          onTapButton: (button) => _sendInput(button, InputType.SHORT),
-                          onHoldButtonStart: _startHold,
-                          onHoldButtonEnd: _endHold,
+                        SafeArea(
+                          top: false,
+                          child: Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: SizedBox(
+                              height: controlsHeight,
+                              child: RemoteControlControls(
+                                onTapButton: (button) => _sendInput(button, InputType.SHORT),
+                                onHoldButtonStart: _startHold,
+                                onHoldButtonEnd: _endHold,
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
-                  ],
+                      ],
+                    );
+                  },
                 ),
               ),
             ],
