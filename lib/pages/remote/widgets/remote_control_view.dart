@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme.dart';
-import '../remote_control_models.dart';
+import '../models/models.dart';
 
 class RemoteControlView extends StatelessWidget {
   const RemoteControlView({

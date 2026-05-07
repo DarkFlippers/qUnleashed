@@ -10,7 +10,7 @@ import 'package:saver_gallery/saver_gallery.dart';
 import 'package:super_clipboard/super_clipboard.dart';
 
 import '../../theme.dart';
-import 'remote_control_models.dart';
+import 'models/models.dart';
 import 'widgets/remote_control_view.dart';
 
 class RemoteControlPage extends StatefulWidget {
