@@ -52,13 +52,13 @@ class _EmulatePageState extends State<EmulatePage> {
   String _errorMessage(EmulateError? e) {
     switch (e) {
       case EmulateError.notConnected:
-        return 'Flipper не подключён';
+        return 'Flipper is not connected';
       case EmulateError.notEmulatable:
-        return 'Этот тип файла нельзя эмулировать';
+        return 'This file type cannot be opened on the device';
       case EmulateError.appStartFailed:
-        return 'Не удалось открыть приложение на Flipper';
+        return 'Could not open the app on Flipper';
       case EmulateError.loadFileFailed:
-        return 'Не удалось загрузить файл в приложение';
+        return 'Could not load the file into the app';
       case null:
         return '';
     }
@@ -80,7 +80,7 @@ class _EmulatePageState extends State<EmulatePage> {
         appBar: AppBar(
           backgroundColor: colors.accent,
           foregroundColor: colors.onAccent,
-          title: Text('Emulate · ${k.category.title}'),
+          title: Text('Open on device · ${k.category.title}'),
         ),
         body: SafeArea(
           child: Padding(
@@ -145,7 +145,7 @@ class _EmulatePageState extends State<EmulatePage> {
                   ElevatedButton.icon(
                     onPressed: _stopAndClose,
                     icon: const Icon(Icons.stop),
-                    label: const Text('Stop emulation'),
+                    label: const Text('Stop'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: colors.danger,
                       foregroundColor: colors.onAccent,
@@ -185,7 +185,7 @@ class _EmulatePageState extends State<EmulatePage> {
           children: [
             CircularProgressIndicator(color: colors.accent),
             const SizedBox(height: 16),
-            Text('Запуск приложения на Flipper…',
+            Text('Opening app on Flipper...',
                 style: TextStyle(color: colors.textSecondary)),
           ],
         ),
@@ -218,7 +218,7 @@ class _EmulatePageState extends State<EmulatePage> {
           ),
           const SizedBox(height: 16),
           Text(
-            'Файл загружен на Flipper',
+            'File loaded on Flipper',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: colors.textPrimary,
@@ -228,7 +228,7 @@ class _EmulatePageState extends State<EmulatePage> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Используйте кнопки Flipper для запуска.\nStop закроет приложение.',
+            'Use the Flipper buttons to run it.\nStop will close the app.',
             textAlign: TextAlign.center,
             style: TextStyle(color: colors.textMuted, fontSize: 12, height: 1.4),
           ),
