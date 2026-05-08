@@ -28,6 +28,7 @@ class ArchiveController extends ChangeNotifier {
   SyncProgress? _syncProgress;
   String? _lastError;
   String _query = '';
+  bool _wasConnected = false;
 
   final Map<String, ArchiveKey> _keys = <String, ArchiveKey>{};
 
@@ -76,13 +77,13 @@ class ArchiveController extends ChangeNotifier {
     _connSub ??= _client.connectionStream.listen(_onConnectionChange);
     final live = ArchiveStorage.normalizeDeviceName(_client.connectedDevice?.name);
     _deviceName = live ?? (await _storage.readLastDeviceName()) ?? '';
+    _wasConnected = _client.isConnected;
     await refresh();
     if (_client.isConnected) {
       unawaited(syncAll());
     }
   }
 
-  bool _wasConnected = false;
   void _onConnectionChange(FlipperConnectionState s) {
     final connected = s.connected && s.device != null;
     final normalized = ArchiveStorage.normalizeDeviceName(s.device?.name);
@@ -132,15 +133,14 @@ class ArchiveController extends ChangeNotifier {
       final localEntries = await _storage.listAll(_deviceName);
       final next = <String, ArchiveKey>{};
       for (final entry in localEntries) {
-        final key = _localKey(entry.category, entry.name, entry.extension,
-            entry.subFolder,
-            deleted: entry.deleted);
+        final key = _localKey(
+            entry.category, entry.name, entry.extension, entry.subFolder);
         next[key] = ArchiveKey(
           name: entry.name,
           category: entry.category,
           extension: entry.extension,
           subFolder: entry.subFolder,
-          state: entry.deleted ? ArchiveKeyState.deleted : ArchiveKeyState.localOnly,
+          state: ArchiveKeyState.deleted,
           localSize: entry.size,
           localPath: entry.path,
         );
@@ -176,15 +176,15 @@ class ArchiveController extends ChangeNotifier {
       final ext = cat.matchExtension(base);
       if (ext == null) continue;
       final name = base.substring(0, base.length - ext.length - 1);
-      final keyActive = _localKey(cat, name, ext, subFolder, deleted: false);
-      final existingActive = next[keyActive];
-      if (existingActive != null) {
-        next[keyActive] = existingActive.copyWith(
+      final keyId = _localKey(cat, name, ext, subFolder);
+      final existing = next[keyId];
+      if (existing != null) {
+        next[keyId] = existing.copyWith(
           state: ArchiveKeyState.synced,
           remoteSize: f.size,
         );
       } else {
-        next[keyActive] = ArchiveKey(
+        next[keyId] = ArchiveKey(
           name: name,
           category: cat,
           extension: ext,
@@ -250,20 +250,8 @@ class ArchiveController extends ChangeNotifier {
           timeout: const Duration(seconds: 30),
         );
       }
-      if (!key.inLocal && _client.isConnected) {
-        final bytes = await _readRemoteBytes(key.remotePath);
-        if (bytes != null) {
-          await _storage.saveBytes(
-            _deviceName,
-            key.category,
-            key.fileName,
-            bytes,
-            subFolder: key.subFolder,
-            deleted: true,
-          );
-        }
-      } else if (key.inLocal && !key.isDeleted) {
-        await _storage.moveToDeleted(
+      if (key.inLocal || key.localPath != null) {
+        await _storage.hardDelete(
           _deviceName,
           key.category,
           key.fileName,
@@ -279,43 +267,23 @@ class ArchiveController extends ChangeNotifier {
 
   Future<void> restoreKey(ArchiveKey key) async {
     if (!key.isDeleted) return;
+    if (!_client.isConnected) {
+      _lastError = 'Connect a Flipper to restore';
+      notifyListeners();
+      return;
+    }
     try {
       final bytes = await _storage.readBytes(
         _deviceName,
         key.category,
         key.fileName,
         subFolder: key.subFolder,
-        deleted: true,
       );
       if (bytes == null) return;
-      await _storage.moveFromDeleted(
-        _deviceName,
-        key.category,
-        key.fileName,
-        subFolder: key.subFolder,
-      );
-      if (_client.isConnected) {
-        await _client.storageWriteChunked(key.remotePath, bytes);
-      }
+      await _client.storageWriteChunked(key.remotePath, bytes);
     } catch (e) {
       _lastError = '$e';
       LogService.log('[Archive] restore failed: $e');
-    }
-    await refresh();
-  }
-
-  Future<void> purgeKey(ArchiveKey key) async {
-    try {
-      await _storage.hardDelete(
-        _deviceName,
-        key.category,
-        key.fileName,
-        subFolder: key.subFolder,
-        deleted: key.isDeleted,
-      );
-    } catch (e) {
-      _lastError = '$e';
-      LogService.log('[Archive] purge failed: $e');
     }
     await refresh();
   }
@@ -373,8 +341,7 @@ class ArchiveController extends ChangeNotifier {
     ArchiveCategory cat,
     String name,
     String extension,
-    String subFolder, {
-    required bool deleted,
-  }) =>
-      '${deleted ? 'd' : 'a'}:${cat.flipperDir}/${subFolder.isEmpty ? '' : '$subFolder/'}$name.$extension';
+    String subFolder,
+  ) =>
+      '${cat.flipperDir}/${subFolder.isEmpty ? '' : '$subFolder/'}$name.$extension';
 }

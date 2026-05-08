@@ -40,35 +40,28 @@ class KeyActionsSheet extends StatelessWidget {
         onTap: () => controller.rememberKey(k),
       ));
     }
-    if (k.state == ArchiveKeyState.synced || k.state == ArchiveKeyState.remoteOnly) {
-      actions.add(_Action(
-        icon: Icons.delete_outline,
-        label: connected ? 'Delete from device' : 'Move to deleted',
-        destructive: true,
-        onTap: () => controller.deleteKey(k),
-      ));
-    }
-    if (k.state == ArchiveKeyState.localOnly) {
-      actions.add(_Action(
-        icon: Icons.delete_outline,
-        label: 'Move to deleted',
-        destructive: true,
-        onTap: () => controller.deleteKey(k),
-      ));
-    }
     if (k.state == ArchiveKeyState.deleted) {
       actions.add(_Action(
         icon: Icons.restore,
-        label: connected ? 'Restore to device' : 'Restore locally',
-        onTap: () => controller.restoreKey(k),
-      ));
-      actions.add(_Action(
-        icon: Icons.delete_forever,
-        label: 'Delete permanently',
-        destructive: true,
-        onTap: () => controller.purgeKey(k),
+        label: 'Restore to Flipper',
+        onTap: () async {
+          if (!connected) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Подключите Flipper для восстановления')),
+            );
+            return;
+          }
+          await controller.restoreKey(k);
+        },
       ));
     }
+
+    actions.add(_Action(
+      icon: Icons.delete_forever,
+      label: 'Удалить безвозвратно',
+      destructive: true,
+      onTap: () => _confirmAndDelete(context, k, connected),
+    ));
 
     return SafeArea(
       child: Column(
@@ -141,6 +134,54 @@ class KeyActionsSheet extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _confirmAndDelete(
+    BuildContext context,
+    ArchiveKey k,
+    bool connected,
+  ) async {
+    final colors = context.appColors;
+    final hasLocal = k.inLocal;
+    final onDevice = k.onDevice;
+
+    String message;
+    if (connected && onDevice && hasLocal) {
+      message =
+          'Файл будет безвозвратно удалён с Flipper и с телефона. Восстановить будет нельзя.';
+    } else if (connected && onDevice) {
+      message =
+          'Файл будет безвозвратно удалён с Flipper. Локальной копии нет.';
+    } else if (!connected && onDevice) {
+      message =
+          'Нет подключения к Flipper. Файл будет удалён только с телефона; на Flipper он останется.';
+    } else {
+      message = 'Локальный файл будет удалён без возможности восстановления.';
+    }
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: colors.dialogBackground,
+        title: Text('Удалить ${k.name}?',
+            style: TextStyle(color: colors.dialogText)),
+        content: Text(message,
+            style: TextStyle(color: colors.dialogMuted, height: 1.4)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Отмена'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Удалить', style: TextStyle(color: colors.danger)),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await controller.deleteKey(k);
+    }
   }
 }
 
