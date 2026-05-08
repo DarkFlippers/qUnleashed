@@ -14,8 +14,6 @@ enum MapLocationStatus { idle, requesting, granted, denied, serviceDisabled, err
 class MapToolController extends ChangeNotifier {
   MapToolController({ArchiveStorage? storage}) : _storage = storage ?? ArchiveStorage();
 
-  static const _supportedMapExtensions = {'sub', 'nfc', 'rfid', 'ibtn'};
-
   final ArchiveStorage _storage;
 
   bool _loading = false;
@@ -80,7 +78,6 @@ class MapToolController extends ChangeNotifier {
   ) async {
     try {
       final normalizedExtension = extension.toLowerCase();
-      if (!_supportedMapExtensions.contains(normalizedExtension)) return null;
 
       final file = io.File(path);
       if (!await file.exists()) return null;

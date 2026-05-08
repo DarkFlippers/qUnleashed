@@ -1,7 +1,10 @@
+import 'dart:io' as io;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme.dart';
+import '../../tools/map/map_page.dart';
 import '../archive_controller.dart';
 import '../emulate/emulate_page.dart';
 import '../file_manager/file_manager_controller.dart';
@@ -19,7 +22,11 @@ class KeyActionsSheet extends StatelessWidget {
   final ArchiveController controller;
   final ArchiveKey flipperKey;
 
-  static Future<void> show(BuildContext context, ArchiveController controller, ArchiveKey key) {
+  static Future<void> show(
+    BuildContext context,
+    ArchiveController controller,
+    ArchiveKey key,
+  ) {
     return showModalBottomSheet<void>(
       context: context,
       backgroundColor: Theme.of(context).extension<QAppColors>()!.card,
@@ -32,6 +39,15 @@ class KeyActionsSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return FutureBuilder<bool>(
+      future: _hasCoordinates(flipperKey),
+      builder: (context, snapshot) {
+        return _buildSheet(context, snapshot.data ?? false);
+      },
+    );
+  }
+
+  Widget _buildSheet(BuildContext context, bool canShowOnMap) {
     final colors = context.appColors;
     final k = flipperKey;
     final connected = controller.isConnected;
@@ -64,6 +80,13 @@ class KeyActionsSheet extends StatelessWidget {
         icon: Icons.play_arrow,
         label: 'Open on device',
         onTap: () => _emulateOnFlipper(context, k),
+      ));
+    }
+    if (canShowOnMap) {
+      actions.add(_Action(
+        icon: Icons.map_outlined,
+        label: 'Show on map',
+        onTap: () => _openOnMap(context, k),
       ));
     }
     if (k.onDevice && connected) {
@@ -185,6 +208,47 @@ class KeyActionsSheet extends StatelessWidget {
         builder: (_) => FileManagerPage(initialPath: _parent(k.remotePath)),
       ),
     );
+  }
+
+  void _openOnMap(BuildContext context, ArchiveKey k) {
+    final path = k.localPath;
+    if (path == null || path.isEmpty) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => FlipperMapPage(focusPinPath: path)),
+    );
+  }
+
+  Future<bool> _hasCoordinates(ArchiveKey k) async {
+    final path = k.localPath;
+    if (path == null || path.isEmpty) return false;
+    try {
+      final file = io.File(path);
+      if (!await file.exists()) return false;
+      final content = await file.readAsString();
+      double? lat;
+      double? lon;
+      for (final raw in content.split('\n')) {
+        final line = raw.trim();
+        if (line.isEmpty) continue;
+        final lower = line.toLowerCase();
+        final colon = line.indexOf(':');
+        if (colon < 0) continue;
+        final value = line.substring(colon + 1).trim();
+        if (lower.startsWith('latitude:') ||
+            lower.startsWith('latitute:') ||
+            lower.startsWith('lat:')) {
+          lat = double.tryParse(value);
+        } else if (lower.startsWith('longitude:') ||
+            lower.startsWith('lon:') ||
+            lower.startsWith('lng:')) {
+          lon = double.tryParse(value);
+        }
+      }
+      if (lat == null || lon == null) return false;
+      return lat != 0 || lon != 0;
+    } catch (_) {
+      return false;
+    }
   }
 
   String _parent(String path) {

@@ -10,7 +10,9 @@ import 'map_controller.dart';
 import 'models/map_pin.dart';
 
 class FlipperMapPage extends StatefulWidget {
-  const FlipperMapPage({super.key});
+  const FlipperMapPage({super.key, this.focusPinPath});
+
+  final String? focusPinPath;
 
   @override
   State<FlipperMapPage> createState() => _FlipperMapPageState();
@@ -21,6 +23,7 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
   final MapController _mapController = MapController();
   MapPin? _selectedPin;
   bool _initialCentered = false;
+  bool _initialPinSelected = false;
   bool _mapReady = false;
 
   @override
@@ -39,20 +42,37 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
 
   void _onChanged() {
     if (!mounted) return;
+    _maybeSelectInitialPin();
     setState(() {});
     _maybeAutoCenter();
   }
 
   void _maybeAutoCenter() {
     if (!_mapReady || _initialCentered) return;
-    final p = _controller.userPosition;
-    if (p != null) {
+    final selected = _selectedPin;
+    if (selected != null) {
+      _initialCentered = true;
+      _mapController.move(LatLng(selected.latitude, selected.longitude), 17);
+    } else if (_controller.userPosition != null) {
+      final p = _controller.userPosition!;
       _initialCentered = true;
       _mapController.move(LatLng(p.latitude, p.longitude), 16);
     } else if (_controller.pins.isNotEmpty) {
       _initialCentered = true;
       final first = _controller.pins.first;
       _mapController.move(LatLng(first.latitude, first.longitude), 14);
+    }
+  }
+
+  void _maybeSelectInitialPin() {
+    final path = widget.focusPinPath;
+    if (_initialPinSelected || path == null || path.isEmpty) return;
+    for (final pin in _controller.pins) {
+      if (pin.path == path || pin.id == path) {
+        _selectedPin = pin;
+        _initialPinSelected = true;
+        break;
+      }
     }
   }
 
@@ -197,6 +217,8 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
   }
 
   LatLng _initialCenter() {
+    final selected = _selectedPin;
+    if (selected != null) return LatLng(selected.latitude, selected.longitude);
     final p = _controller.userPosition;
     if (p != null) return LatLng(p.latitude, p.longitude);
     if (_controller.pins.isNotEmpty) {
@@ -207,6 +229,7 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
   }
 
   double _initialZoom() {
+    if (_selectedPin != null) return 17;
     if (_controller.userPosition != null) return 16;
     if (_controller.pins.isNotEmpty) return 14;
     return 2;
