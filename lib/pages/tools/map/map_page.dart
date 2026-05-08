@@ -18,6 +18,7 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
   final MapController _mapController = MapController();
   MapPin? _selectedPin;
   bool _initialCentered = false;
+  bool _mapReady = false;
 
   @override
   void initState() {
@@ -35,16 +36,21 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
 
   void _onChanged() {
     if (!mounted) return;
-    if (!_initialCentered && _controller.userPosition != null) {
+    setState(() {});
+    _maybeAutoCenter();
+  }
+
+  void _maybeAutoCenter() {
+    if (!_mapReady || _initialCentered) return;
+    final p = _controller.userPosition;
+    if (p != null) {
       _initialCentered = true;
-      final p = _controller.userPosition!;
       _mapController.move(LatLng(p.latitude, p.longitude), 16);
-    } else if (!_initialCentered && _controller.pins.isNotEmpty) {
+    } else if (_controller.pins.isNotEmpty) {
       _initialCentered = true;
       final first = _controller.pins.first;
       _mapController.move(LatLng(first.latitude, first.longitude), 14);
     }
-    setState(() {});
   }
 
   void _centerOnUser() {
@@ -53,12 +59,12 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
       _controller.requestLocation();
       return;
     }
-    _mapController.move(LatLng(p.latitude, p.longitude), 17);
+    if (_mapReady) _mapController.move(LatLng(p.latitude, p.longitude), 17);
   }
 
   void _selectPin(MapPin pin) {
     setState(() => _selectedPin = pin);
-    _mapController.move(LatLng(pin.latitude, pin.longitude), 17);
+    if (_mapReady) _mapController.move(LatLng(pin.latitude, pin.longitude), 17);
   }
 
   @override
@@ -126,9 +132,14 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
           mapController: _mapController,
           options: MapOptions(
             initialCenter: _initialCenter(),
-            initialZoom: 13,
+            initialZoom: _initialZoom(),
             maxZoom: 19,
             minZoom: 2,
+            backgroundColor: const Color(0xFF1A1A1A),
+            onMapReady: () {
+              _mapReady = true;
+              _maybeAutoCenter();
+            },
             onTap: (_, _) => setState(() => _selectedPin = null),
           ),
           children: [
@@ -189,7 +200,13 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
       final first = _controller.pins.first;
       return LatLng(first.latitude, first.longitude);
     }
-    return const LatLng(25, 0);
+    return const LatLng(20, 0);
+  }
+
+  double _initialZoom() {
+    if (_controller.userPosition != null) return 16;
+    if (_controller.pins.isNotEmpty) return 14;
+    return 2;
   }
 
   List<Marker> _buildMarkers(QAppColors colors) {
