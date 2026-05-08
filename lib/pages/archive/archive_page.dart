@@ -4,12 +4,14 @@ import 'package:flutter/material.dart';
 
 import '../../theme.dart';
 import 'archive_controller.dart';
+import 'file_manager/file_manager_page.dart';
 import 'models/archive_category.dart';
 import 'widgets/archive_empty_view.dart';
 import 'widgets/categories_card.dart';
 import 'widgets/category_page.dart';
 import 'widgets/key_actions_sheet.dart';
 import 'widgets/key_card.dart';
+import 'widgets/my_flipper_button.dart';
 import 'widgets/section_title.dart';
 import 'widgets/sync_progress_view.dart';
 
@@ -51,6 +53,12 @@ class _ArchivePageState extends State<ArchivePage> {
     );
   }
 
+  void _openFileManager() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const FileManagerPage()),
+    );
+  }
+
   double _topInset(BuildContext context) {
     if (io.Platform.isAndroid || io.Platform.isIOS) {
       return MediaQuery.paddingOf(context).top;
@@ -77,6 +85,12 @@ class _ArchivePageState extends State<ArchivePage> {
                   SliverToBoxAdapter(
                     child: SyncProgressView(progress: _ctrl.syncProgress),
                   ),
+                SliverToBoxAdapter(
+                  child: MyFlipperButton(
+                    onTap: _openFileManager,
+                    enabled: _ctrl.isConnected,
+                  ),
+                ),
                 SliverToBoxAdapter(
                   child: CategoriesCard(
                     controller: _ctrl,
