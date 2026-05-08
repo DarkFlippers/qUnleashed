@@ -146,17 +146,8 @@ class _FileManagerPageState extends State<FileManagerPage> {
             ),
             Divider(height: 1, color: colors.divider),
             ListTile(
-              leading: Icon(Icons.drive_file_rename_outline, color: colors.textPrimary),
-              title: Text('Rename', style: TextStyle(color: colors.textPrimary)),
-              onTap: () {
-                Navigator.of(sheetContext).pop();
-                _renameEntry(e);
-              },
-            ),
-            ListTile(
               leading: Icon(Icons.delete_outline, color: colors.danger),
-              title: Text('Delete recursively',
-                  style: TextStyle(color: colors.danger)),
+              title: Text('Delete', style: TextStyle(color: colors.danger)),
               onTap: () {
                 Navigator.of(sheetContext).pop();
                 _deleteEntry(e, recursive: true);
