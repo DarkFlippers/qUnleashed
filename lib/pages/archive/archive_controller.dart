@@ -131,6 +131,9 @@ class ArchiveController extends ChangeNotifier {
       await _storage.migrateLegacyFolders(_deviceName);
       await _storage.ensureLayout(_deviceName);
       final localEntries = await _storage.listAll(_deviceName);
+      final connected = _client.isConnected;
+      final defaultLocalState =
+          connected ? ArchiveKeyState.deleted : ArchiveKeyState.localOnly;
       final next = <String, ArchiveKey>{};
       for (final entry in localEntries) {
         final key = _localKey(
@@ -140,12 +143,12 @@ class ArchiveController extends ChangeNotifier {
           category: entry.category,
           extension: entry.extension,
           subFolder: entry.subFolder,
-          state: ArchiveKeyState.deleted,
+          state: defaultLocalState,
           localSize: entry.size,
           localPath: entry.path,
         );
       }
-      if (_client.isConnected) {
+      if (connected) {
         for (final cat in ArchiveCategory.values) {
           await _mergeRemote(next, cat, '');
           for (final sub in cat.subDirs) {

@@ -1,6 +1,6 @@
 import 'archive_category.dart';
 
-enum ArchiveKeyState { synced, remoteOnly, deleted }
+enum ArchiveKeyState { synced, remoteOnly, localOnly, deleted }
 
 class ArchiveKey {
   ArchiveKey({
@@ -35,7 +35,10 @@ class ArchiveKey {
   }
 
   bool get onDevice => state == ArchiveKeyState.remoteOnly || state == ArchiveKeyState.synced;
-  bool get inLocal => state == ArchiveKeyState.synced || state == ArchiveKeyState.deleted;
+  bool get inLocal =>
+      state == ArchiveKeyState.synced ||
+      state == ArchiveKeyState.localOnly ||
+      state == ArchiveKeyState.deleted;
   bool get isDeleted => state == ArchiveKeyState.deleted;
 
   ArchiveKey copyWith({
