@@ -1,0 +1,495 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+
+import '../../../theme.dart';
+import 'file_manager_controller.dart';
+import 'text_editor_page.dart';
+import 'widgets/file_row.dart';
+
+class FileManagerPage extends StatefulWidget {
+  const FileManagerPage({super.key, this.initialPath = '/ext'});
+
+  final String initialPath;
+
+  @override
+  State<FileManagerPage> createState() => _FileManagerPageState();
+}
+
+class _FileManagerPageState extends State<FileManagerPage> {
+  late final FileManagerController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = FileManagerController(initialPath: widget.initialPath);
+    _ctrl.refresh();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  void _onEntryTap(RemoteEntry e) {
+    if (e.isDir) {
+      _ctrl.open(_ctrl.childPath(e.name));
+    } else {
+      _showFileActions(e);
+    }
+  }
+
+  Future<void> _showFileActions(RemoteEntry e) async {
+    final remotePath = _ctrl.childPath(e.name);
+    final colors = context.appColors;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: colors.card,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      e.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: colors.textPrimary,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Divider(height: 1, color: colors.divider),
+            ListTile(
+              leading: SvgPicture.asset(
+                'assets/flipper_svg/archive/ic_edit.svg',
+                width: 22,
+                height: 22,
+                colorFilter: ColorFilter.mode(colors.textPrimary, BlendMode.srcIn),
+              ),
+              title: Text('Open in text editor',
+                  style: TextStyle(color: colors.textPrimary)),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                _openTextEditor(remotePath);
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.download, color: colors.textPrimary),
+              title: Text('Download to device',
+                  style: TextStyle(color: colors.textPrimary)),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                _downloadFile(remotePath);
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.drive_file_rename_outline, color: colors.textPrimary),
+              title: Text('Rename', style: TextStyle(color: colors.textPrimary)),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                _renameEntry(e);
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.delete_outline, color: colors.danger),
+              title: Text('Delete', style: TextStyle(color: colors.danger)),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                _deleteEntry(e);
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showDirActions(RemoteEntry e) async {
+    final colors = context.appColors;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: colors.card,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Text(
+                e.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: colors.textPrimary,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            Divider(height: 1, color: colors.divider),
+            ListTile(
+              leading: Icon(Icons.drive_file_rename_outline, color: colors.textPrimary),
+              title: Text('Rename', style: TextStyle(color: colors.textPrimary)),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                _renameEntry(e);
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.delete_outline, color: colors.danger),
+              title: Text('Delete recursively',
+                  style: TextStyle(color: colors.danger)),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                _deleteEntry(e, recursive: true);
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openTextEditor(String remotePath) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => TextEditorPage(controller: _ctrl, remotePath: remotePath),
+      ),
+    );
+    await _ctrl.refresh();
+  }
+
+  Future<void> _downloadFile(String remotePath) async {
+    final result = await _ctrl.downloadTo(remotePath);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(result == null ? 'Download failed' : 'Saved to $result'),
+      ),
+    );
+  }
+
+  Future<void> _deleteEntry(RemoteEntry e, {bool recursive = false}) async {
+    final ok = await _confirm('Delete ${e.name}?');
+    if (!ok) return;
+    final remotePath = _ctrl.childPath(e.name);
+    final success = await _ctrl.delete(remotePath, recursive: recursive);
+    if (success) await _ctrl.refresh();
+    if (!mounted) return;
+    if (!success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Delete failed')),
+      );
+    }
+  }
+
+  Future<void> _renameEntry(RemoteEntry e) async {
+    final input = await _promptText('Rename', initialValue: e.name);
+    if (input == null || input.trim().isEmpty || input == e.name) return;
+    final from = _ctrl.childPath(e.name);
+    final to = _ctrl.childPath(input.trim());
+    final ok = await _ctrl.rename(from, to);
+    if (ok) await _ctrl.refresh();
+    if (!mounted) return;
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Rename failed')),
+      );
+    }
+  }
+
+  Future<void> _createFolder() async {
+    final name = await _promptText('New folder');
+    if (name == null || name.trim().isEmpty) return;
+    final ok = await _ctrl.mkdir(name.trim());
+    if (ok) await _ctrl.refresh();
+    if (!mounted) return;
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Create folder failed')),
+      );
+    }
+  }
+
+  Future<void> _uploadFromPath() async {
+    final localPath = await _promptText(
+      'Upload from local path',
+      hintText: r'e.g. C:\Users\you\file.bin',
+    );
+    if (localPath == null || localPath.trim().isEmpty) return;
+    final ok = await _ctrl.uploadFromLocal(localPath.trim());
+    if (ok) await _ctrl.refresh();
+    if (!mounted) return;
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Upload failed: ${_ctrl.error ?? ''}')),
+      );
+    }
+  }
+
+  Future<bool> _confirm(String title) async {
+    final colors = context.appColors;
+    return await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            backgroundColor: colors.dialogBackground,
+            title: Text(title, style: TextStyle(color: colors.dialogText)),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: Text('OK', style: TextStyle(color: colors.danger)),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
+  Future<String?> _promptText(String title, {String? initialValue, String? hintText}) {
+    final controller = TextEditingController(text: initialValue);
+    final colors = context.appColors;
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: colors.dialogBackground,
+        title: Text(title, style: TextStyle(color: colors.dialogText)),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          style: TextStyle(color: colors.dialogText),
+          decoration: InputDecoration(
+            hintText: hintText,
+            hintStyle: TextStyle(color: colors.dialogMuted),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, controller.text),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showFabMenu() {
+    final colors = context.appColors;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: colors.card,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: SvgPicture.asset(
+                'assets/flipper_svg/archive/ic_create_folder.svg',
+                width: 22,
+                height: 22,
+                colorFilter:
+                    ColorFilter.mode(colors.textPrimary, BlendMode.srcIn),
+              ),
+              title: Text('New folder',
+                  style: TextStyle(color: colors.textPrimary)),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                _createFolder();
+              },
+            ),
+            ListTile(
+              leading: SvgPicture.asset(
+                'assets/flipper_svg/archive/ic_upload.svg',
+                width: 22,
+                height: 22,
+                colorFilter:
+                    ColorFilter.mode(colors.textPrimary, BlendMode.srcIn),
+              ),
+              title: Text('Upload from local path',
+                  style: TextStyle(color: colors.textPrimary)),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                _uploadFromPath();
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (context, _) {
+        return Scaffold(
+          backgroundColor: colors.background,
+          appBar: AppBar(
+            backgroundColor: colors.accent,
+            foregroundColor: colors.onAccent,
+            leading: _ctrl.canGoUp
+                ? IconButton(
+                    icon: const Icon(Icons.arrow_upward),
+                    onPressed: _ctrl.goUp,
+                  )
+                : const BackButton(),
+            title: Text(
+              _ctrl.path,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+            ),
+            actions: [
+              IconButton(
+                tooltip: _ctrl.showHidden ? 'Hide hidden' : 'Show hidden',
+                onPressed: _ctrl.toggleHidden,
+                icon: Icon(
+                  _ctrl.showHidden ? Icons.visibility : Icons.visibility_off,
+                ),
+              ),
+              IconButton(
+                tooltip: 'Refresh',
+                onPressed: _ctrl.loading ? null : _ctrl.refresh,
+                icon: const Icon(Icons.refresh),
+              ),
+            ],
+          ),
+          body: Column(
+            children: [
+              if (_ctrl.transferLabel != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              _ctrl.transferLabel!,
+                              style: TextStyle(
+                                color: colors.textSecondary,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                          Text(
+                            '${(_ctrl.transferProgress * 100).toStringAsFixed(0)}%',
+                            style: TextStyle(
+                              color: colors.textSecondary,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          value: _ctrl.transferProgress,
+                          minHeight: 4,
+                          color: colors.accent,
+                          backgroundColor: colors.divider,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              Expanded(child: _buildList(context)),
+            ],
+          ),
+          floatingActionButton: FloatingActionButton(
+            backgroundColor: colors.accent,
+            foregroundColor: colors.onAccent,
+            onPressed: _showFabMenu,
+            child: const Icon(Icons.add),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildList(BuildContext context) {
+    final colors = context.appColors;
+    if (_ctrl.loading && _ctrl.entries.isEmpty) {
+      return Center(child: CircularProgressIndicator(color: colors.accent));
+    }
+    if (_ctrl.error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.error_outline, size: 48, color: colors.danger),
+              const SizedBox(height: 12),
+              Text(_ctrl.error!,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: colors.textSecondary)),
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: _ctrl.refresh,
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    final list = _ctrl.entries;
+    if (list.isEmpty) {
+      return Center(
+        child: Text('Empty folder',
+            style: TextStyle(color: colors.textMuted)),
+      );
+    }
+    return RefreshIndicator(
+      color: colors.accent,
+      onRefresh: _ctrl.refresh,
+      child: ListView.separated(
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
+        itemCount: list.length,
+        separatorBuilder: (_, _) => const SizedBox(height: 6),
+        itemBuilder: (_, i) {
+          final e = list[i];
+          return FileRow(
+            entry: e,
+            onTap: () => _onEntryTap(e),
+            onLongPress: () =>
+                e.isDir ? _showDirActions(e) : _showFileActions(e),
+          );
+        },
+      ),
+    );
+  }
+}
