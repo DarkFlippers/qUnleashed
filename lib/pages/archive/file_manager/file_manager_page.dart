@@ -1,3 +1,4 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
@@ -230,17 +231,32 @@ class _FileManagerPageState extends State<FileManagerPage> {
   }
 
   Future<void> _uploadFromPath() async {
-    final localPath = await _promptText(
-      'Upload from local path',
-      hintText: r'e.g. C:\Users\you\file.bin',
+    final result = await FilePicker.platform.pickFiles(
+      allowMultiple: true,
+      withData: false,
+      withReadStream: false,
     );
-    if (localPath == null || localPath.trim().isEmpty) return;
-    final ok = await _ctrl.uploadFromLocal(localPath.trim());
-    if (ok) await _ctrl.refresh();
+    if (result == null || result.files.isEmpty) return;
+
+    var failures = 0;
+    for (final f in result.files) {
+      final path = f.path;
+      if (path == null) {
+        failures++;
+        continue;
+      }
+      final ok = await _ctrl.uploadFromLocal(path, targetName: f.name);
+      if (!ok) failures++;
+    }
+    await _ctrl.refresh();
     if (!mounted) return;
-    if (!ok) {
+    if (failures > 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Upload failed: ${_ctrl.error ?? ''}')),
+        SnackBar(content: Text('Upload failed for $failures file(s): ${_ctrl.error ?? ''}')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Uploaded ${result.files.length} file(s)')),
       );
     }
   }
@@ -333,7 +349,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
                 colorFilter:
                     ColorFilter.mode(colors.textPrimary, BlendMode.srcIn),
               ),
-              title: Text('Upload from local path',
+              title: Text('Upload files',
                   style: TextStyle(color: colors.textPrimary)),
               onTap: () {
                 Navigator.of(sheetContext).pop();

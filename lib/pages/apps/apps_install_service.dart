@@ -663,10 +663,6 @@ class AppsInstallService extends ChangeNotifier {
     }
   }
 
-  void _setProgress(String appId, double value) {
-    _setActionState(appId, progress: value);
-  }
-
   void _setActionState(
     String appId, {
     AppActionStage? stage,

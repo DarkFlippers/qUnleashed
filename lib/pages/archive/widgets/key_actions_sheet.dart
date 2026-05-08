@@ -51,7 +51,7 @@ class KeyActionsSheet extends StatelessWidget {
         onTap: () async {
           if (!connected) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Подключите Flipper для восстановления')),
+              const SnackBar(content: Text('Connect a Flipper to restore')),
             );
             return;
           }
@@ -62,26 +62,26 @@ class KeyActionsSheet extends StatelessWidget {
     if (k.onDevice && connected && k.category.emulatable) {
       actions.add(_Action(
         icon: Icons.play_arrow,
-        label: 'Открыть на Flipper (эмуляция)',
+        label: 'Open on device',
         onTap: () => _emulateOnFlipper(context, k),
       ));
     }
     if (k.onDevice && connected) {
       actions.add(_Action(
         icon: Icons.edit_note,
-        label: 'Открыть в редакторе',
+        label: 'Open in editor',
         onTap: () => _openInEditor(context, k),
       ));
       actions.add(_Action(
         icon: Icons.folder_open,
-        label: 'Открыть в файловом менеджере',
+        label: 'Open in file manager',
         onTap: () => _openInFileManager(context, k),
       ));
     }
 
     actions.add(_Action(
       icon: Icons.delete_forever,
-      label: 'Удалить безвозвратно',
+      label: 'Delete permanently',
       destructive: true,
       onTap: () => _confirmAndDelete(context, k, connected),
     ));
@@ -205,33 +205,33 @@ class KeyActionsSheet extends StatelessWidget {
     String message;
     if (connected && onDevice && hasLocal) {
       message =
-          'Файл будет безвозвратно удалён с Flipper и с телефона. Восстановить будет нельзя.';
+          'This file will be permanently deleted from the Flipper and this phone. This cannot be undone.';
     } else if (connected && onDevice) {
       message =
-          'Файл будет безвозвратно удалён с Flipper. Локальной копии нет.';
+          'This file will be permanently deleted from the Flipper. There is no local copy.';
     } else if (!connected && onDevice) {
       message =
-          'Нет подключения к Flipper. Файл будет удалён только с телефона; на Flipper он останется.';
+          'No Flipper is connected. This file will be deleted only from this phone and will remain on the Flipper.';
     } else {
-      message = 'Локальный файл будет удалён без возможности восстановления.';
+      message = 'This local file will be permanently deleted.';
     }
 
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: colors.dialogBackground,
-        title: Text('Удалить ${k.name}?',
+        title: Text('Delete ${k.name}?',
             style: TextStyle(color: colors.dialogText)),
         content: Text(message,
             style: TextStyle(color: colors.dialogMuted, height: 1.4)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Отмена'),
+            child: const Text('Cancel'),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Удалить', style: TextStyle(color: colors.danger)),
+            child: Text('Delete', style: TextStyle(color: colors.danger)),
           ),
         ],
       ),
