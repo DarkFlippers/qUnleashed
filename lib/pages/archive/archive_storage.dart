@@ -10,7 +10,6 @@ class LocalKeyEntry {
     required this.subFolder,
     required this.path,
     required this.size,
-    required this.deleted,
   });
 
   final String name;
@@ -19,7 +18,6 @@ class LocalKeyEntry {
   final String subFolder;
   final String path;
   final int size;
-  final bool deleted;
 }
 
 class ArchiveStorage {
@@ -90,15 +88,11 @@ class ArchiveStorage {
     String deviceName,
     ArchiveCategory cat, {
     String subFolder = '',
-    bool deleted = false,
   }) {
     final sep = io.Platform.pathSeparator;
     final base = deviceDir(deviceName).path;
     final dir = cat.flipperDir.replaceAll('/', sep);
     final sub = subFolder.isEmpty ? '' : '$sep${subFolder.replaceAll('/', sep)}';
-    if (deleted) {
-      return io.Directory('$base$sep.deleted$sep$dir$sub');
-    }
     return io.Directory('$base$sep$dir$sub');
   }
 
@@ -142,11 +136,8 @@ class ArchiveStorage {
   Future<void> ensureLayout(String deviceName) async {
     for (final cat in ArchiveCategory.values) {
       await categoryDir(deviceName, cat).create(recursive: true);
-      await categoryDir(deviceName, cat, deleted: true).create(recursive: true);
       for (final sub in cat.subDirs) {
         await categoryDir(deviceName, cat, subFolder: sub).create(recursive: true);
-        await categoryDir(deviceName, cat, subFolder: sub, deleted: true)
-            .create(recursive: true);
       }
     }
   }
@@ -154,11 +145,9 @@ class ArchiveStorage {
   Future<List<LocalKeyEntry>> listAll(String deviceName) async {
     final out = <LocalKeyEntry>[];
     for (final cat in ArchiveCategory.values) {
-      out.addAll(await _listCategory(deviceName, cat, subFolder: '', deleted: false));
-      out.addAll(await _listCategory(deviceName, cat, subFolder: '', deleted: true));
+      out.addAll(await _listCategory(deviceName, cat, subFolder: ''));
       for (final sub in cat.subDirs) {
-        out.addAll(await _listCategory(deviceName, cat, subFolder: sub, deleted: false));
-        out.addAll(await _listCategory(deviceName, cat, subFolder: sub, deleted: true));
+        out.addAll(await _listCategory(deviceName, cat, subFolder: sub));
       }
     }
     return out;
@@ -168,9 +157,8 @@ class ArchiveStorage {
     String deviceName,
     ArchiveCategory cat, {
     required String subFolder,
-    required bool deleted,
   }) async {
-    final dir = categoryDir(deviceName, cat, subFolder: subFolder, deleted: deleted);
+    final dir = categoryDir(deviceName, cat, subFolder: subFolder);
     if (!await dir.exists()) return const [];
     final out = <LocalKeyEntry>[];
     await for (final entity in dir.list(followLinks: false)) {
@@ -187,7 +175,6 @@ class ArchiveStorage {
         subFolder: subFolder,
         path: entity.path,
         size: stat.size,
-        deleted: deleted,
       ));
     }
     return out;
@@ -199,9 +186,8 @@ class ArchiveStorage {
     String fileName,
     List<int> bytes, {
     String subFolder = '',
-    bool deleted = false,
   }) async {
-    final dir = categoryDir(deviceName, cat, subFolder: subFolder, deleted: deleted);
+    final dir = categoryDir(deviceName, cat, subFolder: subFolder);
     await dir.create(recursive: true);
     final sep = io.Platform.pathSeparator;
     final file = io.File('${dir.path}$sep$fileName');
@@ -214,47 +200,12 @@ class ArchiveStorage {
     ArchiveCategory cat,
     String fileName, {
     String subFolder = '',
-    bool deleted = false,
   }) async {
     final sep = io.Platform.pathSeparator;
-    final dir = categoryDir(deviceName, cat, subFolder: subFolder, deleted: deleted);
+    final dir = categoryDir(deviceName, cat, subFolder: subFolder);
     final file = io.File('${dir.path}$sep$fileName');
     if (!await file.exists()) return null;
     return file.readAsBytes();
-  }
-
-  Future<void> moveToDeleted(
-    String deviceName,
-    ArchiveCategory cat,
-    String fileName, {
-    String subFolder = '',
-  }) async {
-    final sep = io.Platform.pathSeparator;
-    final src = io.File(
-        '${categoryDir(deviceName, cat, subFolder: subFolder).path}$sep$fileName');
-    if (!await src.exists()) return;
-    final dstDir = categoryDir(deviceName, cat, subFolder: subFolder, deleted: true);
-    await dstDir.create(recursive: true);
-    final dst = io.File('${dstDir.path}$sep$fileName');
-    if (await dst.exists()) await dst.delete();
-    await src.rename(dst.path);
-  }
-
-  Future<void> moveFromDeleted(
-    String deviceName,
-    ArchiveCategory cat,
-    String fileName, {
-    String subFolder = '',
-  }) async {
-    final sep = io.Platform.pathSeparator;
-    final src = io.File(
-        '${categoryDir(deviceName, cat, subFolder: subFolder, deleted: true).path}$sep$fileName');
-    if (!await src.exists()) return;
-    final dstDir = categoryDir(deviceName, cat, subFolder: subFolder);
-    await dstDir.create(recursive: true);
-    final dst = io.File('${dstDir.path}$sep$fileName');
-    if (await dst.exists()) await dst.delete();
-    await src.rename(dst.path);
   }
 
   Future<void> hardDelete(
@@ -262,11 +213,10 @@ class ArchiveStorage {
     ArchiveCategory cat,
     String fileName, {
     String subFolder = '',
-    bool deleted = false,
   }) async {
     final sep = io.Platform.pathSeparator;
     final file = io.File(
-        '${categoryDir(deviceName, cat, subFolder: subFolder, deleted: deleted).path}$sep$fileName');
+        '${categoryDir(deviceName, cat, subFolder: subFolder).path}$sep$fileName');
     if (await file.exists()) await file.delete();
   }
 }

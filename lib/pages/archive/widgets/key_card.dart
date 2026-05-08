@@ -89,10 +89,8 @@ class KeyCard extends StatelessWidget {
         return 'synced';
       case ArchiveKeyState.remoteOnly:
         return 'on device';
-      case ArchiveKeyState.localOnly:
-        return 'local only';
       case ArchiveKeyState.deleted:
-        return 'deleted';
+        return 'on phone only';
     }
   }
 }
@@ -148,12 +146,8 @@ class _StateBadge extends StatelessWidget {
         icon = Icons.cloud_outlined;
         tint = colors.info;
         break;
-      case ArchiveKeyState.localOnly:
-        icon = Icons.smartphone;
-        tint = colors.accent;
-        break;
       case ArchiveKeyState.deleted:
-        icon = Icons.delete_outline;
+        icon = Icons.smartphone;
         tint = colors.danger;
         break;
     }
