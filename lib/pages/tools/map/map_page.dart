@@ -1,5 +1,8 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../../theme.dart';
@@ -213,47 +216,108 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
     final list = <Marker>[];
     final p = _controller.userPosition;
     if (p != null) {
+      final bearing = _controller.userBearingDegrees ?? 0;
       list.add(
         Marker(
           point: LatLng(p.latitude, p.longitude),
-          width: 22,
-          height: 22,
-          child: DecoratedBox(
+          width: 34,
+          height: 34,
+          child: Container(
             decoration: BoxDecoration(
-              color: colors.info,
+              color: colors.accent,
               shape: BoxShape.circle,
               border: Border.all(color: Colors.white, width: 3),
-              boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
+              boxShadow: const [BoxShadow(color: Colors.black38, blurRadius: 4)],
+            ),
+            child: Transform.rotate(
+              angle: bearing * 3.1415926 / 180,
+              child: const Icon(Icons.navigation, color: Colors.white, size: 20),
             ),
           ),
         ),
       );
     }
-    for (final pin in _controller.pins) {
+    final markerPoints = _spreadOverlappingPins(_controller.pins);
+    for (final entry in markerPoints.entries) {
+      final pin = entry.key;
+      final selected = _selectedPin?.id == pin.id;
       list.add(
         Marker(
-          point: LatLng(pin.latitude, pin.longitude),
-          width: 36,
-          height: 36,
+          point: entry.value,
+          width: 42,
+          height: 42,
           child: GestureDetector(
             onTap: () => _selectPin(pin),
-            child: Container(
+            child: DecoratedBox(
               decoration: BoxDecoration(
-                color: pin.category.color,
+                color: colors.accent,
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: _selectedPin?.id == pin.id ? Colors.white : Colors.white70,
-                  width: _selectedPin?.id == pin.id ? 3 : 2,
+                  color: selected ? Colors.white : colors.accent,
+                  width: selected ? 3 : 2,
                 ),
                 boxShadow: const [BoxShadow(color: Colors.black38, blurRadius: 4)],
               ),
-              child: const Icon(Icons.place, color: Colors.white, size: 20),
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: SvgPicture.asset(
+                  _assetForPin(pin),
+                  fit: BoxFit.contain,
+                  colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
+                ),
+              ),
             ),
           ),
         ),
       );
     }
     return list;
+  }
+
+  Map<MapPin, LatLng> _spreadOverlappingPins(List<MapPin> pins) {
+    final points = <MapPin, LatLng>{};
+    final groups = <String, List<MapPin>>{};
+    for (final pin in pins) {
+      final key = '${pin.latitude.toStringAsFixed(5)}:${pin.longitude.toStringAsFixed(5)}';
+      groups.putIfAbsent(key, () => <MapPin>[]).add(pin);
+    }
+
+    for (final group in groups.values) {
+      if (group.length == 1) {
+        final pin = group.first;
+        points[pin] = LatLng(pin.latitude, pin.longitude);
+        continue;
+      }
+
+      final centerLat = group.map((p) => p.latitude).reduce((a, b) => a + b) / group.length;
+      final centerLon = group.map((p) => p.longitude).reduce((a, b) => a + b) / group.length;
+      final radiusMeters = 10.0 + group.length.clamp(0, 8) * 2.0;
+      for (var i = 0; i < group.length; i++) {
+        final pin = group[i];
+        final angle = (2 * 3.1415926 * i / group.length) - (3.1415926 / 2);
+        points[pin] = _offsetLatLng(centerLat, centerLon, radiusMeters, angle);
+      }
+    }
+    return points;
+  }
+
+  static LatLng _offsetLatLng(double latitude, double longitude, double meters, double angle) {
+    const metersPerDegreeLatitude = 111320.0;
+    final latRad = latitude * 3.1415926 / 180;
+    final metersPerDegreeLongitude = metersPerDegreeLatitude * math.cos(latRad).abs().clamp(0.01, 1.0);
+    final latOffset = math.sin(angle) * meters / metersPerDegreeLatitude;
+    final lonOffset = math.cos(angle) * meters / metersPerDegreeLongitude;
+    return LatLng(latitude + latOffset, longitude + lonOffset);
+  }
+
+  static String _assetForPin(MapPin pin) {
+    return switch (pin.extension) {
+      'sub' => 'assets/flipper_svg/archive/ic_fileformat_sub.svg',
+      'nfc' => 'assets/flipper_svg/archive/ic_fileformat_nfc.svg',
+      'rfid' => 'assets/flipper_svg/archive/ic_fileformat_rf.svg',
+      'ibtn' => 'assets/flipper_svg/archive/ic_fileformat_ibutton.svg',
+      _ => pin.category.asset,
+    };
   }
 }
 
@@ -397,8 +461,17 @@ class _PinCard extends StatelessWidget {
                 Container(
                   width: 28,
                   height: 28,
-                  decoration: BoxDecoration(color: pin.category.color, shape: BoxShape.circle),
-                  child: const Icon(Icons.place, color: Colors.white, size: 18),
+                  decoration: BoxDecoration(
+                    color: colors.accent,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: colors.accent),
+                  ),
+                  padding: const EdgeInsets.all(5),
+                  child: SvgPicture.asset(
+                    _FlipperMapPageState._assetForPin(pin),
+                    fit: BoxFit.contain,
+                    colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
+                  ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(

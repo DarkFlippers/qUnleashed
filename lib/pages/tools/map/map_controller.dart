@@ -14,6 +14,8 @@ enum MapLocationStatus { idle, requesting, granted, denied, serviceDisabled, err
 class MapToolController extends ChangeNotifier {
   MapToolController({ArchiveStorage? storage}) : _storage = storage ?? ArchiveStorage();
 
+  static const _supportedMapExtensions = {'sub', 'nfc', 'rfid', 'ibtn'};
+
   final ArchiveStorage _storage;
 
   bool _loading = false;
@@ -22,6 +24,8 @@ class MapToolController extends ChangeNotifier {
   MapLocationStatus _locationStatus = MapLocationStatus.idle;
   String? _locationError;
   Position? _userPosition;
+  Position? _previousUserPosition;
+  double? _userBearingDegrees;
   StreamSubscription<Position>? _posSub;
 
   bool get loading => _loading;
@@ -30,6 +34,7 @@ class MapToolController extends ChangeNotifier {
   MapLocationStatus get locationStatus => _locationStatus;
   String? get locationError => _locationError;
   Position? get userPosition => _userPosition;
+  double? get userBearingDegrees => _userBearingDegrees;
 
   Future<void> initialize() async {
     await loadFiles();
@@ -50,7 +55,12 @@ class MapToolController extends ChangeNotifier {
       final entries = await _storage.listAll(deviceName);
       final out = <MapPin>[];
       for (final entry in entries) {
-        final pin = await _parseFile(entry.path, entry.name, entry.category);
+        final pin = await _parseFile(
+          entry.path,
+          entry.name,
+          entry.extension,
+          entry.category,
+        );
         if (pin != null) out.add(pin);
       }
       _pins = out;
@@ -62,8 +72,16 @@ class MapToolController extends ChangeNotifier {
     }
   }
 
-  Future<MapPin?> _parseFile(String path, String name, ArchiveCategory cat) async {
+  Future<MapPin?> _parseFile(
+    String path,
+    String name,
+    String extension,
+    ArchiveCategory cat,
+  ) async {
     try {
+      final normalizedExtension = extension.toLowerCase();
+      if (!_supportedMapExtensions.contains(normalizedExtension)) return null;
+
       final file = io.File(path);
       if (!await file.exists()) return null;
       final content = await file.readAsString();
@@ -106,6 +124,7 @@ class MapToolController extends ChangeNotifier {
         id: path,
         name: name,
         path: path,
+        extension: normalizedExtension,
         category: cat,
         latitude: lat,
         longitude: lon,
@@ -147,7 +166,7 @@ class MapToolController extends ChangeNotifier {
       final pos = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
       );
-      _userPosition = pos;
+      _setUserPosition(pos);
       _locationStatus = MapLocationStatus.granted;
       notifyListeners();
       _posSub?.cancel();
@@ -156,8 +175,8 @@ class MapToolController extends ChangeNotifier {
           accuracy: LocationAccuracy.high,
           distanceFilter: 5,
         ),
-      ).listen((p) {
-        _userPosition = p;
+      ).listen((position) {
+        _setUserPosition(position);
         notifyListeners();
       });
     } catch (e) {
@@ -177,6 +196,32 @@ class MapToolController extends ChangeNotifier {
     final p = _userPosition;
     if (p == null) return null;
     return _bearing(p.latitude, p.longitude, pin.latitude, pin.longitude);
+  }
+
+  void _setUserPosition(Position position) {
+    _previousUserPosition = _userPosition;
+    _userPosition = position;
+    _userBearingDegrees = _resolveUserBearing(position, _previousUserPosition);
+  }
+
+  double? _resolveUserBearing(Position current, Position? previous) {
+    if (current.heading.isFinite && current.heading >= 0) {
+      return current.heading;
+    }
+    if (previous == null) return _userBearingDegrees;
+    final distance = _haversine(
+      previous.latitude,
+      previous.longitude,
+      current.latitude,
+      current.longitude,
+    );
+    if (distance < 1) return _userBearingDegrees;
+    return _bearing(
+      previous.latitude,
+      previous.longitude,
+      current.latitude,
+      current.longitude,
+    );
   }
 
   static double _haversine(double lat1, double lon1, double lat2, double lon2) {

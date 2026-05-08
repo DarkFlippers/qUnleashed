@@ -5,6 +5,7 @@ class MapPin {
     required this.id,
     required this.name,
     required this.path,
+    required this.extension,
     required this.category,
     required this.latitude,
     required this.longitude,
@@ -20,6 +21,7 @@ class MapPin {
   final String id;
   final String name;
   final String path;
+  final String extension;
   final ArchiveCategory category;
   final double latitude;
   final double longitude;
