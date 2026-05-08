@@ -21,7 +21,11 @@ class ToolItem extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: () {},
+        onTap: model.routeBuilder == null
+            ? null
+            : () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: model.routeBuilder!),
+                ),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
           child: Row(
