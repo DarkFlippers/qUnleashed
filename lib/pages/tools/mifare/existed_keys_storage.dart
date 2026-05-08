@@ -28,10 +28,14 @@ class ExistedKeysStorage {
 
   Future<List<String>> upload() async {
     final text = '${_userKeys.join('\n')}\n';
-    await _client.storageWriteChunked(
-      flipperDictUserPath,
-      utf8.encode(text),
-    );
+    try {
+      await _client.storageWriteChunked(
+        flipperDictUserPath,
+        utf8.encode(text),
+      );
+    } catch (e) {
+      LogService.log('[ExistedKeysStorage] #upload Unhandled exception: $e');
+    }
     return _userKeys.where((key) => !_userDict.contains(key)).toSet().toList();
   }
 
