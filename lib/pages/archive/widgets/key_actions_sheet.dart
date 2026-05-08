@@ -3,6 +3,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme.dart';
 import '../archive_controller.dart';
+import '../emulate/emulate_page.dart';
 import '../file_manager/file_manager_controller.dart';
 import '../file_manager/file_manager_page.dart';
 import '../file_manager/text_editor_page.dart';
@@ -56,6 +57,13 @@ class KeyActionsSheet extends StatelessWidget {
           }
           await controller.restoreKey(k);
         },
+      ));
+    }
+    if (k.onDevice && connected && k.category.emulatable) {
+      actions.add(_Action(
+        icon: Icons.play_arrow,
+        label: 'Открыть на Flipper (эмуляция)',
+        onTap: () => _emulateOnFlipper(context, k),
       ));
     }
     if (k.onDevice && connected) {
@@ -148,6 +156,12 @@ class KeyActionsSheet extends StatelessWidget {
           const SizedBox(height: 8),
         ],
       ),
+    );
+  }
+
+  void _emulateOnFlipper(BuildContext context, ArchiveKey k) {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => EmulatePage(flipperKey: k)),
     );
   }
 
