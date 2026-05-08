@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme.dart';
+import 'map/map_page.dart';
 import 'mifare/mfkey32_page.dart';
 import 'models/tool.dart';
 import 'widgets/tool.dart';
@@ -37,7 +38,8 @@ class ToolsPage extends StatelessWidget {
         preview: ToolPreviewType.fileMap,
         title: 'FlipperMap',
         description: 'Show where files were written on Flipper storage',
-        badge: 'Soon',
+        routeBuilder: _buildFlipperMapPage,
+        badge: 'Beta',
       ),
     ),
   ];
@@ -65,3 +67,5 @@ class ToolsPage extends StatelessWidget {
 }
 
 Widget _buildMfKey32Page(BuildContext context) => const MfKey32Page();
+
+Widget _buildFlipperMapPage(BuildContext context) => const FlipperMapPage();
