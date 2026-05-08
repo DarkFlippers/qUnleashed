@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../../theme.dart';
+import 'mifare/mfkey32_page.dart';
 import 'models/tool.dart';
 import 'widgets/tool.dart';
 
 class ToolsPage extends StatelessWidget {
   const ToolsPage({super.key});
 
-  static const _tools = [
+  static final _tools = [
     ToolCardModel(
       iconAsset: 'assets/flipper_svg/tools/ic_fileformat_nfc.svg',
       title: 'MIFARE Classic',
@@ -15,6 +16,7 @@ class ToolsPage extends StatelessWidget {
         preview: ToolPreviewType.mfKey,
         title: 'Mfkey32 (Extract MF Keys)',
         description: 'Calculate keys from Extract MF Keys',
+        routeBuilder: _buildMfKey32Page,
       ),
     ),
     ToolCardModel(
@@ -61,3 +63,5 @@ class ToolsPage extends StatelessWidget {
     );
   }
 }
+
+Widget _buildMfKey32Page(BuildContext context) => const MfKey32Page();

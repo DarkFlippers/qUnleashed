@@ -1,3 +1,5 @@
+import 'package:flutter/widgets.dart';
+
 enum ToolPreviewType {
   mfKey,
   remoteLibrary,
@@ -21,11 +23,13 @@ class ToolItemModel {
     required this.preview,
     required this.title,
     required this.description,
+    this.routeBuilder,
     this.badge,
   });
 
   final ToolPreviewType preview;
   final String title;
   final String description;
+  final WidgetBuilder? routeBuilder;
   final String? badge;
 }

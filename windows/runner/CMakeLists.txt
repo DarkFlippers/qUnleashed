@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.14)
 project(runner LANGUAGES CXX)
 
+add_subdirectory("../../native/mfkey32" "${CMAKE_CURRENT_BINARY_DIR}/mfkey32")
+
 # Define the application target. To change its name, change BINARY_NAME in the
 # top-level CMakeLists.txt, not the value here, or `flutter run` will no longer
 # work.
@@ -36,5 +38,18 @@ target_link_libraries(${BINARY_NAME} PRIVATE flutter flutter_wrapper_app)
 target_link_libraries(${BINARY_NAME} PRIVATE "dwmapi.lib")
 target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
 
+set(PLUGIN_BUNDLED_LIBRARIES
+  ${PLUGIN_BUNDLED_LIBRARIES}
+  $<TARGET_FILE:qunleashed_mfkey32>
+  PARENT_SCOPE
+)
+
 # Run the Flutter tool portions of the build. This must not be removed.
 add_dependencies(${BINARY_NAME} flutter_assemble)
+add_dependencies(${BINARY_NAME} qunleashed_mfkey32)
+
+add_custom_command(TARGET ${BINARY_NAME} POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    $<TARGET_FILE:qunleashed_mfkey32>
+    $<TARGET_FILE_DIR:${BINARY_NAME}>
+)
