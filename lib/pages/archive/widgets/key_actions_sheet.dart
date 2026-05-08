@@ -3,6 +3,9 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme.dart';
 import '../archive_controller.dart';
+import '../file_manager/file_manager_controller.dart';
+import '../file_manager/file_manager_page.dart';
+import '../file_manager/text_editor_page.dart';
 import '../models/archive_key.dart';
 
 class KeyActionsSheet extends StatelessWidget {
@@ -53,6 +56,18 @@ class KeyActionsSheet extends StatelessWidget {
           }
           await controller.restoreKey(k);
         },
+      ));
+    }
+    if (k.onDevice && connected) {
+      actions.add(_Action(
+        icon: Icons.edit_note,
+        label: 'Открыть в редакторе',
+        onTap: () => _openInEditor(context, k),
+      ));
+      actions.add(_Action(
+        icon: Icons.folder_open,
+        label: 'Открыть в файловом менеджере',
+        onTap: () => _openInFileManager(context, k),
       ));
     }
 
@@ -134,6 +149,34 @@ class KeyActionsSheet extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  void _openInEditor(BuildContext context, ArchiveKey k) {
+    final remoteParent = _parent(k.remotePath);
+    final navigator = Navigator.of(context);
+    navigator.push(
+      MaterialPageRoute(
+        builder: (_) => TextEditorPage(
+          controller: FileManagerController(initialPath: remoteParent),
+          remotePath: k.remotePath,
+        ),
+      ),
+    );
+  }
+
+  void _openInFileManager(BuildContext context, ArchiveKey k) {
+    final navigator = Navigator.of(context);
+    navigator.push(
+      MaterialPageRoute(
+        builder: (_) => FileManagerPage(initialPath: _parent(k.remotePath)),
+      ),
+    );
+  }
+
+  String _parent(String path) {
+    final idx = path.lastIndexOf('/');
+    if (idx <= 0) return '/';
+    return path.substring(0, idx);
   }
 
   Future<void> _confirmAndDelete(
