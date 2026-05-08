@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme.dart';
 import '../models/archive_category.dart';
@@ -7,14 +8,14 @@ class CategoryTile extends StatelessWidget {
   const CategoryTile({
     super.key,
     required this.title,
-    required this.icon,
+    required this.asset,
     required this.color,
     required this.count,
     required this.onTap,
   });
 
   final String title;
-  final IconData icon;
+  final String asset;
   final Color color;
   final int count;
   final VoidCallback onTap;
@@ -26,7 +27,7 @@ class CategoryTile extends StatelessWidget {
   }) {
     return CategoryTile(
       title: category.title,
-      icon: category.icon,
+      asset: category.asset,
       color: category.color,
       count: count,
       onTap: onTap,
@@ -39,7 +40,7 @@ class CategoryTile extends StatelessWidget {
   }) {
     return CategoryTile(
       title: 'Deleted',
-      icon: Icons.delete_outline,
+      asset: 'assets/flipper_svg/archive/ic_trash.svg',
       color: const Color(0xFF8D8D8D),
       count: count,
       onTap: onTap,
@@ -59,11 +60,17 @@ class CategoryTile extends StatelessWidget {
             Container(
               width: 36,
               height: 36,
+              alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: color.withValues(alpha: 0.18),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Icon(icon, color: color, size: 20),
+              child: SvgPicture.asset(
+                asset,
+                width: 24,
+                height: 24,
+                colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
+              ),
             ),
             const SizedBox(width: 12),
             Expanded(

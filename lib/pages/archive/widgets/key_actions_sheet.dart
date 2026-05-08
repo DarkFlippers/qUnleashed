@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme.dart';
 import '../archive_controller.dart';
@@ -80,11 +81,18 @@ class KeyActionsSheet extends StatelessWidget {
                 Container(
                   width: 36,
                   height: 36,
+                  alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: k.category.color.withValues(alpha: 0.18),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Icon(k.category.icon, color: k.category.color, size: 20),
+                  child: SvgPicture.asset(
+                    k.category.asset,
+                    width: 22,
+                    height: 22,
+                    colorFilter:
+                        ColorFilter.mode(k.category.color, BlendMode.srcIn),
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(

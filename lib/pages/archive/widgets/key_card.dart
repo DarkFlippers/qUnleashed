@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme.dart';
 import '../models/archive_key.dart';
@@ -25,14 +26,19 @@ class KeyCard extends StatelessWidget {
               Container(
                 width: 36,
                 height: 36,
+                alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: flipperKey.category.color.withValues(alpha: 0.18),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Icon(
-                  flipperKey.category.icon,
-                  color: flipperKey.category.color,
-                  size: 20,
+                child: SvgPicture.asset(
+                  flipperKey.category.asset,
+                  width: 22,
+                  height: 22,
+                  colorFilter: ColorFilter.mode(
+                    flipperKey.category.color,
+                    BlendMode.srcIn,
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
@@ -40,15 +46,25 @@ class KeyCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      flipperKey.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: colors.textPrimary,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                      ),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            flipperKey.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: colors.textPrimary,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        if (flipperKey.isAutosave) ...[
+                          const SizedBox(width: 6),
+                          const _AutosaveBadge(),
+                        ],
+                      ],
                     ),
                     const SizedBox(height: 2),
                     Text(
@@ -78,6 +94,38 @@ class KeyCard extends StatelessWidget {
       case ArchiveKeyState.deleted:
         return 'deleted';
     }
+  }
+}
+
+class _AutosaveBadge extends StatelessWidget {
+  const _AutosaveBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: colors.info.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.bolt, size: 10, color: colors.info),
+          const SizedBox(width: 2),
+          Text(
+            'AUTOSAVE',
+            style: TextStyle(
+              color: colors.info,
+              fontSize: 9,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.5,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

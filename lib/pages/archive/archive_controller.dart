@@ -44,7 +44,11 @@ class ArchiveController extends ChangeNotifier {
 
   List<ArchiveKey> get allKeys {
     final list = _keys.values.toList()
-      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      ..sort((a, b) {
+        final byName = a.name.toLowerCase().compareTo(b.name.toLowerCase());
+        if (byName != 0) return byName;
+        return a.subFolder.compareTo(b.subFolder);
+      });
     if (_query.trim().isEmpty) return list;
     final q = _query.toLowerCase();
     return list.where((k) => k.name.toLowerCase().contains(q)).toList();
@@ -93,10 +97,14 @@ class ArchiveController extends ChangeNotifier {
       final localEntries = await _storage.listAll(_deviceName);
       final next = <String, ArchiveKey>{};
       for (final entry in localEntries) {
-        final key = _localKey(entry.category, entry.name, deleted: entry.deleted);
+        final key = _localKey(entry.category, entry.name, entry.extension,
+            entry.subFolder,
+            deleted: entry.deleted);
         next[key] = ArchiveKey(
           name: entry.name,
           category: entry.category,
+          extension: entry.extension,
+          subFolder: entry.subFolder,
           state: entry.deleted ? ArchiveKeyState.deleted : ArchiveKeyState.localOnly,
           localSize: entry.size,
           localPath: entry.path,
@@ -104,35 +112,9 @@ class ArchiveController extends ChangeNotifier {
       }
       if (_client.isConnected) {
         for (final cat in ArchiveCategory.values) {
-          final remote = await _listRemote(cat);
-          for (final f in remote) {
-            final base = f.name;
-            if (!base.toLowerCase().endsWith('.${cat.extension}')) continue;
-            final name = base.substring(0, base.length - cat.extension.length - 1);
-            final keyDeleted = _localKey(cat, name, deleted: true);
-            final keyActive = _localKey(cat, name, deleted: false);
-            final existingDeleted = next[keyDeleted];
-            final existingActive = next[keyActive];
-            if (existingActive != null) {
-              next[keyActive] = existingActive.copyWith(
-                state: ArchiveKeyState.synced,
-                remoteSize: f.size,
-              );
-            } else if (existingDeleted != null) {
-              next[keyActive] = ArchiveKey(
-                name: name,
-                category: cat,
-                state: ArchiveKeyState.remoteOnly,
-                remoteSize: f.size,
-              );
-            } else {
-              next[keyActive] = ArchiveKey(
-                name: name,
-                category: cat,
-                state: ArchiveKeyState.remoteOnly,
-                remoteSize: f.size,
-              );
-            }
+          await _mergeRemote(next, cat, '');
+          for (final sub in cat.subDirs) {
+            await _mergeRemote(next, cat, sub);
           }
         }
       }
@@ -145,6 +127,37 @@ class ArchiveController extends ChangeNotifier {
     } finally {
       _loading = false;
       notifyListeners();
+    }
+  }
+
+  Future<void> _mergeRemote(
+    Map<String, ArchiveKey> next,
+    ArchiveCategory cat,
+    String subFolder,
+  ) async {
+    final remote = await _listRemote(cat, subFolder);
+    for (final f in remote) {
+      final base = f.name;
+      final ext = cat.matchExtension(base);
+      if (ext == null) continue;
+      final name = base.substring(0, base.length - ext.length - 1);
+      final keyActive = _localKey(cat, name, ext, subFolder, deleted: false);
+      final existingActive = next[keyActive];
+      if (existingActive != null) {
+        next[keyActive] = existingActive.copyWith(
+          state: ArchiveKeyState.synced,
+          remoteSize: f.size,
+        );
+      } else {
+        next[keyActive] = ArchiveKey(
+          name: name,
+          category: cat,
+          extension: ext,
+          subFolder: subFolder,
+          state: ArchiveKeyState.remoteOnly,
+          remoteSize: f.size,
+        );
+      }
     }
   }
 
@@ -209,11 +222,17 @@ class ArchiveController extends ChangeNotifier {
             key.category,
             key.fileName,
             bytes,
+            subFolder: key.subFolder,
             deleted: true,
           );
         }
       } else if (key.inLocal && !key.isDeleted) {
-        await _storage.moveToDeleted(_deviceName, key.category, key.fileName);
+        await _storage.moveToDeleted(
+          _deviceName,
+          key.category,
+          key.fileName,
+          subFolder: key.subFolder,
+        );
       }
     } catch (e) {
       _lastError = '$e';
@@ -229,10 +248,16 @@ class ArchiveController extends ChangeNotifier {
         _deviceName,
         key.category,
         key.fileName,
+        subFolder: key.subFolder,
         deleted: true,
       );
       if (bytes == null) return;
-      await _storage.moveFromDeleted(_deviceName, key.category, key.fileName);
+      await _storage.moveFromDeleted(
+        _deviceName,
+        key.category,
+        key.fileName,
+        subFolder: key.subFolder,
+      );
       if (_client.isConnected) {
         await _client.storageWriteChunked(key.remotePath, bytes);
       }
@@ -245,8 +270,13 @@ class ArchiveController extends ChangeNotifier {
 
   Future<void> purgeKey(ArchiveKey key) async {
     try {
-      await _storage.hardDelete(_deviceName, key.category, key.fileName,
-          deleted: key.isDeleted);
+      await _storage.hardDelete(
+        _deviceName,
+        key.category,
+        key.fileName,
+        subFolder: key.subFolder,
+        deleted: key.isDeleted,
+      );
     } catch (e) {
       _lastError = '$e';
       LogService.log('[Archive] purge failed: $e');
@@ -254,10 +284,13 @@ class ArchiveController extends ChangeNotifier {
     await refresh();
   }
 
-  Future<List<File>> _listRemote(ArchiveCategory cat) async {
+  Future<List<File>> _listRemote(ArchiveCategory cat, String subFolder) async {
+    final path = subFolder.isEmpty
+        ? cat.remoteDir
+        : '${cat.remoteDir}/$subFolder';
     try {
       final batch = await _client.storageList(
-        ListRequest(path: cat.remoteDir),
+        ListRequest(path: path),
         timeout: const Duration(seconds: 30),
       );
       final files = <File>[];
@@ -266,7 +299,7 @@ class ArchiveController extends ChangeNotifier {
       }
       return files;
     } catch (e) {
-      LogService.log('[Archive] list ${cat.remoteDir} failed: $e');
+      LogService.log('[Archive] list $path failed: $e');
       return const [];
     }
   }
@@ -274,7 +307,13 @@ class ArchiveController extends ChangeNotifier {
   Future<void> _downloadKey(ArchiveKey key) async {
     final bytes = await _readRemoteBytes(key.remotePath);
     if (bytes == null) return;
-    await _storage.saveBytes(_deviceName, key.category, key.fileName, bytes);
+    await _storage.saveBytes(
+      _deviceName,
+      key.category,
+      key.fileName,
+      bytes,
+      subFolder: key.subFolder,
+    );
   }
 
   Future<List<int>?> _readRemoteBytes(String path) async {
@@ -294,6 +333,12 @@ class ArchiveController extends ChangeNotifier {
     }
   }
 
-  String _localKey(ArchiveCategory cat, String name, {required bool deleted}) =>
-      '${deleted ? 'd' : 'a'}:${cat.flipperDir}/$name';
+  String _localKey(
+    ArchiveCategory cat,
+    String name,
+    String extension,
+    String subFolder, {
+    required bool deleted,
+  }) =>
+      '${deleted ? 'd' : 'a'}:${cat.flipperDir}/${subFolder.isEmpty ? '' : '$subFolder/'}$name.$extension';
 }

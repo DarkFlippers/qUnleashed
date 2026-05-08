@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 42 42" width="42" height="42">
+  <path fill="currentColor" d="M18,39H15H12H9V42H12H15H18H21H24V39H21H18Z"/>
+  <path fill="currentColor" d="M27,36H24V39H27V36Z"/>
+  <path fill="currentColor" d="M15,33V36H18H21V33H18H15Z"/>
+  <path fill="currentColor" d="M9,33H6V36V39H9V36V33Z"/>
+  <path fill="currentColor" d="M21,30V33H24V30V27H21V30Z"/>
+  <path fill="currentColor" d="M15,27H12V30V33H15V30V27Z"/>
+  <path fill="currentColor" d="M6,27V24H3V27V30V33H6V30V27Z"/>
+  <path fill="currentColor" d="M21,27V24H18H15V27H18H21Z"/>
+  <path fill="currentColor" d="M27,24V27V30V33V36H30V33V30V27V24V21H27V24Z"/>
+  <path fill="currentColor" d="M24,21H27V18H24H21V21H24Z"/>
+  <path fill="currentColor" d="M9,18H6V21H9V18Z"/>
+  <path fill="currentColor" d="M3,18V15H0V18V21V24H3V21V18Z"/>
+  <path fill="currentColor" d="M15,18H18H21V15H18H15H12V18H15Z"/>
+  <path fill="currentColor" d="M33,15V18H36V15V12H33V15Z"/>
+  <path fill="currentColor" d="M9,15H12V12H9H6H3V15H6H9Z"/>
+  <path fill="currentColor" d="M39,9V12V15V18V21H42V18V15V12V9H39Z"/>
+  <path fill="currentColor" d="M33,9H30V12H33V9Z"/>
+  <path fill="currentColor" d="M39,6H36V9H39V6Z"/>
+  <path fill="currentColor" d="M27,6H24V9H27H30V6H27Z"/>
+  <path fill="currentColor" d="M36,3H33V6H36V3Z"/>
+  <path fill="currentColor" d="M30,0H27H24H21V3H24H27H30H33V0H30Z"/>
+</svg>
