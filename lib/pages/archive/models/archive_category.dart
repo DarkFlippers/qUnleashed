@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
 enum ArchiveCategory {
-  subghz(
+    subghz(
     title: 'Sub-GHz',
     flipperDir: 'subghz',
-    extensions: ['sub'],
+    extensions: ['bin','sub'],
     color: Color(0xFFFF9B34),
     asset: 'assets/flipper_svg/archive/ic_fileformat_sub.svg',
   ),
@@ -13,8 +13,8 @@ enum ArchiveCategory {
     flipperDir: 'subghz/wardriving',
     extensions: ['bin', 'sub'],
     color: Color(0xFFFFB84A),
-    asset: 'assets/flipper_svg/archive/ic_fileformat_wardriving.svg',
-    subDirs: ['autosave'],
+    asset: 'assets/flipper_svg/archive/ic_fileformat_sub.svg',
+    subDirs: ['autosaved'],
   ),
   rfid(
     title: 'RFID 125',
