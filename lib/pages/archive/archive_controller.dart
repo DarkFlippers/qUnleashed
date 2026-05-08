@@ -73,12 +73,37 @@ class ArchiveController extends ChangeNotifier {
   }
 
   Future<void> initialize() async {
-    _connSub ??= _client.connectionStream.listen((_) {
-      _deviceName = _client.connectedDevice?.name ?? _deviceName;
-      notifyListeners();
-    });
+    _connSub ??= _client.connectionStream.listen(_onConnectionChange);
     _deviceName = _client.connectedDevice?.name ?? _deviceName;
     await refresh();
+    if (_client.isConnected) {
+      unawaited(syncAll());
+    }
+  }
+
+  bool _wasConnected = false;
+  void _onConnectionChange(FlipperConnectionState s) {
+    final connected = s.connected && s.device != null;
+    _deviceName = s.device?.name ?? _deviceName;
+    notifyListeners();
+    if (connected && !_wasConnected) {
+      unawaited(_autoSyncOnConnect());
+    }
+    _wasConnected = connected;
+  }
+
+  Future<void> _autoSyncOnConnect() async {
+    await refresh();
+    if (_client.isConnected) {
+      await syncAll();
+    }
+  }
+
+  Future<void> fullSync() async {
+    await refresh();
+    if (_client.isConnected) {
+      await syncAll();
+    }
   }
 
   @override

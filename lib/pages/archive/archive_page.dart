@@ -76,7 +76,7 @@ class _ArchivePageState extends State<ArchivePage> {
           backgroundColor: colors.background,
           body: RefreshIndicator(
             color: colors.accent,
-            onRefresh: _ctrl.refresh,
+            onRefresh: _ctrl.fullSync,
             child: CustomScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
               slivers: [
@@ -102,23 +102,6 @@ class _ArchivePageState extends State<ArchivePage> {
               ],
             ),
           ),
-          floatingActionButton: _ctrl.isConnected
-              ? FloatingActionButton(
-                  onPressed: _ctrl.syncing ? null : _ctrl.syncAll,
-                  backgroundColor: colors.accent,
-                  foregroundColor: colors.onAccent,
-                  child: _ctrl.syncing
-                      ? SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: colors.onAccent,
-                          ),
-                        )
-                      : const Icon(Icons.sync),
-                )
-              : null,
         );
       },
     );
@@ -160,7 +143,7 @@ class _ArchivePageState extends State<ArchivePage> {
 
   String _emptyTitle() {
     if (!_ctrl.isConnected) {
-      return 'Connect a Flipper to load the archive';
+      return 'No saved keys yet\nConnect a Flipper to download them';
     }
     return 'No keys found';
   }
