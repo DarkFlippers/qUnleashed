@@ -18,6 +18,7 @@ class ToolsPage extends StatelessWidget {
         title: 'Mfkey32 (Extract MF Keys)',
         description: 'Calculate keys from Extract MF Keys',
         routeBuilder: _buildMfKey32Page,
+         badge: 'WIP',
       ),
     ),
     ToolCardModel(
