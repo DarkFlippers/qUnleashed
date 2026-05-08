@@ -28,26 +28,20 @@ class CategoriesCard extends StatelessWidget {
         count: controller.countFor(cat),
         onTap: () => onOpenCategory(cat),
       ));
-      if (i != ArchiveCategory.values.length - 1) {
-        tiles.add(Divider(height: 1, color: colors.divider));
-      }
+      tiles.add(Divider(height: 1, color: colors.divider));
     }
+    tiles.add(CategoryTile.deleted(
+      count: controller.deletedCount,
+      onTap: onOpenDeleted,
+    ));
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: Material(
         color: colors.card,
         borderRadius: BorderRadius.circular(12),
-        child: Column(
-          children: [
-            ...tiles,
-            Container(height: 6, color: colors.background),
-            CategoryTile.deleted(
-              count: controller.deletedCount,
-              onTap: onOpenDeleted,
-            ),
-          ],
-        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(children: tiles),
       ),
     );
   }

@@ -1,10 +1,11 @@
+import 'dart:io' as io;
+
 import 'package:flutter/material.dart';
 
 import '../../theme.dart';
 import 'archive_controller.dart';
 import 'models/archive_category.dart';
 import 'widgets/archive_empty_view.dart';
-import 'widgets/archive_header.dart';
 import 'widgets/categories_card.dart';
 import 'widgets/category_page.dart';
 import 'widgets/key_actions_sheet.dart';
@@ -22,7 +23,6 @@ class ArchivePage extends StatefulWidget {
 class _ArchivePageState extends State<ArchivePage> {
   final ArchiveController _ctrl = ArchiveController();
   final TextEditingController _searchCtrl = TextEditingController();
-  bool _searchOpen = false;
 
   @override
   void initState() {
@@ -35,16 +35,6 @@ class _ArchivePageState extends State<ArchivePage> {
     _searchCtrl.dispose();
     _ctrl.dispose();
     super.dispose();
-  }
-
-  void _toggleSearch() {
-    setState(() {
-      _searchOpen = !_searchOpen;
-      if (!_searchOpen) {
-        _searchCtrl.clear();
-        _ctrl.setQuery('');
-      }
-    });
   }
 
   void _openCategory(ArchiveCategory cat) {
@@ -61,6 +51,13 @@ class _ArchivePageState extends State<ArchivePage> {
     );
   }
 
+  double _topInset(BuildContext context) {
+    if (io.Platform.isAndroid || io.Platform.isIOS) {
+      return MediaQuery.paddingOf(context).top;
+    }
+    return 0;
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
@@ -69,41 +66,45 @@ class _ArchivePageState extends State<ArchivePage> {
       builder: (context, _) {
         return Scaffold(
           backgroundColor: colors.background,
-          body: SafeArea(
-            child: RefreshIndicator(
-              color: colors.accent,
-              onRefresh: _ctrl.refresh,
-              child: CustomScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                slivers: [
+          body: RefreshIndicator(
+            color: colors.accent,
+            onRefresh: _ctrl.refresh,
+            child: CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              slivers: [
+                SliverToBoxAdapter(child: SizedBox(height: _topInset(context))),
+                if (_ctrl.syncing)
                   SliverToBoxAdapter(
-                    child: ArchiveHeader(
-                      deviceName: _ctrl.deviceName,
-                      searchOpen: _searchOpen,
-                      searchController: _searchCtrl,
-                      onToggleSearch: _toggleSearch,
-                      onQueryChanged: _ctrl.setQuery,
-                      onSync: _ctrl.syncAll,
-                      syncing: _ctrl.syncing,
-                      canSync: _ctrl.isConnected,
-                    ),
+                    child: SyncProgressView(progress: _ctrl.syncProgress),
                   ),
-                  if (_ctrl.syncing)
-                    SliverToBoxAdapter(
-                      child: SyncProgressView(progress: _ctrl.syncProgress),
-                    ),
-                  SliverToBoxAdapter(
-                    child: CategoriesCard(
-                      controller: _ctrl,
-                      onOpenCategory: _openCategory,
-                      onOpenDeleted: _openDeleted,
-                    ),
+                SliverToBoxAdapter(
+                  child: CategoriesCard(
+                    controller: _ctrl,
+                    onOpenCategory: _openCategory,
+                    onOpenDeleted: _openDeleted,
                   ),
-                  ..._buildKeysSlivers(context),
-                ],
-              ),
+                ),
+                ..._buildKeysSlivers(context),
+              ],
             ),
           ),
+          floatingActionButton: _ctrl.isConnected
+              ? FloatingActionButton(
+                  onPressed: _ctrl.syncing ? null : _ctrl.syncAll,
+                  backgroundColor: colors.accent,
+                  foregroundColor: colors.onAccent,
+                  child: _ctrl.syncing
+                      ? SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: colors.onAccent,
+                          ),
+                        )
+                      : const Icon(Icons.sync),
+                )
+              : null,
         );
       },
     );
@@ -139,7 +140,7 @@ class _ArchivePageState extends State<ArchivePage> {
       ));
       slivers.add(_keysSliver(others));
     }
-    slivers.add(const SliverToBoxAdapter(child: SizedBox(height: 16)));
+    slivers.add(const SliverToBoxAdapter(child: SizedBox(height: 96)));
     return slivers;
   }
 

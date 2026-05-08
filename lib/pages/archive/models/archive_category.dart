@@ -4,59 +4,79 @@ enum ArchiveCategory {
   subghz(
     title: 'Sub-GHz',
     flipperDir: 'subghz',
-    extension: 'sub',
+    extensions: ['sub'],
+    color: Color(0xFFFF9B34),
+    asset: 'assets/flipper_svg/archive/ic_fileformat_sub.svg',
+  ),
+  wardriving(
+    title: 'Wardriving',
+    flipperDir: 'subghz/wardriving',
+    extensions: ['bin', 'sub'],
     color: Color(0xFFFFB84A),
-    icon: Icons.radio,
+    asset: 'assets/flipper_svg/archive/ic_fileformat_wardriving.svg',
+    subDirs: ['autosave'],
   ),
   rfid(
     title: 'RFID 125',
     flipperDir: 'lfrfid',
-    extension: 'rfid',
-    color: Color(0xFFFF8200),
-    icon: Icons.contactless,
+    extensions: ['rfid'],
+    color: Color(0xFF5856D6),
+    asset: 'assets/flipper_svg/archive/ic_fileformat_rf.svg',
   ),
   nfc(
     title: 'NFC',
     flipperDir: 'nfc',
-    extension: 'nfc',
-    color: Color(0xFF589DFF),
-    icon: Icons.nfc,
+    extensions: ['nfc'],
+    color: Color(0xFF34C7A4),
+    asset: 'assets/flipper_svg/archive/ic_fileformat_nfc.svg',
   ),
   infrared(
     title: 'Infrared',
     flipperDir: 'infrared',
-    extension: 'ir',
-    color: Color(0xFFE8587E),
-    icon: Icons.settings_remote,
+    extensions: ['ir'],
+    color: Color(0xFFAF52DE),
+    asset: 'assets/flipper_svg/archive/ic_fileformat_ir.svg',
   ),
   ibutton(
     title: 'iButton',
     flipperDir: 'ibutton',
-    extension: 'ibtn',
-    color: Color(0xFF52C24B),
-    icon: Icons.key,
+    extensions: ['ibtn'],
+    color: Color(0xFF007AFF),
+    asset: 'assets/flipper_svg/archive/ic_fileformat_ibutton.svg',
   );
 
   const ArchiveCategory({
     required this.title,
     required this.flipperDir,
-    required this.extension,
+    required this.extensions,
     required this.color,
-    required this.icon,
+    required this.asset,
+    this.subDirs = const <String>[],
   });
 
   final String title;
   final String flipperDir;
-  final String extension;
+  final List<String> extensions;
   final Color color;
-  final IconData icon;
+  final String asset;
+  final List<String> subDirs;
+
+  String get extension => extensions.first;
+
+  String? matchExtension(String fileName) {
+    final lower = fileName.toLowerCase();
+    for (final ext in extensions) {
+      if (lower.endsWith('.$ext')) return ext;
+    }
+    return null;
+  }
 
   String get remoteDir => '/ext/$flipperDir';
 
   static ArchiveCategory? fromExtension(String ext) {
     final lower = ext.toLowerCase();
     for (final c in values) {
-      if (c.extension == lower) return c;
+      if (c.extensions.contains(lower)) return c;
     }
     return null;
   }

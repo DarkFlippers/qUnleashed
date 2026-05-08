@@ -34,7 +34,7 @@ class CategoryPage extends StatelessWidget {
           ),
           body: keys.isEmpty
               ? ArchiveEmptyView(
-                  icon: category.icon,
+                  icon: Icons.folder_open,
                   title: 'No ${category.title} keys',
                   subtitle: controller.isConnected
                       ? 'Pull to refresh'

@@ -48,4 +48,5 @@ flutter:
     - assets/flipper_svg/mockup/
     - assets/flipper_svg/screenstreaming/
     - assets/flipper_svg/tools/
+    - assets/flipper_svg/archive/
     - assets/apps/
