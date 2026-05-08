@@ -129,7 +129,7 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
             initialZoom: 13,
             maxZoom: 19,
             minZoom: 2,
-            onTap: (_, __) => setState(() => _selectedPin = null),
+            onTap: (_, _) => setState(() => _selectedPin = null),
           ),
           children: [
             TileLayer(
@@ -139,6 +139,7 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
               subdomains: const ['a', 'b', 'c', 'd'],
               userAgentPackageName: 'qunleashed',
               maxZoom: 19,
+              retinaMode: RetinaMode.isHighDensity(context),
             ),
             MarkerLayer(markers: _buildMarkers(colors)),
           ],
@@ -278,7 +279,7 @@ class _StatusBar extends StatelessWidget {
         break;
     }
     return Material(
-      color: colors.card.withOpacity(0.94),
+      color: colors.card.withValues(alpha: 0.94),
       borderRadius: BorderRadius.circular(10),
       elevation: 2,
       child: Padding(
