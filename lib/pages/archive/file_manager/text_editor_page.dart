@@ -107,25 +107,30 @@ class _TextEditorPageState extends State<TextEditorPage> {
                   child: Text(_error!,
                       style: TextStyle(color: colors.danger)),
                 )
-              : Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: TextField(
-                    controller: _text,
-                    maxLines: null,
-                    expands: true,
-                    style: TextStyle(
-                      color: colors.terminalText,
-                      fontFamily: 'monospace',
-                      fontSize: 13,
-                    ),
-                    decoration: InputDecoration(
-                      filled: true,
-                      fillColor: colors.terminalBackground,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide(color: colors.divider),
+              : Container(
+                  color: colors.terminalBackground,
+                  child: Scrollbar(
+                    child: TextField(
+                      controller: _text,
+                      maxLines: null,
+                      expands: true,
+                      textAlignVertical: TextAlignVertical.top,
+                      cursorColor: colors.accent,
+                      style: TextStyle(
+                        color: colors.terminalText,
+                        fontFamily: 'monospace',
+                        fontSize: 13,
+                        height: 1.4,
                       ),
-                      contentPadding: const EdgeInsets.all(12),
+                      decoration: const InputDecoration(
+                        border: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        errorBorder: InputBorder.none,
+                        disabledBorder: InputBorder.none,
+                        isCollapsed: true,
+                        contentPadding: EdgeInsets.fromLTRB(12, 12, 12, 12),
+                      ),
                     ),
                   ),
                 ),
