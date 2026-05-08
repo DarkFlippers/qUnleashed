@@ -47,3 +47,9 @@ set(PLUGIN_BUNDLED_LIBRARIES
 # Run the Flutter tool portions of the build. This must not be removed.
 add_dependencies(${BINARY_NAME} flutter_assemble)
 add_dependencies(${BINARY_NAME} qunleashed_mfkey32)
+
+add_custom_command(TARGET ${BINARY_NAME} POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    $<TARGET_FILE:qunleashed_mfkey32>
+    $<TARGET_FILE_DIR:${BINARY_NAME}>
+)

@@ -32,16 +32,17 @@ typedef _RecoverDart = int Function(
 );
 
 class NativeMfKey32Recoverer implements MfKey32Recoverer {
-  NativeMfKey32Recoverer() : _recover = _loadRecover();
+  NativeMfKey32Recoverer();
 
-  final _RecoverDart _recover;
+  _RecoverDart? _recover;
 
   @override
   Future<BigInt?> bruteforceKey(MfKey32Nonce nonce) {
     return Future<BigInt?>.sync(() {
+      final recover = _recover ??= _loadRecover();
       final found = calloc<Int32>();
       try {
-        final key = _recover(
+        final key = recover(
           nonce.uid,
           nonce.nt0,
           nonce.nr0,
@@ -71,6 +72,12 @@ class NativeMfKey32Recoverer implements MfKey32Recoverer {
       return DynamicLibrary.open('libqunleashed_mfkey32.so');
     }
     if (Platform.isWindows) {
+      final executableDir = File(Platform.resolvedExecutable).parent.path;
+      final bundledPath =
+          '$executableDir${Platform.pathSeparator}qunleashed_mfkey32.dll';
+      if (File(bundledPath).existsSync()) {
+        return DynamicLibrary.open(bundledPath);
+      }
       return DynamicLibrary.open('qunleashed_mfkey32.dll');
     }
     if (Platform.isMacOS || Platform.isIOS) {

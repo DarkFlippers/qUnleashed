@@ -79,7 +79,6 @@ class _MfKey32PageState extends State<MfKey32Page> {
             _MfKey32Progress(
               state: _controller.state,
               onDone: () => Navigator.of(context).maybePop(),
-              onRetry: _controller.running ? null : _controller.start,
             ),
             if (_controller.foundedInformation.keys.isNotEmpty)
               _AllKeys(keys: _controller.foundedInformation.keys),
@@ -98,28 +97,26 @@ class _MfKey32Progress extends StatelessWidget {
   const _MfKey32Progress({
     required this.state,
     required this.onDone,
-    required this.onRetry,
   });
 
   final MfKey32State state;
   final VoidCallback onDone;
-  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
     return switch (state) {
       MfKey32WaitingForFlipper() => const _WaitingForFlipper(),
       MfKey32Calculating(:final percent) => _ProgressBlock(
-          title: 'Calculation Started...',
-          description: 'Calculating...',
+          title: 'Calculation Started…',
+          description: 'Calculating…',
           iconAsset: 'assets/flipper_svg/tools/mifare/pic_key.svg',
           percent: percent,
           accentColor: context.appColors.accent,
           secondColor: context.appColors.accent.withOpacity(0.54),
         ),
       MfKey32DownloadingRawFile(:final percent) => _ProgressBlock(
-          title: 'Calculation Started...',
-          description: 'Downloading raw file from Flipper...',
+          title: 'Calculation Started…',
+          description: 'Downloading raw file from Flipper…',
           iconAsset: 'assets/flipper_svg/tools/mifare/pic_download.svg',
           percent: percent,
           accentColor: context.appColors.info,
@@ -127,7 +124,7 @@ class _MfKey32Progress extends StatelessWidget {
         ),
       MfKey32Uploading() => _ProgressBlock(
           title: 'Calculation Completed',
-          description: 'Syncing with Flipper...',
+          description: 'Syncing with Flipper…',
           iconAsset: 'assets/flipper_svg/tools/mifare/pic_key.svg',
           percent: null,
           accentColor: context.appColors.accent,
@@ -136,10 +133,7 @@ class _MfKey32Progress extends StatelessWidget {
       MfKey32Saved(:final keys) => keys.isEmpty
           ? _CompleteNotFound(onDone: onDone)
           : _CompleteAttack(keys: keys, onDone: onDone),
-      MfKey32Error(:final errorType) => _ErrorBlock(
-          errorType: errorType,
-          onRetry: onRetry,
-        ),
+      MfKey32Error(:final errorType) => _ErrorBlock(errorType: errorType),
     };
   }
 }
@@ -212,7 +206,7 @@ class _WaitingForFlipper extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.only(top: 32, bottom: 18),
           child: Text(
-            'Connecting Flipper...',
+            'Connecting Flipper…',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: colors.textPrimary,
@@ -240,38 +234,43 @@ class _WaitingForFlipper extends StatelessWidget {
 }
 
 class _ErrorBlock extends StatelessWidget {
-  const _ErrorBlock({
-    required this.errorType,
-    required this.onRetry,
-  });
+  const _ErrorBlock({required this.errorType});
 
   final MfKey32ErrorType errorType;
-  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
     return switch (errorType) {
-      MfKey32ErrorType.notFoundFile => _NotFoundError(onRetry: onRetry),
+      MfKey32ErrorType.notFoundFile => const _NotFoundError(),
       MfKey32ErrorType.readWrite => _SimpleError(
           title: 'SD Card is Full or Not Accessible',
-          description:
-              'Unable to save keys. The SD Card is not accessible or there is not enough space',
-          onRetry: onRetry,
+          descriptions: const [
+            'Unable to save keys. The SD Card is not accessible or there is not enough space',
+          ],
+          mockupImageAsset: 'assets/flipper_svg/mockup/pic_flipperscreen_nosd.svg',
+          active: false,
+          textAlign: TextAlign.center,
+          horizontalPadding: 24,
         ),
       MfKey32ErrorType.flipperConnection => _SimpleError(
           title: 'Flipper Not Connected',
-          description:
-              "1. Check Bluetooth connection with Flipper\n2. Make sure Flipper is Turned on\n3. If Flipper doesn't respond, reboot it and connect to the app via Bluetooth\n4. Restart Mfkey32 (Extract MF Keys)",
-          onRetry: onRetry,
+          descriptions: const [
+            '1. Check Bluetooth connection with Flipper',
+            '2. Make sure Flipper is Turned on',
+            "3. If Flipper doesn’t respond, reboot it and connect to the app via Bluetooth",
+            '4. Restart Mfkey32 (Extract MF Keys)',
+          ],
+          mockupImageAsset: 'assets/flipper_svg/mockup/pic_flipperscreen_dead.svg',
+          active: false,
+          textAlign: TextAlign.start,
+          horizontalPadding: 14,
         ),
     };
   }
 }
 
 class _NotFoundError extends StatelessWidget {
-  const _NotFoundError({required this.onRetry});
-
-  final VoidCallback? onRetry;
+  const _NotFoundError();
 
   @override
   Widget build(BuildContext context) {
@@ -291,14 +290,10 @@ class _NotFoundError extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 18),
-          Center(
-            child: SvgPicture.asset(
-              colors.isDark
-                  ? 'assets/flipper_svg/tools/mifare/pic_flipper_nfc_detect_reader_black.svg'
-                  : 'assets/flipper_svg/tools/mifare/pic_flipper_nfc_detect_reader_white.svg',
-              width: 347,
-              fit: BoxFit.fitWidth,
-            ),
+          const _FlipperMockup(
+            active: true,
+            mockupImageAsset:
+                'assets/flipper_svg/mockup/pic_flipperscreen_nfc_reader.svg',
           ),
           const SizedBox(height: 24),
           Text(
@@ -307,10 +302,10 @@ class _NotFoundError extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           for (final line in const [
-            '1. On your Flipper Zero, go to NFC -> Extract MF Keys',
+            '1. On your Flipper Zero, go to NFC → Extract MF Keys',
             '2. Hold Flipper Zero close to the reader',
-            '3. Wait until you collect enough nonces',
-            '4. Complete nonce collection',
+            '3. Wait until you collect enough nonсes',
+            '4. Сomplete nonce collection',
             '5. In Flipper Mobile App, synchronize with your Flipper Zero and run the Mfkey32 (Extract MF Keys)',
           ])
             Padding(
@@ -320,8 +315,6 @@ class _NotFoundError extends StatelessWidget {
                 style: TextStyle(color: colors.textMuted, fontSize: 16),
               ),
             ),
-          const SizedBox(height: 18),
-          _PrimaryButton(text: 'Retry', onPressed: onRetry),
         ],
       ),
     );
@@ -331,21 +324,27 @@ class _NotFoundError extends StatelessWidget {
 class _SimpleError extends StatelessWidget {
   const _SimpleError({
     required this.title,
-    required this.description,
-    required this.onRetry,
+    required this.descriptions,
+    required this.mockupImageAsset,
+    required this.active,
+    required this.textAlign,
+    required this.horizontalPadding,
   });
 
   final String title;
-  final String description;
-  final VoidCallback? onRetry;
+  final List<String> descriptions;
+  final String mockupImageAsset;
+  final bool active;
+  final TextAlign textAlign;
+  final double horizontalPadding;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 32, 24, 24),
+      padding: const EdgeInsets.fromLTRB(0, 32, 0, 0),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Text(
             title,
@@ -358,24 +357,29 @@ class _SimpleError extends StatelessWidget {
           ),
           const SizedBox(height: 18),
           _FlipperMockup(
-            active: false,
-            child: Icon(
-              Icons.warning_amber_rounded,
-              color: colors.screenBorder,
-              size: 32,
-            ),
+            active: active,
+            mockupImageAsset: mockupImageAsset,
           ),
-          const SizedBox(height: 18),
-          Text(
-            description,
-            style: TextStyle(
-              color: colors.textSecondary,
-              fontSize: 16,
-              height: 1.45,
+          const SizedBox(height: 32),
+          for (final description in descriptions)
+            Padding(
+              padding:
+                  EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 8),
+              child: Align(
+                alignment: textAlign == TextAlign.center
+                    ? Alignment.center
+                    : Alignment.centerLeft,
+                child: Text(
+                  description,
+                  textAlign: textAlign,
+                  style: TextStyle(
+                    color: colors.textMuted,
+                    fontSize: 16,
+                    height: 1.45,
+                  ),
+                ),
+              ),
             ),
-          ),
-          const SizedBox(height: 24),
-          _PrimaryButton(text: 'Retry', onPressed: onRetry),
         ],
       ),
     );
@@ -403,7 +407,7 @@ class _FlipperProgressIndicator extends StatelessWidget {
         ? null
         : currentPercent.clamp(0.0001, 1.0).toDouble();
     final text =
-        currentPercent == null ? '...' : '${(currentPercent * 100).round()}%';
+        currentPercent == null ? '…' : '${(currentPercent * 100).round()}%';
     return Container(
       constraints: const BoxConstraints(minHeight: 46),
       clipBehavior: Clip.antiAlias,
@@ -458,11 +462,13 @@ class _FlipperProgressIndicator extends StatelessWidget {
 class _FlipperMockup extends StatelessWidget {
   const _FlipperMockup({
     required this.active,
-    required this.child,
+    this.child,
+    this.mockupImageAsset,
   });
 
   final bool active;
-  final Widget child;
+  final Widget? child;
+  final String? mockupImageAsset;
 
   @override
   Widget build(BuildContext context) {
@@ -474,6 +480,8 @@ class _FlipperMockup extends StatelessWidget {
         : active
             ? 'assets/flipper_svg/mockup/template_white_flipper_active.svg'
             : 'assets/flipper_svg/mockup/template_white_flipper_disabled.svg';
+    final imageAsset = mockupImageAsset;
+    final screenChild = child;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14),
       child: AspectRatio(
@@ -483,19 +491,24 @@ class _FlipperMockup extends StatelessWidget {
             Positioned.fill(
               child: SvgPicture.asset(template, fit: BoxFit.contain),
             ),
-            Positioned(
-              left: 61,
-              top: 11,
-              width: 85,
-              height: 46,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: ColoredBox(
-                  color: colors.screenBackground,
-                  child: child,
+            if (imageAsset != null)
+              Positioned.fill(
+                child: SvgPicture.asset(imageAsset, fit: BoxFit.fill),
+              )
+            else if (screenChild != null)
+              Positioned(
+                left: 61,
+                top: 11,
+                width: 85,
+                height: 46,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: ColoredBox(
+                    color: colors.screenBackground,
+                    child: screenChild,
+                  ),
                 ),
               ),
-            ),
           ],
         ),
       ),
@@ -531,14 +544,23 @@ class _CompleteAttack extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 24),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            alignment: WrapAlignment.center,
-            children: [for (final key in keys) _KeyPill(keyValue: key)],
+          SvgPicture.asset(
+            context.appColors.isDark
+                ? 'assets/flipper_svg/tools/mifare/pic_update_successfull_dark.svg'
+                : 'assets/flipper_svg/tools/mifare/pic_update_successfull.svg',
+            width: 154,
+            height: 92,
           ),
           const SizedBox(height: 24),
-          _PrimaryButton(text: 'Done', onPressed: onDone),
+          if (keys.length == 1)
+            _KeyPill(keyValue: keys.first)
+          else
+            _KeyPillGrid(keys: keys),
+          const SizedBox(height: 24),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: _PrimaryButton(text: 'Done', onPressed: onDone),
+          ),
         ],
       ),
     );
@@ -570,10 +592,13 @@ class _CompleteNotFound extends StatelessWidget {
                 ? 'assets/flipper_svg/tools/mifare/pic_shrug_black.svg'
                 : 'assets/flipper_svg/tools/mifare/pic_shrug_white.svg',
             width: 154,
-            height: 100,
+            height: 92,
           ),
           const SizedBox(height: 24),
-          _PrimaryButton(text: 'Done', onPressed: onDone),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: _PrimaryButton(text: 'Done', onPressed: onDone),
+          ),
         ],
       ),
     );
@@ -607,7 +632,7 @@ class _AllKeys extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: SelectableText(
-                'Sector ${_titlecase(key.sectorName)} - Key ${key.keyName.toUpperCase()} - ${key.key ?? 'Not found'}',
+                'Sector ${_titlecase(key.sectorName)} — Key ${key.keyName.toUpperCase()} — ${key.key ?? 'Not found'}',
                 style: TextStyle(
                   color: colors.textPrimary,
                   fontSize: 12,
@@ -629,9 +654,36 @@ class _UniqueKeys extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _KeysSection(
-      title: 'Unique (${keys.length})',
-      children: [for (final key in keys) _KeyPill(keyValue: key)],
+    final colors = context.appColors;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 24, 14, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Unique (${keys.length})',
+            style: TextStyle(
+              color: colors.textPrimary,
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              fontFamily: 'monospace',
+            ),
+          ),
+          const SizedBox(height: 10),
+          for (final key in keys)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: SelectableText(
+                key,
+                style: TextStyle(
+                  color: colors.textPrimary,
+                  fontSize: 12,
+                  fontFamily: 'monospace',
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -643,46 +695,74 @@ class _DuplicatedKeys extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _KeysSection(
-      title: 'Duplicated (${keys.length})',
-      children: [
-        for (final entry in keys.entries)
-          _KeyPill(
-            keyValue:
-                '${entry.key} - ${entry.value == DuplicatedSource.flipper ? 'Found in Flipper Dict.' : 'Found in User Dict.'}',
-          ),
-      ],
-    );
-  }
-}
-
-class _KeysSection extends StatelessWidget {
-  const _KeysSection({
-    required this.title,
-    required this.children,
-  });
-
-  final String title;
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) {
+    final colors = context.appColors;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 18, 14, 10),
+      padding: const EdgeInsets.fromLTRB(14, 24, 14, 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            title,
+            'Duplicated (${keys.length})',
             style: TextStyle(
-              color: context.appColors.textPrimary,
+              color: colors.textPrimary,
               fontSize: 16,
               fontWeight: FontWeight.w600,
               fontFamily: 'monospace',
             ),
           ),
           const SizedBox(height: 10),
-          Wrap(spacing: 10, runSpacing: 10, children: children),
+          for (final entry in keys.entries)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: SelectableText.rich(
+                TextSpan(
+                  text: entry.key,
+                  style: TextStyle(
+                    color: colors.textPrimary,
+                    fontSize: 12,
+                    fontFamily: 'monospace',
+                  ),
+                  children: [
+                    TextSpan(
+                      text:
+                          ' (${entry.value == DuplicatedSource.flipper ? 'Found in Flipper Dict.' : 'Found in User Dict.'})',
+                      style: TextStyle(color: colors.textMuted),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _KeyPillGrid extends StatelessWidget {
+  const _KeyPillGrid({required this.keys});
+
+  final List<String> keys;
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = <List<String>>[];
+    for (var index = 0; index < keys.length; index += 2) {
+      rows.add(keys.sublist(index, (index + 2).clamp(0, keys.length).toInt()));
+    }
+    return Padding(
+      padding: const EdgeInsets.all(6),
+      child: Column(
+        children: [
+          for (final row in rows)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  for (final key in row) _KeyPill(keyValue: key),
+                ],
+              ),
+            ),
         ],
       ),
     );
@@ -709,10 +789,10 @@ class _KeyPill extends StatelessWidget {
         children: [
           SvgPicture.asset(
             'assets/flipper_svg/tools/mifare/pic_encrypted_key.svg',
-            width: 18,
-            height: 18,
+            width: 24,
+            height: 24,
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 6),
           SelectableText(
             keyValue,
             style: TextStyle(

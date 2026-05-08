@@ -15,6 +15,12 @@ add_library(qunleashed_mfkey32 SHARED
 
 target_include_directories(qunleashed_mfkey32 PRIVATE "${CRAPTO1_DIR}")
 
-if(WIN32)
+if(MSVC)
+  target_compile_definitions(qunleashed_mfkey32 PRIVATE _CRT_SECURE_NO_WARNINGS LOWMEM)
+  target_compile_options(
+    qunleashed_mfkey32
+    PRIVATE "/FI${CMAKE_CURRENT_SOURCE_DIR}/msvc_compat.h"
+  )
+elseif(WIN32)
   target_compile_definitions(qunleashed_mfkey32 PRIVATE _CRT_SECURE_NO_WARNINGS)
 endif()
