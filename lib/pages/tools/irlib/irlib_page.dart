@@ -6,6 +6,7 @@ import '../../archive/models/archive_category.dart';
 import 'irlib_controller.dart';
 import 'irlib_file_page.dart';
 import 'irlib_models.dart';
+import 'widgets/ir_search_field.dart';
 
 class IrLibPage extends StatefulWidget {
   const IrLibPage({super.key});
@@ -17,7 +18,7 @@ class IrLibPage extends StatefulWidget {
 class _IrLibPageState extends State<IrLibPage> {
   final IrLibController _ctrl = IrLibController();
   final TextEditingController _searchCtrl = TextEditingController();
-  bool _searchVisible = false;
+  bool _onlyIr = true;
 
   @override
   void initState() {
@@ -80,50 +81,20 @@ class _IrLibPageState extends State<IrLibPage> {
             appBar: AppBar(
               backgroundColor: colors.accent,
               foregroundColor: colors.onAccent,
-              title: _searchVisible
-                  ? TextField(
-                      controller: _searchCtrl,
-                      autofocus: true,
-                      style: TextStyle(color: colors.onAccent),
-                      cursorColor: colors.onAccent,
-                      decoration: InputDecoration(
-                        border: InputBorder.none,
-                        hintText: 'Search whole IRDB…',
-                        hintStyle: TextStyle(
-                          color: colors.onAccent.withValues(alpha: 0.7),
-                        ),
-                      ),
-                      textInputAction: TextInputAction.search,
-                      onSubmitted: (q) => _ctrl.startSearch(q),
-                    )
-                  : Text(_ctrl.title, overflow: TextOverflow.ellipsis),
-              leading: _ctrl.canGoUp || _searchVisible
+              title: Text(_ctrl.title, overflow: TextOverflow.ellipsis),
+              leading: _ctrl.canGoUp
                   ? IconButton(
                       icon: const Icon(Icons.arrow_back),
-                      onPressed: () async {
-                        if (_searchVisible) {
-                          setState(() {
-                            _searchVisible = false;
-                          });
-                          _searchCtrl.clear();
-                          _ctrl.clearSearch();
-                          return;
-                        }
-                        await _ctrl.goUp();
-                      },
+                      onPressed: () => _ctrl.goUp(),
                     )
                   : null,
               actions: [
                 IconButton(
-                  tooltip: _searchVisible ? 'Close search' : 'Search',
-                  icon: Icon(_searchVisible ? Icons.close : Icons.search),
-                  onPressed: () {
-                    setState(() => _searchVisible = !_searchVisible);
-                    if (!_searchVisible) {
-                      _searchCtrl.clear();
-                      _ctrl.clearSearch();
-                    }
-                  },
+                  tooltip: _onlyIr ? 'Show all files' : 'Show only .ir files',
+                  icon: Icon(
+                    _onlyIr ? Icons.filter_alt : Icons.filter_alt_outlined,
+                  ),
+                  onPressed: () => setState(() => _onlyIr = !_onlyIr),
                 ),
                 IconButton(
                   tooltip: 'Refresh',
@@ -132,7 +103,18 @@ class _IrLibPageState extends State<IrLibPage> {
                 ),
               ],
             ),
-            body: _buildBody(context),
+            body: Column(
+              children: [
+                IrSearchField(
+                  controller: _searchCtrl,
+                  hintText: 'Search whole IRDB…',
+                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+                  onSubmitted: (q) => _ctrl.startSearch(q),
+                  onClear: _ctrl.clearSearch,
+                ),
+                Expanded(child: _buildBody(context)),
+              ],
+            ),
           );
         },
       ),
@@ -168,7 +150,10 @@ class _IrLibPageState extends State<IrLibPage> {
     }
 
     final isSearch = _ctrl.searchQuery.isNotEmpty;
-    final list = isSearch ? _ctrl.searchResults : _ctrl.entries;
+    final source = isSearch ? _ctrl.searchResults : _ctrl.entries;
+    final list = _onlyIr
+        ? source.where((e) => e.isDir || e.isIrFile).toList()
+        : source;
 
     if (_ctrl.loading) {
       return Center(child: CircularProgressIndicator(color: colors.accent));

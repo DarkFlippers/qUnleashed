@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme.dart';
-import 'irlib/irlib_page.dart';
+import 'irlib/categories_page.dart';
 import 'map/map_page.dart';
 import 'mifare/mfkey32_page.dart';
 import 'models/tool.dart';
@@ -73,4 +73,4 @@ Widget _buildMfKey32Page(BuildContext context) => const MfKey32Page();
 
 Widget _buildFlipperMapPage(BuildContext context) => const FlipperMapPage();
 
-Widget _buildIrLibPage(BuildContext context) => const IrLibPage();
+Widget _buildIrLibPage(BuildContext context) => const IrCategoriesPage();
