@@ -22,7 +22,7 @@ class ArchiveController extends ChangeNotifier {
   final FlipperClient _client;
   final ArchiveStorage _storage;
 
-  String _deviceName = 'flipper';
+  String _deviceName = '';
   bool _loading = false;
   bool _syncing = false;
   SyncProgress? _syncProgress;
@@ -74,7 +74,8 @@ class ArchiveController extends ChangeNotifier {
 
   Future<void> initialize() async {
     _connSub ??= _client.connectionStream.listen(_onConnectionChange);
-    _deviceName = _client.connectedDevice?.name ?? _deviceName;
+    final live = ArchiveStorage.normalizeDeviceName(_client.connectedDevice?.name);
+    _deviceName = live ?? (await _storage.readLastDeviceName()) ?? '';
     await refresh();
     if (_client.isConnected) {
       unawaited(syncAll());
@@ -84,7 +85,11 @@ class ArchiveController extends ChangeNotifier {
   bool _wasConnected = false;
   void _onConnectionChange(FlipperConnectionState s) {
     final connected = s.connected && s.device != null;
-    _deviceName = s.device?.name ?? _deviceName;
+    final normalized = ArchiveStorage.normalizeDeviceName(s.device?.name);
+    if (normalized != null && normalized.isNotEmpty) {
+      _deviceName = normalized;
+      unawaited(_storage.writeLastDeviceName(normalized));
+    }
     notifyListeners();
     if (connected && !_wasConnected) {
       unawaited(_autoSyncOnConnect());
@@ -118,6 +123,11 @@ class ArchiveController extends ChangeNotifier {
     _lastError = null;
     notifyListeners();
     try {
+      if (_deviceName.isEmpty) {
+        _keys.clear();
+        return;
+      }
+      await _storage.migrateLegacyFolders(_deviceName);
       await _storage.ensureLayout(_deviceName);
       final localEntries = await _storage.listAll(_deviceName);
       final next = <String, ArchiveKey>{};
@@ -189,6 +199,7 @@ class ArchiveController extends ChangeNotifier {
   Future<void> syncAll() async {
     if (_syncing) return;
     if (!_client.isConnected) return;
+    if (_deviceName.isEmpty) return;
     _syncing = true;
     _lastError = null;
     notifyListeners();

@@ -47,8 +47,38 @@ class ArchiveStorage {
   }
 
   String _sanitize(String input) {
-    final cleaned = input.replaceAll(RegExp(r'[<>:"/\\|?* -]'), '_').trim();
-    return cleaned.isEmpty ? 'flipper' : cleaned;
+    return input.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_').trim();
+  }
+
+  static String? normalizeDeviceName(String? raw) {
+    if (raw == null) return null;
+    var name = raw.trim();
+    final prefix = RegExp(r'^flipper[\s_-]+', caseSensitive: false);
+    name = name.replaceFirst(prefix, '').trim();
+    return name.isEmpty ? null : name;
+  }
+
+  io.File _lastDeviceFile() {
+    final sep = io.Platform.pathSeparator;
+    return io.File('${rootDir.path}$sep.last_device');
+  }
+
+  Future<String?> readLastDeviceName() async {
+    try {
+      final file = _lastDeviceFile();
+      if (!await file.exists()) return null;
+      final raw = (await file.readAsString()).trim();
+      return raw.isEmpty ? null : raw;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> writeLastDeviceName(String name) async {
+    try {
+      await rootDir.create(recursive: true);
+      await _lastDeviceFile().writeAsString(name);
+    } catch (_) {}
   }
 
   io.Directory deviceDir(String deviceName) {
@@ -70,6 +100,43 @@ class ArchiveStorage {
       return io.Directory('$base$sep.deleted$sep$dir$sub');
     }
     return io.Directory('$base$sep$dir$sub');
+  }
+
+  Future<void> migrateLegacyFolders(String currentName) async {
+    if (currentName.isEmpty) return;
+    final root = rootDir;
+    if (!await root.exists()) return;
+    final target = deviceDir(currentName);
+    final canonical = target.uri.toFilePath();
+    await for (final entity in root.list(followLinks: false)) {
+      if (entity is! io.Directory) continue;
+      final base = entity.uri.pathSegments.where((s) => s.isNotEmpty).last;
+      if (entity.uri.toFilePath() == canonical) continue;
+      final normalized = normalizeDeviceName(base);
+      final isLegacyDefault = base.toLowerCase() == 'flipper';
+      if (!isLegacyDefault && normalized != currentName) continue;
+      await _mergeDirectory(entity, target);
+      try {
+        await entity.delete(recursive: true);
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _mergeDirectory(io.Directory src, io.Directory dst) async {
+    if (!await src.exists()) return;
+    await dst.create(recursive: true);
+    final sep = io.Platform.pathSeparator;
+    await for (final entity in src.list(followLinks: false)) {
+      final name = entity.uri.pathSegments.where((s) => s.isNotEmpty).last;
+      if (entity is io.Directory) {
+        await _mergeDirectory(entity, io.Directory('${dst.path}$sep$name'));
+      } else if (entity is io.File) {
+        final dstFile = io.File('${dst.path}$sep$name');
+        if (!await dstFile.exists()) {
+          await entity.copy(dstFile.path);
+        }
+      }
+    }
   }
 
   Future<void> ensureLayout(String deviceName) async {
