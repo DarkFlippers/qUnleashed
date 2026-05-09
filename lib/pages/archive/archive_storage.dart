@@ -1,5 +1,7 @@
 import 'dart:io' as io;
 
+import 'package:path_provider/path_provider.dart';
+
 import 'models/archive_category.dart';
 
 class LocalKeyEntry {
@@ -23,25 +25,24 @@ class LocalKeyEntry {
 class ArchiveStorage {
   ArchiveStorage();
 
-  io.Directory get rootDir {
+  static io.Directory? _cachedRoot;
+
+  Future<io.Directory> resolveRootDir() async {
+    final cached = _cachedRoot;
+    if (cached != null) return cached;
     final sep = io.Platform.pathSeparator;
-    final base = _baseDocsDir();
-    return io.Directory('${base.path}${sep}qunleashed${sep}archive');
+    final base = await getApplicationDocumentsDirectory();
+    final root = io.Directory('${base.path}${sep}qunleashed${sep}archive');
+    _cachedRoot = root;
+    return root;
   }
 
-  io.Directory _baseDocsDir() {
-    final sep = io.Platform.pathSeparator;
-    if (io.Platform.isWindows) {
-      final profile = io.Platform.environment['USERPROFILE'];
-      if (profile != null && profile.isNotEmpty) {
-        return io.Directory('$profile${sep}Documents');
-      }
+  io.Directory get rootDir {
+    final cached = _cachedRoot;
+    if (cached == null) {
+      throw StateError('ArchiveStorage.resolveRootDir() must be awaited first');
     }
-    final home = io.Platform.environment['HOME'];
-    if (home != null && home.isNotEmpty) {
-      return io.Directory('$home${sep}Documents');
-    }
-    return io.Directory.current;
+    return cached;
   }
 
   String _sanitize(String input) {
@@ -63,6 +64,7 @@ class ArchiveStorage {
 
   Future<String?> readLastDeviceName() async {
     try {
+      await resolveRootDir();
       final file = _lastDeviceFile();
       if (!await file.exists()) return null;
       final raw = (await file.readAsString()).trim();
@@ -74,7 +76,8 @@ class ArchiveStorage {
 
   Future<void> writeLastDeviceName(String name) async {
     try {
-      await rootDir.create(recursive: true);
+      final root = await resolveRootDir();
+      await root.create(recursive: true);
       await _lastDeviceFile().writeAsString(name);
     } catch (_) {}
   }
@@ -98,7 +101,7 @@ class ArchiveStorage {
 
   Future<void> migrateLegacyFolders(String currentName) async {
     if (currentName.isEmpty) return;
-    final root = rootDir;
+    final root = await resolveRootDir();
     if (!await root.exists()) return;
     final target = deviceDir(currentName);
     final canonical = target.uri.toFilePath();
@@ -134,6 +137,7 @@ class ArchiveStorage {
   }
 
   Future<void> ensureLayout(String deviceName) async {
+    await resolveRootDir();
     for (final cat in ArchiveCategory.values) {
       await categoryDir(deviceName, cat).create(recursive: true);
       for (final sub in cat.subDirs) {
@@ -143,6 +147,7 @@ class ArchiveStorage {
   }
 
   Future<List<LocalKeyEntry>> listAll(String deviceName) async {
+    await resolveRootDir();
     final out = <LocalKeyEntry>[];
     for (final cat in ArchiveCategory.values) {
       out.addAll(await _listCategory(deviceName, cat, subFolder: ''));
@@ -187,6 +192,7 @@ class ArchiveStorage {
     List<int> bytes, {
     String subFolder = '',
   }) async {
+    await resolveRootDir();
     final dir = categoryDir(deviceName, cat, subFolder: subFolder);
     await dir.create(recursive: true);
     final sep = io.Platform.pathSeparator;
@@ -201,6 +207,7 @@ class ArchiveStorage {
     String fileName, {
     String subFolder = '',
   }) async {
+    await resolveRootDir();
     final sep = io.Platform.pathSeparator;
     final dir = categoryDir(deviceName, cat, subFolder: subFolder);
     final file = io.File('${dir.path}$sep$fileName');
@@ -214,6 +221,7 @@ class ArchiveStorage {
     String fileName, {
     String subFolder = '',
   }) async {
+    await resolveRootDir();
     final sep = io.Platform.pathSeparator;
     final file = io.File(
         '${categoryDir(deviceName, cat, subFolder: subFolder).path}$sep$fileName');
