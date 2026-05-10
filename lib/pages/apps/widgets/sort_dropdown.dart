@@ -1,7 +1,7 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 import '../../../theme.dart';
-import '../apps_catalog_api.dart';
+import '../catalog_api.dart';
 
 class SortDropdown extends StatelessWidget {
   const SortDropdown({super.key, required this.value, required this.onChanged});

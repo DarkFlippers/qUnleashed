@@ -1,8 +1,8 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme.dart';
-import '../models/archive_category.dart';
+import '../models/category.dart';
 
 class CategoryTile extends StatelessWidget {
   const CategoryTile({

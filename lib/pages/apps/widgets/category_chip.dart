@@ -1,8 +1,8 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme.dart';
-import '../models/app_category.dart';
+import '../models/category.dart';
 
 Color parseHexColor(String hex, {Color fallback = const Color(0xFFEBEBEB)}) {
   var s = hex.trim();

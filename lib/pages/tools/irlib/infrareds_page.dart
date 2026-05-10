@@ -1,8 +1,8 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme.dart';
-import '../../archive/models/archive_category.dart';
+import '../../archive/models/category.dart';
 import 'backend/infrared_backend_api.dart';
 import 'backend/infrared_backend_models.dart';
 import 'ir_content_page.dart';
@@ -73,7 +73,7 @@ class _IrInfraredsPageState extends State<IrInfraredsPage> {
           builder: (_) => IrContentPage(
             fileName: f.fileName,
             subtitle:
-                '${widget.category.displayName} · ${widget.brand.name}',
+                '${widget.category.displayName} В· ${widget.brand.name}',
             content: content,
           ),
         ),

@@ -1,7 +1,7 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 import '../../../theme.dart';
-import '../archive_controller.dart';
+import '../controller.dart';
 
 class SyncProgressView extends StatelessWidget {
   const SyncProgressView({super.key, required this.progress});
