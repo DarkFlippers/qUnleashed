@@ -1,16 +1,16 @@
-import 'dart:io' as io;
+﻿import 'dart:io' as io;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme.dart';
-import '../../tools/map/map_page.dart';
-import '../archive_controller.dart';
-import '../emulate/emulate_page.dart';
-import '../file_manager/file_manager_controller.dart';
-import '../file_manager/file_manager_page.dart';
+import '../../tools/map/page.dart';
+import '../controller.dart';
+import '../emulate/page.dart';
+import '../file_manager/controller.dart';
+import '../file_manager/page.dart';
 import '../file_manager/text_editor_page.dart';
-import '../models/archive_key.dart';
+import '../models/key.dart';
 
 class KeyActionsSheet extends StatelessWidget {
   const KeyActionsSheet({

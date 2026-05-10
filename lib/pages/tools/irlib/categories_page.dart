@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -8,7 +8,7 @@ import '../../../theme.dart';
 import 'backend/infrared_backend_api.dart';
 import 'backend/infrared_backend_models.dart';
 import 'brands_page.dart';
-import 'irlib_page.dart';
+import 'page.dart';
 
 class IrCategoriesPage extends StatefulWidget {
   const IrCategoriesPage({super.key});

@@ -1,8 +1,8 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 import '../../../theme.dart';
-import '../archive_controller.dart';
-import '../models/archive_category.dart';
+import '../controller.dart';
+import '../models/category.dart';
 import 'category_tile.dart';
 
 class CategoriesCard extends StatelessWidget {

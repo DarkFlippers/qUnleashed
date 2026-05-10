@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'dart:io' as io;
 
 import 'package:flipperlib/flipperlib.dart';
@@ -6,8 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme.dart';
-import '../../archive/archive_storage.dart';
-import '../../archive/models/archive_category.dart';
+import '../../archive/storage.dart';
+import '../../archive/models/category.dart';
 
 class IrContentPage extends StatefulWidget {
   const IrContentPage({
@@ -212,7 +212,7 @@ class _IrContentPageState extends State<IrContentPage> {
                 Expanded(
                   child: _ActionButton(
                     icon: Icons.download,
-                    label: _savingLocal ? 'Saving…' : 'Save to phone',
+                    label: _savingLocal ? 'SavingвЂ¦' : 'Save to phone',
                     onTap: _savingLocal || _sending ? null : _saveLocal,
                     filled: false,
                   ),

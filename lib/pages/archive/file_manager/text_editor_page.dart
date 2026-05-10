@@ -1,9 +1,9 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
 import '../../../theme.dart';
-import 'file_manager_controller.dart';
+import 'controller.dart';
 
 class TextEditorPage extends StatefulWidget {
   const TextEditorPage({

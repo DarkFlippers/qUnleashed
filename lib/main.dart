@@ -1,6 +1,6 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
-import 'pages/devices/device_page.dart';
+import 'pages/devices/page.dart';
 import 'theme.dart';
 
 void main() {

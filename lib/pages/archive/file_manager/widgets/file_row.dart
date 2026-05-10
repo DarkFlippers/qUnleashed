@@ -1,8 +1,8 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../../theme.dart';
-import '../file_manager_controller.dart';
+import '../controller.dart';
 
 class FileRow extends StatelessWidget {
   const FileRow({

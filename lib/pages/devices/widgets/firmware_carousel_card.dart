@@ -7,7 +7,7 @@ import '../models/firmware_directory.dart';
 import '../models/ofw_parser.dart';
 import '../models/unleashed_parser.dart';
 import '../../../theme.dart';
-import '../../../widgets/device_shell.dart';
+import '../../../widgets/page_card.dart';
 import 'firmware_changelog_page.dart';
 import 'firmware_update_button.dart';
 

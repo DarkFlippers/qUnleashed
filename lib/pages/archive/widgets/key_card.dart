@@ -1,8 +1,8 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme.dart';
-import '../models/archive_key.dart';
+import '../models/key.dart';
 
 class KeyCard extends StatelessWidget {
   const KeyCard({super.key, required this.flipperKey, required this.onTap});
@@ -68,7 +68,7 @@ class KeyCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '${flipperKey.category.title} · ${_subtitle(flipperKey)}',
+                      '${flipperKey.category.title} В· ${_subtitle(flipperKey)}',
                       style: TextStyle(color: colors.textMuted, fontSize: 12),
                     ),
                   ],

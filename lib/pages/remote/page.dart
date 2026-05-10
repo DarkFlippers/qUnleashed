@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import '../../theme.dart';
 import 'input/keyboard_listener.dart';
 import 'models/models.dart';
-import 'remote_session.dart';
+import 'session.dart';
 import 'screenshot_saver.dart';
 import 'widgets/action_button.dart';
 import 'widgets/controls.dart';
