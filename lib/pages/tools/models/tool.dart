@@ -8,12 +8,14 @@ enum ToolPreviewType {
 class ToolCardModel {
   const ToolCardModel({
     required this.iconAsset,
+    required this.iconColor,
     required this.title,
     required this.tool,
     this.compact = false,
   });
 
   final String iconAsset;
+  final Color iconColor;
   final String title;
   final ToolItemModel tool;
   final bool compact;
