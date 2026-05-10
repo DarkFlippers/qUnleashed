@@ -1,8 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme.dart';
 import '../models/models.dart';
+
+const Color _kFlipperOrange = Color(0xFFFF8200);
+
+class _AccentColorMapper extends ColorMapper {
+  const _AccentColorMapper(this.accent);
+  final Color accent;
+
+  @override
+  Color substitute(String? id, String elementName, String attributeName, Color color) {
+    return color == _kFlipperOrange ? accent : color;
+  }
+}
 
 class RemoteControlControls extends StatelessWidget {
   static const double _layoutWidth = 246;
@@ -10,14 +23,12 @@ class RemoteControlControls extends StatelessWidget {
 
   const RemoteControlControls({
     super.key,
-    required this.onTapButton,
-    required this.onHoldButtonStart,
-    required this.onHoldButtonEnd,
+    required this.onHoldBegin,
+    required this.onHoldEnd,
   });
 
-  final Future<void> Function(RemoteButton) onTapButton;
-  final Future<void> Function(RemoteButton) onHoldButtonStart;
-  final Future<void> Function(RemoteButton) onHoldButtonEnd;
+  final void Function(RemoteButton) onHoldBegin;
+  final void Function(RemoteButton) onHoldEnd;
 
   @override
   Widget build(BuildContext context) {
@@ -35,16 +46,14 @@ class RemoteControlControls extends StatelessWidget {
           children: [
             _DPad(
               colors: colors,
-              onTapButton: onTapButton,
-              onHoldStart: onHoldButtonStart,
-              onHoldEnd: onHoldButtonEnd,
+              onHoldBegin: onHoldBegin,
+              onHoldEnd: onHoldEnd,
             ),
             const SizedBox(width: 30),
             _BackButton(
               colors: colors,
-              onTap: () => onTapButton(RemoteButton.back),
-              onHoldStart: (_) => onHoldButtonStart(RemoteButton.back),
-              onHoldEnd: (_) => onHoldButtonEnd(RemoteButton.back),
+              onHoldBegin: () => onHoldBegin(RemoteButton.back),
+              onHoldEnd: () => onHoldEnd(RemoteButton.back),
             ),
           ],
         ),
@@ -56,15 +65,13 @@ class RemoteControlControls extends StatelessWidget {
 class _DPad extends StatelessWidget {
   const _DPad({
     required this.colors,
-    required this.onTapButton,
-    required this.onHoldStart,
+    required this.onHoldBegin,
     required this.onHoldEnd,
   });
 
   final QAppColors colors;
-  final Future<void> Function(RemoteButton) onTapButton;
-  final Future<void> Function(RemoteButton) onHoldStart;
-  final Future<void> Function(RemoteButton) onHoldEnd;
+  final void Function(RemoteButton) onHoldBegin;
+  final void Function(RemoteButton) onHoldEnd;
 
   @override
   Widget build(BuildContext context) {
@@ -77,7 +84,7 @@ class _DPad extends StatelessWidget {
       ),
       padding: const EdgeInsets.all(3),
       child: ClipOval(
-        child: Container(
+        child: ColoredBox(
           color: colors.accent,
           child: Column(
             children: [
@@ -106,49 +113,17 @@ class _DPad extends StatelessWidget {
   }
 
   Widget _btn(RemoteButton button, String iconName) {
-    return _PadButton(
-      colors: colors,
-      button: button,
-      asset: 'assets/flipper_svg/screenstreaming/$iconName.svg',
-      onTap: onTapButton,
-      onHoldStart: onHoldStart,
-      onHoldEnd: onHoldEnd,
-    );
-  }
-}
-
-class _PadButton extends StatelessWidget {
-  const _PadButton({
-    required this.colors,
-    required this.button,
-    required this.asset,
-    required this.onTap,
-    required this.onHoldStart,
-    required this.onHoldEnd,
-  });
-
-  final QAppColors colors;
-  final RemoteButton button;
-  final String asset;
-  final Future<void> Function(RemoteButton) onTap;
-  final Future<void> Function(RemoteButton) onHoldStart;
-  final Future<void> Function(RemoteButton) onHoldEnd;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => onTap(button),
-      onLongPressStart: (_) => onHoldStart(button),
-      onLongPressEnd: (_) => onHoldEnd(button),
+    return _HoldButton(
+      onHoldBegin: () => onHoldBegin(button),
+      onHoldEnd: () => onHoldEnd(button),
       child: Center(
         child: SizedBox(
           width: 44,
           height: 44,
           child: Center(
             child: SvgPicture.asset(
-              asset,
-              colorFilter: ColorFilter.mode(colors.onAccent, BlendMode.srcIn),
+              'assets/flipper_svg/screenstreaming/$iconName.svg',
+              colorMapper: _AccentColorMapper(colors.accent),
             ),
           ),
         ),
@@ -160,22 +135,19 @@ class _PadButton extends StatelessWidget {
 class _BackButton extends StatelessWidget {
   const _BackButton({
     required this.colors,
-    required this.onTap,
-    required this.onHoldStart,
+    required this.onHoldBegin,
     required this.onHoldEnd,
   });
 
   final QAppColors colors;
-  final VoidCallback onTap;
-  final void Function(LongPressStartDetails) onHoldStart;
-  final void Function(LongPressEndDetails) onHoldEnd;
+  final VoidCallback onHoldBegin;
+  final VoidCallback onHoldEnd;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      onLongPressStart: onHoldStart,
-      onLongPressEnd: onHoldEnd,
+    return _HoldButton(
+      onHoldBegin: onHoldBegin,
+      onHoldEnd: onHoldEnd,
       child: Container(
         width: 54,
         height: 54,
@@ -190,11 +162,62 @@ class _BackButton extends StatelessWidget {
             padding: const EdgeInsets.all(12),
             child: SvgPicture.asset(
               'assets/flipper_svg/screenstreaming/ic_control_back.svg',
-              colorFilter: ColorFilter.mode(colors.onAccent, BlendMode.srcIn),
             ),
           ),
         ),
       ),
+    );
+  }
+}
+
+class _HoldButton extends StatefulWidget {
+  const _HoldButton({
+    required this.onHoldBegin,
+    required this.onHoldEnd,
+    required this.child,
+  });
+
+  final VoidCallback onHoldBegin;
+  final VoidCallback onHoldEnd;
+  final Widget child;
+
+  @override
+  State<_HoldButton> createState() => _HoldButtonState();
+}
+
+class _HoldButtonState extends State<_HoldButton> {
+  int? _activePointer;
+
+  @override
+  void dispose() {
+    if (_activePointer != null) {
+      _activePointer = null;
+      widget.onHoldEnd();
+    }
+    super.dispose();
+  }
+
+  void _down(PointerDownEvent event) {
+    if (_activePointer != null) return;
+    _activePointer = event.pointer;
+    HapticFeedback.selectionClick();
+    widget.onHoldBegin();
+  }
+
+  void _release(int pointer) {
+    if (_activePointer != pointer) return;
+    _activePointer = null;
+    widget.onHoldEnd();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Listener(
+      behavior: HitTestBehavior.opaque,
+      onPointerDown: _down,
+      onPointerUp: (e) => _release(e.pointer),
+      onPointerCancel: (e) => _release(e.pointer),
+      child: widget.child,
     );
   }
 }
