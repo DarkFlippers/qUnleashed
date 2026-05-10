@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 import '../../theme.dart';
 import 'irlib/categories_page.dart';
@@ -12,7 +12,8 @@ class ToolsPage extends StatelessWidget {
 
   static final _tools = [
     ToolCardModel(
-      iconAsset: 'assets/flipper_svg/tools/ic_fileformat_nfc.svg',
+      iconAsset: 'assets/flipper_svg/archive/ic_fileformat_nfc.svg',
+      iconColor: const Color(0xFF34C7A4),
       title: 'MIFARE Classic',
       tool: ToolItemModel(
         preview: ToolPreviewType.mfKey,
@@ -23,7 +24,8 @@ class ToolsPage extends StatelessWidget {
       ),
     ),
     ToolCardModel(
-      iconAsset: 'assets/flipper_svg/tools/ic_fileformat_ir.svg',
+      iconAsset: 'assets/flipper_svg/archive/ic_fileformat_ir.svg',
+      iconColor: const Color(0xFFAF52DE),
       title: 'Infrared',
       tool: ToolItemModel(
         preview: ToolPreviewType.remoteLibrary,
@@ -35,7 +37,8 @@ class ToolsPage extends StatelessWidget {
       ),
     ),
     ToolCardModel(
-      iconAsset: 'assets/flipper_svg/tools/ic_fileformat_sub.svg',
+      iconAsset: 'assets/flipper_svg/archive/ic_fileformat_sub.svg',
+      iconColor: const Color(0xFFFF9B34),
       title: 'FlipperMap',
       compact: true,
       tool: ToolItemModel(
@@ -57,7 +60,7 @@ class ToolsPage extends StatelessWidget {
         right: false,
         bottom: false,
         child: SingleChildScrollView(
-          padding: const EdgeInsets.only(bottom: 14),
+          padding: const EdgeInsets.only(top: 9, bottom: 14),
           child: Column(
             children: [
               for (final tool in _tools) ToolCard(model: tool),

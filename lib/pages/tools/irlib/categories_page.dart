@@ -152,7 +152,7 @@ class _IrdbButton extends StatelessWidget {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: SvgPicture.asset(
-                    'assets/flipper_svg/tools/ic_fileformat_ir.svg',
+                    'assets/flipper_svg/archive/ic_fileformat_ir.svg',
                     width: 24,
                     height: 24,
                     colorFilter:

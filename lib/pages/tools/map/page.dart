@@ -98,8 +98,24 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
       appBar: AppBar(
         backgroundColor: colors.accent,
         foregroundColor: colors.onAccent,
-        title: const Text('FlipperMap'),
+        title: const Text('Signal Map'),
         actions: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Center(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.place, size: 20),
+                  const SizedBox(width: 4),
+                  Text(
+                    '${_controller.pins.length}',
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
+            ),
+          ),
           IconButton(
             tooltip: 'Reload files',
             onPressed: _controller.loading ? null : _controller.loadFiles,
@@ -177,15 +193,6 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
             ),
             MarkerLayer(markers: _buildMarkers(colors)),
           ],
-        ),
-        Positioned(
-          top: 12,
-          left: 12,
-          right: 12,
-          child: _StatusBar(
-            controller: _controller,
-            colors: colors,
-          ),
         ),
         Positioned(
           right: 12,
@@ -341,89 +348,6 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
       'ibtn' => 'assets/flipper_svg/archive/ic_fileformat_ibutton.svg',
       _ => pin.category.asset,
     };
-  }
-}
-
-class _StatusBar extends StatelessWidget {
-  const _StatusBar({required this.controller, required this.colors});
-
-  final MapToolController controller;
-  final QAppColors colors;
-
-  @override
-  Widget build(BuildContext context) {
-    final pinCount = controller.pins.length;
-    final locStatus = controller.locationStatus;
-    String locText;
-    Color locColor;
-    switch (locStatus) {
-      case MapLocationStatus.granted:
-        locText = 'Location active';
-        locColor = colors.success;
-        break;
-      case MapLocationStatus.requesting:
-        locText = 'Getting locationвЂ¦';
-        locColor = colors.info;
-        break;
-      case MapLocationStatus.denied:
-        locText = 'Permission denied';
-        locColor = colors.danger;
-        break;
-      case MapLocationStatus.serviceDisabled:
-        locText = 'Location services off';
-        locColor = colors.danger;
-        break;
-      case MapLocationStatus.error:
-        locText = 'Location error';
-        locColor = colors.danger;
-        break;
-      case MapLocationStatus.idle:
-        locText = 'Idle';
-        locColor = colors.textMuted;
-        break;
-    }
-    return Material(
-      color: colors.card.withValues(alpha: 0.94),
-      borderRadius: BorderRadius.circular(10),
-      elevation: 2,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        child: Row(
-          children: [
-            Icon(Icons.place, size: 18, color: colors.accent),
-            const SizedBox(width: 6),
-            Text(
-              '$pinCount pins',
-              style: TextStyle(color: colors.textPrimary, fontWeight: FontWeight.w600),
-            ),
-            const Spacer(),
-            Container(width: 8, height: 8, decoration: BoxDecoration(color: locColor, shape: BoxShape.circle)),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(
-                locText,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: colors.textSecondary, fontSize: 12),
-              ),
-            ),
-            if (locStatus == MapLocationStatus.denied || locStatus == MapLocationStatus.serviceDisabled)
-              Padding(
-                padding: const EdgeInsets.only(left: 8),
-                child: TextButton(
-                  style: TextButton.styleFrom(
-                    foregroundColor: colors.accent,
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    minimumSize: const Size(0, 28),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  onPressed: controller.requestLocation,
-                  child: const Text('Retry'),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
   }
 }
 

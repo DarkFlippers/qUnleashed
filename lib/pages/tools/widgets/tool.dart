@@ -49,6 +49,10 @@ class _FullBody extends StatelessWidget {
                 model.iconAsset,
                 width: 24,
                 height: 24,
+                colorFilter: ColorFilter.mode(
+                  model.iconColor,
+                  BlendMode.srcIn,
+                ),
               ),
             ),
             Expanded(
@@ -101,6 +105,10 @@ class _CompactBody extends StatelessWidget {
                 model.iconAsset,
                 width: 24,
                 height: 24,
+                colorFilter: ColorFilter.mode(
+                  model.iconColor,
+                  BlendMode.srcIn,
+                ),
               ),
             ),
             const SizedBox(width: 12),
