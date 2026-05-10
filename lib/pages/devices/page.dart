@@ -190,8 +190,18 @@ class _DevicePageState extends State<DevicePage> {
 
   String get _deviceName => _firstInfo(
         ['hardware_name', 'device_name', 'name'],
-        fallback: _device?.name ?? 'Flipper Zero',
+        fallback: _stripFlipperPrefix(_device?.name) ?? 'Flipper Zero',
       );
+
+  static String? _stripFlipperPrefix(String? name) {
+    if (name == null) return null;
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return null;
+    final match = RegExp(r'^Flipper[\s_-]+', caseSensitive: false).firstMatch(trimmed);
+    if (match == null) return trimmed;
+    final stripped = trimmed.substring(match.end).trim();
+    return stripped.isEmpty ? trimmed : stripped;
+  }
 
   String _firstInfo(List<String> keys, {String fallback = '-'}) {
     for (final key in keys) {
