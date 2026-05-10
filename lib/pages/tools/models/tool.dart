@@ -3,7 +3,6 @@ import 'package:flutter/widgets.dart';
 enum ToolPreviewType {
   mfKey,
   remoteLibrary,
-  fileMap,
 }
 
 class ToolCardModel {
@@ -11,23 +10,25 @@ class ToolCardModel {
     required this.iconAsset,
     required this.title,
     required this.tool,
+    this.compact = false,
   });
 
   final String iconAsset;
   final String title;
   final ToolItemModel tool;
+  final bool compact;
 }
 
 class ToolItemModel {
   const ToolItemModel({
-    required this.preview,
+    this.preview,
     required this.title,
     required this.description,
     this.routeBuilder,
     this.badge,
   });
 
-  final ToolPreviewType preview;
+  final ToolPreviewType? preview;
   final String title;
   final String description;
   final WidgetBuilder? routeBuilder;

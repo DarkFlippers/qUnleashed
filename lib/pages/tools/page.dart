@@ -37,8 +37,8 @@ class ToolsPage extends StatelessWidget {
     ToolCardModel(
       iconAsset: 'assets/flipper_svg/tools/ic_fileformat_sub.svg',
       title: 'FlipperMap',
+      compact: true,
       tool: ToolItemModel(
-        preview: ToolPreviewType.fileMap,
         title: 'FlipperMap',
         description: 'Show where files were written on Flipper storage',
         routeBuilder: _buildFlipperMapPage,

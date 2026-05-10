@@ -34,7 +34,7 @@ class ToolItem extends StatelessWidget {
               SizedBox(
                 width: 64,
                 height: 64,
-                child: ToolPreview(type: model.preview),
+                child: ToolPreview(type: model.preview!),
               ),
               const SizedBox(width: 8),
               Expanded(
