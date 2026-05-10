@@ -4,6 +4,7 @@ import 'dart:io' as io;
 
 import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'catalog_api.dart';
 import 'models/card.dart';
@@ -14,10 +15,7 @@ import 'models/manifest.dart';
 const String kAppsRoot = '/ext/apps';
 const String kManifestsRoot = '/ext/apps_manifests';
 const String kTempRoot = '/ext/.tmp/qunleashed';
-const String kPreinstalledCacheRoot = '$kManifestsRoot/.qunleashed';
-const String kPreinstalledCachePath = '$kPreinstalledCacheRoot/extraapps.txt';
-const String kPreinstalledCacheTempPath =
-    '$kTempRoot/qunleashed_extraapps.txt';
+const String kPreinstalledCacheFileName = 'extraapps.txt';
 const Duration kPreinstalledScanDelay = Duration(milliseconds: 100);
 
 enum AppActionType { install, update, delete }
@@ -562,18 +560,11 @@ class AppsInstallService extends ChangeNotifier {
 
   Future<_PreinstalledCache?> _readPreinstalledCache() async {
     try {
-      final res = await client.storageRead(
-        ReadRequest(path: kPreinstalledCachePath),
-        timeout: const Duration(seconds: 20),
-      );
-      final bytes = <int>[];
-      for (final item in res.items) {
-        if (item.hasFile()) bytes.addAll(item.file.data);
-      }
-      if (bytes.isEmpty) return null;
-      return _PreinstalledCache.parse(
-        utf8.decode(bytes, allowMalformed: true),
-      );
+      final file = await _preinstalledCacheFile();
+      if (!await file.exists()) return null;
+      final body = await file.readAsString();
+      if (body.trim().isEmpty) return null;
+      return _PreinstalledCache.parse(body);
     } catch (_) {
       return null;
     }
@@ -586,29 +577,25 @@ class AppsInstallService extends ChangeNotifier {
     final fingerprint = firmwareFingerprint ?? _firmwareFingerprint();
     if (fingerprint.isEmpty) return;
     try {
-      await _ensureDir(kTempRoot);
-      await _ensureDir(kManifestsRoot);
-      await _ensureDir(kPreinstalledCacheRoot);
-      await _safeDelete(kPreinstalledCacheTempPath);
       final cache = _PreinstalledCache(
         firmwareFingerprint: fingerprint,
         apps: Map.unmodifiable(apps ?? _preinstalledPaths),
       );
-      await client.storageWriteChunked(
-        kPreinstalledCacheTempPath,
-        utf8.encode(cache.encode()),
-      );
-      await _safeDelete(kPreinstalledCachePath);
-      await client.storageRename(
-        RenameRequest(
-          oldPath: kPreinstalledCacheTempPath,
-          newPath: kPreinstalledCachePath,
-        ),
-        timeout: const Duration(seconds: 30),
-      );
+      final file = await _preinstalledCacheFile();
+      await file.parent.create(recursive: true);
+      await file.writeAsString(cache.encode(), flush: true);
     } catch (e) {
       LogService.log('[AppsInstall] preinstalled cache write failed: $e');
     }
+  }
+
+  Future<io.File> _preinstalledCacheFile() async {
+    final sep = io.Platform.pathSeparator;
+    final base = await getApplicationDocumentsDirectory();
+    return io.File(
+      '${base.path}${sep}qunleashed${sep}apps${sep}manifest'
+      '$sep$kPreinstalledCacheFileName',
+    );
   }
 
   Future<void> _removePreinstalledFromCache(String alias) async {
