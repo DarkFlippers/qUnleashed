@@ -9,6 +9,7 @@ import '../../widgets/info_line.dart';
 import '../../widgets/page_card.dart';
 import '../../widgets/root_scaffold.dart';
 import '../apps/page.dart';
+import '../archive/controller.dart';
 import '../archive/page.dart';
 import '../tools/page.dart';
 import '../remote/page.dart';
@@ -26,11 +27,13 @@ class DevicePage extends StatefulWidget {
 
 class _DevicePageState extends State<DevicePage> {
   final FlipperClient _client = FlipperOneClient().get();
+  final ArchiveController _archiveController = ArchiveController();
 
   FlipperRootTab _tab = FlipperRootTab.device;
   FlipperDevice? _device;
   bool _deviceDisconnected = false;
   bool _deviceLoading = false;
+  bool _deviceInfoConnected = false;
   bool _alertPlaying = false;
   Map<String, String> _info = {};
 
@@ -41,13 +44,27 @@ class _DevicePageState extends State<DevicePage> {
     super.initState();
     _device = _client.connectedDevice;
     _connectionSub = _client.connectionStream.listen(_onConnectionState);
+    _archiveController.addListener(_onArchiveChanged);
+    _archiveController.initialize();
   }
 
   @override
   void dispose() {
     _connectionSub?.cancel();
+    _archiveController.removeListener(_onArchiveChanged);
+    _archiveController.dispose();
     _client.disconnect();
     super.dispose();
+  }
+
+  void _onArchiveChanged() {
+    if (mounted) {
+      setState(() {
+        if (_archiveController.syncStatus != ArchiveSyncStatus.idle) {
+          _deviceInfoConnected = false;
+        }
+      });
+    }
   }
 
   Future<void> _openPicker() async {
@@ -89,6 +106,7 @@ class _DevicePageState extends State<DevicePage> {
       _device = device;
       _deviceDisconnected = false;
       _deviceLoading = true;
+      _deviceInfoConnected = false;
       _info = {};
     });
     _requestAll();
@@ -135,6 +153,7 @@ class _DevicePageState extends State<DevicePage> {
       setState(() {
         _info = info;
         _deviceLoading = false;
+        _deviceInfoConnected = true;
       });
       QAppThemeController.instance.syncFirmwareFromDeviceInfo(info);
     } catch (e) {
@@ -142,6 +161,7 @@ class _DevicePageState extends State<DevicePage> {
       if (!mounted) return;
       setState(() {
         _deviceLoading = false;
+        _deviceInfoConnected = false;
       });
     }
   }
@@ -171,6 +191,7 @@ class _DevicePageState extends State<DevicePage> {
     setState(() {
       _deviceDisconnected = true;
       _deviceLoading = false;
+      _deviceInfoConnected = false;
     });
   }
 
@@ -449,6 +470,7 @@ class _DevicePageState extends State<DevicePage> {
       _device = null;
       _deviceDisconnected = false;
       _deviceLoading = false;
+      _deviceInfoConnected = false;
       _info = {};
     });
   }
@@ -488,6 +510,7 @@ class _DevicePageState extends State<DevicePage> {
   void _synchronizeDevice() {
     setState(() {
       _deviceLoading = true;
+      _deviceInfoConnected = false;
       _info = {};
     });
     _requestAll();
@@ -526,14 +549,17 @@ class _DevicePageState extends State<DevicePage> {
   Widget build(BuildContext context) {
     final device = _device;
     final isConnected = device != null && !_deviceDisconnected;
+    final deviceIconAsset = _deviceIconAsset(
+      device: device,
+      isConnected: isConnected,
+    );
+    final deviceLabel = _deviceLabel(device: device, isConnected: isConnected);
 
     return FlipperRootScaffold(
       currentTab: _tab,
       onTabSelected: (tab) => setState(() => _tab = tab),
-      deviceIconAsset: isConnected
-          ? 'assets/flipper_svg/connection/ic_connected_filled.svg'
-          : 'assets/flipper_svg/connection/ic_no_device_filled.svg',
-      deviceLabel: isConnected ? 'Connected' : 'No device',
+      deviceIconAsset: deviceIconAsset,
+      deviceLabel: deviceLabel,
       child: IndexedStack(
         index: _tab.index,
         children: [
@@ -551,11 +577,65 @@ class _DevicePageState extends State<DevicePage> {
                   onDisconnect: _disconnect,
                 )
               : DisconnectedDeviceView(onConnect: _openPicker),
-          const ArchivePage(),
+          ArchivePage(controller: _archiveController),
           const AppsPage(),
           const ToolsPage(),
         ],
       ),
     );
   }
+
+  String _deviceIconAsset({
+    required FlipperDevice? device,
+    required bool isConnected,
+  }) {
+    if (!isConnected) {
+      if (device != null) {
+        return 'assets/flipper_svg/connection/ic_disconnected_filled.svg';
+      }
+      return 'assets/flipper_svg/connection/ic_no_device_filled.svg';
+    }
+    if (_deviceLoading) {
+      return 'assets/flipper_svg/connection/ic_syncing_filled.svg';
+    }
+    switch (_syncStatus) {
+      case ArchiveSyncStatus.syncing:
+        return 'assets/flipper_svg/connection/ic_syncing_filled.svg';
+      case ArchiveSyncStatus.synced:
+        if (_deviceInfoConnected) {
+          return 'assets/flipper_svg/connection/ic_connected_filled.svg';
+        }
+        return 'assets/flipper_svg/connection/ic_synced_filled.svg';
+      case ArchiveSyncStatus.idle:
+        return 'assets/flipper_svg/connection/ic_connected_filled.svg';
+    }
+  }
+
+  String _deviceLabel({
+    required FlipperDevice? device,
+    required bool isConnected,
+  }) {
+    if (!isConnected) {
+      if (device != null) {
+        return 'Disconnected';
+      }
+      return 'No device';
+    }
+    if (_deviceLoading) {
+      return 'Syncing';
+    }
+    switch (_syncStatus) {
+      case ArchiveSyncStatus.syncing:
+        return 'Syncing';
+      case ArchiveSyncStatus.synced:
+        if (_deviceInfoConnected) {
+          return 'Connected';
+        }
+        return 'Synced';
+      case ArchiveSyncStatus.idle:
+        return 'Connected';
+    }
+  }
+
+  ArchiveSyncStatus get _syncStatus => _archiveController.syncStatus;
 }

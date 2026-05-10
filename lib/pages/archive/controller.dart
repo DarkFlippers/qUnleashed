@@ -8,11 +8,17 @@ import 'models/category.dart';
 import 'models/key.dart';
 
 class SyncProgress {
-  SyncProgress({required this.current, required this.total, required this.fileName});
+  SyncProgress({
+    required this.current,
+    required this.total,
+    required this.fileName,
+  });
   final int current;
   final int total;
   final String fileName;
 }
+
+enum ArchiveSyncStatus { idle, syncing, synced }
 
 class ArchiveController extends ChangeNotifier {
   ArchiveController({FlipperClient? client, ArchiveStorage? storage})
@@ -25,6 +31,7 @@ class ArchiveController extends ChangeNotifier {
   String _deviceName = '';
   bool _loading = false;
   bool _syncing = false;
+  ArchiveSyncStatus _syncStatus = ArchiveSyncStatus.idle;
   SyncProgress? _syncProgress;
   String? _lastError;
   String _query = '';
@@ -36,6 +43,7 @@ class ArchiveController extends ChangeNotifier {
 
   bool get loading => _loading;
   bool get syncing => _syncing;
+  ArchiveSyncStatus get syncStatus => _syncStatus;
   SyncProgress? get syncProgress => _syncProgress;
   String? get lastError => _lastError;
   String get deviceName => _deviceName;
@@ -78,9 +86,10 @@ class ArchiveController extends ChangeNotifier {
     final live = ArchiveStorage.normalizeDeviceName(_client.connectedDevice?.name);
     _deviceName = live ?? (await _storage.readLastDeviceName()) ?? '';
     _wasConnected = _client.isConnected;
-    await refresh();
     if (_client.isConnected) {
       unawaited(syncAll());
+    } else {
+      await refresh();
     }
   }
 
@@ -91,6 +100,9 @@ class ArchiveController extends ChangeNotifier {
       _deviceName = normalized;
       unawaited(_storage.writeLastDeviceName(normalized));
     }
+    if (!connected) {
+      _syncStatus = ArchiveSyncStatus.idle;
+    }
     notifyListeners();
     if (connected && !_wasConnected) {
       unawaited(_autoSyncOnConnect());
@@ -99,17 +111,11 @@ class ArchiveController extends ChangeNotifier {
   }
 
   Future<void> _autoSyncOnConnect() async {
-    await refresh();
-    if (_client.isConnected) {
-      await syncAll();
-    }
+    await syncAll();
   }
 
   Future<void> fullSync() async {
-    await refresh();
-    if (_client.isConnected) {
-      await syncAll();
-    }
+    await syncAll();
   }
 
   @override
@@ -126,6 +132,9 @@ class ArchiveController extends ChangeNotifier {
     try {
       if (_deviceName.isEmpty) {
         _keys.clear();
+        if (_syncStatus == ArchiveSyncStatus.syncing) {
+          _syncStatus = ArchiveSyncStatus.idle;
+        }
         return;
       }
       await _storage.migrateLegacyFolders(_deviceName);
@@ -159,7 +168,16 @@ class ArchiveController extends ChangeNotifier {
       _keys
         ..clear()
         ..addAll(next);
+      if (connected &&
+          !_syncing &&
+          _syncStatus == ArchiveSyncStatus.synced &&
+          activeKeys().any((k) => k.state == ArchiveKeyState.remoteOnly)) {
+        _syncStatus = ArchiveSyncStatus.idle;
+      }
     } catch (e) {
+      if (_syncStatus == ArchiveSyncStatus.syncing) {
+        _syncStatus = ArchiveSyncStatus.idle;
+      }
       _lastError = '$e';
       LogService.log('[Archive] refresh failed: $e');
     } finally {
@@ -201,12 +219,23 @@ class ArchiveController extends ChangeNotifier {
 
   Future<void> syncAll() async {
     if (_syncing) return;
-    if (!_client.isConnected) return;
-    if (_deviceName.isEmpty) return;
+    if (!_client.isConnected || _deviceName.isEmpty) {
+      if (_syncStatus == ArchiveSyncStatus.syncing) {
+        _syncStatus = ArchiveSyncStatus.idle;
+        notifyListeners();
+      }
+      return;
+    }
     _syncing = true;
+    _syncStatus = ArchiveSyncStatus.syncing;
     _lastError = null;
     notifyListeners();
     try {
+      await refresh();
+      final refreshError = _lastError;
+      if (refreshError != null) {
+        throw StateError(refreshError);
+      }
       final pending = activeKeys()
           .where((k) => k.state == ArchiveKeyState.remoteOnly)
           .toList();
@@ -221,8 +250,19 @@ class ArchiveController extends ChangeNotifier {
         await _downloadKey(key);
         done++;
       }
-      _syncProgress = SyncProgress(current: done, total: pending.length, fileName: '');
+      _syncProgress = SyncProgress(
+        current: done,
+        total: pending.length,
+        fileName: '',
+      );
+      await refresh();
+      final finalRefreshError = _lastError;
+      if (finalRefreshError != null) {
+        throw StateError(finalRefreshError);
+      }
+      _syncStatus = ArchiveSyncStatus.synced;
     } catch (e) {
+      _syncStatus = ArchiveSyncStatus.idle;
       _lastError = '$e';
       LogService.log('[Archive] sync failed: $e');
     } finally {
@@ -230,7 +270,6 @@ class ArchiveController extends ChangeNotifier {
       _syncProgress = null;
       notifyListeners();
     }
-    await refresh();
   }
 
   Future<void> rememberKey(ArchiveKey key) async {
