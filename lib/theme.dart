@@ -1,30 +1,22 @@
 import 'package:flutter/material.dart';
 
-import 'pages/devices/models/firmware_config.dart';
+import 'config.dart';
 
 class QAppThemeController extends ChangeNotifier {
   QAppThemeController._();
 
   static final QAppThemeController instance = QAppThemeController._();
 
-  FirmwareConfig? _config;
-  FirmwareEntry? _activeFirmware;
+  final FirmwareConfig _config = QAppConfig.firmware;
+  FirmwareEntry _activeFirmware = QAppConfig.defaultFirmware;
 
-  FirmwareConfig? get config => _config;
-  FirmwareEntry? get activeFirmware => _activeFirmware;
-
-  Future<void> loadConfig() async {
-    if (_config != null) return;
-    final config = await FirmwareConfig.load();
-    _config = config;
-    _activeFirmware ??= config.firmwares.isNotEmpty ? config.firmwares.first : null;
-    notifyListeners();
-  }
+  FirmwareConfig get config => _config;
+  FirmwareEntry get activeFirmware => _activeFirmware;
 
   void setActiveFirmware(FirmwareEntry? firmware) {
     if (firmware == null) return;
     if (identical(_activeFirmware, firmware)) return;
-    if (_activeFirmware?.shortName == firmware.shortName) return;
+    if (_activeFirmware.shortName == firmware.shortName) return;
     _activeFirmware = firmware;
     notifyListeners();
   }
@@ -33,7 +25,7 @@ class QAppThemeController extends ChangeNotifier {
     final normalized = shortName?.trim().toLowerCase();
     if (normalized == null || normalized.isEmpty) return;
     FirmwareEntry? match;
-    final firmwares = _config?.firmwares ?? const <FirmwareEntry>[];
+    final firmwares = _config.firmwares;
     for (final firmware in firmwares) {
       if (firmware.shortName.toLowerCase() == normalized) {
         match = firmware;
@@ -51,8 +43,8 @@ class QAppThemeController extends ChangeNotifier {
   }
 
   FirmwareEntry? _matchFirmware(Map<String, String> info) {
-    final firmwares = _config?.firmwares;
-    if (firmwares == null || firmwares.isEmpty) return null;
+    final firmwares = _config.firmwares;
+    if (firmwares.isEmpty) return null;
 
     final haystack = info.entries
         .map((entry) => '${entry.key} ${entry.value}'.toLowerCase())
@@ -78,15 +70,8 @@ class QAppThemeController extends ChangeNotifier {
     final keywords = <String>{
       firmware.shortName.toLowerCase(),
       firmware.name.toLowerCase(),
-      ...Uri.tryParse(firmware.releaseUrl)?.pathSegments.map((s) => s.toLowerCase()) ?? const <String>[],
+      ...firmware.matchKeywords.map((keyword) => keyword.toLowerCase()),
     };
-
-    if (firmware.shortName.toLowerCase() == 'unlshd') {
-      keywords.addAll(const {'unleashed', 'darkflippers'});
-    }
-    if (firmware.shortName.toLowerCase() == 'ofw') {
-      keywords.addAll(const {'official', 'flipperdevices'});
-    }
 
     var score = 0;
     for (final keyword in keywords) {

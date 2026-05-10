@@ -2,7 +2,7 @@ import 'dart:async';
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
-import '../models/firmware_config.dart';
+import '../../../config.dart';
 import '../models/firmware_directory.dart';
 import '../models/ofw_parser.dart';
 import '../models/unleashed_parser.dart';
@@ -47,19 +47,11 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
     _loadConfig();
   }
 
-  Future<void> _loadConfig() async {
-    try {
-      await _themeController.loadConfig();
-      final config = _themeController.config ?? await FirmwareConfig.load();
-      if (!mounted) return;
-      setState(() => _config = config);
-      if (config.firmwares.isNotEmpty) {
-        _syncPageToTheme(config);
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() => _config = const FirmwareConfig(firmwares: []));
-      }
+  void _loadConfig() {
+    final config = _themeController.config;
+    _config = config;
+    if (config.firmwares.isNotEmpty) {
+      _syncPageToTheme(config);
     }
   }
 

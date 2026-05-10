@@ -4,7 +4,7 @@ import 'dart:io' as io;
 import 'package:archive/archive_io.dart';
 import 'package:flipperlib/flipperlib.dart';
 
-import 'firmware_config.dart';
+import '../../../config.dart';
 import 'firmware_directory.dart';
 import 'ofw_parser.dart';
 import 'unleashed_parser.dart';

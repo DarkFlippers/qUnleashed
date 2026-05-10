@@ -1,7 +1,7 @@
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
-import '../models/firmware_config.dart';
+import '../../../config.dart';
 import '../models/firmware_directory.dart';
 import '../models/firmware_updater.dart';
 import '../../../theme.dart';
