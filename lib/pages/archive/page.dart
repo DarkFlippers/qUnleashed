@@ -16,26 +16,35 @@ import 'widgets/section_title.dart';
 import 'widgets/sync_progress_view.dart';
 
 class ArchivePage extends StatefulWidget {
-  const ArchivePage({super.key});
+  const ArchivePage({super.key, this.controller});
+
+  final ArchiveController? controller;
 
   @override
   State<ArchivePage> createState() => _ArchivePageState();
 }
 
 class _ArchivePageState extends State<ArchivePage> {
-  final ArchiveController _ctrl = ArchiveController();
+  late final ArchiveController _ctrl;
+  late final bool _ownsController;
   final TextEditingController _searchCtrl = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _ctrl.initialize();
+    _ctrl = widget.controller ?? ArchiveController();
+    _ownsController = widget.controller == null;
+    if (_ownsController) {
+      _ctrl.initialize();
+    }
   }
 
   @override
   void dispose() {
     _searchCtrl.dispose();
-    _ctrl.dispose();
+    if (_ownsController) {
+      _ctrl.dispose();
+    }
     super.dispose();
   }
 
