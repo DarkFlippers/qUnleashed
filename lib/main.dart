@@ -18,12 +18,6 @@ class _QunleashedAppState extends State<QunleashedApp> {
   final _themeController = QAppThemeController.instance;
 
   @override
-  void initState() {
-    super.initState();
-    _themeController.loadConfig();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: _themeController,

@@ -44,7 +44,6 @@ flutter:
         - asset: assets/fonts/flipper_bold.ttf
           weight: 500
   assets:
-    - assets/firmware_config.json
     - assets/firmware/
     - assets/flipper_svg/
     - assets/flipper_svg/bottombar/

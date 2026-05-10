@@ -2,7 +2,7 @@ import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import '../models/firmware_config.dart';
+import '../../../config.dart';
 import '../models/firmware_directory.dart';
 import '../../../theme.dart';
 import '../../../widgets/changelog_renderer.dart';
