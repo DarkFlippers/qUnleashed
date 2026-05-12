@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme.dart';
+import '../../tools/map/models/pin.dart';
 import '../../tools/map/page.dart';
 import '../controller.dart';
 import '../emulate/page.dart';
@@ -87,6 +88,12 @@ class KeyActionsSheet extends StatelessWidget {
         icon: Icons.map_outlined,
         label: 'Show on map',
         onTap: () => _openOnMap(context, k),
+      ));
+    } else if (k.inLocal && (k.localPath?.isNotEmpty ?? false)) {
+      actions.add(_Action(
+        icon: Icons.add_location_alt_outlined,
+        label: 'Set location',
+        onTap: () => _pickLocation(context, k),
       ));
     }
     if (k.onDevice && connected) {
@@ -215,6 +222,22 @@ class KeyActionsSheet extends StatelessWidget {
     if (path == null || path.isEmpty) return;
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => FlipperMapPage(focusPinPath: path)),
+    );
+  }
+
+  void _pickLocation(BuildContext context, ArchiveKey k) {
+    final path = k.localPath;
+    if (path == null || path.isEmpty) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => FlipperMapPage(
+          pickLocationFor: MapPickTarget(
+            localPath: path,
+            remotePath: k.remotePath,
+            displayName: k.name,
+          ),
+        ),
+      ),
     );
   }
 
