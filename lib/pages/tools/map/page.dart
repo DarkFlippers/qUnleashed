@@ -7,6 +7,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../../theme.dart';
+import '../../../widgets/notification.dart';
 import 'controller.dart';
 import 'models/pin.dart';
 
@@ -165,9 +166,11 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
     );
     if (!mounted) return;
     setState(() => _saving = false);
-    final messenger = ScaffoldMessenger.of(context);
     if (!ok) {
-      messenger.showSnackBar(const SnackBar(content: Text('Failed to save location')));
+      context.showNotification(
+        'Failed to save location',
+        type: QNotificationType.error,
+      );
       return;
     }
     final savedPath = target.localPath;
@@ -186,7 +189,7 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
         break;
       }
     }
-    messenger.showSnackBar(const SnackBar(content: Text('Location saved')));
+    context.showNotification('Location saved', type: QNotificationType.good);
   }
 
   @override

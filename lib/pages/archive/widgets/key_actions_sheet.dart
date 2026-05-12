@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme.dart';
+import '../../../widgets/notification.dart';
 import '../../tools/map/models/pin.dart';
 import '../../tools/map/page.dart';
 import '../controller.dart';
@@ -67,8 +68,9 @@ class KeyActionsSheet extends StatelessWidget {
         label: 'Restore to Flipper',
         onTap: () async {
           if (!connected) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Connect a Flipper to restore')),
+            context.showNotification(
+              'Connect a Flipper to restore',
+              type: QNotificationType.warning,
             );
             return;
           }

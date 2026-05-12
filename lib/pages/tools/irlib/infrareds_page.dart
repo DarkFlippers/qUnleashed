@@ -2,6 +2,7 @@
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme.dart';
+import '../../../widgets/notification.dart';
 import '../../archive/models/category.dart';
 import 'backend/infrared_backend_api.dart';
 import 'backend/infrared_backend_models.dart';
@@ -80,8 +81,9 @@ class _IrInfraredsPageState extends State<IrInfraredsPage> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to load: $e')),
+      context.showNotification(
+        'Failed to load: $e',
+        type: QNotificationType.error,
       );
     } finally {
       if (mounted) setState(() => _fetchingId = null);

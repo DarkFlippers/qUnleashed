@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../theme.dart';
+import '../../../widgets/notification.dart';
 import 'controller.dart';
 
 class TextEditorPage extends StatefulWidget {
@@ -61,8 +62,9 @@ class _TextEditorPageState extends State<TextEditorPage> {
     );
     if (!mounted) return;
     setState(() => _saving = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(ok ? 'Saved' : 'Save failed')),
+    context.showNotification(
+      ok ? 'Saved' : 'Save failed',
+      type: ok ? QNotificationType.good : QNotificationType.error,
     );
     if (ok) Navigator.of(context).pop(true);
   }

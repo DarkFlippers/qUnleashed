@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../theme.dart';
+import '../../widgets/notification.dart';
 import 'input/keyboard_listener.dart';
 import 'models/models.dart';
 import 'session.dart';
@@ -43,8 +44,9 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
     final err = _session.startError;
     if (err != null && err != _shownStartError) {
       _shownStartError = err;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Remote control unavailable: $err')),
+      context.showNotification(
+        'Remote control unavailable: $err',
+        type: QNotificationType.error,
       );
     }
     setState(() {});
@@ -64,13 +66,15 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
     try {
       await copyScreenshotToClipboard(png);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Screenshot copied to clipboard')),
+      context.showNotification(
+        'Screenshot copied to clipboard',
+        type: QNotificationType.good,
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Copy failed: $e')),
+      context.showNotification(
+        'Copy failed: $e',
+        type: QNotificationType.error,
       );
     } finally {
       if (mounted) setState(() => _savingScreenshot = false);
@@ -84,13 +88,15 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
     try {
       final path = await saveScreenshotToPictures(png);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Screenshot saved: $path')),
+      context.showNotification(
+        'Screenshot saved: $path',
+        type: QNotificationType.good,
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Save failed: $e')),
+      context.showNotification(
+        'Save failed: $e',
+        type: QNotificationType.error,
       );
     } finally {
       if (mounted) setState(() => _savingScreenshot = false);

@@ -1,6 +1,7 @@
 ﻿import 'package:flutter/material.dart';
 
 import '../../../theme.dart';
+import '../../../widgets/notification.dart';
 import '../install_service.dart';
 import '../models/card.dart';
 import '../models/category.dart';
@@ -112,8 +113,9 @@ class AppActionButton extends StatelessWidget {
                 onLaunched?.call();
               } catch (e) {
                 if (!context.mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Open failed: $e')),
+                context.showNotification(
+                  'Open failed: $e',
+                  type: QNotificationType.error,
                 );
               }
             },
@@ -156,8 +158,9 @@ class AppActionButton extends StatelessWidget {
   }
 
   void _connectHint(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Connect Flipper to install apps')),
+    context.showNotification(
+      'Connect Flipper to install apps',
+      type: QNotificationType.warning,
     );
   }
 
