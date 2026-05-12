@@ -104,7 +104,7 @@ class ArchiveController extends ChangeNotifier {
       _syncStatus = ArchiveSyncStatus.idle;
     }
     notifyListeners();
-    if (connected && !_wasConnected) {
+    if (connected && !_wasConnected && !_client.cliExclusive) {
       unawaited(_autoSyncOnConnect());
     }
     _wasConnected = connected;

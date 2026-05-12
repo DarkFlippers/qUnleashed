@@ -109,7 +109,7 @@ class _IrLibPageState extends State<IrLibPage> {
               children: [
                 IrSearchField(
                   controller: _searchCtrl,
-                  hintText: 'Search whole IRDBвЂ¦',
+                  hintText: 'Search whole IRDB',
                   padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
                   onSubmitted: (q) => _ctrl.startSearch(q),
                   onClear: _ctrl.clearSearch,
@@ -135,7 +135,7 @@ class _IrLibPageState extends State<IrLibPage> {
               CircularProgressIndicator(color: colors.accent),
               const SizedBox(height: 14),
               Text(
-                'Searching IRDBвЂ¦',
+                'Searching IRDB',
                 style: TextStyle(color: colors.textPrimary),
               ),
               const SizedBox(height: 4),
