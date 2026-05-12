@@ -1,6 +1,3 @@
-[submodule "packages/protobuf/proto/flipperzero"]
-	path = packages/protobuf/proto/flipperzero
-	url = https://github.com/flipperdevices/flipperzero-protobuf.git
 [submodule "components/nfc/tools/impl/src/main/cpp/nfc-tools"]
 	path = lib/modules/cpp/nfc-tools
 	url = https://github.com/flipperdevices/flipperzero-nfc-tools.git
