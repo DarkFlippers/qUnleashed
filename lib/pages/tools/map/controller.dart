@@ -1,7 +1,9 @@
-﻿import 'dart:async';
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io' as io;
 import 'dart:math' as math;
 
+import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 
@@ -12,9 +14,12 @@ import 'models/pin.dart';
 enum MapLocationStatus { idle, requesting, granted, denied, serviceDisabled, error }
 
 class MapToolController extends ChangeNotifier {
-  MapToolController({ArchiveStorage? storage}) : _storage = storage ?? ArchiveStorage();
+  MapToolController({ArchiveStorage? storage, FlipperClient? client})
+      : _storage = storage ?? ArchiveStorage(),
+        _client = client ?? FlipperOneClient().get();
 
   final ArchiveStorage _storage;
+  final FlipperClient _client;
 
   bool _loading = false;
   String? _loadError;
@@ -33,6 +38,7 @@ class MapToolController extends ChangeNotifier {
   String? get locationError => _locationError;
   Position? get userPosition => _userPosition;
   double? get userBearingDegrees => _userBearingDegrees;
+  bool get isFlipperConnected => _client.isConnected;
 
   Future<void> initialize() async {
     await loadFiles();
@@ -53,12 +59,7 @@ class MapToolController extends ChangeNotifier {
       final entries = await _storage.listAll(deviceName);
       final out = <MapPin>[];
       for (final entry in entries) {
-        final pin = await _parseFile(
-          entry.path,
-          entry.name,
-          entry.extension,
-          entry.category,
-        );
+        final pin = await _parseFile(entry);
         if (pin != null) out.add(pin);
       }
       _pins = out;
@@ -70,16 +71,16 @@ class MapToolController extends ChangeNotifier {
     }
   }
 
-  Future<MapPin?> _parseFile(
-    String path,
-    String name,
-    String extension,
-    ArchiveCategory cat,
-  ) async {
-    try {
-      final normalizedExtension = extension.toLowerCase();
+  String _remotePathFor(LocalKeyEntry entry) {
+    final fileName = '${entry.name}.${entry.extension}';
+    if (entry.subFolder.isEmpty) return '${entry.category.remoteDir}/$fileName';
+    return '${entry.category.remoteDir}/${entry.subFolder}/$fileName';
+  }
 
-      final file = io.File(path);
+  Future<MapPin?> _parseFile(LocalKeyEntry entry) async {
+    try {
+      final normalizedExtension = entry.extension.toLowerCase();
+      final file = io.File(entry.path);
       if (!await file.exists()) return null;
       final content = await file.readAsString();
       double? lat;
@@ -118,11 +119,14 @@ class MapToolController extends ChangeNotifier {
       if (lat == null || lon == null) return null;
       if (lat == 0 && lon == 0) return null;
       return MapPin(
-        id: path,
-        name: name,
-        path: path,
+        id: entry.path,
+        name: entry.name,
+        path: entry.path,
+        fileName: '${entry.name}.${entry.extension}',
         extension: normalizedExtension,
-        category: cat,
+        subFolder: entry.subFolder,
+        category: entry.category,
+        remotePath: _remotePathFor(entry),
         latitude: lat,
         longitude: lon,
         content: content,
@@ -136,6 +140,65 @@ class MapToolController extends ChangeNotifier {
     } catch (_) {
       return null;
     }
+  }
+
+  Future<bool> writeCoordinates({
+    required String localPath,
+    String? remotePath,
+    required double latitude,
+    required double longitude,
+  }) async {
+    try {
+      final file = io.File(localPath);
+      if (!await file.exists()) return false;
+      final original = await file.readAsString();
+      final updated = _patchCoordinates(original, latitude, longitude);
+      await file.writeAsString(updated, flush: true);
+      if (remotePath != null && remotePath.isNotEmpty && _client.isConnected) {
+        try {
+          await _client.storageWriteChunked(remotePath, utf8.encode(updated));
+        } catch (_) {}
+      }
+      await loadFiles();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static String _patchCoordinates(String original, double latitude, double longitude) {
+    final latStr = latitude.toStringAsFixed(6);
+    final lonStr = longitude.toStringAsFixed(6);
+    final lines = original.split('\n');
+    final out = <String>[];
+    var wroteLat = false;
+    var wroteLon = false;
+    for (final raw in lines) {
+      final colon = raw.indexOf(':');
+      if (colon > 0) {
+        final key = raw.substring(0, colon).trim().toLowerCase();
+        if (key == 'lat' || key == 'latitude' || key == 'latitute') {
+          out.add('${raw.substring(0, colon)}: $latStr');
+          wroteLat = true;
+          continue;
+        }
+        if (key == 'lon' || key == 'lng' || key == 'longitude') {
+          out.add('${raw.substring(0, colon)}: $lonStr');
+          wroteLon = true;
+          continue;
+        }
+      }
+      out.add(raw);
+    }
+    if (!wroteLat || !wroteLon) {
+      while (out.isNotEmpty && out.last.trim().isEmpty) {
+        out.removeLast();
+      }
+      if (!wroteLat) out.add('Lat: $latStr');
+      if (!wroteLon) out.add('Lon: $lonStr');
+      out.add('');
+    }
+    return out.join('\n');
   }
 
   Future<void> requestLocation() async {
@@ -261,5 +324,12 @@ class MapToolController extends ChangeNotifier {
   void dispose() {
     _posSub?.cancel();
     super.dispose();
+  }
+}
+
+extension ArchiveCategoryRemoteX on ArchiveCategory {
+  String remotePathFor({required String subFolder, required String fileName}) {
+    if (subFolder.isEmpty) return '$remoteDir/$fileName';
+    return '$remoteDir/$subFolder/$fileName';
   }
 }

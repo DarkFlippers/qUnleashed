@@ -1,6 +1,7 @@
-﻿import 'dart:math' as math;
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:latlong2/latlong.dart';
@@ -10,13 +11,20 @@ import 'controller.dart';
 import 'models/pin.dart';
 
 class FlipperMapPage extends StatefulWidget {
-  const FlipperMapPage({super.key, this.focusPinPath});
+  const FlipperMapPage({
+    super.key,
+    this.focusPinPath,
+    this.pickLocationFor,
+  });
 
   final String? focusPinPath;
+  final MapPickTarget? pickLocationFor;
 
   @override
   State<FlipperMapPage> createState() => _FlipperMapPageState();
 }
+
+enum _MapMode { browse, pick }
 
 class _FlipperMapPageState extends State<FlipperMapPage> {
   late final MapToolController _controller;
@@ -25,11 +33,21 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
   bool _initialCentered = false;
   bool _initialPinSelected = false;
   bool _mapReady = false;
+  bool _saving = false;
+
+  _MapMode _mode = _MapMode.browse;
+  MapPickTarget? _pickTarget;
+  late final bool _openedInPickMode;
 
   @override
   void initState() {
     super.initState();
     _controller = MapToolController()..addListener(_onChanged);
+    _openedInPickMode = widget.pickLocationFor != null;
+    if (_openedInPickMode) {
+      _mode = _MapMode.pick;
+      _pickTarget = widget.pickLocationFor;
+    }
     _controller.initialize();
   }
 
@@ -49,6 +67,21 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
 
   void _maybeAutoCenter() {
     if (!_mapReady || _initialCentered) return;
+    if (_mode == _MapMode.pick) {
+      final target = _pickTarget;
+      if (target?.initialLatitude != null && target?.initialLongitude != null) {
+        _initialCentered = true;
+        _mapController.move(LatLng(target!.initialLatitude!, target.initialLongitude!), 17);
+        return;
+      }
+      if (_controller.userPosition != null) {
+        final p = _controller.userPosition!;
+        _initialCentered = true;
+        _mapController.move(LatLng(p.latitude, p.longitude), 17);
+        return;
+      }
+      return;
+    }
     final selected = _selectedPin;
     if (selected != null) {
       _initialCentered = true;
@@ -86,8 +119,74 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
   }
 
   void _selectPin(MapPin pin) {
+    if (_mode == _MapMode.pick) return;
     setState(() => _selectedPin = pin);
     if (_mapReady) _mapController.move(LatLng(pin.latitude, pin.longitude), 17);
+  }
+
+  void _enterEditModeFor(MapPin pin) {
+    setState(() {
+      _mode = _MapMode.pick;
+      _pickTarget = MapPickTarget(
+        localPath: pin.path,
+        remotePath: pin.remotePath,
+        displayName: pin.name,
+        initialLatitude: pin.latitude,
+        initialLongitude: pin.longitude,
+      );
+      _selectedPin = null;
+    });
+    if (_mapReady) {
+      _mapController.move(LatLng(pin.latitude, pin.longitude), 17);
+    }
+  }
+
+  void _exitPickMode() {
+    if (_openedInPickMode) {
+      Navigator.of(context).maybePop();
+      return;
+    }
+    setState(() {
+      _mode = _MapMode.browse;
+      _pickTarget = null;
+    });
+  }
+
+  Future<void> _savePickedLocation() async {
+    final target = _pickTarget;
+    if (target == null || _saving) return;
+    setState(() => _saving = true);
+    final center = _mapController.camera.center;
+    final ok = await _controller.writeCoordinates(
+      localPath: target.localPath,
+      remotePath: target.remotePath,
+      latitude: center.latitude,
+      longitude: center.longitude,
+    );
+    if (!mounted) return;
+    setState(() => _saving = false);
+    final messenger = ScaffoldMessenger.of(context);
+    if (!ok) {
+      messenger.showSnackBar(const SnackBar(content: Text('Failed to save location')));
+      return;
+    }
+    final savedPath = target.localPath;
+    if (_openedInPickMode) {
+      Navigator.of(context).maybePop(true);
+      return;
+    }
+    setState(() {
+      _mode = _MapMode.browse;
+      _pickTarget = null;
+    });
+    for (final p in _controller.pins) {
+      if (p.path == savedPath) {
+        setState(() => _selectedPin = p);
+        if (_mapReady) _mapController.move(LatLng(p.latitude, p.longitude), 17);
+        break;
+      }
+    }
+    messenger.showSnackBar(const SnackBar(content: Text('Location saved')));
   }
 
   @override
@@ -95,44 +194,82 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
     final colors = context.appColors;
     return Scaffold(
       backgroundColor: colors.background,
-      appBar: AppBar(
-        backgroundColor: colors.accent,
-        foregroundColor: colors.onAccent,
-        title: const Text('Signal Map'),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Center(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.place, size: 20),
-                  const SizedBox(width: 4),
-                  Text(
-                    '${_controller.pins.length}',
-                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          IconButton(
-            tooltip: 'Reload files',
-            onPressed: _controller.loading ? null : _controller.loadFiles,
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
-      ),
+      appBar: _buildAppBar(colors),
       body: _buildBody(colors),
     );
   }
 
+  PreferredSizeWidget _buildAppBar(QAppColors colors) {
+    if (_mode == _MapMode.pick) {
+      final target = _pickTarget;
+      return AppBar(
+        backgroundColor: colors.accent,
+        foregroundColor: colors.onAccent,
+        leading: IconButton(
+          icon: const Icon(Icons.close),
+          tooltip: 'Cancel',
+          splashRadius: 20,
+          onPressed: _saving ? null : _exitPickMode,
+        ),
+        title: Text(
+          target == null ? 'Set location' : 'Set location: ${target.displayName}',
+          overflow: TextOverflow.ellipsis,
+        ),
+        actions: [
+          IconButton(
+            tooltip: 'Save location',
+            splashRadius: 20,
+            onPressed: _saving ? null : _savePickedLocation,
+            icon: _saving
+                ? const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  )
+                : const Icon(Icons.check),
+          ),
+        ],
+      );
+    }
+    return AppBar(
+      backgroundColor: colors.accent,
+      foregroundColor: colors.onAccent,
+      title: const Text('Signal Map'),
+      actions: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Center(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.place, size: 20),
+                const SizedBox(width: 4),
+                Text(
+                  '${_controller.pins.length}',
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+          ),
+        ),
+        IconButton(
+          tooltip: 'Reload files',
+          splashRadius: 20,
+          onPressed: _controller.loading ? null : _controller.loadFiles,
+          icon: const Icon(Icons.refresh),
+        ),
+      ],
+    );
+  }
+
   Widget _buildBody(QAppColors colors) {
-    if (_controller.loading && _controller.pins.isEmpty) {
+    if (_mode == _MapMode.browse &&
+        _controller.loading &&
+        _controller.pins.isEmpty) {
       return Center(child: CircularProgressIndicator(color: colors.accent));
     }
     final loadError = _controller.loadError;
-    if (loadError != null && _controller.pins.isEmpty) {
+    if (_mode == _MapMode.browse && loadError != null && _controller.pins.isEmpty) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -165,6 +302,7 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
         ),
       );
     }
+    final picking = _mode == _MapMode.pick;
     return Stack(
       children: [
         FlutterMap(
@@ -179,7 +317,7 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
               _mapReady = true;
               _maybeAutoCenter();
             },
-            onTap: (_, _) => setState(() => _selectedPin = null),
+            onTap: picking ? null : (_, _) => setState(() => _selectedPin = null),
           ),
           children: [
             TileLayer(
@@ -191,23 +329,31 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
               maxZoom: 19,
               retinaMode: RetinaMode.isHighDensity(context),
             ),
-            MarkerLayer(markers: _buildMarkers(colors)),
+            MarkerLayer(markers: _buildMarkers(colors, hidePinId: picking ? _pickTarget?.localPath : null)),
           ],
         ),
-        Positioned(
-          right: 12,
-          bottom: _selectedPin == null ? 12 : 168,
-          child: Column(
-            children: [
-              _CircleButton(
-                colors: colors,
-                icon: Icons.my_location,
-                onTap: _centerOnUser,
-              ),
-            ],
+        if (picking) Positioned.fill(child: _buildPickOverlay(colors)),
+        if (!picking)
+          Positioned(
+            right: 12,
+            bottom: _selectedPin == null ? 12 : 168,
+            child: _CircleButton(
+              colors: colors,
+              icon: Icons.my_location,
+              onTap: _centerOnUser,
+            ),
           ),
-        ),
-        if (_selectedPin != null)
+        if (picking)
+          Positioned(
+            right: 12,
+            bottom: 12,
+            child: _CircleButton(
+              colors: colors,
+              icon: Icons.my_location,
+              onTap: _centerOnUser,
+            ),
+          ),
+        if (!picking && _selectedPin != null)
           Positioned(
             left: 12,
             right: 12,
@@ -217,13 +363,74 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
               controller: _controller,
               colors: colors,
               onClose: () => setState(() => _selectedPin = null),
+              onEdit: () => _enterEditModeFor(_selectedPin!),
             ),
           ),
       ],
     );
   }
 
+  Widget _buildPickOverlay(QAppColors colors) {
+    return IgnorePointer(
+      child: Stack(
+        children: [
+          Positioned(
+            left: 12,
+            right: 12,
+            top: 12,
+            child: Material(
+              color: colors.card.withValues(alpha: 0.92),
+              borderRadius: BorderRadius.circular(10),
+              elevation: 3,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, size: 18, color: colors.accent),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Drag the map to position the pin, then tap the check to save.',
+                        style: TextStyle(color: colors.textPrimary, fontSize: 13),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 36),
+              child: Icon(Icons.location_on, size: 44, color: colors.accent),
+            ),
+          ),
+          Center(
+            child: Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: colors.accent,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 1.5),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   LatLng _initialCenter() {
+    if (_mode == _MapMode.pick) {
+      final target = _pickTarget;
+      if (target?.initialLatitude != null && target?.initialLongitude != null) {
+        return LatLng(target!.initialLatitude!, target.initialLongitude!);
+      }
+      final p = _controller.userPosition;
+      if (p != null) return LatLng(p.latitude, p.longitude);
+      return const LatLng(20, 0);
+    }
     final selected = _selectedPin;
     if (selected != null) return LatLng(selected.latitude, selected.longitude);
     final p = _controller.userPosition;
@@ -236,13 +443,14 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
   }
 
   double _initialZoom() {
+    if (_mode == _MapMode.pick) return 17;
     if (_selectedPin != null) return 17;
     if (_controller.userPosition != null) return 16;
     if (_controller.pins.isNotEmpty) return 14;
     return 2;
   }
 
-  List<Marker> _buildMarkers(QAppColors colors) {
+  List<Marker> _buildMarkers(QAppColors colors, {String? hidePinId}) {
     final list = <Marker>[];
     final p = _controller.userPosition;
     if (p != null) {
@@ -267,7 +475,10 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
         ),
       );
     }
-    final markerPoints = _spreadOverlappingPins(_controller.pins);
+    final visiblePins = hidePinId == null
+        ? _controller.pins
+        : _controller.pins.where((pin) => pin.path != hidePinId).toList();
+    final markerPoints = _spreadOverlappingPins(visiblePins);
     for (final entry in markerPoints.entries) {
       final pin = entry.key;
       final selected = _selectedPin?.id == pin.id;
@@ -360,16 +571,21 @@ class _CircleButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: colors.card,
-      shape: const CircleBorder(),
-      elevation: 3,
-      child: InkWell(
-        customBorder: const CircleBorder(),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: Icon(icon, color: colors.accent, size: 22),
+    return SizedBox(
+      width: 42,
+      height: 42,
+      child: Material(
+        color: colors.card,
+        shape: const CircleBorder(),
+        elevation: 3,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          radius: 24,
+          onTap: onTap,
+          child: Center(
+            child: Icon(icon, color: colors.accent, size: 22),
+          ),
         ),
       ),
     );
@@ -382,12 +598,14 @@ class _PinCard extends StatelessWidget {
     required this.controller,
     required this.colors,
     required this.onClose,
+    required this.onEdit,
   });
 
   final MapPin pin;
   final MapToolController controller;
   final QAppColors colors;
   final VoidCallback onClose;
+  final VoidCallback onEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -439,6 +657,14 @@ class _PinCard extends StatelessWidget {
                   ),
                 ),
                 IconButton(
+                  tooltip: 'Edit location',
+                  splashRadius: 20,
+                  onPressed: onEdit,
+                  icon: Icon(Icons.edit_location_alt_outlined, color: colors.accent),
+                ),
+                IconButton(
+                  tooltip: 'Close',
+                  splashRadius: 20,
                   onPressed: onClose,
                   icon: Icon(Icons.close, color: colors.textMuted),
                 ),
@@ -453,7 +679,7 @@ class _PinCard extends StatelessWidget {
                     Icon(Icons.directions_walk, size: 16, color: colors.accent),
                     const SizedBox(width: 6),
                     Text(
-                      '${MapToolController.formatDistance(distance)} вЂў ${MapToolController.formatWalkTime(distance)}',
+                      '${MapToolController.formatDistance(distance)} • ${MapToolController.formatWalkTime(distance)}',
                       style: TextStyle(color: colors.textPrimary, fontWeight: FontWeight.w600),
                     ),
                     if (bearing != null) ...[
@@ -474,7 +700,7 @@ class _PinCard extends StatelessWidget {
             else if (controller.locationStatus == MapLocationStatus.granted)
               Padding(
                 padding: const EdgeInsets.only(bottom: 6),
-                child: Text('LocatingвЂ¦', style: TextStyle(color: colors.textMuted, fontSize: 12)),
+                child: Text('Locating…', style: TextStyle(color: colors.textMuted, fontSize: 12)),
               )
             else
               Padding(
@@ -491,7 +717,7 @@ class _PinCard extends StatelessWidget {
                   label: const Text('Enable location to see distance'),
                 ),
               ),
-            _kv(colors, 'Coordinates', '${pin.latitude.toStringAsFixed(6)}, ${pin.longitude.toStringAsFixed(6)}'),
+            _coordsRow(colors, pin),
             if (pin.frequency != null) _kv(colors, 'Frequency', _formatFrequency(pin.frequency!)),
             if (pin.protocol != null)
               _kv(colors, 'Protocol', pin.bit != null ? '${pin.protocol} (${pin.bit} bit)' : pin.protocol!),
@@ -501,6 +727,30 @@ class _PinCard extends StatelessWidget {
             _kv(colors, 'Path', pin.path),
           ],
         ),
+      ),
+    );
+  }
+
+  static Widget _coordsRow(QAppColors colors, MapPin pin) {
+    final value = '${pin.latitude.toStringAsFixed(6)}, ${pin.longitude.toStringAsFixed(6)}';
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Coordinates: ', style: TextStyle(color: colors.textMuted, fontSize: 12)),
+          Expanded(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => Clipboard.setData(ClipboardData(text: value)),
+              child: SelectableText(
+                value,
+                style: TextStyle(color: colors.textPrimary, fontSize: 12),
+                onTap: () => Clipboard.setData(ClipboardData(text: value)),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
