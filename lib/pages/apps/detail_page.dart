@@ -1,8 +1,8 @@
 ﻿import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../theme.dart';
 import '../../widgets/changelog_renderer.dart';
+import '../../widgets/open_url.dart';
 import '../remote/page.dart';
 import 'catalog_api.dart';
 import 'install_service.dart';
@@ -107,14 +107,11 @@ class _AppDetailPageState extends State<AppDetailPage> {
                   onPressed: () => _confirmDelete(_detail!.card, widget.knownCategory),
                 ),
               IconButton(
-                icon: const Icon(Icons.share_outlined),
+                icon: const Icon(Icons.open_in_new),
                 onPressed: () {
                   final url = _detail!.links?.manifestUri ?? '';
                   if (url.isNotEmpty) {
-                    Clipboard.setData(ClipboardData(text: url));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Link copied')),
-                    );
+                    openUrl(context, url, inApp: false);
                   }
                 },
               ),
@@ -415,12 +412,7 @@ class _DeveloperLinks extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(bottom: 6),
             child: InkWell(
-              onTap: () {
-                Clipboard.setData(ClipboardData(text: e.url));
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('${e.label} link copied')),
-                );
-              },
+              onTap: () => openUrl(context, e.url, inApp: false),
               child: Row(
                 children: [
                   Icon(Icons.link, size: 18, color: colors.textSecondary),
