@@ -20,7 +20,7 @@ class ToolsPage extends StatelessWidget {
         title: 'Mfkey32 (Extract MF Keys)',
         description: 'Calculate keys from Extract MF Keys',
         routeBuilder: _buildMfKey32Page,
-         badge: 'WIP',
+         badge: 'Beta',
       ),
     ),
     ToolCardModel(
@@ -37,15 +37,25 @@ class ToolsPage extends StatelessWidget {
       ),
     ),
     ToolCardModel(
-      iconAsset: 'assets/flipper_svg/archive/ic_fileformat_sub.svg',
+      iconAsset: 'assets/flipper_svg/archive/ic_file.svg',
       iconColor: const Color(0xFFFF9B34),
-      title: 'FlipperMap',
+      title: 'Saved Locations',
       compact: true,
       tool: ToolItemModel(
-        title: 'FlipperMap',
-        description: 'Show where files were written on Flipper storage',
+        title: 'Saved Locations',
+        description: 'View saved files by recording location',
         routeBuilder: _buildFlipperMapPage,
-        badge: 'Beta',
+      ),
+    ),
+    ToolCardModel(
+      iconAsset: 'assets/flipper_svg/archive/ic_fileformat_badusb.svg',
+      iconColor: const Color(0xFFFF9B34),
+      title: 'Command-line interface',
+      compact: true,
+      tool: ToolItemModel(
+        title: 'Command-line interface',
+        description: 'Open a terminal session with your Flipper Zero',
+        routeBuilder: _buildFlipperMapPage,
       ),
     ),
   ];
