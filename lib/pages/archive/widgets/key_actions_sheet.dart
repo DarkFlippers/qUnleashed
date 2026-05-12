@@ -81,39 +81,39 @@ class KeyActionsSheet extends StatelessWidget {
     if (k.onDevice && connected && k.category.emulatable) {
       actions.add(_Action(
         icon: Icons.play_arrow,
-        label: 'Open on device',
+        label: 'Emulate',
         onTap: () => _emulateOnFlipper(context, k),
       ));
     }
     if (canShowOnMap) {
       actions.add(_Action(
         icon: Icons.map_outlined,
-        label: 'Show on map',
+        label: 'Map',
         onTap: () => _openOnMap(context, k),
       ));
     } else if (k.inLocal && (k.localPath?.isNotEmpty ?? false)) {
       actions.add(_Action(
         icon: Icons.add_location_alt_outlined,
-        label: 'Set location',
+        label: 'Map',
         onTap: () => _pickLocation(context, k),
       ));
     }
     if (k.onDevice && connected) {
       actions.add(_Action(
-        icon: Icons.edit_note,
-        label: 'Open in editor',
-        onTap: () => _openInEditor(context, k),
+        icon: Icons.folder_open,
+        label: 'Reveal',
+        onTap: () => _openInFileManager(context, k),
       ));
       actions.add(_Action(
-        icon: Icons.folder_open,
-        label: 'Open in file manager',
-        onTap: () => _openInFileManager(context, k),
+        icon: Icons.edit_note,
+        label: 'Edit',
+        onTap: () => _openInEditor(context, k),
       ));
     }
 
     actions.add(_Action(
       icon: Icons.delete_forever,
-      label: 'Delete permanently',
+      label: 'Delete',
       destructive: true,
       onTap: () => _confirmAndDelete(context, k, connected),
     ));
