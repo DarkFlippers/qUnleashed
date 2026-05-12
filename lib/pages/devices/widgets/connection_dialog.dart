@@ -20,16 +20,30 @@ bool _isFlipperUsb(FlipperDevice device) {
       name.contains('flipper');
 }
 
-Future<FlipperDevice?> showConnectionDialog(BuildContext context) {
+Future<FlipperDevice?> showConnectionDialog(
+  BuildContext context, {
+  bool usbOnly = false,
+  bool skipRpc = false,
+}) {
   return showDialog<FlipperDevice>(
     context: context,
     barrierColor: FlipperOriginalColors.barrier,
-    builder: (_) => const ConnectionDialog(),
+    builder: (_) => ConnectionDialog(
+      usbOnly: usbOnly,
+      skipRpc: skipRpc,
+    ),
   );
 }
 
 class ConnectionDialog extends StatefulWidget {
-  const ConnectionDialog({super.key});
+  const ConnectionDialog({
+    super.key,
+    this.usbOnly = false,
+    this.skipRpc = false,
+  });
+
+  final bool usbOnly;
+  final bool skipRpc;
 
   @override
   State<ConnectionDialog> createState() => _ConnectionDialogState();
@@ -39,6 +53,7 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
   final FlipperClient _client = FlipperOneClient().get();
 
   StreamSubscription<List<FlipperDevice>>? _devicesSub;
+  Timer? _usbPollTimer;
   bool _scanning = false;
   bool _filterEnabled = true;
   List<FlipperDevice> _displayed = [];
@@ -49,10 +64,15 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
     _devicesSub = _client.devicesStream.listen(_onDevicesUpdate);
     _displayed = _filterDevices(_client.devices);
     _startScan();
+    _usbPollTimer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) => _pollUsb(),
+    );
   }
 
   @override
   void dispose() {
+    _usbPollTimer?.cancel();
     _devicesSub?.cancel();
     _client.stopScan();
     super.dispose();
@@ -63,7 +83,11 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
     if (mounted) setState(() => _scanning = true);
     try {
       await _client.initialize();
-      await _client.refreshDevices(bleTimeout: const Duration(seconds: 10));
+      if (widget.usbOnly) {
+        await _client.refreshUsbOnly();
+      } else {
+        await _client.refreshDevices(bleTimeout: const Duration(seconds: 10));
+      }
     } catch (e) {
       LogService.log('[Picker] scan error: $e');
     } finally {
@@ -76,14 +100,29 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
     }
   }
 
+  Future<void> _pollUsb() async {
+    if (!mounted) return;
+    try {
+      await _client.refreshUsbOnly();
+    } catch (e) {
+      LogService.log('[Picker] usb poll error: $e');
+    }
+    if (!mounted) return;
+    setState(() => _displayed = _filterDevices(_client.devices));
+  }
+
   void _onDevicesUpdate(List<FlipperDevice> devices) {
     if (!mounted) return;
     setState(() => _displayed = _filterDevices(devices));
   }
 
   List<FlipperDevice> _filterDevices(List<FlipperDevice> devices) {
-    if (!_filterEnabled) return List<FlipperDevice>.from(devices);
-    return devices.where((device) {
+    Iterable<FlipperDevice> filtered = devices;
+    if (widget.usbOnly) {
+      filtered = filtered.where((d) => d.isUsb);
+    }
+    if (!_filterEnabled) return filtered.toList();
+    return filtered.where((device) {
       if (device.isBle) return _isFlipperBle(device);
       if (device.isUsb) return _isFlipperUsb(device);
       return true;
@@ -134,7 +173,7 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
         children: [
           Expanded(
             child: Text(
-              'Select device',
+              widget.usbOnly ? 'Select USB device' : 'Select device',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -179,7 +218,11 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
         child: Text(
-          _scanning ? 'Searching for devices…' : 'No Flipper devices found.',
+          _scanning
+              ? 'Searching for devices…'
+              : (widget.usbOnly
+                  ? 'Waiting for USB connection…'
+                  : 'No Flipper devices found.'),
           textAlign: TextAlign.center,
           style: TextStyle(color: colors.dialogMuted, fontSize: 14),
         ),

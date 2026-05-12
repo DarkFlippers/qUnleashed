@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme.dart';
+import 'cli/cli_page.dart';
 import 'irlib/categories_page.dart';
 import 'map/page.dart';
 import 'mifare/mfkey32_page.dart';
@@ -30,8 +31,7 @@ class ToolsPage extends StatelessWidget {
       tool: ToolItemModel(
         preview: ToolPreviewType.remoteLibrary,
         title: 'Remotes Library',
-        description:
-            'Find and save remotes for your devices from a wide range of brands and models',
+        description: 'Find and save remotes for your devices from a wide range of brands and models',
         routeBuilder: _buildIrLibPage,
         badge: 'Beta',
       ),
@@ -55,7 +55,8 @@ class ToolsPage extends StatelessWidget {
       tool: ToolItemModel(
         title: 'Command-line interface',
         description: 'Open a terminal session with your Flipper Zero',
-        routeBuilder: _buildFlipperMapPage,
+        routeBuilder: _buildCliPage,
+        badge: 'Beta',
       ),
     ),
   ];
@@ -87,3 +88,5 @@ Widget _buildMfKey32Page(BuildContext context) => const MfKey32Page();
 Widget _buildFlipperMapPage(BuildContext context) => const FlipperMapPage();
 
 Widget _buildIrLibPage(BuildContext context) => const IrCategoriesPage();
+
+Widget _buildCliPage(BuildContext context) => const CliPage();
