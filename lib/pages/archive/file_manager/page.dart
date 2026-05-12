@@ -79,30 +79,35 @@ class _FileManagerPageState extends State<FileManagerPage> {
                 'assets/flipper_svg/archive/ic_edit.svg',
                 width: 22,
                 height: 22,
-                colorFilter: ColorFilter.mode(colors.textPrimary, BlendMode.srcIn),
+                colorFilter:
+                    ColorFilter.mode(colors.textPrimary, BlendMode.srcIn),
               ),
-              title: Text('Open in text editor',
-                  style: TextStyle(color: colors.textPrimary)),
+              title: Text('Edit', style: TextStyle(color: colors.textPrimary)),
               onTap: () {
                 Navigator.of(sheetContext).pop();
                 _openTextEditor(remotePath);
               },
             ),
             ListTile(
-              leading: Icon(Icons.download, color: colors.textPrimary),
-              title: Text('Download to device',
-                  style: TextStyle(color: colors.textPrimary)),
-              onTap: () {
-                Navigator.of(sheetContext).pop();
-                _downloadFile(remotePath);
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.drive_file_rename_outline, color: colors.textPrimary),
+              leading: Icon(
+                Icons.drive_file_rename_outline,
+                color: colors.textPrimary,
+              ),
               title: Text('Rename', style: TextStyle(color: colors.textPrimary)),
               onTap: () {
                 Navigator.of(sheetContext).pop();
                 _renameEntry(e);
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.download, color: colors.textPrimary),
+              title: Text(
+                'Download',
+                style: TextStyle(color: colors.textPrimary),
+              ),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                _downloadFile(remotePath);
               },
             ),
             ListTile(
