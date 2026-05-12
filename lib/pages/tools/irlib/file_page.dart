@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme.dart';
+import '../../../widgets/notification.dart';
 import '../../archive/models/category.dart';
 import 'controller.dart';
 import 'models.dart';
@@ -77,21 +78,19 @@ class _IrLibFilePageState extends State<IrLibFilePage> {
     final file = await widget.controller.saveToArchive(widget.entry, bytes);
     if (!mounted) return;
     setState(() => _savingLocal = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          file == null
-              ? 'Failed to save'
-              : 'Saved to archive Infrared/${widget.entry.name}',
-        ),
-      ),
+    context.showNotification(
+      file == null
+          ? 'Failed to save'
+          : 'Saved to archive Infrared/${widget.entry.name}',
+      type: file == null ? QNotificationType.error : QNotificationType.good,
     );
   }
 
   Future<void> _sendToFlipper() async {
     if (!widget.controller.isConnected) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Connect a Flipper first')),
+      context.showNotification(
+        'Connect a Flipper first',
+        type: QNotificationType.warning,
       );
       return;
     }
@@ -115,10 +114,9 @@ class _IrLibFilePageState extends State<IrLibFilePage> {
       await widget.controller.saveToArchive(widget.entry, bytes);
     }
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(ok ? 'Sent to Flipper' : 'Failed to send to Flipper'),
-      ),
+    context.showNotification(
+      ok ? 'Sent to Flipper' : 'Failed to send to Flipper',
+      type: ok ? QNotificationType.good : QNotificationType.error,
     );
   }
 

@@ -6,6 +6,7 @@ import 'package:super_clipboard/super_clipboard.dart';
 
 import '../../theme.dart';
 import '../../widgets/info_line.dart';
+import '../../widgets/notification.dart';
 import '../../widgets/page_card.dart';
 import '../../widgets/root_scaffold.dart';
 import '../apps/page.dart';
@@ -451,16 +452,20 @@ class _DevicePageState extends State<DevicePage> {
     final clipboard = SystemClipboard.instance;
     if (clipboard == null) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Clipboard not available')));
+      context.showNotification(
+        'Clipboard not available',
+        type: QNotificationType.warning,
+      );
       return;
     }
 
     final item = DataWriterItem()..add(Formats.plainText(_buildExportDump()));
     await clipboard.write([item]);
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('Device info copied to clipboard')));
+    context.showNotification(
+      'Device info copied to clipboard',
+      type: QNotificationType.good,
+    );
   }
 
   Future<void> _disconnect() async {
@@ -529,14 +534,13 @@ class _DevicePageState extends State<DevicePage> {
         timeout: const Duration(seconds: 8),
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Alert sent to Flipper')),
-      );
+      context.showNotification('Alert sent to Flipper', type: QNotificationType.good);
     } catch (e) {
       LogService.log('[DevicePage] play alert failed: $e');
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to play alert: $e')),
+      context.showNotification(
+        'Failed to play alert: $e',
+        type: QNotificationType.error,
       );
     } finally {
       if (mounted) {

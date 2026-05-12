@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme.dart';
+import '../../../widgets/notification.dart';
 import 'controller.dart';
 import 'text_editor_page.dart';
 import 'widgets/file_row.dart';
@@ -172,10 +173,9 @@ class _FileManagerPageState extends State<FileManagerPage> {
   Future<void> _downloadFile(String remotePath) async {
     final result = await _ctrl.downloadTo(remotePath);
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(result == null ? 'Download failed' : 'Saved to $result'),
-      ),
+    context.showNotification(
+      result == null ? 'Download failed' : 'Saved to $result',
+      type: result == null ? QNotificationType.error : QNotificationType.good,
     );
   }
 
@@ -187,8 +187,9 @@ class _FileManagerPageState extends State<FileManagerPage> {
     if (success) await _ctrl.refresh();
     if (!mounted) return;
     if (!success) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Delete failed')),
+      context.showNotification(
+        'Delete failed',
+        type: QNotificationType.error,
       );
     }
   }
@@ -202,8 +203,9 @@ class _FileManagerPageState extends State<FileManagerPage> {
     if (ok) await _ctrl.refresh();
     if (!mounted) return;
     if (!ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Rename failed')),
+      context.showNotification(
+        'Rename failed',
+        type: QNotificationType.error,
       );
     }
   }
@@ -215,8 +217,9 @@ class _FileManagerPageState extends State<FileManagerPage> {
     if (ok) await _ctrl.refresh();
     if (!mounted) return;
     if (!ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Create folder failed')),
+      context.showNotification(
+        'Create folder failed',
+        type: QNotificationType.error,
       );
     }
   }
@@ -242,12 +245,14 @@ class _FileManagerPageState extends State<FileManagerPage> {
     await _ctrl.refresh();
     if (!mounted) return;
     if (failures > 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Upload failed for $failures file(s): ${_ctrl.error ?? ''}')),
+      context.showNotification(
+        'Upload failed for $failures file(s): ${_ctrl.error ?? ''}',
+        type: QNotificationType.error,
       );
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Uploaded ${result.files.length} file(s)')),
+      context.showNotification(
+        'Uploaded ${result.files.length} file(s)',
+        type: QNotificationType.good,
       );
     }
   }

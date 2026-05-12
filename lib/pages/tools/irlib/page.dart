@@ -2,6 +2,7 @@
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme.dart';
+import '../../../widgets/notification.dart';
 import '../../archive/models/category.dart';
 import 'controller.dart';
 import 'file_page.dart';
@@ -52,8 +53,9 @@ class _IrLibPageState extends State<IrLibPage> {
       return;
     }
     if (!entry.isIrFile) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Unsupported file: ${entry.name}')),
+      context.showNotification(
+        'Unsupported file: ${entry.name}',
+        type: QNotificationType.warning,
       );
       return;
     }
