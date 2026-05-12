@@ -1,6 +1,10 @@
 [submodule "packages/protobuf/proto/flipperzero"]
 	path = packages/protobuf/proto/flipperzero
 	url = https://github.com/flipperdevices/flipperzero-protobuf.git
-[submodule "lib/flipperlib"]
-	path = lib/flipperlib
+[submodule "components/nfc/tools/impl/src/main/cpp/nfc-tools"]
+	path = lib/modules/cpp/nfc-tools
+	url = https://github.com/flipperdevices/flipperzero-nfc-tools.git
+	branch = 808695143e7d6eb225398bcfd29e0009066e2c93
+[submodule "lib/modules/flipperlib"]
+	path = lib/modules/flipperlib
 	url = https://github.com/apfxtech/FlipperDartAPI.git

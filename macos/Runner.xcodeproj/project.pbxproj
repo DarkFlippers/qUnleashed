@@ -80,10 +80,10 @@
 		33E51913231747F40026EE4D /* DebugProfile.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = DebugProfile.entitlements; sourceTree = "<group>"; };
 		33E51914231749380026EE4D /* Release.entitlements */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.entitlements; path = Release.entitlements; sourceTree = "<group>"; };
 		33E5194F232828860026EE4D /* AppInfo.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = AppInfo.xcconfig; sourceTree = "<group>"; };
-		51AA00000000000000000011 /* mfkey32_bridge.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = mfkey32_bridge.c; path = ../native/mfkey32/mfkey32_bridge.c; sourceTree = SOURCE_ROOT; };
-		51AA00000000000000000012 /* bucketsort.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = bucketsort.c; path = ../.sources/flipper/components/nfc/tools/impl/src/main/cpp/nfc-tools/mfkey32v2/crapto1/bucketsort.c; sourceTree = SOURCE_ROOT; };
-		51AA00000000000000000013 /* crapto1.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = crapto1.c; path = ../.sources/flipper/components/nfc/tools/impl/src/main/cpp/nfc-tools/mfkey32v2/crapto1/crapto1.c; sourceTree = SOURCE_ROOT; };
-		51AA00000000000000000014 /* crypto1.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = crypto1.c; path = ../.sources/flipper/components/nfc/tools/impl/src/main/cpp/nfc-tools/mfkey32v2/crapto1/crypto1.c; sourceTree = SOURCE_ROOT; };
+		51AA00000000000000000011 /* mfkey32_bridge.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = mfkey32_bridge.c; path = ../lib/modules/cpp/mfkey32/mfkey32_bridge.c; sourceTree = SOURCE_ROOT; };
+		51AA00000000000000000012 /* bucketsort.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = bucketsort.c; path = ../lib/modules/cpp/nfc-tools/mfkey32v2/crapto1/bucketsort.c; sourceTree = SOURCE_ROOT; };
+		51AA00000000000000000013 /* crapto1.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = crapto1.c; path = ../lib/modules/cpp/nfc-tools/mfkey32v2/crapto1/crapto1.c; sourceTree = SOURCE_ROOT; };
+		51AA00000000000000000014 /* crypto1.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = crypto1.c; path = ../lib/modules/cpp/nfc-tools/mfkey32v2/crapto1/crypto1.c; sourceTree = SOURCE_ROOT; };
 		7AFA3C8E1D35360C0083082E /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
 		9740EEB21CF90195004384FC /* Debug.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */

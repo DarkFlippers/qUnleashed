@@ -37,7 +37,7 @@ android {
 
     externalNativeBuild {
         cmake {
-            path = file("../../native/mfkey32/CMakeLists.txt")
+            path = file("../../lib/modules/cpp/mfkey32/CMakeLists.txt")
         }
     }
 
