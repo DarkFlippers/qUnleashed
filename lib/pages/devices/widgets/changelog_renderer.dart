@@ -3,7 +3,7 @@ import 'package:flutter_html/flutter_html.dart';
 import 'package:flutter_html_table/flutter_html_table.dart';
 import 'package:markdown/markdown.dart' as md;
 
-import 'open_url.dart';
+import '../../../widgets/open_url.dart';
 
 String buildChangelogHtml(String data) {
   return _sanitizeHtml(
