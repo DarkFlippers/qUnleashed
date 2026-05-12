@@ -3,6 +3,8 @@ import 'package:flutter_html/flutter_html.dart';
 import 'package:flutter_html_table/flutter_html_table.dart';
 import 'package:markdown/markdown.dart' as md;
 
+import 'open_url.dart';
+
 String buildChangelogHtml(String data) {
   return _sanitizeHtml(
     md.markdownToHtml(
@@ -32,6 +34,10 @@ class ChangelogRenderer extends StatelessWidget {
     return SelectionArea(
       child: Html(
         data: html,
+        onLinkTap: (url, attrs, element) {
+          if (url == null || url.isEmpty) return;
+          openUrl(context, url);
+        },
         extensions: [
           TagWrapExtension(
             tagsToWrap: const {'table'},
