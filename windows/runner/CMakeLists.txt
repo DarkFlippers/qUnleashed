@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.14)
 project(runner LANGUAGES CXX)
 
-add_subdirectory("../../native/mfkey32" "${CMAKE_CURRENT_BINARY_DIR}/mfkey32")
+add_subdirectory("../../lib/modules/cpp/mfkey32" "${CMAKE_CURRENT_BINARY_DIR}/mfkey32")
 
 # Define the application target. To change its name, change BINARY_NAME in the
 # top-level CMakeLists.txt, not the value here, or `flutter run` will no longer

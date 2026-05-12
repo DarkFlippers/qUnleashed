@@ -180,7 +180,7 @@ packages:
   flipperlib:
     dependency: "direct main"
     description:
-      path: "lib/flipperlib"
+      path: "lib/modules/flipperlib"
       relative: true
     source: path
     version: "0.1.0"
