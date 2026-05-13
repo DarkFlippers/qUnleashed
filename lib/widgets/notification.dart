@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
@@ -11,6 +12,7 @@ class QNotification {
 
   static const Duration defaultDuration = Duration(seconds: 2);
   static const double edgePadding = 14;
+  static const double topOffset = kToolbarHeight + 32;
 
   static _QNotificationOverlay? _current;
 
@@ -20,10 +22,10 @@ class QNotification {
     QNotificationType type = QNotificationType.info,
     Duration duration = defaultDuration,
   }) {
+    _debugLog(message: message, type: type);
     _current?.close();
 
     final overlay = Overlay.of(context);
-    final topOffset = _topOffsetFor(context, overlay.context);
     final notification = _QNotificationOverlay();
     late final OverlayEntry entry;
 
@@ -51,39 +53,13 @@ class QNotification {
     overlay.insert(entry);
   }
 
-  static double _topOffsetFor(BuildContext context, BuildContext overlayContext) {
-    final scaffold = Scaffold.maybeOf(context) ?? _findDescendantScaffold(context);
-    final appBarHeight = scaffold?.appBarMaxHeight;
-    final overlayBox = overlayContext.findRenderObject();
-    final scaffoldBox = scaffold?.context.findRenderObject();
+  static void _debugLog({
+    required String message,
+    required QNotificationType type,
+  }) {
+    if (!kDebugMode) return;
 
-    if (appBarHeight != null && appBarHeight > 0) {
-      if (overlayBox is RenderBox && scaffoldBox is RenderBox) {
-        final scaffoldTop = scaffoldBox.localToGlobal(
-          Offset.zero,
-          ancestor: overlayBox,
-        );
-        return scaffoldTop.dy + appBarHeight + edgePadding;
-      }
-      return appBarHeight + edgePadding;
-    }
-    return MediaQuery.paddingOf(context).top + edgePadding;
-  }
-
-  static ScaffoldState? _findDescendantScaffold(BuildContext context) {
-    ScaffoldState? scaffold;
-
-    void visit(Element element) {
-      if (scaffold != null) return;
-      if (element is StatefulElement && element.state is ScaffoldState) {
-        scaffold = element.state as ScaffoldState;
-        return;
-      }
-      element.visitChildElements(visit);
-    }
-
-    context.visitChildElements(visit);
-    return scaffold;
+    debugPrint('[QNotification] status=${type.name}; message=$message');
   }
 }
 
