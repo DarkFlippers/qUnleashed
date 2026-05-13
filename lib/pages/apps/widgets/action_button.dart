@@ -1,6 +1,8 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'package:flipperlib/flipperlib.dart';
+import 'package:flutter/material.dart';
 
 import '../../../theme.dart';
+import '../../../widgets/flipper_busy_dialog.dart';
 import '../../../widgets/notification.dart';
 import '../install_service.dart';
 import '../models/card.dart';
@@ -113,6 +115,10 @@ class AppActionButton extends StatelessWidget {
                 onLaunched?.call();
               } catch (e) {
                 if (!context.mounted) return;
+                if (e is FlipperRpcAppSystemLockedException) {
+                  await showFlipperBusyDialog(context);
+                  return;
+                }
                 context.showNotification(
                   'Open failed: $e',
                   type: QNotificationType.error,

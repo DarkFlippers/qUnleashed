@@ -42,16 +42,36 @@ class RemoteSession extends ChangeNotifier {
   List<QueuedButton> get queue => _queue;
 
   Future<void> _start() async {
-    try {
-      await _client.guiStartScreenStream();
-      await _client.desktopStatusSubscribe();
-      final frames = await _client.desktopIsLocked();
+    await _tryRpc(
+      'guiStartScreenStream',
+      () => _client.guiStartScreenStream(),
+    );
+    await _tryRpc(
+      'desktopStatusSubscribe',
+      () => _client.desktopStatusSubscribe(),
+    );
+    final frames = await _tryRpc(
+      'desktopIsLocked',
+      () => _client.desktopIsLocked(),
+    );
+    if (frames != null) {
       for (final f in frames) {
         if (f.hasDesktopStatus()) _applyStatus(f.desktopStatus);
       }
+    }
+  }
+
+  Future<T?> _tryRpc<T>(String tag, Future<T> Function() body) async {
+    try {
+      return await body();
+    } on FlipperRpcException catch (e) {
+      LogService.log('[RemoteSession] $tag ignored RPC error: $e');
+      return null;
     } catch (e) {
+      LogService.log('[RemoteSession] $tag failed: $e');
       _startError = e;
       _safeNotify();
+      return null;
     }
   }
 

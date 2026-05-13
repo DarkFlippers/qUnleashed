@@ -210,29 +210,12 @@ class _DevicePageState extends State<DevicePage> {
 
   String get _sdCard => _formatStorageUsedTotal('storage.sdcard');
 
-  String get _deviceName => _firstInfo(
-        ['hardware_name', 'device_name', 'name'],
-        fallback: _stripFlipperPrefix(_device?.name) ?? 'Flipper Zero',
-      );
-
-  static String? _stripFlipperPrefix(String? name) {
-    if (name == null) return null;
-    final trimmed = name.trim();
-    if (trimmed.isEmpty) return null;
-    final match = RegExp(r'^Flipper[\s_-]+', caseSensitive: false).firstMatch(trimmed);
-    if (match == null) return trimmed;
-    final stripped = trimmed.substring(match.end).trim();
-    return stripped.isEmpty ? trimmed : stripped;
-  }
-
-  String _firstInfo(List<String> keys, {String fallback = '-'}) {
-    for (final key in keys) {
-      final value = _info[key];
-      if (value != null && value.trim().isNotEmpty) {
-        return value;
-      }
+  String get _deviceName {
+    final value = _info['hardware_name'];
+    if (value != null && value.trim().isNotEmpty) {
+      return value;
     }
-    return fallback;
+    return 'No device';
   }
 
   void _addStorageInfo(
