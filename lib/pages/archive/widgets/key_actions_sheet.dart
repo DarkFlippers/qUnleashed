@@ -55,13 +55,6 @@ class KeyActionsSheet extends StatelessWidget {
     final connected = controller.isConnected;
 
     final actions = <_Action>[];
-    if (k.state == ArchiveKeyState.remoteOnly && connected) {
-      actions.add(_Action(
-        icon: Icons.download,
-        label: 'Save to phone',
-        onTap: () => controller.rememberKey(k),
-      ));
-    }
     if (k.state == ArchiveKeyState.deleted) {
       actions.add(_Action(
         icon: Icons.restore,

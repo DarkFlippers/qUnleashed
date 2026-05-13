@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme.dart';
@@ -46,30 +46,21 @@ class KeyCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            flipperKey.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: colors.textPrimary,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                        if (flipperKey.isAutosave) ...[
-                          const SizedBox(width: 6),
-                          const _AutosaveBadge(),
-                        ],
-                      ],
+                    Text(
+                      flipperKey.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: colors.textPrimary,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                     const SizedBox(height: 2),
-                    Text(
-                      '${flipperKey.category.title} В· ${_subtitle(flipperKey)}',
-                      style: TextStyle(color: colors.textMuted, fontSize: 12),
+                    _SubtitleRow(
+                      category: flipperKey.category.title,
+                      subFolder: flipperKey.subFolder,
+                      muted: colors.textMuted,
                     ),
                   ],
                 ),
@@ -82,49 +73,35 @@ class KeyCard extends StatelessWidget {
       ),
     );
   }
-
-  String _subtitle(ArchiveKey k) {
-    switch (k.state) {
-      case ArchiveKeyState.synced:
-        return 'synced';
-      case ArchiveKeyState.remoteOnly:
-        return 'on device';
-      case ArchiveKeyState.localOnly:
-        return 'on phone';
-      case ArchiveKeyState.deleted:
-        return 'deleted from device';
-    }
-  }
 }
 
-class _AutosaveBadge extends StatelessWidget {
-  const _AutosaveBadge();
+class _SubtitleRow extends StatelessWidget {
+  const _SubtitleRow({
+    required this.category,
+    required this.subFolder,
+    required this.muted,
+  });
+
+  final String category;
+  final String subFolder;
+  final Color muted;
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.appColors;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: colors.info.withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.bolt, size: 10, color: colors.info),
-          const SizedBox(width: 2),
-          Text(
-            'AUTOSAVE',
-            style: TextStyle(
-              color: colors.info,
-              fontSize: 9,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0.5,
-            ),
-          ),
-        ],
-      ),
+    final style = TextStyle(color: muted, fontSize: 12);
+    if (subFolder.isEmpty) {
+      return Text(category, style: style, maxLines: 1, overflow: TextOverflow.ellipsis);
+    }
+    return Row(
+      children: [
+        Flexible(
+          child: Text(category, style: style, maxLines: 1, overflow: TextOverflow.ellipsis),
+        ),
+        const SizedBox(width: 14),
+        Flexible(
+          child: Text(subFolder, style: style, maxLines: 1, overflow: TextOverflow.ellipsis),
+        ),
+      ],
     );
   }
 }
@@ -144,12 +121,8 @@ class _StateBadge extends StatelessWidget {
         icon = Icons.cloud_done_outlined;
         tint = colors.success;
         break;
-      case ArchiveKeyState.remoteOnly:
-        icon = Icons.cloud_outlined;
-        tint = colors.info;
-        break;
-      case ArchiveKeyState.localOnly:
-        icon = Icons.smartphone;
+      case ArchiveKeyState.local:
+        icon = Icons.sd_storage_outlined;
         tint = colors.textMuted;
         break;
       case ArchiveKeyState.deleted:
