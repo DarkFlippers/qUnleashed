@@ -62,7 +62,9 @@ class _CliPageState extends State<CliPage> {
       } catch (_) {}
     }
     _client.cliExclusive = false;
-    unawaited(_client.disconnect());
+    if (_client.connectedDevice?.isBle != true) {
+      unawaited(_client.disconnect());
+    }
     _terminalController.dispose();
     _terminalFocusNode.dispose();
     super.dispose();
