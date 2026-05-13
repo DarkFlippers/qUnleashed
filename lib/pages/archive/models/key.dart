@@ -1,6 +1,6 @@
-﻿import 'category.dart';
+import 'category.dart';
 
-enum ArchiveKeyState { synced, remoteOnly, localOnly, deleted }
+enum ArchiveKeyState { local, synced, deleted }
 
 class ArchiveKey {
   ArchiveKey({
@@ -27,19 +27,16 @@ class ArchiveKey {
 
   String get fileName => '$name.$extension';
 
-  bool get isAutosave => subFolder.toLowerCase() == 'autosave';
-
   String get remotePath {
     if (subFolder.isEmpty) return '${category.remoteDir}/$fileName';
     return '${category.remoteDir}/$subFolder/$fileName';
   }
 
-  bool get onDevice => state == ArchiveKeyState.remoteOnly || state == ArchiveKeyState.synced;
-  bool get inLocal =>
-      state == ArchiveKeyState.synced ||
-      state == ArchiveKeyState.localOnly ||
-      state == ArchiveKeyState.deleted;
+  bool get onDevice => state == ArchiveKeyState.synced;
+  bool get hasLocalFile => localPath != null && localPath!.isNotEmpty;
+  bool get inLocal => state != ArchiveKeyState.deleted && hasLocalFile;
   bool get isDeleted => state == ArchiveKeyState.deleted;
+  bool get isSynced => state == ArchiveKeyState.synced;
 
   ArchiveKey copyWith({
     ArchiveKeyState? state,

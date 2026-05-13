@@ -171,6 +171,7 @@ class ArchiveStorage {
       final base = entity.uri.pathSegments.last;
       final ext = cat.matchExtension(base);
       if (ext == null) continue;
+      if (cat.isIgnoredFile(base)) continue;
       final stat = await entity.stat();
       final name = base.substring(0, base.length - ext.length - 1);
       out.add(LocalKeyEntry(

@@ -1,10 +1,42 @@
 import 'package:flutter/material.dart';
 
 enum ArchiveCategory {
+  nfc(
+    title: 'NFC',
+    flipperDir: 'nfc',
+    extensions: ['nfc'],
+    color: Color(0xFF34C7A4),
+    asset: 'assets/flipper_svg/archive/ic_fileformat_nfc.svg',
+    flipperAppName: 'NFC',
+  ),
+  rfid(
+    title: 'RFID 125',
+    flipperDir: 'lfrfid',
+    extensions: ['rfid'],
+    color: Color(0xFF5856D6),
+    asset: 'assets/flipper_svg/archive/ic_fileformat_rf.svg',
+    flipperAppName: '125 kHz RFID',
+  ),
+  ibutton(
+    title: 'iButton',
+    flipperDir: 'ibutton',
+    extensions: ['ibtn'],
+    color: Color(0xFF007AFF),
+    asset: 'assets/flipper_svg/archive/ic_fileformat_ibutton.svg',
+    flipperAppName: 'iButton',
+  ),
+  infrared(
+    title: 'Infrared',
+    flipperDir: 'infrared',
+    extensions: ['ir'],
+    color: Color(0xFFAF52DE),
+    asset: 'assets/flipper_svg/archive/ic_fileformat_ir.svg',
+    flipperAppName: 'Infrared',
+  ),
     subghz(
     title: 'Sub-GHz',
     flipperDir: 'subghz',
-    extensions: ['bin','sub'],
+    extensions: ['bin', 'sub'],
     color: Color(0xFFFF9B34),
     asset: 'assets/flipper_svg/archive/ic_fileformat_sub.svg',
     flipperAppName: 'Sub-GHz',
@@ -17,37 +49,13 @@ enum ArchiveCategory {
     asset: 'assets/flipper_svg/archive/ic_fileformat_sub.svg',
     subDirs: ['autosaved'],
   ),
-  rfid(
-    title: 'RFID 125',
-    flipperDir: 'lfrfid',
-    extensions: ['rfid'],
-    color: Color(0xFF5856D6),
-    asset: 'assets/flipper_svg/archive/ic_fileformat_rf.svg',
-    flipperAppName: '125 kHz RFID',
-  ),
-  nfc(
-    title: 'NFC',
-    flipperDir: 'nfc',
-    extensions: ['nfc'],
-    color: Color(0xFF34C7A4),
-    asset: 'assets/flipper_svg/archive/ic_fileformat_nfc.svg',
-    flipperAppName: 'NFC',
-  ),
-  infrared(
-    title: 'Infrared',
-    flipperDir: 'infrared',
-    extensions: ['ir'],
-    color: Color(0xFFAF52DE),
-    asset: 'assets/flipper_svg/archive/ic_fileformat_ir.svg',
-    flipperAppName: 'Infrared',
-  ),
-  ibutton(
-    title: 'iButton',
-    flipperDir: 'ibutton',
-    extensions: ['ibtn'],
-    color: Color(0xFF007AFF),
-    asset: 'assets/flipper_svg/archive/ic_fileformat_ibutton.svg',
-    flipperAppName: 'iButton',
+  badusb(
+    title: 'Bad USB',
+    flipperDir: 'badusb',
+    extensions: ['txt'],
+    color: Color(0xFFFF3B30),
+    asset: 'assets/flipper_svg/archive/ic_fileformat_badusb.svg',
+    flipperAppName: 'Bad USB',
   );
 
   const ArchiveCategory({
@@ -69,7 +77,8 @@ enum ArchiveCategory {
   final String? flipperAppName;
 
   bool get emulatable => flipperAppName != null;
-  bool get needsButtonPress => this == ArchiveCategory.subghz || this == ArchiveCategory.infrared;
+  bool get needsButtonPress =>
+      this == ArchiveCategory.subghz || this == ArchiveCategory.infrared;
 
   String get extension => extensions.first;
 
@@ -79,6 +88,15 @@ enum ArchiveCategory {
       if (lower.endsWith('.$ext')) return ext;
     }
     return null;
+  }
+
+  bool isIgnoredFile(String fileName) {
+    final lower = fileName.toLowerCase();
+    if (this == ArchiveCategory.badusb) {
+      if (lower.startsWith('demo_')) return true;
+      if (lower.startsWith('install_qflipper_')) return true;
+    }
+    return false;
   }
 
   String get remoteDir => '/ext/$flipperDir';
