@@ -1,3 +1,4 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
@@ -46,6 +47,8 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
   Color get _activeColor => widget.entry.colors.primary;
   Color get _inactiveColor => FlipperOriginalColors.text16;
 
+  bool get _isCustom => widget.selectedChannelId == kCustomFirmwareChannelId;
+
   _ResolvedButtonState _baseState() {
     final descriptionOverride = _inlineMessage;
 
@@ -55,6 +58,15 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
         color: _inactiveColor,
         description: descriptionOverride ?? 'Connect a Flipper to install firmware',
         enabled: false,
+      );
+    }
+
+    if (_isCustom) {
+      return _ResolvedButtonState(
+        label: 'INSTALL',
+        color: _activeColor,
+        description: descriptionOverride ?? 'Pick a local update .tgz archive to install',
+        enabled: true,
       );
     }
 
@@ -121,27 +133,51 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
       return;
     }
 
+    String? localArchivePath;
+    if (_isCustom) {
+      final result = await FilePicker.platform.pickFiles(
+        dialogTitle: 'Select firmware archive',
+        type: FileType.custom,
+        allowedExtensions: const ['tgz', 'gz', 'tar'],
+      );
+      final picked = result?.files.single.path;
+      if (picked == null) return;
+      localArchivePath = picked;
+    }
+
     setState(() {
       _inlineMessage = null;
-      _updateState = const UpdateFetching();
+      _updateState = localArchivePath != null
+          ? const UpdateUploading(0)
+          : const UpdateFetching();
     });
 
+    void onState(UpdateState state) {
+      if (!mounted) return;
+      setState(() {
+        _updateState = state;
+        if (state is! UpdateError) {
+          _inlineMessage = null;
+        }
+      });
+    }
+
     try {
-      await FirmwareUpdater.install(
-        entry: widget.entry,
-        channelId: widget.selectedChannelId,
-        variant: widget.selectedVariant,
-        client: widget.client,
-        onState: (state) {
-          if (!mounted) return;
-          setState(() {
-            _updateState = state;
-            if (state is! UpdateError) {
-              _inlineMessage = null;
-            }
-          });
-        },
-      );
+      if (localArchivePath != null) {
+        await FirmwareUpdater.installLocal(
+          archivePath: localArchivePath,
+          client: widget.client,
+          onState: onState,
+        );
+      } else {
+        await FirmwareUpdater.install(
+          entry: widget.entry,
+          channelId: widget.selectedChannelId,
+          variant: widget.selectedVariant,
+          client: widget.client,
+          onState: onState,
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
