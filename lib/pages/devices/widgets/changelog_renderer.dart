@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:flutter_html_table/flutter_html_table.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:markdown/markdown.dart' as md;
 
 import '../../../widgets/open_url.dart';
@@ -47,6 +49,15 @@ class ChangelogRenderer extends StatelessWidget {
             ),
           ),
           const TableHtmlExtension(),
+          TagExtension(
+            tagsToExtend: const {'img'},
+            builder: (ctx) => _ChangelogImage(
+              src: ctx.attributes['src'] ?? '',
+              alt: ctx.attributes['alt'],
+              width: double.tryParse(ctx.attributes['width'] ?? ''),
+              height: double.tryParse(ctx.attributes['height'] ?? ''),
+            ),
+          ),
         ],
         style: {
           'html': Style(
@@ -165,24 +176,146 @@ class ChangelogRenderer extends StatelessWidget {
 
 String _normalizeEscapedHtml(String text) {
   return text
-      .replaceAll(r'\u003C', '<')
-      .replaceAll(r'\u003E', '>')
-      .replaceAll(r'\u003D', '=')
+      .replaceAll(RegExp(r'\\u003c', caseSensitive: false), '<')
+      .replaceAll(RegExp(r'\\u003e', caseSensitive: false), '>')
+      .replaceAll(RegExp(r'\\u003d', caseSensitive: false), '=')
       .replaceAll(r'\n', '\n');
 }
 
 String _sanitizeHtml(String html) {
   return html
-      .replaceAll(RegExp(r'<img[^>]*>', caseSensitive: false), '')
-      .replaceAll(
-        RegExp(r'<(/?)(div|span)([^>]*)align="[^"]*"([^>]*)>', caseSensitive: false),
-        '<\$1\$2\$3\$4>',
+      .replaceAllMapped(
+        RegExp(r'<(/?)(div|span)([^>]*?)\s*align="[^"]*"([^>]*)>', caseSensitive: false),
+        (m) => '<${m[1]}${m[2]}${m[3]}${m[4]}>',
       )
       .replaceAll(
-        RegExp(r'\s(style|width|height|valign|vertical-align)="[^"]*"', caseSensitive: false),
+        RegExp(r'\s(style|valign|vertical-align)="[^"]*"', caseSensitive: false),
         '',
       )
       .replaceAll(RegExp(r'<a([^>]*)>\s*</a>', caseSensitive: false), '')
       .replaceAll(RegExp(r'<div>\s*</div>', caseSensitive: false), '')
       .replaceAll(RegExp(r'<span>\s*</span>', caseSensitive: false), '');
+}
+
+class _ChangelogImage extends StatelessWidget {
+  const _ChangelogImage({
+    required this.src,
+    this.alt,
+    this.width,
+    this.height,
+  });
+
+  final String src;
+  final String? alt;
+  final double? width;
+  final double? height;
+
+  bool get _isSvg {
+    final lower = src.toLowerCase();
+    return lower.endsWith('.svg') ||
+        lower.contains('.svg?') ||
+        lower.contains('simpleicons.org');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (src.isEmpty) return const SizedBox.shrink();
+
+    final w = width ?? 16;
+    final h = height ?? width ?? 16;
+
+    final Widget picture = _isSvg
+        ? SvgPicture.network(
+            src,
+            width: w,
+            height: h,
+            fit: BoxFit.contain,
+            placeholderBuilder: (_) => SizedBox(width: w, height: h),
+            semanticsLabel: alt,
+          )
+        : Image.network(
+            src,
+            width: w,
+            height: h,
+            fit: BoxFit.contain,
+            errorBuilder: (_, _, _) => const SizedBox.shrink(),
+          );
+
+    return _BaselineSafeBox(
+      width: w,
+      height: h,
+      child: picture,
+    );
+  }
+}
+
+class _BaselineSafeBox extends SingleChildRenderObjectWidget {
+  const _BaselineSafeBox({
+    required this.width,
+    required this.height,
+    required Widget child,
+  }) : super(child: child);
+
+  final double width;
+  final double height;
+
+  @override
+  _RenderBaselineSafeBox createRenderObject(BuildContext context) =>
+      _RenderBaselineSafeBox(width: width, height: height);
+
+  @override
+  void updateRenderObject(BuildContext context, _RenderBaselineSafeBox renderObject) {
+    renderObject
+      ..fixedWidth = width
+      ..fixedHeight = height;
+  }
+}
+
+class _RenderBaselineSafeBox extends RenderProxyBox {
+  _RenderBaselineSafeBox({required double width, required double height})
+      : _fixedWidth = width,
+        _fixedHeight = height;
+
+  double _fixedWidth;
+  double _fixedHeight;
+
+  set fixedWidth(double v) {
+    if (v == _fixedWidth) return;
+    _fixedWidth = v;
+    markNeedsLayout();
+  }
+
+  set fixedHeight(double v) {
+    if (v == _fixedHeight) return;
+    _fixedHeight = v;
+    markNeedsLayout();
+  }
+
+  Size get _size => Size(_fixedWidth, _fixedHeight);
+
+  @override
+  double computeMinIntrinsicWidth(double height) => _fixedWidth;
+  @override
+  double computeMaxIntrinsicWidth(double height) => _fixedWidth;
+  @override
+  double computeMinIntrinsicHeight(double width) => _fixedHeight;
+  @override
+  double computeMaxIntrinsicHeight(double width) => _fixedHeight;
+
+  @override
+  Size computeDryLayout(BoxConstraints constraints) =>
+      constraints.constrain(_size);
+
+  @override
+  double? computeDryBaseline(BoxConstraints constraints, TextBaseline baseline) =>
+      constraints.constrain(_size).height;
+
+  @override
+  double? computeDistanceToActualBaseline(TextBaseline baseline) => size.height;
+
+  @override
+  void performLayout() {
+    size = constraints.constrain(_size);
+    child?.layout(BoxConstraints.tight(size));
+  }
 }
