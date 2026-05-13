@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme.dart';
+import 'about/page.dart';
 import 'cli/cli_page.dart';
 import 'irlib/categories_page.dart';
 import 'map/page.dart';
@@ -59,6 +60,17 @@ class ToolsPage extends StatelessWidget {
         badge: 'Beta',
       ),
     ),
+    ToolCardModel(
+      iconAsset: 'assets/apps/app_placeholder.svg',
+      iconColor: const Color(0xFF589DFF),
+      title: 'About',
+      compact: true,
+      tool: ToolItemModel(
+        title: 'About',
+        description: 'Links, community and license',
+        routeBuilder: _buildAboutPage,
+      ),
+    ),
   ];
 
   @override
@@ -90,3 +102,5 @@ Widget _buildFlipperMapPage(BuildContext context) => const FlipperMapPage();
 Widget _buildIrLibPage(BuildContext context) => const IrCategoriesPage();
 
 Widget _buildCliPage(BuildContext context) => const CliPage();
+
+Widget _buildAboutPage(BuildContext context) => const AboutPage();

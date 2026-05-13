@@ -58,3 +58,5 @@ flutter:
     - assets/flipper_svg/tools/mifare/
     - assets/flipper_svg/archive/
     - assets/apps/
+    - assets/bg-big.jpg
+    - LICENSE
