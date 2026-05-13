@@ -12,7 +12,6 @@ import '../../devices/widgets/connection_dialog.dart';
 
 const _kBackgroundColor = Color(0xFF000000);
 const _kForegroundColor = Color(0xFFE0E0E0);
-const _kStatusBarColor = Color(0xFF111111);
 
 class CliPage extends StatefulWidget {
   const CliPage({super.key});
@@ -31,8 +30,6 @@ class _CliPageState extends State<CliPage> {
   StreamSubscription<String>? _textSub;
   StreamSubscription<FlipperConnectionState>? _connSub;
 
-  String _status = 'Initializing…';
-  bool _bleNotice = false;
   bool _ready = false;
   bool _busy = false;
   bool _awaitingInterrupt = false;
@@ -98,18 +95,11 @@ class _CliPageState extends State<CliPage> {
         return;
       }
       if (device.isBle) {
-        setState(() {
-          _bleNotice = true;
-          _status = 'BLE connection cannot host a CLI session.';
-        });
         return;
       }
       await _resetUsbCliSession(device);
     } catch (e) {
       LogService.log('[CLI] bootstrap failed: $e');
-      if (mounted) {
-        setState(() => _status = 'Failed to start CLI session: $e');
-      }
     } finally {
       _busy = false;
     }
@@ -117,7 +107,6 @@ class _CliPageState extends State<CliPage> {
 
   Future<void> _promptForDevice() async {
     if (!mounted) return;
-    setState(() => _status = 'Waiting for USB device…');
     final selected = await showConnectionDialog(
       context,
       usbOnly: true,
@@ -129,35 +118,23 @@ class _CliPageState extends State<CliPage> {
       return;
     }
     if (selected.isBle) {
-      setState(() {
-        _bleNotice = true;
-        _status = 'BLE connection cannot host a CLI session.';
-      });
       return;
     }
-    setState(() => _status = 'Connecting…');
     try {
       await _client.connect(selected);
     } catch (e) {
       LogService.log('[CLI] connect failed: $e');
-      if (mounted) {
-        setState(() => _status = 'Connection failed: $e');
-      }
       return;
     }
     await _enterCliReady();
   }
 
   Future<void> _resetUsbCliSession(FlipperDevice device) async {
-    setState(() => _status = 'Resetting CLI session…');
     try {
       await _client.disconnect();
       await _client.connect(device);
     } catch (e) {
       LogService.log('[CLI] reconnect failed: $e');
-      if (mounted) {
-        setState(() => _status = 'Reconnect failed: $e');
-      }
       return;
     }
     await _enterCliReady();
@@ -167,7 +144,6 @@ class _CliPageState extends State<CliPage> {
     if (!mounted) return;
     setState(() {
       _ready = true;
-      _status = 'Connected';
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -186,7 +162,6 @@ class _CliPageState extends State<CliPage> {
     if (!state.connected && _ready) {
       setState(() {
         _ready = false;
-        _status = 'Device disconnected';
       });
     }
   }
@@ -235,34 +210,7 @@ class _CliPageState extends State<CliPage> {
   }
 
   Widget _buildBody() {
-    if (_bleNotice) {
-      return _buildBleNotice();
-    }
-    return Stack(
-      children: [
-        Positioned.fill(child: _buildTerminal()),
-        if (!_ready)
-          Positioned(
-            left: 0,
-            right: 0,
-            top: 0,
-            child: Container(
-              color: _kStatusBarColor,
-              padding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 8,
-              ),
-              child: Text(
-                _status,
-                style: const TextStyle(
-                  color: Colors.amberAccent,
-                  fontSize: 12,
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
+    return _buildTerminal();
   }
 
   Widget _buildTerminal() {
@@ -293,43 +241,6 @@ class _CliPageState extends State<CliPage> {
     );
   }
 
-  Widget _buildBleNotice() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(
-              Icons.bluetooth_disabled,
-              color: Colors.white54,
-              size: 64,
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'CLI session is not supported over BLE.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white, fontSize: 16),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Connect the Flipper via USB to open a terminal session.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white54, fontSize: 13),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: () async {
-                setState(() => _bleNotice = false);
-                await _promptForDevice();
-              },
-              child: const Text('Select USB device'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 bool get _useHardwareKeyboardOnly {
