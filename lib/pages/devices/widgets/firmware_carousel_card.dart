@@ -40,6 +40,7 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
 
   final Map<String, String> _channelIdByEntry = {};
   final Map<String, UnleashedVariant> _variantByEntry = {};
+  final Set<String> _userPickedChannel = {};
 
   @override
   void initState() {
@@ -120,10 +121,20 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
       _fetching.remove(entry.shortName);
       final selectedChannelId = _channelIdByEntry[entry.shortName];
       final channels = _channelsForEntry(dir);
-      if (selectedChannelId == null || !channels.any((channel) => channel.id == selectedChannelId)) {
+      final userPicked = _userPickedChannel.contains(entry.shortName);
+      final hasReal = channels.any((c) => c.id != kCustomFirmwareChannelId);
+      final needsFallback = selectedChannelId == null ||
+          !channels.any((channel) => channel.id == selectedChannelId) ||
+          (!userPicked &&
+              hasReal &&
+              selectedChannelId == kCustomFirmwareChannelId);
+      if (needsFallback) {
         final fallbackChannel = channels.firstWhere(
           (channel) => channel.id == 'release',
-          orElse: () => channels.first,
+          orElse: () => channels.firstWhere(
+            (c) => c.id != kCustomFirmwareChannelId,
+            orElse: () => channels.first,
+          ),
         );
         _channelIdByEntry[entry.shortName] = fallbackChannel.id;
       }
@@ -176,16 +187,7 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
     if (selected != null && selected.isNotEmpty) {
       return selected;
     }
-
-    final channels = _channelsFor(entry);
-    if (channels.isEmpty) {
-      return 'release';
-    }
-    final fallback = channels.firstWhere(
-      (channel) => channel.id == 'release',
-      orElse: () => channels.first,
-    );
-    return fallback.id;
+    return kCustomFirmwareChannelId;
   }
 
   UnleashedVariant _selectedVariant(FirmwareEntry entry) =>
@@ -204,14 +206,14 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
   }
 
   List<FirmwareDirectoryChannel> _channelsFor(FirmwareEntry entry) {
-    final dir = _directories[entry.shortName];
-    return _channelsForEntry(dir);
+    return _channelsForEntry(_directories[entry.shortName]);
   }
 
   List<FirmwareDirectoryChannel> _channelsForEntry(FirmwareDirectory? dir) {
-    return (dir?.channels ?? const <FirmwareDirectoryChannel>[])
+    final real = (dir?.channels ?? const <FirmwareDirectoryChannel>[])
         .where((channel) => channel.hasVersions)
         .toList();
+    return [...real, buildCustomChannel()];
   }
 
   String? _latestVersionFor(FirmwareEntry entry) {
@@ -315,6 +317,7 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
         showVariant: _hasVariants(entry),
         onChannelChanged: (channelId) => setState(() {
           _channelIdByEntry[entry.shortName] = channelId;
+          _userPickedChannel.add(entry.shortName);
           if (!_supportsVariantSelection(entry, channelId)) {
             _variantByEntry[entry.shortName] = UnleashedVariant.base;
           }

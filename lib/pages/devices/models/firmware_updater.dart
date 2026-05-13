@@ -105,62 +105,7 @@ class FirmwareUpdater {
         onState(UpdateDownloading(p));
       });
 
-      final extracted = _extractFlat(tgzPath);
-      if (extracted.dirName == null || extracted.files.isEmpty) {
-        onState(const UpdateError('Update archive is empty or malformed'));
-        return;
-      }
-
-      final remoteDir = '$_remoteRoot/${extracted.dirName}';
-      _log('remote dir: $remoteDir');
-
-      await _mkdirSafe(client, _remoteRoot);
-      await _mkdirSafe(client, remoteDir);
-
-      final totalSize = extracted.files.fold<int>(0, (s, f) => s + f.data.length);
-      var bytesUploaded = 0;
-      String? manifestPath;
-
-      for (final f in extracted.files) {
-        final flipperPath = '$remoteDir/${f.name}';
-        if (f.name == 'update.fuf') manifestPath = flipperPath;
-
-        await _deleteSafe(client, flipperPath);
-
-        _log('uploading ${f.name} (${f.data.length}B)');
-        final fileBytes = f.data.length;
-        final entryStart = bytesUploaded;
-        await client.storageWriteChunked(
-          flipperPath,
-          f.data,
-          onProgress: (p) {
-            final overall = totalSize == 0
-                ? 1.0
-                : (entryStart + fileBytes * p) / totalSize;
-            onState(UpdateUploading(overall));
-          },
-        );
-        bytesUploaded += fileBytes;
-      }
-
-      if (manifestPath == null) {
-        onState(const UpdateError('No update.fuf manifest in archive'));
-        return;
-      }
-
-      _log('starting update: $manifestPath');
-      onState(const UpdateStarting());
-      await client.update(UpdateRequest(updateManifest: manifestPath));
-
-      _log('rebooting to updater');
-      try {
-        await client.reboot(
-          RebootRequest(mode: RebootRequest_RebootMode.UPDATE),
-          timeout: const Duration(seconds: 2),
-        );
-      } catch (_) {}
-
-      onState(const UpdateDone());
+      await _installFromArchive(tgzPath: tgzPath, client: client, onState: onState);
     } catch (e, st) {
       _log('ERROR: $e\n$st');
       onState(UpdateError(e.toString()));
@@ -169,6 +114,86 @@ class FirmwareUpdater {
         tempDir.deleteSync(recursive: true);
       } catch (_) {}
     }
+  }
+
+  static Future<void> installLocal({
+    required String archivePath,
+    required FlipperClient client,
+    required void Function(UpdateState) onState,
+  }) async {
+    try {
+      if (!io.File(archivePath).existsSync()) {
+        onState(UpdateError('File not found: $archivePath'));
+        return;
+      }
+      await _installFromArchive(tgzPath: archivePath, client: client, onState: onState);
+    } catch (e, st) {
+      _log('ERROR: $e\n$st');
+      onState(UpdateError(e.toString()));
+    }
+  }
+
+  static Future<void> _installFromArchive({
+    required String tgzPath,
+    required FlipperClient client,
+    required void Function(UpdateState) onState,
+  }) async {
+    final extracted = _extractFlat(tgzPath);
+    if (extracted.dirName == null || extracted.files.isEmpty) {
+      onState(const UpdateError('Update archive is empty or malformed'));
+      return;
+    }
+
+    final remoteDir = '$_remoteRoot/${extracted.dirName}';
+    _log('remote dir: $remoteDir');
+
+    await _mkdirSafe(client, _remoteRoot);
+    await _mkdirSafe(client, remoteDir);
+
+    final totalSize = extracted.files.fold<int>(0, (s, f) => s + f.data.length);
+    var bytesUploaded = 0;
+    String? manifestPath;
+
+    for (final f in extracted.files) {
+      final flipperPath = '$remoteDir/${f.name}';
+      if (f.name == 'update.fuf') manifestPath = flipperPath;
+
+      await _deleteSafe(client, flipperPath);
+
+      _log('uploading ${f.name} (${f.data.length}B)');
+      final fileBytes = f.data.length;
+      final entryStart = bytesUploaded;
+      await client.storageWriteChunked(
+        flipperPath,
+        f.data,
+        onProgress: (p) {
+          final overall = totalSize == 0
+              ? 1.0
+              : (entryStart + fileBytes * p) / totalSize;
+          onState(UpdateUploading(overall));
+        },
+      );
+      bytesUploaded += fileBytes;
+    }
+
+    if (manifestPath == null) {
+      onState(const UpdateError('No update.fuf manifest in archive'));
+      return;
+    }
+
+    _log('starting update: $manifestPath');
+    onState(const UpdateStarting());
+    await client.update(UpdateRequest(updateManifest: manifestPath));
+
+    _log('rebooting to updater');
+    try {
+      await client.reboot(
+        RebootRequest(mode: RebootRequest_RebootMode.UPDATE),
+        timeout: const Duration(seconds: 2),
+      );
+    } catch (_) {}
+
+    onState(const UpdateDone());
   }
 
   static ({String? dirName, List<_UpdateFile> files}) _extractFlat(String tgzPath) {

@@ -45,6 +45,15 @@ enum FirmwareChannel {
   }
 }
 
+const kCustomFirmwareChannelId = 'custom';
+
+FirmwareDirectoryChannel buildCustomChannel() => const FirmwareDirectoryChannel(
+      id: kCustomFirmwareChannelId,
+      title: 'Custom',
+      description: 'Install firmware from a local .tgz archive',
+      versions: [],
+    );
+
 enum UnleashedVariant {
   /// Only essential apps, same set as OFW
   base,
