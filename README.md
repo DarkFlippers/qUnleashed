@@ -21,8 +21,19 @@ qUnleashed keeps the familiar companion-app workflows from the original Flipper 
 ## Screenshots
 
 <p align="center">
-  <img src="screenshots/connect.png" alt="Connect screen" width="32%">
-  <img src="screenshots/device.png" alt="Device screen" width="32%">
-  <img src="screenshots/apps.png" alt="Apps screen" width="32%">
+  <img src="screenshots/1_home.png" alt="Home screen" width="24%">
+  <img src="screenshots/2_connection.png" alt="Connection screen" width="24%">
+  <img src="screenshots/3_install.png" alt="Firmware install screen" width="24%">
+  <img src="screenshots/4_archive.png" alt="Archive screen" width="24%">
 </p>
-
+<p align="center">
+  <img src="screenshots/5_explorer.png" alt="File explorer screen" width="24%">
+  <img src="screenshots/6_editor.png" alt="Text editor screen" width="24%">
+  <img src="screenshots/7_catalog.png" alt="Apps catalog screen" width="24%">
+  <img src="screenshots/8_remoute.png" alt="Remote control screen" width="24%">
+</p>
+<p align="center">
+  <img src="screenshots/9_mfkey32.png" alt="Mfkey32 tool screen" width="24%">
+  <img src="screenshots/10_irlib.png" alt="Infrared library screen" width="24%">
+  <img src="screenshots/11_cli.png" alt="CLI screen" width="24%">
+</p>
