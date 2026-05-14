@@ -17,7 +17,7 @@ class QAppConfig {
         ),
       ),
       FirmwareEntry(
-        name: 'Flipper',
+        name: 'Flipper firmware',
         shortName: 'ofw',
         icon: 'flipper.png',
         matchKeywords: ['official', 'flipperdevices'],
