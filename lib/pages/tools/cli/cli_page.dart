@@ -30,6 +30,7 @@ class _CliPageState extends State<CliPage> {
   StreamSubscription<String>? _textSub;
   StreamSubscription<FlipperConnectionState>? _connSub;
 
+  bool _bleNotice = false;
   bool _ready = false;
   bool _busy = false;
   bool _awaitingInterrupt = false;
@@ -95,6 +96,9 @@ class _CliPageState extends State<CliPage> {
         return;
       }
       if (device.isBle) {
+        if (mounted) {
+          setState(() => _bleNotice = true);
+        }
         return;
       }
       await _resetUsbCliSession(device);
@@ -118,6 +122,7 @@ class _CliPageState extends State<CliPage> {
       return;
     }
     if (selected.isBle) {
+      setState(() => _bleNotice = true);
       return;
     }
     try {
@@ -210,6 +215,9 @@ class _CliPageState extends State<CliPage> {
   }
 
   Widget _buildBody() {
+    if (_bleNotice) {
+      return _buildBleNotice();
+    }
     return _buildTerminal();
   }
 
@@ -241,6 +249,43 @@ class _CliPageState extends State<CliPage> {
     );
   }
 
+  Widget _buildBleNotice() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.bluetooth_disabled,
+              color: Colors.white54,
+              size: 64,
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Terminal session is not supported over BLE.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white, fontSize: 16),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Connect the Flipper via USB to open a terminal session.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white54, fontSize: 13),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: () async {
+                setState(() => _bleNotice = false);
+                await _promptForDevice();
+              },
+              child: const Text('Select USB device'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 bool get _useHardwareKeyboardOnly {
