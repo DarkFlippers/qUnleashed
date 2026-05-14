@@ -2,8 +2,9 @@
 import 'package:flutter/material.dart';
 
 import '../../../theme.dart';
-import '../../../widgets/flipper_busy_dialog.dart';
+import '../../../widgets/flipper_action_dialog.dart';
 import '../../../widgets/notification.dart';
+import '../../remote/page.dart';
 import '../install_service.dart';
 import '../models/card.dart';
 import '../models/category.dart';
@@ -116,7 +117,26 @@ class AppActionButton extends StatelessWidget {
               } catch (e) {
                 if (!context.mounted) return;
                 if (e is FlipperRpcAppSystemLockedException) {
-                  await showFlipperBusyDialog(context);
+                  await showDialog<void>(
+                    context: context,
+                    barrierColor: colors.dialogBarrier,
+                    builder: (dialogContext) {
+                      return FlipperActionDialog(
+                        imageAssetPath: kFlipperBusyAssetPath,
+                        title: kFlipperBusyTitle,
+                        text: kFlipperBusyMessage,
+                        actionText: kFlipperBusyAction,
+                        onAction: () {
+                          Navigator.of(dialogContext).pop();
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const RemoteControlPage(),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  );
                   return;
                 }
                 context.showNotification(

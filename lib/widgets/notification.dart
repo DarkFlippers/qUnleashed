@@ -12,7 +12,6 @@ class QNotification {
 
   static const Duration defaultDuration = Duration(seconds: 2);
   static const double edgePadding = 14;
-  static const double topOffset = kToolbarHeight + 32;
 
   static _QNotificationOverlay? _current;
 
@@ -25,14 +24,14 @@ class QNotification {
     _debugLog(message: message, type: type);
     _current?.close();
 
-    final overlay = Overlay.of(context);
+    final overlay = Overlay.of(context, rootOverlay: true);
     final notification = _QNotificationOverlay();
     late final OverlayEntry entry;
 
     entry = OverlayEntry(
       builder: (overlayContext) {
         return Positioned(
-          top: topOffset,
+          top: 0,
           left: edgePadding,
           right: edgePadding,
           child: _QNotificationHost(
@@ -154,8 +153,9 @@ class _QNotificationHostState extends State<_QNotificationHost>
     return IgnorePointer(
       ignoring: false,
       child: SafeArea(
-        top: false,
+        top: true,
         bottom: false,
+        minimum: const EdgeInsets.only(top: QNotification.edgePadding),
         child: SlideTransition(
           position: _slide,
           child: FadeTransition(

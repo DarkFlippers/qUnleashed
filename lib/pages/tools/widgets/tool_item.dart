@@ -18,14 +18,18 @@ class ToolItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
+    final Future<void> Function(BuildContext context)? onTap = model.onTap ??
+        (model.routeBuilder == null
+            ? null
+            : (context) async {
+                await Navigator.of(context).push(
+                  MaterialPageRoute(builder: model.routeBuilder!),
+                );
+              });
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: model.routeBuilder == null
-            ? null
-            : () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: model.routeBuilder!),
-                ),
+        onTap: onTap == null ? null : () => onTap(context),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
           child: Row(

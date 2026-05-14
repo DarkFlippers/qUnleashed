@@ -8,6 +8,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:xterm/xterm.dart';
 
+import '../../../theme.dart';
+import '../../../widgets/flipper_action_dialog.dart';
 import '../../devices/widgets/connection_dialog.dart';
 
 const _kBackgroundColor = Color(0xFF000000);
@@ -30,7 +32,6 @@ class _CliPageState extends State<CliPage> {
   StreamSubscription<String>? _textSub;
   StreamSubscription<FlipperConnectionState>? _connSub;
 
-  bool _bleNotice = false;
   bool _ready = false;
   bool _busy = false;
   bool _awaitingInterrupt = false;
@@ -97,7 +98,7 @@ class _CliPageState extends State<CliPage> {
       }
       if (device.isBle) {
         if (mounted) {
-          setState(() => _bleNotice = true);
+          Navigator.of(context).maybePop();
         }
         return;
       }
@@ -122,13 +123,16 @@ class _CliPageState extends State<CliPage> {
       return;
     }
     if (selected.isBle) {
-      setState(() => _bleNotice = true);
       return;
     }
     try {
       await _client.connect(selected);
     } catch (e) {
       LogService.log('[CLI] connect failed: $e');
+      await _showConnectionFailedDialog(selected);
+      if (mounted) {
+        Navigator.of(context).maybePop();
+      }
       return;
     }
     await _enterCliReady();
@@ -140,9 +144,36 @@ class _CliPageState extends State<CliPage> {
       await _client.connect(device);
     } catch (e) {
       LogService.log('[CLI] reconnect failed: $e');
+      await _showConnectionFailedDialog(device);
+      if (mounted) {
+        Navigator.of(context).maybePop();
+      }
       return;
     }
     await _enterCliReady();
+  }
+
+  Future<void> _showConnectionFailedDialog(FlipperDevice device) async {
+    if (!mounted) return;
+
+    final text = device.isBle
+        ? 'Turn Bluetooth off and on in the Flipper Zero system menu, then connect again. Restart the app only if that does not help.'
+        : 'Unplug the device and plug it back in, then connect again. Restart the app only if that does not help.';
+
+    await showDialog<void>(
+      context: context,
+      barrierColor: context.appColors.dialogBarrier,
+      builder: (dialogContext) {
+        return FlipperActionDialog(
+          imageAssetPath: 'assets/flipper_svg/tools/mifare/pic_shrug_black.svg',
+          imageSize: const Size(147.5, 95.8),
+          title: 'Connection failed',
+          text: text,
+          actionText: 'OK',
+          onAction: () => Navigator.of(dialogContext).pop(),
+        );
+      },
+    );
   }
 
   Future<void> _enterCliReady() async {
@@ -215,9 +246,6 @@ class _CliPageState extends State<CliPage> {
   }
 
   Widget _buildBody() {
-    if (_bleNotice) {
-      return _buildBleNotice();
-    }
     return _buildTerminal();
   }
 
@@ -249,43 +277,6 @@ class _CliPageState extends State<CliPage> {
     );
   }
 
-  Widget _buildBleNotice() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(
-              Icons.bluetooth_disabled,
-              color: Colors.white54,
-              size: 64,
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Terminal session is not supported over BLE.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white, fontSize: 16),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Connect the Flipper via USB to open a terminal session.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white54, fontSize: 13),
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: () async {
-                setState(() => _bleNotice = false);
-                await _promptForDevice();
-              },
-              child: const Text('Select USB device'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 bool get _useHardwareKeyboardOnly {
