@@ -169,9 +169,8 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
   void _syncPageToTheme(FirmwareConfig config) {
     if (config.firmwares.isEmpty) return;
     final active = _themeController.activeFirmware;
-    final index = active == null
-        ? 0
-        : config.firmwares.indexWhere((entry) => entry.shortName == active.shortName);
+    final index = config.firmwares
+        .indexWhere((entry) => entry.shortName == active.shortName);
     final targetPage = index < 0 ? 0 : index;
     _page = targetPage;
     _themeController.setActiveFirmware(config.firmwares[targetPage]);
@@ -192,8 +191,8 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
 
   UnleashedVariant _selectedVariant(FirmwareEntry entry) =>
       _supportsVariantSelection(entry, _selectedChannelId(entry))
-          ? (_variantByEntry[entry.shortName] ?? UnleashedVariant.base)
-          : UnleashedVariant.base;
+          ? (_variantByEntry[entry.shortName] ?? UnleashedVariant.extraPacks)
+          : UnleashedVariant.extraPacks;
 
   bool _hasVariants(FirmwareEntry entry) =>
       _supportsVariantSelection(entry, _selectedChannelId(entry));
@@ -319,7 +318,7 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
           _channelIdByEntry[entry.shortName] = channelId;
           _userPickedChannel.add(entry.shortName);
           if (!_supportsVariantSelection(entry, channelId)) {
-            _variantByEntry[entry.shortName] = UnleashedVariant.base;
+            _variantByEntry[entry.shortName] = UnleashedVariant.extraPacks;
           }
         }),
         onVariantChanged: (v) => setState(() => _variantByEntry[entry.shortName] = v),

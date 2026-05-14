@@ -3,6 +3,7 @@ import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
 import '../../../config.dart';
+import '../../../widgets/notification.dart';
 import '../models/firmware_directory.dart';
 import '../models/firmware_updater.dart';
 import '../../../theme.dart';
@@ -160,6 +161,21 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
           _inlineMessage = null;
         }
       });
+      if (state is UpdateError) {
+        QNotification.show(
+          context,
+          message: 'Firmware update failed: ${state.message}',
+          type: QNotificationType.error,
+          duration: const Duration(seconds: 6),
+        );
+      } else if (state is UpdateDone) {
+        QNotification.show(
+          context,
+          message: 'Update sent — Flipper will reboot to apply it',
+          type: QNotificationType.good,
+          duration: const Duration(seconds: 4),
+        );
+      }
     }
 
     try {
@@ -184,6 +200,12 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
         _updateState = null;
         _inlineMessage = e.toString();
       });
+      QNotification.show(
+        context,
+        message: 'Firmware update aborted: $e',
+        type: QNotificationType.error,
+        duration: const Duration(seconds: 6),
+      );
     }
   }
 
