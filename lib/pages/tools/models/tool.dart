@@ -27,6 +27,7 @@ class ToolItemModel {
     required this.title,
     required this.description,
     this.routeBuilder,
+    this.onTap,
     this.badge,
   });
 
@@ -34,5 +35,6 @@ class ToolItemModel {
   final String title;
   final String description;
   final WidgetBuilder? routeBuilder;
+  final Future<void> Function(BuildContext context)? onTap;
   final String? badge;
 }

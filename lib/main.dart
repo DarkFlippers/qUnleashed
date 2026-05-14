@@ -1,11 +1,7 @@
-import 'dart:async';
-
-import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
 import 'pages/devices/page.dart';
 import 'theme.dart';
-import 'widgets/flipper_busy_dialog.dart';
 
 void main() {
   runApp(const QunleashedApp());
@@ -31,53 +27,8 @@ class _QunleashedAppState extends State<QunleashedApp> {
         debugShowCheckedModeBanner: false,
         theme: buildAppTheme(_themeController.activeFirmware),
         navigatorKey: _navKey,
-        home: _RpcErrorWatcher(
-          navigatorKey: _navKey,
-          child: const DevicePage(),
-        ),
+        home: const DevicePage(),
       ),
     );
   }
-}
-
-class _RpcErrorWatcher extends StatefulWidget {
-  const _RpcErrorWatcher({required this.child, required this.navigatorKey});
-
-  final Widget child;
-  final GlobalKey<NavigatorState> navigatorKey;
-
-  @override
-  State<_RpcErrorWatcher> createState() => _RpcErrorWatcherState();
-}
-
-class _RpcErrorWatcherState extends State<_RpcErrorWatcher> {
-  StreamSubscription<FlipperRpcException>? _sub;
-  bool _busyShowing = false;
-
-  @override
-  void initState() {
-    super.initState();
-    final client = FlipperOneClient().get();
-    _sub = client.errorStream.listen(_onRpcError);
-  }
-
-  @override
-  void dispose() {
-    _sub?.cancel();
-    super.dispose();
-  }
-
-  void _onRpcError(FlipperRpcException error) {
-    if (error is! FlipperRpcAppSystemLockedException) return;
-    if (_busyShowing) return;
-    final overlayContext = widget.navigatorKey.currentContext;
-    if (overlayContext == null) return;
-    _busyShowing = true;
-    showFlipperBusyDialog(overlayContext).whenComplete(() {
-      _busyShowing = false;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) => widget.child;
 }

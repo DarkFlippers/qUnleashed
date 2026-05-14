@@ -1,6 +1,8 @@
+import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
 import '../../theme.dart';
+import '../../widgets/flipper_action_dialog.dart';
 import 'about/page.dart';
 import 'cli/cli_page.dart';
 import 'irlib/categories_page.dart';
@@ -22,7 +24,7 @@ class ToolsPage extends StatelessWidget {
         title: 'Mfkey32 (Extract MF Keys)',
         description: 'Calculate keys from Extract MF Keys',
         routeBuilder: _buildMfKey32Page,
-         badge: 'Beta',
+        badge: 'Beta',
       ),
     ),
     ToolCardModel(
@@ -32,7 +34,8 @@ class ToolsPage extends StatelessWidget {
       tool: ToolItemModel(
         preview: ToolPreviewType.remoteLibrary,
         title: 'Remotes Library',
-        description: 'Find and save remotes for your devices from a wide range of brands and models',
+        description:
+            'Find and save remotes for your devices from a wide range of brands and models',
         routeBuilder: _buildIrLibPage,
         badge: 'Beta',
       ),
@@ -56,8 +59,7 @@ class ToolsPage extends StatelessWidget {
       tool: ToolItemModel(
         title: 'Command-line interface',
         description: 'Open a terminal session with your Flipper Zero',
-        routeBuilder: _buildCliPage,
-        badge: 'Beta',
+        onTap: _openCliPage,
       ),
     ),
     ToolCardModel(
@@ -101,6 +103,40 @@ Widget _buildFlipperMapPage(BuildContext context) => const FlipperMapPage();
 
 Widget _buildIrLibPage(BuildContext context) => const IrCategoriesPage();
 
-Widget _buildCliPage(BuildContext context) => const CliPage();
-
 Widget _buildAboutPage(BuildContext context) => const AboutPage();
+
+Future<void> _openCliPage(BuildContext context) async {
+  final client = FlipperOneClient().get();
+  final connectedDevice = client.connectedDevice;
+
+  if (connectedDevice?.isBle == true) {
+    final shouldContinue = await showDialog<bool>(
+          context: context,
+          barrierColor: context.appColors.dialogBarrier,
+          builder: (dialogContext) {
+            return FlipperActionDialog(
+              imageAssetPath: kCliBluetoothUnavailableAssetPath,
+              title: kCliBluetoothUnavailableTitle,
+              text: kCliBluetoothUnavailableMessage,
+              actionText: kCliBluetoothUnavailableAction,
+              onAction: () => Navigator.of(dialogContext).pop(true),
+            );
+          },
+        ) ??
+        false;
+    if (!shouldContinue || !context.mounted) return;
+
+    try {
+      await client.disconnect();
+    } catch (e) {
+      LogService.log('[CLI] disconnect before terminal failed: $e');
+      return;
+    }
+
+    if (!context.mounted) return;
+  }
+
+  await Navigator.of(context).push(
+    MaterialPageRoute(builder: (_) => const CliPage()),
+  );
+}

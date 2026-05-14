@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:super_clipboard/super_clipboard.dart';
 
 import '../../theme.dart';
+import '../../widgets/flipper_action_dialog.dart';
 import '../../widgets/info_line.dart';
 import '../../widgets/notification.dart';
 import '../../widgets/page_card.dart';
@@ -76,30 +77,42 @@ class _DevicePageState extends State<DevicePage> {
   }
 
   Future<void> _connectTo(FlipperDevice device) async {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const AlertDialog(
-        content: Row(
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(width: 16),
-            Text('Connecting...'),
-          ],
-        ),
-      ),
+    context.showNotification(
+      'Connecting to ${device.name}...',
+      type: QNotificationType.info,
+      duration: const Duration(seconds: 3),
     );
 
     try {
       final connected = await _client.connect(device);
       if (!mounted) return;
-      Navigator.of(context).pop();
       _setupDevice(connected);
     } catch (e) {
       if (!mounted) return;
-      Navigator.of(context).pop();
       LogService.log('[DevicePage] connection failed: $e');
+      await _showConnectionFailedDialog(device);
     }
+  }
+
+  Future<void> _showConnectionFailedDialog(FlipperDevice device) async {
+    final text = device.isBle
+        ? 'Turn Bluetooth off and on in the Flipper Zero system menu, then connect again. Restart the app only if that does not help.'
+        : 'Unplug the device and plug it back in, then connect again. Restart the app only if that does not help.';
+
+    await showDialog<void>(
+      context: context,
+      barrierColor: context.appColors.dialogBarrier,
+      builder: (dialogContext) {
+        return FlipperActionDialog(
+          imageAssetPath: 'assets/flipper_svg/tools/mifare/pic_shrug_black.svg',
+          imageSize: const Size(147.5, 95.8),
+          title: 'Connection failed',
+          text: text,
+          actionText: 'OK',
+          onAction: () => Navigator.of(dialogContext).pop(),
+        );
+      },
+    );
   }
 
   void _setupDevice(FlipperDevice device) {

@@ -88,12 +88,16 @@ class _CompactBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final tool = model.tool;
+    final Future<void> Function(BuildContext context)? onTap = tool.onTap ??
+        (tool.routeBuilder == null
+            ? null
+            : (context) async {
+                await Navigator.of(context).push(
+                  MaterialPageRoute(builder: tool.routeBuilder!),
+                );
+              });
     return InkWell(
-      onTap: tool.routeBuilder == null
-          ? null
-          : () => Navigator.of(context).push(
-                MaterialPageRoute(builder: tool.routeBuilder!),
-              ),
+      onTap: onTap == null ? null : () => onTap(context),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
         child: Row(
