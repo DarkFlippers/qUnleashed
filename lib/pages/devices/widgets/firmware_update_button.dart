@@ -4,15 +4,10 @@ import 'package:flutter/material.dart';
 
 import '../../../config.dart';
 import '../../../widgets/notification.dart';
+import '../../../widgets/progress_button.dart';
 import '../models/firmware_directory.dart';
 import '../models/firmware_updater.dart';
 import '../../../theme.dart';
-
-const _kFlipperButtonText = TextStyle(
-  fontFamily: 'FlipperBold',
-  fontSize: 40,
-  fontWeight: FontWeight.w500,
-);
 
 class FirmwareUpdateButton extends StatefulWidget {
   const FirmwareUpdateButton({
@@ -214,85 +209,19 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
     final state = _resolve();
     final progress = _progressFor(state);
     final borderColor = state.color;
-    final baseColor = progress == null
-        ? state.color
-        : state.color.withValues(alpha: _idleOpacity);
     final fillColor = progress?.color ?? borderColor;
-    final progressValue = progress?.value?.clamp(0.0, 1.0) ?? 1.0;
+    final progressValue = progress == null ? double.nan : progress.value ?? 1.0;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
       child: Column(
         children: [
-          GestureDetector(
-            onTap: state.enabled ? _onPressed : null,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(9),
-              child: SizedBox(
-                height: 50,
-                width: double.infinity,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    Positioned.fill(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: baseColor,
-                          border: Border.all(
-                            color: borderColor,
-                            width: 1.25,
-                          ),
-                          borderRadius: BorderRadius.circular(9),
-                        ),
-                      ),
-                    ),
-                    if (progress != null)
-                      Positioned.fill(
-                        child: LayoutBuilder(
-                          builder: (context, constraints) {
-                            return Align(
-                              alignment: Alignment.centerLeft,
-                              child: SizedBox(
-                                width: constraints.maxWidth * progressValue,
-                                height: constraints.maxHeight,
-                                child: DecoratedBox(
-                                  decoration: BoxDecoration(
-                                    color: fillColor,
-                                    borderRadius: BorderRadius.circular(9),
-                                  ),
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    Positioned.fill(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                            color: borderColor,
-                            width: 1.25,
-                          ),
-                          borderRadius: BorderRadius.circular(9),
-                        ),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 6),
-                      child: Center(
-                        child: Text(
-                          state.label.toUpperCase(),
-                          textAlign: TextAlign.center,
-                          style: _kFlipperButtonText.copyWith(
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+          ProgressButton(
+            text: state.label.toUpperCase(),
+            color: borderColor,
+            progressColor: fillColor,
+            progress: progressValue,
+            onPressed: state.enabled ? _onPressed : null,
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(4, 4, 4, 12),

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../../theme.dart';
 import '../../../widgets/flipper_action_dialog.dart';
 import '../../../widgets/notification.dart';
+import '../../../widgets/progress_button.dart';
 import '../../remote/page.dart';
 import '../install_service.dart';
 import '../models/card.dart';
@@ -37,11 +38,10 @@ class AppActionButton extends StatelessWidget {
     if (action != null) {
       return _ActionRow(
         size: size,
-        primary: _ProgressButton(
-          progress: action.progress,
+        primary: _buildProgressButton(
           type: action.type,
           stage: action.stage,
-          size: size,
+          progress: action.progress,
         ),
       );
     }
@@ -49,11 +49,9 @@ class AppActionButton extends StatelessWidget {
     if (!service.isReady) {
       return _ActionRow(
         size: size,
-        primary: _Pill(
+        primary: _buildButton(
           label: 'INSTALL',
-          background: colors.accent,
-          foreground: colors.onAccent,
-          size: size,
+          color: colors.accent,
           onTap: () => _connectHint(context),
         ),
       );
@@ -63,22 +61,18 @@ class AppActionButton extends StatelessWidget {
       case AppButtonState.install:
         return _ActionRow(
           size: size,
-          primary: _Pill(
+          primary: _buildButton(
             label: 'INSTALL',
-            background: colors.accent,
-            foreground: colors.onAccent,
-            size: size,
+            color: colors.accent,
             onTap: () => service.installOrUpdate(app, category: category, detail: detail),
           ),
         );
       case AppButtonState.update:
         return _ActionRow(
           size: size,
-          primary: _Pill(
+          primary: _buildButton(
             label: 'UPDATE',
-            background: colors.success,
-            foreground: colors.onAccent,
-            size: size,
+            color: colors.success,
             onTap: () => service.installOrUpdate(app, category: category, detail: detail),
           ),
           secondary: _DeleteButton(
@@ -89,11 +83,9 @@ class AppActionButton extends StatelessWidget {
       case AppButtonState.preinstalled:
         return _ActionRow(
           size: size,
-          primary: _Pill(
+          primary: _buildButton(
             label: 'BUILT-IN',
-            background: colors.success,
-            foreground: colors.onAccent,
-            size: size,
+            color: colors.success,
             onTap: () => service.installOrUpdate(app, category: category, detail: detail),
           ),
           secondary: _DeleteButton(
@@ -104,12 +96,9 @@ class AppActionButton extends StatelessWidget {
       case AppButtonState.installed:
         return _ActionRow(
           size: size,
-          primary: _Pill(
+          primary: _buildButton(
             label: 'OPEN',
-            background: Colors.transparent,
-            foreground: colors.textPrimary,
-            size: size,
-            border: BorderSide(color: colors.divider, width: 1.5),
+            color: colors.accent,
             onTap: () async {
               try {
                 await service.launch(app, category: category);
@@ -154,11 +143,9 @@ class AppActionButton extends StatelessWidget {
       case AppButtonState.unsupported:
         return _ActionRow(
           size: size,
-          primary: _Pill(
+          primary: _buildButton(
             label: 'N/A',
-            background: colors.divider,
-            foreground: colors.textMuted,
-            size: size,
+            color: colors.divider,
             onTap: null,
           ),
           secondary: _DeleteButton(
@@ -169,11 +156,10 @@ class AppActionButton extends StatelessWidget {
       case AppButtonState.inProgress:
         return _ActionRow(
           size: size,
-          primary: _ProgressButton(
-            progress: 0,
+          primary: _buildProgressButton(
             type: AppActionType.install,
             stage: AppActionStage.download,
-            size: size,
+            progress: 0,
           ),
           secondary: _DeleteButton(
             size: size,
@@ -181,6 +167,33 @@ class AppActionButton extends StatelessWidget {
           ),
         );
     }
+  }
+
+  Widget _buildProgressButton({
+    required AppActionType type,
+    required AppActionStage stage,
+    required double progress,
+  }) {
+    final progressState = _ProgressState.resolve(type, stage);
+    return ProgressButton(
+      text: progressState.label,
+      color: progressState.color,
+      progress: progress,
+      showPercent: true,
+    );
+  }
+
+  Widget _buildButton({
+    required String label,
+    required Color color,
+    VoidCallback? onTap,
+  }) {
+    return ProgressButton(
+      text: label,
+      color: color,
+      progress: double.nan,
+      onPressed: onTap,
+    );
   }
 
   void _connectHint(BuildContext context) {
@@ -251,143 +264,6 @@ class _ActionRow extends StatelessWidget {
         SizedBox(width: isLarge ? 12 : 8),
         secondary!,
       ],
-    );
-  }
-}
-
-class _Pill extends StatelessWidget {
-  const _Pill({
-    required this.label,
-    required this.background,
-    required this.foreground,
-    required this.size,
-    this.onTap,
-    this.border,
-  });
-
-  final String label;
-  final Color background;
-  final Color foreground;
-  final VoidCallback? onTap;
-  final BorderSide? border;
-  final AppActionButtonSize size;
-
-  @override
-  Widget build(BuildContext context) {
-    final isLarge = size == AppActionButtonSize.large;
-    final radius = BorderRadius.circular(isLarge ? 10 : 8);
-    return Material(
-      color: background,
-      shape: RoundedRectangleBorder(
-        side: border ?? BorderSide.none,
-        borderRadius: radius,
-      ),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: radius,
-        child: Container(
-          height: isLarge ? 48 : 32,
-          alignment: Alignment.center,
-          padding: EdgeInsets.symmetric(horizontal: isLarge ? 24 : 12),
-          child: Text(
-            label,
-            style: TextStyle(
-              color: foreground,
-              fontSize: isLarge ? 14 : 12,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.8,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ProgressButton extends StatelessWidget {
-  const _ProgressButton({
-    required this.progress,
-    required this.type,
-    required this.stage,
-    required this.size,
-  });
-
-  final double progress;
-  final AppActionType type;
-  final AppActionStage stage;
-  final AppActionButtonSize size;
-
-  @override
-  Widget build(BuildContext context) {
-    final isLarge = size == AppActionButtonSize.large;
-    final state = _ProgressState.resolve(type, stage);
-    final borderColor = state.color;
-    final baseColor = state.color.withValues(alpha: 0.18);
-    final progressValue = progress.clamp(0.0, 1.0);
-    final radius = BorderRadius.circular(isLarge ? 10 : 8);
-
-    return ClipRRect(
-      borderRadius: radius,
-      child: SizedBox(
-        height: isLarge ? 48 : 32,
-        width: double.infinity,
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: baseColor,
-                  border: Border.all(color: borderColor, width: 1.25),
-                  borderRadius: radius,
-                ),
-              ),
-            ),
-            Positioned.fill(
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  return Align(
-                    alignment: Alignment.centerLeft,
-                    child: SizedBox(
-                      width: constraints.maxWidth * progressValue,
-                      height: constraints.maxHeight,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: state.color,
-                          borderRadius: radius,
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  border: Border.all(color: borderColor, width: 1.25),
-                  borderRadius: radius,
-                ),
-              ),
-            ),
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: isLarge ? 12 : 8),
-              child: Text(
-                '${state.label} ${(progressValue * 100).round()}%',
-                maxLines: 1,
-                overflow: TextOverflow.fade,
-                softWrap: false,
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: isLarge ? 14 : 11,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.8,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

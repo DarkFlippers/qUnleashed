@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io' as io;
 
@@ -21,6 +21,8 @@ class IrLibApi {
     this.repo = 'Flipper-IRDB',
     this.branch = 'main',
     this.userAgent = 'qunleashed-irlib',
+    this.token = '',
+    this.localRoot = '',
     Duration timeout = const Duration(seconds: 25),
   }) : _http = io.HttpClient()..connectionTimeout = timeout;
 
@@ -28,12 +30,16 @@ class IrLibApi {
   final String repo;
   final String branch;
   final String userAgent;
+  final String token;
+  final String localRoot;
 
   final io.HttpClient _http;
   bool _closed = false;
 
   final Map<String, List<IrEntry>> _listCache = {};
   final Map<String, List<int>> _fileCache = {};
+
+  bool get useLocal => localRoot.trim().isNotEmpty;
 
   void close() {
     if (_closed) return;
@@ -45,6 +51,11 @@ class IrLibApi {
     _listCache.remove(_normalizePath(path));
   }
 
+  void invalidateAll() {
+    _listCache.clear();
+    _fileCache.clear();
+  }
+
   String rawUrl(String path) =>
       'https://raw.githubusercontent.com/$owner/$repo/$branch/${Uri.encodeFull(path)}';
 
@@ -52,6 +63,43 @@ class IrLibApi {
     final normalized = _normalizePath(path);
     final cached = _listCache[normalized];
     if (cached != null) return cached;
+    final out =
+        useLocal ? await _listLocal(normalized) : await _listRemote(normalized);
+    out.sort((a, b) {
+      if (a.isDir != b.isDir) return a.isDir ? -1 : 1;
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
+    _listCache[normalized] = out;
+    return out;
+  }
+
+  Future<List<IrEntry>> _listLocal(String normalized) async {
+    final dir = _localDir(normalized);
+    if (!await dir.exists()) {
+      throw IrLibException(0, dir.path, 'directory not found');
+    }
+    final out = <IrEntry>[];
+    await for (final entity in dir.list(followLinks: false)) {
+      final name =
+          entity.uri.pathSegments.where((s) => s.isNotEmpty).last;
+      if (name.startsWith('.')) continue;
+      final relPath = normalized.isEmpty ? name : '$normalized/$name';
+      if (entity is io.Directory) {
+        out.add(IrEntry(name: name, path: relPath, type: IrEntryType.dir));
+      } else if (entity is io.File) {
+        final stat = await entity.stat();
+        out.add(IrEntry(
+          name: name,
+          path: relPath,
+          type: IrEntryType.file,
+          size: stat.size,
+        ));
+      }
+    }
+    return out;
+  }
+
+  Future<List<IrEntry>> _listRemote(String normalized) async {
     final segs = normalized.isEmpty
         ? ''
         : normalized.split('/').map(Uri.encodeComponent).join('/');
@@ -82,11 +130,6 @@ class IrLibApi {
         ));
       }
     }
-    out.sort((a, b) {
-      if (a.isDir != b.isDir) return a.isDir ? -1 : 1;
-      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
-    });
-    _listCache[normalized] = out;
     return out;
   }
 
@@ -126,6 +169,15 @@ class IrLibApi {
     }
     final cached = _fileCache[entry.path];
     if (cached != null) return cached;
+    if (useLocal) {
+      final file = io.File(_localDir(entry.path).path);
+      if (!await file.exists()) {
+        throw IrLibException(0, file.path, 'file not found');
+      }
+      final bytes = await file.readAsBytes();
+      _fileCache[entry.path] = bytes;
+      return bytes;
+    }
     final url = entry.downloadUrl ?? rawUrl(entry.path);
     final res = await _send(Uri.parse(url));
     if (res.statusCode < 200 || res.statusCode >= 300) {
@@ -138,6 +190,14 @@ class IrLibApi {
     }
     _fileCache[entry.path] = out;
     return out;
+  }
+
+  io.Directory _localDir(String relPath) {
+    final sep = io.Platform.pathSeparator;
+    final root = localRoot.replaceAll('/', sep).replaceAll('\\', sep);
+    if (relPath.isEmpty) return io.Directory(root);
+    final rel = relPath.replaceAll('/', sep);
+    return io.Directory('$root$sep$rel');
   }
 
   String _normalizePath(String path) {
@@ -167,6 +227,9 @@ class IrLibApi {
     req.headers
       ..set(io.HttpHeaders.userAgentHeader, userAgent)
       ..set(io.HttpHeaders.acceptHeader, 'application/vnd.github+json');
+    if (token.trim().isNotEmpty) {
+      req.headers.set(io.HttpHeaders.authorizationHeader, 'Bearer ${token.trim()}');
+    }
     return req.close();
   }
 }
