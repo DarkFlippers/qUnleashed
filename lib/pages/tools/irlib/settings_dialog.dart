@@ -256,10 +256,11 @@ class _PrimaryActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final String label;
-    final Color color;
-    final double value;
-    final bool showPercent;
-    final VoidCallback? action;
+    final Color color = colors.firmwarePrimary;
+    double? value;
+    bool indeterminate = false;
+    bool showPercent = false;
+    VoidCallback? action;
 
     if (downloading) {
       final p = progress;
@@ -268,21 +269,17 @@ class _PrimaryActionButton extends StatelessWidget {
           ((unpacking && p.totalFiles > 0) ||
               (!unpacking && (p.total > 0 || p.received > 0)));
       label = unpacking ? 'UNPACKING' : 'DOWNLOADING';
-      color = colors.firmwarePrimary;
-      value = hasPercent ? p!.fraction : 0;
-      showPercent = hasPercent;
-      action = null;
+      if (hasPercent) {
+        value = p.fraction;
+        showPercent = true;
+      } else {
+        indeterminate = true;
+      }
     } else if (localAvailable) {
       label = 'DELETE';
-      color = colors.firmwarePrimary;
-      value = double.nan;
-      showPercent = false;
       action = onPressed;
     } else {
       label = 'DOWNLOAD';
-      color = colors.firmwarePrimary;
-      value = double.nan;
-      showPercent = false;
       action = onPressed;
     }
 
@@ -290,8 +287,10 @@ class _PrimaryActionButton extends StatelessWidget {
       text: label,
       color: color,
       progress: value,
+      indeterminate: indeterminate,
       showPercent: showPercent,
       onPressed: action,
+      textStyle: ProgressButton.defaultTextStyle.copyWith(fontSize: 38),
     );
   }
 }
