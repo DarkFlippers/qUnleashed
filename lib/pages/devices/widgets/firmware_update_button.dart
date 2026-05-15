@@ -210,7 +210,7 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
     final progress = _progressFor(state);
     final borderColor = state.color;
     final fillColor = progress?.color ?? borderColor;
-    final progressValue = progress == null ? double.nan : progress.value ?? 1.0;
+    final isIndeterminate = progress != null && progress.value == null;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
@@ -220,7 +220,8 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
             text: state.label.toUpperCase(),
             color: borderColor,
             progressColor: fillColor,
-            progress: progressValue,
+            progress: isIndeterminate ? null : progress?.value,
+            indeterminate: isIndeterminate,
             onPressed: state.enabled ? _onPressed : null,
           ),
           Padding(

@@ -175,11 +175,18 @@ class AppActionButton extends StatelessWidget {
     required double progress,
   }) {
     final progressState = _ProgressState.resolve(type, stage);
+    final isLarge = size == AppActionButtonSize.large;
     return ProgressButton(
       text: progressState.label,
       color: progressState.color,
       progress: progress,
       showPercent: true,
+      height: isLarge ? 48 : 32,
+      borderRadius: isLarge ? 10 : 8,
+      horizontalPadding: isLarge ? 12 : 8,
+      textStyle: ProgressButton.defaultTextStyle.copyWith(
+        fontSize: isLarge ? 40 : 20,
+      ),
     );
   }
 
@@ -188,11 +195,17 @@ class AppActionButton extends StatelessWidget {
     required Color color,
     VoidCallback? onTap,
   }) {
+    final isLarge = size == AppActionButtonSize.large;
     return ProgressButton(
       text: label,
       color: color,
-      progress: double.nan,
       onPressed: onTap,
+      height: isLarge ? 48 : 32,
+      borderRadius: isLarge ? 10 : 8,
+      horizontalPadding: isLarge ? 24 : 12,
+      textStyle: ProgressButton.defaultTextStyle.copyWith(
+        fontSize: isLarge ? 40 : 20,
+      ),
     );
   }
 
