@@ -7,20 +7,32 @@ import 'package:flutter/foundation.dart';
 import '../../archive/storage.dart';
 import '../../archive/models/category.dart';
 import 'api.dart';
+import 'local_repo.dart';
 import 'models.dart';
+import 'settings.dart';
 
 class IrLibController extends ChangeNotifier {
   IrLibController({
     IrLibApi? api,
     FlipperClient? client,
     ArchiveStorage? storage,
+    IrLibSettingsStorage? settingsStorage,
+    IrLibLocalRepo? localRepo,
   })  : _api = api ?? IrLibApi(),
         _client = client ?? FlipperOneClient().get(),
-        _storage = storage ?? ArchiveStorage();
+        _storage = storage ?? ArchiveStorage(),
+        _settingsStorage = settingsStorage ?? IrLibSettingsStorage(),
+        _localRepo = localRepo ?? IrLibLocalRepo();
 
-  final IrLibApi _api;
+  IrLibApi _api;
   final FlipperClient _client;
   final ArchiveStorage _storage;
+  final IrLibSettingsStorage _settingsStorage;
+  final IrLibLocalRepo _localRepo;
+  IrLibSettings _settings = IrLibSettings();
+  IrLibDownloadProgress? _downloadProgress;
+  bool _downloading = false;
+  bool _localAvailable = false;
 
   String _path = '';
   bool _loading = false;
@@ -36,6 +48,11 @@ class IrLibController extends ChangeNotifier {
 
   IrLibApi get api => _api;
   FlipperClient get client => _client;
+  IrLibSettings get settings => _settings;
+  IrLibLocalRepo get localRepo => _localRepo;
+  IrLibDownloadProgress? get downloadProgress => _downloadProgress;
+  bool get downloading => _downloading;
+  bool get localAvailable => _localAvailable;
   String get path => _path;
   bool get loading => _loading;
   String? get error => _error;
@@ -58,7 +75,95 @@ class IrLibController extends ChangeNotifier {
   Future<void> initialize() async {
     final live = ArchiveStorage.normalizeDeviceName(_client.connectedDevice?.name);
     _deviceName = live ?? (await _storage.readLastDeviceName()) ?? 'Library';
+    _settings = await _settingsStorage.load();
+    final root = await _localRepo.resolveRoot();
+    _localAvailable = await _localRepo.exists();
+    if (_settings.localPath != root.path) {
+      _settings = _settings.copyWith(localPath: root.path);
+      await _settingsStorage.save(_settings);
+    }
+    _rebuildApi();
     await openPath('');
+  }
+
+  Future<bool> downloadLocalRepo() async {
+    if (_downloading) return false;
+    _downloading = true;
+    _downloadProgress = IrLibDownloadProgress(stage: 'Downloading');
+    _error = null;
+    notifyListeners();
+    try {
+      final dir = await _localRepo.download(
+        owner: _settings.owner,
+        repo: _settings.repo,
+        branch: _settings.branch,
+        token: _settings.githubToken,
+        onProgress: (p) {
+          _downloadProgress = p;
+          notifyListeners();
+        },
+      );
+      _settings = _settings.copyWith(localPath: dir.path);
+      await _settingsStorage.save(_settings);
+      _localAvailable = true;
+      _rebuildApi();
+      _path = '';
+      _searchQuery = '';
+      _searchResults = const [];
+      await openPath('', force: true);
+      return true;
+    } catch (e) {
+      _error = '$e';
+      LogService.log('[IRLib] download failed: $e');
+      return false;
+    } finally {
+      _downloading = false;
+      _downloadProgress = null;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> deleteLocalRepo() async {
+    try {
+      await _localRepo.deleteAll();
+      _localAvailable = false;
+      _rebuildApi();
+      _path = '';
+      _searchQuery = '';
+      _searchResults = const [];
+      await openPath('', force: true);
+      return true;
+    } catch (e) {
+      _error = '$e';
+      LogService.log('[IRLib] delete failed: $e');
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<void> updateSettings(IrLibSettings next) async {
+    _settings = next;
+    await _settingsStorage.save(next);
+    _localAvailable = await _localRepo.exists();
+    _rebuildApi();
+    _path = '';
+    _searchQuery = '';
+    _searchResults = const [];
+    notifyListeners();
+    await openPath('', force: true);
+  }
+
+  void _rebuildApi() {
+    try {
+      _api.close();
+    } catch (_) {}
+    _api = IrLibApi(
+      owner: _settings.owner,
+      repo: _settings.repo,
+      branch: _settings.branch,
+      token: _settings.githubToken,
+      localRoot: _localAvailable ? _settings.localPath : '',
+    );
   }
 
   Future<void> refresh() => openPath(_path, force: true);

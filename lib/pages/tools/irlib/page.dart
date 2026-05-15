@@ -7,6 +7,7 @@ import '../../archive/models/category.dart';
 import 'controller.dart';
 import 'file_page.dart';
 import 'models.dart';
+import 'settings_dialog.dart';
 import 'widgets/ir_search_field.dart';
 
 class IrLibPage extends StatefulWidget {
@@ -19,7 +20,6 @@ class IrLibPage extends StatefulWidget {
 class _IrLibPageState extends State<IrLibPage> {
   final IrLibController _ctrl = IrLibController();
   final TextEditingController _searchCtrl = TextEditingController();
-  bool _onlyIr = true;
 
   @override
   void initState() {
@@ -92,16 +92,15 @@ class _IrLibPageState extends State<IrLibPage> {
                   : null,
               actions: [
                 IconButton(
-                  tooltip: _onlyIr ? 'Show all files' : 'Show only .ir files',
-                  icon: Icon(
-                    _onlyIr ? Icons.filter_alt : Icons.filter_alt_outlined,
-                  ),
-                  onPressed: () => setState(() => _onlyIr = !_onlyIr),
-                ),
-                IconButton(
                   tooltip: 'Refresh',
                   icon: const Icon(Icons.refresh),
                   onPressed: _ctrl.loading ? null : _ctrl.refresh,
+                ),
+                IconButton(
+                  tooltip: 'Source settings',
+                  icon: const Icon(Icons.settings_outlined),
+                  onPressed: () =>
+                      IrLibSettingsDialog.show(context, _ctrl),
                 ),
               ],
             ),
@@ -153,9 +152,7 @@ class _IrLibPageState extends State<IrLibPage> {
 
     final isSearch = _ctrl.searchQuery.isNotEmpty;
     final source = isSearch ? _ctrl.searchResults : _ctrl.entries;
-    final list = _onlyIr
-        ? source.where((e) => e.isDir || e.isIrFile).toList()
-        : source;
+    final list = source.where((e) => e.isDir || e.isIrFile).toList();
 
     if (_ctrl.loading) {
       return Center(child: CircularProgressIndicator(color: colors.accent));
