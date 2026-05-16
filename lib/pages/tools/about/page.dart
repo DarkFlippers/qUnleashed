@@ -64,7 +64,7 @@ class AboutPage extends StatelessWidget {
       color: Color(0xFFB95D58),
       title: 'Support firmware authors',
       subtitle: 'DarkFlippers',
-      url: 'https://github.com/DarkFlippers/unleashed-firmware#please-support-development-of-the-project',
+      url: 'https://github.com/DarkFlippers/unleashed-firmware/blob/dev/ReadMe.md#%EF%B8%8F-please-support-development-of-the-project',
     ),
     // _AboutLink(
     //   icon: Icons.favorite,
@@ -83,7 +83,7 @@ class AboutPage extends StatelessWidget {
     _AboutLink(
       icon: Icons.public,
       color: Color(0xFF9A5F94),
-      title: 'Website apfxtech',
+      title: ' ApertureFox website',
       subtitle: 'aperturefox.ru',
       url: 'https://aperturefox.ru/',
     ),

@@ -211,7 +211,6 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
         leading: IconButton(
           icon: const Icon(Icons.close),
           tooltip: 'Cancel',
-          splashRadius: 20,
           onPressed: _saving ? null : _exitPickMode,
         ),
         title: Text(
@@ -221,7 +220,6 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
         actions: [
           IconButton(
             tooltip: 'Save location',
-            splashRadius: 20,
             onPressed: _saving ? null : _savePickedLocation,
             icon: _saving
                 ? const SizedBox(
@@ -257,7 +255,6 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
         ),
         IconButton(
           tooltip: 'Reload files',
-          splashRadius: 20,
           onPressed: _controller.loading ? null : _controller.loadFiles,
           icon: const Icon(Icons.refresh),
         ),
@@ -661,13 +658,11 @@ class _PinCard extends StatelessWidget {
                 ),
                 IconButton(
                   tooltip: 'Edit location',
-                  splashRadius: 20,
                   onPressed: onEdit,
                   icon: Icon(Icons.edit_location_alt_outlined, color: colors.accent),
                 ),
                 IconButton(
                   tooltip: 'Close',
-                  splashRadius: 20,
                   onPressed: onClose,
                   icon: Icon(Icons.close, color: colors.textMuted),
                 ),
