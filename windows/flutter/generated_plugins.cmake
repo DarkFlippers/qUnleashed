@@ -7,6 +7,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   geolocator_windows
   irondash_engine_context
   permission_handler_windows
+  share_plus
   super_native_extensions
   universal_ble
   url_launcher_windows

@@ -4,6 +4,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme.dart';
 import '../../../widgets/notification.dart';
+import '../share_remote_file.dart';
 import 'controller.dart';
 import 'text_editor_page.dart';
 import 'widgets/file_row.dart';
@@ -109,6 +110,12 @@ class _FileManagerPageState extends State<FileManagerPage> {
                 Navigator.of(sheetContext).pop();
                 _downloadFile(remotePath);
               },
+            ),
+            ShareRemoteFileTile(
+              controller: _ctrl,
+              remotePath: remotePath,
+              displayName: e.name,
+              onStarted: () => Navigator.of(sheetContext).pop(),
             ),
             ListTile(
               leading: Icon(Icons.delete_outline, color: colors.danger),

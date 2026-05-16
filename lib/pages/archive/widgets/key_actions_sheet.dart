@@ -13,6 +13,7 @@ import '../file_manager/controller.dart';
 import '../file_manager/page.dart';
 import '../file_manager/text_editor_page.dart';
 import '../models/key.dart';
+import '../share_remote_file.dart';
 
 class KeyActionsSheet extends StatelessWidget {
   const KeyActionsSheet({
@@ -101,6 +102,22 @@ class KeyActionsSheet extends StatelessWidget {
         icon: Icons.edit_note,
         label: 'Edit',
         onTap: () => _openInEditor(context, k),
+      ));
+    }
+    final shareIcon = isShareSupported ? Icons.ios_share : Icons.content_copy;
+    final shareLabel = isShareSupported ? 'Share' : 'Copy';
+    final hasLocal = k.inLocal && (k.localPath?.isNotEmpty ?? false);
+    if (hasLocal) {
+      actions.add(_Action(
+        icon: shareIcon,
+        label: shareLabel,
+        onTap: () => shareLocalFile(context, k.localPath!, displayName: k.name),
+      ));
+    } else if (k.onDevice && connected) {
+      actions.add(_Action(
+        icon: shareIcon,
+        label: shareLabel,
+        onTap: () => _shareFromDevice(context, k),
       ));
     }
 
@@ -200,6 +217,16 @@ class KeyActionsSheet extends StatelessWidget {
           remotePath: k.remotePath,
         ),
       ),
+    );
+  }
+
+  void _shareFromDevice(BuildContext context, ArchiveKey k) {
+    final remoteParent = _parent(k.remotePath);
+    shareRemoteFile(
+      context,
+      FileManagerController(initialPath: remoteParent),
+      k.remotePath,
+      displayName: k.name,
     );
   }
 
