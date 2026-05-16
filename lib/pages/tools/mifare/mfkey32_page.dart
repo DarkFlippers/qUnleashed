@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme.dart';
+import '../../../widgets/progress_button.dart';
 import 'mfkey32_controller.dart';
 import 'mfkey32_models.dart';
 
@@ -174,7 +175,7 @@ class _ProgressBlock extends StatelessWidget {
         ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 32),
-          child: _FlipperProgressIndicator(
+          child: _FlipperProgressBar(
             iconAsset: iconAsset,
             percent: percent,
             accentColor: accentColor,
@@ -386,8 +387,8 @@ class _SimpleError extends StatelessWidget {
   }
 }
 
-class _FlipperProgressIndicator extends StatelessWidget {
-  const _FlipperProgressIndicator({
+class _FlipperProgressBar extends StatelessWidget {
+  const _FlipperProgressBar({
     required this.iconAsset,
     required this.percent,
     required this.accentColor,
@@ -401,60 +402,27 @@ class _FlipperProgressIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.appColors;
     final currentPercent = percent;
-    final value = currentPercent == null
-        ? null
-        : currentPercent.clamp(0.0001, 1.0).toDouble();
-    final text =
-        currentPercent == null ? '…' : '${(currentPercent * 100).round()}%';
-    return Container(
-      constraints: const BoxConstraints(minHeight: 46),
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: secondColor,
-        borderRadius: BorderRadius.circular(9),
-        border: Border.all(color: accentColor, width: 3),
-      ),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          if (value != null)
-            Align(
-              alignment: Alignment.centerLeft,
-              child: FractionallySizedBox(
-                widthFactor: value,
-                heightFactor: 1,
-                child: ColoredBox(color: accentColor),
-              ),
-            ),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Padding(
-              padding: const EdgeInsets.all(8),
-              child: SvgPicture.asset(
-                iconAsset,
-                width: 28,
-                height: 28,
-              ),
-            ),
+    final hasPercent = currentPercent != null;
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        ProgressButton(
+          text: hasPercent ? '' : '…',
+          color: accentColor,
+          progressColor: accentColor,
+          progress: hasPercent ? currentPercent.clamp(0.0, 1.0) : null,
+          indeterminate: !hasPercent,
+          showPercent: hasPercent,
+          height: 46,
+        ),
+        Positioned(
+          left: 8,
+          child: IgnorePointer(
+            child: SvgPicture.asset(iconAsset, width: 28, height: 28),
           ),
-          Padding(
-            padding: const EdgeInsets.only(top: 5, bottom: 6),
-            child: Text(
-              text,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: colors.onAccent,
-                fontSize: 40,
-                fontWeight: FontWeight.w700,
-                fontFamily: 'FlipperBold',
-                height: 1,
-              ),
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

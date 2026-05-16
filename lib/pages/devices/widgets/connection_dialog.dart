@@ -202,7 +202,6 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
                   minHeight: 20,
                 ),
                 iconSize: 20,
-                splashRadius: 14,
                 color: colors.accent,
                 icon: const Icon(Icons.refresh),
               ),

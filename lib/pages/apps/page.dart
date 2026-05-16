@@ -116,7 +116,7 @@ class _AppsPageState extends State<AppsPage> {
           Row(
             children: [
               Text(
-                'Apps',
+                'Apps catalog',
                 style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.w800,

@@ -323,13 +323,23 @@ ThemeData buildAppTheme(FirmwareEntry? firmware) {
     onSurface: colors.textPrimary,
   );
   return ThemeData(
-    useMaterial3: false,
+    useMaterial3: true,
     scaffoldBackgroundColor: colors.background,
     colorScheme: colorScheme,
     dividerColor: colors.divider,
     dialogTheme: DialogThemeData(backgroundColor: colors.dialogBackground),
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(foregroundColor: colors.accent),
+    ),
+    iconButtonTheme: IconButtonThemeData(
+      style: IconButton.styleFrom(
+        iconSize: 20,
+        minimumSize: const Size.square(40),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+      ),
     ),
     progressIndicatorTheme: ProgressIndicatorThemeData(color: colors.accent),
     extensions: [colors],
