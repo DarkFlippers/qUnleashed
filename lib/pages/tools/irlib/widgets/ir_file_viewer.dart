@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
@@ -42,20 +45,50 @@ class IrFileViewer extends StatefulWidget {
 }
 
 class _IrFileViewerState extends State<IrFileViewer> {
+  final FlipperClient _client = FlipperOneClient().get();
   bool _sending = false;
+  bool _connected = false;
   double _sendProgress = 0;
   final ScrollController _viewScroll = ScrollController();
+  StreamSubscription<FlipperConnectionState>? _connectionSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _connected = widget.isConnected && _client.isConnected;
+    _connectionSub = _client.connectionStream.listen(_onConnectionState);
+  }
+
+  @override
+  void didUpdateWidget(covariant IrFileViewer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isConnected != widget.isConnected) {
+      _connected = widget.isConnected && _client.isConnected;
+    }
+  }
 
   @override
   void dispose() {
+    _connectionSub?.cancel();
     _viewScroll.dispose();
     super.dispose();
+  }
+
+  void _onConnectionState(FlipperConnectionState state) {
+    if (!mounted) return;
+    setState(() {
+      _connected = state.connected;
+      if (!state.connected) {
+        _sending = false;
+        _sendProgress = 0;
+      }
+    });
   }
 
   Future<void> _send() async {
     final bytes = widget.bytes;
     if (bytes == null) return;
-    if (!widget.isConnected) {
+    if (!_connected) {
       context.showNotification(
         'Connect a Flipper first',
         type: QNotificationType.warning,

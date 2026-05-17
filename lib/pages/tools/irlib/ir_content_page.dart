@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flipperlib/flipperlib.dart';
@@ -62,11 +63,21 @@ class _IrContentPageState extends State<IrContentPage> {
       onSend: ({required bytes, required onProgress}) async {
         final fileName = _safeName(widget.fileName);
         try {
-          await _client.storageWriteChunked(
-            '/ext/infrared/$fileName',
-            bytes,
-            onProgress: onProgress,
-          );
+          final disconnected = Completer<void>();
+          late final StreamSubscription<FlipperConnectionState> sub;
+          sub = _client.connectionStream.listen((state) {
+            if (!state.connected && !disconnected.isCompleted) {
+              disconnected.completeError(StateError('Disconnected'));
+            }
+          });
+          await Future.any<void>([
+            _client.storageWriteChunked(
+              '/ext/infrared/$fileName',
+              bytes,
+              onProgress: onProgress,
+            ),
+            disconnected.future,
+          ]).whenComplete(sub.cancel);
           return true;
         } catch (e) {
           LogService.log('[IRBackend] send $fileName failed: $e');
