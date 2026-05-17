@@ -270,11 +270,21 @@ class IrLibController extends ChangeNotifier {
     try {
       final fileName = _archiveFileName(entry.name);
       final remotePath = '/ext/infrared/$fileName';
-      await _client.storageWriteChunked(
-        remotePath,
-        bytes,
-        onProgress: onProgress,
-      );
+      final disconnected = Completer<void>();
+      late final StreamSubscription<FlipperConnectionState> sub;
+      sub = _client.connectionStream.listen((state) {
+        if (!state.connected && !disconnected.isCompleted) {
+          disconnected.completeError(StateError('Disconnected'));
+        }
+      });
+      await Future.any<void>([
+        _client.storageWriteChunked(
+          remotePath,
+          bytes,
+          onProgress: onProgress,
+        ),
+        disconnected.future,
+      ]).whenComplete(sub.cancel);
       return true;
     } catch (e) {
       _error = '$e';
