@@ -1,0 +1,73 @@
+name: Android prerelease
+
+on:
+  push:
+    tags:
+      - "*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-prerelease-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  guard:
+    name: Check GitHub server
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cancel outside github.com
+        if: ${{ github.server_url != 'https://github.com' }}
+        run: |
+          echo "Unsupported GitHub server: ${GITHUB_SERVER_URL}"
+          exit 1
+
+      - name: Confirm github.com
+        if: ${{ github.server_url == 'https://github.com' }}
+        run: echo "Running on ${{ github.server_url }}"
+
+  build-and-publish:
+    name: Build Android release and publish prerelease
+    needs: guard
+    if: ${{ github.server_url == 'https://github.com' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Build Android release APK
+        run: flutter build apk --release
+
+      - name: Prepare release asset
+        run: |
+          mkdir -p dist
+          cp build/app/outputs/flutter-apk/app-release.apk "dist/qunleashed-${GITHUB_REF_NAME}.apk"
+
+      - name: Publish GitHub prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          prerelease: true
+          generate_release_notes: true
+          files: dist/qunleashed-${{ github.ref_name }}.apk
