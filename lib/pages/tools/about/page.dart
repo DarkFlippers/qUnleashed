@@ -35,8 +35,8 @@ class AboutPage extends StatelessWidget {
       icon: Icons.send,
       color: Color(0xFF2E83A8),
       title: 'Telegram Community (RU)',
-      subtitle: '@flipperzero_unofficial_rul',
-      url: 'https://t.me/flipperzero_unofficial_rul',
+      subtitle: '@flipperzero_unofficial_ru',
+      url: 'https://t.me/flipperzero_unofficial_ru',
     ),
     _AboutLink(
       icon: Icons.forum,
