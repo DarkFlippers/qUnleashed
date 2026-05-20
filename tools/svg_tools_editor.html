@@ -1,0 +1,768 @@
+<!doctype html>
+<html lang="ru">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pixel SVG 64×64</title>
+  <style>
+    :root {
+      --bg: #101114;
+      --panel: #181b20;
+      --panel2: #20242b;
+      --line: #343a44;
+      --text: #e8e8e8;
+      --muted: #9ca3af;
+      --accent: #d6d6d6;
+      --active: #3a414d;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      height: 100%;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.35 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      display: grid;
+      place-items: center;
+      user-select: none;
+    }
+
+    .app {
+      width: min(1100px, calc(100vw - 24px));
+      display: grid;
+      grid-template-columns: minmax(420px, 1fr) 300px;
+      gap: 14px;
+      align-items: start;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      overflow: hidden;
+      box-shadow: 0 18px 55px rgba(0, 0, 0, .32);
+    }
+
+    .top {
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .title {
+      font-size: 15px;
+      font-weight: 650;
+      letter-spacing: -.015em;
+      white-space: nowrap;
+    }
+
+    .mini {
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .canvasBox {
+      padding: 14px;
+      display: grid;
+      place-items: center;
+    }
+
+    canvas {
+      width: min(100%, 704px);
+      aspect-ratio: 1;
+      display: block;
+      background: #0d0f12;
+      border-radius: 16px;
+      image-rendering: pixelated;
+      cursor: crosshair;
+      touch-action: none;
+    }
+
+    .side {
+      display: grid;
+      gap: 14px;
+    }
+
+    .controls {
+      padding: 14px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .toolGrid,
+    .actionGrid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+
+    .row {
+      display: grid;
+      gap: 8px;
+    }
+
+    .rangeRow {
+      display: grid;
+      grid-template-columns: 1fr 42px;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .rangeLabel {
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+    }
+
+    .value {
+      color: var(--muted);
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    button {
+      width: 100%;
+      border: 1px solid #6a7280;
+      background: #2b3038;
+      color: var(--text);
+      border-radius: 13px;
+      padding: 11px 12px;
+      font: inherit;
+      font-weight: 650;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #323844;
+    }
+
+    button:active {
+      transform: translateY(1px);
+    }
+
+    button.active {
+      background: var(--active);
+      border-color: #d6d6d6;
+    }
+
+    button:disabled {
+      opacity: .45;
+      cursor: default;
+    }
+
+    button.primary {
+      background: #3a414d;
+      border-color: #d6d6d6;
+    }
+
+    button.primary:hover {
+      background: #454d5a;
+    }
+
+    .previewWrap {
+      padding: 14px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .preview {
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #0d0f12;
+      padding: 8px;
+    }
+
+    .previewName {
+      color: var(--muted);
+      font-size: 12px;
+      margin: 0 0 7px;
+      text-align: center;
+    }
+
+    .previewSvg {
+      display: grid;
+      place-items: center;
+      aspect-ratio: 1;
+    }
+
+    .previewSvg svg {
+      width: 100%;
+      height: 100%;
+      image-rendering: pixelated;
+    }
+
+    .drop {
+      outline: 2px solid #d6d6d6;
+      outline-offset: -6px;
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: 12px;
+      text-align: center;
+    }
+
+    @media (max-width: 900px) {
+      body {
+        place-items: start center;
+        padding: 12px 0;
+      }
+
+      .app {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <main class="app" id="app">
+    <section class="card">
+      <div class="top">
+        <div class="title">SVG 64×64</div>
+        <div class="mini" id="modeLabel">кисть</div>
+      </div>
+      <div class="canvasBox">
+        <canvas id="canvas" width="704" height="704"></canvas>
+      </div>
+    </section>
+
+    <aside class="side">
+      <section class="card">
+        <div class="controls">
+          <div class="toolGrid">
+            <button id="brushBtn" type="button">Кисть</button>
+            <button id="eraserBtn" type="button">Ластик</button>
+          </div>
+
+          <div class="actionGrid">
+            <button id="undoBtn" type="button">Назад</button>
+            <button id="redoBtn" type="button">Вперёд</button>
+            <button id="clearBtn" type="button">Очистить</button>
+            <button id="templateBtn" type="button">Шаблон</button>
+            <button id="importBtn" type="button">Импорт SVG</button>
+            <button id="saveBtn" class="primary" type="button">Сохранить dark + light</button>
+          </div>
+
+          <div class="row">
+            <div class="rangeLabel">Размер</div>
+            <div class="rangeRow">
+              <input id="brushSize" type="range" min="1" max="8" value="1" />
+              <div class="value" id="brushValue">1</div>
+            </div>
+          </div>
+
+          <input id="fileInput" type="file" accept=".svg,image/svg+xml" hidden />
+          <div class="hint">B · E · Ctrl+Z · Ctrl+Y · drag&drop</div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="previewWrap">
+          <div class="preview">
+            <div class="previewName">dark</div>
+            <div class="previewSvg" id="darkPreview"></div>
+          </div>
+          <div class="preview">
+            <div class="previewName">light</div>
+            <div class="previewSvg" id="lightPreview"></div>
+          </div>
+        </div>
+      </section>
+    </aside>
+  </main>
+
+  <script>
+    const GRID = 64;
+    const DRAW_SCALE = 11;
+    const DARK_CONTENT = '#D6D6D6';
+    const DARK_FRAME = '#616161';
+    const LIGHT_CONTENT = '#000000';
+    const LIGHT_FRAME = '#D6D6D6';
+
+    const CLIP_D = 'M8,0L56,0A8,8 0,0 1,64 8L64,56A8,8 0,0 1,56 64L8,64A8,8 0,0 1,0 56L0,8A8,8 0,0 1,8 0z';
+    const FRAME_D = 'M8,0.5L56,0.5A7.5,7.5 0,0 1,63.5 8L63.5,56A7.5,7.5 0,0 1,56 63.5L8,63.5A7.5,7.5 0,0 1,0.5 56L0.5,8A7.5,7.5 0,0 1,8 0.5z';
+
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const app = document.getElementById('app');
+    const saveBtn = document.getElementById('saveBtn');
+    const importBtn = document.getElementById('importBtn');
+    const fileInput = document.getElementById('fileInput');
+    const brushBtn = document.getElementById('brushBtn');
+    const eraserBtn = document.getElementById('eraserBtn');
+    const undoBtn = document.getElementById('undoBtn');
+    const redoBtn = document.getElementById('redoBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const templateBtn = document.getElementById('templateBtn');
+    const brushSize = document.getElementById('brushSize');
+    const brushValue = document.getElementById('brushValue');
+    const modeLabel = document.getElementById('modeLabel');
+    const darkPreview = document.getElementById('darkPreview');
+    const lightPreview = document.getElementById('lightPreview');
+
+    let pixels = new Uint8Array(GRID * GRID);
+    let drawing = false;
+    let erase = false;
+    let mode = 'brush';
+    let lastCell = null;
+    let history = [];
+    let redo = [];
+
+    function index(x, y) { return y * GRID + x; }
+    function clonePixels() { return new Uint8Array(pixels); }
+
+    function pushHistory() {
+      history.push(clonePixels());
+      if (history.length > 80) history.shift();
+      redo.length = 0;
+      syncButtons();
+    }
+
+    function restoreFrom(stackFrom, stackTo) {
+      if (!stackFrom.length) return;
+      stackTo.push(clonePixels());
+      pixels = stackFrom.pop();
+      renderAll();
+      syncButtons();
+    }
+
+    function syncButtons() {
+      brushBtn.classList.toggle('active', mode === 'brush');
+      eraserBtn.classList.toggle('active', mode === 'eraser');
+      undoBtn.disabled = history.length === 0;
+      redoBtn.disabled = redo.length === 0;
+    }
+
+    function setMode(next) {
+      mode = next;
+      modeLabel.textContent = mode === 'eraser' ? 'ластик' : 'кисть';
+      syncButtons();
+    }
+
+    function drawTemplate() {
+      pixels.fill(0);
+
+      const rects = [
+        [55, 20, 1, 24], [38, 18, 1, 31], [41, 18, 1, 31], [45, 21, 1, 12], [52, 21, 1, 12], [46, 20, 6, 1],
+        [46, 33, 6, 1], [40, 40, 1, 4], [39, 16, 1, 2], [40, 15, 1, 1], [41, 14, 1, 1], [42, 13, 1, 1],
+        [43, 12, 6, 1], [46, 13, 1, 1], [45, 14, 1, 1], [44, 15, 1, 1], [43, 16, 1, 1], [42, 17, 1, 1],
+        [49, 13, 1, 1], [50, 14, 1, 1], [51, 15, 1, 1], [52, 16, 1, 1], [53, 17, 1, 1], [54, 18, 1, 2],
+        [35, 29, 3, 6], [34, 27, 1, 10], [33, 28, 1, 8], [32, 29, 1, 6], [31, 30, 1, 4], [30, 31, 1, 2],
+        [46, 38, 1, 4], [52, 38, 1, 4], [49, 39, 1, 2], [47, 42, 1, 1], [51, 42, 1, 1], [48, 43, 3, 1],
+        [48, 36, 3, 1], [47, 37, 1, 1], [51, 37, 1, 1], [45, 36, 1, 1], [46, 45, 1, 1], [45, 46, 1, 1],
+        [47, 46, 1, 1], [46, 47, 1, 1], [42, 49, 1, 1], [39, 49, 1, 1], [40, 50, 10, 1], [54, 44, 1, 2],
+        [53, 46, 1, 1], [52, 47, 1, 1], [51, 48, 1, 1], [50, 49, 1, 1], [10, 15, 14, 1], [9, 16, 3, 1],
+        [9, 17, 2, 31], [25, 23, 2, 20], [13, 23, 2, 19], [15, 37, 2, 7], [17, 38, 6, 6], [23, 37, 2, 7],
+        [24, 36, 1, 1], [15, 36, 1, 1], [13, 43, 1, 2], [22, 45, 1, 1], [12, 45, 1, 1], [15, 45, 1, 1],
+        [23, 47, 1, 1], [24, 46, 1, 1], [25, 45, 1, 1], [26, 43, 1, 2], [13, 18, 1, 2], [12, 17, 1, 1],
+        [15, 17, 1, 1], [22, 17, 1, 1], [24, 16, 1, 1], [25, 17, 1, 1], [26, 18, 1, 2], [24, 23, 1, 5],
+        [15, 23, 1, 5], [16, 23, 1, 4], [23, 23, 1, 4], [17, 23, 6, 3], [17, 27, 6, 1], [17, 36, 6, 1],
+        [15, 29, 2, 6], [17, 30, 2, 4], [23, 29, 2, 6], [21, 30, 2, 4], [22, 35, 2, 1], [16, 35, 2, 1],
+        [18, 34, 4, 1], [18, 29, 4, 1], [19, 30, 2, 1], [19, 33, 2, 1], [16, 28, 2, 1], [22, 28, 2, 1],
+        [10, 48, 2, 1], [11, 46, 1, 2], [12, 47, 11, 2], [14, 42, 1, 1], [15, 19, 10, 1], [23, 21, 4, 1],
+        [13, 21, 4, 1], [14, 20, 13, 1], [13, 22, 14, 1]
+      ];
+
+      for (const [x, y, w, h] of rects) {
+        for (let yy = y; yy < y + h; yy++) {
+          for (let xx = x; xx < x + w; xx++) {
+            if (xx >= 0 && xx < GRID && yy >= 0 && yy < GRID) {
+              pixels[index(xx, yy)] = 1;
+            }
+          }
+        }
+      }
+    }
+
+    function paintAtCell(cx, cy, value) {
+      const size = Number(brushSize.value);
+      const half = Math.floor(size / 2);
+      let changed = false;
+      for (let y = cy - half; y < cy - half + size; y++) {
+        for (let x = cx - half; x < cx - half + size; x++) {
+          if (x < 0 || x >= GRID || y < 0 || y >= GRID) continue;
+          const i = index(x, y);
+          if (pixels[i] !== value) {
+            pixels[i] = value;
+            changed = true;
+          }
+        }
+      }
+      return changed;
+    }
+
+    function cellFromEvent(ev) {
+      const r = canvas.getBoundingClientRect();
+      const x = Math.floor(((ev.clientX - r.left) / r.width) * GRID);
+      const y = Math.floor(((ev.clientY - r.top) / r.height) * GRID);
+      return {
+        x: Math.max(0, Math.min(GRID - 1, x)),
+        y: Math.max(0, Math.min(GRID - 1, y))
+      };
+    }
+
+    function strokeCells(a, b, value) {
+      let changed = false;
+      const dx = Math.abs(b.x - a.x);
+      const dy = Math.abs(b.y - a.y);
+      const sx = a.x < b.x ? 1 : -1;
+      const sy = a.y < b.y ? 1 : -1;
+      let err = dx - dy;
+      let x = a.x;
+      let y = a.y;
+      while (true) {
+        changed = paintAtCell(x, y, value) || changed;
+        if (x === b.x && y === b.y) break;
+        const e2 = err * 2;
+        if (e2 > -dy) { err -= dy; x += sx; }
+        if (e2 < dx) { err += dx; y += sy; }
+      }
+      if (changed) renderAll();
+    }
+
+    function drawRoundedClipOnCanvas() {
+      ctx.beginPath();
+      ctx.moveTo(8 * DRAW_SCALE, 0);
+      ctx.lineTo(56 * DRAW_SCALE, 0);
+      ctx.arcTo(64 * DRAW_SCALE, 0, 64 * DRAW_SCALE, 8 * DRAW_SCALE, 8 * DRAW_SCALE);
+      ctx.lineTo(64 * DRAW_SCALE, 56 * DRAW_SCALE);
+      ctx.arcTo(64 * DRAW_SCALE, 64 * DRAW_SCALE, 56 * DRAW_SCALE, 64 * DRAW_SCALE, 8 * DRAW_SCALE);
+      ctx.lineTo(8 * DRAW_SCALE, 64 * DRAW_SCALE);
+      ctx.arcTo(0, 64 * DRAW_SCALE, 0, 56 * DRAW_SCALE, 8 * DRAW_SCALE);
+      ctx.lineTo(0, 8 * DRAW_SCALE);
+      ctx.arcTo(0, 0, 8 * DRAW_SCALE, 0, 8 * DRAW_SCALE);
+      ctx.closePath();
+    }
+
+    function drawFrameOnCanvas() {
+      ctx.save();
+      ctx.scale(DRAW_SCALE, DRAW_SCALE);
+      ctx.beginPath();
+      ctx.moveTo(8, 0.5);
+      ctx.lineTo(56, 0.5);
+      ctx.arcTo(63.5, 0.5, 63.5, 8, 7.5);
+      ctx.lineTo(63.5, 56);
+      ctx.arcTo(63.5, 63.5, 56, 63.5, 7.5);
+      ctx.lineTo(8, 63.5);
+      ctx.arcTo(0.5, 63.5, 0.5, 56, 7.5);
+      ctx.lineTo(0.5, 8);
+      ctx.arcTo(0.5, 0.5, 8, 0.5, 7.5);
+      ctx.closePath();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = DARK_FRAME;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function renderEditor() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#0d0f12';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.save();
+      drawRoundedClipOnCanvas();
+      ctx.clip();
+      ctx.fillStyle = '#15181d';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.fillStyle = DARK_CONTENT;
+      for (let y = 0; y < GRID; y++) {
+        for (let x = 0; x < GRID; x++) {
+          if (pixels[index(x, y)]) ctx.fillRect(x * DRAW_SCALE, y * DRAW_SCALE, DRAW_SCALE, DRAW_SCALE);
+        }
+      }
+
+      ctx.strokeStyle = 'rgba(214,214,214,.09)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= GRID; i++) {
+        const p = i * DRAW_SCALE + .5;
+        ctx.beginPath();
+        ctx.moveTo(p, 0);
+        ctx.lineTo(p, canvas.height);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, p);
+        ctx.lineTo(canvas.width, p);
+        ctx.stroke();
+      }
+      ctx.restore();
+      drawFrameOnCanvas();
+    }
+
+    function bitString() {
+      let out = '';
+      for (let i = 0; i < pixels.length; i++) out += pixels[i] ? '1' : '0';
+      return out;
+    }
+
+    function pixelsToPath() {
+      let d = '';
+      for (let y = 0; y < GRID; y++) {
+        let x = 0;
+        while (x < GRID) {
+          while (x < GRID && !pixels[index(x, y)]) x++;
+          if (x >= GRID) break;
+          const start = x;
+          while (x < GRID && pixels[index(x, y)]) x++;
+          const w = x - start;
+          d += `M${start},${y}h${w}v1h-${w}z`;
+        }
+      }
+      return d || 'M0,0Z';
+    }
+
+    function svgString(contentColor, frameColor) {
+      const bits = bitString();
+      const path = pixelsToPath();
+      return `<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">\n` +
+        `  <defs><clipPath id="clip0"><path d="${CLIP_D}"/></clipPath></defs>\n` +
+        `  <g clip-path="url(#clip0)">\n` +
+        `    <path d="${path}" fill="${contentColor}" fill-rule="evenodd" clip-rule="evenodd" data-pixel-editor="64x64" data-bits="${bits}"/>\n` +
+        `  </g>\n` +
+        `  <path stroke-width="1" d="${FRAME_D}" fill="#00000000" stroke="${frameColor}"/>\n` +
+        `</svg>\n`;
+    }
+
+    function renderPreviews() {
+      darkPreview.innerHTML = svgString(DARK_CONTENT, DARK_FRAME);
+      lightPreview.innerHTML = svgString(LIGHT_CONTENT, LIGHT_FRAME);
+    }
+
+    function renderAll() {
+      renderEditor();
+      renderPreviews();
+      syncButtons();
+    }
+
+    function download(filename, content) {
+      const blob = new Blob([content], { type: 'image/svg+xml;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      requestAnimationFrame(() => {
+        URL.revokeObjectURL(a.href);
+        a.remove();
+      });
+    }
+
+    function saveBoth() {
+      download('pixel_icon_dark.svg', svgString(DARK_CONTENT, DARK_FRAME));
+      setTimeout(() => download('pixel_icon_light.svg', svgString(LIGHT_CONTENT, LIGHT_FRAME)), 120);
+    }
+
+    function importSvgText(text) {
+      const doc = new DOMParser().parseFromString(text, 'image/svg+xml');
+      const parseError = doc.querySelector('parsererror');
+      if (parseError) return false;
+
+      const encodedNode = doc.querySelector('[data-pixel-editor="64x64"][data-bits]');
+      if (encodedNode) {
+        const bits = encodedNode.getAttribute('data-bits') || '';
+        if (bits.length !== GRID * GRID) return false;
+        pushHistory();
+        for (let i = 0; i < bits.length; i++) pixels[i] = bits[i] === '1' ? 1 : 0;
+        renderAll();
+        return true;
+      }
+
+      return importRegularSvgPaths(doc);
+    }
+
+    function importRegularSvgPaths(doc) {
+      const ns = 'http://www.w3.org/2000/svg';
+      const sourcePaths = Array.from(doc.querySelectorAll('path')).filter(path => {
+        if (path.closest('defs')) return false;
+        const d = path.getAttribute('d');
+        if (!d) return false;
+        const stroke = (path.getAttribute('stroke') || '').trim();
+        const fill = (path.getAttribute('fill') || '').trim().toLowerCase();
+        if (stroke && stroke !== 'none' && stroke !== 'transparent') return false;
+        if (!fill || fill === 'none' || fill === '#00000000' || fill === 'transparent') return false;
+        return true;
+      });
+
+      if (!sourcePaths.length) return false;
+
+      const scratch = document.createElementNS(ns, 'svg');
+      scratch.setAttribute('viewBox', '0 0 64 64');
+      scratch.setAttribute('width', '64');
+      scratch.setAttribute('height', '64');
+      scratch.style.position = 'fixed';
+      scratch.style.left = '-10000px';
+      scratch.style.top = '-10000px';
+      scratch.style.width = '64px';
+      scratch.style.height = '64px';
+      scratch.style.pointerEvents = 'none';
+
+      const imported = sourcePaths.map(src => {
+        const p = document.createElementNS(ns, 'path');
+        p.setAttribute('d', src.getAttribute('d'));
+        p.setAttribute('fill', '#000');
+        p.setAttribute('fill-rule', src.getAttribute('fill-rule') || 'nonzero');
+        p.setAttribute('clip-rule', src.getAttribute('clip-rule') || 'nonzero');
+        scratch.appendChild(p);
+        return p;
+      });
+
+      document.body.appendChild(scratch);
+
+      const next = new Uint8Array(GRID * GRID);
+      const samples = [
+        [0.5, 0.5],
+        [0.2, 0.2], [0.8, 0.2], [0.2, 0.8], [0.8, 0.8],
+        [0.5, 0.2], [0.8, 0.5], [0.5, 0.8], [0.2, 0.5]
+      ];
+
+      let found = 0;
+      for (let y = 0; y < GRID; y++) {
+        for (let x = 0; x < GRID; x++) {
+          let hit = false;
+          for (const [ox, oy] of samples) {
+            const point = new DOMPoint(x + ox, y + oy);
+            for (const path of imported) {
+              if (path.isPointInFill(point)) {
+                hit = true;
+                break;
+              }
+            }
+            if (hit) break;
+          }
+          if (hit) {
+            next[index(x, y)] = 1;
+            found++;
+          }
+        }
+      }
+
+      scratch.remove();
+      if (!found) return false;
+
+      pushHistory();
+      pixels = next;
+      renderAll();
+      return true;
+    }
+
+    canvas.addEventListener('contextmenu', ev => ev.preventDefault());
+
+    canvas.addEventListener('pointerdown', ev => {
+      canvas.setPointerCapture(ev.pointerId);
+      pushHistory();
+      drawing = true;
+      erase = ev.button === 2 || mode === 'eraser';
+      const c = cellFromEvent(ev);
+      lastCell = c;
+      strokeCells(c, c, erase ? 0 : 1);
+    });
+
+    canvas.addEventListener('pointermove', ev => {
+      if (!drawing) return;
+      const c = cellFromEvent(ev);
+      strokeCells(lastCell, c, erase ? 0 : 1);
+      lastCell = c;
+    });
+
+    window.addEventListener('pointerup', () => {
+      drawing = false;
+      lastCell = null;
+    });
+
+    brushSize.addEventListener('input', () => {
+      brushValue.textContent = brushSize.value;
+    });
+
+    brushBtn.addEventListener('click', () => setMode('brush'));
+    eraserBtn.addEventListener('click', () => setMode('eraser'));
+    undoBtn.addEventListener('click', () => restoreFrom(history, redo));
+    redoBtn.addEventListener('click', () => restoreFrom(redo, history));
+    clearBtn.addEventListener('click', () => {
+      pushHistory();
+      pixels.fill(0);
+      renderAll();
+    });
+    templateBtn.addEventListener('click', () => {
+      pushHistory();
+      drawTemplate();
+      renderAll();
+    });
+    saveBtn.addEventListener('click', saveBoth);
+    importBtn.addEventListener('click', () => fileInput.click());
+
+    function readSvgFile(file) {
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => importSvgText(String(reader.result || ''));
+      reader.readAsText(file);
+    }
+
+    fileInput.addEventListener('change', () => {
+      readSvgFile(fileInput.files && fileInput.files[0]);
+      fileInput.value = '';
+    });
+
+    window.addEventListener('keydown', ev => {
+      const key = ev.key.toLowerCase();
+      if ((ev.ctrlKey || ev.metaKey) && key === 'z') {
+        ev.preventDefault();
+        restoreFrom(history, redo);
+      } else if ((ev.ctrlKey || ev.metaKey) && (key === 'y' || (ev.shiftKey && key === 'z'))) {
+        ev.preventDefault();
+        restoreFrom(redo, history);
+      } else if (key === 'b') {
+        setMode('brush');
+      } else if (key === 'e') {
+        setMode('eraser');
+      }
+    });
+
+    window.addEventListener('dragover', ev => {
+      ev.preventDefault();
+      if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'copy';
+      app.classList.add('drop');
+    });
+
+    window.addEventListener('dragleave', ev => {
+      if (ev.target === document || ev.target === document.documentElement || ev.target === document.body) {
+        app.classList.remove('drop');
+      }
+    });
+
+    window.addEventListener('drop', ev => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      app.classList.remove('drop');
+      const file = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0];
+      readSvgFile(file);
+    });
+
+    drawTemplate();
+    brushValue.textContent = brushSize.value;
+    setMode('brush');
+    renderAll();
+  </script>
+</body>
+
+</html>
