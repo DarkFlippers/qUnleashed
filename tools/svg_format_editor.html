@@ -1,0 +1,821 @@
+<!doctype html>
+<html lang="ru">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pixel SVG Editor</title>
+  <style>
+    :root {
+      --bg: #101114;
+      --panel: #181b20;
+      --panel2: #20242b;
+      --line: #343a44;
+      --text: #e8e8e8;
+      --muted: #9ca3af;
+      --accent: #d6d6d6;
+      --active: #3a414d;
+      --danger: #7f1d1d;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body { height: 100%; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.35 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      display: grid;
+      place-items: center;
+      user-select: none;
+    }
+
+    .app {
+      width: min(1120px, calc(100vw - 24px));
+      display: grid;
+      grid-template-columns: minmax(420px, 1fr) 330px;
+      gap: 14px;
+      align-items: start;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      overflow: hidden;
+      box-shadow: 0 18px 55px rgba(0, 0, 0, .32);
+    }
+
+    .top {
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .title {
+      font-size: 15px;
+      font-weight: 650;
+      letter-spacing: -.015em;
+      white-space: nowrap;
+    }
+
+    .mini {
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .canvasBox {
+      padding: 14px;
+      display: grid;
+      place-items: center;
+    }
+
+    canvas {
+      max-width: min(100%, 704px);
+      width: 100%;
+      height: auto;
+      display: block;
+      background: #0d0f12;
+      border-radius: 16px;
+      image-rendering: pixelated;
+      cursor: crosshair;
+      touch-action: none;
+    }
+
+    .side { display: grid; gap: 14px; }
+
+    .controls {
+      padding: 14px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .toolGrid, .actionGrid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+
+    .actionGrid .wide { grid-column: 1 / -1; }
+
+    .row { display: grid; gap: 8px; }
+
+    .rangeRow {
+      display: grid;
+      grid-template-columns: 1fr 42px;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .rangeLabel {
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+    }
+
+    select {
+      width: 100%;
+      border: 1px solid #6a7280;
+      background: #2b3038;
+      color: var(--text);
+      border-radius: 13px;
+      padding: 11px 12px;
+      font: inherit;
+      font-weight: 600;
+      outline: none;
+    }
+
+    .value {
+      color: var(--muted);
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    button {
+      width: 100%;
+      border: 1px solid #6a7280;
+      background: #2b3038;
+      color: var(--text);
+      border-radius: 13px;
+      padding: 11px 12px;
+      font: inherit;
+      font-weight: 650;
+      cursor: pointer;
+    }
+
+    button:hover { background: #323844; }
+    button:active { transform: translateY(1px); }
+    button.active { background: var(--active); border-color: #d6d6d6; }
+    button:disabled { opacity: .45; cursor: default; }
+    button.primary { background: #3a414d; border-color: #d6d6d6; }
+    button.primary:hover { background: #454d5a; }
+
+    .previewWrap {
+      padding: 14px;
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
+    }
+
+    .preview {
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #0d0f12;
+      padding: 8px;
+    }
+
+    .preview.lightBg { background: #ededed; }
+
+    .previewName {
+      color: var(--muted);
+      font-size: 12px;
+      margin: 0 0 7px;
+      text-align: center;
+    }
+
+    .preview.lightBg .previewName { color: #404040; }
+
+    .previewSvg {
+      display: grid;
+      place-items: center;
+      aspect-ratio: 1;
+    }
+
+    .previewSvg svg {
+      width: 100%;
+      height: 100%;
+      image-rendering: pixelated;
+    }
+
+    .drop { outline: 2px solid #d6d6d6; outline-offset: -6px; }
+
+    .hint {
+      color: var(--muted);
+      font-size: 12px;
+      text-align: center;
+    }
+
+    .status {
+      min-height: 18px;
+      color: var(--muted);
+      font-size: 12px;
+      text-align: center;
+      overflow-wrap: anywhere;
+    }
+
+    .status.error { color: #fca5a5; }
+
+    @media (max-width: 900px) {
+      body { place-items: start center; padding: 12px 0; }
+      .app { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+
+<body>
+  <main class="app" id="app">
+    <section class="card">
+      <div class="top">
+        <div class="title" id="titleLabel">SVG</div>
+        <div class="mini" id="modeLabel">кисть</div>
+      </div>
+      <div class="canvasBox">
+        <canvas id="canvas"></canvas>
+      </div>
+    </section>
+
+    <aside class="side">
+      <section class="card">
+        <div class="controls">
+          <div class="row">
+            <div class="rangeLabel">Шаблон из загруженных SVG</div>
+            <select id="templateSelect"></select>
+          </div>
+
+          <div class="toolGrid">
+            <button id="brushBtn" type="button">Кисть</button>
+            <button id="eraserBtn" type="button">Ластик</button>
+          </div>
+
+          <div class="actionGrid">
+            <button id="undoBtn" type="button">Назад</button>
+            <button id="redoBtn" type="button">Вперёд</button>
+            <button id="clearBtn" type="button">Очистить</button>
+            <button id="templateBtn" type="button">Загрузить шаблон</button>
+            <button id="importBtn" type="button">Импорт SVG</button>
+            <button id="saveBtn" class="primary" type="button">Сохранить current + dark + light</button>
+          </div>
+
+          <div class="row">
+            <div class="rangeLabel">Размер кисти</div>
+            <div class="rangeRow">
+              <input id="brushSize" type="range" min="1" max="8" value="1" />
+              <div class="value" id="brushValue">1</div>
+            </div>
+          </div>
+
+          <input id="fileInput" type="file" accept=".svg,image/svg+xml" hidden />
+          <div class="hint">B · E · Ctrl+Z · Ctrl+Y · drag&drop</div>
+          <div class="status" id="statusLabel"></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="previewWrap">
+          <div class="preview">
+            <div class="previewName">current</div>
+            <div class="previewSvg" id="currentPreview"></div>
+          </div>
+          <div class="preview">
+            <div class="previewName">dark</div>
+            <div class="previewSvg" id="darkPreview"></div>
+          </div>
+          <div class="preview lightBg">
+            <div class="previewName">light</div>
+            <div class="previewSvg" id="lightPreview"></div>
+          </div>
+        </div>
+      </section>
+    </aside>
+  </main>
+
+  <script>
+    const TEMPLATES = [{"key": "ic_file", "name": "Файл 32×32", "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 32 32\" width=\"32\" height=\"32\">\n  <path fill=\"currentColor\" fill-rule=\"evenodd\" d=\"M4,0H2V2V4V6V8V10V12V14V16V18V20V22V24V26V28V30V32H4H6H8H10H12H14H16H18H20H22H24H26H28H30V30V28V26V24V22V20V18V16V14V12V10H28V8H26V6H24V4H22V2H20V0H18H16H14H12H10H8H6H4ZM22,4V6H24V8H26V10H24H22H20V8V6V4H22ZM28,28V30H26H24H22H20H18H16H14H12H10H8H6H4V28V26V24V22V20V18V16V14V12V10V8V6V4V2L6,2L8,2L10,2L12,2L14,2L16,2H18V4V6V8V10V12H20H22H24H26H28V14V16V18V20V22V24V26V28Z\"/>\n</svg>\n"}, {"key": "ic_folder", "name": "Папка 32×32", "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 32 32\" width=\"32\" height=\"32\">\n  <path fill=\"currentColor\" fill-rule=\"evenodd\" d=\"M2,3H0V5V7V9V11V13V15V17V19V21V23V25V27V29H2H4H6H8H10H12H14H16H18H20H22H24H26H28H30H32V27V25V23V21V19V17V15V13V11V9H30V7H28H26H24H22H20H18H16H14H12V5H10V3H8H6H4H2ZM4,11H2V9V7V5H4H6H8H10V7H12V9H10H8H6H4V11ZM30,27V25V23V21V19V17V15V13V11H28H26H24H22H20H18H16H14H12H10H8H6H4V13H2V15V17V19V21V23V25V27H4H6H8H10H12H14H16H18H20H22H24H26H28H30Z\"/>\n</svg>\n"}, {"key": "ic_fileformat_badusb", "name": "BadUSB 42×42", "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 42 42\" width=\"42\" height=\"42\">\n  <path fill=\"currentColor\" transform=\"scale(1.5)\" d=\"M 1 0 L 1 2 L 1 24 L 3 24 L 3 28 L 25 28 L 25 24 L 27 24 L 27 2 L 27 0 L 1 0 z M 3 2 L 25 2 L 25 22 L 3 22 L 3 2 z M 9 6 L 9 8 L 7 8 L 7 16 L 9 16 L 9 20 L 11 20 L 11 18 L 13 18 L 13 20 L 15 20 L 15 18 L 17 18 L 17 20 L 19 20 L 19 16 L 21 16 L 21 8 L 19 8 L 19 6 L 9 6 z M 9 10 L 11 10 L 11 12 L 13 12 L 13 14 L 11 14 L 9 14 L 9 10 z M 17 10 L 19 10 L 19 14 L 17 14 L 15 14 L 15 12 L 17 12 L 17 10 z\"/>\n</svg>\n"}, {"key": "ic_fileformat_ibutton", "name": "iButton 42×42", "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 42 42\" width=\"42\" height=\"42\">\n  <path fill=\"currentColor\" d=\"M18,39H15H12H9V42H12H15H18H21V39H18Z\"/>\n  <path fill=\"currentColor\" d=\"M24,36H21V39H24V36Z\"/>\n  <path fill=\"currentColor\" d=\"M9,36H6V39H9V36Z\"/>\n  <path fill=\"currentColor\" d=\"M27,33H24V36H27V33Z\"/>\n  <path fill=\"currentColor\" d=\"M12,33V36H15H18V33H15H12Z\"/>\n  <path fill=\"currentColor\" d=\"M6,33H3V36H6V33Z\"/>\n  <path fill=\"currentColor\" d=\"M21,30H18V33H21V30Z\"/>\n  <path fill=\"currentColor\" d=\"M12,30H9V33H12V30Z\"/>\n  <path fill=\"currentColor\" d=\"M3,30V27V24V21H0V24V27V30V33H3V30Z\"/>\n  <path fill=\"currentColor\" d=\"M24,24H21V27V30H24V27V24Z\"/>\n  <path fill=\"currentColor\" d=\"M9,24H6V27V30H9V27V24Z\"/>\n  <path fill=\"currentColor\" d=\"M27,24V27V30V33H30V30V27V24V21H27V24Z\"/>\n  <path fill=\"currentColor\" d=\"M21,21H18V24H21V21Z\"/>\n  <path fill=\"currentColor\" d=\"M12,21H9V24H12V21Z\"/>\n  <path fill=\"currentColor\" d=\"M33,18H30V21H33V18Z\"/>\n  <path fill=\"currentColor\" d=\"M27,18H24V21H27V18Z\"/>\n  <path fill=\"currentColor\" d=\"M18,21V18H15H12V21H15H18Z\"/>\n  <path fill=\"currentColor\" d=\"M6,18H3V21H6V18Z\"/>\n  <path fill=\"currentColor\" d=\"M36,15H33V18H36V15Z\"/>\n  <path fill=\"currentColor\" d=\"M30,15H27V18H30V15Z\"/>\n  <path fill=\"currentColor\" d=\"M24,15H21V18H24V15Z\"/>\n  <path fill=\"currentColor\" d=\"M9,15H6V18H9V15Z\"/>\n  <path fill=\"currentColor\" d=\"M33,12H30V15H33V12Z\"/>\n  <path fill=\"currentColor\" d=\"M27,12H24V15H27V12Z\"/>\n  <path fill=\"currentColor\" d=\"M15,15H18H21V12H18H15H12H9V15H12H15Z\"/>\n  <path fill=\"currentColor\" d=\"M30,9H27V12H30V9Z\"/>\n  <path fill=\"currentColor\" d=\"M24,9H21V12H24V9Z\"/>\n  <path fill=\"currentColor\" d=\"M27,6H24V9H27V6Z\"/>\n  <path fill=\"currentColor\" d=\"M39,0H36H33H30V3H27V6H30V9H33V6H36V9H33V12H36V15H39V12H42V9V6V3H39V0Z\"/>\n</svg>\n"}, {"key": "ic_fileformat_ir", "name": "Infrared 42×42", "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 42 42\" width=\"42\" height=\"42\">\n  <path fill=\"currentColor\" d=\"M36,39H33V36V33H30V30H27V27H24H21H18H15V30H12V33H9V36V39H6H3H0V42H3H6H9H12H15H18H21H24H27H30H33H36H39H42V39H39H36Z\"/>\n  <path fill=\"currentColor\" d=\"M21,21H24H27V18H24H21H18H15V21H18H21Z\"/>\n  <path fill=\"currentColor\" d=\"M33,12H30V15H33V12Z\"/>\n  <path fill=\"currentColor\" d=\"M12,12H9V15H12V12Z\"/>\n  <path fill=\"currentColor\" d=\"M18,12H21H24H27H30V9H27H24H21H18H15H12V12H15H18Z\"/>\n  <path fill=\"currentColor\" d=\"M42,6H39V9H42V6Z\"/>\n  <path fill=\"currentColor\" d=\"M3,6H0V9H3V6Z\"/>\n  <path fill=\"currentColor\" d=\"M36,6H39V3H36H33V6H36Z\"/>\n  <path fill=\"currentColor\" d=\"M3,3V6H6H9V3H6H3Z\"/>\n  <path fill=\"currentColor\" d=\"M12,3H15H18H21H24H27H30H33V0H30H27H24H21H18H15H12H9V3H12Z\"/>\n</svg>\n"}, {"key": "ic_fileformat_nfc", "name": "NFC 42×42", "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 42 42\" width=\"42\" height=\"42\">\n  <path fill=\"currentColor\" d=\"M36,39H33V42H36V39Z\"/>\n  <path fill=\"currentColor\" d=\"M36,36V39H39V36V33H36V36Z\"/>\n  <path fill=\"currentColor\" d=\"M30,33V30H27V33V36H30V33Z\"/>\n  <path fill=\"currentColor\" d=\"M33,27V24V21V18V15V12H30V15V18V21V24V27V30H33V27Z\"/>\n  <path fill=\"currentColor\" d=\"M6,27H3V30H6V27Z\"/>\n  <path fill=\"currentColor\" d=\"M3,24V21V18H6V21H9V24H12V27H15V30H18H21V27H24V24V21V18V15H21V18V21V24H18H15V21H12V18H9V15H6V12H3V15H0V18V21V24V27H3V24Z\"/>\n  <path fill=\"currentColor\" d=\"M21,12H18V15H21V12Z\"/>\n  <path fill=\"currentColor\" d=\"M39,12V15V18V21V24V27V30V33H42V30V27V24V21V18V15V12V9H39V12Z\"/>\n  <path fill=\"currentColor\" d=\"M36,9H39V6V3H36V6V9Z\"/>\n  <path fill=\"currentColor\" d=\"M30,6H27V9V12H30V9V6Z\"/>\n  <path fill=\"currentColor\" d=\"M36,0H33V3H36V0Z\"/>\n</svg>\n"}, {"key": "ic_fileformat_rf", "name": "RFID 42×42", "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 42 42\" width=\"42\" height=\"42\">\n  <path fill=\"currentColor\" d=\"M18,39H15H12H9V42H12H15H18H21H24V39H21H18Z\"/>\n  <path fill=\"currentColor\" d=\"M27,36H24V39H27V36Z\"/>\n  <path fill=\"currentColor\" d=\"M15,33V36H18H21V33H18H15Z\"/>\n  <path fill=\"currentColor\" d=\"M9,33H6V36V39H9V36V33Z\"/>\n  <path fill=\"currentColor\" d=\"M21,30V33H24V30V27H21V30Z\"/>\n  <path fill=\"currentColor\" d=\"M15,27H12V30V33H15V30V27Z\"/>\n  <path fill=\"currentColor\" d=\"M6,27V24H3V27V30V33H6V30V27Z\"/>\n  <path fill=\"currentColor\" d=\"M21,27V24H18H15V27H18H21Z\"/>\n  <path fill=\"currentColor\" d=\"M27,24V27V30V33V36H30V33V30V27V24V21H27V24Z\"/>\n  <path fill=\"currentColor\" d=\"M24,21H27V18H24H21V21H24Z\"/>\n  <path fill=\"currentColor\" d=\"M9,18H6V21H9V18Z\"/>\n  <path fill=\"currentColor\" d=\"M3,18V15H0V18V21V24H3V21V18Z\"/>\n  <path fill=\"currentColor\" d=\"M15,18H18H21V15H18H15H12V18H15Z\"/>\n  <path fill=\"currentColor\" d=\"M33,15V18H36V15V12H33V15Z\"/>\n  <path fill=\"currentColor\" d=\"M9,15H12V12H9H6H3V15H6H9Z\"/>\n  <path fill=\"currentColor\" d=\"M39,9V12V15V18V21H42V18V15V12V9H39Z\"/>\n  <path fill=\"currentColor\" d=\"M33,9H30V12H33V9Z\"/>\n  <path fill=\"currentColor\" d=\"M39,6H36V9H39V6Z\"/>\n  <path fill=\"currentColor\" d=\"M27,6H24V9H27H30V6H27Z\"/>\n  <path fill=\"currentColor\" d=\"M36,3H33V6H36V3Z\"/>\n  <path fill=\"currentColor\" d=\"M30,0H27H24H21V3H24H27H30H33V0H30Z\"/>\n</svg>\n"}, {"key": "ic_fileformat_sub", "name": "Sub-GHz 42×42", "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 42 42\" width=\"42\" height=\"42\">\n  <path fill=\"currentColor\" d=\"M24,36V33V30V27V24V21H21H18V24V27V30V33V36V39V42H21H24V39V36Z\"/>\n  <path fill=\"currentColor\" d=\"M36,27H33V30H36V27Z\"/>\n  <path fill=\"currentColor\" d=\"M9,27H6V30H9V27Z\"/>\n  <path fill=\"currentColor\" d=\"M39,24H36V27H39V24Z\"/>\n  <path fill=\"currentColor\" d=\"M6,24H3V27H6V24Z\"/>\n  <path fill=\"currentColor\" d=\"M33,21H30V24H33V21Z\"/>\n  <path fill=\"currentColor\" d=\"M12,21H9V24H12V21Z\"/>\n  <path fill=\"currentColor\" d=\"M3,21V18V15V12V9V6H0V9V12V15V18V21V24H3V21Z\"/>\n  <path fill=\"currentColor\" d=\"M30,15V12H27V15V18H30V15Z\"/>\n  <path fill=\"currentColor\" d=\"M9,15V12V9H6V12V15V18V21H9V18V15Z\"/>\n  <path fill=\"currentColor\" d=\"M33,15V18V21H36V18V15V12V9H33V12V15Z\"/>\n  <path fill=\"currentColor\" d=\"M24,12H21H18V15V18H21H24V15V12Z\"/>\n  <path fill=\"currentColor\" d=\"M12,15V18H15V15V12H12V15Z\"/>\n  <path fill=\"currentColor\" d=\"M39,9V12V15V18V21V24H42V21V18V15V12V9V6H39V9Z\"/>\n  <path fill=\"currentColor\" d=\"M33,6H30V9H33V6Z\"/>\n  <path fill=\"currentColor\" d=\"M12,6H9V9H12V6Z\"/>\n  <path fill=\"currentColor\" d=\"M39,3H36V6H39V3Z\"/>\n  <path fill=\"currentColor\" d=\"M6,3H3V6H6V3Z\"/>\n  <path fill=\"currentColor\" d=\"M36,0H33V3H36V0Z\"/>\n  <path fill=\"currentColor\" d=\"M9,0H6V3H9V0Z\"/>\n</svg>\n"}];
+
+    const MAX_CANVAS_SIDE = 704;
+    const DARK_CONTENT = '#D6D6D6';
+    const LIGHT_CONTENT = '#000000';
+    const CURRENT_CONTENT = 'currentColor';
+
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const app = document.getElementById('app');
+    const saveBtn = document.getElementById('saveBtn');
+    const importBtn = document.getElementById('importBtn');
+    const fileInput = document.getElementById('fileInput');
+    const brushBtn = document.getElementById('brushBtn');
+    const eraserBtn = document.getElementById('eraserBtn');
+    const undoBtn = document.getElementById('undoBtn');
+    const redoBtn = document.getElementById('redoBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const templateBtn = document.getElementById('templateBtn');
+    const templateSelect = document.getElementById('templateSelect');
+    const brushSize = document.getElementById('brushSize');
+    const brushValue = document.getElementById('brushValue');
+    const modeLabel = document.getElementById('modeLabel');
+    const titleLabel = document.getElementById('titleLabel');
+    const statusLabel = document.getElementById('statusLabel');
+    const currentPreview = document.getElementById('currentPreview');
+    const darkPreview = document.getElementById('darkPreview');
+    const lightPreview = document.getElementById('lightPreview');
+
+    let gridW = 64;
+    let gridH = 64;
+    let drawScale = 11;
+    let pixels = new Uint8Array(gridW * gridH);
+    let drawing = false;
+    let erase = false;
+    let mode = 'brush';
+    let lastCell = null;
+    let history = [];
+    let redo = [];
+    let currentBaseName = 'pixel_icon';
+
+    function index(x, y) { return y * gridW + x; }
+    function clonePixels() { return new Uint8Array(pixels); }
+
+    function setStatus(text, isError = false) {
+      statusLabel.textContent = text || '';
+      statusLabel.classList.toggle('error', Boolean(isError));
+    }
+
+    function sanitizeName(name) {
+      return String(name || 'pixel_icon')
+        .replace(/\.svg$/i, '')
+        .replace(/[^a-zA-Z0-9_\-]+/g, '_')
+        .replace(/^_+|_+$/g, '') || 'pixel_icon';
+    }
+
+    function snapshot() {
+      return {
+        w: gridW,
+        h: gridH,
+        pixels: clonePixels(),
+        baseName: currentBaseName
+      };
+    }
+
+    function applySnapshot(state) {
+      setGrid(state.w, state.h);
+      pixels = new Uint8Array(state.pixels);
+      currentBaseName = state.baseName || currentBaseName;
+      renderAll();
+    }
+
+    function pushHistory() {
+      history.push(snapshot());
+      if (history.length > 80) history.shift();
+      redo.length = 0;
+      syncButtons();
+    }
+
+    function restoreFrom(stackFrom, stackTo) {
+      if (!stackFrom.length) return;
+      stackTo.push(snapshot());
+      applySnapshot(stackFrom.pop());
+      syncButtons();
+    }
+
+    function setGrid(w, h) {
+      gridW = Math.max(1, Math.min(256, Math.round(w || 64)));
+      gridH = Math.max(1, Math.min(256, Math.round(h || gridW)));
+      drawScale = Math.max(3, Math.floor(MAX_CANVAS_SIDE / Math.max(gridW, gridH)));
+      canvas.width = gridW * drawScale;
+      canvas.height = gridH * drawScale;
+      canvas.style.aspectRatio = `${gridW} / ${gridH}`;
+      titleLabel.textContent = `SVG ${gridW}×${gridH}`;
+    }
+
+    function syncButtons() {
+      brushBtn.classList.toggle('active', mode === 'brush');
+      eraserBtn.classList.toggle('active', mode === 'eraser');
+      undoBtn.disabled = history.length === 0;
+      redoBtn.disabled = redo.length === 0;
+    }
+
+    function setMode(next) {
+      mode = next;
+      modeLabel.textContent = mode === 'eraser' ? 'ластик' : 'кисть';
+      syncButtons();
+    }
+
+    function parseSvgSize(doc) {
+      const root = doc.documentElement;
+      const viewBox = root.getAttribute('viewBox');
+      if (viewBox) {
+        const n = viewBox.trim().split(/[ ,]+/).map(Number).filter(Number.isFinite);
+        if (n.length === 4 && n[2] > 0 && n[3] > 0) {
+          return { w: Math.round(n[2]), h: Math.round(n[3]) };
+        }
+      }
+
+      const readDim = value => {
+        const m = String(value || '').match(/-?\d+(?:\.\d+)?/);
+        return m ? Math.round(Number(m[0])) : 0;
+      };
+
+      const w = readDim(root.getAttribute('width'));
+      const h = readDim(root.getAttribute('height'));
+      if (w > 0 && h > 0) return { w, h };
+      return { w: 64, h: 64 };
+    }
+
+    function encodedSizeFromNode(node, fallback) {
+      const marker = node.getAttribute('data-pixel-editor') || '';
+      const m = marker.match(/(\d+)x(\d+)/i);
+      if (m) return { w: Number(m[1]), h: Number(m[2]) };
+      return fallback;
+    }
+
+    function normalizeSvgForRaster(text, w, h) {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(text, 'image/svg+xml');
+      if (doc.querySelector('parsererror')) throw new Error('SVG не удалось прочитать');
+
+      const root = doc.documentElement;
+      if (!root || root.nodeName.toLowerCase() !== 'svg') throw new Error('Это не SVG');
+      const ns = 'http://www.w3.org/2000/svg';
+
+      if (!root.getAttribute('viewBox')) root.setAttribute('viewBox', `0 0 ${w} ${h}`);
+      root.setAttribute('xmlns', ns);
+      root.setAttribute('width', String(w));
+      root.setAttribute('height', String(h));
+      root.setAttribute('color', '#000000');
+      root.setAttribute('style', `${root.getAttribute('style') || ''};color:#000000`);
+
+      for (const el of Array.from(root.querySelectorAll('*'))) {
+        for (const attr of ['fill', 'stroke']) {
+          const v = el.getAttribute(attr);
+          if (v && v.trim().toLowerCase() === 'currentcolor') {
+            el.setAttribute(attr, '#000000');
+          }
+        }
+        const style = el.getAttribute('style');
+        if (style && /currentColor/i.test(style)) {
+          el.setAttribute('style', style.replace(/currentColor/gi, '#000000'));
+        }
+      }
+
+      const styleNode = doc.createElementNS(ns, 'style');
+      styleNode.textContent = 'svg,*{color:#000000!important;}';
+      root.insertBefore(styleNode, root.firstChild);
+
+      return new XMLSerializer().serializeToString(root);
+    }
+
+    function rasterizeSvgToPixels(text, w, h) {
+      return new Promise((resolve, reject) => {
+        let normalized;
+        try {
+          normalized = normalizeSvgForRaster(text, w, h);
+        } catch (err) {
+          reject(err);
+          return;
+        }
+
+        const blob = new Blob([normalized], { type: 'image/svg+xml;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+
+        img.onload = () => {
+          try {
+            const off = document.createElement('canvas');
+            off.width = w;
+            off.height = h;
+            const octx = off.getContext('2d', { willReadFrequently: true });
+            octx.clearRect(0, 0, w, h);
+            octx.imageSmoothingEnabled = false;
+            octx.drawImage(img, 0, 0, w, h);
+
+            const data = octx.getImageData(0, 0, w, h).data;
+            const next = new Uint8Array(w * h);
+            let found = 0;
+            for (let y = 0; y < h; y++) {
+              for (let x = 0; x < w; x++) {
+                const p = (y * w + x) * 4;
+                const alpha = data[p + 3];
+                if (alpha >= 96) {
+                  next[y * w + x] = 1;
+                  found++;
+                }
+              }
+            }
+            URL.revokeObjectURL(url);
+            if (!found) reject(new Error('SVG импортировался пустым'));
+            else resolve(next);
+          } catch (err) {
+            URL.revokeObjectURL(url);
+            reject(err);
+          }
+        };
+
+        img.onerror = () => {
+          URL.revokeObjectURL(url);
+          reject(new Error('SVG не удалось отрисовать'));
+        };
+
+        img.src = url;
+      });
+    }
+
+    async function importSvgText(text, name = 'pixel_icon', addHistory = true) {
+      const doc = new DOMParser().parseFromString(text, 'image/svg+xml');
+      const parseError = doc.querySelector('parsererror');
+      if (parseError) {
+        setStatus('Ошибка: SVG не удалось прочитать', true);
+        return false;
+      }
+
+      const fallbackSize = parseSvgSize(doc);
+      const encodedNode = doc.querySelector('[data-pixel-editor][data-bits]');
+      if (encodedNode) {
+        const bits = encodedNode.getAttribute('data-bits') || '';
+        const size = encodedSizeFromNode(encodedNode, fallbackSize);
+        if (bits.length !== size.w * size.h) {
+          setStatus('Ошибка: размер data-bits не совпадает с сеткой', true);
+          return false;
+        }
+        if (addHistory) pushHistory();
+        setGrid(size.w, size.h);
+        pixels = new Uint8Array(size.w * size.h);
+        for (let i = 0; i < bits.length; i++) pixels[i] = bits[i] === '1' ? 1 : 0;
+        currentBaseName = sanitizeName(name);
+        renderAll();
+        setStatus(`Загружено: ${currentBaseName}.svg (${gridW}×${gridH})`);
+        return true;
+      }
+
+      try {
+        const next = await rasterizeSvgToPixels(text, fallbackSize.w, fallbackSize.h);
+        if (addHistory) pushHistory();
+        setGrid(fallbackSize.w, fallbackSize.h);
+        pixels = next;
+        currentBaseName = sanitizeName(name);
+        renderAll();
+        setStatus(`Загружено: ${currentBaseName}.svg (${gridW}×${gridH})`);
+        return true;
+      } catch (err) {
+        setStatus(`Ошибка импорта: ${err.message || err}`, true);
+        return false;
+      }
+    }
+
+    function paintAtCell(cx, cy, value) {
+      const size = Number(brushSize.value);
+      const half = Math.floor(size / 2);
+      let changed = false;
+      for (let y = cy - half; y < cy - half + size; y++) {
+        for (let x = cx - half; x < cx - half + size; x++) {
+          if (x < 0 || x >= gridW || y < 0 || y >= gridH) continue;
+          const i = index(x, y);
+          if (pixels[i] !== value) {
+            pixels[i] = value;
+            changed = true;
+          }
+        }
+      }
+      return changed;
+    }
+
+    function cellFromEvent(ev) {
+      const r = canvas.getBoundingClientRect();
+      const x = Math.floor(((ev.clientX - r.left) / r.width) * gridW);
+      const y = Math.floor(((ev.clientY - r.top) / r.height) * gridH);
+      return {
+        x: Math.max(0, Math.min(gridW - 1, x)),
+        y: Math.max(0, Math.min(gridH - 1, y))
+      };
+    }
+
+    function strokeCells(a, b, value) {
+      let changed = false;
+      const dx = Math.abs(b.x - a.x);
+      const dy = Math.abs(b.y - a.y);
+      const sx = a.x < b.x ? 1 : -1;
+      const sy = a.y < b.y ? 1 : -1;
+      let err = dx - dy;
+      let x = a.x;
+      let y = a.y;
+      while (true) {
+        changed = paintAtCell(x, y, value) || changed;
+        if (x === b.x && y === b.y) break;
+        const e2 = err * 2;
+        if (e2 > -dy) { err -= dy; x += sx; }
+        if (e2 < dx) { err += dx; y += sy; }
+      }
+      if (changed) renderAll();
+    }
+
+    function renderEditor() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#0d0f12';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#15181d';
+      ctx.fillRect(0, 0, gridW * drawScale, gridH * drawScale);
+
+      ctx.fillStyle = DARK_CONTENT;
+      for (let y = 0; y < gridH; y++) {
+        for (let x = 0; x < gridW; x++) {
+          if (pixels[index(x, y)]) ctx.fillRect(x * drawScale, y * drawScale, drawScale, drawScale);
+        }
+      }
+
+      ctx.strokeStyle = 'rgba(214,214,214,.11)';
+      ctx.lineWidth = 1;
+      for (let x = 0; x <= gridW; x++) {
+        const p = x * drawScale + .5;
+        ctx.beginPath();
+        ctx.moveTo(p, 0);
+        ctx.lineTo(p, canvas.height);
+        ctx.stroke();
+      }
+      for (let y = 0; y <= gridH; y++) {
+        const p = y * drawScale + .5;
+        ctx.beginPath();
+        ctx.moveTo(0, p);
+        ctx.lineTo(canvas.width, p);
+        ctx.stroke();
+      }
+    }
+
+    function bitString() {
+      let out = '';
+      for (let i = 0; i < pixels.length; i++) out += pixels[i] ? '1' : '0';
+      return out;
+    }
+
+    function pixelsToPath() {
+      let d = '';
+      for (let y = 0; y < gridH; y++) {
+        let x = 0;
+        while (x < gridW) {
+          while (x < gridW && !pixels[index(x, y)]) x++;
+          if (x >= gridW) break;
+          const start = x;
+          while (x < gridW && pixels[index(x, y)]) x++;
+          const w = x - start;
+          d += `M${start},${y}h${w}v1h-${w}z`;
+        }
+      }
+      return d || 'M0,0Z';
+    }
+
+    function svgString(contentColor) {
+      const bits = bitString();
+      const path = pixelsToPath();
+      return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${gridW} ${gridH}" width="${gridW}" height="${gridH}">\n` +
+        `  <path fill="${contentColor}" fill-rule="evenodd" d="${path}" data-pixel-editor="${gridW}x${gridH}" data-bits="${bits}"/>\n` +
+        `</svg>\n`;
+    }
+
+    function renderPreviews() {
+      currentPreview.innerHTML = svgString(CURRENT_CONTENT);
+      darkPreview.innerHTML = svgString(DARK_CONTENT);
+      lightPreview.innerHTML = svgString(LIGHT_CONTENT);
+    }
+
+    function renderAll() {
+      renderEditor();
+      renderPreviews();
+      syncButtons();
+    }
+
+    function download(filename, content) {
+      const blob = new Blob([content], { type: 'image/svg+xml;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      requestAnimationFrame(() => {
+        URL.revokeObjectURL(a.href);
+        a.remove();
+      });
+    }
+
+    function saveAll() {
+      const base = sanitizeName(currentBaseName);
+      download(`${base}_current.svg`, svgString(CURRENT_CONTENT));
+      setTimeout(() => download(`${base}_dark.svg`, svgString(DARK_CONTENT)), 120);
+      setTimeout(() => download(`${base}_light.svg`, svgString(LIGHT_CONTENT)), 240);
+      setStatus(`Сохранено: ${base}_current/dark/light.svg`);
+    }
+
+    function populateTemplates() {
+      templateSelect.innerHTML = '';
+      for (const item of TEMPLATES) {
+        const opt = document.createElement('option');
+        opt.value = item.key;
+        opt.textContent = item.name;
+        templateSelect.appendChild(opt);
+      }
+    }
+
+    async function loadSelectedTemplate(addHistory = true) {
+      const item = TEMPLATES.find(t => t.key === templateSelect.value) || TEMPLATES[0];
+      if (!item) return;
+      await importSvgText(item.svg, item.key, addHistory);
+    }
+
+    canvas.addEventListener('contextmenu', ev => ev.preventDefault());
+
+    canvas.addEventListener('pointerdown', ev => {
+      canvas.setPointerCapture(ev.pointerId);
+      pushHistory();
+      drawing = true;
+      erase = ev.button === 2 || mode === 'eraser';
+      const c = cellFromEvent(ev);
+      lastCell = c;
+      strokeCells(c, c, erase ? 0 : 1);
+    });
+
+    canvas.addEventListener('pointermove', ev => {
+      if (!drawing) return;
+      const c = cellFromEvent(ev);
+      strokeCells(lastCell, c, erase ? 0 : 1);
+      lastCell = c;
+    });
+
+    window.addEventListener('pointerup', () => {
+      drawing = false;
+      lastCell = null;
+    });
+
+    brushSize.addEventListener('input', () => {
+      brushValue.textContent = brushSize.value;
+    });
+
+    brushBtn.addEventListener('click', () => setMode('brush'));
+    eraserBtn.addEventListener('click', () => setMode('eraser'));
+    undoBtn.addEventListener('click', () => restoreFrom(history, redo));
+    redoBtn.addEventListener('click', () => restoreFrom(redo, history));
+    clearBtn.addEventListener('click', () => {
+      pushHistory();
+      pixels.fill(0);
+      renderAll();
+      setStatus(`Очищено ${gridW}×${gridH}`);
+    });
+    templateBtn.addEventListener('click', () => loadSelectedTemplate(true));
+    saveBtn.addEventListener('click', saveAll);
+    importBtn.addEventListener('click', () => fileInput.click());
+
+    function readSvgFile(file) {
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = async () => {
+        await importSvgText(String(reader.result || ''), file.name, true);
+      };
+      reader.onerror = () => setStatus('Ошибка чтения файла', true);
+      reader.readAsText(file);
+    }
+
+    fileInput.addEventListener('change', () => {
+      readSvgFile(fileInput.files && fileInput.files[0]);
+      fileInput.value = '';
+    });
+
+    window.addEventListener('keydown', ev => {
+      const key = ev.key.toLowerCase();
+      if ((ev.ctrlKey || ev.metaKey) && key === 'z' && !ev.shiftKey) {
+        ev.preventDefault();
+        restoreFrom(history, redo);
+      } else if ((ev.ctrlKey || ev.metaKey) && (key === 'y' || (ev.shiftKey && key === 'z'))) {
+        ev.preventDefault();
+        restoreFrom(redo, history);
+      } else if (key === 'b') {
+        setMode('brush');
+      } else if (key === 'e') {
+        setMode('eraser');
+      }
+    });
+
+    window.addEventListener('dragover', ev => {
+      ev.preventDefault();
+      if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'copy';
+      app.classList.add('drop');
+    });
+
+    window.addEventListener('dragleave', ev => {
+      if (ev.target === document || ev.target === document.documentElement || ev.target === document.body) {
+        app.classList.remove('drop');
+      }
+    });
+
+    window.addEventListener('drop', ev => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      app.classList.remove('drop');
+      const file = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0];
+      readSvgFile(file);
+    });
+
+    populateTemplates();
+    brushValue.textContent = brushSize.value;
+    setMode('brush');
+    loadSelectedTemplate(false);
+  </script>
+</body>
+
+</html>

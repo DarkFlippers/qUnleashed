@@ -41,8 +41,20 @@ class ToolsPage extends StatelessWidget {
       ),
     ),
     ToolCardModel(
-      iconAsset: 'assets/flipper_svg/archive/ic_file.svg',
-      iconColor: const Color(0xFFFF9B34),
+      iconAsset: 'assets/flipper_svg/tools/ic_settings_gear.svg',
+      iconColor: const Color(0xFFE85858),
+      title: 'Flibler',
+      tool: ToolItemModel(
+        preview: ToolPreviewType.flibler,
+        title: 'Flipper app assembler',
+        description:
+            'Build Flipper Zero apps from source projects or simple block-based app templates using uFBT',
+        badge: 'Soon',
+      ),
+    ),
+    ToolCardModel(
+      iconAsset: 'assets/flipper_svg/archive/ic_fileformat_sub.svg',
+      iconColor: const Color(0xFF8BC34A),
       title: 'Saved Locations',
       compact: true,
       tool: ToolItemModel(
