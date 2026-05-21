@@ -3,6 +3,7 @@ import 'package:flutter/widgets.dart';
 enum ToolPreviewType {
   mfKey,
   remoteLibrary,
+  flibler,
 }
 
 class ToolCardModel {
