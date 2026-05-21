@@ -30,7 +30,8 @@ mkdir -p "$DIST_DIR"
 
 echo "Using Flutter: $FLUTTER_BIN"
 echo "Building Linux release..."
-(cd "$ROOT_DIR" && "$FLUTTER_BIN" build linux --release)
+read -r -a FLUTTER_BUILD_ARGS <<< "${QUNLEASHED_FLUTTER_BUILD_ARGS:-}"
+(cd "$ROOT_DIR" && "$FLUTTER_BIN" build linux --release "${FLUTTER_BUILD_ARGS[@]}")
 
 if [[ ! -x "$BUILD_DIR/$APP_NAME" ]]; then
   echo "Expected app binary not found: $BUILD_DIR/$APP_NAME" >&2
