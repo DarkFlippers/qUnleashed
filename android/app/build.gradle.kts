@@ -25,7 +25,7 @@ val hasReleaseSigningConfig = listOf(
 ).all { !keystoreProperty(it).isNullOrBlank() }
 
 android {
-    namespace = "com.example.qunleashed"
+    namespace = "ru.aperturefox.qunleashed"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -39,8 +39,7 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.qunleashed"
+        applicationId = "ru.aperturefox.qunleashed"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -73,11 +72,7 @@ android {
 
     buildTypes {
         release {
-            signingConfig = if (hasReleaseSigningConfig) {
-                signingConfigs.getByName("release")
-            } else {
-                signingConfigs.getByName("debug")
-            }
+            signingConfig = if (hasReleaseSigningConfig) signingConfigs.getByName("release") else null
         }
     }
 }
