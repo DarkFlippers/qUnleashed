@@ -1,4 +1,4 @@
-name: Android and Linux prerelease
+name: Android, Linux, and Windows prerelease
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: android-linux-prerelease-${{ github.ref }}
+  group: prerelease-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -27,8 +27,8 @@ jobs:
         if: ${{ github.server_url == 'https://github.com' }}
         run: echo "Running on ${{ github.server_url }}"
 
-  build-and-publish:
-    name: Build Android and Linux releases, then publish prerelease
+  build-android-linux:
+    name: Build Android and Linux releases
     needs: guard
     if: ${{ github.server_url == 'https://github.com' }}
     runs-on: ubuntu-latest
@@ -71,6 +71,73 @@ jobs:
           mkdir -p dist
           cp build/app/outputs/flutter-apk/app-release.apk "dist/qunleashed-${GITHUB_REF_NAME}.apk"
 
+      - name: Upload Android and Linux release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets-android-linux
+          path: |
+            dist/qunleashed-${{ github.ref_name }}.apk
+            dist/qunleashed-linux-x64
+          if-no-files-found: error
+
+  build-windows:
+    name: Build Windows release
+    needs: guard
+    if: ${{ github.server_url == 'https://github.com' }}
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Build Windows release
+        run: flutter build windows --release
+
+      - name: Prepare Windows release asset
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Compress-Archive `
+            -Path build\windows\x64\runner\Release\* `
+            -DestinationPath "dist\qunleashed-${env:GITHUB_REF_NAME}-windows-x64.zip" `
+            -Force
+
+      - name: Upload Windows release asset
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets-windows
+          path: dist/qunleashed-${{ github.ref_name }}-windows-x64.zip
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub prerelease
+    needs:
+      - build-android-linux
+      - build-windows
+    if: ${{ github.server_url == 'https://github.com' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Download release assets
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: release-assets-*
+          merge-multiple: true
+
       - name: Publish GitHub prerelease
         uses: softprops/action-gh-release@v2
         with:
@@ -78,6 +145,8 @@ jobs:
           name: ${{ github.ref_name }}
           prerelease: true
           generate_release_notes: true
+          overwrite_files: true
           files: |
             dist/qunleashed-${{ github.ref_name }}.apk
             dist/qunleashed-linux-x64
+            dist/qunleashed-${{ github.ref_name }}-windows-x64.zip
