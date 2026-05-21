@@ -55,6 +55,35 @@ jobs:
       - name: Install Flutter dependencies
         run: flutter pub get
 
+      - name: Derive app version from tag
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if [[ ! "$tag" =~ ([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+            echo "::error::Tag must contain a semantic version like 0.6.1, alpha-0.6.1, or v0.6.1."
+            exit 1
+          fi
+
+          major="${BASH_REMATCH[1]}"
+          minor="${BASH_REMATCH[2]}"
+          patch="${BASH_REMATCH[3]}"
+          version_name="${major}.${minor}.${patch}"
+          version_code=$((10#$major * 1000000 + 10#$minor * 1000 + 10#$patch))
+
+          if (( version_code <= 0 )); then
+            echo "::error::Derived Android versionCode must be greater than zero."
+            exit 1
+          fi
+
+          {
+            echo "QUNLEASHED_VERSION_NAME=$version_name"
+            echo "QUNLEASHED_VERSION_CODE=$version_code"
+            echo "QUNLEASHED_FLUTTER_BUILD_ARGS=--build-name=$version_name --build-number=$version_code"
+          } >> "$GITHUB_ENV"
+
+          echo "Version name: $version_name"
+          echo "Version code: $version_code"
+
       - name: Configure Android signing
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -77,7 +106,7 @@ jobs:
           } > android/key.properties
 
       - name: Build Android release APK
-        run: flutter build apk --release
+        run: flutter build apk --release $QUNLEASHED_FLUTTER_BUILD_ARGS
 
       - name: Install Linux build dependencies
         run: |
@@ -123,8 +152,37 @@ jobs:
       - name: Install Flutter dependencies
         run: flutter pub get
 
+      - name: Derive app version from tag
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if [[ ! "$tag" =~ ([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+            echo "::error::Tag must contain a semantic version like 0.6.1, alpha-0.6.1, or v0.6.1."
+            exit 1
+          fi
+
+          major="${BASH_REMATCH[1]}"
+          minor="${BASH_REMATCH[2]}"
+          patch="${BASH_REMATCH[3]}"
+          version_name="${major}.${minor}.${patch}"
+          version_code=$((10#$major * 1000000 + 10#$minor * 1000 + 10#$patch))
+
+          if (( version_code <= 0 )); then
+            echo "::error::Derived build number must be greater than zero."
+            exit 1
+          fi
+
+          {
+            echo "QUNLEASHED_VERSION_NAME=$version_name"
+            echo "QUNLEASHED_VERSION_CODE=$version_code"
+            echo "QUNLEASHED_FLUTTER_BUILD_ARGS=--build-name=$version_name --build-number=$version_code"
+          } >> "$GITHUB_ENV"
+
+          echo "Version name: $version_name"
+          echo "Build number: $version_code"
+
       - name: Build Windows release
-        run: flutter build windows --release
+        run: flutter build windows --release --build-name $env:QUNLEASHED_VERSION_NAME --build-number $env:QUNLEASHED_VERSION_CODE
 
       - name: Prepare Windows release asset
         shell: pwsh
