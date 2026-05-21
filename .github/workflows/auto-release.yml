@@ -1,4 +1,4 @@
-name: Android prerelease
+name: Android and Linux prerelease
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: android-prerelease-${{ github.ref }}
+  group: android-linux-prerelease-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -28,7 +28,7 @@ jobs:
         run: echo "Running on ${{ github.server_url }}"
 
   build-and-publish:
-    name: Build Android release and publish prerelease
+    name: Build Android and Linux releases, then publish prerelease
     needs: guard
     if: ${{ github.server_url == 'https://github.com' }}
     runs-on: ubuntu-latest
@@ -58,7 +58,15 @@ jobs:
       - name: Build Android release APK
         run: flutter build apk --release
 
-      - name: Prepare release asset
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev
+
+      - name: Build Linux single-file executable
+        run: tools/build/linux.sh
+
+      - name: Prepare Android release asset
         run: |
           mkdir -p dist
           cp build/app/outputs/flutter-apk/app-release.apk "dist/qunleashed-${GITHUB_REF_NAME}.apk"
@@ -70,4 +78,6 @@ jobs:
           name: ${{ github.ref_name }}
           prerelease: true
           generate_release_notes: true
-          files: dist/qunleashed-${{ github.ref_name }}.apk
+          files: |
+            dist/qunleashed-${{ github.ref_name }}.apk
+            dist/qunleashed-linux-x64
