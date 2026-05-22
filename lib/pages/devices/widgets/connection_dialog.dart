@@ -5,21 +5,6 @@ import 'package:flutter/material.dart';
 
 import '../../../theme.dart';
 
-bool _isFlipperBle(FlipperDevice device) {
-  final mac = device.id.replaceAll(':', '').toUpperCase();
-  return mac.startsWith('80E127') || mac.startsWith('80E126');
-}
-
-bool _isFlipperUsb(FlipperDevice device) {
-  if (!device.isUsb) return false;
-  if (device.vendorId == 0x0483) return true;
-
-  final name = device.name.toLowerCase();
-  return name.contains('stmicroelectronics') ||
-      name.contains('virtual com port') ||
-      name.contains('flipper');
-}
-
 Future<FlipperDevice?> showConnectionDialog(
   BuildContext context, {
   bool usbOnly = false,
@@ -28,10 +13,7 @@ Future<FlipperDevice?> showConnectionDialog(
   return showDialog<FlipperDevice>(
     context: context,
     barrierColor: FlipperOriginalColors.barrier,
-    builder: (_) => ConnectionDialog(
-      usbOnly: usbOnly,
-      skipRpc: skipRpc,
-    ),
+    builder: (_) => ConnectionDialog(usbOnly: usbOnly, skipRpc: skipRpc),
   );
 }
 
@@ -121,12 +103,10 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
     if (widget.usbOnly) {
       filtered = filtered.where((d) => d.isUsb);
     }
-    if (!_filterEnabled) return filtered.toList();
-    return filtered.where((device) {
-      if (device.isBle) return _isFlipperBle(device);
-      if (device.isUsb) return _isFlipperUsb(device);
-      return true;
-    }).toList();
+    if (_filterEnabled) {
+      filtered = filtered.where(_client.isFlipperDevice);
+    }
+    return filtered.toList();
   }
 
   void _removeFilter() {
@@ -197,10 +177,7 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
               child: IconButton(
                 onPressed: _startScan,
                 padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(
-                  minWidth: 20,
-                  minHeight: 20,
-                ),
+                constraints: const BoxConstraints(minWidth: 20, minHeight: 20),
                 iconSize: 20,
                 color: colors.accent,
                 icon: const Icon(Icons.refresh),
@@ -220,8 +197,8 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
           _scanning
               ? 'Searching for devices…'
               : (widget.usbOnly
-                  ? 'Waiting for USB connection…'
-                  : 'No Flipper devices found.'),
+                    ? 'Waiting for USB connection…'
+                    : 'No Flipper devices found.'),
           textAlign: TextAlign.center,
           style: TextStyle(color: colors.dialogMuted, fontSize: 14),
         ),
@@ -249,16 +226,12 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
       child: _filterEnabled
           ? TextButton(
               onPressed: _removeFilter,
-              style: TextButton.styleFrom(
-                foregroundColor: colors.dialogMuted,
-              ),
+              style: TextButton.styleFrom(foregroundColor: colors.dialogMuted),
               child: const Text("Can't find my device"),
             )
           : TextButton(
               onPressed: _restoreFilter,
-              style: TextButton.styleFrom(
-                foregroundColor: colors.dialogMuted,
-              ),
+              style: TextButton.styleFrom(foregroundColor: colors.dialogMuted),
               child: const Text('Show only Flipper devices'),
             ),
     );
@@ -266,10 +239,7 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
 }
 
 class _DeviceListItem extends StatelessWidget {
-  const _DeviceListItem({
-    required this.device,
-    required this.onTap,
-  });
+  const _DeviceListItem({required this.device, required this.onTap});
 
   final FlipperDevice device;
   final VoidCallback onTap;
@@ -313,10 +283,7 @@ class _DeviceListItem extends StatelessWidget {
                     subtitle,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: colors.dialogMuted,
-                    ),
+                    style: TextStyle(fontSize: 12, color: colors.dialogMuted),
                   ),
                 ],
               ),
@@ -326,10 +293,7 @@ class _DeviceListItem extends StatelessWidget {
                 padding: const EdgeInsets.only(left: 12),
                 child: Text(
                   '${device.rssi} dBm',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: colors.dialogMuted,
-                  ),
+                  style: TextStyle(fontSize: 12, color: colors.dialogMuted),
                 ),
               ),
           ],
