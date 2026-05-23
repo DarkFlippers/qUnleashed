@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 import '../../../theme.dart';
 import '../../../widgets/action_row.dart';
@@ -49,7 +49,9 @@ class ConnectedDeviceView extends StatelessWidget {
             padding: EdgeInsets.only(top: headerHeight + 14, bottom: 14),
             children: [
               FirmwareCarouselCard(
-                deviceVersion: infoLoading || deviceInfoEntries.isEmpty ? '-' : deviceInfoEntries.first.value,
+                deviceVersion: deviceInfoEntries.isEmpty
+                    ? '-'
+                    : deviceInfoEntries.first.value,
                 deviceInfo: deviceInfo,
               ),
               const SizedBox(height: 14),
@@ -69,7 +71,10 @@ class ConnectedDeviceView extends StatelessWidget {
                         alignment: Alignment.centerLeft,
                         child: Text(
                           'Control your Flipper Zero remotely via mobile phone',
-                          style: TextStyle(fontSize: 12, color: colors.textMuted),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: colors.textMuted,
+                          ),
                         ),
                       ),
                     ),
@@ -111,7 +116,11 @@ class ConnectedDeviceView extends StatelessWidget {
                             children: [
                               Padding(
                                 padding: const EdgeInsets.only(right: 10),
-                                child: Icon(Icons.copy, color: colors.accent, size: 20),
+                                child: Icon(
+                                  Icons.copy,
+                                  color: colors.accent,
+                                  size: 20,
+                                ),
                               ),
                               Expanded(
                                 child: Text(
@@ -138,14 +147,18 @@ class ConnectedDeviceView extends StatelessWidget {
                     FlipperActionRow(
                       iconAsset: 'assets/flipper_svg/core/ic_syncing.svg',
                       label: 'Synchronize',
-                      color: onSynchronize == null ? colors.textMuted : colors.accent,
+                      color: onSynchronize == null
+                          ? colors.textMuted
+                          : colors.accent,
                       onTap: onSynchronize,
                     ),
                     Divider(height: 1, color: colors.divider),
                     FlipperActionRow(
                       iconAsset: 'assets/flipper_svg/info/ic_ring.svg',
                       label: 'Play Alert on Flipper',
-                      color: onPlayAlert == null ? colors.textMuted : colors.accent,
+                      color: onPlayAlert == null
+                          ? colors.textMuted
+                          : colors.accent,
                       onTap: onPlayAlert,
                     ),
                   ],
@@ -156,7 +169,8 @@ class ConnectedDeviceView extends StatelessWidget {
                 child: Column(
                   children: [
                     FlipperActionRow(
-                      iconAsset: 'assets/flipper_svg/core/ic_bluetooth_disable.svg',
+                      iconAsset:
+                          'assets/flipper_svg/core/ic_bluetooth_disable.svg',
                       label: 'Disconnect',
                       color: colors.accent,
                       onTap: onDisconnect,
