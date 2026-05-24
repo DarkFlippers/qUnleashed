@@ -1,0 +1,47 @@
+PODS:
+  - Flutter (1.0.0)
+  - irondash_engine_context (0.0.1):
+    - Flutter
+  - permission_handler_apple (9.3.0):
+    - Flutter
+  - saver_gallery (0.0.1):
+    - Flutter
+  - super_native_extensions (0.0.1):
+    - Flutter
+  - universal_ble (0.0.1):
+    - Flutter
+    - FlutterMacOS
+
+DEPENDENCIES:
+  - Flutter (from `Flutter`)
+  - irondash_engine_context (from `.symlinks/plugins/irondash_engine_context/ios`)
+  - permission_handler_apple (from `.symlinks/plugins/permission_handler_apple/ios`)
+  - saver_gallery (from `.symlinks/plugins/saver_gallery/ios`)
+  - super_native_extensions (from `.symlinks/plugins/super_native_extensions/ios`)
+  - universal_ble (from `.symlinks/plugins/universal_ble/darwin`)
+
+EXTERNAL SOURCES:
+  Flutter:
+    :path: Flutter
+  irondash_engine_context:
+    :path: ".symlinks/plugins/irondash_engine_context/ios"
+  permission_handler_apple:
+    :path: ".symlinks/plugins/permission_handler_apple/ios"
+  saver_gallery:
+    :path: ".symlinks/plugins/saver_gallery/ios"
+  super_native_extensions:
+    :path: ".symlinks/plugins/super_native_extensions/ios"
+  universal_ble:
+    :path: ".symlinks/plugins/universal_ble/darwin"
+
+SPEC CHECKSUMS:
+  Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
+  irondash_engine_context: 8e58ca8e0212ee9d1c7dc6a42121849986c88486
+  permission_handler_apple: 4ed2196e43d0651e8ff7ca3483a069d469701f2d
+  saver_gallery: af2d0c762dafda254e0ad025ef0dabd6506cd490
+  super_native_extensions: b763c02dc3a8fd078389f410bf15149179020cb4
+  universal_ble: 45519b2aeafe62761e2c6309f8927edb5288b914
+
+PODFILE CHECKSUM: c33abd8fc4aa606784d95f916f04450c9ecac5a5
+
+COCOAPODS: 1.16.2
