@@ -1215,6 +1215,8 @@ class _DevicePageState extends State<DevicePage> {
                   infoLoading: _deviceLoading,
                   deviceInfo: _info,
                   deviceInfoEntries: _deviceInfoEntries,
+                  connectionLabel: device.isBle ? 'BLE' : 'USB',
+                  connectionIcon: device.isBle ? Icons.bluetooth : Icons.usb,
                   onSynchronize: _deviceLoading ? null : _synchronizeDevice,
                   onPlayAlert: _alertPlaying ? null : _playAlertOnFlipper,
                   onOpenRemoteControl: _openRemoteControl,

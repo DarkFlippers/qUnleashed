@@ -76,6 +76,182 @@ class FlipperMockupWidget extends StatelessWidget {
   }
 }
 
+class FlipperMockupHero extends StatelessWidget {
+  const FlipperMockupHero({
+    super.key,
+    required this.active,
+    required this.title,
+    required this.infoEntries,
+    required this.deviceInfo,
+    required this.connectionLabel,
+    required this.connectionIcon,
+  });
+
+  final bool active;
+  final String title;
+  final List<MapEntry<String, String>> infoEntries;
+  final Map<String, String> deviceInfo;
+  final String connectionLabel;
+  final IconData connectionIcon;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final firmwareVersion =
+        _firstValue(deviceInfo, const [
+          'firmware_version',
+          'firmware.version',
+          'software_revision',
+        ]) ??
+        _entryValue(infoEntries, 'Firmware Version');
+    final buildDate =
+        _firstValue(deviceInfo, const [
+          'firmware_build_date',
+          'firmware.build.date',
+          'build_date',
+        ]) ??
+        _entryValue(infoEntries, 'Build Date');
+    final uid = _firstValue(deviceInfo, const [
+      'hardware_uid',
+      'hardware.uid',
+      'uid',
+    ]);
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        SizedBox(height: 100, child: FlipperMockupWidget(active: active)),
+        const SizedBox(width: 24),
+        Expanded(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Flexible(
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: colors.onAccent,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  _HeroPill(icon: connectionIcon, label: connectionLabel),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 12,
+                runSpacing: 2,
+                children: [
+                  if (firmwareVersion != null)
+                    _HeroMetaText('fw $firmwareVersion'),
+                  if (buildDate != null) _HeroMetaText('built $buildDate'),
+                ],
+              ),
+              if (uid != null) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'UID $uid',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: colors.onAccent.withValues(alpha: .72),
+                    fontSize: 11,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _HeroPill extends StatelessWidget {
+  const _HeroPill({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: colors.onAccent.withValues(alpha: .16),
+        borderRadius: BorderRadius.circular(5),
+        border: Border.all(color: colors.onAccent.withValues(alpha: .28)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: colors.onAccent),
+          const SizedBox(width: 5),
+          Text(
+            label.toUpperCase(),
+            style: TextStyle(
+              color: colors.onAccent,
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              letterSpacing: .5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeroMetaText extends StatelessWidget {
+  const _HeroMetaText(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    return Text(
+      text,
+      style: TextStyle(
+        color: colors.onAccent.withValues(alpha: .78),
+        fontSize: 12,
+      ),
+    );
+  }
+}
+
+String? _firstValue(Map<String, String> info, List<String> aliases) {
+  for (final alias in aliases) {
+    final value = info[alias];
+    if (value != null && value.trim().isNotEmpty && value != '-') {
+      return value;
+    }
+  }
+  return null;
+}
+
+String? _entryValue(List<MapEntry<String, String>> entries, String key) {
+  for (final entry in entries) {
+    if (entry.key == key &&
+        entry.value.trim().isNotEmpty &&
+        entry.value != '-') {
+      return entry.value;
+    }
+  }
+  return null;
+}
+
 class _MockupInnerScreen extends StatelessWidget {
   const _MockupInnerScreen();
 

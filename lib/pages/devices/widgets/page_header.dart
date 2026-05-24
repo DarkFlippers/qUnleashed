@@ -11,6 +11,11 @@ class DevicePageHeader extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.active,
+    this.infoEntries = const [],
+    this.deviceInfo = const {},
+    this.connectionLabel = 'USB',
+    this.connectionIcon = Icons.usb,
+    this.onOpenFullInfo,
   });
 
   final double topInset;
@@ -18,6 +23,11 @@ class DevicePageHeader extends StatelessWidget {
   final String title;
   final String subtitle;
   final bool active;
+  final List<MapEntry<String, String>> infoEntries;
+  final Map<String, String> deviceInfo;
+  final String connectionLabel;
+  final IconData connectionIcon;
+  final VoidCallback? onOpenFullInfo;
 
   @override
   Widget build(BuildContext context) {
@@ -30,38 +40,82 @@ class DevicePageHeader extends StatelessWidget {
         color: colors.accent,
         padding: EdgeInsets.only(top: topInset),
         height: headerHeight,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(top: 7, right: 18, bottom: 7),
-              child: SizedBox(
-                height: 100,
-                child: FlipperMockupWidget(active: active),
-              ),
-            ),
-            Column(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final wide = constraints.maxWidth >= 560;
+            if (wide && infoEntries.isNotEmpty) {
+              return Stack(
+                children: [
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 18),
+                      child: FlipperMockupHero(
+                        active: active,
+                        title: title,
+                        infoEntries: infoEntries,
+                        deviceInfo: deviceInfo,
+                        connectionLabel: connectionLabel,
+                        connectionIcon: connectionIcon,
+                      ),
+                    ),
+                  ),
+                  if (onOpenFullInfo != null)
+                    Positioned(
+                      right: 14,
+                      bottom: 14,
+                      child: TextButton.icon(
+                        onPressed: onOpenFullInfo,
+                        icon: const Icon(Icons.info_outline, size: 16),
+                        label: const Text('Full Info'),
+                        style: TextButton.styleFrom(
+                          foregroundColor: colors.onAccent,
+                          fixedSize: const Size.fromHeight(36),
+                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            side: BorderSide(
+                              color: colors.onAccent.withValues(alpha: .28),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            }
+
+            return Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                    color: colors.onAccent,
+                Padding(
+                  padding: const EdgeInsets.only(top: 7, right: 18, bottom: 7),
+                  child: SizedBox(
+                    height: 100,
+                    child: FlipperMockupWidget(active: active),
                   ),
                 ),
-                const SizedBox(height: 3),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: colors.onAccent,
-                  ),
+                Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: colors.onAccent,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      style: TextStyle(fontSize: 12, color: colors.onAccent),
+                    ),
+                  ],
                 ),
               ],
-            ),
-          ],
+            );
+          },
         ),
       ),
     );
