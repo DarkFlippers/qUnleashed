@@ -4,6 +4,8 @@ import 'dart:io' as io;
 import 'package:archive/archive_io.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../../../storage/app_documents.dart';
+
 class IrLibDownloadProgress {
   IrLibDownloadProgress({
     required this.stage,
@@ -44,9 +46,8 @@ class IrLibLocalRepo {
   Future<io.Directory> resolveRoot() async {
     final cached = _cachedRoot;
     if (cached != null) return cached;
-    final base = await getApplicationDocumentsDirectory();
-    final sep = io.Platform.pathSeparator;
-    final dir = io.Directory('${base.path}${sep}qunleashed${sep}IRDB');
+    final base = await appDocumentsDirectory();
+    final dir = io.Directory(pathJoin([base.path, 'IRDB']));
     _cachedRoot = dir;
     return dir;
   }
@@ -104,8 +105,10 @@ class IrLibLocalRepo {
     final req = await client.getUrl(url);
     req.headers.set(io.HttpHeaders.userAgentHeader, 'qunleashed-irlib');
     if (token.trim().isNotEmpty) {
-      req.headers
-          .set(io.HttpHeaders.authorizationHeader, 'Bearer ${token.trim()}');
+      req.headers.set(
+        io.HttpHeaders.authorizationHeader,
+        'Bearer ${token.trim()}',
+      );
     }
     final res = await req.close();
     if (res.statusCode < 200 || res.statusCode >= 300) {
@@ -125,11 +128,13 @@ class IrLibLocalRepo {
       await for (final chunk in res) {
         sink.add(chunk);
         received += chunk.length;
-        onProgress?.call(IrLibDownloadProgress(
-          stage: 'Downloading',
-          received: received,
-          total: total,
-        ));
+        onProgress?.call(
+          IrLibDownloadProgress(
+            stage: 'Downloading',
+            received: received,
+            total: total,
+          ),
+        );
       }
       await sink.flush();
     } finally {
@@ -137,11 +142,13 @@ class IrLibLocalRepo {
       client.close(force: true);
     }
 
-    onProgress?.call(IrLibDownloadProgress(
-      stage: 'Unpacking',
-      received: received,
-      total: total,
-    ));
+    onProgress?.call(
+      IrLibDownloadProgress(
+        stage: 'Unpacking',
+        received: received,
+        total: total,
+      ),
+    );
 
     try {
       final input = InputFileStream(tempZip.path);
@@ -150,13 +157,15 @@ class IrLibLocalRepo {
         final totalFiles = archive.files.where((f) => f.isFile).length;
         var extracted = 0;
 
-        onProgress?.call(IrLibDownloadProgress(
-          stage: 'Unpacking',
-          received: received,
-          total: total,
-          extracted: extracted,
-          totalFiles: totalFiles,
-        ));
+        onProgress?.call(
+          IrLibDownloadProgress(
+            stage: 'Unpacking',
+            received: received,
+            total: total,
+            extracted: extracted,
+            totalFiles: totalFiles,
+          ),
+        );
 
         for (final entry in archive.files) {
           var name = entry.name.replaceAll('\\', '/');
@@ -171,26 +180,30 @@ class IrLibLocalRepo {
             await file.writeAsBytes(entry.readBytes()!, flush: true);
             extracted += 1;
             if (extracted % 25 == 0 || extracted == totalFiles) {
-              onProgress?.call(IrLibDownloadProgress(
-                stage: 'Unpacking',
-                received: received,
-                total: total,
-                extracted: extracted,
-                totalFiles: totalFiles,
-              ));
+              onProgress?.call(
+                IrLibDownloadProgress(
+                  stage: 'Unpacking',
+                  received: received,
+                  total: total,
+                  extracted: extracted,
+                  totalFiles: totalFiles,
+                ),
+              );
             }
           } else {
             await io.Directory(outPath).create(recursive: true);
           }
         }
 
-        onProgress?.call(IrLibDownloadProgress(
-          stage: 'Done',
-          received: received,
-          total: total,
-          extracted: extracted,
-          totalFiles: totalFiles,
-        ));
+        onProgress?.call(
+          IrLibDownloadProgress(
+            stage: 'Done',
+            received: received,
+            total: total,
+            extracted: extracted,
+            totalFiles: totalFiles,
+          ),
+        );
       } finally {
         await input.close();
       }

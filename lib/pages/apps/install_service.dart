@@ -1,11 +1,11 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io' as io;
 
 import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flutter/foundation.dart';
-import 'package:path_provider/path_provider.dart';
 
+import '../../storage/app_documents.dart';
 import 'catalog_api.dart';
 import 'models/card.dart';
 import 'models/category.dart';
@@ -43,12 +43,12 @@ class AppAction {
     double? progress,
     String? error,
   }) => AppAction(
-        appId: appId,
-        type: type,
-        stage: stage ?? this.stage,
-        progress: progress ?? this.progress,
-        error: error,
-      );
+    appId: appId,
+    type: type,
+    stage: stage ?? this.stage,
+    progress: progress ?? this.progress,
+    error: error,
+  );
 }
 
 enum AppButtonState {
@@ -167,8 +167,8 @@ class AppsInstallService extends ChangeNotifier {
       return preinstalled
           ? AppButtonState.preinstalled
           : isInstalled(app)
-              ? AppButtonState.installed
-              : AppButtonState.unsupported;
+          ? AppButtonState.installed
+          : AppButtonState.unsupported;
     }
 
     final build = cv.currentBuild;
@@ -176,8 +176,8 @@ class AppsInstallService extends ChangeNotifier {
       return preinstalled
           ? AppButtonState.preinstalled
           : isInstalled(app)
-              ? AppButtonState.installed
-              : AppButtonState.unsupported;
+          ? AppButtonState.installed
+          : AppButtonState.unsupported;
     }
 
     if (preinstalled) {
@@ -264,7 +264,8 @@ class AppsInstallService extends ChangeNotifier {
     if (!isReady || app.alias.isEmpty) return false;
 
     final wasInstalled =
-        _installedAliases.contains(app.alias) || _preinstalledAliases.contains(app.alias);
+        _installedAliases.contains(app.alias) ||
+        _preinstalledAliases.contains(app.alias);
     final action = AppAction(
       appId: app.alias,
       type: wasInstalled ? AppActionType.update : AppActionType.install,
@@ -334,14 +335,14 @@ class AppsInstallService extends ChangeNotifier {
       await client.storageWriteChunked(
         tempFap,
         fapBytes,
-        onProgress: (p) =>
-            _setActionState(app.alias, stage: AppActionStage.upload, progress: p),
+        onProgress: (p) => _setActionState(
+          app.alias,
+          stage: AppActionStage.upload,
+          progress: p,
+        ),
       );
 
-      await client.storageWriteChunked(
-        tempFim,
-        manifestBytes,
-      );
+      await client.storageWriteChunked(tempFim, manifestBytes);
       _setActionState(app.alias, stage: AppActionStage.upload, progress: 1.0);
 
       await _safeDelete(fapPath);
@@ -382,7 +383,8 @@ class AppsInstallService extends ChangeNotifier {
     notifyListeners();
     try {
       final fimPath = '$kManifestsRoot/${app.alias}.fim';
-      final fapPath = _installedManifests[app.alias]?.path ??
+      final fapPath =
+          _installedManifests[app.alias]?.path ??
           _preinstalledPaths[app.alias] ??
           '${await _resolveInstallDir(app, category: category)}/${app.alias}.fap';
       await _safeDelete(fimPath);
@@ -410,7 +412,8 @@ class AppsInstallService extends ChangeNotifier {
     if (!isReady) {
       throw StateError('Flipper is not connected');
     }
-    final path = _installedManifests[app.alias]?.path ??
+    final path =
+        _installedManifests[app.alias]?.path ??
         _preinstalledPaths[app.alias] ??
         '${await _resolveInstallDir(app, category: category)}/${app.alias}.fap';
     await client.appStart(
@@ -477,6 +480,7 @@ class AppsInstallService extends ChangeNotifier {
           metadata[name] = value;
         }
       }
+
       add('firmware_version', const [
         'devinfo_firmware.version',
         'firmware.version',
@@ -561,6 +565,9 @@ class AppsInstallService extends ChangeNotifier {
   Future<_PreinstalledCache?> _readPreinstalledCache() async {
     try {
       final file = await _preinstalledCacheFile();
+      if (!await file.exists()) {
+        await _migrateLegacyPreinstalledCache(file);
+      }
       if (!await file.exists()) return null;
       final body = await file.readAsString();
       if (body.trim().isEmpty) return null;
@@ -590,12 +597,54 @@ class AppsInstallService extends ChangeNotifier {
   }
 
   Future<io.File> _preinstalledCacheFile() async {
-    final sep = io.Platform.pathSeparator;
-    final base = await getApplicationDocumentsDirectory();
+    final root = await appDocumentsDirectory();
+    final deviceName =
+        normalizeFlipperDeviceName(client.connectedDevice?.name) ?? 'Flipper';
     return io.File(
-      '${base.path}${sep}qunleashed${sep}apps${sep}manifest'
-      '$sep$kPreinstalledCacheFileName',
+      pathJoin([
+        root.path,
+        sanitizePathSegment(deviceName),
+        'manifest',
+        kPreinstalledCacheFileName,
+      ]),
     );
+  }
+
+  Future<void> _migrateLegacyPreinstalledCache(io.File target) async {
+    final candidates = <io.File>[
+      io.File(
+        pathJoin([
+          (await legacyApplicationDocumentsDirectory(['qunleashed'])).path,
+          'apps',
+          'manifest',
+          kPreinstalledCacheFileName,
+        ]),
+      ),
+      io.File(
+        pathJoin([
+          (await userDocumentsDirectory()).path,
+          'qunleashed',
+          'apps',
+          'manifest',
+          kPreinstalledCacheFileName,
+        ]),
+      ),
+      io.File(
+        pathJoin([
+          (await userDocumentsDirectory()).path,
+          kAppDocumentsFolderName,
+          'apps',
+          'manifest',
+          kPreinstalledCacheFileName,
+        ]),
+      ),
+    ];
+    for (final file in candidates) {
+      if (!await file.exists()) continue;
+      await target.parent.create(recursive: true);
+      await file.copy(target.path);
+      return;
+    }
   }
 
   Future<void> _removePreinstalledFromCache(String alias) async {
@@ -708,7 +757,8 @@ class AppsInstallService extends ChangeNotifier {
     AppCategory? category,
     AppManifest? manifest,
   }) async {
-    final manifestPath = manifest?.path ??
+    final manifestPath =
+        manifest?.path ??
         _installedManifests[app.alias]?.path ??
         _preinstalledPaths[app.alias];
     if (manifestPath != null && manifestPath.isNotEmpty) {
@@ -738,7 +788,9 @@ class AppsInstallService extends ChangeNotifier {
         final resolved = _categoryNamesById[categoryId];
         if (resolved != null && resolved.isNotEmpty) return resolved;
       } catch (e) {
-        LogService.log('[AppsInstall] resolve category "$categoryId" failed: $e');
+        LogService.log(
+          '[AppsInstall] resolve category "$categoryId" failed: $e',
+        );
       }
     }
     if (categoryId.isNotEmpty) return categoryId;
@@ -752,5 +804,4 @@ class AppsInstallService extends ChangeNotifier {
     final raw = app.id.isNotEmpty ? app.id : app.alias;
     return raw.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
   }
-
 }

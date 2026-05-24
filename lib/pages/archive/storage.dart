@@ -1,7 +1,6 @@
-﻿import 'dart:io' as io;
+import 'dart:io' as io;
 
-import 'package:path_provider/path_provider.dart';
-
+import '../../storage/app_documents.dart';
 import 'models/category.dart';
 
 class LocalKeyEntry {
@@ -30,9 +29,7 @@ class ArchiveStorage {
   Future<io.Directory> resolveRootDir() async {
     final cached = _cachedRoot;
     if (cached != null) return cached;
-    final sep = io.Platform.pathSeparator;
-    final base = await getApplicationDocumentsDirectory();
-    final root = io.Directory('${base.path}${sep}qunleashed${sep}archive');
+    final root = await appDocumentsDirectory();
     _cachedRoot = root;
     return root;
   }
@@ -46,15 +43,11 @@ class ArchiveStorage {
   }
 
   String _sanitize(String input) {
-    return input.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_').trim();
+    return sanitizePathSegment(input);
   }
 
   static String? normalizeDeviceName(String? raw) {
-    if (raw == null) return null;
-    var name = raw.trim();
-    final prefix = RegExp(r'^flipper[\s_-]+', caseSensitive: false);
-    name = name.replaceFirst(prefix, '').trim();
-    return name.isEmpty ? null : name;
+    return normalizeFlipperDeviceName(raw);
   }
 
   io.File _lastDeviceFile() {
@@ -66,6 +59,9 @@ class ArchiveStorage {
     try {
       await resolveRootDir();
       final file = _lastDeviceFile();
+      if (!await file.exists()) {
+        await _migrateLegacyLastDevice(file);
+      }
       if (!await file.exists()) return null;
       final raw = (await file.readAsString()).trim();
       return raw.isEmpty ? null : raw;
@@ -82,6 +78,29 @@ class ArchiveStorage {
     } catch (_) {}
   }
 
+  Future<void> _migrateLegacyLastDevice(io.File target) async {
+    final docs = await userDocumentsDirectory();
+    final candidates = <io.File>[
+      io.File(
+        pathJoin([
+          (await legacyApplicationDocumentsDirectory([
+            'qunleashed',
+            'archive',
+          ])).path,
+          '.last_device',
+        ]),
+      ),
+      io.File(pathJoin([docs.path, 'qunleashed', 'archive', '.last_device'])),
+      io.File(pathJoin([docs.path, 'qUnleashed', 'archive', '.last_device'])),
+    ];
+    for (final file in candidates) {
+      if (!await file.exists()) continue;
+      await target.parent.create(recursive: true);
+      await file.copy(target.path);
+      return;
+    }
+  }
+
   io.Directory deviceDir(String deviceName) {
     final sep = io.Platform.pathSeparator;
     return io.Directory('${rootDir.path}$sep${_sanitize(deviceName)}');
@@ -95,13 +114,32 @@ class ArchiveStorage {
     final sep = io.Platform.pathSeparator;
     final base = deviceDir(deviceName).path;
     final dir = cat.flipperDir.replaceAll('/', sep);
-    final sub = subFolder.isEmpty ? '' : '$sep${subFolder.replaceAll('/', sep)}';
+    final sub = subFolder.isEmpty
+        ? ''
+        : '$sep${subFolder.replaceAll('/', sep)}';
     return io.Directory('$base$sep$dir$sub');
   }
 
   Future<void> migrateLegacyFolders(String currentName) async {
     if (currentName.isEmpty) return;
     final root = await resolveRootDir();
+    await _migrateLegacyRoot(
+      await legacyApplicationDocumentsDirectory(['qunleashed', 'archive']),
+      currentName,
+    );
+    final docs = await userDocumentsDirectory();
+    await _migrateLegacyRoot(
+      io.Directory(pathJoin([docs.path, 'qunleashed', 'archive'])),
+      currentName,
+    );
+    await _migrateLegacyRoot(
+      io.Directory(pathJoin([docs.path, 'qUnleashed', 'archive'])),
+      currentName,
+    );
+    await _migrateLegacyRoot(root, currentName);
+  }
+
+  Future<void> _migrateLegacyRoot(io.Directory root, String currentName) async {
     if (!await root.exists()) return;
     final target = deviceDir(currentName);
     final canonical = target.uri.toFilePath();
@@ -141,7 +179,11 @@ class ArchiveStorage {
     for (final cat in ArchiveCategory.values) {
       await categoryDir(deviceName, cat).create(recursive: true);
       for (final sub in cat.subDirs) {
-        await categoryDir(deviceName, cat, subFolder: sub).create(recursive: true);
+        await categoryDir(
+          deviceName,
+          cat,
+          subFolder: sub,
+        ).create(recursive: true);
       }
     }
   }
@@ -174,14 +216,16 @@ class ArchiveStorage {
       if (cat.isIgnoredFile(base)) continue;
       final stat = await entity.stat();
       final name = base.substring(0, base.length - ext.length - 1);
-      out.add(LocalKeyEntry(
-        name: name,
-        category: cat,
-        extension: ext,
-        subFolder: subFolder,
-        path: entity.path,
-        size: stat.size,
-      ));
+      out.add(
+        LocalKeyEntry(
+          name: name,
+          category: cat,
+          extension: ext,
+          subFolder: subFolder,
+          path: entity.path,
+          size: stat.size,
+        ),
+      );
     }
     return out;
   }
@@ -225,7 +269,8 @@ class ArchiveStorage {
     await resolveRootDir();
     final sep = io.Platform.pathSeparator;
     final file = io.File(
-        '${categoryDir(deviceName, cat, subFolder: subFolder).path}$sep$fileName');
+      '${categoryDir(deviceName, cat, subFolder: subFolder).path}$sep$fileName',
+    );
     if (await file.exists()) await file.delete();
   }
 }

@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io' as io;
 
-import 'package:path_provider/path_provider.dart';
+import '../../../storage/app_documents.dart';
 
 const String kDefaultIrdbUrl = 'https://github.com/Lucaslhm/Flipper-IRDB';
 
@@ -12,7 +12,8 @@ class IrdbRepoRef {
   final String repo;
   final String branch;
 
-  String toUrl() => 'https://github.com/$owner/$repo'
+  String toUrl() =>
+      'https://github.com/$owner/$repo'
       '${branch.isEmpty || branch == 'main' ? '' : '/tree/$branch'}';
 
   static IrdbRepoRef? tryParse(String input) {
@@ -20,8 +21,10 @@ class IrdbRepoRef {
     if (raw.isEmpty) return null;
     var s = raw;
     if (s.endsWith('.git')) s = s.substring(0, s.length - 4);
-    s = s.replaceFirst(RegExp(r'^git@github\.com:', caseSensitive: false),
-        'https://github.com/');
+    s = s.replaceFirst(
+      RegExp(r'^git@github\.com:', caseSensitive: false),
+      'https://github.com/',
+    );
     Uri? uri;
     try {
       uri = Uri.parse(s);
@@ -72,12 +75,12 @@ class IrLibSettings {
   }
 
   Map<String, dynamic> toJson() => {
-        'localPath': localPath,
-        'githubToken': githubToken,
-        'owner': owner,
-        'repo': repo,
-        'branch': branch,
-      };
+    'localPath': localPath,
+    'githubToken': githubToken,
+    'owner': owner,
+    'repo': repo,
+    'branch': branch,
+  };
 
   factory IrLibSettings.fromJson(Map<String, dynamic> json) {
     return IrLibSettings(
@@ -96,11 +99,10 @@ class IrLibSettingsStorage {
   Future<io.File> _file() async {
     final cached = _cachedFile;
     if (cached != null) return cached;
-    final base = await getApplicationDocumentsDirectory();
-    final sep = io.Platform.pathSeparator;
-    final dir = io.Directory('${base.path}${sep}qunleashed${sep}irlib');
+    final base = await appDocumentsDirectory();
+    final dir = io.Directory(pathJoin([base.path, 'irlib']));
     await dir.create(recursive: true);
-    final f = io.File('${dir.path}${sep}settings.json');
+    final f = io.File(pathJoin([dir.path, 'settings.json']));
     _cachedFile = f;
     return f;
   }

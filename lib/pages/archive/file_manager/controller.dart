@@ -4,12 +4,10 @@ import 'dart:io' as io;
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/foundation.dart';
 
+import '../../../storage/app_documents.dart';
+
 class RemoteEntry {
-  RemoteEntry({
-    required this.name,
-    required this.size,
-    required this.isDir,
-  });
+  RemoteEntry({required this.name, required this.size, required this.isDir});
 
   final String name;
   final int size;
@@ -20,8 +18,8 @@ class RemoteEntry {
 
 class FileManagerController extends ChangeNotifier {
   FileManagerController({FlipperClient? client, String initialPath = '/ext'})
-      : _client = client ?? FlipperOneClient().get(),
-        _path = initialPath;
+    : _client = client ?? FlipperOneClient().get(),
+      _path = initialPath;
 
   final FlipperClient _client;
   String _path;
@@ -87,11 +85,13 @@ class FileManagerController extends ChangeNotifier {
       final out = <RemoteEntry>[];
       for (final r in batch.items) {
         for (final f in r.file) {
-          out.add(RemoteEntry(
-            name: f.name,
-            size: f.size,
-            isDir: f.type == File_FileType.DIR,
-          ));
+          out.add(
+            RemoteEntry(
+              name: f.name,
+              size: f.size,
+              isDir: f.type == File_FileType.DIR,
+            ),
+          );
         }
       }
       _entries = out;
@@ -198,7 +198,9 @@ class FileManagerController extends ChangeNotifier {
   Future<String?> downloadTo(String remotePath, {String? localFolder}) async {
     final bytes = await readBytes(remotePath);
     if (bytes == null) return null;
-    final dir = io.Directory(localFolder ?? _defaultDownloadDir(remotePath));
+    final dir = io.Directory(
+      localFolder ?? await _defaultDownloadDir(remotePath),
+    );
     await dir.create(recursive: true);
     final sep = io.Platform.pathSeparator;
     final file = io.File('${dir.path}$sep${_basename(remotePath)}');
@@ -218,30 +220,17 @@ class FileManagerController extends ChangeNotifier {
     return writeBytes(childPath(name), bytes);
   }
 
-  String _defaultDownloadDir(String remotePath) {
+  Future<String> _defaultDownloadDir(String remotePath) async {
     final sep = io.Platform.pathSeparator;
-    final base = _docsBase().path;
-    final relative = remotePath.startsWith('/') ? remotePath.substring(1) : remotePath;
+    final relative = remotePath.startsWith('/')
+        ? remotePath.substring(1)
+        : remotePath;
     final parent = relative.contains('/')
         ? relative.substring(0, relative.lastIndexOf('/'))
         : '';
     final localParent = parent.replaceAll('/', sep);
-    return '$base${sep}qunleashed${sep}downloads$sep$localParent';
-  }
-
-  io.Directory _docsBase() {
-    final sep = io.Platform.pathSeparator;
-    if (io.Platform.isWindows) {
-      final profile = io.Platform.environment['USERPROFILE'];
-      if (profile != null && profile.isNotEmpty) {
-        return io.Directory('$profile${sep}Documents');
-      }
-    }
-    final home = io.Platform.environment['HOME'];
-    if (home != null && home.isNotEmpty) {
-      return io.Directory('$home${sep}Documents');
-    }
-    return io.Directory.current;
+    final root = await appDocumentsDirectory();
+    return pathJoin([root.path, 'downloads', localParent]);
   }
 
   String _basename(String path) {
