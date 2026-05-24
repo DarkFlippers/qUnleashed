@@ -8,6 +8,8 @@ import 'install_service.dart';
 import 'models/card.dart';
 import 'models/category.dart';
 
+export 'install_service.dart' show AppButtonState;
+
 class AppsCatalogController extends ChangeNotifier {
   AppsCatalogController({
     AppsCatalogApi? api,
@@ -42,8 +44,22 @@ class AppsCatalogController extends ChangeNotifier {
   String _query = '';
   String get query => _query;
 
+  bool _installedOnly = false;
+  bool get installedOnly => _installedOnly;
+
   final List<AppCard> _apps = [];
   List<AppCard> get apps => List.unmodifiable(_apps);
+
+  List<AppCard> get displayedApps {
+    if (!_installedOnly) return List.unmodifiable(_apps);
+    return _apps
+        .where(
+          (app) =>
+              install.isInstalled(app) ||
+              install.buttonState(app) == AppButtonState.update,
+        )
+        .toList(growable: false);
+  }
 
   bool _categoriesLoading = false;
   bool get categoriesLoading => _categoriesLoading;
@@ -73,8 +89,6 @@ class AppsCatalogController extends ChangeNotifier {
     if (!state.connected || state.mode != FlipperMode.rpc) {
       _api.target = null;
       _api.api = null;
-    } else {
-      install.rescanInstalled();
     }
     notifyListeners();
   }
@@ -111,6 +125,12 @@ class AppsCatalogController extends ChangeNotifier {
     if (_query == trimmed) return;
     _query = trimmed;
     refresh();
+  }
+
+  void setInstalledOnly(bool value) {
+    if (_installedOnly == value) return;
+    _installedOnly = value;
+    notifyListeners();
   }
 
   Future<void> refresh() async {

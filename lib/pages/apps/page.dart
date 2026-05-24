@@ -28,7 +28,6 @@ class _AppsPageState extends State<AppsPage> {
     super.initState();
     _scroll.addListener(_onScroll);
     _ctrl.initialize();
-    _ctrl.install.ensureScanned();
   }
 
   void _onScroll() {
@@ -164,9 +163,22 @@ class _AppsPageState extends State<AppsPage> {
             onSelect: _ctrl.selectCategory,
           ),
           const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: SortDropdown(value: _ctrl.sort, onChanged: _ctrl.selectSort),
+          Row(
+            children: [
+              SortDropdown(value: _ctrl.sort, onChanged: _ctrl.selectSort),
+              const SizedBox(width: 8),
+              _InstalledOnlyChip(
+                active: _ctrl.installedOnly,
+                onTap: () => _ctrl.setInstalledOnly(!_ctrl.installedOnly),
+              ),
+              if (_ctrl.install.isReady && _ctrl.install.needsIndexing) ...[
+                const SizedBox(width: 8),
+                _IndexButton(
+                  scanning: _ctrl.install.scanning,
+                  onTap: () => _ctrl.install.rescanInstalled(),
+                ),
+              ],
+            ],
           ),
           const SizedBox(height: 16),
         ],
@@ -176,7 +188,7 @@ class _AppsPageState extends State<AppsPage> {
 
   Widget _buildAppsGrid(BuildContext context) {
     final colors = context.appColors;
-    final apps = _ctrl.apps;
+    final apps = _ctrl.displayedApps;
 
     if (apps.isEmpty) {
       if (_ctrl.appsLoading) {
@@ -260,5 +272,95 @@ class _AppsPageState extends State<AppsPage> {
       );
     }
     return const SizedBox(height: 16);
+  }
+}
+
+class _InstalledOnlyChip extends StatelessWidget {
+  const _InstalledOnlyChip({required this.active, required this.onTap});
+
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: active ? colors.accent : colors.card,
+          borderRadius: BorderRadius.circular(22),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.download_done_rounded,
+              size: 16,
+              color: active ? colors.onAccent : colors.textMuted,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              'Installed',
+              style: TextStyle(
+                color: active ? colors.onAccent : colors.textMuted,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _IndexButton extends StatelessWidget {
+  const _IndexButton({required this.scanning, required this.onTap});
+
+  final bool scanning;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    return GestureDetector(
+      onTap: scanning ? null : onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: colors.card,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: colors.accent.withValues(alpha: 0.6)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (scanning)
+              SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: colors.accent,
+                ),
+              )
+            else
+              Icon(Icons.refresh_rounded, size: 16, color: colors.accent),
+            const SizedBox(width: 6),
+            Text(
+              'Index apps',
+              style: TextStyle(
+                color: colors.accent,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

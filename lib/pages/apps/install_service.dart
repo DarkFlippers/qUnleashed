@@ -142,6 +142,10 @@ class AppsInstallService extends ChangeNotifier {
 
   bool get isReady => client.isConnected && client.mode == FlipperMode.rpc;
 
+  bool get scannedOnce => _scannedOnce;
+  bool get hasFirmwareMetadata => _firmwareMetadata.isNotEmpty;
+  bool get needsIndexing => isReady && (!_scannedOnce || !hasFirmwareMetadata);
+
   bool isInstalled(AppCard app) =>
       app.alias.isNotEmpty &&
       (_installedAliases.contains(app.alias) ||
