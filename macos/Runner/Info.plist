@@ -28,6 +28,8 @@
 	<string>This app uses Bluetooth to connect to your Flipper Zero device.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
 	<string>This app uses Bluetooth to connect to your Flipper Zero device.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>FlipperMap uses your location to show distance to saved Flipper files.</string>
 	<key>NSMainNibFile</key>
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
