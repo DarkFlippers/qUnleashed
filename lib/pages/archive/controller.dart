@@ -111,6 +111,12 @@ class ArchiveController extends ChangeNotifier {
     _connSub ??= _client.connectionStream.listen(_onConnectionChange);
     _deviceNameSub ??= _client.deviceNameStream.listen(_onDeviceName);
     _deviceName = _client.getName() ?? '';
+    if (_deviceName.isEmpty) {
+      final last = await _storage.readLastDeviceName();
+      if (last != null && last.isNotEmpty) {
+        _deviceName = last;
+      }
+    }
     await refresh();
   }
 
