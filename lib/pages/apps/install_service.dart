@@ -15,7 +15,6 @@ import 'models/manifest.dart';
 const String kAppsRoot = '/ext/apps';
 const String kManifestsRoot = '/ext/apps_manifests';
 const String kTempRoot = '/ext/.tmp/qunleashed';
-const String kPreinstalledCacheFileName = 'extraapps.txt';
 const Duration kPreinstalledScanDelay = Duration(milliseconds: 100);
 
 enum AppActionType { install, update, delete }
@@ -60,66 +59,6 @@ enum AppButtonState {
   inProgress,
 }
 
-class _PreinstalledCache {
-  final String firmwareFingerprint;
-  final Map<String, String> apps;
-
-  const _PreinstalledCache({
-    required this.firmwareFingerprint,
-    required this.apps,
-  });
-
-  factory _PreinstalledCache.parse(String body) {
-    final lines = body
-        .split('\n')
-        .map((line) => line.trim())
-        .where((line) => line.isNotEmpty);
-    String? firmwareFingerprint;
-    final apps = <String, String>{};
-
-    for (final line in lines) {
-      final index = line.indexOf(';');
-      if (index < 0) continue;
-      final first = line.substring(0, index).trim();
-      final second = line.substring(index + 1).trim();
-      if (firmwareFingerprint == null) {
-        firmwareFingerprint = '$first;$second';
-        continue;
-      }
-      final path = _restorePath(second);
-      if (first.isNotEmpty && path.isNotEmpty) {
-        apps[first] = path;
-      }
-    }
-
-    return _PreinstalledCache(
-      firmwareFingerprint: firmwareFingerprint ?? '',
-      apps: Map.unmodifiable(apps),
-    );
-  }
-
-  String encode() {
-    final lines = <String>[firmwareFingerprint];
-    for (final entry in apps.entries) {
-      lines.add('${entry.key};${_cachePath(entry.value)}');
-    }
-    return '${lines.join('\n')}\n';
-  }
-
-  static String _cachePath(String path) {
-    final trimmed = path.trim();
-    const prefix = '$kAppsRoot/';
-    if (trimmed.startsWith(prefix)) return trimmed.substring(prefix.length);
-    return trimmed;
-  }
-
-  static String _restorePath(String path) {
-    final trimmed = path.trim();
-    if (trimmed.isEmpty || trimmed.startsWith('/')) return trimmed;
-    return '$kAppsRoot/$trimmed';
-  }
-}
-
 class AppsInstallService extends ChangeNotifier {
   AppsInstallService({required this.client, required this.api});
 
@@ -132,7 +71,6 @@ class AppsInstallService extends ChangeNotifier {
   final Set<String> _preinstalledAliases = {};
   final Map<String, String> _preinstalledPaths = {};
   final Map<String, String> _categoryNamesById = {};
-  Map<String, String> _firmwareMetadata = const {};
 
   final Map<String, AppAction> _actions = {};
   Map<String, AppAction> get actions => Map.unmodifiable(_actions);
@@ -143,8 +81,7 @@ class AppsInstallService extends ChangeNotifier {
   bool get isReady => client.isConnected && client.mode == FlipperMode.rpc;
 
   bool get scannedOnce => _scannedOnce;
-  bool get hasFirmwareMetadata => _firmwareMetadata.isNotEmpty;
-  bool get needsIndexing => isReady && (!_scannedOnce || !hasFirmwareMetadata);
+  bool get needsIndexing => isReady && !_scannedOnce;
 
   bool isInstalled(AppCard app) =>
       app.alias.isNotEmpty &&
@@ -212,7 +149,6 @@ class AppsInstallService extends ChangeNotifier {
       _installedManifests.clear();
       _preinstalledAliases.clear();
       _preinstalledPaths.clear();
-      _firmwareMetadata = const {};
       notifyListeners();
       return;
     }
@@ -239,19 +175,10 @@ class AppsInstallService extends ChangeNotifier {
           if (manifest != null) {
             _installedManifests[alias] = manifest;
           }
+          notifyListeners();
         }
       }
-      final cached = await _readPreinstalledCache();
-      if (cached != null &&
-          cached.firmwareFingerprint == _firmwareFingerprint()) {
-        _restorePreinstalledFromCache(cached.apps);
-        LogService.log(
-          '[AppsInstall] preinstalled cache restored: ${_preinstalledAliases.length} apps',
-        );
-      } else {
-        await _scanPreinstalledApps();
-        await _writePreinstalledCache();
-      }
+      await _scanPreinstalledApps();
     } catch (e) {
       LogService.log('[AppsInstall] refresh failed: $e');
     } finally {
@@ -365,7 +292,6 @@ class AppsInstallService extends ChangeNotifier {
       _installedManifests[app.alias] = manifest;
       _preinstalledAliases.remove(app.alias);
       _preinstalledPaths.remove(app.alias);
-      await _removePreinstalledFromCache(app.alias);
       _actions.remove(app.alias);
       notifyListeners();
       return true;
@@ -397,7 +323,6 @@ class AppsInstallService extends ChangeNotifier {
       _installedManifests.remove(app.alias);
       _preinstalledAliases.remove(app.alias);
       _preinstalledPaths.remove(app.alias);
-      await _removePreinstalledFromCache(app.alias);
       _actions.remove(app.alias);
       notifyListeners();
       return true;
@@ -440,13 +365,111 @@ class AppsInstallService extends ChangeNotifier {
     if (!isReady) return;
     await _ensureDeviceFilters();
     await refreshInstalled();
+    await _saveCatalog();
     _scannedOnce = true;
   }
 
-  Future<void> _ensureDeviceFilters() async {
-    if (api.target != null && api.api != null && _firmwareMetadata.isNotEmpty) {
-      return;
+  Future<void> loadCatalog() async {
+    final deviceName =
+        normalizeFlipperDeviceName(client.connectedDevice?.name) ?? 'Flipper';
+    try {
+      final file = await installedCatalogFile(deviceName);
+      if (!await file.exists()) return;
+      final body = await file.readAsString();
+      if (body.trim().isEmpty) return;
+      final data = jsonDecode(body) as Map<String, dynamic>;
+
+      _installedAliases.clear();
+      _installedManifests.clear();
+      _preinstalledAliases.clear();
+      _preinstalledPaths.clear();
+
+      final installed = data['installed'] as List<dynamic>? ?? [];
+      for (final raw in installed) {
+        final entry = raw as Map<String, dynamic>;
+        final alias = (entry['alias'] as String?)?.trim() ?? '';
+        final path = (entry['path'] as String?)?.trim() ?? '';
+        if (alias.isEmpty || path.isEmpty) continue;
+        _installedAliases.add(alias);
+        _installedManifests[alias] = AppManifest(
+          uid: (entry['uid'] as String?) ?? '',
+          versionUid: (entry['version_uid'] as String?) ?? '',
+          fullName: (entry['full_name'] as String?) ?? '',
+          path: path,
+          iconBase64: (entry['icon_base64'] as String?) ?? '',
+          sdkApi: (entry['sdk_api'] as String?) ?? '',
+          devCatalog: (entry['dev_catalog'] as bool?) ?? false,
+        );
+      }
+
+      final preinstalled = data['preinstalled'] as List<dynamic>? ?? [];
+      for (final raw in preinstalled) {
+        final entry = raw as Map<String, dynamic>;
+        final alias = (entry['alias'] as String?)?.trim() ?? '';
+        final path = (entry['path'] as String?)?.trim() ?? '';
+        if (alias.isEmpty || path.isEmpty || _installedAliases.contains(alias)) {
+          continue;
+        }
+        _preinstalledAliases.add(alias);
+        _preinstalledPaths[alias] = path;
+      }
+
+      _scannedOnce = true;
+      notifyListeners();
+      LogService.log(
+        '[AppsInstall] catalog loaded: ${_installedAliases.length} installed, ${_preinstalledAliases.length} preinstalled',
+      );
+    } catch (e) {
+      LogService.log('[AppsInstall] catalog load failed: $e');
     }
+  }
+
+  Future<void> _saveCatalog() async {
+    final deviceName =
+        normalizeFlipperDeviceName(client.connectedDevice?.name) ?? 'Flipper';
+    try {
+      final installed = _installedManifests.entries.map((e) {
+        final m = e.value;
+        return {
+          'alias': e.key,
+          'uid': m.uid,
+          'version_uid': m.versionUid,
+          'full_name': m.fullName,
+          'path': m.path,
+          'sdk_api': m.sdkApi,
+          'icon_base64': m.iconBase64,
+          'dev_catalog': m.devCatalog,
+        };
+      }).toList();
+
+      final preinstalled = _preinstalledPaths.entries.map((e) {
+        return {'alias': e.key, 'path': e.value};
+      }).toList();
+
+      final data = {
+        'installed_count': _installedAliases.length,
+        'preinstalled_count': _preinstalledAliases.length,
+        'total': _installedAliases.length + _preinstalledAliases.length,
+        'installed': installed,
+        'preinstalled': preinstalled,
+      };
+
+      final file = await installedCatalogFile(deviceName);
+      await file.parent.create(recursive: true);
+      await file.writeAsString(
+        const JsonEncoder.withIndent('  ').convert(data),
+        flush: true,
+      );
+      LogService.log(
+        '[AppsInstall] catalog saved: ${_installedAliases.length} installed, ${_preinstalledAliases.length} preinstalled',
+      );
+    } catch (e) {
+      LogService.log('[AppsInstall] catalog save failed: $e');
+    }
+  }
+
+  Future<void> _ensureDeviceFilters() async {
+    if (api.target != null && api.api != null) return;
     try {
       final res = await client.deviceInfo(timeout: const Duration(seconds: 10));
       final info = <String, String>{};
@@ -456,7 +479,6 @@ class AppsInstallService extends ChangeNotifier {
         if (key.isEmpty || value.isEmpty) continue;
         info[key] = value;
       }
-
       final target = _firstInfoValue(info, const [
         'hardware_target',
         'hardware.target',
@@ -476,29 +498,6 @@ class AppsInstallService extends ChangeNotifier {
       ]);
       if (target != null) api.target = 'f$target';
       if (major != null) api.api = '$major.${minor ?? '0'}';
-
-      final metadata = <String, String>{};
-      void add(String name, List<String> keys) {
-        final value = _firstInfoValue(info, keys);
-        if (value != null && value.isNotEmpty) {
-          metadata[name] = value;
-        }
-      }
-
-      add('firmware_version', const [
-        'devinfo_firmware.version',
-        'firmware.version',
-        'firmware_version',
-        'software_revision',
-      ]);
-      add('firmware_build_date', const [
-        'devinfo_firmware.build.date',
-        'firmware.build.date',
-        'firmware_build_date',
-        'build_date',
-        'datetime',
-      ]);
-      _firmwareMetadata = Map.unmodifiable(metadata);
     } catch (e) {
       LogService.log('[AppsInstall] deviceInfo failed: $e');
     }
@@ -540,6 +539,7 @@ class AppsInstallService extends ChangeNotifier {
           '[AppsInstall] preinstalled scan category ${i + 1}/${categoryDirs.length}: $dirName',
         );
         await _scanPreinstalledCategory('$kAppsRoot/$dirName');
+        notifyListeners();
         if (i != categoryDirs.length - 1) {
           await Future<void>.delayed(kPreinstalledScanDelay);
         }
@@ -552,131 +552,12 @@ class AppsInstallService extends ChangeNotifier {
     }
   }
 
-  void _restorePreinstalledFromCache(Map<String, String> apps) {
-    _preinstalledAliases.clear();
-    _preinstalledPaths.clear();
-    for (final entry in apps.entries) {
-      final alias = entry.key.trim();
-      final path = entry.value.trim();
-      if (alias.isEmpty || path.isEmpty || _installedAliases.contains(alias)) {
-        continue;
-      }
-      _preinstalledAliases.add(alias);
-      _preinstalledPaths[alias] = path;
-    }
-  }
-
-  Future<_PreinstalledCache?> _readPreinstalledCache() async {
-    try {
-      final file = await _preinstalledCacheFile();
-      if (!await file.exists()) {
-        await _migrateLegacyPreinstalledCache(file);
-      }
-      if (!await file.exists()) return null;
-      final body = await file.readAsString();
-      if (body.trim().isEmpty) return null;
-      return _PreinstalledCache.parse(body);
-    } catch (_) {
-      return null;
-    }
-  }
-
-  Future<void> _writePreinstalledCache({
-    Map<String, String>? apps,
-    String? firmwareFingerprint,
-  }) async {
-    final fingerprint = firmwareFingerprint ?? _firmwareFingerprint();
-    if (fingerprint.isEmpty) return;
-    try {
-      final cache = _PreinstalledCache(
-        firmwareFingerprint: fingerprint,
-        apps: Map.unmodifiable(apps ?? _preinstalledPaths),
-      );
-      final file = await _preinstalledCacheFile();
-      await file.parent.create(recursive: true);
-      await file.writeAsString(cache.encode(), flush: true);
-    } catch (e) {
-      LogService.log('[AppsInstall] preinstalled cache write failed: $e');
-    }
-  }
-
-  Future<io.File> _preinstalledCacheFile() async {
-    final root = await appDocumentsDirectory();
-    final deviceName =
-        normalizeFlipperDeviceName(client.connectedDevice?.name) ?? 'Flipper';
-    return io.File(
-      pathJoin([
-        root.path,
-        sanitizePathSegment(deviceName),
-        'manifest',
-        kPreinstalledCacheFileName,
-      ]),
-    );
-  }
-
-  Future<void> _migrateLegacyPreinstalledCache(io.File target) async {
-    final candidates = <io.File>[
-      io.File(
-        pathJoin([
-          (await legacyApplicationDocumentsDirectory(['qunleashed'])).path,
-          'apps',
-          'manifest',
-          kPreinstalledCacheFileName,
-        ]),
-      ),
-      io.File(
-        pathJoin([
-          (await userDocumentsDirectory()).path,
-          'qunleashed',
-          'apps',
-          'manifest',
-          kPreinstalledCacheFileName,
-        ]),
-      ),
-      io.File(
-        pathJoin([
-          (await userDocumentsDirectory()).path,
-          kAppDocumentsFolderName,
-          'apps',
-          'manifest',
-          kPreinstalledCacheFileName,
-        ]),
-      ),
-    ];
-    for (final file in candidates) {
-      if (!await file.exists()) continue;
-      await target.parent.create(recursive: true);
-      await file.copy(target.path);
-      return;
-    }
-  }
-
-  Future<void> _removePreinstalledFromCache(String alias) async {
-    if (alias.isEmpty) return;
-    final cached = await _readPreinstalledCache();
-    if (cached == null || !cached.apps.containsKey(alias)) return;
-    _preinstalledAliases.remove(alias);
-    _preinstalledPaths.remove(alias);
-    final apps = Map<String, String>.from(cached.apps)..remove(alias);
-    await _writePreinstalledCache(
-      apps: apps,
-      firmwareFingerprint: cached.firmwareFingerprint,
-    );
-  }
-
   String? _firstInfoValue(Map<String, String> info, List<String> keys) {
     for (final key in keys) {
       final value = info[key];
       if (value != null && value.isNotEmpty) return value;
     }
     return null;
-  }
-
-  String _firmwareFingerprint() {
-    final version = _firmwareMetadata['firmware_version'] ?? '';
-    final buildDate = _firmwareMetadata['firmware_build_date'] ?? '';
-    if (version.isEmpty && buildDate.isEmpty) return '';
-    return '$version;$buildDate';
   }
 
   Future<void> _scanPreinstalledCategory(String path) async {

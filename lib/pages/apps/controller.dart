@@ -89,8 +89,10 @@ class AppsCatalogController extends ChangeNotifier {
     if (!state.connected || state.mode != FlipperMode.rpc) {
       _api.target = null;
       _api.api = null;
+      notifyListeners();
+    } else {
+      install.loadCatalog();
     }
-    notifyListeners();
   }
 
   Future<void> loadCategories() async {

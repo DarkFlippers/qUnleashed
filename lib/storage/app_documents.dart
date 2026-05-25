@@ -3,6 +3,17 @@ import 'dart:io' as io;
 import 'package:path_provider/path_provider.dart';
 
 const String kAppDocumentsFolderName = 'qUnleashed';
+const String kAppsCatalogFileName = 'catalog.json';
+
+Future<io.File> installedCatalogFile(String deviceName) async {
+  final root = await appDocumentsDirectory();
+  return io.File(pathJoin([
+    root.path,
+    sanitizePathSegment(deviceName),
+    'apps',
+    kAppsCatalogFileName,
+  ]));
+}
 
 String pathJoin(Iterable<String> parts) {
   final sep = io.Platform.pathSeparator;
