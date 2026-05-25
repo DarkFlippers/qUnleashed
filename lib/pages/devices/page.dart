@@ -41,6 +41,7 @@ class _DevicePageState extends State<DevicePage> {
   int _infoRequestGeneration = 0;
 
   StreamSubscription<FlipperConnectionState>? _connectionSub;
+  Timer? _refreshTimer;
 
   @override
   void initState() {
@@ -53,6 +54,7 @@ class _DevicePageState extends State<DevicePage> {
 
   @override
   void dispose() {
+    _refreshTimer?.cancel();
     _connectionSub?.cancel();
     _archiveController.removeListener(_onArchiveChanged);
     _archiveController.dispose();
@@ -139,6 +141,7 @@ class _DevicePageState extends State<DevicePage> {
         _deviceLoading = false;
         _deviceInfoConnected = _info.isNotEmpty;
       });
+      _startRefreshTimer();
     }
 
     Future<void> requestPart(
@@ -166,12 +169,7 @@ class _DevicePageState extends State<DevicePage> {
     unawaited(requestPart('device info', _loadDeviceInfo));
     unawaited(requestPart('power info', _loadPowerInfo));
     unawaited(requestPart('datetime', _loadDateTimeInfo));
-    unawaited(
-      requestPart(
-        'internal storage info',
-        () => _loadStorageInfo('/int/', 'storage.internal'),
-      ),
-    );
+    unawaited(requestPart('internal storage info', _loadInternalStorageDu));
     unawaited(
       requestPart(
         'sdcard storage info',
@@ -191,12 +189,8 @@ class _DevicePageState extends State<DevicePage> {
     };
   }
 
-  Future<Map<String, String>> _loadDeviceInfo() async {
-    final response = await _client.deviceInfo(
-      timeout: const Duration(seconds: 15),
-    );
-    return {for (final item in response.items) item.key: item.value};
-  }
+  Future<Map<String, String>> _loadDeviceInfo() =>
+      _client.awaitDeviceInfo();
 
   Future<Map<String, String>> _loadPowerInfo() async {
     final response = await _client.powerInfo(
@@ -226,6 +220,19 @@ class _DevicePageState extends State<DevicePage> {
     return info;
   }
 
+  Future<Map<String, String>> _loadInternalStorageDu() async {
+    try {
+      final bytes = await _client.storageDu('/int');
+      return {
+        'storage.internal.used': _formatBytes(bytes),
+        'storage.internal.used_bytes': '$bytes',
+      };
+    } catch (e) {
+      LogService.log('[DevicePage] internal storage du failed: $e');
+      return {};
+    }
+  }
+
   Future<InfoResponse?> _requestStorageInfo(String path) async {
     try {
       final response = await _client.storageInfo(
@@ -239,6 +246,37 @@ class _DevicePageState extends State<DevicePage> {
     }
   }
 
+  void _startRefreshTimer() {
+    _refreshTimer?.cancel();
+    _refreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      unawaited(_refreshDynamic());
+    });
+  }
+
+  void _stopRefreshTimer() {
+    _refreshTimer?.cancel();
+    _refreshTimer = null;
+  }
+
+  Future<void> _refreshDynamic() async {
+    if (!mounted || !_client.isConnected) return;
+    final generation = _infoRequestGeneration;
+    final results = await Future.wait([
+      _loadPowerInfo().catchError((_) => <String, String>{}),
+      _loadInternalStorageDu().catchError((_) => <String, String>{}),
+      _loadStorageInfo('/ext/', 'storage.sdcard')
+          .catchError((_) => <String, String>{}),
+    ]);
+    if (!mounted || generation != _infoRequestGeneration) return;
+    final merged = <String, String>{};
+    for (final part in results) {
+      merged.addAll(part);
+    }
+    if (merged.isNotEmpty) {
+      setState(() => _info = {..._info, ...merged});
+    }
+  }
+
   void _onConnectionState(FlipperConnectionState state) {
     if (!mounted) return;
     if (state.connected) {
@@ -248,6 +286,7 @@ class _DevicePageState extends State<DevicePage> {
       });
       return;
     }
+    _stopRefreshTimer();
     setState(() {
       _deviceDisconnected = true;
       _deviceLoading = false;

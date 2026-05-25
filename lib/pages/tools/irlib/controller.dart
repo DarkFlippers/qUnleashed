@@ -73,8 +73,7 @@ class IrLibController extends ChangeNotifier {
   }
 
   Future<void> initialize() async {
-    final live = ArchiveStorage.normalizeDeviceName(_client.connectedDevice?.name);
-    _deviceName = live ?? (await _storage.readLastDeviceName()) ?? 'Library';
+    _deviceName = _client.getName() ?? '';
     _settings = await _settingsStorage.load();
     final root = await _localRepo.resolveRoot();
     _localAvailable = await _localRepo.exists();

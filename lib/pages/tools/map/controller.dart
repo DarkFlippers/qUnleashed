@@ -50,7 +50,7 @@ class MapToolController extends ChangeNotifier {
     _loadError = null;
     notifyListeners();
     try {
-      final deviceName = await _storage.readLastDeviceName();
+      final deviceName = _client.getName();
       if (deviceName == null || deviceName.isEmpty) {
         _pins = const [];
         _loadError = 'No synced Flipper found. Connect and sync first in Archive.';

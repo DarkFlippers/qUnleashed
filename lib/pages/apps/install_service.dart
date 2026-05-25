@@ -369,9 +369,17 @@ class AppsInstallService extends ChangeNotifier {
     _scannedOnce = true;
   }
 
+  Future<String?> _resolveDeviceName() async {
+    if (client.getName() != null) return client.getName();
+    try {
+      await client.deviceInfo(timeout: const Duration(seconds: 10));
+    } catch (_) {}
+    return client.getName();
+  }
+
   Future<void> loadCatalog() async {
-    final deviceName =
-        normalizeFlipperDeviceName(client.connectedDevice?.name) ?? 'Flipper';
+    final deviceName = await _resolveDeviceName();
+    if (deviceName == null) return;
     try {
       final file = await installedCatalogFile(deviceName);
       if (!await file.exists()) return;
@@ -425,8 +433,7 @@ class AppsInstallService extends ChangeNotifier {
   }
 
   Future<void> _saveCatalog() async {
-    final deviceName =
-        normalizeFlipperDeviceName(client.connectedDevice?.name) ?? 'Flipper';
+    final deviceName = await client.awaitName();
     try {
       final installed = _installedManifests.entries.map((e) {
         final m = e.value;

@@ -369,6 +369,7 @@ class _BatterySummaryCard extends StatelessWidget {
       'power.temperature',
     ]);
     final charging = current != null && current > 5;
+    final Color? barColor = charge == null ? null : colors.accent;
 
     return _SummaryCard(
       title: 'Battery',
@@ -377,15 +378,9 @@ class _BatterySummaryCard extends StatelessWidget {
       emptyText: 'No battery data',
       mainValue: charge,
       barValue: charge != null ? charge / 100 : null,
-      barColor: charge == null
-          ? null
-          : charge < 20
-          ? colors.danger
-          : charge < 50
-          ? colors.accent
-          : colors.success,
-      statusText: charging ? 'Charging' : null,
-      statusColor: colors.success,
+      barColor: barColor,
+      statusText: null,
+      statusColor: null,
       metrics: [
         ('Voltage', voltage == null ? '-' : '${(voltage * 0.001).toStringAsFixed(3)} V'),
         ('Current', current == null ? '-' : '${current.round()} mA'),

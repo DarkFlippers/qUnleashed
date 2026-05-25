@@ -36,9 +36,7 @@ class _IrContentPageState extends State<IrContentPage> {
   }
 
   Future<void> _initDeviceName() async {
-    final live =
-        ArchiveStorage.normalizeDeviceName(_client.connectedDevice?.name);
-    final name = live ?? (await _storage.readLastDeviceName()) ?? 'Library';
+    final name = _client.getName() ?? '';
     if (!mounted) return;
     setState(() => _deviceName = name);
   }

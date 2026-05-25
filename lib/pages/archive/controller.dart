@@ -50,11 +50,13 @@ class ArchiveController extends ChangeNotifier {
   SyncProgress? _syncProgress;
   String? _lastError;
   String _query = '';
-  bool _wasConnected = false;
+  bool _wasRpcConnected = false;
+  int _metadataGeneration = 0;
 
   final Map<String, ArchiveKey> _keys = <String, ArchiveKey>{};
 
   StreamSubscription<FlipperConnectionState>? _connSub;
+  StreamSubscription<String>? _deviceNameSub;
 
   bool get loading => _loading;
   bool get syncing => _syncing;
@@ -106,44 +108,98 @@ class ArchiveController extends ChangeNotifier {
 
   Future<void> initialize() async {
     _connSub ??= _client.connectionStream.listen(_onConnectionChange);
-    final live = ArchiveStorage.normalizeDeviceName(_client.connectedDevice?.name);
-    _deviceName = live ?? (await _storage.readLastDeviceName()) ?? '';
-    _wasConnected = _client.isConnected;
-    if (_client.isConnected) {
-      unawaited(syncAll());
+    _deviceNameSub ??= _client.deviceNameStream.listen(_onDeviceName);
+    _deviceName = _client.getName() ?? '';
+    _wasRpcConnected = _client.isConnected && _client.mode == FlipperMode.rpc;
+    if (_wasRpcConnected) {
+      unawaited(_autoSyncOnConnect());
     } else {
       await refresh();
     }
   }
 
+  void _onDeviceName(String name) {
+    _setDeviceName(name);
+  }
+
   void _onConnectionChange(FlipperConnectionState s) {
     final connected = s.connected && s.device != null;
-    final normalized = ArchiveStorage.normalizeDeviceName(s.device?.name);
-    if (normalized != null && normalized.isNotEmpty) {
-      _deviceName = normalized;
-      unawaited(_storage.writeLastDeviceName(normalized));
-    }
+    final rpcConnected = connected && s.mode == FlipperMode.rpc;
     if (!connected) {
+      _metadataGeneration++;
       _syncStatus = ArchiveSyncStatus.idle;
     }
     notifyListeners();
-    if (connected && !_wasConnected && !_client.cliExclusive) {
+    if (rpcConnected && !_wasRpcConnected && !_client.cliExclusive) {
       unawaited(_autoSyncOnConnect());
     }
-    _wasConnected = connected;
+    _wasRpcConnected = rpcConnected;
   }
 
   Future<void> _autoSyncOnConnect() async {
+    if (!_client.isConnected || _client.cliExclusive) return;
+    final generation = ++_metadataGeneration;
+    final ready = await _awaitRealDeviceName();
+    if (generation != _metadataGeneration || !ready) return;
     await syncAll();
   }
 
   Future<void> fullSync() async {
+    await _awaitRealDeviceName();
     await syncAll();
+  }
+
+  Future<bool> _awaitRealDeviceName() async {
+    if (!_client.isConnected) return false;
+    final cachedName = _client.getName();
+    if (cachedName != null && cachedName.isNotEmpty) {
+      _setDeviceName(cachedName);
+      return true;
+    }
+
+    try {
+      await _client.awaitDeviceInfo().timeout(
+        const Duration(seconds: 20),
+        onTimeout: () async {
+          final response = await _client.deviceInfo(
+            timeout: const Duration(seconds: 15),
+            priority: FlipperRequestPriority.foreground,
+          );
+          return {
+            for (final item in response.items)
+              if (item.key.trim().isNotEmpty) item.key.trim(): item.value.trim(),
+          };
+        },
+      );
+    } catch (e) {
+      _lastError = '$e';
+      LogService.log('[Archive] device metadata failed: $e');
+      notifyListeners();
+      return false;
+    }
+
+    final name = _client.getName();
+    if (name == null || name.isEmpty) {
+      _lastError = 'Device metadata does not contain hardware name';
+      LogService.log('[Archive] device metadata has no hardware name');
+      notifyListeners();
+      return false;
+    }
+    _setDeviceName(name);
+    return true;
+  }
+
+  void _setDeviceName(String name) {
+    if (name.isEmpty || _deviceName == name) return;
+    _deviceName = name;
+    unawaited(_storage.writeLastDeviceName(name));
+    notifyListeners();
   }
 
   @override
   void dispose() {
     _connSub?.cancel();
+    _deviceNameSub?.cancel();
     super.dispose();
   }
 
