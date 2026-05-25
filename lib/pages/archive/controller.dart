@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/foundation.dart';
 
+import 'metadata/parser.dart';
 import 'storage.dart';
 import 'models/category.dart';
 import 'models/key.dart';
@@ -50,6 +51,7 @@ class ArchiveController extends ChangeNotifier {
   SyncProgress? _syncProgress;
   String? _lastError;
   String _query = '';
+  Set<String> _favorites = <String>{};
 
   final Map<String, ArchiveKey> _keys = <String, ArchiveKey>{};
 
@@ -182,6 +184,57 @@ class ArchiveController extends ChangeNotifier {
     super.dispose();
   }
 
+  Future<void> _loadFavorites() async {
+    if (_deviceName.isEmpty) return;
+    _favorites = await _storage.readFavorites(_deviceName);
+  }
+
+  Future<void> toggleFavorite(ArchiveKey key) async {
+    final keyId = _localKey(key.category, key.name, key.extension, key.subFolder);
+    if (_favorites.contains(keyId)) {
+      _favorites.remove(keyId);
+    } else {
+      _favorites.add(keyId);
+    }
+    unawaited(_storage.writeFavorites(_deviceName, _favorites));
+    final existing = _keys[keyId];
+    if (existing != null) {
+      _keys[keyId] = existing.copyWith(favorite: _favorites.contains(keyId));
+    }
+    notifyListeners();
+  }
+
+  void _applyFavorites() {
+    for (final entry in _keys.entries.toList()) {
+      final isFav = _favorites.contains(entry.key);
+      if (entry.value.favorite != isFav) {
+        _keys[entry.key] = entry.value.copyWith(favorite: isFav);
+      }
+    }
+  }
+
+  Future<void> loadMetaForCategory(ArchiveCategory cat) async {
+    await _parseMetaForCategory(cat);
+  }
+
+  Future<void> _parseMetaForCategory(ArchiveCategory cat) async {
+    var changed = false;
+    for (final entry in _keys.entries.toList()) {
+      if (entry.value.category != cat) continue;
+      if (entry.value.localPath == null) continue;
+      if (entry.value.protocol != null || entry.value.extra != null) continue;
+      final meta = await parseArchiveKeyMeta(cat, entry.value.localPath);
+      if (meta == null) continue;
+      if (meta.protocol == null && meta.extra == null) continue;
+      _keys[entry.key] = entry.value.copyWith(
+        protocol: meta.protocol,
+        extra: meta.extra,
+      );
+      changed = true;
+    }
+    if (changed) notifyListeners();
+  }
+
   Future<void> refresh() async {
     if (_loading) return;
     _loading = true;
@@ -195,15 +248,16 @@ class ArchiveController extends ChangeNotifier {
         }
         return;
       }
+      await _loadFavorites();
       await _storage.migrateLegacyFolders(_deviceName);
       await _storage.ensureLayout(_deviceName);
       final localEntries = await _storage.listAll(_deviceName);
       final connected = _client.isConnected;
       _keys.clear();
       for (final entry in localEntries) {
-        final key = _localKey(
+        final keyId = _localKey(
             entry.category, entry.name, entry.extension, entry.subFolder);
-        _keys[key] = ArchiveKey(
+        _keys[keyId] = ArchiveKey(
           name: entry.name,
           category: entry.category,
           extension: entry.extension,
@@ -211,6 +265,7 @@ class ArchiveController extends ChangeNotifier {
           state: ArchiveKeyState.local,
           localSize: entry.size,
           localPath: entry.path,
+          favorite: _favorites.contains(keyId),
         );
       }
       notifyListeners();
@@ -223,6 +278,7 @@ class ArchiveController extends ChangeNotifier {
           notifyListeners();
         }
       }
+      _applyFavorites();
     } catch (e) {
       if (_syncStatus == ArchiveSyncStatus.syncing) {
         _syncStatus = ArchiveSyncStatus.idle;
@@ -231,6 +287,103 @@ class ArchiveController extends ChangeNotifier {
       LogService.log('[Archive] refresh failed: $e');
     } finally {
       _loading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _refreshCategory(ArchiveCategory cat) async {
+    _lastError = null;
+    try {
+      if (_deviceName.isEmpty) {
+        _keys.removeWhere((_, v) => v.category == cat);
+        notifyListeners();
+        return;
+      }
+      await _storage.ensureLayout(_deviceName);
+      _keys.removeWhere((_, v) => v.category == cat);
+      final localEntries = await _storage.listOneCategory(_deviceName, cat);
+      for (final entry in localEntries) {
+        final keyId = _localKey(
+            entry.category, entry.name, entry.extension, entry.subFolder);
+        _keys[keyId] = ArchiveKey(
+          name: entry.name,
+          category: entry.category,
+          extension: entry.extension,
+          subFolder: entry.subFolder,
+          state: ArchiveKeyState.local,
+          localSize: entry.size,
+          localPath: entry.path,
+          favorite: _favorites.contains(keyId),
+        );
+      }
+      notifyListeners();
+      if (!_client.isConnected) return;
+      await _verifyScope(cat, '');
+      notifyListeners();
+      for (final sub in cat.subDirs) {
+        await _verifyScope(cat, sub);
+        notifyListeners();
+      }
+      _applyFavorites();
+      await _parseMetaForCategory(cat);
+    } catch (e) {
+      _lastError = '$e';
+      LogService.log('[Archive] _refreshCategory $cat failed: $e');
+    }
+  }
+
+  Future<void> syncCategory(ArchiveCategory category) async {
+    if (_syncing) return;
+    if (!_client.isConnected || _deviceName.isEmpty) {
+      await _refreshCategory(category);
+      return;
+    }
+    _syncing = true;
+    _syncStatus = ArchiveSyncStatus.syncing;
+    _lastError = null;
+    notifyListeners();
+    try {
+      await _awaitRealDeviceName();
+      await _refreshCategory(category);
+      if (_lastError != null) throw StateError(_lastError!);
+      final pendingIds = _keys.entries
+          .where((e) =>
+              e.value.category == category &&
+              !e.value.isDeleted &&
+              _needsDownload(e.value))
+          .map((e) => e.key)
+          .toList();
+      var done = 0;
+      for (final keyId in pendingIds) {
+        final key = _keys[keyId];
+        if (key == null) {
+          done++;
+          continue;
+        }
+        _syncProgress = SyncProgress(
+          current: done,
+          total: pendingIds.length,
+          fileName: key.fileName,
+        );
+        notifyListeners();
+        await _downloadAndApply(keyId, key);
+        done++;
+        notifyListeners();
+      }
+      _syncProgress = SyncProgress(
+        current: done,
+        total: pendingIds.length,
+        fileName: '',
+      );
+      _syncStatus = ArchiveSyncStatus.synced;
+      await _parseMetaForCategory(category);
+    } catch (e) {
+      _syncStatus = ArchiveSyncStatus.idle;
+      _lastError = '$e';
+      LogService.log('[Archive] syncCategory $category failed: $e');
+    } finally {
+      _syncing = false;
+      _syncProgress = null;
       notifyListeners();
     }
   }
@@ -287,6 +440,7 @@ class ArchiveController extends ChangeNotifier {
           subFolder: rf.subFolder,
           state: ArchiveKeyState.local,
           remoteSize: rf.size,
+          favorite: _favorites.contains(keyId),
         );
       }
     }

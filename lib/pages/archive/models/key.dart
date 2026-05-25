@@ -13,6 +13,8 @@ class ArchiveKey {
     this.localSize = 0,
     this.localPath,
     this.favorite = false,
+    this.protocol,
+    this.extra,
   }) : extension = extension ?? category.extension;
 
   final String name;
@@ -24,6 +26,8 @@ class ArchiveKey {
   final int localSize;
   final String? localPath;
   final bool favorite;
+  final String? protocol;
+  final String? extra;
 
   String get fileName => '$name.$extension';
 
@@ -44,6 +48,8 @@ class ArchiveKey {
     int? localSize,
     String? localPath,
     bool? favorite,
+    String? protocol,
+    String? extra,
   }) {
     return ArchiveKey(
       name: name,
@@ -55,6 +61,8 @@ class ArchiveKey {
       localSize: localSize ?? this.localSize,
       localPath: localPath ?? this.localPath,
       favorite: favorite ?? this.favorite,
+      protocol: protocol ?? this.protocol,
+      extra: extra ?? this.extra,
     );
   }
 }

@@ -188,6 +188,45 @@ class ArchiveStorage {
     }
   }
 
+  io.File _favoritesFile(String deviceName) {
+    final sep = io.Platform.pathSeparator;
+    return io.File('${deviceDir(deviceName).path}$sep.favorites');
+  }
+
+  Future<Set<String>> readFavorites(String deviceName) async {
+    try {
+      await resolveRootDir();
+      final file = _favoritesFile(deviceName);
+      if (!await file.exists()) return {};
+      final content = await file.readAsString();
+      return content.split('\n').map((l) => l.trim()).where((l) => l.isNotEmpty).toSet();
+    } catch (_) {
+      return {};
+    }
+  }
+
+  Future<void> writeFavorites(String deviceName, Set<String> favorites) async {
+    try {
+      await resolveRootDir();
+      final dir = deviceDir(deviceName);
+      await dir.create(recursive: true);
+      await _favoritesFile(deviceName).writeAsString(favorites.join('\n'));
+    } catch (_) {}
+  }
+
+  Future<List<LocalKeyEntry>> listOneCategory(
+    String deviceName,
+    ArchiveCategory cat,
+  ) async {
+    await resolveRootDir();
+    final out = <LocalKeyEntry>[];
+    out.addAll(await _listCategory(deviceName, cat, subFolder: ''));
+    for (final sub in cat.subDirs) {
+      out.addAll(await _listCategory(deviceName, cat, subFolder: sub));
+    }
+    return out;
+  }
+
   Future<List<LocalKeyEntry>> listAll(String deviceName) async {
     await resolveRootDir();
     final out = <LocalKeyEntry>[];
