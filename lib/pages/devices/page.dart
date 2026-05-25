@@ -248,7 +248,7 @@ class _DevicePageState extends State<DevicePage> {
 
   void _startRefreshTimer() {
     _refreshTimer?.cancel();
-    _refreshTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+    _refreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
       unawaited(_refreshDynamic());
     });
   }
