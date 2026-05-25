@@ -26,7 +26,7 @@ class FileManagerController extends ChangeNotifier {
   bool _loading = false;
   String? _error;
   List<RemoteEntry> _entries = const [];
-  bool _showHidden = true;
+  bool _showHidden = false;
   double _transferProgress = 0;
   String? _transferLabel;
 
@@ -178,6 +178,27 @@ class FileManagerController extends ChangeNotifier {
       notifyListeners();
       return false;
     }
+  }
+
+  Future<bool> launchFap(String remotePath) async {
+    try {
+      await _client.appStart(
+        StartRequest(name: remotePath, args: ''),
+        timeout: const Duration(seconds: 15),
+      );
+      return true;
+    } catch (e) {
+      _error = '$e';
+      LogService.log('[FileManager] appStart $remotePath failed: $e');
+      notifyListeners();
+      return false;
+    }
+  }
+
+  Future<bool> copy(String fromPath, String toPath) async {
+    final bytes = await readBytes(fromPath);
+    if (bytes == null) return false;
+    return writeBytes(toPath, bytes);
   }
 
   Future<bool> rename(String oldPath, String newPath) async {

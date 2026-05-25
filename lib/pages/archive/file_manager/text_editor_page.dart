@@ -22,6 +22,7 @@ class TextEditorPage extends StatefulWidget {
 
 class _TextEditorPageState extends State<TextEditorPage> {
   final TextEditingController _text = TextEditingController();
+  final ScrollController _scroll = ScrollController();
   bool _loading = true;
   bool _saving = false;
   String? _error;
@@ -72,6 +73,7 @@ class _TextEditorPageState extends State<TextEditorPage> {
   @override
   void dispose() {
     _text.dispose();
+    _scroll.dispose();
     super.dispose();
   }
 
@@ -111,9 +113,9 @@ class _TextEditorPageState extends State<TextEditorPage> {
                 )
               : Container(
                   color: colors.terminalBackground,
-                  child: Scrollbar(
-                    child: TextField(
+                  child: TextField(
                       controller: _text,
+                      scrollController: _scroll,
                       maxLines: null,
                       expands: true,
                       textAlignVertical: TextAlignVertical.top,
@@ -135,7 +137,6 @@ class _TextEditorPageState extends State<TextEditorPage> {
                       ),
                     ),
                   ),
-                ),
     );
   }
 }

@@ -1,13 +1,26 @@
-﻿import 'package:file_picker/file_picker.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme.dart';
 import '../../../widgets/notification.dart';
+import '../../remote/page.dart';
 import '../share_remote_file.dart';
 import 'controller.dart';
 import 'text_editor_page.dart';
 import 'widgets/file_row.dart';
+
+class _ClipboardItem {
+  _ClipboardItem({
+    required this.remotePath,
+    required this.name,
+    required this.isCut,
+  });
+
+  final String remotePath;
+  final String name;
+  final bool isCut;
+}
 
 class FileManagerPage extends StatefulWidget {
   const FileManagerPage({super.key, this.initialPath = '/ext'});
@@ -20,6 +33,7 @@ class FileManagerPage extends StatefulWidget {
 
 class _FileManagerPageState extends State<FileManagerPage> {
   late final FileManagerController _ctrl;
+  _ClipboardItem? _clipboard;
 
   @override
   void initState() {
@@ -37,146 +51,39 @@ class _FileManagerPageState extends State<FileManagerPage> {
   void _onEntryTap(RemoteEntry e) {
     if (e.isDir) {
       _ctrl.open(_ctrl.childPath(e.name));
-    } else {
-      _showFileActions(e);
+      return;
     }
+    final ext = _ext(e.name);
+    if (const {'bin', 'elf', 'fuf'}.contains(ext)) return;
+    if (ext == 'fap') {
+      _launchFap(_ctrl.childPath(e.name));
+      return;
+    }
+    _openTextEditor(_ctrl.childPath(e.name));
   }
 
-  Future<void> _showFileActions(RemoteEntry e) async {
-    final remotePath = _ctrl.childPath(e.name);
-    final colors = context.appColors;
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: colors.card,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (sheetContext) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      e.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: colors.textPrimary,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Divider(height: 1, color: colors.divider),
-            ListTile(
-              leading: SvgPicture.asset(
-                'assets/flipper_svg/archive/ic_edit.svg',
-                width: 22,
-                height: 22,
-                colorFilter:
-                    ColorFilter.mode(colors.textPrimary, BlendMode.srcIn),
-              ),
-              title: Text('Edit', style: TextStyle(color: colors.textPrimary)),
-              onTap: () {
-                Navigator.of(sheetContext).pop();
-                _openTextEditor(remotePath);
-              },
-            ),
-            ListTile(
-              leading: Icon(
-                Icons.drive_file_rename_outline,
-                color: colors.textPrimary,
-              ),
-              title: Text('Rename', style: TextStyle(color: colors.textPrimary)),
-              onTap: () {
-                Navigator.of(sheetContext).pop();
-                _renameEntry(e);
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.download, color: colors.textPrimary),
-              title: Text(
-                'Download',
-                style: TextStyle(color: colors.textPrimary),
-              ),
-              onTap: () {
-                Navigator.of(sheetContext).pop();
-                _downloadFile(remotePath);
-              },
-            ),
-            ShareRemoteFileTile(
-              controller: _ctrl,
-              remotePath: remotePath,
-              displayName: e.name,
-              onStarted: () => Navigator.of(sheetContext).pop(),
-            ),
-            ListTile(
-              leading: Icon(Icons.delete_outline, color: colors.danger),
-              title: Text('Delete', style: TextStyle(color: colors.danger)),
-              onTap: () {
-                Navigator.of(sheetContext).pop();
-                _deleteEntry(e);
-              },
-            ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
+  String _ext(String name) {
+    final dot = name.lastIndexOf('.');
+    return dot < 0 ? '' : name.substring(dot + 1).toLowerCase();
   }
 
-  Future<void> _showDirActions(RemoteEntry e) async {
-    final colors = context.appColors;
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: colors.card,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (sheetContext) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: Text(
-                e.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: colors.textPrimary,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-            Divider(height: 1, color: colors.divider),
-            ListTile(
-              leading: Icon(Icons.delete_outline, color: colors.danger),
-              title: Text('Delete', style: TextStyle(color: colors.danger)),
-              onTap: () {
-                Navigator.of(sheetContext).pop();
-                _deleteEntry(e, recursive: true);
-              },
-            ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
+  Future<void> _launchFap(String remotePath) async {
+    final ok = await _ctrl.launchFap(remotePath);
+    if (!mounted) return;
+    if (!ok) {
+      context.showNotification('Failed to launch app', type: QNotificationType.error);
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const RemoteControlPage()),
     );
   }
 
   Future<void> _openTextEditor(String remotePath) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => TextEditorPage(controller: _ctrl, remotePath: remotePath),
+        builder: (_) =>
+            TextEditorPage(controller: _ctrl, remotePath: remotePath),
       ),
     );
     await _ctrl.refresh();
@@ -199,24 +106,59 @@ class _FileManagerPageState extends State<FileManagerPage> {
     if (success) await _ctrl.refresh();
     if (!mounted) return;
     if (!success) {
-      context.showNotification(
-        'Delete failed',
-        type: QNotificationType.error,
-      );
+      context.showNotification('Delete failed', type: QNotificationType.error);
     }
   }
 
-  Future<void> _renameEntry(RemoteEntry e) async {
-    final input = await _promptText('Rename', initialValue: e.name);
-    if (input == null || input.trim().isEmpty || input == e.name) return;
+  Future<void> _renameEntry(RemoteEntry e, String newName) async {
     final from = _ctrl.childPath(e.name);
-    final to = _ctrl.childPath(input.trim());
+    final to = _ctrl.childPath(newName);
     final ok = await _ctrl.rename(from, to);
     if (ok) await _ctrl.refresh();
     if (!mounted) return;
     if (!ok) {
+      context.showNotification('Rename failed', type: QNotificationType.error);
+    }
+  }
+
+  void _copyFile(RemoteEntry e) {
+    setState(() {
+      _clipboard = _ClipboardItem(
+        remotePath: _ctrl.childPath(e.name),
+        name: e.name,
+        isCut: false,
+      );
+    });
+  }
+
+  void _cutFile(RemoteEntry e) {
+    setState(() {
+      _clipboard = _ClipboardItem(
+        remotePath: _ctrl.childPath(e.name),
+        name: e.name,
+        isCut: true,
+      );
+    });
+  }
+
+  Future<void> _pasteFile() async {
+    final cb = _clipboard;
+    if (cb == null) return;
+    final dest = _ctrl.childPath(cb.name);
+    bool ok;
+    if (cb.isCut) {
+      ok = await _ctrl.rename(cb.remotePath, dest);
+    } else {
+      ok = await _ctrl.copy(cb.remotePath, dest);
+    }
+    if (ok) {
+      setState(() => _clipboard = null);
+      await _ctrl.refresh();
+    }
+    if (!mounted) return;
+    if (!ok) {
       context.showNotification(
-        'Rename failed',
+        cb.isCut ? 'Move failed' : 'Copy failed',
         type: QNotificationType.error,
       );
     }
@@ -291,7 +233,8 @@ class _FileManagerPageState extends State<FileManagerPage> {
         false;
   }
 
-  Future<String?> _promptText(String title, {String? initialValue, String? hintText}) {
+  Future<String?> _promptText(String title,
+      {String? initialValue, String? hintText}) {
     final controller = TextEditingController(text: initialValue);
     final colors = context.appColors;
     return showDialog<String>(
@@ -411,6 +354,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
           ),
           body: Column(
             children: [
+              if (_clipboard != null) _buildClipboardBanner(colors),
               if (_ctrl.transferLabel != null)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -463,6 +407,45 @@ class _FileManagerPageState extends State<FileManagerPage> {
     );
   }
 
+  Widget _buildClipboardBanner(QAppColors colors) {
+    final cb = _clipboard!;
+    return Container(
+      color: colors.card,
+      padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+      child: Row(
+          children: [
+            Icon(
+              cb.isCut ? Icons.content_cut : Icons.content_copy,
+              size: 18,
+              color: colors.accent,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                cb.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: colors.textPrimary, fontSize: 13),
+              ),
+            ),
+            TextButton(
+              onPressed: _pasteFile,
+              child: Text(
+                'Paste here',
+                style: TextStyle(color: colors.accent, fontWeight: FontWeight.w700),
+              ),
+            ),
+            IconButton(
+              icon: Icon(Icons.close, size: 18, color: colors.textMuted),
+              onPressed: () => setState(() => _clipboard = null),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+            ),
+          ],
+        ),
+    );
+  }
+
   Widget _buildList(BuildContext context) {
     final colors = context.appColors;
     if (_ctrl.loading && _ctrl.entries.isEmpty) {
@@ -493,8 +476,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
     final list = _ctrl.entries;
     if (list.isEmpty) {
       return Center(
-        child: Text('Empty folder',
-            style: TextStyle(color: colors.textMuted)),
+        child: Text('Empty folder', style: TextStyle(color: colors.textMuted)),
       );
     }
     return RefreshIndicator(
@@ -509,8 +491,21 @@ class _FileManagerPageState extends State<FileManagerPage> {
           return FileRow(
             entry: e,
             onTap: () => _onEntryTap(e),
-            onLongPress: () =>
-                e.isDir ? _showDirActions(e) : _showFileActions(e),
+            onRename: (n) => _renameEntry(e, n),
+            onDelete: () => _deleteEntry(e, recursive: e.isDir),
+            onShare: e.isDir
+                ? null
+                : () => shareRemoteFile(
+                      context,
+                      _ctrl,
+                      _ctrl.childPath(e.name),
+                      displayName: e.name,
+                    ),
+            onCopy: e.isDir ? null : () => _copyFile(e),
+            onCut: e.isDir ? null : () => _cutFile(e),
+            onDownload: e.isDir
+                ? null
+                : () => _downloadFile(_ctrl.childPath(e.name)),
           );
         },
       ),
