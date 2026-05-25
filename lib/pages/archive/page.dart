@@ -126,7 +126,7 @@ class _ArchivePageState extends State<ArchivePage> {
           hasScrollBody: false,
           child: ArchiveEmptyView(
             icon: Icons.folder_open,
-            title: _ctrl.loading ? 'LoadingвЂ¦' : _emptyTitle(),
+            title: _ctrl.loading ? 'Loading…' : _emptyTitle(),
             subtitle: _ctrl.lastError,
           ),
         ),

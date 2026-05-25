@@ -50,8 +50,6 @@ class ArchiveController extends ChangeNotifier {
   SyncProgress? _syncProgress;
   String? _lastError;
   String _query = '';
-  bool _wasRpcConnected = false;
-  int _metadataGeneration = 0;
 
   final Map<String, ArchiveKey> _keys = <String, ArchiveKey>{};
 
@@ -110,12 +108,7 @@ class ArchiveController extends ChangeNotifier {
     _connSub ??= _client.connectionStream.listen(_onConnectionChange);
     _deviceNameSub ??= _client.deviceNameStream.listen(_onDeviceName);
     _deviceName = _client.getName() ?? '';
-    _wasRpcConnected = _client.isConnected && _client.mode == FlipperMode.rpc;
-    if (_wasRpcConnected) {
-      unawaited(_autoSyncOnConnect());
-    } else {
-      await refresh();
-    }
+    await refresh();
   }
 
   void _onDeviceName(String name) {
@@ -124,24 +117,10 @@ class ArchiveController extends ChangeNotifier {
 
   void _onConnectionChange(FlipperConnectionState s) {
     final connected = s.connected && s.device != null;
-    final rpcConnected = connected && s.mode == FlipperMode.rpc;
     if (!connected) {
-      _metadataGeneration++;
       _syncStatus = ArchiveSyncStatus.idle;
     }
     notifyListeners();
-    if (rpcConnected && !_wasRpcConnected && !_client.cliExclusive) {
-      unawaited(_autoSyncOnConnect());
-    }
-    _wasRpcConnected = rpcConnected;
-  }
-
-  Future<void> _autoSyncOnConnect() async {
-    if (!_client.isConnected || _client.cliExclusive) return;
-    final generation = ++_metadataGeneration;
-    final ready = await _awaitRealDeviceName();
-    if (generation != _metadataGeneration || !ready) return;
-    await syncAll();
   }
 
   Future<void> fullSync() async {
