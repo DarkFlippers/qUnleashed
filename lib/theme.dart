@@ -308,6 +308,14 @@ class QAppColors extends ThemeExtension<QAppColors> {
       isDark: t < 0.5 ? isDark : other.isDark,
     );
   }
+
+  /// Adapts a vivid category color for use as an AppBar background.
+  /// In dark mode the color is blended toward black so it doesn't clash
+  /// with the near-black scaffold background.
+  Color adaptCategoryHeader(Color base) {
+    if (!isDark) return base;
+    return Color.lerp(base, const Color(0xFF000000), 0.45)!;
+  }
 }
 
 ThemeData buildAppTheme(FirmwareEntry? firmware) {

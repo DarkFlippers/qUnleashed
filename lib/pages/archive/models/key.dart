@@ -15,6 +15,8 @@ class ArchiveKey {
     this.favorite = false,
     this.protocol,
     this.extra,
+    this.mtime,
+    this.meta,
   }) : extension = extension ?? category.extension;
 
   final String name;
@@ -28,6 +30,10 @@ class ArchiveKey {
   final bool favorite;
   final String? protocol;
   final String? extra;
+  final DateTime? mtime;
+  final Map<String, String>? meta;
+
+  static const Object _unset = Object();
 
   String get fileName => '$name.$extension';
 
@@ -50,6 +56,8 @@ class ArchiveKey {
     bool? favorite,
     String? protocol,
     String? extra,
+    DateTime? mtime,
+    Object? meta = _unset,
   }) {
     return ArchiveKey(
       name: name,
@@ -63,6 +71,8 @@ class ArchiveKey {
       favorite: favorite ?? this.favorite,
       protocol: protocol ?? this.protocol,
       extra: extra ?? this.extra,
+      mtime: mtime ?? this.mtime,
+      meta: identical(meta, _unset) ? this.meta : (meta as Map<String, String>?),
     );
   }
 }

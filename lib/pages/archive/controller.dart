@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' as io;
 
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/foundation.dart';
@@ -137,7 +138,6 @@ class ArchiveController extends ChangeNotifier {
       _setDeviceName(cachedName);
       return true;
     }
-
     try {
       await _client.awaitDeviceInfo().timeout(
         const Duration(seconds: 20),
@@ -158,7 +158,6 @@ class ArchiveController extends ChangeNotifier {
       notifyListeners();
       return false;
     }
-
     final name = _client.getName();
     if (name == null || name.isEmpty) {
       _lastError = 'Device metadata does not contain hardware name';
@@ -183,6 +182,8 @@ class ArchiveController extends ChangeNotifier {
     _deviceNameSub?.cancel();
     super.dispose();
   }
+
+  // ── Favorites ──────────────────────────────────────────────────────────────
 
   Future<void> _loadFavorites() async {
     if (_deviceName.isEmpty) return;
@@ -213,6 +214,8 @@ class ArchiveController extends ChangeNotifier {
     }
   }
 
+  // ── Metadata ───────────────────────────────────────────────────────────────
+
   Future<void> loadMetaForCategory(ArchiveCategory cat) async {
     await _parseMetaForCategory(cat);
   }
@@ -222,18 +225,140 @@ class ArchiveController extends ChangeNotifier {
     for (final entry in _keys.entries.toList()) {
       if (entry.value.category != cat) continue;
       if (entry.value.localPath == null) continue;
-      if (entry.value.protocol != null || entry.value.extra != null) continue;
-      final meta = await parseArchiveKeyMeta(cat, entry.value.localPath);
-      if (meta == null) continue;
-      if (meta.protocol == null && meta.extra == null) continue;
+      if (entry.value.meta != null) continue;
+      final parsed = await parseArchiveKeyMeta(cat, entry.value.localPath);
+      if (parsed == null) continue;
       _keys[entry.key] = entry.value.copyWith(
-        protocol: meta.protocol,
-        extra: meta.extra,
+        protocol: parsed.protocol ?? entry.value.protocol,
+        extra: parsed.extra ?? entry.value.extra,
+        meta: parsed.meta,
       );
       changed = true;
     }
     if (changed) notifyListeners();
   }
+
+  // ── Rename / Duplicate ─────────────────────────────────────────────────────
+
+  Future<void> renameKey(ArchiveKey key, String newName) async {
+    if (newName.trim().isEmpty || newName == key.name) return;
+    final keyId = _localKey(key.category, key.name, key.extension, key.subFolder);
+    final newFileName = '${newName.trim()}.${key.extension}';
+    try {
+      if (key.localPath != null) {
+        final oldFile = io.File(key.localPath!);
+        final sep = io.Platform.pathSeparator;
+        final newLocalPath = '${oldFile.parent.path}$sep$newFileName';
+        await oldFile.rename(newLocalPath);
+        if (_client.isConnected && key.onDevice) {
+          final newRemotePath = key.remotePath.replaceAll(
+            '/${key.fileName}',
+            '/$newFileName',
+          );
+          try {
+            await _client.storageRename(
+              RenameRequest(oldPath: key.remotePath, newPath: newRemotePath),
+              timeout: const Duration(seconds: 15),
+            );
+          } catch (e) {
+            LogService.log('[Archive] device rename failed: $e');
+          }
+        }
+        final newKeyId = _localKey(
+            key.category, newName.trim(), key.extension, key.subFolder);
+        _keys.remove(keyId);
+        if (_favorites.contains(keyId)) {
+          _favorites.remove(keyId);
+          _favorites.add(newKeyId);
+          unawaited(_storage.writeFavorites(_deviceName, _favorites));
+        }
+        _keys[newKeyId] = ArchiveKey(
+          name: newName.trim(),
+          category: key.category,
+          state: key.state,
+          extension: key.extension,
+          subFolder: key.subFolder,
+          remoteSize: key.remoteSize,
+          localSize: key.localSize,
+          localPath: newLocalPath,
+          favorite: _favorites.contains(newKeyId),
+          protocol: key.protocol,
+          extra: key.extra,
+          mtime: key.mtime,
+          meta: key.meta,
+        );
+      }
+    } catch (e) {
+      _lastError = '$e';
+      LogService.log('[Archive] rename failed: $e');
+    }
+    notifyListeners();
+  }
+
+  Future<void> duplicateKey(ArchiveKey key) async {
+    if (key.localPath == null) return;
+    try {
+      final existingNames = _keys.values
+          .where((k) =>
+              k.category == key.category && k.subFolder == key.subFolder)
+          .map((k) => k.fileName)
+          .toSet();
+      final newName = _nextDuplicateName(key.fileName, existingNames);
+      final baseName = newName.substring(0, newName.length - key.extension.length - 1);
+      final sep = io.Platform.pathSeparator;
+      final dir = io.File(key.localPath!).parent.path;
+      final newLocalPath = '$dir$sep$newName';
+      await io.File(key.localPath!).copy(newLocalPath);
+      if (_client.isConnected && key.onDevice) {
+        final bytes = await io.File(newLocalPath).readAsBytes();
+        final newRemotePath = key.remotePath.replaceAll(
+          '/${key.fileName}',
+          '/$newName',
+        );
+        try {
+          await _client.storageWriteChunked(newRemotePath, bytes);
+        } catch (e) {
+          LogService.log('[Archive] device duplicate write failed: $e');
+        }
+      }
+      final stat = await io.File(newLocalPath).stat();
+      final newKeyId =
+          _localKey(key.category, baseName, key.extension, key.subFolder);
+      _keys[newKeyId] = ArchiveKey(
+        name: baseName,
+        category: key.category,
+        state: key.state,
+        extension: key.extension,
+        subFolder: key.subFolder,
+        remoteSize: key.remoteSize,
+        localSize: stat.size,
+        localPath: newLocalPath,
+        favorite: false,
+        protocol: key.protocol,
+        extra: key.extra,
+        mtime: stat.modified,
+        meta: key.meta,
+      );
+    } catch (e) {
+      _lastError = '$e';
+      LogService.log('[Archive] duplicate failed: $e');
+    }
+    notifyListeners();
+  }
+
+  String _nextDuplicateName(String fileName, Set<String> existing) {
+    final dot = fileName.lastIndexOf('.');
+    final base = dot >= 0 ? fileName.substring(0, dot) : fileName;
+    final ext = dot >= 0 ? fileName.substring(dot) : '';
+    var i = 1;
+    while (true) {
+      final candidate = '$base $i$ext';
+      if (!existing.contains(candidate)) return candidate;
+      i++;
+    }
+  }
+
+  // ── Refresh / Sync ─────────────────────────────────────────────────────────
 
   Future<void> refresh() async {
     if (_loading) return;
@@ -266,6 +391,7 @@ class ArchiveController extends ChangeNotifier {
           localSize: entry.size,
           localPath: entry.path,
           favorite: _favorites.contains(keyId),
+          mtime: entry.mtime,
         );
       }
       notifyListeners();
@@ -314,6 +440,7 @@ class ArchiveController extends ChangeNotifier {
           localSize: entry.size,
           localPath: entry.path,
           favorite: _favorites.contains(keyId),
+          mtime: entry.mtime,
         );
       }
       notifyListeners();
@@ -389,9 +516,8 @@ class ArchiveController extends ChangeNotifier {
   }
 
   Future<void> _verifyScope(ArchiveCategory cat, String subFolder) async {
-    final path = subFolder.isEmpty
-        ? cat.remoteDir
-        : '${cat.remoteDir}/$subFolder';
+    final path =
+        subFolder.isEmpty ? cat.remoteDir : '${cat.remoteDir}/$subFolder';
     final remoteFiles = <_RemoteFile>[];
     bool ok = false;
     try {
@@ -424,7 +550,8 @@ class ArchiveController extends ChangeNotifier {
 
     final seen = <String>{};
     for (final rf in remoteFiles) {
-      final keyId = _localKey(rf.category, rf.name, rf.extension, rf.subFolder);
+      final keyId =
+          _localKey(rf.category, rf.name, rf.extension, rf.subFolder);
       seen.add(keyId);
       final existing = _keys[keyId];
       if (existing != null) {
@@ -472,9 +599,7 @@ class ArchiveController extends ChangeNotifier {
     try {
       await refresh();
       final refreshError = _lastError;
-      if (refreshError != null) {
-        throw StateError(refreshError);
-      }
+      if (refreshError != null) throw StateError(refreshError);
       final pendingIds = _keys.entries
           .where((e) => !e.value.isDeleted && _needsDownload(e.value))
           .map((e) => e.key)
@@ -574,7 +699,8 @@ class ArchiveController extends ChangeNotifier {
   }
 
   Future<void> _downloadKey(ArchiveKey key) async {
-    final keyId = _localKey(key.category, key.name, key.extension, key.subFolder);
+    final keyId =
+        _localKey(key.category, key.name, key.extension, key.subFolder);
     await _downloadAndApply(keyId, key);
   }
 
@@ -597,11 +723,13 @@ class ArchiveController extends ChangeNotifier {
       subFolder: key.subFolder,
     );
     final size = await file.length();
+    final stat = await file.stat();
     _keys[keyId] = key.copyWith(
       state: ArchiveKeyState.synced,
       localSize: size,
       localPath: file.path,
       remoteSize: key.remoteSize > 0 ? key.remoteSize : size,
+      mtime: stat.modified,
     );
   }
 

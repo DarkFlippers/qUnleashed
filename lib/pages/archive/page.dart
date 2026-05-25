@@ -1,18 +1,19 @@
 ﻿import 'dart:io' as io;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../theme.dart';
 import 'controller.dart';
 import 'file_manager/page.dart';
 import 'models/category.dart';
+import 'models/key.dart';
 import 'widgets/empty_view.dart';
 import 'widgets/categories_card.dart';
 import 'widgets/category_page.dart';
 import 'widgets/key_actions_sheet.dart';
 import 'widgets/key_card.dart';
 import 'widgets/my_flipper_button.dart';
-import 'widgets/section_title.dart';
 import 'widgets/sync_progress_view.dart';
 
 class ArchivePage extends StatefulWidget {
@@ -117,47 +118,38 @@ class _ArchivePageState extends State<ArchivePage> {
   }
 
   List<Widget> _buildKeysSlivers(BuildContext context) {
-    final favorites = _ctrl.favoriteKeys();
-    final others = _ctrl.nonFavoriteKeys();
+    // Group favorites by category (preserve ArchiveCategory order).
+    final groups = <ArchiveCategory, List<ArchiveKey>>{};
+    for (final cat in ArchiveCategory.values) {
+      final starred = _ctrl.keysFor(cat).where((k) => k.favorite).toList();
+      if (starred.isNotEmpty) groups[cat] = starred;
+    }
 
-    if (favorites.isEmpty && others.isEmpty) {
+    if (groups.isEmpty) {
       return [
         SliverFillRemaining(
           hasScrollBody: false,
           child: ArchiveEmptyView(
-            icon: Icons.folder_open,
-            title: _ctrl.loading ? 'Loading…' : _emptyTitle(),
-            subtitle: _ctrl.lastError,
+            icon: Icons.star_outline_rounded,
+            title: _ctrl.loading ? 'Loading…' : 'No starred keys yet',
+            subtitle: 'Open a category and star files to see them here',
           ),
         ),
       ];
     }
 
     final slivers = <Widget>[];
-    if (favorites.isNotEmpty) {
-      slivers.add(const SliverToBoxAdapter(
-        child: SectionTitle(text: 'FAVORITES'),
+    for (final entry in groups.entries) {
+      slivers.add(SliverToBoxAdapter(
+        child: _CategoryHeader(cat: entry.key, count: entry.value.length),
       ));
-      slivers.add(_keysSliver(favorites));
-    }
-    if (others.isNotEmpty) {
-      slivers.add(const SliverToBoxAdapter(
-        child: SectionTitle(text: 'ALL KEYS'),
-      ));
-      slivers.add(_keysSliver(others));
+      slivers.add(_keysSliver(entry.value));
     }
     slivers.add(const SliverToBoxAdapter(child: SizedBox(height: 96)));
     return slivers;
   }
 
-  String _emptyTitle() {
-    if (!_ctrl.isConnected) {
-      return 'No saved keys yet\nConnect a Flipper to download them';
-    }
-    return 'No keys found';
-  }
-
-  Widget _keysSliver(List<dynamic> keys) {
+  Widget _keysSliver(List<ArchiveKey> keys) {
     return SliverPadding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       sliver: SliverList.separated(
@@ -170,6 +162,46 @@ class _ArchivePageState extends State<ArchivePage> {
             onTap: () => KeyActionsSheet.show(context, _ctrl, k),
           );
         },
+      ),
+    );
+  }
+}
+
+class _CategoryHeader extends StatelessWidget {
+  const _CategoryHeader({required this.cat, required this.count});
+
+  final ArchiveCategory cat;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+      child: Row(
+        children: [
+          SvgPicture.asset(
+            cat.asset,
+            width: 14,
+            height: 14,
+            colorFilter: ColorFilter.mode(cat.color, BlendMode.srcIn),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            cat.title.toUpperCase(),
+            style: TextStyle(
+              color: colors.textSecondary,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.5,
+            ),
+          ),
+          const Spacer(),
+          Text(
+            '$count',
+            style: TextStyle(color: colors.textMuted, fontSize: 12),
+          ),
+        ],
       ),
     );
   }

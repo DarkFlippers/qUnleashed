@@ -11,6 +11,7 @@ class LocalKeyEntry {
     required this.subFolder,
     required this.path,
     required this.size,
+    required this.mtime,
   });
 
   final String name;
@@ -19,6 +20,7 @@ class LocalKeyEntry {
   final String subFolder;
   final String path;
   final int size;
+  final DateTime mtime;
 }
 
 class ArchiveStorage {
@@ -263,6 +265,7 @@ class ArchiveStorage {
           subFolder: subFolder,
           path: entity.path,
           size: stat.size,
+          mtime: stat.modified,
         ),
       );
     }

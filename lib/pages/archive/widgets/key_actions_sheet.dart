@@ -20,23 +20,41 @@ class KeyActionsSheet extends StatelessWidget {
     super.key,
     required this.controller,
     required this.flipperKey,
+    this.onRename,
+    this.onDuplicate,
+    this.onToggleFavorite,
   });
 
   final ArchiveController controller;
   final ArchiveKey flipperKey;
+  final VoidCallback? onRename;
+  final VoidCallback? onDuplicate;
+  final VoidCallback? onToggleFavorite;
 
   static Future<void> show(
     BuildContext context,
     ArchiveController controller,
-    ArchiveKey key,
-  ) {
-    return showModalBottomSheet<void>(
+    ArchiveKey key, {
+    VoidCallback? onRename,
+    VoidCallback? onDuplicate,
+    VoidCallback? onToggleFavorite,
+  }) {
+    return showDialog<void>(
       context: context,
-      backgroundColor: Theme.of(context).extension<QAppColors>()!.card,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      builder: (_) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 48),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: KeyActionsSheet(
+            controller: controller,
+            flipperKey: key,
+            onRename: onRename,
+            onDuplicate: onDuplicate,
+            onToggleFavorite: onToggleFavorite,
+          ),
+        ),
       ),
-      builder: (_) => KeyActionsSheet(controller: controller, flipperKey: key),
     );
   }
 
@@ -56,6 +74,30 @@ class KeyActionsSheet extends StatelessWidget {
     final connected = controller.isConnected;
 
     final actions = <_Action>[];
+
+    if (onRename != null) {
+      actions.add(_Action(
+        icon: Icons.edit_outlined,
+        label: 'Rename',
+        onTap: onRename!,
+      ));
+    }
+    if (onDuplicate != null) {
+      actions.add(_Action(
+        icon: Icons.copy_outlined,
+        label: 'Duplicate',
+        onTap: onDuplicate!,
+      ));
+    }
+    if (onToggleFavorite != null) {
+      final isFav = k.favorite;
+      actions.add(_Action(
+        icon: isFav ? Icons.star_rounded : Icons.star_outline_rounded,
+        label: isFav ? 'Unstar' : 'Star',
+        onTap: onToggleFavorite!,
+      ));
+    }
+
     if (k.state == ArchiveKeyState.deleted) {
       actions.add(_Action(
         icon: Icons.restore,
@@ -128,8 +170,10 @@ class KeyActionsSheet extends StatelessWidget {
       onTap: () => _confirmAndDelete(context, k, connected),
     ));
 
-    return SafeArea(
-      child: Column(
+    return Material(
+      color: colors.card,
+      child: SafeArea(
+        child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Padding(
@@ -197,6 +241,7 @@ class KeyActionsSheet extends StatelessWidget {
             ),
           const SizedBox(height: 8),
         ],
+      ),
       ),
     );
   }
