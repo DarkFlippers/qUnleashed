@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 import '../../theme.dart';
 import '../remote/page.dart';
@@ -39,9 +39,9 @@ class _AppsPageState extends State<AppsPage> {
   }
 
   void _onLaunched() {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const RemoteControlPage()),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const RemoteControlPage()));
   }
 
   void _openApp(AppCard app) {
@@ -124,7 +124,10 @@ class _AppsPageState extends State<AppsPage> {
               ),
               const Spacer(),
               IconButton(
-                icon: Icon(_searchOpen ? Icons.close : Icons.search, color: colors.textPrimary),
+                icon: Icon(
+                  _searchOpen ? Icons.close : Icons.search,
+                  color: colors.textPrimary,
+                ),
                 onPressed: () {
                   setState(() {
                     _searchOpen = !_searchOpen;
@@ -152,7 +155,10 @@ class _AppsPageState extends State<AppsPage> {
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,
                 ),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 0,
+                ),
               ),
             ),
           ],
@@ -171,7 +177,7 @@ class _AppsPageState extends State<AppsPage> {
                 active: _ctrl.installedOnly,
                 onTap: () => _ctrl.setInstalledOnly(!_ctrl.installedOnly),
               ),
-              if (_ctrl.install.isReady && _ctrl.install.needsIndexing) ...[
+              if (_ctrl.install.isReady) ...[
                 const SizedBox(width: 8),
                 _IndexButton(
                   scanning: _ctrl.install.scanning,
@@ -206,7 +212,9 @@ class _AppsPageState extends State<AppsPage> {
               Icon(Icons.apps, size: 48, color: colors.textMuted),
               const SizedBox(height: 8),
               Text(
-                _ctrl.lastError != null ? 'Failed to load apps' : 'No apps found',
+                _ctrl.lastError != null
+                    ? 'Failed to load apps'
+                    : 'No apps found',
                 style: TextStyle(color: colors.textMuted, fontSize: 14),
               ),
             ],
@@ -220,7 +228,10 @@ class _AppsPageState extends State<AppsPage> {
       sliver: SliverLayoutBuilder(
         builder: (context, constraints) {
           const cardWidth = 360.0;
-          final cross = (constraints.crossAxisExtent / cardWidth).floor().clamp(1, 6);
+          final cross = (constraints.crossAxisExtent / cardWidth).floor().clamp(
+            1,
+            6,
+          );
           return SliverGrid(
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: cross,
@@ -228,24 +239,21 @@ class _AppsPageState extends State<AppsPage> {
               crossAxisSpacing: 12,
               mainAxisExtent: 220,
             ),
-            delegate: SliverChildBuilderDelegate(
-              (context, index) {
-                final app = apps[index];
-                final cat = _ctrl.categoryById(app.categoryId);
-                return AppCardView(
+            delegate: SliverChildBuilderDelegate((context, index) {
+              final app = apps[index];
+              final cat = _ctrl.categoryById(app.categoryId);
+              return AppCardView(
+                app: app,
+                category: cat,
+                onTap: () => _openApp(app),
+                action: AppActionButton(
+                  service: _ctrl.install,
                   app: app,
                   category: cat,
-                  onTap: () => _openApp(app),
-                  action: AppActionButton(
-                    service: _ctrl.install,
-                    app: app,
-                    category: cat,
-                    onLaunched: _onLaunched,
-                  ),
-                );
-              },
-              childCount: apps.length,
-            ),
+                  onLaunched: _onLaunched,
+                ),
+              );
+            }, childCount: apps.length),
           );
         },
       ),
@@ -338,20 +346,28 @@ class _IndexButton extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (scanning)
-              SizedBox(
-                width: 14,
-                height: 14,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: colors.accent,
-                ),
-              )
-            else
-              Icon(Icons.refresh_rounded, size: 16, color: colors.accent),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 160),
+              child: scanning
+                  ? SizedBox(
+                      key: const ValueKey('index-loading'),
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: colors.accent,
+                      ),
+                    )
+                  : Icon(
+                      key: const ValueKey('index-icon'),
+                      Icons.refresh_rounded,
+                      size: 16,
+                      color: colors.accent,
+                    ),
+            ),
             const SizedBox(width: 6),
             Text(
-              'Index apps',
+              scanning ? 'Indexing...' : 'Index apps',
               style: TextStyle(
                 color: colors.accent,
                 fontSize: 14,
