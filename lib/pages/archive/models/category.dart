@@ -71,6 +71,7 @@ enum ArchiveCategory {
     asset: 'assets/flipper_svg/archive/ic_file.svg',
     flipperAppName: 'JS Runner',
     recursiveSearch: true,
+    launchWithPath: true,
   );
 
   const ArchiveCategory({
@@ -82,6 +83,7 @@ enum ArchiveCategory {
     this.subDirs = const <String>[],
     this.flipperAppName,
     this.recursiveSearch = false,
+    this.launchWithPath = false,
   });
 
   final String title;
@@ -92,6 +94,8 @@ enum ArchiveCategory {
   final List<String> subDirs;
   final String? flipperAppName;
   final bool recursiveSearch;
+  // true — app receives file path as launch arg; false — RPC mode + appLoadFile
+  final bool launchWithPath;
 
   static bool isIgnoredSubDir(String name) {
     if (name == 'wardriving' || name == 'assets') return true;

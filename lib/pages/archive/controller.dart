@@ -568,7 +568,9 @@ class ArchiveController extends ChangeNotifier {
       final existing = _keys[keyId];
       if (existing != null) {
         _keys[keyId] = existing.copyWith(
-          state: ArchiveKeyState.local,
+          state: existing.hasLocalFile
+              ? ArchiveKeyState.synced
+              : ArchiveKeyState.local,
           remoteSize: rf.size,
         );
       } else {
@@ -606,7 +608,9 @@ class ArchiveController extends ChangeNotifier {
       final existing = _keys[keyId];
       if (existing != null) {
         _keys[keyId] = existing.copyWith(
-          state: ArchiveKeyState.local,
+          state: existing.hasLocalFile
+              ? ArchiveKeyState.synced
+              : ArchiveKeyState.local,
           remoteSize: rf.size,
         );
       } else {

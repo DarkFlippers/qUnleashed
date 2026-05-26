@@ -37,9 +37,14 @@ class EmulateService {
       await stop();
     }
 
+    final launchWithPath = key.category.launchWithPath;
+
     try {
       await _client.appStart(
-        StartRequest(name: appName, args: 'RPC'),
+        StartRequest(
+          name: appName,
+          args: launchWithPath ? key.remotePath : 'RPC',
+        ),
         timeout: const Duration(seconds: 10),
       );
     } catch (e) {
@@ -47,17 +52,19 @@ class EmulateService {
       return EmulateResult.fail(EmulateError.appStartFailed);
     }
 
-    await Future<void>.delayed(const Duration(milliseconds: 400));
+    if (!launchWithPath) {
+      await Future<void>.delayed(const Duration(milliseconds: 400));
 
-    try {
-      await _client.appLoadFile(
-        AppLoadFileRequest(path: key.remotePath),
-        timeout: const Duration(seconds: 10),
-      );
-    } catch (e) {
-      LogService.log('[Emulate] appLoadFile failed: $e');
-      await _safeExit();
-      return EmulateResult.fail(EmulateError.loadFileFailed);
+      try {
+        await _client.appLoadFile(
+          AppLoadFileRequest(path: key.remotePath),
+          timeout: const Duration(seconds: 10),
+        );
+      } catch (e) {
+        LogService.log('[Emulate] appLoadFile failed: $e');
+        await _safeExit();
+        return EmulateResult.fail(EmulateError.loadFileFailed);
+      }
     }
 
     _running = true;

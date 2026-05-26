@@ -165,7 +165,7 @@ class _KeyActionsContent extends StatelessWidget {
         },
       ));
     }
-    if (k.onDevice && connected && k.category.emulatable) {
+    if (!k.isDeleted && k.category.emulatable) {
       actions.add(_Action(
         icon: Icons.play_arrow,
         label: 'Emulate',
