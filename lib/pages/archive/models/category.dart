@@ -62,6 +62,15 @@ enum ArchiveCategory {
     asset: 'assets/flipper_svg/archive/ic_fileformat_badusb.svg',
     flipperAppName: 'Bad USB',
     recursiveSearch: true,
+  ),
+  javascript(
+    title: 'JavaScript',
+    flipperDir: 'apps/Scripts',
+    extensions: ['js'],
+    color: Color(0xFFF7DF1E),
+    asset: 'assets/flipper_svg/archive/ic_file.svg',
+    flipperAppName: 'JS Runner',
+    recursiveSearch: true,
   );
 
   const ArchiveCategory({
@@ -83,6 +92,12 @@ enum ArchiveCategory {
   final List<String> subDirs;
   final String? flipperAppName;
   final bool recursiveSearch;
+
+  static bool isIgnoredSubDir(String name) {
+    if (name == 'wardriving' || name == 'assets') return true;
+    if (name.startsWith('_') || name.startsWith('.')) return true;
+    return false;
+  }
 
   bool get emulatable => flipperAppName != null;
   bool get needsButtonPress =>

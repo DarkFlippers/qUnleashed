@@ -44,6 +44,8 @@ ArchiveKeyMeta _parse(ArchiveCategory cat, String content) {
       return _parseBadUsb(lines);
     case ArchiveCategory.ibutton:
       return _parseIButton(lines);
+    case ArchiveCategory.javascript:
+      return const ArchiveKeyMeta();
   }
 }
 
@@ -73,9 +75,9 @@ ArchiveKeyMeta _parseNfc(List<String> lines) {
     protocol: typeLabel,
     extra: uid,
     meta: {
-      if (deviceType != null) 'device_type': deviceType,
-      if (uid != null) 'uid': uid,
-      if (mifareType != null) 'mifare_type': mifareType,
+      'device_type': ?deviceType,
+      'uid': ?uid,
+      'mifare_type': ?mifareType,
     },
   );
 }
@@ -87,8 +89,8 @@ ArchiveKeyMeta _parseRfid(List<String> lines) {
     protocol: keyType,
     extra: data,
     meta: {
-      if (keyType != null) 'key_type': keyType,
-      if (data != null) 'data': data,
+      'key_type': ?keyType,
+      'data': ?data,
     },
   );
 }
@@ -109,7 +111,7 @@ ArchiveKeyMeta _parseInfrared(List<String> lines) {
     extra: signalCount > 0 ? '$signalCount' : null,
     meta: {
       if (signalCount > 0) 'signals': '$signalCount',
-      if (protocolsLabel != null) 'protocols': protocolsLabel,
+      'protocols': ?protocolsLabel,
     },
   );
 }
@@ -153,11 +155,11 @@ ArchiveKeyMeta _parseSubGhz(List<String> lines) {
     protocol: protocol,
     extra: freqLabel,
     meta: {
-      if (freqStr != null) 'frequency': freqStr,
-      if (freqLabel != null) 'frequency_label': freqLabel,
-      if (protocol != null) 'protocol': protocol,
-      if (preset != null) 'preset': preset,
-      if (modulation != null) 'modulation': modulation,
+      'frequency': ?freqStr,
+      'frequency_label': ?freqLabel,
+      'protocol': ?protocol,
+      'preset': ?preset,
+      'modulation': ?modulation,
       if (hasRaw) 'has_raw': '1',
     },
   );
@@ -183,7 +185,7 @@ ArchiveKeyMeta _parseBadUsb(List<String> lines) {
     meta: {
       'kind': 'DuckyScript',
       'lines': '$lineCount',
-      if (comment != null) 'comment': comment,
+      'comment': ?comment,
     },
   );
 }
@@ -194,7 +196,7 @@ ArchiveKeyMeta _parseIButton(List<String> lines) {
     protocol: keyType,
     extra: null,
     meta: {
-      if (keyType != null) 'key_type': keyType,
+      'key_type': ?keyType,
     },
   );
 }

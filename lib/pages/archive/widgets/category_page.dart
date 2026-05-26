@@ -90,6 +90,14 @@ Map<ArchiveCategory, List<_Col>> _cols(ArchiveCategory cat) {
           _Col('Modified', 88, sortKey: 'mtime', right: true, hideLevel: 3),
         ]
       };
+    case ArchiveCategory.javascript:
+      return {
+        cat: const [
+          _Col('Script / Folder', 0, sortKey: 'name'),
+          _Col('Size', 68, sortKey: 'size', right: true, hideLevel: 1),
+          _Col('Modified', 88, sortKey: 'mtime', right: true, hideLevel: 3),
+        ]
+      };
   }
 }
 
@@ -264,6 +272,8 @@ class _CategoryPageState extends State<CategoryPage> {
         return k.meta?['key_type'] ?? k.protocol;
       case ArchiveCategory.badusb:
         return k.meta?['kind'];
+      case ArchiveCategory.javascript:
+        return null;
     }
   }
 
@@ -483,38 +493,6 @@ class _CategoryPageState extends State<CategoryPage> {
   String _keyId(ArchiveKey k) =>
       '${k.category.flipperDir}/${k.subFolder.isEmpty ? '' : '${k.subFolder}/'}${k.name}.${k.extension}';
 
-  Future<void> _confirmDelete(BuildContext ctx, ArchiveKey k) async {
-    final colors = ctx.appColors;
-    final connected = _ctrl.isConnected;
-    final String msg;
-    if (connected && k.onDevice && k.inLocal) {
-      msg =
-          'This file will be permanently deleted from the Flipper and this phone.';
-    } else if (connected && k.onDevice) {
-      msg = 'This file will be permanently deleted from the Flipper.';
-    } else {
-      msg = 'This local file will be permanently deleted.';
-    }
-    final ok = await showDialog<bool>(
-      context: ctx,
-      builder: (c) => AlertDialog(
-        backgroundColor: colors.dialogBackground,
-        title: Text('Delete ${k.name}?',
-            style: TextStyle(color: colors.dialogText)),
-        content:
-            Text(msg, style: TextStyle(color: colors.dialogMuted, height: 1.4)),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(c, false),
-              child: const Text('Cancel')),
-          TextButton(
-              onPressed: () => Navigator.pop(c, true),
-              child: Text('Delete', style: TextStyle(color: colors.danger))),
-        ],
-      ),
-    );
-    if (ok == true) await _ctrl.deleteKey(k);
-  }
 }
 
 // ── AppBar widgets ────────────────────────────────────────────────────────────

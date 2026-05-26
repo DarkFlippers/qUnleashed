@@ -403,12 +403,15 @@ class ArchiveController extends ChangeNotifier {
       notifyListeners();
       if (!connected) return;
       for (final cat in ArchiveCategory.values) {
-        await _verifyScope(cat, '');
-        notifyListeners();
-        for (final sub in cat.subDirs) {
-          await _verifyScope(cat, sub);
-          notifyListeners();
+        if (cat.recursiveSearch) {
+          await _verifyCategoryRecursive(cat);
+        } else {
+          await _verifyScope(cat, '');
+          for (final sub in cat.subDirs) {
+            await _verifyScope(cat, sub);
+          }
         }
+        notifyListeners();
       }
       _applyFavorites();
     } catch (e) {
@@ -451,12 +454,15 @@ class ArchiveController extends ChangeNotifier {
       }
       notifyListeners();
       if (!_client.isConnected) return;
-      await _verifyScope(cat, '');
-      notifyListeners();
-      for (final sub in cat.subDirs) {
-        await _verifyScope(cat, sub);
-        notifyListeners();
+      if (cat.recursiveSearch) {
+        await _verifyCategoryRecursive(cat);
+      } else {
+        await _verifyScope(cat, '');
+        for (final sub in cat.subDirs) {
+          await _verifyScope(cat, sub);
+        }
       }
+      notifyListeners();
       _applyFavorites();
       await _parseMetaForCategory(cat);
     } catch (e) {
@@ -586,6 +592,82 @@ class ArchiveController extends ChangeNotifier {
         continue;
       }
       _keys[entry.key] = key.copyWith(state: ArchiveKeyState.deleted);
+    }
+  }
+
+  Future<void> _verifyCategoryRecursive(ArchiveCategory cat) async {
+    final remoteFiles = <_RemoteFile>[];
+    await _collectRemoteFiles(cat, cat.remoteDir, '', remoteFiles);
+
+    final seen = <String>{};
+    for (final rf in remoteFiles) {
+      final keyId = _localKey(rf.category, rf.name, rf.extension, rf.subFolder);
+      seen.add(keyId);
+      final existing = _keys[keyId];
+      if (existing != null) {
+        _keys[keyId] = existing.copyWith(
+          state: ArchiveKeyState.local,
+          remoteSize: rf.size,
+        );
+      } else {
+        _keys[keyId] = ArchiveKey(
+          name: rf.name,
+          category: rf.category,
+          extension: rf.extension,
+          subFolder: rf.subFolder,
+          state: ArchiveKeyState.local,
+          remoteSize: rf.size,
+          favorite: _favorites.contains(keyId),
+        );
+      }
+    }
+    for (final entry in _keys.entries.toList()) {
+      final key = entry.value;
+      if (key.category != cat) continue;
+      if (seen.contains(entry.key)) continue;
+      if (!key.hasLocalFile) {
+        _keys.remove(entry.key);
+        continue;
+      }
+      _keys[entry.key] = key.copyWith(state: ArchiveKeyState.deleted);
+    }
+  }
+
+  Future<void> _collectRemoteFiles(
+    ArchiveCategory cat,
+    String remotePath,
+    String relPath,
+    List<_RemoteFile> out,
+  ) async {
+    try {
+      final batch = await _client.storageList(
+        ListRequest(path: remotePath),
+        timeout: const Duration(seconds: 30),
+      );
+      for (final r in batch.items) {
+        for (final f in r.file) {
+          final name = f.name;
+          if (f.type == File_FileType.DIR) {
+            if (ArchiveCategory.isIgnoredSubDir(name)) continue;
+            final childRelPath = relPath.isEmpty ? name : '$relPath/$name';
+            await _collectRemoteFiles(cat, '$remotePath/$name', childRelPath, out);
+          } else {
+            final ext = cat.matchExtension(name);
+            if (ext == null) continue;
+            if (cat.isIgnoredFile(name)) continue;
+            final baseName = name.substring(0, name.length - ext.length - 1);
+            out.add(_RemoteFile(
+              category: cat,
+              subFolder: relPath,
+              name: baseName,
+              extension: ext,
+              size: f.size,
+            ));
+          }
+        }
+      }
+    } catch (e) {
+      LogService.log('[Archive] list $remotePath failed: $e');
     }
   }
 

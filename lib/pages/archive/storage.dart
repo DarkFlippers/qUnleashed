@@ -216,12 +216,6 @@ class ArchiveStorage {
     } catch (_) {}
   }
 
-  static bool _isIgnoredDir(String name) {
-    if (name == 'wardriving' || name == 'assets') return true;
-    if (name.startsWith('_') || name.startsWith('.')) return true;
-    return false;
-  }
-
   Future<List<LocalKeyEntry>> listOneCategory(
     String deviceName,
     ArchiveCategory cat,
@@ -274,7 +268,7 @@ class ArchiveStorage {
     await for (final entity in dir.list(followLinks: false)) {
       final name = entity.uri.pathSegments.where((s) => s.isNotEmpty).last;
       if (entity is io.Directory) {
-        if (_isIgnoredDir(name)) continue;
+        if (ArchiveCategory.isIgnoredSubDir(name)) continue;
         final childRelPath = relPath.isEmpty ? name : '$relPath/$name';
         await _walkDir(entity, cat, out, relPath: childRelPath);
       } else if (entity is io.File) {
