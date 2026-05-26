@@ -10,7 +10,6 @@ import '../models/key.dart';
 import 'empty_view.dart';
 import 'key_actions_sheet.dart';
 import 'key_card.dart';
-import 'sync_progress_view.dart';
 
 // ── Column definitions ────────────────────────────────────────────────────────
 
@@ -389,43 +388,51 @@ class _CategoryPageState extends State<CategoryPage> {
             foregroundColor: Colors.white,
             elevation: 0,
             titleSpacing: 0,
-            title: _AppBarTitle(cat: _cat),
+            title: _AppBarTitle(
+              cat: _cat,
+              syncFileName: _ctrl.syncing ? _ctrl.syncProgress?.fileName : null,
+            ),
             actions: [
               _CountBadge(filtered: filtered.length, total: total),
-              if (_ctrl.syncing)
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 10),
-                  child: SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                      color: Colors.white,
-                      strokeWidth: 2,
-                    ),
-                  ),
-                ),
             ],
             bottom: PreferredSize(
-              preferredSize: const Size.fromHeight(50),
-              child: _ToolbarRow(
-                searchCtrl: _searchCtrl,
-                query: _query,
-                filterVal: _filterVal,
-                filterOpts: filterOpts,
-                starredOnly: _starredOnly,
-                catColor: catColor,
-                colors: colors,
-                onQueryChanged: (v) => setState(() => _query = v),
-                onFilterChanged: (v) => setState(() => _filterVal = v),
-                onStarredToggle: () =>
-                    setState(() => _starredOnly = !_starredOnly),
+              preferredSize: Size.fromHeight(_ctrl.syncing ? 53 : 50),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _ToolbarRow(
+                    searchCtrl: _searchCtrl,
+                    query: _query,
+                    filterVal: _filterVal,
+                    filterOpts: filterOpts,
+                    starredOnly: _starredOnly,
+                    catColor: catColor,
+                    colors: colors,
+                    onQueryChanged: (v) => setState(() => _query = v),
+                    onFilterChanged: (v) => setState(() => _filterVal = v),
+                    onStarredToggle: () =>
+                        setState(() => _starredOnly = !_starredOnly),
+                  ),
+                  if (_ctrl.syncing) ...[
+                    const SizedBox(height: 1),
+                    LinearProgressIndicator(
+                      value: () {
+                        final p = _ctrl.syncProgress;
+                        return (p == null || p.total == 0)
+                            ? null
+                            : p.current / p.total;
+                      }(),
+                      minHeight: 2,
+                      color: Colors.white.withValues(alpha: 0.9),
+                      backgroundColor: Colors.white.withValues(alpha: 0.25),
+                    ),
+                  ],
+                ],
               ),
             ),
           ),
           body: Column(
             children: [
-              if (_ctrl.syncing)
-                SyncProgressView(progress: _ctrl.syncProgress),
               Expanded(
                 child: LayoutBuilder(
                   builder: (ctx, constraints) {
@@ -498,8 +505,9 @@ class _CategoryPageState extends State<CategoryPage> {
 // ── AppBar widgets ────────────────────────────────────────────────────────────
 
 class _AppBarTitle extends StatelessWidget {
-  const _AppBarTitle({required this.cat});
+  const _AppBarTitle({required this.cat, this.syncFileName});
   final ArchiveCategory cat;
+  final String? syncFileName;
 
   @override
   Widget build(BuildContext context) {
@@ -518,11 +526,17 @@ class _AppBarTitle extends StatelessWidget {
                 fontSize: 17,
                 fontWeight: FontWeight.w600)),
         const SizedBox(width: 8),
-        Text(cat.remoteDir,
+        Flexible(
+          child: Text(
+            syncFileName ?? cat.remoteDir,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.5),
+                color: Colors.white.withValues(alpha: syncFileName != null ? 0.85 : 0.5),
                 fontSize: 12,
-                fontWeight: FontWeight.w400)),
+                fontWeight: FontWeight.w400),
+          ),
+        ),
       ],
     );
   }

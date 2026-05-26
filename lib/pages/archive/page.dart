@@ -91,10 +91,6 @@ class _ArchivePageState extends State<ArchivePage> {
               physics: const AlwaysScrollableScrollPhysics(),
               slivers: [
                 SliverToBoxAdapter(child: SizedBox(height: _topInset(context))),
-                if (_ctrl.syncing)
-                  SliverToBoxAdapter(
-                    child: SyncProgressView(progress: _ctrl.syncProgress),
-                  ),
                 SliverToBoxAdapter(
                   child: MyFlipperButton(
                     onTap: _openFileManager,
@@ -108,6 +104,10 @@ class _ArchivePageState extends State<ArchivePage> {
                     onOpenDeleted: _openDeleted,
                   ),
                 ),
+                if (_ctrl.syncing)
+                  SliverToBoxAdapter(
+                    child: SyncProgressView(progress: _ctrl.syncProgress),
+                  ),
                 ..._buildKeysSlivers(context),
               ],
             ),
