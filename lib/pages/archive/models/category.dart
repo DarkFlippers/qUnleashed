@@ -8,6 +8,7 @@ enum ArchiveCategory {
     color: Color(0xFF34C7A4),
     asset: 'assets/flipper_svg/archive/ic_fileformat_nfc.svg',
     flipperAppName: 'NFC',
+    recursiveSearch: true,
   ),
   rfid(
     title: 'RFID 125',
@@ -16,6 +17,7 @@ enum ArchiveCategory {
     color: Color(0xFF5856D6),
     asset: 'assets/flipper_svg/archive/ic_fileformat_rf.svg',
     flipperAppName: '125 kHz RFID',
+    recursiveSearch: true,
   ),
   ibutton(
     title: 'iButton',
@@ -24,6 +26,7 @@ enum ArchiveCategory {
     color: Color(0xFF007AFF),
     asset: 'assets/flipper_svg/archive/ic_fileformat_ibutton.svg',
     flipperAppName: 'iButton',
+    recursiveSearch: true,
   ),
   infrared(
     title: 'Infrared',
@@ -32,14 +35,16 @@ enum ArchiveCategory {
     color: Color(0xFFAF52DE),
     asset: 'assets/flipper_svg/archive/ic_fileformat_ir.svg',
     flipperAppName: 'Infrared',
+    recursiveSearch: true,
   ),
-    subghz(
+  subghz(
     title: 'Sub-GHz',
     flipperDir: 'subghz',
     extensions: ['bin', 'sub'],
     color: Color(0xFFFF9B34),
     asset: 'assets/flipper_svg/archive/ic_fileformat_sub.svg',
     flipperAppName: 'Sub-GHz',
+    recursiveSearch: true,
   ),
   wardriving(
     title: 'Wardriving',
@@ -56,6 +61,7 @@ enum ArchiveCategory {
     color: Color(0xFFFF3B30),
     asset: 'assets/flipper_svg/archive/ic_fileformat_badusb.svg',
     flipperAppName: 'Bad USB',
+    recursiveSearch: true,
   );
 
   const ArchiveCategory({
@@ -66,6 +72,7 @@ enum ArchiveCategory {
     required this.asset,
     this.subDirs = const <String>[],
     this.flipperAppName,
+    this.recursiveSearch = false,
   });
 
   final String title;
@@ -75,6 +82,7 @@ enum ArchiveCategory {
   final String asset;
   final List<String> subDirs;
   final String? flipperAppName;
+  final bool recursiveSearch;
 
   bool get emulatable => flipperAppName != null;
   bool get needsButtonPress =>

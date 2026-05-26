@@ -216,11 +216,20 @@ class ArchiveStorage {
     } catch (_) {}
   }
 
+  static bool _isIgnoredDir(String name) {
+    if (name == 'wardriving' || name == 'assets') return true;
+    if (name.startsWith('_') || name.startsWith('.')) return true;
+    return false;
+  }
+
   Future<List<LocalKeyEntry>> listOneCategory(
     String deviceName,
     ArchiveCategory cat,
   ) async {
     await resolveRootDir();
+    if (cat.recursiveSearch) {
+      return _listCategoryRecursive(deviceName, cat);
+    }
     final out = <LocalKeyEntry>[];
     out.addAll(await _listCategory(deviceName, cat, subFolder: ''));
     for (final sub in cat.subDirs) {
@@ -233,12 +242,60 @@ class ArchiveStorage {
     await resolveRootDir();
     final out = <LocalKeyEntry>[];
     for (final cat in ArchiveCategory.values) {
-      out.addAll(await _listCategory(deviceName, cat, subFolder: ''));
-      for (final sub in cat.subDirs) {
-        out.addAll(await _listCategory(deviceName, cat, subFolder: sub));
+      if (cat.recursiveSearch) {
+        out.addAll(await _listCategoryRecursive(deviceName, cat));
+      } else {
+        out.addAll(await _listCategory(deviceName, cat, subFolder: ''));
+        for (final sub in cat.subDirs) {
+          out.addAll(await _listCategory(deviceName, cat, subFolder: sub));
+        }
       }
     }
     return out;
+  }
+
+  Future<List<LocalKeyEntry>> _listCategoryRecursive(
+    String deviceName,
+    ArchiveCategory cat,
+  ) async {
+    final root = categoryDir(deviceName, cat);
+    if (!await root.exists()) return const [];
+    final out = <LocalKeyEntry>[];
+    await _walkDir(root, cat, out, relPath: '');
+    return out;
+  }
+
+  Future<void> _walkDir(
+    io.Directory dir,
+    ArchiveCategory cat,
+    List<LocalKeyEntry> out, {
+    required String relPath,
+  }) async {
+    await for (final entity in dir.list(followLinks: false)) {
+      final name = entity.uri.pathSegments.where((s) => s.isNotEmpty).last;
+      if (entity is io.Directory) {
+        if (_isIgnoredDir(name)) continue;
+        final childRelPath = relPath.isEmpty ? name : '$relPath/$name';
+        await _walkDir(entity, cat, out, relPath: childRelPath);
+      } else if (entity is io.File) {
+        final ext = cat.matchExtension(name);
+        if (ext == null) continue;
+        if (cat.isIgnoredFile(name)) continue;
+        final stat = await entity.stat();
+        final baseName = name.substring(0, name.length - ext.length - 1);
+        out.add(
+          LocalKeyEntry(
+            name: baseName,
+            category: cat,
+            extension: ext,
+            subFolder: relPath,
+            path: entity.path,
+            size: stat.size,
+            mtime: stat.modified,
+          ),
+        );
+      }
+    }
   }
 
   Future<List<LocalKeyEntry>> _listCategory(
