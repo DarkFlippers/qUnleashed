@@ -30,6 +30,8 @@ class MapToolController extends ChangeNotifier {
   Position? _previousUserPosition;
   double? _userBearingDegrees;
   StreamSubscription<Position>? _posSub;
+  StreamSubscription<FlipperConnectionState>? _connSub;
+  StreamSubscription<String>? _deviceNameSub;
 
   bool get loading => _loading;
   String? get loadError => _loadError;
@@ -41,8 +43,28 @@ class MapToolController extends ChangeNotifier {
   bool get isFlipperConnected => _client.isConnected;
 
   Future<void> initialize() async {
+    _connSub ??= _client.connectionStream.listen(_onConnectionChange);
+    _deviceNameSub ??= _client.deviceNameStream.listen(_onDeviceName);
     await loadFiles();
     await requestLocation();
+  }
+
+  void _onConnectionChange(FlipperConnectionState s) {
+    if (s.connected && s.device != null) {
+      loadFiles();
+    }
+  }
+
+  void _onDeviceName(String name) {
+    if (name.isNotEmpty) {
+      loadFiles();
+    }
+  }
+
+  Future<String?> _resolveDeviceName() async {
+    final connected = _client.getName();
+    if (connected != null && connected.isNotEmpty) return connected;
+    return _storage.readLastDeviceName();
   }
 
   Future<void> loadFiles() async {
@@ -50,7 +72,7 @@ class MapToolController extends ChangeNotifier {
     _loadError = null;
     notifyListeners();
     try {
-      final deviceName = _client.getName();
+      final deviceName = await _resolveDeviceName();
       if (deviceName == null || deviceName.isEmpty) {
         _pins = const [];
         _loadError = 'No synced Flipper found. Connect and sync first in Archive.';
@@ -323,6 +345,8 @@ class MapToolController extends ChangeNotifier {
   @override
   void dispose() {
     _posSub?.cancel();
+    _connSub?.cancel();
+    _deviceNameSub?.cancel();
     super.dispose();
   }
 }
