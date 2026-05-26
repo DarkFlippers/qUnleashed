@@ -5,10 +5,16 @@ import '../../../theme.dart';
 import '../models/key.dart';
 
 class KeyCard extends StatelessWidget {
-  const KeyCard({super.key, required this.flipperKey, required this.onTap});
+  const KeyCard({
+    super.key,
+    required this.flipperKey,
+    required this.onTap,
+    this.onToggleStar,
+  });
 
   final ArchiveKey flipperKey;
   final VoidCallback onTap;
+  final VoidCallback? onToggleStar;
 
   @override
   Widget build(BuildContext context) {
@@ -67,8 +73,43 @@ class KeyCard extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               _StateBadge(state: flipperKey.state),
+              if (onToggleStar != null) ...[
+                const SizedBox(width: 8),
+                _StarButton(onTap: onToggleStar!, starred: flipperKey.favorite),
+              ],
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StarButton extends StatelessWidget {
+  const _StarButton({required this.onTap, required this.starred});
+
+  final VoidCallback onTap;
+  final bool starred;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        width: 32,
+        height: 32,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: starred
+              ? Colors.amber.withValues(alpha: 0.15)
+              : context.appColors.background.withValues(alpha: 0.6),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Icon(
+          starred ? Icons.star_rounded : Icons.star_outline_rounded,
+          size: 18,
+          color: starred ? Colors.amber.shade600 : context.appColors.textMuted,
         ),
       ),
     );
