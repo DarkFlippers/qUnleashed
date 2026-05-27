@@ -5,13 +5,13 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme.dart';
 import '../../../widgets/notification.dart';
+import '../../editor/page.dart';
 import '../../tools/map/models/pin.dart';
 import '../../tools/map/page.dart';
 import '../controller.dart';
 import '../emulate/page.dart';
 import '../file_manager/controller.dart';
 import '../file_manager/page.dart';
-import '../file_manager/text_editor_page.dart';
 import '../models/key.dart';
 import '../share_remote_file.dart';
 
@@ -135,91 +135,120 @@ class _KeyActionsContent extends StatelessWidget {
     final actions = <_Action>[];
 
     if (onRename != null) {
-      actions.add(_Action(icon: Icons.edit_outlined, label: 'Rename', onTap: onRename!));
+      actions.add(
+        _Action(icon: Icons.edit_outlined, label: 'Rename', onTap: onRename!),
+      );
     }
     if (onDuplicate != null) {
-      actions.add(_Action(icon: Icons.copy_outlined, label: 'Duplicate', onTap: onDuplicate!));
+      actions.add(
+        _Action(
+          icon: Icons.copy_outlined,
+          label: 'Duplicate',
+          onTap: onDuplicate!,
+        ),
+      );
     }
     if (onToggleFavorite != null) {
       final isFav = k.favorite;
-      actions.add(_Action(
-        icon: isFav ? Icons.star_rounded : Icons.star_outline_rounded,
-        label: isFav ? 'Unstar' : 'Star',
-        onTap: onToggleFavorite!,
-      ));
+      actions.add(
+        _Action(
+          icon: isFav ? Icons.star_rounded : Icons.star_outline_rounded,
+          label: isFav ? 'Unstar' : 'Star',
+          onTap: onToggleFavorite!,
+        ),
+      );
     }
 
     if (k.state == ArchiveKeyState.deleted) {
-      actions.add(_Action(
-        icon: Icons.restore,
-        label: 'Restore',
-        onTap: () async {
-          if (!connected) {
-            context.showNotification(
-              'Connect a Flipper to restore',
-              type: QNotificationType.warning,
-            );
-            return;
-          }
-          await controller.restoreKey(k);
-        },
-      ));
+      actions.add(
+        _Action(
+          icon: Icons.restore,
+          label: 'Restore',
+          onTap: () async {
+            if (!connected) {
+              context.showNotification(
+                'Connect a Flipper to restore',
+                type: QNotificationType.warning,
+              );
+              return;
+            }
+            await controller.restoreKey(k);
+          },
+        ),
+      );
     }
     if (!k.isDeleted && k.category.emulatable) {
-      actions.add(_Action(
-        icon: Icons.play_arrow,
-        label: 'Emulate',
-        onTap: () => _emulateOnFlipper(context, k),
-      ));
+      actions.add(
+        _Action(
+          icon: Icons.play_arrow,
+          label: 'Emulate',
+          onTap: () => _emulateOnFlipper(context, k),
+        ),
+      );
     }
     if (canShowOnMap) {
-      actions.add(_Action(
-        icon: Icons.map_outlined,
-        label: 'Map',
-        onTap: () => _openOnMap(context, k),
-      ));
+      actions.add(
+        _Action(
+          icon: Icons.map_outlined,
+          label: 'Map',
+          onTap: () => _openOnMap(context, k),
+        ),
+      );
     } else if (k.inLocal && (k.localPath?.isNotEmpty ?? false)) {
-      actions.add(_Action(
-        icon: Icons.add_location_alt_outlined,
-        label: 'Map',
-        onTap: () => _pickLocation(context, k),
-      ));
+      actions.add(
+        _Action(
+          icon: Icons.add_location_alt_outlined,
+          label: 'Map',
+          onTap: () => _pickLocation(context, k),
+        ),
+      );
     }
     if (k.onDevice && connected) {
-      actions.add(_Action(
-        icon: Icons.folder_open,
-        label: 'Reveal',
-        onTap: () => _openInFileManager(context, k),
-      ));
-      actions.add(_Action(
-        icon: Icons.edit_note,
-        label: 'Edit',
-        onTap: () => _openInEditor(context, k),
-      ));
+      actions.add(
+        _Action(
+          icon: Icons.folder_open,
+          label: 'Reveal',
+          onTap: () => _openInFileManager(context, k),
+        ),
+      );
+      actions.add(
+        _Action(
+          icon: Icons.edit_note,
+          label: 'Edit',
+          onTap: () => _openInEditor(context, k),
+        ),
+      );
     }
     final shareIcon = isShareSupported ? Icons.ios_share : Icons.content_copy;
     final shareLabel = isShareSupported ? 'Share' : 'Copy';
     final hasLocal = k.inLocal && (k.localPath?.isNotEmpty ?? false);
     if (hasLocal) {
-      actions.add(_Action(
-        icon: shareIcon,
-        label: shareLabel,
-        onTap: () => shareLocalFile(context, k.localPath!, displayName: k.name),
-      ));
+      actions.add(
+        _Action(
+          icon: shareIcon,
+          label: shareLabel,
+          onTap: () =>
+              shareLocalFile(context, k.localPath!, displayName: k.name),
+        ),
+      );
     } else if (k.onDevice && connected) {
-      actions.add(_Action(
-        icon: shareIcon,
-        label: shareLabel,
-        onTap: () => _shareFromDevice(context, k),
-      ));
+      actions.add(
+        _Action(
+          icon: shareIcon,
+          label: shareLabel,
+          onTap: () => _shareFromDevice(context, k),
+        ),
+      );
     }
 
-    actions.add(_Action(
-      icon: Icons.delete_forever,
-      label: 'Delete',
-      destructive: true,
-      onTap: () => _confirmAndDelete(context, k, connected),
-    ));
+    actions.add(
+      _Action(
+        icon: Icons.delete_forever,
+        label: 'Delete',
+        destructive: true,
+        onTap: () => _confirmAndDelete(context, k, connected),
+      ),
+    );
 
     return actions;
   }
@@ -252,7 +281,10 @@ class _KeyActionsContent extends StatelessWidget {
                       k.category.asset,
                       width: 22,
                       height: 22,
-                      colorFilter: ColorFilter.mode(k.category.color, BlendMode.srcIn),
+                      colorFilter: ColorFilter.mode(
+                        k.category.color,
+                        BlendMode.srcIn,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -272,7 +304,10 @@ class _KeyActionsContent extends StatelessWidget {
                         ),
                         Text(
                           k.remotePath,
-                          style: TextStyle(color: colors.textMuted, fontSize: 12),
+                          style: TextStyle(
+                            color: colors.textMuted,
+                            fontSize: 12,
+                          ),
                         ),
                       ],
                     ),
@@ -290,19 +325,15 @@ class _KeyActionsContent extends StatelessWidget {
   }
 
   void _emulateOnFlipper(BuildContext context, ArchiveKey k) {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => EmulatePage(flipperKey: k)),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => EmulatePage(flipperKey: k)));
   }
 
   void _openInEditor(BuildContext context, ArchiveKey k) {
-    final remoteParent = _parent(k.remotePath);
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => TextEditorPage(
-          controller: FileManagerController(initialPath: remoteParent),
-          remotePath: k.remotePath,
-        ),
+        builder: (_) => TextEditorPage(remotePath: k.remotePath),
       ),
     );
   }
@@ -382,10 +413,14 @@ class _KeyActionsContent extends StatelessWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: colors.dialogBackground,
-        title: Text('Delete ${k.name}?',
-            style: TextStyle(color: colors.dialogText)),
-        content: Text(message,
-            style: TextStyle(color: colors.dialogMuted, height: 1.4)),
+        title: Text(
+          'Delete ${k.name}?',
+          style: TextStyle(color: colors.dialogText),
+        ),
+        content: Text(
+          message,
+          style: TextStyle(color: colors.dialogMuted, height: 1.4),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),

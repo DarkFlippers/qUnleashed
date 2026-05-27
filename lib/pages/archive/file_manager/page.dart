@@ -4,10 +4,10 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme.dart';
 import '../../../widgets/notification.dart';
+import '../../editor/page.dart';
 import '../../remote/page.dart';
 import '../share_remote_file.dart';
 import 'controller.dart';
-import 'text_editor_page.dart';
 import 'widgets/file_row.dart';
 
 class _ClipboardItem {
@@ -71,19 +71,22 @@ class _FileManagerPageState extends State<FileManagerPage> {
     final ok = await _ctrl.launchFap(remotePath);
     if (!mounted) return;
     if (!ok) {
-      context.showNotification('Failed to launch app', type: QNotificationType.error);
+      context.showNotification(
+        'Failed to launch app',
+        type: QNotificationType.error,
+      );
       return;
     }
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const RemoteControlPage()),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const RemoteControlPage()));
   }
 
   Future<void> _openTextEditor(String remotePath) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) =>
-            TextEditorPage(controller: _ctrl, remotePath: remotePath),
+            TextEditorPage(remotePath: remotePath, client: _ctrl.client),
       ),
     );
     await _ctrl.refresh();
@@ -233,8 +236,11 @@ class _FileManagerPageState extends State<FileManagerPage> {
         false;
   }
 
-  Future<String?> _promptText(String title,
-      {String? initialValue, String? hintText}) {
+  Future<String?> _promptText(
+    String title, {
+    String? initialValue,
+    String? hintText,
+  }) {
     final controller = TextEditingController(text: initialValue);
     final colors = context.appColors;
     return showDialog<String>(
@@ -282,11 +288,15 @@ class _FileManagerPageState extends State<FileManagerPage> {
                 'assets/flipper_svg/archive/ic_create_folder.svg',
                 width: 22,
                 height: 22,
-                colorFilter:
-                    ColorFilter.mode(colors.textPrimary, BlendMode.srcIn),
+                colorFilter: ColorFilter.mode(
+                  colors.textPrimary,
+                  BlendMode.srcIn,
+                ),
               ),
-              title: Text('New folder',
-                  style: TextStyle(color: colors.textPrimary)),
+              title: Text(
+                'New folder',
+                style: TextStyle(color: colors.textPrimary),
+              ),
               onTap: () {
                 Navigator.of(sheetContext).pop();
                 _createFolder();
@@ -297,11 +307,15 @@ class _FileManagerPageState extends State<FileManagerPage> {
                 'assets/flipper_svg/archive/ic_upload.svg',
                 width: 22,
                 height: 22,
-                colorFilter:
-                    ColorFilter.mode(colors.textPrimary, BlendMode.srcIn),
+                colorFilter: ColorFilter.mode(
+                  colors.textPrimary,
+                  BlendMode.srcIn,
+                ),
               ),
-              title: Text('Upload files',
-                  style: TextStyle(color: colors.textPrimary)),
+              title: Text(
+                'Upload files',
+                style: TextStyle(color: colors.textPrimary),
+              ),
               onTap: () {
                 Navigator.of(sheetContext).pop();
                 _uploadFromPath();
@@ -413,36 +427,39 @@ class _FileManagerPageState extends State<FileManagerPage> {
       color: colors.card,
       padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
       child: Row(
-          children: [
-            Icon(
-              cb.isCut ? Icons.content_cut : Icons.content_copy,
-              size: 18,
-              color: colors.accent,
+        children: [
+          Icon(
+            cb.isCut ? Icons.content_cut : Icons.content_copy,
+            size: 18,
+            color: colors.accent,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              cb.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: colors.textPrimary, fontSize: 13),
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                cb.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: colors.textPrimary, fontSize: 13),
+          ),
+          TextButton(
+            onPressed: _pasteFile,
+            child: Text(
+              'Paste here',
+              style: TextStyle(
+                color: colors.accent,
+                fontWeight: FontWeight.w700,
               ),
             ),
-            TextButton(
-              onPressed: _pasteFile,
-              child: Text(
-                'Paste here',
-                style: TextStyle(color: colors.accent, fontWeight: FontWeight.w700),
-              ),
-            ),
-            IconButton(
-              icon: Icon(Icons.close, size: 18, color: colors.textMuted),
-              onPressed: () => setState(() => _clipboard = null),
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(),
-            ),
-          ],
-        ),
+          ),
+          IconButton(
+            icon: Icon(Icons.close, size: 18, color: colors.textMuted),
+            onPressed: () => setState(() => _clipboard = null),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+          ),
+        ],
+      ),
     );
   }
 
@@ -460,14 +477,13 @@ class _FileManagerPageState extends State<FileManagerPage> {
             children: [
               Icon(Icons.error_outline, size: 48, color: colors.danger),
               const SizedBox(height: 12),
-              Text(_ctrl.error!,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: colors.textSecondary)),
-              const SizedBox(height: 12),
-              TextButton(
-                onPressed: _ctrl.refresh,
-                child: const Text('Retry'),
+              Text(
+                _ctrl.error!,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: colors.textSecondary),
               ),
+              const SizedBox(height: 12),
+              TextButton(onPressed: _ctrl.refresh, child: const Text('Retry')),
             ],
           ),
         ),
@@ -496,11 +512,11 @@ class _FileManagerPageState extends State<FileManagerPage> {
             onShare: e.isDir
                 ? null
                 : () => shareRemoteFile(
-                      context,
-                      _ctrl,
-                      _ctrl.childPath(e.name),
-                      displayName: e.name,
-                    ),
+                    context,
+                    _ctrl,
+                    _ctrl.childPath(e.name),
+                    displayName: e.name,
+                  ),
             onCopy: e.isDir ? null : () => _copyFile(e),
             onCut: e.isDir ? null : () => _cutFile(e),
             onDownload: e.isDir
