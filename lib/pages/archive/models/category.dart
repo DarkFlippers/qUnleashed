@@ -9,6 +9,7 @@ enum ArchiveCategory {
     asset: 'assets/flipper_svg/archive/ic_fileformat_nfc.svg',
     flipperAppName: 'NFC',
     recursiveSearch: true,
+    launchOnRpc: true,
   ),
   rfid(
     title: 'RFID 125',
@@ -18,6 +19,7 @@ enum ArchiveCategory {
     asset: 'assets/flipper_svg/archive/ic_fileformat_rf.svg',
     flipperAppName: '125 kHz RFID',
     recursiveSearch: true,
+    launchOnRpc: true,
   ),
   ibutton(
     title: 'iButton',
@@ -27,6 +29,7 @@ enum ArchiveCategory {
     asset: 'assets/flipper_svg/archive/ic_fileformat_ibutton.svg',
     flipperAppName: 'iButton',
     recursiveSearch: true,
+    launchOnRpc: true,
   ),
   infrared(
     title: 'Infrared',
@@ -36,6 +39,7 @@ enum ArchiveCategory {
     asset: 'assets/flipper_svg/archive/ic_fileformat_ir.svg',
     flipperAppName: 'Infrared',
     recursiveSearch: true,
+    launchOnApp: true,
   ),
   subghz(
     title: 'Sub-GHz',
@@ -45,6 +49,7 @@ enum ArchiveCategory {
     asset: 'assets/flipper_svg/archive/ic_fileformat_sub.svg',
     flipperAppName: 'Sub-GHz',
     recursiveSearch: true,
+    launchOnRpc: true,
   ),
   wardriving(
     title: 'Wardriving',
@@ -53,6 +58,8 @@ enum ArchiveCategory {
     color: Color(0xFF64D2FF),
     asset: 'assets/flipper_svg/archive/ic_fileformat_sub.svg',
     subDirs: ['autosaved'],
+    flipperAppName: 'Sub-GHz',
+    launchOnRpc: true,
   ),
   badusb(
     title: 'Bad USB',
@@ -62,6 +69,7 @@ enum ArchiveCategory {
     asset: 'assets/flipper_svg/archive/ic_fileformat_badusb.svg',
     flipperAppName: 'Bad USB',
     recursiveSearch: true,
+    launchOnRpc: true,
   ),
   javascript(
     title: 'JavaScript',
@@ -71,7 +79,7 @@ enum ArchiveCategory {
     asset: 'assets/flipper_svg/archive/ic_file.svg',
     flipperAppName: 'JS Runner',
     recursiveSearch: true,
-    launchWithPath: true,
+    launchOnApp: true,
   );
 
   const ArchiveCategory({
@@ -83,7 +91,8 @@ enum ArchiveCategory {
     this.subDirs = const <String>[],
     this.flipperAppName,
     this.recursiveSearch = false,
-    this.launchWithPath = false,
+    this.launchOnApp = false,
+    this.launchOnRpc = false,
   });
 
   final String title;
@@ -94,20 +103,19 @@ enum ArchiveCategory {
   final List<String> subDirs;
   final String? flipperAppName;
   final bool recursiveSearch;
-  // true — app receives file path as launch arg; false — RPC mode + appLoadFile
-  final bool launchWithPath;
+  final bool launchOnApp;
+  final bool launchOnRpc;
+
+  bool get emulatable =>
+      flipperAppName != null && (launchOnApp || launchOnRpc);
+  String get extension => extensions.first;
+  String get remoteDir => '/ext/$flipperDir';
 
   static bool isIgnoredSubDir(String name) {
     if (name == 'wardriving' || name == 'assets') return true;
     if (name.startsWith('_') || name.startsWith('.')) return true;
     return false;
   }
-
-  bool get emulatable => flipperAppName != null;
-  bool get needsButtonPress =>
-      this == ArchiveCategory.subghz || this == ArchiveCategory.infrared;
-
-  String get extension => extensions.first;
 
   String? matchExtension(String fileName) {
     final lower = fileName.toLowerCase();
@@ -125,8 +133,6 @@ enum ArchiveCategory {
     }
     return false;
   }
-
-  String get remoteDir => '/ext/$flipperDir';
 
   static ArchiveCategory? fromExtension(String ext) {
     final lower = ext.toLowerCase();

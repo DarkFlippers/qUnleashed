@@ -19,7 +19,8 @@ class EmulateResult {
 }
 
 class EmulateService {
-  EmulateService({FlipperClient? client}) : _client = client ?? FlipperOneClient().get();
+  EmulateService({FlipperClient? client})
+      : _client = client ?? FlipperOneClient().get();
 
   final FlipperClient _client;
   bool _running = false;
@@ -30,20 +31,19 @@ class EmulateService {
 
   Future<EmulateResult> start(ArchiveKey key) async {
     if (!_client.isConnected) return EmulateResult.fail(EmulateError.notConnected);
+    if (!key.category.launchOnRpc) {
+      return EmulateResult.fail(EmulateError.notEmulatable);
+    }
+    if (_running) await stop();
+
     final appName = key.category.flipperAppName;
     if (appName == null) return EmulateResult.fail(EmulateError.notEmulatable);
-
-    if (_running) {
-      await stop();
-    }
-
-    final launchWithPath = key.category.launchWithPath;
 
     try {
       await _client.appStart(
         StartRequest(
           name: appName,
-          args: launchWithPath ? key.remotePath : 'RPC',
+          args: 'RPC',
         ),
         timeout: const Duration(seconds: 10),
       );
@@ -52,23 +52,46 @@ class EmulateService {
       return EmulateResult.fail(EmulateError.appStartFailed);
     }
 
-    if (!launchWithPath) {
-      await Future<void>.delayed(const Duration(milliseconds: 400));
+    await Future<void>.delayed(const Duration(milliseconds: 400));
 
-      try {
-        await _client.appLoadFile(
-          AppLoadFileRequest(path: key.remotePath),
-          timeout: const Duration(seconds: 10),
-        );
-      } catch (e) {
-        LogService.log('[Emulate] appLoadFile failed: $e');
-        await _safeExit();
-        return EmulateResult.fail(EmulateError.loadFileFailed);
-      }
+    try {
+      await _client.appLoadFile(
+        AppLoadFileRequest(path: key.remotePath),
+        timeout: const Duration(seconds: 10),
+      );
+    } catch (e) {
+      LogService.log('[Emulate] appLoadFile failed: $e');
+      await _safeExit();
+      return EmulateResult.fail(EmulateError.loadFileFailed);
     }
 
     _running = true;
     _activeKey = key;
+    return EmulateResult.ok();
+  }
+
+  Future<EmulateResult> launchApp(ArchiveKey key) async {
+    if (!_client.isConnected) return EmulateResult.fail(EmulateError.notConnected);
+    if (!key.category.launchOnApp) {
+      return EmulateResult.fail(EmulateError.notEmulatable);
+    }
+
+    final appName = key.category.flipperAppName;
+    if (appName == null) return EmulateResult.fail(EmulateError.notEmulatable);
+
+    try {
+      await _client.appStart(
+        StartRequest(
+          name: appName,
+          args: key.remotePath,
+        ),
+        timeout: const Duration(seconds: 10),
+      );
+    } catch (e) {
+      LogService.log('[Emulate] launchApp appStart failed: $e');
+      return EmulateResult.fail(EmulateError.appStartFailed);
+    }
+
     return EmulateResult.ok();
   }
 
