@@ -41,7 +41,8 @@ class _DevicePageState extends State<DevicePage> {
   int _infoRequestGeneration = 0;
 
   StreamSubscription<FlipperConnectionState>? _connectionSub;
-  Timer? _refreshTimer;
+  StreamSubscription<Map<String, String>>? _batteryStreamSub;
+  StreamSubscription<Map<String, String>>? _storageStreamSub;
 
   @override
   void initState() {
@@ -54,12 +55,19 @@ class _DevicePageState extends State<DevicePage> {
 
   @override
   void dispose() {
-    _refreshTimer?.cancel();
+    _cancelDataStreams();
     _connectionSub?.cancel();
     _archiveController.removeListener(_onArchiveChanged);
     _archiveController.dispose();
     _client.disconnect();
     super.dispose();
+  }
+
+  void _cancelDataStreams() {
+    _batteryStreamSub?.cancel();
+    _batteryStreamSub = null;
+    _storageStreamSub?.cancel();
+    _storageStreamSub = null;
   }
 
   void _onArchiveChanged() {
@@ -122,18 +130,25 @@ class _DevicePageState extends State<DevicePage> {
     setState(() {
       _device = device;
       _deviceDisconnected = false;
+    });
+    _startDataLoading();
+  }
+
+  void _startDataLoading() {
+    _cancelDataStreams();
+    setState(() {
       _deviceLoading = true;
       _deviceInfoConnected = false;
       _info = {};
     });
-    _requestAll();
-  }
 
-  Future<void> _requestAll() async {
     final generation = ++_infoRequestGeneration;
-    var pending = 6;
+    // 3 static requests + battery first emission + storage first emission.
+    var pending = 5;
+    var batteryFirstDone = false;
+    var storageFirstDone = false;
 
-    void finishOne() {
+    void onPartDone() {
       if (!mounted || generation != _infoRequestGeneration) return;
       pending--;
       if (pending > 0) return;
@@ -141,41 +156,63 @@ class _DevicePageState extends State<DevicePage> {
         _deviceLoading = false;
         _deviceInfoConnected = _info.isNotEmpty;
       });
-      _startRefreshTimer();
     }
 
-    Future<void> requestPart(
+    void mergeInfo(Map<String, String> data) {
+      if (!mounted || generation != _infoRequestGeneration) return;
+      if (data.isNotEmpty) {
+        setState(() {
+          _info = {..._info, ...data};
+          _deviceInfoConnected = true;
+        });
+        QAppThemeController.instance.syncFirmwareFromDeviceInfo(_info);
+      }
+    }
+
+    // Battery stream.
+    _batteryStreamSub = _client.watchBattery().listen(
+      (data) {
+        mergeInfo(data);
+        if (!batteryFirstDone) {
+          batteryFirstDone = true;
+          onPartDone();
+        }
+      },
+      onError: (e) => LogService.log('[DevicePage] battery stream error: $e'),
+      onDone: () {},
+    );
+
+    // Storage stream.
+    _storageStreamSub = _client.watchStorage().listen(
+      (data) {
+        mergeInfo(data);
+        if (!storageFirstDone) {
+          storageFirstDone = true;
+          onPartDone();
+        }
+      },
+      onError: (e) => LogService.log('[DevicePage] storage stream error: $e'),
+      onDone: () {},
+    );
+
+    // Static one-time requests.
+    Future<void> loadStatic(
       String label,
       Future<Map<String, String>> Function() loader,
     ) async {
       try {
         final part = await loader();
-        if (!mounted || generation != _infoRequestGeneration) return;
-        if (part.isNotEmpty) {
-          setState(() {
-            _info = {..._info, ...part};
-            _deviceInfoConnected = true;
-          });
-          QAppThemeController.instance.syncFirmwareFromDeviceInfo(_info);
-        }
+        mergeInfo(part);
       } catch (e) {
-        LogService.log('[DevicePage] $label request failed: $e');
+        LogService.log('[DevicePage] $label failed: $e');
       } finally {
-        finishOne();
+        onPartDone();
       }
     }
 
-    unawaited(requestPart('protobuf version', _loadProtobufVersionInfo));
-    unawaited(requestPart('device info', _loadDeviceInfo));
-    unawaited(requestPart('power info', _loadPowerInfo));
-    unawaited(requestPart('datetime', _loadDateTimeInfo));
-    unawaited(requestPart('internal storage info', _loadInternalStorageDu));
-    unawaited(
-      requestPart(
-        'sdcard storage info',
-        () => _loadStorageInfo('/ext/', 'storage.sdcard'),
-      ),
-    );
+    unawaited(loadStatic('protobuf version', _loadProtobufVersionInfo));
+    unawaited(loadStatic('device info', _loadDeviceInfo));
+    unawaited(loadStatic('datetime', _loadDateTimeInfo));
   }
 
   Future<Map<String, String>> _loadProtobufVersionInfo() async {
@@ -192,13 +229,6 @@ class _DevicePageState extends State<DevicePage> {
   Future<Map<String, String>> _loadDeviceInfo() =>
       _client.awaitDeviceInfo();
 
-  Future<Map<String, String>> _loadPowerInfo() async {
-    final response = await _client.powerInfo(
-      timeout: const Duration(seconds: 15),
-    );
-    return {for (final item in response.items) 'power.${item.key}': item.value};
-  }
-
   Future<Map<String, String>> _loadDateTimeInfo() async {
     final response = await _client.getDateTime(
       timeout: const Duration(seconds: 15),
@@ -210,73 +240,6 @@ class _DevicePageState extends State<DevicePage> {
     };
   }
 
-  Future<Map<String, String>> _loadStorageInfo(
-    String path,
-    String prefix,
-  ) async {
-    final storage = await _requestStorageInfo(path);
-    final info = <String, String>{};
-    _addStorageInfo(info, prefix: prefix, storage: storage);
-    return info;
-  }
-
-  Future<Map<String, String>> _loadInternalStorageDu() async {
-    try {
-      final bytes = await _client.storageDu('/int');
-      return {
-        'storage.internal.used': _formatBytes(bytes),
-        'storage.internal.used_bytes': '$bytes',
-      };
-    } catch (e) {
-      LogService.log('[DevicePage] internal storage du failed: $e');
-      return {};
-    }
-  }
-
-  Future<InfoResponse?> _requestStorageInfo(String path) async {
-    try {
-      final response = await _client.storageInfo(
-        InfoRequest(path: path),
-        timeout: const Duration(seconds: 15),
-      );
-      return response.single;
-    } catch (e) {
-      LogService.log('[DevicePage] storage info request failed for $path: $e');
-      return null;
-    }
-  }
-
-  void _startRefreshTimer() {
-    _refreshTimer?.cancel();
-    _refreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
-      unawaited(_refreshDynamic());
-    });
-  }
-
-  void _stopRefreshTimer() {
-    _refreshTimer?.cancel();
-    _refreshTimer = null;
-  }
-
-  Future<void> _refreshDynamic() async {
-    if (!mounted || !_client.isConnected) return;
-    final generation = _infoRequestGeneration;
-    final results = await Future.wait([
-      _loadPowerInfo().catchError((_) => <String, String>{}),
-      _loadInternalStorageDu().catchError((_) => <String, String>{}),
-      _loadStorageInfo('/ext/', 'storage.sdcard')
-          .catchError((_) => <String, String>{}),
-    ]);
-    if (!mounted || generation != _infoRequestGeneration) return;
-    final merged = <String, String>{};
-    for (final part in results) {
-      merged.addAll(part);
-    }
-    if (merged.isNotEmpty) {
-      setState(() => _info = {..._info, ...merged});
-    }
-  }
-
   void _onConnectionState(FlipperConnectionState state) {
     if (!mounted) return;
     if (state.connected) {
@@ -286,7 +249,7 @@ class _DevicePageState extends State<DevicePage> {
       });
       return;
     }
-    _stopRefreshTimer();
+    _cancelDataStreams();
     setState(() {
       _deviceDisconnected = true;
       _deviceLoading = false;
@@ -320,27 +283,6 @@ class _DevicePageState extends State<DevicePage> {
     return 'No device';
   }
 
-  void _addStorageInfo(
-    Map<String, String> info, {
-    required String prefix,
-    required InfoResponse? storage,
-  }) {
-    if (storage == null) return;
-
-    final total = storage.totalSpace.toInt();
-    final free = storage.freeSpace.toInt();
-    final used = total >= free ? total - free : 0;
-
-    info['$prefix.total'] = _formatBytes(total);
-    info['$prefix.free'] = _formatBytes(free);
-    info['$prefix.used'] = _formatBytes(used);
-    info['$prefix.free_percent'] = _formatPercent(free, total);
-    info['$prefix.used_percent'] = _formatPercent(used, total);
-    info['$prefix.total_bytes'] = '$total';
-    info['$prefix.available_bytes'] = '$free';
-    info['$prefix.used_bytes'] = '$used';
-  }
-
   String _formatStorageUsedTotal(String prefix) {
     final used = _info['$prefix.used'];
     final total = _info['$prefix.total'];
@@ -356,26 +298,6 @@ class _DevicePageState extends State<DevicePage> {
       MapEntry('Build Date', _buildDate),
       MapEntry('SD Card (Used/Total)', _sdCard),
     ];
-  }
-
-  String _formatBytes(int bytes) {
-    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-    var value = bytes.toDouble();
-    var unitIndex = 0;
-
-    while (value >= 1024 && unitIndex < units.length - 1) {
-      value /= 1024;
-      unitIndex++;
-    }
-
-    final precision = value >= 100 || unitIndex == 0 ? 0 : 1;
-    return '${value.toStringAsFixed(precision)} ${units[unitIndex]}';
-  }
-
-  String _formatPercent(int value, int total) {
-    if (total <= 0) return '0%';
-    final percent = (value * 100) / total;
-    return '${percent.toStringAsFixed(1)}%';
   }
 
   String _lookupExportValue(List<String> aliases, {String fallback = '-'}) {
@@ -1191,12 +1113,7 @@ class _DevicePageState extends State<DevicePage> {
   }
 
   void _synchronizeDevice() {
-    setState(() {
-      _deviceLoading = true;
-      _deviceInfoConnected = false;
-      _info = {};
-    });
-    _requestAll();
+    _startDataLoading();
   }
 
   Future<void> _playAlertOnFlipper() async {
