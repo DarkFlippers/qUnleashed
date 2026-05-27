@@ -60,7 +60,8 @@ class _UpdateFile {
 class FirmwareUpdater {
   FirmwareUpdater._();
 
-  static FirmwareParser parserFor(FirmwareEntry entry) => switch (entry.shortName) {
+  static FirmwareParser parserFor(FirmwareEntry entry) =>
+      switch (entry.shortName) {
         'ofw' => OfwParser.instance,
         'unlshd' => UnleashedParser.instance,
         _ => OfwParser.instance,
@@ -88,9 +89,13 @@ class FirmwareUpdater {
 
       final FirmwareFile? tgzFile;
       if (parser is UnleashedParser) {
-        tgzFile = parser.getUpdatePackage(channelId, target: target, variant: variant);
+        tgzFile = parser.getUpdatePackage(
+          channelId,
+          target: target,
+          variant: variant,
+        );
       } else if (parser is OfwParser) {
-        tgzFile = parser.getUpdatePackage(channelId);
+        tgzFile = version.updatePackageFor(target);
       } else {
         tgzFile = version.updatePackageFor(target);
       }
@@ -98,6 +103,9 @@ class FirmwareUpdater {
         onState(UpdateError('No update_tgz for target=$target'));
         return;
       }
+      _log(
+        'selected package: target=${tgzFile.target} file=${tgzFile.fileName}',
+      );
 
       onState(const UpdateDownloading(0));
       final tgzPath = '${tempDir.path}/update.tgz';
@@ -105,7 +113,11 @@ class FirmwareUpdater {
         onState(UpdateDownloading(p));
       });
 
-      await _installFromArchive(tgzPath: tgzPath, client: client, onState: onState);
+      await _installFromArchive(
+        tgzPath: tgzPath,
+        client: client,
+        onState: onState,
+      );
     } catch (e, st) {
       _log('ERROR: $e\n$st');
       onState(UpdateError(e.toString()));
@@ -126,7 +138,11 @@ class FirmwareUpdater {
         onState(UpdateError('File not found: $archivePath'));
         return;
       }
-      await _installFromArchive(tgzPath: archivePath, client: client, onState: onState);
+      await _installFromArchive(
+        tgzPath: archivePath,
+        client: client,
+        onState: onState,
+      );
     } catch (e, st) {
       _log('ERROR: $e\n$st');
       onState(UpdateError(e.toString()));
@@ -145,7 +161,7 @@ class FirmwareUpdater {
     }
 
     final remoteDir = '$_remoteRoot/${extracted.dirName}';
-    _log('remote dir: $remoteDir');
+    _log('archive root: ${extracted.dirName}; remote dir: $remoteDir');
 
     await _mkdirSafe(client, _remoteRoot);
     await _mkdirSafe(client, remoteDir);
@@ -196,7 +212,9 @@ class FirmwareUpdater {
     onState(const UpdateDone());
   }
 
-  static ({String? dirName, List<_UpdateFile> files}) _extractFlat(String tgzPath) {
+  static ({String? dirName, List<_UpdateFile> files}) _extractFlat(
+    String tgzPath,
+  ) {
     final bytes = io.File(tgzPath).readAsBytesSync();
     final gz = GZipDecoder().decodeBytes(bytes);
     final archive = TarDecoder().decodeBytes(gz);
@@ -240,7 +258,10 @@ class FirmwareUpdater {
       req.headers.set(io.HttpHeaders.userAgentHeader, 'qunleashed-app');
       final res = await req.close();
       if (res.statusCode != 200) {
-        throw io.HttpException('Download failed: ${res.statusCode}', uri: Uri.parse(url));
+        throw io.HttpException(
+          'Download failed: ${res.statusCode}',
+          uri: Uri.parse(url),
+        );
       }
       final contentLength = res.contentLength;
       final sink = io.File(savePath).openWrite();

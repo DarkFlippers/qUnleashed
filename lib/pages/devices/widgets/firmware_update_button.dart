@@ -52,7 +52,8 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
       return _ResolvedButtonState(
         label: 'NO CONNECTION',
         color: _inactiveColor,
-        description: descriptionOverride ?? 'Connect a Flipper to install firmware',
+        description:
+            descriptionOverride ?? 'Connect a Flipper to install firmware',
         enabled: false,
       );
     }
@@ -61,7 +62,9 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
       return _ResolvedButtonState(
         label: 'INSTALL',
         color: _activeColor,
-        description: descriptionOverride ?? 'Pick a local update .tgz archive to install',
+        description:
+            descriptionOverride ??
+            'Pick a local update .tgz archive to install',
         enabled: true,
       );
     }
@@ -89,7 +92,9 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
       return _ResolvedButtonState(
         label: 'NO UPDATE',
         color: _inactiveColor,
-        description: descriptionOverride ?? 'Installed firmware already matches the selected build',
+        description:
+            descriptionOverride ??
+            'Installed firmware already matches the selected build',
         enabled: false,
       );
     }
@@ -98,7 +103,9 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
       return _ResolvedButtonState(
         label: 'UPDATE',
         color: _activeColor,
-        description: descriptionOverride ?? 'A newer version is available in the selected channel',
+        description:
+            descriptionOverride ??
+            'A newer version is available in the selected channel',
         enabled: true,
       );
     }
@@ -106,7 +113,9 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
     return _ResolvedButtonState(
       label: 'INSTALL',
       color: _activeColor,
-      description: descriptionOverride ?? 'Selected firmware differs by type, channel, or build',
+      description:
+          descriptionOverride ??
+          'Selected firmware differs by type, channel, or build',
       enabled: true,
     );
   }
@@ -184,6 +193,7 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
         await FirmwareUpdater.install(
           entry: widget.entry,
           channelId: widget.selectedChannelId,
+          target: 'f7',
           variant: widget.selectedVariant,
           client: widget.client,
           onState: onState,
@@ -252,41 +262,43 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
   _ResolvedButtonState _resolveUpdateState(UpdateState state) {
     return switch (state) {
       UpdateFetching() => _ResolvedButtonState(
-          label: 'DOWNLOAD',
-          color: _activeColor,
-          description: 'Preparing firmware package…',
-          enabled: false,
-        ),
+        label: 'DOWNLOAD',
+        color: _activeColor,
+        description: 'Preparing firmware package…',
+        enabled: false,
+      ),
       UpdateDownloading() => _ResolvedButtonState(
-          label: 'DOWNLOAD',
-          color: _activeColor,
-          description: 'Downloading firmware…',
-          enabled: false,
-        ),
+        label: 'DOWNLOAD',
+        color: _activeColor,
+        description: 'Downloading firmware…',
+        enabled: false,
+      ),
       UpdateUploading() => _ResolvedButtonState(
-          label: 'INSTALL',
-          color: _activeColor,
-          description: 'Installing firmware on Flipper…',
-          enabled: false,
-        ),
+        label: 'INSTALL',
+        color: _activeColor,
+        description: 'Installing firmware on Flipper…',
+        enabled: false,
+      ),
       UpdateStarting() => _ResolvedButtonState(
-          label: 'RUN INSTALLER',
-          color: _activeColor,
-          description: 'Starting updater on Flipper…',
-          enabled: false,
-        ),
+        label: 'RUN INSTALLER',
+        color: _activeColor,
+        description: 'Starting updater on Flipper…',
+        enabled: false,
+      ),
       UpdateDone() => _ResolvedButtonState(
-          label: 'RUN INSTALLER',
-          color: _activeColor,
-          description: 'Flipper will reboot and apply the update.',
-          enabled: false,
-        ),
+        label: 'RUN INSTALLER',
+        color: _activeColor,
+        description: 'Flipper will reboot and apply the update.',
+        enabled: false,
+      ),
       UpdateError(:final message) => _ResolvedButtonState(
-          label: _resolveInstallAction() == _InstallAction.update ? 'UPDATE' : 'INSTALL',
-          color: _activeColor,
-          description: message,
-          enabled: true,
-        ),
+        label: _resolveInstallAction() == _InstallAction.update
+            ? 'UPDATE'
+            : 'INSTALL',
+        color: _activeColor,
+        description: message,
+        enabled: true,
+      ),
       UpdateIdle() => _baseState(),
     };
   }
@@ -294,26 +306,17 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
   _ProgressVisual? _progressFor(_ResolvedButtonState state) {
     final updateState = _updateState;
     return switch (updateState) {
-      UpdateFetching() => _ProgressVisual(
-          value: null,
-          color: state.color,
-        ),
+      UpdateFetching() => _ProgressVisual(value: null, color: state.color),
       UpdateDownloading(:final progress) => _ProgressVisual(
-          value: progress,
-          color: state.color,
-        ),
+        value: progress,
+        color: state.color,
+      ),
       UpdateUploading(:final progress) => _ProgressVisual(
-          value: progress,
-          color: state.color,
-        ),
-      UpdateStarting() => _ProgressVisual(
-          value: null,
-          color: state.color,
-        ),
-      UpdateDone() => _ProgressVisual(
-          value: 1,
-          color: state.color,
-        ),
+        value: progress,
+        color: state.color,
+      ),
+      UpdateStarting() => _ProgressVisual(value: null, color: state.color),
+      UpdateDone() => _ProgressVisual(value: 1, color: state.color),
       _ => null,
     };
   }
@@ -339,7 +342,8 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
   _SelectedFirmware? _buildSelectedFirmware() {
     final latestVersion = widget.latestVersion?.trim();
     final channel = FirmwareChannel.fromId(widget.selectedChannelId);
-    if (latestVersion == null || latestVersion.isEmpty || channel == null) return null;
+    if (latestVersion == null || latestVersion.isEmpty || channel == null)
+      return null;
 
     final normalizedVersion = widget.entry.shortName == 'unlshd'
         ? _normalizeUnleashedVersion(latestVersion)
@@ -349,7 +353,9 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
       type: widget.entry.shortName,
       channel: channel,
       version: normalizedVersion,
-      variant: widget.entry.shortName == 'unlshd' ? widget.selectedVariant : null,
+      variant: widget.entry.shortName == 'unlshd'
+          ? widget.selectedVariant
+          : null,
     );
   }
 
@@ -397,9 +403,14 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
         normalizedOrigin.contains('unleashed');
   }
 
-  _InstalledFirmware _parseInstalledUnleashed(String rawVersion, String? branchName) {
+  _InstalledFirmware _parseInstalledUnleashed(
+    String rawVersion,
+    String? branchName,
+  ) {
     final normalized = rawVersion.trim().toLowerCase();
-    final releaseMatch = RegExp(r'((?:unlshd-\d+)|(?:\d+))([ce]?)').firstMatch(normalized);
+    final releaseMatch = RegExp(
+      r'((?:unlshd-\d+)|(?:\d+))([ce]?)',
+    ).firstMatch(normalized);
     final channel = _detectUnleashedChannel(normalized, branchName);
     if (releaseMatch != null) {
       final suffix = releaseMatch.group(2) ?? '';
@@ -425,12 +436,19 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
 
   _InstalledFirmware _parseInstalledOfw(String rawVersion, String? branchName) {
     final normalizedBranch = branchName?.trim().toLowerCase();
-    final split = rawVersion.split(RegExp(r'\s+')).where((part) => part.isNotEmpty).toList();
+    final split = rawVersion
+        .split(RegExp(r'\s+'))
+        .where((part) => part.isNotEmpty)
+        .toList();
     final typeVersion = split.length >= 2 ? split[1] : rawVersion.trim();
     final channel = _detectOfwChannel(typeVersion, normalizedBranch);
     final version = switch (channel) {
-      FirmwareChannel.development => split.isNotEmpty ? split.first : rawVersion.trim(),
-      FirmwareChannel.releaseCandidate => typeVersion.replaceFirst(RegExp(r'-rc$', caseSensitive: false), ''),
+      FirmwareChannel.development =>
+        split.isNotEmpty ? split.first : rawVersion.trim(),
+      FirmwareChannel.releaseCandidate => typeVersion.replaceFirst(
+        RegExp(r'-rc$', caseSensitive: false),
+        '',
+      ),
       _ => typeVersion,
     };
 
@@ -442,7 +460,10 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
     );
   }
 
-  FirmwareChannel _detectUnleashedChannel(String rawVersion, String? branchName) {
+  FirmwareChannel _detectUnleashedChannel(
+    String rawVersion,
+    String? branchName,
+  ) {
     final normalizedBranch = branchName?.trim().toLowerCase();
     if (normalizedBranch != null) {
       final branchChannel = FirmwareChannel.fromId(normalizedBranch);
@@ -499,8 +520,10 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
       .toList();
 
   String _normalizeUnleashedVersion(String value) {
-    final match = RegExp(r'^((?:unlshd-\d+)|(?:\d+))(?:[ce])?$',
-        caseSensitive: false).firstMatch(value.trim());
+    final match = RegExp(
+      r'^((?:unlshd-\d+)|(?:\d+))(?:[ce])?$',
+      caseSensitive: false,
+    ).firstMatch(value.trim());
     return match?.group(1) ?? value.trim();
   }
 }
@@ -520,20 +543,13 @@ class _ResolvedButtonState {
 }
 
 class _ProgressVisual {
-  const _ProgressVisual({
-    required this.value,
-    required this.color,
-  });
+  const _ProgressVisual({required this.value, required this.color});
 
   final double? value;
   final Color color;
 }
 
-enum _InstallAction {
-  noUpdate,
-  install,
-  update,
-}
+enum _InstallAction { noUpdate, install, update }
 
 class _InstalledFirmware {
   const _InstalledFirmware({

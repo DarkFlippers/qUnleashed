@@ -165,7 +165,9 @@ class _DevicePageState extends State<DevicePage> {
           _info = {..._info, ...data};
           _deviceInfoConnected = true;
         });
-        QAppThemeController.instance.syncFirmwareFromDeviceInfo(_info);
+        if (data.keys.any((k) => k.startsWith('firmware') || k == 'software_revision')) {
+          QAppThemeController.instance.syncFirmwareFromDeviceInfo(_info);
+        }
       }
     }
 
