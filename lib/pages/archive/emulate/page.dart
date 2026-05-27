@@ -2,6 +2,7 @@
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme.dart';
+import '../../remote/page.dart';
 import '../models/key.dart';
 import 'service.dart';
 
@@ -27,6 +28,23 @@ class _EmulatePageState extends State<EmulatePage> {
   }
 
   Future<void> _start() async {
+    if (widget.flipperKey.category.launchOnApp) {
+      final result = await _service.launchApp(widget.flipperKey);
+      if (!mounted) return;
+      if (result.isOk) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const RemoteControlPage()),
+        );
+        return;
+      }
+      setState(() {
+        _starting = false;
+        _running = false;
+        _error = result.error;
+      });
+      return;
+    }
+
     final result = await _service.start(widget.flipperKey);
     if (!mounted) return;
     setState(() {
