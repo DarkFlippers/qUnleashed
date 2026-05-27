@@ -49,7 +49,7 @@ enum ArchiveCategory {
     asset: 'assets/flipper_svg/archive/ic_fileformat_sub.svg',
     flipperAppName: 'Sub-GHz',
     recursiveSearch: true,
-    launchOnRpc: true,
+    launchOnApp: true,
   ),
   wardriving(
     title: 'Wardriving',
@@ -59,7 +59,7 @@ enum ArchiveCategory {
     asset: 'assets/flipper_svg/archive/ic_fileformat_sub.svg',
     subDirs: ['autosaved'],
     flipperAppName: 'Sub-GHz',
-    launchOnRpc: true,
+    launchOnApp: true,
   ),
   badusb(
     title: 'Bad USB',
@@ -69,7 +69,7 @@ enum ArchiveCategory {
     asset: 'assets/flipper_svg/archive/ic_fileformat_badusb.svg',
     flipperAppName: 'Bad USB',
     recursiveSearch: true,
-    launchOnRpc: true,
+    launchOnApp: true,
   ),
   javascript(
     title: 'JavaScript',
