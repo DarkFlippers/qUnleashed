@@ -22,6 +22,7 @@ class FileManagerController extends ChangeNotifier {
       _path = initialPath;
 
   final FlipperClient _client;
+  bool _disposed = false;
   String _path;
   bool _loading = false;
   String? _error;
@@ -51,9 +52,19 @@ class FileManagerController extends ChangeNotifier {
 
   bool get canGoUp => _path.length > 1 && _path != '/';
 
+  void _notify() {
+    if (!_disposed) notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
+
   void toggleHidden() {
     _showHidden = !_showHidden;
-    notifyListeners();
+    _notify();
   }
 
   Future<void> open(String newPath) async {
@@ -76,7 +87,7 @@ class FileManagerController extends ChangeNotifier {
   Future<void> refresh() async {
     _loading = true;
     _error = null;
-    notifyListeners();
+    _notify();
     try {
       final batch = await _client.storageList(
         ListRequest(path: _path),
@@ -101,7 +112,7 @@ class FileManagerController extends ChangeNotifier {
       LogService.log('[FileManager] list $_path failed: $e');
     } finally {
       _loading = false;
-      notifyListeners();
+      _notify();
     }
   }
 
@@ -119,7 +130,7 @@ class FileManagerController extends ChangeNotifier {
     } catch (e) {
       _error = '$e';
       LogService.log('[FileManager] read $remotePath failed: $e');
-      notifyListeners();
+      _notify();
       return null;
     }
   }
@@ -127,14 +138,14 @@ class FileManagerController extends ChangeNotifier {
   Future<bool> writeBytes(String remotePath, List<int> data) async {
     _transferLabel = 'Uploading ${_basename(remotePath)}';
     _transferProgress = 0;
-    notifyListeners();
+    _notify();
     try {
       await _client.storageWriteChunked(
         remotePath,
         data,
         onProgress: (p) {
           _transferProgress = p;
-          notifyListeners();
+          _notify();
         },
       );
       return true;
@@ -145,7 +156,7 @@ class FileManagerController extends ChangeNotifier {
     } finally {
       _transferLabel = null;
       _transferProgress = 0;
-      notifyListeners();
+      _notify();
     }
   }
 
@@ -159,7 +170,7 @@ class FileManagerController extends ChangeNotifier {
     } catch (e) {
       _error = '$e';
       LogService.log('[FileManager] delete $remotePath failed: $e');
-      notifyListeners();
+      _notify();
       return false;
     }
   }
@@ -175,7 +186,7 @@ class FileManagerController extends ChangeNotifier {
     } catch (e) {
       _error = '$e';
       LogService.log('[FileManager] mkdir $target failed: $e');
-      notifyListeners();
+      _notify();
       return false;
     }
   }
@@ -190,7 +201,7 @@ class FileManagerController extends ChangeNotifier {
     } catch (e) {
       _error = '$e';
       LogService.log('[FileManager] appStart $remotePath failed: $e');
-      notifyListeners();
+      _notify();
       return false;
     }
   }
@@ -211,7 +222,7 @@ class FileManagerController extends ChangeNotifier {
     } catch (e) {
       _error = '$e';
       LogService.log('[FileManager] rename $oldPath failed: $e');
-      notifyListeners();
+      _notify();
       return false;
     }
   }
@@ -233,7 +244,7 @@ class FileManagerController extends ChangeNotifier {
     final file = io.File(localPath);
     if (!await file.exists()) {
       _error = 'Local file not found: $localPath';
-      notifyListeners();
+      _notify();
       return false;
     }
     final bytes = await file.readAsBytes();
