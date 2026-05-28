@@ -10,6 +10,7 @@ import 'package:highlight/highlight.dart' show Node, highlight;
 import '../../theme.dart';
 import '../../widgets/notification.dart';
 import 'colors.dart';
+import 'syntax.dart';
 
 const _kFontSize = 13.0;
 const _kLineHeight = _kFontSize * 1.4;
@@ -29,7 +30,7 @@ class TextEditorPage extends StatefulWidget {
 }
 
 class _TextEditorPageState extends State<TextEditorPage> {
-  late final _DartHighlightController _text;
+  late final _HighlightController _text;
   final ScrollController _scroll = ScrollController();
   final GlobalKey _fieldKey = GlobalKey();
   late final FlipperClient _client;
@@ -51,10 +52,24 @@ class _TextEditorPageState extends State<TextEditorPage> {
   @override
   void initState() {
     super.initState();
-    _text = _DartHighlightController();
+    registerDuckyscriptLanguage();
+    final language = _languageForPath(widget.remotePath);
+    _text = _HighlightController(
+      language: language,
+      theme: language == 'duckyscript'
+          ? duckyscriptEditorTheme
+          : dartEditorTheme,
+    );
     _client = widget.client ?? FlipperOneClient().get();
     _text.addListener(_onTextChanged);
     _load();
+  }
+
+  static String _languageForPath(String path) {
+    final name = path.split('/').last.toLowerCase();
+    if (name.endsWith('.js')) return 'javascript';
+    if (name.endsWith('.txt')) return 'duckyscript';
+    return 'dart';
   }
 
   @override
@@ -81,7 +96,9 @@ class _TextEditorPageState extends State<TextEditorPage> {
       final ys = <double>[];
       var offset = 0;
       for (final line in lines) {
-        final viewportY = re.getLocalRectForCaret(TextPosition(offset: offset)).top;
+        final viewportY = re
+            .getLocalRectForCaret(TextPosition(offset: offset))
+            .top;
         ys.add(viewportY + scroll); // конвертируем в контентные координаты
         offset += line.length + 1;
       }
@@ -270,7 +287,9 @@ class _TextEditorPageState extends State<TextEditorPage> {
       body: _loading
           ? Center(child: CircularProgressIndicator(color: colors.accent))
           : _error != null
-          ? Center(child: Text(_error!, style: TextStyle(color: colors.danger)))
+          ? Center(
+              child: Text(_error!, style: TextStyle(color: colors.danger)),
+            )
           : Container(
               color:
                   dartEditorTheme['root']?.backgroundColor ??
@@ -354,7 +373,8 @@ class _GutterPainter extends CustomPainter {
   });
 
   final int lineCount;
-  final List<double> lineY; // Y начала каждой физической строки из RenderEditable
+  // Y начала каждой физической строки из RenderEditable.
+  final List<double> lineY;
   final Set<int> modifiedLines;
   final double scrollOffset;
 
@@ -413,26 +433,28 @@ class _GutterPainter extends CustomPainter {
       !listEquals(old.lineY, lineY);
 }
 
-class _DartHighlightController extends TextEditingController {
+class _HighlightController extends TextEditingController {
+  _HighlightController({required this.language, required this.theme});
+
+  final String language;
+  final Map<String, TextStyle> theme;
+
   @override
   TextSpan buildTextSpan({
     required BuildContext context,
     TextStyle? style,
     required bool withComposing,
   }) {
-    final rootStyle = (style ?? const TextStyle()).merge(dartEditorTheme['root']);
+    final rootStyle = (style ?? const TextStyle()).merge(theme['root']);
     return TextSpan(
       style: rootStyle.copyWith(backgroundColor: Colors.transparent),
-      children: _convert(
-        highlight.parse(text, language: 'dart').nodes ?? [],
-      ),
+      children: _convert(highlight.parse(text, language: language).nodes ?? []),
     );
   }
 
-  static List<TextSpan> _convert(List<Node> nodes) =>
-      nodes.map(_convertNode).toList();
+  List<TextSpan> _convert(List<Node> nodes) => nodes.map(_convertNode).toList();
 
-  static TextSpan _convertNode(Node node) {
+  TextSpan _convertNode(Node node) {
     final value = node.value;
     if (value != null) {
       final style = _styleFor(node.className);
@@ -451,12 +473,12 @@ class _DartHighlightController extends TextEditingController {
     );
   }
 
-  static TextStyle? _styleFor(String? cls) {
+  TextStyle? _styleFor(String? cls) {
     if (cls == null) return null;
-    return dartEditorTheme[cls] ??
-        dartEditorTheme[cls.replaceAll('.', '-')] ??
-        dartEditorTheme[cls.split('.').last] ??
-        dartEditorTheme[cls.split('-').last];
+    return theme[cls] ??
+        theme[cls.replaceAll('.', '-')] ??
+        theme[cls.split('.').last] ??
+        theme[cls.split('-').last];
   }
 
   static final _fnPattern = RegExp(
