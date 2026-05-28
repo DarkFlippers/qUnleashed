@@ -1,14 +1,15 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
 import '../../theme.dart';
 import '../../widgets/notification.dart';
+import 'gif_recorder.dart';
 import 'input/keyboard_listener.dart';
 import 'models/models.dart';
-import 'session.dart';
 import 'screenshot_saver.dart';
+import 'session.dart';
 import 'widgets/action_button.dart';
 import 'widgets/controls.dart';
 import 'widgets/view.dart';
@@ -22,20 +23,31 @@ class RemoteControlPage extends StatefulWidget {
 
 class _RemoteControlPageState extends State<RemoteControlPage> {
   late final RemoteSession _session;
+  late final GifRecorder _gifRecorder;
+
   bool _savingScreenshot = false;
   bool _closing = false;
   Object? _shownStartError;
 
+  Timer? _recordingTick;
+
   @override
   void initState() {
     super.initState();
-    _session = RemoteSession()..addListener(_onSessionChanged);
+    _gifRecorder = GifRecorder();
+    _session = RemoteSession()
+      ..addListener(_onSessionChanged)
+      ..onDecodedFrame = _onDecodedFrame;
   }
 
   @override
   void dispose() {
-    _session.removeListener(_onSessionChanged);
+    _recordingTick?.cancel();
+    _session
+      ..removeListener(_onSessionChanged)
+      ..onDecodedFrame = null;
     _session.dispose();
+    if (_gifRecorder.state != GifRecordingState.idle) _gifRecorder.cancel();
     super.dispose();
   }
 
@@ -51,6 +63,101 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
     }
     setState(() {});
   }
+
+  // ── GIF recording ──────────────────────────────────────────────────────────
+
+  void _onDecodedFrame(DecodedFrame frame) {
+    if (_gifRecorder.state != GifRecordingState.recording) return;
+    final autoStop = _gifRecorder.addFrame(frame);
+    if (autoStop && mounted) { _stopGifRecording(); }
+  }
+
+  void _startGifRecording() {
+    if (_gifRecorder.state != GifRecordingState.idle) return;
+    _gifRecorder.start(
+      _session.lastBgColor ?? 0xFFDFDFDF,
+      _session.lastFgColor ?? 0xFF000000,
+    );
+    _recordingTick = Timer.periodic(const Duration(milliseconds: 100), (_) {
+      if (mounted) setState(() {});
+    });
+    setState(() {});
+  }
+
+  void _togglePauseGifRecording() {
+    if (_gifRecorder.state == GifRecordingState.recording) {
+      _gifRecorder.pause();
+      _recordingTick?.cancel();
+      _recordingTick = null;
+    } else if (_gifRecorder.state == GifRecordingState.paused) {
+      _gifRecorder.resume();
+      _recordingTick = Timer.periodic(const Duration(milliseconds: 100), (_) {
+        if (mounted) setState(() {});
+      });
+    }
+    setState(() {});
+  }
+
+  Future<void> _stopGifRecording() async {
+    final state = _gifRecorder.state;
+    if (state == GifRecordingState.idle ||
+        state == GifRecordingState.encoding) { return; }
+
+    _recordingTick?.cancel();
+    _recordingTick = null;
+
+    if (_gifRecorder.frameCount == 0) {
+      _gifRecorder.cancel();
+      setState(() {});
+      return;
+    }
+
+    setState(() {}); // show encoding state
+
+    String? savedPath;
+    Object? saveError;
+
+    try {
+      final gifBytes = await _gifRecorder.encode();
+      if (gifBytes != null) {
+        final path = await saveGifToPictures(gifBytes);
+        savedPath = path;
+        try {
+          await copyGifFileToClipboard(path);
+        } catch (_) {
+          // clipboard copy is best-effort
+        }
+      }
+    } catch (e) {
+      saveError = e;
+    } finally {
+      _gifRecorder.reset();
+    }
+
+    if (!mounted) return;
+    setState(() {});
+
+    if (saveError != null) {
+      context.showNotification(
+        'GIF save failed: $saveError',
+        type: QNotificationType.error,
+      );
+    } else if (savedPath != null) {
+      context.showNotification(
+        'GIF saved: $savedPath',
+        type: QNotificationType.good,
+      );
+    }
+  }
+
+  void _cancelGifRecording() {
+    _recordingTick?.cancel();
+    _recordingTick = null;
+    _gifRecorder.cancel();
+    setState(() {});
+  }
+
+  // ── Screenshot ─────────────────────────────────────────────────────────────
 
   Future<void> _close() async {
     if (_closing) return;
@@ -72,10 +179,7 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
       );
     } catch (e) {
       if (!mounted) return;
-      context.showNotification(
-        'Copy failed: $e',
-        type: QNotificationType.error,
-      );
+      context.showNotification('Copy failed: $e', type: QNotificationType.error);
     } finally {
       if (mounted) setState(() => _savingScreenshot = false);
     }
@@ -94,10 +198,7 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
       );
     } catch (e) {
       if (!mounted) return;
-      context.showNotification(
-        'Save failed: $e',
-        type: QNotificationType.error,
-      );
+      context.showNotification('Save failed: $e', type: QNotificationType.error);
     } finally {
       if (mounted) setState(() => _savingScreenshot = false);
     }
@@ -105,6 +206,8 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
 
   void _onHoldBegin(RemoteButton b) => unawaited(_session.beginHold(b));
   void _onHoldEnd(RemoteButton b) => unawaited(_session.endHold(b));
+
+  // ── Build ───────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -213,7 +316,16 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
   }
 
   Widget _buildActionRow(bool isVertical) {
+    final gifState = _gifRecorder.state;
+
+    if (gifState == GifRecordingState.recording ||
+        gifState == GifRecordingState.paused) {
+      return _buildRecordingControls(isVertical);
+    }
+
     final isLocked = _session.isLocked;
+    final gifBusy = gifState == GifRecordingState.encoding;
+
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: isVertical ? 0 : 12),
       child: Row(
@@ -244,6 +356,112 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
                     : 'assets/flipper_svg/screenstreaming/ic_lock.svg',
                 label: isLocked ? 'Unlock' : 'Unlocked',
                 onTap: isLocked ? () => unawaited(_session.unlock()) : null,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Center(
+              child: RemoteControlActionButton(
+                icon: gifBusy
+                    ? Icons.hourglass_empty_rounded
+                    : Icons.gif_box_outlined,
+                label: gifBusy ? 'Saving…' : 'GIF',
+                onTap: gifBusy ? null : _startGifRecording,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRecordingControls(bool isVertical) {
+    final colors = context.appColors;
+    final isPaused = _gifRecorder.state == GifRecordingState.paused;
+    final elapsed = _gifRecorder.elapsedMs;
+    final remaining =
+        (GifRecorder.maxDurationMs - elapsed).clamp(0, GifRecorder.maxDurationMs);
+
+    String fmt(int ms) {
+      final s = (ms ~/ 1000).clamp(0, 99);
+      final tenths = (ms % 1000) ~/ 100;
+      return '${s.toString().padLeft(2, '0')}.${tenths}s';
+    }
+
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: isVertical ? 0 : 12),
+      child: Row(
+        children: [
+          // Timer display
+          Expanded(
+            flex: 2,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: isPaused
+                            ? colors.accent.withValues(alpha: 0.4)
+                            : Colors.red,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      fmt(elapsed),
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: colors.accent,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '−${fmt(remaining)}',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: colors.accent.withValues(alpha: 0.6),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Pause / Resume
+          Expanded(
+            child: Center(
+              child: RemoteControlActionButton(
+                icon: isPaused
+                    ? Icons.play_arrow_rounded
+                    : Icons.pause_rounded,
+                label: isPaused ? 'Resume' : 'Pause',
+                onTap: _togglePauseGifRecording,
+              ),
+            ),
+          ),
+          // Stop (save)
+          Expanded(
+            child: Center(
+              child: RemoteControlActionButton(
+                icon: Icons.stop_rounded,
+                label: 'Save',
+                onTap: _stopGifRecording,
+              ),
+            ),
+          ),
+          // Cancel (discard)
+          Expanded(
+            child: Center(
+              child: RemoteControlActionButton(
+                icon: Icons.close_rounded,
+                label: 'Cancel',
+                onTap: _cancelGifRecording,
               ),
             ),
           ),

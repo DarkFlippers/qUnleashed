@@ -23,6 +23,9 @@ class RemoteSession extends ChangeNotifier {
 
   Future<void> _inputChain = Future<void>.value();
 
+  /// Called on the main thread after each frame is decoded.
+  void Function(DecodedFrame)? onDecodedFrame;
+
   ui.Image? _frameImage;
   Uint8List? _lastPng;
   StreamOrientation _orientation = StreamOrientation.horizontal;
@@ -34,12 +37,17 @@ class RemoteSession extends ChangeNotifier {
   final List<QueuedButton> _queue = [];
   final Map<RemoteButton, _HeldButton> _held = {};
 
+  int? _lastBgColor;
+  int? _lastFgColor;
+
   ui.Image? get frameImage => _frameImage;
   Uint8List? get lastPng => _lastPng;
   StreamOrientation get orientation => _orientation;
   bool get isLocked => _isLocked;
   Object? get startError => _startError;
   List<QueuedButton> get queue => _queue;
+  int? get lastBgColor => _lastBgColor;
+  int? get lastFgColor => _lastFgColor;
 
   Future<void> _start() async {
     await _tryRpc(
@@ -114,7 +122,10 @@ class RemoteSession extends ChangeNotifier {
     final prev = _frameImage;
     _frameImage = decoded.image;
     _lastPng = decoded.pngBytes;
+    _lastBgColor = decoded.bgColor;
+    _lastFgColor = decoded.fgColor;
     _orientation = decoded.orientation;
+    onDecodedFrame?.call(decoded);
     _safeNotify();
     prev?.dispose();
   }

@@ -12,6 +12,7 @@ const int kFlipperScreenHeight = 64;
 
 Future<DecodedFrame> decodeScreenFrame(ScreenFrame frame) async {
   final pixels = Uint8List(kFlipperScreenWidth * kFlipperScreenHeight * 4);
+  final pixelIndices = Uint8List(kFlipperScreenWidth * kFlipperScreenHeight);
   final raw = frame.data;
   final bg = FlipperOriginalColors.flipperScreenBackground.toARGB32();
   final fg = FlipperOriginalColors.flipperScreenBorder.toARGB32();
@@ -42,13 +43,21 @@ Future<DecodedFrame> decodeScreenFrame(ScreenFrame frame) async {
       pixels[pi + 1] = (color >> 8) & 0xFF;
       pixels[pi + 2] = color & 0xFF;
       pixels[pi + 3] = (color >> 24) & 0xFF;
+      pixelIndices[by * kFlipperScreenWidth + bx] = isSet ? 1 : 0;
     }
   }
 
   final image = await _imageFromPixels(pixels);
   final pngBytes =
       (await image.toByteData(format: ui.ImageByteFormat.png))!.buffer.asUint8List();
-  return DecodedFrame(image: image, pngBytes: pngBytes, orientation: orientation);
+  return DecodedFrame(
+    image: image,
+    pngBytes: pngBytes,
+    pixelIndices: pixelIndices,
+    bgColor: bg,
+    fgColor: fg,
+    orientation: orientation,
+  );
 }
 
 Future<ui.Image> _imageFromPixels(Uint8List pixels) {
