@@ -17,11 +17,13 @@ class _EncodeParams {
     required this.delays,
     required this.bg,
     required this.fg,
+    required this.scale,
   });
   final List<Uint8List> frames;
   final List<int> delays;
   final int bg; // ARGB
   final int fg; // ARGB
+  final int scale;
 }
 
 Uint8List _encodeInIsolate(_EncodeParams p) => FlipperGifEncoder.encode(
@@ -31,6 +33,7 @@ Uint8List _encodeInIsolate(_EncodeParams p) => FlipperGifEncoder.encode(
   delaysMs: p.delays,
   color0: p.bg,
   color1: p.fg,
+  scale: p.scale,
 );
 
 const int kFlipperGifWidth = 128;
@@ -116,8 +119,14 @@ class GifRecorder {
   ///
   /// Transitions state to [GifRecordingState.encoding] synchronously.
   /// Returns `null` when no frames were captured.
-  Future<Uint8List?> encode() async {
+  Future<Uint8List?> encode({int scale = 1, int speed = 1}) async {
     if (_frames.isEmpty) return null;
+    if (scale != 1 && scale != 2 && scale != 4) {
+      throw ArgumentError.value(scale, 'scale', 'Use 1, 2, or 4.');
+    }
+    if (speed != 1 && speed != 2 && speed != 4) {
+      throw ArgumentError.value(speed, 'speed', 'Use 1, 2, or 4.');
+    }
 
     // Snapshot elapsed time before transitioning state
     if (_resumeTime != null) {
@@ -130,9 +139,10 @@ class GifRecorder {
       _encodeInIsolate,
       _EncodeParams(
         frames: _frames.map((f) => f.indices).toList(),
-        delays: _frameDelays(),
+        delays: _frameDelays(speed),
         bg: _storedBg,
         fg: _storedFg,
+        scale: scale,
       ),
     );
   }
@@ -150,15 +160,21 @@ class GifRecorder {
     _resumeTime = null;
   }
 
-  List<int> _frameDelays() {
+  List<int> _frameDelays(int speed) {
     return [
       for (var i = 0; i < _frames.length; i++)
-        i + 1 < _frames.length
-            ? (_frames[i + 1].timestampMs - _frames[i].timestampMs).clamp(
-                minFrameDelayMs,
-                maxFrameDelayMs,
-              )
-            : lastFrameDelayMs,
+        _scaledDelay(
+          i + 1 < _frames.length
+              ? (_frames[i + 1].timestampMs - _frames[i].timestampMs).clamp(
+                  minFrameDelayMs,
+                  maxFrameDelayMs,
+                )
+              : lastFrameDelayMs,
+          speed,
+        ),
     ];
   }
+
+  int _scaledDelay(int delayMs, int speed) =>
+      (delayMs / speed).round().clamp(10, maxFrameDelayMs);
 }

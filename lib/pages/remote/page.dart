@@ -21,6 +21,13 @@ class RemoteControlPage extends StatefulWidget {
   State<RemoteControlPage> createState() => _RemoteControlPageState();
 }
 
+class _GifExportOptions {
+  const _GifExportOptions({required this.scale, required this.speed});
+
+  final int scale;
+  final int speed;
+}
+
 class _RemoteControlPageState extends State<RemoteControlPage> {
   late final RemoteSession _session;
   late final GifRecorder _gifRecorder;
@@ -69,7 +76,9 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
   void _onDecodedFrame(DecodedFrame frame) {
     if (_gifRecorder.state != GifRecordingState.recording) return;
     final autoStop = _gifRecorder.addFrame(frame);
-    if (autoStop && mounted) { _stopGifRecording(); }
+    if (autoStop && mounted) {
+      _stopGifRecording();
+    }
   }
 
   void _startGifRecording() {
@@ -101,7 +110,9 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
   Future<void> _stopGifRecording() async {
     final state = _gifRecorder.state;
     if (state == GifRecordingState.idle ||
-        state == GifRecordingState.encoding) { return; }
+        state == GifRecordingState.encoding) {
+      return;
+    }
 
     _recordingTick?.cancel();
     _recordingTick = null;
@@ -112,15 +123,25 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
       return;
     }
 
-    setState(() {}); // show encoding state
+    final export = await _showGifExportDialog();
+    if (export == null) {
+      _gifRecorder.cancel();
+      if (mounted) setState(() {});
+      return;
+    }
 
     String? savedPath;
     Object? saveError;
 
     try {
-      final gifBytes = await _gifRecorder.encode();
+      final encodeFuture = _gifRecorder.encode(
+        scale: export.scale,
+        speed: export.speed,
+      );
+      if (mounted) setState(() {});
+      final gifBytes = await encodeFuture;
       if (gifBytes != null) {
-        final path = await saveGifToPictures(gifBytes);
+        final path = await saveGifToAppStorage(gifBytes);
         savedPath = path;
         try {
           await copyGifFileToClipboard(path);
@@ -148,6 +169,107 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
         type: QNotificationType.good,
       );
     }
+  }
+
+  Future<_GifExportOptions?> _showGifExportDialog() {
+    var selectedScale = 2;
+    var selectedSpeed = 1;
+
+    return showDialog<_GifExportOptions>(
+      context: context,
+      builder: (dialogContext) {
+        final colors = dialogContext.appColors;
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            Widget optionRow({
+              required int value,
+              required int selected,
+              required ValueChanged<int> onSelected,
+            }) {
+              return ChoiceChip(
+                label: Text('${value}x'),
+                selected: selected == value,
+                onSelected: (_) => setDialogState(() => onSelected(value)),
+                selectedColor: colors.accent.withValues(alpha: 0.18),
+                labelStyle: TextStyle(
+                  color: selected == value ? colors.accent : colors.textPrimary,
+                  fontWeight: selected == value
+                      ? FontWeight.w700
+                      : FontWeight.w500,
+                ),
+                side: BorderSide(
+                  color: selected == value ? colors.accent : colors.divider,
+                ),
+              );
+            }
+
+            return AlertDialog(
+              title: const Text('Export GIF'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Scale',
+                    style: TextStyle(
+                      color: colors.textSecondary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      for (final value in const [1, 2, 4])
+                        optionRow(
+                          value: value,
+                          selected: selectedScale,
+                          onSelected: (v) => selectedScale = v,
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    'Speed',
+                    style: TextStyle(
+                      color: colors.textSecondary,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      for (final value in const [1, 2, 4])
+                        optionRow(
+                          value: value,
+                          selected: selectedSpeed,
+                          onSelected: (v) => selectedSpeed = v,
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(
+                    _GifExportOptions(
+                      scale: selectedScale,
+                      speed: selectedSpeed,
+                    ),
+                  ),
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   void _cancelGifRecording() {
@@ -179,7 +301,10 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
       );
     } catch (e) {
       if (!mounted) return;
-      context.showNotification('Copy failed: $e', type: QNotificationType.error);
+      context.showNotification(
+        'Copy failed: $e',
+        type: QNotificationType.error,
+      );
     } finally {
       if (mounted) setState(() => _savingScreenshot = false);
     }
@@ -190,7 +315,7 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
     if (png == null || _savingScreenshot) return;
     setState(() => _savingScreenshot = true);
     try {
-      final path = await saveScreenshotToPictures(png);
+      final path = await saveScreenshotToAppStorage(png);
       if (!mounted) return;
       context.showNotification(
         'Screenshot saved: $path',
@@ -198,7 +323,10 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
       );
     } catch (e) {
       if (!mounted) return;
-      context.showNotification('Save failed: $e', type: QNotificationType.error);
+      context.showNotification(
+        'Save failed: $e',
+        type: QNotificationType.error,
+      );
     } finally {
       if (mounted) setState(() => _savingScreenshot = false);
     }
@@ -214,7 +342,8 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
     final colors = context.appColors;
     final topInset = MediaQuery.paddingOf(context).top;
     final orientation = _session.orientation;
-    final isVertical = orientation == StreamOrientation.vertical ||
+    final isVertical =
+        orientation == StreamOrientation.vertical ||
         orientation == StreamOrientation.verticalFlip;
 
     return PopScope(
@@ -379,8 +508,10 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
     final colors = context.appColors;
     final isPaused = _gifRecorder.state == GifRecordingState.paused;
     final elapsed = _gifRecorder.elapsedMs;
-    final remaining =
-        (GifRecorder.maxDurationMs - elapsed).clamp(0, GifRecorder.maxDurationMs);
+    final remaining = (GifRecorder.maxDurationMs - elapsed).clamp(
+      0,
+      GifRecorder.maxDurationMs,
+    );
 
     String fmt(int ms) {
       final s = (ms ~/ 1000).clamp(0, 99);
@@ -437,9 +568,7 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
           Expanded(
             child: Center(
               child: RemoteControlActionButton(
-                icon: isPaused
-                    ? Icons.play_arrow_rounded
-                    : Icons.pause_rounded,
+                icon: isPaused ? Icons.play_arrow_rounded : Icons.pause_rounded,
                 label: isPaused ? 'Resume' : 'Pause',
                 onTap: _togglePauseGifRecording,
               ),

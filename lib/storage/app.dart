@@ -4,15 +4,19 @@ import 'package:path_provider/path_provider.dart';
 
 const String kAppDocumentsFolderName = 'qUnleashed';
 const String kAppsCatalogFileName = 'catalog.json';
+const String kScreenshotsFolderName = 'Screenshots';
+const String kRecordingsFolderName = 'Recordings';
 
 Future<io.File> installedCatalogFile(String deviceName) async {
   final root = await appDocumentsDirectory();
-  return io.File(pathJoin([
-    root.path,
-    sanitizePathSegment(deviceName),
-    'apps',
-    kAppsCatalogFileName,
-  ]));
+  return io.File(
+    pathJoin([
+      root.path,
+      sanitizePathSegment(deviceName),
+      'apps',
+      kAppsCatalogFileName,
+    ]),
+  );
 }
 
 String pathJoin(Iterable<String> parts) {
@@ -67,6 +71,20 @@ Future<io.Directory> userDocumentsDirectory() async {
 Future<io.Directory> appDocumentsDirectory() async {
   final base = await userDocumentsDirectory();
   final dir = io.Directory(pathJoin([base.path, kAppDocumentsFolderName]));
+  await dir.create(recursive: true);
+  return dir;
+}
+
+Future<io.Directory> appScreenshotsDirectory() async {
+  final root = await appDocumentsDirectory();
+  final dir = io.Directory(pathJoin([root.path, kScreenshotsFolderName]));
+  await dir.create(recursive: true);
+  return dir;
+}
+
+Future<io.Directory> appRecordingsDirectory() async {
+  final root = await appDocumentsDirectory();
+  final dir = io.Directory(pathJoin([root.path, kRecordingsFolderName]));
   await dir.create(recursive: true);
   return dir;
 }

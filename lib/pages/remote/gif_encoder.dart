@@ -19,14 +19,18 @@ class FlipperGifEncoder {
     required List<int> delaysMs,
     required int color0,
     required int color1,
+    int scale = 1,
   }) {
     assert(frames.length == delaysMs.length);
+    assert(scale >= 1);
     final buf = BytesBuilder();
+    final outputWidth = width * scale;
+    final outputHeight = height * scale;
 
     // GIF89a header
     buf.add(ascii.encode('GIF89a'));
-    _le16(buf, width);
-    _le16(buf, height);
+    _le16(buf, outputWidth);
+    _le16(buf, outputHeight);
     buf.addByte(0x00); // no global color table
     buf.addByte(0x00); // background color index
     buf.addByte(0x00); // pixel aspect ratio
@@ -42,7 +46,18 @@ class FlipperGifEncoder {
     buf.addByte(0); // block terminator
 
     for (var i = 0; i < frames.length; i++) {
-      _writeFrame(buf, width, height, frames[i], delaysMs[i], color0, color1);
+      final indices = scale == 1
+          ? frames[i]
+          : _scaleIndices(frames[i], width, height, scale);
+      _writeFrame(
+        buf,
+        outputWidth,
+        outputHeight,
+        indices,
+        delaysMs[i],
+        color0,
+        color1,
+      );
     }
 
     buf.addByte(0x3B); // GIF trailer
@@ -106,6 +121,26 @@ class FlipperGifEncoder {
   static void _le16(BytesBuilder buf, int v) {
     buf.addByte(v & 0xFF);
     buf.addByte((v >> 8) & 0xFF);
+  }
+
+  static Uint8List _scaleIndices(
+    Uint8List source,
+    int width,
+    int height,
+    int scale,
+  ) {
+    final outWidth = width * scale;
+    final outHeight = height * scale;
+    final out = Uint8List(outWidth * outHeight);
+    for (var y = 0; y < outHeight; y++) {
+      final srcY = y ~/ scale;
+      final srcRow = srcY * width;
+      final outRow = y * outWidth;
+      for (var x = 0; x < outWidth; x++) {
+        out[outRow + x] = source[srcRow + (x ~/ scale)];
+      }
+    }
+    return out;
   }
 
   // ---------------------------------------------------------------------------
