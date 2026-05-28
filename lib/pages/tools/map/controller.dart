@@ -7,6 +7,7 @@ import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 
+import '../../archive/metadata/parser.dart';
 import '../../archive/storage.dart';
 import '../../archive/models/category.dart';
 import 'models/pin.dart';
@@ -81,6 +82,7 @@ class MapToolController extends ChangeNotifier {
       final entries = await _storage.listAll(deviceName);
       final out = <MapPin>[];
       for (final entry in entries) {
+        if (!entry.category.locationSupport) continue;
         final pin = await _parseFile(entry);
         if (pin != null) out.add(pin);
       }
@@ -101,18 +103,13 @@ class MapToolController extends ChangeNotifier {
 
   Future<MapPin?> _parseFile(LocalKeyEntry entry) async {
     try {
-      final normalizedExtension = entry.extension.toLowerCase();
       final file = io.File(entry.path);
       if (!await file.exists()) return null;
       final content = await file.readAsString();
+
+      // Parse geo-coordinates (not handled by archive metadata parser)
       double? lat;
       double? lon;
-      String? frequency;
-      String? protocol;
-      String? bit;
-      String? uid;
-      String? key;
-      String? keyType;
       for (final raw in content.split('\n')) {
         final line = raw.trim();
         if (line.isEmpty) continue;
@@ -124,40 +121,30 @@ class MapToolController extends ChangeNotifier {
           lat = double.tryParse(value);
         } else if (lower.startsWith('longitude:') || lower.startsWith('lon:') || lower.startsWith('lng:')) {
           lon = double.tryParse(value);
-        } else if (lower.startsWith('frequency:')) {
-          frequency = value;
-        } else if (lower.startsWith('protocol:')) {
-          protocol = value;
-        } else if (lower.startsWith('bit:')) {
-          bit = value;
-        } else if (lower.startsWith('uid:')) {
-          uid = value;
-        } else if (lower.startsWith('key:') || lower.startsWith('rom data:')) {
-          key = value;
-        } else if (lower.startsWith('key type:')) {
-          keyType = value;
         }
       }
       if (lat == null || lon == null) return null;
       if (lat == 0 && lon == 0) return null;
+
+      final meta = await parseArchiveKeyMeta(entry.category, entry.path);
       return MapPin(
         id: entry.path,
         name: entry.name,
         path: entry.path,
         fileName: '${entry.name}.${entry.extension}',
-        extension: normalizedExtension,
+        extension: entry.extension.toLowerCase(),
         subFolder: entry.subFolder,
         category: entry.category,
         remotePath: _remotePathFor(entry),
         latitude: lat,
         longitude: lon,
         content: content,
-        frequency: frequency,
-        protocol: protocol,
-        bit: bit,
-        uid: uid,
-        key: key,
-        keyType: keyType,
+        frequency: meta?.meta['frequency'],
+        protocol: meta?.protocol,
+        bit: meta?.meta['bit'],
+        uid: meta?.meta['uid'],
+        key: meta?.meta['data'],
+        keyType: meta?.meta['key_type'],
       );
     } catch (_) {
       return null;

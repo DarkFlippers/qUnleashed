@@ -85,12 +85,14 @@ ArchiveKeyMeta _parseNfc(List<String> lines) {
 ArchiveKeyMeta _parseRfid(List<String> lines) {
   final keyType = _field(lines, 'Key type');
   final data = _field(lines, 'Data');
+  final bit = _field(lines, 'Bit');
   return ArchiveKeyMeta(
     protocol: keyType,
     extra: data,
     meta: {
       'key_type': ?keyType,
       'data': ?data,
+      'bit': ?bit,
     },
   );
 }

@@ -10,6 +10,7 @@ enum ArchiveCategory {
     flipperAppName: 'NFC',
     recursiveSearch: true,
     launchOnRpc: true,
+    locationSupport: true,
   ),
   rfid(
     title: 'RFID 125',
@@ -20,6 +21,7 @@ enum ArchiveCategory {
     flipperAppName: '125 kHz RFID',
     recursiveSearch: true,
     launchOnRpc: true,
+    locationSupport: true,
   ),
   ibutton(
     title: 'iButton',
@@ -30,6 +32,7 @@ enum ArchiveCategory {
     flipperAppName: 'iButton',
     recursiveSearch: true,
     launchOnRpc: true,
+    locationSupport: true,
   ),
   infrared(
     title: 'Infrared',
@@ -50,6 +53,7 @@ enum ArchiveCategory {
     flipperAppName: 'Sub-GHz',
     recursiveSearch: true,
     launchOnApp: true,
+    locationSupport: true,
   ),
   wardriving(
     title: 'Wardriving',
@@ -60,6 +64,7 @@ enum ArchiveCategory {
     subDirs: ['autosaved'],
     flipperAppName: 'Sub-GHz',
     launchOnApp: true,
+    locationSupport: true,
   ),
   badusb(
     title: 'Bad USB',
@@ -93,6 +98,7 @@ enum ArchiveCategory {
     this.recursiveSearch = false,
     this.launchOnApp = false,
     this.launchOnRpc = false,
+    this.locationSupport = false,
   });
 
   final String title;
@@ -105,6 +111,7 @@ enum ArchiveCategory {
   final bool recursiveSearch;
   final bool launchOnApp;
   final bool launchOnRpc;
+  final bool locationSupport;
 
   bool get emulatable =>
       flipperAppName != null && (launchOnApp || launchOnRpc);
