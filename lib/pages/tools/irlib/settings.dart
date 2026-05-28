@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io' as io;
 
-import '../../../storage/app_documents.dart';
+import '../../../storage/app.dart';
 
 const String kDefaultIrdbUrl = 'https://github.com/Lucaslhm/Flipper-IRDB';
 
