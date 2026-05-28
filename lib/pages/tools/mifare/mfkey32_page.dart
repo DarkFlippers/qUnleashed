@@ -113,7 +113,7 @@ class _MfKey32Progress extends StatelessWidget {
           iconAsset: 'assets/flipper_svg/tools/mifare/pic_key.svg',
           percent: percent,
           accentColor: context.appColors.accent,
-          secondColor: context.appColors.accent.withOpacity(0.54),
+          secondColor: context.appColors.accent.withValues(alpha: 0.54),
         ),
       MfKey32DownloadingRawFile(:final percent) => _ProgressBlock(
           title: 'Calculation Started…',
@@ -121,7 +121,7 @@ class _MfKey32Progress extends StatelessWidget {
           iconAsset: 'assets/flipper_svg/tools/mifare/pic_download.svg',
           percent: percent,
           accentColor: context.appColors.info,
-          secondColor: context.appColors.info.withOpacity(0.32),
+          secondColor: context.appColors.info.withValues(alpha: 0.32),
         ),
       MfKey32Uploading() => _ProgressBlock(
           title: 'Calculation Completed',
@@ -129,7 +129,7 @@ class _MfKey32Progress extends StatelessWidget {
           iconAsset: 'assets/flipper_svg/tools/mifare/pic_key.svg',
           percent: null,
           accentColor: context.appColors.accent,
-          secondColor: context.appColors.accent.withOpacity(0.54),
+          secondColor: context.appColors.accent.withValues(alpha: 0.54),
         ),
       MfKey32Saved(:final keys) => keys.isEmpty
           ? _CompleteNotFound(onDone: onDone)

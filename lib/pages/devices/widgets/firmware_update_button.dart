@@ -342,8 +342,9 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
   _SelectedFirmware? _buildSelectedFirmware() {
     final latestVersion = widget.latestVersion?.trim();
     final channel = FirmwareChannel.fromId(widget.selectedChannelId);
-    if (latestVersion == null || latestVersion.isEmpty || channel == null)
+    if (latestVersion == null || latestVersion.isEmpty || channel == null) {
       return null;
+    }
 
     final normalizedVersion = widget.entry.shortName == 'unlshd'
         ? _normalizeUnleashedVersion(latestVersion)
