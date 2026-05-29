@@ -3,9 +3,10 @@ import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
 import '../../../config.dart';
-import '../models/firmware_directory.dart';
-import '../models/ofw_parser.dart';
-import '../models/unleashed_parser.dart';
+import '../../../services/update/update_service.dart';
+import '../../../services/update/firmware_directory.dart';
+import '../../../services/update/ofw_parser.dart';
+import '../../../services/update/unleashed_parser.dart';
 import '../../../theme.dart';
 import '../../../widgets/page_card.dart';
 import 'firmware_changelog_page.dart';
@@ -42,10 +43,31 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
   final Map<String, UnleashedVariant> _variantByEntry = {};
   final Set<String> _userPickedChannel = {};
 
+  StreamSubscription<void>? _serviceUpdateSub;
+
   @override
   void initState() {
     super.initState();
+    _serviceUpdateSub = UpdateService.instance.onUpdated.listen((_) {
+      _reloadFromService();
+    });
     _loadConfig();
+  }
+
+  void _reloadFromService() {
+    final config = _config;
+    if (config == null || !mounted) return;
+    setState(() {
+      for (final entry in config.firmwares) {
+        final dir = UpdateService.instance.directoryForSource(entry.shortName);
+        if (dir != null) {
+          _directories[entry.shortName] = dir;
+          _fetching.remove(entry.shortName);
+          _cancelRetry(entry.shortName);
+          _applyChannelFallback(entry.shortName, dir);
+        }
+      }
+    });
   }
 
   void _loadConfig() {
@@ -102,42 +124,37 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
   }
 
   Future<void> _fetchDirectory(FirmwareEntry entry) async {
-    final parser = _parserFor(entry);
-    FirmwareDirectory? dir;
-    try {
-      dir = await parser.fetch();
+    // Use service cache first (avoids network on widget recreate)
+    final cached = UpdateService.instance.directoryForSource(entry.shortName);
+    if (cached != null) {
+      await Future<void>.value(); // yield to avoid setState-in-initState
+      if (!mounted) return;
+      setState(() {
+        _directories[entry.shortName] = cached;
+        _fetching.remove(entry.shortName);
+        _applyChannelFallback(entry.shortName, cached);
+      });
+      _cancelRetry(entry.shortName);
+      return;
+    }
+
+    // Fetch through service (once per session)
+    await UpdateService.instance.checkIfNeeded();
+    if (!mounted) return;
+
+    final dir = UpdateService.instance.directoryForSource(entry.shortName);
+    if (dir != null) {
       final channelSummary = dir.channels
-          .map((channel) => '${channel.id}(${channel.title})')
+          .map((ch) => '${ch.id}(${ch.title})')
           .join(', ');
       LogService.log(
-        '[FirmwareCarousel] ${entry.shortName} channels from ${parser.directoryUrl}: $channelSummary',
+        '[FirmwareCarousel] ${entry.shortName} channels: $channelSummary',
       );
-    } catch (_) {
-      dir = null;
     }
-    if (!mounted) return;
     setState(() {
       _directories[entry.shortName] = dir;
       _fetching.remove(entry.shortName);
-      final selectedChannelId = _channelIdByEntry[entry.shortName];
-      final channels = _channelsForEntry(dir);
-      final userPicked = _userPickedChannel.contains(entry.shortName);
-      final hasReal = channels.any((c) => c.id != kCustomFirmwareChannelId);
-      final needsFallback = selectedChannelId == null ||
-          !channels.any((channel) => channel.id == selectedChannelId) ||
-          (!userPicked &&
-              hasReal &&
-              selectedChannelId == kCustomFirmwareChannelId);
-      if (needsFallback) {
-        final fallbackChannel = channels.firstWhere(
-          (channel) => channel.id == 'release',
-          orElse: () => channels.firstWhere(
-            (c) => c.id != kCustomFirmwareChannelId,
-            orElse: () => channels.first,
-          ),
-        );
-        _channelIdByEntry[entry.shortName] = fallbackChannel.id;
-      }
+      _applyChannelFallback(entry.shortName, dir);
     });
     if (dir == null) {
       _scheduleRetry(entry);
@@ -235,8 +252,29 @@ class _FirmwareCarouselCardState extends State<FirmwareCarouselCard> {
     return dir.channelById(_selectedChannelId(entry))?.latest;
   }
 
+  void _applyChannelFallback(String key, FirmwareDirectory? dir) {
+    final selectedChannelId = _channelIdByEntry[key];
+    final channels = _channelsForEntry(dir);
+    final userPicked = _userPickedChannel.contains(key);
+    final hasReal = channels.any((c) => c.id != kCustomFirmwareChannelId);
+    final needsFallback = selectedChannelId == null ||
+        !channels.any((channel) => channel.id == selectedChannelId) ||
+        (!userPicked && hasReal && selectedChannelId == kCustomFirmwareChannelId);
+    if (needsFallback) {
+      final fallbackChannel = channels.firstWhere(
+        (channel) => channel.id == 'release',
+        orElse: () => channels.firstWhere(
+          (c) => c.id != kCustomFirmwareChannelId,
+          orElse: () => channels.first,
+        ),
+      );
+      _channelIdByEntry[key] = fallbackChannel.id;
+    }
+  }
+
   @override
   void dispose() {
+    _serviceUpdateSub?.cancel();
     for (final timer in _retryTimers.values) {
       timer.cancel();
     }

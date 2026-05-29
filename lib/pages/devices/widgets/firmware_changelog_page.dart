@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../../config.dart';
-import '../models/firmware_directory.dart';
+import '../../../services/update/firmware_directory.dart';
 import '../../../theme.dart';
 import 'changelog_renderer.dart';
 import 'firmware_update_button.dart';

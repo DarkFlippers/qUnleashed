@@ -1,9 +1,19 @@
 import 'package:flutter/material.dart';
 
 import 'pages/devices/page.dart';
+import 'services/update/notification_router.dart';
+import 'services/update/scheduler.dart';
+import 'services/update/update_service.dart';
 import 'theme.dart';
+import 'widgets/notifications/update.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await UpdateService.instance.initialize();
+  await initFirmwareUpdateNotifications(
+    onNotificationTap: handleFirmwareUpdateNotificationPayload,
+  );
+  await initializeUpdateScheduling();
   runApp(const QunleashedApp());
 }
 
@@ -16,7 +26,14 @@ class QunleashedApp extends StatefulWidget {
 
 class _QunleashedAppState extends State<QunleashedApp> {
   final _themeController = QAppThemeController.instance;
-  final GlobalKey<NavigatorState> _navKey = GlobalKey<NavigatorState>();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      flushPendingFirmwareUpdateRoute();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -26,7 +43,7 @@ class _QunleashedAppState extends State<QunleashedApp> {
         title: 'Qunleashed',
         debugShowCheckedModeBanner: false,
         theme: buildAppTheme(_themeController.activeFirmware),
-        navigatorKey: _navKey,
+        navigatorKey: updateNavigatorKey,
         home: const DevicePage(),
       ),
     );

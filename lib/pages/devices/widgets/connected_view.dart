@@ -23,6 +23,7 @@ class ConnectedDeviceView extends StatelessWidget {
     required this.onOpenFullInfo,
     required this.onExport,
     required this.onDisconnect,
+    required this.onRefresh,
   });
 
   final String deviceName;
@@ -37,6 +38,7 @@ class ConnectedDeviceView extends StatelessWidget {
   final VoidCallback onOpenFullInfo;
   final VoidCallback onExport;
   final VoidCallback onDisconnect;
+  final Future<void> Function() onRefresh;
 
   static const double _headerContentHeight = 114;
   static const double _contentMaxWidth = 1120;
@@ -58,9 +60,12 @@ class ConnectedDeviceView extends StatelessWidget {
               );
               return ScrollConfiguration(
                 behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
-                child: ListView(
-                  padding: contentPadding,
-                  children: [
+                child: RefreshIndicator(
+                  onRefresh: onRefresh,
+                  child: ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: contentPadding,
+                    children: [
                   Center(
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(
@@ -127,6 +132,7 @@ class ConnectedDeviceView extends StatelessWidget {
                     ),
                   ),
                   ],
+                ),
                 ),
               );
             },

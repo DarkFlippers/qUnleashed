@@ -5,9 +5,9 @@ import 'package:archive/archive_io.dart';
 import 'package:flipperlib/flipperlib.dart';
 
 import '../../../config.dart';
-import 'firmware_directory.dart';
-import 'ofw_parser.dart';
-import 'unleashed_parser.dart';
+import '../../../services/update/firmware_directory.dart';
+import '../../../services/update/ofw_parser.dart';
+import '../../../services/update/unleashed_parser.dart';
 
 const _tag = '[FirmwareUpdater]';
 const _remoteRoot = '/ext/update';

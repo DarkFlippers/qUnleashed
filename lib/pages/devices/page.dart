@@ -4,6 +4,7 @@ import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 import 'package:super_clipboard/super_clipboard.dart';
 
+import '../../services/update/update_service.dart';
 import '../../theme.dart';
 import '../../widgets/flipper_action_dialog.dart';
 import '../../widgets/info_line.dart';
@@ -61,6 +62,11 @@ class _DevicePageState extends State<DevicePage> {
     _archiveController.dispose();
     _client.disconnect();
     super.dispose();
+  }
+
+  Future<void> _onRefresh() async {
+    _startDataLoading();
+    await UpdateService.instance.refresh();
   }
 
   void _cancelDataStreams() {
@@ -165,7 +171,9 @@ class _DevicePageState extends State<DevicePage> {
           _info = {..._info, ...data};
           _deviceInfoConnected = true;
         });
-        if (data.keys.any((k) => k.startsWith('firmware') || k == 'software_revision')) {
+        if (data.keys.any(
+          (k) => k.startsWith('firmware') || k == 'software_revision',
+        )) {
           QAppThemeController.instance.syncFirmwareFromDeviceInfo(_info);
         }
       }
@@ -228,8 +236,7 @@ class _DevicePageState extends State<DevicePage> {
     };
   }
 
-  Future<Map<String, String>> _loadDeviceInfo() =>
-      _client.awaitDeviceInfo();
+  Future<Map<String, String>> _loadDeviceInfo() => _client.awaitDeviceInfo();
 
   Future<Map<String, String>> _loadDateTimeInfo() async {
     final response = await _client.getDateTime(
@@ -1181,6 +1188,7 @@ class _DevicePageState extends State<DevicePage> {
                   onOpenFullInfo: _openFullInfo,
                   onExport: _exportDeviceInfo,
                   onDisconnect: _disconnect,
+                  onRefresh: _onRefresh,
                 )
               : DisconnectedDeviceView(onConnect: _openPicker),
           ArchivePage(controller: _archiveController),

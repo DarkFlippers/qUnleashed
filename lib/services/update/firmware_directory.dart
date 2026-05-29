@@ -95,6 +95,13 @@ class FirmwareFile {
         sha256: json['sha256'] as String,
       );
 
+  Map<String, dynamic> toJson() => {
+        'url': url,
+        'target': target,
+        'type': type,
+        'sha256': sha256,
+      };
+
   String get fileName => url.split('/').last;
 }
 
@@ -135,6 +142,13 @@ class FirmwareVersion {
             .map((e) => FirmwareFile.fromJson(e as Map<String, dynamic>))
             .toList(),
       );
+
+  Map<String, dynamic> toJson() => {
+        'version': version,
+        'changelog': changelog,
+        'timestamp': timestamp,
+        'files': files.map((f) => f.toJson()).toList(),
+      };
 }
 
 class FirmwareDirectoryChannel {
@@ -162,6 +176,13 @@ class FirmwareDirectoryChannel {
             .map((e) => FirmwareVersion.fromJson(e as Map<String, dynamic>))
             .toList(),
       );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'description': description,
+        'versions': versions.map((v) => v.toJson()).toList(),
+      };
 }
 
 class FirmwareDirectory {
@@ -185,6 +206,10 @@ class FirmwareDirectory {
             .map((e) => FirmwareDirectoryChannel.fromJson(e as Map<String, dynamic>))
             .toList(),
       );
+
+  Map<String, dynamic> toJson() => {
+        'channels': channels.map((c) => c.toJson()).toList(),
+      };
 }
 
 // =============================================================================
@@ -224,6 +249,8 @@ abstract class FirmwareParser {
   Future<FirmwareDirectory> get() async => _cache ?? await fetch();
 
   void clearCache() => _cache = null;
+
+  void injectCache(FirmwareDirectory dir) => _cache = dir;
 
   /// Returns the channel for the given [FirmwareChannel].
   FirmwareDirectoryChannel? getChannel(FirmwareChannel channel) =>

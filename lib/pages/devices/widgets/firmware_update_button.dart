@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../config.dart';
 import '../../../widgets/notification.dart';
 import '../../../widgets/progress_button.dart';
-import '../models/firmware_directory.dart';
+import '../../../services/update/firmware_directory.dart';
 import '../models/firmware_updater.dart';
 import '../../../theme.dart';
 
