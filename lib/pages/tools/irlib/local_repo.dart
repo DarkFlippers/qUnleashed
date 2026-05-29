@@ -4,7 +4,7 @@ import 'dart:io' as io;
 import 'package:archive/archive_io.dart';
 import 'package:path_provider/path_provider.dart';
 
-import '../../../storage/app.dart';
+import '../../../services/repository/app.dart';
 
 class IrLibDownloadProgress {
   IrLibDownloadProgress({

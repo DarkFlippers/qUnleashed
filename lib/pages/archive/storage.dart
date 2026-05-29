@@ -1,6 +1,6 @@
 import 'dart:io' as io;
 
-import '../../storage/app.dart';
+import '../../services/repository/app.dart';
 import 'models/category.dart';
 
 class LocalKeyEntry {

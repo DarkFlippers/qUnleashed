@@ -5,7 +5,7 @@ import 'dart:io' as io;
 import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flutter/foundation.dart';
 
-import '../../storage/app.dart';
+import '../../services/repository/app.dart';
 import 'catalog_api.dart';
 import 'models/card.dart';
 import 'models/category.dart';

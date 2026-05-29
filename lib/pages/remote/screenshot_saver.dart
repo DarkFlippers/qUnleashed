@@ -3,7 +3,7 @@ import 'dart:typed_data';
 
 import 'package:super_clipboard/super_clipboard.dart';
 
-import '../../storage/app.dart';
+import '../../services/repository/app.dart';
 
 Future<void> copyScreenshotToClipboard(Uint8List png) async {
   final clipboard = SystemClipboard.instance;

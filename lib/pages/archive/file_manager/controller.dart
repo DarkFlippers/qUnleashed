@@ -4,7 +4,7 @@ import 'dart:io' as io;
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/foundation.dart';
 
-import '../../../storage/app.dart';
+import '../../../services/repository/app.dart';
 
 class RemoteEntry {
   RemoteEntry({required this.name, required this.size, required this.isDir});
