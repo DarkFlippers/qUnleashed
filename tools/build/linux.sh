@@ -3,16 +3,35 @@ set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 APP_NAME="qunleashed"
-BUILD_DIR="$ROOT_DIR/build/linux/x64/release/bundle"
+VERSION_NAME="${QUNLEASHED_VERSION_NAME:-}"
 DIST_DIR="$ROOT_DIR/dist"
-OUT_FILE="$DIST_DIR/${APP_NAME}-linux-x64"
+
+if [[ -z "$VERSION_NAME" ]]; then
+  VERSION_NAME="$(sed -nE 's/^version:[[:space:]]*([0-9A-Za-z._-]+).*/\1/p' "$ROOT_DIR/pubspec.yaml" | head -n 1)"
+  VERSION_NAME="${VERSION_NAME%%+*}"
+fi
+
+if [[ -z "$VERSION_NAME" ]]; then
+  echo "App version not found. Set QUNLEASHED_VERSION_NAME or pubspec.yaml version." >&2
+  exit 1
+fi
+
+case "$(uname -m)" in
+  x86_64 | amd64) TARGET_ARCH="x64" ;;
+  aarch64 | arm64) TARGET_ARCH="arm64" ;;
+  armv7l | armv7*) TARGET_ARCH="armv7" ;;
+  *) TARGET_ARCH="$(uname -m)" ;;
+esac
+
+BUILD_DIR="$ROOT_DIR/build/linux/$TARGET_ARCH/release/bundle"
+OUT_FILE="$DIST_DIR/${APP_NAME}_${VERSION_NAME}_linux_${TARGET_ARCH}"
 
 FLUTTER_BIN="${FLUTTER_BIN:-}"
 if [[ -z "$FLUTTER_BIN" ]]; then
   if [[ -x "/home/apfx32/development/flutter/bin/flutter" ]]; then
     FLUTTER_BIN="/home/apfx32/development/flutter/bin/flutter"
   else
-    FLUTTER_BIN="$(command -v flutter)"
+    FLUTTER_BIN="$(command -v flutter || true)"
   fi
 fi
 

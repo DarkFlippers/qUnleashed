@@ -105,8 +105,8 @@ jobs:
             printf 'keyPassword=%s\n' "$ANDROID_KEY_PASSWORD"
           } > android/key.properties
 
-      - name: Build Android release APK
-        run: flutter build apk --release $QUNLEASHED_FLUTTER_BUILD_ARGS
+      - name: Build Android release APKs
+        run: tools/build/android.sh
 
       - name: Install Linux build dependencies
         run: |
@@ -116,18 +116,13 @@ jobs:
       - name: Build Linux single-file executable
         run: tools/build/linux.sh
 
-      - name: Prepare Android release asset
-        run: |
-          mkdir -p dist
-          cp build/app/outputs/flutter-apk/app-release.apk "dist/qunleashed-${GITHUB_REF_NAME}.apk"
-
       - name: Upload Android and Linux release assets
         uses: actions/upload-artifact@v4
         with:
           name: release-assets-android-linux
           path: |
-            dist/qunleashed-${{ github.ref_name }}.apk
-            dist/qunleashed-linux-x64
+            dist/qunleashed_*_android_*.apk
+            dist/qunleashed_*_linux_x64
           if-no-files-found: error
 
   build-windows:
@@ -182,22 +177,14 @@ jobs:
           echo "Build number: $version_code"
 
       - name: Build Windows release
-        run: flutter build windows --release --build-name $env:QUNLEASHED_VERSION_NAME --build-number $env:QUNLEASHED_VERSION_CODE
-
-      - name: Prepare Windows release asset
         shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path dist | Out-Null
-          Compress-Archive `
-            -Path build\windows\x64\runner\Release\* `
-            -DestinationPath "dist\qunleashed-${env:GITHUB_REF_NAME}-windows-x64.zip" `
-            -Force
+        run: ./tools/build/windows.ps1
 
       - name: Upload Windows release asset
         uses: actions/upload-artifact@v4
         with:
           name: release-assets-windows
-          path: dist/qunleashed-${{ github.ref_name }}-windows-x64.zip
+          path: dist/qunleashed_*_windows_x64.exe
           if-no-files-found: error
 
   publish:
@@ -226,6 +213,6 @@ jobs:
           generate_release_notes: true
           overwrite_files: true
           files: |
-            dist/qunleashed-${{ github.ref_name }}.apk
-            dist/qunleashed-linux-x64
-            dist/qunleashed-${{ github.ref_name }}-windows-x64.zip
+            dist/qunleashed_*_android_*.apk
+            dist/qunleashed_*_linux_x64
+            dist/qunleashed_*_windows_x64.exe

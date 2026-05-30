@@ -6,8 +6,19 @@ $ErrorActionPreference = "Stop"
 
 $RootDir = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $AppName = "qunleashed"
+$VersionName = $env:QUNLEASHED_VERSION_NAME
+if ([string]::IsNullOrWhiteSpace($VersionName)) {
+    $pubspecPath = Join-Path $RootDir "pubspec.yaml"
+    $versionLine = Get-Content -Path $pubspecPath | Where-Object { $_ -match '^version:\s*([0-9A-Za-z._-]+)' } | Select-Object -First 1
+    if ($versionLine -match '^version:\s*([0-9A-Za-z._-]+)') {
+        $VersionName = ($Matches[1] -split '\+')[0]
+    }
+}
+if ([string]::IsNullOrWhiteSpace($VersionName)) {
+    throw "App version not found. Set QUNLEASHED_VERSION_NAME or pubspec.yaml version."
+}
 $DistDir = Join-Path $RootDir "dist"
-$OutFile = Join-Path $DistDir "$AppName-windows-x64.exe"
+$OutFile = Join-Path $DistDir "$AppName`_$VersionName`_windows_x64.exe"
 
 if ([string]::IsNullOrWhiteSpace($FlutterBin)) {
     $flutterCommand = Get-Command flutter -ErrorAction SilentlyContinue
