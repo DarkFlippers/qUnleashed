@@ -1190,7 +1190,10 @@ class _DevicePageState extends State<DevicePage> {
                   onDisconnect: _disconnect,
                   onRefresh: _onRefresh,
                 )
-              : DisconnectedDeviceView(onConnect: _openPicker),
+              : DisconnectedDeviceView(
+                  onConnect: _openPicker,
+                  onRefresh: _onRefresh,
+                ),
           ArchivePage(controller: _archiveController),
           const AppsPage(),
           const ToolsPage(),

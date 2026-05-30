@@ -59,80 +59,90 @@ class ConnectedDeviceView extends StatelessWidget {
                 bottom: 14,
               );
               return ScrollConfiguration(
-                behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+                behavior: ScrollConfiguration.of(
+                  context,
+                ).copyWith(scrollbars: false),
                 child: RefreshIndicator(
                   onRefresh: onRefresh,
+                  edgeOffset: headerHeight,
+                  displacement: 28,
                   child: ListView(
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: contentPadding,
                     children: [
-                  Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(
-                        maxWidth: _contentMaxWidth,
-                      ),
-                      child: Column(
-                        children: [
-                          FirmwareCarouselCard(
-                            deviceVersion: deviceInfoEntries.isEmpty
-                                ? '-'
-                                : deviceInfoEntries.first.value,
-                            deviceInfo: deviceInfo,
+                      Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(
+                            maxWidth: _contentMaxWidth,
                           ),
-                          const SizedBox(height: 14),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 14),
-                            child: _ResponsiveCardGrid(
-                              minCardWidth: 300,
-                              children: [
-                                _BatterySummaryCard(
-                                  infoLoading: infoLoading,
-                                  deviceInfo: deviceInfo,
-                                ),
-                                _StorageSummaryCard(
-                                  infoLoading: infoLoading,
-                                  deviceInfo: deviceInfo,
-                                ),
-                              ],
-                            ),
-                          ),
-                          if (!wide) ...[
-                            const SizedBox(height: 14),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 14),
-                              child: _DeviceInfoCard(
-                                entries: deviceInfoEntries,
-                                onOpenFullInfo: onOpenFullInfo,
-                                onExport: onExport,
+                          child: Column(
+                            children: [
+                              FirmwareCarouselCard(
+                                deviceVersion: deviceInfoEntries.isEmpty
+                                    ? '-'
+                                    : deviceInfoEntries.first.value,
+                                deviceInfo: deviceInfo,
                               ),
-                            ),
-                          ],
-                          const SizedBox(height: 14),
-                          _RemoteControlCard(
-                            onOpenRemoteControl: onOpenRemoteControl,
-                          ),
-                          const SizedBox(height: 14),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 14),
-                            child: _ResponsiveCardGrid(
-                              minCardWidth: 300,
-                              children: [
-                                _ActionsCard(
-                                  onSynchronize: onSynchronize,
-                                  onPlayAlert: onPlayAlert,
+                              const SizedBox(height: 14),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
                                 ),
-                                _ConnectionActionsCard(
-                                  onDisconnect: onDisconnect,
+                                child: _ResponsiveCardGrid(
+                                  minCardWidth: 300,
+                                  children: [
+                                    _BatterySummaryCard(
+                                      infoLoading: infoLoading,
+                                      deviceInfo: deviceInfo,
+                                    ),
+                                    _StorageSummaryCard(
+                                      infoLoading: infoLoading,
+                                      deviceInfo: deviceInfo,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (!wide) ...[
+                                const SizedBox(height: 14),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                  ),
+                                  child: _DeviceInfoCard(
+                                    entries: deviceInfoEntries,
+                                    onOpenFullInfo: onOpenFullInfo,
+                                    onExport: onExport,
+                                  ),
                                 ),
                               ],
-                            ),
+                              const SizedBox(height: 14),
+                              _RemoteControlCard(
+                                onOpenRemoteControl: onOpenRemoteControl,
+                              ),
+                              const SizedBox(height: 14),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                ),
+                                child: _ResponsiveCardGrid(
+                                  minCardWidth: 300,
+                                  children: [
+                                    _ActionsCard(
+                                      onSynchronize: onSynchronize,
+                                      onPlayAlert: onPlayAlert,
+                                    ),
+                                    _ConnectionActionsCard(
+                                      onDisconnect: onDisconnect,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
+                        ),
                       ),
-                    ),
+                    ],
                   ),
-                  ],
-                ),
                 ),
               );
             },
@@ -331,7 +341,9 @@ class _SummaryCard extends StatelessWidget {
                   Row(
                     children: [
                       for (final m in metrics)
-                        Expanded(child: _Metric(label: m.$1, value: m.$2)),
+                        Expanded(
+                          child: _Metric(label: m.$1, value: m.$2),
+                        ),
                     ],
                   ),
                 ],
@@ -388,7 +400,10 @@ class _BatterySummaryCard extends StatelessWidget {
       statusText: null,
       statusColor: null,
       metrics: [
-        ('Voltage', voltage == null ? '-' : '${(voltage * 0.001).toStringAsFixed(3)} V'),
+        (
+          'Voltage',
+          voltage == null ? '-' : '${(voltage * 0.001).toStringAsFixed(3)} V',
+        ),
         ('Current', current == null ? '-' : '${current.round()} mA'),
         ('Temp', temp == null ? '-' : '${temp.toStringAsFixed(1)} C'),
       ],

@@ -1,6 +1,8 @@
+import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
 import 'pages/devices/page.dart';
+import 'services/connection/notification_service.dart';
 import 'services/update/notification_router.dart';
 import 'services/update/scheduler.dart';
 import 'services/update/update_service.dart';
@@ -14,6 +16,7 @@ void main() async {
     onNotificationTap: handleFirmwareUpdateNotificationPayload,
   );
   await initializeUpdateScheduling();
+  await ConnectionNotificationService.instance.start(FlipperOneClient().get());
   runApp(const QunleashedApp());
 }
 

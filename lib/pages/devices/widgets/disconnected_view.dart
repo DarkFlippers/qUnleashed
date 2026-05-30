@@ -6,9 +6,14 @@ import 'firmware_carousel_card.dart';
 import 'page_header.dart';
 
 class DisconnectedDeviceView extends StatelessWidget {
-  const DisconnectedDeviceView({super.key, required this.onConnect});
+  const DisconnectedDeviceView({
+    super.key,
+    required this.onConnect,
+    required this.onRefresh,
+  });
 
   final VoidCallback onConnect;
+  final Future<void> Function() onRefresh;
   static const double _headerContentHeight = 114;
   static const double _contentMaxWidth = 1120;
 
@@ -21,34 +26,42 @@ class DisconnectedDeviceView extends StatelessWidget {
     return Stack(
       children: [
         Positioned.fill(
-          child: ListView(
-            padding: EdgeInsets.only(top: headerHeight + 14, bottom: 14),
-            children: [
-              Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: _contentMaxWidth),
-                  child: Column(
-                    children: [
-                      const FirmwareCarouselCard(
-                        deviceVersion: null,
-                        deviceInfo: {},
-                      ),
-                      const SizedBox(height: 14),
-                      FlipperPageCard(
-                        child: Column(
-                          children: [
-                            _ConnectActionRow(
-                              color: colors.accent,
-                              onTap: onConnect,
-                            ),
-                          ],
+          child: RefreshIndicator(
+            onRefresh: onRefresh,
+            edgeOffset: headerHeight,
+            displacement: 28,
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: EdgeInsets.only(top: headerHeight + 14, bottom: 14),
+              children: [
+                Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      maxWidth: _contentMaxWidth,
+                    ),
+                    child: Column(
+                      children: [
+                        const FirmwareCarouselCard(
+                          deviceVersion: null,
+                          deviceInfo: {},
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 14),
+                        FlipperPageCard(
+                          child: Column(
+                            children: [
+                              _ConnectActionRow(
+                                color: colors.accent,
+                                onTap: onConnect,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
         DevicePageHeader(
