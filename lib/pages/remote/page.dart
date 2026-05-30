@@ -5,12 +5,13 @@ import 'package:flutter/material.dart';
 
 import '../../theme.dart';
 import '../../widgets/notification.dart';
+import 'gif_export_dialog.dart';
 import 'gif_recorder.dart';
 import 'input/keyboard_listener.dart';
 import 'models/models.dart';
 import 'screenshot_saver.dart';
 import 'session.dart';
-import 'widgets/action_button.dart';
+import 'widgets/action_row.dart';
 import 'widgets/controls.dart';
 import 'widgets/view.dart';
 
@@ -19,13 +20,6 @@ class RemoteControlPage extends StatefulWidget {
 
   @override
   State<RemoteControlPage> createState() => _RemoteControlPageState();
-}
-
-class _GifExportOptions {
-  const _GifExportOptions({required this.scale, required this.speed});
-
-  final int scale;
-  final int speed;
 }
 
 class _RemoteControlPageState extends State<RemoteControlPage> {
@@ -44,7 +38,7 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
     _gifRecorder = GifRecorder();
     _session = RemoteSession()
       ..addListener(_onSessionChanged)
-      ..onDecodedFrame = _onDecodedFrame;
+      ..onRawFrame = _onRawFrame;
   }
 
   @override
@@ -52,7 +46,7 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
     _recordingTick?.cancel();
     _session
       ..removeListener(_onSessionChanged)
-      ..onDecodedFrame = null;
+      ..onRawFrame = null;
     _session.dispose();
     if (_gifRecorder.state != GifRecordingState.idle) _gifRecorder.cancel();
     super.dispose();
@@ -73,7 +67,7 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
 
   // ── GIF recording ──────────────────────────────────────────────────────────
 
-  void _onDecodedFrame(DecodedFrame frame) {
+  void _onRawFrame(RawFrameData frame) {
     if (_gifRecorder.state != GifRecordingState.recording) return;
     final autoStop = _gifRecorder.addFrame(frame);
     if (autoStop && mounted) {
@@ -109,13 +103,17 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
 
   Future<void> _stopGifRecording() async {
     final state = _gifRecorder.state;
-    if (state == GifRecordingState.idle ||
-        state == GifRecordingState.encoding) {
+    if (state == GifRecordingState.idle || state == GifRecordingState.encoding) {
       return;
     }
 
     _recordingTick?.cancel();
     _recordingTick = null;
+
+    // Stop accepting new frames immediately — before dialog is shown.
+    if (_gifRecorder.state == GifRecordingState.recording) {
+      _gifRecorder.pause();
+    }
 
     if (_gifRecorder.frameCount == 0) {
       _gifRecorder.cancel();
@@ -123,7 +121,7 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
       return;
     }
 
-    final export = await _showGifExportDialog();
+    final export = await showGifExportDialog(context);
     if (export == null) {
       _gifRecorder.cancel();
       if (mounted) setState(() {});
@@ -145,9 +143,7 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
         savedPath = path;
         try {
           await copyGifFileToClipboard(path);
-        } catch (_) {
-          // clipboard copy is best-effort
-        }
+        } catch (_) {}
       }
     } catch (e) {
       saveError = e;
@@ -171,107 +167,6 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
     }
   }
 
-  Future<_GifExportOptions?> _showGifExportDialog() {
-    var selectedScale = 2;
-    var selectedSpeed = 1;
-
-    return showDialog<_GifExportOptions>(
-      context: context,
-      builder: (dialogContext) {
-        final colors = dialogContext.appColors;
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            Widget optionRow({
-              required int value,
-              required int selected,
-              required ValueChanged<int> onSelected,
-            }) {
-              return ChoiceChip(
-                label: Text('${value}x'),
-                selected: selected == value,
-                onSelected: (_) => setDialogState(() => onSelected(value)),
-                selectedColor: colors.accent.withValues(alpha: 0.18),
-                labelStyle: TextStyle(
-                  color: selected == value ? colors.accent : colors.textPrimary,
-                  fontWeight: selected == value
-                      ? FontWeight.w700
-                      : FontWeight.w500,
-                ),
-                side: BorderSide(
-                  color: selected == value ? colors.accent : colors.divider,
-                ),
-              );
-            }
-
-            return AlertDialog(
-              title: const Text('Export GIF'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Scale',
-                    style: TextStyle(
-                      color: colors.textSecondary,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    children: [
-                      for (final value in const [1, 2, 4])
-                        optionRow(
-                          value: value,
-                          selected: selectedScale,
-                          onSelected: (v) => selectedScale = v,
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 18),
-                  Text(
-                    'Speed',
-                    style: TextStyle(
-                      color: colors.textSecondary,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    children: [
-                      for (final value in const [1, 2, 4])
-                        optionRow(
-                          value: value,
-                          selected: selectedSpeed,
-                          onSelected: (v) => selectedSpeed = v,
-                        ),
-                    ],
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(),
-                  child: const Text('Cancel'),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(
-                    _GifExportOptions(
-                      scale: selectedScale,
-                      speed: selectedSpeed,
-                    ),
-                  ),
-                  child: const Text('Save'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
   void _cancelGifRecording() {
     _recordingTick?.cancel();
     _recordingTick = null;
@@ -289,10 +184,11 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
   }
 
   Future<void> _copyScreenshot() async {
-    final png = _session.lastPng;
-    if (png == null || _savingScreenshot) return;
+    if (_savingScreenshot) return;
     setState(() => _savingScreenshot = true);
     try {
+      final png = await _session.capturePng();
+      if (png == null || !mounted) return;
       await copyScreenshotToClipboard(png);
       if (!mounted) return;
       context.showNotification(
@@ -311,10 +207,11 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
   }
 
   Future<void> _saveScreenshot() async {
-    final png = _session.lastPng;
-    if (png == null || _savingScreenshot) return;
+    if (_savingScreenshot) return;
     setState(() => _savingScreenshot = true);
     try {
+      final png = await _session.capturePng();
+      if (png == null || !mounted) return;
       final path = await saveScreenshotToAppStorage(png);
       if (!mounted) return;
       context.showNotification(
@@ -375,7 +272,22 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
                               padding: EdgeInsets.fromLTRB(hPad, 14, hPad, 8),
                               child: Column(
                                 children: [
-                                  _buildActionRow(isVertical),
+                                  RemoteActionRow(
+                                    isVertical: isVertical,
+                                    gifState: _gifRecorder.state,
+                                    gifElapsedMs: _gifRecorder.elapsedMs,
+                                    isLocked: _session.isLocked,
+                                    savingScreenshot: _savingScreenshot,
+                                    onCopy: _copyScreenshot,
+                                    onSave: _saveScreenshot,
+                                    onUnlock: _session.isLocked
+                                        ? _session.unlock
+                                        : null,
+                                    onStartGif: _startGifRecording,
+                                    onPauseResumeGif: _togglePauseGifRecording,
+                                    onStopGif: _stopGifRecording,
+                                    onCancelGif: _cancelGifRecording,
+                                  ),
                                   const SizedBox(height: 6),
                                   Expanded(
                                     child: RemoteControlView(
@@ -440,161 +352,6 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
             const SizedBox(width: 48),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildActionRow(bool isVertical) {
-    final gifState = _gifRecorder.state;
-
-    if (gifState == GifRecordingState.recording ||
-        gifState == GifRecordingState.paused) {
-      return _buildRecordingControls(isVertical);
-    }
-
-    final isLocked = _session.isLocked;
-    final gifBusy = gifState == GifRecordingState.encoding;
-
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: isVertical ? 0 : 12),
-      child: Row(
-        children: [
-          Expanded(
-            child: Center(
-              child: RemoteControlActionButton(
-                icon: Icons.copy_rounded,
-                label: _savingScreenshot ? 'Saving' : 'Copy',
-                onTap: _copyScreenshot,
-              ),
-            ),
-          ),
-          Expanded(
-            child: Center(
-              child: RemoteControlActionButton(
-                icon: Icons.download_rounded,
-                label: _savingScreenshot ? 'Saving' : 'Save',
-                onTap: _saveScreenshot,
-              ),
-            ),
-          ),
-          Expanded(
-            child: Center(
-              child: RemoteControlActionButton(
-                asset: isLocked
-                    ? 'assets/flipper_svg/screenstreaming/ic_unlock.svg'
-                    : 'assets/flipper_svg/screenstreaming/ic_lock.svg',
-                label: isLocked ? 'Unlock' : 'Unlocked',
-                onTap: isLocked ? () => unawaited(_session.unlock()) : null,
-              ),
-            ),
-          ),
-          Expanded(
-            child: Center(
-              child: RemoteControlActionButton(
-                icon: gifBusy
-                    ? Icons.hourglass_empty_rounded
-                    : Icons.gif_box_outlined,
-                label: gifBusy ? 'Saving…' : 'GIF',
-                onTap: gifBusy ? null : _startGifRecording,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRecordingControls(bool isVertical) {
-    final colors = context.appColors;
-    final isPaused = _gifRecorder.state == GifRecordingState.paused;
-    final elapsed = _gifRecorder.elapsedMs;
-    final remaining = (GifRecorder.maxDurationMs - elapsed).clamp(
-      0,
-      GifRecorder.maxDurationMs,
-    );
-
-    String fmt(int ms) {
-      final s = (ms ~/ 1000).clamp(0, 99);
-      final tenths = (ms % 1000) ~/ 100;
-      return '${s.toString().padLeft(2, '0')}.${tenths}s';
-    }
-
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: isVertical ? 0 : 12),
-      child: Row(
-        children: [
-          // Timer display
-          Expanded(
-            flex: 2,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        color: isPaused
-                            ? colors.accent.withValues(alpha: 0.4)
-                            : Colors.red,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: 5),
-                    Text(
-                      fmt(elapsed),
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: colors.accent,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '−${fmt(remaining)}',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: colors.accent.withValues(alpha: 0.6),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          // Pause / Resume
-          Expanded(
-            child: Center(
-              child: RemoteControlActionButton(
-                icon: isPaused ? Icons.play_arrow_rounded : Icons.pause_rounded,
-                label: isPaused ? 'Resume' : 'Pause',
-                onTap: _togglePauseGifRecording,
-              ),
-            ),
-          ),
-          // Stop (save)
-          Expanded(
-            child: Center(
-              child: RemoteControlActionButton(
-                icon: Icons.stop_rounded,
-                label: 'Save',
-                onTap: _stopGifRecording,
-              ),
-            ),
-          ),
-          // Cancel (discard)
-          Expanded(
-            child: Center(
-              child: RemoteControlActionButton(
-                icon: Icons.close_rounded,
-                label: 'Cancel',
-                onTap: _cancelGifRecording,
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }

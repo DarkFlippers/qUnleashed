@@ -10,7 +10,9 @@ import 'models/models.dart';
 const int kFlipperScreenWidth = 128;
 const int kFlipperScreenHeight = 64;
 
-Future<DecodedFrame> decodeScreenFrame(ScreenFrame frame) async {
+/// Synchronously unpacks a [ScreenFrame] into raw pixel data.
+/// No GPU or async work — runs immediately on any incoming frame.
+RawFrameData decodeFrameSync(ScreenFrame frame) {
   final pixels = Uint8List(kFlipperScreenWidth * kFlipperScreenHeight * 4);
   final pixelIndices = Uint8List(kFlipperScreenWidth * kFlipperScreenHeight);
   final raw = frame.data;
@@ -47,23 +49,21 @@ Future<DecodedFrame> decodeScreenFrame(ScreenFrame frame) async {
     }
   }
 
-  final image = await _imageFromPixels(pixels);
-  final pngBytes =
-      (await image.toByteData(format: ui.ImageByteFormat.png))!.buffer.asUint8List();
-  return DecodedFrame(
-    image: image,
-    pngBytes: pngBytes,
+  return RawFrameData(
     pixelIndices: pixelIndices,
+    rgba: pixels,
     bgColor: bg,
     fgColor: fg,
     orientation: orientation,
   );
 }
 
-Future<ui.Image> _imageFromPixels(Uint8List pixels) {
+/// Asynchronously creates a [ui.Image] from pre-decoded RGBA pixel data.
+/// Runs in the engine thread; does not block the Dart isolate.
+Future<ui.Image> createImageFromRgba(Uint8List rgba) {
   final completer = Completer<ui.Image>();
   ui.decodeImageFromPixels(
-    pixels,
+    rgba,
     kFlipperScreenWidth,
     kFlipperScreenHeight,
     ui.PixelFormat.rgba8888,

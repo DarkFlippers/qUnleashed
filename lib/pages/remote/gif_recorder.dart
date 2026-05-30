@@ -51,9 +51,8 @@ class GifRecorder {
   GifRecordingState _state = GifRecordingState.idle;
   final List<_Frame> _frames = [];
 
-  // Wall-clock tracking — paused intervals are excluded.
-  DateTime? _resumeTime; // set when recording (re)starts
-  int _accumulatedMs = 0; // total recorded ms across resumed segments
+  DateTime? _resumeTime;
+  int _accumulatedMs = 0;
 
   int _storedBg = 0;
   int _storedFg = 0;
@@ -99,13 +98,11 @@ class GifRecorder {
   ///
   /// Returns `true` when the 60-second limit has been reached — the caller
   /// should then call [encode] (or [cancel]).
-  bool addFrame(DecodedFrame frame) {
+  bool addFrame(RawFrameData frame) {
     if (_state != GifRecordingState.recording) return false;
     final timestampMs = elapsedMs;
     if (timestampMs >= maxDurationMs) return true;
 
-    // Record event-based screen updates, but never store faster than 30 fps.
-    // Incoming Flipper frames are often ~10 fps; this only drops bursts.
     if (_frames.isNotEmpty &&
         timestampMs - _frames.last.timestampMs < minFrameIntervalMs) {
       return false;
@@ -128,7 +125,6 @@ class GifRecorder {
       throw ArgumentError.value(speed, 'speed', 'Use 1, 2, or 4.');
     }
 
-    // Snapshot elapsed time before transitioning state
     if (_resumeTime != null) {
       _accumulatedMs += DateTime.now().difference(_resumeTime!).inMilliseconds;
       _resumeTime = null;
@@ -150,7 +146,7 @@ class GifRecorder {
   /// Discard recording and return to idle.
   void cancel() => _reset();
 
-  /// Called after encode() completes to return to idle.
+  /// Called after [encode] completes to return to idle.
   void reset() => _reset();
 
   void _reset() {

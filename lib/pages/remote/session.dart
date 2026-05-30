@@ -23,11 +23,11 @@ class RemoteSession extends ChangeNotifier {
 
   Future<void> _inputChain = Future<void>.value();
 
-  /// Called on the main thread after each frame is decoded.
-  void Function(DecodedFrame)? onDecodedFrame;
+  /// Called synchronously after pixel decode, before GPU image creation.
+  /// Receives raw frame data independent of the graphics pipeline.
+  void Function(RawFrameData)? onRawFrame;
 
   ui.Image? _frameImage;
-  Uint8List? _lastPng;
   StreamOrientation _orientation = StreamOrientation.horizontal;
   bool _isLocked = true;
   bool _stopped = false;
@@ -41,13 +41,20 @@ class RemoteSession extends ChangeNotifier {
   int? _lastFgColor;
 
   ui.Image? get frameImage => _frameImage;
-  Uint8List? get lastPng => _lastPng;
   StreamOrientation get orientation => _orientation;
   bool get isLocked => _isLocked;
   Object? get startError => _startError;
   List<QueuedButton> get queue => _queue;
   int? get lastBgColor => _lastBgColor;
   int? get lastFgColor => _lastFgColor;
+
+  /// Encodes the current frame as PNG bytes. Returns null if no frame received.
+  Future<Uint8List?> capturePng() async {
+    final img = _frameImage;
+    if (img == null) return null;
+    final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
+    return byteData?.buffer.asUint8List();
+  }
 
   Future<void> _start() async {
     await _tryRpc(
@@ -114,18 +121,24 @@ class RemoteSession extends ChangeNotifier {
   }
 
   Future<void> _onFrame(ScreenFrame frame) async {
-    final decoded = await decodeScreenFrame(frame);
+    // Phase 1: synchronous pixel decode — no GPU, no async.
+    // GIF recorder receives raw frame data before any GPU work begins.
+    final raw = decodeFrameSync(frame);
+    if (_disposed) return;
+
+    _lastBgColor = raw.bgColor;
+    _lastFgColor = raw.fgColor;
+    _orientation = raw.orientation;
+    onRawFrame?.call(raw);
+
+    // Phase 2: async GPU image creation for UI display.
+    final image = await createImageFromRgba(raw.rgba);
     if (_disposed) {
-      decoded.image.dispose();
+      image.dispose();
       return;
     }
     final prev = _frameImage;
-    _frameImage = decoded.image;
-    _lastPng = decoded.pngBytes;
-    _lastBgColor = decoded.bgColor;
-    _lastFgColor = decoded.fgColor;
-    _orientation = decoded.orientation;
-    onDecodedFrame?.call(decoded);
+    _frameImage = image;
     _safeNotify();
     prev?.dispose();
   }
