@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme.dart';
+import '../../widgets/open_url.dart';
 import '../remote/page.dart';
 import 'detail_page.dart';
 import 'controller.dart';
@@ -9,6 +10,9 @@ import 'widgets/action_button.dart';
 import 'widgets/card.dart';
 import 'widgets/categories_filter.dart';
 import 'widgets/sort_dropdown.dart';
+
+const String _kContributingUrl =
+    'https://github.com/flipperdevices/flipper-application-catalog/blob/main/documentation/Contributing.md';
 
 class AppsPage extends StatefulWidget {
   const AppsPage({super.key});
@@ -123,6 +127,16 @@ class _AppsPageState extends State<AppsPage> {
                 ),
               ),
               const Spacer(),
+              if (_ctrl.install.isReady)
+                _ScanIconButton(
+                  scanning: _ctrl.install.scanning,
+                  onTap: () => _ctrl.install.rescanInstalled(),
+                ),
+              IconButton(
+                icon: Icon(Icons.add_circle_outline, color: colors.textPrimary),
+                tooltip: 'How to submit your app',
+                onPressed: () => openUrl(context, _kContributingUrl),
+              ),
               IconButton(
                 icon: Icon(
                   _searchOpen ? Icons.close : Icons.search,
@@ -177,13 +191,6 @@ class _AppsPageState extends State<AppsPage> {
                 active: _ctrl.installedOnly,
                 onTap: () => _ctrl.setInstalledOnly(!_ctrl.installedOnly),
               ),
-              if (_ctrl.install.isReady) ...[
-                const SizedBox(width: 8),
-                _IndexButton(
-                  scanning: _ctrl.install.scanning,
-                  onTap: () => _ctrl.install.rescanInstalled(),
-                ),
-              ],
             ],
           ),
           const SizedBox(height: 16),
@@ -273,7 +280,7 @@ class _AppsPageState extends State<AppsPage> {
         padding: const EdgeInsets.symmetric(vertical: 18),
         child: Center(
           child: Text(
-            'вЂ” End of catalog вЂ”',
+            '— End of catalog —',
             style: TextStyle(color: colors.textMuted, fontSize: 12),
           ),
         ),
@@ -325,8 +332,8 @@ class _InstalledOnlyChip extends StatelessWidget {
   }
 }
 
-class _IndexButton extends StatelessWidget {
-  const _IndexButton({required this.scanning, required this.onTap});
+class _ScanIconButton extends StatelessWidget {
+  const _ScanIconButton({required this.scanning, required this.onTap});
 
   final bool scanning;
   final VoidCallback onTap;
@@ -334,47 +341,27 @@ class _IndexButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    return GestureDetector(
-      onTap: scanning ? null : onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: colors.card,
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: colors.accent.withValues(alpha: 0.6)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 160),
-              child: scanning
-                  ? SizedBox(
-                      key: const ValueKey('index-loading'),
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: colors.accent,
-                      ),
-                    )
-                  : Icon(
-                      key: const ValueKey('index-icon'),
-                      Icons.refresh_rounded,
-                      size: 16,
-                      color: colors.accent,
-                    ),
-            ),
-            const SizedBox(width: 6),
-            Text(
-              scanning ? 'Indexing...' : 'Index apps',
-              style: TextStyle(
-                color: colors.accent,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
+    return Tooltip(
+      message: 'Scan device for all apps',
+      child: IconButton(
+        onPressed: scanning ? null : onTap,
+        icon: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 160),
+          child: scanning
+              ? SizedBox(
+                  key: const ValueKey('scan-loading'),
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: colors.textPrimary,
+                  ),
+                )
+              : Icon(
+                  key: const ValueKey('scan-icon'),
+                  Icons.manage_search,
+                  color: colors.textPrimary,
+                ),
         ),
       ),
     );

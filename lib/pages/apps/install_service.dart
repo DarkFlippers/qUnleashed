@@ -78,6 +78,9 @@ class AppsInstallService extends ChangeNotifier {
   bool _scanning = false;
   bool get scanning => _scanning;
 
+  bool _manifestsRefreshed = false;
+  bool get manifestsRefreshed => _manifestsRefreshed;
+
   bool get isReady => client.isConnected && client.mode == FlipperMode.rpc;
 
   bool get scannedOnce => _scannedOnce;
@@ -143,15 +146,10 @@ class AppsInstallService extends ChangeNotifier {
     return isInstalled(app) ? AppButtonState.installed : AppButtonState.install;
   }
 
-  Future<void> refreshInstalled() async {
-    if (!isReady) {
-      _installedAliases.clear();
-      _installedManifests.clear();
-      _preinstalledAliases.clear();
-      _preinstalledPaths.clear();
-      notifyListeners();
-      return;
-    }
+  /// Reads only manifest (.fim) files from device. Called automatically once per
+  /// connection — does not scan preinstalled apps without manifests.
+  Future<void> refreshManifests() async {
+    if (!isReady || _manifestsRefreshed) return;
     _scanning = true;
     notifyListeners();
     try {
@@ -162,8 +160,6 @@ class AppsInstallService extends ChangeNotifier {
       );
       _installedAliases.clear();
       _installedManifests.clear();
-      _preinstalledAliases.clear();
-      _preinstalledPaths.clear();
       for (final item in list.items) {
         for (final f in item.file) {
           if (f.type != File_FileType.FILE) continue;
@@ -172,19 +168,32 @@ class AppsInstallService extends ChangeNotifier {
           if (alias.isEmpty) continue;
           _installedAliases.add(alias);
           final manifest = await _readManifest('$kManifestsRoot/${f.name}');
-          if (manifest != null) {
-            _installedManifests[alias] = manifest;
-          }
+          if (manifest != null) _installedManifests[alias] = manifest;
           notifyListeners();
         }
       }
-      await _scanPreinstalledApps();
+      // Remove from preinstalled any app that now has a manifest
+      for (final alias in _installedAliases) {
+        _preinstalledAliases.remove(alias);
+        _preinstalledPaths.remove(alias);
+      }
+      _manifestsRefreshed = true;
     } catch (e) {
-      LogService.log('[AppsInstall] refresh failed: $e');
+      LogService.log('[AppsInstall] refreshManifests failed: $e');
     } finally {
       _scanning = false;
       notifyListeners();
     }
+  }
+
+  /// Resets per-connection state. Call when the device disconnects.
+  void onDisconnect() {
+    _manifestsRefreshed = false;
+    _installedAliases.clear();
+    _installedManifests.clear();
+    _preinstalledAliases.clear();
+    _preinstalledPaths.clear();
+    notifyListeners();
   }
 
   Future<bool> installOrUpdate(
@@ -354,19 +363,48 @@ class AppsInstallService extends ChangeNotifier {
   bool _scannedOnce = false;
 
   Future<void> ensureScanned() async {
-    if (!isReady) return;
-    if (_scannedOnce) return;
-    await _ensureDeviceFilters();
-    await refreshInstalled();
-    _scannedOnce = true;
+    if (!isReady || _scannedOnce) return;
+    await rescanInstalled();
   }
 
+  /// Full device scan: reads manifests + discovers apps without manifests.
+  /// User-triggered only — can be slow on large devices.
   Future<void> rescanInstalled() async {
     if (!isReady) return;
-    await _ensureDeviceFilters();
-    await refreshInstalled();
-    await _saveCatalog();
-    _scannedOnce = true;
+    _scanning = true;
+    notifyListeners();
+    try {
+      await _ensureDeviceFilters();
+      final list = await client.storageList(
+        ListRequest(path: kManifestsRoot),
+        timeout: const Duration(seconds: 20),
+      );
+      _installedAliases.clear();
+      _installedManifests.clear();
+      _preinstalledAliases.clear();
+      _preinstalledPaths.clear();
+      for (final item in list.items) {
+        for (final f in item.file) {
+          if (f.type != File_FileType.FILE) continue;
+          if (!f.name.endsWith('.fim')) continue;
+          final alias = f.name.substring(0, f.name.length - 4);
+          if (alias.isEmpty) continue;
+          _installedAliases.add(alias);
+          final manifest = await _readManifest('$kManifestsRoot/${f.name}');
+          if (manifest != null) _installedManifests[alias] = manifest;
+          notifyListeners();
+        }
+      }
+      await _scanPreinstalledApps();
+      _manifestsRefreshed = true;
+      _scannedOnce = true;
+      await _saveCatalog();
+    } catch (e) {
+      LogService.log('[AppsInstall] rescanInstalled failed: $e');
+    } finally {
+      _scanning = false;
+      notifyListeners();
+    }
   }
 
   Future<String?> _resolveDeviceName() async {

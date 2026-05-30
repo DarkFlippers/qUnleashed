@@ -77,11 +77,10 @@ class AppsCatalogController extends ChangeNotifier {
   AppsCatalogApi get api => _api;
 
   Future<void> initialize() async {
-    if (_categories.isEmpty) {
-      await loadCategories();
-    }
-    if (_apps.isEmpty) {
-      await refresh();
+    if (_categories.isEmpty) await loadCategories();
+    if (_apps.isEmpty) await refresh();
+    if (install.isReady && !install.manifestsRefreshed) {
+      install.loadCatalog().then((_) => install.refreshManifests());
     }
   }
 
@@ -89,9 +88,9 @@ class AppsCatalogController extends ChangeNotifier {
     if (!state.connected || state.mode != FlipperMode.rpc) {
       _api.target = null;
       _api.api = null;
-      notifyListeners();
+      install.onDisconnect();
     } else {
-      install.loadCatalog();
+      install.loadCatalog().then((_) => install.refreshManifests());
     }
   }
 

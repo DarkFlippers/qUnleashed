@@ -81,59 +81,13 @@ class AppActionButton extends StatelessWidget {
           ),
         );
       case AppButtonState.preinstalled:
-        return _ActionRow(
-          size: size,
-          primary: _buildButton(
-            label: 'BUILT-IN',
-            color: colors.success,
-            onTap: () => service.installOrUpdate(app, category: category, detail: detail),
-          ),
-          secondary: _DeleteButton(
-            size: size,
-            onTap: () => _confirmDelete(context),
-          ),
-        );
       case AppButtonState.installed:
         return _ActionRow(
           size: size,
           primary: _buildButton(
             label: 'OPEN',
             color: colors.accent,
-            onTap: () async {
-              try {
-                await service.launch(app, category: category);
-                onLaunched?.call();
-              } catch (e) {
-                if (!context.mounted) return;
-                if (e is FlipperRpcAppSystemLockedException) {
-                  await showDialog<void>(
-                    context: context,
-                    barrierColor: colors.dialogBarrier,
-                    builder: (dialogContext) {
-                      return FlipperActionDialog(
-                        imageAssetPath: kFlipperBusyAssetPath,
-                        title: kFlipperBusyTitle,
-                        text: kFlipperBusyMessage,
-                        actionText: kFlipperBusyAction,
-                        onAction: () {
-                          Navigator.of(dialogContext).pop();
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => const RemoteControlPage(),
-                            ),
-                          );
-                        },
-                      );
-                    },
-                  );
-                  return;
-                }
-                context.showNotification(
-                  'Open failed: $e',
-                  type: QNotificationType.error,
-                );
-              }
-            },
+            onTap: () => _launchApp(context),
           ),
           secondary: _DeleteButton(
             size: size,
@@ -214,6 +168,36 @@ class AppActionButton extends StatelessWidget {
       'Connect Flipper to install apps',
       type: QNotificationType.warning,
     );
+  }
+
+  Future<void> _launchApp(BuildContext context) async {
+    try {
+      await service.launch(app, category: category);
+      onLaunched?.call();
+    } catch (e) {
+      if (!context.mounted) return;
+      final colors = context.appColors;
+      if (e is FlipperRpcAppSystemLockedException) {
+        await showDialog<void>(
+          context: context,
+          barrierColor: colors.dialogBarrier,
+          builder: (dialogContext) => FlipperActionDialog(
+            imageAssetPath: kFlipperBusyAssetPath,
+            title: kFlipperBusyTitle,
+            text: kFlipperBusyMessage,
+            actionText: kFlipperBusyAction,
+            onAction: () {
+              Navigator.of(dialogContext).pop();
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const RemoteControlPage()),
+              );
+            },
+          ),
+        );
+        return;
+      }
+      context.showNotification('Open failed: $e', type: QNotificationType.error);
+    }
   }
 
   Future<void> _confirmDelete(BuildContext context) async {
