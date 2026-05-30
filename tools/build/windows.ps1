@@ -247,11 +247,17 @@ internal static class SelfExtractingLauncher
 }
 '@ | Set-Content -Path $StubSource -Encoding ASCII
 
-    Add-Type `
-        -TypeDefinition (Get-Content -Raw -Path $StubSource) `
-        -OutputAssembly $StubExe `
-        -OutputType WindowsApplication `
-        -ReferencedAssemblies @("System.IO.Compression.dll", "System.IO.Compression.FileSystem.dll")
+    $cscPath = "${env:SystemRoot}\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+    if (-not (Test-Path $cscPath)) {
+        $cscPath = "${env:SystemRoot}\Microsoft.NET\Framework\v4.0.30319\csc.exe"
+    }
+    if (-not (Test-Path $cscPath)) {
+        throw "csc.exe not found. Cannot compile self-extracting stub."
+    }
+    & $cscPath /nologo /target:winexe /out:"$StubExe" /reference:"System.IO.Compression.dll" /reference:"System.IO.Compression.FileSystem.dll" "$StubSource"
+    if ($LASTEXITCODE -ne 0) {
+        throw "C# compilation failed with exit code $LASTEXITCODE."
+    }
 
     $stubBytes = [System.IO.File]::ReadAllBytes($StubExe)
     $payloadBytes = [System.IO.File]::ReadAllBytes($PayloadZip)
