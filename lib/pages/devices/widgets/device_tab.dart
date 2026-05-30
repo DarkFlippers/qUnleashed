@@ -1,187 +1,363 @@
 import 'package:flutter/material.dart';
+import 'package:super_clipboard/super_clipboard.dart';
 
+import '../../../services/update/update_service.dart';
 import '../../../theme.dart';
 import '../../../widgets/action_row.dart';
+import '../../../widgets/flipper_action_dialog.dart';
 import '../../../widgets/info_line.dart';
+import '../../../widgets/notification.dart';
 import '../../../widgets/page_card.dart';
-import 'navigate_icon.dart';
+import '../../remote/page.dart';
+import '../scope.dart';
+import 'connection_dialog.dart';
 import 'firmware_carousel_card.dart';
+import 'full_info_sheet.dart';
+import 'navigate_icon.dart';
 import 'page_header.dart';
 
-class ConnectedDeviceView extends StatelessWidget {
-  const ConnectedDeviceView({
-    super.key,
-    required this.deviceName,
-    required this.infoLoading,
-    required this.deviceInfo,
-    required this.deviceInfoEntries,
-    required this.connectionLabel,
-    required this.connectionIcon,
-    required this.onSynchronize,
-    required this.onPlayAlert,
-    required this.onOpenRemoteControl,
-    required this.onOpenFullInfo,
-    required this.onExport,
-    required this.onDisconnect,
-    required this.onRefresh,
-  });
-
-  final String deviceName;
-  final bool infoLoading;
-  final Map<String, String> deviceInfo;
-  final List<MapEntry<String, String>> deviceInfoEntries;
-  final String connectionLabel;
-  final IconData connectionIcon;
-  final VoidCallback? onSynchronize;
-  final VoidCallback? onPlayAlert;
-  final VoidCallback onOpenRemoteControl;
-  final VoidCallback onOpenFullInfo;
-  final VoidCallback onExport;
-  final VoidCallback onDisconnect;
-  final Future<void> Function() onRefresh;
+class DeviceTab extends StatelessWidget {
+  const DeviceTab({super.key});
 
   static const double _headerContentHeight = 114;
   static const double _contentMaxWidth = 1120;
 
   @override
   Widget build(BuildContext context) {
+    final ctrl = DeviceScope.of(context);
     final topInset = MediaQuery.paddingOf(context).top;
+    final headerHeight = topInset + _headerContentHeight;
+    final wide = MediaQuery.sizeOf(context).width >= 560;
 
     return Stack(
       children: [
         Positioned.fill(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final wide = constraints.maxWidth >= 560;
-              final headerHeight = topInset + _headerContentHeight;
-              final contentPadding = EdgeInsets.only(
-                top: headerHeight + 14,
-                bottom: 14,
-              );
-              return ScrollConfiguration(
-                behavior: ScrollConfiguration.of(
-                  context,
-                ).copyWith(scrollbars: false),
-                child: RefreshIndicator(
-                  onRefresh: onRefresh,
-                  edgeOffset: headerHeight,
-                  displacement: 28,
-                  child: ListView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: contentPadding,
-                    children: [
-                      Center(
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(
-                            maxWidth: _contentMaxWidth,
-                          ),
-                          child: Column(
-                            children: [
-                              FirmwareCarouselCard(
-                                deviceVersion: deviceInfoEntries.isEmpty
-                                    ? '-'
-                                    : deviceInfoEntries.first.value,
-                                deviceInfo: deviceInfo,
-                              ),
-                              const SizedBox(height: 14),
-                              Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 14,
-                                ),
-                                child: _ResponsiveCardGrid(
-                                  minCardWidth: 300,
-                                  children: [
-                                    _BatterySummaryCard(
-                                      infoLoading: infoLoading,
-                                      deviceInfo: deviceInfo,
-                                    ),
-                                    _StorageSummaryCard(
-                                      infoLoading: infoLoading,
-                                      deviceInfo: deviceInfo,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              if (!wide) ...[
-                                const SizedBox(height: 14),
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 14,
-                                  ),
-                                  child: _DeviceInfoCard(
-                                    entries: deviceInfoEntries,
-                                    onOpenFullInfo: onOpenFullInfo,
-                                    onExport: onExport,
-                                  ),
-                                ),
-                              ],
-                              const SizedBox(height: 14),
-                              _RemoteControlCard(
-                                onOpenRemoteControl: onOpenRemoteControl,
-                              ),
-                              const SizedBox(height: 14),
-                              Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 14,
-                                ),
-                                child: _ResponsiveCardGrid(
-                                  minCardWidth: 300,
-                                  children: [
-                                    _ActionsCard(
-                                      onSynchronize: onSynchronize,
-                                      onPlayAlert: onPlayAlert,
-                                    ),
-                                    _ConnectionActionsCard(
-                                      onDisconnect: onDisconnect,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
+          child: ScrollConfiguration(
+            behavior: ScrollConfiguration.of(
+              context,
+            ).copyWith(scrollbars: false),
+            child: RefreshIndicator(
+              onRefresh: () => _onRefresh(context),
+              edgeOffset: headerHeight,
+              displacement: 28,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: EdgeInsets.only(top: headerHeight + 14, bottom: 14),
+                children: [
+                  Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(
+                        maxWidth: _contentMaxWidth,
                       ),
-                    ],
+                      child: Column(
+                        children: [
+                          // Always in tree — preserves carousel state across
+                          // connect/disconnect without rebuilding.
+                          FirmwareCarouselCard(
+                            deviceVersion: ctrl.firmwareVersion,
+                            deviceInfo: ctrl.info,
+                          ),
+                          // Fade between connected content and disconnected
+                          // connect button; no re-layout jump.
+                          AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 220),
+                            child: ctrl.isConnected
+                                ? _ConnectedContent(
+                                    key: const ValueKey(true),
+                                    wide: wide,
+                                  )
+                                : const _DisconnectedContent(
+                                    key: ValueKey(false),
+                                  ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
-              );
-            },
+                ],
+              ),
+            ),
           ),
         ),
         DevicePageHeader(
           topInset: topInset,
-          headerHeight: topInset + _headerContentHeight,
-          title: deviceName,
+          headerHeight: headerHeight,
+          title: ctrl.deviceName,
           subtitle: 'Flipper Zero',
-          active: true,
-          infoEntries: MediaQuery.sizeOf(context).width >= 580
-              ? deviceInfoEntries
-              : const [],
-          deviceInfo: deviceInfo,
-          connectionLabel: connectionLabel,
-          connectionIcon: connectionIcon,
-          onOpenFullInfo: onOpenFullInfo,
+          active: ctrl.isConnected,
+          infoEntries: wide ? ctrl.deviceInfoEntries : const [],
+          deviceInfo: ctrl.info,
+          connectionLabel: ctrl.device?.isBle == true ? 'BLE' : 'USB',
+          connectionIcon:
+              ctrl.device?.isBle == true ? Icons.bluetooth : Icons.usb,
+          onOpenFullInfo:
+              ctrl.isConnected ? () => _openFullInfo(context) : null,
         ),
+      ],
+    );
+  }
+
+  static Future<void> _onRefresh(BuildContext context) async {
+    DeviceScope.of(context).synchronize();
+    await UpdateService.instance.refresh();
+  }
+
+  static void _openFullInfo(BuildContext context) {
+    final ctrl = DeviceScope.of(context);
+    showDeviceFullInfoSheet(
+      context,
+      title: 'Full Info',
+      cards: [
+        FlipperPageCard(
+          title: 'Firmware',
+          child: Column(
+            children: [
+              for (var i = 0; i < ctrl.deviceInfoEntries.length; i++) ...[
+                FlipperInfoLine(
+                  label: ctrl.deviceInfoEntries[i].key,
+                  value: ctrl.deviceInfoEntries[i].value,
+                ),
+                if (i != ctrl.deviceInfoEntries.length - 1)
+                  Divider(height: 1, color: context.appColors.divider),
+              ],
+            ],
+          ),
+        ),
+        RawInfoCard(entries: ctrl.info),
       ],
     );
   }
 }
 
+// ── Connected content ─────────────────────────────────────────────────────────
+
+class _ConnectedContent extends StatelessWidget {
+  const _ConnectedContent({super.key, required this.wide});
+
+  final bool wide;
+
+  @override
+  Widget build(BuildContext context) {
+    final ctrl = DeviceScope.of(context);
+
+    return Column(
+      children: [
+        const SizedBox(height: 14),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: _ResponsiveCardGrid(
+            children: [
+              _BatterySummaryCard(
+                infoLoading: ctrl.deviceLoading,
+                deviceInfo: ctrl.info,
+              ),
+              _StorageSummaryCard(
+                infoLoading: ctrl.deviceLoading,
+                deviceInfo: ctrl.info,
+              ),
+            ],
+          ),
+        ),
+        if (!wide) ...[
+          const SizedBox(height: 14),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            child: _DeviceInfoCard(
+              entries: ctrl.deviceInfoEntries,
+              onOpenFullInfo: () => DeviceTab._openFullInfo(context),
+              onExport: () => _exportDeviceInfo(context),
+            ),
+          ),
+        ],
+        const SizedBox(height: 14),
+        _RemoteControlCard(
+          onOpenRemoteControl: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const RemoteControlPage()),
+          ),
+        ),
+        const SizedBox(height: 14),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: _ResponsiveCardGrid(
+            children: [
+              _ActionsCard(
+                onSynchronize: ctrl.deviceLoading
+                    ? null
+                    : () => ctrl.synchronize(),
+                onPlayAlert: ctrl.alertPlaying
+                    ? null
+                    : () => _playAlert(context),
+              ),
+              _ConnectionActionsCard(
+                onDisconnect: () => ctrl.disconnect(),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+      ],
+    );
+  }
+
+  static Future<void> _playAlert(BuildContext context) async {
+    final ctrl = DeviceScope.of(context);
+    final success = await ctrl.playAlert();
+    if (!context.mounted) return;
+    context.showNotification(
+      success ? 'Alert sent to Flipper' : 'Failed to play alert',
+      type: success ? QNotificationType.good : QNotificationType.error,
+    );
+  }
+
+  static Future<void> _exportDeviceInfo(BuildContext context) async {
+    final clipboard = SystemClipboard.instance;
+    if (clipboard == null) {
+      if (!context.mounted) return;
+      context.showNotification(
+        'Clipboard not available',
+        type: QNotificationType.warning,
+      );
+      return;
+    }
+    final ctrl = DeviceScope.of(context);
+    final item = DataWriterItem()
+      ..add(Formats.plainText(ctrl.buildExportDump()));
+    await clipboard.write([item]);
+    if (!context.mounted) return;
+    context.showNotification(
+      'Device info copied to clipboard',
+      type: QNotificationType.good,
+    );
+  }
+}
+
+// ── Disconnected content ──────────────────────────────────────────────────────
+
+class _DisconnectedContent extends StatelessWidget {
+  const _DisconnectedContent({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        const SizedBox(height: 14),
+        FlipperPageCard(
+          child: _ConnectActionRow(
+            color: context.appColors.accent,
+            onTap: () => _openPicker(context),
+          ),
+        ),
+      ],
+    );
+  }
+
+  static Future<void> _openPicker(BuildContext context) async {
+    // Avoid calling showConnectionDialog when context is stale.
+    if (!context.mounted) return;
+    final selected = await showConnectionDialog(context);
+    if (selected == null || !context.mounted) return;
+
+    final ctrl = DeviceScope.of(context);
+    context.showNotification(
+      'Connecting to ${selected.name}...',
+      type: QNotificationType.info,
+      duration: const Duration(seconds: 3),
+    );
+    try {
+      await ctrl.connect(selected);
+    } catch (e) {
+      if (!context.mounted) return;
+      await _showConnectionFailedDialog(context, selected);
+    }
+  }
+
+  static Future<void> _showConnectionFailedDialog(
+    BuildContext context,
+    dynamic device,
+  ) async {
+    final text = device.isBle
+        ? 'Turn Bluetooth off and on in the Flipper Zero system menu, then connect again. Restart the app only if that does not help.'
+        : 'Unplug the device and plug it back in, then connect again. Restart the app only if that does not help.';
+    await showDialog<void>(
+      context: context,
+      barrierColor: context.appColors.dialogBarrier,
+      builder: (ctx) => FlipperActionDialog(
+        imageAssetPath:
+            'assets/flipper_svg/tools/mifare/pic_shrug_black.svg',
+        imageSize: const Size(147.5, 95.8),
+        title: 'Connection failed',
+        text: text,
+        actionText: 'OK',
+        onAction: () => Navigator.of(ctx).pop(),
+      ),
+    );
+  }
+}
+
+class _ConnectActionRow extends StatelessWidget {
+  const _ConnectActionRow({required this.color, required this.onTap});
+
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Row(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 12, 10, 12),
+              child: SizedBox(
+                width: 44,
+                height: 24,
+                child: Row(
+                  children: [
+                    Icon(Icons.usb, size: 22, color: color),
+                    const SizedBox(width: 2),
+                    Icon(Icons.bluetooth, size: 20, color: color),
+                  ],
+                ),
+              ),
+            ),
+            Expanded(
+              child: Text(
+                'Connect',
+                style: TextStyle(
+                  color: color,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Shared card widgets ───────────────────────────────────────────────────────
+
 class _ResponsiveCardGrid extends StatelessWidget {
-  const _ResponsiveCardGrid({required this.children, this.minCardWidth = 300});
+  const _ResponsiveCardGrid({required this.children});
 
   final List<Widget> children;
-  final double minCardWidth;
   static const double _spacing = 14;
+  static const double _minCardWidth = 300;
+
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final columns = (constraints.maxWidth / minCardWidth).floor().clamp(
-          1,
-          children.length,
-        );
+        final columns =
+            (constraints.maxWidth / _minCardWidth).floor().clamp(
+              1,
+              children.length,
+            );
         final cardWidth =
             (constraints.maxWidth - (_spacing * (columns - 1))) / columns;
         if (columns == 1) {
@@ -269,8 +445,6 @@ class _SummaryCard extends StatelessWidget {
     this.mainValue,
     this.barValue,
     this.barColor,
-    this.statusText,
-    this.statusColor,
   });
 
   final String title;
@@ -281,8 +455,6 @@ class _SummaryCard extends StatelessWidget {
   final double? mainValue;
   final double? barValue;
   final Color? barColor;
-  final String? statusText;
-  final Color? statusColor;
 
   @override
   Widget build(BuildContext context) {
@@ -325,25 +497,12 @@ class _SummaryCard extends StatelessWidget {
                     ),
                   ],
                 ),
-                if (statusText != null) ...[
-                  const SizedBox(height: 5),
-                  Text(
-                    statusText!,
-                    style: TextStyle(
-                      color: statusColor ?? colors.success,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
                 if (metrics.isNotEmpty) ...[
                   const SizedBox(height: 18),
                   Row(
                     children: [
                       for (final m in metrics)
-                        Expanded(
-                          child: _Metric(label: m.$1, value: m.$2),
-                        ),
+                        Expanded(child: _Metric(label: m.$1, value: m.$2)),
                     ],
                   ),
                 ],
@@ -365,29 +524,28 @@ class _BatterySummaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final charge = _numberValue(deviceInfo, const [
+    final charge = _number(deviceInfo, const [
       'power.charge_level',
       'power.charge',
       'charge_level',
       'charge',
     ]);
-    final voltage = _numberValue(deviceInfo, const [
+    final voltage = _number(deviceInfo, const [
       'power.battery_voltage',
       'power.voltage_gauge',
       'power.voltage',
     ]);
-    final current = _numberValue(deviceInfo, const [
+    final current = _number(deviceInfo, const [
       'power.battery_current',
       'power.current_gauge',
       'power.current',
     ]);
-    final temp = _numberValue(deviceInfo, const [
+    final temp = _number(deviceInfo, const [
       'power.battery_temp',
       'power.temperature_gauge',
       'power.temperature',
     ]);
     final charging = current != null && current > 5;
-    final Color? barColor = charge == null ? null : colors.accent;
 
     return _SummaryCard(
       title: 'Battery',
@@ -396,14 +554,9 @@ class _BatterySummaryCard extends StatelessWidget {
       emptyText: 'No battery data',
       mainValue: charge,
       barValue: charge != null ? charge / 100 : null,
-      barColor: barColor,
-      statusText: null,
-      statusColor: null,
+      barColor: charge == null ? null : colors.accent,
       metrics: [
-        (
-          'Voltage',
-          voltage == null ? '-' : '${(voltage * 0.001).toStringAsFixed(3)} V',
-        ),
+        ('Voltage', voltage == null ? '-' : '${(voltage * 0.001).toStringAsFixed(3)} V'),
         ('Current', current == null ? '-' : '${current.round()} mA'),
         ('Temp', temp == null ? '-' : '${temp.toStringAsFixed(1)} C'),
       ],
@@ -423,20 +576,20 @@ class _StorageSummaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final usedBytes = _numberValue(deviceInfo, const [
+    final usedBytes = _number(deviceInfo, const [
       'storage.sdcard.used_bytes',
       'storage.sdcard.used',
     ]);
-    final totalBytes = _numberValue(deviceInfo, const [
+    final totalBytes = _number(deviceInfo, const [
       'storage.sdcard.total_bytes',
       'storage.sdcard.total',
     ]);
-    final free = _firstValue(deviceInfo, const ['storage.sdcard.free']);
-    final used = _firstValue(deviceInfo, const ['storage.sdcard.used']);
-    final internal = _firstValue(deviceInfo, const ['storage.internal.used']);
+    final free = _str(deviceInfo, const ['storage.sdcard.free']);
+    final used = _str(deviceInfo, const ['storage.sdcard.used']);
+    final internal = _str(deviceInfo, const ['storage.internal.used']);
     final percent = usedBytes != null && totalBytes != null && totalBytes > 0
         ? (usedBytes / totalBytes * 100).clamp(0.0, 100.0)
-        : _numberValue(deviceInfo, const ['storage.sdcard.used_percent']);
+        : _number(deviceInfo, const ['storage.sdcard.used_percent']);
 
     return _SummaryCard(
       title: 'Storage',
@@ -643,7 +796,7 @@ class _MetricBar extends StatelessWidget {
     return ClipRRect(
       borderRadius: BorderRadius.circular(999),
       child: LinearProgressIndicator(
-        value: value.clamp(0, 1),
+        value: value.clamp(0.0, 1.0),
         minHeight: 8,
         backgroundColor: colors.divider,
         valueColor: AlwaysStoppedAnimation<Color>(color),
@@ -732,21 +885,20 @@ class _EmptyCardText extends StatelessWidget {
   }
 }
 
-String? _firstValue(Map<String, String> info, List<String> aliases) {
-  for (final alias in aliases) {
-    final value = info[alias];
-    if (value != null && value.trim().isNotEmpty && value != '-') {
-      return value;
-    }
+// ── Info helpers ──────────────────────────────────────────────────────────────
+
+String? _str(Map<String, String> info, List<String> keys) {
+  for (final k in keys) {
+    final v = info[k];
+    if (v != null && v.trim().isNotEmpty && v != '-') return v;
   }
   return null;
 }
 
-double? _numberValue(Map<String, String> info, List<String> aliases) {
-  final raw = _firstValue(info, aliases);
+double? _number(Map<String, String> info, List<String> keys) {
+  final raw = _str(info, keys);
   if (raw == null) return null;
-  final sanitized = raw.replaceAll('%', '').replaceAll(',', '.').trim();
-  final number = double.tryParse(sanitized);
-  if (number == null || !number.isFinite) return null;
-  return number;
+  final n = double.tryParse(raw.replaceAll('%', '').replaceAll(',', '.').trim());
+  if (n == null || !n.isFinite) return null;
+  return n;
 }

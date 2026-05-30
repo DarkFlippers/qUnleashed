@@ -1,0 +1,192 @@
+typedef _Field = (String key, List<String> aliases);
+
+abstract final class DeviceInfoReader {
+  static String firmwareVersion(Map<String, String> info) =>
+      _first(info, const [
+        'firmware_version',
+        'firmware.version',
+        'software_revision',
+        'protobuf_version',
+      ]) ??
+      '-';
+
+  static String buildDate(Map<String, String> info) =>
+      _first(info, const [
+        'firmware_build_date',
+        'build_date',
+        'datetime',
+      ]) ??
+      '-';
+
+  static String sdCard(Map<String, String> info) =>
+      _formatUsedTotal(info, 'storage.sdcard');
+
+  static String deviceName(Map<String, String> info) {
+    final v = info['hardware_name'];
+    if (v != null && v.trim().isNotEmpty) return v;
+    return 'No device';
+  }
+
+  static List<MapEntry<String, String>> infoEntries(Map<String, String> info) =>
+      [
+        MapEntry('Firmware Version', firmwareVersion(info)),
+        MapEntry('Build Date', buildDate(info)),
+        MapEntry('SD Card (Used/Total)', sdCard(info)),
+      ];
+
+  static String? _first(Map<String, String> info, List<String> keys) {
+    for (final k in keys) {
+      final v = info[k];
+      if (v != null && v.trim().isNotEmpty) return v;
+    }
+    return null;
+  }
+
+  static String _formatUsedTotal(Map<String, String> info, String prefix) {
+    final used = info['$prefix.used'];
+    final total = info['$prefix.total'];
+    if (used == null && total == null) return '-';
+    return '${used ?? '?'} / ${total ?? '?'}';
+  }
+
+  static String buildExportDump(Map<String, String> info) {
+    final buf = StringBuffer();
+    for (final f in _exportFields) {
+      buf
+        ..write(f.$1)
+        ..write(': ')
+        ..writeln(_first(info, f.$2) ?? '-');
+    }
+
+    // Protobuf parts can fall back to splitting the combined key.
+    final combined = info['protobuf_version'];
+    if (combined != null) {
+      final parts = combined.split('.');
+      final raw = buf.toString();
+      if (raw.contains('devinfo_protobuf.version.major: -') && parts.isNotEmpty) {
+        return raw
+            .replaceFirst('devinfo_protobuf.version.major: -', 'devinfo_protobuf.version.major: ${parts[0]}')
+            .replaceFirst('devinfo_protobuf.version.minor: -', 'devinfo_protobuf.version.minor: ${parts.length > 1 ? parts[1] : '-'}')
+            .trimRight();
+      }
+    }
+    return buf.toString().trimRight();
+  }
+
+  static const List<_Field> _exportFields = [
+    ('devinfo_format.major', ['devinfo_format.major', 'format.major', 'device_info_format.major']),
+    ('devinfo_format.minor', ['devinfo_format.minor', 'format.minor', 'device_info_format.minor']),
+    ('devinfo_hardware.model', ['devinfo_hardware.model', 'hardware.model', 'hardware_model', 'model', 'hardware_name']),
+    ('devinfo_hardware.uid', ['devinfo_hardware.uid', 'hardware.uid', 'hardware_uid', 'uid']),
+    ('devinfo_hardware.otp.ver', ['devinfo_hardware.otp.ver', 'hardware.otp.ver', 'hardware_otp_ver', 'otp.ver', 'otp_ver']),
+    ('devinfo_hardware.timestamp', ['devinfo_hardware.timestamp', 'hardware.timestamp', 'hardware_timestamp', 'timestamp']),
+    ('devinfo_hardware.ver', ['devinfo_hardware.ver', 'hardware.ver', 'hardware_ver', 'ver']),
+    ('devinfo_hardware.target', ['devinfo_hardware.target', 'hardware.target', 'hardware_target', 'target']),
+    ('devinfo_hardware.body', ['devinfo_hardware.body', 'hardware.body', 'hardware_body', 'body']),
+    ('devinfo_hardware.connect', ['devinfo_hardware.connect', 'hardware.connect', 'hardware_connect', 'connect']),
+    ('devinfo_hardware.display', ['devinfo_hardware.display', 'hardware.display', 'hardware_display', 'display']),
+    ('devinfo_hardware.color', ['devinfo_hardware.color', 'hardware.color', 'hardware_color', 'color']),
+    ('devinfo_hardware.region.builtin', ['devinfo_hardware.region.builtin', 'hardware.region.builtin', 'hardware_region_builtin', 'region.builtin', 'region_builtin']),
+    ('devinfo_hardware.region.provisioned', ['devinfo_hardware.region.provisioned', 'hardware.region.provisioned', 'hardware_region_provisioned', 'region.provisioned', 'region_provisioned']),
+    ('devinfo_hardware.name', ['devinfo_hardware.name', 'hardware.name', 'hardware_name', 'device_name', 'name']),
+    ('devinfo_firmware.commit.hash', ['devinfo_firmware.commit.hash', 'firmware.commit.hash', 'firmware_commit_hash', 'commit.hash', 'commit_hash']),
+    ('devinfo_firmware.commit.dirty', ['devinfo_firmware.commit.dirty', 'firmware.commit.dirty', 'firmware_commit_dirty', 'commit.dirty', 'commit_dirty']),
+    ('devinfo_firmware.branch.name', ['devinfo_firmware.branch.name', 'firmware.branch.name', 'firmware_branch_name', 'branch.name', 'branch_name']),
+    ('devinfo_firmware.branch.num', ['devinfo_firmware.branch.num', 'firmware.branch.num', 'firmware_branch_num', 'branch.num', 'branch_num']),
+    ('devinfo_firmware.version', ['devinfo_firmware.version', 'firmware.version', 'firmware_version', 'software_revision']),
+    ('devinfo_firmware.build.date', ['devinfo_firmware.build.date', 'firmware.build.date', 'firmware_build_date', 'build_date']),
+    ('devinfo_firmware.target', ['devinfo_firmware.target', 'firmware.target', 'firmware_target']),
+    ('devinfo_firmware.api.major', ['devinfo_firmware.api.major', 'firmware.api.major', 'firmware_api_major', 'api.major', 'api_major']),
+    ('devinfo_firmware.api.minor', ['devinfo_firmware.api.minor', 'firmware.api.minor', 'firmware_api_minor', 'api.minor', 'api_minor']),
+    ('devinfo_firmware.origin.fork', ['devinfo_firmware.origin.fork', 'firmware.origin.fork', 'firmware_origin_fork', 'origin.fork', 'origin_fork']),
+    ('devinfo_firmware.origin.git', ['devinfo_firmware.origin.git', 'firmware.origin.git', 'firmware_origin_git', 'origin.git', 'origin_git']),
+    ('devinfo_radio.alive', ['devinfo_radio.alive', 'radio.alive', 'radio_alive']),
+    ('devinfo_radio.mode', ['devinfo_radio.mode', 'radio.mode', 'radio_mode']),
+    ('devinfo_radio.fus.major', ['devinfo_radio.fus.major', 'radio.fus.major', 'radio_fus_major', 'fus.major', 'fus_major']),
+    ('devinfo_radio.fus.minor', ['devinfo_radio.fus.minor', 'radio.fus.minor', 'radio_fus_minor', 'fus.minor', 'fus_minor']),
+    ('devinfo_radio.fus.sub', ['devinfo_radio.fus.sub', 'radio.fus.sub', 'radio_fus_sub', 'fus.sub', 'fus_sub']),
+    ('devinfo_radio.fus.sram2b', ['devinfo_radio.fus.sram2b', 'radio.fus.sram2b', 'radio_fus_sram2b', 'fus.sram2b', 'fus_sram2b']),
+    ('devinfo_radio.fus.sram2a', ['devinfo_radio.fus.sram2a', 'radio.fus.sram2a', 'radio_fus_sram2a', 'fus.sram2a', 'fus_sram2a']),
+    ('devinfo_radio.fus.flash', ['devinfo_radio.fus.flash', 'radio.fus.flash', 'radio_fus_flash', 'fus.flash', 'fus_flash']),
+    ('devinfo_radio.stack.type', ['devinfo_radio.stack.type', 'radio.stack.type', 'radio_stack_type', 'stack.type', 'stack_type']),
+    ('devinfo_radio.stack.major', ['devinfo_radio.stack.major', 'radio.stack.major', 'radio_stack_major', 'stack.major', 'stack_major']),
+    ('devinfo_radio.stack.minor', ['devinfo_radio.stack.minor', 'radio.stack.minor', 'radio_stack_minor', 'stack.minor', 'stack_minor']),
+    ('devinfo_radio.stack.sub', ['devinfo_radio.stack.sub', 'radio.stack.sub', 'radio_stack_sub', 'stack.sub', 'stack_sub']),
+    ('devinfo_radio.stack.branch', ['devinfo_radio.stack.branch', 'radio.stack.branch', 'radio_stack_branch', 'stack.branch', 'stack_branch']),
+    ('devinfo_radio.stack.release', ['devinfo_radio.stack.release', 'radio.stack.release', 'radio_stack_release', 'stack.release', 'stack_release']),
+    ('devinfo_radio.stack.sram2b', ['devinfo_radio.stack.sram2b', 'radio.stack.sram2b', 'radio_stack_sram2b', 'stack.sram2b', 'stack_sram2b']),
+    ('devinfo_radio.stack.sram2a', ['devinfo_radio.stack.sram2a', 'radio.stack.sram2a', 'radio_stack_sram2a', 'stack.sram2a', 'stack_sram2a']),
+    ('devinfo_radio.stack.sram1', ['devinfo_radio.stack.sram1', 'radio.stack.sram1', 'radio_stack_sram1', 'stack.sram1', 'stack_sram1']),
+    ('devinfo_radio.stack.flash', ['devinfo_radio.stack.flash', 'radio.stack.flash', 'radio_stack_flash', 'stack.flash', 'stack_flash']),
+    ('devinfo_radio.ble.mac', ['devinfo_radio.ble.mac', 'radio.ble.mac', 'radio_ble_mac', 'ble.mac', 'ble_mac']),
+    ('devinfo_enclave.keys.valid', ['devinfo_enclave.keys.valid', 'enclave.keys.valid', 'enclave_keys_valid', 'keys.valid', 'keys_valid']),
+    ('devinfo_enclave.valid', ['devinfo_enclave.valid', 'enclave.valid', 'enclave_valid']),
+    ('devinfo_system.debug', ['devinfo_system.debug', 'system.debug', 'system_debug', 'debug']),
+    ('devinfo_system.lock', ['devinfo_system.lock', 'system.lock', 'system_lock', 'lock']),
+    ('devinfo_system.orient', ['devinfo_system.orient', 'system.orient', 'system_orient', 'orient']),
+    ('devinfo_system.sleep.legacy', ['devinfo_system.sleep.legacy', 'system.sleep.legacy', 'system_sleep_legacy', 'sleep.legacy', 'sleep_legacy']),
+    ('devinfo_system.stealth', ['devinfo_system.stealth', 'system.stealth', 'system_stealth', 'stealth']),
+    ('devinfo_system.heap.track', ['devinfo_system.heap.track', 'system.heap.track', 'system_heap_track', 'heap.track', 'heap_track']),
+    ('devinfo_system.boot', ['devinfo_system.boot', 'system.boot', 'system_boot', 'boot']),
+    ('devinfo_system.locale.time', ['devinfo_system.locale.time', 'system.locale.time', 'system_locale_time', 'locale.time', 'locale_time']),
+    ('devinfo_system.locale.date', ['devinfo_system.locale.date', 'system.locale.date', 'system_locale_date', 'locale.date', 'locale_date']),
+    ('devinfo_system.locale.unit', ['devinfo_system.locale.unit', 'system.locale.unit', 'system_locale_unit', 'locale.unit', 'locale_unit']),
+    ('devinfo_system.log.level', ['devinfo_system.log.level', 'system.log.level', 'system_log_level', 'log.level', 'log_level']),
+    ('devinfo_protobuf.version.major', ['devinfo_protobuf.version.major', 'protobuf_version_major']),
+    ('devinfo_protobuf.version.minor', ['devinfo_protobuf.version.minor', 'protobuf_version_minor']),
+    ('pwrinfo_format.major', ['pwrinfo_format.major', 'power.format.major', 'power_format.major', 'power.info.format.major']),
+    ('pwrinfo_format.minor', ['pwrinfo_format.minor', 'power.format.minor', 'power_format.minor', 'power.info.format.minor']),
+    ('pwrinfo_charge.level', ['pwrinfo_charge.level', 'power.charge.level', 'power_charge_level', 'charge.level', 'charge_level']),
+    ('pwrinfo_charge.state', ['pwrinfo_charge.state', 'power.charge.state', 'power_charge_state', 'charge.state', 'charge_state']),
+    ('pwrinfo_charge.voltage.limit', ['pwrinfo_charge.voltage.limit', 'power.charge.voltage.limit', 'power_charge_voltage_limit', 'charge.voltage.limit', 'charge_voltage_limit']),
+    ('pwrinfo_battery.voltage', ['pwrinfo_battery.voltage', 'power.battery.voltage', 'power_battery_voltage', 'battery.voltage', 'battery_voltage']),
+    ('pwrinfo_battery.current', ['pwrinfo_battery.current', 'power.battery.current', 'power_battery_current', 'battery.current', 'battery_current']),
+    ('pwrinfo_battery.temp', ['pwrinfo_battery.temp', 'power.battery.temp', 'power_battery_temp', 'battery.temp', 'battery_temp']),
+    ('pwrinfo_battery.health', ['pwrinfo_battery.health', 'power.battery.health', 'power_battery_health', 'battery.health', 'battery_health']),
+    ('pwrinfo_capacity.remain', ['pwrinfo_capacity.remain', 'power.capacity.remain', 'power_capacity_remain', 'capacity.remain', 'capacity_remain']),
+    ('pwrinfo_capacity.full', ['pwrinfo_capacity.full', 'power.capacity.full', 'power_capacity_full', 'capacity.full', 'capacity_full']),
+    ('pwrinfo_capacity.design', ['pwrinfo_capacity.design', 'power.capacity.design', 'power_capacity_design', 'capacity.design', 'capacity_design']),
+    ('pwrdebug_format.major', ['pwrdebug_format.major', 'power.debug.format.major', 'power_debug_format_major', 'power.gauge.format.major']),
+    ('pwrdebug_format.minor', ['pwrdebug_format.minor', 'power.debug.format.minor', 'power_debug_format_minor', 'power.gauge.format.minor']),
+    ('pwrdebug_charger.vbus', ['pwrdebug_charger.vbus', 'power.debug.charger.vbus', 'power_debug_charger_vbus', 'power.charger.vbus']),
+    ('pwrdebug_charger.vsys', ['pwrdebug_charger.vsys', 'power.debug.charger.vsys', 'power_debug_charger_vsys', 'power.charger.vsys']),
+    ('pwrdebug_charger.vbat', ['pwrdebug_charger.vbat', 'power.debug.charger.vbat', 'power_debug_charger_vbat', 'power.charger.vbat']),
+    ('pwrdebug_charger.vreg', ['pwrdebug_charger.vreg', 'power.debug.charger.vreg', 'power_debug_charger_vreg', 'power.charger.vreg']),
+    ('pwrdebug_charger.current', ['pwrdebug_charger.current', 'power.debug.charger.current', 'power_debug_charger_current', 'power.charger.current']),
+    ('pwrdebug_charger.ntc', ['pwrdebug_charger.ntc', 'power.debug.charger.ntc', 'power_debug_charger_ntc', 'power.charger.ntc']),
+    ('pwrdebug_gauge.calmd', ['pwrdebug_gauge.calmd', 'power.debug.gauge.calmd', 'power_debug_gauge_calmd', 'power.gauge.calmd']),
+    ('pwrdebug_gauge.sec', ['pwrdebug_gauge.sec', 'power.debug.gauge.sec', 'power_debug_gauge_sec', 'power.gauge.sec']),
+    ('pwrdebug_gauge.edv2', ['pwrdebug_gauge.edv2', 'power.debug.gauge.edv2', 'power_debug_gauge_edv2', 'power.gauge.edv2']),
+    ('pwrdebug_gauge.vdq', ['pwrdebug_gauge.vdq', 'power.debug.gauge.vdq', 'power_debug_gauge_vdq', 'power.gauge.vdq']),
+    ('pwrdebug_gauge.initcomp', ['pwrdebug_gauge.initcomp', 'power.debug.gauge.initcomp', 'power_debug_gauge_initcomp', 'power.gauge.initcomp']),
+    ('pwrdebug_gauge.smth', ['pwrdebug_gauge.smth', 'power.debug.gauge.smth', 'power_debug_gauge_smth', 'power.gauge.smth']),
+    ('pwrdebug_gauge.btpint', ['pwrdebug_gauge.btpint', 'power.debug.gauge.btpint', 'power_debug_gauge_btpint', 'power.gauge.btpint']),
+    ('pwrdebug_gauge.cfgupdate', ['pwrdebug_gauge.cfgupdate', 'power.debug.gauge.cfgupdate', 'power_debug_gauge_cfgupdate', 'power.gauge.cfgupdate']),
+    ('pwrdebug_gauge.chginh', ['pwrdebug_gauge.chginh', 'power.debug.gauge.chginh', 'power_debug_gauge_chginh', 'power.gauge.chginh']),
+    ('pwrdebug_gauge.fc', ['pwrdebug_gauge.fc', 'power.debug.gauge.fc', 'power_debug_gauge_fc', 'power.gauge.fc']),
+    ('pwrdebug_gauge.otd', ['pwrdebug_gauge.otd', 'power.debug.gauge.otd', 'power_debug_gauge_otd', 'power.gauge.otd']),
+    ('pwrdebug_gauge.otc', ['pwrdebug_gauge.otc', 'power.debug.gauge.otc', 'power_debug_gauge_otc', 'power.gauge.otc']),
+    ('pwrdebug_gauge.sleep', ['pwrdebug_gauge.sleep', 'power.debug.gauge.sleep', 'power_debug_gauge_sleep', 'power.gauge.sleep']),
+    ('pwrdebug_gauge.ocvfail', ['pwrdebug_gauge.ocvfail', 'power.debug.gauge.ocvfail', 'power_debug_gauge_ocvfail', 'power.gauge.ocvfail']),
+    ('pwrdebug_gauge.ocvcomp', ['pwrdebug_gauge.ocvcomp', 'power.debug.gauge.ocvcomp', 'power_debug_gauge_ocvcomp', 'power.gauge.ocvcomp']),
+    ('pwrdebug_gauge.fd', ['pwrdebug_gauge.fd', 'power.debug.gauge.fd', 'power_debug_gauge_fd', 'power.gauge.fd']),
+    ('pwrdebug_gauge.dsg', ['pwrdebug_gauge.dsg', 'power.debug.gauge.dsg', 'power_debug_gauge_dsg', 'power.gauge.dsg']),
+    ('pwrdebug_gauge.sysdwn', ['pwrdebug_gauge.sysdwn', 'power.debug.gauge.sysdwn', 'power_debug_gauge_sysdwn', 'power.gauge.sysdwn']),
+    ('pwrdebug_gauge.tda', ['pwrdebug_gauge.tda', 'power.debug.gauge.tda', 'power_debug_gauge_tda', 'power.gauge.tda']),
+    ('pwrdebug_gauge.battpres', ['pwrdebug_gauge.battpres', 'power.debug.gauge.battpres', 'power_debug_gauge_battpres', 'power.gauge.battpres']),
+    ('pwrdebug_gauge.authgd', ['pwrdebug_gauge.authgd', 'power.debug.gauge.authgd', 'power_debug_gauge_authgd', 'power.gauge.authgd']),
+    ('pwrdebug_gauge.ocvgd', ['pwrdebug_gauge.ocvgd', 'power.debug.gauge.ocvgd', 'power_debug_gauge_ocvgd', 'power.gauge.ocvgd']),
+    ('pwrdebug_gauge.tca', ['pwrdebug_gauge.tca', 'power.debug.gauge.tca', 'power_debug_gauge_tca', 'power.gauge.tca']),
+    ('pwrdebug_gauge.rsvd', ['pwrdebug_gauge.rsvd', 'power.debug.gauge.rsvd', 'power_debug_gauge_rsvd', 'power.gauge.rsvd']),
+    ('pwrdebug_gauge.capacity.full', ['pwrdebug_gauge.capacity.full', 'power.debug.gauge.capacity.full', 'power_debug_gauge_capacity_full', 'power.gauge.capacity.full']),
+    ('pwrdebug_gauge.capacity.design', ['pwrdebug_gauge.capacity.design', 'power.debug.gauge.capacity.design', 'power_debug_gauge_capacity_design', 'power.gauge.capacity.design']),
+    ('pwrdebug_gauge.capacity.remain', ['pwrdebug_gauge.capacity.remain', 'power.debug.gauge.capacity.remain', 'power_debug_gauge_capacity_remain', 'power.gauge.capacity.remain']),
+    ('pwrdebug_gauge.state.charge', ['pwrdebug_gauge.state.charge', 'power.debug.gauge.state.charge', 'power_debug_gauge_state_charge', 'power.gauge.state.charge']),
+    ('pwrdebug_gauge.state.health', ['pwrdebug_gauge.state.health', 'power.debug.gauge.state.health', 'power_debug_gauge_state_health', 'power.gauge.state.health']),
+    ('pwrdebug_gauge.voltage', ['pwrdebug_gauge.voltage', 'power.debug.gauge.voltage', 'power_debug_gauge_voltage', 'power.gauge.voltage']),
+    ('pwrdebug_gauge.current', ['pwrdebug_gauge.current', 'power.debug.gauge.current', 'power_debug_gauge_current', 'power.gauge.current']),
+    ('pwrdebug_gauge.temperature', ['pwrdebug_gauge.temperature', 'power.debug.gauge.temperature', 'power_debug_gauge_temperature', 'power.gauge.temperature']),
+    ('ext_available', ['ext_available', 'storage.sdcard.available_bytes', 'storage.sdcard.free_bytes']),
+    ('ext_total', ['ext_total', 'storage.sdcard.total_bytes']),
+  ];
+}
