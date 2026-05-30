@@ -3,8 +3,6 @@ import java.util.Properties
 
 plugins {
     id("com.android.application")
-    id("kotlin-android")
-    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
 
@@ -26,14 +24,14 @@ val hasReleaseSigningConfig = listOf(
 
 android {
     namespace = "ru.aperturefox.qunleashed"
-    compileSdk = 36
+    compileSdk = flutter.compileSdkVersion
 
     ndkVersion = flutter.ndkVersion
 
     defaultConfig {
         applicationId = "ru.aperturefox.qunleashed"
 
-        minSdk = flutter.minSdkVersion
+        minSdk = 29
         targetSdk = flutter.targetSdkVersion
 
         versionCode = flutter.versionCode
@@ -53,10 +51,6 @@ android {
 
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
-    }
-
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17.toString()
     }
 
     externalNativeBuild {
@@ -81,7 +75,7 @@ android {
             signingConfig = if (hasReleaseSigningConfig) {
                 signingConfigs.getByName("release")
             } else {
-                null
+                signingConfigs.getByName("debug")
             }
         }
     }
@@ -89,6 +83,12 @@ android {
 
 flutter {
     source = "../.."
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+    }
 }
 
 dependencies {
