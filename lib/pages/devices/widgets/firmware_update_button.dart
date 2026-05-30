@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
 import '../../../config.dart';
 import '../../../widgets/notification.dart';
+import '../../../widgets/notifications/update.dart';
 import '../../../widgets/progress_button.dart';
 import '../../../services/update/firmware_directory.dart';
 import '../models/firmware_updater.dart';
@@ -158,6 +161,19 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
     });
 
     void onState(UpdateState state) {
+      // System notification fired before mount check — no context needed.
+      if (state is UpdateDone) {
+        final version = widget.latestVersion;
+        final body = version != null && version.isNotEmpty
+            ? '${widget.entry.name} $version — Flipper will reboot to apply it'
+            : '${widget.entry.name} — Flipper will reboot to apply it';
+        unawaited(FirmwareUpdateNotification.showMessage(
+          id: 2010,
+          title: 'Firmware Installed',
+          body: body,
+        ));
+      }
+
       if (!mounted) return;
       setState(() {
         _updateState = state;
@@ -171,13 +187,6 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
           message: 'Firmware update failed: ${state.message}',
           type: QNotificationType.error,
           duration: const Duration(seconds: 6),
-        );
-      } else if (state is UpdateDone) {
-        QNotification.show(
-          context,
-          message: 'Update sent — Flipper will reboot to apply it',
-          type: QNotificationType.good,
-          duration: const Duration(seconds: 4),
         );
       }
     }

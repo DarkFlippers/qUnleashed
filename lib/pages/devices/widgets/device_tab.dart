@@ -258,11 +258,6 @@ class _DisconnectedContent extends StatelessWidget {
     if (selected == null || !context.mounted) return;
 
     final ctrl = DeviceScope.of(context);
-    context.showNotification(
-      'Connecting to ${selected.name}...',
-      type: QNotificationType.info,
-      duration: const Duration(seconds: 3),
-    );
     try {
       await ctrl.connect(selected);
     } catch (e) {
