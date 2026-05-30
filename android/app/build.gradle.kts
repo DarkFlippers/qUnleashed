@@ -26,31 +26,37 @@ val hasReleaseSigningConfig = listOf(
 
 android {
     namespace = "ru.aperturefox.qunleashed"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36
+
     ndkVersion = flutter.ndkVersion
 
+    defaultConfig {
+        applicationId = "ru.aperturefox.qunleashed"
+
+        minSdk = flutter.minSdkVersion
+        targetSdk = flutter.targetSdkVersion
+
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
+
+        multiDexEnabled = true
+
+        externalNativeBuild {
+            cmake {
+                arguments += listOf("-DANDROID_STL=none")
+            }
+        }
+    }
+
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
+
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
 
     kotlinOptions {
         jvmTarget = JavaVersion.VERSION_17.toString()
-    }
-
-    defaultConfig {
-        applicationId = "ru.aperturefox.qunleashed"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
-        versionCode = flutter.versionCode
-        versionName = flutter.versionName
-        externalNativeBuild {
-            cmake {
-                arguments += listOf("-DANDROID_STL=none")
-            }
-        }
     }
 
     externalNativeBuild {
@@ -72,11 +78,19 @@ android {
 
     buildTypes {
         release {
-            signingConfig = if (hasReleaseSigningConfig) signingConfigs.getByName("release") else null
+            signingConfig = if (hasReleaseSigningConfig) {
+                signingConfigs.getByName("release")
+            } else {
+                null
+            }
         }
     }
 }
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
