@@ -2,8 +2,9 @@
 
 import 'package:flutter/material.dart';
 import '../../theme.dart';
+import '../file_manager/page.dart';
+import '../file_manager/widgets/storage_card.dart';
 import 'controller.dart';
-import 'file_manager/page.dart';
 import 'models/category.dart';
 import 'models/key.dart';
 import 'widgets/empty_view.dart';
@@ -11,7 +12,6 @@ import 'widgets/categories_card.dart';
 import 'widgets/category_page.dart';
 import 'widgets/key_actions_sheet.dart';
 import 'widgets/key_card.dart';
-import 'widgets/my_flipper_button.dart';
 import 'widgets/section_title.dart';
 import 'widgets/sync_progress_view.dart';
 
@@ -62,9 +62,9 @@ class _ArchivePageState extends State<ArchivePage> {
     );
   }
 
-  void _openFileManager() {
+  void _openFileManager(String initialPath) {
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const FileManagerPage()),
+      MaterialPageRoute(builder: (_) => FileManagerPage(initialPath: initialPath)),
     );
   }
 
@@ -91,9 +91,13 @@ class _ArchivePageState extends State<ArchivePage> {
               slivers: [
                 SliverToBoxAdapter(child: SizedBox(height: _topInset(context))),
                 SliverToBoxAdapter(
-                  child: MyFlipperButton(
-                    onTap: _openFileManager,
-                    enabled: _ctrl.isConnected,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+                    child: StorageUsageCards(
+                      enabled: _ctrl.isConnected,
+                      onOpenInternal: () => _openFileManager('/int'),
+                      onOpenExternal: () => _openFileManager('/ext'),
+                    ),
                   ),
                 ),
                 SliverToBoxAdapter(

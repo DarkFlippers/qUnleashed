@@ -10,10 +10,10 @@ import '../../tools/map/models/pin.dart';
 import '../../tools/map/page.dart';
 import '../controller.dart';
 import '../emulate/page.dart';
-import '../file_manager/controller.dart';
-import '../file_manager/page.dart';
+import '../../file_manager/controller.dart';
+import '../../file_manager/page.dart';
+import '../../file_manager/share_remote_file.dart';
 import '../models/key.dart';
-import '../share_remote_file.dart';
 
 class KeyActionsSheet extends StatelessWidget {
   const KeyActionsSheet({

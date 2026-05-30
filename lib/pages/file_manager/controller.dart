@@ -1,10 +1,9 @@
-import 'dart:async';
 import 'dart:io' as io;
 
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/foundation.dart';
 
-import '../../../services/repository/app.dart';
+import '../../services/repository/app.dart';
 
 class RemoteEntry {
   RemoteEntry({required this.name, required this.size, required this.isDir});
@@ -14,7 +13,18 @@ class RemoteEntry {
   final bool isDir;
 
   bool get isHidden => name.startsWith('.');
+
+  String get extension {
+    final dot = name.lastIndexOf('.');
+    return dot < 0 ? '' : name.substring(dot + 1).toLowerCase();
+  }
 }
+
+/// How directory contents are ordered. Folders are always grouped ahead of
+/// files; the mode controls ordering within each group.
+enum FileSortMode { name, size, type }
+
+enum FileViewMode { list, grid }
 
 class FileManagerController extends ChangeNotifier {
   FileManagerController({FlipperClient? client, String initialPath = '/ext'})
@@ -30,6 +40,10 @@ class FileManagerController extends ChangeNotifier {
   bool _showHidden = false;
   double _transferProgress = 0;
   String? _transferLabel;
+  FileSortMode _sortMode = FileSortMode.type;
+  bool _sortAscending = true;
+  FileViewMode _viewMode = FileViewMode.list;
+  String _search = '';
 
   FlipperClient get client => _client;
   String get path => _path;
@@ -38,19 +52,86 @@ class FileManagerController extends ChangeNotifier {
   bool get showHidden => _showHidden;
   double get transferProgress => _transferProgress;
   String? get transferLabel => _transferLabel;
+  FileSortMode get sortMode => _sortMode;
+  bool get sortAscending => _sortAscending;
+  FileViewMode get viewMode => _viewMode;
+  String get search => _search;
+  bool get isSearching => _search.trim().isNotEmpty;
 
-  List<RemoteEntry> get entries {
-    final list = _showHidden
-        ? List<RemoteEntry>.from(_entries)
-        : _entries.where((e) => !e.isHidden).toList();
-    list.sort((a, b) {
-      if (a.isDir != b.isDir) return a.isDir ? -1 : 1;
-      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
-    });
+  /// The storage root (`/ext`, `/int`, …) that the current path lives under.
+  String get storageRoot {
+    final trimmed = _path.startsWith('/') ? _path.substring(1) : _path;
+    final slash = trimmed.indexOf('/');
+    final first = slash < 0 ? trimmed : trimmed.substring(0, slash);
+    return first.isEmpty ? '/' : '/$first';
+  }
+
+  int _compare(RemoteEntry a, RemoteEntry b) {
+    final dir = _sortAscending ? 1 : -1;
+    switch (_sortMode) {
+      case FileSortMode.size:
+        final c = a.size.compareTo(b.size);
+        return (c != 0 ? c : a.name.toLowerCase().compareTo(b.name.toLowerCase())) *
+            dir;
+      case FileSortMode.type:
+        final c = a.extension.compareTo(b.extension);
+        return (c != 0 ? c : a.name.toLowerCase().compareTo(b.name.toLowerCase())) *
+            dir;
+      case FileSortMode.name:
+        return a.name.toLowerCase().compareTo(b.name.toLowerCase()) * dir;
+    }
+  }
+
+  List<RemoteEntry> _filtered(bool Function(RemoteEntry) test) {
+    final q = _search.trim().toLowerCase();
+    final list = _entries.where((e) {
+      if (!_showHidden && e.isHidden) return false;
+      if (q.isNotEmpty && !e.name.toLowerCase().contains(q)) return false;
+      return test(e);
+    }).toList()..sort(_compare);
     return list;
   }
 
+  /// Directories in the current folder, filtered + sorted.
+  List<RemoteEntry> get folders => _filtered((e) => e.isDir);
+
+  /// Files in the current folder, filtered + sorted.
+  List<RemoteEntry> get files => _filtered((e) => !e.isDir);
+
+  /// Folders followed by files. Retained for callers that want a flat list.
+  List<RemoteEntry> get entries => [...folders, ...files];
+
+  bool get isEmptyAfterFilter => folders.isEmpty && files.isEmpty;
+
   bool get canGoUp => _path.length > 1 && _path != '/';
+
+  void setSortMode(FileSortMode mode) {
+    if (_sortMode == mode) {
+      _sortAscending = !_sortAscending;
+    } else {
+      _sortMode = mode;
+      _sortAscending = true;
+    }
+    _notify();
+  }
+
+  void setViewMode(FileViewMode mode) {
+    if (_viewMode == mode) return;
+    _viewMode = mode;
+    _notify();
+  }
+
+  void toggleViewMode() {
+    _viewMode =
+        _viewMode == FileViewMode.list ? FileViewMode.grid : FileViewMode.list;
+    _notify();
+  }
+
+  void setSearch(String value) {
+    if (_search == value) return;
+    _search = value;
+    _notify();
+  }
 
   void _notify() {
     if (!_disposed) notifyListeners();

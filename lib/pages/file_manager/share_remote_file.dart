@@ -6,7 +6,7 @@ import 'package:super_clipboard/super_clipboard.dart';
 
 import '../../theme.dart';
 import '../../widgets/notification.dart';
-import 'file_manager/controller.dart';
+import 'controller.dart';
 
 bool get isShareSupported =>
     io.Platform.isAndroid || io.Platform.isIOS || io.Platform.isMacOS;
