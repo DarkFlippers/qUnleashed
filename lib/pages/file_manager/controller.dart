@@ -382,40 +382,70 @@ class FileManagerController extends ChangeNotifier {
 
   /// Downloads [entries] from the current directory into [destDir] (files and
   /// whole directory trees, recreated recursively). A first pass enumerates the
-  /// tree so [transferProgress] can advance per completed file across the whole
-  /// batch — the read RPC has no byte-level progress of its own. Returns the
-  /// number of files that failed to download.
+  /// tree and sums file sizes so [transferProgress] reflects true byte-level
+  /// progress across the whole batch (the read RPC streams frames, observed via
+  /// [FlipperStorageApi.storageReadChunked]). Returns the number of files that
+  /// failed to download.
   Future<int> downloadEntriesTo(
     List<RemoteEntry> entries, {
     required String destDir,
   }) async {
     final sep = io.Platform.pathSeparator;
-    final plan = <(String remote, String local)>[];
+    final plan = <(String remote, String local, int size)>[];
     for (final e in entries) {
       final remote = childPath(e.name);
       final local = '$destDir$sep${e.name}';
       if (e.isDir) {
         await _planDir(remote, local, plan);
       } else {
-        plan.add((remote, local));
+        plan.add((remote, local, e.size));
       }
     }
 
-    final total = plan.length;
-    if (total == 0) return 0;
+    final totalFiles = plan.length;
+    if (totalFiles == 0) return 0;
+    final totalBytes = plan.fold<int>(0, (s, p) => s + p.$3);
 
     _transferProgress = 0;
     _notify();
-    var done = 0;
+
+    // Throttle notifications: only repaint when progress moves ≥1% (read frames
+    // are small and frequent), plus once per file for the label and at the end.
+    var lastNotified = -1.0;
+    void publish(double p) {
+      _transferProgress = p.clamp(0.0, 1.0);
+      if (_transferProgress - lastNotified >= 0.01 || _transferProgress >= 1.0) {
+        lastNotified = _transferProgress;
+        _notify();
+      }
+    }
+
+    var doneBytes = 0;
+    var doneFiles = 0;
     var failures = 0;
     try {
-      for (final (remote, local) in plan) {
-        _transferLabel = 'Downloading ${_basename(remote)}  ($done/$total)';
+      for (final (remote, local, size) in plan) {
+        _transferLabel =
+            'Downloading ${_basename(remote)}  (${doneFiles + 1}/$totalFiles)';
         _notify();
-        if (!await _writeRemoteFileTo(remote, local)) failures++;
-        done++;
-        _transferProgress = done / total;
-        _notify();
+        final base = doneBytes;
+        final bytes = await _readForDownload(remote, size, (p) {
+          if (totalBytes > 0) {
+            publish((base + size * p) / totalBytes);
+          } else {
+            publish((doneFiles + p) / totalFiles);
+          }
+        });
+        if (bytes == null) {
+          failures++;
+        } else {
+          final file = io.File(local);
+          await file.parent.create(recursive: true);
+          await file.writeAsBytes(bytes, flush: true);
+        }
+        doneBytes += size;
+        doneFiles++;
+        publish(totalBytes > 0 ? doneBytes / totalBytes : doneFiles / totalFiles);
       }
     } finally {
       _transferLabel = null;
@@ -426,11 +456,11 @@ class FileManagerController extends ChangeNotifier {
   }
 
   /// Recursively lists [remoteDir], creating local directories (so empty
-  /// folders survive) and appending every file to [out] as (remote, local).
+  /// folders survive) and appending every file to [out] as (remote, local, size).
   Future<void> _planDir(
     String remoteDir,
     String localDir,
-    List<(String, String)> out,
+    List<(String, String, int)> out,
   ) async {
     final sep = io.Platform.pathSeparator;
     await io.Directory(localDir).create(recursive: true);
@@ -448,7 +478,7 @@ class FileManagerController extends ChangeNotifier {
           if (f.type == File_FileType.DIR) {
             await _planDir(childRemote, childLocal, out);
           } else {
-            out.add((childRemote, childLocal));
+            out.add((childRemote, childLocal, f.size));
           }
         }
       }
@@ -459,13 +489,25 @@ class FileManagerController extends ChangeNotifier {
     }
   }
 
-  Future<bool> _writeRemoteFileTo(String remotePath, String localPath) async {
-    final bytes = await readBytes(remotePath);
-    if (bytes == null) return false;
-    final file = io.File(localPath);
-    await file.parent.create(recursive: true);
-    await file.writeAsBytes(bytes, flush: true);
-    return true;
+  /// Streams [remotePath] into memory, forwarding byte-level [onProgress].
+  /// Returns null on failure (matching [readBytes] error handling).
+  Future<List<int>?> _readForDownload(
+    String remotePath,
+    int expectedSize,
+    void Function(double progress) onProgress,
+  ) async {
+    try {
+      return await _client.storageReadChunked(
+        remotePath,
+        expectedSize: expectedSize,
+        onProgress: onProgress,
+      );
+    } catch (e) {
+      _error = '$e';
+      LogService.log('[FileManager] read $remotePath failed: $e');
+      _notify();
+      return null;
+    }
   }
 
   Future<bool> uploadFromLocal(String localPath, {String? targetName}) async {
