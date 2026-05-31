@@ -44,6 +44,7 @@ class FileManagerController extends ChangeNotifier {
   bool _sortAscending = true;
   FileViewMode _viewMode = FileViewMode.list;
   String _search = '';
+  String? _lastRoot;
 
   FlipperClient get client => _client;
   String get path => _path;
@@ -166,6 +167,14 @@ class FileManagerController extends ChangeNotifier {
   }
 
   Future<void> refresh() async {
+    // Internal storage (`/int`) holds mostly dot-prefixed system files, so
+    // reveal hidden entries automatically when first entering that root. The
+    // user can still toggle them off afterwards.
+    final root = storageRoot;
+    if (root != _lastRoot) {
+      _lastRoot = root;
+      if (root == '/int') _showHidden = true;
+    }
     _loading = true;
     _error = null;
     _notify();
@@ -291,6 +300,56 @@ class FileManagerController extends ChangeNotifier {
     final bytes = await readBytes(fromPath);
     if (bytes == null) return false;
     return writeBytes(toPath, bytes);
+  }
+
+  /// Copies a file or, for directories, the whole tree (creating folders and
+  /// streaming each file). Returns false on the first failure.
+  Future<bool> copyEntry(
+    String fromPath,
+    String toPath, {
+    required bool isDir,
+  }) {
+    return isDir ? copyRecursive(fromPath, toPath) : copy(fromPath, toPath);
+  }
+
+  Future<bool> copyRecursive(String fromPath, String toPath) async {
+    try {
+      await _client.storageMkdir(
+        MkdirRequest(path: toPath),
+        timeout: const Duration(seconds: 15),
+      );
+    } catch (_) {
+      // Destination directory may already exist; keep going.
+    }
+    try {
+      final batch = await _client.storageList(
+        ListRequest(path: fromPath),
+        timeout: const Duration(seconds: 30),
+      );
+      for (final r in batch.items) {
+        for (final f in r.file) {
+          final childFrom = fromPath.endsWith('/')
+              ? '$fromPath${f.name}'
+              : '$fromPath/${f.name}';
+          final childTo = toPath.endsWith('/')
+              ? '$toPath${f.name}'
+              : '$toPath/${f.name}';
+          if (f.type == File_FileType.DIR) {
+            if (!await copyRecursive(childFrom, childTo)) return false;
+          } else {
+            final bytes = await readBytes(childFrom);
+            if (bytes == null) return false;
+            if (!await writeBytes(childTo, bytes)) return false;
+          }
+        }
+      }
+      return true;
+    } catch (e) {
+      _error = '$e';
+      LogService.log('[FileManager] copyRecursive $fromPath failed: $e');
+      _notify();
+      return false;
+    }
   }
 
   Future<bool> rename(String oldPath, String newPath) async {

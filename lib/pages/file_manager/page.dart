@@ -10,16 +10,26 @@ import 'share_remote_file.dart';
 import 'controller.dart';
 import 'widgets/file_row.dart';
 
-class _ClipboardItem {
-  _ClipboardItem({
+class _ClipEntry {
+  _ClipEntry({
     required this.remotePath,
     required this.name,
-    required this.isCut,
+    required this.isDir,
   });
 
   final String remotePath;
   final String name;
+  final bool isDir;
+}
+
+class _Clipboard {
+  _Clipboard({required this.items, required this.isCut});
+
+  final List<_ClipEntry> items;
   final bool isCut;
+
+  String get label =>
+      items.length == 1 ? items.first.name : '${items.length} items';
 }
 
 class FileManagerPage extends StatefulWidget {
@@ -33,7 +43,7 @@ class FileManagerPage extends StatefulWidget {
 
 class _FileManagerPageState extends State<FileManagerPage> {
   late final FileManagerController _ctrl;
-  _ClipboardItem? _clipboard;
+  _Clipboard? _clipboard;
 
   bool _searching = false;
   final TextEditingController _searchCtrl = TextEditingController();
@@ -263,44 +273,75 @@ class _FileManagerPageState extends State<FileManagerPage> {
     }
   }
 
-  void _copyFile(RemoteEntry e) {
+  _ClipEntry _clip(RemoteEntry e) => _ClipEntry(
+    remotePath: _ctrl.childPath(e.name),
+    name: e.name,
+    isDir: e.isDir,
+  );
+
+  void _setClipboard(List<RemoteEntry> entries, {required bool isCut}) {
+    if (entries.isEmpty) return;
     setState(() {
-      _clipboard = _ClipboardItem(
-        remotePath: _ctrl.childPath(e.name),
-        name: e.name,
-        isCut: false,
+      _clipboard = _Clipboard(
+        items: entries.map(_clip).toList(),
+        isCut: isCut,
       );
     });
   }
 
-  void _cutFile(RemoteEntry e) {
-    setState(() {
-      _clipboard = _ClipboardItem(
-        remotePath: _ctrl.childPath(e.name),
-        name: e.name,
-        isCut: true,
-      );
-    });
+  void _copyEntry(RemoteEntry e) => _setClipboard([e], isCut: false);
+
+  void _cutEntry(RemoteEntry e) => _setClipboard([e], isCut: true);
+
+  void _copySelected() {
+    _setClipboard(_selectedEntries, isCut: false);
+    _exitSelection();
   }
 
-  Future<void> _pasteFile() async {
+  void _moveSelected() {
+    _setClipboard(_selectedEntries, isCut: true);
+    _exitSelection();
+  }
+
+  Future<void> _paste() async {
     final cb = _clipboard;
     if (cb == null) return;
-    final dest = _ctrl.childPath(cb.name);
-    bool ok;
-    if (cb.isCut) {
-      ok = await _ctrl.rename(cb.remotePath, dest);
-    } else {
-      ok = await _ctrl.copy(cb.remotePath, dest);
+    var failures = 0;
+    for (final item in cb.items) {
+      final dest = _ctrl.childPath(item.name);
+      // Skip a no-op paste into the item's own source folder.
+      if (dest == item.remotePath) {
+        failures++;
+        continue;
+      }
+      bool ok;
+      if (cb.isCut) {
+        // Try a fast in-place rename first; it can't span storage roots
+        // (e.g. /ext → /int), so fall back to copy-then-delete.
+        ok = await _ctrl.rename(item.remotePath, dest);
+        if (!ok) {
+          ok = await _ctrl.copyEntry(item.remotePath, dest, isDir: item.isDir);
+          if (ok) {
+            ok = await _ctrl.delete(item.remotePath, recursive: item.isDir);
+          }
+        }
+      } else {
+        ok = await _ctrl.copyEntry(item.remotePath, dest, isDir: item.isDir);
+      }
+      if (!ok) failures++;
     }
-    if (ok) {
-      setState(() => _clipboard = null);
-      await _ctrl.refresh();
-    }
+    setState(() => _clipboard = null);
+    await _ctrl.refresh();
     if (!mounted) return;
-    if (!ok) {
+    final verb = cb.isCut ? 'move' : 'copy';
+    if (failures == 0) {
       context.showNotification(
-        cb.isCut ? 'Move failed' : 'Copy failed',
+        '${cb.isCut ? 'Moved' : 'Copied'} ${cb.items.length} item${cb.items.length == 1 ? '' : 's'}',
+        type: QNotificationType.good,
+      );
+    } else {
+      context.showNotification(
+        'Failed to $verb $failures item(s)',
         type: QNotificationType.error,
       );
     }
@@ -562,12 +603,10 @@ class _FileManagerPageState extends State<FileManagerPage> {
         builder: (context, _) {
           return Scaffold(
             backgroundColor: colors.background,
-            appBar: _selectionMode
-                ? _buildSelectionAppBar(colors)
-                : _buildAppBar(colors),
+            appBar: _buildAppBar(colors),
             body: Column(
               children: [
-                if (!_selectionMode) _buildBreadcrumbs(colors),
+                _buildBreadcrumbs(colors),
                 if (_clipboard != null) _buildClipboardBanner(colors),
                 if (_ctrl.transferLabel != null) _buildTransferBar(colors),
                 Expanded(child: _buildBody(context)),
@@ -588,6 +627,22 @@ class _FileManagerPageState extends State<FileManagerPage> {
   }
 
   PreferredSizeWidget _buildAppBar(QAppColors colors) {
+    if (_selectionMode) {
+      return AppBar(
+        backgroundColor: colors.accent,
+        foregroundColor: colors.onAccent,
+        leading: IconButton(
+          icon: const Icon(Icons.close),
+          onPressed: _exitSelection,
+        ),
+        title: Text(
+          '${_selected.length} selected',
+          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+        ),
+        actions: _buildSelectionActions(colors),
+      );
+    }
+
     if (_searching) {
       return AppBar(
         backgroundColor: colors.accent,
@@ -719,41 +774,54 @@ class _FileManagerPageState extends State<FileManagerPage> {
     if (shouldPop && mounted) Navigator.of(context).pop();
   }
 
-  PreferredSizeWidget _buildSelectionAppBar(QAppColors colors) {
+  List<Widget> _buildSelectionActions(QAppColors colors) {
     final all = _ctrl.entries.length;
     final hasFiles = _selectedEntries.any((e) => !e.isDir);
-    return AppBar(
-      backgroundColor: colors.card,
-      foregroundColor: colors.textPrimary,
-      leading: IconButton(
-        icon: const Icon(Icons.close),
-        onPressed: _exitSelection,
-      ),
-      title: Text(
-        '${_selected.length} selected',
-        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-      ),
-      actions: [
+    final empty = _selected.isEmpty;
+    return [
+      if (hasFiles)
         IconButton(
-          tooltip: _selected.length == all ? 'Deselect all' : 'Select all',
-          icon: Icon(
-            _selected.length == all ? Icons.deselect : Icons.select_all,
-          ),
-          onPressed: _selectAll,
+          tooltip: 'Download',
+          icon: const Icon(Icons.download_outlined),
+          onPressed: _downloadSelected,
         ),
-        if (hasFiles)
-          IconButton(
-            tooltip: 'Download',
-            icon: const Icon(Icons.download_outlined),
-            onPressed: _downloadSelected,
+      IconButton(
+        tooltip: 'Copy',
+        icon: const Icon(Icons.copy_outlined),
+        onPressed: empty ? null : _copySelected,
+      ),
+      IconButton(
+        tooltip: 'Move',
+        icon: const Icon(Icons.drive_file_move_outlined),
+        onPressed: empty ? null : _moveSelected,
+      ),
+      IconButton(
+        tooltip: 'Delete',
+        icon: const Icon(Icons.delete_outline),
+        onPressed: empty ? null : _deleteSelected,
+      ),
+      PopupMenuButton<String>(
+        icon: const Icon(Icons.more_vert),
+        onSelected: (v) {
+          if (v == 'all') _selectAll();
+        },
+        itemBuilder: (_) => [
+          PopupMenuItem(
+            value: 'all',
+            child: Row(
+              children: [
+                Icon(
+                  _selected.length == all ? Icons.deselect : Icons.select_all,
+                  size: 20,
+                ),
+                const SizedBox(width: 12),
+                Text(_selected.length == all ? 'Deselect all' : 'Select all'),
+              ],
+            ),
           ),
-        IconButton(
-          tooltip: 'Delete',
-          icon: Icon(Icons.delete_outline, color: colors.danger),
-          onPressed: _selected.isEmpty ? null : _deleteSelected,
-        ),
-      ],
-    );
+        ],
+      ),
+    ];
   }
 
   Widget _buildBreadcrumbs(QAppColors colors) {
@@ -870,14 +938,14 @@ class _FileManagerPageState extends State<FileManagerPage> {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              cb.name,
+              '${cb.isCut ? 'Moving' : 'Copying'} ${cb.label}',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(color: colors.textPrimary, fontSize: 13),
             ),
           ),
           TextButton(
-            onPressed: _pasteFile,
+            onPressed: _paste,
             child: Text(
               'Paste here',
               style: TextStyle(
@@ -1020,8 +1088,8 @@ class _FileManagerPageState extends State<FileManagerPage> {
               _ctrl.childPath(e.name),
               displayName: e.name,
             ),
-      onCopy: e.isDir ? null : () => _copyFile(e),
-      onCut: e.isDir ? null : () => _cutFile(e),
+      onCopy: () => _copyEntry(e),
+      onCut: () => _cutEntry(e),
       onDownload: e.isDir
           ? null
           : () => _downloadFile(_ctrl.childPath(e.name)),
@@ -1032,10 +1100,12 @@ class _FileManagerPageState extends State<FileManagerPage> {
         padding: const EdgeInsets.symmetric(horizontal: 12),
         sliver: SliverGrid(
           gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-            maxCrossAxisExtent: 112,
-            mainAxisSpacing: 8,
-            crossAxisSpacing: 8,
-            childAspectRatio: 0.80,
+            maxCrossAxisExtent: 104,
+            // Fixed tile height keeps the layout stable regardless of how
+            // narrow the column gets (e.g. a small desktop window).
+            mainAxisExtent: 104,
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
           ),
           delegate: SliverChildBuilderDelegate((_, i) {
             final e = items[i];

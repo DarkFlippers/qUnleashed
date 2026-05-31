@@ -75,29 +75,27 @@ class FileIconBadge extends StatelessWidget {
   }
 }
 
+/// A small accent check-badge that floats on top of a file icon's corner while
+/// the entry is selected. A card-colored ring lifts it off the icon, and the
+/// parent stacks use `Clip.none` so it is never clipped by the icon bounds.
 class _SelectionCheck extends StatelessWidget {
-  const _SelectionCheck({required this.selected, this.size = 22});
+  const _SelectionCheck();
 
-  final bool selected;
-  final double size;
+  static const double _size = 20;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
     return Container(
-      width: size,
-      height: size,
+      width: _size,
+      height: _size,
+      alignment: Alignment.center,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: selected ? colors.accent : Colors.transparent,
-        border: Border.all(
-          color: selected ? colors.accent : colors.textMuted,
-          width: 2,
-        ),
+        color: colors.accent,
+        border: Border.all(color: colors.card, width: 2),
       ),
-      child: selected
-          ? Icon(Icons.check, size: size * 0.6, color: colors.onAccent)
-          : null,
+      child: Icon(Icons.check, size: _size * 0.6, color: colors.onAccent),
     );
   }
 }
@@ -195,23 +193,14 @@ class _FileRowState extends State<FileRow> {
             child: Row(
               children: [
                 Stack(
+                  clipBehavior: Clip.none,
                   children: [
                     FileIconBadge(entry: widget.entry, muted: muted),
-                    if (widget.selectionMode)
-                      Positioned(
-                        right: -2,
-                        bottom: -2,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: colors.card,
-                          ),
-                          padding: const EdgeInsets.all(1),
-                          child: _SelectionCheck(
-                            selected: widget.selected,
-                            size: 18,
-                          ),
-                        ),
+                    if (widget.selectionMode && widget.selected)
+                      const Positioned(
+                        right: -3,
+                        bottom: -3,
+                        child: _SelectionCheck(),
                       ),
                   ],
                 ),
@@ -364,51 +353,44 @@ class FileGridTile extends StatelessWidget {
         onLongPress: onLongPress ?? () => _showActionsSheet(context),
         onSecondaryTap: () => _showActionsSheet(context),
         borderRadius: BorderRadius.circular(14),
-        child: Stack(
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-              // A fixed-height name block keeps every icon on the same baseline
-              // so the row reads as an evenly aligned, centered grid.
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.center,
+        child: Padding(
+          // Fixed top inset + fixed name height → the icon always sits at the
+          // same position regardless of how many lines the name takes.
+          padding: const EdgeInsets.fromLTRB(6, 12, 6, 8),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Stack(
+                clipBehavior: Clip.none,
                 children: [
                   FileIconBadge(entry: entry, size: 44, muted: muted),
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    height: 32,
-                    child: Text(
-                      entry.name,
-                      maxLines: 2,
-                      textAlign: TextAlign.center,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: muted ? colors.textMuted : colors.textPrimary,
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w600,
-                        height: 1.25,
-                      ),
+                  if (selectionMode && selected)
+                    const Positioned(
+                      right: -3,
+                      bottom: -3,
+                      child: _SelectionCheck(),
                     ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    entry.isDir ? 'Folder' : formatBytes(entry.size),
-                    maxLines: 1,
-                    textAlign: TextAlign.center,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: colors.textMuted, fontSize: 11),
-                  ),
                 ],
               ),
-            ),
-            if (selectionMode)
-              Positioned(
-                top: 8,
-                right: 8,
-                child: _SelectionCheck(selected: selected, size: 20),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 30,
+                child: Text(
+                  entry.name,
+                  maxLines: 2,
+                  textAlign: TextAlign.center,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: muted ? colors.textMuted : colors.textPrimary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    height: 1.2,
+                  ),
+                ),
               ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -475,9 +457,9 @@ class FileActionsSheet extends StatelessWidget {
             ? () => actions.onRename!.call(entry.name)
             : null);
     add(Icons.drive_file_rename_outline, 'Rename', renameTap);
+    add(Icons.copy_outlined, 'Copy', actions.onCopy);
+    add(Icons.drive_file_move_outlined, 'Move', actions.onCut);
     if (!isDir) {
-      add(Icons.copy_outlined, 'Copy', actions.onCopy);
-      add(Icons.content_cut, 'Cut', actions.onCut);
       add(Icons.download_outlined, 'Download', actions.onDownload);
       add(
         isShareSupported ? Icons.ios_share : Icons.content_copy,
