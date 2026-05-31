@@ -459,8 +459,8 @@ class FileActionsSheet extends StatelessWidget {
     add(Icons.drive_file_rename_outline, 'Rename', renameTap);
     add(Icons.copy_outlined, 'Copy', actions.onCopy);
     add(Icons.drive_file_move_outlined, 'Move', actions.onCut);
+    add(Icons.download_outlined, 'Download', actions.onDownload);
     if (!isDir) {
-      add(Icons.download_outlined, 'Download', actions.onDownload);
       add(
         isShareSupported ? Icons.ios_share : Icons.content_copy,
         isShareSupported ? 'Share' : 'Copy to clipboard',

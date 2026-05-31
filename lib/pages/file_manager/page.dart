@@ -191,12 +191,44 @@ class _FileManagerPageState extends State<FileManagerPage> {
     await _ctrl.refresh();
   }
 
-  Future<void> _downloadFile(String remotePath) async {
-    final result = await _ctrl.downloadTo(remotePath);
+  /// Opens the system folder picker and returns the chosen directory, or null
+  /// if the user cancels or the platform has no directory picker.
+  Future<String?> _pickDestinationDir() async {
+    try {
+      return await FilePicker.platform.getDirectoryPath(
+        dialogTitle: 'Choose download location',
+      );
+    } catch (e) {
+      if (mounted) {
+        context.showNotification(
+          'Choosing a folder is not supported on this platform',
+          type: QNotificationType.error,
+        );
+      }
+      return null;
+    }
+  }
+
+  /// Downloads [entries] (files and/or whole directory trees) into a folder the
+  /// user picks via the system file picker, recreating folders recursively.
+  Future<void> _downloadEntries(List<RemoteEntry> entries) async {
+    if (entries.isEmpty) {
+      context.showNotification(
+        'Nothing to download',
+        type: QNotificationType.warning,
+      );
+      return;
+    }
+    final destDir = await _pickDestinationDir();
+    if (!mounted || destDir == null) return;
+
+    final failures = await _ctrl.downloadEntriesTo(entries, destDir: destDir);
     if (!mounted) return;
     context.showNotification(
-      result == null ? 'Download failed' : 'Saved to $result',
-      type: result == null ? QNotificationType.error : QNotificationType.good,
+      failures == 0
+          ? 'Downloaded to $destDir'
+          : 'Failed to download $failures file(s)',
+      type: failures == 0 ? QNotificationType.good : QNotificationType.error,
     );
   }
 
@@ -239,27 +271,9 @@ class _FileManagerPageState extends State<FileManagerPage> {
   }
 
   Future<void> _downloadSelected() async {
-    final items = _selectedEntries.where((e) => !e.isDir).toList();
-    if (items.isEmpty) {
-      context.showNotification(
-        'Select files to download',
-        type: QNotificationType.warning,
-      );
-      return;
-    }
-    var failures = 0;
-    for (final e in items) {
-      final res = await _ctrl.downloadTo(_ctrl.childPath(e.name));
-      if (res == null) failures++;
-    }
-    _exitSelection();
-    if (!mounted) return;
-    context.showNotification(
-      failures == 0
-          ? 'Downloaded ${items.length} file(s)'
-          : 'Failed to download $failures file(s)',
-      type: failures == 0 ? QNotificationType.good : QNotificationType.error,
-    );
+    final items = _selectedEntries.toList();
+    await _downloadEntries(items);
+    if (mounted) _exitSelection();
   }
 
   Future<void> _renameEntry(RemoteEntry e, String newName) async {
@@ -776,15 +790,13 @@ class _FileManagerPageState extends State<FileManagerPage> {
 
   List<Widget> _buildSelectionActions(QAppColors colors) {
     final all = _ctrl.entries.length;
-    final hasFiles = _selectedEntries.any((e) => !e.isDir);
     final empty = _selected.isEmpty;
     return [
-      if (hasFiles)
-        IconButton(
-          tooltip: 'Download',
-          icon: const Icon(Icons.download_outlined),
-          onPressed: _downloadSelected,
-        ),
+      IconButton(
+        tooltip: 'Download',
+        icon: const Icon(Icons.download_outlined),
+        onPressed: empty ? null : _downloadSelected,
+      ),
       IconButton(
         tooltip: 'Copy',
         icon: const Icon(Icons.copy_outlined),
@@ -886,6 +898,10 @@ class _FileManagerPageState extends State<FileManagerPage> {
   }
 
   Widget _buildTransferBar(QAppColors colors) {
+    final progress = _ctrl.transferProgress;
+    // While progress is still zero (planning, or first chunk not yet sent) show
+    // an indeterminate animation instead of an empty 0% bar.
+    final indeterminate = progress <= 0;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
       child: Column(
@@ -899,7 +915,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
                 ),
               ),
               Text(
-                '${(_ctrl.transferProgress * 100).toStringAsFixed(0)}%',
+                indeterminate ? '…' : '${(progress * 100).toStringAsFixed(0)}%',
                 style: TextStyle(color: colors.textSecondary, fontSize: 12),
               ),
             ],
@@ -908,7 +924,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
           ClipRRect(
             borderRadius: BorderRadius.circular(4),
             child: LinearProgressIndicator(
-              value: _ctrl.transferProgress,
+              value: indeterminate ? null : progress,
               minHeight: 4,
               color: colors.accent,
               backgroundColor: colors.divider,
@@ -1090,9 +1106,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
             ),
       onCopy: () => _copyEntry(e),
       onCut: () => _cutEntry(e),
-      onDownload: e.isDir
-          ? null
-          : () => _downloadFile(_ctrl.childPath(e.name)),
+      onDownload: () => _downloadEntries([e]),
     );
 
     if (grid) {

@@ -380,6 +380,94 @@ class FileManagerController extends ChangeNotifier {
     return file.path;
   }
 
+  /// Downloads [entries] from the current directory into [destDir] (files and
+  /// whole directory trees, recreated recursively). A first pass enumerates the
+  /// tree so [transferProgress] can advance per completed file across the whole
+  /// batch — the read RPC has no byte-level progress of its own. Returns the
+  /// number of files that failed to download.
+  Future<int> downloadEntriesTo(
+    List<RemoteEntry> entries, {
+    required String destDir,
+  }) async {
+    final sep = io.Platform.pathSeparator;
+    final plan = <(String remote, String local)>[];
+    for (final e in entries) {
+      final remote = childPath(e.name);
+      final local = '$destDir$sep${e.name}';
+      if (e.isDir) {
+        await _planDir(remote, local, plan);
+      } else {
+        plan.add((remote, local));
+      }
+    }
+
+    final total = plan.length;
+    if (total == 0) return 0;
+
+    _transferProgress = 0;
+    _notify();
+    var done = 0;
+    var failures = 0;
+    try {
+      for (final (remote, local) in plan) {
+        _transferLabel = 'Downloading ${_basename(remote)}  ($done/$total)';
+        _notify();
+        if (!await _writeRemoteFileTo(remote, local)) failures++;
+        done++;
+        _transferProgress = done / total;
+        _notify();
+      }
+    } finally {
+      _transferLabel = null;
+      _transferProgress = 0;
+      _notify();
+    }
+    return failures;
+  }
+
+  /// Recursively lists [remoteDir], creating local directories (so empty
+  /// folders survive) and appending every file to [out] as (remote, local).
+  Future<void> _planDir(
+    String remoteDir,
+    String localDir,
+    List<(String, String)> out,
+  ) async {
+    final sep = io.Platform.pathSeparator;
+    await io.Directory(localDir).create(recursive: true);
+    try {
+      final batch = await _client.storageList(
+        ListRequest(path: remoteDir),
+        timeout: const Duration(seconds: 30),
+      );
+      for (final r in batch.items) {
+        for (final f in r.file) {
+          final childRemote = remoteDir.endsWith('/')
+              ? '$remoteDir${f.name}'
+              : '$remoteDir/${f.name}';
+          final childLocal = '$localDir$sep${f.name}';
+          if (f.type == File_FileType.DIR) {
+            await _planDir(childRemote, childLocal, out);
+          } else {
+            out.add((childRemote, childLocal));
+          }
+        }
+      }
+    } catch (e) {
+      _error = '$e';
+      LogService.log('[FileManager] list $remoteDir failed: $e');
+      _notify();
+    }
+  }
+
+  Future<bool> _writeRemoteFileTo(String remotePath, String localPath) async {
+    final bytes = await readBytes(remotePath);
+    if (bytes == null) return false;
+    final file = io.File(localPath);
+    await file.parent.create(recursive: true);
+    await file.writeAsBytes(bytes, flush: true);
+    return true;
+  }
+
   Future<bool> uploadFromLocal(String localPath, {String? targetName}) async {
     final file = io.File(localPath);
     if (!await file.exists()) {
