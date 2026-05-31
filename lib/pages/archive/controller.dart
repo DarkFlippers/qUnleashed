@@ -51,7 +51,6 @@ class ArchiveController extends ChangeNotifier {
   ArchiveSyncStatus _syncStatus = ArchiveSyncStatus.idle;
   SyncProgress? _syncProgress;
   String? _lastError;
-  String _query = '';
   Set<String> _favorites = <String>{};
 
   final Map<String, ArchiveKey> _keys = <String, ArchiveKey>{};
@@ -65,46 +64,55 @@ class ArchiveController extends ChangeNotifier {
   SyncProgress? get syncProgress => _syncProgress;
   String? get lastError => _lastError;
   String get deviceName => _deviceName;
-  String get query => _query;
   bool get isConnected => _client.isConnected;
   ArchiveStorage get storage => _storage;
 
-  List<ArchiveKey> get _allRaw {
-    final list = _keys.values.toList()
-      ..sort((a, b) {
-        final byName = a.name.toLowerCase().compareTo(b.name.toLowerCase());
-        if (byName != 0) return byName;
-        return a.subFolder.compareTo(b.subFolder);
-      });
-    if (_query.trim().isEmpty) return list;
-    final q = _query.toLowerCase();
-    return list.where((k) => k.name.toLowerCase().contains(q)).toList();
+  // Cached, lazily-rebuilt views over [_keys]. Invalidated in [notifyListeners],
+  // so each view is recomputed at most once between change notifications instead
+  // of re-sorting and re-filtering the whole map on every getter access (the UI
+  // reads these dozens of times per frame, including during per-file sync).
+  List<ArchiveKey>? _sortedCache;
+  Map<ArchiveCategory, List<ArchiveKey>>? _byCategoryCache;
+  List<ArchiveKey>? _deletedCache;
+
+  static int _compareKeys(ArchiveKey a, ArchiveKey b) {
+    final byName = a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    if (byName != 0) return byName;
+    return a.subFolder.compareTo(b.subFolder);
   }
 
-  List<ArchiveKey> get allKeys => _allRaw.where((k) => k.inLocal).toList();
+  List<ArchiveKey> get _sorted =>
+      _sortedCache ??= (_keys.values.toList()..sort(_compareKeys));
 
-  List<ArchiveKey> get _rootKeys =>
-      allKeys.where((k) => k.subFolder.isEmpty).toList();
+  /// Local (non-deleted, on-disk) keys grouped by category in sorted order.
+  Map<ArchiveCategory, List<ArchiveKey>> get _byCategory {
+    final cached = _byCategoryCache;
+    if (cached != null) return cached;
+    final map = <ArchiveCategory, List<ArchiveKey>>{
+      for (final c in ArchiveCategory.values) c: <ArchiveKey>[],
+    };
+    for (final k in _sorted) {
+      if (k.inLocal) map[k.category]!.add(k);
+    }
+    return _byCategoryCache = map;
+  }
 
-  List<ArchiveKey> activeKeys() => allKeys;
-  List<ArchiveKey> favoriteKeys() =>
-      _rootKeys.where((k) => k.favorite).toList();
-  List<ArchiveKey> nonFavoriteKeys() =>
-      _rootKeys.where((k) => !k.favorite).toList();
-
-  List<ArchiveKey> keysFor(ArchiveCategory cat) =>
-      allKeys.where((k) => k.category == cat).toList();
+  /// Sorted local keys for [cat]. The returned list is shared and must not be
+  /// mutated by callers; filter/sort with copying operations instead.
+  List<ArchiveKey> keysFor(ArchiveCategory cat) => _byCategory[cat]!;
 
   List<ArchiveKey> deletedKeys() =>
-      _allRaw.where((k) => k.isDeleted).toList();
+      _deletedCache ??= _sorted.where((k) => k.isDeleted).toList();
 
-  int countFor(ArchiveCategory cat) => keysFor(cat).length;
+  int countFor(ArchiveCategory cat) => _byCategory[cat]!.length;
   int get deletedCount => deletedKeys().length;
 
-  void setQuery(String value) {
-    if (_query == value) return;
-    _query = value;
-    notifyListeners();
+  @override
+  void notifyListeners() {
+    _sortedCache = null;
+    _byCategoryCache = null;
+    _deletedCache = null;
+    super.notifyListeners();
   }
 
   Future<void> initialize() async {
@@ -386,19 +394,7 @@ class ArchiveController extends ChangeNotifier {
       final connected = _client.isConnected;
       _keys.clear();
       for (final entry in localEntries) {
-        final keyId = _localKey(
-            entry.category, entry.name, entry.extension, entry.subFolder);
-        _keys[keyId] = ArchiveKey(
-          name: entry.name,
-          category: entry.category,
-          extension: entry.extension,
-          subFolder: entry.subFolder,
-          state: ArchiveKeyState.local,
-          localSize: entry.size,
-          localPath: entry.path,
-          favorite: _favorites.contains(keyId),
-          mtime: entry.mtime,
-        );
+        _ingestLocal(entry);
       }
       notifyListeners();
       if (!connected) return;
@@ -438,19 +434,7 @@ class ArchiveController extends ChangeNotifier {
       _keys.removeWhere((_, v) => v.category == cat);
       final localEntries = await _storage.listOneCategory(_deviceName, cat);
       for (final entry in localEntries) {
-        final keyId = _localKey(
-            entry.category, entry.name, entry.extension, entry.subFolder);
-        _keys[keyId] = ArchiveKey(
-          name: entry.name,
-          category: entry.category,
-          extension: entry.extension,
-          subFolder: entry.subFolder,
-          state: ArchiveKeyState.local,
-          localSize: entry.size,
-          localPath: entry.path,
-          favorite: _favorites.contains(keyId),
-          mtime: entry.mtime,
-        );
+        _ingestLocal(entry);
       }
       notifyListeners();
       if (!_client.isConnected) return;
@@ -492,28 +476,7 @@ class ArchiveController extends ChangeNotifier {
               _needsDownload(e.value))
           .map((e) => e.key)
           .toList();
-      var done = 0;
-      for (final keyId in pendingIds) {
-        final key = _keys[keyId];
-        if (key == null) {
-          done++;
-          continue;
-        }
-        _syncProgress = SyncProgress(
-          current: done,
-          total: pendingIds.length,
-          fileName: key.fileName,
-        );
-        notifyListeners();
-        await _downloadAndApply(keyId, key);
-        done++;
-        notifyListeners();
-      }
-      _syncProgress = SyncProgress(
-        current: done,
-        total: pendingIds.length,
-        fileName: '',
-      );
+      await _downloadPending(pendingIds);
       _syncStatus = ArchiveSyncStatus.synced;
       await _parseMetaForCategory(category);
     } catch (e) {
@@ -559,48 +522,25 @@ class ArchiveController extends ChangeNotifier {
       LogService.log('[Archive] list $path failed: $e');
     }
     if (!ok) return;
-
-    final seen = <String>{};
-    for (final rf in remoteFiles) {
-      final keyId =
-          _localKey(rf.category, rf.name, rf.extension, rf.subFolder);
-      seen.add(keyId);
-      final existing = _keys[keyId];
-      if (existing != null) {
-        _keys[keyId] = existing.copyWith(
-          state: existing.hasLocalFile
-              ? ArchiveKeyState.synced
-              : ArchiveKeyState.local,
-          remoteSize: rf.size,
-        );
-      } else {
-        _keys[keyId] = ArchiveKey(
-          name: rf.name,
-          category: rf.category,
-          extension: rf.extension,
-          subFolder: rf.subFolder,
-          state: ArchiveKeyState.local,
-          remoteSize: rf.size,
-          favorite: _favorites.contains(keyId),
-        );
-      }
-    }
-    for (final entry in _keys.entries.toList()) {
-      final key = entry.value;
-      if (key.category != cat || key.subFolder != subFolder) continue;
-      if (seen.contains(entry.key)) continue;
-      if (!key.hasLocalFile) {
-        _keys.remove(entry.key);
-        continue;
-      }
-      _keys[entry.key] = key.copyWith(state: ArchiveKeyState.deleted);
-    }
+    _reconcileRemote(
+      remoteFiles,
+      (k) => k.category == cat && k.subFolder == subFolder,
+    );
   }
 
   Future<void> _verifyCategoryRecursive(ArchiveCategory cat) async {
     final remoteFiles = <_RemoteFile>[];
     await _collectRemoteFiles(cat, cat.remoteDir, '', remoteFiles);
+    _reconcileRemote(remoteFiles, (k) => k.category == cat);
+  }
 
+  /// Merges a freshly-listed set of [remoteFiles] into [_keys]: refreshes remote
+  /// sizes/states for matched keys, adds remote-only keys, and marks in-scope
+  /// local keys that vanished remotely as deleted (or drops them if device-only).
+  void _reconcileRemote(
+    List<_RemoteFile> remoteFiles,
+    bool Function(ArchiveKey key) inScope,
+  ) {
     final seen = <String>{};
     for (final rf in remoteFiles) {
       final keyId = _localKey(rf.category, rf.name, rf.extension, rf.subFolder);
@@ -627,7 +567,7 @@ class ArchiveController extends ChangeNotifier {
     }
     for (final entry in _keys.entries.toList()) {
       final key = entry.value;
-      if (key.category != cat) continue;
+      if (!inScope(key)) continue;
       if (seen.contains(entry.key)) continue;
       if (!key.hasLocalFile) {
         _keys.remove(entry.key);
@@ -696,28 +636,7 @@ class ArchiveController extends ChangeNotifier {
           .where((e) => !e.value.isDeleted && _needsDownload(e.value))
           .map((e) => e.key)
           .toList();
-      var done = 0;
-      for (final keyId in pendingIds) {
-        final key = _keys[keyId];
-        if (key == null) {
-          done++;
-          continue;
-        }
-        _syncProgress = SyncProgress(
-          current: done,
-          total: pendingIds.length,
-          fileName: key.fileName,
-        );
-        notifyListeners();
-        await _downloadAndApply(keyId, key);
-        done++;
-        notifyListeners();
-      }
-      _syncProgress = SyncProgress(
-        current: done,
-        total: pendingIds.length,
-        fileName: '',
-      );
+      await _downloadPending(pendingIds);
       _syncStatus = ArchiveSyncStatus.synced;
     } catch (e) {
       _syncStatus = ArchiveSyncStatus.idle;
@@ -732,16 +651,28 @@ class ArchiveController extends ChangeNotifier {
 
   bool _needsDownload(ArchiveKey k) => k.remoteSize > 0;
 
-  Future<void> rememberKey(ArchiveKey key) async {
-    if (!_client.isConnected) return;
-    if (!_needsDownload(key)) return;
-    try {
-      await _downloadKey(key);
-    } catch (e) {
-      _lastError = '$e';
-      LogService.log('[Archive] remember failed: $e');
+  /// Downloads every pending key id in order, publishing [_syncProgress] before
+  /// each file and after it completes. Shared by [syncAll] and [syncCategory].
+  Future<void> _downloadPending(List<String> pendingIds) async {
+    var done = 0;
+    for (final keyId in pendingIds) {
+      final key = _keys[keyId];
+      if (key == null) {
+        done++;
+        continue;
+      }
+      _syncProgress = SyncProgress(
+        current: done,
+        total: pendingIds.length,
+        fileName: key.fileName,
+      );
+      notifyListeners();
+      await _downloadAndApply(keyId, key);
+      done++;
+      notifyListeners();
     }
-    await refresh();
+    _syncProgress =
+        SyncProgress(current: done, total: pendingIds.length, fileName: '');
   }
 
   Future<void> deleteKey(ArchiveKey key) async {
@@ -790,12 +721,6 @@ class ArchiveController extends ChangeNotifier {
     await refresh();
   }
 
-  Future<void> _downloadKey(ArchiveKey key) async {
-    final keyId =
-        _localKey(key.category, key.name, key.extension, key.subFolder);
-    await _downloadAndApply(keyId, key);
-  }
-
   Future<void> _downloadAndApply(String keyId, ArchiveKey key) async {
     if (key.hasLocalFile) {
       await _storage.hardDelete(
@@ -840,6 +765,23 @@ class ArchiveController extends ChangeNotifier {
       LogService.log('[Archive] read $path failed: $e');
       return null;
     }
+  }
+
+  /// Inserts or replaces a key from a locally-stored file entry.
+  void _ingestLocal(LocalKeyEntry entry) {
+    final keyId =
+        _localKey(entry.category, entry.name, entry.extension, entry.subFolder);
+    _keys[keyId] = ArchiveKey(
+      name: entry.name,
+      category: entry.category,
+      extension: entry.extension,
+      subFolder: entry.subFolder,
+      state: ArchiveKeyState.local,
+      localSize: entry.size,
+      localPath: entry.path,
+      favorite: _favorites.contains(keyId),
+      mtime: entry.mtime,
+    );
   }
 
   String _localKey(

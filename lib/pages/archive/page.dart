@@ -4,12 +4,13 @@ import 'package:flutter/material.dart';
 import '../../theme.dart';
 import '../file_manager/page.dart';
 import '../file_manager/widgets/storage_card.dart';
+import 'category/category_page.dart';
+import 'category/deleted_page.dart';
 import 'controller.dart';
 import 'models/category.dart';
 import 'models/key.dart';
 import 'widgets/empty_view.dart';
 import 'widgets/categories_card.dart';
-import 'widgets/category_page.dart';
 import 'widgets/key_actions_sheet.dart';
 import 'widgets/key_card.dart';
 import 'widgets/section_title.dart';
@@ -27,7 +28,6 @@ class ArchivePage extends StatefulWidget {
 class _ArchivePageState extends State<ArchivePage> {
   late final ArchiveController _ctrl;
   late final bool _ownsController;
-  final TextEditingController _searchCtrl = TextEditingController();
 
   @override
   void initState() {
@@ -41,7 +41,6 @@ class _ArchivePageState extends State<ArchivePage> {
 
   @override
   void dispose() {
-    _searchCtrl.dispose();
     if (_ownsController) {
       _ctrl.dispose();
     }
