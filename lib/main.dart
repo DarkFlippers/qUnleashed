@@ -17,17 +17,17 @@ void main() async {
   );
   await initializeUpdateScheduling();
   await ConnectionNotificationService.instance.start(FlipperOneClient().get());
-  runApp(const QunleashedApp());
+  runApp(const QUnleashedApp());
 }
 
-class QunleashedApp extends StatefulWidget {
-  const QunleashedApp({super.key});
+class QUnleashedApp extends StatefulWidget {
+  const QUnleashedApp({super.key});
 
   @override
-  State<QunleashedApp> createState() => _QunleashedAppState();
+  State<QUnleashedApp> createState() => _QUnleashedAppState();
 }
 
-class _QunleashedAppState extends State<QunleashedApp> {
+class _QUnleashedAppState extends State<QUnleashedApp> {
   final _themeController = QAppThemeController.instance;
 
   @override
@@ -43,7 +43,7 @@ class _QunleashedAppState extends State<QunleashedApp> {
     return AnimatedBuilder(
       animation: _themeController,
       builder: (context, _) => MaterialApp(
-        title: 'Qunleashed',
+        title: 'qUnleashed',
         debugShowCheckedModeBanner: false,
         theme: buildAppTheme(_themeController.activeFirmware),
         navigatorKey: updateNavigatorKey,

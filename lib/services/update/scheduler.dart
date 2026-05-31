@@ -91,7 +91,7 @@ class DesktopUpdateScheduler with TrayListener, WindowListener {
 
     trayManager.addListener(this);
     await trayManager.setIcon(_trayIconPath());
-    await trayManager.setToolTip('Qunleashed');
+    await trayManager.setToolTip('qUnleashed');
     await _setTrayMenu();
 
     UpdateWorker.instance.events.listen((event) {
@@ -108,7 +108,7 @@ class DesktopUpdateScheduler with TrayListener, WindowListener {
     await trayManager.setContextMenu(
       Menu(
         items: [
-          MenuItem(key: 'show', label: 'Open Qunleashed'),
+          MenuItem(key: 'show', label: 'Open qUnleashed'),
           MenuItem(key: 'check', label: 'Check for Updates'),
           MenuItem.separator(),
           MenuItem(key: 'exit', label: 'Exit'),

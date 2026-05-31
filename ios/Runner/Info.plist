@@ -13,7 +13,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Qunleashed</string>
+	<string>qUnleashed</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>This app saves Flipper screenshots to your photo library.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
@@ -25,7 +25,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>qunleashed</string>
+	<string>qUnleashed</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
