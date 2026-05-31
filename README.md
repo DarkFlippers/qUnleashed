@@ -22,18 +22,31 @@ qUnleashed keeps the familiar companion-app workflows from the original Flipper 
 
 <p align="center">
   <img src="screenshots/1_home.png" alt="Home screen" width="24%">
-  <img src="screenshots/2_connection.png" alt="Connection screen" width="24%">
-  <img src="screenshots/3_install.png" alt="Firmware install screen" width="24%">
-  <img src="screenshots/4_archive.png" alt="Archive screen" width="24%">
+  <img src="screenshots/2_home.png" alt="Home screen with menu" width="24%">
+  <img src="screenshots/3_connection.png" alt="Connection screen" width="24%">
+  <img src="screenshots/4_install.png" alt="Firmware install screen" width="24%">
 </p>
 <p align="center">
-  <img src="screenshots/5_explorer.png" alt="File explorer screen" width="24%">
-  <img src="screenshots/6_editor.png" alt="Text editor screen" width="24%">
-  <img src="screenshots/7_catalog.png" alt="Apps catalog screen" width="24%">
-  <img src="screenshots/8_remoute.png" alt="Remote control screen" width="24%">
+  <img src="screenshots/5_run_installed.png" alt="Installed firmware screen" width="24%">
+  <img src="screenshots/6_remoute.png" alt="Remote control screen" width="24%">
+  <img src="screenshots/7_archive.png" alt="Archive screen" width="24%">
+  <img src="screenshots/8_category.png" alt="Archive category screen" width="24%">
 </p>
 <p align="center">
-  <img src="screenshots/9_mfkey32.png" alt="Mfkey32 tool screen" width="24%">
-  <img src="screenshots/10_irlib.png" alt="Infrared library screen" width="24%">
-  <img src="screenshots/11_cli.png" alt="CLI screen" width="24%">
+  <img src="screenshots/9_filemanager.png" alt="File manager screen" width="24%">
+  <img src="screenshots/10_fileselect.png" alt="File select screen" width="24%">
+  <img src="screenshots/11_editor.png" alt="Text editor screen" width="24%">
+  <img src="screenshots/12_appcatalog.png" alt="Apps catalog screen" width="24%">
+</p>
+<p align="center">
+  <img src="screenshots/13_appinstall.png" alt="App install screen" width="24%">
+  <img src="screenshots/14_tools.png" alt="Tools screen" width="24%">
+  <img src="screenshots/15_tools_map.png" alt="FlipperMap pins screen" width="24%">
+  <img src="screenshots/16_tools_map.png" alt="FlipperMap details screen" width="24%">
+</p>
+<p align="center">
+  <img src="screenshots/17_tools_cli.png" alt="CLI tool screen" width="24%">
+  <img src="screenshots/18_tools_mfkey.png" alt="Mfkey32 tool screen" width="24%">
+  <img src="screenshots/19_tools_irlib.png" alt="Infrared library screen" width="24%">
+  <img src="screenshots/20_tools_irdb.png" alt="IRDB browser screen" width="24%">
 </p>
