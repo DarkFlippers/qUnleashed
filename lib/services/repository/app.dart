@@ -1,6 +1,7 @@
 import 'dart:io' as io;
 
 import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 const String kAppDocumentsFolderName = 'qUnleashed';
 const String kAppsCatalogFileName = 'catalog.json';
@@ -66,7 +67,53 @@ Future<io.Directory> userDocumentsDirectory() async {
     }
   }
 
+  if (io.Platform.isAndroid) {
+    final documents = await _androidPublicDocumentsDirectory();
+    if (documents != null) return documents;
+  }
+
+  // iOS: getApplicationDocumentsDirectory() returns the app sandbox
+  // Documents folder, which is the correct (and only writable) location.
   return getApplicationDocumentsDirectory();
+}
+
+/// Requests the runtime permission required to write into the shared
+/// Documents directory on Android. Returns true if access is granted.
+///
+/// On Android <= 12 (API <= 32) this maps to WRITE/READ_EXTERNAL_STORAGE.
+/// On Android 11+ (API 30+) writing arbitrary files outside the app
+/// sandbox requires MANAGE_EXTERNAL_STORAGE, so we fall back to that.
+Future<bool> ensureAndroidStoragePermission() async {
+  if (!io.Platform.isAndroid) return true;
+
+  if (await Permission.storage.request().isGranted) return true;
+
+  final manage = await Permission.manageExternalStorage.request();
+  return manage.isGranted;
+}
+
+/// Resolves the shared, user-visible Documents directory on Android
+/// (e.g. /storage/emulated/0/Documents) instead of the app-private
+/// container that [getApplicationDocumentsDirectory] returns there.
+Future<io.Directory?> _androidPublicDocumentsDirectory() async {
+  final sep = io.Platform.pathSeparator;
+
+  await ensureAndroidStoragePermission();
+
+  // getExternalStorageDirectory() -> /storage/emulated/0/Android/data/<pkg>/files
+  // The external storage root is everything before the "/Android/" segment.
+  final external = await getExternalStorageDirectory();
+  if (external != null) {
+    final marker = '${sep}Android$sep';
+    final index = external.path.indexOf(marker);
+    if (index > 0) {
+      final root = external.path.substring(0, index);
+      return io.Directory('$root${sep}Documents');
+    }
+  }
+
+  // Fallback to the conventional primary external storage path.
+  return io.Directory('${sep}storage${sep}emulated${sep}0${sep}Documents');
 }
 
 Future<io.Directory> appDocumentsDirectory() async {
