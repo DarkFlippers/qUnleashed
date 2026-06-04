@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme.dart';
+import '../../archive/widgets/actions_sheet.dart';
 import '../share_remote_file.dart';
 import '../controller.dart';
 import 'file_type.dart';
@@ -22,6 +23,8 @@ class FileEntryActions {
     this.onCut,
     this.onDownload,
     this.onRename,
+    this.onEmulate,
+    this.onEdit,
   });
 
   final VoidCallback? onDelete;
@@ -29,6 +32,11 @@ class FileEntryActions {
   final VoidCallback? onCopy;
   final VoidCallback? onCut;
   final VoidCallback? onDownload;
+
+  /// Category capabilities surfaced for files that map to an archive category,
+  /// so the file manager offers the same actions as the category pages.
+  final VoidCallback? onEmulate;
+  final VoidCallback? onEdit;
 
   /// Returns a Future so the caller can block taps during the network op.
   final Future<void> Function(String)? onRename;
@@ -399,16 +407,11 @@ class FileGridTile extends StatelessWidget {
 
 // ─── Actions bottom sheet ─────────────────────────────────────────────────────
 
-class FileActionsSheet extends StatelessWidget {
-  const FileActionsSheet._({
-    required this.entry,
-    required this.actions,
-    this.onRenameInline,
-  });
-
-  final RemoteEntry entry;
-  final FileEntryActions actions;
-  final VoidCallback? onRenameInline;
+/// Builds the file-manager action set for a [RemoteEntry] and presents it via
+/// the shared [ActionsSheet], so it stays visually and behaviourally identical
+/// to the archive category pages.
+class FileActionsSheet {
+  const FileActionsSheet._();
 
   static Future<void> show(
     BuildContext context, {
@@ -416,39 +419,17 @@ class FileActionsSheet extends StatelessWidget {
     required FileEntryActions actions,
     VoidCallback? onRenameInline,
   }) {
-    final colors = context.appColors;
-    return showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: colors.card,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => FileActionsSheet._(
-        entry: entry,
-        actions: actions,
-        onRenameInline: onRenameInline,
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.appColors;
     final isDir = entry.isDir;
-    final rows = <Widget>[];
+    final items = <ActionItem>[];
 
     void add(IconData icon, String label, VoidCallback? onTap,
         {bool destructive = false}) {
       if (onTap == null) return;
-      rows.add(_ActionRow(
+      items.add(ActionItem(
         icon: icon,
         label: label,
         destructive: destructive,
-        onTap: () {
-          Navigator.of(context).pop();
-          onTap();
-        },
+        onTap: onTap,
       ));
     }
 
@@ -460,107 +441,27 @@ class FileActionsSheet extends StatelessWidget {
     add(Icons.copy_outlined, 'Copy', actions.onCopy);
     add(Icons.drive_file_move_outlined, 'Move', actions.onCut);
     add(Icons.download_outlined, 'Download', actions.onDownload);
+    add(Icons.play_arrow, 'Emulate', actions.onEmulate);
+    add(Icons.edit_note, 'Edit', actions.onEdit);
     if (!isDir) {
       add(
         isShareSupported ? Icons.ios_share : Icons.content_copy,
-        isShareSupported ? 'Share' : 'Copy to clipboard',
+        isShareSupported ? 'Share' : 'Clipboard',
         actions.onShare,
       );
     }
     add(Icons.delete_outline, 'Delete', actions.onDelete, destructive: true);
 
-    return SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const SizedBox(height: 8),
-          Container(
-            width: 36,
-            height: 4,
-            decoration: BoxDecoration(
-              color: colors.divider,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 14),
-            child: Row(
-              children: [
-                FileIconBadge(entry: entry, size: 44),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        entry.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: colors.textPrimary,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 16,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        isDir
-                            ? 'Folder'
-                            : '${fileTypeLabel(entry)} · ${formatBytes(entry.size)}',
-                        style:
-                            TextStyle(color: colors.textMuted, fontSize: 12.5),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Divider(height: 1, color: colors.divider),
-          ...rows,
-          const SizedBox(height: 8),
-        ],
-      ),
-    );
-  }
-}
+    final subtitle = isDir
+        ? 'Folder'
+        : '${fileTypeLabel(entry)} · ${formatBytes(entry.size)}';
 
-class _ActionRow extends StatelessWidget {
-  const _ActionRow({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-    this.destructive = false,
-  });
-
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-  final bool destructive;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.appColors;
-    final color = destructive ? colors.danger : colors.textPrimary;
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-        child: Row(
-          children: [
-            Icon(icon, size: 22, color: color),
-            const SizedBox(width: 18),
-            Text(
-              label,
-              style: TextStyle(
-                color: color,
-                fontSize: 15,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      ),
+    return ActionsSheet.show(
+      context,
+      leading: FileIconBadge(entry: entry, size: 40),
+      title: entry.name,
+      subtitle: subtitle,
+      actions: items,
     );
   }
 }

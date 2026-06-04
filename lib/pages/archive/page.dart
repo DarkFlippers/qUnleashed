@@ -67,6 +67,51 @@ class _ArchivePageState extends State<ArchivePage> {
     );
   }
 
+  Future<void> _showKeyActions(BuildContext context, ArchiveKey key) {
+    return KeyActionsSheet.show(
+      context,
+      _ctrl,
+      key,
+      onRename: () => _showRenameDialog(context, key),
+      onDuplicate: () => _ctrl.duplicateKey(key),
+      onToggleFavorite: () => _ctrl.toggleFavorite(key),
+    );
+  }
+
+  Future<void> _showRenameDialog(BuildContext context, ArchiveKey key) async {
+    final colors = context.appColors;
+    final ctrl = TextEditingController(text: key.name);
+    final newName = await showDialog<String>(
+      context: context,
+      builder: (c) => AlertDialog(
+        backgroundColor: colors.dialogBackground,
+        title: Text('Rename', style: TextStyle(color: colors.dialogText)),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          style: TextStyle(color: colors.dialogText),
+          decoration: InputDecoration(
+            hintText: 'File name',
+            hintStyle: TextStyle(color: colors.textMuted),
+          ),
+          onSubmitted: (v) => Navigator.pop(c, v.trim()),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(c),
+              child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(c, ctrl.text.trim()),
+              child: const Text('Rename')),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    if (newName != null && newName.isNotEmpty && newName != key.name) {
+      await _ctrl.renameKey(key, newName);
+    }
+  }
+
   double _topInset(BuildContext context) {
     if (io.Platform.isAndroid || io.Platform.isIOS) {
       return MediaQuery.paddingOf(context).top;
@@ -158,7 +203,7 @@ class _ArchivePageState extends State<ArchivePage> {
           final k = keys[i];
           return KeyCard(
             flipperKey: k,
-            onTap: () => KeyActionsSheet.show(context, _ctrl, k),
+            onTap: () => _showKeyActions(context, k),
             onToggleStar: () => _ctrl.toggleFavorite(k),
           );
         },

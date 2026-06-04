@@ -4,6 +4,9 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../theme.dart';
 import '../../widgets/notification.dart';
+import '../archive/emulate/page.dart';
+import '../archive/models/category.dart';
+import '../archive/models/key.dart';
 import '../editor/page.dart';
 import '../remote/page.dart';
 import 'share_remote_file.dart';
@@ -189,6 +192,29 @@ class _FileManagerPageState extends State<FileManagerPage> {
       ),
     );
     await _ctrl.refresh();
+  }
+
+  /// Files we can open in the text editor (everything except binary blobs and
+  /// apps, mirroring [_onEntryTap]).
+  bool _isEditable(RemoteEntry e) =>
+      !e.isDir && !const {'bin', 'elf', 'fuf', 'fap'}.contains(e.extension);
+
+  /// Wraps an on-device file in an [ArchiveKey] (path preserved verbatim) and
+  /// opens the shared archive emulation flow.
+  void _emulateEntry(RemoteEntry e, ArchiveCategory cat) {
+    final remotePath = _ctrl.childPath(e.name);
+    final dot = e.name.lastIndexOf('.');
+    final name = dot > 0 ? e.name.substring(0, dot) : e.name;
+    final key = ArchiveKey(
+      name: name,
+      category: cat,
+      state: ArchiveKeyState.synced,
+      extension: e.extension,
+      remotePath: remotePath,
+    );
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => EmulatePage(flipperKey: key)),
+    );
   }
 
   /// Opens the system folder picker and returns the chosen directory, or null
@@ -1093,21 +1119,29 @@ class _FileManagerPageState extends State<FileManagerPage> {
       ),
     );
 
-    FileEntryActions makeActions(RemoteEntry e) => FileEntryActions(
-      onRename: (n) => _renameEntry(e, n),
-      onDelete: () => _deleteEntry(e, recursive: e.isDir),
-      onShare: e.isDir
-          ? null
-          : () => shareRemoteFile(
-              context,
-              _ctrl,
-              _ctrl.childPath(e.name),
-              displayName: e.name,
-            ),
-      onCopy: () => _copyEntry(e),
-      onCut: () => _cutEntry(e),
-      onDownload: () => _downloadEntries([e]),
-    );
+    FileEntryActions makeActions(RemoteEntry e) {
+      final cat = e.isDir ? null : ArchiveCategory.fromExtension(e.extension);
+      return FileEntryActions(
+        onRename: (n) => _renameEntry(e, n),
+        onDelete: () => _deleteEntry(e, recursive: e.isDir),
+        onShare: e.isDir
+            ? null
+            : () => shareRemoteFile(
+                context,
+                _ctrl,
+                _ctrl.childPath(e.name),
+                displayName: e.name,
+              ),
+        onCopy: () => _copyEntry(e),
+        onCut: () => _cutEntry(e),
+        onDownload: () => _downloadEntries([e]),
+        onEmulate:
+            (cat != null && cat.emulatable) ? () => _emulateEntry(e, cat) : null,
+        onEdit: _isEditable(e)
+            ? () => _openTextEditor(_ctrl.childPath(e.name))
+            : null,
+      );
+    }
 
     if (grid) {
       final body = SliverPadding(
