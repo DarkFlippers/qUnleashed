@@ -34,8 +34,7 @@ class _MfKey32PageState extends State<MfKey32Page> {
     if (mounted) setState(() {});
   }
 
-  Future<bool> _onWillPop() async {
-    if (!_controller.running) return true;
+  Future<bool> _confirmAbort() async {
     final abort = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -66,8 +65,16 @@ class _MfKey32PageState extends State<MfKey32Page> {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    return WillPopScope(
-      onWillPop: _onWillPop,
+    return PopScope(
+      canPop: !_controller.running,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        final navigator = Navigator.of(context);
+        final shouldPop = await _confirmAbort();
+        if (shouldPop && mounted) {
+          navigator.pop();
+        }
+      },
       child: Scaffold(
         backgroundColor: colors.background,
         appBar: AppBar(

@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
+
 // =============================================================================
 // Enums
 // =============================================================================
@@ -237,7 +239,7 @@ abstract class FirmwareParser {
         throw HttpException('Server returned ${res.statusCode}', uri: Uri.parse(directoryUrl));
       }
       final body = await res.transform(utf8.decoder).join();
-      final json = jsonDecode(body) as Map<String, dynamic>;
+      final json = await compute(jsonDecode, body) as Map<String, dynamic>;
       _cache = FirmwareDirectory.fromJson(json);
       return _cache!;
     } finally {

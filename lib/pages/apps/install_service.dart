@@ -408,9 +408,8 @@ class AppsInstallService extends ChangeNotifier {
   }
 
   Future<String?> _resolveDeviceName() async {
-    if (client.getName() != null) return client.getName();
     try {
-      await client.deviceInfo(timeout: const Duration(seconds: 10));
+      return await client.awaitName().timeout(const Duration(seconds: 10));
     } catch (_) {}
     return client.getName();
   }
@@ -516,14 +515,9 @@ class AppsInstallService extends ChangeNotifier {
   Future<void> _ensureDeviceFilters() async {
     if (api.target != null && api.api != null) return;
     try {
-      final res = await client.deviceInfo(timeout: const Duration(seconds: 10));
-      final info = <String, String>{};
-      for (final item in res.items) {
-        final key = item.key.trim();
-        final value = item.value.trim();
-        if (key.isEmpty || value.isEmpty) continue;
-        info[key] = value;
-      }
+      final info = await client.awaitDeviceInfo().timeout(
+        const Duration(seconds: 20),
+      );
       final target = _firstInfoValue(info, const [
         'hardware_target',
         'hardware.target',

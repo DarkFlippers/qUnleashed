@@ -57,10 +57,7 @@ class RemoteSession extends ChangeNotifier {
   }
 
   Future<void> _start() async {
-    await _tryRpc(
-      'guiStartScreenStream',
-      () => _client.guiStartScreenStream(),
-    );
+    await _tryRpc('guiStartScreenStream', () => _client.guiStartScreenStream());
     await _tryRpc(
       'desktopStatusSubscribe',
       () => _client.desktopStatusSubscribe(),
@@ -121,8 +118,7 @@ class RemoteSession extends ChangeNotifier {
   }
 
   Future<void> _onFrame(ScreenFrame frame) async {
-    // Phase 1: synchronous pixel decode — no GPU, no async.
-    // GIF recorder receives raw frame data before any GPU work begins.
+    // Decode synchronously so GIF recording sees the frame before GPU work.
     final raw = decodeFrameSync(frame);
     if (_disposed) return;
 
@@ -131,7 +127,6 @@ class RemoteSession extends ChangeNotifier {
     _orientation = raw.orientation;
     onRawFrame?.call(raw);
 
-    // Phase 2: async GPU image creation for UI display.
     final image = await createImageFromRgba(raw.rgba);
     if (_disposed) {
       image.dispose();
@@ -247,22 +242,22 @@ class _HeldButton {
 }
 
 InputKey _key(RemoteButton b) => switch (b) {
-      RemoteButton.up => InputKey.UP,
-      RemoteButton.down => InputKey.DOWN,
-      RemoteButton.left => InputKey.LEFT,
-      RemoteButton.right => InputKey.RIGHT,
-      RemoteButton.ok => InputKey.OK,
-      RemoteButton.back => InputKey.BACK,
-    };
+  RemoteButton.up => InputKey.UP,
+  RemoteButton.down => InputKey.DOWN,
+  RemoteButton.left => InputKey.LEFT,
+  RemoteButton.right => InputKey.RIGHT,
+  RemoteButton.ok => InputKey.OK,
+  RemoteButton.back => InputKey.BACK,
+};
 
 const _animBase = 'assets/flipper_svg/screenstreaming';
 const _kUnlockAnim = '$_animBase/ic_anim_unlock_light.svg';
 
 String _animAsset(RemoteButton b) => switch (b) {
-      RemoteButton.up => '$_animBase/ic_anim_up_button_light.svg',
-      RemoteButton.down => '$_animBase/ic_anim_down_button_light.svg',
-      RemoteButton.left => '$_animBase/ic_anim_left_button_light.svg',
-      RemoteButton.right => '$_animBase/ic_anim_right_button_light.svg',
-      RemoteButton.ok => '$_animBase/ic_anim_ok_button_light.svg',
-      RemoteButton.back => '$_animBase/ic_anim_back_button_light.svg',
-    };
+  RemoteButton.up => '$_animBase/ic_anim_up_button_light.svg',
+  RemoteButton.down => '$_animBase/ic_anim_down_button_light.svg',
+  RemoteButton.left => '$_animBase/ic_anim_left_button_light.svg',
+  RemoteButton.right => '$_animBase/ic_anim_right_button_light.svg',
+  RemoteButton.ok => '$_animBase/ic_anim_ok_button_light.svg',
+  RemoteButton.back => '$_animBase/ic_anim_back_button_light.svg',
+};

@@ -3,6 +3,7 @@ import 'dart:io' as io;
 
 import 'package:archive/archive_io.dart';
 import 'package:flipperlib/flipperlib.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../../config.dart';
 import '../../../services/update/firmware_directory.dart';
@@ -154,7 +155,7 @@ class FirmwareUpdater {
     required FlipperClient client,
     required void Function(UpdateState) onState,
   }) async {
-    final extracted = _extractFlat(tgzPath);
+    final extracted = await _extractFlat(tgzPath);
     if (extracted.dirName == null || extracted.files.isEmpty) {
       onState(const UpdateError('Update archive is empty or malformed'));
       return;
@@ -212,7 +213,13 @@ class FirmwareUpdater {
     onState(const UpdateDone());
   }
 
-  static ({String? dirName, List<_UpdateFile> files}) _extractFlat(
+  static Future<({String? dirName, List<_UpdateFile> files})> _extractFlat(
+    String tgzPath,
+  ) => compute(_extractFlatIsolate, tgzPath);
+
+  /// Runs in a background isolate: reads the .tgz from disk and inflates the
+  /// gzip+tar archive. Multi-MB decompression must never run on the UI isolate.
+  static ({String? dirName, List<_UpdateFile> files}) _extractFlatIsolate(
     String tgzPath,
   ) {
     final bytes = io.File(tgzPath).readAsBytesSync();

@@ -6,10 +6,8 @@ import 'package:flutter/material.dart';
 import '../../../theme.dart';
 
 /// Row of two storage entry cards (Internal `/int` + External `/ext`) shown on
-/// the archive screen. A single [FlipperWatchApi.watchStorage] subscription
-/// feeds both cards: `/ext` reports a real used/total (so it gets a usage bar),
-/// while `/int` only exposes a used figure (the firmware aliases `/int` onto the
-/// SD card for capacity), so it shows the used size without a fill bar.
+/// the archive screen. Subscribes to [FlipperWatchApi.deviceInfoUpdates] — the
+/// shared broadcast stream — and merges storage keys as they arrive.
 class StorageUsageCards extends StatefulWidget {
   const StorageUsageCards({
     super.key,
@@ -57,7 +55,7 @@ class _StorageUsageCardsState extends State<StorageUsageCards> {
 
   void _subscribe() {
     _sub?.cancel();
-    _sub = _client.watchStorage().listen(
+    _sub = _client.deviceInfoUpdates.listen(
       (data) {
         if (!mounted || data.isEmpty) return;
         setState(() => _info = {..._info, ...data});

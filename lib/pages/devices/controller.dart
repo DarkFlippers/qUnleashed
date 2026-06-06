@@ -24,8 +24,7 @@ class DeviceController extends ChangeNotifier {
   bool _disposed = false;
 
   StreamSubscription<FlipperConnectionState>? _connectionSub;
-  StreamSubscription<Map<String, String>>? _batteryStreamSub;
-  StreamSubscription<Map<String, String>>? _storageStreamSub;
+  StreamSubscription<Map<String, String>>? _infoStreamSub;
 
   // ── Getters ──────────────────────────────────────────────────────────────
 
@@ -118,93 +117,26 @@ class DeviceController extends ChangeNotifier {
     _notify();
 
     final generation = ++_infoRequestGeneration;
-    var pending = 5;
-    var batteryFirstDone = false;
-    var storageFirstDone = false;
 
-    void onPartDone() {
-      if (generation != _infoRequestGeneration) return;
-      pending--;
-      if (pending > 0) return;
-      _deviceLoading = false;
-      _deviceInfoConnected = _info.isNotEmpty;
-      _notify();
-    }
-
-    void mergeInfo(Map<String, String> data) {
-      if (generation != _infoRequestGeneration || data.isEmpty) return;
-      _info = {..._info, ...data};
-      _deviceInfoConnected = true;
-      if (data.keys.any(
-        (k) => k.startsWith('firmware') || k == 'software_revision',
-      )) {
-        QAppThemeController.instance.syncFirmwareFromDeviceInfo(_info);
-      }
-      _notify();
-    }
-
-    _batteryStreamSub = _client.watchBattery().listen(
+    _infoStreamSub = _client.deviceInfoUpdates.listen(
       (data) {
-        mergeInfo(data);
-        if (!batteryFirstDone) {
-          batteryFirstDone = true;
-          onPartDone();
+        if (generation != _infoRequestGeneration || data.isEmpty) return;
+        _info = {..._info, ...data};
+        _deviceInfoConnected = true;
+        if (_deviceLoading) {
+          _deviceLoading = false;
         }
-      },
-      onError: (e) => LogService.log('[DeviceController] battery: $e'),
-    );
-
-    _storageStreamSub = _client.watchStorage().listen(
-      (data) {
-        mergeInfo(data);
-        if (!storageFirstDone) {
-          storageFirstDone = true;
-          onPartDone();
+        if (data.keys.any(
+          (k) => k.startsWith('firmware') || k == 'software_revision',
+        )) {
+          QAppThemeController.instance.syncFirmwareFromDeviceInfo(_info);
         }
+        _notify();
       },
-      onError: (e) => LogService.log('[DeviceController] storage: $e'),
+      onError: (e) => LogService.log('[DeviceController] info stream: $e'),
     );
 
-    Future<void> loadStatic(
-      String label,
-      Future<Map<String, String>> Function() loader,
-    ) async {
-      try {
-        mergeInfo(await loader());
-      } catch (e) {
-        LogService.log('[DeviceController] $label failed: $e');
-      } finally {
-        onPartDone();
-      }
-    }
-
-    unawaited(loadStatic('protobuf', _loadProtobufVersion));
-    unawaited(loadStatic('device info', _client.awaitDeviceInfo));
-    unawaited(loadStatic('datetime', _loadDateTime));
-  }
-
-  Future<Map<String, String>> _loadProtobufVersion() async {
-    final v = await _client.protobufVersion(
-      timeout: const Duration(seconds: 15),
-    );
-    final major = v.single.major;
-    final minor = v.single.minor;
-    return {
-      'protobuf_version': '$major.$minor',
-      'protobuf_version_major': '$major',
-      'protobuf_version_minor': '$minor',
-    };
-  }
-
-  Future<Map<String, String>> _loadDateTime() async {
-    final response = await _client.getDateTime(
-      timeout: const Duration(seconds: 15),
-    );
-    final dt = response.single.datetime;
-    return {
-      'datetime':
-          '${dt.year}-${_pad(dt.month)}-${_pad(dt.day)} ${_pad(dt.hour)}:${_pad(dt.minute)}:${_pad(dt.second)}',
-    };
+    _client.startDeviceInfoCollection();
   }
 
   void _onConnectionState(FlipperConnectionState state) {
@@ -223,11 +155,8 @@ class DeviceController extends ChangeNotifier {
   }
 
   void _cancelDataStreams() {
-    _batteryStreamSub?.cancel();
-    _batteryStreamSub = null;
-    _storageStreamSub?.cancel();
-    _storageStreamSub = null;
+    _infoStreamSub?.cancel();
+    _infoStreamSub = null;
+    _client.stopDeviceInfoCollection();
   }
-
-  String _pad(int n) => n.toString().padLeft(2, '0');
 }

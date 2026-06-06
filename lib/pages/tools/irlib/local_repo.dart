@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io' as io;
+import 'dart:isolate';
 
 import 'package:archive/archive_io.dart';
 import 'package:path_provider/path_provider.dart';
@@ -151,62 +152,22 @@ class IrLibLocalRepo {
     );
 
     try {
-      final input = InputFileStream(tempZip.path);
-      try {
-        final archive = ZipDecoder().decodeStream(input);
-        final totalFiles = archive.files.where((f) => f.isFile).length;
-        var extracted = 0;
-
-        onProgress?.call(
-          IrLibDownloadProgress(
-            stage: 'Unpacking',
-            received: received,
-            total: total,
-            extracted: extracted,
-            totalFiles: totalFiles,
-          ),
-        );
-
-        for (final entry in archive.files) {
-          var name = entry.name.replaceAll('\\', '/');
-          final slash = name.indexOf('/');
-          if (slash < 0) continue;
-          name = name.substring(slash + 1);
-          if (name.isEmpty) continue;
-          final outPath = '${root.path}$sep${name.replaceAll('/', sep)}';
-          if (entry.isFile) {
-            final file = io.File(outPath);
-            await file.parent.create(recursive: true);
-            await file.writeAsBytes(entry.readBytes()!, flush: true);
-            extracted += 1;
-            if (extracted % 25 == 0 || extracted == totalFiles) {
-              onProgress?.call(
-                IrLibDownloadProgress(
-                  stage: 'Unpacking',
-                  received: received,
-                  total: total,
-                  extracted: extracted,
-                  totalFiles: totalFiles,
-                ),
-              );
-            }
-          } else {
-            await io.Directory(outPath).create(recursive: true);
-          }
-        }
-
-        onProgress?.call(
-          IrLibDownloadProgress(
-            stage: 'Done',
-            received: received,
-            total: total,
-            extracted: extracted,
-            totalFiles: totalFiles,
-          ),
-        );
-      } finally {
-        await input.close();
-      }
+      await _unpackInIsolate(
+        zipPath: tempZip.path,
+        rootPath: root.path,
+        sep: sep,
+        onProgress: (extracted, totalFiles, done) {
+          onProgress?.call(
+            IrLibDownloadProgress(
+              stage: done ? 'Done' : 'Unpacking',
+              received: received,
+              total: total,
+              extracted: extracted,
+              totalFiles: totalFiles,
+            ),
+          );
+        },
+      );
     } finally {
       if (await tempZip.exists()) {
         try {
@@ -217,4 +178,98 @@ class IrLibLocalRepo {
 
     return root;
   }
+
+  /// Inflates the IR database zip and writes every entry to disk inside a
+  /// background isolate. Unpacking thousands of files must never block the UI
+  /// isolate; progress is streamed back over a [SendPort].
+  static Future<void> _unpackInIsolate({
+    required String zipPath,
+    required String rootPath,
+    required String sep,
+    required void Function(int extracted, int totalFiles, bool done)
+        onProgress,
+  }) async {
+    final receivePort = ReceivePort();
+    final errorPort = ReceivePort();
+    final done = Completer<void>();
+
+    receivePort.listen((msg) {
+      if (msg is _UnpackProgress) {
+        onProgress(msg.extracted, msg.totalFiles, msg.done);
+        if (msg.done && !done.isCompleted) done.complete();
+      }
+    });
+    errorPort.listen((msg) {
+      if (done.isCompleted) return;
+      final error = (msg is List && msg.isNotEmpty) ? msg.first : msg;
+      done.completeError(StateError('IR unpack failed: $error'));
+    });
+
+    final isolate = await Isolate.spawn(
+      _unpackIsolateEntry,
+      _UnpackArgs(zipPath, rootPath, sep, receivePort.sendPort),
+      onError: errorPort.sendPort,
+      errorsAreFatal: true,
+      debugName: 'irlib-unpack',
+    );
+
+    try {
+      await done.future;
+    } finally {
+      isolate.kill(priority: Isolate.beforeNextEvent);
+      receivePort.close();
+      errorPort.close();
+    }
+  }
+
+  static void _unpackIsolateEntry(_UnpackArgs args) {
+    final send = args.sendPort;
+    final input = InputFileStream(args.zipPath);
+    try {
+      final archive = ZipDecoder().decodeStream(input);
+      final totalFiles = archive.files.where((f) => f.isFile).length;
+      var extracted = 0;
+      send.send(_UnpackProgress(extracted, totalFiles, false));
+
+      for (final entry in archive.files) {
+        var name = entry.name.replaceAll('\\', '/');
+        final slash = name.indexOf('/');
+        if (slash < 0) continue;
+        name = name.substring(slash + 1);
+        if (name.isEmpty) continue;
+        final outPath =
+            '${args.rootPath}${args.sep}${name.replaceAll('/', args.sep)}';
+        if (entry.isFile) {
+          final file = io.File(outPath);
+          file.parent.createSync(recursive: true);
+          file.writeAsBytesSync(entry.readBytes()!, flush: true);
+          extracted += 1;
+          if (extracted % 25 == 0 || extracted == totalFiles) {
+            send.send(_UnpackProgress(extracted, totalFiles, false));
+          }
+        } else {
+          io.Directory(outPath).createSync(recursive: true);
+        }
+      }
+
+      send.send(_UnpackProgress(extracted, totalFiles, true));
+    } finally {
+      input.close();
+    }
+  }
+}
+
+class _UnpackArgs {
+  _UnpackArgs(this.zipPath, this.rootPath, this.sep, this.sendPort);
+  final String zipPath;
+  final String rootPath;
+  final String sep;
+  final SendPort sendPort;
+}
+
+class _UnpackProgress {
+  _UnpackProgress(this.extracted, this.totalFiles, this.done);
+  final int extracted;
+  final int totalFiles;
+  final bool done;
 }

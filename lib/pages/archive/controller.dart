@@ -56,7 +56,7 @@ class ArchiveController extends ChangeNotifier {
   final Map<String, ArchiveKey> _keys = <String, ArchiveKey>{};
 
   StreamSubscription<FlipperConnectionState>? _connSub;
-  StreamSubscription<String>? _deviceNameSub;
+  StreamSubscription<Map<String, String>>? _deviceInfoSub;
 
   bool get loading => _loading;
   bool get syncing => _syncing;
@@ -117,7 +117,7 @@ class ArchiveController extends ChangeNotifier {
 
   Future<void> initialize() async {
     _connSub ??= _client.connectionStream.listen(_onConnectionChange);
-    _deviceNameSub ??= _client.deviceNameStream.listen(_onDeviceName);
+    _deviceInfoSub ??= _client.deviceInfoUpdates.listen(_onDeviceInfo);
     _deviceName = _client.getName() ?? '';
     if (_deviceName.isEmpty) {
       final last = await _storage.readLastDeviceName();
@@ -128,8 +128,9 @@ class ArchiveController extends ChangeNotifier {
     await refresh();
   }
 
-  void _onDeviceName(String name) {
-    _setDeviceName(name);
+  void _onDeviceInfo(Map<String, String> patch) {
+    final name = patch['hardware_name'] ?? patch['device_name'];
+    if (name != null) _setDeviceName(name);
   }
 
   void _onConnectionChange(FlipperConnectionState s) {
@@ -193,7 +194,7 @@ class ArchiveController extends ChangeNotifier {
   @override
   void dispose() {
     _connSub?.cancel();
-    _deviceNameSub?.cancel();
+    _deviceInfoSub?.cancel();
     super.dispose();
   }
 

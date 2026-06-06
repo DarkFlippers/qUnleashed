@@ -2,6 +2,8 @@
 import 'dart:convert';
 import 'dart:io' as io;
 
+import 'package:flutter/foundation.dart';
+
 import 'models/card.dart';
 import 'models/category.dart';
 import 'models/detail.dart';
@@ -169,7 +171,7 @@ class AppsCatalogApi {
       throw AppsCatalogException(res.statusCode, uri.toString(), text);
     }
     if (text.isEmpty) return null;
-    return jsonDecode(text);
+    return compute(jsonDecode, text);
   }
 
   Future<List<int>> _getBytes(

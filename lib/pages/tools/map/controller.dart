@@ -32,7 +32,7 @@ class MapToolController extends ChangeNotifier {
   double? _userBearingDegrees;
   StreamSubscription<Position>? _posSub;
   StreamSubscription<FlipperConnectionState>? _connSub;
-  StreamSubscription<String>? _deviceNameSub;
+  StreamSubscription<Map<String, String>>? _deviceInfoSub;
 
   bool get loading => _loading;
   String? get loadError => _loadError;
@@ -45,7 +45,7 @@ class MapToolController extends ChangeNotifier {
 
   Future<void> initialize() async {
     _connSub ??= _client.connectionStream.listen(_onConnectionChange);
-    _deviceNameSub ??= _client.deviceNameStream.listen(_onDeviceName);
+    _deviceInfoSub ??= _client.deviceInfoUpdates.listen(_onDeviceInfo);
     await loadFiles();
     await requestLocation();
   }
@@ -56,8 +56,9 @@ class MapToolController extends ChangeNotifier {
     }
   }
 
-  void _onDeviceName(String name) {
-    if (name.isNotEmpty) {
+  void _onDeviceInfo(Map<String, String> patch) {
+    final name = patch['hardware_name'] ?? patch['device_name'];
+    if (name != null && name.isNotEmpty) {
       loadFiles();
     }
   }
@@ -333,7 +334,7 @@ class MapToolController extends ChangeNotifier {
   void dispose() {
     _posSub?.cancel();
     _connSub?.cancel();
-    _deviceNameSub?.cancel();
+    _deviceInfoSub?.cancel();
     super.dispose();
   }
 }

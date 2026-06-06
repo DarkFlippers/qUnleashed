@@ -11,7 +11,7 @@ const int kFlipperScreenWidth = 128;
 const int kFlipperScreenHeight = 64;
 
 /// Synchronously unpacks a [ScreenFrame] into raw pixel data.
-/// No GPU or async work — runs immediately on any incoming frame.
+/// No GPU or async work - runs immediately on any incoming frame.
 RawFrameData decodeFrameSync(ScreenFrame frame) {
   final pixels = Uint8List(kFlipperScreenWidth * kFlipperScreenHeight * 4);
   final pixelIndices = Uint8List(kFlipperScreenWidth * kFlipperScreenHeight);
@@ -27,7 +27,8 @@ RawFrameData decodeFrameSync(ScreenFrame frame) {
     _ => StreamOrientation.horizontal,
   };
 
-  final flipped = orientation == StreamOrientation.horizontalFlip ||
+  final flipped =
+      orientation == StreamOrientation.horizontalFlip ||
       orientation == StreamOrientation.verticalFlip;
 
   for (var x = 0; x < kFlipperScreenWidth; x++) {

@@ -39,7 +39,6 @@ class FirmwareUpdateButton extends StatefulWidget {
 }
 
 class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
-  static const double _idleOpacity = 0.38;
   UpdateState? _updateState;
   String? _inlineMessage;
 

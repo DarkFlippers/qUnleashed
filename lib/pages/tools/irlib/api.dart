@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io' as io;
 
+import 'package:flutter/foundation.dart';
+
 import 'models.dart';
 
 class IrLibException implements Exception {
@@ -218,7 +220,7 @@ class IrLibApi {
       throw IrLibException(res.statusCode, uri.toString(), text);
     }
     if (text.isEmpty) return null;
-    return jsonDecode(text);
+    return compute(jsonDecode, text);
   }
 
   Future<io.HttpClientResponse> _send(Uri uri) async {
