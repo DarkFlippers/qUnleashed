@@ -1,4 +1,4 @@
-﻿import 'dart:io' as io;
+import 'dart:io' as io;
 
 import 'package:flutter/material.dart';
 import '../../theme.dart';
@@ -67,6 +67,37 @@ class _ArchivePageState extends State<ArchivePage> {
     );
   }
 
+  Future<void> _confirmFullSync() async {
+    final colors = context.appColors;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: colors.dialogBackground,
+        title: Text(
+          'Sync archive?',
+          style: TextStyle(color: colors.dialogText),
+        ),
+        content: Text(
+          'Sync all archive categories and import favorites from device?',
+          style: TextStyle(color: colors.dialogMuted, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Sync all'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      await _ctrl.fullSync();
+    }
+  }
+
   Future<void> _showKeyActions(BuildContext context, ArchiveKey key) {
     return KeyActionsSheet.show(
       context,
@@ -129,7 +160,7 @@ class _ArchivePageState extends State<ArchivePage> {
           backgroundColor: colors.background,
           body: RefreshIndicator(
             color: colors.accent,
-            onRefresh: _ctrl.fullSync,
+            onRefresh: _confirmFullSync,
             child: CustomScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
               slivers: [
@@ -211,4 +242,3 @@ class _ArchivePageState extends State<ArchivePage> {
     );
   }
 }
-

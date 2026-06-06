@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io' as io;
 
 import 'package:flipperlib/flipperlib.dart';
@@ -142,8 +143,12 @@ class ArchiveController extends ChangeNotifier {
   }
 
   Future<void> fullSync() async {
-    await _awaitRealDeviceName();
+    final hasDeviceName = await _awaitRealDeviceName();
+    if (!hasDeviceName) return;
     await syncAll();
+    if (_syncStatus == ArchiveSyncStatus.synced) {
+      await _syncDeviceFavorites();
+    }
   }
 
   Future<bool> _awaitRealDeviceName() async {
@@ -227,6 +232,49 @@ class ArchiveController extends ChangeNotifier {
         _keys[entry.key] = entry.value.copyWith(favorite: isFav);
       }
     }
+  }
+
+  Future<void> _syncDeviceFavorites() async {
+    const path = '/ext/favorites.txt';
+    final bytes = await _readRemoteBytes(path, logErrors: false);
+    if (bytes == null) {
+      LogService.log('[Archive] $path is unavailable');
+      return;
+    }
+
+    final paths = const Utf8Decoder(allowMalformed: true)
+        .convert(bytes)
+        .split(RegExp(r'\r?\n'))
+        .map(_normalizeFavoritePath)
+        .where((line) => line.isNotEmpty)
+        .toSet();
+    if (paths.isEmpty) return;
+
+    final keysByRemotePath = <String, String>{
+      for (final entry in _keys.entries)
+        _normalizeFavoritePath(entry.value.remotePath): entry.key,
+    };
+    var changed = false;
+    for (final path in paths) {
+      final keyId = keysByRemotePath[path];
+      if (keyId != null && _favorites.add(keyId)) changed = true;
+    }
+    if (!changed) return;
+
+    await _storage.writeFavorites(_deviceName, _favorites);
+    _applyFavorites();
+    notifyListeners();
+  }
+
+  static String _normalizeFavoritePath(String raw) {
+    var path = raw.trim().replaceAll(r'\', '/');
+    if (path.length >= 2 && path.startsWith('"') && path.endsWith('"')) {
+      path = path.substring(1, path.length - 1).trim();
+    }
+    while (path.contains('//')) {
+      path = path.replaceAll('//', '/');
+    }
+    return path;
   }
 
   // ── Metadata ───────────────────────────────────────────────────────────────
@@ -751,7 +799,10 @@ class ArchiveController extends ChangeNotifier {
     );
   }
 
-  Future<List<int>?> _readRemoteBytes(String path) async {
+  Future<List<int>?> _readRemoteBytes(
+    String path, {
+    bool logErrors = true,
+  }) async {
     try {
       final batch = await _client.storageRead(
         ReadRequest(path: path),
@@ -763,7 +814,9 @@ class ArchiveController extends ChangeNotifier {
       }
       return bytes;
     } catch (e) {
-      LogService.log('[Archive] read $path failed: $e');
+      if (logErrors) {
+        LogService.log('[Archive] read $path failed: $e');
+      }
       return null;
     }
   }
