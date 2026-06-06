@@ -147,14 +147,8 @@ class _ConnectedContent extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14),
           child: _ResponsiveCardGrid(
             children: [
-              _BatterySummaryCard(
-                infoLoading: ctrl.deviceLoading,
-                deviceInfo: ctrl.info,
-              ),
-              _StorageSummaryCard(
-                infoLoading: ctrl.deviceLoading,
-                deviceInfo: ctrl.info,
-              ),
+              _BatterySummaryCard(deviceInfo: ctrl.info),
+              _StorageSummaryCard(deviceInfo: ctrl.info),
             ],
           ),
         ),
@@ -434,8 +428,6 @@ class _SummaryCard extends StatelessWidget {
   const _SummaryCard({
     required this.title,
     required this.icon,
-    required this.infoLoading,
-    required this.emptyText,
     required this.metrics,
     this.mainValue,
     this.barValue,
@@ -444,8 +436,6 @@ class _SummaryCard extends StatelessWidget {
 
   final String title;
   final IconData icon;
-  final bool infoLoading;
-  final String emptyText;
   final List<(String, String)> metrics;
   final double? mainValue;
   final double? barValue;
@@ -454,66 +444,61 @@ class _SummaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
+    final value = mainValue?.isFinite == true ? mainValue! : 0.0;
+    final progress = barValue?.isFinite == true ? barValue! : value / 100;
+
     return _DashboardCard(
       title: title,
       icon: icon,
-      child: infoLoading && mainValue == null
-          ? const _LoadingRows()
-          : mainValue == null
-          ? _EmptyCardText(emptyText)
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      mainValue!.round().toString(),
-                      style: TextStyle(
-                        color: colors.textPrimary,
-                        fontSize: 32,
-                        fontWeight: FontWeight.w700,
-                        fontFeatures: const [FontFeature.tabularFigures()],
-                      ),
-                    ),
-                    Text(
-                      '%',
-                      style: TextStyle(
-                        color: colors.textSecondary,
-                        fontSize: 17,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _MetricBar(
-                        value: (barValue ?? mainValue! / 100).clamp(0.0, 1.0),
-                        color: barColor ?? colors.accent,
-                      ),
-                    ),
-                  ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                value.round().toString(),
+                style: TextStyle(
+                  color: colors.textPrimary,
+                  fontSize: 32,
+                  fontWeight: FontWeight.w700,
+                  fontFeatures: const [FontFeature.tabularFigures()],
                 ),
-                if (metrics.isNotEmpty) ...[
-                  const SizedBox(height: 18),
-                  Row(
-                    children: [
-                      for (final m in metrics)
-                        Expanded(child: _Metric(label: m.$1, value: m.$2)),
-                    ],
-                  ),
-                ],
+              ),
+              Text(
+                '%',
+                style: TextStyle(
+                  color: colors.textSecondary,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _MetricBar(
+                  value: progress.clamp(0.0, 1.0),
+                  color: barColor ?? colors.accent,
+                ),
+              ),
+            ],
+          ),
+          if (metrics.isNotEmpty) ...[
+            const SizedBox(height: 18),
+            Row(
+              children: [
+                for (final m in metrics)
+                  Expanded(child: _Metric(label: m.$1, value: m.$2)),
               ],
             ),
+          ],
+        ],
+      ),
     );
   }
 }
 
 class _BatterySummaryCard extends StatelessWidget {
-  const _BatterySummaryCard({
-    required this.infoLoading,
-    required this.deviceInfo,
-  });
+  const _BatterySummaryCard({required this.deviceInfo});
 
-  final bool infoLoading;
   final Map<String, String> deviceInfo;
 
   @override
@@ -545,27 +530,21 @@ class _BatterySummaryCard extends StatelessWidget {
     return _SummaryCard(
       title: 'Battery',
       icon: charging ? Icons.battery_charging_full : Icons.battery_full,
-      infoLoading: infoLoading,
-      emptyText: 'No battery data',
       mainValue: charge,
       barValue: charge != null ? charge / 100 : null,
       barColor: charge == null ? null : colors.accent,
       metrics: [
-        ('Voltage', voltage == null ? '-' : '${(voltage * 0.001).toStringAsFixed(3)} V'),
-        ('Current', current == null ? '-' : '${current.round()} mA'),
-        ('Temp', temp == null ? '-' : '${temp.toStringAsFixed(1)} C'),
+        ('Voltage', '${((voltage ?? 0) * 0.001).toStringAsFixed(3)} V'),
+        ('Current', '${(current ?? 0).round()} mA'),
+        ('Temp', '${(temp ?? 0).toStringAsFixed(1)} C'),
       ],
     );
   }
 }
 
 class _StorageSummaryCard extends StatelessWidget {
-  const _StorageSummaryCard({
-    required this.infoLoading,
-    required this.deviceInfo,
-  });
+  const _StorageSummaryCard({required this.deviceInfo});
 
-  final bool infoLoading;
   final Map<String, String> deviceInfo;
 
   @override
@@ -589,15 +568,13 @@ class _StorageSummaryCard extends StatelessWidget {
     return _SummaryCard(
       title: 'Storage',
       icon: Icons.storage,
-      infoLoading: infoLoading,
-      emptyText: 'No storage data',
       mainValue: percent,
       barValue: percent != null ? percent / 100 : null,
       barColor: percent != null && percent > 90 ? colors.danger : colors.accent,
       metrics: [
-        ('Used', used ?? '-'),
-        ('Free', free ?? '-'),
-        ('/int', internal ?? '-'),
+        ('Used', used ?? '0 B'),
+        ('Free', free ?? '0 B'),
+        ('/int', internal ?? '0 B'),
       ],
     );
   }
@@ -837,45 +814,6 @@ class _Metric extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _LoadingRows extends StatelessWidget {
-  const _LoadingRows();
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.appColors;
-    return Column(
-      children: [
-        for (var i = 0; i < 3; i++) ...[
-          Container(
-            height: 10,
-            decoration: BoxDecoration(
-              color: colors.divider,
-              borderRadius: BorderRadius.circular(999),
-            ),
-          ),
-          if (i != 2) const SizedBox(height: 9),
-        ],
-      ],
-    );
-  }
-}
-
-class _EmptyCardText extends StatelessWidget {
-  const _EmptyCardText(this.text);
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Text(
-        text,
-        style: TextStyle(color: context.appColors.textMuted, fontSize: 12),
-      ),
     );
   }
 }
