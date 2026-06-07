@@ -53,6 +53,12 @@ flutter:
       fonts:
         - asset: assets/fonts/flipper_bold.ttf
           weight: 500
+    - family: Born2bSportyV2
+      fonts:
+        - asset: assets/fonts/Born2bSportyV2.ttf
+    - family: GravityBold8
+      fonts:
+        - asset: assets/fonts/GravityBold8.ttf
   assets:
     - assets/firmware/
     - assets/flipper_svg/
