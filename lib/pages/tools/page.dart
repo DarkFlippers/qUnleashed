@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../theme.dart';
 import '../../widgets/flipper_action_dialog.dart';
-import 'about/page.dart';
+import '../about/page.dart';
 import 'cli/cli_page.dart';
 import 'irlib/categories_page.dart';
 import 'map/page.dart';

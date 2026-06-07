@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
-import '../../../theme.dart';
+import '../../theme.dart';
 
 class AppLicensePage extends StatefulWidget {
   const AppLicensePage({super.key});

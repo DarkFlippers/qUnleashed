@@ -2,8 +2,8 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
-import '../../../theme.dart';
-import '../../../widgets/open_url.dart';
+import '../../theme.dart';
+import '../../widgets/open_url.dart';
 import 'license_page.dart';
 
 class AboutPage extends StatelessWidget {
