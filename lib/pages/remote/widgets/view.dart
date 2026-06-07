@@ -1,5 +1,6 @@
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
@@ -16,12 +17,12 @@ class RemoteControlView extends StatelessWidget {
 
   const RemoteControlView({
     super.key,
-    required this.image,
+    required this.frameListenable,
     required this.queue,
     required this.orientation,
   });
 
-  final ui.Image? image;
+  final ValueListenable<ui.Image?> frameListenable;
   final List<QueuedButton> queue;
   final StreamOrientation orientation;
 
@@ -72,7 +73,7 @@ class RemoteControlView extends StatelessWidget {
                   const SizedBox(height: _queueSpacing),
                   _ScreenShell(
                     colors: colors,
-                    image: image,
+                    frameListenable: frameListenable,
                     orientation: orientation,
                     frameWidth: frameWidth,
                   ),
@@ -102,13 +103,13 @@ class RemoteControlView extends StatelessWidget {
 class _ScreenShell extends StatelessWidget {
   const _ScreenShell({
     required this.colors,
-    required this.image,
+    required this.frameListenable,
     required this.orientation,
     required this.frameWidth,
   });
 
   final QAppColors colors;
-  final ui.Image? image;
+  final ValueListenable<ui.Image?> frameListenable;
   final StreamOrientation orientation;
   final double frameWidth;
 
@@ -129,10 +130,15 @@ class _ScreenShell extends StatelessWidget {
         padding: const EdgeInsets.all(8),
         child: SizedBox(
           width: frameWidth,
-          child: _LiveFrame(
-            colors: colors,
-            image: image,
-            orientation: orientation,
+          child: RepaintBoundary(
+            child: ValueListenableBuilder<ui.Image?>(
+              valueListenable: frameListenable,
+              builder: (_, image, _) => _LiveFrame(
+                colors: colors,
+                image: image,
+                orientation: orientation,
+              ),
+            ),
           ),
         ),
       ),
@@ -156,7 +162,6 @@ class _LiveFrame extends StatelessWidget {
       return SvgPicture.asset(
         'assets/flipper_svg/screenstreaming/pic_not_connected_light.svg',
         fit: BoxFit.fitWidth,
-        colorFilter: ColorFilter.mode(colors.textMuted, BlendMode.srcIn),
       );
     }
 

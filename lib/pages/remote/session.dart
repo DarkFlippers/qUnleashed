@@ -13,6 +13,7 @@ class RemoteSession extends ChangeNotifier {
   RemoteSession() {
     _frameSub = _client.screenFrameStream().listen(_onFrame);
     _statusSub = _client.desktopStatusStream().listen(_applyStatus);
+    _connectionSub = _client.connectionStream.listen(_onConnectionState);
     unawaited(_start());
   }
 
@@ -20,6 +21,7 @@ class RemoteSession extends ChangeNotifier {
 
   StreamSubscription<ScreenFrame>? _frameSub;
   StreamSubscription<Status>? _statusSub;
+  StreamSubscription<FlipperConnectionState>? _connectionSub;
 
   Future<void> _inputChain = Future<void>.value();
 
@@ -28,8 +30,10 @@ class RemoteSession extends ChangeNotifier {
   void Function(RawFrameData)? onRawFrame;
 
   ui.Image? _frameImage;
+  final _frameNotifier = ValueNotifier<ui.Image?>(null);
   StreamOrientation _orientation = StreamOrientation.horizontal;
   bool _isLocked = true;
+  bool _isDisconnected = false;
   bool _stopped = false;
   bool _disposed = false;
   Object? _startError;
@@ -40,9 +44,10 @@ class RemoteSession extends ChangeNotifier {
   int? _lastBgColor;
   int? _lastFgColor;
 
-  ui.Image? get frameImage => _frameImage;
+  ValueListenable<ui.Image?> get frameListenable => _frameNotifier;
   StreamOrientation get orientation => _orientation;
   bool get isLocked => _isLocked;
+  bool get isDisconnected => _isDisconnected;
   Object? get startError => _startError;
   List<QueuedButton> get queue => _queue;
   int? get lastBgColor => _lastBgColor;
@@ -54,6 +59,18 @@ class RemoteSession extends ChangeNotifier {
     if (img == null) return null;
     final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
     return byteData?.buffer.asUint8List();
+  }
+
+  void _onConnectionState(FlipperConnectionState state) {
+    if (_disposed) return;
+    if (!state.connected && !_isDisconnected) {
+      _isDisconnected = true;
+      final prev = _frameImage;
+      _frameImage = null;
+      _frameNotifier.value = null;
+      _safeNotify();
+      prev?.dispose();
+    }
   }
 
   Future<void> _start() async {
@@ -91,8 +108,10 @@ class RemoteSession extends ChangeNotifier {
     if (_stopped) return;
     _stopped = true;
     try {
-      await _client.guiStopScreenStream();
-      await _client.desktopStatusUnsubscribe();
+      await _client.guiStopScreenStream().timeout(const Duration(seconds: 2));
+    } catch (_) {}
+    try {
+      await _client.desktopStatusUnsubscribe().timeout(const Duration(seconds: 2));
     } catch (_) {}
   }
 
@@ -105,6 +124,8 @@ class RemoteSession extends ChangeNotifier {
     _held.clear();
     _frameSub?.cancel();
     _statusSub?.cancel();
+    _connectionSub?.cancel();
+    _frameNotifier.dispose();
     _frameImage?.dispose();
     _frameImage = null;
     if (!_stopped) unawaited(stop());
@@ -124,6 +145,7 @@ class RemoteSession extends ChangeNotifier {
 
     _lastBgColor = raw.bgColor;
     _lastFgColor = raw.fgColor;
+    final orientationChanged = raw.orientation != _orientation;
     _orientation = raw.orientation;
     onRawFrame?.call(raw);
 
@@ -134,7 +156,10 @@ class RemoteSession extends ChangeNotifier {
     }
     final prev = _frameImage;
     _frameImage = image;
-    _safeNotify();
+    _frameNotifier.value = image;
+    // Only rebuild the page tree when orientation changes (rare); frame image
+    // updates are handled by ValueListenableBuilder in the view layer.
+    if (orientationChanged) _safeNotify();
     prev?.dispose();
   }
 

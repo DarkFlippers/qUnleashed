@@ -291,7 +291,7 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
                                   const SizedBox(height: 6),
                                   Expanded(
                                     child: RemoteControlView(
-                                      image: _session.frameImage,
+                                      frameListenable: _session.frameListenable,
                                       queue: _session.queue,
                                       orientation: orientation,
                                     ),
