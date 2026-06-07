@@ -9,45 +9,74 @@ import 'services/update/update_service.dart';
 import 'theme.dart';
 import 'widgets/notifications/update.dart';
 
-void main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  await UpdateService.instance.initialize();
-  await initFirmwareUpdateNotifications(
-    onNotificationTap: handleFirmwareUpdateNotificationPayload,
-  );
-  await initializeUpdateScheduling();
-  await ConnectionNotificationService.instance.start(FlipperOneClient().get());
   runApp(const QUnleashedApp());
 }
 
-class QUnleashedApp extends StatefulWidget {
+class QUnleashedApp extends StatelessWidget {
   const QUnleashedApp({super.key});
-
-  @override
-  State<QUnleashedApp> createState() => _QUnleashedAppState();
-}
-
-class _QUnleashedAppState extends State<QUnleashedApp> {
-  final _themeController = QAppThemeController.instance;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      flushPendingFirmwareUpdateRoute();
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: _themeController,
+      animation: QAppThemeController.instance,
       builder: (context, _) => MaterialApp(
         title: 'qUnleashed',
         debugShowCheckedModeBanner: false,
-        theme: buildAppTheme(_themeController.activeFirmware),
+        theme: buildAppTheme(QAppThemeController.instance.activeFirmware),
         navigatorKey: updateNavigatorKey,
-        home: const DevicePage(),
+        home: const _AppStartup(),
+      ),
+    );
+  }
+}
+
+class _AppStartup extends StatefulWidget {
+  const _AppStartup();
+
+  @override
+  State<_AppStartup> createState() => _AppStartupState();
+}
+
+class _AppStartupState extends State<_AppStartup> {
+  @override
+  void initState() {
+    super.initState();
+    _init();
+  }
+
+  Future<void> _init() async {
+    await Future.wait([
+      UpdateService.instance.initialize(),
+      initFirmwareUpdateNotifications(
+        onNotificationTap: handleFirmwareUpdateNotificationPayload,
+      ),
+      ConnectionNotificationService.instance.start(FlipperOneClient().get()),
+    ]);
+    await initializeUpdateScheduling();
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute<void>(builder: (_) => const DevicePage()),
+    );
+    flushPendingFirmwareUpdateRoute();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    return Scaffold(
+      backgroundColor: colors.background,
+      body: Center(
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(28),
+          child: Image.asset(
+            'assets/firmware/unleashed.jpg',
+            width: 110,
+            height: 110,
+            fit: BoxFit.cover,
+          ),
+        ),
       ),
     );
   }
