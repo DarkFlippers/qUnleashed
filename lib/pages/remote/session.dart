@@ -74,7 +74,12 @@ class RemoteSession extends ChangeNotifier {
   }
 
   Future<void> _start() async {
-    await _tryRpc('guiStartScreenStream', () => _client.guiStartScreenStream());
+    await _tryRpc(
+      'guiStartScreenStream',
+      () => _client.guiStartScreenStream(
+        priority: FlipperRequestPriority.rightNow,
+      ),
+    );
     await _tryRpc(
       'desktopStatusSubscribe',
       () => _client.desktopStatusSubscribe(),
