@@ -1,31 +1,21 @@
-import 'dart:async';
 import 'dart:io' as io;
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:file_picker/file_picker.dart';
-import 'package:flipperlib/flipperlib.dart' hide DateTime;
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../../services/repository/app.dart';
 import '../../theme.dart';
 import '../../widgets/notification.dart';
 import '../remote/gif_encoder.dart';
+import 'codec.dart';
+import 'constants.dart';
+import 'controller.dart';
+import 'painters.dart';
 
-// ── Canvas constants ──────────────────────────────────────────────────────────
-const int _kW = 128;
-const int _kH = 64;
-const int _kMaxUndo = 20;
-const int _kAnimFrameDelay = 200; // ms per animation frame
-
-// ── Drawing tools ─────────────────────────────────────────────────────────────
-enum _Tool { pencil, eraser, fill, line, rect, ellipse }
-
-// ── Zoom levels ───────────────────────────────────────────────────────────────
-const List<double> _kZooms = [0.5, 1.0, 1.5, 2.0, 3.0, 4.0];
-
-// ─────────────────────────────────────────────────────────────────────────────
 class PaintPage extends StatefulWidget {
   const PaintPage({super.key});
 
@@ -34,655 +24,531 @@ class PaintPage extends StatefulWidget {
 }
 
 class _PaintPageState extends State<PaintPage> {
-  // ── Pixel data ──────────────────────────────────────────────────────────────
-  // Each frame: Uint8List of length _kW * _kH, 0 = bg, 1 = fg
-  final List<Uint8List> _frames = [Uint8List(_kW * _kH)];
-  int _currentFrame = 0;
-
-  // ── Undo / redo ─────────────────────────────────────────────────────────────
-  final List<List<Uint8List>> _undoStack = [];
-  final List<List<Uint8List>> _redoStack = [];
-
-  // ── Drawing state ───────────────────────────────────────────────────────────
-  _Tool _tool = _Tool.pencil;
-  bool _drawFg = true; // true = draw foreground (dark)
-  bool _showGrid = false;
-  int _zoomIdx = 1; // index into _kZooms, default 1x
-
-  // Preview pixels during line / rect / ellipse drag
-  int? _strokeStartX, _strokeStartY;
-  List<int>? _previewPixels; // flat set of pixel indices to preview
-  int? _lastPencilX, _lastPencilY; // for pencil interpolation
-
-  // ── Animation ───────────────────────────────────────────────────────────────
-  Timer? _playTimer;
-  bool _isPlaying = false;
-
-  // ── Virtual display ─────────────────────────────────────────────────────────
-  final FlipperClient _client = FlipperOneClient().get();
-  bool _virtualDisplayActive = false;
-  bool _closing = false;
-  Timer? _pushTimer;
-
-  // ── Canvas size cache ───────────────────────────────────────────────────────
+  late final PaintController _ctrl;
   Size? _canvasContainerSize;
-  int? _activePointer;
 
-  // ── Getters ─────────────────────────────────────────────────────────────────
-  Uint8List get _pixels => _frames[_currentFrame];
+  Offset _panOffset = Offset.zero;
+  bool _isPanning = false;
+  int? _panPointer;
+  Offset _panStartLocal = Offset.zero;
+  Offset _panStartOffset = Offset.zero;
 
-  // ── Lifecycle ────────────────────────────────────────────────────────────────
+  double _cLeft = 0.0;
+  double _cTop = 0.0;
+  double _pixelSize = 1.0;
+  bool _isTwoFingerPanning = false;
+  final Map<int, Offset> _touchPointers = {};
+  Offset _twoFingerStartCentroid = Offset.zero;
+  Offset _twoFingerStartPanOffset = Offset.zero;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _startVirtualDisplay());
+    _ctrl = PaintController();
+    _ctrl.addListener(_onControllerChange);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _ctrl.startVirtualDisplay());
+  }
+
+  void _onControllerChange() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
-    _playTimer?.cancel();
-    _pushTimer?.cancel();
-    if (!_closing) _stopVirtualDisplay();
+    _ctrl.removeListener(_onControllerChange);
+    _ctrl.dispose();
     super.dispose();
   }
 
-  // ── Virtual display ──────────────────────────────────────────────────────────
+  // Pan: right mouse button drag, scroll wheel, or two-finger touch.
 
-  Future<void> _startVirtualDisplay() async {
-    try {
-      await _client.guiStartVirtualDisplay(
-        StartVirtualDisplayRequest(),
-        priority: FlipperRequestPriority.rightNow,
-      );
-      _virtualDisplayActive = true;
-    } on FlipperRpcVirtualDisplayAlreadyStartedException {
-      // Left open from a previous session — stop and restart clean
-      try {
-        await _client.guiStopVirtualDisplay();
-        await _client.guiStartVirtualDisplay(StartVirtualDisplayRequest());
-        _virtualDisplayActive = true;
-      } catch (e) {
-        LogService.log('[PaintPage] restart virtual display failed: $e');
-      }
-    } catch (e) {
-      LogService.log('[PaintPage] start virtual display failed: $e');
-    }
+  int _toCanvasX(double cx) =>
+      ((cx - _cLeft) / _pixelSize).floor().clamp(0, kCanvasWidth - 1);
+  int _toCanvasY(double cy) =>
+      ((cy - _cTop) / _pixelSize).floor().clamp(0, kCanvasHeight - 1);
+
+  bool _isInsideCanvas(Offset pos) =>
+      pos.dx >= _cLeft &&
+      pos.dx < _cLeft + kCanvasWidth * _pixelSize &&
+      pos.dy >= _cTop &&
+      pos.dy < _cTop + kCanvasHeight * _pixelSize;
+
+  Offset _touchCentroid() {
+    final vals = _touchPointers.values;
+    return vals.fold(Offset.zero, (a, b) => a + b) / vals.length.toDouble();
   }
 
-  Future<void> _stopVirtualDisplay() async {
-    try {
-      await _client
-          .guiStopVirtualDisplay()
-          .timeout(const Duration(seconds: 2));
-      _virtualDisplayActive = false;
-    } catch (_) {}
-  }
-
-  void _schedulePush() {
-    _pushTimer?.cancel();
-    _pushTimer = Timer(const Duration(milliseconds: 100), _pushToDevice);
-  }
-
-  Future<void> _pushToDevice() async {
-    if (!_virtualDisplayActive) return;
-    try {
-      final data = _encodeXBM(_frames[_currentFrame]);
-      // Send frame update without stop/start — fire-and-forget via guiScreenFrame
-      await _client.sendRpc(
-        Main(guiScreenFrame: ScreenFrame(data: data)),
-        priority: FlipperRequestPriority.rightNow,
-      );
-    } catch (e) {
-      LogService.log('[PaintPage] push frame failed: $e');
-    }
-  }
-
-  /// XBM format: row-major, LSB = leftmost pixel in each byte group.
-  /// 64 rows × 16 bytes = 1024 bytes total.
-  static Uint8List _encodeXBM(Uint8List pixels) {
-    final data = Uint8List(1024);
-    for (int y = 0; y < _kH; y++) {
-      for (int x = 0; x < _kW; x++) {
-        if (pixels[y * _kW + x] != 0) {
-          data[y * 16 + (x ~/ 8)] |= (1 << (x & 7));
-        }
-      }
-    }
-    return data;
-  }
-
-  // ── Undo / redo ──────────────────────────────────────────────────────────────
-
-  void _pushUndo() {
-    _undoStack.add(_frames.map((f) => Uint8List.fromList(f)).toList());
-    if (_undoStack.length > _kMaxUndo) _undoStack.removeAt(0);
-    _redoStack.clear();
-  }
-
-  void _undo() {
-    if (_undoStack.isEmpty) return;
-    _redoStack.add(_frames.map((f) => Uint8List.fromList(f)).toList());
-    final prev = _undoStack.removeLast();
-    _frames
-      ..clear()
-      ..addAll(prev);
-    _currentFrame = _currentFrame.clamp(0, _frames.length - 1);
-    _schedulePush();
-    setState(() {});
-  }
-
-  void _redo() {
-    if (_redoStack.isEmpty) return;
-    _undoStack.add(_frames.map((f) => Uint8List.fromList(f)).toList());
-    final next = _redoStack.removeLast();
-    _frames
-      ..clear()
-      ..addAll(next);
-    _currentFrame = _currentFrame.clamp(0, _frames.length - 1);
-    _schedulePush();
-    setState(() {});
-  }
-
-  // ── Drawing algorithms ───────────────────────────────────────────────────────
-
-  void _setPixel(int x, int y, bool fg, [Uint8List? target]) {
-    if (x < 0 || x >= _kW || y < 0 || y >= _kH) return;
-    final t = target ?? _pixels;
-    t[y * _kW + x] = fg ? 1 : 0;
-  }
-
-  void _drawLine(int x0, int y0, int x1, int y1, bool fg,
-      [Uint8List? target]) {
-    for (final p in _bresenham(x0, y0, x1, y1)) {
-      _setPixel(p.$1, p.$2, fg, target);
-    }
-  }
-
-  void _drawRect(int x0, int y0, int x1, int y1, bool fg,
-      [Uint8List? target]) {
-    final minX = math.min(x0, x1);
-    final maxX = math.max(x0, x1);
-    final minY = math.min(y0, y1);
-    final maxY = math.max(y0, y1);
-    for (int x = minX; x <= maxX; x++) {
-      _setPixel(x, minY, fg, target);
-      _setPixel(x, maxY, fg, target);
-    }
-    for (int y = minY + 1; y < maxY; y++) {
-      _setPixel(minX, y, fg, target);
-      _setPixel(maxX, y, fg, target);
-    }
-  }
-
-  void _drawEllipse(int cx, int cy, int rx, int ry, bool fg,
-      [Uint8List? target]) {
-    if (rx <= 0 || ry <= 0) {
-      _setPixel(cx, cy, fg, target);
-      return;
-    }
-    for (final p in _ellipsePoints(cx, cy, rx, ry)) {
-      _setPixel(p.$1, p.$2, fg, target);
-    }
-  }
-
-  void _floodFill(int x, int y, bool fg) {
-    final target = _pixels[y * _kW + x];
-    final fill = fg ? 1 : 0;
-    if (target == fill) return;
-    final queue = <int>[y * _kW + x];
-    final visited = Uint8List(_kW * _kH);
-    visited[y * _kW + x] = 1;
-    while (queue.isNotEmpty) {
-      final idx = queue.removeLast();
-      _pixels[idx] = fill;
-      final px = idx % _kW;
-      final py = idx ~/ _kW;
-      for (final d in const [(1, 0), (-1, 0), (0, 1), (0, -1)]) {
-        final nx = px + d.$1;
-        final ny = py + d.$2;
-        if (nx < 0 || nx >= _kW || ny < 0 || ny >= _kH) continue;
-        final ni = ny * _kW + nx;
-        if (visited[ni] != 0 || _pixels[ni] != target) continue;
-        visited[ni] = 1;
-        queue.add(ni);
-      }
-    }
-  }
-
-  // ── Stroke operations ────────────────────────────────────────────────────────
-
-  /// Builds a preview pixel list for shape tools (line, rect, ellipse).
-  List<int> _buildPreview(int x0, int y0, int x1, int y1) {
-    final preview = <int>[];
-    List<(int, int)> pts;
-    switch (_tool) {
-      case _Tool.line:
-        pts = _bresenham(x0, y0, x1, y1);
-      case _Tool.rect:
-        pts = _rectOutline(x0, y0, x1, y1);
-      case _Tool.ellipse:
-        final rx = (x1 - x0).abs() ~/ 2;
-        final ry = (y1 - y0).abs() ~/ 2;
-        final cx = math.min(x0, x1) + rx;
-        final cy = math.min(y0, y1) + ry;
-        pts = _ellipsePoints(cx, cy, rx, ry);
-      default:
-        return [];
-    }
-    for (final p in pts) {
-      if (p.$1 >= 0 && p.$1 < _kW && p.$2 >= 0 && p.$2 < _kH) {
-        preview.add(p.$2 * _kW + p.$1);
-      }
-    }
-    return preview;
-  }
-
-  void _commitPreview(int x1, int y1) {
-    final x0 = _strokeStartX;
-    final y0 = _strokeStartY;
-    if (x0 == null || y0 == null) return;
-    switch (_tool) {
-      case _Tool.line:
-        _drawLine(x0, y0, x1, y1, _drawFg);
-      case _Tool.rect:
-        _drawRect(x0, y0, x1, y1, _drawFg);
-      case _Tool.ellipse:
-        final rx = (x1 - x0).abs() ~/ 2;
-        final ry = (y1 - y0).abs() ~/ 2;
-        final cx = math.min(x0, x1) + rx;
-        final cy = math.min(y0, y1) + ry;
-        _drawEllipse(cx, cy, rx, ry, _drawFg);
-      default:
-        break;
-    }
-  }
-
-  // ── Pointer handling ─────────────────────────────────────────────────────────
-
-  (int, int) _toPixelCoord(Offset local) {
+  void _onScrollPan(PointerSignalEvent e) {
+    if (e is! PointerScrollEvent) return;
     final cs = _canvasContainerSize;
-    if (cs == null) return (0, 0);
-    final ps = _effectivePixelSize(cs.width);
-    final canvasW = _kW * ps;
-    final canvasH = _kH * ps;
-    final ox = (cs.width - canvasW) / 2.0;
-    final oy = (cs.height - canvasH) / 2.0;
-    final px = ((local.dx - ox) / ps).floor().clamp(0, _kW - 1);
-    final py = ((local.dy - oy) / ps).floor().clamp(0, _kH - 1);
-    return (px, py);
+    if (cs == null) return;
+    // Always consume so the parent ScrollView never scrolls over the canvas.
+    GestureBinding.instance.pointerSignalResolver.register(e, (event) {
+      if (event is! PointerScrollEvent) return;
+      final ps = _ctrl.effectivePixelSize(cs.width);
+      final maxX = ((kCanvasWidth * ps - cs.width) / 2).clamp(0.0, double.infinity);
+      final maxY = ((kCanvasHeight * ps - cs.height) / 2).clamp(0.0, double.infinity);
+      if (maxX == 0 && maxY == 0) return;
+      setState(() {
+        _panOffset = Offset(
+          (_panOffset.dx - event.scrollDelta.dx).clamp(-maxX, maxX),
+          (_panOffset.dy - event.scrollDelta.dy).clamp(-maxY, maxY),
+        );
+      });
+    });
   }
 
-  void _onPointerDown(PointerDownEvent e) {
-    if (_activePointer != null) return;
-    _activePointer = e.pointer;
-    final (x, y) = _toPixelCoord(e.localPosition);
-
-    switch (_tool) {
-      case _Tool.pencil:
-      case _Tool.eraser:
-        _pushUndo();
-        _setPixel(x, y, _tool == _Tool.pencil ? _drawFg : !_drawFg);
-        _lastPencilX = x;
-        _lastPencilY = y;
-        _schedulePush();
-        setState(() {});
-      case _Tool.fill:
-        _pushUndo();
-        _floodFill(x, y, _drawFg);
-        _schedulePush();
-        setState(() {});
-      case _Tool.line:
-      case _Tool.rect:
-      case _Tool.ellipse:
-        _strokeStartX = x;
-        _strokeStartY = y;
-        _previewPixels = [];
-        setState(() {});
-    }
-  }
-
-  void _onPointerMove(PointerMoveEvent e) {
-    if (e.pointer != _activePointer) return;
-    final (x, y) = _toPixelCoord(e.localPosition);
-
-    switch (_tool) {
-      case _Tool.pencil:
-      case _Tool.eraser:
-        final lx = _lastPencilX;
-        final ly = _lastPencilY;
-        if (lx != null && ly != null && (lx != x || ly != y)) {
-          for (final p in _bresenham(lx, ly, x, y)) {
-            _setPixel(p.$1, p.$2, _tool == _Tool.pencil ? _drawFg : !_drawFg);
-          }
-        }
-        _lastPencilX = x;
-        _lastPencilY = y;
-        _schedulePush();
-        setState(() {});
-      case _Tool.fill:
-        break;
-      case _Tool.line:
-      case _Tool.rect:
-      case _Tool.ellipse:
-        final x0 = _strokeStartX;
-        final y0 = _strokeStartY;
-        if (x0 == null || y0 == null) return;
-        _previewPixels = _buildPreview(x0, y0, x, y);
-        setState(() {});
-    }
-  }
-
-  void _onPointerUp(PointerUpEvent e) {
-    if (e.pointer != _activePointer) return;
-    _activePointer = null;
-    final (x, y) = _toPixelCoord(e.localPosition);
-
-    switch (_tool) {
-      case _Tool.pencil:
-      case _Tool.eraser:
-      case _Tool.fill:
-        _lastPencilX = null;
-        _lastPencilY = null;
-      case _Tool.line:
-      case _Tool.rect:
-      case _Tool.ellipse:
-        _pushUndo();
-        _commitPreview(x, y);
-        _strokeStartX = null;
-        _strokeStartY = null;
-        _previewPixels = null;
-        _schedulePush();
-        setState(() {});
-    }
-  }
-
-  // ── Operations ───────────────────────────────────────────────────────────────
-
-  void _flipH() {
-    _pushUndo();
-    final p = _pixels;
-    for (int y = 0; y < _kH; y++) {
-      for (int x = 0; x < _kW ~/ 2; x++) {
-        final a = y * _kW + x;
-        final b = y * _kW + (_kW - 1 - x);
-        final tmp = p[a];
-        p[a] = p[b];
-        p[b] = tmp;
-      }
-    }
-    _schedulePush();
-    setState(() {});
-  }
-
-  void _flipV() {
-    _pushUndo();
-    final p = _pixels;
-    for (int y = 0; y < _kH ~/ 2; y++) {
-      for (int x = 0; x < _kW; x++) {
-        final a = y * _kW + x;
-        final b = (_kH - 1 - y) * _kW + x;
-        final tmp = p[a];
-        p[a] = p[b];
-        p[b] = tmp;
-      }
-    }
-    _schedulePush();
-    setState(() {});
-  }
-
-  void _invert() {
-    _pushUndo();
-    final p = _pixels;
-    for (int i = 0; i < p.length; i++) {
-      p[i] = p[i] == 0 ? 1 : 0;
-    }
-    _schedulePush();
-    setState(() {});
-  }
-
-  void _clearFrame() {
-    _pushUndo();
-    _pixels.fillRange(0, _pixels.length, 0);
-    _schedulePush();
-    setState(() {});
-  }
-
-  // ── Frames ───────────────────────────────────────────────────────────────────
-
-  void _addFrame() {
-    _pushUndo();
-    _frames.insert(_currentFrame + 1, Uint8List(_kW * _kH));
-    _currentFrame++;
-    _schedulePush();
-    setState(() {});
-  }
-
-  void _duplicateFrame() {
-    _pushUndo();
-    _frames.insert(
-      _currentFrame + 1,
-      Uint8List.fromList(_frames[_currentFrame]),
-    );
-    _currentFrame++;
-    _schedulePush();
-    setState(() {});
-  }
-
-  void _deleteFrame() {
-    if (_frames.length <= 1) {
-      _clearFrame();
+  void _onPanDown(PointerDownEvent e) {
+    if (e.buttons & 0x2 != 0) {
+      _isPanning = true;
+      _panPointer = e.pointer;
+      _panStartLocal = e.localPosition;
+      _panStartOffset = _panOffset;
       return;
     }
-    _pushUndo();
-    _frames.removeAt(_currentFrame);
-    _currentFrame = _currentFrame.clamp(0, _frames.length - 1);
-    _schedulePush();
-    setState(() {});
-  }
-
-  void _selectFrame(int idx) {
-    if (idx == _currentFrame) return;
-    _isPlaying = false;
-    _playTimer?.cancel();
-    _currentFrame = idx;
-    _schedulePush();
-    setState(() {});
-  }
-
-  void _togglePlay() {
-    if (_isPlaying) {
-      _isPlaying = false;
-      _playTimer?.cancel();
-      setState(() {});
-    } else {
-      _isPlaying = true;
-      setState(() {});
-      _playTimer = Timer.periodic(
-        Duration(milliseconds: _kAnimFrameDelay),
-        (_) {
-          if (!mounted) return;
-          _currentFrame = (_currentFrame + 1) % _frames.length;
-          _schedulePush();
-          setState(() {});
-        },
-      );
+    if (e.kind == PointerDeviceKind.touch) {
+      _touchPointers[e.pointer] = e.localPosition;
+      if (_touchPointers.length >= 2) {
+        if (!_isTwoFingerPanning) {
+          for (final en in _touchPointers.entries) {
+            if (en.key != e.pointer) {
+              _ctrl.onPointerUp(_toCanvasX(en.value.dx), _toCanvasY(en.value.dy), en.key);
+            }
+          }
+          _isTwoFingerPanning = true;
+          _twoFingerStartCentroid = _touchCentroid();
+          _twoFingerStartPanOffset = _panOffset;
+        }
+        return;
+      }
+    }
+    if (_isInsideCanvas(e.localPosition)) {
+      _ctrl.onPointerDown(_toCanvasX(e.localPosition.dx), _toCanvasY(e.localPosition.dy), e.pointer);
     }
   }
 
-  // ── Zoom ─────────────────────────────────────────────────────────────────────
-
-  double _effectivePixelSize(double containerWidth) {
-    return (containerWidth / _kW) * _kZooms[_zoomIdx];
+  void _onPanMove(PointerMoveEvent e) {
+    if (e.buttons & 0x2 != 0) {
+      if (!_isPanning || e.pointer != _panPointer) return;
+      final cs = _canvasContainerSize;
+      if (cs == null) return;
+      final ps = _ctrl.effectivePixelSize(cs.width);
+      final maxX = ((kCanvasWidth * ps - cs.width) / 2).clamp(0.0, double.infinity);
+      final maxY = ((kCanvasHeight * ps - cs.height) / 2).clamp(0.0, double.infinity);
+      setState(() {
+        _panOffset = Offset(
+          (_panStartOffset.dx + e.localPosition.dx - _panStartLocal.dx).clamp(-maxX, maxX),
+          (_panStartOffset.dy + e.localPosition.dy - _panStartLocal.dy).clamp(-maxY, maxY),
+        );
+      });
+      return;
+    }
+    if (e.kind == PointerDeviceKind.touch) {
+      if (!_touchPointers.containsKey(e.pointer)) return;
+      _touchPointers[e.pointer] = e.localPosition;
+      if (_isTwoFingerPanning) {
+        final cs = _canvasContainerSize;
+        if (cs == null) return;
+        final ps = _ctrl.effectivePixelSize(cs.width);
+        final maxX = ((kCanvasWidth * ps - cs.width) / 2).clamp(0.0, double.infinity);
+        final maxY = ((kCanvasHeight * ps - cs.height) / 2).clamp(0.0, double.infinity);
+        final centroid = _touchCentroid();
+        setState(() {
+          _panOffset = Offset(
+            (_twoFingerStartPanOffset.dx + centroid.dx - _twoFingerStartCentroid.dx).clamp(-maxX, maxX),
+            (_twoFingerStartPanOffset.dy + centroid.dy - _twoFingerStartCentroid.dy).clamp(-maxY, maxY),
+          );
+        });
+        return;
+      }
+      _ctrl.onPointerMove(_toCanvasX(e.localPosition.dx), _toCanvasY(e.localPosition.dy), e.pointer);
+      return;
+    }
+    _ctrl.onPointerMove(_toCanvasX(e.localPosition.dx), _toCanvasY(e.localPosition.dy), e.pointer);
   }
 
-  String _zoomLabel() {
-    final z = _kZooms[_zoomIdx];
-    return z == z.truncateToDouble() ? '${z.toInt()}x' : '${z}x';
+  void _onPanUp(PointerUpEvent e) {
+    if (e.kind == PointerDeviceKind.touch) {
+      _touchPointers.remove(e.pointer);
+      if (_isTwoFingerPanning) {
+        if (_touchPointers.isEmpty) {
+          _isTwoFingerPanning = false;
+        } else {
+          _twoFingerStartCentroid = _touchCentroid();
+          _twoFingerStartPanOffset = _panOffset;
+        }
+        return;
+      }
+      _ctrl.onPointerUp(_toCanvasX(e.localPosition.dx), _toCanvasY(e.localPosition.dy), e.pointer);
+      return;
+    }
+    if (e.pointer == _panPointer) {
+      _isPanning = false;
+      _panPointer = null;
+      return;
+    }
+    _ctrl.onPointerUp(_toCanvasX(e.localPosition.dx), _toCanvasY(e.localPosition.dy), e.pointer);
   }
 
-  void _zoomIn() {
-    if (_zoomIdx < _kZooms.length - 1) setState(() => _zoomIdx++);
+  void _onPanCancel(PointerCancelEvent e) {
+    _touchPointers.remove(e.pointer);
+    if (_isTwoFingerPanning && _touchPointers.isEmpty) _isTwoFingerPanning = false;
+    if (e.pointer == _panPointer) {
+      _isPanning = false;
+      _panPointer = null;
+    }
   }
 
-  void _zoomOut() {
-    if (_zoomIdx > 0) setState(() => _zoomIdx--);
+  void _onPanZoomUpdate(PointerPanZoomUpdateEvent e) {
+    final cs = _canvasContainerSize;
+    if (cs == null) return;
+    final ps = _ctrl.effectivePixelSize(cs.width);
+    final maxX = ((kCanvasWidth * ps - cs.width) / 2).clamp(0.0, double.infinity);
+    final maxY = ((kCanvasHeight * ps - cs.height) / 2).clamp(0.0, double.infinity);
+    if (maxX == 0 && maxY == 0) return;
+    setState(() {
+      _panOffset = Offset(
+        (_panOffset.dx + e.panDelta.dx).clamp(-maxX, maxX),
+        (_panOffset.dy + e.panDelta.dy).clamp(-maxY, maxY),
+      );
+    });
   }
 
-  void _zoomReset() => setState(() => _zoomIdx = 1);
+  void _zoomReset() {
+    _ctrl.zoomReset();
+    setState(() => _panOffset = Offset.zero);
+  }
 
-  // ── PNG export/import ────────────────────────────────────────────────────────
+  void _close() {
+    if (_ctrl.isClosing) return;
+    _ctrl.close();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) Navigator.of(context).pop();
+    });
+  }
 
   Future<void> _exportPng() async {
     try {
-      final png = await _frameToPng(_frames[_currentFrame]);
+      final png = await PaintCodec.frameToPng(_ctrl.frames[_ctrl.currentFrame]);
       final ts = DateTime.now().millisecondsSinceEpoch;
       final dir = await appDrawingsDirectory();
       final file = io.File(pathJoin([dir.path, 'drawing_$ts.png']));
       await file.writeAsBytes(png, flush: true);
       if (!mounted) return;
-      context.showNotification(
-        'Saved: ${file.path}',
-        type: QNotificationType.good,
-      );
+      context.showNotification('Saved: ${file.path}', type: QNotificationType.good);
     } catch (e) {
       if (!mounted) return;
-      context.showNotification(
-        'Export failed: $e',
-        type: QNotificationType.error,
-      );
+      context.showNotification('Export PNG failed: $e', type: QNotificationType.error);
     }
   }
 
   Future<void> _exportGif() async {
     try {
-      final gifFrames = _frames
-          .map((f) => Uint8List.fromList(f))
-          .toList();
-      final delays = List.filled(_frames.length, _kAnimFrameDelay);
+      final delays = List.filled(_ctrl.frames.length, kAnimFrameDelay);
       final gif = FlipperGifEncoder.encode(
-        width: _kW,
-        height: _kH,
-        frames: gifFrames,
+        width: kCanvasWidth,
+        height: kCanvasHeight,
+        frames: _ctrl.frames.map((f) => Uint8List.fromList(f)).toList(),
         delaysMs: delays,
         color0: const Color(0xFFDFDFDF).toARGB32(),
         color1: const Color(0xFF000000).toARGB32(),
-        scale: 2,
       );
       final ts = DateTime.now().millisecondsSinceEpoch;
       final dir = await appAnimationsDirectory();
       final file = io.File(pathJoin([dir.path, 'animation_$ts.gif']));
       await file.writeAsBytes(gif, flush: true);
       if (!mounted) return;
-      context.showNotification(
-        'Saved: ${file.path}',
-        type: QNotificationType.good,
-      );
+      context.showNotification('Saved: ${file.path}', type: QNotificationType.good);
     } catch (e) {
       if (!mounted) return;
-      context.showNotification(
-        'Export failed: $e',
-        type: QNotificationType.error,
-      );
+      context.showNotification('Export GIF failed: $e', type: QNotificationType.error);
     }
   }
 
   Future<void> _onExport() async {
-    if (_frames.length > 1) {
+    if (_ctrl.frames.length > 1) {
       await _exportGif();
     } else {
       await _exportPng();
     }
   }
 
-  Future<void> _onImportPng() async {
+  Future<void> _exportDolphin() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['png'],
-        withData: true,
-      );
+      final n = _ctrl.frames.length;
+      final passiveN = _ctrl.effectivePassiveCount;
+      final activeN = n - passiveN;
+      final ts = DateTime.now().millisecondsSinceEpoch;
+      final animName = 'anim_${ts}_128x64';
+      final baseDir = await appAnimationsDirectory();
+      final animDir = io.Directory(pathJoin([baseDir.path, animName]));
+      await animDir.create(recursive: true);
+
+      final framesOrder = List.generate(n, (i) => '$i').join(' ');
+      final meta = [
+        'Filetype: Flipper Animation',
+        'Version: 1',
+        '',
+        'Width: $kCanvasWidth',
+        'Height: $kCanvasHeight',
+        'Passive frames: $passiveN',
+        'Active frames: $activeN',
+        'Frames order: $framesOrder',
+        'Active cycles: ${_ctrl.activeCycles}',
+        'Frame rate: ${_ctrl.frameRate}',
+        'Duration: ${_ctrl.duration}',
+        'Active cooldown: ${_ctrl.activeCooldown}',
+        '',
+        'Bubble slots: 0',
+        '',
+      ].join('\n');
+
+      await io.File(pathJoin([animDir.path, 'meta.txt'])).writeAsString(meta);
+
+      for (int i = 0; i < n; i++) {
+        final xbm = PaintCodec.encodeXBM(_ctrl.frames[i]);
+        final bm = _ctrl.compressBm
+            ? PaintCodec.encodeBmCompressed(xbm)
+            : PaintCodec.encodeBmUncompressed(xbm);
+        await io.File(pathJoin([animDir.path, 'frame_$i.bm'])).writeAsBytes(bm);
+      }
+
+      if (!mounted) return;
+      context.showNotification('Dolphin saved: ${animDir.path}', type: QNotificationType.good);
+    } catch (e) {
+      if (!mounted) return;
+      context.showNotification('Export Dolphin failed: $e', type: QNotificationType.error);
+    }
+  }
+
+  Future<void> _showExportDialog() async {
+    if (!mounted) return;
+    final colors = context.appColors;
+    final n = _ctrl.frames.length;
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: colors.card,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: Text(
+          'Export',
+          style: TextStyle(color: colors.textPrimary, fontWeight: FontWeight.w700),
+        ),
+        contentPadding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _AlertTile(
+              icon: Icons.folder_zip_outlined,
+              title: 'Dolphin Animation',
+              subtitle: '$n frame${n == 1 ? '' : 's'} · meta.txt + .bm files',
+              colors: colors,
+              onTap: () {
+                Navigator.pop(ctx);
+                _exportDolphin();
+              },
+            ),
+            if (n > 1)
+              _AlertTile(
+                icon: Icons.gif_box_outlined,
+                title: 'GIF Animation',
+                subtitle: '$n frames',
+                colors: colors,
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _exportGif();
+                },
+              ),
+            _AlertTile(
+              icon: Icons.image_outlined,
+              title: 'PNG Image',
+              subtitle: 'Current frame only',
+              colors: colors,
+              onTap: () {
+                Navigator.pop(ctx);
+                _exportPng();
+              },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Cancel', style: TextStyle(color: colors.textSecondary)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _onImport() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(type: FileType.any, withData: true);
       if (result == null || result.files.isEmpty) return;
-      final bytes = result.files.first.bytes;
+
+      final file = result.files.first;
+      final name = file.name.toLowerCase();
+      final ext = file.extension?.toLowerCase() ?? '';
+      final bytes = file.bytes;
+      final path = file.path;
+
+      if (name == 'meta.txt') {
+        if (path != null) {
+          await _importDolphinFromPath(path);
+        } else {
+          if (!mounted) return;
+          context.showNotification('File path unavailable', type: QNotificationType.error);
+        }
+        return;
+      }
+
+      if (ext == 'bm') {
+        final data = bytes ?? (path != null ? await io.File(path).readAsBytes() : null);
+        if (data != null) await _importBmSingle(data);
+        return;
+      }
+
       if (bytes == null) return;
 
-      final codec = await ui.instantiateImageCodec(
-        bytes,
-        targetWidth: _kW,
-        targetHeight: _kH,
-      );
-      final frame = await codec.getNextFrame();
-      final img = frame.image;
-      final bd = await img.toByteData(format: ui.ImageByteFormat.rawRgba);
-      if (bd == null) return;
-      final rgba = bd.buffer.asUint8List();
-
-      _pushUndo();
-      final dst = _pixels;
-      for (int i = 0; i < _kW * _kH; i++) {
-        final r = rgba[i * 4];
-        final g = rgba[i * 4 + 1];
-        final b = rgba[i * 4 + 2];
-        // luminance threshold
-        final lum = (0.299 * r + 0.587 * g + 0.114 * b).round();
-        dst[i] = lum < 128 ? 1 : 0;
+      if (ext == 'gif') {
+        await _importGif(bytes);
+      } else if (ext == 'png') {
+        await _importPng(bytes);
+      } else {
+        if (!mounted) return;
+        context.showNotification('Unsupported file type', type: QNotificationType.error);
       }
+    } catch (e) {
+      if (!mounted) return;
+      context.showNotification('Import failed: $e', type: QNotificationType.error);
+    }
+  }
+
+  Future<void> _importPng(Uint8List bytes) async {
+    final codec = await ui.instantiateImageCodec(
+      bytes,
+      targetWidth: kCanvasWidth,
+      targetHeight: kCanvasHeight,
+    );
+    final frame = await codec.getNextFrame();
+    final img = frame.image;
+    final bd = await img.toByteData(format: ui.ImageByteFormat.rawRgba);
+    img.dispose();
+    if (bd == null) return;
+
+    final pix = Uint8List(kCanvasWidth * kCanvasHeight);
+    PaintCodec.rgbaToPixels(bd.buffer.asUint8List(), pix);
+    _ctrl.importSinglePixelFrame(pix);
+
+    if (!mounted) return;
+    context.showNotification('PNG imported', type: QNotificationType.good);
+  }
+
+  Future<void> _importGif(Uint8List bytes) async {
+    final codec = await ui.instantiateImageCodec(
+      bytes,
+      targetWidth: kCanvasWidth,
+      targetHeight: kCanvasHeight,
+    );
+    final count = codec.frameCount;
+    if (count == 0) return;
+
+    final newFrames = <Uint8List>[];
+    for (int i = 0; i < count; i++) {
+      final f = await codec.getNextFrame();
+      final img = f.image;
+      final bd = await img.toByteData(format: ui.ImageByteFormat.rawRgba);
       img.dispose();
-      _schedulePush();
-      setState(() {});
+      if (bd == null) continue;
+      final pix = Uint8List(kCanvasWidth * kCanvasHeight);
+      PaintCodec.rgbaToPixels(bd.buffer.asUint8List(), pix);
+      newFrames.add(pix);
+    }
+    if (newFrames.isEmpty) return;
+
+    _ctrl.importFramesFromPixels(newFrames);
+    if (!mounted) return;
+    context.showNotification(
+      'GIF imported: ${newFrames.length} frame(s)',
+      type: QNotificationType.good,
+    );
+  }
+
+  Future<void> _importDolphinFromPath(String path) async {
+    try {
+      final metaFile = io.File(path);
+      final animDir = metaFile.parent;
+      final metaText = await metaFile.readAsString();
+
+      final passiveFrames = PaintCodec.parseDolphinInt(metaText, 'Passive frames') ?? 0;
+      final activeFrames = PaintCodec.parseDolphinInt(metaText, 'Active frames') ?? 0;
+
+      final orderMatch =
+          RegExp(r'^Frames order: (.+)$', multiLine: true).firstMatch(metaText);
+      final orderStr = orderMatch?.group(1)?.trim() ?? '';
+
+      int maxFrameIdx = (passiveFrames + activeFrames - 1).clamp(0, 255);
+      if (orderStr.isNotEmpty) {
+        for (final s in orderStr.split(RegExp(r'\s+'))) {
+          final n = int.tryParse(s);
+          if (n != null && n > maxFrameIdx) maxFrameIdx = n;
+        }
+      }
+
+      final newFrames = <Uint8List>[];
+      for (int i = 0; i <= maxFrameIdx; i++) {
+        final bmFile = io.File(pathJoin([animDir.path, 'frame_$i.bm']));
+        if (!await bmFile.exists()) {
+          if (newFrames.isNotEmpty) break;
+          continue;
+        }
+        final bmData = await bmFile.readAsBytes();
+        final xbm = PaintCodec.decodeBmFile(bmData);
+        if (xbm == null || xbm.length < 1024) continue;
+        newFrames.add(PaintCodec.xbmToPixels(xbm));
+      }
+
+      if (newFrames.isEmpty) {
+        if (!mounted) return;
+        context.showNotification('No valid frames found', type: QNotificationType.error);
+        return;
+      }
+
+      _ctrl.importFramesFromPixels(
+        newFrames,
+        fr: PaintCodec.parseDolphinInt(metaText, 'Frame rate') ?? 2,
+        dur: PaintCodec.parseDolphinInt(metaText, 'Duration') ?? 3600,
+        ac: PaintCodec.parseDolphinInt(metaText, 'Active cycles') ?? 1,
+        acd: PaintCodec.parseDolphinInt(metaText, 'Active cooldown') ?? 7,
+        pfc: passiveFrames,
+      );
+
       if (!mounted) return;
       context.showNotification(
-        'Image imported',
+        'Dolphin: ${newFrames.length} frames imported',
         type: QNotificationType.good,
       );
     } catch (e) {
       if (!mounted) return;
-      context.showNotification(
-        'Import failed: $e',
-        type: QNotificationType.error,
-      );
+      context.showNotification('Import Dolphin failed: $e', type: QNotificationType.error);
     }
   }
 
-  // ── PNG encode helper ────────────────────────────────────────────────────────
-
-  Future<Uint8List> _frameToPng(Uint8List pixels) async {
-    final rgba = Uint8List(_kW * _kH * 4);
-    const bg = 0xFFDFDFDF; // ARGB
-    const fg = 0xFF000000;
-    for (int i = 0; i < _kW * _kH; i++) {
-      final c = pixels[i] != 0 ? fg : bg;
-      rgba[i * 4] = (c >> 16) & 0xFF; // R
-      rgba[i * 4 + 1] = (c >> 8) & 0xFF; // G
-      rgba[i * 4 + 2] = c & 0xFF; // B
-      rgba[i * 4 + 3] = (c >> 24) & 0xFF; // A
+  Future<void> _importBmSingle(Uint8List data) async {
+    final xbm = PaintCodec.decodeBmFile(data);
+    if (xbm == null || xbm.length < 1024) {
+      if (!mounted) return;
+      context.showNotification('Invalid .bm file', type: QNotificationType.error);
+      return;
     }
-    final completer = Completer<ui.Image>();
-    ui.decodeImageFromPixels(
-      rgba,
-      _kW,
-      _kH,
-      ui.PixelFormat.rgba8888,
-      completer.complete,
+    _ctrl.importSinglePixelFrame(PaintCodec.xbmToPixels(xbm));
+    if (!mounted) return;
+    context.showNotification(
+      '.bm imported as frame ${_ctrl.currentFrame + 1}',
+      type: QNotificationType.good,
     );
-    final img = await completer.future;
-    final bd = await img.toByteData(format: ui.ImageByteFormat.png);
-    img.dispose();
-    return bd!.buffer.asUint8List();
   }
-
-  // ── Close ────────────────────────────────────────────────────────────────────
-
-  Future<void> _close() async {
-    if (_closing) return;
-    _closing = true;
-    _playTimer?.cancel();
-    _pushTimer?.cancel();
-    await _stopVirtualDisplay();
-    if (mounted) Navigator.of(context).pop();
-  }
-
-  // ── Build ─────────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -698,23 +564,13 @@ class _PaintPageState extends State<PaintPage> {
           children: [
             _buildAppBar(colors, topInset),
             Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: Column(
-                  children: [
-                    _buildCanvas(colors),
-                    const SizedBox(height: 8),
-                    _buildColorAndZoomRow(colors),
-                    const SizedBox(height: 6),
-                    _buildToolRow(colors),
-                    const SizedBox(height: 6),
-                    _buildOpsRow(colors),
-                    const SizedBox(height: 8),
-                    _buildFramesSection(colors),
-                    const SizedBox(height: 8),
-                    _buildExportRow(colors),
-                  ],
-                ),
+              child: LayoutBuilder(
+                builder: (_, constraints) {
+                  final isWide = constraints.maxWidth > constraints.maxHeight;
+                  return isWide
+                      ? _buildWideLayout(colors)
+                      : _buildNarrowLayout(colors);
+                },
               ),
             ),
           ],
@@ -723,7 +579,71 @@ class _PaintPageState extends State<PaintPage> {
     );
   }
 
-  // ── AppBar ───────────────────────────────────────────────────────────────────
+  Widget _buildNarrowLayout(QAppColors colors) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Column(
+        children: [
+          const SizedBox(height: 10),
+          _buildCanvas(colors),
+          const SizedBox(height: 8),
+          _buildColorAndZoomRow(colors),
+          const SizedBox(height: 6),
+          _buildToolRow(colors),
+          const SizedBox(height: 6),
+          _buildOpsRow(colors),
+          const SizedBox(height: 8),
+          _buildFramesSection(colors),
+          const SizedBox(height: 8),
+          _buildAnimationSection(colors),
+          const SizedBox(height: 8),
+          _buildExportRow(colors),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWideLayout(QAppColors colors) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Column(
+              children: [
+                const SizedBox(height: 10),
+                _buildCanvas(colors),
+                const SizedBox(height: 8),
+                _buildColorAndZoomRow(colors),
+                const SizedBox(height: 6),
+                _buildToolRow(colors),
+                const SizedBox(height: 6),
+                _buildOpsRow(colors),
+                const SizedBox(height: 10),
+              ],
+            ),
+          ),
+        ),
+        VerticalDivider(width: 1, thickness: 1, color: colors.divider),
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Column(
+              children: [
+                const SizedBox(height: 10),
+                _buildFramesSection(colors),
+                const SizedBox(height: 8),
+                _buildAnimationSection(colors),
+                const SizedBox(height: 8),
+                _buildExportRow(colors),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 
   Widget _buildAppBar(QAppColors colors, double topInset) {
     return Container(
@@ -763,12 +683,12 @@ class _PaintPageState extends State<PaintPage> {
               ),
             ),
             IconButton(
-              onPressed: _undoStack.isEmpty ? null : _undo,
+              onPressed: _ctrl.canUndo ? _ctrl.undo : null,
               icon: Icon(Icons.undo, color: colors.onAccent),
               tooltip: 'Undo',
             ),
             IconButton(
-              onPressed: _redoStack.isEmpty ? null : _redo,
+              onPressed: _ctrl.canRedo ? _ctrl.redo : null,
               icon: Icon(Icons.redo, color: colors.onAccent),
               tooltip: 'Redo',
             ),
@@ -783,47 +703,81 @@ class _PaintPageState extends State<PaintPage> {
     );
   }
 
-  // ── Canvas ───────────────────────────────────────────────────────────────────
-
   Widget _buildCanvas(QAppColors colors) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final w = constraints.maxWidth;
-        final containerH = math.max(160.0, w / 2.2);
-        _canvasContainerSize = Size(w, containerH);
-        final ps = _effectivePixelSize(w);
+        const hPad = 14.0;
+        final containerW = constraints.maxWidth - hPad * 2;
+        final basePs = (containerW - kPassivePad * 2) / kCanvasWidth;
+        final containerH = kCanvasHeight * basePs + kPassivePad * 2;
+        _canvasContainerSize = Size(containerW, containerH);
+        final ps = _ctrl.effectivePixelSize(containerW);
+        final canvasW = kCanvasWidth * ps;
+        final canvasH = kCanvasHeight * ps;
+        final maxPanX = ((canvasW - containerW) / 2).clamp(0.0, double.infinity);
+        final maxPanY = ((canvasH - containerH) / 2).clamp(0.0, double.infinity);
+        final panX = _panOffset.dx.clamp(-maxPanX, maxPanX);
+        final panY = _panOffset.dy.clamp(-maxPanY, maxPanY);
+        final cLeft = (containerW - canvasW) / 2 + panX;
+        final cTop = (containerH - canvasH) / 2 + panY;
+        _cLeft = cLeft;
+        _cTop = cTop;
+        _pixelSize = ps;
 
-        return Container(
-          width: w,
-          height: containerH,
-          decoration: BoxDecoration(
-            color: colors.screenBackground,
-            border: Border(
-              top: BorderSide(color: colors.divider),
-              bottom: BorderSide(color: colors.divider),
-            ),
-          ),
-          clipBehavior: Clip.hardEdge,
-          child: Listener(
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: hPad),
+          child: GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onPointerDown: _onPointerDown,
-            onPointerMove: _onPointerMove,
-            onPointerUp: _onPointerUp,
-            child: Center(
-              child: SizedBox(
-                width: _kW * ps,
-                height: _kH * ps,
-                child: CustomPaint(
-                  painter: _CanvasPainter(
-                    pixels: _pixels,
-                    previewPixels: _previewPixels,
-                    previewFg: _drawFg,
-                    pixelSize: ps,
-                    showGrid: _showGrid && ps >= 3.0,
-                    fgColor: colors.screenBorder,
-                    bgColor: colors.screenBackground,
-                    previewColor: colors.accent,
+            // Claim scale/pan gestures so parent ScrollView never wins the arena.
+            onScaleStart: (_) {},
+            onScaleUpdate: (_) {},
+            onScaleEnd: (_) {},
+            child: Listener(
+              behavior: HitTestBehavior.opaque,
+              onPointerDown: _onPanDown,
+              onPointerMove: _onPanMove,
+              onPointerUp: _onPanUp,
+              onPointerCancel: _onPanCancel,
+              onPointerPanZoomUpdate: _onPanZoomUpdate,
+              onPointerSignal: _onScrollPan,
+              child: Container(
+                width: containerW,
+                height: containerH,
+                decoration: BoxDecoration(
+                  color: colors.screenBackground,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: colors.screenBorder.withAlpha(30),
+                    width: 1.5,
                   ),
+                ),
+                clipBehavior: Clip.hardEdge,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Positioned(
+                      left: cLeft,
+                      top: cTop,
+                      width: canvasW,
+                      height: canvasH,
+                      child: CustomPaint(
+                        painter: CanvasPainter(
+                          pixels: _ctrl.currentPixels,
+                          previewPixels: _ctrl.previewPixels,
+                          previewFg: _ctrl.drawFg,
+                          pixelSize: ps,
+                          showGrid: _ctrl.showGrid && ps >= 3.0,
+                          fgColor: colors.screenBorder,
+                          bgColor: colors.screenBackground,
+                          previewColor: colors.accent,
+                          version: _ctrl.pixelVersion,
+                          onionPixels: _ctrl.showOnionSkin && _ctrl.currentFrame > 0
+                              ? _ctrl.frames[_ctrl.currentFrame - 1]
+                              : null,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -833,46 +787,39 @@ class _PaintPageState extends State<PaintPage> {
     );
   }
 
-  // ── Color + zoom row ─────────────────────────────────────────────────────────
-
   Widget _buildColorAndZoomRow(QAppColors colors) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14),
       child: Row(
         children: [
-          // Foreground swatch
           _ColorSwatch(
             color: colors.screenBorder,
-            selected: _drawFg,
-            onTap: () => setState(() => _drawFg = true),
+            selected: _ctrl.drawFg,
+            onTap: () => _ctrl.setDrawFg(true),
           ),
           const SizedBox(width: 6),
-          // Background swatch
           _ColorSwatch(
             color: colors.screenBackground,
-            selected: !_drawFg,
-            onTap: () => setState(() => _drawFg = false),
+            selected: !_ctrl.drawFg,
+            onTap: () => _ctrl.setDrawFg(false),
           ),
           const Spacer(),
-          // Grid toggle
           _IconToolButton(
             icon: Icons.grid_on,
-            active: _showGrid,
+            active: _ctrl.showGrid,
             colors: colors,
-            onTap: () => setState(() => _showGrid = !_showGrid),
+            onTap: () => _ctrl.setShowGrid(!_ctrl.showGrid),
             tooltip: 'Toggle grid',
           ),
           const SizedBox(width: 4),
-          // Zoom out
           _IconToolButton(
             icon: Icons.zoom_out,
             active: false,
             colors: colors,
-            onTap: _zoomOut,
+            onTap: _ctrl.zoomOut,
             tooltip: 'Zoom out',
           ),
           const SizedBox(width: 4),
-          // Zoom label / reset
           GestureDetector(
             onTap: _zoomReset,
             child: Container(
@@ -882,7 +829,7 @@ class _PaintPageState extends State<PaintPage> {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
-                _zoomLabel(),
+                _ctrl.zoomLabel,
                 style: TextStyle(
                   color: colors.textPrimary,
                   fontSize: 12,
@@ -892,12 +839,11 @@ class _PaintPageState extends State<PaintPage> {
             ),
           ),
           const SizedBox(width: 4),
-          // Zoom in
           _IconToolButton(
             icon: Icons.zoom_in,
             active: false,
             colors: colors,
-            onTap: _zoomIn,
+            onTap: _ctrl.zoomIn,
             tooltip: 'Zoom in',
           ),
         ],
@@ -905,79 +851,45 @@ class _PaintPageState extends State<PaintPage> {
     );
   }
 
-  // ── Tool row ─────────────────────────────────────────────────────────────────
-
   Widget _buildToolRow(QAppColors colors) {
+    final drawTools = [
+      (DrawTool.pencil, Icons.edit_outlined, 'Pencil', null as Matrix4?),
+      (DrawTool.fill, Icons.format_color_fill, 'Fill', null),
+      (DrawTool.line, Icons.remove, 'Line', Matrix4.rotationZ(-math.pi / 4)),
+      (DrawTool.rect, Icons.crop_square, 'Rectangle', null),
+      (DrawTool.ellipse, Icons.radio_button_unchecked, 'Ellipse', null),
+    ];
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14),
       child: Row(
         children: [
-          Expanded(
-            child: _ToolButton(
-              icon: Icons.edit_outlined,
-              active: _tool == _Tool.pencil,
-              colors: colors,
-              onTap: () => setState(() => _tool = _Tool.pencil),
-              tooltip: 'Pencil',
+          for (int i = 0; i < drawTools.length; i++) ...[
+            if (i > 0) const SizedBox(width: 6),
+            Expanded(
+              child: _ToolButton(
+                icon: drawTools[i].$2,
+                active: _ctrl.tool == drawTools[i].$1,
+                colors: colors,
+                onTap: () => _ctrl.setTool(drawTools[i].$1),
+                iconTransform: drawTools[i].$4,
+                tooltip: drawTools[i].$3,
+              ),
             ),
-          ),
+          ],
           const SizedBox(width: 6),
           Expanded(
             child: _ToolButton(
-              icon: Icons.auto_fix_normal,
-              active: _tool == _Tool.eraser,
+              icon: Icons.layers_outlined,
+              active: _ctrl.showOnionSkin,
               colors: colors,
-              onTap: () => setState(() => _tool = _Tool.eraser),
-              tooltip: 'Eraser',
-            ),
-          ),
-          const SizedBox(width: 6),
-          Expanded(
-            child: _ToolButton(
-              icon: Icons.format_color_fill,
-              active: _tool == _Tool.fill,
-              colors: colors,
-              onTap: () => setState(() => _tool = _Tool.fill),
-              tooltip: 'Fill',
-            ),
-          ),
-          const SizedBox(width: 6),
-          Expanded(
-            child: _ToolButton(
-              icon: Icons.remove,
-              iconTransform: Matrix4.rotationZ(-math.pi / 4),
-              active: _tool == _Tool.line,
-              colors: colors,
-              onTap: () => setState(() => _tool = _Tool.line),
-              tooltip: 'Line',
-            ),
-          ),
-          const SizedBox(width: 6),
-          Expanded(
-            child: _ToolButton(
-              icon: Icons.crop_square,
-              active: _tool == _Tool.rect,
-              colors: colors,
-              onTap: () => setState(() => _tool = _Tool.rect),
-              tooltip: 'Rectangle',
-            ),
-          ),
-          const SizedBox(width: 6),
-          Expanded(
-            child: _ToolButton(
-              icon: Icons.radio_button_unchecked,
-              active: _tool == _Tool.ellipse,
-              colors: colors,
-              onTap: () => setState(() => _tool = _Tool.ellipse),
-              tooltip: 'Ellipse',
+              onTap: () => _ctrl.setShowOnionSkin(!_ctrl.showOnionSkin),
+              tooltip: 'Onion skin',
             ),
           ),
         ],
       ),
     );
   }
-
-  // ── Operations row ───────────────────────────────────────────────────────────
 
   Widget _buildOpsRow(QAppColors colors) {
     return Padding(
@@ -987,9 +899,8 @@ class _PaintPageState extends State<PaintPage> {
           Expanded(
             child: _OpsButton(
               icon: Icons.flip,
-              label: '',
               colors: colors,
-              onTap: _flipH,
+              onTap: _ctrl.flipH,
               tooltip: 'Flip horizontal',
             ),
           ),
@@ -998,9 +909,8 @@ class _PaintPageState extends State<PaintPage> {
             child: _OpsButton(
               icon: Icons.flip,
               iconTransform: Matrix4.rotationZ(math.pi / 2),
-              label: '',
               colors: colors,
-              onTap: _flipV,
+              onTap: _ctrl.flipV,
               tooltip: 'Flip vertical',
             ),
           ),
@@ -1008,9 +918,8 @@ class _PaintPageState extends State<PaintPage> {
           Expanded(
             child: _OpsButton(
               icon: Icons.contrast,
-              label: '',
               colors: colors,
-              onTap: _invert,
+              onTap: _ctrl.invert,
               tooltip: 'Invert',
             ),
           ),
@@ -1018,9 +927,8 @@ class _PaintPageState extends State<PaintPage> {
           Expanded(
             child: _OpsButton(
               icon: Icons.delete_outline,
-              label: '',
               colors: colors,
-              onTap: _clearFrame,
+              onTap: _ctrl.clearFrame,
               tooltip: 'Clear',
             ),
           ),
@@ -1028,8 +936,6 @@ class _PaintPageState extends State<PaintPage> {
       ),
     );
   }
-
-  // ── Frames section ────────────────────────────────────────────────────────────
 
   Widget _buildFramesSection(QAppColors colors) {
     return Padding(
@@ -1042,13 +948,12 @@ class _PaintPageState extends State<PaintPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Header
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 10, 10, 6),
               child: Row(
                 children: [
                   Text(
-                    'FRAMES · ${_frames.length}',
+                    'FRAMES · ${_ctrl.frames.length}',
                     style: TextStyle(
                       color: colors.textMuted,
                       fontSize: 12,
@@ -1057,100 +962,73 @@ class _PaintPageState extends State<PaintPage> {
                     ),
                   ),
                   const Spacer(),
-                  // Play button
                   TextButton.icon(
-                    onPressed: _frames.length > 1 ? _togglePlay : null,
+                    onPressed: _ctrl.frames.length > 1 ? _ctrl.togglePlay : null,
                     icon: Icon(
-                      _isPlaying ? Icons.stop : Icons.play_arrow,
+                      _ctrl.isPlaying ? Icons.stop : Icons.play_arrow,
                       size: 16,
-                      color: _frames.length > 1
-                          ? colors.accent
-                          : colors.textMuted,
+                      color: _ctrl.frames.length > 1 ? colors.accent : colors.textMuted,
                     ),
                     label: Text(
-                      _isPlaying ? 'Stop' : 'Play',
+                      _ctrl.isPlaying ? 'Stop' : 'Play',
                       style: TextStyle(
-                        color: _frames.length > 1
-                            ? colors.accent
-                            : colors.textMuted,
+                        color: _ctrl.frames.length > 1 ? colors.accent : colors.textMuted,
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                     style: TextButton.styleFrom(
                       minimumSize: Size.zero,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
                   ),
                 ],
               ),
             ),
-            // Thumbnails
             SizedBox(
-              height: 56,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.fromLTRB(14, 0, 14, 4),
-                itemCount: _frames.length + 1,
-                separatorBuilder: (context, index) => const SizedBox(width: 8),
-                itemBuilder: (context, i) {
-                  if (i == _frames.length) {
-                    // Add frame button
-                    return GestureDetector(
-                      onTap: _addFrame,
+              height: 60,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: ReorderableListView(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.fromLTRB(14, 0, 8, 6),
+                      buildDefaultDragHandles: false,
+                      onReorderItem: _ctrl.reorderFrame,
+                      children: [
+                        for (int i = 0; i < _ctrl.frames.length; i++)
+                          ReorderableDragStartListener(
+                            key: ValueKey(i),
+                            index: i,
+                            child: Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: _buildFrameThumbnail(i, colors),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(0, 0, 14, 6),
+                    child: GestureDetector(
+                      onTap: _ctrl.addFrame,
                       child: Container(
-                        width: 50,
-                        height: 50,
+                        width: 40,
+                        height: 54,
                         decoration: BoxDecoration(
                           color: colors.background,
                           borderRadius: BorderRadius.circular(6),
-                          border: Border.all(
-                            color: colors.divider,
-                            width: 1.5,
-                          ),
+                          border: Border.all(color: colors.divider, width: 1.5),
                         ),
-                        child: Icon(
-                          Icons.add,
-                          color: colors.textMuted,
-                          size: 20,
-                        ),
-                      ),
-                    );
-                  }
-                  final selected = i == _currentFrame;
-                  return GestureDetector(
-                    onTap: () => _selectFrame(i),
-                    child: Container(
-                      width: 50,
-                      height: 50,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(
-                          color: selected ? colors.accent : colors.divider,
-                          width: selected ? 2.0 : 1.0,
-                        ),
-                      ),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(5),
-                        child: CustomPaint(
-                          painter: _ThumbnailPainter(
-                            pixels: _frames[i],
-                            fgColor: colors.screenBorder,
-                            bgColor: colors.screenBackground,
-                          ),
-                        ),
+                        child: Icon(Icons.add, color: colors.textMuted, size: 20),
                       ),
                     ),
-                  );
-                },
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 6),
-            // Duplicate / Delete
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
               child: Row(
@@ -1160,16 +1038,30 @@ class _PaintPageState extends State<PaintPage> {
                       icon: Icons.copy_outlined,
                       label: 'Duplicate',
                       colors: colors,
-                      onTap: _duplicateFrame,
+                      onTap: _ctrl.duplicateFrame,
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: _FrameActionButton(
                       icon: Icons.delete_outline,
                       label: 'Delete',
                       colors: colors,
-                      onTap: _deleteFrame,
+                      onTap: _ctrl.deleteFrame,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Opacity(
+                    opacity: (_ctrl.effectivePassiveCount < _ctrl.frames.length) ? 1.0 : 0.38,
+                    child: IgnorePointer(
+                      ignoring: _ctrl.effectivePassiveCount >= _ctrl.frames.length,
+                      child: _FrameActionButton(
+                        icon: Icons.touch_app_outlined,
+                        label: '',
+                        colors: colors,
+                        onTap: _ctrl.triggerActive,
+                        accent: true,
+                      ),
                     ),
                   ),
                 ],
@@ -1181,7 +1073,259 @@ class _PaintPageState extends State<PaintPage> {
     );
   }
 
-  // ── Export / Import row ──────────────────────────────────────────────────────
+  Widget _buildFrameThumbnail(int i, QAppColors colors) {
+    final selected = i == _ctrl.currentFrame;
+    final isActive = i >= _ctrl.effectivePassiveCount;
+    final borderColor = selected
+        ? colors.accent
+        : isActive
+            ? colors.accent.withAlpha(80)
+            : colors.divider;
+    return GestureDetector(
+      onTap: () => _ctrl.selectFrame(i),
+      child: Stack(
+        children: [
+          Container(
+            width: 96,
+            height: 54,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: borderColor, width: selected ? 2.0 : 1.0),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(5),
+              child: CustomPaint(
+                painter: ThumbnailPainter(
+                  pixels: _ctrl.frames[i],
+                  fgColor: colors.screenBorder,
+                  bgColor: colors.screenBackground,
+                  version: _ctrl.pixelVersion,
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            top: 3,
+            right: 4,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+              decoration: BoxDecoration(
+                color: isActive
+                    ? colors.accent.withAlpha(200)
+                    : colors.screenBackground.withAlpha(200),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                isActive ? 'A' : 'P',
+                style: TextStyle(
+                  color: isActive ? colors.onAccent : colors.textMuted,
+                  fontSize: 9,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAnimationSection(QAppColors colors) {
+    final n = _ctrl.frames.length;
+    final passiveN = _ctrl.effectivePassiveCount;
+    final activeN = n - passiveN;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      child: Container(
+        decoration: BoxDecoration(
+          color: colors.card,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(
+                  'ANIMATION',
+                  style: TextStyle(
+                    color: colors.textMuted,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.6,
+                  ),
+                ),
+                const Spacer(),
+                GestureDetector(
+                  onTap: () => _ctrl.setCompressBm(!_ctrl.compressBm),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: _ctrl.compressBm
+                          ? colors.accent.withAlpha(30)
+                          : colors.background,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: _ctrl.compressBm ? colors.accent : colors.divider,
+                      ),
+                    ),
+                    child: Text(
+                      _ctrl.compressBm ? 'Compress ✓' : 'Compress',
+                      style: TextStyle(
+                        color: _ctrl.compressBm ? colors.accent : colors.textMuted,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Frame rate',
+              style: TextStyle(color: colors.textSecondary, fontSize: 12),
+            ),
+            Row(
+              children: [
+                Expanded(
+                  child: SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      activeTrackColor: colors.accent,
+                      thumbColor: colors.accent,
+                      inactiveTrackColor: colors.divider,
+                      overlayColor: colors.accent.withAlpha(30),
+                      trackHeight: 3,
+                    ),
+                    child: Slider(
+                      value: _ctrl.frameRate.toDouble().clamp(1, 30),
+                      min: 1,
+                      max: 30,
+                      divisions: 29,
+                      onChanged: (v) => _ctrl.setFrameRate(v.round()),
+                    ),
+                  ),
+                ),
+                Text(
+                  '${_ctrl.frameRate} fps',
+                  style: TextStyle(
+                    color: colors.textPrimary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(width: 4),
+              ],
+            ),
+            Row(
+              children: [
+                Text(
+                  'Passive  $passiveN',
+                  style: TextStyle(color: colors.textSecondary, fontSize: 12),
+                ),
+                const Spacer(),
+                Text(
+                  'Active  $activeN',
+                  style: TextStyle(color: colors.textMuted, fontSize: 12),
+                ),
+              ],
+            ),
+            SliderTheme(
+              data: SliderTheme.of(context).copyWith(
+                activeTrackColor: colors.accent,
+                thumbColor: colors.accent,
+                inactiveTrackColor: colors.divider.withAlpha(180),
+                overlayColor: colors.accent.withAlpha(30),
+                trackHeight: 3,
+              ),
+              child: Slider(
+                value: passiveN.toDouble().clamp(0, math.max(n, 1).toDouble()),
+                min: 0,
+                max: math.max(n, 1).toDouble(),
+                divisions: math.max(n, 1),
+                onChanged: n > 1 ? (v) => _ctrl.setPassiveFrameCount(v.round()) : null,
+              ),
+            ),
+            const SizedBox(height: 4),
+            _AnimRow(
+              label: 'Duration',
+              unit: 's',
+              colors: colors,
+              trailing: _Stepper(
+                value: _ctrl.duration,
+                min: 1,
+                max: 99999,
+                colors: colors,
+                onChange: _ctrl.setDuration,
+              ),
+            ),
+            Opacity(
+              opacity: activeN > 0 ? 1.0 : 0.38,
+              child: IgnorePointer(
+                ignoring: activeN == 0,
+                child: Column(
+                  children: [
+                    _AnimRow(
+                      label: 'Active cycles',
+                      colors: colors,
+                      trailing: _Stepper(
+                        value: _ctrl.activeCycles,
+                        min: 1,
+                        max: 99,
+                        colors: colors,
+                        onChange: _ctrl.setActiveCycles,
+                      ),
+                    ),
+                    _AnimRow(
+                      label: 'Active cooldown',
+                      unit: 's',
+                      colors: colors,
+                      trailing: _Stepper(
+                        value: _ctrl.activeCooldown,
+                        min: 0,
+                        max: 3600,
+                        colors: colors,
+                        onChange: _ctrl.setActiveCooldown,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    GestureDetector(
+                      onTap: _ctrl.triggerActive,
+                      child: Container(
+                        height: 34,
+                        decoration: BoxDecoration(
+                          color: colors.accent.withAlpha(20),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: colors.accent.withAlpha(80)),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.touch_app_outlined, size: 15, color: colors.accent),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Trigger Active',
+                              style: TextStyle(
+                                color: colors.accent,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _buildExportRow(QAppColors colors) {
     return Padding(
@@ -1191,18 +1335,18 @@ class _PaintPageState extends State<PaintPage> {
           Expanded(
             child: _ExportButton(
               icon: Icons.upload_outlined,
-              label: 'Export PNG',
+              label: 'Export',
               colors: colors,
-              onTap: _frames.length > 1 ? _exportGif : _exportPng,
+              onTap: _showExportDialog,
             ),
           ),
           const SizedBox(width: 10),
           Expanded(
             child: _ExportButton(
               icon: Icons.download_outlined,
-              label: 'Import PNG',
+              label: 'Import',
               colors: colors,
-              onTap: _onImportPng,
+              onTap: _onImport,
             ),
           ),
         ],
@@ -1210,235 +1354,6 @@ class _PaintPageState extends State<PaintPage> {
     );
   }
 }
-
-// ── Pixel geometry helpers ────────────────────────────────────────────────────
-
-List<(int, int)> _bresenham(int x0, int y0, int x1, int y1) {
-  final pts = <(int, int)>[];
-  int dx = (x1 - x0).abs();
-  int dy = -(y1 - y0).abs();
-  int sx = x0 < x1 ? 1 : -1;
-  int sy = y0 < y1 ? 1 : -1;
-  int err = dx + dy;
-  while (true) {
-    pts.add((x0, y0));
-    if (x0 == x1 && y0 == y1) break;
-    final e2 = 2 * err;
-    if (e2 >= dy) {
-      err += dy;
-      x0 += sx;
-    }
-    if (e2 <= dx) {
-      err += dx;
-      y0 += sy;
-    }
-  }
-  return pts;
-}
-
-List<(int, int)> _rectOutline(int x0, int y0, int x1, int y1) {
-  final minX = math.min(x0, x1);
-  final maxX = math.max(x0, x1);
-  final minY = math.min(y0, y1);
-  final maxY = math.max(y0, y1);
-  final pts = <(int, int)>[];
-  for (int x = minX; x <= maxX; x++) {
-    pts.add((x, minY));
-    if (minY != maxY) pts.add((x, maxY));
-  }
-  for (int y = minY + 1; y < maxY; y++) {
-    pts.add((minX, y));
-    if (minX != maxX) pts.add((maxX, y));
-  }
-  return pts;
-}
-
-List<(int, int)> _ellipsePoints(int cx, int cy, int rx, int ry) {
-  final pts = <(int, int)>{};
-  if (rx == 0 && ry == 0) {
-    pts.add((cx, cy));
-    return pts.toList();
-  }
-  int x = 0;
-  int y = ry;
-  int rx2 = rx * rx;
-  int ry2 = ry * ry;
-  int p = ry2 - rx2 * ry + (rx2 ~/ 4);
-
-  void add4(int x, int y) {
-    pts.add((cx + x, cy + y));
-    pts.add((cx - x, cy + y));
-    pts.add((cx + x, cy - y));
-    pts.add((cx - x, cy - y));
-  }
-
-  while (2 * ry2 * x <= 2 * rx2 * y) {
-    add4(x, y);
-    x++;
-    if (p < 0) {
-      p += 2 * ry2 * x + ry2;
-    } else {
-      y--;
-      p += 2 * ry2 * x - 2 * rx2 * y + ry2;
-    }
-  }
-  p = ry2 * (x + 1) * (x + 1) ~/ 1 +
-      rx2 * (y - 1) * (y - 1) -
-      rx2 * ry2 +
-      ry2 * (2 * x + 3) ~/ 2 -
-      rx2 * 2 * y;
-  while (y >= 0) {
-    add4(x, y);
-    y--;
-    if (p > 0) {
-      p += rx2 - 2 * rx2 * y;
-    } else {
-      x++;
-      p += 2 * ry2 * x - 2 * rx2 * y + rx2;
-    }
-  }
-  return pts.toList();
-}
-
-// ── CustomPainters ────────────────────────────────────────────────────────────
-
-class _CanvasPainter extends CustomPainter {
-  const _CanvasPainter({
-    required this.pixels,
-    required this.pixelSize,
-    required this.fgColor,
-    required this.bgColor,
-    required this.previewColor,
-    this.previewPixels,
-    this.previewFg = true,
-    this.showGrid = false,
-  });
-
-  final Uint8List pixels;
-  final double pixelSize;
-  final Color fgColor;
-  final Color bgColor;
-  final Color previewColor;
-  final List<int>? previewPixels;
-  final bool previewFg;
-  final bool showGrid;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    // Background
-    canvas.drawRect(
-      Offset.zero & size,
-      Paint()..color = bgColor,
-    );
-
-    // Foreground pixels
-    final fgPaint = Paint()..color = fgColor;
-    final Set<int> previewSet = previewPixels != null
-        ? Set.from(previewPixels!)
-        : const {};
-
-    for (int y = 0; y < _kH; y++) {
-      for (int x = 0; x < _kW; x++) {
-        final idx = y * _kW + x;
-        bool draw;
-        if (previewSet.contains(idx)) {
-          draw = previewFg;
-        } else {
-          draw = pixels[idx] != 0;
-        }
-        if (draw) {
-          canvas.drawRect(
-            Rect.fromLTWH(x * pixelSize, y * pixelSize, pixelSize, pixelSize),
-            fgPaint,
-          );
-        }
-      }
-    }
-
-    // Preview pixels with accent color
-    if (previewPixels != null && previewPixels!.isNotEmpty) {
-      final previewPaint = Paint()
-        ..color = previewColor.withAlpha(180);
-      for (final idx in previewPixels!) {
-        final px = idx % _kW;
-        final py = idx ~/ _kW;
-        canvas.drawRect(
-          Rect.fromLTWH(
-            px * pixelSize,
-            py * pixelSize,
-            pixelSize,
-            pixelSize,
-          ),
-          previewPaint,
-        );
-      }
-    }
-
-    // Grid
-    if (showGrid) {
-      final gridPaint = Paint()
-        ..color = Colors.black.withAlpha(30)
-        ..strokeWidth = 0.5;
-      for (int x = 0; x <= _kW; x++) {
-        canvas.drawLine(
-          Offset(x * pixelSize, 0),
-          Offset(x * pixelSize, _kH * pixelSize),
-          gridPaint,
-        );
-      }
-      for (int y = 0; y <= _kH; y++) {
-        canvas.drawLine(
-          Offset(0, y * pixelSize),
-          Offset(_kW * pixelSize, y * pixelSize),
-          gridPaint,
-        );
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(_CanvasPainter old) =>
-      old.pixels != pixels ||
-      old.previewPixels != previewPixels ||
-      old.pixelSize != pixelSize ||
-      old.showGrid != showGrid;
-}
-
-class _ThumbnailPainter extends CustomPainter {
-  const _ThumbnailPainter({
-    required this.pixels,
-    required this.fgColor,
-    required this.bgColor,
-  });
-
-  final Uint8List pixels;
-  final Color fgColor;
-  final Color bgColor;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas.drawRect(Offset.zero & size, Paint()..color = bgColor);
-    final pw = size.width / _kW;
-    final ph = size.height / _kH;
-    final fgPaint = Paint()..color = fgColor;
-    for (int y = 0; y < _kH; y++) {
-      for (int x = 0; x < _kW; x++) {
-        if (pixels[y * _kW + x] != 0) {
-          canvas.drawRect(
-            Rect.fromLTWH(x * pw, y * ph, pw, ph),
-            fgPaint,
-          );
-        }
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(_ThumbnailPainter old) =>
-      old.pixels != old.pixels || old.fgColor != fgColor;
-}
-
-// ── Reusable UI widgets ───────────────────────────────────────────────────────
 
 class _ColorSwatch extends StatelessWidget {
   const _ColorSwatch({
@@ -1566,7 +1481,6 @@ class _ToolButton extends StatelessWidget {
 class _OpsButton extends StatelessWidget {
   const _OpsButton({
     required this.icon,
-    required this.label,
     required this.colors,
     required this.onTap,
     this.iconTransform,
@@ -1574,7 +1488,6 @@ class _OpsButton extends StatelessWidget {
   });
 
   final IconData icon;
-  final String label;
   final QAppColors colors;
   final VoidCallback onTap;
   final Matrix4? iconTransform;
@@ -1597,17 +1510,9 @@ class _OpsButton extends StatelessWidget {
                 ? Transform(
                     transform: iconTransform!,
                     alignment: Alignment.center,
-                    child: Icon(
-                      icon,
-                      size: 20,
-                      color: colors.textSecondary,
-                    ),
+                    child: Icon(icon, size: 20, color: colors.textSecondary),
                   )
-                : Icon(
-                    icon,
-                    size: 20,
-                    color: colors.textSecondary,
-                  ),
+                : Icon(icon, size: 20, color: colors.textSecondary),
           ),
         ),
       ),
@@ -1621,37 +1526,43 @@ class _FrameActionButton extends StatelessWidget {
     required this.label,
     required this.colors,
     required this.onTap,
+    this.accent = false,
   });
 
   final IconData icon;
   final String label;
   final QAppColors colors;
   final VoidCallback onTap;
+  final bool accent;
 
   @override
   Widget build(BuildContext context) {
+    final fg = accent ? colors.accent : colors.textSecondary;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         height: 40,
+        width: label.isEmpty ? 40 : null,
         decoration: BoxDecoration(
-          color: colors.background,
+          color: accent ? colors.accent.withAlpha(20) : colors.background,
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: colors.divider),
+          border: Border.all(color: accent ? colors.accent.withAlpha(80) : colors.divider),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 16, color: colors.textSecondary),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                color: colors.textSecondary,
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
+            Icon(icon, size: 16, color: fg),
+            if (label.isNotEmpty) ...[
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  color: fg,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
-            ),
+            ],
           ],
         ),
       ),
@@ -1698,6 +1609,191 @@ class _ExportButton extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _AlertTile extends StatelessWidget {
+  const _AlertTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.colors,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final QAppColors colors;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: colors.background,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, size: 18, color: colors.accent),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: colors.textPrimary,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  Text(
+                    subtitle,
+                    style: TextStyle(color: colors.textMuted, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, size: 18, color: colors.textMuted),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StepButton extends StatelessWidget {
+  const _StepButton({
+    required this.icon,
+    required this.enabled,
+    required this.colors,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final bool enabled;
+  final QAppColors colors;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: enabled ? onTap : null,
+      child: Container(
+        width: 28,
+        height: 28,
+        decoration: BoxDecoration(
+          color: enabled ? colors.background : colors.background.withAlpha(80),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: colors.divider),
+        ),
+        child: Icon(
+          icon,
+          size: 14,
+          color: enabled ? colors.textPrimary : colors.textMuted,
+        ),
+      ),
+    );
+  }
+}
+
+class _Stepper extends StatelessWidget {
+  const _Stepper({
+    required this.value,
+    required this.min,
+    required this.max,
+    required this.colors,
+    required this.onChange,
+  });
+
+  final int value;
+  final int min;
+  final int max;
+  final QAppColors colors;
+  final ValueChanged<int> onChange;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _StepButton(
+          icon: Icons.remove,
+          enabled: value > min,
+          colors: colors,
+          onTap: () => onChange((value - 1).clamp(min, max)),
+        ),
+        Container(
+          width: 44,
+          alignment: Alignment.center,
+          child: Text(
+            '$value',
+            style: TextStyle(
+              color: colors.textPrimary,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        _StepButton(
+          icon: Icons.add,
+          enabled: value < max,
+          colors: colors,
+          onTap: () => onChange((value + 1).clamp(min, max)),
+        ),
+      ],
+    );
+  }
+}
+
+class _AnimRow extends StatelessWidget {
+  const _AnimRow({
+    required this.label,
+    required this.colors,
+    required this.trailing,
+    this.unit,
+  });
+
+  final String label;
+  final String? unit;
+  final QAppColors colors;
+  final Widget trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(color: colors.textSecondary, fontSize: 13),
+            ),
+          ),
+          if (unit != null)
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: Text(
+                unit!,
+                style: TextStyle(color: colors.textMuted, fontSize: 12),
+              ),
+            ),
+          trailing,
+        ],
       ),
     );
   }

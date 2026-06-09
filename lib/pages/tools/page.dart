@@ -76,7 +76,7 @@ class ToolsPage extends StatelessWidget {
       ),
     ),
     ToolCardModel(
-      iconAsset: 'assets/flipper_svg/archive/ic_fileformat_sub.svg',
+      iconAsset: 'assets/flipper_svg/tools/ic_paint.svg',
       iconColor: const Color(0xFFE85858),
       title: 'Pixel Draw',
       compact: true,
@@ -84,6 +84,7 @@ class ToolsPage extends StatelessWidget {
         title: 'Pixel Draw',
         description: 'Draw on the Flipper Zero display in real time',
         routeBuilder: _buildPaintPage,
+        badge: 'Beta',
       ),
     ),
     ToolCardModel(
