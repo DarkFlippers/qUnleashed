@@ -50,3 +50,7 @@ qUnleashed keeps the familiar companion-app workflows from the original Flipper 
   <img src="screenshots/19_tools_irlib.png" alt="Infrared library screen" width="24%">
   <img src="screenshots/20_tools_irdb.png" alt="IRDB browser screen" width="24%">
 </p>
+<p align="center">
+  <img src="screenshots/21_tools_draw.png" alt="IRDB browser screen" width="24%">
+  <img src="screenshots/22_tools_draw.png" alt="IRDB browser screen" width="24%">
+</p>
