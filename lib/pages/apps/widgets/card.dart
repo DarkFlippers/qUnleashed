@@ -1,5 +1,4 @@
 ﻿import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme.dart';
 import '../models/card.dart';
@@ -188,13 +187,11 @@ class _CategoryInline extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         if (cat.iconUri != null && cat.iconUri!.isNotEmpty) ...[
-          SizedBox(
+          SafeNetworkSvg(
+            url: cat.iconUri!,
             width: 12,
             height: 12,
-            child: SvgPicture.network(
-              cat.iconUri!,
-              colorFilter: ColorFilter.mode(colors.textSecondary, BlendMode.srcIn),
-            ),
+            colorFilter: ColorFilter.mode(colors.textSecondary, BlendMode.srcIn),
           ),
           const SizedBox(width: 4),
         ],

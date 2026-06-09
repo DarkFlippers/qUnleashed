@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:flutter_html_table/flutter_html_table.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:markdown/markdown.dart' as md;
 
+import '../../../pages/apps/widgets/flipper_image.dart';
 import '../../../widgets/open_url.dart';
 
 String buildChangelogHtml(String data) {
@@ -225,12 +225,12 @@ class _ChangelogImage extends StatelessWidget {
     final h = height ?? width ?? 16;
 
     final Widget picture = _isSvg
-        ? SvgPicture.network(
-            src,
+        ? SafeNetworkSvg(
+            url: src,
             width: w,
             height: h,
             fit: BoxFit.contain,
-            placeholderBuilder: (_) => SizedBox(width: w, height: h),
+            placeholder: SizedBox(width: w, height: h),
             semanticsLabel: alt,
           )
         : Image.network(

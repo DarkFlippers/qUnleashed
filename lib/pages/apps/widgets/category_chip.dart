@@ -1,8 +1,8 @@
 ﻿import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme.dart';
 import '../models/category.dart';
+import 'flipper_image.dart';
 
 Color parseHexColor(String hex, {Color fallback = const Color(0xFFEBEBEB)}) {
   var s = hex.trim();
@@ -47,13 +47,11 @@ class CategoryChip extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               if (category.iconUri != null && category.iconUri!.isNotEmpty) ...[
-                SizedBox(
+                SafeNetworkSvg(
+                  url: category.iconUri!,
                   width: 14,
                   height: 14,
-                  child: SvgPicture.network(
-                    category.iconUri!,
-                    colorFilter: ColorFilter.mode(textColor, BlendMode.srcIn),
-                  ),
+                  colorFilter: ColorFilter.mode(textColor, BlendMode.srcIn),
                 ),
                 const SizedBox(width: 6),
               ],
