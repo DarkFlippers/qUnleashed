@@ -2,8 +2,8 @@ import 'dart:io' as io;
 
 import 'package:flutter/material.dart';
 import '../../theme.dart';
-import '../file_manager/page.dart';
-import '../file_manager/widgets/storage_card.dart';
+import '../сommander/page.dart';
+import '../сommander/widgets/storage_card.dart';
 import 'category/category_page.dart';
 import 'category/deleted_page.dart';
 import 'controller.dart';

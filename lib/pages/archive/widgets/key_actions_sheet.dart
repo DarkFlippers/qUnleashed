@@ -10,9 +10,9 @@ import '../../tools/map/models/pin.dart';
 import '../../tools/map/page.dart';
 import '../controller.dart';
 import '../emulate/page.dart';
-import '../../file_manager/controller.dart';
-import '../../file_manager/page.dart';
-import '../../file_manager/share_remote_file.dart';
+import '../../сommander/controller.dart';
+import '../../сommander/page.dart';
+import '../../сommander/share_remote_file.dart';
 import '../models/key.dart';
 import 'actions_sheet.dart';
 
