@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../theme.dart';
 import '../../widgets/flipper_action_dialog.dart';
 import '../about/page.dart';
+import '../paint/page.dart';
 import 'cli/cli_page.dart';
 import 'irlib/categories_page.dart';
 import 'map/page.dart';
@@ -75,6 +76,17 @@ class ToolsPage extends StatelessWidget {
       ),
     ),
     ToolCardModel(
+      iconAsset: 'assets/flipper_svg/archive/ic_fileformat_sub.svg',
+      iconColor: const Color(0xFFE85858),
+      title: 'Pixel Draw',
+      compact: true,
+      tool: ToolItemModel(
+        title: 'Pixel Draw',
+        description: 'Draw on the Flipper Zero display in real time',
+        routeBuilder: _buildPaintPage,
+      ),
+    ),
+    ToolCardModel(
       iconAsset: 'assets/apps/app_placeholder.svg',
       iconColor: const Color(0xFF589DFF),
       title: 'About',
@@ -116,6 +128,8 @@ Widget _buildFlipperMapPage(BuildContext context) => const FlipperMapPage();
 Widget _buildIrLibPage(BuildContext context) => const IrCategoriesPage();
 
 Widget _buildAboutPage(BuildContext context) => const AboutPage();
+
+Widget _buildPaintPage(BuildContext context) => const PaintPage();
 
 Future<void> _openCliPage(BuildContext context) async {
   final client = FlipperOneClient().get();

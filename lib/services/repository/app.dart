@@ -8,6 +8,8 @@ const String kAppsCatalogFileName = 'catalog.json';
 const String kScreenshotsFolderName = 'Screenshots';
 const String kRecordingsFolderName = 'Recordings';
 const String kUpdateCacheFolderName = 'updates';
+const String kDrawingsFolderName = 'Drawings';
+const String kAnimationsFolderName = 'Animations';
 
 Future<io.File> installedCatalogFile(String deviceName) async {
   final root = await appDocumentsDirectory();
@@ -133,6 +135,20 @@ Future<io.Directory> appScreenshotsDirectory() async {
 Future<io.Directory> appRecordingsDirectory() async {
   final root = await appDocumentsDirectory();
   final dir = io.Directory(pathJoin([root.path, kRecordingsFolderName]));
+  await dir.create(recursive: true);
+  return dir;
+}
+
+Future<io.Directory> appDrawingsDirectory() async {
+  final root = await appDocumentsDirectory();
+  final dir = io.Directory(pathJoin([root.path, kDrawingsFolderName]));
+  await dir.create(recursive: true);
+  return dir;
+}
+
+Future<io.Directory> appAnimationsDirectory() async {
+  final root = await appDocumentsDirectory();
+  final dir = io.Directory(pathJoin([root.path, kAnimationsFolderName]));
   await dir.create(recursive: true);
   return dir;
 }
