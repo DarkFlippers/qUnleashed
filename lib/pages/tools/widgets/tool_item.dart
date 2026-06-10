@@ -5,7 +5,7 @@ import '../../../theme.dart';
 import '../models/tool.dart';
 import 'tool_item_badge.dart';
 import 'tool_item_text.dart';
-import 'tool_preview.dart';
+import '../preview/tools.dart';
 
 class ToolItem extends StatelessWidget {
   const ToolItem({

@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../models/tool.dart';
-import 'flibler_preview.dart';
-import 'mf_key_preview.dart';
-import 'remote_library_preview.dart';
+import '../widgets/mf_key_preview.dart';
+
+import 'remote.dart';
+import 'flibler.dart';
 
 class ToolPreview extends StatelessWidget {
   const ToolPreview({
