@@ -6,13 +6,13 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../../../theme.dart';
 import '../../../widgets/notification.dart';
 import '../../editor/page.dart';
-import '../../tools/map/models/pin.dart';
-import '../../tools/map/page.dart';
+import '../../utils/map/models/pin.dart';
+import '../../utils/map/page.dart';
 import '../controller.dart';
 import '../emulate/page.dart';
-import '../../сommander/controller.dart';
-import '../../сommander/page.dart';
-import '../../сommander/share_remote_file.dart';
+import '../../utils/сommander/controller.dart';
+import '../../utils/сommander/page.dart';
+import '../../utils/сommander/share_remote_file.dart';
 import '../models/key.dart';
 import 'actions_sheet.dart';
 

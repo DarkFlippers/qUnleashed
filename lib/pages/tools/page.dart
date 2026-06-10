@@ -5,10 +5,10 @@ import '../../theme.dart';
 import '../../widgets/flipper_action_dialog.dart';
 import '../about/page.dart';
 import '../paint/page.dart';
-import 'cli/cli_page.dart';
-import 'irlib/categories_page.dart';
-import 'map/page.dart';
-import 'mifare/mfkey32_page.dart';
+import '../utils/cli/page.dart';
+import '../utils/infrared/categories_page.dart';
+import '../utils/map/page.dart';
+import '../utils/mifare/mfkey32_page.dart';
 import 'models/tool.dart';
 import 'widgets/tool.dart';
 

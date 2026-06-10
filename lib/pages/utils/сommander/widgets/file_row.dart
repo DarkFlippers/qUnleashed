@@ -2,8 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-import '../../../theme.dart';
-import '../../archive/widgets/actions_sheet.dart';
+import '../../../../theme.dart';
+import '../../../archive/widgets/actions_sheet.dart';
 import '../share_remote_file.dart';
 import '../controller.dart';
 import 'file_type.dart';

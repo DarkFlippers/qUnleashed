@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
-import '../../../theme.dart';
+import '../../../../theme.dart';
 
 /// Row of two storage entry cards (Internal `/int` + External `/ext`) shown on
 /// the archive screen. Subscribes to [FlipperWatchApi.deviceInfoUpdates] — the

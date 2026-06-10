@@ -5,3 +5,4 @@
 [submodule "lib/modules/flipperlib"]
 	path = lib/modules/flipperlib
 	url = https://github.com/apfxtech/FlipperDartAPI.git
+	branch = main

@@ -4,8 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:super_clipboard/super_clipboard.dart';
 
-import '../../theme.dart';
-import '../../widgets/notification.dart';
+import '../../../theme.dart';
+import '../../../widgets/notification.dart';
 import 'controller.dart';
 
 bool get isShareSupported =>
