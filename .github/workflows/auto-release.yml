@@ -178,6 +178,11 @@ jobs:
 
       - name: Build Windows release
         shell: pwsh
+        env:
+          # permission_handler_windows pulls in <experimental/coroutine> via C++/WinRT,
+          # which the latest MSVC turns into a hard error. cl.exe reads _CL_ for extra
+          # options, so this define reaches the plugin compile through MSBuild/CMake.
+          _CL_: /D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS
         run: ./tools/build/windows.ps1
 
       - name: Upload Windows release asset
