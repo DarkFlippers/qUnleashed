@@ -63,6 +63,7 @@ flutter:
     - assets/firmware/
     - assets/flipper_svg/
     - assets/flipper_svg/bottombar/
+    - assets/flipper_svg/common/
     - assets/flipper_svg/connection/
     - assets/flipper_svg/core/
     - assets/flipper_svg/info/

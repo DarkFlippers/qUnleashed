@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="75" height="75" viewBox="0 0 75 75" fill="currentColor">
+		<g>
+			<path d="M60,55c-6.27,0-13.73,0-20,0v5c9.74,0,20.26,0,30,0v-5C67.51,55,62.49,55,60,55z"/>
+			<rect x="30" y="40" style="fill:transparent;"  width="5" height="5"/>
+			<rect x="25" y="40" style="fill:#FF9933;" width="5" height="5"/>
+			<rect x="20" y="40" style="fill:transparent;"  width="5" height="5"/>
+			<rect x="15" y="40" style="fill:#FF9933;" width="5" height="5"/>
+			<rect x="10" y="40" style="fill:transparent;"  width="5" height="5"/>
+			<rect x="5" y="40" style="fill:#FF9933;" width="5" height="5"/>
+			<path d="M5,40c0-2.49,0-7.51,0-10H0c0,4.45,0,10.55,0,15h5V40z"/>
+			<rect x="30" y="35" style="fill:#FF9933;" width="5" height="5"/>
+			<rect x="25" y="35" style="fill:transparent;"  width="5" height="5"/>
+			<rect x="20" y="35" style="fill:#FF9933;" width="5" height="5"/>
+			<rect x="15" y="35" style="fill:transparent;"  width="5" height="5"/>
+			<rect x="10" y="35" style="fill:#FF9933;" width="5" height="5"/>
+			<rect x="5" y="35" style="fill:transparent;"  width="5" height="5"/>
+			<rect x="30" y="30" style="fill:transparent;"  width="5" height="5"/>
+			<rect x="25" y="30" style="fill:#FF9933;" width="5" height="5"/>
+			<rect x="20" y="30" style="fill:transparent;"  width="5" height="5"/>
+			<rect x="15" y="30" style="fill:#FF9933;" width="5" height="5"/>
+			<rect x="10" y="30" style="fill:transparent;"  width="5" height="5"/>
+			<rect x="5" y="30" style="fill:#FF9933;" width="5" height="5"/>
+			<path style="fill:#FF9933;" d="M40,30c0,8.02,0,16.98,0,25c9.74,0,20.26,0,30,0c0-11.44,0-23.56,0-35c-9.74,0-20.26,0-30,0
+				C40,22.49,40,27.51,40,30z"/>
+			<path d="M15,30c6.27,0,13.73,0,20,0c0,4.45,0,10.55,0,15c-9.74,0-20.26,0-30,0v5c9.74,0,20.26,0,30,0v5h5c0-11.44,0-23.56,0-35h-5
+				v5c-9.74,0-20.26,0-30,0v5C7.49,30,12.51,30,15,30z"/>
+			<path d="M70,25c0,9.74,0,20.26,0,30h5c0-11.44,0-23.56,0-35h-5V25z"/>
+			<path d="M50,20c6.27,0,13.73,0,20,0v-5c-9.74,0-20.26,0-30,0v5C42.49,20,47.51,20,50,20z"/>
+		</g>
+	
+</svg>

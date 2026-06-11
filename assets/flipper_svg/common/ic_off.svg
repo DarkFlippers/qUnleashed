@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="75" height="75" viewBox="0 0 75 75" fill="currentColor">
+		<g>
+			<path d="M25,55c-6.27,0-13.73,0-20,0v5c9.74,0,20.26,0,30,0v-5C32.51,55,27.49,55,25,55z"/>
+			<path d="M5,50c0-9.74,0-20.26,0-30H0c0,11.44,0,23.56,0,35h5V50z"/>
+			<rect x="65" y="40" style="fill:999999;" width="5" height="5"/>
+			<rect x="60" y="40" style="fill:transparent;" width="5" height="5"/>
+			<rect x="55" y="40" style="fill:999999;" width="5" height="5"/>
+			<rect x="50" y="40" style="fill:transparent;" width="5" height="5"/>
+			<rect x="45" y="40" style="fill:999999;" width="5" height="5"/>
+			<rect x="40" y="40" style="fill:transparent;" width="5" height="5"/>
+			<rect x="65" y="35" style="fill:transparent;" width="5" height="5"/>
+			<rect x="60" y="35" style="fill:999999;" width="5" height="5"/>
+			<rect x="55" y="35" style="fill:transparent;" width="5" height="5"/>
+			<rect x="50" y="35" style="fill:999999;" width="5" height="5"/>
+			<rect x="45" y="35" style="fill:transparent;" width="5" height="5"/>
+			<rect x="40" y="35" style="fill:999999;" width="5" height="5"/>
+			<path d="M70,35c0,2.49,0,7.51,0,10h5c0-4.45,0-10.55,0-15h-5V35z"/>
+			<rect x="65" y="30" style="fill:999999;" width="5" height="5"/>
+			<rect x="60" y="30" style="fill:transparent;" width="5" height="5"/>
+			<rect x="55" y="30" style="fill:999999;" width="5" height="5"/>
+			<rect x="50" y="30" style="fill:transparent;" width="5" height="5"/>
+			<rect x="45" y="30" style="fill:999999;" width="5" height="5"/>
+			<rect x="40" y="30" style="fill:transparent;" width="5" height="5"/>
+			<path d="M35,30c0,8.02,0,16.98,0,25h5v-5c9.74,0,20.26,0,30,0v-5c-9.74,0-20.26,0-30,0c0-4.45,0-10.55,0-15c9.74,0,20.26,0,30,0v-5
+				c-9.74,0-20.26,0-30,0v-5h-5C35,22.49,35,27.51,35,30z"/>
+			<path style="fill:transparent;" d="M5,30c0,8.02,0,16.98,0,25c9.74,0,20.26,0,30,0c0-11.44,0-23.56,0-35c-9.74,0-20.26,0-30,0
+				C5,22.49,5,27.51,5,30z"/>
+			<path d="M15,20c6.27,0,13.73,0,20,0v-5c-9.74,0-20.26,0-30,0v5C7.49,20,12.51,20,15,20z"/>
+		</g>
+	
+</svg>
