@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:qunleashed/models/colors/category.dart';
 
 enum ArchiveCategory {
   nfc(
     title: 'NFC',
     flipperDir: 'nfc',
     extensions: ['nfc'],
-    color: Color(0xFF34C7A4),
+    categoryColor: ArchiveCategoryColor.nfc,
     asset: 'assets/ic/fileformat/nfc.svg',
     flipperAppName: 'NFC',
     recursiveSearch: true,
@@ -16,7 +17,7 @@ enum ArchiveCategory {
     title: 'RFID 125',
     flipperDir: 'lfrfid',
     extensions: ['rfid'],
-    color: Color(0xFF5856D6),
+    categoryColor: ArchiveCategoryColor.rfid,
     asset: 'assets/ic/fileformat/rfid.svg',
     flipperAppName: '125 kHz RFID',
     recursiveSearch: true,
@@ -27,7 +28,7 @@ enum ArchiveCategory {
     title: 'iButton',
     flipperDir: 'ibutton',
     extensions: ['ibtn'],
-    color: Color(0xFF007AFF),
+    categoryColor: ArchiveCategoryColor.ibutton,
     asset: 'assets/ic/fileformat/ibutton.svg',
     flipperAppName: 'iButton',
     recursiveSearch: true,
@@ -38,7 +39,7 @@ enum ArchiveCategory {
     title: 'Infrared',
     flipperDir: 'infrared',
     extensions: ['ir'],
-    color: Color(0xFFAF52DE),
+    categoryColor: ArchiveCategoryColor.infrared,
     asset: 'assets/ic/fileformat/ir.svg',
     flipperAppName: 'Infrared',
     recursiveSearch: true,
@@ -48,7 +49,7 @@ enum ArchiveCategory {
     title: 'Sub-GHz',
     flipperDir: 'subghz',
     extensions: ['bin', 'sub'],
-    color: Color(0xFFFF9B34),
+    categoryColor: ArchiveCategoryColor.subghz,
     asset: 'assets/ic/fileformat/sub.svg',
     flipperAppName: 'Sub-GHz',
     recursiveSearch: true,
@@ -59,7 +60,7 @@ enum ArchiveCategory {
     title: 'Wardriving',
     flipperDir: 'subghz/wardriving',
     extensions: ['bin', 'sub'],
-    color: Color(0xFF64D2FF),
+    categoryColor: ArchiveCategoryColor.wardriving,
     asset: 'assets/ic/fileformat/sub.svg',
     subDirs: ['autosaved'],
     flipperAppName: 'Sub-GHz',
@@ -70,7 +71,7 @@ enum ArchiveCategory {
     title: 'Bad USB',
     flipperDir: 'badusb',
     extensions: ['txt'],
-    color: Color(0xFFFF3B30),
+    categoryColor: ArchiveCategoryColor.badusb,
     asset: 'assets/ic/fileformat/badusb.svg',
     flipperAppName: 'Bad USB',
     recursiveSearch: true,
@@ -80,7 +81,7 @@ enum ArchiveCategory {
     title: 'JavaScript',
     flipperDir: 'apps/Scripts',
     extensions: ['js'],
-    color: Color(0xFFFFCC00),
+    categoryColor: ArchiveCategoryColor.javascript,
     asset: 'assets/ic/file/default.svg',
     flipperAppName: 'JS Runner',
     recursiveSearch: true,
@@ -91,7 +92,7 @@ enum ArchiveCategory {
     required this.title,
     required this.flipperDir,
     required this.extensions,
-    required this.color,
+    required this.categoryColor,
     required this.asset,
     this.subDirs = const <String>[],
     this.flipperAppName,
@@ -104,7 +105,7 @@ enum ArchiveCategory {
   final String title;
   final String flipperDir;
   final List<String> extensions;
-  final Color color;
+  final ArchiveCategoryColor categoryColor;
   final String asset;
   final List<String> subDirs;
   final String? flipperAppName;
@@ -113,6 +114,7 @@ enum ArchiveCategory {
   final bool launchOnRpc;
   final bool locationSupport;
 
+  Color get color => categoryColor.color;
   bool get emulatable => flipperAppName != null && (launchOnApp || launchOnRpc);
   String get extension => extensions.first;
   String get remoteDir => '/ext/$flipperDir';

@@ -153,6 +153,20 @@ Future<io.Directory> appAnimationsDirectory() async {
   return dir;
 }
 
+const String kDolphinAnimationsFolderName = 'dolphin';
+
+/// Local mirror of the Flipper's `/ext/dolphin` directory, where each
+/// sub-folder is one animation (meta.txt + frame_*.bm) and a manifest.txt
+/// describes the set. Lives under `Animations/dolphin`.
+Future<io.Directory> appDolphinAnimationsDirectory() async {
+  final root = await appAnimationsDirectory();
+  final dir = io.Directory(
+    pathJoin([root.path, kDolphinAnimationsFolderName]),
+  );
+  await dir.create(recursive: true);
+  return dir;
+}
+
 Future<io.Directory> updateCacheDirectory() async {
   final root = await appDocumentsDirectory();
   final dir = io.Directory(pathJoin([root.path, kUpdateCacheFolderName]));

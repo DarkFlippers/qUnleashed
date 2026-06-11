@@ -197,6 +197,33 @@ abstract final class PaintCodec {
     return m != null ? int.tryParse(m.group(1)!) : null;
   }
 
+  /// Decodes a 128×64 monochrome pixel buffer into a [ui.Image] suitable for
+  /// direct rendering (e.g. animated previews). [fg]/[bg] are ARGB colors used
+  /// for set/clear pixels respectively.
+  static Future<ui.Image> frameToImage(
+    Uint8List pixels, {
+    int fg = 0xFF000000,
+    int bg = 0xFFDFDFDF,
+  }) async {
+    final rgba = Uint8List(kCanvasWidth * kCanvasHeight * 4);
+    for (int i = 0; i < kCanvasWidth * kCanvasHeight; i++) {
+      final c = pixels[i] != 0 ? fg : bg;
+      rgba[i * 4] = (c >> 16) & 0xFF;
+      rgba[i * 4 + 1] = (c >> 8) & 0xFF;
+      rgba[i * 4 + 2] = c & 0xFF;
+      rgba[i * 4 + 3] = (c >> 24) & 0xFF;
+    }
+    final completer = Completer<ui.Image>();
+    ui.decodeImageFromPixels(
+      rgba,
+      kCanvasWidth,
+      kCanvasHeight,
+      ui.PixelFormat.rgba8888,
+      completer.complete,
+    );
+    return completer.future;
+  }
+
   static Future<Uint8List> frameToPng(Uint8List pixels) async {
     final rgba = Uint8List(kCanvasWidth * kCanvasHeight * 4);
     const bg = 0xFFDFDFDF;

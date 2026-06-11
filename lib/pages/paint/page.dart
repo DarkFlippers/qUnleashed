@@ -17,7 +17,11 @@ import 'controller.dart';
 import 'painters.dart';
 
 class PaintPage extends StatefulWidget {
-  const PaintPage({super.key});
+  const PaintPage({super.key, this.initialAnimationPath});
+
+  /// When set, the dolphin animation whose `meta.txt` lives at this path is
+  /// loaded into the canvas right after the page opens.
+  final String? initialAnimationPath;
 
   @override
   State<PaintPage> createState() => _PaintPageState();
@@ -46,7 +50,11 @@ class _PaintPageState extends State<PaintPage> {
     super.initState();
     _ctrl = PaintController();
     _ctrl.addListener(_onControllerChange);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _ctrl.startVirtualDisplay());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _ctrl.startVirtualDisplay();
+      final path = widget.initialAnimationPath;
+      if (path != null) _importDolphinFromPath(path);
+    });
   }
 
   void _onControllerChange() {
