@@ -1,4 +1,4 @@
-import '../../../archive/models/category.dart';
+import '../../../../models/category.dart';
 
 class MapPin {
   MapPin({

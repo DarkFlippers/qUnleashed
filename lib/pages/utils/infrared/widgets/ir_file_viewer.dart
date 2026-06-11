@@ -7,7 +7,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../../../../theme.dart';
 import '../../../../widgets/notification.dart';
 import '../../../../widgets/progress_button.dart';
-import '../../../archive/models/category.dart';
+import '../../../../models/category.dart';
 
 typedef IrFileSendHandler = Future<bool> Function({
   required List<int> bytes,

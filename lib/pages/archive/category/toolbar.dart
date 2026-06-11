@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme.dart';
-import '../models/category.dart';
+import '../../../models/category.dart';
 
 /// AppBar title: category icon, name, and either the sync filename or the
 /// remote directory hint.

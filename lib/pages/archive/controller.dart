@@ -7,7 +7,7 @@ import 'package:flutter/foundation.dart';
 
 import 'metadata/parser.dart';
 import 'storage.dart';
-import 'models/category.dart';
+import '../../models/category.dart';
 import 'models/key.dart';
 
 class SyncProgress {

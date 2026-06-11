@@ -2,7 +2,7 @@
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme.dart';
-import '../models/category.dart';
+import '../../../models/category.dart';
 
 class CategoryTile extends StatelessWidget {
   const CategoryTile({

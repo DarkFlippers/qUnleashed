@@ -1,4 +1,4 @@
-import 'category.dart';
+import '../../../models/category.dart';
 
 enum ArchiveKeyState { local, synced, deleted }
 

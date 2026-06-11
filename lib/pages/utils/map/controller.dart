@@ -9,7 +9,7 @@ import 'package:geolocator/geolocator.dart';
 
 import '../../archive/metadata/parser.dart';
 import '../../archive/storage.dart';
-import '../../archive/models/category.dart';
+import '../../../models/category.dart';
 import 'models/pin.dart';
 
 enum MapLocationStatus { idle, requesting, granted, denied, serviceDisabled, error }

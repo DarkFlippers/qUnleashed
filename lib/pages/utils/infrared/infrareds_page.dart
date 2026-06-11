@@ -3,7 +3,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme.dart';
 import '../../../widgets/notification.dart';
-import '../../archive/models/category.dart';
+import '../../../models/category.dart';
 import 'backend/infrared_backend_api.dart';
 import 'backend/infrared_backend_models.dart';
 import 'ir_content_page.dart';

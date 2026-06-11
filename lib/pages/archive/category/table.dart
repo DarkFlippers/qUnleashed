@@ -3,7 +3,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme.dart';
 import '../format.dart';
-import '../models/category.dart';
+import '../../../models/category.dart';
 import '../models/key.dart';
 import 'columns.dart';
 

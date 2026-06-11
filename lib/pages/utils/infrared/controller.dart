@@ -5,7 +5,7 @@ import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../archive/storage.dart';
-import '../../archive/models/category.dart';
+import '../../../models/category.dart';
 import 'api.dart';
 import 'local_repo.dart';
 import 'models.dart';

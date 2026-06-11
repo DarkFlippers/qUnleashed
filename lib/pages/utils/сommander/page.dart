@@ -5,7 +5,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../../../theme.dart';
 import '../../../widgets/notification.dart';
 import '../../archive/emulate/page.dart';
-import '../../archive/models/category.dart';
+import '../../../models/category.dart';
 import '../../archive/models/key.dart';
 import '../../editor/page.dart';
 import '../../remote/page.dart';
