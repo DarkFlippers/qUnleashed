@@ -4,7 +4,7 @@ import 'dart:io' as io;
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/foundation.dart';
 
-import '../../services/repository/app.dart';
+import '../../../services/repository/app.dart';
 import 'dolphin_animation.dart';
 
 /// Remote dolphin directory on the Flipper SD card.

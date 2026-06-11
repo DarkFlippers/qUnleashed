@@ -3,9 +3,9 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
-import '../../theme.dart';
-import '../../widgets/notification.dart';
-import '../paint/page.dart';
+import '../../../theme.dart';
+import '../../../widgets/notification.dart';
+import '../editor/page.dart';
 import 'controller.dart';
 import 'dolphin_animation.dart';
 

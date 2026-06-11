@@ -2,9 +2,9 @@ import 'dart:io' as io;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import '../../services/repository/app.dart';
-import '../paint/codec.dart';
-import '../paint/constants.dart';
+import '../../../services/repository/app.dart';
+import '../editor/codec.dart';
+import '../editor/constants.dart';
 
 /// One Flipper dolphin animation: a folder containing `meta.txt` plus
 /// `frame_*.bm` (or `.png`) frame files. Mirrors the structure read by

@@ -7,10 +7,10 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
-import '../../services/repository/app.dart';
-import '../../theme.dart';
-import '../../widgets/notification.dart';
-import '../remote/gif_encoder.dart';
+import '../../../services/repository/app.dart';
+import '../../../theme.dart';
+import '../../../widgets/notification.dart';
+import '../../remote/gif_encoder.dart';
 import 'codec.dart';
 import 'constants.dart';
 import 'controller.dart';
