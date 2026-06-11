@@ -1,4 +1,4 @@
-name: Android, Linux, and Windows prerelease
+name: Android, Linux, macOS, and Windows prerelease
 
 on:
   push:
@@ -187,10 +187,72 @@ jobs:
           path: dist/qunleashed_*_windows_x64.exe
           if-no-files-found: error
 
+  build-macos:
+    name: Build macOS release
+    needs: guard
+    if: ${{ github.server_url == 'https://github.com' }}
+    runs-on: macos-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Derive app version from tag
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if [[ ! "$tag" =~ ([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+            echo "::error::Tag must contain a semantic version like 0.6.1, alpha-0.6.1, or v0.6.1."
+            exit 1
+          fi
+
+          major="${BASH_REMATCH[1]}"
+          minor="${BASH_REMATCH[2]}"
+          patch="${BASH_REMATCH[3]}"
+          version_name="${major}.${minor}.${patch}"
+          version_code=$((10#$major * 1000000 + 10#$minor * 1000 + 10#$patch))
+
+          if (( version_code <= 0 )); then
+            echo "::error::Derived build number must be greater than zero."
+            exit 1
+          fi
+
+          {
+            echo "QUNLEASHED_VERSION_NAME=$version_name"
+            echo "QUNLEASHED_VERSION_CODE=$version_code"
+            echo "QUNLEASHED_FLUTTER_BUILD_ARGS=--build-name=$version_name --build-number=$version_code"
+          } >> "$GITHUB_ENV"
+
+          echo "Version name: $version_name"
+          echo "Build number: $version_code"
+
+      - name: Build macOS release
+        run: tools/build/macos.sh
+
+      - name: Upload macOS release asset
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets-macos
+          path: dist/qunleashed_*_macos_*.dmg
+          if-no-files-found: error
+
   publish:
     name: Publish GitHub prerelease
     needs:
       - build-android-linux
+      - build-macos
       - build-windows
     if: ${{ github.server_url == 'https://github.com' }}
     runs-on: ubuntu-latest
@@ -215,4 +277,5 @@ jobs:
           files: |
             dist/qunleashed_*_android_*.apk
             dist/qunleashed_*_linux_x64
+            dist/qunleashed_*_macos_*.dmg
             dist/qunleashed_*_windows_x64.exe
