@@ -30,18 +30,27 @@ class RemoteControlView extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final isVertical =
-        orientation == StreamOrientation.vertical || orientation == StreamOrientation.verticalFlip;
+        orientation == StreamOrientation.vertical ||
+        orientation == StreamOrientation.verticalFlip;
     final frameAspectRatio = isVertical ? 0.5 : 2.0;
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final frameMaxWidth =
-            (constraints.maxWidth - _frameChrome).clamp(0.0, double.infinity);
-        final fixedHeight = _queueHeight + _queueSpacing + _logoSpacing + _logoHeight;
+        final frameMaxWidth = (constraints.maxWidth - _frameChrome).clamp(
+          0.0,
+          double.infinity,
+        );
+        final fixedHeight =
+            _queueHeight + _queueSpacing + _logoSpacing + _logoHeight;
         final frameMaxHeight =
-            (constraints.maxHeight - fixedHeight - _frameChrome)
-                .clamp(0.0, double.infinity);
-        final frameWidth = (frameMaxHeight * frameAspectRatio).clamp(0.0, frameMaxWidth);
+            (constraints.maxHeight - fixedHeight - _frameChrome).clamp(
+              0.0,
+              double.infinity,
+            );
+        final frameWidth = (frameMaxHeight * frameAspectRatio).clamp(
+          0.0,
+          frameMaxWidth,
+        );
         final shellWidth = frameWidth + _frameChrome;
 
         return Center(
@@ -62,7 +71,8 @@ class RemoteControlView extends StatelessWidget {
                             physics: const NeverScrollableScrollPhysics(),
                             shrinkWrap: true,
                             itemCount: queue.length,
-                            separatorBuilder: (_, _) => const SizedBox(width: 4),
+                            separatorBuilder: (_, _) =>
+                                const SizedBox(width: 4),
                             itemBuilder: (_, i) => _QueueIcon(
                               key: ValueKey(queue[i].id),
                               colors: colors,
@@ -83,10 +93,13 @@ class RemoteControlView extends StatelessWidget {
                     child: FittedBox(
                       fit: BoxFit.contain,
                       child: SvgPicture.asset(
-                        'assets/flipper_svg/screenstreaming/ic_flipper_logo.svg',
+                        'assets/ic/device/logo.svg',
                         width: _logoWidth,
                         height: _logoHeight,
-                        colorFilter: ColorFilter.mode(colors.accent, BlendMode.srcIn),
+                        colorFilter: ColorFilter.mode(
+                          colors.accent,
+                          BlendMode.srcIn,
+                        ),
                       ),
                     ),
                   ),
@@ -150,7 +163,11 @@ class _LiveFrame extends StatelessWidget {
   static const _w = 128;
   static const _h = 64;
 
-  const _LiveFrame({required this.colors, required this.image, required this.orientation});
+  const _LiveFrame({
+    required this.colors,
+    required this.image,
+    required this.orientation,
+  });
 
   final QAppColors colors;
   final ui.Image? image;
@@ -160,20 +177,25 @@ class _LiveFrame extends StatelessWidget {
   Widget build(BuildContext context) {
     if (image == null) {
       return SvgPicture.asset(
-        'assets/flipper_svg/screenstreaming/pic_not_connected_light.svg',
+        'assets/pic/status/disconnected.svg',
         fit: BoxFit.fitWidth,
       );
     }
 
     final isVertical =
-        orientation == StreamOrientation.vertical || orientation == StreamOrientation.verticalFlip;
+        orientation == StreamOrientation.vertical ||
+        orientation == StreamOrientation.verticalFlip;
 
     return Center(
       child: AspectRatio(
         aspectRatio: isVertical ? (_h / _w).toDouble() : (_w / _h).toDouble(),
         child: RotatedBox(
           quarterTurns: isVertical ? 1 : 0,
-          child: RawImage(image: image, fit: BoxFit.fill, filterQuality: FilterQuality.none),
+          child: RawImage(
+            image: image,
+            fit: BoxFit.fill,
+            filterQuality: FilterQuality.none,
+          ),
         ),
       ),
     );
@@ -190,12 +212,16 @@ class _QueueIcon extends StatefulWidget {
   State<_QueueIcon> createState() => _QueueIconState();
 }
 
-class _QueueIconState extends State<_QueueIcon> with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl =
-      AnimationController(vsync: this, duration: const Duration(milliseconds: 180))..forward();
-  late final Animation<double> _scale = Tween<double>(begin: 0.86, end: 1).animate(
-    CurvedAnimation(parent: _ctrl, curve: Curves.easeOutBack),
-  );
+class _QueueIconState extends State<_QueueIcon>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 180),
+  )..forward();
+  late final Animation<double> _scale = Tween<double>(
+    begin: 0.86,
+    end: 1,
+  ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutBack));
 
   @override
   void dispose() {

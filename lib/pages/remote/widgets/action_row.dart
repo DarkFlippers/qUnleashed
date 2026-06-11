@@ -111,8 +111,8 @@ class _IdleControls extends StatelessWidget {
             child: Center(
               child: RemoteControlActionButton(
                 asset: isLocked
-                    ? 'assets/flipper_svg/screenstreaming/ic_unlock.svg'
-                    : 'assets/flipper_svg/screenstreaming/ic_lock.svg',
+                    ? 'assets/ic/action/unlock.svg'
+                    : 'assets/ic/action/lock.svg',
                 label: isLocked ? 'Unlock' : 'Unlocked',
                 onTap: onUnlock,
               ),
@@ -161,8 +161,10 @@ class _RecordingControls extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final remaining = (GifRecorder.maxDurationMs - elapsedMs)
-        .clamp(0, GifRecorder.maxDurationMs);
+    final remaining = (GifRecorder.maxDurationMs - elapsedMs).clamp(
+      0,
+      GifRecorder.maxDurationMs,
+    );
 
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: isVertical ? 0 : 12),

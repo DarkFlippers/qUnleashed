@@ -6,7 +6,7 @@ enum ArchiveCategory {
     flipperDir: 'nfc',
     extensions: ['nfc'],
     color: Color(0xFF34C7A4),
-    asset: 'assets/flipper_svg/archive/ic_fileformat_nfc.svg',
+    asset: 'assets/ic/fileformat/nfc.svg',
     flipperAppName: 'NFC',
     recursiveSearch: true,
     launchOnRpc: true,
@@ -17,7 +17,7 @@ enum ArchiveCategory {
     flipperDir: 'lfrfid',
     extensions: ['rfid'],
     color: Color(0xFF5856D6),
-    asset: 'assets/flipper_svg/archive/ic_fileformat_rf.svg',
+    asset: 'assets/ic/fileformat/rfid.svg',
     flipperAppName: '125 kHz RFID',
     recursiveSearch: true,
     launchOnRpc: true,
@@ -28,7 +28,7 @@ enum ArchiveCategory {
     flipperDir: 'ibutton',
     extensions: ['ibtn'],
     color: Color(0xFF007AFF),
-    asset: 'assets/flipper_svg/archive/ic_fileformat_ibutton.svg',
+    asset: 'assets/ic/fileformat/ibutton.svg',
     flipperAppName: 'iButton',
     recursiveSearch: true,
     launchOnRpc: true,
@@ -39,7 +39,7 @@ enum ArchiveCategory {
     flipperDir: 'infrared',
     extensions: ['ir'],
     color: Color(0xFFAF52DE),
-    asset: 'assets/flipper_svg/archive/ic_fileformat_ir.svg',
+    asset: 'assets/ic/fileformat/ir.svg',
     flipperAppName: 'Infrared',
     recursiveSearch: true,
     launchOnApp: true,
@@ -49,7 +49,7 @@ enum ArchiveCategory {
     flipperDir: 'subghz',
     extensions: ['bin', 'sub'],
     color: Color(0xFFFF9B34),
-    asset: 'assets/flipper_svg/archive/ic_fileformat_sub.svg',
+    asset: 'assets/ic/fileformat/sub.svg',
     flipperAppName: 'Sub-GHz',
     recursiveSearch: true,
     launchOnApp: true,
@@ -60,7 +60,7 @@ enum ArchiveCategory {
     flipperDir: 'subghz/wardriving',
     extensions: ['bin', 'sub'],
     color: Color(0xFF64D2FF),
-    asset: 'assets/flipper_svg/archive/ic_fileformat_sub.svg',
+    asset: 'assets/ic/fileformat/sub.svg',
     subDirs: ['autosaved'],
     flipperAppName: 'Sub-GHz',
     launchOnApp: true,
@@ -71,7 +71,7 @@ enum ArchiveCategory {
     flipperDir: 'badusb',
     extensions: ['txt'],
     color: Color(0xFFFF3B30),
-    asset: 'assets/flipper_svg/archive/ic_fileformat_badusb.svg',
+    asset: 'assets/ic/fileformat/badusb.svg',
     flipperAppName: 'Bad USB',
     recursiveSearch: true,
     launchOnApp: true,
@@ -81,7 +81,7 @@ enum ArchiveCategory {
     flipperDir: 'apps/Scripts',
     extensions: ['js'],
     color: Color(0xFFFFCC00),
-    asset: 'assets/flipper_svg/archive/ic_file.svg',
+    asset: 'assets/ic/file/default.svg',
     flipperAppName: 'JS Runner',
     recursiveSearch: true,
     launchOnApp: true,
@@ -113,8 +113,7 @@ enum ArchiveCategory {
   final bool launchOnRpc;
   final bool locationSupport;
 
-  bool get emulatable =>
-      flipperAppName != null && (launchOnApp || launchOnRpc);
+  bool get emulatable => flipperAppName != null && (launchOnApp || launchOnRpc);
   String get extension => extensions.first;
   String get remoteDir => '/ext/$flipperDir';
 

@@ -102,10 +102,7 @@ class _MfKey32PageState extends State<MfKey32Page> {
 }
 
 class _MfKey32Progress extends StatelessWidget {
-  const _MfKey32Progress({
-    required this.state,
-    required this.onDone,
-  });
+  const _MfKey32Progress({required this.state, required this.onDone});
 
   final MfKey32State state;
   final VoidCallback onDone;
@@ -115,32 +112,33 @@ class _MfKey32Progress extends StatelessWidget {
     return switch (state) {
       MfKey32WaitingForFlipper() => const _WaitingForFlipper(),
       MfKey32Calculating(:final percent) => _ProgressBlock(
-          title: 'Calculation Started…',
-          description: 'Calculating…',
-          iconAsset: 'assets/flipper_svg/tools/mifare/pic_key.svg',
-          percent: percent,
-          accentColor: context.appColors.accent,
-          secondColor: context.appColors.accent.withValues(alpha: 0.54),
-        ),
+        title: 'Calculation Started…',
+        description: 'Calculating…',
+        iconAsset: 'assets/pic/mifare/key.svg',
+        percent: percent,
+        accentColor: context.appColors.accent,
+        secondColor: context.appColors.accent.withValues(alpha: 0.54),
+      ),
       MfKey32DownloadingRawFile(:final percent) => _ProgressBlock(
-          title: 'Calculation Started…',
-          description: 'Downloading raw file from Flipper…',
-          iconAsset: 'assets/flipper_svg/tools/mifare/pic_download.svg',
-          percent: percent,
-          accentColor: context.appColors.info,
-          secondColor: context.appColors.info.withValues(alpha: 0.32),
-        ),
+        title: 'Calculation Started…',
+        description: 'Downloading raw file from Flipper…',
+        iconAsset: 'assets/pic/mifare/download.svg',
+        percent: percent,
+        accentColor: context.appColors.info,
+        secondColor: context.appColors.info.withValues(alpha: 0.32),
+      ),
       MfKey32Uploading() => _ProgressBlock(
-          title: 'Calculation Completed',
-          description: 'Syncing with Flipper…',
-          iconAsset: 'assets/flipper_svg/tools/mifare/pic_key.svg',
-          percent: null,
-          accentColor: context.appColors.accent,
-          secondColor: context.appColors.accent.withValues(alpha: 0.54),
-        ),
-      MfKey32Saved(:final keys) => keys.isEmpty
-          ? _CompleteNotFound(onDone: onDone)
-          : _CompleteAttack(keys: keys, onDone: onDone),
+        title: 'Calculation Completed',
+        description: 'Syncing with Flipper…',
+        iconAsset: 'assets/pic/mifare/key.svg',
+        percent: null,
+        accentColor: context.appColors.accent,
+        secondColor: context.appColors.accent.withValues(alpha: 0.54),
+      ),
+      MfKey32Saved(:final keys) =>
+        keys.isEmpty
+            ? _CompleteNotFound(onDone: onDone)
+            : _CompleteAttack(keys: keys, onDone: onDone),
       MfKey32Error(:final errorType) => _ErrorBlock(errorType: errorType),
     };
   }
@@ -251,28 +249,28 @@ class _ErrorBlock extends StatelessWidget {
     return switch (errorType) {
       MfKey32ErrorType.notFoundFile => const _NotFoundError(),
       MfKey32ErrorType.readWrite => _SimpleError(
-          title: 'SD Card is Full or Not Accessible',
-          descriptions: const [
-            'Unable to save keys. The SD Card is not accessible or there is not enough space',
-          ],
-          mockupImageAsset: 'assets/flipper_svg/mockup/pic_flipperscreen_nosd.svg',
-          active: false,
-          textAlign: TextAlign.center,
-          horizontalPadding: 24,
-        ),
+        title: 'SD Card is Full or Not Accessible',
+        descriptions: const [
+          'Unable to save keys. The SD Card is not accessible or there is not enough space',
+        ],
+        mockupImageAsset: 'assets/pic/device/screen/no-sd.svg',
+        active: false,
+        textAlign: TextAlign.center,
+        horizontalPadding: 24,
+      ),
       MfKey32ErrorType.flipperConnection => _SimpleError(
-          title: 'Flipper Not Connected',
-          descriptions: const [
-            '1. Check Bluetooth connection with Flipper',
-            '2. Make sure Flipper is Turned on',
-            "3. If Flipper doesn’t respond, reboot it and connect to the app via Bluetooth",
-            '4. Restart Mfkey32 (Extract MF Keys)',
-          ],
-          mockupImageAsset: 'assets/flipper_svg/mockup/pic_flipperscreen_dead.svg',
-          active: false,
-          textAlign: TextAlign.start,
-          horizontalPadding: 14,
-        ),
+        title: 'Flipper Not Connected',
+        descriptions: const [
+          '1. Check Bluetooth connection with Flipper',
+          '2. Make sure Flipper is Turned on',
+          "3. If Flipper doesn’t respond, reboot it and connect to the app via Bluetooth",
+          '4. Restart Mfkey32 (Extract MF Keys)',
+        ],
+        mockupImageAsset: 'assets/pic/device/screen/dead.svg',
+        active: false,
+        textAlign: TextAlign.start,
+        horizontalPadding: 14,
+      ),
     };
   }
 }
@@ -300,8 +298,7 @@ class _NotFoundError extends StatelessWidget {
           const SizedBox(height: 18),
           const _FlipperMockup(
             active: true,
-            mockupImageAsset:
-                'assets/flipper_svg/mockup/pic_flipperscreen_nfc_reader.svg',
+            mockupImageAsset: 'assets/pic/device/screen/nfc-reader.svg',
           ),
           const SizedBox(height: 24),
           Text(
@@ -364,15 +361,14 @@ class _SimpleError extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 18),
-          _FlipperMockup(
-            active: active,
-            mockupImageAsset: mockupImageAsset,
-          ),
+          _FlipperMockup(active: active, mockupImageAsset: mockupImageAsset),
           const SizedBox(height: 32),
           for (final description in descriptions)
             Padding(
-              padding:
-                  EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 8),
+              padding: EdgeInsets.symmetric(
+                horizontal: horizontalPadding,
+                vertical: 8,
+              ),
               child: Align(
                 alignment: textAlign == TextAlign.center
                     ? Alignment.center
@@ -450,11 +446,11 @@ class _FlipperMockup extends StatelessWidget {
     final colors = context.appColors;
     final template = colors.isDark
         ? active
-            ? 'assets/flipper_svg/mockup/template_black_flipper_active.svg'
-            : 'assets/flipper_svg/mockup/template_black_flipper_disabled.svg'
+              ? 'assets/pic/device/body/black-active.svg'
+              : 'assets/pic/device/body/black-disabled.svg'
         : active
-            ? 'assets/flipper_svg/mockup/template_white_flipper_active.svg'
-            : 'assets/flipper_svg/mockup/template_white_flipper_disabled.svg';
+        ? 'assets/pic/device/body/white-active.svg'
+        : 'assets/pic/device/body/white-disabled.svg';
     final imageAsset = mockupImageAsset;
     final screenChild = child;
     return Padding(
@@ -492,10 +488,7 @@ class _FlipperMockup extends StatelessWidget {
 }
 
 class _CompleteAttack extends StatelessWidget {
-  const _CompleteAttack({
-    required this.keys,
-    required this.onDone,
-  });
+  const _CompleteAttack({required this.keys, required this.onDone});
 
   final List<String> keys;
   final VoidCallback onDone;
@@ -521,8 +514,8 @@ class _CompleteAttack extends StatelessWidget {
           const SizedBox(height: 24),
           SvgPicture.asset(
             context.appColors.isDark
-                ? 'assets/flipper_svg/tools/mifare/pic_update_successfull_dark.svg'
-                : 'assets/flipper_svg/tools/mifare/pic_update_successfull.svg',
+                ? 'assets/pic/mifare/update-success-dark.svg'
+                : 'assets/pic/mifare/update-success.svg',
             width: 154,
             height: 92,
           ),
@@ -564,8 +557,8 @@ class _CompleteNotFound extends StatelessWidget {
           const SizedBox(height: 24),
           SvgPicture.asset(
             context.appColors.isDark
-                ? 'assets/flipper_svg/tools/mifare/pic_shrug_black.svg'
-                : 'assets/flipper_svg/tools/mifare/pic_shrug_white.svg',
+                ? 'assets/pic/mifare/shrug-black.svg'
+                : 'assets/pic/mifare/shrug-white.svg',
             width: 154,
             height: 92,
           ),
@@ -733,9 +726,7 @@ class _KeyPillGrid extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  for (final key in row) _KeyPill(keyValue: key),
-                ],
+                children: [for (final key in row) _KeyPill(keyValue: key)],
               ),
             ),
         ],
@@ -763,7 +754,7 @@ class _KeyPill extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           SvgPicture.asset(
-            'assets/flipper_svg/tools/mifare/pic_encrypted_key.svg',
+            'assets/pic/mifare/encrypted-key.svg',
             width: 24,
             height: 24,
           ),
@@ -783,10 +774,7 @@ class _KeyPill extends StatelessWidget {
 }
 
 class _PrimaryButton extends StatelessWidget {
-  const _PrimaryButton({
-    required this.text,
-    required this.onPressed,
-  });
+  const _PrimaryButton({required this.text, required this.onPressed});
 
   final String text;
   final VoidCallback? onPressed;

@@ -755,10 +755,10 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
 
   static String _assetForPin(MapPin pin) {
     return switch (pin.extension) {
-      'sub' => 'assets/flipper_svg/archive/ic_fileformat_sub.svg',
-      'nfc' => 'assets/flipper_svg/archive/ic_fileformat_nfc.svg',
-      'rfid' => 'assets/flipper_svg/archive/ic_fileformat_rf.svg',
-      'ibtn' => 'assets/flipper_svg/archive/ic_fileformat_ibutton.svg',
+      'sub' => 'assets/ic/fileformat/sub.svg',
+      'nfc' => 'assets/ic/fileformat/nfc.svg',
+      'rfid' => 'assets/ic/fileformat/rfid.svg',
+      'ibtn' => 'assets/ic/fileformat/ibutton.svg',
       _ => pin.category.asset,
     };
   }

@@ -11,8 +11,8 @@ class FliblerPreview extends StatelessWidget {
     final colors = context.appColors;
     return SvgPicture.asset(
       colors.isDark
-          ? 'assets/flipper_svg/tools/pic_flibler_dark.svg'
-          : 'assets/flipper_svg/tools/pic_flibler_light.svg',
+          ? 'assets/pic/tool/flibler-dark.svg'
+          : 'assets/pic/tool/flibler-light.svg',
     );
   }
 }

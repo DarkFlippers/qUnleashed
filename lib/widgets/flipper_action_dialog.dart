@@ -17,15 +17,13 @@ const String kFlipperBusyTitle = 'Flipper is Busy';
 const String kFlipperBusyMessage =
     'Exit the current app on Flipper to use this feature';
 const String kFlipperBusyAction = 'Remoute control';
-const String kFlipperBusyAssetPath =
-    'assets/flipper_svg/core/pic_flipper_is_busy.svg';
+const String kFlipperBusyAssetPath = 'assets/pic/status/busy.svg';
 
 const String kCliBluetoothUnavailableTitle = 'Terminal Unavailable';
 const String kCliBluetoothUnavailableMessage =
     'Terminal session is not available over Bluetooth.';
 const String kCliBluetoothUnavailableAction = 'Disconnect and continue';
-const String kCliBluetoothUnavailableAssetPath =
-    'assets/flipper_svg/core/pic_flipper_is_busy.svg';
+const String kCliBluetoothUnavailableAssetPath = 'assets/pic/status/busy.svg';
 
 class FlipperActionDialog extends StatelessWidget {
   const FlipperActionDialog({

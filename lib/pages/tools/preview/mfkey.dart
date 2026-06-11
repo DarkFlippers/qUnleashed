@@ -11,8 +11,8 @@ class MfKeyPreview extends StatelessWidget {
     final colors = context.appColors;
     return SvgPicture.asset(
       colors.isDark
-          ? 'assets/flipper_svg/tools/pic_detect_reader_black.svg'
-          : 'assets/flipper_svg/tools/pic_detect_reader.svg',
+          ? 'assets/pic/tool/detect-reader-dark.svg'
+          : 'assets/pic/tool/detect-reader.svg',
     );
   }
 }

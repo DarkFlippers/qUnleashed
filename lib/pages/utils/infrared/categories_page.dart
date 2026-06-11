@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -57,15 +57,15 @@ class _IrCategoriesPageState extends State<IrCategoriesPage> {
   }
 
   void _openCategory(DeviceCategory c) {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => IrBrandsPage(category: c)),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => IrBrandsPage(category: c)));
   }
 
   void _openIrdb() {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const IrLibPage()),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const IrLibPage()));
   }
 
   @override
@@ -100,8 +100,7 @@ class _IrCategoriesPageState extends State<IrCategoriesPage> {
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
                 sliver: SliverGrid(
-                  gridDelegate:
-                      const SliverGridDelegateWithFixedCrossAxisCount(
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 2,
                     mainAxisSpacing: 12,
                     crossAxisSpacing: 12,
@@ -152,11 +151,13 @@ class _IrdbButton extends StatelessWidget {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: SvgPicture.asset(
-                    'assets/flipper_svg/archive/ic_fileformat_ir.svg',
+                    'assets/ic/fileformat/ir.svg',
                     width: 24,
                     height: 24,
-                    colorFilter:
-                        ColorFilter.mode(colors.accent, BlendMode.srcIn),
+                    colorFilter: ColorFilter.mode(
+                      colors.accent,
+                      BlendMode.srcIn,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 14),
@@ -213,8 +214,10 @@ class _DeviceCategoryCard extends StatelessWidget {
             children: [
               if (image != null)
                 ColorFiltered(
-                  colorFilter:
-                      ColorFilter.mode(colors.textPrimary, BlendMode.srcIn),
+                  colorFilter: ColorFilter.mode(
+                    colors.textPrimary,
+                    BlendMode.srcIn,
+                  ),
                   child: Image.memory(
                     image,
                     width: 40,

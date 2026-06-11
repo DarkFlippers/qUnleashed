@@ -15,50 +15,48 @@ class FileVisual {
   final Color color;
 }
 
-const _kFlipperSvg = 'assets/flipper_svg/archive';
+const _kFileIcon = 'assets/ic/file';
+const _kFileFormatIcon = 'assets/ic/fileformat';
 
 /// Resolves the right icon + accent color for a directory entry, recognizing
 /// Flipper file formats (.sub/.nfc/.ir/.rfid/.ibtn/.bad) as well as common
 /// generic file types.
 FileVisual fileVisualFor(RemoteEntry e, QAppColors colors) {
   if (e.isDir) {
-    return FileVisual(
-      asset: '$_kFlipperSvg/ic_folder.svg',
-      color: colors.accent,
-    );
+    return FileVisual(asset: '$_kFileIcon/folder.svg', color: colors.accent);
   }
 
   switch (_ext(e.name)) {
     case 'sub':
       return const FileVisual(
-        asset: '$_kFlipperSvg/ic_fileformat_sub.svg',
+        asset: '$_kFileFormatIcon/sub.svg',
         color: Color(0xFF9C6ADE),
       );
     case 'nfc':
       return const FileVisual(
-        asset: '$_kFlipperSvg/ic_fileformat_nfc.svg',
+        asset: '$_kFileFormatIcon/nfc.svg',
         color: Color(0xFF3B82F6),
       );
     case 'ir':
       return const FileVisual(
-        asset: '$_kFlipperSvg/ic_fileformat_ir.svg',
+        asset: '$_kFileFormatIcon/ir.svg',
         color: Color(0xFF14B8A6),
       );
     case 'rfid':
       return const FileVisual(
-        asset: '$_kFlipperSvg/ic_fileformat_rf.svg',
+        asset: '$_kFileFormatIcon/rfid.svg',
         color: Color(0xFF22C55E),
       );
     case 'ibtn':
       return const FileVisual(
-        asset: '$_kFlipperSvg/ic_fileformat_ibutton.svg',
+        asset: '$_kFileFormatIcon/ibutton.svg',
         color: Color(0xFFF59E0B),
       );
     case 'bad':
     case 'badusb':
     case 'u2f':
       return const FileVisual(
-        asset: '$_kFlipperSvg/ic_fileformat_badusb.svg',
+        asset: '$_kFileFormatIcon/badusb.svg',
         color: Color(0xFFEF4444),
       );
     case 'fap':
@@ -96,10 +94,7 @@ FileVisual fileVisualFor(RemoteEntry e, QAppColors colors) {
     case 'wav':
     case 'ogg':
     case 'flac':
-      return const FileVisual(
-        icon: Icons.audiotrack,
-        color: Color(0xFFF97316),
-      );
+      return const FileVisual(icon: Icons.audiotrack, color: Color(0xFFF97316));
     case 'zip':
     case 'tar':
     case 'gz':
@@ -117,7 +112,7 @@ FileVisual fileVisualFor(RemoteEntry e, QAppColors colors) {
       return const FileVisual(icon: Icons.memory, color: Color(0xFF78716C));
     default:
       return FileVisual(
-        asset: '$_kFlipperSvg/ic_file.svg',
+        asset: '$_kFileIcon/default.svg',
         color: colors.textSecondary,
       );
   }

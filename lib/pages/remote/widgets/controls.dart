@@ -12,7 +12,12 @@ class _AccentColorMapper extends ColorMapper {
   final Color accent;
 
   @override
-  Color substitute(String? id, String elementName, String attributeName, Color color) {
+  Color substitute(
+    String? id,
+    String elementName,
+    String attributeName,
+    Color color,
+  ) {
     return color == _kFlipperOrange ? accent : color;
   }
 }
@@ -88,15 +93,17 @@ class _DPad extends StatelessWidget {
           color: colors.accent,
           child: Column(
             children: [
-              Expanded(child: _row(RemoteButton.up, 'ic_control_up')),
+              Expanded(child: _row(RemoteButton.up, 'up')),
               Expanded(
-                child: Row(children: [
-                  Expanded(child: _btn(RemoteButton.left, 'ic_control_left')),
-                  Expanded(child: _btn(RemoteButton.ok, 'ic_control_ok')),
-                  Expanded(child: _btn(RemoteButton.right, 'ic_control_right')),
-                ]),
+                child: Row(
+                  children: [
+                    Expanded(child: _btn(RemoteButton.left, 'left')),
+                    Expanded(child: _btn(RemoteButton.ok, 'ok')),
+                    Expanded(child: _btn(RemoteButton.right, 'right')),
+                  ],
+                ),
               ),
-              Expanded(child: _row(RemoteButton.down, 'ic_control_down')),
+              Expanded(child: _row(RemoteButton.down, 'down')),
             ],
           ),
         ),
@@ -105,11 +112,13 @@ class _DPad extends StatelessWidget {
   }
 
   Widget _row(RemoteButton center, String asset) {
-    return Row(children: [
-      const Expanded(child: SizedBox.shrink()),
-      Expanded(child: _btn(center, asset)),
-      const Expanded(child: SizedBox.shrink()),
-    ]);
+    return Row(
+      children: [
+        const Expanded(child: SizedBox.shrink()),
+        Expanded(child: _btn(center, asset)),
+        const Expanded(child: SizedBox.shrink()),
+      ],
+    );
   }
 
   Widget _btn(RemoteButton button, String iconName) {
@@ -122,7 +131,7 @@ class _DPad extends StatelessWidget {
           height: 44,
           child: Center(
             child: SvgPicture.asset(
-              'assets/flipper_svg/screenstreaming/$iconName.svg',
+              'assets/ic/control/$iconName.svg',
               colorMapper: _AccentColorMapper(colors.accent),
             ),
           ),
@@ -160,9 +169,7 @@ class _BackButton extends StatelessWidget {
           child: Container(
             color: colors.accent,
             padding: const EdgeInsets.all(12),
-            child: SvgPicture.asset(
-              'assets/flipper_svg/screenstreaming/ic_control_back.svg',
-            ),
+            child: SvgPicture.asset('assets/ic/control/back.svg'),
           ),
         ),
       ),

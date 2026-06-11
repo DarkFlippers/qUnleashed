@@ -88,10 +88,12 @@ class DeviceTab extends StatelessWidget {
           infoEntries: wide ? ctrl.deviceInfoEntries : const [],
           deviceInfo: ctrl.info,
           connectionLabel: ctrl.device?.isBle == true ? 'BLE' : 'USB',
-          connectionIcon:
-              ctrl.device?.isBle == true ? Icons.bluetooth : Icons.usb,
-          onOpenFullInfo:
-              ctrl.isConnected ? () => _openFullInfo(context) : null,
+          connectionIcon: ctrl.device?.isBle == true
+              ? Icons.bluetooth
+              : Icons.usb,
+          onOpenFullInfo: ctrl.isConnected
+              ? () => _openFullInfo(context)
+              : null,
         ),
       ],
     );
@@ -165,9 +167,9 @@ class _ConnectedContent extends StatelessWidget {
         ],
         const SizedBox(height: 14),
         _RemoteControlCard(
-          onOpenRemoteControl: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const RemoteControlPage()),
-          ),
+          onOpenRemoteControl: () => Navigator.of(
+            context,
+          ).push(MaterialPageRoute(builder: (_) => const RemoteControlPage())),
         ),
         const SizedBox(height: 14),
         Padding(
@@ -182,9 +184,7 @@ class _ConnectedContent extends StatelessWidget {
                     ? null
                     : () => _playAlert(context),
               ),
-              _ConnectionActionsCard(
-                onDisconnect: () => ctrl.disconnect(),
-              ),
+              _ConnectionActionsCard(onDisconnect: () => ctrl.disconnect()),
             ],
           ),
         ),
@@ -271,8 +271,7 @@ class _DisconnectedContent extends StatelessWidget {
       context: context,
       barrierColor: context.appColors.dialogBarrier,
       builder: (ctx) => FlipperActionDialog(
-        imageAssetPath:
-            'assets/flipper_svg/tools/mifare/pic_shrug_black.svg',
+        imageAssetPath: 'assets/pic/mifare/shrug-black.svg',
         imageSize: const Size(147.5, 95.8),
         title: 'Connection failed',
         text: text,
@@ -337,16 +336,14 @@ class _ResponsiveCardGrid extends StatelessWidget {
   static const double _spacing = 14;
   static const double _minCardWidth = 300;
 
-
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final columns =
-            (constraints.maxWidth / _minCardWidth).floor().clamp(
-              1,
-              children.length,
-            );
+        final columns = (constraints.maxWidth / _minCardWidth).floor().clamp(
+          1,
+          children.length,
+        );
         final cardWidth =
             (constraints.maxWidth - (_spacing * (columns - 1))) / columns;
         if (columns == 1) {
@@ -486,7 +483,9 @@ class _SummaryCard extends StatelessWidget {
             Row(
               children: [
                 for (final m in metrics)
-                  Expanded(child: _Metric(label: m.$1, value: m.$2)),
+                  Expanded(
+                    child: _Metric(label: m.$1, value: m.$2),
+                  ),
               ],
             ),
           ],
@@ -616,7 +615,7 @@ class _DeviceInfoCard extends StatelessWidget {
           ),
           Divider(height: 1, color: colors.divider),
           FlipperActionRow(
-            iconAsset: 'assets/flipper_svg/core/ic_navigate.svg',
+            iconAsset: 'assets/ic/nav/navigate.svg',
             label: 'Full Info',
             color: colors.accent,
             onTap: onOpenFullInfo,
@@ -667,7 +666,7 @@ class _RemoteControlCard extends StatelessWidget {
       child: Column(
         children: [
           FlipperActionRow(
-            iconAsset: 'assets/flipper_svg/info/ic_controller.svg',
+            iconAsset: 'assets/ic/app/controller.svg',
             label: 'Remote Control',
             color: colors.textPrimary,
             trailing: DeviceNavigateIcon(color: colors.textMuted),
@@ -705,14 +704,14 @@ class _ActionsCard extends StatelessWidget {
       child: Column(
         children: [
           FlipperActionRow(
-            iconAsset: 'assets/flipper_svg/core/ic_syncing.svg',
+            iconAsset: 'assets/ic/device/syncing.svg',
             label: 'Synchronize',
             color: onSynchronize == null ? colors.textMuted : colors.accent,
             onTap: onSynchronize,
           ),
           Divider(height: 1, color: colors.divider),
           FlipperActionRow(
-            iconAsset: 'assets/flipper_svg/info/ic_ring.svg',
+            iconAsset: 'assets/ic/device/ring.svg',
             label: 'Play Alert on Flipper',
             color: onPlayAlert == null ? colors.textMuted : colors.accent,
             onTap: onPlayAlert,
@@ -738,14 +737,14 @@ class _ConnectionActionsCard extends StatelessWidget {
       child: Column(
         children: [
           FlipperActionRow(
-            iconAsset: 'assets/flipper_svg/core/ic_bluetooth_disable.svg',
+            iconAsset: 'assets/ic/device/bluetooth-off.svg',
             label: 'Disconnect',
             color: colors.accent,
             onTap: onDisconnect,
           ),
           Divider(height: 1, color: colors.divider),
           FlipperActionRow(
-            iconAsset: 'assets/flipper_svg/info/ic_disconnection.svg',
+            iconAsset: 'assets/ic/device/disconnect.svg',
             label: 'Forget Flipper',
             color: colors.danger,
             onTap: null,
@@ -831,7 +830,9 @@ String? _str(Map<String, String> info, List<String> keys) {
 double? _number(Map<String, String> info, List<String> keys) {
   final raw = _str(info, keys);
   if (raw == null) return null;
-  final n = double.tryParse(raw.replaceAll('%', '').replaceAll(',', '.').trim());
+  final n = double.tryParse(
+    raw.replaceAll('%', '').replaceAll(',', '.').trim(),
+  );
   if (n == null || !n.isFinite) return null;
   return n;
 }

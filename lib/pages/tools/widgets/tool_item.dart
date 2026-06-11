@@ -51,9 +51,8 @@ VoidCallback? _resolveTap(BuildContext context, ToolItemModel model) {
 
   final routeBuilder = model.routeBuilder;
   if (routeBuilder != null) {
-    return () => Navigator.of(context).push(
-          MaterialPageRoute(builder: routeBuilder),
-        );
+    return () =>
+        Navigator.of(context).push(MaterialPageRoute(builder: routeBuilder));
   }
   return null;
 }
@@ -68,11 +67,7 @@ class _ItemLeading extends StatelessWidget {
   Widget build(BuildContext context) {
     final preview = model.preview;
     if (preview != null) {
-      return SizedBox(
-        width: 64,
-        height: 64,
-        child: ToolPreview(type: preview),
-      );
+      return SizedBox(width: 64, height: 64, child: ToolPreview(type: preview));
     }
     final color = model.iconColor ?? context.appColors.textPrimary;
     final icon = Container(
@@ -110,13 +105,10 @@ class _ItemTrailing extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.only(left: 8),
           child: SvgPicture.asset(
-            'assets/flipper_svg/tools/ic_navigate.svg',
+            'assets/ic/nav/navigate-tool.svg',
             width: 16,
             height: 16,
-            colorFilter: ColorFilter.mode(
-              colors.textMuted,
-              BlendMode.srcIn,
-            ),
+            colorFilter: ColorFilter.mode(colors.textMuted, BlendMode.srcIn),
           ),
         ),
       ],

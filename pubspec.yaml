@@ -51,27 +51,33 @@ flutter:
   fonts:
     - family: FlipperBold
       fonts:
-        - asset: assets/fonts/flipper_bold.ttf
+        - asset: assets/font/flipper-bold.ttf
           weight: 500
     - family: Born2bSportyV2
       fonts:
-        - asset: assets/fonts/Born2bSportyV2.ttf
+        - asset: assets/font/born2b-sporty-v2.ttf
     - family: GravityBold8
       fonts:
-        - asset: assets/fonts/GravityBold8.ttf
+        - asset: assets/font/gravity-bold-8.ttf
   assets:
-    - assets/firmware/
-    - assets/flipper_svg/
-    - assets/flipper_svg/bottombar/
-    - assets/flipper_svg/common/
-    - assets/flipper_svg/connection/
-    - assets/flipper_svg/core/
-    - assets/flipper_svg/info/
-    - assets/flipper_svg/mockup/
-    - assets/flipper_svg/screenstreaming/
-    - assets/flipper_svg/tools/
-    - assets/flipper_svg/tools/mifare/
-    - assets/flipper_svg/archive/
-    - assets/apps/
-    - assets/bg-big.jpg
+    - assets/ic/action/
+    - assets/ic/app/
+    - assets/ic/connect/
+    - assets/ic/control/
+    - assets/ic/control/hint/
+    - assets/ic/device/
+    - assets/ic/file/
+    - assets/ic/fileformat/
+    - assets/ic/info/
+    - assets/ic/nav/
+    - assets/ic/state/
+    - assets/ic/storage/
+    - assets/img/
+    - assets/img/firmware/
+    - assets/pic/app/
+    - assets/pic/device/body/
+    - assets/pic/device/screen/
+    - assets/pic/mifare/
+    - assets/pic/status/
+    - assets/pic/tool/
     - LICENSE

@@ -118,7 +118,7 @@ class DesktopUpdateScheduler with TrayListener, WindowListener {
   }
 
   String _trayIconPath() {
-    return 'assets/firmware/unleashed_tray.png';
+    return 'assets/img/firmware/tray.png';
   }
 
   @override

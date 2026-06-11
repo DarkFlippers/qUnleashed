@@ -45,24 +45,24 @@ class FlipperRootScaffold extends StatelessWidget {
                 ),
                 _BottomTab(
                   asset: currentTab == FlipperRootTab.archive
-                      ? 'assets/flipper_svg/bottombar/ic_archive_filled.svg'
-                      : 'assets/flipper_svg/bottombar/ic_archive.svg',
+                      ? 'assets/ic/nav/archive-filled.svg'
+                      : 'assets/ic/nav/archive.svg',
                   label: 'Archive',
                   selected: currentTab == FlipperRootTab.archive,
                   onTap: () => onTabSelected(FlipperRootTab.archive),
                 ),
                 _BottomTab(
                   asset: currentTab == FlipperRootTab.apps
-                      ? 'assets/flipper_svg/bottombar/ic_tab_apps_filled.svg'
-                      : 'assets/flipper_svg/bottombar/ic_tab_apps.svg',
+                      ? 'assets/ic/nav/apps-filled.svg'
+                      : 'assets/ic/nav/apps.svg',
                   label: 'Apps',
                   selected: currentTab == FlipperRootTab.apps,
                   onTap: () => onTabSelected(FlipperRootTab.apps),
                 ),
                 _BottomTab(
                   asset: currentTab == FlipperRootTab.tools
-                      ? 'assets/flipper_svg/bottombar/ic_tools_filled.svg'
-                      : 'assets/flipper_svg/bottombar/ic_tools.svg',
+                      ? 'assets/ic/nav/tools-filled.svg'
+                      : 'assets/ic/nav/tools.svg',
                   label: 'Tools',
                   selected: currentTab == FlipperRootTab.tools,
                   onTap: () => onTabSelected(FlipperRootTab.tools),
@@ -114,7 +114,10 @@ class _BottomTab extends StatelessWidget {
                 child: applyTint
                     ? SvgPicture.asset(
                         asset,
-                        colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
+                        colorFilter: ColorFilter.mode(
+                          iconColor,
+                          BlendMode.srcIn,
+                        ),
                       )
                     : SvgPicture.asset(asset),
               ),

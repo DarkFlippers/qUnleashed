@@ -82,9 +82,11 @@ class _CliPageState extends State<CliPage> {
   void _onTerminalOutput(String data) {
     if (!_ready) return;
     final bytes = Uint8List.fromList(utf8.encode(data));
-    unawaited(_client.writeCliBytes(bytes).catchError((Object e) {
-      LogService.log('[CLI] write error: $e');
-    }));
+    unawaited(
+      _client.writeCliBytes(bytes).catchError((Object e) {
+        LogService.log('[CLI] write error: $e');
+      }),
+    );
   }
 
   Future<void> _bootstrap() async {
@@ -165,7 +167,7 @@ class _CliPageState extends State<CliPage> {
       barrierColor: context.appColors.dialogBarrier,
       builder: (dialogContext) {
         return FlipperActionDialog(
-          imageAssetPath: 'assets/flipper_svg/tools/mifare/pic_shrug_black.svg',
+          imageAssetPath: 'assets/pic/mifare/shrug-black.svg',
           imageSize: const Size(147.5, 95.8),
           title: 'Connection failed',
           text: text,
@@ -214,9 +216,11 @@ class _CliPageState extends State<CliPage> {
 
   void _sendCtrlC() {
     if (!_ready) return;
-    unawaited(_client.writeCliBytes(Uint8List.fromList([0x03])).catchError(
-      (Object e) => LogService.log('[CLI] ctrl-c failed: $e'),
-    ));
+    unawaited(
+      _client
+          .writeCliBytes(Uint8List.fromList([0x03]))
+          .catchError((Object e) => LogService.log('[CLI] ctrl-c failed: $e')),
+    );
     _terminalFocusNode.requestFocus();
   }
 
@@ -276,7 +280,6 @@ class _CliPageState extends State<CliPage> {
       },
     );
   }
-
 }
 
 bool get _useHardwareKeyboardOnly {

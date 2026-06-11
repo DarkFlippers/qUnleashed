@@ -212,9 +212,9 @@ class _FileManagerPageState extends State<FileManagerPage> {
       extension: e.extension,
       remotePath: remotePath,
     );
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => EmulatePage(flipperKey: key)),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => EmulatePage(flipperKey: key)));
   }
 
   /// Opens the system folder picker and returns the chosen directory, or null
@@ -322,10 +322,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
   void _setClipboard(List<RemoteEntry> entries, {required bool isCut}) {
     if (entries.isEmpty) return;
     setState(() {
-      _clipboard = _Clipboard(
-        items: entries.map(_clip).toList(),
-        isCut: isCut,
-      );
+      _clipboard = _Clipboard(items: entries.map(_clip).toList(), isCut: isCut);
     });
   }
 
@@ -583,7 +580,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
             const SizedBox(height: 8),
             ListTile(
               leading: SvgPicture.asset(
-                'assets/flipper_svg/archive/ic_create_folder.svg',
+                'assets/ic/action/create-folder.svg',
                 width: 22,
                 height: 22,
                 colorFilter: ColorFilter.mode(
@@ -602,7 +599,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
             ),
             ListTile(
               leading: SvgPicture.asset(
-                'assets/flipper_svg/archive/ic_upload.svg',
+                'assets/ic/action/upload.svg',
                 width: 22,
                 height: 22,
                 colorFilter: ColorFilter.mode(
@@ -700,9 +697,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
           decoration: InputDecoration(
             hintText: 'Search in this folder',
             border: InputBorder.none,
-            hintStyle: TextStyle(
-              color: colors.onAccent.withValues(alpha: 0.7),
-            ),
+            hintStyle: TextStyle(color: colors.onAccent.withValues(alpha: 0.7)),
           ),
           onChanged: _ctrl.setSearch,
         ),
@@ -745,7 +740,9 @@ class _FileManagerPageState extends State<FileManagerPage> {
           onPressed: _showSortSheet,
         ),
         IconButton(
-          tooltip: _ctrl.viewMode == FileViewMode.list ? 'Grid view' : 'List view',
+          tooltip: _ctrl.viewMode == FileViewMode.list
+              ? 'Grid view'
+              : 'List view',
           icon: Icon(
             _ctrl.viewMode == FileViewMode.list
                 ? Icons.grid_view
@@ -773,9 +770,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
               child: Row(
                 children: [
                   Icon(
-                    _ctrl.showHidden
-                        ? Icons.visibility_off
-                        : Icons.visibility,
+                    _ctrl.showHidden ? Icons.visibility_off : Icons.visibility,
                     size: 20,
                   ),
                   const SizedBox(width: 12),
@@ -1135,8 +1130,9 @@ class _FileManagerPageState extends State<FileManagerPage> {
         onCopy: () => _copyEntry(e),
         onCut: () => _cutEntry(e),
         onDownload: () => _downloadEntries([e]),
-        onEmulate:
-            (cat != null && cat.emulatable) ? () => _emulateEntry(e, cat) : null,
+        onEmulate: (cat != null && cat.emulatable)
+            ? () => _emulateEntry(e, cat)
+            : null,
         onEdit: _isEditable(e)
             ? () => _openTextEditor(_ctrl.childPath(e.name))
             : null,

@@ -19,27 +19,27 @@ class ToolsPage extends StatelessWidget {
   static final List<ToolCardModel> _tools = [
     ToolCardGroup(
       header: const ToolCardHeader(
-        iconAsset: 'assets/flipper_svg/common/ic_device.svg',
+        iconAsset: 'assets/ic/device/flipper.svg',
         iconColor: Color(0xFF589DFF),
         title: 'Device control',
       ),
       items: [
         ToolItemModel(
-          iconAsset: 'assets/flipper_svg/info/ic_controller.svg',
+          iconAsset: 'assets/ic/app/controller.svg',
           iconColor: const Color(0xFF589DFF),
           title: 'Remote desktop',
           description: 'View, control, and record the flipper screen',
           routeBuilder: _buildRemoteControlPage,
         ),
         ToolItemModel(
-          iconAsset: 'assets/flipper_svg/tools/ic_cli.svg',
+          iconAsset: 'assets/ic/app/cli.svg',
           iconColor: const Color(0xFFFF9B34),
           title: 'Command line',
           description: 'Open a terminal session on your flipper',
           onTap: _openCliPage,
         ),
         ToolItemModel(
-          iconAsset: 'assets/flipper_svg/tools/ic_paint.svg',
+          iconAsset: 'assets/ic/app/paint-large.svg',
           iconColor: const Color(0xFFE85858),
           title: 'Pixel Draw',
           description: 'Draw directly on the flipper display',
@@ -49,7 +49,7 @@ class ToolsPage extends StatelessWidget {
     ),
     ToolCardGroup(
       header: const ToolCardHeader(
-        iconAsset: 'assets/flipper_svg/tools/ic_files.svg',
+        iconAsset: 'assets/ic/app/files.svg',
         iconColor: Color(0xFF8BC34A),
         title: 'File utils',
       ),
@@ -70,7 +70,7 @@ class ToolsPage extends StatelessWidget {
           badge: 'Beta',
         ),
         ToolItemModel(
-          iconAsset: 'assets/flipper_svg/archive/ic_fileformat_sub.svg',
+          iconAsset: 'assets/ic/fileformat/sub.svg',
           iconColor: const Color(0xFF8BC34A),
           title: 'Saved Locations',
           description: 'View saved files by recording location',
@@ -79,7 +79,7 @@ class ToolsPage extends StatelessWidget {
       ],
     ),
     ToolCard(
-      iconAsset: 'assets/apps/app_placeholder.svg',
+      iconAsset: 'assets/ic/info/lg.svg',
       iconColor: const Color(0xFF589DFF),
       title: 'About',
       description: 'Links, community and license',

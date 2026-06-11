@@ -94,7 +94,9 @@ class RemoteSession extends ChangeNotifier {
       await _client.guiStopScreenStream().timeout(const Duration(seconds: 2));
     } catch (_) {}
     try {
-      await _client.desktopStatusUnsubscribe().timeout(const Duration(seconds: 2));
+      await _client.desktopStatusUnsubscribe().timeout(
+        const Duration(seconds: 2),
+      );
     } catch (_) {}
   }
 
@@ -258,14 +260,14 @@ InputKey _key(RemoteButton b) => switch (b) {
   RemoteButton.back => InputKey.BACK,
 };
 
-const _animBase = 'assets/flipper_svg/screenstreaming';
-const _kUnlockAnim = '$_animBase/ic_anim_unlock_light.svg';
+const _animBase = 'assets/ic/control/hint';
+const _kUnlockAnim = '$_animBase/unlock.svg';
 
 String _animAsset(RemoteButton b) => switch (b) {
-  RemoteButton.up => '$_animBase/ic_anim_up_button_light.svg',
-  RemoteButton.down => '$_animBase/ic_anim_down_button_light.svg',
-  RemoteButton.left => '$_animBase/ic_anim_left_button_light.svg',
-  RemoteButton.right => '$_animBase/ic_anim_right_button_light.svg',
-  RemoteButton.ok => '$_animBase/ic_anim_ok_button_light.svg',
-  RemoteButton.back => '$_animBase/ic_anim_back_button_light.svg',
+  RemoteButton.up => '$_animBase/up.svg',
+  RemoteButton.down => '$_animBase/down.svg',
+  RemoteButton.left => '$_animBase/left.svg',
+  RemoteButton.right => '$_animBase/right.svg',
+  RemoteButton.ok => '$_animBase/ok.svg',
+  RemoteButton.back => '$_animBase/back.svg',
 };

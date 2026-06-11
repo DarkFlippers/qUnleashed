@@ -23,9 +23,10 @@ class _AboutPageState extends State<AboutPage>
       vsync: this,
       duration: const Duration(seconds: 10),
     )..repeat(reverse: true);
-    _bgScale = Tween<double>(begin: 1.0, end: 1.2).animate(
-      CurvedAnimation(parent: _bgCtrl, curve: Curves.linear),
-    );
+    _bgScale = Tween<double>(
+      begin: 1.0,
+      end: 1.2,
+    ).animate(CurvedAnimation(parent: _bgCtrl, curve: Curves.linear));
   }
 
   @override
@@ -63,7 +64,7 @@ class _AboutPageState extends State<AboutPage>
             animation: _bgScale,
             builder: (_, child) =>
                 Transform.scale(scale: _bgScale.value, child: child),
-            child: Image.asset('assets/bg-big.jpg', fit: BoxFit.cover),
+            child: Image.asset('assets/img/bg.jpg', fit: BoxFit.cover),
           ),
           Positioned(
             top: mq.padding.top + kToolbarHeight + 14,
@@ -178,7 +179,8 @@ class _AboutPageState extends State<AboutPage>
                     onTap: () => b.url.isEmpty
                         ? Navigator.of(context).push(
                             MaterialPageRoute(
-                                builder: (_) => const AppLicensePage()),
+                              builder: (_) => const AppLicensePage(),
+                            ),
                           )
                         : openUrl(context, b.url),
                   ),
@@ -207,7 +209,10 @@ const _navBtns = <_Btn>[
 
 const _extraBtns = <_Btn>[
   _Btn('App GitHub', 'https://github.com/apfxtech/qUnleashed'),
-  _Btn('Donate Firmware', 'https://github.com/DarkFlippers/unleashed-firmware/blob/dev/ReadMe.md#%EF%B8%8F-please-support-development-of-the-project'),
+  _Btn(
+    'Donate Firmware',
+    'https://github.com/DarkFlippers/unleashed-firmware/blob/dev/ReadMe.md#%EF%B8%8F-please-support-development-of-the-project',
+  ),
   _Btn('Donate App', 'https://boosty.to/apfxtech'),
   _Btn('Telegram RU', 'https://t.me/flipperzero_unofficial_ru'),
   _Btn('Unleashed Web', 'https://flipperunleashed.com/'),

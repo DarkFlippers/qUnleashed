@@ -11,8 +11,8 @@ class RemoteLibraryPreview extends StatelessWidget {
     final colors = context.appColors;
     return SvgPicture.asset(
       colors.isDark
-          ? 'assets/flipper_svg/tools/pic_remotes_library_dark.svg'
-          : 'assets/flipper_svg/tools/pic_remotes_library_light.svg',
+          ? 'assets/pic/tool/remotes-dark.svg'
+          : 'assets/pic/tool/remotes-light.svg',
     );
   }
 }

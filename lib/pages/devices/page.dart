@@ -73,21 +73,21 @@ class _DevicePageState extends State<DevicePage> {
     final isConnected = _ctrl.isConnected;
     if (!isConnected) {
       return _ctrl.device != null
-          ? 'assets/flipper_svg/connection/ic_disconnected_filled.svg'
-          : 'assets/flipper_svg/connection/ic_no_device_filled.svg';
+          ? 'assets/ic/connect/device-disconnected-filled.svg'
+          : 'assets/ic/connect/device-missing-filled.svg';
     }
     if (_ctrl.deviceLoading) {
-      return 'assets/flipper_svg/connection/ic_syncing_filled.svg';
+      return 'assets/ic/connect/device-syncing-filled.svg';
     }
     switch (_syncStatus) {
       case ArchiveSyncStatus.syncing:
-        return 'assets/flipper_svg/connection/ic_syncing_filled.svg';
+        return 'assets/ic/connect/device-syncing-filled.svg';
       case ArchiveSyncStatus.synced:
         return _ctrl.deviceInfoConnected
-            ? 'assets/flipper_svg/connection/ic_connected_filled.svg'
-            : 'assets/flipper_svg/connection/ic_synced_filled.svg';
+            ? 'assets/ic/connect/device-connected-filled.svg'
+            : 'assets/ic/connect/device-synced-filled.svg';
       case ArchiveSyncStatus.idle:
-        return 'assets/flipper_svg/connection/ic_connected_filled.svg';
+        return 'assets/ic/connect/device-connected-filled.svg';
     }
   }
 

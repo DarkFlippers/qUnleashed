@@ -64,7 +64,8 @@ class _SafeNetworkSvgState extends State<SafeNetworkSvg> {
   @override
   Widget build(BuildContext context) {
     final fallback =
-        widget.placeholder ?? SizedBox(width: widget.width, height: widget.height);
+        widget.placeholder ??
+        SizedBox(width: widget.width, height: widget.height);
     return FutureBuilder<Uint8List?>(
       future: _future,
       builder: (context, snap) {
@@ -89,7 +90,7 @@ class FlipperRemoteImage extends StatelessWidget {
     required this.url,
     this.fit = BoxFit.cover,
     this.pixelated = true,
-    this.placeholderAsset = 'assets/apps/app_placeholder.svg',
+    this.placeholderAsset = 'assets/pic/app/placeholder.svg',
     this.placeholderColor,
   });
 

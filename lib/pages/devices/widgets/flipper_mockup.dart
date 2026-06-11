@@ -4,10 +4,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../../../theme.dart';
 
 class FlipperMockupWidget extends StatelessWidget {
-  const FlipperMockupWidget({
-    super.key,
-    required this.active,
-  });
+  const FlipperMockupWidget({super.key, required this.active});
 
   static const _templateWidth = 238.0;
   static const _templateHeight = 100.0;
@@ -33,11 +30,11 @@ class FlipperMockupWidget extends StatelessWidget {
               SvgPicture.asset(
                 colors.isDark
                     ? (active
-                        ? 'assets/flipper_svg/mockup/template_black_flipper_active.svg'
-                        : 'assets/flipper_svg/mockup/template_black_flipper_disabled.svg')
+                          ? 'assets/pic/device/body/black-active.svg'
+                          : 'assets/pic/device/body/black-disabled.svg')
                     : (active
-                        ? 'assets/flipper_svg/mockup/template_white_flipper_active.svg'
-                        : 'assets/flipper_svg/mockup/template_white_flipper_disabled.svg'),
+                          ? 'assets/pic/device/body/white-active.svg'
+                          : 'assets/pic/device/body/white-disabled.svg'),
               ),
               Positioned(
                 left: w * (_screenLeft / _templateWidth),
@@ -258,7 +255,7 @@ class _MockupInnerScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SvgPicture.asset(
-      'assets/flipper_svg/mockup/pic_flipperscreen_default.svg',
+      'assets/pic/device/screen/default.svg',
       fit: BoxFit.fill,
     );
   }

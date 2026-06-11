@@ -60,7 +60,7 @@ class FirmwareEntry {
     required this.colors,
   });
 
-  String get assetPath => 'assets/firmware/$icon';
+  String get assetPath => 'assets/img/firmware/$icon';
 }
 
 class FirmwareConfig {

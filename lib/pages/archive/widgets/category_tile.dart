@@ -40,7 +40,7 @@ class CategoryTile extends StatelessWidget {
   }) {
     return CategoryTile(
       title: 'Deleted',
-      asset: 'assets/flipper_svg/archive/ic_trash.svg',
+      asset: 'assets/ic/action/trash.svg',
       color: const Color(0xFF8D8D8D),
       count: count,
       onTap: onTap,

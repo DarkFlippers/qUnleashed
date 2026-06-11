@@ -71,7 +71,7 @@ class _AppStartupState extends State<_AppStartup> {
         child: ClipRRect(
           borderRadius: BorderRadius.circular(28),
           child: Image.asset(
-            'assets/firmware/unleashed.jpg',
+            'assets/img/firmware/unleashed.jpg',
             width: 110,
             height: 110,
             fit: BoxFit.cover,
