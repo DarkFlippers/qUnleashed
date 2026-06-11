@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
 
 import '../../../theme.dart';
-import '../models/tool.dart';
 
 class ToolItemText extends StatelessWidget {
   const ToolItemText({
     super.key,
-    required this.model,
+    required this.title,
+    required this.description,
   });
 
-  final ToolItemModel model;
+  final String title;
+  final String description;
 
   @override
   Widget build(BuildContext context) {
@@ -19,7 +20,7 @@ class ToolItemText extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Text(
-          model.title,
+          title,
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
@@ -31,7 +32,7 @@ class ToolItemText extends StatelessWidget {
         ),
         const SizedBox(height: 2),
         Text(
-          model.description,
+          description,
           maxLines: 3,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
