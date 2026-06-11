@@ -4,9 +4,9 @@ import 'dart:math' as math;
 import 'package:flipperlib/flipperlib.dart' hide DateTime;
 import 'package:flutter/foundation.dart';
 
+import '../codec.dart';
+import '../constants.dart';
 import 'algorithms.dart';
-import 'codec.dart';
-import 'constants.dart';
 
 class PaintController extends ChangeNotifier {
   final List<Uint8List> frames = [Uint8List(kCanvasWidth * kCanvasHeight)];

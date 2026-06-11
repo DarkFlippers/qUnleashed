@@ -5,13 +5,16 @@ import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../../services/repository/app.dart';
-import 'dolphin_animation.dart';
+import '../project.dart';
 
 /// Remote dolphin directory on the Flipper SD card.
 const String kDeviceDolphinPath = '/ext/dolphin';
 
-class AnimationManagerController extends ChangeNotifier {
-  AnimationManagerController({FlipperClient? client})
+/// Backs the Pixel Draw project manager: lists all local projects (drawings,
+/// GIFs, dolphin animations and drafts) and can import the device's dolphin
+/// animations into the local library.
+class ProjectManagerController extends ChangeNotifier {
+  ProjectManagerController({FlipperClient? client})
     : _client = client ?? FlipperOneClient().get() {
     _connSub = _client.connectionStream.listen((_) => _notify());
   }
@@ -20,63 +23,68 @@ class AnimationManagerController extends ChangeNotifier {
   StreamSubscription<FlipperConnectionState>? _connSub;
   bool _disposed = false;
 
-  List<DolphinAnimation> _animations = const [];
+  List<PaintProject> _projects = const [];
   bool _loading = false;
   bool _importing = false;
   double? _importProgress;
   String? _importStatus;
-  String? _selectedName;
+  String? _selectedId;
   String? _error;
 
   // ── Getters ────────────────────────────────────────────────────────────────
 
-  List<DolphinAnimation> get animations => _animations;
+  List<PaintProject> get projects => _projects;
   bool get loading => _loading;
   bool get importing => _importing;
   double? get importProgress => _importProgress;
   String? get importStatus => _importStatus;
   String? get error => _error;
   bool get isConnected => _client.isConnected;
-
-  String? get selectedName => _selectedName;
-  DolphinAnimation? get selected {
-    final name = _selectedName;
-    if (name == null) return null;
-    for (final a in _animations) {
-      if (a.name == name) return a;
-    }
-    return null;
-  }
+  String? get selectedId => _selectedId;
 
   // ── Actions ─────────────────────────────────────────────────────────────────
 
-  void select(String? name) {
-    _selectedName = (_selectedName == name) ? null : name;
+  void select(String? id) {
+    _selectedId = (_selectedId == id) ? null : id;
     _notify();
   }
 
-  /// Loads the local mirror (`Animations/dolphin`) into [animations]. When
-  /// [silent] is true the loading spinner is suppressed and the list is updated
-  /// in place — used to reconcile after an incremental import without hiding the
-  /// previews that already appeared.
-  Future<void> loadLocal({bool silent = false}) async {
+  /// Scans the local library into [projects]. When [silent] is true the loading
+  /// spinner is suppressed (used to reconcile mid-import without flicker).
+  Future<void> loadAll({bool silent = false}) async {
     if (!silent) _loading = true;
     _error = null;
     _notify();
     try {
-      final dir = await appDolphinAnimationsDirectory();
-      _animations = await DolphinAnimationParser.scanDirectory(dir);
+      _projects = await PaintProject.scanAll();
     } catch (e) {
       _error = '$e';
-      LogService.log('[AnimationManager] loadLocal failed: $e');
+      LogService.log('[ProjectManager] loadAll failed: $e');
     } finally {
       _loading = false;
       _notify();
     }
   }
 
+  /// Permanently deletes a project's file or folder, then reloads.
+  Future<void> deleteProject(PaintProject project) async {
+    try {
+      final entity = project.type == PaintProjectType.dolphin
+          ? io.Directory(project.path)
+          : io.File(project.path);
+      if (await entity.exists()) {
+        await entity.delete(recursive: true);
+      }
+      if (_selectedId == project.id) _selectedId = null;
+    } catch (e) {
+      _error = 'Delete failed: $e';
+      LogService.log('[ProjectManager] delete failed: $e');
+    }
+    await loadAll(silent: true);
+  }
+
   /// Downloads the entire `/ext/dolphin` tree from the connected device into the
-  /// local mirror, then reloads. No-op (with [error] set) when disconnected.
+  /// local library, surfacing each animation as soon as its folder lands.
   Future<void> importFromDevice() async {
     if (_importing) return;
     if (!_client.isConnected) {
@@ -93,7 +101,6 @@ class AnimationManagerController extends ChangeNotifier {
     try {
       final localRoot = await appDolphinAnimationsDirectory();
 
-      // First pass: enumerate every remote file so progress is meaningful.
       final files = <_RemoteFile>[];
       await _collectRemoteFiles(kDeviceDolphinPath, '', files);
 
@@ -106,9 +113,7 @@ class AnimationManagerController extends ChangeNotifier {
       var doneBytes = 0;
       final sep = io.Platform.pathSeparator;
 
-      // Group files by their top-level folder (one animation each) so each
-      // animation's preview can be published the moment its files land, rather
-      // than waiting for the whole import to finish.
+      // Group by top-level folder so each animation appears as it completes.
       final order = <String>[];
       final groups = <String, List<_RemoteFile>>{};
       for (final f in files) {
@@ -152,14 +157,12 @@ class AnimationManagerController extends ChangeNotifier {
           _notify();
         }
 
-        // Folder fully downloaded → parse and surface it immediately.
-        if (key.isNotEmpty) {
-          await _publishLocalFolder(localRoot, key);
-        }
+        // Folder fully downloaded → reflect it in the list immediately.
+        if (key.isNotEmpty) await loadAll(silent: true);
       }
     } catch (e) {
       _error = 'Import failed: $e';
-      LogService.log('[AnimationManager] import failed: $e');
+      LogService.log('[ProjectManager] import failed: $e');
     } finally {
       _importing = false;
       _importProgress = null;
@@ -167,28 +170,7 @@ class AnimationManagerController extends ChangeNotifier {
       _notify();
     }
 
-    await loadLocal(silent: true);
-  }
-
-  /// Parses one just-downloaded animation folder and merges it into
-  /// [animations] (replacing any prior entry with the same name), so its
-  /// preview shows up mid-import.
-  Future<void> _publishLocalFolder(io.Directory localRoot, String name) async {
-    try {
-      final dir = io.Directory(pathJoin([localRoot.path, name]));
-      final meta = io.File(pathJoin([dir.path, 'meta.txt']));
-      if (!await meta.exists()) return;
-      final anim = await DolphinAnimationParser.parseFolder(dir, meta);
-      if (anim == null) return;
-      final next = [
-        ..._animations.where((a) => a.name != anim.name),
-        anim,
-      ]..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
-      _animations = next;
-      _notify();
-    } catch (e) {
-      LogService.log('[AnimationManager] publish "$name" failed: $e');
-    }
+    await loadAll(silent: true);
   }
 
   Future<void> _collectRemoteFiles(

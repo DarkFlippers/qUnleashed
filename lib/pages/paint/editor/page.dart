@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io' as io;
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -11,17 +12,19 @@ import '../../../services/repository/app.dart';
 import '../../../theme.dart';
 import '../../../widgets/notification.dart';
 import '../../remote/gif_encoder.dart';
-import 'codec.dart';
-import 'constants.dart';
+import '../codec.dart';
+import '../constants.dart';
+import '../dolphin_animation.dart';
+import '../project.dart';
 import 'controller.dart';
 import 'painters.dart';
 
 class PaintPage extends StatefulWidget {
-  const PaintPage({super.key, this.initialAnimationPath});
+  const PaintPage({super.key, this.project});
 
-  /// When set, the dolphin animation whose `meta.txt` lives at this path is
-  /// loaded into the canvas right after the page opens.
-  final String? initialAnimationPath;
+  /// Project to load into the canvas when the editor opens. When null the editor
+  /// starts a fresh, blank project (which becomes a draft once edited).
+  final PaintProject? project;
 
   @override
   State<PaintPage> createState() => _PaintPageState();
@@ -45,24 +48,95 @@ class _PaintPageState extends State<PaintPage> {
   Offset _twoFingerStartCentroid = Offset.zero;
   Offset _twoFingerStartPanOffset = Offset.zero;
 
+  // Draft autosave: the working frames are persisted to a `.drafts` folder so
+  // the project manager can surface unsaved work. [_baselineVersion] marks the
+  // controller's pixelVersion at which the canvas is considered "clean".
+  String? _draftId;
+  String? _draftDir;
+  int _baselineVersion = 0;
+  Timer? _autosaveTimer;
+  bool _savingDraft = false;
+
   @override
   void initState() {
     super.initState();
     _ctrl = PaintController();
     _ctrl.addListener(_onControllerChange);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    final project = widget.project;
+    if (project != null && project.isDraft &&
+        project.type == PaintProjectType.dolphin) {
+      // Editing an existing draft → keep writing to the same folder.
+      _draftId = project.id;
+      _draftDir = project.path;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       _ctrl.startVirtualDisplay();
-      final path = widget.initialAnimationPath;
-      if (path != null) _importDolphinFromPath(path);
+      if (project != null) {
+        await _loadProject(project);
+      }
+      // Whatever we loaded (or the empty start) is the clean baseline.
+      _baselineVersion = _ctrl.pixelVersion;
     });
   }
 
   void _onControllerChange() {
     if (mounted) setState(() {});
+    _scheduleAutosave();
+  }
+
+  Future<void> _loadProject(PaintProject project) async {
+    try {
+      switch (project.type) {
+        case PaintProjectType.dolphin:
+          final meta = project.metaPath;
+          if (meta != null) await _importDolphinFromPath(meta);
+        case PaintProjectType.gif:
+          await _importGif(await io.File(project.path).readAsBytes());
+        case PaintProjectType.drawing:
+          final pix = await decodePngToPixels(
+            await io.File(project.path).readAsBytes(),
+          );
+          _ctrl.importFramesFromPixels([pix], pfc: 1);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      context.showNotification('Open failed: $e', type: QNotificationType.error);
+    }
+  }
+
+  void _scheduleAutosave() {
+    if (_ctrl.pixelVersion == _baselineVersion) return; // not dirty
+    _autosaveTimer?.cancel();
+    _autosaveTimer = Timer(const Duration(milliseconds: 1200), _autosaveDraft);
+  }
+
+  Future<void> _autosaveDraft() async {
+    if (_savingDraft) return;
+    if (_ctrl.pixelVersion == _baselineVersion) return;
+    _savingDraft = true;
+    try {
+      _draftId ??= PaintDraftStore.newDraftId();
+      _draftDir ??= await PaintDraftStore.dirPathForDraft(_draftId!);
+      await writeDolphinFolder(
+        io.Directory(_draftDir!),
+        frames: _ctrl.frames.map((f) => Uint8List.fromList(f)).toList(),
+        passiveFrames: _ctrl.effectivePassiveCount,
+        frameRate: _ctrl.frameRate,
+        duration: _ctrl.duration,
+        activeCycles: _ctrl.activeCycles,
+        activeCooldown: _ctrl.activeCooldown,
+        compress: _ctrl.compressBm,
+      );
+    } catch (e) {
+      debugPrint('[PaintEditor] autosave draft failed: $e');
+    } finally {
+      _savingDraft = false;
+    }
   }
 
   @override
   void dispose() {
+    _autosaveTimer?.cancel();
     _ctrl.removeListener(_onControllerChange);
     _ctrl.dispose();
     super.dispose();
@@ -227,8 +301,10 @@ class _PaintPageState extends State<PaintPage> {
     setState(() => _panOffset = Offset.zero);
   }
 
-  void _close() {
+  Future<void> _close() async {
     if (_ctrl.isClosing) return;
+    _autosaveTimer?.cancel();
+    await _autosaveDraft(); // persist the latest edits as a draft before leaving
     _ctrl.close();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) Navigator.of(context).pop();
@@ -283,43 +359,21 @@ class _PaintPageState extends State<PaintPage> {
 
   Future<void> _exportDolphin() async {
     try {
-      final n = _ctrl.frames.length;
-      final passiveN = _ctrl.effectivePassiveCount;
-      final activeN = n - passiveN;
       final ts = DateTime.now().millisecondsSinceEpoch;
       final animName = 'anim_${ts}_128x64';
       final baseDir = await appAnimationsDirectory();
       final animDir = io.Directory(pathJoin([baseDir.path, animName]));
-      await animDir.create(recursive: true);
 
-      final framesOrder = List.generate(n, (i) => '$i').join(' ');
-      final meta = [
-        'Filetype: Flipper Animation',
-        'Version: 1',
-        '',
-        'Width: $kCanvasWidth',
-        'Height: $kCanvasHeight',
-        'Passive frames: $passiveN',
-        'Active frames: $activeN',
-        'Frames order: $framesOrder',
-        'Active cycles: ${_ctrl.activeCycles}',
-        'Frame rate: ${_ctrl.frameRate}',
-        'Duration: ${_ctrl.duration}',
-        'Active cooldown: ${_ctrl.activeCooldown}',
-        '',
-        'Bubble slots: 0',
-        '',
-      ].join('\n');
-
-      await io.File(pathJoin([animDir.path, 'meta.txt'])).writeAsString(meta);
-
-      for (int i = 0; i < n; i++) {
-        final xbm = PaintCodec.encodeXBM(_ctrl.frames[i]);
-        final bm = _ctrl.compressBm
-            ? PaintCodec.encodeBmCompressed(xbm)
-            : PaintCodec.encodeBmUncompressed(xbm);
-        await io.File(pathJoin([animDir.path, 'frame_$i.bm'])).writeAsBytes(bm);
-      }
+      await writeDolphinFolder(
+        animDir,
+        frames: _ctrl.frames.map((f) => Uint8List.fromList(f)).toList(),
+        passiveFrames: _ctrl.effectivePassiveCount,
+        frameRate: _ctrl.frameRate,
+        duration: _ctrl.duration,
+        activeCycles: _ctrl.activeCycles,
+        activeCooldown: _ctrl.activeCooldown,
+        compress: _ctrl.compressBm,
+      );
 
       if (!mounted) return;
       context.showNotification('Dolphin saved: ${animDir.path}', type: QNotificationType.good);

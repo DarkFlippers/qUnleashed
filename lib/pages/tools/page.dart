@@ -5,7 +5,6 @@ import '../../theme.dart';
 import '../../widgets/flipper_action_dialog.dart';
 import '../about/page.dart';
 import '../paint/manager/page.dart';
-import '../paint/editor/page.dart';
 import '../remote/page.dart';
 import '../utils/cli/page.dart';
 import '../utils/infrared/categories_page.dart';
@@ -43,15 +42,8 @@ class ToolsPage extends StatelessWidget {
           iconAsset: 'assets/ic/app/paint-large.svg',
           iconColor: const Color(0xFFE85858),
           title: 'Pixel Draw',
-          description: 'Draw directly on the flipper display',
+          description: 'Draw, manage projects and import dolphin animations',
           routeBuilder: _buildPaintPage,
-        ),
-        ToolItemModel(
-          iconAsset: 'assets/ic/app/paint-large.svg',
-          iconColor: const Color(0xFF9B59FF),
-          title: 'Animation Manager',
-          description: 'Browse and import dolphin animations from your device',
-          routeBuilder: _buildAnimationManagerPage,
         ),
       ],
     ),
@@ -123,10 +115,7 @@ Widget _buildIrLibPage(BuildContext context) => const IrCategoriesPage();
 
 Widget _buildAboutPage(BuildContext context) => const AboutPage();
 
-Widget _buildPaintPage(BuildContext context) => const PaintPage();
-
-Widget _buildAnimationManagerPage(BuildContext context) =>
-    const AnimationManagerPage();
+Widget _buildPaintPage(BuildContext context) => const ProjectManagerPage();
 
 Widget _buildRemoteControlPage(BuildContext context) =>
     const RemoteControlPage();

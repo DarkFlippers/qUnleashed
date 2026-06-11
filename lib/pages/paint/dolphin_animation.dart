@@ -2,9 +2,9 @@ import 'dart:io' as io;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import '../../../services/repository/app.dart';
-import '../editor/codec.dart';
-import '../editor/constants.dart';
+import '../../services/repository/app.dart';
+import 'codec.dart';
+import 'constants.dart';
 
 /// One Flipper dolphin animation: a folder containing `meta.txt` plus
 /// `frame_*.bm` (or `.png`) frame files. Mirrors the structure read by
@@ -153,3 +153,60 @@ abstract final class DolphinAnimationParser {
 // Re-export so callers can reference canvas dimensions without importing paint.
 const int dolphinFrameWidth = kCanvasWidth;
 const int dolphinFrameHeight = kCanvasHeight;
+
+/// Serializes [frames] (128×64 monochrome pixel buffers) into [dir] as a Flipper
+/// dolphin animation: `meta.txt` + `frame_<i>.bm`. Stale frame files from a
+/// previous, longer animation are removed first. Shared by the editor's Dolphin
+/// export and the draft autosave.
+Future<void> writeDolphinFolder(
+  io.Directory dir, {
+  required List<Uint8List> frames,
+  required int passiveFrames,
+  required int frameRate,
+  required int duration,
+  required int activeCycles,
+  required int activeCooldown,
+  bool compress = false,
+}) async {
+  await dir.create(recursive: true);
+
+  // Drop old frame_*.bm so a shrunk animation doesn't leave orphans behind.
+  final framePattern = RegExp(r'(^|/|\\)frame_\d+\.bm$');
+  await for (final e in dir.list(followLinks: false)) {
+    if (e is io.File && framePattern.hasMatch(e.path)) {
+      await e.delete();
+    }
+  }
+
+  final n = frames.length;
+  final passiveN = passiveFrames.clamp(0, n);
+  final activeN = n - passiveN;
+  final framesOrder = List.generate(n, (i) => '$i').join(' ');
+  final meta = [
+    'Filetype: Flipper Animation',
+    'Version: 1',
+    '',
+    'Width: $kCanvasWidth',
+    'Height: $kCanvasHeight',
+    'Passive frames: $passiveN',
+    'Active frames: $activeN',
+    'Frames order: $framesOrder',
+    'Active cycles: $activeCycles',
+    'Frame rate: $frameRate',
+    'Duration: $duration',
+    'Active cooldown: $activeCooldown',
+    '',
+    'Bubble slots: 0',
+    '',
+  ].join('\n');
+
+  await io.File(pathJoin([dir.path, 'meta.txt'])).writeAsString(meta);
+
+  for (int i = 0; i < n; i++) {
+    final xbm = PaintCodec.encodeXBM(frames[i]);
+    final bm = compress
+        ? PaintCodec.encodeBmCompressed(xbm)
+        : PaintCodec.encodeBmUncompressed(xbm);
+    await io.File(pathJoin([dir.path, 'frame_$i.bm'])).writeAsBytes(bm);
+  }
+}

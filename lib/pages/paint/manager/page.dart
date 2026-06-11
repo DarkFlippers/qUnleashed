@@ -6,25 +6,28 @@ import 'package:flutter/material.dart';
 import '../../../theme.dart';
 import '../../../widgets/notification.dart';
 import '../editor/page.dart';
+import '../project.dart';
 import 'controller.dart';
-import 'dolphin_animation.dart';
 
-class AnimationManagerPage extends StatefulWidget {
-  const AnimationManagerPage({super.key});
+/// Pixel Draw project manager: the landing screen for the paint tool. Lists all
+/// drawings, animations and drafts, opens them in the editor, and imports
+/// dolphin animations from a connected device.
+class ProjectManagerPage extends StatefulWidget {
+  const ProjectManagerPage({super.key});
 
   @override
-  State<AnimationManagerPage> createState() => _AnimationManagerPageState();
+  State<ProjectManagerPage> createState() => _ProjectManagerPageState();
 }
 
-class _AnimationManagerPageState extends State<AnimationManagerPage> {
-  late final AnimationManagerController _ctrl;
+class _ProjectManagerPageState extends State<ProjectManagerPage> {
+  late final ProjectManagerController _ctrl;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationManagerController();
+    _ctrl = ProjectManagerController();
     _ctrl.addListener(_onChange);
-    _ctrl.loadLocal();
+    _ctrl.loadAll();
   }
 
   void _onChange() {
@@ -52,21 +55,42 @@ class _AnimationManagerPageState extends State<AnimationManagerPage> {
       return;
     }
     await _ctrl.importFromDevice();
-    if (!mounted) return;
-    if (_ctrl.error == null) {
-      context.showNotification(
-        'Imported ${_ctrl.animations.length} animation(s)',
-        type: QNotificationType.good,
-      );
-    }
   }
 
-  Future<void> _openInPaint(DolphinAnimation anim) async {
+  Future<void> _openEditor(PaintProject? project) async {
     await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => PaintPage(initialAnimationPath: anim.metaPath),
+      MaterialPageRoute(builder: (_) => PaintPage(project: project)),
+    );
+    // Returning from the editor may have created or updated a draft.
+    await _ctrl.loadAll(silent: true);
+  }
+
+  Future<void> _confirmDelete(PaintProject project) async {
+    final colors = context.appColors;
+    final ok = await showDialog<bool>(
+      context: context,
+      barrierColor: colors.dialogBarrier,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: colors.dialogBackground,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: Text('Delete project', style: TextStyle(color: colors.dialogText)),
+        content: Text(
+          'Delete "${project.name}"? This cannot be undone.',
+          style: TextStyle(color: colors.dialogMuted),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel', style: TextStyle(color: colors.textSecondary)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Delete', style: TextStyle(color: colors.danger)),
+          ),
+        ],
       ),
     );
+    if (ok == true) await _ctrl.deleteProject(project);
   }
 
   @override
@@ -104,7 +128,7 @@ class _AnimationManagerPageState extends State<AnimationManagerPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Animation Manager',
+                    'Pixel Draw',
                     style: TextStyle(
                       color: colors.onAccent,
                       fontSize: 17,
@@ -113,9 +137,9 @@ class _AnimationManagerPageState extends State<AnimationManagerPage> {
                     ),
                   ),
                   Text(
-                    _ctrl.isConnected
-                        ? 'Dolphin animations · device connected'
-                        : 'Dolphin animations · local',
+                    '${_ctrl.projects.length} project'
+                    '${_ctrl.projects.length == 1 ? '' : 's'}'
+                    '${_ctrl.isConnected ? ' · device connected' : ''}',
                     style: TextStyle(
                       color: colors.onAccent.withAlpha(180),
                       fontSize: 11,
@@ -126,9 +150,14 @@ class _AnimationManagerPageState extends State<AnimationManagerPage> {
               ),
             ),
             IconButton(
+              onPressed: _ctrl.importing ? null : () => _openEditor(null),
+              icon: Icon(Icons.add, color: colors.onAccent),
+              tooltip: 'New project',
+            ),
+            IconButton(
               onPressed: _ctrl.loading || _ctrl.importing
                   ? null
-                  : _ctrl.loadLocal,
+                  : () => _ctrl.loadAll(),
               icon: Icon(Icons.refresh, color: colors.onAccent),
               tooltip: 'Reload',
             ),
@@ -178,26 +207,23 @@ class _AnimationManagerPageState extends State<AnimationManagerPage> {
 
   Widget _buildBody(QAppColors colors) {
     if (_ctrl.loading) {
-      return Center(
-        child: CircularProgressIndicator(color: colors.accent),
-      );
+      return Center(child: CircularProgressIndicator(color: colors.accent));
     }
-    if (_ctrl.animations.isEmpty) {
-      return _buildEmpty(colors);
-    }
+    if (_ctrl.projects.isEmpty) return _buildEmpty(colors);
     return ListView.separated(
       padding: const EdgeInsets.symmetric(vertical: 10),
-      itemCount: _ctrl.animations.length,
+      itemCount: _ctrl.projects.length,
       separatorBuilder: (_, _) => const SizedBox(height: 4),
       itemBuilder: (_, i) {
-        final anim = _ctrl.animations[i];
-        return _AnimationRow(
-          key: ValueKey(anim.dirPath),
-          anim: anim,
+        final p = _ctrl.projects[i];
+        return _ProjectRow(
+          key: ValueKey(p.path),
+          project: p,
           colors: colors,
-          selected: _ctrl.selectedName == anim.name,
-          onTap: () => _ctrl.select(anim.name),
-          onOpen: () => _openInPaint(anim),
+          selected: _ctrl.selectedId == p.id,
+          onTap: () => _ctrl.select(p.id),
+          onOpen: () => _openEditor(p),
+          onDelete: () => _confirmDelete(p),
         );
       },
     );
@@ -210,14 +236,10 @@ class _AnimationManagerPageState extends State<AnimationManagerPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.movie_filter_outlined,
-              size: 56,
-              color: colors.textMuted,
-            ),
+            Icon(Icons.palette_outlined, size: 56, color: colors.textMuted),
             const SizedBox(height: 16),
             Text(
-              'No dolphin animations',
+              'No projects yet',
               style: TextStyle(
                 color: colors.textPrimary,
                 fontSize: 16,
@@ -226,17 +248,16 @@ class _AnimationManagerPageState extends State<AnimationManagerPage> {
             ),
             const SizedBox(height: 8),
             Text(
-              _ctrl.isConnected
-                  ? 'Import them from your connected device.'
-                  : 'Connect a device to import from /ext/dolphin.',
+              'Create a new drawing or animation, or import dolphin '
+              'animations from a connected device.',
               textAlign: TextAlign.center,
               style: TextStyle(color: colors.textSecondary, fontSize: 13),
             ),
             const SizedBox(height: 20),
             FilledButton.icon(
-              onPressed: _ctrl.isConnected ? _import : null,
-              icon: const Icon(Icons.download_for_offline_outlined),
-              label: const Text('Import from device'),
+              onPressed: () => _openEditor(null),
+              icon: const Icon(Icons.add),
+              label: const Text('New project'),
               style: FilledButton.styleFrom(
                 backgroundColor: colors.accent,
                 foregroundColor: colors.onAccent,
@@ -249,21 +270,33 @@ class _AnimationManagerPageState extends State<AnimationManagerPage> {
   }
 }
 
-class _AnimationRow extends StatelessWidget {
-  const _AnimationRow({
+Color _badgeColor(PaintProject p, QAppColors colors) {
+  if (p.isDraft) return const Color(0xFFFF9B34);
+  return switch (p.type) {
+    PaintProjectType.drawing => colors.info,
+    PaintProjectType.gif => colors.success,
+    PaintProjectType.dolphin =>
+      p.isDeviceImport ? const Color(0xFF589DFF) : const Color(0xFF9B59FF),
+  };
+}
+
+class _ProjectRow extends StatelessWidget {
+  const _ProjectRow({
     super.key,
-    required this.anim,
+    required this.project,
     required this.colors,
     required this.selected,
     required this.onTap,
     required this.onOpen,
+    required this.onDelete,
   });
 
-  final DolphinAnimation anim;
+  final PaintProject project;
   final QAppColors colors;
   final bool selected;
   final VoidCallback onTap;
   final VoidCallback onOpen;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -287,12 +320,11 @@ class _AnimationRow extends StatelessWidget {
   Widget _buildCollapsed() {
     return Row(
       children: [
-        // Compact preview loops the passive (idle) frames.
-        _AnimationPreview(
-          key: ValueKey('preview-${anim.dirPath}-collapsed'),
-          anim: anim,
-          order: anim.passiveOrder,
+        _ProjectPreview(
+          key: ValueKey('preview-${project.path}-collapsed'),
+          project: project,
           width: 112,
+          full: false,
           colors: colors,
         ),
         const SizedBox(width: 12),
@@ -306,16 +338,15 @@ class _AnimationRow extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Single large preview plays the full frame order ("full video").
         LayoutBuilder(
           builder: (_, constraints) {
             final w = constraints.maxWidth.clamp(0.0, 320.0);
             return Center(
-              child: _AnimationPreview(
-                key: ValueKey('preview-${anim.dirPath}-expanded'),
-                anim: anim,
-                order: anim.fullOrder,
+              child: _ProjectPreview(
+                key: ValueKey('preview-${project.path}-expanded'),
+                project: project,
                 width: w,
+                full: true,
                 colors: colors,
               ),
             );
@@ -328,45 +359,60 @@ class _AnimationRow extends StatelessWidget {
             Icon(Icons.expand_less, color: colors.textMuted),
           ],
         ),
-        const SizedBox(height: 10),
-        Divider(height: 1, color: colors.divider),
-        const SizedBox(height: 10),
-        _buildMeta(),
         const SizedBox(height: 12),
-        Align(
-          alignment: Alignment.centerRight,
-          child: FilledButton.icon(
-            onPressed: onOpen,
-            icon: const Icon(Icons.edit_outlined, size: 18),
-            label: const Text('Open in Pixel Draw'),
-            style: FilledButton.styleFrom(
-              backgroundColor: colors.accent,
-              foregroundColor: colors.onAccent,
+        Row(
+          children: [
+            TextButton.icon(
+              onPressed: onDelete,
+              icon: Icon(Icons.delete_outline, size: 18, color: colors.danger),
+              label: Text('Delete', style: TextStyle(color: colors.danger)),
             ),
-          ),
+            const Spacer(),
+            FilledButton.icon(
+              onPressed: onOpen,
+              icon: const Icon(Icons.edit_outlined, size: 18),
+              label: const Text('Open'),
+              style: FilledButton.styleFrom(
+                backgroundColor: colors.accent,
+                foregroundColor: colors.onAccent,
+              ),
+            ),
+          ],
         ),
       ],
     );
   }
 
   Widget _buildInfo() {
+    final detail = project.type == PaintProjectType.drawing
+        ? 'single frame'
+        : project.frameCount > 0
+        ? '${project.frameCount} frames'
+        : 'animation';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          anim.name,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            color: colors.textPrimary,
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-          ),
+        Row(
+          children: [
+            Flexible(
+              child: Text(
+                project.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: colors.textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            _badge(),
+          ],
         ),
         const SizedBox(height: 3),
         Text(
-          '${anim.passiveFrames} passive · ${anim.activeFrames} active · '
-          '${anim.frameRate} fps',
+          detail,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(color: colors.textSecondary, fontSize: 12),
@@ -375,69 +421,55 @@ class _AnimationRow extends StatelessWidget {
     );
   }
 
-  Widget _buildMeta() {
-    final entries = <MapEntry<String, String>>[
-      MapEntry('Frames', '${anim.frameFileCount} files'),
-      MapEntry('Order length', '${anim.fullOrder.length}'),
-      MapEntry('Duration', '${anim.duration}'),
-      MapEntry('Active cycles', '${anim.activeCycles}'),
-      MapEntry('Active cooldown', '${anim.activeCooldown}'),
-    ];
-    return Column(
-      children: [
-        for (final e in entries)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 2),
-            child: Row(
-              children: [
-                Text(
-                  e.key,
-                  style: TextStyle(color: colors.textMuted, fontSize: 12),
-                ),
-                const Spacer(),
-                Text(
-                  e.value,
-                  style: TextStyle(color: colors.textSecondary, fontSize: 12),
-                ),
-              ],
-            ),
-          ),
-      ],
+  Widget _badge() {
+    final c = _badgeColor(project, colors);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: c.withAlpha(36),
+        borderRadius: BorderRadius.circular(5),
+      ),
+      child: Text(
+        project.badge,
+        style: TextStyle(
+          color: c,
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.4,
+        ),
+      ),
     );
   }
 }
 
-/// Lazily decodes and loops a set of frames for an animation. The frames are
-/// decoded once the widget is built (i.e. scrolled into view), keeping the list
-/// cheap for large collections.
-class _AnimationPreview extends StatefulWidget {
-  const _AnimationPreview({
+/// Lazily decodes and loops a project's preview frames. Decoding happens once
+/// the row is built (scrolled into view), keeping large libraries cheap.
+class _ProjectPreview extends StatefulWidget {
+  const _ProjectPreview({
     super.key,
-    required this.anim,
-    required this.order,
+    required this.project,
     required this.width,
+    required this.full,
     required this.colors,
   });
 
-  final DolphinAnimation anim;
-  final List<int> order;
-
-  /// Rendered width in logical pixels; height keeps the 128:64 (2:1) ratio.
+  final PaintProject project;
   final double width;
+  final bool full;
   final QAppColors colors;
 
   @override
-  State<_AnimationPreview> createState() => _AnimationPreviewState();
+  State<_ProjectPreview> createState() => _ProjectPreviewState();
 }
 
-class _AnimationPreviewState extends State<_AnimationPreview> {
-  final Map<int, ui.Image> _images = {};
+class _ProjectPreviewState extends State<_ProjectPreview> {
+  List<ui.Image> _frames = const [];
   Timer? _timer;
   int _cursor = 0;
   bool _loading = true;
 
   double get _w => widget.width;
-  double get _h => widget.width * dolphinFrameHeight / dolphinFrameWidth;
+  double get _h => widget.width / 2; // 128:64 → 2:1
 
   @override
   void initState() {
@@ -446,38 +478,32 @@ class _AnimationPreviewState extends State<_AnimationPreview> {
   }
 
   Future<void> _load() async {
-    // Only decode frames not already cached, so expanding (passive → full)
-    // loads just the extra active frames.
-    final needed = widget.order.toSet()..removeAll(_images.keys);
-    if (needed.isNotEmpty) {
-      final more = await widget.anim.loadImages(needed);
-      if (!mounted) {
-        for (final img in more.values) {
-          img.dispose();
-        }
-        return;
+    final preview = await widget.project.loadPreview(full: widget.full);
+    if (!mounted) {
+      for (final img in preview.frames) {
+        img.dispose();
       }
-      _images.addAll(more);
+      return;
     }
-    if (!mounted) return;
-    setState(() => _loading = false);
-    _startTimer();
-  }
-
-  void _startTimer() {
-    _timer?.cancel();
-    if (widget.order.length <= 1) return;
-    final ms = (widget.anim.secondsPerFrame * 1000).clamp(33, 2000).round();
-    _timer = Timer.periodic(Duration(milliseconds: ms), (_) {
-      if (!mounted) return;
-      setState(() => _cursor = (_cursor + 1) % widget.order.length);
+    setState(() {
+      _frames = preview.frames;
+      _loading = false;
     });
+    if (preview.frames.length > 1) {
+      _timer = Timer.periodic(
+        Duration(milliseconds: preview.delayMs.clamp(33, 2000)),
+        (_) {
+          if (!mounted) return;
+          setState(() => _cursor = (_cursor + 1) % _frames.length);
+        },
+      );
+    }
   }
 
   @override
   void dispose() {
     _timer?.cancel();
-    for (final img in _images.values) {
+    for (final img in _frames) {
       img.dispose();
     }
     super.dispose();
@@ -486,7 +512,7 @@ class _AnimationPreviewState extends State<_AnimationPreview> {
   @override
   Widget build(BuildContext context) {
     final colors = widget.colors;
-    final container = Container(
+    return Container(
       width: _w,
       height: _h,
       decoration: BoxDecoration(
@@ -498,7 +524,6 @@ class _AnimationPreviewState extends State<_AnimationPreview> {
       alignment: Alignment.center,
       child: _buildFrame(colors),
     );
-    return container;
   }
 
   Widget _buildFrame(QAppColors colors) {
@@ -509,18 +534,15 @@ class _AnimationPreviewState extends State<_AnimationPreview> {
         child: CircularProgressIndicator(strokeWidth: 2, color: colors.accent),
       );
     }
-    final order = widget.order;
-    if (order.isEmpty || _images.isEmpty) {
+    if (_frames.isEmpty) {
       return Icon(
         Icons.broken_image_outlined,
         size: 18,
         color: colors.textMuted,
       );
     }
-    final fileIdx = order[_cursor % order.length];
-    final image = _images[fileIdx] ?? _images.values.first;
     return RawImage(
-      image: image,
+      image: _frames[_cursor % _frames.length],
       width: _w,
       height: _h,
       fit: BoxFit.fill,
