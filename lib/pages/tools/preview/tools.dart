@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/tool.dart';
-import '../widgets/mf_key_preview.dart';
+import 'mfkey.dart';
 
 import 'remote.dart';
 import 'flibler.dart';
