@@ -9,7 +9,7 @@ import 'package:highlight/highlight.dart' show Node, highlight;
 
 import '../../theme.dart';
 import '../../widgets/notification.dart';
-import 'colors.dart';
+import '../../models/colors/editor.dart';
 import 'syntax.dart';
 
 const _kFontSize = 13.0;
