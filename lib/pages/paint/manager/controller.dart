@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../../services/repository/app.dart';
 import '../project.dart';
+import '../virtual_display_session.dart';
 
 /// Remote dolphin directory on the Flipper SD card.
 const String kDeviceDolphinPath = '/ext/dolphin';
@@ -17,6 +18,7 @@ class ProjectManagerController extends ChangeNotifier {
   ProjectManagerController({FlipperClient? client})
     : _client = client ?? FlipperOneClient().get() {
     _connSub = _client.connectionStream.listen((_) => _notify());
+    VirtualDisplaySession.instance.enter();
   }
 
   final FlipperClient _client;
@@ -45,6 +47,34 @@ class ProjectManagerController extends ChangeNotifier {
   void select(String? id) {
     _selectedId = (_selectedId == id) ? null : id;
     _notify();
+    _updateDevicePreview();
+  }
+
+  int _previewToken = 0;
+
+  Future<void> _updateDevicePreview() async {
+    final token = ++_previewToken;
+    final id = _selectedId;
+    if (id == null) {
+      VirtualDisplaySession.instance.clearPreview();
+      return;
+    }
+    PaintProject? project;
+    for (final p in _projects) {
+      if (p.id == id) {
+        project = p;
+        break;
+      }
+    }
+    if (project == null) {
+      VirtualDisplaySession.instance.clearPreview();
+      return;
+    }
+    try {
+      final preview = await project.loadDevicePreview();
+      if (token != _previewToken || _disposed) return;
+      VirtualDisplaySession.instance.setPreview(preview.frames, preview.delayMs);
+    } catch (_) {}
   }
 
   /// Scans the local library into [projects]. When [silent] is true the loading
@@ -73,7 +103,10 @@ class ProjectManagerController extends ChangeNotifier {
       if (await entity.exists()) {
         await entity.delete(recursive: true);
       }
-      if (_selectedId == project.id) _selectedId = null;
+      if (_selectedId == project.id) {
+        _selectedId = null;
+        VirtualDisplaySession.instance.clearPreview();
+      }
     } catch (e) {
       _error = 'Delete failed: $e';
       LogService.log('[ProjectManager] delete failed: $e');
@@ -209,6 +242,7 @@ class ProjectManagerController extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _connSub?.cancel();
+    VirtualDisplaySession.instance.leave();
     super.dispose();
   }
 }

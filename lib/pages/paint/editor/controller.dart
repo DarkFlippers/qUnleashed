@@ -1,11 +1,10 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:flipperlib/flipperlib.dart' hide DateTime;
 import 'package:flutter/foundation.dart';
 
-import '../codec.dart';
 import '../constants.dart';
+import '../virtual_display_session.dart';
 import 'algorithms.dart';
 
 class PaintController extends ChangeNotifier {
@@ -31,13 +30,9 @@ class PaintController extends ChangeNotifier {
   bool _playingActive = false;
   int _activeRepeatsDone = 0;
 
-  final FlipperClient _client = FlipperOneClient().get();
-  bool _virtualDisplayActive = false;
   bool _closing = false;
-  Timer? _pushTimer;
   int? activePointer;
-
-  late final StreamSubscription<FlipperConnectionState> _connSub;
+  Timer? _pushTimer;
 
   int frameRate = 2;
   int duration = 3600;
@@ -47,9 +42,7 @@ class PaintController extends ChangeNotifier {
   bool compressBm = false;
 
   PaintController() {
-    _connSub = _client.connectionStream.listen((state) {
-      if (!state.connected) _virtualDisplayActive = false;
-    });
+    VirtualDisplaySession.instance.enterLive();
   }
 
   Uint8List get currentPixels => frames[currentFrame];
@@ -72,43 +65,13 @@ class PaintController extends ChangeNotifier {
     return z == z.truncateToDouble() ? '${z.toInt()}x' : '${z}x';
   }
 
-  Future<void> startVirtualDisplay() async {
-    if (!_client.isConnected) return;
-    try {
-      await _client.guiStartVirtualDisplay(
-        StartVirtualDisplayRequest(),
-        priority: FlipperRequestPriority.rightNow,
-      );
-      _virtualDisplayActive = true;
-    } on FlipperRpcVirtualDisplayAlreadyStartedException {
-      if (!_client.isConnected) return;
-      await _client.guiStopVirtualDisplay(priority: FlipperRequestPriority.rightNow).catchError((_) => <Main>[]);
-      if (!_client.isConnected) return;
-      await _client.guiStartVirtualDisplay(StartVirtualDisplayRequest(), priority: FlipperRequestPriority.rightNow)
-          .then((_) { _virtualDisplayActive = true; })
-          .catchError((_) {});
-    } catch (_) {}
-  }
-
-  Future<void> stopVirtualDisplay() async {
-    _virtualDisplayActive = false;
-    if (!_client.isConnected) return;
-    await _client.guiStopVirtualDisplay(priority: FlipperRequestPriority.rightNow)
-        .timeout(const Duration(seconds: 2))
-        .catchError((_) => <Main>[]);
-  }
-
+  /// Debounced: while a stroke is in progress the timer keeps resetting, so the
+  /// device only updates once the pixels settle (drawing stops).
   void schedulePush() {
     _pushTimer?.cancel();
-    _pushTimer = Timer(const Duration(milliseconds: 100), _pushToDevice);
-  }
-
-  Future<void> _pushToDevice() async {
-    if (!_virtualDisplayActive || !_client.isConnected) return;
-    await _client.sendRpc(
-      Main(guiScreenFrame: ScreenFrame(data: PaintCodec.encodeXBM(frames[currentFrame]))),
-      priority: FlipperRequestPriority.rightNow,
-    ).catchError((_) {});
+    _pushTimer = Timer(const Duration(milliseconds: 100), () {
+      VirtualDisplaySession.instance.pushFrame(currentPixels);
+    });
   }
 
   void pushUndo() {
@@ -603,15 +566,14 @@ class PaintController extends ChangeNotifier {
     _closing = true;
     _playTimer?.cancel();
     _pushTimer?.cancel();
-    await stopVirtualDisplay();
+    VirtualDisplaySession.instance.leaveLive();
   }
 
   @override
   void dispose() {
-    _connSub.cancel();
     _playTimer?.cancel();
     _pushTimer?.cancel();
-    if (!_closing) stopVirtualDisplay();
+    if (!_closing) VirtualDisplaySession.instance.leaveLive();
     super.dispose();
   }
 }

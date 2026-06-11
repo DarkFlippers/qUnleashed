@@ -57,12 +57,14 @@ class _PaintPageState extends State<PaintPage> {
       _draftDir = project.path;
     }
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      _ctrl.startVirtualDisplay();
       if (project != null) {
         await _loadProject(project);
       }
       // Whatever we loaded (or the empty start) is the clean baseline.
       _baselineVersion = _ctrl.pixelVersion;
+      // Stream the opening canvas; the session buffers it until the display has
+      // started, so the first frame reliably reaches a connected device.
+      _ctrl.schedulePush();
     });
   }
 

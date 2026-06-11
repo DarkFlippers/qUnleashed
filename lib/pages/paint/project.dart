@@ -95,6 +95,29 @@ class PaintProject {
   }
 
 
+  /// Decodes the project into 128×64 monochrome pixel buffers (full frame order)
+  /// plus the per-frame delay, for mirroring on the device's virtual display.
+  Future<({List<Uint8List> frames, int delayMs})> loadDevicePreview() async {
+    switch (type) {
+      case PaintProjectType.drawing:
+        final pix = await decodePngToPixels(await io.File(path).readAsBytes());
+        return (frames: <Uint8List>[pix], delayMs: 200);
+      case PaintProjectType.gif:
+        return _decodeGifPixels(path);
+      case PaintProjectType.dolphin:
+        final d = dolphin;
+        if (d == null) return (frames: <Uint8List>[], delayMs: 200);
+        final cache = <int, Uint8List>{};
+        final frames = <Uint8List>[];
+        for (final i in d.fullOrder) {
+          final px = cache[i] ??= (await d.loadFramePixels(i) ??
+              Uint8List(kCanvasWidth * kCanvasHeight));
+          frames.add(px);
+        }
+        return (frames: frames, delayMs: (d.secondsPerFrame * 1000).round());
+    }
+  }
+
   /// Enumerates every project: saved drawings (`Drawings/*.png`), saved GIFs
   /// (`Animations/*.gif`), dolphin folders (`Animations/<name>/`), device
   /// imports (`Animations/dolphin/<name>/`) and drafts (`Animations/.drafts/`).
@@ -247,6 +270,37 @@ Future<PaintPreviewFrames> _decodeGif(String path) async {
     return PaintPreviewFrames(frames, delay.clamp(33, 2000));
   } catch (_) {
     return PaintPreviewFrames(const [], 100);
+  }
+}
+
+Future<({List<Uint8List> frames, int delayMs})> _decodeGifPixels(
+  String path,
+) async {
+  try {
+    final bytes = await io.File(path).readAsBytes();
+    final codec = await ui.instantiateImageCodec(
+      bytes,
+      targetWidth: kCanvasWidth,
+      targetHeight: kCanvasHeight,
+    );
+    final frames = <Uint8List>[];
+    var delay = 100;
+    for (int i = 0; i < codec.frameCount; i++) {
+      final f = await codec.getNextFrame();
+      final img = f.image;
+      final bd = await img.toByteData(format: ui.ImageByteFormat.rawRgba);
+      img.dispose();
+      if (bd == null) continue;
+      final pix = Uint8List(kCanvasWidth * kCanvasHeight);
+      PaintCodec.rgbaToPixels(bd.buffer.asUint8List(), pix);
+      frames.add(pix);
+      if (i == 0 && f.duration.inMilliseconds > 0) {
+        delay = f.duration.inMilliseconds;
+      }
+    }
+    return (frames: frames, delayMs: delay.clamp(33, 2000));
+  } catch (_) {
+    return (frames: <Uint8List>[], delayMs: 100);
   }
 }
 
