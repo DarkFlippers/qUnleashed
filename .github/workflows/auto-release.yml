@@ -238,6 +238,9 @@ jobs:
           echo "Version name: $version_name"
           echo "Build number: $version_code"
 
+      - name: Install macOS build dependencies
+        run: brew install automake libtool
+
       - name: Build macOS release
         run: tools/build/macos.sh
 
