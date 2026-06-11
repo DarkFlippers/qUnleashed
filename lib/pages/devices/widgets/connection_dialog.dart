@@ -35,7 +35,7 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
   final FlipperClient _client = FlipperOneClient().get();
 
   StreamSubscription<List<FlipperDevice>>? _devicesSub;
-  Timer? _usbPollTimer;
+  StreamSubscription<void>? _usbEventsSub;
   bool _scanning = false;
   bool _filterEnabled = true;
   List<FlipperDevice> _displayed = [];
@@ -46,15 +46,13 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
     _devicesSub = _client.devicesStream.listen(_onDevicesUpdate);
     _displayed = _filterDevices(_client.devices);
     _startScan();
-    _usbPollTimer = Timer.periodic(
-      const Duration(seconds: 1),
-      (_) => _pollUsb(),
-    );
+    // Refresh USB devices on hotplug events instead of polling on a timer.
+    _usbEventsSub = _client.usbEvents.listen((_) => _refreshUsb());
   }
 
   @override
   void dispose() {
-    _usbPollTimer?.cancel();
+    _usbEventsSub?.cancel();
     _devicesSub?.cancel();
     _client.stopScan();
     super.dispose();
@@ -82,12 +80,12 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
     }
   }
 
-  Future<void> _pollUsb() async {
+  Future<void> _refreshUsb() async {
     if (!mounted) return;
     try {
       await _client.refreshUsbOnly();
     } catch (e) {
-      LogService.log('[Picker] usb poll error: $e');
+      LogService.log('[Picker] usb refresh error: $e');
     }
     if (!mounted) return;
     setState(() => _displayed = _filterDevices(_client.devices));
