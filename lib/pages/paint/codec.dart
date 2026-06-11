@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -17,13 +18,27 @@ abstract final class PaintCodec {
     return data;
   }
 
-  static Uint8List xbmToPixels(Uint8List xbm) {
+  /// Unpacks a 1bpp XBM buffer into the fixed [kCanvasWidth]×[kCanvasHeight]
+  /// pixel grid, bottom-aligned. The source may be shorter than the canvas
+  /// (e.g. Flipper animations are 128 wide but often 54 tall); the blank
+  /// padding then sits at the top, matching how the device draws them.
+  /// [srcWidth] sets the row stride so frames narrower than 128px unpack
+  /// correctly.
+  static Uint8List xbmToPixels(
+    Uint8List xbm, {
+    int srcWidth = kCanvasWidth,
+    int srcHeight = kCanvasHeight,
+  }) {
     final pixels = Uint8List(kCanvasWidth * kCanvasHeight);
-    for (int y = 0; y < kCanvasHeight; y++) {
-      for (int x = 0; x < kCanvasWidth; x++) {
-        final byteIdx = y * 16 + (x ~/ 8);
+    final rowBytes = (srcWidth + 7) >> 3;
+    final w = math.min(srcWidth, kCanvasWidth);
+    final h = math.min(srcHeight, kCanvasHeight);
+    final offY = kCanvasHeight - h;
+    for (int y = 0; y < h; y++) {
+      for (int x = 0; x < w; x++) {
+        final byteIdx = y * rowBytes + (x >> 3);
         if (byteIdx < xbm.length && (xbm[byteIdx] & (1 << (x & 7))) != 0) {
-          pixels[y * kCanvasWidth + x] = 1;
+          pixels[(y + offY) * kCanvasWidth + x] = 1;
         }
       }
     }

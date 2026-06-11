@@ -94,7 +94,6 @@ class PaintProject {
     }
   }
 
-  // ── Scanning ───────────────────────────────────────────────────────────────
 
   /// Enumerates every project: saved drawings (`Drawings/*.png`), saved GIFs
   /// (`Animations/*.gif`), dolphin folders (`Animations/<name>/`), device

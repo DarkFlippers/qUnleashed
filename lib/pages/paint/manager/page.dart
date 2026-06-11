@@ -480,9 +480,7 @@ class _ProjectPreviewState extends State<_ProjectPreview> {
   Future<void> _load() async {
     final preview = await widget.project.loadPreview(full: widget.full);
     if (!mounted) {
-      for (final img in preview.frames) {
-        img.dispose();
-      }
+      _disposeFrames(preview.frames);
       return;
     }
     setState(() {
@@ -503,10 +501,18 @@ class _ProjectPreviewState extends State<_ProjectPreview> {
   @override
   void dispose() {
     _timer?.cancel();
-    for (final img in _frames) {
-      img.dispose();
-    }
+    _disposeFrames(_frames);
     super.dispose();
+  }
+
+  /// A frame order may reference the same [ui.Image] more than once (e.g.
+  /// "0 1 2 1 0"), so dispose each unique image only once to avoid a
+  /// double-dispose assertion.
+  static void _disposeFrames(List<ui.Image> frames) {
+    final seen = <ui.Image>{};
+    for (final img in frames) {
+      if (seen.add(img)) img.dispose();
+    }
   }
 
   @override

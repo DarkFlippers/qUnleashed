@@ -1,11 +1,9 @@
 import 'dart:async';
 import 'dart:io' as io;
-import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../../../services/repository/app.dart';
@@ -17,7 +15,11 @@ import '../constants.dart';
 import '../dolphin_animation.dart';
 import '../project.dart';
 import 'controller.dart';
-import 'painters.dart';
+import 'widgets/animation_panel.dart';
+import 'widgets/canvas_view.dart';
+import 'widgets/editor_toolbars.dart';
+import 'widgets/editor_widgets.dart';
+import 'widgets/frames_strip.dart';
 
 class PaintPage extends StatefulWidget {
   const PaintPage({super.key, this.project});
@@ -32,21 +34,6 @@ class PaintPage extends StatefulWidget {
 
 class _PaintPageState extends State<PaintPage> {
   late final PaintController _ctrl;
-  Size? _canvasContainerSize;
-
-  Offset _panOffset = Offset.zero;
-  bool _isPanning = false;
-  int? _panPointer;
-  Offset _panStartLocal = Offset.zero;
-  Offset _panStartOffset = Offset.zero;
-
-  double _cLeft = 0.0;
-  double _cTop = 0.0;
-  double _pixelSize = 1.0;
-  bool _isTwoFingerPanning = false;
-  final Map<int, Offset> _touchPointers = {};
-  Offset _twoFingerStartCentroid = Offset.zero;
-  Offset _twoFingerStartPanOffset = Offset.zero;
 
   // Draft autosave: the working frames are persisted to a `.drafts` folder so
   // the project manager can surface unsaved work. [_baselineVersion] marks the
@@ -140,165 +127,6 @@ class _PaintPageState extends State<PaintPage> {
     _ctrl.removeListener(_onControllerChange);
     _ctrl.dispose();
     super.dispose();
-  }
-
-  // Pan: right mouse button drag, scroll wheel, or two-finger touch.
-
-  int _toCanvasX(double cx) =>
-      ((cx - _cLeft) / _pixelSize).floor().clamp(0, kCanvasWidth - 1);
-  int _toCanvasY(double cy) =>
-      ((cy - _cTop) / _pixelSize).floor().clamp(0, kCanvasHeight - 1);
-
-  bool _isInsideCanvas(Offset pos) =>
-      pos.dx >= _cLeft &&
-      pos.dx < _cLeft + kCanvasWidth * _pixelSize &&
-      pos.dy >= _cTop &&
-      pos.dy < _cTop + kCanvasHeight * _pixelSize;
-
-  Offset _touchCentroid() {
-    final vals = _touchPointers.values;
-    return vals.fold(Offset.zero, (a, b) => a + b) / vals.length.toDouble();
-  }
-
-  void _onScrollPan(PointerSignalEvent e) {
-    if (e is! PointerScrollEvent) return;
-    final cs = _canvasContainerSize;
-    if (cs == null) return;
-    // Always consume so the parent ScrollView never scrolls over the canvas.
-    GestureBinding.instance.pointerSignalResolver.register(e, (event) {
-      if (event is! PointerScrollEvent) return;
-      final ps = _ctrl.effectivePixelSize(cs.width);
-      final maxX = ((kCanvasWidth * ps - cs.width) / 2).clamp(0.0, double.infinity);
-      final maxY = ((kCanvasHeight * ps - cs.height) / 2).clamp(0.0, double.infinity);
-      if (maxX == 0 && maxY == 0) return;
-      setState(() {
-        _panOffset = Offset(
-          (_panOffset.dx - event.scrollDelta.dx).clamp(-maxX, maxX),
-          (_panOffset.dy - event.scrollDelta.dy).clamp(-maxY, maxY),
-        );
-      });
-    });
-  }
-
-  void _onPanDown(PointerDownEvent e) {
-    if (e.buttons & 0x2 != 0) {
-      _isPanning = true;
-      _panPointer = e.pointer;
-      _panStartLocal = e.localPosition;
-      _panStartOffset = _panOffset;
-      return;
-    }
-    if (e.kind == PointerDeviceKind.touch) {
-      _touchPointers[e.pointer] = e.localPosition;
-      if (_touchPointers.length >= 2) {
-        if (!_isTwoFingerPanning) {
-          for (final en in _touchPointers.entries) {
-            if (en.key != e.pointer) {
-              _ctrl.onPointerUp(_toCanvasX(en.value.dx), _toCanvasY(en.value.dy), en.key);
-            }
-          }
-          _isTwoFingerPanning = true;
-          _twoFingerStartCentroid = _touchCentroid();
-          _twoFingerStartPanOffset = _panOffset;
-        }
-        return;
-      }
-    }
-    if (_isInsideCanvas(e.localPosition)) {
-      _ctrl.onPointerDown(_toCanvasX(e.localPosition.dx), _toCanvasY(e.localPosition.dy), e.pointer);
-    }
-  }
-
-  void _onPanMove(PointerMoveEvent e) {
-    if (e.buttons & 0x2 != 0) {
-      if (!_isPanning || e.pointer != _panPointer) return;
-      final cs = _canvasContainerSize;
-      if (cs == null) return;
-      final ps = _ctrl.effectivePixelSize(cs.width);
-      final maxX = ((kCanvasWidth * ps - cs.width) / 2).clamp(0.0, double.infinity);
-      final maxY = ((kCanvasHeight * ps - cs.height) / 2).clamp(0.0, double.infinity);
-      setState(() {
-        _panOffset = Offset(
-          (_panStartOffset.dx + e.localPosition.dx - _panStartLocal.dx).clamp(-maxX, maxX),
-          (_panStartOffset.dy + e.localPosition.dy - _panStartLocal.dy).clamp(-maxY, maxY),
-        );
-      });
-      return;
-    }
-    if (e.kind == PointerDeviceKind.touch) {
-      if (!_touchPointers.containsKey(e.pointer)) return;
-      _touchPointers[e.pointer] = e.localPosition;
-      if (_isTwoFingerPanning) {
-        final cs = _canvasContainerSize;
-        if (cs == null) return;
-        final ps = _ctrl.effectivePixelSize(cs.width);
-        final maxX = ((kCanvasWidth * ps - cs.width) / 2).clamp(0.0, double.infinity);
-        final maxY = ((kCanvasHeight * ps - cs.height) / 2).clamp(0.0, double.infinity);
-        final centroid = _touchCentroid();
-        setState(() {
-          _panOffset = Offset(
-            (_twoFingerStartPanOffset.dx + centroid.dx - _twoFingerStartCentroid.dx).clamp(-maxX, maxX),
-            (_twoFingerStartPanOffset.dy + centroid.dy - _twoFingerStartCentroid.dy).clamp(-maxY, maxY),
-          );
-        });
-        return;
-      }
-      _ctrl.onPointerMove(_toCanvasX(e.localPosition.dx), _toCanvasY(e.localPosition.dy), e.pointer);
-      return;
-    }
-    _ctrl.onPointerMove(_toCanvasX(e.localPosition.dx), _toCanvasY(e.localPosition.dy), e.pointer);
-  }
-
-  void _onPanUp(PointerUpEvent e) {
-    if (e.kind == PointerDeviceKind.touch) {
-      _touchPointers.remove(e.pointer);
-      if (_isTwoFingerPanning) {
-        if (_touchPointers.isEmpty) {
-          _isTwoFingerPanning = false;
-        } else {
-          _twoFingerStartCentroid = _touchCentroid();
-          _twoFingerStartPanOffset = _panOffset;
-        }
-        return;
-      }
-      _ctrl.onPointerUp(_toCanvasX(e.localPosition.dx), _toCanvasY(e.localPosition.dy), e.pointer);
-      return;
-    }
-    if (e.pointer == _panPointer) {
-      _isPanning = false;
-      _panPointer = null;
-      return;
-    }
-    _ctrl.onPointerUp(_toCanvasX(e.localPosition.dx), _toCanvasY(e.localPosition.dy), e.pointer);
-  }
-
-  void _onPanCancel(PointerCancelEvent e) {
-    _touchPointers.remove(e.pointer);
-    if (_isTwoFingerPanning && _touchPointers.isEmpty) _isTwoFingerPanning = false;
-    if (e.pointer == _panPointer) {
-      _isPanning = false;
-      _panPointer = null;
-    }
-  }
-
-  void _onPanZoomUpdate(PointerPanZoomUpdateEvent e) {
-    final cs = _canvasContainerSize;
-    if (cs == null) return;
-    final ps = _ctrl.effectivePixelSize(cs.width);
-    final maxX = ((kCanvasWidth * ps - cs.width) / 2).clamp(0.0, double.infinity);
-    final maxY = ((kCanvasHeight * ps - cs.height) / 2).clamp(0.0, double.infinity);
-    if (maxX == 0 && maxY == 0) return;
-    setState(() {
-      _panOffset = Offset(
-        (_panOffset.dx + e.panDelta.dx).clamp(-maxX, maxX),
-        (_panOffset.dy + e.panDelta.dy).clamp(-maxY, maxY),
-      );
-    });
-  }
-
-  void _zoomReset() {
-    _ctrl.zoomReset();
-    setState(() => _panOffset = Offset.zero);
   }
 
   Future<void> _close() async {
@@ -401,7 +229,7 @@ class _PaintPageState extends State<PaintPage> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _AlertTile(
+            AlertTile(
               icon: Icons.folder_zip_outlined,
               title: 'Dolphin Animation',
               subtitle: '$n frame${n == 1 ? '' : 's'} · meta.txt + .bm files',
@@ -412,7 +240,7 @@ class _PaintPageState extends State<PaintPage> {
               },
             ),
             if (n > 1)
-              _AlertTile(
+              AlertTile(
                 icon: Icons.gif_box_outlined,
                 title: 'GIF Animation',
                 subtitle: '$n frames',
@@ -422,7 +250,7 @@ class _PaintPageState extends State<PaintPage> {
                   _exportGif();
                 },
               ),
-            _AlertTile(
+            AlertTile(
               icon: Icons.image_outlined,
               title: 'PNG Image',
               subtitle: 'Current frame only',
@@ -546,6 +374,11 @@ class _PaintPageState extends State<PaintPage> {
       final passiveFrames = PaintCodec.parseDolphinInt(metaText, 'Passive frames') ?? 0;
       final activeFrames = PaintCodec.parseDolphinInt(metaText, 'Active frames') ?? 0;
 
+      // Frame dimensions can be smaller than our fixed canvas (e.g. 128×54).
+      final width = PaintCodec.parseDolphinInt(metaText, 'Width') ?? kCanvasWidth;
+      final height = PaintCodec.parseDolphinInt(metaText, 'Height') ?? kCanvasHeight;
+      final expectedBytes = ((width + 7) >> 3) * height;
+
       final orderMatch =
           RegExp(r'^Frames order: (.+)$', multiLine: true).firstMatch(metaText);
       final orderStr = orderMatch?.group(1)?.trim() ?? '';
@@ -567,8 +400,8 @@ class _PaintPageState extends State<PaintPage> {
         }
         final bmData = await bmFile.readAsBytes();
         final xbm = PaintCodec.decodeBmFile(bmData);
-        if (xbm == null || xbm.length < 1024) continue;
-        newFrames.add(PaintCodec.xbmToPixels(xbm));
+        if (xbm == null || xbm.length < expectedBytes) continue;
+        newFrames.add(PaintCodec.xbmToPixels(xbm, srcWidth: width, srcHeight: height));
       }
 
       if (newFrames.isEmpty) {
@@ -599,12 +432,18 @@ class _PaintPageState extends State<PaintPage> {
 
   Future<void> _importBmSingle(Uint8List data) async {
     final xbm = PaintCodec.decodeBmFile(data);
-    if (xbm == null || xbm.length < 1024) {
+    // Flipper bitmaps are 128px wide (16 bytes/row); infer the height from the
+    // decoded size so non-64px-tall frames (e.g. 128×54) still import.
+    const rowBytes = kCanvasWidth ~/ 8;
+    if (xbm == null || xbm.length < rowBytes || xbm.length % rowBytes != 0) {
       if (!mounted) return;
       context.showNotification('Invalid .bm file', type: QNotificationType.error);
       return;
     }
-    _ctrl.importSinglePixelFrame(PaintCodec.xbmToPixels(xbm));
+    final height = xbm.length ~/ rowBytes;
+    _ctrl.importSinglePixelFrame(
+      PaintCodec.xbmToPixels(xbm, srcWidth: kCanvasWidth, srcHeight: height),
+    );
     if (!mounted) return;
     context.showNotification(
       '.bm imported as frame ${_ctrl.currentFrame + 1}',
@@ -624,7 +463,13 @@ class _PaintPageState extends State<PaintPage> {
         backgroundColor: colors.background,
         body: Column(
           children: [
-            _buildAppBar(colors, topInset),
+            EditorAppBar(
+              ctrl: _ctrl,
+              colors: colors,
+              topInset: topInset,
+              onClose: _close,
+              onExport: _onExport,
+            ),
             Expanded(
               child: LayoutBuilder(
                 builder: (_, constraints) {
@@ -647,19 +492,19 @@ class _PaintPageState extends State<PaintPage> {
       child: Column(
         children: [
           const SizedBox(height: 10),
-          _buildCanvas(colors),
+          CanvasView(ctrl: _ctrl),
           const SizedBox(height: 8),
-          _buildColorAndZoomRow(colors),
+          ColorAndZoomRow(ctrl: _ctrl, colors: colors),
           const SizedBox(height: 6),
-          _buildToolRow(colors),
+          ToolRow(ctrl: _ctrl, colors: colors),
           const SizedBox(height: 6),
-          _buildOpsRow(colors),
+          OpsRow(ctrl: _ctrl, colors: colors),
           const SizedBox(height: 8),
-          _buildFramesSection(colors),
+          FramesSection(ctrl: _ctrl, colors: colors),
           const SizedBox(height: 8),
-          _buildAnimationSection(colors),
+          AnimationPanel(ctrl: _ctrl, colors: colors),
           const SizedBox(height: 8),
-          _buildExportRow(colors),
+          ExportRow(colors: colors, onExport: _showExportDialog, onImport: _onImport),
         ],
       ),
     );
@@ -675,13 +520,13 @@ class _PaintPageState extends State<PaintPage> {
             child: Column(
               children: [
                 const SizedBox(height: 10),
-                _buildCanvas(colors),
+                CanvasView(ctrl: _ctrl),
                 const SizedBox(height: 8),
-                _buildColorAndZoomRow(colors),
+                ColorAndZoomRow(ctrl: _ctrl, colors: colors),
                 const SizedBox(height: 6),
-                _buildToolRow(colors),
+                ToolRow(ctrl: _ctrl, colors: colors),
                 const SizedBox(height: 6),
-                _buildOpsRow(colors),
+                OpsRow(ctrl: _ctrl, colors: colors),
                 const SizedBox(height: 10),
               ],
             ),
@@ -694,1169 +539,16 @@ class _PaintPageState extends State<PaintPage> {
             child: Column(
               children: [
                 const SizedBox(height: 10),
-                _buildFramesSection(colors),
+                FramesSection(ctrl: _ctrl, colors: colors),
                 const SizedBox(height: 8),
-                _buildAnimationSection(colors),
+                AnimationPanel(ctrl: _ctrl, colors: colors),
                 const SizedBox(height: 8),
-                _buildExportRow(colors),
+                ExportRow(colors: colors, onExport: _showExportDialog, onImport: _onImport),
               ],
             ),
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildAppBar(QAppColors colors, double topInset) {
-    return Container(
-      color: colors.accent,
-      padding: EdgeInsets.only(top: topInset),
-      child: SizedBox(
-        height: 56,
-        child: Row(
-          children: [
-            IconButton(
-              onPressed: _close,
-              icon: Icon(Icons.arrow_back, color: colors.onAccent),
-            ),
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Pixel Draw',
-                    style: TextStyle(
-                      color: colors.onAccent,
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                      height: 1.2,
-                    ),
-                  ),
-                  Text(
-                    '128 × 64 · monochrome',
-                    style: TextStyle(
-                      color: colors.onAccent.withAlpha(180),
-                      fontSize: 11,
-                      height: 1.2,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            IconButton(
-              onPressed: _ctrl.canUndo ? _ctrl.undo : null,
-              icon: Icon(Icons.undo, color: colors.onAccent),
-              tooltip: 'Undo',
-            ),
-            IconButton(
-              onPressed: _ctrl.canRedo ? _ctrl.redo : null,
-              icon: Icon(Icons.redo, color: colors.onAccent),
-              tooltip: 'Redo',
-            ),
-            IconButton(
-              onPressed: _onExport,
-              icon: Icon(Icons.save_outlined, color: colors.onAccent),
-              tooltip: 'Save',
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCanvas(QAppColors colors) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        const hPad = 14.0;
-        final containerW = constraints.maxWidth - hPad * 2;
-        final basePs = (containerW - kPassivePad * 2) / kCanvasWidth;
-        final containerH = kCanvasHeight * basePs + kPassivePad * 2;
-        _canvasContainerSize = Size(containerW, containerH);
-        final ps = _ctrl.effectivePixelSize(containerW);
-        final canvasW = kCanvasWidth * ps;
-        final canvasH = kCanvasHeight * ps;
-        final maxPanX = ((canvasW - containerW) / 2).clamp(0.0, double.infinity);
-        final maxPanY = ((canvasH - containerH) / 2).clamp(0.0, double.infinity);
-        final panX = _panOffset.dx.clamp(-maxPanX, maxPanX);
-        final panY = _panOffset.dy.clamp(-maxPanY, maxPanY);
-        final cLeft = (containerW - canvasW) / 2 + panX;
-        final cTop = (containerH - canvasH) / 2 + panY;
-        _cLeft = cLeft;
-        _cTop = cTop;
-        _pixelSize = ps;
-
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: hPad),
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            // Claim scale/pan gestures so parent ScrollView never wins the arena.
-            onScaleStart: (_) {},
-            onScaleUpdate: (_) {},
-            onScaleEnd: (_) {},
-            child: Listener(
-              behavior: HitTestBehavior.opaque,
-              onPointerDown: _onPanDown,
-              onPointerMove: _onPanMove,
-              onPointerUp: _onPanUp,
-              onPointerCancel: _onPanCancel,
-              onPointerPanZoomUpdate: _onPanZoomUpdate,
-              onPointerSignal: _onScrollPan,
-              child: Container(
-                width: containerW,
-                height: containerH,
-                decoration: BoxDecoration(
-                  color: colors.screenBackground,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: colors.screenBorder.withAlpha(30),
-                    width: 1.5,
-                  ),
-                ),
-                clipBehavior: Clip.hardEdge,
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    Positioned(
-                      left: cLeft,
-                      top: cTop,
-                      width: canvasW,
-                      height: canvasH,
-                      child: CustomPaint(
-                        painter: CanvasPainter(
-                          pixels: _ctrl.currentPixels,
-                          previewPixels: _ctrl.previewPixels,
-                          previewFg: _ctrl.drawFg,
-                          pixelSize: ps,
-                          showGrid: _ctrl.showGrid && ps >= 3.0,
-                          fgColor: colors.screenBorder,
-                          bgColor: colors.screenBackground,
-                          previewColor: colors.accent,
-                          version: _ctrl.pixelVersion,
-                          onionPixels: _ctrl.showOnionSkin && _ctrl.currentFrame > 0
-                              ? _ctrl.frames[_ctrl.currentFrame - 1]
-                              : null,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildColorAndZoomRow(QAppColors colors) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      child: Row(
-        children: [
-          _ColorSwatch(
-            color: colors.screenBorder,
-            selected: _ctrl.drawFg,
-            onTap: () => _ctrl.setDrawFg(true),
-          ),
-          const SizedBox(width: 6),
-          _ColorSwatch(
-            color: colors.screenBackground,
-            selected: !_ctrl.drawFg,
-            onTap: () => _ctrl.setDrawFg(false),
-          ),
-          const Spacer(),
-          _IconToolButton(
-            icon: Icons.grid_on,
-            active: _ctrl.showGrid,
-            colors: colors,
-            onTap: () => _ctrl.setShowGrid(!_ctrl.showGrid),
-            tooltip: 'Toggle grid',
-          ),
-          const SizedBox(width: 4),
-          _IconToolButton(
-            icon: Icons.zoom_out,
-            active: false,
-            colors: colors,
-            onTap: _ctrl.zoomOut,
-            tooltip: 'Zoom out',
-          ),
-          const SizedBox(width: 4),
-          GestureDetector(
-            onTap: _zoomReset,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              decoration: BoxDecoration(
-                color: colors.card,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                _ctrl.zoomLabel,
-                style: TextStyle(
-                  color: colors.textPrimary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 4),
-          _IconToolButton(
-            icon: Icons.zoom_in,
-            active: false,
-            colors: colors,
-            onTap: _ctrl.zoomIn,
-            tooltip: 'Zoom in',
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildToolRow(QAppColors colors) {
-    final drawTools = [
-      (DrawTool.pencil, Icons.edit_outlined, 'Pencil', null as Matrix4?),
-      (DrawTool.fill, Icons.format_color_fill, 'Fill', null),
-      (DrawTool.line, Icons.remove, 'Line', Matrix4.rotationZ(-math.pi / 4)),
-      (DrawTool.rect, Icons.crop_square, 'Rectangle', null),
-      (DrawTool.ellipse, Icons.radio_button_unchecked, 'Ellipse', null),
-    ];
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      child: Row(
-        children: [
-          for (int i = 0; i < drawTools.length; i++) ...[
-            if (i > 0) const SizedBox(width: 6),
-            Expanded(
-              child: _ToolButton(
-                icon: drawTools[i].$2,
-                active: _ctrl.tool == drawTools[i].$1,
-                colors: colors,
-                onTap: () => _ctrl.setTool(drawTools[i].$1),
-                iconTransform: drawTools[i].$4,
-                tooltip: drawTools[i].$3,
-              ),
-            ),
-          ],
-          const SizedBox(width: 6),
-          Expanded(
-            child: _ToolButton(
-              icon: Icons.layers_outlined,
-              active: _ctrl.showOnionSkin,
-              colors: colors,
-              onTap: () => _ctrl.setShowOnionSkin(!_ctrl.showOnionSkin),
-              tooltip: 'Onion skin',
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildOpsRow(QAppColors colors) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      child: Row(
-        children: [
-          Expanded(
-            child: _OpsButton(
-              icon: Icons.flip,
-              colors: colors,
-              onTap: _ctrl.flipH,
-              tooltip: 'Flip horizontal',
-            ),
-          ),
-          const SizedBox(width: 6),
-          Expanded(
-            child: _OpsButton(
-              icon: Icons.flip,
-              iconTransform: Matrix4.rotationZ(math.pi / 2),
-              colors: colors,
-              onTap: _ctrl.flipV,
-              tooltip: 'Flip vertical',
-            ),
-          ),
-          const SizedBox(width: 6),
-          Expanded(
-            child: _OpsButton(
-              icon: Icons.contrast,
-              colors: colors,
-              onTap: _ctrl.invert,
-              tooltip: 'Invert',
-            ),
-          ),
-          const SizedBox(width: 6),
-          Expanded(
-            child: _OpsButton(
-              icon: Icons.delete_outline,
-              colors: colors,
-              onTap: _ctrl.clearFrame,
-              tooltip: 'Clear',
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFramesSection(QAppColors colors) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      child: Container(
-        decoration: BoxDecoration(
-          color: colors.card,
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 10, 10, 6),
-              child: Row(
-                children: [
-                  Text(
-                    'FRAMES · ${_ctrl.frames.length}',
-                    style: TextStyle(
-                      color: colors.textMuted,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                  const Spacer(),
-                  TextButton.icon(
-                    onPressed: _ctrl.frames.length > 1 ? _ctrl.togglePlay : null,
-                    icon: Icon(
-                      _ctrl.isPlaying ? Icons.stop : Icons.play_arrow,
-                      size: 16,
-                      color: _ctrl.frames.length > 1 ? colors.accent : colors.textMuted,
-                    ),
-                    label: Text(
-                      _ctrl.isPlaying ? 'Stop' : 'Play',
-                      style: TextStyle(
-                        color: _ctrl.frames.length > 1 ? colors.accent : colors.textMuted,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    style: TextButton.styleFrom(
-                      minimumSize: Size.zero,
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            SizedBox(
-              height: 60,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: ReorderableListView(
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.fromLTRB(14, 0, 8, 6),
-                      buildDefaultDragHandles: false,
-                      onReorderItem: _ctrl.reorderFrame,
-                      children: [
-                        for (int i = 0; i < _ctrl.frames.length; i++)
-                          ReorderableDragStartListener(
-                            key: ValueKey(i),
-                            index: i,
-                            child: Padding(
-                              padding: const EdgeInsets.only(right: 8),
-                              child: _buildFrameThumbnail(i, colors),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(0, 0, 14, 6),
-                    child: GestureDetector(
-                      onTap: _ctrl.addFrame,
-                      child: Container(
-                        width: 40,
-                        height: 54,
-                        decoration: BoxDecoration(
-                          color: colors.background,
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: colors.divider, width: 1.5),
-                        ),
-                        child: Icon(Icons.add, color: colors.textMuted, size: 20),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 6),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _FrameActionButton(
-                      icon: Icons.copy_outlined,
-                      label: 'Duplicate',
-                      colors: colors,
-                      onTap: _ctrl.duplicateFrame,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _FrameActionButton(
-                      icon: Icons.delete_outline,
-                      label: 'Delete',
-                      colors: colors,
-                      onTap: _ctrl.deleteFrame,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Opacity(
-                    opacity: (_ctrl.effectivePassiveCount < _ctrl.frames.length) ? 1.0 : 0.38,
-                    child: IgnorePointer(
-                      ignoring: _ctrl.effectivePassiveCount >= _ctrl.frames.length,
-                      child: _FrameActionButton(
-                        icon: Icons.touch_app_outlined,
-                        label: '',
-                        colors: colors,
-                        onTap: _ctrl.triggerActive,
-                        accent: true,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFrameThumbnail(int i, QAppColors colors) {
-    final selected = i == _ctrl.currentFrame;
-    final isActive = i >= _ctrl.effectivePassiveCount;
-    final borderColor = selected
-        ? colors.accent
-        : isActive
-            ? colors.accent.withAlpha(80)
-            : colors.divider;
-    return GestureDetector(
-      onTap: () => _ctrl.selectFrame(i),
-      child: Stack(
-        children: [
-          Container(
-            width: 96,
-            height: 54,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: borderColor, width: selected ? 2.0 : 1.0),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(5),
-              child: CustomPaint(
-                painter: ThumbnailPainter(
-                  pixels: _ctrl.frames[i],
-                  fgColor: colors.screenBorder,
-                  bgColor: colors.screenBackground,
-                  version: _ctrl.pixelVersion,
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            top: 3,
-            right: 4,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-              decoration: BoxDecoration(
-                color: isActive
-                    ? colors.accent.withAlpha(200)
-                    : colors.screenBackground.withAlpha(200),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(
-                isActive ? 'A' : 'P',
-                style: TextStyle(
-                  color: isActive ? colors.onAccent : colors.textMuted,
-                  fontSize: 9,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAnimationSection(QAppColors colors) {
-    final n = _ctrl.frames.length;
-    final passiveN = _ctrl.effectivePassiveCount;
-    final activeN = n - passiveN;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      child: Container(
-        decoration: BoxDecoration(
-          color: colors.card,
-          borderRadius: BorderRadius.circular(10),
-        ),
-        padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Text(
-                  'ANIMATION',
-                  style: TextStyle(
-                    color: colors.textMuted,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.6,
-                  ),
-                ),
-                const Spacer(),
-                GestureDetector(
-                  onTap: () => _ctrl.setCompressBm(!_ctrl.compressBm),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: _ctrl.compressBm
-                          ? colors.accent.withAlpha(30)
-                          : colors.background,
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(
-                        color: _ctrl.compressBm ? colors.accent : colors.divider,
-                      ),
-                    ),
-                    child: Text(
-                      _ctrl.compressBm ? 'Compress ✓' : 'Compress',
-                      style: TextStyle(
-                        color: _ctrl.compressBm ? colors.accent : colors.textMuted,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Frame rate',
-              style: TextStyle(color: colors.textSecondary, fontSize: 12),
-            ),
-            Row(
-              children: [
-                Expanded(
-                  child: SliderTheme(
-                    data: SliderTheme.of(context).copyWith(
-                      activeTrackColor: colors.accent,
-                      thumbColor: colors.accent,
-                      inactiveTrackColor: colors.divider,
-                      overlayColor: colors.accent.withAlpha(30),
-                      trackHeight: 3,
-                    ),
-                    child: Slider(
-                      value: _ctrl.frameRate.toDouble().clamp(1, 30),
-                      min: 1,
-                      max: 30,
-                      divisions: 29,
-                      onChanged: (v) => _ctrl.setFrameRate(v.round()),
-                    ),
-                  ),
-                ),
-                Text(
-                  '${_ctrl.frameRate} fps',
-                  style: TextStyle(
-                    color: colors.textPrimary,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(width: 4),
-              ],
-            ),
-            Row(
-              children: [
-                Text(
-                  'Passive  $passiveN',
-                  style: TextStyle(color: colors.textSecondary, fontSize: 12),
-                ),
-                const Spacer(),
-                Text(
-                  'Active  $activeN',
-                  style: TextStyle(color: colors.textMuted, fontSize: 12),
-                ),
-              ],
-            ),
-            SliderTheme(
-              data: SliderTheme.of(context).copyWith(
-                activeTrackColor: colors.accent,
-                thumbColor: colors.accent,
-                inactiveTrackColor: colors.divider.withAlpha(180),
-                overlayColor: colors.accent.withAlpha(30),
-                trackHeight: 3,
-              ),
-              child: Slider(
-                value: passiveN.toDouble().clamp(0, math.max(n, 1).toDouble()),
-                min: 0,
-                max: math.max(n, 1).toDouble(),
-                divisions: math.max(n, 1),
-                onChanged: n > 1 ? (v) => _ctrl.setPassiveFrameCount(v.round()) : null,
-              ),
-            ),
-            const SizedBox(height: 4),
-            _AnimRow(
-              label: 'Duration',
-              unit: 's',
-              colors: colors,
-              trailing: _Stepper(
-                value: _ctrl.duration,
-                min: 1,
-                max: 99999,
-                colors: colors,
-                onChange: _ctrl.setDuration,
-              ),
-            ),
-            Opacity(
-              opacity: activeN > 0 ? 1.0 : 0.38,
-              child: IgnorePointer(
-                ignoring: activeN == 0,
-                child: Column(
-                  children: [
-                    _AnimRow(
-                      label: 'Active cycles',
-                      colors: colors,
-                      trailing: _Stepper(
-                        value: _ctrl.activeCycles,
-                        min: 1,
-                        max: 99,
-                        colors: colors,
-                        onChange: _ctrl.setActiveCycles,
-                      ),
-                    ),
-                    _AnimRow(
-                      label: 'Active cooldown',
-                      unit: 's',
-                      colors: colors,
-                      trailing: _Stepper(
-                        value: _ctrl.activeCooldown,
-                        min: 0,
-                        max: 3600,
-                        colors: colors,
-                        onChange: _ctrl.setActiveCooldown,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    GestureDetector(
-                      onTap: _ctrl.triggerActive,
-                      child: Container(
-                        height: 34,
-                        decoration: BoxDecoration(
-                          color: colors.accent.withAlpha(20),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: colors.accent.withAlpha(80)),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.touch_app_outlined, size: 15, color: colors.accent),
-                            const SizedBox(width: 6),
-                            Text(
-                              'Trigger Active',
-                              style: TextStyle(
-                                color: colors.accent,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildExportRow(QAppColors colors) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      child: Row(
-        children: [
-          Expanded(
-            child: _ExportButton(
-              icon: Icons.upload_outlined,
-              label: 'Export',
-              colors: colors,
-              onTap: _showExportDialog,
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: _ExportButton(
-              icon: Icons.download_outlined,
-              label: 'Import',
-              colors: colors,
-              onTap: _onImport,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ColorSwatch extends StatelessWidget {
-  const _ColorSwatch({
-    required this.color,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final Color color;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final accent = context.appColors.accent;
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 34,
-        height: 34,
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(
-            color: selected ? accent : Colors.grey.withAlpha(80),
-            width: selected ? 2.5 : 1.0,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _IconToolButton extends StatelessWidget {
-  const _IconToolButton({
-    required this.icon,
-    required this.active,
-    required this.colors,
-    required this.onTap,
-    this.tooltip,
-  });
-
-  final IconData icon;
-  final bool active;
-  final QAppColors colors;
-  final VoidCallback onTap;
-  final String? tooltip;
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip ?? '',
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          width: 36,
-          height: 36,
-          decoration: BoxDecoration(
-            color: active ? colors.accent : colors.card,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(
-            icon,
-            size: 18,
-            color: active ? colors.onAccent : colors.textSecondary,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ToolButton extends StatelessWidget {
-  const _ToolButton({
-    required this.icon,
-    required this.active,
-    required this.colors,
-    required this.onTap,
-    this.iconTransform,
-    this.tooltip,
-  });
-
-  final IconData icon;
-  final bool active;
-  final QAppColors colors;
-  final VoidCallback onTap;
-  final Matrix4? iconTransform;
-  final String? tooltip;
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip ?? '',
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          height: 46,
-          decoration: BoxDecoration(
-            color: active ? colors.accent : colors.card,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Center(
-            child: iconTransform != null
-                ? Transform(
-                    transform: iconTransform!,
-                    alignment: Alignment.center,
-                    child: Icon(
-                      icon,
-                      size: 20,
-                      color: active ? colors.onAccent : colors.textSecondary,
-                    ),
-                  )
-                : Icon(
-                    icon,
-                    size: 20,
-                    color: active ? colors.onAccent : colors.textSecondary,
-                  ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _OpsButton extends StatelessWidget {
-  const _OpsButton({
-    required this.icon,
-    required this.colors,
-    required this.onTap,
-    this.iconTransform,
-    this.tooltip,
-  });
-
-  final IconData icon;
-  final QAppColors colors;
-  final VoidCallback onTap;
-  final Matrix4? iconTransform;
-  final String? tooltip;
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip ?? '',
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          height: 46,
-          decoration: BoxDecoration(
-            color: colors.card,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Center(
-            child: iconTransform != null
-                ? Transform(
-                    transform: iconTransform!,
-                    alignment: Alignment.center,
-                    child: Icon(icon, size: 20, color: colors.textSecondary),
-                  )
-                : Icon(icon, size: 20, color: colors.textSecondary),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _FrameActionButton extends StatelessWidget {
-  const _FrameActionButton({
-    required this.icon,
-    required this.label,
-    required this.colors,
-    required this.onTap,
-    this.accent = false,
-  });
-
-  final IconData icon;
-  final String label;
-  final QAppColors colors;
-  final VoidCallback onTap;
-  final bool accent;
-
-  @override
-  Widget build(BuildContext context) {
-    final fg = accent ? colors.accent : colors.textSecondary;
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        height: 40,
-        width: label.isEmpty ? 40 : null,
-        decoration: BoxDecoration(
-          color: accent ? colors.accent.withAlpha(20) : colors.background,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: accent ? colors.accent.withAlpha(80) : colors.divider),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 16, color: fg),
-            if (label.isNotEmpty) ...[
-              const SizedBox(width: 6),
-              Text(
-                label,
-                style: TextStyle(
-                  color: fg,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ExportButton extends StatelessWidget {
-  const _ExportButton({
-    required this.icon,
-    required this.label,
-    required this.colors,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String label;
-  final QAppColors colors;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        height: 48,
-        decoration: BoxDecoration(
-          color: colors.card,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: colors.divider),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 18, color: colors.textPrimary),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: TextStyle(
-                color: colors.textPrimary,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _AlertTile extends StatelessWidget {
-  const _AlertTile({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.colors,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final QAppColors colors;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-        child: Row(
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: colors.background,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(icon, size: 18, color: colors.accent),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      color: colors.textPrimary,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  Text(
-                    subtitle,
-                    style: TextStyle(color: colors.textMuted, fontSize: 12),
-                  ),
-                ],
-              ),
-            ),
-            Icon(Icons.chevron_right, size: 18, color: colors.textMuted),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _StepButton extends StatelessWidget {
-  const _StepButton({
-    required this.icon,
-    required this.enabled,
-    required this.colors,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final bool enabled;
-  final QAppColors colors;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: enabled ? onTap : null,
-      child: Container(
-        width: 28,
-        height: 28,
-        decoration: BoxDecoration(
-          color: enabled ? colors.background : colors.background.withAlpha(80),
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: colors.divider),
-        ),
-        child: Icon(
-          icon,
-          size: 14,
-          color: enabled ? colors.textPrimary : colors.textMuted,
-        ),
-      ),
-    );
-  }
-}
-
-class _Stepper extends StatelessWidget {
-  const _Stepper({
-    required this.value,
-    required this.min,
-    required this.max,
-    required this.colors,
-    required this.onChange,
-  });
-
-  final int value;
-  final int min;
-  final int max;
-  final QAppColors colors;
-  final ValueChanged<int> onChange;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _StepButton(
-          icon: Icons.remove,
-          enabled: value > min,
-          colors: colors,
-          onTap: () => onChange((value - 1).clamp(min, max)),
-        ),
-        Container(
-          width: 44,
-          alignment: Alignment.center,
-          child: Text(
-            '$value',
-            style: TextStyle(
-              color: colors.textPrimary,
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-        _StepButton(
-          icon: Icons.add,
-          enabled: value < max,
-          colors: colors,
-          onTap: () => onChange((value + 1).clamp(min, max)),
-        ),
-      ],
-    );
-  }
-}
-
-class _AnimRow extends StatelessWidget {
-  const _AnimRow({
-    required this.label,
-    required this.colors,
-    required this.trailing,
-    this.unit,
-  });
-
-  final String label;
-  final String? unit;
-  final QAppColors colors;
-  final Widget trailing;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              label,
-              style: TextStyle(color: colors.textSecondary, fontSize: 13),
-            ),
-          ),
-          if (unit != null)
-            Padding(
-              padding: const EdgeInsets.only(right: 6),
-              child: Text(
-                unit!,
-                style: TextStyle(color: colors.textMuted, fontSize: 12),
-              ),
-            ),
-          trailing,
-        ],
-      ),
     );
   }
 }

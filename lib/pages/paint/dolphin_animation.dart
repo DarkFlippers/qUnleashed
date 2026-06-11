@@ -14,6 +14,8 @@ class DolphinAnimation {
     required this.name,
     required this.dirPath,
     required this.metaPath,
+    required this.width,
+    required this.height,
     required this.passiveFrames,
     required this.activeFrames,
     required this.frameRate,
@@ -28,6 +30,10 @@ class DolphinAnimation {
   final String name;
   final String dirPath;
   final String metaPath;
+
+  /// Source frame dimensions from `meta.txt` (often 128×54, not the full 64).
+  final int width;
+  final int height;
 
   final int passiveFrames;
   final int activeFrames;
@@ -64,10 +70,8 @@ class DolphinAnimation {
     final bm = io.File(pathJoin([dirPath, 'frame_$fileIndex.bm']));
     if (await bm.exists()) {
       final xbm = PaintCodec.decodeBmFile(await bm.readAsBytes());
-      // xbmToPixels tolerates a short buffer (e.g. 128×51 = 816B): rows beyond
-      // the data stay blank. Only fully empty/undecodable frames are rejected.
       if (xbm == null || xbm.length < 16) return null;
-      return PaintCodec.xbmToPixels(xbm);
+      return PaintCodec.xbmToPixels(xbm, srcWidth: width, srcHeight: height);
     }
     return null;
   }
@@ -135,6 +139,8 @@ abstract final class DolphinAnimationParser {
         name: name,
         dirPath: dir.path,
         metaPath: metaFile.path,
+        width: PaintCodec.parseDolphinInt(text, 'Width') ?? kCanvasWidth,
+        height: PaintCodec.parseDolphinInt(text, 'Height') ?? kCanvasHeight,
         passiveFrames: passive,
         activeFrames: active,
         frameRate: PaintCodec.parseDolphinInt(text, 'Frame rate') ?? 2,

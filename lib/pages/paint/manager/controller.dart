@@ -31,7 +31,6 @@ class ProjectManagerController extends ChangeNotifier {
   String? _selectedId;
   String? _error;
 
-  // ── Getters ────────────────────────────────────────────────────────────────
 
   List<PaintProject> get projects => _projects;
   bool get loading => _loading;
@@ -42,7 +41,6 @@ class ProjectManagerController extends ChangeNotifier {
   bool get isConnected => _client.isConnected;
   String? get selectedId => _selectedId;
 
-  // ── Actions ─────────────────────────────────────────────────────────────────
 
   void select(String? id) {
     _selectedId = (_selectedId == id) ? null : id;
@@ -202,7 +200,6 @@ class ProjectManagerController extends ChangeNotifier {
     }
   }
 
-  // ── Lifecycle ───────────────────────────────────────────────────────────────
 
   void _notify() {
     if (!_disposed) notifyListeners();
