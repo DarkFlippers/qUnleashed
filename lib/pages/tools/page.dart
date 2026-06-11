@@ -26,7 +26,7 @@ class ToolsPage extends StatelessWidget {
       items: [
         ToolItemModel(
           iconAsset: 'assets/ic/app/controller.svg',
-          iconColor: const Color(0xFF589DFF),
+          iconColor: const Color(0xFFFFFFFF),
           title: 'Remote desktop',
           description: 'View, control, and record the flipper screen',
           routeBuilder: _buildRemoteControlPage,
