@@ -28,7 +28,6 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
 
   bool _savingScreenshot = false;
   bool _closing = false;
-  Object? _shownStartError;
 
   Timer? _recordingTick;
 
@@ -54,14 +53,6 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
 
   void _onSessionChanged() {
     if (!mounted) return;
-    final err = _session.startError;
-    if (err != null && err != _shownStartError) {
-      _shownStartError = err;
-      context.showNotification(
-        'Remote control unavailable: $err',
-        type: QNotificationType.error,
-      );
-    }
     setState(() {});
   }
 

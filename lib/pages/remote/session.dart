@@ -36,7 +36,6 @@ class RemoteSession extends ChangeNotifier {
   bool _isDisconnected = false;
   bool _stopped = false;
   bool _disposed = false;
-  Object? _startError;
 
   final List<QueuedButton> _queue = [];
   final Map<RemoteButton, _HeldButton> _held = {};
@@ -48,7 +47,6 @@ class RemoteSession extends ChangeNotifier {
   StreamOrientation get orientation => _orientation;
   bool get isLocked => _isLocked;
   bool get isDisconnected => _isDisconnected;
-  Object? get startError => _startError;
   List<QueuedButton> get queue => _queue;
   int? get lastBgColor => _lastBgColor;
   int? get lastFgColor => _lastFgColor;
@@ -74,38 +72,18 @@ class RemoteSession extends ChangeNotifier {
   }
 
   Future<void> _start() async {
-    await _tryRpc(
-      'guiStartScreenStream',
-      () => _client.guiStartScreenStream(
-        priority: FlipperRequestPriority.rightNow,
-      ),
-    );
-    await _tryRpc(
-      'desktopStatusSubscribe',
-      () => _client.desktopStatusSubscribe(),
-    );
-    final frames = await _tryRpc(
-      'desktopIsLocked',
-      () => _client.desktopIsLocked(),
-    );
-    if (frames != null) {
-      for (final f in frames) {
-        if (f.hasDesktopStatus()) _applyStatus(f.desktopStatus);
-      }
-    }
-  }
-
-  Future<T?> _tryRpc<T>(String tag, Future<T> Function() body) async {
-    try {
-      return await body();
-    } on FlipperRpcException catch (e) {
-      LogService.log('[RemoteSession] $tag ignored RPC error: $e');
-      return null;
-    } catch (e) {
-      LogService.log('[RemoteSession] $tag failed: $e');
-      _startError = e;
+    if (!_client.isConnected) {
+      _isDisconnected = true;
       _safeNotify();
-      return null;
+      return;
+    }
+    await _client.guiStartScreenStream(
+      priority: FlipperRequestPriority.rightNow,
+    );
+    await _client.desktopStatusSubscribe();
+    final frames = await _client.desktopIsLocked();
+    for (final f in frames) {
+      if (f.hasDesktopStatus()) _applyStatus(f.desktopStatus);
     }
   }
 
