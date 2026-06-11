@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:super_clipboard/super_clipboard.dart';
 
 import '../../../services/update/update_service.dart';
@@ -166,26 +167,14 @@ class _ConnectedContent extends StatelessWidget {
           ),
         ],
         const SizedBox(height: 14),
-        _RemoteControlCard(
-          onOpenRemoteControl: () => Navigator.of(
-            context,
-          ).push(MaterialPageRoute(builder: (_) => const RemoteControlPage())),
-        ),
-        const SizedBox(height: 14),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14),
-          child: _ResponsiveCardGrid(
-            children: [
-              _ActionsCard(
-                onSynchronize: ctrl.deviceLoading
-                    ? null
-                    : () => ctrl.synchronize(),
-                onPlayAlert: ctrl.alertPlaying
-                    ? null
-                    : () => _playAlert(context),
-              ),
-              _ConnectionActionsCard(onDisconnect: () => ctrl.disconnect()),
-            ],
+          child: _DeviceActionsRow(
+            onDisconnect: () => ctrl.disconnect(),
+            onPlayAlert: ctrl.alertPlaying ? null : () => _playAlert(context),
+            onOpenRemoteControl: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const RemoteControlPage()),
+            ),
           ),
         ),
         const SizedBox(height: 14),
@@ -654,102 +643,161 @@ class _DeviceInfoCard extends StatelessWidget {
   }
 }
 
-class _RemoteControlCard extends StatelessWidget {
-  const _RemoteControlCard({required this.onOpenRemoteControl});
+class _DeviceActionsRow extends StatelessWidget {
+  const _DeviceActionsRow({
+    required this.onDisconnect,
+    required this.onPlayAlert,
+    required this.onOpenRemoteControl,
+  });
 
+  static const double _spacing = 10;
+  static const double _iconSize = 26;
+  static const double _contentSpacing = 10;
+  static const double _minWideButtonWidth = 170;
+  final VoidCallback onDisconnect;
+  final VoidCallback? onPlayAlert;
   final VoidCallback onOpenRemoteControl;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    return FlipperPageCard(
-      child: Column(
-        children: [
-          FlipperActionRow(
-            iconAsset: 'assets/ic/app/controller.svg',
-            label: 'Remote Control',
-            color: colors.textPrimary,
-            trailing: DeviceNavigateIcon(color: colors.textMuted),
-            onTap: onOpenRemoteControl,
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'Control your Flipper Zero remotely via mobile phone',
-                style: TextStyle(fontSize: 12, color: colors.textMuted),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const buttonCount = 3;
+        final buttonWidth =
+            (constraints.maxWidth - _spacing * (buttonCount - 1)) / buttonCount;
+        final horizontal = buttonWidth >= _minWideButtonWidth;
+        final buttonHeight = horizontal ? 72.0 : buttonWidth;
+
+        return Row(
+          children: [
+            Expanded(
+              child: SizedBox(
+                height: buttonHeight,
+                child: _DeviceActionButton(
+                  iconAsset: 'assets/ic/device/bluetooth-off.svg',
+                  label: 'Disconnect',
+                  iconColor: colors.accent,
+                  textColor: colors.textPrimary,
+                  horizontal: horizontal,
+                  onTap: onDisconnect,
+                ),
               ),
             ),
-          ),
-        ],
-      ),
+            const SizedBox(width: _spacing),
+            Expanded(
+              child: SizedBox(
+                height: buttonHeight,
+                child: _DeviceActionButton(
+                  iconAsset: 'assets/ic/device/ring.svg',
+                  label: 'Play Alert',
+                  iconColor: onPlayAlert == null
+                      ? colors.textMuted
+                      : colors.accent,
+                  textColor: onPlayAlert == null
+                      ? colors.textMuted
+                      : colors.textPrimary,
+                  horizontal: horizontal,
+                  onTap: onPlayAlert,
+                ),
+              ),
+            ),
+            const SizedBox(width: _spacing),
+            Expanded(
+              child: SizedBox(
+                height: buttonHeight,
+                child: _DeviceActionButton(
+                  iconAsset: 'assets/ic/app/controller.svg',
+                  label: 'Remote Control',
+                  iconColor: colors.accent,
+                  textColor: colors.textPrimary,
+                  horizontal: horizontal,
+                  onTap: onOpenRemoteControl,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
 
-class _ActionsCard extends StatelessWidget {
-  const _ActionsCard({required this.onSynchronize, required this.onPlayAlert});
+class _DeviceActionButton extends StatelessWidget {
+  const _DeviceActionButton({
+    required this.iconAsset,
+    required this.label,
+    required this.iconColor,
+    required this.textColor,
+    required this.horizontal,
+    required this.onTap,
+  });
 
-  final VoidCallback? onSynchronize;
-  final VoidCallback? onPlayAlert;
+  final String iconAsset;
+  final String label;
+  final Color iconColor;
+  final Color textColor;
+  final bool horizontal;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.appColors;
     return Material(
-      color: colors.card,
+      color: context.appColors.card,
       borderRadius: BorderRadius.circular(10),
       clipBehavior: Clip.antiAlias,
-      child: Column(
-        children: [
-          FlipperActionRow(
-            iconAsset: 'assets/ic/device/syncing.svg',
-            label: 'Synchronize',
-            color: onSynchronize == null ? colors.textMuted : colors.accent,
-            onTap: onSynchronize,
+      child: InkWell(
+        onTap: onTap,
+        child: Semantics(
+          button: true,
+          enabled: onTap != null,
+          label: label,
+          excludeSemantics: true,
+          child: Center(
+            child: horizontal
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildIcon(),
+                      const SizedBox(width: _DeviceActionsRow._contentSpacing),
+                      _buildLabel(maxLines: 1),
+                    ],
+                  )
+                : Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildIcon(),
+                      const SizedBox(height: _DeviceActionsRow._contentSpacing),
+                      _buildLabel(maxLines: 2),
+                    ],
+                  ),
           ),
-          Divider(height: 1, color: colors.divider),
-          FlipperActionRow(
-            iconAsset: 'assets/ic/device/ring.svg',
-            label: 'Play Alert on Flipper',
-            color: onPlayAlert == null ? colors.textMuted : colors.accent,
-            onTap: onPlayAlert,
-          ),
-        ],
+        ),
       ),
     );
   }
-}
 
-class _ConnectionActionsCard extends StatelessWidget {
-  const _ConnectionActionsCard({required this.onDisconnect});
+  Widget _buildIcon() {
+    return SizedBox(
+      width: _DeviceActionsRow._iconSize,
+      height: _DeviceActionsRow._iconSize,
+      child: SvgPicture.asset(
+        iconAsset,
+        colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
+      ),
+    );
+  }
 
-  final VoidCallback onDisconnect;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.appColors;
-    return Material(
-      color: colors.card,
-      borderRadius: BorderRadius.circular(10),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        children: [
-          FlipperActionRow(
-            iconAsset: 'assets/ic/device/bluetooth-off.svg',
-            label: 'Disconnect',
-            color: colors.accent,
-            onTap: onDisconnect,
-          ),
-          Divider(height: 1, color: colors.divider),
-          FlipperActionRow(
-            iconAsset: 'assets/ic/device/disconnect.svg',
-            label: 'Forget Flipper',
-            color: colors.danger,
-            onTap: null,
-          ),
-        ],
+  Widget _buildLabel({required int maxLines}) {
+    return Text(
+      label,
+      maxLines: maxLines,
+      textAlign: TextAlign.center,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        color: textColor,
+        fontSize: 14,
+        fontWeight: FontWeight.w500,
       ),
     );
   }
