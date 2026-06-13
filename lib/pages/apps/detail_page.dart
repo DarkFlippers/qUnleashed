@@ -1,6 +1,7 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 import '../../theme.dart';
+import 'package:qunleashed/components/appbar.dart';
 import '../devices/widgets/changelog_renderer.dart';
 import '../../widgets/open_url.dart';
 import '../remote/page.dart';
@@ -66,9 +67,9 @@ class _AppDetailPageState extends State<AppDetailPage> {
   }
 
   void _onLaunched() {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const RemoteControlPage()),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const RemoteControlPage()));
   }
 
   Future<void> _confirmDelete(AppCard card, AppCategory? cat) async {
@@ -78,8 +79,14 @@ class _AppDetailPageState extends State<AppDetailPage> {
         title: const Text('Delete app?'),
         content: Text('Remove "${card.name}" from your Flipper?'),
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Delete')),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Delete'),
+          ),
         ],
       ),
     );
@@ -95,18 +102,21 @@ class _AppDetailPageState extends State<AppDetailPage> {
       animation: widget.installService,
       builder: (context, _) => Scaffold(
         backgroundColor: colors.background,
-        appBar: AppBar(
+        appBar: QPageAppBar(
+          title: _detail?.card.name ?? 'App',
           backgroundColor: colors.accent,
           foregroundColor: colors.onAccent,
-          title: Text(_detail?.card.name ?? 'App'),
           actions: [
             if (_detail != null) ...[
               if (widget.installService.isInstalled(_detail!.card))
-                IconButton(
+                QPageAppBarAction(
+                  tooltip: 'Delete app',
                   icon: const Icon(Icons.delete_outline),
-                  onPressed: () => _confirmDelete(_detail!.card, widget.knownCategory),
+                  onPressed: () =>
+                      _confirmDelete(_detail!.card, widget.knownCategory),
                 ),
-              IconButton(
+              QPageAppBarAction(
+                tooltip: 'Open app page',
                 icon: const Icon(Icons.open_in_new),
                 onPressed: () {
                   final url = _detail!.links?.manifestUri ?? '';
@@ -135,7 +145,10 @@ class _AppDetailPageState extends State<AppDetailPage> {
           children: [
             Icon(Icons.error_outline, color: colors.danger, size: 48),
             const SizedBox(height: 8),
-            Text('Failed to load app', style: TextStyle(color: colors.textPrimary)),
+            Text(
+              'Failed to load app',
+              style: TextStyle(color: colors.textPrimary),
+            ),
             const SizedBox(height: 12),
             TextButton(onPressed: _load, child: const Text('Retry')),
           ],
@@ -158,10 +171,7 @@ class _AppDetailPageState extends State<AppDetailPage> {
         ),
         const SizedBox(height: 18),
         if (cv != null && cv.screenshots.isNotEmpty) ...[
-          _ScreenshotsRow(
-            screenshots: cv.screenshots,
-            title: card.name,
-          ),
+          _ScreenshotsRow(screenshots: cv.screenshots, title: card.name),
           const SizedBox(height: 18),
         ],
         if (cv != null && cv.shortDescription.isNotEmpty) ...[
@@ -217,7 +227,8 @@ class _Header extends StatelessWidget {
     final colors = context.appColors;
     final card = detail.card;
     final cv = card.currentVersion;
-    final cat = knownCategory ??
+    final cat =
+        knownCategory ??
         AppCategory(id: card.categoryId, name: 'вЂ”', color: 'EBEBEB');
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -236,7 +247,10 @@ class _Header extends StatelessWidget {
               padding: const EdgeInsets.all(4),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(6),
-                child: FlipperRemoteImage(url: card.iconUri, fit: BoxFit.contain),
+                child: FlipperRemoteImage(
+                  url: card.iconUri,
+                  fit: BoxFit.contain,
+                ),
               ),
             ),
             const SizedBox(width: 14),
@@ -263,7 +277,10 @@ class _Header extends StatelessWidget {
                     children: [
                       CategoryChip(category: cat, selected: true),
                       _Meta(label: 'Version', value: cv?.version ?? 'вЂ”'),
-                      _Meta(label: 'Size', value: _formatBytes(detail.buildMetadata?.length)),
+                      _Meta(
+                        label: 'Size',
+                        value: _formatBytes(detail.buildMetadata?.length),
+                      ),
                       if (card.author.isNotEmpty)
                         _Meta(label: 'By', value: card.author),
                     ],

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
 import '../../theme.dart';
+import 'package:qunleashed/components/appbar.dart';
 
 class AppLicensePage extends StatefulWidget {
   const AppLicensePage({super.key});
@@ -43,10 +44,10 @@ class _AppLicensePageState extends State<AppLicensePage> {
     final colors = context.appColors;
     return Scaffold(
       backgroundColor: colors.background,
-      appBar: AppBar(
+      appBar: QPageAppBar(
+        title: 'GPL v3 License',
         backgroundColor: colors.accent,
         foregroundColor: colors.onAccent,
-        title: const Text('GPL v3 License'),
       ),
       body: _buildBody(colors),
     );
@@ -108,7 +109,8 @@ class _AppLicensePageState extends State<AppLicensePage> {
         out.writeln();
         continue;
       }
-      final indented = line.startsWith(' ') && line.trimLeft().length < line.length - 2;
+      final indented =
+          line.startsWith(' ') && line.trimLeft().length < line.length - 2;
       if (indented) {
         flush();
         out.writeln(trimmed);

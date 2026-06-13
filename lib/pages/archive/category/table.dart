@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../../components/icon.dart';
 import '../../../theme.dart';
 import '../format.dart';
 import '../../../models/category.dart';
@@ -78,8 +78,9 @@ class _HeaderCell extends StatelessWidget {
 
     Widget cell = Row(
       mainAxisSize: MainAxisSize.min,
-      mainAxisAlignment:
-          col.right ? MainAxisAlignment.end : MainAxisAlignment.start,
+      mainAxisAlignment: col.right
+          ? MainAxisAlignment.end
+          : MainAxisAlignment.start,
       children: [
         Text(col.label.toUpperCase(), style: textStyle),
         if (active) ...[
@@ -200,8 +201,10 @@ class ArchiveTableRow extends StatelessWidget {
             ),
             if (hasRaw && proto != 'RAW') ...[
               const SizedBox(width: 4),
-              Text('(raw)',
-                  style: TextStyle(color: colors.textMuted, fontSize: 10)),
+              Text(
+                '(raw)',
+                style: TextStyle(color: colors.textMuted, fontSize: 10),
+              ),
             ],
           ],
         );
@@ -224,20 +227,13 @@ class ArchiveTableRow extends StatelessWidget {
     final relDir = k.subFolder.isEmpty ? '/' : '/${k.subFolder}/';
     return Row(
       children: [
-        Container(
-          width: 28,
-          height: 28,
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: cat.color.withValues(alpha: 0.14),
-            borderRadius: BorderRadius.circular(7),
-          ),
-          child: SvgPicture.asset(
-            cat.asset,
-            width: 16,
-            height: 16,
-            colorFilter: ColorFilter.mode(cat.color, BlendMode.srcIn),
-          ),
+        QIconBadge(
+          asset: cat.asset,
+          color: cat.color,
+          size: 28,
+          iconSize: 16,
+          backgroundOpacity: 0.14,
+          borderRadius: 7,
         ),
         const SizedBox(width: 8),
         Expanded(
@@ -250,9 +246,10 @@ class ArchiveTableRow extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                    color: colors.textPrimary,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500),
+                  color: colors.textPrimary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
               Text(
                 relDir,

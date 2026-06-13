@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:xterm/xterm.dart';
 
 import '../../../theme.dart';
+import 'package:qunleashed/components/appbar.dart';
 import '../../../widgets/flipper_action_dialog.dart';
 import '../../../components/dialogs/connection.dart';
 
@@ -228,17 +229,17 @@ class _CliPageState extends State<CliPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _kBackgroundColor,
-      appBar: AppBar(
-        title: const Text('CLI'),
+      appBar: QPageAppBar(
+        title: 'CLI',
         backgroundColor: _kBackgroundColor,
         foregroundColor: Colors.white,
         actions: [
-          IconButton(
+          QPageAppBarAction(
             tooltip: 'Send Ctrl+C',
             onPressed: _ready ? _sendCtrlC : null,
             icon: const Icon(Icons.stop_circle_outlined),
           ),
-          IconButton(
+          QPageAppBarAction(
             tooltip: 'Clear',
             onPressed: _clearOutput,
             icon: const Icon(Icons.delete_outline),

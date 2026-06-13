@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../../components/icon.dart';
 import '../../../theme.dart';
 import '../models/tool.dart';
 import '../preview/tools.dart';
@@ -70,21 +70,7 @@ class _ItemLeading extends StatelessWidget {
       return SizedBox(width: 64, height: 64, child: ToolPreview(type: preview));
     }
     final color = model.iconColor ?? context.appColors.textPrimary;
-    final icon = Container(
-      width: 36,
-      height: 36,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: SvgPicture.asset(
-        model.iconAsset!,
-        width: 24,
-        height: 24,
-        colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
-      ),
-    );
+    final icon = QIconBadge(asset: model.iconAsset!, color: color);
     if (!alignWithPreview) return icon;
     return SizedBox(width: 64, child: Center(child: icon));
   }
@@ -104,11 +90,10 @@ class _ItemTrailing extends StatelessWidget {
         if (badge != null) ToolItemBadge(label: badge!),
         Padding(
           padding: const EdgeInsets.only(left: 8),
-          child: SvgPicture.asset(
-            'assets/ic/nav/navigate-tool.svg',
-            width: 16,
-            height: 16,
-            colorFilter: ColorFilter.mode(colors.textMuted, BlendMode.srcIn),
+          child: QIcon(
+            asset: 'assets/ic/nav/navigate-tool.svg',
+            color: colors.textMuted,
+            size: 16,
           ),
         ),
       ],

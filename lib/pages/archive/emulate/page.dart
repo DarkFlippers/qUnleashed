@@ -1,7 +1,8 @@
-﻿import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
+import 'package:flutter/material.dart';
 
+import '../../../components/icon.dart';
 import '../../../theme.dart';
+import 'package:qunleashed/components/appbar.dart';
 import '../../remote/page.dart';
 import '../models/key.dart';
 import 'service.dart';
@@ -95,10 +96,10 @@ class _EmulatePageState extends State<EmulatePage> {
       },
       child: Scaffold(
         backgroundColor: colors.background,
-        appBar: AppBar(
+        appBar: QPageAppBar(
+          title: 'Open on device · ${k.category.title}',
           backgroundColor: colors.accent,
           foregroundColor: colors.onAccent,
-          title: Text('Open on device В· ${k.category.title}'),
         ),
         body: SafeArea(
           child: Padding(
@@ -114,21 +115,12 @@ class _EmulatePageState extends State<EmulatePage> {
                   ),
                   child: Row(
                     children: [
-                      Container(
-                        width: 56,
-                        height: 56,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: k.category.color.withValues(alpha: 0.18),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: SvgPicture.asset(
-                          k.category.asset,
-                          width: 32,
-                          height: 32,
-                          colorFilter: ColorFilter.mode(
-                              k.category.color, BlendMode.srcIn),
-                        ),
+                      QIconBadge(
+                        asset: k.category.asset,
+                        color: k.category.color,
+                        size: 56,
+                        iconSize: 32,
+                        borderRadius: 12,
                       ),
                       const SizedBox(width: 16),
                       Expanded(
@@ -149,7 +141,9 @@ class _EmulatePageState extends State<EmulatePage> {
                             Text(
                               k.remotePath,
                               style: TextStyle(
-                                  color: colors.textMuted, fontSize: 12),
+                                color: colors.textMuted,
+                                fontSize: 12,
+                              ),
                             ),
                           ],
                         ),
@@ -203,8 +197,10 @@ class _EmulatePageState extends State<EmulatePage> {
           children: [
             CircularProgressIndicator(color: colors.accent),
             const SizedBox(height: 16),
-            Text('Opening app on Flipper...',
-                style: TextStyle(color: colors.textSecondary)),
+            Text(
+              'Opening app on Flipper...',
+              style: TextStyle(color: colors.textSecondary),
+            ),
           ],
         ),
       );
@@ -229,11 +225,7 @@ class _EmulatePageState extends State<EmulatePage> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.contactless,
-            size: 64,
-            color: colors.accent,
-          ),
+          Icon(Icons.contactless, size: 64, color: colors.accent),
           const SizedBox(height: 16),
           Text(
             'File loaded on Flipper',
@@ -248,7 +240,11 @@ class _EmulatePageState extends State<EmulatePage> {
           Text(
             'Use the Flipper buttons to run it.\nStop will close the app.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: colors.textMuted, fontSize: 12, height: 1.4),
+            style: TextStyle(
+              color: colors.textMuted,
+              fontSize: 12,
+              height: 1.4,
+            ),
           ),
         ],
       ),

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../theme.dart';
 import '../../widgets/notification.dart';
+import 'package:qunleashed/components/appbar.dart';
 import 'gif_export_dialog.dart';
 import 'gif_recorder.dart';
 import 'input/keyboard_listener.dart';
@@ -94,7 +95,8 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
 
   Future<void> _stopGifRecording() async {
     final state = _gifRecorder.state;
-    if (state == GifRecordingState.idle || state == GifRecordingState.encoding) {
+    if (state == GifRecordingState.idle ||
+        state == GifRecordingState.encoding) {
       return;
     }
 
@@ -228,7 +230,6 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final topInset = MediaQuery.paddingOf(context).top;
     final orientation = _session.orientation;
     final isVertical =
         orientation == StreamOrientation.vertical ||
@@ -242,121 +243,93 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
         onHoldEnd: (b) => unawaited(_session.endHold(b)),
         child: Scaffold(
           backgroundColor: colors.background,
-          body: Column(
-            children: [
-              _buildAppBar(colors, topInset),
-              Expanded(
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final controlsHeight = isVertical
-                        ? math.min(150.0, constraints.maxHeight * 0.28)
-                        : math.min(174.0, constraints.maxHeight * 0.32);
-                    final hPad = isVertical ? 12.0 : 24.0;
-
-                    return Column(
-                      children: [
-                        Expanded(
-                          child: SafeArea(
-                            top: false,
-                            bottom: false,
-                            child: Padding(
-                              padding: EdgeInsets.fromLTRB(hPad, 14, hPad, 8),
-                              child: Column(
-                                children: [
-                                  RemoteActionRow(
-                                    isVertical: isVertical,
-                                    gifState: _gifRecorder.state,
-                                    gifElapsedMs: _gifRecorder.elapsedMs,
-                                    isLocked: _session.isLocked,
-                                    savingScreenshot: _savingScreenshot,
-                                    onCopy: _copyScreenshot,
-                                    onSave: _saveScreenshot,
-                                    onUnlock: _session.isLocked
-                                        ? _session.unlock
-                                        : null,
-                                    onStartGif: _startGifRecording,
-                                    onPauseResumeGif: _togglePauseGifRecording,
-                                    onStopGif: _stopGifRecording,
-                                    onCancelGif: _cancelGifRecording,
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Expanded(
-                                    child: RemoteControlView(
-                                      frameListenable: _session.frameListenable,
-                                      queue: _session.queue,
-                                      orientation: orientation,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                        SafeArea(
-                          top: false,
-                          child: Padding(
-                            padding: const EdgeInsets.only(bottom: 8),
-                            child: SizedBox(
-                              height: controlsHeight,
-                              child: RemoteControlControls(
-                                onHoldBegin: _onHoldBegin,
-                                onHoldEnd: _onHoldEnd,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    );
-                  },
+          appBar: QPageAppBar(
+            title: 'Remote Control',
+            leading: IconButton(
+              onPressed: _close,
+              icon: const Icon(Icons.arrow_back),
+            ),
+            actions: [
+              QPageAppBarAction(
+                onPressed: () =>
+                    _session.setGrayscaleEnabled(!_session.grayscaleEnabled),
+                tooltip: _session.grayscaleEnabled
+                    ? 'Grayscale filter on — tap to show raw screen'
+                    : 'Grayscale filter off — tap to render flicker-gray as solid shades',
+                icon: Icon(
+                  _session.grayscaleEnabled
+                      ? Icons.gradient_rounded
+                      : Icons.gradient_outlined,
+                  color: _session.grayscaleEnabled
+                      ? colors.onAccent
+                      : colors.onAccent.withValues(alpha: 0.45),
                 ),
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
+          body: LayoutBuilder(
+            builder: (context, constraints) {
+              final controlsHeight = isVertical
+                  ? math.min(150.0, constraints.maxHeight * 0.28)
+                  : math.min(174.0, constraints.maxHeight * 0.32);
+              final hPad = isVertical ? 12.0 : 24.0;
 
-  Widget _buildAppBar(QAppColors colors, double topInset) {
-    return Container(
-      color: colors.accent,
-      padding: EdgeInsets.only(top: topInset),
-      child: SizedBox(
-        height: 56,
-        child: Row(
-          children: [
-            IconButton(
-              onPressed: _close,
-              icon: Icon(Icons.arrow_back, color: colors.onAccent),
-            ),
-            Expanded(
-              child: Text(
-                'Remote Control',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: colors.onAccent,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-            IconButton(
-              onPressed: () => _session.setGrayscaleEnabled(
-                !_session.grayscaleEnabled,
-              ),
-              tooltip: _session.grayscaleEnabled
-                  ? 'Grayscale filter on — tap to show raw screen'
-                  : 'Grayscale filter off — tap to render flicker-gray as solid shades',
-              icon: Icon(
-                _session.grayscaleEnabled
-                    ? Icons.gradient_rounded
-                    : Icons.gradient_outlined,
-                color: _session.grayscaleEnabled
-                    ? colors.onAccent
-                    : colors.onAccent.withValues(alpha: 0.45),
-              ),
-            ),
-          ],
+              return Column(
+                children: [
+                  Expanded(
+                    child: SafeArea(
+                      top: false,
+                      bottom: false,
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(hPad, 14, hPad, 8),
+                        child: Column(
+                          children: [
+                            RemoteActionRow(
+                              isVertical: isVertical,
+                              gifState: _gifRecorder.state,
+                              gifElapsedMs: _gifRecorder.elapsedMs,
+                              isLocked: _session.isLocked,
+                              savingScreenshot: _savingScreenshot,
+                              onCopy: _copyScreenshot,
+                              onSave: _saveScreenshot,
+                              onUnlock: _session.isLocked
+                                  ? _session.unlock
+                                  : null,
+                              onStartGif: _startGifRecording,
+                              onPauseResumeGif: _togglePauseGifRecording,
+                              onStopGif: _stopGifRecording,
+                              onCancelGif: _cancelGifRecording,
+                            ),
+                            const SizedBox(height: 6),
+                            Expanded(
+                              child: RemoteControlView(
+                                frameListenable: _session.frameListenable,
+                                queue: _session.queue,
+                                orientation: orientation,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  SafeArea(
+                    top: false,
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: SizedBox(
+                        height: controlsHeight,
+                        child: RemoteControlControls(
+                          onHoldBegin: _onHoldBegin,
+                          onHoldEnd: _onHoldEnd,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
         ),
       ),
     );

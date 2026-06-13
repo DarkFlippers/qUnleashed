@@ -1,8 +1,8 @@
 import 'dart:io' as io;
 
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../../components/icon.dart';
 import '../../../theme.dart';
 import '../../../widgets/notification.dart';
 import '../../editor/page.dart';
@@ -33,20 +33,10 @@ class KeyActionsSheet {
     final canShowOnMap = await _hasCoordinates(key);
     if (!context.mounted) return;
 
-    final leading = Container(
-      width: 36,
-      height: 36,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: key.category.color.withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: SvgPicture.asset(
-        key.category.asset,
-        width: 22,
-        height: 22,
-        colorFilter: ColorFilter.mode(key.category.color, BlendMode.srcIn),
-      ),
+    final leading = QIconBadge(
+      asset: key.category.asset,
+      color: key.category.color,
+      iconSize: 22,
     );
 
     final actions = _buildActions(

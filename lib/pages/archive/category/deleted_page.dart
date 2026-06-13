@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../theme.dart';
+import 'package:qunleashed/components/appbar.dart';
 import '../controller.dart';
 import '../widgets/empty_view.dart';
 import '../widgets/key_actions_sheet.dart';
@@ -21,17 +22,16 @@ class DeletedPage extends StatelessWidget {
         final keys = controller.deletedKeys();
         return Scaffold(
           backgroundColor: colors.background,
-          appBar: AppBar(
+          appBar: QPageAppBar(
+            title: 'Deleted',
             backgroundColor: colors.accent,
             foregroundColor: colors.onAccent,
-            title: const Text('Deleted'),
           ),
           body: keys.isEmpty
               ? const ArchiveEmptyView(
                   icon: Icons.delete_outline,
                   title: 'Nothing here',
-                  subtitle:
-                      'Deleted keys are kept on this device until purged',
+                  subtitle: 'Deleted keys are kept on this device until purged',
                 )
               : RefreshIndicator(
                   color: colors.accent,

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme.dart';
+import 'package:qunleashed/components/appbar.dart';
 import '../../../widgets/notification.dart';
 import '../../archive/emulate/page.dart';
 import '../../../models/category.dart';
@@ -665,16 +666,13 @@ class _FileManagerPageState extends State<FileManagerPage> {
 
   PreferredSizeWidget _buildAppBar(QAppColors colors) {
     if (_selectionMode) {
-      return AppBar(
+      return QPageAppBar(
+        title: '${_selected.length} selected',
         backgroundColor: colors.accent,
         foregroundColor: colors.onAccent,
         leading: IconButton(
           icon: const Icon(Icons.close),
           onPressed: _exitSelection,
-        ),
-        title: Text(
-          '${_selected.length} selected',
-          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
         ),
         actions: _buildSelectionActions(colors),
       );
@@ -718,28 +716,23 @@ class _FileManagerPageState extends State<FileManagerPage> {
     final title = _ctrl.canGoUp
         ? _ctrl.path.substring(_ctrl.path.lastIndexOf('/') + 1)
         : _ctrl.path;
-    return AppBar(
+    return QPageAppBar(
+      title: title.isEmpty ? '/' : title,
       backgroundColor: colors.accent,
       foregroundColor: colors.onAccent,
       leading: BackButton(onPressed: () => _handleBackButton()),
-      title: Text(
-        title.isEmpty ? '/' : title,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-      ),
       actions: [
-        IconButton(
+        QPageAppBarAction(
           tooltip: 'Search',
           icon: const Icon(Icons.search),
           onPressed: _startSearch,
         ),
-        IconButton(
+        QPageAppBarAction(
           tooltip: 'Sort',
           icon: const Icon(Icons.sort),
           onPressed: _showSortSheet,
         ),
-        IconButton(
+        QPageAppBarAction(
           tooltip: _ctrl.viewMode == FileViewMode.list
               ? 'Grid view'
               : 'List view',
@@ -750,55 +743,61 @@ class _FileManagerPageState extends State<FileManagerPage> {
           ),
           onPressed: _ctrl.toggleViewMode,
         ),
-        PopupMenuButton<String>(
-          icon: const Icon(Icons.more_vert),
-          onSelected: (v) {
-            switch (v) {
-              case 'hidden':
-                _ctrl.toggleHidden();
-              case 'select':
-                if (_ctrl.entries.isNotEmpty) {
-                  setState(() => _selectionMode = true);
-                }
-              case 'refresh':
-                if (!_ctrl.loading) _ctrl.refresh();
-            }
-          },
-          itemBuilder: (_) => [
-            PopupMenuItem(
-              value: 'hidden',
-              child: Row(
-                children: [
-                  Icon(
-                    _ctrl.showHidden ? Icons.visibility_off : Icons.visibility,
-                    size: 20,
-                  ),
-                  const SizedBox(width: 12),
-                  Text(_ctrl.showHidden ? 'Hide hidden' : 'Show hidden'),
-                ],
+        QPageAppBarTooltip(
+          message: 'More actions',
+          child: PopupMenuButton<String>(
+            tooltip: '',
+            icon: const Icon(Icons.more_vert),
+            onSelected: (v) {
+              switch (v) {
+                case 'hidden':
+                  _ctrl.toggleHidden();
+                case 'select':
+                  if (_ctrl.entries.isNotEmpty) {
+                    setState(() => _selectionMode = true);
+                  }
+                case 'refresh':
+                  if (!_ctrl.loading) _ctrl.refresh();
+              }
+            },
+            itemBuilder: (_) => [
+              PopupMenuItem(
+                value: 'hidden',
+                child: Row(
+                  children: [
+                    Icon(
+                      _ctrl.showHidden
+                          ? Icons.visibility_off
+                          : Icons.visibility,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 12),
+                    Text(_ctrl.showHidden ? 'Hide hidden' : 'Show hidden'),
+                  ],
+                ),
               ),
-            ),
-            const PopupMenuItem(
-              value: 'select',
-              child: Row(
-                children: [
-                  Icon(Icons.check_circle_outline, size: 20),
-                  SizedBox(width: 12),
-                  Text('Select'),
-                ],
+              const PopupMenuItem(
+                value: 'select',
+                child: Row(
+                  children: [
+                    Icon(Icons.check_circle_outline, size: 20),
+                    SizedBox(width: 12),
+                    Text('Select'),
+                  ],
+                ),
               ),
-            ),
-            const PopupMenuItem(
-              value: 'refresh',
-              child: Row(
-                children: [
-                  Icon(Icons.refresh, size: 20),
-                  SizedBox(width: 12),
-                  Text('Refresh'),
-                ],
+              const PopupMenuItem(
+                value: 'refresh',
+                child: Row(
+                  children: [
+                    Icon(Icons.refresh, size: 20),
+                    SizedBox(width: 12),
+                    Text('Refresh'),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ],
     );
@@ -813,46 +812,50 @@ class _FileManagerPageState extends State<FileManagerPage> {
     final all = _ctrl.entries.length;
     final empty = _selected.isEmpty;
     return [
-      IconButton(
+      QPageAppBarAction(
         tooltip: 'Download',
         icon: const Icon(Icons.download_outlined),
         onPressed: empty ? null : _downloadSelected,
       ),
-      IconButton(
+      QPageAppBarAction(
         tooltip: 'Copy',
         icon: const Icon(Icons.copy_outlined),
         onPressed: empty ? null : _copySelected,
       ),
-      IconButton(
+      QPageAppBarAction(
         tooltip: 'Move',
         icon: const Icon(Icons.drive_file_move_outlined),
         onPressed: empty ? null : _moveSelected,
       ),
-      IconButton(
+      QPageAppBarAction(
         tooltip: 'Delete',
         icon: const Icon(Icons.delete_outline),
         onPressed: empty ? null : _deleteSelected,
       ),
-      PopupMenuButton<String>(
-        icon: const Icon(Icons.more_vert),
-        onSelected: (v) {
-          if (v == 'all') _selectAll();
-        },
-        itemBuilder: (_) => [
-          PopupMenuItem(
-            value: 'all',
-            child: Row(
-              children: [
-                Icon(
-                  _selected.length == all ? Icons.deselect : Icons.select_all,
-                  size: 20,
-                ),
-                const SizedBox(width: 12),
-                Text(_selected.length == all ? 'Deselect all' : 'Select all'),
-              ],
+      QPageAppBarTooltip(
+        message: 'More actions',
+        child: PopupMenuButton<String>(
+          tooltip: '',
+          icon: const Icon(Icons.more_vert),
+          onSelected: (v) {
+            if (v == 'all') _selectAll();
+          },
+          itemBuilder: (_) => [
+            PopupMenuItem(
+              value: 'all',
+              child: Row(
+                children: [
+                  Icon(
+                    _selected.length == all ? Icons.deselect : Icons.select_all,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 12),
+                  Text(_selected.length == all ? 'Deselect all' : 'Select all'),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     ];
   }

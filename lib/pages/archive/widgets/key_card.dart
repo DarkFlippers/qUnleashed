@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../../components/icon.dart';
 import '../../../theme.dart';
 import '../models/key.dart';
 
@@ -29,23 +29,10 @@ class KeyCard extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
           child: Row(
             children: [
-              Container(
-                width: 36,
-                height: 36,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: flipperKey.category.color.withValues(alpha: 0.18),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: SvgPicture.asset(
-                  flipperKey.category.asset,
-                  width: 22,
-                  height: 22,
-                  colorFilter: ColorFilter.mode(
-                    flipperKey.category.color,
-                    BlendMode.srcIn,
-                  ),
-                ),
+              QIconBadge(
+                asset: flipperKey.category.asset,
+                color: flipperKey.category.color,
+                iconSize: 22,
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -131,16 +118,31 @@ class _SubtitleRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final style = TextStyle(color: muted, fontSize: 12);
     if (subFolder.isEmpty) {
-      return Text(category, style: style, maxLines: 1, overflow: TextOverflow.ellipsis);
+      return Text(
+        category,
+        style: style,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      );
     }
     return Row(
       children: [
         Flexible(
-          child: Text(category, style: style, maxLines: 1, overflow: TextOverflow.ellipsis),
+          child: Text(
+            category,
+            style: style,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
         const SizedBox(width: 14),
         Flexible(
-          child: Text(subFolder, style: style, maxLines: 1, overflow: TextOverflow.ellipsis),
+          child: Text(
+            subFolder,
+            style: style,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
       ],
     );

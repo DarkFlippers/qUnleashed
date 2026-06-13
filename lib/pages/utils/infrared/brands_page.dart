@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../theme.dart';
+import 'package:qunleashed/components/appbar.dart';
 import 'backend/infrared_backend_api.dart';
 import 'backend/infrared_backend_models.dart';
 import 'infrareds_page.dart';
@@ -43,7 +44,9 @@ class _IrBrandsPageState extends State<IrBrandsPage> {
     });
     try {
       final brands = await _api.getBrands(widget.category.id);
-      brands.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      brands.sort(
+        (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+      );
       if (!mounted) return;
       setState(() {
         _brands = brands;
@@ -77,10 +80,10 @@ class _IrBrandsPageState extends State<IrBrandsPage> {
     final colors = context.appColors;
     return Scaffold(
       backgroundColor: colors.background,
-      appBar: AppBar(
+      appBar: QPageAppBar(
+        title: widget.category.displayName,
         backgroundColor: colors.accent,
         foregroundColor: colors.onAccent,
-        title: Text(widget.category.displayName),
       ),
       body: Column(
         children: [
@@ -129,8 +132,10 @@ class _IrBrandsPageState extends State<IrBrandsPage> {
               onTap: () => _open(b),
               borderRadius: BorderRadius.circular(12),
               child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 14,
+                ),
                 child: Row(
                   children: [
                     Expanded(
@@ -171,9 +176,11 @@ class _ErrorView extends StatelessWidget {
           children: [
             Icon(Icons.cloud_off, size: 44, color: colors.danger),
             const SizedBox(height: 12),
-            Text(message,
-                textAlign: TextAlign.center,
-                style: TextStyle(color: colors.textPrimary)),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: colors.textPrimary),
+            ),
             const SizedBox(height: 14),
             FilledButton(onPressed: onRetry, child: const Text('Retry')),
           ],

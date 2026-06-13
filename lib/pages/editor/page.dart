@@ -8,6 +8,7 @@ import 'package:flutter/rendering.dart';
 import 'package:highlight/highlight.dart' show Node, highlight;
 
 import '../../theme.dart';
+import 'package:qunleashed/components/appbar.dart';
 import '../../widgets/notification.dart';
 import '../../models/colors/editor.dart';
 import 'syntax.dart';
@@ -263,12 +264,12 @@ class _TextEditorPageState extends State<TextEditorPage> {
 
     return Scaffold(
       backgroundColor: colors.background,
-      appBar: AppBar(
+      appBar: QPageAppBar(
+        title: name,
         backgroundColor: colors.accent,
         foregroundColor: colors.onAccent,
-        title: Text(name, overflow: TextOverflow.ellipsis),
         actions: [
-          IconButton(
+          QPageAppBarAction(
             tooltip: 'Save',
             onPressed: _saving || _loading ? null : _save,
             icon: _saving

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../../theme.dart';
 import '../../../widgets/notification.dart';
+import 'package:qunleashed/components/appbar.dart';
 import '../editor/page.dart';
 import '../project.dart';
 import 'controller.dart';
@@ -58,9 +59,9 @@ class _ProjectManagerPageState extends State<ProjectManagerPage> {
   }
 
   Future<void> _openEditor(PaintProject? project) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => PaintPage(project: project)),
-    );
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => PaintPage(project: project)));
     // Returning from the editor may have created or updated a draft.
     await _ctrl.loadAll(silent: true);
   }
@@ -73,7 +74,10 @@ class _ProjectManagerPageState extends State<ProjectManagerPage> {
       builder: (ctx) => AlertDialog(
         backgroundColor: colors.dialogBackground,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        title: Text('Delete project', style: TextStyle(color: colors.dialogText)),
+        title: Text(
+          'Delete project',
+          style: TextStyle(color: colors.dialogText),
+        ),
         content: Text(
           'Delete "${project.name}"? This cannot be undone.',
           style: TextStyle(color: colors.dialogMuted),
@@ -81,7 +85,10 @@ class _ProjectManagerPageState extends State<ProjectManagerPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancel', style: TextStyle(color: colors.textSecondary)),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: colors.textSecondary),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
@@ -96,85 +103,42 @@ class _ProjectManagerPageState extends State<ProjectManagerPage> {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final topInset = MediaQuery.of(context).padding.top;
-
     return Scaffold(
       backgroundColor: colors.background,
+      appBar: QPageAppBar(
+        title: 'Pixel Draw',
+        actions: [
+          QPageAppBarAction(
+            onPressed: _ctrl.importing ? null : () => _openEditor(null),
+            icon: const Icon(Icons.add),
+            tooltip: 'New project',
+          ),
+          QPageAppBarAction(
+            onPressed: _ctrl.loading || _ctrl.importing
+                ? null
+                : () => _ctrl.loadAll(),
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Reload',
+          ),
+          QPageAppBarAction(
+            onPressed: (_ctrl.isConnected && !_ctrl.importing) ? _import : null,
+            icon: Icon(
+              Icons.download_for_offline_outlined,
+              color: _ctrl.isConnected
+                  ? colors.onAccent
+                  : colors.onAccent.withAlpha(90),
+            ),
+            tooltip: _ctrl.isConnected
+                ? 'Import from device'
+                : 'Connect a device to import',
+          ),
+        ],
+      ),
       body: Column(
         children: [
-          _buildAppBar(colors, topInset),
           if (_ctrl.importing) _buildImportProgress(colors),
           Expanded(child: _buildBody(colors)),
         ],
-      ),
-    );
-  }
-
-  Widget _buildAppBar(QAppColors colors, double topInset) {
-    return Container(
-      color: colors.accent,
-      padding: EdgeInsets.only(top: topInset),
-      child: SizedBox(
-        height: 56,
-        child: Row(
-          children: [
-            IconButton(
-              onPressed: () => Navigator.of(context).maybePop(),
-              icon: Icon(Icons.arrow_back, color: colors.onAccent),
-            ),
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Pixel Draw',
-                    style: TextStyle(
-                      color: colors.onAccent,
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                      height: 1.2,
-                    ),
-                  ),
-                  Text(
-                    '${_ctrl.projects.length} project'
-                    '${_ctrl.projects.length == 1 ? '' : 's'}'
-                    '${_ctrl.isConnected ? ' · device connected' : ''}',
-                    style: TextStyle(
-                      color: colors.onAccent.withAlpha(180),
-                      fontSize: 11,
-                      height: 1.2,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            IconButton(
-              onPressed: _ctrl.importing ? null : () => _openEditor(null),
-              icon: Icon(Icons.add, color: colors.onAccent),
-              tooltip: 'New project',
-            ),
-            IconButton(
-              onPressed: _ctrl.loading || _ctrl.importing
-                  ? null
-                  : () => _ctrl.loadAll(),
-              icon: Icon(Icons.refresh, color: colors.onAccent),
-              tooltip: 'Reload',
-            ),
-            IconButton(
-              onPressed: (_ctrl.isConnected && !_ctrl.importing) ? _import : null,
-              icon: Icon(
-                Icons.download_for_offline_outlined,
-                color: _ctrl.isConnected
-                    ? colors.onAccent
-                    : colors.onAccent.withAlpha(90),
-              ),
-              tooltip: _ctrl.isConnected
-                  ? 'Import from device'
-                  : 'Connect a device to import',
-            ),
-          ],
-        ),
       ),
     );
   }

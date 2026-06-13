@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme.dart';
+import 'package:qunleashed/components/appbar.dart';
 import 'backend/infrared_backend_api.dart';
 import 'backend/infrared_backend_models.dart';
 import 'brands_page.dart';
@@ -73,10 +74,10 @@ class _IrCategoriesPageState extends State<IrCategoriesPage> {
     final colors = context.appColors;
     return Scaffold(
       backgroundColor: colors.background,
-      appBar: AppBar(
+      appBar: QPageAppBar(
+        title: 'Remote Library',
         backgroundColor: colors.accent,
         foregroundColor: colors.onAccent,
-        title: const Text('Remote Library'),
       ),
       body: RefreshIndicator(
         color: colors.accent,

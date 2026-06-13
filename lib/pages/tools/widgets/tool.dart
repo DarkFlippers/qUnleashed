@@ -1,15 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../../components/icon.dart';
 import '../../../theme.dart';
 import '../models/tool.dart';
 import 'tool_item.dart';
 
 class ToolCardView extends StatelessWidget {
-  const ToolCardView({
-    super.key,
-    required this.model,
-  });
+  const ToolCardView({super.key, required this.model});
 
   final ToolCardModel model;
 
@@ -76,14 +73,10 @@ class _GroupHeader extends StatelessWidget {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
-          child: SvgPicture.asset(
-            header.iconAsset,
-            width: 24,
-            height: 24,
-            colorFilter: ColorFilter.mode(
-              header.iconColor,
-              BlendMode.srcIn,
-            ),
+          child: QIcon(
+            asset: header.iconAsset,
+            color: header.iconColor,
+            size: 24,
           ),
         ),
         Expanded(

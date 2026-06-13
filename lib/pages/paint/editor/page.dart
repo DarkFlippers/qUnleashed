@@ -456,22 +456,18 @@ class _PaintPageState extends State<PaintPage> {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final topInset = MediaQuery.paddingOf(context).top;
-
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) => _close(),
       child: Scaffold(
         backgroundColor: colors.background,
+        appBar: EditorAppBar(
+          ctrl: _ctrl,
+          onClose: _close,
+          onExport: _onExport,
+        ),
         body: Column(
           children: [
-            EditorAppBar(
-              ctrl: _ctrl,
-              colors: colors,
-              topInset: topInset,
-              onClose: _close,
-              onExport: _onExport,
-            ),
             Expanded(
               child: LayoutBuilder(
                 builder: (_, constraints) {

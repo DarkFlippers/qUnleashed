@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../../components/icon.dart';
 import '../../../theme.dart';
 import '../../../models/category.dart';
 
@@ -16,18 +16,16 @@ class CategoryAppBarTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        SvgPicture.asset(
-          cat.asset,
-          width: 18,
-          height: 18,
-          colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
-        ),
+        QIcon(asset: cat.asset, color: Colors.white, size: 18),
         const SizedBox(width: 8),
-        Text(cat.title,
-            style: const TextStyle(
-                color: Colors.white,
-                fontSize: 17,
-                fontWeight: FontWeight.w600)),
+        Text(
+          cat.title,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 17,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
         const SizedBox(width: 8),
         Flexible(
           child: Text(
@@ -35,10 +33,12 @@ class CategoryAppBarTitle extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-                color: Colors.white
-                    .withValues(alpha: syncFileName != null ? 0.85 : 0.5),
-                fontSize: 12,
-                fontWeight: FontWeight.w400),
+              color: Colors.white.withValues(
+                alpha: syncFileName != null ? 0.85 : 0.5,
+              ),
+              fontSize: 12,
+              fontWeight: FontWeight.w400,
+            ),
           ),
         ),
       ],
@@ -71,7 +71,10 @@ class CategoryCountBadge extends StatelessWidget {
           child: Text(
             filtered < total ? '$filtered/$total' : '$total',
             style: const TextStyle(
-                color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
       ),
@@ -125,15 +128,21 @@ class CategoryToolbar extends StatelessWidget {
                 style: const TextStyle(color: Colors.white, fontSize: 13),
                 decoration: InputDecoration(
                   hintText: 'Search…',
-                  hintStyle:
-                      TextStyle(color: Colors.white.withValues(alpha: 0.5)),
-                  prefixIcon: Icon(Icons.search_rounded,
-                      color: Colors.white.withValues(alpha: 0.65), size: 17),
+                  hintStyle: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.5),
+                  ),
+                  prefixIcon: Icon(
+                    Icons.search_rounded,
+                    color: Colors.white.withValues(alpha: 0.65),
+                    size: 17,
+                  ),
                   suffixIcon: query.isNotEmpty
                       ? IconButton(
-                          icon: Icon(Icons.close_rounded,
-                              color: Colors.white.withValues(alpha: 0.65),
-                              size: 15),
+                          icon: Icon(
+                            Icons.close_rounded,
+                            color: Colors.white.withValues(alpha: 0.65),
+                            size: 15,
+                          ),
                           onPressed: () {
                             searchCtrl.clear();
                             onQueryChanged('');
@@ -142,19 +151,25 @@ class CategoryToolbar extends StatelessWidget {
                       : null,
                   filled: true,
                   fillColor: Colors.white.withValues(alpha: 0.14),
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 9,
+                  ),
                   border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(9),
-                      borderSide: BorderSide.none),
+                    borderRadius: BorderRadius.circular(9),
+                    borderSide: BorderSide.none,
+                  ),
                   enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(9),
-                      borderSide: BorderSide.none),
+                    borderRadius: BorderRadius.circular(9),
+                    borderSide: BorderSide.none,
+                  ),
                   focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(9),
-                      borderSide: BorderSide(
-                          color: Colors.white.withValues(alpha: 0.35),
-                          width: 1)),
+                    borderRadius: BorderRadius.circular(9),
+                    borderSide: BorderSide(
+                      color: Colors.white.withValues(alpha: 0.35),
+                      width: 1,
+                    ),
+                  ),
                   isDense: true,
                 ),
               ),
@@ -209,16 +224,21 @@ class _FilterBtn extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.tune_rounded,
-                size: 14,
-                color: active ? catColor : Colors.white.withValues(alpha: 0.8)),
+            Icon(
+              Icons.tune_rounded,
+              size: 14,
+              color: active ? catColor : Colors.white.withValues(alpha: 0.8),
+            ),
             if (active) ...[
               const SizedBox(width: 4),
-              Text(selected!,
-                  style: TextStyle(
-                      color: catColor,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600)),
+              Text(
+                selected!,
+                style: TextStyle(
+                  color: catColor,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ],
           ],
         ),
@@ -231,7 +251,8 @@ class _FilterBtn extends StatelessWidget {
       context: context,
       backgroundColor: colors.card,
       shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
       builder: (_) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -239,11 +260,14 @@ class _FilterBtn extends StatelessWidget {
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-              child: Text('Filter',
-                  style: TextStyle(
-                      color: colors.textPrimary,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600)),
+              child: Text(
+                'Filter',
+                style: TextStyle(
+                  color: colors.textPrimary,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
             Divider(height: 1, color: colors.divider),
             ListTile(

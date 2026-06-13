@@ -8,6 +8,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../../../config.dart';
 import '../../../theme.dart';
+import 'package:qunleashed/components/appbar.dart';
 import '../../../widgets/notification.dart';
 import 'controller.dart';
 import 'models/pin.dart';
@@ -276,7 +277,10 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
   PreferredSizeWidget _buildAppBar(QAppColors colors) {
     if (_mode == _MapMode.pick) {
       final target = _pickTarget;
-      return AppBar(
+      return QPageAppBar(
+        title: target == null
+            ? 'Set location'
+            : 'Set location: ${target.displayName}',
         backgroundColor: colors.accent,
         foregroundColor: colors.onAccent,
         leading: IconButton(
@@ -284,14 +288,8 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
           tooltip: 'Cancel',
           onPressed: _saving ? null : _exitPickMode,
         ),
-        title: Text(
-          target == null
-              ? 'Set location'
-              : 'Set location: ${target.displayName}',
-          overflow: TextOverflow.ellipsis,
-        ),
         actions: [
-          IconButton(
+          QPageAppBarAction(
             tooltip: 'Save location',
             onPressed: _saving ? null : _savePickedLocation,
             icon: _saving
@@ -308,10 +306,10 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
         ],
       );
     }
-    return AppBar(
+    return QPageAppBar(
+      title: 'Signal Map',
       backgroundColor: colors.accent,
       foregroundColor: colors.onAccent,
-      title: const Text('Signal Map'),
       actions: [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -332,12 +330,12 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
             ),
           ),
         ),
-        IconButton(
+        QPageAppBarAction(
           tooltip: 'Reload files',
           onPressed: _controller.loading ? null : _controller.loadFiles,
           icon: const Icon(Icons.refresh),
         ),
-        IconButton(
+        QPageAppBarAction(
           tooltip: 'Map settings',
           onPressed: () => setState(() => _settingsOpen = !_settingsOpen),
           icon: Icon(

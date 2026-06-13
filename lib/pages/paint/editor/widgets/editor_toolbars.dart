@@ -3,82 +3,51 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../../../theme.dart';
+import 'package:qunleashed/components/appbar.dart';
 import '../../constants.dart';
 import '../controller.dart';
 import 'editor_widgets.dart';
 
-class EditorAppBar extends StatelessWidget {
+class EditorAppBar extends StatelessWidget implements PreferredSizeWidget {
   const EditorAppBar({
     super.key,
     required this.ctrl,
-    required this.colors,
-    required this.topInset,
     required this.onClose,
     required this.onExport,
   });
 
   final PaintController ctrl;
-  final QAppColors colors;
-  final double topInset;
   final VoidCallback onClose;
   final VoidCallback onExport;
 
   @override
+  Size get preferredSize => const Size.fromHeight(QPageAppBar.toolbarHeight);
+
+  @override
   Widget build(BuildContext context) {
-    return Container(
-      color: colors.accent,
-      padding: EdgeInsets.only(top: topInset),
-      child: SizedBox(
-        height: 56,
-        child: Row(
-          children: [
-            IconButton(
-              onPressed: onClose,
-              icon: Icon(Icons.arrow_back, color: colors.onAccent),
-            ),
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Pixel Draw',
-                    style: TextStyle(
-                      color: colors.onAccent,
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                      height: 1.2,
-                    ),
-                  ),
-                  Text(
-                    '128 × 64 · monochrome',
-                    style: TextStyle(
-                      color: colors.onAccent.withAlpha(180),
-                      fontSize: 11,
-                      height: 1.2,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            IconButton(
-              onPressed: ctrl.canUndo ? ctrl.undo : null,
-              icon: Icon(Icons.undo, color: colors.onAccent),
-              tooltip: 'Undo',
-            ),
-            IconButton(
-              onPressed: ctrl.canRedo ? ctrl.redo : null,
-              icon: Icon(Icons.redo, color: colors.onAccent),
-              tooltip: 'Redo',
-            ),
-            IconButton(
-              onPressed: onExport,
-              icon: Icon(Icons.save_outlined, color: colors.onAccent),
-              tooltip: 'Save',
-            ),
-          ],
-        ),
+    return QPageAppBar(
+      title: 'Pixel Draw',
+      leading: IconButton(
+        onPressed: onClose,
+        icon: const Icon(Icons.arrow_back),
       ),
+      actions: [
+        QPageAppBarAction(
+          onPressed: ctrl.canUndo ? ctrl.undo : null,
+          icon: const Icon(Icons.undo),
+          tooltip: 'Undo',
+        ),
+        QPageAppBarAction(
+          onPressed: ctrl.canRedo ? ctrl.redo : null,
+          icon: const Icon(Icons.redo),
+          tooltip: 'Redo',
+        ),
+        QPageAppBarAction(
+          onPressed: onExport,
+          icon: const Icon(Icons.save_outlined),
+          tooltip: 'Save',
+        ),
+      ],
     );
   }
 }

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../config.dart';
 import '../../../services/update/firmware_directory.dart';
 import '../../../theme.dart';
+import 'package:qunleashed/components/appbar.dart';
 import 'changelog_renderer.dart';
 import 'firmware_update_button.dart';
 
@@ -55,35 +56,10 @@ class _FirmwareChangelogPageState extends State<FirmwareChangelogPage> {
     final colors = context.appColors;
     return Scaffold(
       backgroundColor: colors.background,
-      appBar: AppBar(
+      appBar: QPageAppBar(
+        title: 'What\'s New · ${widget.version.version}',
         backgroundColor: colors.card,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        iconTheme: IconThemeData(color: colors.textPrimary),
-        centerTitle: true,
-        titleSpacing: 0,
-        title: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'What\'s New',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-                color: colors.textPrimary,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              widget.version.version,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: widget.entry.colors.primary,
-              ),
-            ),
-          ],
-        ),
+        foregroundColor: colors.textPrimary,
       ),
       body: SafeArea(
         top: false,

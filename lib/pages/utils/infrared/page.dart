@@ -1,7 +1,8 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme.dart';
+import 'package:qunleashed/components/appbar.dart';
 import '../../../widgets/notification.dart';
 import '../../../models/category.dart';
 import 'controller.dart';
@@ -80,10 +81,10 @@ class _IrLibPageState extends State<IrLibPage> {
         builder: (context, _) {
           return Scaffold(
             backgroundColor: colors.background,
-            appBar: AppBar(
+            appBar: QPageAppBar(
+              title: _ctrl.title,
               backgroundColor: colors.accent,
               foregroundColor: colors.onAccent,
-              title: Text(_ctrl.title, overflow: TextOverflow.ellipsis),
               leading: _ctrl.canGoUp
                   ? IconButton(
                       icon: const Icon(Icons.arrow_back),
@@ -99,8 +100,7 @@ class _IrLibPageState extends State<IrLibPage> {
                 IconButton(
                   tooltip: 'Source settings',
                   icon: const Icon(Icons.settings_outlined),
-                  onPressed: () =>
-                      IrLibSettingsDialog.show(context, _ctrl),
+                  onPressed: () => IrLibSettingsDialog.show(context, _ctrl),
                 ),
               ],
             ),
@@ -158,10 +158,7 @@ class _IrLibPageState extends State<IrLibPage> {
       return Center(child: CircularProgressIndicator(color: colors.accent));
     }
     if (_ctrl.error != null && list.isEmpty) {
-      return _ErrorView(
-        message: _ctrl.error!,
-        onRetry: _ctrl.refresh,
-      );
+      return _ErrorView(message: _ctrl.error!, onRetry: _ctrl.refresh);
     }
     if (list.isEmpty) {
       return _EmptyView(
@@ -234,14 +231,19 @@ class _IrEntryCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: entry.isDir
-                      ? Icon(Icons.folder_outlined,
-                          color: colors.textPrimary, size: 22)
+                      ? Icon(
+                          Icons.folder_outlined,
+                          color: colors.textPrimary,
+                          size: 22,
+                        )
                       : SvgPicture.asset(
                           ir.asset,
                           width: 22,
                           height: 22,
-                          colorFilter:
-                              ColorFilter.mode(ir.color, BlendMode.srcIn),
+                          colorFilter: ColorFilter.mode(
+                            ir.color,
+                            BlendMode.srcIn,
+                          ),
                         ),
                 ),
                 const SizedBox(width: 12),
@@ -305,8 +307,10 @@ class _EmptyView extends StatelessWidget {
           children: [
             Icon(Icons.folder_open, size: 48, color: colors.textMuted),
             const SizedBox(height: 12),
-            Text(title,
-                style: TextStyle(color: colors.textPrimary, fontSize: 15)),
+            Text(
+              title,
+              style: TextStyle(color: colors.textPrimary, fontSize: 15),
+            ),
           ],
         ),
       ),
@@ -336,10 +340,7 @@ class _ErrorView extends StatelessWidget {
               style: TextStyle(color: colors.textPrimary),
             ),
             const SizedBox(height: 14),
-            FilledButton(
-              onPressed: onRetry,
-              child: const Text('Retry'),
-            ),
+            FilledButton(onPressed: onRetry, child: const Text('Retry')),
           ],
         ),
       ),

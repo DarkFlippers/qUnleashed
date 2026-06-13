@@ -5,14 +5,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../../theme.dart';
+import 'package:qunleashed/components/appbar.dart';
 import '../../../../widgets/notification.dart';
 import '../../../../widgets/progress_button.dart';
 import '../../../../models/category.dart';
 
-typedef IrFileSendHandler = Future<bool> Function({
-  required List<int> bytes,
-  required void Function(double progress) onProgress,
-});
+typedef IrFileSendHandler =
+    Future<bool> Function({
+      required List<int> bytes,
+      required void Function(double progress) onProgress,
+    });
 
 typedef IrFileAfterSend = Future<void> Function(List<int> bytes);
 
@@ -123,10 +125,10 @@ class _IrFileViewerState extends State<IrFileViewer> {
     final colors = context.appColors;
     return Scaffold(
       backgroundColor: colors.background,
-      appBar: AppBar(
+      appBar: QPageAppBar(
+        title: widget.fileName,
         backgroundColor: colors.accent,
         foregroundColor: colors.onAccent,
-        title: Text(widget.fileName, overflow: TextOverflow.ellipsis),
       ),
       body: _buildBody(colors),
     );
@@ -209,8 +211,7 @@ class _IrFileViewerState extends State<IrFileViewer> {
             height: 48,
             borderRadius: 10,
             horizontalPadding: 16,
-            textStyle:
-                ProgressButton.defaultTextStyle.copyWith(fontSize: 22),
+            textStyle: ProgressButton.defaultTextStyle.copyWith(fontSize: 22),
           ),
         ),
         Expanded(

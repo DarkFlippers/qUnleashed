@@ -1,7 +1,8 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme.dart';
+import 'package:qunleashed/components/appbar.dart';
 import '../../../widgets/notification.dart';
 import '../../../models/category.dart';
 import 'backend/infrared_backend_api.dart';
@@ -48,8 +49,9 @@ class _IrInfraredsPageState extends State<IrInfraredsPage> {
     });
     try {
       final list = await _api.getInfrareds(widget.brand.id);
-      list.sort((a, b) =>
-          a.fileName.toLowerCase().compareTo(b.fileName.toLowerCase()));
+      list.sort(
+        (a, b) => a.fileName.toLowerCase().compareTo(b.fileName.toLowerCase()),
+      );
       if (!mounted) return;
       setState(() {
         _files = list;
@@ -73,8 +75,7 @@ class _IrInfraredsPageState extends State<IrInfraredsPage> {
         MaterialPageRoute(
           builder: (_) => IrContentPage(
             fileName: f.fileName,
-            subtitle:
-                '${widget.category.displayName} В· ${widget.brand.name}',
+            subtitle: '${widget.category.displayName} В· ${widget.brand.name}',
             content: content,
           ),
         ),
@@ -95,10 +96,10 @@ class _IrInfraredsPageState extends State<IrInfraredsPage> {
     final colors = context.appColors;
     return Scaffold(
       backgroundColor: colors.background,
-      appBar: AppBar(
+      appBar: QPageAppBar(
+        title: widget.brand.name,
         backgroundColor: colors.accent,
         foregroundColor: colors.onAccent,
-        title: Text(widget.brand.name),
       ),
       body: _buildBody(context),
     );
@@ -115,8 +116,10 @@ class _IrInfraredsPageState extends State<IrInfraredsPage> {
     }
     if (_files.isEmpty) {
       return Center(
-        child: Text('No remotes available',
-            style: TextStyle(color: colors.textMuted)),
+        child: Text(
+          'No remotes available',
+          style: TextStyle(color: colors.textMuted),
+        ),
       );
     }
     return RefreshIndicator(
@@ -151,8 +154,10 @@ class _IrInfraredsPageState extends State<IrInfraredsPage> {
                         ir.asset,
                         width: 22,
                         height: 22,
-                        colorFilter:
-                            ColorFilter.mode(ir.color, BlendMode.srcIn),
+                        colorFilter: ColorFilter.mode(
+                          ir.color,
+                          BlendMode.srcIn,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -176,7 +181,9 @@ class _IrInfraredsPageState extends State<IrInfraredsPage> {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                                color: colors.textMuted, fontSize: 12),
+                              color: colors.textMuted,
+                              fontSize: 12,
+                            ),
                           ),
                         ],
                       ),
@@ -219,9 +226,11 @@ class _ErrorView extends StatelessWidget {
           children: [
             Icon(Icons.cloud_off, size: 44, color: colors.danger),
             const SizedBox(height: 12),
-            Text(message,
-                textAlign: TextAlign.center,
-                style: TextStyle(color: colors.textPrimary)),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: colors.textPrimary),
+            ),
             const SizedBox(height: 14),
             FilledButton(onPressed: onRetry, child: const Text('Retry')),
           ],

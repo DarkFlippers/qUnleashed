@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../theme.dart';
+import 'package:qunleashed/components/appbar.dart';
 import '../controller.dart';
 import '../../../models/category.dart';
 import '../models/key.dart';
@@ -148,11 +149,13 @@ class _CategoryPageState extends State<CategoryPage> {
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(c),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(c),
+            child: const Text('Cancel'),
+          ),
           TextButton(
-              onPressed: () => Navigator.pop(c, ctrl.text.trim()),
-              child: const Text('Rename')),
+            onPressed: () => Navigator.pop(c, ctrl.text.trim()),
+            child: const Text('Rename'),
+          ),
         ],
       ),
     );
@@ -186,21 +189,17 @@ class _CategoryPageState extends State<CategoryPage> {
         final total = _allKeys.length;
         final filterOpts = _filterOptions;
         if (_filterVal != null && !filterOpts.contains(_filterVal)) {
-          WidgetsBinding.instance
-              .addPostFrameCallback((_) => setState(() => _filterVal = null));
+          WidgetsBinding.instance.addPostFrameCallback(
+            (_) => setState(() => _filterVal = null),
+          );
         }
 
         return Scaffold(
           backgroundColor: colors.background,
-          appBar: AppBar(
+          appBar: QPageAppBar(
+            title: _cat.title,
             backgroundColor: catColor,
             foregroundColor: Colors.white,
-            elevation: 0,
-            titleSpacing: 0,
-            title: CategoryAppBarTitle(
-              cat: _cat,
-              syncFileName: _ctrl.syncing ? _ctrl.syncProgress?.fileName : null,
-            ),
             actions: [
               CategoryCountBadge(filtered: filtered.length, total: total),
             ],
@@ -242,8 +241,10 @@ class _CategoryPageState extends State<CategoryPage> {
           ),
           body: LayoutBuilder(
             builder: (ctx, constraints) {
-              final (visibleCols, nameW) =
-                  visibleColumns(_cat, constraints.maxWidth);
+              final (visibleCols, nameW) = visibleColumns(
+                _cat,
+                constraints.maxWidth,
+              );
 
               return RefreshIndicator(
                 color: catColor,
