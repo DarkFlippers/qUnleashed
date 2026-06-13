@@ -160,6 +160,14 @@ class VirtualDisplaySession {
           Main(guiScreenFrame: ScreenFrame(data: PaintCodec.encodeXBM(frame))),
           priority: FlipperRequestPriority.foreground,
         )
+        .then<void>(
+          (_) {},
+          onError: (Object error) {
+            // A failed frame send (e.g. link dropped mid-write) is not fatal
+            // for the session; the connection listener handles the teardown.
+            LogService.log('[VirtualDisplay] frame send failed: $error');
+          },
+        )
         .whenComplete(() {
           _sending = false;
           if (_pending != null) _flush();

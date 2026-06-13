@@ -21,6 +21,7 @@ class _DevicePageState extends State<DevicePage> {
   final ArchiveController _archiveController = ArchiveController();
 
   FlipperRootTab _tab = FlipperRootTab.device;
+  bool _appsMounted = false;
 
   @override
   void initState() {
@@ -51,7 +52,7 @@ class _DevicePageState extends State<DevicePage> {
         builder: (context, _) {
           return FlipperRootScaffold(
             currentTab: _tab,
-            onTabSelected: (tab) => setState(() => _tab = tab),
+            onTabSelected: _selectTab,
             deviceIconAsset: _deviceIconAsset(),
             deviceLabel: _deviceLabel(),
             child: IndexedStack(
@@ -59,7 +60,7 @@ class _DevicePageState extends State<DevicePage> {
               children: [
                 const DeviceTab(),
                 ArchivePage(controller: _archiveController),
-                const AppsPage(),
+                _appsMounted ? const AppsPage() : const SizedBox.shrink(),
                 const ToolsPage(),
               ],
             ),
@@ -67,6 +68,13 @@ class _DevicePageState extends State<DevicePage> {
         },
       ),
     );
+  }
+
+  void _selectTab(FlipperRootTab tab) {
+    setState(() {
+      if (tab == FlipperRootTab.apps) _appsMounted = true;
+      _tab = tab;
+    });
   }
 
   String _deviceIconAsset() {

@@ -9,8 +9,9 @@ import 'services/update/update_service.dart';
 import 'theme.dart';
 import 'widgets/notifications/update.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await LogService.initialize();
   runApp(const QUnleashedApp());
 }
 

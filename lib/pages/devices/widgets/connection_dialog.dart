@@ -36,14 +36,23 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
 
   StreamSubscription<List<FlipperDevice>>? _devicesSub;
   StreamSubscription<void>? _usbEventsSub;
+  StreamSubscription<FlipperConnectionState>? _connSub;
   bool _scanning = false;
   bool _filterEnabled = true;
   List<FlipperDevice> _displayed = [];
+
+  // Active session, tracked live so the connected device's list row can show
+  // the connected icon and an inline disconnect button (a proper transport
+  // teardown -> GATT disconnect).
+  FlipperDevice? _connectedDevice;
+  bool _disconnecting = false;
 
   @override
   void initState() {
     super.initState();
     _devicesSub = _client.devicesStream.listen(_onDevicesUpdate);
+    _connectedDevice = _client.isConnected ? _client.connectedDevice : null;
+    _connSub = _client.connectionStream.listen(_onConnectionState);
     _displayed = _filterDevices(_client.devices);
     _startScan();
     // Refresh USB devices on hotplug events instead of polling on a timer.
@@ -54,8 +63,51 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
   void dispose() {
     _usbEventsSub?.cancel();
     _devicesSub?.cancel();
+    _connSub?.cancel();
     _client.stopScan();
     super.dispose();
+  }
+
+  void _onConnectionState(FlipperConnectionState state) {
+    if (!mounted) return;
+    setState(() {
+      if (state.connected) {
+        _connectedDevice = state.device ?? _client.connectedDevice;
+        _disconnecting = false;
+      } else if (!state.reconnecting) {
+        // Terminal disconnect (not a transient reconnect): clear the session.
+        _connectedDevice = null;
+        _disconnecting = false;
+      }
+      // While reconnecting, keep the last known device so the row stays marked.
+    });
+  }
+
+  Future<void> _disconnect() async {
+    if (_disconnecting) return;
+    setState(() => _disconnecting = true);
+    try {
+      // disconnect() runs the single teardown path: it closes the transport,
+      // which on BLE issues the real GATT disconnect (cancelPeripheralConnection)
+      // instead of just dropping the app-side handle.
+      await _client.disconnect();
+    } catch (e) {
+      LogService.log('[Picker] disconnect error: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _disconnecting = false;
+          _connectedDevice = null;
+        });
+      }
+    }
+  }
+
+  bool _isConnectedDevice(FlipperDevice device) {
+    final connected = _connectedDevice;
+    return connected != null &&
+        connected.link == device.link &&
+        connected.id == device.id;
   }
 
   Future<void> _startScan() async {
@@ -208,12 +260,20 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
       separatorBuilder: (_, _) => Divider(
         height: 1,
         color: FlipperOriginalColors.dialogDivider,
-        indent: 60,
       ),
-      itemBuilder: (_, i) => _DeviceListItem(
-        device: _displayed[i],
-        onTap: () => Navigator.of(context).pop(_displayed[i]),
-      ),
+      itemBuilder: (_, i) {
+        final device = _displayed[i];
+        final connected = _isConnectedDevice(device);
+        return _DeviceListItem(
+          device: device,
+          connected: connected,
+          disconnecting: connected && _disconnecting,
+          onDisconnect: connected ? _disconnect : null,
+          // The connected row is acted on through its disconnect button; tapping
+          // it to "select" would only kick off a redundant reconnect.
+          onTap: connected ? null : () => Navigator.of(context).pop(device),
+        );
+      },
     );
   }
 
@@ -237,10 +297,19 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
 }
 
 class _DeviceListItem extends StatelessWidget {
-  const _DeviceListItem({required this.device, required this.onTap});
+  const _DeviceListItem({
+    required this.device,
+    required this.onTap,
+    this.connected = false,
+    this.disconnecting = false,
+    this.onDisconnect,
+  });
 
   final FlipperDevice device;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
+  final bool connected;
+  final bool disconnecting;
+  final VoidCallback? onDisconnect;
 
   @override
   Widget build(BuildContext context) {
@@ -257,7 +326,9 @@ class _DeviceListItem extends StatelessWidget {
         child: Row(
           children: [
             Icon(
-              isBle ? Icons.bluetooth : Icons.usb,
+              isBle
+                  ? (connected ? Icons.bluetooth_connected : Icons.bluetooth)
+                  : Icons.usb,
               color: isBle ? colors.info : colors.accent,
               size: 28,
             ),
@@ -286,7 +357,35 @@ class _DeviceListItem extends StatelessWidget {
                 ],
               ),
             ),
-            if (device.rssi != null)
+            if (connected)
+              Padding(
+                padding: const EdgeInsets.only(left: 12),
+                // A bare icon (no IconButton box / hover state-layer): keeps the
+                // row the same height as the others, so the separator below is
+                // not painted over near the icon.
+                child: disconnecting
+                    ? SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: colors.danger,
+                        ),
+                      )
+                    : Tooltip(
+                        message: 'Disconnect',
+                        child: InkResponse(
+                          onTap: onDisconnect,
+                          radius: 20,
+                          child: Icon(
+                            Icons.link_off,
+                            size: 22,
+                            color: colors.danger,
+                          ),
+                        ),
+                      ),
+              )
+            else if (device.rssi != null)
               Padding(
                 padding: const EdgeInsets.only(left: 12),
                 child: Text(

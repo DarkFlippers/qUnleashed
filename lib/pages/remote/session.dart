@@ -31,6 +31,16 @@ class RemoteSession extends ChangeNotifier {
 
   ui.Image? _frameImage;
   final _frameNotifier = ValueNotifier<ui.Image?>(null);
+
+  // GPU-upload coalescing: the synchronous decode runs for every frame (GIF
+  // recording needs the full rate), but only the newest decoded frame is
+  // turned into a ui.Image. A single worker loop keeps publication strictly
+  // ordered, so a slow upload can never clobber a newer frame with an older
+  // one — the bug behind random frame drops/flicker.
+  Uint8List? _pendingRgba;
+  int _frameSeq = 0;
+  int _publishedSeq = -1;
+  bool _imageWorkerBusy = false;
   StreamOrientation _orientation = StreamOrientation.horizontal;
   bool _isLocked = true;
   bool _isDisconnected = false;
@@ -123,8 +133,8 @@ class RemoteSession extends ChangeNotifier {
     _safeNotify();
   }
 
-  Future<void> _onFrame(ScreenFrame frame) async {
-    // Decode synchronously so GIF recording sees the frame before GPU work.
+  void _onFrame(ScreenFrame frame) {
+    // Decode synchronously so GIF recording sees every frame before GPU work.
     final raw = decodeFrameSync(frame);
     if (_disposed) return;
 
@@ -133,19 +143,44 @@ class RemoteSession extends ChangeNotifier {
     final orientationChanged = raw.orientation != _orientation;
     _orientation = raw.orientation;
     onRawFrame?.call(raw);
-
-    final image = await createImageFromRgba(raw.rgba);
-    if (_disposed) {
-      image.dispose();
-      return;
-    }
-    final prev = _frameImage;
-    _frameImage = image;
-    _frameNotifier.value = image;
     // Only rebuild the page tree when orientation changes (rare); frame image
     // updates are handled by ValueListenableBuilder in the view layer.
     if (orientationChanged) _safeNotify();
-    prev?.dispose();
+
+    // Hand the latest pixels to the upload worker. Bursts that arrive while an
+    // upload is in flight overwrite this, coalescing to the newest frame.
+    _pendingRgba = raw.rgba;
+    _frameSeq++;
+    if (_imageWorkerBusy) return;
+    _imageWorkerBusy = true;
+    unawaited(_pumpFrameImages());
+  }
+
+  // Serially uploads pending frames so newer frames always win. Without the
+  // single-worker ordering, out-of-order createImageFromRgba completions could
+  // publish a stale image and dispose the live one.
+  Future<void> _pumpFrameImages() async {
+    try {
+      while (!_disposed) {
+        final rgba = _pendingRgba;
+        if (rgba == null) return;
+        final seq = _frameSeq;
+        _pendingRgba = null;
+
+        final image = await createImageFromRgba(rgba);
+        if (_disposed || seq <= _publishedSeq) {
+          image.dispose();
+          continue;
+        }
+        _publishedSeq = seq;
+        final prev = _frameImage;
+        _frameImage = image;
+        _frameNotifier.value = image;
+        prev?.dispose();
+      }
+    } finally {
+      _imageWorkerBusy = false;
+    }
   }
 
   Future<void> press(RemoteButton button, {bool long = false}) {

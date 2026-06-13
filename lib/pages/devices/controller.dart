@@ -66,6 +66,24 @@ class DeviceController extends ChangeNotifier {
 
   void synchronize() => _startDataLoading();
 
+  Future<void> reboot() async {
+    if (_device == null || _deviceDisconnected) return;
+    try {
+      await _client.rebootAndDisconnect(
+        RebootRequest(mode: RebootRequest_RebootMode.OS),
+      );
+    } catch (e) {
+      LogService.log('[DeviceController] reboot failed: $e');
+    }
+    _device = null;
+    _deviceDisconnected = false;
+    _deviceLoading = false;
+    _deviceInfoConnected = false;
+    _info = {};
+    _infoRequestGeneration++;
+    _notify();
+  }
+
   /// Returns true on success, false on failure.
   Future<bool> playAlert() async {
     if (_device == null || _deviceDisconnected || _alertPlaying) return false;

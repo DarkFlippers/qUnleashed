@@ -175,8 +175,8 @@ class FirmwareUpdater {
       final flipperPath = '$remoteDir/${f.name}';
       if (f.name == 'update.fuf') manifestPath = flipperPath;
 
-      await _deleteSafe(client, flipperPath);
-
+      // No delete-before-write: the firmware opens uploads with CREATE_ALWAYS
+      // and truncates an existing file itself.
       _log('uploading ${f.name} (${f.data.length}B)');
       final fileBytes = f.data.length;
       final entryStart = bytesUploaded;
@@ -200,15 +200,7 @@ class FirmwareUpdater {
 
     _log('starting update: $manifestPath');
     onState(const UpdateStarting());
-    await client.update(UpdateRequest(updateManifest: manifestPath));
-
-    _log('rebooting to updater');
-    try {
-      await client.reboot(
-        RebootRequest(mode: RebootRequest_RebootMode.UPDATE),
-        timeout: const Duration(seconds: 2),
-      );
-    } catch (_) {}
+    await client.updateAndDisconnect(UpdateRequest(updateManifest: manifestPath));
 
     onState(const UpdateDone());
   }
@@ -245,12 +237,6 @@ class FirmwareUpdater {
   static Future<void> _mkdirSafe(FlipperClient client, String path) async {
     try {
       await client.storageMkdir(MkdirRequest(path: path));
-    } catch (_) {}
-  }
-
-  static Future<void> _deleteSafe(FlipperClient client, String path) async {
-    try {
-      await client.storageDelete(DeleteRequest(path: path));
     } catch (_) {}
   }
 

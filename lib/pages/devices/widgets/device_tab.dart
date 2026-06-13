@@ -9,7 +9,6 @@ import '../../../widgets/flipper_action_dialog.dart';
 import '../../../widgets/info_line.dart';
 import '../../../widgets/notification.dart';
 import '../../../widgets/page_card.dart';
-import '../../remote/page.dart';
 import '../scope.dart';
 import 'connection_dialog.dart';
 import 'firmware_carousel_card.dart';
@@ -172,9 +171,7 @@ class _ConnectedContent extends StatelessWidget {
           child: _DeviceActionsRow(
             onDisconnect: () => ctrl.disconnect(),
             onPlayAlert: ctrl.alertPlaying ? null : () => _playAlert(context),
-            onOpenRemoteControl: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const RemoteControlPage()),
-            ),
+            onReboot: () => ctrl.reboot(),
           ),
         ),
         const SizedBox(height: 14),
@@ -647,7 +644,7 @@ class _DeviceActionsRow extends StatelessWidget {
   const _DeviceActionsRow({
     required this.onDisconnect,
     required this.onPlayAlert,
-    required this.onOpenRemoteControl,
+    required this.onReboot,
   });
 
   static const double _spacing = 10;
@@ -656,7 +653,7 @@ class _DeviceActionsRow extends StatelessWidget {
   static const double _minWideButtonWidth = 170;
   final VoidCallback onDisconnect;
   final VoidCallback? onPlayAlert;
-  final VoidCallback onOpenRemoteControl;
+  final VoidCallback onReboot;
 
   @override
   Widget build(BuildContext context) {
@@ -707,12 +704,12 @@ class _DeviceActionsRow extends StatelessWidget {
               child: SizedBox(
                 height: buttonHeight,
                 child: _DeviceActionButton(
-                  iconAsset: 'assets/ic/app/controller.svg',
-                  label: 'Remote Control',
+                  iconAsset: 'assets/ic/device/syncing.svg',
+                  label: 'Reboot',
                   iconColor: colors.accent,
                   textColor: colors.textPrimary,
                   horizontal: horizontal,
-                  onTap: onOpenRemoteControl,
+                  onTap: onReboot,
                 ),
               ),
             ),
