@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-import '../theme.dart';
+import '../../theme.dart';
 
 const Color _kFlipperScreenInk = Colors.black;
 

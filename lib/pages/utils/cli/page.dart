@@ -10,7 +10,7 @@ import 'package:xterm/xterm.dart';
 
 import '../../../theme.dart';
 import 'package:qunleashed/components/appbar.dart';
-import '../../../widgets/flipper_action_dialog.dart';
+import '../../../components/dialogs/action.dart';
 import '../../../components/dialogs/connection.dart';
 
 const _kBackgroundColor = Color(0xFF000000);

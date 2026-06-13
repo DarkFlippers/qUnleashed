@@ -2,7 +2,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../theme.dart';
-import '../../../widgets/flipper_action_dialog.dart';
+import '../../../components/dialogs/action.dart';
 import '../../../widgets/notification.dart';
 import '../../../widgets/progress_button.dart';
 import '../../remote/page.dart';

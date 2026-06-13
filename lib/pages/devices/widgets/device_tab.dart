@@ -5,7 +5,7 @@ import 'package:super_clipboard/super_clipboard.dart';
 import '../../../services/update/update_service.dart';
 import '../../../theme.dart';
 import '../../../widgets/action_row.dart';
-import '../../../widgets/flipper_action_dialog.dart';
+import '../../../components/dialogs/action.dart';
 import '../../../widgets/info_line.dart';
 import '../../../widgets/notification.dart';
 import '../../../widgets/page_card.dart';

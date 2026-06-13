@@ -2,7 +2,7 @@ import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
 import '../../theme.dart';
-import '../../widgets/flipper_action_dialog.dart';
+import '../../components/dialogs/action.dart';
 import '../about/page.dart';
 import '../paint/manager/page.dart';
 import '../remote/page.dart';
