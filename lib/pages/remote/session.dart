@@ -5,6 +5,7 @@ import 'package:flipperlib/flipperlib.dart' hide DateTime, File;
 import 'package:flutter/foundation.dart';
 
 import 'frame_decoder.dart';
+import 'grayscale_filter.dart';
 import 'models/models.dart';
 
 const Duration _kAnimDuration = Duration(milliseconds: 650);
@@ -41,6 +42,13 @@ class RemoteSession extends ChangeNotifier {
   int _frameSeq = 0;
   int _publishedSeq = -1;
   bool _imageWorkerBusy = false;
+
+  // Temporal grayscale recovery: averages recent frames so flicker-based gray
+  // (e.g. arddrivin) renders as solid shades instead of a checkerboard. Off by
+  // default; toggled off shows the raw 1-bit frame unchanged.
+  final GrayscaleFilter _grayscale = GrayscaleFilter();
+  bool _grayscaleEnabled = false;
+  RawFrameData? _lastRaw;
   StreamOrientation _orientation = StreamOrientation.horizontal;
   bool _isLocked = true;
   bool _isDisconnected = false;
@@ -57,6 +65,7 @@ class RemoteSession extends ChangeNotifier {
   StreamOrientation get orientation => _orientation;
   bool get isLocked => _isLocked;
   bool get isDisconnected => _isDisconnected;
+  bool get grayscaleEnabled => _grayscaleEnabled;
   List<QueuedButton> get queue => _queue;
   int? get lastBgColor => _lastBgColor;
   int? get lastFgColor => _lastFgColor;
@@ -143,17 +152,45 @@ class RemoteSession extends ChangeNotifier {
     final orientationChanged = raw.orientation != _orientation;
     _orientation = raw.orientation;
     onRawFrame?.call(raw);
-    // Only rebuild the page tree when orientation changes (rare); frame image
-    // updates are handled by ValueListenableBuilder in the view layer.
-    if (orientationChanged) _safeNotify();
+    if (orientationChanged) {
+      // The averaging buffer holds frames in the old orientation's layout.
+      _grayscale.reset();
+      // Only rebuild the page tree when orientation changes (rare); frame
+      // image updates are handled by ValueListenableBuilder in the view layer.
+      _safeNotify();
+    }
 
-    // Hand the latest pixels to the upload worker. Bursts that arrive while an
-    // upload is in flight overwrite this, coalescing to the newest frame.
-    _pendingRgba = raw.rgba;
+    _lastRaw = raw;
+    // Push every frame so the filter sees the full flicker rate (dropping
+    // frames here would resurrect the checkerboard); the GPU upload below still
+    // coalesces.
+    _grayscale.push(raw.pixelIndices);
+    _scheduleUpload(_renderPending(raw));
+  }
+
+  Uint8List _renderPending(RawFrameData raw) {
+    if (!_grayscaleEnabled) return raw.rgba;
+    return _grayscale.render(raw.pixelIndices.length, raw.bgColor, raw.fgColor);
+  }
+
+  // Hands the latest pixels to the upload worker. Bursts that arrive while an
+  // upload is in flight overwrite this, coalescing to the newest frame.
+  void _scheduleUpload(Uint8List rgba) {
+    _pendingRgba = rgba;
     _frameSeq++;
     if (_imageWorkerBusy) return;
     _imageWorkerBusy = true;
     unawaited(_pumpFrameImages());
+  }
+
+  /// Toggles temporal grayscale recovery. Re-renders the current frame so the
+  /// change is visible immediately, without waiting for the next stream frame.
+  void setGrayscaleEnabled(bool enabled) {
+    if (_disposed || _grayscaleEnabled == enabled) return;
+    _grayscaleEnabled = enabled;
+    _safeNotify();
+    final raw = _lastRaw;
+    if (raw != null) _scheduleUpload(_renderPending(raw));
   }
 
   // Serially uploads pending frames so newer frames always win. Without the

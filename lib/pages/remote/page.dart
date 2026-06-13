@@ -340,7 +340,22 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
                 ),
               ),
             ),
-            const SizedBox(width: 48),
+            IconButton(
+              onPressed: () => _session.setGrayscaleEnabled(
+                !_session.grayscaleEnabled,
+              ),
+              tooltip: _session.grayscaleEnabled
+                  ? 'Grayscale filter on — tap to show raw screen'
+                  : 'Grayscale filter off — tap to render flicker-gray as solid shades',
+              icon: Icon(
+                _session.grayscaleEnabled
+                    ? Icons.gradient_rounded
+                    : Icons.gradient_outlined,
+                color: _session.grayscaleEnabled
+                    ? colors.onAccent
+                    : colors.onAccent.withValues(alpha: 0.45),
+              ),
+            ),
           ],
         ),
       ),
