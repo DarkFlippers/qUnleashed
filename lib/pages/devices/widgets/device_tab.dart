@@ -10,7 +10,7 @@ import '../../../widgets/info_line.dart';
 import '../../../widgets/notification.dart';
 import '../../../widgets/page_card.dart';
 import '../scope.dart';
-import 'connection_dialog.dart';
+import '../../../components/dialogs/connection.dart';
 import 'firmware_carousel_card.dart';
 import 'full_info_sheet.dart';
 import 'navigate_icon.dart';
