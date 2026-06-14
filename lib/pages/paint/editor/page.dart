@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flipperlib/flipperlib.dart' hide DateTime;
 import 'package:flutter/material.dart';
 
 import '../../../services/repository/app.dart';
@@ -22,11 +23,18 @@ import 'widgets/editor_widgets.dart';
 import 'widgets/frames_strip.dart';
 
 class PaintPage extends StatefulWidget {
-  const PaintPage({super.key, this.project});
+  const PaintPage({super.key, this.project, this.remotePath, this.client})
+    : assert(project == null || remotePath == null);
 
   /// Project to load into the canvas when the editor opens. When null the editor
   /// starts a fresh, blank project (which becomes a draft once edited).
   final PaintProject? project;
+
+  /// A single image file on the connected Flipper. Only PNG, GIF and BM files
+  /// are supported; a remote meta.txt remains a regular text file and cannot
+  /// open a complete Dolphin animation project.
+  final String? remotePath;
+  final FlipperClient? client;
 
   @override
   State<PaintPage> createState() => _PaintPageState();
@@ -44,21 +52,36 @@ class _PaintPageState extends State<PaintPage> {
   Timer? _autosaveTimer;
   bool _savingDraft = false;
 
+  // The saved Dolphin project this editor is bound to (folder + name). Null
+  // until the canvas is saved as a project; once set, Save overwrites it
+  // without prompting and autosave is redirected there.
+  String? _projectDir;
+  String? _projectName;
+
   @override
   void initState() {
     super.initState();
     _ctrl = PaintController();
     _ctrl.addListener(_onControllerChange);
     final project = widget.project;
-    if (project != null && project.isDraft &&
-        project.type == PaintProjectType.dolphin) {
-      // Editing an existing draft → keep writing to the same folder.
-      _draftId = project.id;
-      _draftDir = project.path;
+    if (project != null) {
+      if (project.isDraft) {
+        // Editing an existing draft → keep writing to the same folder.
+        _draftId = project.id;
+        _draftDir = project.path;
+      } else {
+        // Opening a saved project → Save overwrites it in place and autosave
+        // writes straight to its folder.
+        _projectDir = project.path;
+        _projectName = project.name;
+        _draftDir = project.path;
+      }
     }
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (project != null) {
         await _loadProject(project);
+      } else if (widget.remotePath != null) {
+        await _loadRemoteFile(widget.remotePath!);
       }
       // Whatever we loaded (or the empty start) is the clean baseline.
       _baselineVersion = _ctrl.pixelVersion;
@@ -75,21 +98,49 @@ class _PaintPageState extends State<PaintPage> {
 
   Future<void> _loadProject(PaintProject project) async {
     try {
-      switch (project.type) {
-        case PaintProjectType.dolphin:
-          final meta = project.metaPath;
-          if (meta != null) await _importDolphinFromPath(meta);
-        case PaintProjectType.gif:
-          await _importGif(await io.File(project.path).readAsBytes());
-        case PaintProjectType.drawing:
-          final pix = await decodePngToPixels(
-            await io.File(project.path).readAsBytes(),
+      await _importDolphinFromPath(project.metaPath);
+    } catch (e) {
+      if (!mounted) return;
+      context.showNotification(
+        'Open failed: $e',
+        type: QNotificationType.error,
+      );
+    }
+  }
+
+  Future<void> _loadRemoteFile(String path) async {
+    try {
+      final batch = await (widget.client ?? FlipperOneClient().get())
+          .storageRead(
+            ReadRequest(path: path),
+            timeout: const Duration(minutes: 5),
           );
-          _ctrl.importFramesFromPixels([pix], pfc: 1);
+      final bytes = <int>[];
+      for (final response in batch.items) {
+        if (response.hasFile()) bytes.addAll(response.file.data);
+      }
+      if (bytes.isEmpty) {
+        throw StateError('File is empty');
+      }
+
+      final data = Uint8List.fromList(bytes);
+      final extension = _extensionOf(path);
+      switch (extension) {
+        case 'png':
+          await _importPng(data);
+        case 'gif':
+          await _importGif(data);
+        case 'bm':
+          await _importBmSingle(data);
+        default:
+          throw UnsupportedError('Only .png, .gif and .bm files are supported');
       }
     } catch (e) {
       if (!mounted) return;
-      context.showNotification('Open failed: $e', type: QNotificationType.error);
+      context.showNotification(
+        'Open failed: $e',
+        type: QNotificationType.error,
+      );
     }
   }
 
@@ -141,22 +192,66 @@ class _PaintPageState extends State<PaintPage> {
     });
   }
 
-  Future<void> _exportPng() async {
+  /// The Save action (the app bar's save icon): persists the canvas as a
+  /// Dolphin project (`meta.txt` + `.bm` frames) inside the app's animations
+  /// library. A brand-new project prompts for a folder name once; an already
+  /// saved project is overwritten silently.
+  Future<void> _saveProject() async {
+    // Always confirm the name: pre-filled with the current project's name when
+    // saved before. Keeping it saves in place; changing it forks a new folder.
+    final name = await _promptProjectName(
+      initial: _projectName ?? _suggestedName(),
+    );
+    if (name == null) return; // cancelled or empty
     try {
-      final png = await PaintCodec.frameToPng(_ctrl.frames[_ctrl.currentFrame]);
-      final ts = DateTime.now().millisecondsSinceEpoch;
-      final dir = await appDrawingsDirectory();
-      final file = io.File(pathJoin([dir.path, 'drawing_$ts.png']));
-      await file.writeAsBytes(png, flush: true);
+      final base = await appProjectsDirectory();
+      final dirPath = pathJoin([base.path, name]);
+
+      await _writeDolphinTo(io.Directory(dirPath));
+      await _adoptProjectFolder(dirPath, name);
+      _baselineVersion = _ctrl.pixelVersion;
+
       if (!mounted) return;
-      context.showNotification('Saved: ${file.path}', type: QNotificationType.good);
+      context.showNotification('Saved "$name"', type: QNotificationType.good);
     } catch (e) {
       if (!mounted) return;
-      context.showNotification('Export PNG failed: $e', type: QNotificationType.error);
+      context.showNotification(
+        'Save failed: $e',
+        type: QNotificationType.error,
+      );
+    }
+  }
+
+  /// Export entry points (the "Export" sheet): resolve a project name (prompted
+  /// only when the project is new), then let the user pick a destination folder
+  /// via the system file picker before writing the chosen format there.
+  Future<void> _exportDolphin() async {
+    final name = await _resolveExportName();
+    if (name == null) return;
+    final dest = await _pickDestination();
+    if (dest == null) return;
+    try {
+      final animDir = io.Directory(pathJoin([dest, name]));
+      await _writeDolphinTo(animDir);
+      if (!mounted) return;
+      context.showNotification(
+        'Dolphin exported: ${animDir.path}',
+        type: QNotificationType.good,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      context.showNotification(
+        'Export Dolphin failed: $e',
+        type: QNotificationType.error,
+      );
     }
   }
 
   Future<void> _exportGif() async {
+    final name = await _resolveExportName();
+    if (name == null) return;
+    final dest = await _pickDestination();
+    if (dest == null) return;
     try {
       final delays = List.filled(_ctrl.frames.length, kAnimFrameDelay);
       final gif = FlipperGifEncoder.encode(
@@ -167,50 +262,144 @@ class _PaintPageState extends State<PaintPage> {
         color0: const Color(0xFFDFDFDF).toARGB32(),
         color1: const Color(0xFF000000).toARGB32(),
       );
-      final ts = DateTime.now().millisecondsSinceEpoch;
-      final dir = await appAnimationsDirectory();
-      final file = io.File(pathJoin([dir.path, 'animation_$ts.gif']));
+      final file = io.File(pathJoin([dest, '$name.gif']));
       await file.writeAsBytes(gif, flush: true);
       if (!mounted) return;
-      context.showNotification('Saved: ${file.path}', type: QNotificationType.good);
-    } catch (e) {
-      if (!mounted) return;
-      context.showNotification('Export GIF failed: $e', type: QNotificationType.error);
-    }
-  }
-
-  Future<void> _onExport() async {
-    if (_ctrl.frames.length > 1) {
-      await _exportGif();
-    } else {
-      await _exportPng();
-    }
-  }
-
-  Future<void> _exportDolphin() async {
-    try {
-      final ts = DateTime.now().millisecondsSinceEpoch;
-      final animName = 'anim_${ts}_128x64';
-      final baseDir = await appAnimationsDirectory();
-      final animDir = io.Directory(pathJoin([baseDir.path, animName]));
-
-      await writeDolphinFolder(
-        animDir,
-        frames: _ctrl.frames.map((f) => Uint8List.fromList(f)).toList(),
-        passiveFrames: _ctrl.effectivePassiveCount,
-        frameRate: _ctrl.frameRate,
-        duration: _ctrl.duration,
-        activeCycles: _ctrl.activeCycles,
-        activeCooldown: _ctrl.activeCooldown,
-        compress: _ctrl.compressBm,
+      context.showNotification(
+        'Saved: ${file.path}',
+        type: QNotificationType.good,
       );
-
-      if (!mounted) return;
-      context.showNotification('Dolphin saved: ${animDir.path}', type: QNotificationType.good);
     } catch (e) {
       if (!mounted) return;
-      context.showNotification('Export Dolphin failed: $e', type: QNotificationType.error);
+      context.showNotification(
+        'Export GIF failed: $e',
+        type: QNotificationType.error,
+      );
     }
+  }
+
+  Future<void> _exportPng() async {
+    final name = await _resolveExportName();
+    if (name == null) return;
+    final dest = await _pickDestination();
+    if (dest == null) return;
+    try {
+      final png = await PaintCodec.frameToPng(_ctrl.frames[_ctrl.currentFrame]);
+      final file = io.File(pathJoin([dest, '$name.png']));
+      await file.writeAsBytes(png, flush: true);
+      if (!mounted) return;
+      context.showNotification(
+        'Saved: ${file.path}',
+        type: QNotificationType.good,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      context.showNotification(
+        'Export PNG failed: $e',
+        type: QNotificationType.error,
+      );
+    }
+  }
+
+  /// Writes the current frames to [dir] as a Dolphin animation.
+  Future<void> _writeDolphinTo(io.Directory dir) {
+    return writeDolphinFolder(
+      dir,
+      frames: _ctrl.frames.map((f) => Uint8List.fromList(f)).toList(),
+      passiveFrames: _ctrl.effectivePassiveCount,
+      frameRate: _ctrl.frameRate,
+      duration: _ctrl.duration,
+      activeCycles: _ctrl.activeCycles,
+      activeCooldown: _ctrl.activeCooldown,
+      compress: _ctrl.compressBm,
+    );
+  }
+
+  /// The export name: the current project name when saved, otherwise prompted.
+  Future<String?> _resolveExportName() {
+    if (_projectName != null) return Future.value(_projectName);
+    return _promptProjectName(initial: _suggestedName());
+  }
+
+  /// Opens the system folder picker; returns null when cancelled.
+  Future<String?> _pickDestination() {
+    return FilePicker.platform.getDirectoryPath(
+      dialogTitle: 'Choose export location',
+    );
+  }
+
+  /// Binds the editor to [dirPath]/[name] as its project, redirecting autosave
+  /// there. The throwaway autosave draft is removed only on the first save
+  /// (promotion); a later rename forks a new folder and leaves the previous
+  /// project untouched.
+  Future<void> _adoptProjectFolder(String dirPath, String name) async {
+    final wasUnsaved = _projectDir == null;
+    final prevTarget = _draftDir;
+    _projectDir = dirPath;
+    _projectName = name;
+    _draftDir = dirPath;
+    if (wasUnsaved && prevTarget != null && prevTarget != dirPath) {
+      try {
+        final old = io.Directory(prevTarget);
+        if (await old.exists()) await old.delete(recursive: true);
+      } catch (_) {}
+    }
+  }
+
+  String _suggestedName() {
+    final n = _ctrl.frames.length;
+    return n > 1 ? 'animation_${n}f' : 'drawing';
+  }
+
+  /// Prompts for a project (folder) name, sanitizing the result to a safe
+  /// folder name. Returns null when cancelled or left empty.
+  Future<String?> _promptProjectName({String? initial}) async {
+    if (!mounted) return null;
+    final colors = context.appColors;
+    final ctrl = TextEditingController(text: initial ?? '');
+    final result = await showDialog<String>(
+      context: context,
+      barrierColor: colors.dialogBarrier,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: colors.dialogBackground,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: Text('Project name', style: TextStyle(color: colors.dialogText)),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          style: TextStyle(color: colors.dialogText),
+          decoration: InputDecoration(
+            hintText: 'My animation',
+            hintStyle: TextStyle(color: colors.dialogMuted),
+          ),
+          onSubmitted: (v) => Navigator.pop(ctx, v),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: colors.textSecondary),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, ctrl.text),
+            child: Text('Save', style: TextStyle(color: colors.accent)),
+          ),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    if (result == null) return null;
+    final name = _sanitizeName(result);
+    return name.isEmpty ? null : name;
+  }
+
+  static String _sanitizeName(String raw) {
+    final cleaned = raw.trim().replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
+    return cleaned
+        .replaceAll(RegExp(r'_+'), '_')
+        .replaceAll(RegExp(r'^_|_$'), '');
   }
 
   Future<void> _showExportDialog() async {
@@ -225,7 +414,10 @@ class _PaintPageState extends State<PaintPage> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         title: Text(
           'Export',
-          style: TextStyle(color: colors.textPrimary, fontWeight: FontWeight.w700),
+          style: TextStyle(
+            color: colors.textPrimary,
+            fontWeight: FontWeight.w700,
+          ),
         ),
         contentPadding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
         content: Column(
@@ -267,7 +459,10 @@ class _PaintPageState extends State<PaintPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: Text('Cancel', style: TextStyle(color: colors.textSecondary)),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: colors.textSecondary),
+            ),
           ),
         ],
       ),
@@ -276,7 +471,10 @@ class _PaintPageState extends State<PaintPage> {
 
   Future<void> _onImport() async {
     try {
-      final result = await FilePicker.platform.pickFiles(type: FileType.any, withData: true);
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.any,
+        withData: true,
+      );
       if (result == null || result.files.isEmpty) return;
 
       final file = result.files.first;
@@ -290,13 +488,17 @@ class _PaintPageState extends State<PaintPage> {
           await _importDolphinFromPath(path);
         } else {
           if (!mounted) return;
-          context.showNotification('File path unavailable', type: QNotificationType.error);
+          context.showNotification(
+            'File path unavailable',
+            type: QNotificationType.error,
+          );
         }
         return;
       }
 
       if (ext == 'bm') {
-        final data = bytes ?? (path != null ? await io.File(path).readAsBytes() : null);
+        final data =
+            bytes ?? (path != null ? await io.File(path).readAsBytes() : null);
         if (data != null) await _importBmSingle(data);
         return;
       }
@@ -309,11 +511,17 @@ class _PaintPageState extends State<PaintPage> {
         await _importPng(bytes);
       } else {
         if (!mounted) return;
-        context.showNotification('Unsupported file type', type: QNotificationType.error);
+        context.showNotification(
+          'Unsupported file type',
+          type: QNotificationType.error,
+        );
       }
     } catch (e) {
       if (!mounted) return;
-      context.showNotification('Import failed: $e', type: QNotificationType.error);
+      context.showNotification(
+        'Import failed: $e',
+        type: QNotificationType.error,
+      );
     }
   }
 
@@ -373,16 +581,22 @@ class _PaintPageState extends State<PaintPage> {
       final animDir = metaFile.parent;
       final metaText = await metaFile.readAsString();
 
-      final passiveFrames = PaintCodec.parseDolphinInt(metaText, 'Passive frames') ?? 0;
-      final activeFrames = PaintCodec.parseDolphinInt(metaText, 'Active frames') ?? 0;
+      final passiveFrames =
+          PaintCodec.parseDolphinInt(metaText, 'Passive frames') ?? 0;
+      final activeFrames =
+          PaintCodec.parseDolphinInt(metaText, 'Active frames') ?? 0;
 
       // Frame dimensions can be smaller than our fixed canvas (e.g. 128×54).
-      final width = PaintCodec.parseDolphinInt(metaText, 'Width') ?? kCanvasWidth;
-      final height = PaintCodec.parseDolphinInt(metaText, 'Height') ?? kCanvasHeight;
+      final width =
+          PaintCodec.parseDolphinInt(metaText, 'Width') ?? kCanvasWidth;
+      final height =
+          PaintCodec.parseDolphinInt(metaText, 'Height') ?? kCanvasHeight;
       final expectedBytes = ((width + 7) >> 3) * height;
 
-      final orderMatch =
-          RegExp(r'^Frames order: (.+)$', multiLine: true).firstMatch(metaText);
+      final orderMatch = RegExp(
+        r'^Frames order: (.+)$',
+        multiLine: true,
+      ).firstMatch(metaText);
       final orderStr = orderMatch?.group(1)?.trim() ?? '';
 
       int maxFrameIdx = (passiveFrames + activeFrames - 1).clamp(0, 255);
@@ -403,12 +617,17 @@ class _PaintPageState extends State<PaintPage> {
         final bmData = await bmFile.readAsBytes();
         final xbm = PaintCodec.decodeBmFile(bmData);
         if (xbm == null || xbm.length < expectedBytes) continue;
-        newFrames.add(PaintCodec.xbmToPixels(xbm, srcWidth: width, srcHeight: height));
+        newFrames.add(
+          PaintCodec.xbmToPixels(xbm, srcWidth: width, srcHeight: height),
+        );
       }
 
       if (newFrames.isEmpty) {
         if (!mounted) return;
-        context.showNotification('No valid frames found', type: QNotificationType.error);
+        context.showNotification(
+          'No valid frames found',
+          type: QNotificationType.error,
+        );
         return;
       }
 
@@ -428,7 +647,10 @@ class _PaintPageState extends State<PaintPage> {
       );
     } catch (e) {
       if (!mounted) return;
-      context.showNotification('Import Dolphin failed: $e', type: QNotificationType.error);
+      context.showNotification(
+        'Import Dolphin failed: $e',
+        type: QNotificationType.error,
+      );
     }
   }
 
@@ -439,7 +661,10 @@ class _PaintPageState extends State<PaintPage> {
     const rowBytes = kCanvasWidth ~/ 8;
     if (xbm == null || xbm.length < rowBytes || xbm.length % rowBytes != 0) {
       if (!mounted) return;
-      context.showNotification('Invalid .bm file', type: QNotificationType.error);
+      context.showNotification(
+        'Invalid .bm file',
+        type: QNotificationType.error,
+      );
       return;
     }
     final height = xbm.length ~/ rowBytes;
@@ -464,7 +689,7 @@ class _PaintPageState extends State<PaintPage> {
         appBar: EditorAppBar(
           ctrl: _ctrl,
           onClose: _close,
-          onExport: _onExport,
+          onExport: _saveProject,
         ),
         body: Column(
           children: [
@@ -502,7 +727,11 @@ class _PaintPageState extends State<PaintPage> {
           const SizedBox(height: 8),
           AnimationPanel(ctrl: _ctrl, colors: colors),
           const SizedBox(height: 8),
-          ExportRow(colors: colors, onExport: _showExportDialog, onImport: _onImport),
+          ExportRow(
+            colors: colors,
+            onExport: _showExportDialog,
+            onImport: _onImport,
+          ),
         ],
       ),
     );
@@ -541,7 +770,11 @@ class _PaintPageState extends State<PaintPage> {
                 const SizedBox(height: 8),
                 AnimationPanel(ctrl: _ctrl, colors: colors),
                 const SizedBox(height: 8),
-                ExportRow(colors: colors, onExport: _showExportDialog, onImport: _onImport),
+                ExportRow(
+                  colors: colors,
+                  onExport: _showExportDialog,
+                  onImport: _onImport,
+                ),
               ],
             ),
           ),
@@ -549,4 +782,10 @@ class _PaintPageState extends State<PaintPage> {
       ],
     );
   }
+}
+
+String _extensionOf(String path) {
+  final name = path.replaceAll('\\', '/').split('/').last;
+  final dot = name.lastIndexOf('.');
+  return dot < 0 ? '' : name.substring(dot + 1).toLowerCase();
 }

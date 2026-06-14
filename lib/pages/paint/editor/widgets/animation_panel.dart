@@ -44,7 +44,10 @@ class AnimationPanel extends StatelessWidget {
                 GestureDetector(
                   onTap: () => ctrl.setCompressBm(!ctrl.compressBm),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
                     decoration: BoxDecoration(
                       color: ctrl.compressBm
                           ? colors.accent.withAlpha(30)
@@ -57,7 +60,9 @@ class AnimationPanel extends StatelessWidget {
                     child: Text(
                       ctrl.compressBm ? 'Compress ✓' : 'Compress',
                       style: TextStyle(
-                        color: ctrl.compressBm ? colors.accent : colors.textMuted,
+                        color: ctrl.compressBm
+                            ? colors.accent
+                            : colors.textMuted,
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
                       ),
@@ -83,10 +88,10 @@ class AnimationPanel extends StatelessWidget {
                       trackHeight: 3,
                     ),
                     child: Slider(
-                      value: ctrl.frameRate.toDouble().clamp(1, 30),
+                      value: ctrl.frameRate.toDouble().clamp(1, 10),
                       min: 1,
-                      max: 30,
-                      divisions: 29,
+                      max: 10,
+                      divisions: 9,
                       onChanged: (v) => ctrl.setFrameRate(v.round()),
                     ),
                   ),
@@ -128,7 +133,9 @@ class AnimationPanel extends StatelessWidget {
                 min: 0,
                 max: math.max(n, 1).toDouble(),
                 divisions: math.max(n, 1),
-                onChanged: n > 1 ? (v) => ctrl.setPassiveFrameCount(v.round()) : null,
+                onChanged: n > 1
+                    ? (v) => ctrl.setPassiveFrameCount(v.round())
+                    : null,
               ),
             ),
             const SizedBox(height: 4),
@@ -181,12 +188,18 @@ class AnimationPanel extends StatelessWidget {
                         decoration: BoxDecoration(
                           color: colors.accent.withAlpha(20),
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: colors.accent.withAlpha(80)),
+                          border: Border.all(
+                            color: colors.accent.withAlpha(80),
+                          ),
                         ),
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(Icons.touch_app_outlined, size: 15, color: colors.accent),
+                            Icon(
+                              Icons.touch_app_outlined,
+                              size: 15,
+                              color: colors.accent,
+                            ),
                             const SizedBox(width: 6),
                             Text(
                               'Trigger Active',

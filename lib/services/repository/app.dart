@@ -8,8 +8,8 @@ const String kAppsCatalogFileName = 'catalog.json';
 const String kScreenshotsFolderName = 'Screenshots';
 const String kRecordingsFolderName = 'Recordings';
 const String kUpdateCacheFolderName = 'updates';
-const String kDrawingsFolderName = 'Drawings';
 const String kAnimationsFolderName = 'Animations';
+const String kProjectsFolderName = 'projects';
 
 Future<io.File> installedCatalogFile(String deviceName) async {
   final root = await appDocumentsDirectory();
@@ -139,16 +139,18 @@ Future<io.Directory> appRecordingsDirectory() async {
   return dir;
 }
 
-Future<io.Directory> appDrawingsDirectory() async {
+Future<io.Directory> appAnimationsDirectory() async {
   final root = await appDocumentsDirectory();
-  final dir = io.Directory(pathJoin([root.path, kDrawingsFolderName]));
+  final dir = io.Directory(pathJoin([root.path, kAnimationsFolderName]));
   await dir.create(recursive: true);
   return dir;
 }
 
-Future<io.Directory> appAnimationsDirectory() async {
-  final root = await appDocumentsDirectory();
-  final dir = io.Directory(pathJoin([root.path, kAnimationsFolderName]));
+/// Saved Pixel Draw projects (each a Dolphin animation folder: meta.txt +
+/// frame_*.bm). Lives under `Animations/projects`.
+Future<io.Directory> appProjectsDirectory() async {
+  final root = await appAnimationsDirectory();
+  final dir = io.Directory(pathJoin([root.path, kProjectsFolderName]));
   await dir.create(recursive: true);
   return dir;
 }
@@ -160,9 +162,7 @@ const String kDolphinAnimationsFolderName = 'dolphin';
 /// describes the set. Lives under `Animations/dolphin`.
 Future<io.Directory> appDolphinAnimationsDirectory() async {
   final root = await appAnimationsDirectory();
-  final dir = io.Directory(
-    pathJoin([root.path, kDolphinAnimationsFolderName]),
-  );
+  final dir = io.Directory(pathJoin([root.path, kDolphinAnimationsFolderName]));
   await dir.create(recursive: true);
   return dir;
 }

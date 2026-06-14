@@ -9,10 +9,11 @@ import 'package:qunleashed/components/appbar.dart';
 import '../editor/page.dart';
 import '../project.dart';
 import 'controller.dart';
+import '../dolphin/page.dart';
 
-/// Pixel Draw project manager: the landing screen for the paint tool. Lists all
-/// drawings, animations and drafts, opens them in the editor, and imports
-/// dolphin animations from a connected device.
+/// Pixel Draw project manager: the landing screen for the paint tool. Lists
+/// saved animations, device imports and drafts, opens them in the editor, and
+/// imports/sends dolphin animations to a connected device.
 class ProjectManagerPage extends StatefulWidget {
   const ProjectManagerPage({super.key});
 
@@ -56,6 +57,22 @@ class _ProjectManagerPageState extends State<ProjectManagerPage> {
       return;
     }
     await _ctrl.importFromDevice();
+  }
+
+  Future<void> _openSync() async {
+    // Cross-fade rather than the default lateral slide, so it reads as the
+    // content rebuilding in place rather than a sideways navigation.
+    await Navigator.of(context).push(
+      PageRouteBuilder<void>(
+        transitionDuration: const Duration(milliseconds: 220),
+        reverseTransitionDuration: const Duration(milliseconds: 180),
+        pageBuilder: (_, _, _) => const ManifestSyncPage(),
+        transitionsBuilder: (_, animation, _, child) =>
+            FadeTransition(opacity: animation, child: child),
+      ),
+    );
+    // Sending may have changed the local library; reconcile on return.
+    await _ctrl.loadAll(silent: true);
   }
 
   Future<void> _openEditor(PaintProject? project) async {
@@ -114,23 +131,16 @@ class _ProjectManagerPageState extends State<ProjectManagerPage> {
             tooltip: 'New project',
           ),
           QPageAppBarAction(
-            onPressed: _ctrl.loading || _ctrl.importing
-                ? null
-                : () => _ctrl.loadAll(),
-            icon: const Icon(Icons.refresh),
-            tooltip: 'Reload',
-          ),
-          QPageAppBarAction(
             onPressed: (_ctrl.isConnected && !_ctrl.importing) ? _import : null,
-            icon: Icon(
-              Icons.download_for_offline_outlined,
-              color: _ctrl.isConnected
-                  ? colors.onAccent
-                  : colors.onAccent.withAlpha(90),
-            ),
+            icon: const Icon(Icons.download_outlined),
             tooltip: _ctrl.isConnected
                 ? 'Import from device'
                 : 'Connect a device to import',
+          ),
+          QPageAppBarAction(
+            onPressed: _ctrl.importing ? null : _openSync,
+            icon: const Icon(Icons.upload_outlined),
+            tooltip: 'Send pack to device',
           ),
         ],
       ),
@@ -173,23 +183,39 @@ class _ProjectManagerPageState extends State<ProjectManagerPage> {
     if (_ctrl.loading) {
       return Center(child: CircularProgressIndicator(color: colors.accent));
     }
-    if (_ctrl.projects.isEmpty) return _buildEmpty(colors);
-    return ListView.separated(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      itemCount: _ctrl.projects.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 4),
-      itemBuilder: (_, i) {
-        final p = _ctrl.projects[i];
-        return _ProjectRow(
-          key: ValueKey(p.path),
-          project: p,
-          colors: colors,
-          selected: _ctrl.selectedId == p.id,
-          onTap: () => _ctrl.select(p.id),
-          onOpen: () => _openEditor(p),
-          onDelete: () => _confirmDelete(p),
-        );
-      },
+    // Pull-down (overscroll) refresh, like a browser. AlwaysScrollableScrollPhysics
+    // lets it trigger even when the content is shorter than the viewport.
+    return RefreshIndicator(
+      color: colors.accent,
+      onRefresh: () => _ctrl.loadAll(silent: true),
+      child: _ctrl.projects.isEmpty
+          ? LayoutBuilder(
+              builder: (_, c) => SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: c.maxHeight),
+                  child: _buildEmpty(colors),
+                ),
+              ),
+            )
+          : ListView.separated(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.symmetric(vertical: 10),
+              itemCount: _ctrl.projects.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 4),
+              itemBuilder: (_, i) {
+                final p = _ctrl.projects[i];
+                return _ProjectRow(
+                  key: ValueKey(p.path),
+                  project: p,
+                  colors: colors,
+                  selected: _ctrl.selectedId == p.id,
+                  onTap: () => _ctrl.select(p.id),
+                  onOpen: () => _openEditor(p),
+                  onDelete: () => _confirmDelete(p),
+                );
+              },
+            ),
     );
   }
 
@@ -212,8 +238,8 @@ class _ProjectManagerPageState extends State<ProjectManagerPage> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Create a new drawing or animation, or import dolphin '
-              'animations from a connected device.',
+              'Create a new animation or import dolphin animations from a '
+              'connected device.',
               textAlign: TextAlign.center,
               style: TextStyle(color: colors.textSecondary, fontSize: 13),
             ),
@@ -234,14 +260,10 @@ class _ProjectManagerPageState extends State<ProjectManagerPage> {
   }
 }
 
-Color _badgeColor(PaintProject p, QAppColors colors) {
-  if (p.isDraft) return const Color(0xFFFF9B34);
-  return switch (p.type) {
-    PaintProjectType.drawing => colors.info,
-    PaintProjectType.gif => colors.success,
-    PaintProjectType.dolphin =>
-      p.isDeviceImport ? const Color(0xFF589DFF) : const Color(0xFF9B59FF),
-  };
+String _formatDate(DateTime d) {
+  String two(int v) => v.toString().padLeft(2, '0');
+  return '${d.year}-${two(d.month)}-${two(d.day)} '
+      '${two(d.hour)}:${two(d.minute)}';
 }
 
 class _ProjectRow extends StatelessWidget {
@@ -324,6 +346,8 @@ class _ProjectRow extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 12),
+        _buildDetails(),
+        const SizedBox(height: 12),
         Row(
           children: [
             TextButton.icon(
@@ -347,32 +371,65 @@ class _ProjectRow extends StatelessWidget {
     );
   }
 
+  /// All project metadata as a borderless key/value table.
+  Widget _buildDetails() {
+    final d = project.dolphin;
+    final rows = <(String, String)>[
+      ('Frame files', '${project.frameCount}'),
+      ('Passive frames', '${d.passiveFrames}'),
+      ('Active frames', '${d.activeFrames}'),
+      ('Order', '${d.fullOrder.length} steps'),
+      ('Frame rate', '${d.frameRate} fps'),
+      ('Duration', '${d.duration}'),
+      ('Size', '${d.width}×${d.height}'),
+      ('Active cycles', '${d.activeCycles}'),
+      ('Active cooldown', '${d.activeCooldown}'),
+      ('Modified', _formatDate(project.modified)),
+      ('Path', project.path),
+    ];
+    return Table(
+      columnWidths: const {0: IntrinsicColumnWidth(), 1: FlexColumnWidth()},
+      defaultVerticalAlignment: TableCellVerticalAlignment.top,
+      children: [
+        for (final (k, v) in rows)
+          TableRow(
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(right: 16, bottom: 6),
+                child: Text(
+                  k,
+                  style: TextStyle(color: colors.textMuted, fontSize: 12),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Text(
+                  v,
+                  style: TextStyle(color: colors.textPrimary, fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+      ],
+    );
+  }
+
   Widget _buildInfo() {
-    final detail = project.type == PaintProjectType.drawing
-        ? 'single frame'
-        : project.frameCount > 0
+    final detail = project.frameCount > 1
         ? '${project.frameCount} frames'
-        : 'animation';
+        : '1 frame';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Flexible(
-              child: Text(
-                project.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: colors.textPrimary,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            _badge(),
-          ],
+        Text(
+          project.name,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: colors.textPrimary,
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         const SizedBox(height: 3),
         Text(
@@ -382,26 +439,6 @@ class _ProjectRow extends StatelessWidget {
           style: TextStyle(color: colors.textSecondary, fontSize: 12),
         ),
       ],
-    );
-  }
-
-  Widget _badge() {
-    final c = _badgeColor(project, colors);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-      decoration: BoxDecoration(
-        color: c.withAlpha(36),
-        borderRadius: BorderRadius.circular(5),
-      ),
-      child: Text(
-        project.badge,
-        style: TextStyle(
-          color: c,
-          fontSize: 10,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.4,
-        ),
-      ),
     );
   }
 }

@@ -26,6 +26,7 @@ class VirtualDisplaySession {
   int _liveHolders = 0;
   bool _active = false;
   bool _starting = false;
+  bool _suspended = false;
 
   Uint8List? _pending;
   bool _sending = false;
@@ -64,8 +65,35 @@ class VirtualDisplaySession {
     }
   }
 
+  /// Stops the virtual display and pins it off (preview/live pushes are ignored)
+  /// until [resume]. Used to free the RPC link for a file transfer to the device
+  /// while keeping the holders' ref-counts intact.
+  Future<void> suspend() async {
+    if (_suspended) return;
+    _suspended = true;
+    _stopPreviewTimer();
+    _pending = null;
+    _sendTimer?.cancel();
+    _sendTimer = null;
+    final wasActive = _active;
+    _active = false;
+    if (wasActive && _client.isConnected) {
+      await _client
+          .guiStopVirtualDisplay(priority: FlipperRequestPriority.rightNow)
+          .timeout(const Duration(seconds: 2))
+          .catchError((_) => <Main>[]);
+    }
+  }
+
+  /// Lifts a [suspend], restarting the display if anyone still holds it.
+  void resume() {
+    if (!_suspended) return;
+    _suspended = false;
+    if (_users > 0) _ensureStarted();
+  }
+
   Future<void> _ensureStarted() async {
-    if (_active || _starting || !_client.isConnected) return;
+    if (_active || _starting || _suspended || !_client.isConnected) return;
     _starting = true;
     try {
       await _client.guiStartVirtualDisplay(
@@ -92,7 +120,9 @@ class VirtualDisplaySession {
     } finally {
       _starting = false;
       if (_active) {
-        if (_previewFrames != null && _liveHolders == 0 && _previewTimer == null) {
+        if (_previewFrames != null &&
+            _liveHolders == 0 &&
+            _previewTimer == null) {
           _startPreviewTimer();
         }
         _flush();
@@ -195,12 +225,15 @@ class VirtualDisplaySession {
   }
 
   void _startPreviewTimer() {
+    if (_suspended) return;
     final frames = _previewFrames;
     if (frames == null || frames.isEmpty) return;
     _previewCursor %= frames.length;
     pushFrame(frames[_previewCursor]);
     if (frames.length <= 1) return;
-    _previewTimer = Timer.periodic(Duration(milliseconds: _previewDelayMs), (_) {
+    _previewTimer = Timer.periodic(Duration(milliseconds: _previewDelayMs), (
+      _,
+    ) {
       final f = _previewFrames;
       if (f == null || f.isEmpty) return;
       _previewCursor = (_previewCursor + 1) % f.length;

@@ -33,7 +33,6 @@ class ProjectManagerController extends ChangeNotifier {
   String? _selectedId;
   String? _error;
 
-
   List<PaintProject> get projects => _projects;
   bool get loading => _loading;
   bool get importing => _importing;
@@ -42,7 +41,6 @@ class ProjectManagerController extends ChangeNotifier {
   String? get error => _error;
   bool get isConnected => _client.isConnected;
   String? get selectedId => _selectedId;
-
 
   void select(String? id) {
     _selectedId = (_selectedId == id) ? null : id;
@@ -73,7 +71,10 @@ class ProjectManagerController extends ChangeNotifier {
     try {
       final preview = await project.loadDevicePreview();
       if (token != _previewToken || _disposed) return;
-      VirtualDisplaySession.instance.setPreview(preview.frames, preview.delayMs);
+      VirtualDisplaySession.instance.setPreview(
+        preview.frames,
+        preview.delayMs,
+      );
     } catch (_) {}
   }
 
@@ -94,14 +95,12 @@ class ProjectManagerController extends ChangeNotifier {
     }
   }
 
-  /// Permanently deletes a project's file or folder, then reloads.
+  /// Permanently deletes a project's folder, then reloads.
   Future<void> deleteProject(PaintProject project) async {
     try {
-      final entity = project.type == PaintProjectType.dolphin
-          ? io.Directory(project.path)
-          : io.File(project.path);
-      if (await entity.exists()) {
-        await entity.delete(recursive: true);
+      final dir = io.Directory(project.path);
+      if (await dir.exists()) {
+        await dir.delete(recursive: true);
       }
       if (_selectedId == project.id) {
         _selectedId = null;
@@ -170,8 +169,10 @@ class ProjectManagerController extends ChangeNotifier {
             expectedSize: f.size,
             onProgress: (p) {
               if (totalBytes <= 0) return;
-              _importProgress =
-                  ((doneBytes + p * f.size) / totalBytes).clamp(0.0, 1.0);
+              _importProgress = ((doneBytes + p * f.size) / totalBytes).clamp(
+                0.0,
+                1.0,
+              );
               _notify();
             },
           );
@@ -183,8 +184,9 @@ class ProjectManagerController extends ChangeNotifier {
           await localFile.writeAsBytes(bytes, flush: true);
 
           doneBytes += f.size;
-          _importProgress =
-              totalBytes > 0 ? (doneBytes / totalBytes).clamp(0.0, 1.0) : null;
+          _importProgress = totalBytes > 0
+              ? (doneBytes / totalBytes).clamp(0.0, 1.0)
+              : null;
           _notify();
         }
 
@@ -232,7 +234,6 @@ class ProjectManagerController extends ChangeNotifier {
       }
     }
   }
-
 
   void _notify() {
     if (!_disposed) notifyListeners();

@@ -57,7 +57,8 @@ class PaintController extends ChangeNotifier {
   bool get isClosing => _closing;
 
   double effectivePixelSize(double containerWidth) {
-    return ((containerWidth - kPassivePad * 2) / kCanvasWidth) * kZoomLevels[zoomIndex];
+    return ((containerWidth - kPassivePad * 2) / kCanvasWidth) *
+        kZoomLevels[zoomIndex];
   }
 
   String get zoomLabel {
@@ -84,7 +85,9 @@ class PaintController extends ChangeNotifier {
     if (_undoStack.isEmpty) return;
     _redoStack.add(frames.map((f) => Uint8List.fromList(f)).toList());
     final prev = _undoStack.removeLast();
-    frames..clear()..addAll(prev);
+    frames
+      ..clear()
+      ..addAll(prev);
     currentFrame = currentFrame.clamp(0, frames.length - 1);
     pixelVersion++;
     schedulePush();
@@ -95,7 +98,9 @@ class PaintController extends ChangeNotifier {
     if (_redoStack.isEmpty) return;
     _undoStack.add(frames.map((f) => Uint8List.fromList(f)).toList());
     final next = _redoStack.removeLast();
-    frames..clear()..addAll(next);
+    frames
+      ..clear()
+      ..addAll(next);
     currentFrame = currentFrame.clamp(0, frames.length - 1);
     pixelVersion++;
     schedulePush();
@@ -119,7 +124,14 @@ class PaintController extends ChangeNotifier {
     }
   }
 
-  void _drawEllipse(int cx, int cy, int rx, int ry, bool fg, [Uint8List? target]) {
+  void _drawEllipse(
+    int cx,
+    int cy,
+    int rx,
+    int ry,
+    bool fg, [
+    Uint8List? target,
+  ]) {
     if (rx <= 0 || ry <= 0) {
       setPixel(cx, cy, fg, target);
       return;
@@ -144,7 +156,12 @@ class PaintController extends ChangeNotifier {
       for (final d in const [(1, 0), (-1, 0), (0, 1), (0, -1)]) {
         final nx = px + d.$1;
         final ny = py + d.$2;
-        if (nx < 0 || nx >= kCanvasWidth || ny < 0 || ny >= kCanvasHeight) continue;
+        if (nx < 0 ||
+            nx >= kCanvasWidth ||
+            ny < 0 ||
+            ny >= kCanvasHeight) {
+          continue;
+        }
         final ni = ny * kCanvasWidth + nx;
         if (visited[ni] != 0 || currentPixels[ni] != target) continue;
         visited[ni] = 1;
@@ -171,7 +188,10 @@ class PaintController extends ChangeNotifier {
         return [];
     }
     for (final p in pts) {
-      if (p.$1 >= 0 && p.$1 < kCanvasWidth && p.$2 >= 0 && p.$2 < kCanvasHeight) {
+      if (p.$1 >= 0 &&
+          p.$1 < kCanvasWidth &&
+          p.$2 >= 0 &&
+          p.$2 < kCanvasHeight) {
         preview.add(p.$2 * kCanvasWidth + p.$1);
       }
     }
@@ -391,7 +411,10 @@ class PaintController extends ChangeNotifier {
   void _startPlayTimer() {
     _playTimer?.cancel();
     final delayMs = (1000 / frameRate).round().clamp(33, 10000);
-    _playTimer = Timer.periodic(Duration(milliseconds: delayMs), (_) => _onPlayTick());
+    _playTimer = Timer.periodic(
+      Duration(milliseconds: delayMs),
+      (_) => _onPlayTick(),
+    );
   }
 
   void _onPlayTick() {
@@ -489,7 +512,9 @@ class PaintController extends ChangeNotifier {
     int? pfc,
   }) {
     pushUndo();
-    frames..clear()..addAll(newFrames);
+    frames
+      ..clear()
+      ..addAll(newFrames);
     currentFrame = 0;
     if (fr != null) frameRate = fr;
     if (dur != null) duration = dur;
@@ -503,8 +528,13 @@ class PaintController extends ChangeNotifier {
 
   void importSinglePixelFrame(Uint8List pixels) {
     pushUndo();
-    frames.add(pixels);
-    currentFrame = frames.length - 1;
+    final currentIsEmpty = currentPixels.every((pixel) => pixel == 0);
+    if (currentIsEmpty) {
+      frames[currentFrame] = pixels;
+    } else {
+      frames.add(pixels);
+      currentFrame = frames.length - 1;
+    }
     pixelVersion++;
     schedulePush();
     notifyListeners();
