@@ -5,7 +5,7 @@ import '../../../theme.dart';
 import '../../../components/dialogs/action.dart';
 import '../../../widgets/notification.dart';
 import '../../../widgets/progress_button.dart';
-import '../../remote/page.dart';
+import '../../tools/remote/desktop/page.dart';
 import '../install_service.dart';
 import '../models/card.dart';
 import '../models/category.dart';

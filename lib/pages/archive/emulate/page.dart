@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../components/icon.dart';
 import '../../../theme.dart';
 import 'package:qunleashed/components/appbar.dart';
-import '../../remote/page.dart';
+import '../../tools/remote/desktop/page.dart';
 import '../models/key.dart';
 import 'service.dart';
 

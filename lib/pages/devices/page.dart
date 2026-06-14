@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../widgets/root_scaffold.dart';
 import '../apps/page.dart';
-import '../archive/controller.dart';
-import '../archive/page.dart';
-import '../tools/page.dart';
+import '../archive/overview/controller.dart';
+import '../archive/overview/page.dart';
+import '../tools/overview/page.dart';
 import 'controller.dart';
 import 'scope.dart';
 import 'widgets/device_tab.dart';

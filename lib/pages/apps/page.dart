@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../theme.dart';
 import '../../widgets/open_url.dart';
-import '../remote/page.dart';
+import '../tools/remote/desktop/page.dart';
 import 'detail_page.dart';
 import 'controller.dart';
 import 'models/card.dart';

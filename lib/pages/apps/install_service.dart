@@ -6,7 +6,7 @@ import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flutter/foundation.dart';
 
 import '../../services/repository/app.dart';
-import '../archive/fap_icon.dart';
+import '../archive/overview/fap_icon.dart';
 import 'catalog_api.dart';
 import 'icon_codec.dart';
 import 'models/card.dart';

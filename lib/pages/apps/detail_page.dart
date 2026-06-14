@@ -4,7 +4,7 @@ import '../../theme.dart';
 import 'package:qunleashed/components/appbar.dart';
 import '../devices/widgets/changelog_renderer.dart';
 import '../../widgets/open_url.dart';
-import '../remote/page.dart';
+import '../tools/remote/desktop/page.dart';
 import 'catalog_api.dart';
 import 'install_service.dart';
 import 'models/card.dart';
