@@ -1,4 +1,4 @@
-simport 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 import '../../../theme/theme.dart';
 import 'flipper_mockup.dart';
