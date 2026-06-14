@@ -8,9 +8,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:xterm/xterm.dart';
 
-import '../../../theme.dart';
 import 'package:qunleashed/components/appbar.dart';
-import '../../../components/dialogs/action.dart';
+import '../../../components/dialogs/connection_error.dart';
 import '../../../components/dialogs/connection.dart';
 
 const _kBackgroundColor = Color(0xFF000000);
@@ -132,7 +131,7 @@ class _CliPageState extends State<CliPage> {
       await _client.connect(selected);
     } catch (e) {
       LogService.log('[CLI] connect failed: $e');
-      await _showConnectionFailedDialog(selected);
+      await _showConnectionFailedDialog(selected, e);
       if (mounted) {
         Navigator.of(context).maybePop();
       }
@@ -147,7 +146,7 @@ class _CliPageState extends State<CliPage> {
       await _client.connect(device);
     } catch (e) {
       LogService.log('[CLI] reconnect failed: $e');
-      await _showConnectionFailedDialog(device);
+      await _showConnectionFailedDialog(device, e);
       if (mounted) {
         Navigator.of(context).maybePop();
       }
@@ -156,27 +155,12 @@ class _CliPageState extends State<CliPage> {
     await _enterCliReady();
   }
 
-  Future<void> _showConnectionFailedDialog(FlipperDevice device) async {
+  Future<void> _showConnectionFailedDialog(
+    FlipperDevice device,
+    Object error,
+  ) async {
     if (!mounted) return;
-
-    final text = device.isBle
-        ? 'Turn Bluetooth off and on in the Flipper Zero system menu, then connect again. Restart the app only if that does not help.'
-        : 'Unplug the device and plug it back in, then connect again. Restart the app only if that does not help.';
-
-    await showDialog<void>(
-      context: context,
-      barrierColor: context.appColors.dialogBarrier,
-      builder: (dialogContext) {
-        return FlipperActionDialog(
-          imageAssetPath: 'assets/pic/mifare/shrug-black.svg',
-          imageSize: const Size(147.5, 95.8),
-          title: 'Connection failed',
-          text: text,
-          actionText: 'OK',
-          onAction: () => Navigator.of(dialogContext).pop(),
-        );
-      },
-    );
+    await showConnectionFailedDialog(context, error, isBle: device.isBle);
   }
 
   Future<void> _enterCliReady() async {

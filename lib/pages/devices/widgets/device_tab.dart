@@ -5,7 +5,7 @@ import 'package:super_clipboard/super_clipboard.dart';
 import '../../../services/update/update_service.dart';
 import '../../../theme.dart';
 import '../../../widgets/action_row.dart';
-import '../../../components/dialogs/action.dart';
+import '../../../components/dialogs/connection_error.dart';
 import '../../../widgets/info_line.dart';
 import '../../../widgets/notification.dart';
 import '../../../widgets/page_card.dart';
@@ -242,29 +242,8 @@ class _DisconnectedContent extends StatelessWidget {
       await ctrl.connect(selected);
     } catch (e) {
       if (!context.mounted) return;
-      await _showConnectionFailedDialog(context, selected);
+      await showConnectionFailedDialog(context, e, isBle: selected.isBle);
     }
-  }
-
-  static Future<void> _showConnectionFailedDialog(
-    BuildContext context,
-    dynamic device,
-  ) async {
-    final text = device.isBle
-        ? 'Turn Bluetooth off and on in the Flipper Zero system menu, then connect again. Restart the app only if that does not help.'
-        : 'Unplug the device and plug it back in, then connect again. Restart the app only if that does not help.';
-    await showDialog<void>(
-      context: context,
-      barrierColor: context.appColors.dialogBarrier,
-      builder: (ctx) => FlipperActionDialog(
-        imageAssetPath: 'assets/pic/mifare/shrug-black.svg',
-        imageSize: const Size(147.5, 95.8),
-        title: 'Connection failed',
-        text: text,
-        actionText: 'OK',
-        onAction: () => Navigator.of(ctx).pop(),
-      ),
-    );
   }
 }
 
