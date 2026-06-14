@@ -1,5 +1,6 @@
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
@@ -26,7 +27,9 @@ class _RasterIconCache {
     final existing = _ready[key];
     if (existing != null) return Future<ui.Image>.value(existing);
 
-    return _pending.putIfAbsent(key, () async {
+    var wasAdded = false;
+    final pending = _pending.putIfAbsent(key, () async {
+      wasAdded = true;
       try {
         final image = await _rasterize(
           asset: asset,
@@ -35,18 +38,48 @@ class _RasterIconCache {
         );
         _store(key, image);
         return image;
+      } catch (error) {
+        _debugLog('failed', asset: asset, pixelSize: pixelSize, error: error);
+        rethrow;
       } finally {
         _pending.remove(key);
+        _debugLog('finished', asset: asset, pixelSize: pixelSize);
       }
     });
+
+    _debugLog(
+      wasAdded ? 'queued' : 'joined',
+      asset: asset,
+      pixelSize: pixelSize,
+    );
+    return pending;
   }
 
   void _store(String key, ui.Image image) {
     if (_ready.length >= _maxEntries) {
       final oldestKey = _ready.keys.first;
       _ready.remove(oldestKey)?.dispose();
+      _debugLog('evicted');
     }
     _ready[key] = image;
+  }
+
+  void _debugLog(
+    String action, {
+    String? asset,
+    int? pixelSize,
+    Object? error,
+  }) {
+    if (!kDebugMode) return;
+
+    final details = <String>[
+      'pending=${_pending.length}',
+      'cached=${_ready.length}/$_maxEntries',
+      if (asset != null) 'asset=$asset',
+      if (pixelSize != null) 'pixelSize=$pixelSize',
+      if (error != null) 'error=$error',
+    ];
+    debugPrint('[QIconCache] $action; ${details.join('; ')}');
   }
 
   static Future<ui.Image> _rasterize({
