@@ -136,8 +136,7 @@ class DeviceController extends ChangeNotifier {
 
     final generation = ++_infoRequestGeneration;
 
-    _infoStreamSub = _client.deviceInfoUpdates.listen(
-      (data) {
+    _infoStreamSub = _client.deviceInfoUpdates.listen((data) {
         if (generation != _infoRequestGeneration || data.isEmpty) return;
         _info = {..._info, ...data};
         _deviceInfoConnected = true;
@@ -150,14 +149,15 @@ class DeviceController extends ChangeNotifier {
           QAppThemeController.instance.syncFirmwareFromDeviceInfo(_info);
         }
         _notify();
-      },
-      onError: (e) => LogService.log('[DeviceController] info stream: $e'),
-    );
+    }, onError: (e) => LogService.log('[DeviceController] info stream: $e'));
 
     _client.startDeviceInfoCollection();
   }
 
   void _onConnectionState(FlipperConnectionState state) {
+    // An in-flight connect attempt is not a session change: ignore it so the
+    // page does not flip to the disconnected view while connecting.
+    if (state.connecting) return;
     if (state.connected) {
       _device = state.device;
       _deviceDisconnected = false;
