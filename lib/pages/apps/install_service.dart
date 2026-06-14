@@ -6,7 +6,9 @@ import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flutter/foundation.dart';
 
 import '../../services/repository/app.dart';
+import '../archive/fap_icon.dart';
 import 'catalog_api.dart';
+import 'icon_codec.dart';
 import 'models/card.dart';
 import 'models/category.dart';
 import 'models/detail.dart';
@@ -74,6 +76,9 @@ class AppsInstallService extends ChangeNotifier {
 
   final Map<String, AppAction> _actions = {};
   Map<String, AppAction> get actions => Map.unmodifiable(_actions);
+
+  final Map<String, String> _iconCacheQueue = {};
+  bool _iconCacheWorking = false;
 
   bool _scanning = false;
   bool get scanning => _scanning;
@@ -264,6 +269,8 @@ class AppsInstallService extends ChangeNotifier {
       );
       _setActionState(app.alias, stage: AppActionStage.download, progress: 1.0);
 
+      unawaited(_cacheFapIcon(app.alias, fapBytes));
+
       await _ensureDir(kTempRoot);
       await _ensureDir(kAppsRoot);
       await _ensureDir(installDir);
@@ -452,7 +459,9 @@ class AppsInstallService extends ChangeNotifier {
         final entry = raw as Map<String, dynamic>;
         final alias = (entry['alias'] as String?)?.trim() ?? '';
         final path = (entry['path'] as String?)?.trim() ?? '';
-        if (alias.isEmpty || path.isEmpty || _installedAliases.contains(alias)) {
+        if (alias.isEmpty ||
+            path.isEmpty ||
+            _installedAliases.contains(alias)) {
           continue;
         }
         _preinstalledAliases.add(alias);
@@ -635,6 +644,67 @@ class AppsInstallService extends ChangeNotifier {
       progress: (progress ?? current.progress).clamp(0, 1).toDouble(),
     );
     notifyListeners();
+  }
+
+  void cacheCatalogIcons(Iterable<AppCard> apps) {
+    for (final app in apps) {
+      final alias = app.alias;
+      final url = app.iconUri;
+      if (alias.isEmpty || url.isEmpty) continue;
+      if (url.toLowerCase().endsWith('.svg')) continue;
+      _iconCacheQueue.putIfAbsent(alias, () => url);
+    }
+    unawaited(_drainIconCacheQueue());
+  }
+
+  Future<void> _drainIconCacheQueue() async {
+    if (_iconCacheWorking) return;
+    _iconCacheWorking = true;
+    try {
+      while (_iconCacheQueue.isNotEmpty) {
+        final alias = _iconCacheQueue.keys.first;
+        final url = _iconCacheQueue.remove(alias)!;
+        try {
+          if (await hasFapIcon(alias)) continue;
+          final bytes = await _fetchBytes(url);
+          if (bytes == null) continue;
+          final bits = decodeCatalogIconToFapBits(bytes);
+          if (bits != null) await writeFapIcon(alias, bits);
+        } catch (_) {}
+      }
+    } finally {
+      _iconCacheWorking = false;
+    }
+  }
+
+  Future<Uint8List?> _fetchBytes(String url) async {
+    try {
+      final http = io.HttpClient();
+      try {
+        final req = await http.getUrl(Uri.parse(url));
+        final res = await req.close();
+        if (res.statusCode != 200) return null;
+        final bytes = <int>[];
+        await for (final chunk in res) {
+          bytes.addAll(chunk);
+        }
+        return Uint8List.fromList(bytes);
+      } finally {
+        http.close(force: true);
+      }
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _cacheFapIcon(String alias, List<int> fapBytes) async {
+    if (alias.isEmpty) return;
+    try {
+      if (await hasFapIcon(alias)) return;
+      final extracted = extractFapIcon(Uint8List.fromList(fapBytes));
+      final icon = extracted?.icon;
+      if (icon != null) await writeFapIcon(alias, icon);
+    } catch (_) {}
   }
 
   Future<String> _fetchIconBase64(String url) async {

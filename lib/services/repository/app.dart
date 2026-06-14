@@ -1,4 +1,5 @@
 import 'dart:io' as io;
+import 'dart:typed_data';
 
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -177,6 +178,51 @@ Future<io.Directory> updateCacheDirectory() async {
 Future<io.File> updateCacheFile(String name) async {
   final dir = await updateCacheDirectory();
   return io.File(pathJoin([dir.path, '$name.json']));
+}
+
+const String kFapIconsFolderName = '.fap_icons';
+
+Future<io.Directory> fapIconRepoDirectory() async {
+  final root = await appDocumentsDirectory();
+  final dir = io.Directory(pathJoin([root.path, kFapIconsFolderName]));
+  await dir.create(recursive: true);
+  return dir;
+}
+
+io.File _fapIconRepoFile(io.Directory dir, String appId) =>
+    io.File(pathJoin([dir.path, '${sanitizePathSegment(appId)}.fap.icon']));
+
+Future<bool> hasFapIcon(String appId) async {
+  final id = appId.trim();
+  if (id.isEmpty) return false;
+  try {
+    final dir = await fapIconRepoDirectory();
+    return _fapIconRepoFile(dir, id).exists();
+  } catch (_) {
+    return false;
+  }
+}
+
+Future<Uint8List?> readFapIcon(String appId) async {
+  final id = appId.trim();
+  if (id.isEmpty) return null;
+  try {
+    final dir = await fapIconRepoDirectory();
+    final file = _fapIconRepoFile(dir, id);
+    if (!await file.exists()) return null;
+    return file.readAsBytes();
+  } catch (_) {
+    return null;
+  }
+}
+
+Future<void> writeFapIcon(String appId, List<int> bytes) async {
+  final id = appId.trim();
+  if (id.isEmpty) return;
+  try {
+    final dir = await fapIconRepoDirectory();
+    await _fapIconRepoFile(dir, id).writeAsBytes(bytes, flush: true);
+  } catch (_) {}
 }
 
 Future<io.Directory> legacyApplicationDocumentsDirectory(

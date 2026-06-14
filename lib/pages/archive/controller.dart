@@ -9,6 +9,7 @@ import 'fap_icon.dart';
 import 'metadata/parser.dart';
 import 'storage.dart';
 import '../../models/category.dart';
+import '../../services/repository/app.dart' as icon_repo;
 import 'models/fap_favorite.dart';
 import 'models/key.dart';
 
@@ -42,8 +43,8 @@ class _RemoteFile {
 
 class ArchiveController extends ChangeNotifier {
   ArchiveController({FlipperClient? client, ArchiveStorage? storage})
-      : _client = client ?? FlipperOneClient().get(),
-        _storage = storage ?? ArchiveStorage();
+    : _client = client ?? FlipperOneClient().get(),
+      _storage = storage ?? ArchiveStorage();
 
   final FlipperClient _client;
   final ArchiveStorage _storage;
@@ -185,7 +186,8 @@ class ArchiveController extends ChangeNotifier {
           );
           return {
             for (final item in response.items)
-              if (item.key.trim().isNotEmpty) item.key.trim(): item.value.trim(),
+              if (item.key.trim().isNotEmpty)
+                item.key.trim(): item.value.trim(),
           };
         },
       );
@@ -235,7 +237,8 @@ class ArchiveController extends ChangeNotifier {
     final entries = await _storage.readFapFavorites(_deviceName);
     final out = <FapFavorite>[];
     for (final e in entries) {
-      final icon = await _storage.readFapIcon(_deviceName, e.path);
+      var icon = await _storage.readFapIcon(_deviceName, e.path);
+      icon ??= await icon_repo.readFapIcon(_fapNameFromPath(e.path));
       final name = e.name.isNotEmpty ? e.name : _fapNameFromPath(e.path);
       out.add(FapFavorite(remotePath: e.path, name: name, icon: icon));
     }
@@ -252,7 +255,12 @@ class ArchiveController extends ChangeNotifier {
   }
 
   Future<void> toggleFavorite(ArchiveKey key) async {
-    final keyId = _localKey(key.category, key.name, key.extension, key.subFolder);
+    final keyId = _localKey(
+      key.category,
+      key.name,
+      key.extension,
+      key.subFolder,
+    );
     if (_favorites.contains(keyId)) {
       _favorites.remove(keyId);
     } else {
@@ -333,12 +341,19 @@ class ArchiveController extends ChangeNotifier {
       );
       notifyListeners();
 
+      final appId = _fapNameFromPath(remotePath);
       final existing = cached[remotePath];
-      var name = existing?.name ?? _fapNameFromPath(remotePath);
+      var name = existing?.name ?? appId;
       var icon =
           existing?.icon ?? await _storage.readFapIcon(_deviceName, remotePath);
 
-      // Download the app (unless already cached) to extract its icon and name.
+      if (icon == null) {
+        icon = await icon_repo.readFapIcon(appId);
+        if (icon != null) {
+          await _storage.writeFapIcon(_deviceName, remotePath, icon);
+        }
+      }
+
       if (icon == null) {
         final bytes = await _readRemoteBytes(remotePath, logErrors: false);
         if (bytes != null) {
@@ -348,6 +363,7 @@ class ArchiveController extends ChangeNotifier {
             icon = extracted.icon;
             if (icon != null) {
               await _storage.writeFapIcon(_deviceName, remotePath, icon);
+              await icon_repo.writeFapIcon(appId, icon);
             }
           }
         }
@@ -358,14 +374,17 @@ class ArchiveController extends ChangeNotifier {
       notifyListeners();
     }
 
-    _syncProgress =
-        SyncProgress(current: fapPaths.length, total: fapPaths.length, fileName: '');
+    _syncProgress = SyncProgress(
+      current: fapPaths.length,
+      total: fapPaths.length,
+      fileName: '',
+    );
   }
 
   Future<void> _persistFapFavorites() => _storage.writeFapFavorites(
-        _deviceName,
-        [for (final f in _fapFavorites) (path: f.remotePath, name: f.name)],
-      );
+    _deviceName,
+    [for (final f in _fapFavorites) (path: f.remotePath, name: f.name)],
+  );
 
   /// Starts a favorited app on the device by its full path. Returns whether the
   /// loader accepted the request; callers open the remote control on success.
@@ -387,8 +406,9 @@ class ArchiveController extends ChangeNotifier {
   /// Removes a favorited app: drops it from the local list/cache and rewrites
   /// the device's favorites.txt so it does not reappear on the next sync.
   Future<void> removeFapFavorite(FapFavorite fav) async {
-    _fapFavorites =
-        _fapFavorites.where((f) => f.remotePath != fav.remotePath).toList();
+    _fapFavorites = _fapFavorites
+        .where((f) => f.remotePath != fav.remotePath)
+        .toList();
     notifyListeners();
     await _persistFapFavorites();
     unawaited(_storage.deleteFapIcon(_deviceName, fav.remotePath));
@@ -401,10 +421,13 @@ class ArchiveController extends ChangeNotifier {
     final bytes = await _readRemoteBytes(favPath, logErrors: false);
     if (bytes == null) return;
     final target = _normalizeFavoritePath(remotePath);
-    final lines =
-        const Utf8Decoder(allowMalformed: true).convert(bytes).split(RegExp(r'\r?\n'));
+    final lines = const Utf8Decoder(
+      allowMalformed: true,
+    ).convert(bytes).split(RegExp(r'\r?\n'));
     final kept = lines
-        .where((l) => l.trim().isNotEmpty && _normalizeFavoritePath(l) != target)
+        .where(
+          (l) => l.trim().isNotEmpty && _normalizeFavoritePath(l) != target,
+        )
         .toList();
     final nonEmpty = lines.where((l) => l.trim().isNotEmpty).length;
     if (kept.length == nonEmpty) return; // nothing matched
@@ -457,7 +480,12 @@ class ArchiveController extends ChangeNotifier {
 
   Future<void> renameKey(ArchiveKey key, String newName) async {
     if (newName.trim().isEmpty || newName == key.name) return;
-    final keyId = _localKey(key.category, key.name, key.extension, key.subFolder);
+    final keyId = _localKey(
+      key.category,
+      key.name,
+      key.extension,
+      key.subFolder,
+    );
     final newFileName = '${newName.trim()}.${key.extension}';
     try {
       if (key.localPath != null) {
@@ -480,7 +508,11 @@ class ArchiveController extends ChangeNotifier {
           }
         }
         final newKeyId = _localKey(
-            key.category, newName.trim(), key.extension, key.subFolder);
+          key.category,
+          newName.trim(),
+          key.extension,
+          key.subFolder,
+        );
         _keys.remove(keyId);
         if (_favorites.contains(keyId)) {
           _favorites.remove(keyId);
@@ -514,12 +546,16 @@ class ArchiveController extends ChangeNotifier {
     if (key.localPath == null) return;
     try {
       final existingNames = _keys.values
-          .where((k) =>
-              k.category == key.category && k.subFolder == key.subFolder)
+          .where(
+            (k) => k.category == key.category && k.subFolder == key.subFolder,
+          )
           .map((k) => k.fileName)
           .toSet();
       final newName = _nextDuplicateName(key.fileName, existingNames);
-      final baseName = newName.substring(0, newName.length - key.extension.length - 1);
+      final baseName = newName.substring(
+        0,
+        newName.length - key.extension.length - 1,
+      );
       final sep = io.Platform.pathSeparator;
       final dir = io.File(key.localPath!).parent.path;
       final newLocalPath = '$dir$sep$newName';
@@ -537,8 +573,12 @@ class ArchiveController extends ChangeNotifier {
         }
       }
       final stat = await io.File(newLocalPath).stat();
-      final newKeyId =
-          _localKey(key.category, baseName, key.extension, key.subFolder);
+      final newKeyId = _localKey(
+        key.category,
+        baseName,
+        key.extension,
+        key.subFolder,
+      );
       _keys[newKeyId] = ArchiveKey(
         name: baseName,
         category: key.category,
@@ -673,10 +713,12 @@ class ArchiveController extends ChangeNotifier {
       await _refreshCategory(category);
       if (_lastError != null) throw StateError(_lastError!);
       final pendingIds = _keys.entries
-          .where((e) =>
-              e.value.category == category &&
-              !e.value.isDeleted &&
-              _needsDownload(e.value))
+          .where(
+            (e) =>
+                e.value.category == category &&
+                !e.value.isDeleted &&
+                _needsDownload(e.value),
+          )
           .map((e) => e.key)
           .toList();
       await _downloadPending(pendingIds);
@@ -694,8 +736,9 @@ class ArchiveController extends ChangeNotifier {
   }
 
   Future<void> _verifyScope(ArchiveCategory cat, String subFolder) async {
-    final path =
-        subFolder.isEmpty ? cat.remoteDir : '${cat.remoteDir}/$subFolder';
+    final path = subFolder.isEmpty
+        ? cat.remoteDir
+        : '${cat.remoteDir}/$subFolder';
     final remoteFiles = <_RemoteFile>[];
     bool ok = false;
     try {
@@ -711,13 +754,15 @@ class ArchiveController extends ChangeNotifier {
           if (ext == null) continue;
           if (cat.isIgnoredFile(base)) continue;
           final name = base.substring(0, base.length - ext.length - 1);
-          remoteFiles.add(_RemoteFile(
-            category: cat,
-            subFolder: subFolder,
-            name: name,
-            extension: ext,
-            size: f.size,
-          ));
+          remoteFiles.add(
+            _RemoteFile(
+              category: cat,
+              subFolder: subFolder,
+              name: name,
+              extension: ext,
+              size: f.size,
+            ),
+          );
         }
       }
       ok = true;
@@ -797,19 +842,26 @@ class ArchiveController extends ChangeNotifier {
           if (f.type == File_FileType.DIR) {
             if (ArchiveCategory.isIgnoredSubDir(name)) continue;
             final childRelPath = relPath.isEmpty ? name : '$relPath/$name';
-            await _collectRemoteFiles(cat, '$remotePath/$name', childRelPath, out);
+            await _collectRemoteFiles(
+              cat,
+              '$remotePath/$name',
+              childRelPath,
+              out,
+            );
           } else {
             final ext = cat.matchExtension(name);
             if (ext == null) continue;
             if (cat.isIgnoredFile(name)) continue;
             final baseName = name.substring(0, name.length - ext.length - 1);
-            out.add(_RemoteFile(
-              category: cat,
-              subFolder: relPath,
-              name: baseName,
-              extension: ext,
-              size: f.size,
-            ));
+            out.add(
+              _RemoteFile(
+                category: cat,
+                subFolder: relPath,
+                name: baseName,
+                extension: ext,
+                size: f.size,
+              ),
+            );
           }
         }
       }
@@ -874,8 +926,11 @@ class ArchiveController extends ChangeNotifier {
       done++;
       notifyListeners();
     }
-    _syncProgress =
-        SyncProgress(current: done, total: pendingIds.length, fileName: '');
+    _syncProgress = SyncProgress(
+      current: done,
+      total: pendingIds.length,
+      fileName: '',
+    );
   }
 
   Future<void> deleteKey(ArchiveKey key) async {
@@ -977,8 +1032,12 @@ class ArchiveController extends ChangeNotifier {
 
   /// Inserts or replaces a key from a locally-stored file entry.
   void _ingestLocal(LocalKeyEntry entry) {
-    final keyId =
-        _localKey(entry.category, entry.name, entry.extension, entry.subFolder);
+    final keyId = _localKey(
+      entry.category,
+      entry.name,
+      entry.extension,
+      entry.subFolder,
+    );
     _keys[keyId] = ArchiveKey(
       name: entry.name,
       category: entry.category,

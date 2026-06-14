@@ -2,7 +2,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../../../components/icon.dart';
+import '../../../../services/repository/app.dart' as icon_repo;
 import '../../../../theme.dart';
+import '../../../archive/fap_icon.dart';
 import '../../../archive/widgets/actions_sheet.dart';
 import '../share_remote_file.dart';
 import '../controller.dart';
@@ -44,7 +47,7 @@ class FileEntryActions {
 
 // ─── Icon badge ───────────────────────────────────────────────────────────────
 
-class FileIconBadge extends StatelessWidget {
+class FileIconBadge extends StatefulWidget {
   const FileIconBadge({
     super.key,
     required this.entry,
@@ -57,28 +60,81 @@ class FileIconBadge extends StatelessWidget {
   final bool muted;
 
   @override
+  State<FileIconBadge> createState() => _FileIconBadgeState();
+}
+
+class _FileIconBadgeState extends State<FileIconBadge> {
+  String? _fapAppId;
+  Uint8List? _fapIcon;
+
+  @override
+  void initState() {
+    super.initState();
+    _resolveFapIcon();
+  }
+
+  @override
+  void didUpdateWidget(FileIconBadge oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.entry.name != widget.entry.name) {
+      _fapIcon = null;
+      _resolveFapIcon();
+    }
+  }
+
+  void _resolveFapIcon() {
+    final name = widget.entry.name;
+    if (widget.entry.isDir || !name.toLowerCase().endsWith('.fap')) {
+      _fapAppId = null;
+      return;
+    }
+    final appId = name.substring(0, name.length - 4);
+    _fapAppId = appId;
+    icon_repo.readFapIcon(appId).then((bytes) {
+      if (mounted && _fapAppId == appId && bytes != null) {
+        setState(() => _fapIcon = bytes);
+      }
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final visual = fileVisualFor(entry, colors);
-    final color = muted ? colors.textMuted : visual.color;
-    final glyph = size * 0.55;
+    final visual = fileVisualFor(widget.entry, colors);
+    final color = widget.muted ? colors.textMuted : visual.color;
+    final glyph = widget.size * 0.55;
+    final fapIcon = _fapIcon;
+
+    final Widget child;
+    if (fapIcon != null) {
+      child = QIcon.xbm(
+        bytes: fapIcon,
+        width: fapIconWidth,
+        height: fapIconHeight,
+        cacheKey: 'repo:${widget.entry.name}',
+        color: color,
+        size: glyph,
+      );
+    } else if (visual.asset != null) {
+      child = SvgPicture.asset(
+        visual.asset!,
+        width: glyph,
+        height: glyph,
+        colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
+      );
+    } else {
+      child = Icon(visual.icon, size: glyph, color: color);
+    }
 
     return Container(
-      width: size,
-      height: size,
+      width: widget.size,
+      height: widget.size,
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(size * 0.28),
+        borderRadius: BorderRadius.circular(widget.size * 0.28),
       ),
-      child: visual.asset != null
-          ? SvgPicture.asset(
-              visual.asset!,
-              width: glyph,
-              height: glyph,
-              colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
-            )
-          : Icon(visual.icon, size: glyph, color: color),
+      child: child,
     );
   }
 }
@@ -189,11 +245,15 @@ class _FileRowState extends State<FileRow> {
       onEnter: _isDesktop ? (_) => setState(() => _hovered = true) : null,
       onExit: _isDesktop ? (_) => setState(() => _hovered = false) : null,
       child: Material(
-        color: widget.selected ? colors.accent.withValues(alpha: 0.12) : colors.card,
+        color: widget.selected
+            ? colors.accent.withValues(alpha: 0.12)
+            : colors.card,
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           onTap: blocked ? null : widget.onTap,
-          onLongPress: blocked ? null : (widget.onLongPress ?? _showActionsSheet),
+          onLongPress: blocked
+              ? null
+              : (widget.onLongPress ?? _showActionsSheet),
           onSecondaryTap: blocked ? null : _showActionsSheet,
           borderRadius: BorderRadius.circular(12),
           child: Padding(
@@ -422,18 +482,25 @@ class FileActionsSheet {
     final isDir = entry.isDir;
     final items = <ActionItem>[];
 
-    void add(IconData icon, String label, VoidCallback? onTap,
-        {bool destructive = false}) {
+    void add(
+      IconData icon,
+      String label,
+      VoidCallback? onTap, {
+      bool destructive = false,
+    }) {
       if (onTap == null) return;
-      items.add(ActionItem(
-        icon: icon,
-        label: label,
-        destructive: destructive,
-        onTap: onTap,
-      ));
+      items.add(
+        ActionItem(
+          icon: icon,
+          label: label,
+          destructive: destructive,
+          onTap: onTap,
+        ),
+      );
     }
 
-    final renameTap = onRenameInline ??
+    final renameTap =
+        onRenameInline ??
         (actions.onRename != null
             ? () => actions.onRename!.call(entry.name)
             : null);

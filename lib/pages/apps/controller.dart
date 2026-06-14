@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flutter/foundation.dart';
@@ -15,9 +15,9 @@ class AppsCatalogController extends ChangeNotifier {
     AppsCatalogApi? api,
     FlipperClient? client,
     this.pageSize = 48,
-  })  : _api = api ?? AppsCatalogApi(),
-        _ownsApi = api == null,
-        _client = client ?? FlipperOneClient().get() {
+  }) : _api = api ?? AppsCatalogApi(),
+       _ownsApi = api == null,
+       _client = client ?? FlipperOneClient().get() {
     install = AppsInstallService(client: _client, api: _api);
     install.addListener(notifyListeners);
     _connectionSub = _client.connectionStream.listen(_onConnection);
@@ -159,6 +159,7 @@ class AppsCatalogController extends ChangeNotifier {
       _offset = page.nextOffset;
       if (!page.hasMore) _reachedEnd = true;
       _lastError = null;
+      install.cacheCatalogIcons(page.items);
     } catch (e) {
       _lastError = e;
       _reachedEnd = true;
