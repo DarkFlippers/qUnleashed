@@ -104,21 +104,34 @@ class _PageTitle extends StatefulWidget {
 class _PageTitleState extends State<_PageTitle> {
   final FlipperClient _client = FlipperOneClient().get();
   StreamSubscription<FlipperConnectionState>? _connectionSubscription;
+  StreamSubscription<Map<String, String>>? _deviceInfoSubscription;
   FlipperDevice? _device;
+  String? _hardwareName;
   bool _connected = false;
 
   @override
   void initState() {
     super.initState();
     _device = _client.connectedDevice;
-    _connected = _device != null;
+    _connected = _client.isConnected;
+    _hardwareName = _client.getName();
     if (widget.showDeviceStatus && widget.subtitle == null) {
       _connectionSubscription = _client.connectionStream.listen((state) {
         if (!mounted) return;
         setState(() {
           _connected = state.connected;
-          _device = state.connected ? state.device : _device;
+          if (state.device != null) {
+            if (state.device!.id != _device?.id) _hardwareName = null;
+            _device = state.device;
+          }
         });
+      });
+      _deviceInfoSubscription = _client.deviceInfoUpdates.listen((patch) {
+        if (!mounted) return;
+        final name = _client.getName();
+        if (name != null && name.isNotEmpty) {
+          setState(() => _hardwareName = name);
+        }
       });
     }
   }
@@ -126,6 +139,7 @@ class _PageTitleState extends State<_PageTitle> {
   @override
   void dispose() {
     _connectionSubscription?.cancel();
+    _deviceInfoSubscription?.cancel();
     super.dispose();
   }
 
@@ -145,7 +159,7 @@ class _PageTitleState extends State<_PageTitle> {
           _Subtitle(text: widget.subtitle!, color: widget.foregroundColor)
         else if (widget.showDeviceStatus)
           _DeviceSubtitle(
-            name: _displayDeviceName(_device?.name),
+            name: _displayDeviceName(_hardwareName ?? _device?.name),
             connected: _connected,
             color: widget.foregroundColor,
           ),
