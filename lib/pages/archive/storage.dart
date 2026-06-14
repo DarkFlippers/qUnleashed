@@ -1,4 +1,5 @@
 import 'dart:io' as io;
+import 'dart:typed_data';
 
 import '../../services/repository/app.dart';
 import '../../models/category.dart';
@@ -213,6 +214,93 @@ class ArchiveStorage {
       final dir = deviceDir(deviceName);
       await dir.create(recursive: true);
       await _favoritesFile(deviceName).writeAsString(favorites.join('\n'));
+    } catch (_) {}
+  }
+
+  // ── Favorited apps (.fap) ────────────────────────────────────────────────
+
+  io.File _fapFavoritesFile(String deviceName) {
+    final sep = io.Platform.pathSeparator;
+    return io.File('${deviceDir(deviceName).path}$sep.fap_favorites');
+  }
+
+  /// On-disk icon path mirroring the device layout, e.g.
+  /// `/ext/apps/Tools/Foo.fap` → `<device>/apps/Tools/Foo.fap.icon`.
+  io.File _fapIconFile(String deviceName, String remotePath) {
+    const prefix = '/ext/apps/';
+    final rel = remotePath.startsWith(prefix)
+        ? remotePath.substring(prefix.length)
+        : remotePath.split('/').where((s) => s.isNotEmpty).last;
+    final parts = rel.split('/').where((s) => s.isNotEmpty).map(_sanitize);
+    return io.File('${pathJoin([deviceDir(deviceName).path, 'apps', ...parts])}.icon');
+  }
+
+  /// Reads persisted fap favorites as `(path, name)` records. The file stores
+  /// one entry per line as `remotePath\tname`.
+  Future<List<({String path, String name})>> readFapFavorites(
+    String deviceName,
+  ) async {
+    try {
+      await resolveRootDir();
+      final file = _fapFavoritesFile(deviceName);
+      if (!await file.exists()) return const [];
+      final out = <({String path, String name})>[];
+      for (final line in (await file.readAsString()).split('\n')) {
+        final trimmed = line.trim();
+        if (trimmed.isEmpty) continue;
+        final tab = trimmed.indexOf('\t');
+        final path = tab >= 0 ? trimmed.substring(0, tab) : trimmed;
+        final name = tab >= 0 ? trimmed.substring(tab + 1) : '';
+        out.add((path: path, name: name));
+      }
+      return out;
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<void> writeFapFavorites(
+    String deviceName,
+    List<({String path, String name})> entries,
+  ) async {
+    try {
+      await resolveRootDir();
+      final dir = deviceDir(deviceName);
+      await dir.create(recursive: true);
+      await _fapFavoritesFile(deviceName)
+          .writeAsString(entries.map((e) => '${e.path}\t${e.name}').join('\n'));
+    } catch (_) {}
+  }
+
+  Future<Uint8List?> readFapIcon(String deviceName, String remotePath) async {
+    try {
+      await resolveRootDir();
+      final file = _fapIconFile(deviceName, remotePath);
+      if (!await file.exists()) return null;
+      return file.readAsBytes();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> writeFapIcon(
+    String deviceName,
+    String remotePath,
+    List<int> bytes,
+  ) async {
+    try {
+      await resolveRootDir();
+      final file = _fapIconFile(deviceName, remotePath);
+      await file.parent.create(recursive: true);
+      await file.writeAsBytes(bytes, flush: true);
+    } catch (_) {}
+  }
+
+  Future<void> deleteFapIcon(String deviceName, String remotePath) async {
+    try {
+      await resolveRootDir();
+      final file = _fapIconFile(deviceName, remotePath);
+      if (await file.exists()) await file.delete();
     } catch (_) {}
   }
 

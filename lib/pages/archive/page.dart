@@ -2,15 +2,19 @@ import 'dart:io' as io;
 
 import 'package:flutter/material.dart';
 import '../../theme.dart';
+import '../../widgets/notification.dart';
+import '../remote/page.dart';
 import '../utils/сommander/page.dart';
 import '../utils/сommander/widgets/storage_card.dart';
 import 'category/category_page.dart';
 import 'category/deleted_page.dart';
 import 'controller.dart';
 import '../../models/category.dart';
+import 'models/fap_favorite.dart';
 import 'models/key.dart';
 import 'widgets/empty_view.dart';
 import 'widgets/categories_card.dart';
+import 'widgets/fap_favorite_card.dart';
 import 'widgets/key_actions_sheet.dart';
 import 'widgets/key_card.dart';
 import 'widgets/section_title.dart';
@@ -65,6 +69,28 @@ class _ArchivePageState extends State<ArchivePage> {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => FileManagerPage(initialPath: initialPath)),
     );
+  }
+
+  Future<void> _launchFap(FapFavorite fav) async {
+    if (!_ctrl.isConnected) {
+      context.showNotification(
+        'Connect a Flipper to launch apps',
+        type: QNotificationType.warning,
+      );
+      return;
+    }
+    final ok = await _ctrl.launchFapFavorite(fav);
+    if (!mounted) return;
+    if (ok) {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const RemoteControlPage()),
+      );
+    } else {
+      context.showNotification(
+        'Failed to launch ${fav.name}',
+        type: QNotificationType.error,
+      );
+    }
   }
 
   Future<void> _confirmFullSync() async {
@@ -202,8 +228,9 @@ class _ArchivePageState extends State<ArchivePage> {
       final starred = _ctrl.keysFor(cat).where((k) => k.favorite).toList();
       if (starred.isNotEmpty) groups[cat] = starred;
     }
+    final fapFavorites = _ctrl.fapFavorites;
 
-    if (groups.isEmpty) {
+    if (groups.isEmpty && fapFavorites.isEmpty) {
       return [
         SliverFillRemaining(
           hasScrollBody: false,
@@ -219,9 +246,28 @@ class _ArchivePageState extends State<ArchivePage> {
     final allKeys = groups.values.expand((keys) => keys).toList();
     return [
       const SliverToBoxAdapter(child: SectionTitle(text: 'FAVORITES')),
-      _keysSliver(allKeys),
+      if (allKeys.isNotEmpty) _keysSliver(allKeys),
+      if (fapFavorites.isNotEmpty) _fapSliver(fapFavorites),
       const SliverToBoxAdapter(child: SizedBox(height: 96)),
     ];
+  }
+
+  Widget _fapSliver(List<FapFavorite> favorites) {
+    return SliverPadding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+      sliver: SliverList.separated(
+        itemCount: favorites.length,
+        separatorBuilder: (_, _) => const SizedBox(height: 8),
+        itemBuilder: (_, i) => Padding(
+          padding: EdgeInsets.only(top: i == 0 ? 8 : 0),
+          child: FapFavoriteCard(
+            favorite: favorites[i],
+            onTap: () => _launchFap(favorites[i]),
+            onRemove: () => _ctrl.removeFapFavorite(favorites[i]),
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _keysSliver(List<ArchiveKey> keys) {

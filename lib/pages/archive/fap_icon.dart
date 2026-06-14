@@ -1,29 +1,47 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import '../paint/codec.dart';
+
 const _manifestMagic = 0x52474448;
+
+// Layout of `FlipperApplicationManifestV1` inside the `.fapmeta` section
+// (`#pragma pack(1)`), see firmware `application_manifest.h`:
+//   base header (magic, version, api_version, hw_target) = 14 bytes
+//   stack_size (2) + app_version (4) → name starts at 20
+//   name[32] → has_icon at 52 → icon[32] at 53.
+const _nameOffset = 14 + 2 + 4;
 const _nameLen = 32;
+const _hasIconOffset = _nameOffset + _nameLen;
+const _iconOffset = _hasIconOffset + 1;
 const _iconLen = 32;
+const _minManifestLen = _iconOffset + _iconLen;
+
+/// Icon dimensions used by Flipper application manifests.
+const fapIconWidth = 10;
+const fapIconHeight = 10;
 
 /// Extracted icon data and the app name discovered alongside it.
-///
-/// The icon bytes are XBM-format data used by Flipper canvas: row-major,
-/// 2 bytes per row for 10 pixels, bit 0 is the leftmost pixel.
 class FapIconData {
-  const FapIconData({required this.icon, required this.name});
+  const FapIconData({required this.name, this.icon});
 
-  final Uint8List icon;
   final String name;
+
+  /// Decoded 1bpp XBM bits for a [fapIconWidth]×[fapIconHeight] icon: row-major,
+  /// 2 bytes per row, bit 0 is the leftmost pixel. `null` when the app declares
+  /// no icon or it could not be decoded; callers fall back to a default icon.
+  final Uint8List? icon;
 }
 
-/// Parses a `.fap` ELF file and returns its embedded icon, if present.
+/// Parses a `.fap` ELF file and returns its embedded app name and icon.
 ///
 /// Returns `null` if the bytes are not a valid ELF, there is no `.fapmeta`
-/// section, the manifest magic does not match, no plausible name/icon pair is
-/// found, or the icon slot is entirely zeroed.
+/// section, the manifest magic does not match, or the name is not readable.
+/// A valid result may still have a `null` [FapIconData.icon] when the app
+/// ships without an icon.
 FapIconData? extractFapIcon(Uint8List fapBytes) {
   final fapMeta = _readElfSection(fapBytes, '.fapmeta');
-  if (fapMeta == null || fapMeta.length < 8 + _nameLen + _iconLen) {
+  if (fapMeta == null || fapMeta.length < _minManifestLen) {
     return null;
   }
 
@@ -32,26 +50,54 @@ FapIconData? extractFapIcon(Uint8List fapBytes) {
     return null;
   }
 
-  final last = fapMeta.length - _nameLen - _iconLen;
-  for (var offset = 8; offset <= last; offset++) {
-    final name = _tryReadName(fapMeta.sublist(offset, offset + _nameLen));
-    if (name == null) {
-      continue;
-    }
-
-    final iconStart = offset + _nameLen;
-    final icon = fapMeta.sublist(iconStart, iconStart + _iconLen);
-    if (icon.every((byte) => byte == 0)) {
-      continue;
-    }
-
-    return FapIconData(icon: Uint8List.fromList(icon), name: name);
+  final name = _readName(fapMeta, _nameOffset, _nameLen);
+  if (name == null) {
+    return null;
   }
 
-  return null;
+  Uint8List? icon;
+  if (fapMeta[_hasIconOffset] != 0) {
+    icon = _decodeIcon(
+      Uint8List.sublistView(fapMeta, _iconOffset, _iconOffset + _iconLen),
+    );
+  }
+
+  return FapIconData(name: name, icon: icon);
 }
 
 FapIconData? extract(Uint8List fapBytes) => extractFapIcon(fapBytes);
+
+/// Decodes the manifest icon field, which is a Flipper "bm" payload (optionally
+/// heatshrink-compressed), into raw XBM bits. Returns `null` if it cannot be
+/// decoded or is too short for a [fapIconWidth]×[fapIconHeight] image.
+Uint8List? _decodeIcon(Uint8List field) {
+  try {
+    final xbm = PaintCodec.decodeBmFile(field);
+    if (xbm == null) return null;
+    final rowBytes = (fapIconWidth + 7) >> 3;
+    if (xbm.length < rowBytes * fapIconHeight) return null;
+    if (xbm.every((byte) => byte == 0)) return null;
+    return xbm;
+  } catch (_) {
+    return null;
+  }
+}
+
+String? _readName(Uint8List bytes, int offset, int maxLen) {
+  final end = offset + maxLen;
+  var nul = offset;
+  while (nul < end && bytes[nul] != 0) {
+    nul++;
+  }
+  if (nul == offset) return null;
+  for (var i = offset; i < nul; i++) {
+    final byte = bytes[i];
+    if (!((byte >= 0x21 && byte <= 0x7e) || byte == 0x20)) {
+      return null;
+    }
+  }
+  return ascii.decode(bytes.sublist(offset, nul), allowInvalid: false);
+}
 
 Uint8List? _readElfSection(Uint8List bytes, String sectionName) {
   if (bytes.length < 16 ||
@@ -163,32 +209,6 @@ Uint8List? _readSectionBytes(
   }
 
   return Uint8List.sublistView(bytes, offset, offset + size);
-}
-
-String? _tryReadName(Uint8List slice) {
-  if (slice.length != _nameLen) {
-    return null;
-  }
-
-  final firstNull = slice.indexOf(0);
-  if (firstNull < 1 || firstNull >= _nameLen) {
-    return null;
-  }
-
-  for (var i = 0; i < firstNull; i++) {
-    final byte = slice[i];
-    if (!((byte >= 0x21 && byte <= 0x7e) || byte == 0x20)) {
-      return null;
-    }
-  }
-
-  for (var i = firstNull; i < slice.length; i++) {
-    if (slice[i] != 0) {
-      return null;
-    }
-  }
-
-  return ascii.decode(slice.sublist(0, firstNull), allowInvalid: false);
 }
 
 String? _readCString(Uint8List bytes, int offset) {

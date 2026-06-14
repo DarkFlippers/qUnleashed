@@ -5,9 +5,11 @@ import 'dart:io' as io;
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/foundation.dart';
 
+import 'fap_icon.dart';
 import 'metadata/parser.dart';
 import 'storage.dart';
 import '../../models/category.dart';
+import 'models/fap_favorite.dart';
 import 'models/key.dart';
 
 class SyncProgress {
@@ -53,6 +55,7 @@ class ArchiveController extends ChangeNotifier {
   SyncProgress? _syncProgress;
   String? _lastError;
   Set<String> _favorites = <String>{};
+  List<FapFavorite> _fapFavorites = <FapFavorite>[];
 
   final Map<String, ArchiveKey> _keys = <String, ArchiveKey>{};
 
@@ -67,6 +70,10 @@ class ArchiveController extends ChangeNotifier {
   String get deviceName => _deviceName;
   bool get isConnected => _client.isConnected;
   ArchiveStorage get storage => _storage;
+
+  /// Favorited apps (`.fap`) imported from the device, shown in the favorites
+  /// list alongside starred archive keys.
+  List<FapFavorite> get fapFavorites => _fapFavorites;
 
   // Cached, lazily-rebuilt views over [_keys]. Invalidated in [notifyListeners],
   // so each view is recomputed at most once between change notifications instead
@@ -146,8 +153,18 @@ class ArchiveController extends ChangeNotifier {
     final hasDeviceName = await _awaitRealDeviceName();
     if (!hasDeviceName) return;
     await syncAll();
-    if (_syncStatus == ArchiveSyncStatus.synced) {
+    if (!_client.isConnected) return;
+    // Phase 2: after all categories are synced, restart the progress bar and
+    // sync only the favorited apps. Runs even if a category sync hiccuped.
+    _syncing = true;
+    _syncProgress = null;
+    notifyListeners();
+    try {
       await _syncDeviceFavorites();
+    } finally {
+      _syncing = false;
+      _syncProgress = null;
+      notifyListeners();
     }
   }
 
@@ -210,6 +227,30 @@ class ArchiveController extends ChangeNotifier {
     _favorites = await _storage.readFavorites(_deviceName);
   }
 
+  Future<void> _loadFapFavorites() async {
+    if (_deviceName.isEmpty) {
+      _fapFavorites = <FapFavorite>[];
+      return;
+    }
+    final entries = await _storage.readFapFavorites(_deviceName);
+    final out = <FapFavorite>[];
+    for (final e in entries) {
+      final icon = await _storage.readFapIcon(_deviceName, e.path);
+      final name = e.name.isNotEmpty ? e.name : _fapNameFromPath(e.path);
+      out.add(FapFavorite(remotePath: e.path, name: name, icon: icon));
+    }
+    _fapFavorites = out;
+  }
+
+  static String _fapNameFromPath(String remotePath) {
+    final slash = remotePath.lastIndexOf('/');
+    var name = slash >= 0 ? remotePath.substring(slash + 1) : remotePath;
+    if (name.toLowerCase().endsWith('.fap')) {
+      name = name.substring(0, name.length - 4);
+    }
+    return name;
+  }
+
   Future<void> toggleFavorite(ArchiveKey key) async {
     final keyId = _localKey(key.category, key.name, key.extension, key.subFolder);
     if (_favorites.contains(keyId)) {
@@ -259,11 +300,122 @@ class ArchiveController extends ChangeNotifier {
       final keyId = keysByRemotePath[path];
       if (keyId != null && _favorites.add(keyId)) changed = true;
     }
-    if (!changed) return;
+    if (changed) {
+      await _storage.writeFavorites(_deviceName, _favorites);
+      _applyFavorites();
+      notifyListeners();
+    }
 
-    await _storage.writeFavorites(_deviceName, _favorites);
-    _applyFavorites();
+    await _syncFapFavorites(
+      paths.where((p) => p.toLowerCase().endsWith('.fap')).toList(),
+    );
+  }
+
+  /// Syncs the device's favorited apps, one `.fap` at a time, surfacing each in
+  /// the (restarted) progress bar. The device list is authoritative. As soon as
+  /// an app is downloaded and its icon extracted, it is appended to the list and
+  /// notified so it appears in the menu immediately; apps without an extractable
+  /// icon still appear, using the default icon.
+  Future<void> _syncFapFavorites(List<String> fapPaths) async {
+    if (_deviceName.isEmpty) return;
+
+    final cached = {for (final f in _fapFavorites) f.remotePath: f};
+    final result = <FapFavorite>[];
+    _fapFavorites = result;
     notifyListeners();
+
+    for (var i = 0; i < fapPaths.length; i++) {
+      final remotePath = fapPaths[i];
+      _syncProgress = SyncProgress(
+        current: i,
+        total: fapPaths.length,
+        fileName: _fapNameFromPath(remotePath),
+      );
+      notifyListeners();
+
+      final existing = cached[remotePath];
+      var name = existing?.name ?? _fapNameFromPath(remotePath);
+      var icon =
+          existing?.icon ?? await _storage.readFapIcon(_deviceName, remotePath);
+
+      // Download the app (unless already cached) to extract its icon and name.
+      if (icon == null) {
+        final bytes = await _readRemoteBytes(remotePath, logErrors: false);
+        if (bytes != null) {
+          final extracted = extractFapIcon(Uint8List.fromList(bytes));
+          if (extracted != null) {
+            if (extracted.name.isNotEmpty) name = extracted.name;
+            icon = extracted.icon;
+            if (icon != null) {
+              await _storage.writeFapIcon(_deviceName, remotePath, icon);
+            }
+          }
+        }
+      }
+
+      result.add(FapFavorite(remotePath: remotePath, name: name, icon: icon));
+      await _persistFapFavorites();
+      notifyListeners();
+    }
+
+    _syncProgress =
+        SyncProgress(current: fapPaths.length, total: fapPaths.length, fileName: '');
+  }
+
+  Future<void> _persistFapFavorites() => _storage.writeFapFavorites(
+        _deviceName,
+        [for (final f in _fapFavorites) (path: f.remotePath, name: f.name)],
+      );
+
+  /// Starts a favorited app on the device by its full path. Returns whether the
+  /// loader accepted the request; callers open the remote control on success.
+  Future<bool> launchFapFavorite(FapFavorite fav) async {
+    if (!_client.isConnected) return false;
+    try {
+      await _client.appStart(
+        StartRequest(name: fav.remotePath, args: ''),
+        timeout: const Duration(seconds: 15),
+      );
+      return true;
+    } catch (e) {
+      _lastError = '$e';
+      LogService.log('[Archive] launch ${fav.remotePath} failed: $e');
+      return false;
+    }
+  }
+
+  /// Removes a favorited app: drops it from the local list/cache and rewrites
+  /// the device's favorites.txt so it does not reappear on the next sync.
+  Future<void> removeFapFavorite(FapFavorite fav) async {
+    _fapFavorites =
+        _fapFavorites.where((f) => f.remotePath != fav.remotePath).toList();
+    notifyListeners();
+    await _persistFapFavorites();
+    unawaited(_storage.deleteFapIcon(_deviceName, fav.remotePath));
+    unawaited(_removeDeviceFavorite(fav.remotePath));
+  }
+
+  Future<void> _removeDeviceFavorite(String remotePath) async {
+    if (!_client.isConnected) return;
+    const favPath = '/ext/favorites.txt';
+    final bytes = await _readRemoteBytes(favPath, logErrors: false);
+    if (bytes == null) return;
+    final target = _normalizeFavoritePath(remotePath);
+    final lines =
+        const Utf8Decoder(allowMalformed: true).convert(bytes).split(RegExp(r'\r?\n'));
+    final kept = lines
+        .where((l) => l.trim().isNotEmpty && _normalizeFavoritePath(l) != target)
+        .toList();
+    final nonEmpty = lines.where((l) => l.trim().isNotEmpty).length;
+    if (kept.length == nonEmpty) return; // nothing matched
+    try {
+      await _client.storageWriteChunked(
+        favPath,
+        utf8.encode(kept.isEmpty ? '' : '${kept.join('\n')}\n'),
+      );
+    } catch (e) {
+      LogService.log('[Archive] update favorites.txt failed: $e');
+    }
   }
 
   static String _normalizeFavoritePath(String raw) {
@@ -431,12 +583,14 @@ class ArchiveController extends ChangeNotifier {
     try {
       if (_deviceName.isEmpty) {
         _keys.clear();
+        _fapFavorites = <FapFavorite>[];
         if (_syncStatus == ArchiveSyncStatus.syncing) {
           _syncStatus = ArchiveSyncStatus.idle;
         }
         return;
       }
       await _loadFavorites();
+      await _loadFapFavorites();
       await _storage.migrateLegacyFolders(_deviceName);
       await _storage.ensureLayout(_deviceName);
       final localEntries = await _storage.listAll(_deviceName);
