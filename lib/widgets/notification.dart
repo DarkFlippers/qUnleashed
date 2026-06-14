@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../models/colors/status.dart';
 import '../theme.dart';
 
 enum QNotificationType { error, info, warning, good }
@@ -68,12 +69,7 @@ extension QNotificationContext on BuildContext {
     QNotificationType type = QNotificationType.info,
     Duration duration = QNotification.defaultDuration,
   }) {
-    QNotification.show(
-      this,
-      message: message,
-      type: type,
-      duration: duration,
-    );
+    QNotification.show(this, message: message, type: type, duration: duration);
   }
 }
 
@@ -160,12 +156,18 @@ class _QNotificationHostState extends State<_QNotificationHost>
           position: _slide,
           child: FadeTransition(
             opacity: _fade,
-            child: Material(
-              color: Colors.transparent,
-              child: _QNotificationCard(
-                message: widget.message,
-                type: widget.type,
-                onClose: _close,
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 520),
+                child: Material(
+                  color: Colors.transparent,
+                  child: _QNotificationCard(
+                    message: widget.message,
+                    type: widget.type,
+                    onClose: _close,
+                  ),
+                ),
               ),
             ),
           ),
@@ -189,77 +191,121 @@ class _QNotificationCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final accent = _accentColor(colors);
+    final visual = _visual;
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
-      decoration: BoxDecoration(
-        color: colors.card,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: accent.withValues(alpha: 0.42)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: colors.isDark ? 0.34 : 0.12),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Icon(_icon, color: accent, size: 22),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              message,
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: colors.textPrimary,
-                fontSize: 14,
-                height: 1.25,
-                fontWeight: FontWeight.w600,
+    return Material(
+      color: colors.card,
+      borderRadius: BorderRadius.circular(10),
+      clipBehavior: Clip.antiAlias,
+      child: Semantics(
+        liveRegion: true,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 8, 4, 8),
+          child: Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: visual.color.withValues(
+                    alpha: colors.isDark ? 0.2 : 0.14,
+                  ),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(visual.icon, color: visual.color, size: 20),
               ),
-            ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      visual.title,
+                      style: TextStyle(
+                        color: colors.textPrimary,
+                        fontSize: 13,
+                        height: 1.15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 1),
+                    Text(
+                      message,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: colors.textSecondary,
+                        fontSize: 11,
+                        height: 1.2,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                tooltip: 'Close',
+                onPressed: onClose,
+                style: IconButton.styleFrom(
+                  minimumSize: const Size.square(34),
+                  maximumSize: const Size.square(34),
+                  padding: EdgeInsets.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                icon: Icon(
+                  Icons.close_rounded,
+                  color: colors.textMuted,
+                  size: 18,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 8),
-          IconButton(
-            tooltip: 'Close',
-            visualDensity: VisualDensity.compact,
-            constraints: const BoxConstraints.tightFor(width: 34, height: 34),
-            padding: EdgeInsets.zero,
-            onPressed: onClose,
-            icon: Icon(Icons.close, color: colors.textMuted, size: 20),
-          ),
-        ],
+        ),
       ),
     );
   }
 
-  IconData get _icon {
+  _QNotificationVisual get _visual {
     switch (type) {
       case QNotificationType.error:
-        return Icons.error_outline_rounded;
+        return const _QNotificationVisual(
+          title: 'Error',
+          icon: Icons.error_outline_rounded,
+          statusColor: StatusColor.error,
+        );
       case QNotificationType.info:
-        return Icons.info_outline_rounded;
+        return const _QNotificationVisual(
+          title: 'Information',
+          icon: Icons.info_outline_rounded,
+          statusColor: StatusColor.info,
+        );
       case QNotificationType.warning:
-        return Icons.warning_amber_rounded;
+        return const _QNotificationVisual(
+          title: 'Warning',
+          icon: Icons.warning_amber_rounded,
+          statusColor: StatusColor.warning,
+        );
       case QNotificationType.good:
-        return Icons.check_circle_outline_rounded;
+        return const _QNotificationVisual(
+          title: 'Done',
+          icon: Icons.check_circle_outline_rounded,
+          statusColor: StatusColor.good,
+        );
     }
   }
+}
 
-  Color _accentColor(QAppColors colors) {
-    switch (type) {
-      case QNotificationType.error:
-        return colors.danger;
-      case QNotificationType.info:
-        return colors.info;
-      case QNotificationType.warning:
-        return const Color(0xFFFFA726);
-      case QNotificationType.good:
-        return colors.success;
-    }
-  }
+class _QNotificationVisual {
+  const _QNotificationVisual({
+    required this.title,
+    required this.icon,
+    required this.statusColor,
+  });
+
+  final String title;
+  final IconData icon;
+  final StatusColor statusColor;
+
+  Color get color => statusColor.color;
 }
