@@ -3,13 +3,15 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme.dart';
 import 'package:qunleashed/components/appbar.dart';
+import 'package:qunleashed/models/colors/category.dart';
 import '../../../widgets/notification.dart';
-import '../../../models/category.dart';
 import 'controller.dart';
 import 'file_page.dart';
 import 'models.dart';
 import 'settings_dialog.dart';
 import 'widgets/ir_search_field.dart';
+
+const _infraredAsset = 'assets/ic/fileformat/ir.svg';
 
 class IrLibPage extends StatefulWidget {
   const IrLibPage({super.key});
@@ -207,7 +209,7 @@ class _IrEntryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final ir = ArchiveCategory.infrared;
+    final infraredColor = ArchiveCategoryColor.infrared.color;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Material(
@@ -227,7 +229,7 @@ class _IrEntryCard extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: entry.isDir
                         ? colors.textMuted.withValues(alpha: 0.18)
-                        : ir.color.withValues(alpha: 0.18),
+                        : infraredColor.withValues(alpha: 0.18),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: entry.isDir
@@ -237,11 +239,11 @@ class _IrEntryCard extends StatelessWidget {
                           size: 22,
                         )
                       : SvgPicture.asset(
-                          ir.asset,
+                          _infraredAsset,
                           width: 22,
                           height: 22,
                           colorFilter: ColorFilter.mode(
-                            ir.color,
+                            infraredColor,
                             BlendMode.srcIn,
                           ),
                         ),
@@ -265,7 +267,7 @@ class _IrEntryCard extends StatelessWidget {
                       Text(
                         entry.isDir
                             ? 'Folder'
-                            : '${ir.title} В· ${_formatSize(entry.size)}',
+                            : 'Infrared В· ${_formatSize(entry.size)}',
                         style: TextStyle(color: colors.textMuted, fontSize: 12),
                       ),
                     ],

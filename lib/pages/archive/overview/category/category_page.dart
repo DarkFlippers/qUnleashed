@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../../theme.dart';
 import 'package:qunleashed/components/appbar.dart';
 import '../controller.dart';
-import '../../../../models/category.dart';
+import '../../category.dart';
 import '../../models/key.dart';
 import '../widgets/empty_view.dart';
 import '../widgets/key_actions_sheet.dart';

@@ -4,7 +4,7 @@ import 'dart:convert';
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
-import '../../../models/category.dart';
+import '../../archive/category.dart';
 import '../../archive/overview/storage.dart';
 import 'widgets/ir_file_viewer.dart';
 

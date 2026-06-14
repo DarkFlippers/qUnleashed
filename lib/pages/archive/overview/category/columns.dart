@@ -1,4 +1,4 @@
-import '../../../../models/category.dart';
+import '../../category.dart';
 
 /// A single column in the category table view.
 class ArchiveCol {

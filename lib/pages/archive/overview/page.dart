@@ -9,7 +9,7 @@ import '../сommander/widgets/storage_card.dart';
 import 'category/category_page.dart';
 import 'category/deleted_page.dart';
 import 'controller.dart';
-import '../../../models/category.dart';
+import '../category.dart';
 import '../models/fap.dart';
 import '../models/key.dart';
 import 'widgets/empty_view.dart';

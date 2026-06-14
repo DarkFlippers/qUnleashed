@@ -2,7 +2,7 @@ import 'dart:io' as io;
 import 'dart:typed_data';
 
 import '../../../services/repository/app.dart';
-import '../../../models/category.dart';
+import '../category.dart';
 
 class LocalKeyEntry {
   LocalKeyEntry({

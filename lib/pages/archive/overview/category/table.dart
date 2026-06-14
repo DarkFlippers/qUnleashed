@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../components/icon.dart';
 import '../../../../theme.dart';
 import '../format.dart';
-import '../../../../models/category.dart';
+import '../../category.dart';
 import '../../models/key.dart';
 import 'columns.dart';
 

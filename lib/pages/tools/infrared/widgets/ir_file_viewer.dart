@@ -6,9 +6,9 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../../theme.dart';
 import 'package:qunleashed/components/appbar.dart';
+import 'package:qunleashed/models/colors/category.dart';
 import '../../../../widgets/notification.dart';
 import '../../../../widgets/progress_button.dart';
-import '../../../../models/category.dart';
 
 typedef IrFileSendHandler =
     Future<bool> Function({
@@ -17,6 +17,8 @@ typedef IrFileSendHandler =
     });
 
 typedef IrFileAfterSend = Future<void> Function(List<int> bytes);
+
+const _infraredAsset = 'assets/ic/fileformat/ir.svg';
 
 class IrFileViewer extends StatefulWidget {
   const IrFileViewer({
@@ -150,7 +152,7 @@ class _IrFileViewerState extends State<IrFileViewer> {
         ),
       );
     }
-    final ir = ArchiveCategory.infrared;
+    final infraredColor = ArchiveCategoryColor.infrared.color;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -163,14 +165,14 @@ class _IrFileViewerState extends State<IrFileViewer> {
                 height: 36,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: ir.color.withValues(alpha: 0.18),
+                  color: infraredColor.withValues(alpha: 0.18),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: SvgPicture.asset(
-                  ir.asset,
+                  _infraredAsset,
                   width: 22,
                   height: 22,
-                  colorFilter: ColorFilter.mode(ir.color, BlendMode.srcIn),
+                  colorFilter: ColorFilter.mode(infraredColor, BlendMode.srcIn),
                 ),
               ),
               const SizedBox(width: 12),

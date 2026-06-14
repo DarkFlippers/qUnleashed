@@ -8,7 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'fap_icon.dart';
 import 'metadata/parser.dart';
 import 'storage.dart';
-import '../../../models/category.dart';
+import '../category.dart';
 import '../../../services/repository/app.dart' as icon_repo;
 import '../models/fap.dart';
 import '../models/key.dart';

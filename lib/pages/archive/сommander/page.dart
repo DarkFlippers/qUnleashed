@@ -6,7 +6,7 @@ import '../../../theme.dart';
 import 'package:qunleashed/components/appbar.dart';
 import '../../../widgets/notification.dart';
 import '../emulate/page.dart';
-import '../../../models/category.dart';
+import '../category.dart';
 import '../models/key.dart';
 import '../editor/page.dart';
 import '../../tools/paint/editor/page.dart';

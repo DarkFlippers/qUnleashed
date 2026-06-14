@@ -3,11 +3,13 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme.dart';
 import 'package:qunleashed/components/appbar.dart';
+import 'package:qunleashed/models/colors/category.dart';
 import '../../../widgets/notification.dart';
-import '../../../models/category.dart';
 import 'backend/infrared_backend_api.dart';
 import 'backend/infrared_backend_models.dart';
 import 'ir_content_page.dart';
+
+const _infraredAsset = 'assets/ic/fileformat/ir.svg';
 
 class IrInfraredsPage extends StatefulWidget {
   const IrInfraredsPage({
@@ -107,7 +109,7 @@ class _IrInfraredsPageState extends State<IrInfraredsPage> {
 
   Widget _buildBody(BuildContext context) {
     final colors = context.appColors;
-    final ir = ArchiveCategory.infrared;
+    final infraredColor = ArchiveCategoryColor.infrared.color;
     if (_loading) {
       return Center(child: CircularProgressIndicator(color: colors.accent));
     }
@@ -147,15 +149,15 @@ class _IrInfraredsPageState extends State<IrInfraredsPage> {
                       height: 36,
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
-                        color: ir.color.withValues(alpha: 0.18),
+                        color: infraredColor.withValues(alpha: 0.18),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: SvgPicture.asset(
-                        ir.asset,
+                        _infraredAsset,
                         width: 22,
                         height: 22,
                         colorFilter: ColorFilter.mode(
-                          ir.color,
+                          infraredColor,
                           BlendMode.srcIn,
                         ),
                       ),
