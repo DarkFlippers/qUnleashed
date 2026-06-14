@@ -6,6 +6,8 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../notifications/notification_center.dart';
+
 class ConnectionNotificationService with WidgetsBindingObserver, WindowListener {
   static final ConnectionNotificationService instance =
       ConnectionNotificationService._();
@@ -36,9 +38,11 @@ class ConnectionNotificationService with WidgetsBindingObserver, WindowListener 
       threadIdentifier: _channelId,
     ),
     linux: LinuxNotificationDetails(urgency: LinuxNotificationUrgency.normal),
+    windows: WindowsNotificationDetails(),
   );
 
-  final _plugin = FlutterLocalNotificationsPlugin();
+  FlutterLocalNotificationsPlugin get _plugin =>
+      NotificationCenter.instance.plugin;
 
   bool _started = false;
   AppLifecycleState _lifecycleState = AppLifecycleState.resumed;
@@ -107,7 +111,9 @@ class ConnectionNotificationService with WidgetsBindingObserver, WindowListener 
 
     if (state.connected) {
       _debounceTimer?.cancel();
-      _plugin.cancel(id: _notificationId);
+      if (NotificationCenter.instance.isReady) {
+        _plugin.cancel(id: _notificationId);
+      }
       return;
     }
 
@@ -123,6 +129,7 @@ class ConnectionNotificationService with WidgetsBindingObserver, WindowListener 
   }
 
   Future<void> _show(String deviceName) async {
+    if (!NotificationCenter.instance.isReady) return;
     await _plugin.show(
       id: _notificationId,
       title: 'Connection Lost',

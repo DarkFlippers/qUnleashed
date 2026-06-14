@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
@@ -13,6 +15,47 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await LogService.initialize();
   runApp(const QUnleashedApp());
+  _bootstrapAmbientServices();
+}
+
+/// Brings up the optional background services (notifications, connection
+/// notifier, update scheduler). None of them are required to render the app,
+/// so they run independently of the UI and a failure in one never blocks the
+/// others — or the main screen. The try/catch here is a safety net for
+/// genuinely unexpected runtime errors (IO, OS permission denials), not a
+/// substitute for correct per-platform configuration.
+void _bootstrapAmbientServices() {
+  final client = FlipperOneClient().get();
+
+  unawaited(
+    _guard(
+      'connection notifier',
+      () => ConnectionNotificationService.instance.start(client),
+    ),
+  );
+
+  // Update directory + notifications must be ready before the scheduler (and
+  // before routing a tapped firmware notification), so this strand is ordered.
+  unawaited(
+    _guard('firmware updates', () async {
+      await Future.wait([
+        UpdateService.instance.initialize(),
+        initFirmwareUpdateNotifications(
+          onNotificationTap: handleFirmwareUpdateNotificationPayload,
+        ),
+      ]);
+      flushPendingFirmwareUpdateRoute();
+      await initializeUpdateScheduling();
+    }),
+  );
+}
+
+Future<void> _guard(String label, Future<void> Function() task) async {
+  try {
+    await task();
+  } catch (error, stackTrace) {
+    LogService.log('Ambient service "$label" failed: $error\n$stackTrace');
+  }
 }
 
 class QUnleashedApp extends StatelessWidget {
@@ -27,57 +70,7 @@ class QUnleashedApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         theme: buildAppTheme(QAppThemeController.instance.activeFirmware),
         navigatorKey: updateNavigatorKey,
-        home: const _AppStartup(),
-      ),
-    );
-  }
-}
-
-class _AppStartup extends StatefulWidget {
-  const _AppStartup();
-
-  @override
-  State<_AppStartup> createState() => _AppStartupState();
-}
-
-class _AppStartupState extends State<_AppStartup> {
-  @override
-  void initState() {
-    super.initState();
-    _init();
-  }
-
-  Future<void> _init() async {
-    await Future.wait([
-      UpdateService.instance.initialize(),
-      initFirmwareUpdateNotifications(
-        onNotificationTap: handleFirmwareUpdateNotificationPayload,
-      ),
-      ConnectionNotificationService.instance.start(FlipperOneClient().get()),
-    ]);
-    await initializeUpdateScheduling();
-    if (!mounted) return;
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute<void>(builder: (_) => const DevicePage()),
-    );
-    flushPendingFirmwareUpdateRoute();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.appColors;
-    return Scaffold(
-      backgroundColor: colors.background,
-      body: Center(
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(28),
-          child: Image.asset(
-            'assets/img/firmware/unleashed.jpg',
-            width: 110,
-            height: 110,
-            fit: BoxFit.cover,
-          ),
-        ),
+        home: const DevicePage(),
       ),
     );
   }

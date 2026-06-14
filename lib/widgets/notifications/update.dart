@@ -1,55 +1,15 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
-final _plugin = FlutterLocalNotificationsPlugin();
-bool _ready = false;
+import '../../services/notifications/notification_center.dart';
 
 Future<void> initFirmwareUpdateNotifications({
   bool requestPermissions = true,
   void Function(String? payload)? onNotificationTap,
-}) async {
-  final settings = InitializationSettings(
-    android: const AndroidInitializationSettings('@mipmap/ic_launcher'),
-    iOS: DarwinInitializationSettings(
-      requestAlertPermission: requestPermissions,
-      requestBadgePermission: false,
-      requestSoundPermission: false,
-    ),
-    macOS: DarwinInitializationSettings(
-      requestAlertPermission: requestPermissions,
-      requestBadgePermission: false,
-      requestSoundPermission: false,
-    ),
-    linux: const LinuxInitializationSettings(defaultActionName: 'Open'),
+}) {
+  return NotificationCenter.instance.initialize(
+    requestPermissions: requestPermissions,
+    onNotificationTap: onNotificationTap,
   );
-  await _plugin.initialize(
-    settings: settings,
-    onDidReceiveNotificationResponse: (response) {
-      onNotificationTap?.call(response.payload);
-    },
-  );
-  final launchDetails = await _plugin.getNotificationAppLaunchDetails();
-  final launchResponse = launchDetails?.notificationResponse;
-  if (launchDetails?.didNotificationLaunchApp ?? false) {
-    onNotificationTap?.call(launchResponse?.payload);
-  }
-  if (requestPermissions) {
-    await _plugin
-        .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin
-        >()
-        ?.requestNotificationsPermission();
-    await _plugin
-        .resolvePlatformSpecificImplementation<
-          IOSFlutterLocalNotificationsPlugin
-        >()
-        ?.requestPermissions(alert: true, badge: false, sound: false);
-    await _plugin
-        .resolvePlatformSpecificImplementation<
-          MacOSFlutterLocalNotificationsPlugin
-        >()
-        ?.requestPermissions(alert: true, badge: false, sound: false);
-  }
-  _ready = true;
 }
 
 class FirmwareUpdateNotification {
@@ -76,6 +36,7 @@ class FirmwareUpdateNotification {
       threadIdentifier: 'firmware_updates',
     ),
     linux: LinuxNotificationDetails(urgency: LinuxNotificationUrgency.normal),
+    windows: WindowsNotificationDetails(),
   );
 
   static Future<void> show({
@@ -83,8 +44,8 @@ class FirmwareUpdateNotification {
     required String newVersion,
     required String previousVersion,
   }) async {
-    if (!_ready) return;
-    await _plugin.show(
+    if (!NotificationCenter.instance.isReady) return;
+    await NotificationCenter.instance.plugin.show(
       id: _notificationId(firmwareName),
       title: '$firmwareName Update Available',
       body: '$previousVersion → $newVersion',
@@ -98,8 +59,8 @@ class FirmwareUpdateNotification {
     required String title,
     required String body,
   }) async {
-    if (!_ready) return;
-    await _plugin.show(
+    if (!NotificationCenter.instance.isReady) return;
+    await NotificationCenter.instance.plugin.show(
       id: id,
       title: title,
       body: body,
