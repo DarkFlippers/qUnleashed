@@ -6,6 +6,7 @@ import '../../../components/icon.dart';
 import '../../../theme.dart';
 import '../../../widgets/notification.dart';
 import '../../editor/page.dart';
+import '../../paint/editor/page.dart';
 import '../../utils/map/models/pin.dart';
 import '../../utils/map/page.dart';
 import '../controller.dart';
@@ -198,6 +199,12 @@ class KeyActionsSheet {
   }
 
   static void _openInEditor(BuildContext context, ArchiveKey k) {
+    if (const {'png', 'gif', 'bm'}.contains(k.extension.toLowerCase())) {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => PaintPage(remotePath: k.remotePath)),
+      );
+      return;
+    }
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => TextEditorPage(remotePath: k.remotePath),

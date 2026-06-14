@@ -9,6 +9,7 @@ import '../../archive/emulate/page.dart';
 import '../../../models/category.dart';
 import '../../archive/models/key.dart';
 import '../../editor/page.dart';
+import '../../paint/editor/page.dart';
 import '../../remote/page.dart';
 import 'share_remote_file.dart';
 import 'controller.dart';
@@ -86,6 +87,10 @@ class _FileManagerPageState extends State<FileManagerPage> {
     if (const {'bin', 'elf', 'fuf'}.contains(ext)) return;
     if (ext == 'fap') {
       _launchFap(_ctrl.childPath(e.name));
+      return;
+    }
+    if (_isPaintFile(e)) {
+      _openPaintEditor(_ctrl.childPath(e.name));
       return;
     }
     _openTextEditor(_ctrl.childPath(e.name));
@@ -194,6 +199,17 @@ class _FileManagerPageState extends State<FileManagerPage> {
     );
     await _ctrl.refresh();
   }
+
+  Future<void> _openPaintEditor(String remotePath) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PaintPage(remotePath: remotePath, client: _ctrl.client),
+      ),
+    );
+  }
+
+  bool _isPaintFile(RemoteEntry e) =>
+      !e.isDir && const {'png', 'gif', 'bm'}.contains(e.extension);
 
   /// Files we can open in the text editor (everything except binary blobs and
   /// apps, mirroring [_onEntryTap]).
@@ -1137,7 +1153,14 @@ class _FileManagerPageState extends State<FileManagerPage> {
             ? () => _emulateEntry(e, cat)
             : null,
         onEdit: _isEditable(e)
-            ? () => _openTextEditor(_ctrl.childPath(e.name))
+            ? () {
+                final path = _ctrl.childPath(e.name);
+                if (_isPaintFile(e)) {
+                  _openPaintEditor(path);
+                } else {
+                  _openTextEditor(path);
+                }
+              }
             : null,
       );
     }
