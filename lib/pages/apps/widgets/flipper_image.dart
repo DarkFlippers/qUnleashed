@@ -4,7 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-import '../../../theme.dart';
+import '../../../theme/theme.dart';
 
 /// Fetches an SVG from a URL with proper error handling.
 /// Unlike [SvgPicture.network], exceptions (HandshakeException, ClientException)

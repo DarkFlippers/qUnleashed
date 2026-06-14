@@ -1,6 +1,6 @@
 ﻿import 'package:flutter/material.dart';
 
-import '../../../theme.dart';
+import '../../../theme/theme.dart';
 import '../models/category.dart';
 import 'flipper_image.dart';
 

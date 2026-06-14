@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../theme.dart';
+import '../../../theme/theme.dart';
 import '../../../widgets/info_line.dart';
 import '../../../widgets/page_card.dart';
 

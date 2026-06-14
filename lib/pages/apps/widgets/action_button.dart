@@ -1,7 +1,7 @@
 ﻿import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
-import '../../../theme.dart';
+import '../../../theme/theme.dart';
 import '../../../components/dialogs/action.dart';
 import '../../../widgets/notification.dart';
 import '../../../widgets/progress_button.dart';

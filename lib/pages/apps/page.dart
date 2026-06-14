@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../theme.dart';
+import '../../theme/theme.dart';
 import '../../widgets/open_url.dart';
 import '../tools/remote/desktop/page.dart';
 import 'detail_page.dart';

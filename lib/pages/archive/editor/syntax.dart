@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:highlight/highlight.dart' show Mode, highlight;
 
-import '../../../models/colors/editor.dart';
+import '../../../theme/colors/editor.dart';
 
 const _duckyscriptCommands = [
   'ALT',

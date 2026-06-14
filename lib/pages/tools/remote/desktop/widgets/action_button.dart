@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-import '../../../../../theme.dart';
+import '../../../../../theme/theme.dart';
 
 class RemoteControlActionButton extends StatelessWidget {
   static const double width = 86;

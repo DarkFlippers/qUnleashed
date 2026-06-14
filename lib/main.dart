@@ -8,7 +8,7 @@ import 'services/connection/notification_service.dart';
 import 'services/update/notification_router.dart';
 import 'services/update/scheduler.dart';
 import 'services/update/update_service.dart';
-import 'theme.dart';
+import 'theme/theme.dart';
 import 'widgets/notifications/update.dart';
 
 Future<void> main() async {

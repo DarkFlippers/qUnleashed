@@ -8,7 +8,7 @@ import 'package:flipperlib/flipperlib.dart' hide DateTime;
 import 'package:flutter/material.dart';
 
 import '../../../../services/repository/app.dart';
-import '../../../../theme.dart';
+import '../../../../theme/theme.dart';
 import '../../../../widgets/notification.dart';
 import '../../remote/desktop/gif_encoder.dart';
 import '../codec.dart';

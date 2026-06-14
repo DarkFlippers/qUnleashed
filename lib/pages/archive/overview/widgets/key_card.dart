@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../components/icon.dart';
-import '../../../../theme.dart';
+import '../../../../theme/theme.dart';
 import '../../models/key.dart';
 
 class KeyCard extends StatelessWidget {

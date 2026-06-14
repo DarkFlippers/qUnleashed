@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../../theme.dart';
+import '../../../../theme/theme.dart';
 
 class SectionTitle extends StatelessWidget {
   const SectionTitle({super.key, required this.text, this.trailing});

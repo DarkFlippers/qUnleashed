@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../theme.dart';
+import '../../theme/theme.dart';
 import 'package:qunleashed/components/appbar.dart';
 import '../devices/widgets/changelog_renderer.dart';
 import '../../widgets/open_url.dart';

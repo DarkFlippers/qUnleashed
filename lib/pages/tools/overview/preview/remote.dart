@@ -1,7 +1,7 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-import '../../../../theme.dart';
+import '../../../../theme/theme.dart';
 
 class RemoteLibraryPreview extends StatelessWidget {
   const RemoteLibraryPreview({super.key});

@@ -4,9 +4,9 @@ import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-import '../../../../theme.dart';
+import '../../../../theme/theme.dart';
 import 'package:qunleashed/components/appbar.dart';
-import 'package:qunleashed/models/colors/category.dart';
+import 'package:qunleashed/theme/colors/category.dart';
 import '../../../../widgets/notification.dart';
 import '../../../../widgets/progress_button.dart';
 

@@ -1,7 +1,7 @@
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
-import '../../theme.dart';
+import '../../theme/theme.dart';
 import 'action.dart';
 
 const String _kAsset = 'assets/pic/mifare/shrug-black.svg';

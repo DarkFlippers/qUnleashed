@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../../theme.dart';
+import '../../../../theme/theme.dart';
 
 /// A single action shown as a square tile in [ActionsSheet].
 class ActionItem {

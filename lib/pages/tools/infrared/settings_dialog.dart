@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../theme.dart';
+import '../../../theme/theme.dart';
 import '../../../widgets/notification.dart';
 import '../../../widgets/progress_button.dart';
 import 'controller.dart';

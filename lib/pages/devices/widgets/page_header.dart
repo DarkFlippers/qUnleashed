@@ -1,6 +1,6 @@
-import 'package:flutter/material.dart';
+simport 'package:flutter/material.dart';
 
-import '../../../theme.dart';
+import '../../../theme/theme.dart';
 import 'flipper_mockup.dart';
 
 class DevicePageHeader extends StatelessWidget {

@@ -3,7 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
-import '../../../../../theme.dart';
+import '../../../../../theme/theme.dart';
 import '../controller.dart';
 import '../painters.dart';
 import 'editor_widgets.dart';

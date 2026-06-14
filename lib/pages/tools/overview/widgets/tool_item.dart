@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../components/icon.dart';
-import '../../../../theme.dart';
+import '../../../../theme/theme.dart';
 import '../models/tool.dart';
 import '../preview/tools.dart';
 import 'tool_item_badge.dart';

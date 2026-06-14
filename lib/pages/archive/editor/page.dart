@@ -7,10 +7,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:highlight/highlight.dart' show Node, highlight;
 
-import '../../../theme.dart';
+import '../../../theme/theme.dart';
 import 'package:qunleashed/components/appbar.dart';
 import '../../../widgets/notification.dart';
-import '../../../models/colors/editor.dart';
+import '../../../theme/colors/editor.dart';
 import 'syntax.dart';
 
 const _kFontSize = 13.0;

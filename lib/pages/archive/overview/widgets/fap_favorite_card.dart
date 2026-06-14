@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../components/icon.dart';
-import '../../../../theme.dart';
+import '../../../../theme/theme.dart';
 import '../fap_icon.dart';
 import '../../models/fap.dart';
 

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
-import '../../theme.dart';
+import '../../theme/theme.dart';
 import 'package:qunleashed/components/appbar.dart';
 
 class AppLicensePage extends StatefulWidget {

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../theme.dart';
+import '../../../theme/theme.dart';
 import 'package:qunleashed/components/appbar.dart';
 import 'backend/infrared_backend_api.dart';
 import 'backend/infrared_backend_models.dart';

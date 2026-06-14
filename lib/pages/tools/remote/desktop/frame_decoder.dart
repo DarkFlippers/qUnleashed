@@ -4,7 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:flipperlib/flipperlib.dart' hide DateTime, File;
 
-import '../../../../theme.dart';
+import '../../../../theme/theme.dart';
 import 'models/models.dart';
 
 const int kFlipperScreenWidth = 128;

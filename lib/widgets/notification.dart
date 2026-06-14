@@ -3,8 +3,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import '../models/colors/status.dart';
-import '../theme.dart';
+import '../theme/colors/status.dart';
+import '../theme/theme.dart';
 
 enum QNotificationType { error, info, warning, good }
 

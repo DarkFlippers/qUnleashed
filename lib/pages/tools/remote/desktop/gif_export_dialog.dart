@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../../theme.dart';
+import '../../../../theme/theme.dart';
 
 class GifExportOptions {
   const GifExportOptions({required this.scale, required this.speed});

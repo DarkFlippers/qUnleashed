@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:qunleashed/models/colors/category.dart';
+import 'package:qunleashed/theme/colors/category.dart';
 
 enum ArchiveCategory {
   nfc(

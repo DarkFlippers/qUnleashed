@@ -3,7 +3,7 @@ import 'dart:io' as io;
 import 'package:flutter/material.dart';
 
 import '../../../../components/icon.dart';
-import '../../../../theme.dart';
+import '../../../../theme/theme.dart';
 import '../../../../widgets/notification.dart';
 import '../../editor/page.dart';
 import '../../../tools/paint/editor/page.dart';

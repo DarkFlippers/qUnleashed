@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../../theme.dart';
+import '../../../../theme/theme.dart';
 import '../controller.dart';
 
 /// Visual descriptor for a file/folder row: either a Flipper SVG asset or a

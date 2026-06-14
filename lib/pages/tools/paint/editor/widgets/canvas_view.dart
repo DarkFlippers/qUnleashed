@@ -1,7 +1,7 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
-import '../../../../../theme.dart';
+import '../../../../../theme/theme.dart';
 import '../../constants.dart';
 import '../controller.dart';
 import '../painters.dart';

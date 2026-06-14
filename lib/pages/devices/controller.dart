@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/foundation.dart';
 
-import '../../theme.dart';
+import '../../theme/theme.dart';
 import 'models/device_info.dart';
 
 class DeviceController extends ChangeNotifier {

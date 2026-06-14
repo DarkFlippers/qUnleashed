@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
-import '../../theme.dart';
+import '../../theme/theme.dart';
 
 Future<FlipperDevice?> showConnectionDialog(
   BuildContext context, {

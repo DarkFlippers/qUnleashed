@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../theme.dart';
+import '../theme/theme.dart';
 
 class FlipperPageCard extends StatelessWidget {
   const FlipperPageCard({

@@ -3,7 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../../../../theme.dart';
+import '../../../../theme/theme.dart';
 import '../../../../widgets/notification.dart';
 import 'package:qunleashed/components/appbar.dart';
 import 'gif_export_dialog.dart';

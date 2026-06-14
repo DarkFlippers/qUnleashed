@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import '../../../../../theme.dart';
+import '../../../../../theme/theme.dart';
 import '../gif_recorder.dart';
 import 'action_button.dart';
 

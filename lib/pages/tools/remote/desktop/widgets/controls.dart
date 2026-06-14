@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-import '../../../../../theme.dart';
+import '../../../../../theme/theme.dart';
 import '../models/models.dart';
 
 const Color _kFlipperOrange = Color(0xFFFF8200);

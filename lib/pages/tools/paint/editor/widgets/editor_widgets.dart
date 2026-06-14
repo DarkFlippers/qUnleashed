@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../../../theme.dart';
+import '../../../../../theme/theme.dart';
 
 class PaintColorSwatch extends StatelessWidget {
   const PaintColorSwatch({

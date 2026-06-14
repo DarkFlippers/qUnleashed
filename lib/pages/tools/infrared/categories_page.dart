@@ -4,7 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-import '../../../theme.dart';
+import '../../../theme/theme.dart';
 import 'package:qunleashed/components/appbar.dart';
 import 'backend/infrared_backend_api.dart';
 import 'backend/infrared_backend_models.dart';

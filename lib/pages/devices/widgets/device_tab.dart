@@ -3,7 +3,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:super_clipboard/super_clipboard.dart';
 
 import '../../../services/update/update_service.dart';
-import '../../../theme.dart';
+import '../../../theme/theme.dart';
 import '../../../widgets/action_row.dart';
 import '../../../components/dialogs/connection_error.dart';
 import '../../../widgets/info_line.dart';

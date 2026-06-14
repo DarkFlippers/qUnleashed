@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../components/icon.dart';
-import '../../../theme.dart';
+import '../../../theme/theme.dart';
 import 'package:qunleashed/components/appbar.dart';
 import '../../tools/remote/desktop/page.dart';
 import '../models/key.dart';

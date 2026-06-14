@@ -4,7 +4,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../../components/icon.dart';
 import '../../../../services/repository/app.dart' as icon_repo;
-import '../../../../theme.dart';
+import '../../../../theme/theme.dart';
 import '../../overview/fap_icon.dart';
 import '../../overview/widgets/actions_sheet.dart';
 import '../share_remote_file.dart';

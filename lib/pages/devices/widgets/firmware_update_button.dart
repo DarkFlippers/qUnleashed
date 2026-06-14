@@ -10,7 +10,7 @@ import '../../../widgets/notifications/update.dart';
 import '../../../widgets/progress_button.dart';
 import '../../../services/update/firmware_directory.dart';
 import '../models/firmware_updater.dart';
-import '../../../theme.dart';
+import '../../../theme/theme.dart';
 
 class FirmwareUpdateButton extends StatefulWidget {
   const FirmwareUpdateButton({
