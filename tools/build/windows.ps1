@@ -19,6 +19,7 @@ if ([string]::IsNullOrWhiteSpace($VersionName)) {
 }
 $DistDir = Join-Path $RootDir "dist"
 $OutFile = Join-Path $DistDir "$AppName`_$VersionName`_windows_x64.exe"
+$RawZipFile = Join-Path $DistDir "$AppName`_$VersionName`_windows_x64_raw.zip"
 
 if ([string]::IsNullOrWhiteSpace($FlutterBin)) {
     $flutterCommand = Get-Command flutter -ErrorAction SilentlyContinue
@@ -62,6 +63,12 @@ if ([string]::IsNullOrWhiteSpace($BuildDir)) {
     throw "Expected app binary not found in: $($buildCandidates -join ', ')"
 }
 
+# Preserve the standard Flutter Windows bundle before creating the optional
+# self-extracting executable. This archive contains the original release files.
+Compress-Archive -Path (Join-Path $BuildDir "*") -DestinationPath $RawZipFile -CompressionLevel Optimal -Force
+Write-Host "Built raw Windows archive:"
+Write-Host $RawZipFile
+
 $TempDir = Join-Path ([System.IO.Path]::GetTempPath()) "$AppName-build-$PID"
 $PayloadZip = Join-Path $TempDir "payload.zip"
 $StubSource = Join-Path $TempDir "SelfExtractingLauncher.cs"
@@ -74,7 +81,7 @@ if (Test-Path $TempDir) {
 New-Item -ItemType Directory -Force -Path $TempDir | Out-Null
 
 try {
-    Compress-Archive -Path (Join-Path $BuildDir "*") -DestinationPath $PayloadZip -CompressionLevel Optimal -Force
+    Copy-Item -Path $RawZipFile -Destination $PayloadZip -Force
 
     @'
 using System;

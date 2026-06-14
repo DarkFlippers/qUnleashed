@@ -176,7 +176,7 @@ jobs:
           echo "Version name: $version_name"
           echo "Build number: $version_code"
 
-      - name: Build Windows release
+      - name: Build Windows raw ZIP and packaged EXE
         shell: pwsh
         env:
           # permission_handler_windows pulls in <experimental/coroutine> via C++/WinRT,
@@ -189,7 +189,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: release-assets-windows
-          path: dist/qunleashed_*_windows_x64.exe
+          path: |
+            dist/qunleashed_*_windows_x64_raw.zip
+            dist/qunleashed_*_windows_x64.exe
           if-no-files-found: error
 
   build-macos:
@@ -286,4 +288,5 @@ jobs:
             dist/qunleashed_*_android_*.apk
             dist/qunleashed_*_linux_x64
             dist/qunleashed_*_macos_*.dmg
+            dist/qunleashed_*_windows_x64_raw.zip
             dist/qunleashed_*_windows_x64.exe
