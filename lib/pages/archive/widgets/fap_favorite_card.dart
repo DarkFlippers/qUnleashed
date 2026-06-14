@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 
 import '../../../components/icon.dart';
@@ -41,7 +39,14 @@ class FapFavoriteCard extends StatelessWidget {
           child: Row(
             children: [
               if (icon != null)
-                _FapIconBadge(icon: icon, color: colors.accent)
+                QIconBadge.xbm(
+                  bytes: icon,
+                  width: fapIconWidth,
+                  height: fapIconHeight,
+                  cacheKey: favorite.remotePath,
+                  color: colors.accent,
+                  iconSize: 22,
+                )
               else
                 QIconBadge(
                   asset: 'assets/ic/app/apps.svg',
@@ -105,57 +110,4 @@ class _StarButton extends StatelessWidget {
       ),
     );
   }
-}
-
-class _FapIconBadge extends StatelessWidget {
-  const _FapIconBadge({required this.icon, required this.color});
-
-  final Uint8List icon;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 36,
-      height: 36,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: CustomPaint(
-        size: const Size.square(22),
-        painter: _FapIconPainter(icon: icon, color: color),
-      ),
-    );
-  }
-}
-
-class _FapIconPainter extends CustomPainter {
-  _FapIconPainter({required this.icon, required this.color});
-
-  final Uint8List icon;
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rowBytes = (fapIconWidth + 7) >> 3;
-    final cell = size.width / fapIconWidth;
-    final paint = Paint()..color = color;
-    for (var y = 0; y < fapIconHeight; y++) {
-      for (var x = 0; x < fapIconWidth; x++) {
-        final byteIdx = y * rowBytes + (x >> 3);
-        if (byteIdx >= icon.length) continue;
-        if ((icon[byteIdx] & (1 << (x & 7))) == 0) continue;
-        canvas.drawRect(
-          Rect.fromLTWH(x * cell, y * cell, cell + 0.5, cell + 0.5),
-          paint,
-        );
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(_FapIconPainter old) =>
-      old.icon != icon || old.color != color;
 }
