@@ -5,8 +5,8 @@ import '../apps/page.dart';
 import '../archive/overview/controller.dart';
 import '../archive/overview/page.dart';
 import '../tools/overview/page.dart';
-import 'controller.dart';
-import 'scope.dart';
+import 'controllers/device_controller.dart';
+import 'device_scope.dart';
 import 'widgets/device_tab.dart';
 
 class DevicePage extends StatefulWidget {

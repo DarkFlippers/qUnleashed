@@ -1,6 +1,6 @@
 import 'package:flutter/widgets.dart';
 
-import 'controller.dart';
+import 'controllers/device_controller.dart';
 
 class DeviceScope extends InheritedNotifier<DeviceController> {
   const DeviceScope({

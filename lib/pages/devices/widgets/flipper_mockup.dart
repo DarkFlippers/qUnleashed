@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme/theme.dart';
+import '../models/device_info.dart';
 
 class FlipperMockupWidget extends StatelessWidget {
   const FlipperMockupWidget({super.key, required this.active});
@@ -95,20 +96,20 @@ class FlipperMockupHero extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final firmwareVersion =
-        _firstValue(deviceInfo, const [
+        DeviceInfoReader.str(deviceInfo, const [
           'firmware_version',
           'firmware.version',
           'software_revision',
         ]) ??
         _entryValue(infoEntries, 'Firmware Version');
     final buildDate =
-        _firstValue(deviceInfo, const [
+        DeviceInfoReader.str(deviceInfo, const [
           'firmware_build_date',
           'firmware.build.date',
           'build_date',
         ]) ??
         _entryValue(infoEntries, 'Build Date');
-    final uid = _firstValue(deviceInfo, const [
+    final uid = DeviceInfoReader.str(deviceInfo, const [
       'hardware_uid',
       'hardware.uid',
       'uid',
@@ -226,16 +227,6 @@ class _HeroMetaText extends StatelessWidget {
       ),
     );
   }
-}
-
-String? _firstValue(Map<String, String> info, List<String> aliases) {
-  for (final alias in aliases) {
-    final value = info[alias];
-    if (value != null && value.trim().isNotEmpty && value != '-') {
-      return value;
-    }
-  }
-  return null;
 }
 
 String? _entryValue(List<MapEntry<String, String>> entries, String key) {

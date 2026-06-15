@@ -5,12 +5,15 @@ import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
 import '../../../config.dart';
+import '../../../services/update/firmware_directory.dart';
+import '../../../theme/theme.dart';
 import '../../../widgets/notification.dart';
 import '../../../widgets/notifications/update.dart';
 import '../../../widgets/progress_button.dart';
-import '../../../services/update/firmware_directory.dart';
-import '../models/firmware_updater.dart';
-import '../../../theme/theme.dart';
+import '../firmware/firmware_installer.dart';
+import '../firmware/firmware_matcher.dart';
+import '../firmware/firmware_source.dart';
+import '../firmware/update_state.dart';
 
 class FirmwareUpdateButton extends StatefulWidget {
   const FirmwareUpdateButton({
@@ -47,80 +50,14 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
 
   bool get _isCustom => widget.selectedChannelId == kCustomFirmwareChannelId;
 
-  _ResolvedButtonState _baseState() {
-    final descriptionOverride = _inlineMessage;
-
-    if (!widget.client.isConnected) {
-      return _ResolvedButtonState(
-        label: 'NO CONNECTION',
-        color: _inactiveColor,
-        description:
-            descriptionOverride ?? 'Connect a Flipper to install firmware',
-        enabled: false,
-      );
-    }
-
-    if (_isCustom) {
-      return _ResolvedButtonState(
-        label: 'INSTALL',
-        color: _activeColor,
-        description:
-            descriptionOverride ??
-            'Pick a local update .tgz archive to install',
-        enabled: true,
-      );
-    }
-
-    if (widget.fetchLoading || widget.deviceVersion == '-') {
-      return _ResolvedButtonState(
-        label: 'CHECKING',
-        color: _inactiveColor,
-        description: 'Checking firmware status…',
-        enabled: false,
-      );
-    }
-
-    if (widget.latestVersion == null) {
-      return _ResolvedButtonState(
-        label: 'NO UPDATE',
-        color: _inactiveColor,
-        description: 'Can\'t connect to update server',
-        enabled: false,
-      );
-    }
-
-    final action = _resolveInstallAction();
-    if (action == _InstallAction.noUpdate) {
-      return _ResolvedButtonState(
-        label: 'NO UPDATE',
-        color: _inactiveColor,
-        description:
-            descriptionOverride ??
-            'Installed firmware already matches the selected build',
-        enabled: false,
-      );
-    }
-
-    if (action == _InstallAction.update) {
-      return _ResolvedButtonState(
-        label: 'UPDATE',
-        color: _activeColor,
-        description:
-            descriptionOverride ??
-            'A newer version is available in the selected channel',
-        enabled: true,
-      );
-    }
-
-    return _ResolvedButtonState(
-      label: 'INSTALL',
-      color: _activeColor,
-      description:
-          descriptionOverride ??
-          'Selected firmware differs by type, channel, or build',
-      enabled: true,
-    );
-  }
+  InstallAction _installAction() => FirmwareMatcher(
+    entry: widget.entry,
+    latestVersion: widget.latestVersion,
+    deviceVersion: widget.deviceVersion,
+    deviceInfo: widget.deviceInfo,
+    selectedChannelId: widget.selectedChannelId,
+    selectedVariant: widget.selectedVariant,
+  ).resolve();
 
   bool get _inProgress {
     final state = _updateState;
@@ -128,98 +65,6 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
         state is UpdateDownloading ||
         state is UpdateUploading ||
         state is UpdateStarting;
-  }
-
-  Future<void> _onPressed() async {
-    if (_inProgress) return;
-
-    if (!widget.client.isConnected) {
-      setState(() {
-        _inlineMessage = 'Connect a Flipper first';
-      });
-      return;
-    }
-
-    String? localArchivePath;
-    if (_isCustom) {
-      final result = await FilePicker.platform.pickFiles(
-        dialogTitle: 'Select firmware archive',
-        type: FileType.custom,
-        allowedExtensions: const ['tgz', 'gz', 'tar'],
-      );
-      final picked = result?.files.single.path;
-      if (picked == null) return;
-      localArchivePath = picked;
-    }
-
-    setState(() {
-      _inlineMessage = null;
-      _updateState = localArchivePath != null
-          ? const UpdateUploading(0)
-          : const UpdateFetching();
-    });
-
-    void onState(UpdateState state) {
-      // System notification fired before mount check — no context needed.
-      if (state is UpdateDone) {
-        final version = widget.latestVersion;
-        final body = version != null && version.isNotEmpty
-            ? '${widget.entry.name} $version — Flipper will reboot to apply it'
-            : '${widget.entry.name} — Flipper will reboot to apply it';
-        unawaited(FirmwareUpdateNotification.showMessage(
-          id: 2010,
-          title: 'Firmware Installed',
-          body: body,
-        ));
-      }
-
-      if (!mounted) return;
-      setState(() {
-        _updateState = state;
-        if (state is! UpdateError) {
-          _inlineMessage = null;
-        }
-      });
-      if (state is UpdateError) {
-        QNotification.show(
-          context,
-          message: 'Firmware update failed: ${state.message}',
-          type: QNotificationType.error,
-          duration: const Duration(seconds: 6),
-        );
-      }
-    }
-
-    try {
-      if (localArchivePath != null) {
-        await FirmwareUpdater.installLocal(
-          archivePath: localArchivePath,
-          client: widget.client,
-          onState: onState,
-        );
-      } else {
-        await FirmwareUpdater.install(
-          entry: widget.entry,
-          channelId: widget.selectedChannelId,
-          target: 'f7',
-          variant: widget.selectedVariant,
-          client: widget.client,
-          onState: onState,
-        );
-      }
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _updateState = null;
-        _inlineMessage = e.toString();
-      });
-      QNotification.show(
-        context,
-        message: 'Firmware update aborted: $e',
-        type: QNotificationType.error,
-        duration: const Duration(seconds: 6),
-      );
-    }
   }
 
   @override
@@ -259,12 +104,165 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
     );
   }
 
+  Future<void> _onPressed() async {
+    if (_inProgress) return;
+
+    if (!widget.client.isConnected) {
+      setState(() => _inlineMessage = 'Connect a Flipper first');
+      return;
+    }
+
+    final FirmwareSource source;
+    if (_isCustom) {
+      final result = await FilePicker.platform.pickFiles(
+        dialogTitle: 'Select firmware archive',
+        type: FileType.custom,
+        allowedExtensions: const ['tgz', 'gz', 'tar'],
+      );
+      final picked = result?.files.single.path;
+      if (picked == null) return;
+      source = LocalFirmwareSource(picked);
+    } else {
+      source = RemoteFirmwareSource(
+        entry: widget.entry,
+        channelId: widget.selectedChannelId,
+        target: 'f7',
+        variant: widget.selectedVariant,
+      );
+    }
+
+    setState(() {
+      _inlineMessage = null;
+      _updateState = source.isRemote
+          ? const UpdateFetching()
+          : const UpdateUploading(0);
+    });
+
+    try {
+      await FirmwareInstaller.install(
+        source: source,
+        client: widget.client,
+        onState: _onState,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _updateState = null;
+        _inlineMessage = e.toString();
+      });
+      QNotification.show(
+        context,
+        message: 'Firmware update aborted: $e',
+        type: QNotificationType.error,
+        duration: const Duration(seconds: 6),
+      );
+    }
+  }
+
+  void _onState(UpdateState state) {
+    if (state is UpdateDone) {
+      final version = widget.latestVersion;
+      final body = version != null && version.isNotEmpty
+          ? '${widget.entry.name} $version — Flipper will reboot to apply it'
+          : '${widget.entry.name} — Flipper will reboot to apply it';
+      unawaited(
+        FirmwareUpdateNotification.showMessage(
+          id: 2010,
+          title: 'Firmware Installed',
+          body: body,
+        ),
+      );
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _updateState = state;
+      if (state is! UpdateError) _inlineMessage = null;
+    });
+    if (state is UpdateError) {
+      QNotification.show(
+        context,
+        message: 'Firmware update failed: ${state.message}',
+        type: QNotificationType.error,
+        duration: const Duration(seconds: 6),
+      );
+    }
+  }
+
   _ResolvedButtonState _resolve() {
-    final activeUpdateState = _updateState;
-    if (activeUpdateState != null) {
-      return _resolveUpdateState(activeUpdateState);
+    final state = _updateState;
+    if (state != null && state is! UpdateIdle) {
+      return _resolveUpdateState(state);
     }
     return _baseState();
+  }
+
+  _ResolvedButtonState _baseState() {
+    final description = _inlineMessage;
+
+    if (!widget.client.isConnected) {
+      return _ResolvedButtonState(
+        label: 'NO CONNECTION',
+        color: _inactiveColor,
+        description: description ?? 'Connect a Flipper to install firmware',
+        enabled: false,
+      );
+    }
+
+    if (_isCustom) {
+      return _ResolvedButtonState(
+        label: 'INSTALL',
+        color: _activeColor,
+        description:
+            description ?? 'Pick a local update .tgz archive to install',
+        enabled: true,
+      );
+    }
+
+    if (widget.fetchLoading || widget.deviceVersion == '-') {
+      return _ResolvedButtonState(
+        label: 'CHECKING',
+        color: _inactiveColor,
+        description: 'Checking firmware status…',
+        enabled: false,
+      );
+    }
+
+    if (widget.latestVersion == null) {
+      return _ResolvedButtonState(
+        label: 'NO UPDATE',
+        color: _inactiveColor,
+        description: 'Can\'t connect to update server',
+        enabled: false,
+      );
+    }
+
+    return switch (_installAction()) {
+      InstallAction.noUpdate => _ResolvedButtonState(
+        label: 'NO UPDATE',
+        color: _inactiveColor,
+        description:
+            description ??
+            'Installed firmware already matches the selected build',
+        enabled: false,
+      ),
+      InstallAction.update => _ResolvedButtonState(
+        label: 'UPDATE',
+        color: _activeColor,
+        description:
+            description ??
+            'A newer version is available in the selected channel',
+        enabled: true,
+      ),
+      InstallAction.install => _ResolvedButtonState(
+        label: 'INSTALL',
+        color: _activeColor,
+        description:
+            description ??
+            'Selected firmware differs by type, channel, or build',
+        enabled: true,
+      ),
+    };
   }
 
   _ResolvedButtonState _resolveUpdateState(UpdateState state) {
@@ -300,9 +298,7 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
         enabled: false,
       ),
       UpdateError(:final message) => _ResolvedButtonState(
-        label: _resolveInstallAction() == _InstallAction.update
-            ? 'UPDATE'
-            : 'INSTALL',
+        label: _installAction() == InstallAction.update ? 'UPDATE' : 'INSTALL',
         color: _activeColor,
         description: message,
         enabled: true,
@@ -312,8 +308,7 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
   }
 
   _ProgressVisual? _progressFor(_ResolvedButtonState state) {
-    final updateState = _updateState;
-    return switch (updateState) {
+    return switch (_updateState) {
       UpdateFetching() => _ProgressVisual(value: null, color: state.color),
       UpdateDownloading(:final progress) => _ProgressVisual(
         value: progress,
@@ -327,213 +322,6 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
       UpdateDone() => _ProgressVisual(value: 1, color: state.color),
       _ => null,
     };
-  }
-
-  _InstallAction _resolveInstallAction() {
-    final latest = _buildSelectedFirmware();
-    final installed = _parseInstalledFirmware();
-    if (latest == null || installed == null) return _InstallAction.install;
-
-    if (installed.type != latest.type) return _InstallAction.install;
-    if (installed.channel != latest.channel) return _InstallAction.install;
-    if (installed.variant != latest.variant) return _InstallAction.install;
-
-    if (installed.version == latest.version) {
-      return _InstallAction.noUpdate;
-    }
-
-    return _isIncrementalUpdate(installed.version, latest.version)
-        ? _InstallAction.update
-        : _InstallAction.install;
-  }
-
-  _SelectedFirmware? _buildSelectedFirmware() {
-    final latestVersion = widget.latestVersion?.trim();
-    final channel = FirmwareChannel.fromId(widget.selectedChannelId);
-    if (latestVersion == null || latestVersion.isEmpty || channel == null) {
-      return null;
-    }
-
-    final normalizedVersion = widget.entry.shortName == 'unlshd'
-        ? _normalizeUnleashedVersion(latestVersion)
-        : latestVersion;
-
-    return _SelectedFirmware(
-      type: widget.entry.shortName,
-      channel: channel,
-      version: normalizedVersion,
-      variant: widget.entry.shortName == 'unlshd'
-          ? widget.selectedVariant
-          : null,
-    );
-  }
-
-  _InstalledFirmware? _parseInstalledFirmware() {
-    final raw = widget.deviceVersion?.trim();
-    if (raw == null || raw.isEmpty || raw == '-') return null;
-
-    final originFork = _lookupInfo(const [
-      'devinfo_firmware.origin.fork',
-      'firmware.origin.fork',
-      'firmware_origin_fork',
-      'origin.fork',
-      'origin_fork',
-    ]);
-    final branchName = _lookupInfo(const [
-      'devinfo_firmware.branch.name',
-      'firmware.branch.name',
-      'firmware_branch_name',
-      'branch.name',
-      'branch_name',
-    ]);
-
-    if (_looksLikeUnleashed(raw, originFork)) {
-      return _parseInstalledUnleashed(raw, branchName);
-    }
-
-    return _parseInstalledOfw(raw, branchName);
-  }
-
-  String? _lookupInfo(List<String> keys) {
-    for (final key in keys) {
-      final value = widget.deviceInfo[key];
-      if (value != null && value.trim().isNotEmpty) {
-        return value.trim();
-      }
-    }
-    return null;
-  }
-
-  bool _looksLikeUnleashed(String rawVersion, String? originFork) {
-    final normalizedVersion = rawVersion.toLowerCase();
-    final normalizedOrigin = originFork?.toLowerCase() ?? '';
-    return normalizedVersion.contains('unlshd') ||
-        normalizedVersion.contains('unleashed') ||
-        normalizedOrigin.contains('unleashed');
-  }
-
-  _InstalledFirmware _parseInstalledUnleashed(
-    String rawVersion,
-    String? branchName,
-  ) {
-    final normalized = rawVersion.trim().toLowerCase();
-    final releaseMatch = RegExp(
-      r'((?:unlshd-\d+)|(?:\d+))([ce]?)',
-    ).firstMatch(normalized);
-    final channel = _detectUnleashedChannel(normalized, branchName);
-    if (releaseMatch != null) {
-      final suffix = releaseMatch.group(2) ?? '';
-      return _InstalledFirmware(
-        type: 'unlshd',
-        channel: channel,
-        version: releaseMatch.group(1)!,
-        variant: switch (suffix) {
-          'c' => UnleashedVariant.compact,
-          'e' => UnleashedVariant.extraPacks,
-          _ => UnleashedVariant.base,
-        },
-      );
-    }
-
-    return _InstalledFirmware(
-      type: 'unlshd',
-      channel: channel,
-      version: rawVersion.trim(),
-      variant: UnleashedVariant.base,
-    );
-  }
-
-  _InstalledFirmware _parseInstalledOfw(String rawVersion, String? branchName) {
-    final normalizedBranch = branchName?.trim().toLowerCase();
-    final split = rawVersion
-        .split(RegExp(r'\s+'))
-        .where((part) => part.isNotEmpty)
-        .toList();
-    final typeVersion = split.length >= 2 ? split[1] : rawVersion.trim();
-    final channel = _detectOfwChannel(typeVersion, normalizedBranch);
-    final version = switch (channel) {
-      FirmwareChannel.development =>
-        split.isNotEmpty ? split.first : rawVersion.trim(),
-      FirmwareChannel.releaseCandidate => typeVersion.replaceFirst(
-        RegExp(r'-rc$', caseSensitive: false),
-        '',
-      ),
-      _ => typeVersion,
-    };
-
-    return _InstalledFirmware(
-      type: 'ofw',
-      channel: channel,
-      version: version.trim(),
-      variant: null,
-    );
-  }
-
-  FirmwareChannel _detectUnleashedChannel(
-    String rawVersion,
-    String? branchName,
-  ) {
-    final normalizedBranch = branchName?.trim().toLowerCase();
-    if (normalizedBranch != null) {
-      final branchChannel = FirmwareChannel.fromId(normalizedBranch);
-      if (branchChannel != null) return branchChannel;
-    }
-    if (rawVersion.contains('unlshd-')) {
-      return FirmwareChannel.release;
-    }
-    return FirmwareChannel.development;
-  }
-
-  FirmwareChannel _detectOfwChannel(String typeVersion, String? branchName) {
-    final normalizedType = typeVersion.trim().toLowerCase();
-    final normalizedBranch = branchName?.trim().toLowerCase();
-
-    if (normalizedBranch == 'dev' || normalizedBranch == 'development') {
-      return FirmwareChannel.development;
-    }
-    if (normalizedBranch == 'release-candidate' ||
-        normalizedBranch == 'release_candidate' ||
-        normalizedBranch == 'rc' ||
-        normalizedBranch == 'candidate') {
-      return FirmwareChannel.releaseCandidate;
-    }
-    if (RegExp(r'^\d+\.\d+\.\d+-rc').hasMatch(normalizedType)) {
-      return FirmwareChannel.releaseCandidate;
-    }
-    if (RegExp(r'^\d+\.\d+\.\d+').hasMatch(normalizedType)) {
-      return FirmwareChannel.release;
-    }
-    return FirmwareChannel.development;
-  }
-
-  bool _isIncrementalUpdate(String installedVersion, String latestVersion) {
-    final installedParts = _numericParts(installedVersion);
-    final latestParts = _numericParts(latestVersion);
-    if (installedParts.isEmpty || latestParts.isEmpty) return false;
-
-    final length = installedParts.length > latestParts.length
-        ? installedParts.length
-        : latestParts.length;
-    for (var i = 0; i < length; i++) {
-      final installed = i < installedParts.length ? installedParts[i] : 0;
-      final latest = i < latestParts.length ? latestParts[i] : 0;
-      if (latest > installed) return true;
-      if (latest < installed) return false;
-    }
-    return false;
-  }
-
-  List<int> _numericParts(String value) => RegExp(r'\d+')
-      .allMatches(value)
-      .map((match) => int.tryParse(match.group(0) ?? '') ?? 0)
-      .toList();
-
-  String _normalizeUnleashedVersion(String value) {
-    final match = RegExp(
-      r'^((?:unlshd-\d+)|(?:\d+))(?:[ce])?$',
-      caseSensitive: false,
-    ).firstMatch(value.trim());
-    return match?.group(1) ?? value.trim();
   }
 }
 
@@ -556,34 +344,4 @@ class _ProgressVisual {
 
   final double? value;
   final Color color;
-}
-
-enum _InstallAction { noUpdate, install, update }
-
-class _InstalledFirmware {
-  const _InstalledFirmware({
-    required this.type,
-    required this.channel,
-    required this.version,
-    this.variant,
-  });
-
-  final String type;
-  final FirmwareChannel channel;
-  final String version;
-  final UnleashedVariant? variant;
-}
-
-class _SelectedFirmware {
-  const _SelectedFirmware({
-    required this.type,
-    required this.channel,
-    required this.version,
-    this.variant,
-  });
-
-  final String type;
-  final FirmwareChannel channel;
-  final String version;
-  final UnleashedVariant? variant;
 }

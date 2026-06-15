@@ -3,8 +3,8 @@ import 'dart:async';
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/foundation.dart';
 
-import '../../theme/theme.dart';
-import 'models/device_info.dart';
+import '../../../theme/theme.dart';
+import '../models/device_info.dart';
 
 class DeviceController extends ChangeNotifier {
   DeviceController() {
@@ -55,13 +55,7 @@ class DeviceController extends ChangeNotifier {
 
   Future<void> disconnect() async {
     await _client.disconnect();
-    _device = null;
-    _deviceDisconnected = false;
-    _deviceLoading = false;
-    _deviceInfoConnected = false;
-    _info = {};
-    _infoRequestGeneration++;
-    _notify();
+    _resetSession();
   }
 
   void synchronize() => _startDataLoading();
@@ -69,19 +63,11 @@ class DeviceController extends ChangeNotifier {
   Future<void> reboot() async {
     if (_device == null || _deviceDisconnected) return;
     try {
-      await _client.rebootAndDisconnect(
-        RebootRequest(mode: RebootRequest_RebootMode.OS),
-      );
+      await _client.reboot(RebootRequest(mode: RebootRequest_RebootMode.OS));
     } catch (e) {
       LogService.log('[DeviceController] reboot failed: $e');
     }
-    _device = null;
-    _deviceDisconnected = false;
-    _deviceLoading = false;
-    _deviceInfoConnected = false;
-    _info = {};
-    _infoRequestGeneration++;
-    _notify();
+    _resetSession();
   }
 
   /// Returns true on success, false on failure.
@@ -120,6 +106,16 @@ class DeviceController extends ChangeNotifier {
     if (!_disposed) notifyListeners();
   }
 
+  void _resetSession() {
+    _device = null;
+    _deviceDisconnected = false;
+    _deviceLoading = false;
+    _deviceInfoConnected = false;
+    _info = {};
+    _infoRequestGeneration++;
+    _notify();
+  }
+
   void _setupDevice(FlipperDevice device) {
     _device = device;
     _deviceDisconnected = false;
@@ -137,18 +133,18 @@ class DeviceController extends ChangeNotifier {
     final generation = ++_infoRequestGeneration;
 
     _infoStreamSub = _client.deviceInfoUpdates.listen((data) {
-        if (generation != _infoRequestGeneration || data.isEmpty) return;
-        _info = {..._info, ...data};
-        _deviceInfoConnected = true;
-        if (_deviceLoading) {
-          _deviceLoading = false;
-        }
-        if (data.keys.any(
-          (k) => k.startsWith('firmware') || k == 'software_revision',
-        )) {
-          QAppThemeController.instance.syncFirmwareFromDeviceInfo(_info);
-        }
-        _notify();
+      if (generation != _infoRequestGeneration || data.isEmpty) return;
+      _info = {..._info, ...data};
+      _deviceInfoConnected = true;
+      if (_deviceLoading) {
+        _deviceLoading = false;
+      }
+      if (data.keys.any(
+        (k) => k.startsWith('firmware') || k == 'software_revision',
+      )) {
+        QAppThemeController.instance.syncFirmwareFromDeviceInfo(_info);
+      }
+      _notify();
     }, onError: (e) => LogService.log('[DeviceController] info stream: $e'));
 
     _client.startDeviceInfoCollection();
