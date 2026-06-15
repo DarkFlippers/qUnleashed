@@ -12,7 +12,6 @@ import 'cards/battery_card.dart';
 import 'cards/connect_card.dart';
 import 'cards/device_actions_row.dart';
 import 'cards/device_info_card.dart';
-import 'cards/recovery_card.dart';
 import 'cards/storage_card.dart';
 import 'firmware_card.dart';
 import 'full_info_sheet.dart';
@@ -30,6 +29,10 @@ class DeviceTab extends StatelessWidget {
     final topInset = MediaQuery.paddingOf(context).top;
     final headerHeight = topInset + _headerContentHeight;
     final wide = MediaQuery.sizeOf(context).width >= 560;
+    final state = ctrl.connectionState;
+    final inDfu =
+        state == DeviceConnectionState.dfu ||
+        state == DeviceConnectionState.recovering;
 
     return Stack(
       children: [
@@ -77,7 +80,8 @@ class DeviceTab extends StatelessWidget {
           headerHeight: headerHeight,
           title: ctrl.deviceName,
           subtitle: 'Flipper Zero',
-          active: ctrl.isConnected,
+          active: ctrl.isConnected || inDfu,
+          dfu: inDfu,
           infoEntries: wide ? ctrl.deviceInfoEntries : const [],
           deviceInfo: ctrl.info,
           connectionLabel: ctrl.device?.isBle == true ? 'BLE' : 'USB',
@@ -98,7 +102,7 @@ class DeviceTab extends StatelessWidget {
         return _ConnectedContent(key: const ValueKey('connected'), wide: wide);
       case DeviceConnectionState.dfu:
       case DeviceConnectionState.recovering:
-        return const _RecoveryContent(key: ValueKey('recovery'));
+        return const SizedBox.shrink(key: ValueKey('recovery'));
       case DeviceConnectionState.disconnected:
       case DeviceConnectionState.connecting:
         return const _DisconnectedContent(key: ValueKey('disconnected'));
@@ -225,15 +229,6 @@ class _DisconnectedContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Column(children: [SizedBox(height: 14), ConnectCard()]);
-  }
-}
-
-class _RecoveryContent extends StatelessWidget {
-  const _RecoveryContent({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const Column(children: [SizedBox(height: 14), RecoveryCard()]);
   }
 }
 

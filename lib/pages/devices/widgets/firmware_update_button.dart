@@ -6,6 +6,7 @@ import '../../../config.dart';
 import '../../../theme/theme.dart';
 import '../../../widgets/notification.dart';
 import '../../../widgets/progress_button.dart';
+import '../device_scope.dart';
 import '../firmware/directory.dart';
 import '../firmware/installer.dart';
 import '../firmware/matcher.dart';
@@ -42,10 +43,14 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
   UpdateState? _updateState;
   String? _inlineMessage;
 
+  bool _dfuPresent = false;
+
   Color get _activeColor => widget.entry.colors.primary;
   Color get _inactiveColor => FlipperOriginalColors.text16;
 
   bool get _isCustom => widget.selectedChannelId == kCustomFirmwareChannelId;
+
+  bool get _dfuOnly => !widget.client.isConnected && _dfuPresent;
 
   InstallAction _installAction() => FirmwareMatcher(
     entry: widget.entry,
@@ -61,11 +66,18 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
     return state is UpdateFetching ||
         state is UpdateDownloading ||
         state is UpdateUploading ||
-        state is UpdateStarting;
+        state is UpdateStarting ||
+        state is UpdateRecovering ||
+        state is UpdateWaitingForReconnect;
   }
 
   @override
   Widget build(BuildContext context) {
+    _dfuPresent = DeviceScope.of(context).dfuPresent;
+    if (_updateState is UpdateWaitingForReconnect &&
+        widget.client.isConnected) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _finishRecovery());
+    }
     final state = _resolve();
     final progress = _progressFor(state);
     final borderColor = state.color;
@@ -104,10 +116,13 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
   Future<void> _onPressed() async {
     if (_inProgress) return;
 
-    if (!widget.client.isConnected) {
+    if (!widget.client.isConnected && !_dfuPresent) {
       setState(() => _inlineMessage = 'Connect a Flipper first');
       return;
     }
+
+    final recovering = _dfuOnly;
+    final device = recovering ? DeviceScope.of(context) : null;
 
     final FirmwareSource source;
     if (_isCustom) {
@@ -128,6 +143,8 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
       );
     }
 
+    device?.setRecovering(true);
+
     setState(() {
       _inlineMessage = null;
       _updateState = source.isRemote
@@ -135,12 +152,15 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
           : const UpdateUploading(0);
     });
 
+    var waitForReconnect = false;
     try {
       await FirmwareInstaller.install(
         source: source,
         client: widget.client,
         onState: _onState,
       );
+      waitForReconnect =
+          recovering && _updateState is UpdateWaitingForReconnect;
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -153,7 +173,37 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
         type: QNotificationType.error,
         duration: const Duration(seconds: 6),
       );
+    } finally {
+      device?.setRecovering(false);
     }
+
+    if (waitForReconnect) {
+      await _completeRecoveryOnReconnect();
+    }
+  }
+
+  Future<void> _completeRecoveryOnReconnect() async {
+    if (widget.client.isConnected) {
+      _finishRecovery();
+      return;
+    }
+
+    try {
+      await widget.client.connectionStream
+          .firstWhere((_) => widget.client.isConnected)
+          .timeout(const Duration(seconds: 30));
+    } catch (_) {
+      return;
+    }
+    _finishRecovery();
+  }
+
+  void _finishRecovery() {
+    if (!mounted) return;
+    setState(() {
+      _updateState = null;
+      _inlineMessage = 'Device recovered and connected successfully';
+    });
   }
 
   void _onState(UpdateState state) {
@@ -183,7 +233,7 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
   _ResolvedButtonState _baseState() {
     final description = _inlineMessage;
 
-    if (!widget.client.isConnected) {
+    if (!widget.client.isConnected && !_dfuPresent) {
       return _ResolvedButtonState(
         label: 'NO CONNECTION',
         color: _inactiveColor,
@@ -197,7 +247,29 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
         label: 'INSTALL',
         color: _activeColor,
         description:
-            description ?? 'Pick a local update .tgz archive to install',
+            description ??
+            (_dfuOnly
+                ? 'Pick a local update .tgz to recover the device over DFU'
+                : 'Pick a local update .tgz archive to install'),
+        enabled: true,
+      );
+    }
+
+    if (_dfuOnly) {
+      if (widget.latestVersion == null) {
+        return _ResolvedButtonState(
+          label: 'NO FIRMWARE',
+          color: _inactiveColor,
+          description: 'Can\'t connect to update server',
+          enabled: false,
+        );
+      }
+      return _ResolvedButtonState(
+        label: 'REPAIR',
+        color: _activeColor,
+        description:
+            description ??
+            'Device is in DFU mode. Reinstall the selected firmware over USB.',
         enabled: true,
       );
     }
@@ -274,6 +346,18 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
         description: 'Starting updater on Flipper…',
         enabled: false,
       ),
+      UpdateRecovering(:final step, :final progress) => _ResolvedButtonState(
+        label: _recoveryLabel(step),
+        color: _activeColor,
+        description: _recoveryDescription(step, progress),
+        enabled: false,
+      ),
+      UpdateWaitingForReconnect() => _ResolvedButtonState(
+        label: 'RESTARTING',
+        color: _activeColor,
+        description: 'Waiting for Flipper to reconnect…',
+        enabled: false,
+      ),
       UpdateDone() => _ResolvedButtonState(
         label: 'RUN INSTALLER',
         color: _activeColor,
@@ -302,8 +386,39 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
         color: state.color,
       ),
       UpdateStarting() => _ProgressVisual(value: null, color: state.color),
+      UpdateRecovering(:final step, :final progress) => _ProgressVisual(
+        value: switch (step) {
+          RecoveryStep.flashingRadio ||
+          RecoveryStep.flashingFirmware => progress,
+          _ => null,
+        },
+        color: state.color,
+      ),
+      UpdateWaitingForReconnect() => _ProgressVisual(
+        value: null,
+        color: state.color,
+      ),
       UpdateDone() => _ProgressVisual(value: 1, color: state.color),
       _ => null,
+    };
+  }
+
+  static String _recoveryLabel(RecoveryStep step) => switch (step) {
+    RecoveryStep.settingBootMode => 'PREPARING',
+    RecoveryStep.flashingRadio => 'RADIO',
+    RecoveryStep.flashingFirmware => 'FIRMWARE',
+    RecoveryStep.correctingOptionBytes => 'FINALIZING',
+    RecoveryStep.restarting => 'RESTARTING',
+  };
+
+  static String _recoveryDescription(RecoveryStep step, double progress) {
+    final percent = (progress * 100).round();
+    return switch (step) {
+      RecoveryStep.settingBootMode => 'Preparing device for recovery…',
+      RecoveryStep.flashingRadio => 'Flashing radio stack… $percent%',
+      RecoveryStep.flashingFirmware => 'Flashing firmware… $percent%',
+      RecoveryStep.correctingOptionBytes => 'Restoring option bytes…',
+      RecoveryStep.restarting => 'Restarting Flipper…',
     };
   }
 }

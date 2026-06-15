@@ -11,6 +11,7 @@ class DevicePageHeader extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.active,
+    this.dfu = false,
     this.infoEntries = const [],
     this.deviceInfo = const {},
     this.connectionLabel = 'USB',
@@ -23,6 +24,7 @@ class DevicePageHeader extends StatelessWidget {
   final String title;
   final String subtitle;
   final bool active;
+  final bool dfu;
   final List<MapEntry<String, String>> infoEntries;
   final Map<String, String> deviceInfo;
   final String connectionLabel;
@@ -52,6 +54,7 @@ class DevicePageHeader extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 18),
                       child: FlipperMockupHero(
                         active: active,
+                        dfu: dfu,
                         title: title,
                         infoEntries: infoEntries,
                         deviceInfo: deviceInfo,
@@ -92,7 +95,7 @@ class DevicePageHeader extends StatelessWidget {
                   padding: const EdgeInsets.only(top: 7, right: 18, bottom: 7),
                   child: SizedBox(
                     height: 100,
-                    child: FlipperMockupWidget(active: active),
+                    child: FlipperMockupWidget(active: active, dfu: dfu),
                   ),
                 ),
                 Column(

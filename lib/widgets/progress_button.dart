@@ -57,7 +57,7 @@ class ProgressButton extends StatefulWidget {
 }
 
 class _ProgressButtonState extends State<ProgressButton>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   AnimationController? _indeterminateController;
 
   @override
@@ -164,10 +164,12 @@ class _ProgressButtonState extends State<ProgressButton>
                         applyHeightToFirstAscent: false,
                         applyHeightToLastDescent: false,
                       ),
-                      style: (widget.textStyle ?? ProgressButton.defaultTextStyle)
-                          .copyWith(
-                        leadingDistribution: TextLeadingDistribution.even,
-                      ),
+                      style:
+                          (widget.textStyle ?? ProgressButton.defaultTextStyle)
+                              .copyWith(
+                                leadingDistribution:
+                                    TextLeadingDistribution.even,
+                              ),
                     ),
                   ),
                 ),
@@ -224,7 +226,10 @@ class _IndeterminateBar extends StatelessWidget {
                   bottom: 0,
                   width: barWidth,
                   child: DecoratedBox(
-                    decoration: BoxDecoration(color: color, borderRadius: radius),
+                    decoration: BoxDecoration(
+                      color: color,
+                      borderRadius: radius,
+                    ),
                   ),
                 ),
               ],

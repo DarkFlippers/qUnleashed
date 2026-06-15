@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flipperlib/dfu/dfu_memory_layout.dart';
 import 'package:flipperlib/dfu/dfuse_file.dart';
+import 'package:flipperlib/dfu/recovery_runner.dart';
 import 'package:flipperlib/dfu/stm32wb55/option_bytes.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -100,6 +101,54 @@ void main() {
       );
       bytes[bytes.length - 1] ^= 0xFF;
       expect(DfuseFile.parse(bytes).isValid, isFalse);
+    });
+  });
+
+  group('Recovery option-byte masks', () {
+    test('writes only bits allowed by the write mask', () {
+      final current = Uint8List(OptionBytes.sizeBytes)..[3] = 0x0C;
+      final reference = Uint8List(OptionBytes.sizeBytes)..[3] = 0x0D;
+      final writeMask = Uint8List(OptionBytes.sizeBytes)..[3] = 0x03;
+
+      final corrected = correctedOptionBytes(
+        current: current,
+        reference: reference,
+        writeMask: writeMask,
+      );
+
+      expect(corrected[3], 0x0D);
+      expect(corrected.sublist(4), everyElement(0));
+    });
+
+    test('compare mask and write mask remain independent', () {
+      final current = Uint8List(OptionBytes.sizeBytes)..[0] = 0xA0;
+      final reference = Uint8List(OptionBytes.sizeBytes)..[0] = 0xA5;
+      final compareMask = Uint8List(OptionBytes.sizeBytes)..[0] = 0xFF;
+      final writeMask = Uint8List(OptionBytes.sizeBytes)..[0] = 0x0F;
+
+      expect(
+        optionBytesMatch(
+          current: current,
+          reference: reference,
+          compareMask: compareMask,
+        ),
+        isFalse,
+      );
+
+      final corrected = correctedOptionBytes(
+        current: current,
+        reference: reference,
+        writeMask: writeMask,
+      );
+      expect(corrected[0], 0xA5);
+      expect(
+        optionBytesMatch(
+          current: corrected,
+          reference: reference,
+          compareMask: compareMask,
+        ),
+        isTrue,
+      );
     });
   });
 }

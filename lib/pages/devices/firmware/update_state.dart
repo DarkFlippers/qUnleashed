@@ -1,3 +1,5 @@
+import 'package:flipperlib/flipperlib.dart' show RecoveryStep;
+
 sealed class UpdateState {
   const UpdateState();
 }
@@ -22,6 +24,17 @@ class UpdateUploading extends UpdateState {
 
 class UpdateStarting extends UpdateState {
   const UpdateStarting();
+}
+
+class UpdateRecovering extends UpdateState {
+  const UpdateRecovering(this.step, this.progress);
+
+  final RecoveryStep step;
+  final double progress;
+}
+
+class UpdateWaitingForReconnect extends UpdateState {
+  const UpdateWaitingForReconnect();
 }
 
 class UpdateDone extends UpdateState {

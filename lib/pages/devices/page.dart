@@ -8,8 +8,6 @@ import '../tools/overview/page.dart';
 import 'controllers/device.dart';
 import 'device_scope.dart';
 import 'models/connection_state.dart';
-import 'recovery/recovery_controller.dart';
-import 'recovery/recovery_scope.dart';
 import 'widgets/device_tab.dart';
 
 class DevicePage extends StatefulWidget {
@@ -21,7 +19,6 @@ class DevicePage extends StatefulWidget {
 
 class _DevicePageState extends State<DevicePage> {
   final DeviceController _ctrl = DeviceController();
-  late final RecoveryController _recovery = RecoveryController(_ctrl);
   final ArchiveController _archiveController = ArchiveController();
 
   FlipperRootTab _tab = FlipperRootTab.device;
@@ -36,7 +33,6 @@ class _DevicePageState extends State<DevicePage> {
 
   @override
   void dispose() {
-    _recovery.dispose();
     _ctrl.dispose();
     _archiveController.removeListener(_onArchiveChanged);
     _archiveController.dispose();
@@ -52,28 +48,25 @@ class _DevicePageState extends State<DevicePage> {
   Widget build(BuildContext context) {
     return DeviceScope(
       notifier: _ctrl,
-      child: RecoveryScope(
-        notifier: _recovery,
-        child: ListenableBuilder(
-          listenable: Listenable.merge([_ctrl, _recovery]),
-          builder: (context, _) {
-            return FlipperRootScaffold(
-              currentTab: _tab,
-              onTabSelected: _selectTab,
-              deviceIconAsset: _deviceIconAsset(),
-              deviceLabel: _deviceLabel(),
-              child: IndexedStack(
-                index: _tab.index,
-                children: [
-                  const DeviceTab(),
-                  ArchivePage(controller: _archiveController),
-                  _appsMounted ? const AppsPage() : const SizedBox.shrink(),
-                  const ToolsPage(),
-                ],
-              ),
-            );
-          },
-        ),
+      child: ListenableBuilder(
+        listenable: _ctrl,
+        builder: (context, _) {
+          return FlipperRootScaffold(
+            currentTab: _tab,
+            onTabSelected: _selectTab,
+            deviceIconAsset: _deviceIconAsset(),
+            deviceLabel: _deviceLabel(),
+            child: IndexedStack(
+              index: _tab.index,
+              children: [
+                const DeviceTab(),
+                ArchivePage(controller: _archiveController),
+                _appsMounted ? const AppsPage() : const SizedBox.shrink(),
+                const ToolsPage(),
+              ],
+            ),
+          );
+        },
       ),
     );
   }

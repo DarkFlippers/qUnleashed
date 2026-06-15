@@ -5,7 +5,11 @@ import '../../../theme/theme.dart';
 import '../models/device_info.dart';
 
 class FlipperMockupWidget extends StatelessWidget {
-  const FlipperMockupWidget({super.key, required this.active});
+  const FlipperMockupWidget({
+    super.key,
+    required this.active,
+    this.dfu = false,
+  });
 
   static const _templateWidth = 238.0;
   static const _templateHeight = 100.0;
@@ -15,6 +19,8 @@ class FlipperMockupWidget extends StatelessWidget {
   static const _screenHeight = 46.95;
 
   final bool active;
+
+  final bool dfu;
 
   @override
   Widget build(BuildContext context) {
@@ -45,24 +51,26 @@ class FlipperMockupWidget extends StatelessWidget {
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(w * (3.4 / 238)),
                   child: RepaintBoundary(
-                    child: OverflowBox(
-                      alignment: Alignment.topLeft,
-                      minWidth: w,
-                      maxWidth: w,
-                      minHeight: h,
-                      maxHeight: h,
-                      child: Transform.translate(
-                        offset: Offset(
-                          -w * (_screenLeft / _templateWidth),
-                          -h * (_screenTop / _templateHeight),
-                        ),
-                        child: SizedBox(
-                          width: w,
-                          height: h,
-                          child: const _MockupInnerScreen(),
-                        ),
-                      ),
-                    ),
+                    child: dfu
+                        ? const _MockupRecoveryScreen()
+                        : OverflowBox(
+                            alignment: Alignment.topLeft,
+                            minWidth: w,
+                            maxWidth: w,
+                            minHeight: h,
+                            maxHeight: h,
+                            child: Transform.translate(
+                              offset: Offset(
+                                -w * (_screenLeft / _templateWidth),
+                                -h * (_screenTop / _templateHeight),
+                              ),
+                              child: SizedBox(
+                                width: w,
+                                height: h,
+                                child: const _MockupInnerScreen(),
+                              ),
+                            ),
+                          ),
                   ),
                 ),
               ),
@@ -83,9 +91,11 @@ class FlipperMockupHero extends StatelessWidget {
     required this.deviceInfo,
     required this.connectionLabel,
     required this.connectionIcon,
+    this.dfu = false,
   });
 
   final bool active;
+  final bool dfu;
   final String title;
   final List<MapEntry<String, String>> infoEntries;
   final Map<String, String> deviceInfo;
@@ -118,7 +128,10 @@ class FlipperMockupHero extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        SizedBox(height: 100, child: FlipperMockupWidget(active: active)),
+        SizedBox(
+          height: 100,
+          child: FlipperMockupWidget(active: active, dfu: dfu),
+        ),
         const SizedBox(width: 24),
         Expanded(
           child: Column(
@@ -248,6 +261,26 @@ class _MockupInnerScreen extends StatelessWidget {
     return SvgPicture.asset(
       'assets/pic/device/screen/default.svg',
       fit: BoxFit.fill,
+    );
+  }
+}
+
+class _MockupRecoveryScreen extends StatelessWidget {
+  const _MockupRecoveryScreen();
+
+  static const _screenColor = Color(0xFFFF8200);
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: _screenColor,
+      child: Padding(
+        padding: const EdgeInsets.all(3),
+        child: SvgPicture.asset(
+          'assets/pic/device/screen/recovery.svg',
+          fit: BoxFit.contain,
+        ),
+      ),
     );
   }
 }
