@@ -6,10 +6,10 @@ import '../../../config.dart';
 import '../../../theme/theme.dart';
 import '../../../widgets/notification.dart';
 import '../../../widgets/progress_button.dart';
-import '../firmware/firmware_directory.dart';
-import '../firmware/firmware_installer.dart';
-import '../firmware/firmware_matcher.dart';
-import '../firmware/firmware_source.dart';
+import '../firmware/directory.dart';
+import '../firmware/installer.dart';
+import '../firmware/matcher.dart';
+import '../firmware/source.dart';
 import '../firmware/update_state.dart';
 
 class FirmwareUpdateButton extends StatefulWidget {

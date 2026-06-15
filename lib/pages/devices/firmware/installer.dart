@@ -5,7 +5,7 @@ import 'package:archive/archive_io.dart';
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/foundation.dart';
 
-import 'firmware_source.dart';
+import 'source.dart';
 import 'update_state.dart';
 
 const _tag = '[FirmwareInstaller]';

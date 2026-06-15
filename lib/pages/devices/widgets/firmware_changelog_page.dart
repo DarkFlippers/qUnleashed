@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../config.dart';
 import '../../../theme/theme.dart';
-import '../firmware/firmware_directory.dart';
+import '../firmware/directory.dart';
 import 'package:qunleashed/components/appbar.dart';
 import 'changelog_renderer.dart';
 import 'firmware_update_button.dart';

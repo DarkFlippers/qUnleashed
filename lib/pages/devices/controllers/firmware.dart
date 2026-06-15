@@ -2,8 +2,8 @@ import 'package:flutter/foundation.dart';
 
 import '../../../config.dart';
 import '../../../theme/theme.dart';
-import '../firmware/firmware_directory.dart';
-import '../firmware/firmware_repository.dart';
+import '../firmware/directory.dart';
+import '../firmware/repository.dart';
 
 class FirmwareController extends ChangeNotifier {
   FirmwareController() {

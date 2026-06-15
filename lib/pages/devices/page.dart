@@ -5,7 +5,7 @@ import '../apps/page.dart';
 import '../archive/overview/controller.dart';
 import '../archive/overview/page.dart';
 import '../tools/overview/page.dart';
-import 'controllers/device_controller.dart';
+import 'controllers/device.dart';
 import 'device_scope.dart';
 import 'widgets/device_tab.dart';
 

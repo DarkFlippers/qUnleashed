@@ -4,8 +4,8 @@ import 'package:flutter/material.dart';
 import '../../../config.dart';
 import '../../../theme/theme.dart';
 import '../../../widgets/page_card.dart';
-import '../controllers/firmware_controller.dart';
-import '../firmware/firmware_directory.dart';
+import '../controllers/firmware.dart';
+import '../firmware/directory.dart';
 import 'firmware_changelog_page.dart';
 import 'firmware_update_button.dart';
 

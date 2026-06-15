@@ -6,7 +6,7 @@ import '../../../widgets/info_line.dart';
 import '../../../widgets/notification.dart';
 import '../../../widgets/page_card.dart';
 import '../device_scope.dart';
-import '../firmware/firmware_repository.dart';
+import '../firmware/repository.dart';
 import 'cards/battery_card.dart';
 import 'cards/connect_card.dart';
 import 'cards/device_actions_row.dart';

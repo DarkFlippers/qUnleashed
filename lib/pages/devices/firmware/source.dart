@@ -1,7 +1,7 @@
 import 'dart:io' as io;
 
 import '../../../config.dart';
-import 'firmware_directory.dart';
+import 'directory.dart';
 
 abstract class FirmwareSource {
   Future<String> resolveArchive(
