@@ -7,6 +7,9 @@ import '../archive/overview/page.dart';
 import '../tools/overview/page.dart';
 import 'controllers/device.dart';
 import 'device_scope.dart';
+import 'models/connection_state.dart';
+import 'recovery/recovery_controller.dart';
+import 'recovery/recovery_scope.dart';
 import 'widgets/device_tab.dart';
 
 class DevicePage extends StatefulWidget {
@@ -18,6 +21,7 @@ class DevicePage extends StatefulWidget {
 
 class _DevicePageState extends State<DevicePage> {
   final DeviceController _ctrl = DeviceController();
+  late final RecoveryController _recovery = RecoveryController(_ctrl);
   final ArchiveController _archiveController = ArchiveController();
 
   FlipperRootTab _tab = FlipperRootTab.device;
@@ -32,6 +36,7 @@ class _DevicePageState extends State<DevicePage> {
 
   @override
   void dispose() {
+    _recovery.dispose();
     _ctrl.dispose();
     _archiveController.removeListener(_onArchiveChanged);
     _archiveController.dispose();
@@ -47,25 +52,28 @@ class _DevicePageState extends State<DevicePage> {
   Widget build(BuildContext context) {
     return DeviceScope(
       notifier: _ctrl,
-      child: ListenableBuilder(
-        listenable: _ctrl,
-        builder: (context, _) {
-          return FlipperRootScaffold(
-            currentTab: _tab,
-            onTabSelected: _selectTab,
-            deviceIconAsset: _deviceIconAsset(),
-            deviceLabel: _deviceLabel(),
-            child: IndexedStack(
-              index: _tab.index,
-              children: [
-                const DeviceTab(),
-                ArchivePage(controller: _archiveController),
-                _appsMounted ? const AppsPage() : const SizedBox.shrink(),
-                const ToolsPage(),
-              ],
-            ),
-          );
-        },
+      child: RecoveryScope(
+        notifier: _recovery,
+        child: ListenableBuilder(
+          listenable: Listenable.merge([_ctrl, _recovery]),
+          builder: (context, _) {
+            return FlipperRootScaffold(
+              currentTab: _tab,
+              onTabSelected: _selectTab,
+              deviceIconAsset: _deviceIconAsset(),
+              deviceLabel: _deviceLabel(),
+              child: IndexedStack(
+                index: _tab.index,
+                children: [
+                  const DeviceTab(),
+                  ArchivePage(controller: _archiveController),
+                  _appsMounted ? const AppsPage() : const SizedBox.shrink(),
+                  const ToolsPage(),
+                ],
+              ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -78,39 +86,53 @@ class _DevicePageState extends State<DevicePage> {
   }
 
   String _deviceIconAsset() {
-    final isConnected = _ctrl.isConnected;
-    if (!isConnected) {
-      return _ctrl.device != null
-          ? 'assets/ic/connect/device-disconnected-filled.svg'
-          : 'assets/ic/connect/device-missing-filled.svg';
-    }
-    if (_ctrl.deviceLoading) {
-      return 'assets/ic/connect/device-syncing-filled.svg';
-    }
-    switch (_syncStatus) {
-      case ArchiveSyncStatus.syncing:
+    switch (_ctrl.connectionState) {
+      case DeviceConnectionState.disconnected:
+        return _ctrl.device != null
+            ? 'assets/ic/connect/device-disconnected-filled.svg'
+            : 'assets/ic/connect/device-missing-filled.svg';
+      case DeviceConnectionState.connecting:
+      case DeviceConnectionState.recovering:
         return 'assets/ic/connect/device-syncing-filled.svg';
-      case ArchiveSyncStatus.synced:
-        return _ctrl.deviceInfoConnected
-            ? 'assets/ic/connect/device-connected-filled.svg'
-            : 'assets/ic/connect/device-synced-filled.svg';
-      case ArchiveSyncStatus.idle:
-        return 'assets/ic/connect/device-connected-filled.svg';
+      case DeviceConnectionState.dfu:
+        return 'assets/ic/connect/device-disconnected-filled.svg';
+      case DeviceConnectionState.connected:
+        if (_ctrl.deviceLoading) {
+          return 'assets/ic/connect/device-syncing-filled.svg';
+        }
+        switch (_syncStatus) {
+          case ArchiveSyncStatus.syncing:
+            return 'assets/ic/connect/device-syncing-filled.svg';
+          case ArchiveSyncStatus.synced:
+            return _ctrl.deviceInfoConnected
+                ? 'assets/ic/connect/device-connected-filled.svg'
+                : 'assets/ic/connect/device-synced-filled.svg';
+          case ArchiveSyncStatus.idle:
+            return 'assets/ic/connect/device-connected-filled.svg';
+        }
     }
   }
 
   String _deviceLabel() {
-    if (!_ctrl.isConnected) {
-      return _ctrl.device != null ? 'Disconnected' : 'No device';
-    }
-    if (_ctrl.deviceLoading) return 'Syncing';
-    switch (_syncStatus) {
-      case ArchiveSyncStatus.syncing:
-        return 'Syncing';
-      case ArchiveSyncStatus.synced:
-        return _ctrl.deviceInfoConnected ? 'Connected' : 'Synced';
-      case ArchiveSyncStatus.idle:
-        return 'Connected';
+    switch (_ctrl.connectionState) {
+      case DeviceConnectionState.disconnected:
+        return _ctrl.device != null ? 'Disconnected' : 'No device';
+      case DeviceConnectionState.connecting:
+        return 'Connecting';
+      case DeviceConnectionState.dfu:
+        return 'DFU';
+      case DeviceConnectionState.recovering:
+        return 'Recovering';
+      case DeviceConnectionState.connected:
+        if (_ctrl.deviceLoading) return 'Syncing';
+        switch (_syncStatus) {
+          case ArchiveSyncStatus.syncing:
+            return 'Syncing';
+          case ArchiveSyncStatus.synced:
+            return _ctrl.deviceInfoConnected ? 'Connected' : 'Synced';
+          case ArchiveSyncStatus.idle:
+            return 'Connected';
+        }
     }
   }
 

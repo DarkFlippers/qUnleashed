@@ -7,10 +7,12 @@ import '../../../widgets/notification.dart';
 import '../../../widgets/page_card.dart';
 import '../device_scope.dart';
 import '../firmware/repository.dart';
+import '../models/connection_state.dart';
 import 'cards/battery_card.dart';
 import 'cards/connect_card.dart';
 import 'cards/device_actions_row.dart';
 import 'cards/device_info_card.dart';
+import 'cards/recovery_card.dart';
 import 'cards/storage_card.dart';
 import 'firmware_card.dart';
 import 'full_info_sheet.dart';
@@ -57,18 +59,9 @@ class DeviceTab extends StatelessWidget {
                             deviceVersion: ctrl.firmwareVersion,
                             deviceInfo: ctrl.info,
                           ),
-                          // Fade between connected content and disconnected
-                          // connect button; no re-layout jump.
                           AnimatedSwitcher(
                             duration: const Duration(milliseconds: 220),
-                            child: ctrl.isConnected
-                                ? _ConnectedContent(
-                                    key: const ValueKey(true),
-                                    wide: wide,
-                                  )
-                                : const _DisconnectedContent(
-                                    key: ValueKey(false),
-                                  ),
+                            child: _stateContent(ctrl.connectionState, wide),
                           ),
                         ],
                       ),
@@ -97,6 +90,19 @@ class DeviceTab extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  static Widget _stateContent(DeviceConnectionState state, bool wide) {
+    switch (state) {
+      case DeviceConnectionState.connected:
+        return _ConnectedContent(key: const ValueKey('connected'), wide: wide);
+      case DeviceConnectionState.dfu:
+      case DeviceConnectionState.recovering:
+        return const _RecoveryContent(key: ValueKey('recovery'));
+      case DeviceConnectionState.disconnected:
+      case DeviceConnectionState.connecting:
+        return const _DisconnectedContent(key: ValueKey('disconnected'));
+    }
   }
 
   static Future<void> _onRefresh(BuildContext context) async {
@@ -219,6 +225,15 @@ class _DisconnectedContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Column(children: [SizedBox(height: 14), ConnectCard()]);
+  }
+}
+
+class _RecoveryContent extends StatelessWidget {
+  const _RecoveryContent({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Column(children: [SizedBox(height: 14), RecoveryCard()]);
   }
 }
 

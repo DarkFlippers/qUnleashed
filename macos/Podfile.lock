@@ -46,7 +46,7 @@ EXTERNAL SOURCES:
     :path: Flutter/ephemeral/.symlinks/plugins/universal_ble/darwin
 
 SPEC CHECKSUMS:
-  flipperlib: 2dac162b6f5b0514d043cbbf3e0abf9e8b46b7cb
+  flipperlib: 17735c29e65ccc07b6f6bfd1d73b892cc99ea09e
   flutter_libserialport: 2c523cb8d8203fc6d1b0da88190da31ac970eb93
   FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
   irondash_engine_context: 893c7d96d20ce361d7e996f39d360c4c2f9869ba

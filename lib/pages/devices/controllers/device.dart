@@ -4,15 +4,23 @@ import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../../theme/theme.dart';
+import '../models/connection_state.dart';
 import '../models/device_info.dart';
 
 class DeviceController extends ChangeNotifier {
   DeviceController() {
     _device = _client.connectedDevice;
     _connectionSub = _client.connectionStream.listen(_onConnectionState);
+    _usbEventsSub = _client.usbEvents.listen((_) => _scheduleAutoConnect());
+    _dfuPresentSub = _dfuDetector.presence.listen(setDfuPresent);
+    _dfuDetector.start();
+    _scheduleAutoConnect();
   }
 
+  static const Duration _autoConnectDebounce = Duration(milliseconds: 500);
+
   final FlipperClient _client = FlipperOneClient().get();
+  final DfuDetector _dfuDetector = DfuDetector();
 
   FlipperDevice? _device;
   bool _deviceDisconnected = false;
@@ -23,8 +31,17 @@ class DeviceController extends ChangeNotifier {
   int _infoRequestGeneration = 0;
   bool _disposed = false;
 
+  bool _dfuPresent = false;
+  bool _recovering = false;
+
+  String? _userDisconnectedId;
+  final Set<String> _autoConnectAttemptedIds = {};
+  Timer? _autoConnectTimer;
+
   StreamSubscription<FlipperConnectionState>? _connectionSub;
   StreamSubscription<Map<String, String>>? _infoStreamSub;
+  StreamSubscription<void>? _usbEventsSub;
+  StreamSubscription<bool>? _dfuPresentSub;
 
   // ── Getters ──────────────────────────────────────────────────────────────
 
@@ -33,9 +50,19 @@ class DeviceController extends ChangeNotifier {
   bool get deviceLoading => _deviceLoading;
   bool get deviceInfoConnected => _deviceInfoConnected;
   bool get alertPlaying => _alertPlaying;
+  bool get dfuPresent => _dfuPresent;
+  bool get recovering => _recovering;
   Map<String, String> get info => _info;
 
   bool get isConnected => _device != null && !_deviceDisconnected;
+
+  DeviceConnectionState get connectionState {
+    if (_recovering) return DeviceConnectionState.recovering;
+    if (isConnected) return DeviceConnectionState.connected;
+    if (_client.isConnecting) return DeviceConnectionState.connecting;
+    if (_dfuPresent) return DeviceConnectionState.dfu;
+    return DeviceConnectionState.disconnected;
+  }
 
   String get firmwareVersion => DeviceInfoReader.firmwareVersion(_info);
   String get buildDate => DeviceInfoReader.buildDate(_info);
@@ -49,11 +76,13 @@ class DeviceController extends ChangeNotifier {
 
   /// Connects to [device]. Throws on failure.
   Future<void> connect(FlipperDevice device) async {
+    if (_userDisconnectedId == device.id) _userDisconnectedId = null;
     final connected = await _client.connect(device);
     _setupDevice(connected);
   }
 
   Future<void> disconnect() async {
+    _userDisconnectedId = _device?.id;
     await _client.disconnect();
     _resetSession();
   }
@@ -90,13 +119,77 @@ class DeviceController extends ChangeNotifier {
     }
   }
 
+  void setDfuPresent(bool present) {
+    if (_dfuPresent == present) return;
+    _dfuPresent = present;
+    _notify();
+  }
+
+  void setRecovering(bool recovering) {
+    if (_recovering == recovering) return;
+    _recovering = recovering;
+    if (recovering) {
+      _dfuDetector.stop();
+    } else {
+      _dfuDetector.start();
+    }
+    _notify();
+  }
+
+  void _scheduleAutoConnect() {
+    _autoConnectTimer?.cancel();
+    _autoConnectTimer = Timer(_autoConnectDebounce, _tryAutoConnect);
+  }
+
+  Future<void> _tryAutoConnect() async {
+    if (_disposed || _recovering) return;
+    if (isConnected || _client.isConnecting) return;
+
+    try {
+      await _client.refreshUsbOnly();
+    } catch (e) {
+      LogService.log('[DeviceController] auto-connect USB refresh failed: $e');
+    }
+    if (_disposed || isConnected || _client.isConnecting) return;
+
+    final usbDevices = _client.devices.where((d) => d.isUsb).toList();
+    final presentIds = usbDevices.map((d) => d.id).toSet();
+    _autoConnectAttemptedIds.removeWhere((id) => !presentIds.contains(id));
+    if (_userDisconnectedId != null &&
+        !presentIds.contains(_userDisconnectedId)) {
+      _userDisconnectedId = null;
+    }
+
+    FlipperDevice? candidate;
+    for (final d in usbDevices) {
+      if (d.id == _userDisconnectedId) continue;
+      if (_autoConnectAttemptedIds.contains(d.id)) continue;
+      if (!_client.isFlipperDevice(d)) continue;
+      candidate = d;
+      break;
+    }
+    if (candidate == null) return;
+
+    _autoConnectAttemptedIds.add(candidate.id);
+    LogService.log('[DeviceController] auto-connecting to ${candidate.name}');
+    try {
+      await connect(candidate);
+    } catch (e) {
+      LogService.log('[DeviceController] auto-connect failed: $e');
+    }
+  }
+
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   @override
   void dispose() {
     _disposed = true;
+    _autoConnectTimer?.cancel();
     _cancelDataStreams();
     _connectionSub?.cancel();
+    _usbEventsSub?.cancel();
+    _dfuPresentSub?.cancel();
+    _dfuDetector.dispose();
     super.dispose();
   }
 
