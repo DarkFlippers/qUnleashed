@@ -3,8 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../../config.dart';
-import '../../../services/update/firmware_directory.dart';
 import '../../../theme/theme.dart';
+import '../firmware/firmware_directory.dart';
 import 'package:qunleashed/components/appbar.dart';
 import 'changelog_renderer.dart';
 import 'firmware_update_button.dart';

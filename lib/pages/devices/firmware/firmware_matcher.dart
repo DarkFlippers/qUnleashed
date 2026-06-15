@@ -1,5 +1,5 @@
 import '../../../config.dart';
-import '../../../services/update/firmware_directory.dart';
+import 'firmware_directory.dart';
 
 enum InstallAction { noUpdate, install, update }
 

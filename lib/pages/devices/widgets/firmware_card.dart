@@ -2,10 +2,10 @@ import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
 import '../../../config.dart';
-import '../../../services/update/firmware_directory.dart';
 import '../../../theme/theme.dart';
 import '../../../widgets/page_card.dart';
 import '../controllers/firmware_controller.dart';
+import '../firmware/firmware_directory.dart';
 import 'firmware_changelog_page.dart';
 import 'firmware_update_button.dart';
 

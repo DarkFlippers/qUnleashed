@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:super_clipboard/super_clipboard.dart';
 
-import '../../../services/update/update_service.dart';
 import '../../../theme/theme.dart';
 import '../../../widgets/info_line.dart';
 import '../../../widgets/notification.dart';
 import '../../../widgets/page_card.dart';
 import '../device_scope.dart';
+import '../firmware/firmware_repository.dart';
 import 'cards/battery_card.dart';
 import 'cards/connect_card.dart';
 import 'cards/device_actions_row.dart';
@@ -101,7 +101,7 @@ class DeviceTab extends StatelessWidget {
 
   static Future<void> _onRefresh(BuildContext context) async {
     DeviceScope.of(context).synchronize();
-    await UpdateService.instance.refresh();
+    await FirmwareRepository.instance.refresh();
   }
 
   static void _openFullInfo(BuildContext context) {

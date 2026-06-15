@@ -1,15 +1,7 @@
 import 'dart:io' as io;
 
 import '../../../config.dart';
-import '../../../services/update/firmware_directory.dart';
-import '../../../services/update/ofw_parser.dart';
-import '../../../services/update/unleashed_parser.dart';
-
-FirmwareParser parserForEntry(FirmwareEntry entry) => switch (entry.shortName) {
-  'ofw' => OfwParser.instance,
-  'unlshd' => UnleashedParser.instance,
-  _ => OfwParser.instance,
-};
+import 'firmware_directory.dart';
 
 abstract class FirmwareSource {
   Future<String> resolveArchive(

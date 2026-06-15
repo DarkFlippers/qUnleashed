@@ -1,45 +1,36 @@
-import 'dart:async';
-
-import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../../config.dart';
-import '../../../services/update/firmware_directory.dart';
-import '../../../services/update/unleashed_parser.dart';
-import '../../../services/update/update_service.dart';
 import '../../../theme/theme.dart';
-import '../firmware/firmware_source.dart';
+import '../firmware/firmware_directory.dart';
+import '../firmware/firmware_repository.dart';
 
 class FirmwareController extends ChangeNotifier {
   FirmwareController() {
-    _serviceSub = UpdateService.instance.onUpdated.listen(
-      (_) => _reloadFromService(),
-    );
+    _repo.addListener(_onRepoChanged);
+    _repo.prefetchAll();
   }
 
   final FirmwareConfig config = QAppThemeController.instance.config;
+  final FirmwareRepository _repo = FirmwareRepository.instance;
 
-  final Map<String, _EntryState> _entries = {};
-  StreamSubscription<void>? _serviceSub;
-  bool _disposed = false;
+  final Map<String, _Selection> _selections = {};
 
-  bool fetchLoadingFor(FirmwareEntry entry) {
-    final state = _entries[entry.shortName];
-    return state == null || state.fetching || !state.resolved;
-  }
+  bool fetchLoadingFor(FirmwareEntry entry) =>
+      _repo.isLoading(entry) || _repo.directoryFor(entry) == null;
 
   List<FirmwareDirectoryChannel> channelsFor(FirmwareEntry entry) =>
-      _channelsForDirectory(_entries[entry.shortName]?.directory);
+      _channelsForDirectory(_repo.directoryFor(entry));
 
   String selectedChannelId(FirmwareEntry entry) {
-    final selected = _entries[entry.shortName]?.channelId;
+    final selected = _selections[entry.shortName]?.channelId;
     if (selected != null && selected.isNotEmpty) return selected;
     return kCustomFirmwareChannelId;
   }
 
   UnleashedVariant selectedVariant(FirmwareEntry entry) =>
       _supportsVariantSelection(entry, selectedChannelId(entry))
-      ? (_entries[entry.shortName]?.variant ?? UnleashedVariant.extraPacks)
+      ? (_selections[entry.shortName]?.variant ?? UnleashedVariant.extraPacks)
       : UnleashedVariant.extraPacks;
 
   bool hasVariants(FirmwareEntry entry) =>
@@ -53,98 +44,50 @@ class FirmwareController extends ChangeNotifier {
         variant: selectedVariant(entry),
       );
     }
-    final dir = _entries[entry.shortName]?.directory;
+    final dir = _repo.directoryFor(entry);
     return dir?.channelById(selectedChannelId(entry))?.latest?.version;
   }
 
   FirmwareVersion? latestFirmwareFor(FirmwareEntry entry) {
-    final dir = _entries[entry.shortName]?.directory;
+    final dir = _repo.directoryFor(entry);
     return dir?.channelById(selectedChannelId(entry))?.latest;
   }
 
-  void ensureDirectory(FirmwareEntry entry) {
-    final state = _stateFor(entry.shortName);
-    if (state.resolved || state.fetching) return;
-    state.fetching = true;
-    _fetchDirectory(entry);
-  }
+  void ensureDirectory(FirmwareEntry entry) => _repo.ensure(entry);
 
   void setChannel(FirmwareEntry entry, String channelId) {
-    final state = _stateFor(entry.shortName);
-    state.channelId = channelId;
-    state.userPicked = true;
+    final selection = _selectionFor(entry.shortName);
+    selection.channelId = channelId;
+    selection.userPicked = true;
     if (!_supportsVariantSelection(entry, channelId)) {
-      state.variant = UnleashedVariant.extraPacks;
+      selection.variant = UnleashedVariant.extraPacks;
     }
-    _notify();
+    notifyListeners();
   }
 
   void setVariant(FirmwareEntry entry, UnleashedVariant variant) {
-    _stateFor(entry.shortName).variant = variant;
-    _notify();
+    _selectionFor(entry.shortName).variant = variant;
+    notifyListeners();
   }
 
-  Future<void> _fetchDirectory(FirmwareEntry entry) async {
-    final key = entry.shortName;
-
-    final cached = UpdateService.instance.directoryForSource(key);
-    if (cached != null) {
-      await Future<void>.value();
-      if (_disposed) return;
-      _setDirectory(key, cached);
-      _cancelRetry(key);
-      _notify();
-      return;
-    }
-
-    await UpdateService.instance.checkIfNeeded();
-    if (_disposed) return;
-
-    final dir = UpdateService.instance.directoryForSource(key);
-    if (dir != null) {
-      final summary = dir.channels
-          .map((ch) => '${ch.id}(${ch.title})')
-          .join(', ');
-      LogService.log('[FirmwareController] $key channels: $summary');
-    }
-    _setDirectory(key, dir);
-    if (dir == null) {
-      _scheduleRetry(entry);
-    } else {
-      _cancelRetry(key);
-    }
-    _notify();
-  }
-
-  void _reloadFromService() {
-    if (_disposed) return;
+  void _onRepoChanged() {
     for (final entry in config.firmwares) {
-      final dir = UpdateService.instance.directoryForSource(entry.shortName);
-      if (dir != null) {
-        _setDirectory(entry.shortName, dir);
-        _cancelRetry(entry.shortName);
-      }
+      _applyChannelFallback(entry);
     }
-    _notify();
+    notifyListeners();
   }
 
-  void _setDirectory(String key, FirmwareDirectory? dir) {
-    final state = _stateFor(key);
-    state.directory = dir;
-    state.resolved = true;
-    state.fetching = false;
-    _applyChannelFallback(key, dir);
-  }
-
-  void _applyChannelFallback(String key, FirmwareDirectory? dir) {
-    final state = _stateFor(key);
-    final channels = _channelsForDirectory(dir);
-    final selected = state.channelId;
+  void _applyChannelFallback(FirmwareEntry entry) {
+    final selection = _selectionFor(entry.shortName);
+    final channels = _channelsForDirectory(_repo.directoryFor(entry));
+    final selected = selection.channelId;
     final hasReal = channels.any((c) => c.id != kCustomFirmwareChannelId);
     final needsFallback =
         selected == null ||
         !channels.any((channel) => channel.id == selected) ||
-        (!state.userPicked && hasReal && selected == kCustomFirmwareChannelId);
+        (!selection.userPicked &&
+            hasReal &&
+            selected == kCustomFirmwareChannelId);
     if (!needsFallback) return;
 
     final fallback = channels.firstWhere(
@@ -154,7 +97,7 @@ class FirmwareController extends ChangeNotifier {
         orElse: () => channels.first,
       ),
     );
-    state.channelId = fallback.id;
+    selection.channelId = fallback.id;
   }
 
   List<FirmwareDirectoryChannel> _channelsForDirectory(FirmwareDirectory? dir) {
@@ -171,51 +114,18 @@ class FirmwareController extends ChangeNotifier {
         channel == FirmwareChannel.development;
   }
 
-  void _scheduleRetry(FirmwareEntry entry) {
-    final state = _stateFor(entry.shortName);
-    if (state.retryTimer != null) return;
-    state.retryTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
-      if (_disposed) {
-        timer.cancel();
-        state.retryTimer = null;
-        return;
-      }
-      if (state.fetching) return;
-      state.fetching = true;
-      _fetchDirectory(entry);
-    });
-  }
-
-  void _cancelRetry(String key) {
-    final state = _entries[key];
-    state?.retryTimer?.cancel();
-    state?.retryTimer = null;
-  }
-
-  _EntryState _stateFor(String key) =>
-      _entries.putIfAbsent(key, _EntryState.new);
-
-  void _notify() {
-    if (!_disposed) notifyListeners();
-  }
+  _Selection _selectionFor(String key) =>
+      _selections.putIfAbsent(key, _Selection.new);
 
   @override
   void dispose() {
-    _disposed = true;
-    _serviceSub?.cancel();
-    for (final state in _entries.values) {
-      state.retryTimer?.cancel();
-    }
+    _repo.removeListener(_onRepoChanged);
     super.dispose();
   }
 }
 
-class _EntryState {
-  FirmwareDirectory? directory;
-  bool resolved = false;
-  bool fetching = false;
+class _Selection {
   String? channelId;
   UnleashedVariant? variant;
   bool userPicked = false;
-  Timer? retryTimer;
 }

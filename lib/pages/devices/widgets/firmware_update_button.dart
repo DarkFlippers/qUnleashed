@@ -1,15 +1,12 @@
-import 'dart:async';
-
 import 'package:file_picker/file_picker.dart';
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
 import '../../../config.dart';
-import '../../../services/update/firmware_directory.dart';
 import '../../../theme/theme.dart';
 import '../../../widgets/notification.dart';
-import '../../../widgets/notifications/update.dart';
 import '../../../widgets/progress_button.dart';
+import '../firmware/firmware_directory.dart';
 import '../firmware/firmware_installer.dart';
 import '../firmware/firmware_matcher.dart';
 import '../firmware/firmware_source.dart';
@@ -160,20 +157,6 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
   }
 
   void _onState(UpdateState state) {
-    if (state is UpdateDone) {
-      final version = widget.latestVersion;
-      final body = version != null && version.isNotEmpty
-          ? '${widget.entry.name} $version — Flipper will reboot to apply it'
-          : '${widget.entry.name} — Flipper will reboot to apply it';
-      unawaited(
-        FirmwareUpdateNotification.showMessage(
-          id: 2010,
-          title: 'Firmware Installed',
-          body: body,
-        ),
-      );
-    }
-
     if (!mounted) return;
     setState(() {
       _updateState = state;

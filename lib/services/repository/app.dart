@@ -8,7 +8,6 @@ const String kAppDocumentsFolderName = 'qUnleashed';
 const String kAppsCatalogFileName = 'catalog.json';
 const String kScreenshotsFolderName = 'Screenshots';
 const String kRecordingsFolderName = 'Recordings';
-const String kUpdateCacheFolderName = 'updates';
 const String kAnimationsFolderName = 'Animations';
 const String kProjectsFolderName = 'projects';
 
@@ -166,18 +165,6 @@ Future<io.Directory> appDolphinAnimationsDirectory() async {
   final dir = io.Directory(pathJoin([root.path, kDolphinAnimationsFolderName]));
   await dir.create(recursive: true);
   return dir;
-}
-
-Future<io.Directory> updateCacheDirectory() async {
-  final root = await appDocumentsDirectory();
-  final dir = io.Directory(pathJoin([root.path, kUpdateCacheFolderName]));
-  await dir.create(recursive: true);
-  return dir;
-}
-
-Future<io.File> updateCacheFile(String name) async {
-  final dir = await updateCacheDirectory();
-  return io.File(pathJoin([dir.path, '$name.json']));
 }
 
 const String kFapIconsFolderName = '.fap_icons';
