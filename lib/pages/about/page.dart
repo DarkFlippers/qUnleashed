@@ -213,7 +213,7 @@ const _extraBtns = <_Btn>[
     'Donate Firmware',
     'https://github.com/DarkFlippers/unleashed-firmware/blob/dev/ReadMe.md#%EF%B8%8F-please-support-development-of-the-project',
   ),
-  _Btn('Donate App', 'https://boosty.to/apfxtech'),
+  _Btn('Donate App', 'https://boosty.to/apfxtech/donate'),
   _Btn('Telegram RU', 'https://t.me/flipperzero_unofficial_ru'),
   _Btn('Telegram EN', 'https://t.me/flipperzero_unofficial'),
   _Btn('Unleashed Web', 'https://flipperunleashed.com/'),
