@@ -9,6 +9,7 @@ import 'grayscale_filter.dart';
 import 'models/models.dart';
 
 const Duration _kAnimDuration = Duration(milliseconds: 650);
+const Duration _kStopTimeout = Duration(seconds: 2);
 
 class RemoteSession extends ChangeNotifier {
   RemoteSession() {
@@ -26,34 +27,26 @@ class RemoteSession extends ChangeNotifier {
 
   Future<void> _inputChain = Future<void>.value();
 
-  /// Called synchronously after pixel decode, before GPU image creation.
-  /// Receives raw frame data independent of the graphics pipeline.
   void Function(RawFrameData)? onRawFrame;
 
   ui.Image? _frameImage;
   final _frameNotifier = ValueNotifier<ui.Image?>(null);
-
-  // GPU-upload coalescing: the synchronous decode runs for every frame (GIF
-  // recording needs the full rate), but only the newest decoded frame is
-  // turned into a ui.Image. A single worker loop keeps publication strictly
-  // ordered, so a slow upload can never clobber a newer frame with an older
-  // one — the bug behind random frame drops/flicker.
+  ScreenFrame? _pendingFrame;
+  bool _decodeBusy = false;
   Uint8List? _pendingRgba;
-  int _frameSeq = 0;
-  int _publishedSeq = -1;
-  bool _imageWorkerBusy = false;
+  bool _uploadBusy = false;
+  bool _recording = false;
 
-  // Temporal grayscale recovery: averages recent frames so flicker-based gray
-  // (e.g. arddrivin) renders as solid shades instead of a checkerboard. Off by
-  // default; toggled off shows the raw 1-bit frame unchanged.
+
   final GrayscaleFilter _grayscale = GrayscaleFilter();
   bool _grayscaleEnabled = false;
   RawFrameData? _lastRaw;
+
   StreamOrientation _orientation = StreamOrientation.horizontal;
   bool _isLocked = true;
   bool _isDisconnected = false;
-  bool _stopped = false;
   bool _disposed = false;
+  bool _stopped = false;
 
   final List<QueuedButton> _queue = [];
   final Map<RemoteButton, _HeldButton> _held = {};
@@ -70,6 +63,12 @@ class RemoteSession extends ChangeNotifier {
   int? get lastBgColor => _lastBgColor;
   int? get lastFgColor => _lastFgColor;
 
+  set recording(bool value) {
+    if (_recording == value) return;
+    _recording = value;
+    if (!value && _pendingFrame != null) _ensureDecodeWorker();
+  }
+
   /// Encodes the current frame as PNG bytes. Returns null if no frame received.
   Future<Uint8List?> capturePng() async {
     final img = _frameImage;
@@ -78,17 +77,6 @@ class RemoteSession extends ChangeNotifier {
     return byteData?.buffer.asUint8List();
   }
 
-  void _onConnectionState(FlipperConnectionState state) {
-    if (_disposed) return;
-    if (!state.connected && !_isDisconnected) {
-      _isDisconnected = true;
-      final prev = _frameImage;
-      _frameImage = null;
-      _frameNotifier.value = null;
-      _safeNotify();
-      prev?.dispose();
-    }
-  }
 
   Future<void> _start() async {
     if (!_client.isConnected) {
@@ -106,21 +94,8 @@ class RemoteSession extends ChangeNotifier {
     }
   }
 
-  Future<void> stop() async {
-    if (_stopped) return;
-    _stopped = true;
-    try {
-      await _client.guiStopScreenStream().timeout(const Duration(seconds: 2));
-    } catch (_) {}
-    try {
-      await _client.desktopStatusUnsubscribe().timeout(
-        const Duration(seconds: 2),
-      );
-    } catch (_) {}
-  }
-
-  @override
-  void dispose() {
+  void shutdown() {
+    if (_disposed) return;
     _disposed = true;
     for (final h in _held.values) {
       h.longTimer?.cancel();
@@ -129,11 +104,46 @@ class RemoteSession extends ChangeNotifier {
     _frameSub?.cancel();
     _statusSub?.cancel();
     _connectionSub?.cancel();
+    _pendingFrame = null;
+    _pendingRgba = null;
+    unawaited(_stopRemote());
+  }
+
+  Future<void> _stopRemote() async {
+    if (_stopped) return;
+    _stopped = true;
+    if (!_client.isConnected) return;
+    await Future.wait([
+      _client
+          .guiStopScreenStream(priority: FlipperRequestPriority.rightNow)
+          .timeout(_kStopTimeout)
+          .catchError((_) => <Main>[]),
+      _client
+          .desktopStatusUnsubscribe(priority: FlipperRequestPriority.rightNow)
+          .timeout(_kStopTimeout)
+          .catchError((_) => <Main>[]),
+    ]);
+  }
+
+  @override
+  void dispose() {
+    if (!_disposed) shutdown();
     _frameNotifier.dispose();
     _frameImage?.dispose();
     _frameImage = null;
-    if (!_stopped) unawaited(stop());
     super.dispose();
+  }
+
+  void _onConnectionState(FlipperConnectionState state) {
+    if (_disposed) return;
+    if (!state.connected && !_isDisconnected) {
+      _isDisconnected = true;
+      final prev = _frameImage;
+      _frameImage = null;
+      _frameNotifier.value = null;
+      _safeNotify();
+      prev?.dispose();
+    }
   }
 
   void _applyStatus(Status status) {
@@ -143,82 +153,100 @@ class RemoteSession extends ChangeNotifier {
   }
 
   void _onFrame(ScreenFrame frame) {
-    // Decode synchronously so GIF recording sees every frame before GPU work.
-    final raw = decodeFrameSync(frame);
     if (_disposed) return;
+    if (_recording) {
 
+      _ingest(decodeFrameSync(frame));
+      return;
+    }
+    _pendingFrame = frame;
+    _ensureDecodeWorker();
+  }
+
+  void _ensureDecodeWorker() {
+    if (_decodeBusy || _disposed) return;
+    _decodeBusy = true;
+    unawaited(_pumpDecode());
+  }
+
+  Future<void> _pumpDecode() async {
+    try {
+      while (!_disposed && !_recording) {
+        final frame = _pendingFrame;
+        if (frame == null) return;
+        _pendingFrame = null;
+        _ingest(decodeFrameSync(frame));
+        await Future<void>.delayed(Duration.zero);
+      }
+    } finally {
+      _decodeBusy = false;
+    }
+  }
+
+  void _ingest(RawFrameData raw) {
+    if (_disposed) return;
     _lastBgColor = raw.bgColor;
     _lastFgColor = raw.fgColor;
     final orientationChanged = raw.orientation != _orientation;
     _orientation = raw.orientation;
     onRawFrame?.call(raw);
     if (orientationChanged) {
-      // The averaging buffer holds frames in the old orientation's layout.
       _grayscale.reset();
-      // Only rebuild the page tree when orientation changes (rare); frame
-      // image updates are handled by ValueListenableBuilder in the view layer.
       _safeNotify();
     }
-
     _lastRaw = raw;
-    // Push every frame so the filter sees the full flicker rate (dropping
-    // frames here would resurrect the checkerboard); the GPU upload below still
-    // coalesces.
-    _grayscale.push(raw.pixelIndices);
-    _scheduleUpload(_renderPending(raw));
+    if (_grayscaleEnabled) _grayscale.push(raw.pixelIndices);
+    _scheduleUpload(_render(raw));
   }
 
-  Uint8List _renderPending(RawFrameData raw) {
+  Uint8List _render(RawFrameData raw) {
     if (!_grayscaleEnabled) return raw.rgba;
     return _grayscale.render(raw.pixelIndices.length, raw.bgColor, raw.fgColor);
   }
 
-  // Hands the latest pixels to the upload worker. Bursts that arrive while an
-  // upload is in flight overwrite this, coalescing to the newest frame.
   void _scheduleUpload(Uint8List rgba) {
     _pendingRgba = rgba;
-    _frameSeq++;
-    if (_imageWorkerBusy) return;
-    _imageWorkerBusy = true;
-    unawaited(_pumpFrameImages());
+    if (_uploadBusy || _disposed) return;
+    _uploadBusy = true;
+    unawaited(_pumpUpload());
   }
 
-  /// Toggles temporal grayscale recovery. Re-renders the current frame so the
-  /// change is visible immediately, without waiting for the next stream frame.
-  void setGrayscaleEnabled(bool enabled) {
-    if (_disposed || _grayscaleEnabled == enabled) return;
-    _grayscaleEnabled = enabled;
-    _safeNotify();
-    final raw = _lastRaw;
-    if (raw != null) _scheduleUpload(_renderPending(raw));
-  }
-
-  // Serially uploads pending frames so newer frames always win. Without the
-  // single-worker ordering, out-of-order createImageFromRgba completions could
-  // publish a stale image and dispose the live one.
-  Future<void> _pumpFrameImages() async {
+ Future<void> _pumpUpload() async {
     try {
       while (!_disposed) {
         final rgba = _pendingRgba;
         if (rgba == null) return;
-        final seq = _frameSeq;
         _pendingRgba = null;
-
         final image = await createImageFromRgba(rgba);
-        if (_disposed || seq <= _publishedSeq) {
+        if (_disposed) {
           image.dispose();
-          continue;
+          return;
         }
-        _publishedSeq = seq;
         final prev = _frameImage;
         _frameImage = image;
         _frameNotifier.value = image;
         prev?.dispose();
       }
     } finally {
-      _imageWorkerBusy = false;
+      _uploadBusy = false;
     }
   }
+
+  void setGrayscaleEnabled(bool enabled) {
+    if (_disposed || _grayscaleEnabled == enabled) return;
+    _grayscaleEnabled = enabled;
+    _safeNotify();
+    final raw = _lastRaw;
+    if (raw == null) return;
+    if (enabled) {
+      _grayscale
+        ..reset()
+        ..push(raw.pixelIndices);
+    }
+    _scheduleUpload(_render(raw));
+  }
+
+  // ── Input ──────────────────────────────────────────────────────────────────
 
   Future<void> press(RemoteButton button, {bool long = false}) {
     final item = _enqueue(_animAsset(button));

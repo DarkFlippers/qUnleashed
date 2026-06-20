@@ -52,6 +52,10 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
     super.dispose();
   }
 
+  void _syncRecordingFlag() {
+    _session.recording = _gifRecorder.state == GifRecordingState.recording;
+  }
+
   void _onSessionChanged() {
     if (!mounted) return;
     setState(() {});
@@ -73,6 +77,7 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
       _session.lastBgColor ?? 0xFFDFDFDF,
       _session.lastFgColor ?? 0xFF000000,
     );
+    _syncRecordingFlag();
     _recordingTick = Timer.periodic(const Duration(milliseconds: 100), (_) {
       if (mounted) setState(() {});
     });
@@ -90,6 +95,7 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
         if (mounted) setState(() {});
       });
     }
+    _syncRecordingFlag();
     setState(() {});
   }
 
@@ -107,6 +113,7 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
     if (_gifRecorder.state == GifRecordingState.recording) {
       _gifRecorder.pause();
     }
+    _syncRecordingFlag();
 
     if (_gifRecorder.frameCount == 0) {
       _gifRecorder.cancel();
@@ -164,16 +171,15 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
     _recordingTick?.cancel();
     _recordingTick = null;
     _gifRecorder.cancel();
+    _syncRecordingFlag();
     setState(() {});
   }
 
-  // ── Screenshot ─────────────────────────────────────────────────────────────
-
-  Future<void> _close() async {
+  void _close() {
     if (_closing) return;
     _closing = true;
-    await _session.stop();
-    if (mounted) Navigator.of(context).pop();
+    _session.shutdown();
+    Navigator.of(context).pop();
   }
 
   Future<void> _copyScreenshot() async {
