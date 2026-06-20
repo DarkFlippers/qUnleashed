@@ -215,6 +215,7 @@ const _extraBtns = <_Btn>[
   ),
   _Btn('Donate App', 'https://boosty.to/apfxtech'),
   _Btn('Telegram RU', 'https://t.me/flipperzero_unofficial_ru'),
+  _Btn('Telegram EN', 'https://t.me/flipperzero_unofficial'),
   _Btn('Unleashed Web', 'https://flipperunleashed.com/'),
   _Btn('ApertureFox Web', 'https://aperturefox.ru/'),
   _Btn('Dev Builds', 'https://dev.unleashedflip.com'),
