@@ -1,52 +1,92 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/services.dart';
+
 import 'package:flipperlib/flipperlib.dart';
 import 'package:geolocator/geolocator.dart';
 
-/// [GpsLocationProvider] backed by the `geolocator` plugin. Streams the phone's
-/// location to the Flipper at a fixed rate by emitting the latest known fix on
-/// a periodic tick, decoupled from how often the OS delivers updates.
 class GeolocatorGpsProvider implements GpsLocationProvider {
-  @override
-  bool get isSupported =>
-      Platform.isAndroid || Platform.isIOS || Platform.isMacOS || Platform.isWindows;
+  static const Duration _keepAlive = Duration(seconds: 2);
 
   @override
-  Future<bool> ensurePermission() async {
-    if (!await Geolocator.isLocationServiceEnabled()) return false;
-    var permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
+  Future<GpsReadiness> ensureReady() async {
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        return GpsReadiness.disabled;
+      }
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      final granted = permission == LocationPermission.always ||
+          permission == LocationPermission.whileInUse;
+      return granted ? GpsReadiness.ready : GpsReadiness.permissionDenied;
+    } on MissingPluginException {
+      return GpsReadiness.notSupported;
+    } on UnimplementedError {
+      return GpsReadiness.notSupported;
     }
-    return permission == LocationPermission.always ||
-        permission == LocationPermission.whileInUse;
   }
 
   @override
   Stream<GpsFix> watch(int frequencyHz) {
-    final period = Duration(milliseconds: (1000 / frequencyHz).round());
+    final hz = frequencyHz < 1 ? 1 : frequencyHz;
+    final minInterval = Duration(milliseconds: (1000 / hz).round());
+
     final controller = StreamController<GpsFix>();
     StreamSubscription<Position>? positionSub;
-    Timer? ticker;
-    Position? latest;
+    Timer? flushTimer;
+    Timer? keepAliveTimer;
+    Position? pending;
+    GpsFix? lastSent;
+    final sinceEmit = Stopwatch();
+
+    void emit(GpsFix fix) {
+      lastSent = fix;
+      sinceEmit
+        ..reset()
+        ..start();
+      controller.add(fix);
+    }
+
+    void flush() {
+      flushTimer = null;
+      final position = pending;
+      if (position == null) return;
+      pending = null;
+      emit(_toFix(position));
+    }
 
     controller.onListen = () {
       positionSub = Geolocator.getPositionStream(
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+        locationSettings: _locationSettings(minInterval),
       ).listen(
-        (position) => latest = position,
+        (position) {
+          pending = position;
+          final elapsed = sinceEmit.elapsed;
+          if (!sinceEmit.isRunning || elapsed >= minInterval) {
+            flushTimer?.cancel();
+            flush();
+          } else {
+            flushTimer ??= Timer(minInterval - elapsed, flush);
+          }
+        },
         onError: controller.addError,
       );
-      ticker = Timer.periodic(period, (_) {
-        final position = latest;
-        if (position != null) controller.add(_toFix(position));
+      keepAliveTimer = Timer.periodic(_keepAlive, (_) {
+        final fix = lastSent;
+        if (fix != null && sinceEmit.elapsed >= _keepAlive) {
+          emit(fix);
+        }
       });
     };
 
     Future<void> stop() async {
-      ticker?.cancel();
-      ticker = null;
+      flushTimer?.cancel();
+      flushTimer = null;
+      keepAliveTimer?.cancel();
+      keepAliveTimer = null;
       await positionSub?.cancel();
       positionSub = null;
     }
@@ -61,6 +101,19 @@ class GeolocatorGpsProvider implements GpsLocationProvider {
       locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
     );
     return _toFix(position);
+  }
+
+  LocationSettings _locationSettings(Duration interval) {
+    if (Platform.isAndroid) {
+      return AndroidSettings(
+        accuracy: LocationAccuracy.high,
+        intervalDuration: interval,
+      );
+    }
+    if (Platform.isIOS || Platform.isMacOS) {
+      return AppleSettings(accuracy: LocationAccuracy.high);
+    }
+    return const LocationSettings(accuracy: LocationAccuracy.high);
   }
 
   GpsFix _toFix(Position position) => GpsFix(
