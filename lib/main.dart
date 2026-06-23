@@ -31,6 +31,10 @@ void _bootstrapAmbientServices() {
   // Answers GPS requests from custom firmware apps with the phone's location.
   client.attachGpsResponder(GeolocatorGpsProvider());
 
+  // Answers network requests from custom firmware apps with the phone's
+  // internet connection.
+  client.attachNetworkResponder();
+
   unawaited(_guard('push notifications', () => PushService.instance.start()));
 }
 

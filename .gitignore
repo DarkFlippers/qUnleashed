@@ -2,6 +2,9 @@
 .codex
 .agents
 
+# Unleashed projects
+.system/
+
 # Miscellaneous
 *.class
 *.log
