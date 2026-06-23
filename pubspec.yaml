@@ -38,6 +38,9 @@ dependencies:
   window_manager: ^0.5.1
   xterm: ^4.0.0
   share_plus: ^10.1.4
+  firebase_core: ^4.11.0
+  firebase_messaging: ^16.4.1
+  shared_preferences: ^2.5.5
 
 dev_dependencies:
   flutter_test:

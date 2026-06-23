@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../widgets/open_url.dart';
 import '../../widgets/pixel_button.dart';
+import '../option/page.dart';
 import 'license_page.dart';
 
 class AboutPage extends StatefulWidget {
@@ -56,6 +57,17 @@ class _AboutPageState extends State<AboutPage>
             shadows: [Shadow(color: Colors.black54, blurRadius: 4)],
           ),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.notifications_outlined),
+            tooltip: 'Notifications',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const NotificationSettingsPage(),
+              ),
+            ),
+          ),
+        ],
       ),
       body: Stack(
         fit: StackFit.expand,

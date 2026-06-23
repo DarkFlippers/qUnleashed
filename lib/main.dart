@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'pages/devices/page.dart';
 import 'services/connection/notification_service.dart';
 import 'services/gps/geolocator_gps_provider.dart';
+import 'services/notifications/push_service.dart';
 import 'theme/theme.dart';
 
 Future<void> main() async {
@@ -29,6 +30,8 @@ void _bootstrapAmbientServices() {
 
   // Answers GPS requests from custom firmware apps with the phone's location.
   client.attachGpsResponder(GeolocatorGpsProvider());
+
+  unawaited(_guard('push notifications', () => PushService.instance.start()));
 }
 
 Future<void> _guard(String label, Future<void> Function() task) async {

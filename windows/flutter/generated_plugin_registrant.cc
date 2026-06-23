@@ -6,6 +6,7 @@
 
 #include "generated_plugin_registrant.h"
 
+#include <firebase_core/firebase_core_plugin_c_api.h>
 #include <flutter_libserialport/flutter_libserialport_plugin.h>
 #include <geolocator_windows/geolocator_windows.h>
 #include <irondash_engine_context/irondash_engine_context_plugin_c_api.h>
@@ -18,6 +19,8 @@
 #include <window_manager/window_manager_plugin.h>
 
 void RegisterPlugins(flutter::PluginRegistry* registry) {
+  FirebaseCorePluginCApiRegisterWithRegistrar(
+      registry->GetRegistrarForPlugin("FirebaseCorePluginCApi"));
   FlutterLibserialportPluginRegisterWithRegistrar(
       registry->GetRegistrarForPlugin("FlutterLibserialportPlugin"));
   GeolocatorWindowsRegisterWithRegistrar(

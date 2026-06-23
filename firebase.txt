@@ -1,0 +1,6 @@
+1) curl -sL https://firebase.tools | bash
+2) firebase login
+3) dart pub global activate flutterfire_cli
+4) export PATH="$PATH":"$HOME/.pub-cache/bin"
+5) sudo gem install xcodeproj
+6) flutterfire configure --project=qunleashed-95066
