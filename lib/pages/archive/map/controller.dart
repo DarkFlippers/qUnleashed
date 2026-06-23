@@ -30,9 +30,11 @@ class MapToolController extends ChangeNotifier {
   Position? _userPosition;
   Position? _previousUserPosition;
   double? _userBearingDegrees;
+  GpsFix? _devicePosition;
   StreamSubscription<Position>? _posSub;
   StreamSubscription<FlipperConnectionState>? _connSub;
   StreamSubscription<Map<String, String>>? _deviceInfoSub;
+  StreamSubscription<GpsFix>? _deviceLocSub;
 
   bool get loading => _loading;
   String? get loadError => _loadError;
@@ -41,18 +43,29 @@ class MapToolController extends ChangeNotifier {
   String? get locationError => _locationError;
   Position? get userPosition => _userPosition;
   double? get userBearingDegrees => _userBearingDegrees;
+  GpsFix? get devicePosition => _devicePosition;
   bool get isFlipperConnected => _client.isConnected;
 
   Future<void> initialize() async {
     _connSub ??= _client.connectionStream.listen(_onConnectionChange);
     _deviceInfoSub ??= _client.deviceInfoUpdates.listen(_onDeviceInfo);
+    _deviceLocSub ??= _client.flipperLocationStream().listen(_onDeviceLocation);
     await loadFiles();
     await requestLocation();
+  }
+
+  void _onDeviceLocation(GpsFix fix) {
+    if (!fix.hasFix) return;
+    _devicePosition = fix;
+    notifyListeners();
   }
 
   void _onConnectionChange(FlipperConnectionState s) {
     if (s.connected && s.device != null) {
       loadFiles();
+    } else if (!s.connected && _devicePosition != null) {
+      _devicePosition = null;
+      notifyListeners();
     }
   }
 
@@ -335,6 +348,7 @@ class MapToolController extends ChangeNotifier {
     _posSub?.cancel();
     _connSub?.cancel();
     _deviceInfoSub?.cancel();
+    _deviceLocSub?.cancel();
     super.dispose();
   }
 }

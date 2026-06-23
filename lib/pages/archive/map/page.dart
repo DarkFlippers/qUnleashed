@@ -45,6 +45,7 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
 
   bool? _mapDarkOverride;
   bool _autoCenter = false;
+  bool _followDevice = false;
   bool _settingsOpen = false;
 
   @override
@@ -68,6 +69,9 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
 
   void _onChanged() {
     if (!mounted) return;
+    if (_followDevice && _controller.devicePosition == null) {
+      _followDevice = false;
+    }
     _maybeSelectInitialPin();
     setState(() {});
     _maybeAutoCenter();
@@ -116,12 +120,20 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
         !_initialCentered) {
       return;
     }
+    final target = _activeTarget();
+    if (target == null) return;
+    _mapController.move(target, _mapController.camera.zoom);
+  }
+
+  LatLng? _activeTarget() {
+    if (_followDevice) {
+      final d = _controller.devicePosition;
+      if (d != null && d.hasFix) return LatLng(d.latitude, d.longitude);
+      return null;
+    }
     final p = _controller.userPosition;
-    if (p == null) return;
-    _mapController.move(
-      LatLng(p.latitude, p.longitude),
-      _mapController.camera.zoom,
-    );
+    if (p == null) return null;
+    return LatLng(p.latitude, p.longitude);
   }
 
   void _maybeSelectInitialPin() {
@@ -136,13 +148,13 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
     }
   }
 
-  void _centerOnUser() {
-    final p = _controller.userPosition;
-    if (p == null) {
-      _controller.requestLocation();
+  void _centerOnTarget() {
+    final target = _activeTarget();
+    if (target == null) {
+      if (!_followDevice) _controller.requestLocation();
       return;
     }
-    if (_mapReady) _mapController.move(LatLng(p.latitude, p.longitude), 17);
+    if (_mapReady) _mapController.move(target, 17);
   }
 
   void _selectPin(MapPin pin) {
@@ -517,8 +529,8 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
           bottom: (!desktopMode && !picking && _selectedPin != null) ? 218 : 12,
           child: _CircleButton(
             colors: colors,
-            icon: Icons.my_location,
-            onTap: _centerOnUser,
+            icon: _followDevice ? Icons.gps_fixed : Icons.my_location,
+            onTap: _centerOnTarget,
           ),
         ),
 
@@ -530,8 +542,14 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
             child: _MapSettingsPanel(
               mapDark: colors.isDark,
               autoCenter: _autoCenter,
+              followDevice: _followDevice,
+              deviceAvailable: _controller.devicePosition != null,
               onMapDarkChanged: (v) => setState(() => _mapDarkOverride = v),
               onAutoCenterChanged: (v) => setState(() => _autoCenter = v),
+              onFollowDeviceChanged: (v) {
+                setState(() => _followDevice = v);
+                _centerOnTarget();
+              },
               onClose: () => setState(() => _settingsOpen = false),
             ),
           ),
@@ -657,6 +675,31 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
                 color: Colors.white,
                 size: 20,
               ),
+            ),
+          ),
+        ),
+      );
+    }
+    final device = _controller.devicePosition;
+    if (device != null && device.hasFix) {
+      list.add(
+        Marker(
+          point: LatLng(device.latitude, device.longitude),
+          width: 34,
+          height: 34,
+          child: Container(
+            decoration: BoxDecoration(
+              color: colors.info,
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 3),
+              boxShadow: const [
+                BoxShadow(color: Colors.black38, blurRadius: 4),
+              ],
+            ),
+            child: const Icon(
+              Icons.gps_fixed,
+              color: Colors.white,
+              size: 18,
             ),
           ),
         ),

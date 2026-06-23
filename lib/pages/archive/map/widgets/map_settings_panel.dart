@@ -4,15 +4,21 @@ class _MapSettingsPanel extends StatelessWidget {
   const _MapSettingsPanel({
     required this.mapDark,
     required this.autoCenter,
+    required this.followDevice,
+    required this.deviceAvailable,
     required this.onMapDarkChanged,
     required this.onAutoCenterChanged,
+    required this.onFollowDeviceChanged,
     required this.onClose,
   });
 
   final bool mapDark;
   final bool autoCenter;
+  final bool followDevice;
+  final bool deviceAvailable;
   final ValueChanged<bool> onMapDarkChanged;
   final ValueChanged<bool> onAutoCenterChanged;
+  final ValueChanged<bool> onFollowDeviceChanged;
   final VoidCallback onClose;
 
   @override
@@ -64,9 +70,22 @@ class _MapSettingsPanel extends StatelessWidget {
               colors: colors,
               icon: Icons.my_location,
               label: 'Auto-center',
-              subtitle: 'Follow my location',
+              subtitle: followDevice
+                  ? 'Follow Flipper location'
+                  : 'Follow my location',
               value: autoCenter,
               onChanged: onAutoCenterChanged,
+            ),
+            Divider(height: 1, color: colors.textMuted.withValues(alpha: 0.1)),
+            _SettingsRow(
+              colors: colors,
+              icon: Icons.gps_fixed,
+              label: 'Track Flipper',
+              subtitle: deviceAvailable
+                  ? 'Center and follow the device'
+                  : 'No device location yet',
+              value: followDevice,
+              onChanged: deviceAvailable ? onFollowDeviceChanged : null,
             ),
             const SizedBox(height: 4),
           ],
@@ -91,7 +110,7 @@ class _SettingsRow extends StatelessWidget {
   final String label;
   final String subtitle;
   final bool value;
-  final ValueChanged<bool> onChanged;
+  final ValueChanged<bool>? onChanged;
 
   @override
   Widget build(BuildContext context) {
