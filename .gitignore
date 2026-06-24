@@ -51,3 +51,8 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Firebase configuration is restored from GitHub Secrets in CI.
+/android/app/google-services.json
+/ios/Runner/GoogleService-Info.plist
+/macos/Runner/GoogleService-Info.plist
