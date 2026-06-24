@@ -16,6 +16,9 @@ restore_secret_file() {
 }
 
 case "${1:-}" in
+  dart)
+    restore_secret_file FIREBASE_OPTIONS_DART_BASE64 lib/firebase_options.dart
+    ;;
   android)
     restore_secret_file ANDROID_GOOGLE_SERVICES_JSON_BASE64 android/app/google-services.json
     ;;
@@ -26,7 +29,7 @@ case "${1:-}" in
     restore_secret_file MACOS_GOOGLE_SERVICE_INFO_PLIST_BASE64 macos/Runner/GoogleService-Info.plist
     ;;
   *)
-    echo "Usage: $0 android|ios|macos" >&2
+    echo "Usage: $0 dart|android|ios|macos" >&2
     exit 2
     ;;
 esac
