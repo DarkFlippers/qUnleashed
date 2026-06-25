@@ -134,7 +134,7 @@ class BleForegroundService with WidgetsBindingObserver {
       foregroundTaskOptions: ForegroundTaskOptions(
         eventAction: ForegroundTaskEventAction.nothing(),
         allowWakeLock: true,
-        allowWifiLock: false,
+        allowWifiLock: true,
         autoRunOnBoot: false,
       ),
     );
