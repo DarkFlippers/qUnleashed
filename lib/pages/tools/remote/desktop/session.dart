@@ -254,8 +254,8 @@ class RemoteSession extends ChangeNotifier {
     final key = _key(button);
     _inputChain = _inputChain.then((_) async {
       try {
-        await _send(key, InputType.PRESS);
-        await _send(key, type);
+        _forget(key, InputType.PRESS);
+        _forget(key, type);
         await _send(key, InputType.RELEASE);
       } catch (_) {
       } finally {
@@ -274,17 +274,9 @@ class RemoteSession extends ChangeNotifier {
     state.longTimer = Timer(const Duration(milliseconds: 500), () {
       if (!_held.containsKey(button) || _held[button] != state) return;
       state.longFired = true;
-      _inputChain = _inputChain.then((_) async {
-        try {
-          await _send(key, InputType.LONG);
-        } catch (_) {}
-      });
+      _forget(key, InputType.LONG);
     });
-    _inputChain = _inputChain.then((_) async {
-      try {
-        await _send(key, InputType.PRESS);
-      } catch (_) {}
-    });
+    _forget(key, InputType.PRESS);
     return _inputChain;
   }
 
@@ -296,7 +288,7 @@ class RemoteSession extends ChangeNotifier {
     _inputChain = _inputChain.then((_) async {
       try {
         if (!state.longFired) {
-          await _send(key, InputType.SHORT);
+          _forget(key, InputType.SHORT);
         }
         await _send(key, InputType.RELEASE);
       } catch (_) {
@@ -324,6 +316,14 @@ class RemoteSession extends ChangeNotifier {
 
   Future<void> _send(InputKey key, InputType type) =>
       _client.guiSendInput(SendInputEventRequest(key: key, type: type));
+
+  void _forget(InputKey key, InputType type) {
+    unawaited(
+      _client
+          .guiSendInputAndForget(SendInputEventRequest(key: key, type: type))
+          .catchError((_) {}),
+    );
+  }
 
   QueuedButton _enqueue(String asset) {
     final item = QueuedButton(asset: asset);
