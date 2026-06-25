@@ -41,6 +41,7 @@ dependencies:
   firebase_core: ^4.11.0
   firebase_messaging: ^16.4.1
   shared_preferences: ^2.5.5
+  flutter_foreground_task: ^9.2.2
 
 dev_dependencies:
   flutter_test:

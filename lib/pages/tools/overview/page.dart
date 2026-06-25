@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../../theme/theme.dart';
 import '../../../components/dialogs/action.dart';
 import '../../about/page.dart';
+import '../../option/page.dart';
 import '../paint/manager/page.dart';
 import '../remote/desktop/page.dart';
 import '../remote/cli/page.dart';
@@ -79,6 +80,13 @@ class ToolsPage extends StatelessWidget {
       ],
     ),
     ToolCard(
+      iconAsset: 'assets/ic/app/settings-gear.svg',
+      iconColor: const Color(0xFF9E9E9E),
+      title: 'Settings',
+      description: 'Notifications and app preferences',
+      routeBuilder: _buildSettingsPage,
+    ),
+    ToolCard(
       iconAsset: 'assets/ic/info/lg.svg',
       iconColor: const Color(0xFF589DFF),
       title: 'About',
@@ -114,6 +122,9 @@ Widget _buildFlipperMapPage(BuildContext context) => const FlipperMapPage();
 Widget _buildIrLibPage(BuildContext context) => const IrCategoriesPage();
 
 Widget _buildAboutPage(BuildContext context) => const AboutPage();
+
+Widget _buildSettingsPage(BuildContext context) =>
+    const NotificationSettingsPage();
 
 Widget _buildPaintPage(BuildContext context) => const ProjectManagerPage();
 

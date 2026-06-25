@@ -4,6 +4,7 @@ import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
 import 'pages/devices/page.dart';
+import 'services/connection/foreground_service.dart';
 import 'services/connection/notification_service.dart';
 import 'services/gps/geolocator_gps_provider.dart';
 import 'services/notifications/push_service.dart';
@@ -25,6 +26,16 @@ void _bootstrapAmbientServices() {
     _guard(
       'connection notifier',
       () => ConnectionNotificationService.instance.start(client),
+    ),
+  );
+
+  // Android-only: holds a foreground service while connected so the OS does not
+  // throttle the process (and drop the BLE link) with the screen off / in the
+  // background. No-op on every other platform.
+  unawaited(
+    _guard(
+      'ble foreground service',
+      () => BleForegroundService.instance.start(client),
     ),
   );
 

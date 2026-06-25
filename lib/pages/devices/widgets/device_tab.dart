@@ -12,6 +12,7 @@ import 'cards/battery_card.dart';
 import 'cards/connect_card.dart';
 import 'cards/device_actions_row.dart';
 import 'cards/device_info_card.dart';
+import 'cards/network_card.dart';
 import 'cards/storage_card.dart';
 import 'firmware_card.dart';
 import 'full_info_sheet.dart';
@@ -163,6 +164,11 @@ class _ConnectedContent extends StatelessWidget {
               StorageSummaryCard(deviceInfo: ctrl.info),
             ],
           ),
+        ),
+        const SizedBox(height: 14),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 14),
+          child: NetworkSummaryCard(),
         ),
         if (!wide) ...[
           const SizedBox(height: 14),

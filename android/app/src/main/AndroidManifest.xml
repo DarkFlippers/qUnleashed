@@ -6,6 +6,16 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
+    <!-- Foreground service: keep the BLE link alive while screen is off / app
+         is backgrounded. Without it Doze/App-Standby throttles the process and
+         the link drops by supervision timeout. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Lets us ask the user to exempt the app from battery optimization so the
+         service is not killed in long background. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
     <!-- BLE: Android 12+ (API 31+) -->
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
         android:usesPermissionFlags="neverForLocation" />
@@ -68,6 +78,14 @@
                 android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
                 android:resource="@xml/device_filter" />
         </activity>
+        <!-- flutter_foreground_task: the plugin does NOT declare its service, the
+             app must. connectedDevice type keeps the BLE link serviced in the
+             background on Android 14+. Do not change the service name. -->
+        <service
+            android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
+            android:foregroundServiceType="connectedDevice"
+            android:exported="false" />
+
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
