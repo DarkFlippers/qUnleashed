@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flipperlib/api/http_util.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -45,9 +47,11 @@ void main() {
     });
   });
 
-  group('chunkBytes', () {
+  group('chunkByteViews', () {
+    Uint8List bytes(List<int> values) => Uint8List.fromList(values);
+
     test('splits evenly divisible data', () {
-      final chunks = chunkBytes([1, 2, 3, 4], 2).toList();
+      final chunks = chunkByteViews(bytes([1, 2, 3, 4]), 2).toList();
       expect(chunks, [
         [1, 2],
         [3, 4],
@@ -55,7 +59,7 @@ void main() {
     });
 
     test('keeps the remainder in a final smaller chunk', () {
-      final chunks = chunkBytes([1, 2, 3, 4, 5], 2).toList();
+      final chunks = chunkByteViews(bytes([1, 2, 3, 4, 5]), 2).toList();
       expect(chunks, [
         [1, 2],
         [3, 4],
@@ -64,13 +68,27 @@ void main() {
     });
 
     test('returns whole input when chunk size is non-positive', () {
-      expect(chunkBytes([1, 2, 3], 0).toList(), [
+      expect(chunkByteViews(bytes([1, 2, 3]), 0).toList(), [
         [1, 2, 3],
       ]);
     });
 
+    test('returns the whole input as a single chunk when it fits', () {
+      final chunks = chunkByteViews(bytes([1, 2, 3]), 8).toList();
+      expect(chunks, [
+        [1, 2, 3],
+      ]);
+    });
+
+    test('yields zero-copy views into the source buffer', () {
+      final source = bytes([1, 2, 3, 4]);
+      final chunks = chunkByteViews(source, 2).toList();
+      source[2] = 9;
+      expect(chunks[1], [9, 4]);
+    });
+
     test('yields nothing for empty input', () {
-      expect(chunkBytes(<int>[], 4).toList(), isEmpty);
+      expect(chunkByteViews(bytes([]), 4).toList(), isEmpty);
     });
   });
 }
