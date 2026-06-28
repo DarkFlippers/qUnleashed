@@ -11,6 +11,9 @@ import '../../../theme/theme.dart';
 import 'package:qunleashed/components/appbar.dart';
 import '../../../widgets/notification.dart';
 import '../../../theme/colors/editor.dart';
+import '../category.dart';
+import '../models/key.dart';
+import '../emulate/page.dart';
 import 'syntax.dart';
 
 const _kFontSize = 13.0;
@@ -255,6 +258,24 @@ class _TextEditorPageState extends State<TextEditorPage> {
     if (ok) Navigator.of(context).pop(true);
   }
 
+  bool get _isJs => widget.remotePath.toLowerCase().endsWith('.js');
+
+  void _runJs() {
+    final name = widget.remotePath.split('/').last;
+    final dot = name.lastIndexOf('.');
+    final stem = dot > 0 ? name.substring(0, dot) : name;
+    final key = ArchiveKey(
+      name: stem,
+      category: ArchiveCategory.javascript,
+      state: ArchiveKeyState.synced,
+      extension: 'js',
+      remotePath: widget.remotePath,
+    );
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => EmulatePage(flipperKey: key)),
+    );
+  }
+
   double _lastWidth = 0;
 
   @override
@@ -269,6 +290,12 @@ class _TextEditorPageState extends State<TextEditorPage> {
         backgroundColor: colors.accent,
         foregroundColor: colors.onAccent,
         actions: [
+          if (_isJs)
+            QPageAppBarAction(
+              tooltip: 'Run',
+              onPressed: _loading ? null : _runJs,
+              icon: const Icon(Icons.play_arrow),
+            ),
           QPageAppBarAction(
             tooltip: 'Save',
             onPressed: _saving || _loading ? null : _save,

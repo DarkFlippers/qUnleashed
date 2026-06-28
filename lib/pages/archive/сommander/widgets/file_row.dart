@@ -191,6 +191,7 @@ class FileRow extends StatefulWidget {
     this.onLongPress,
     this.selectionMode = false,
     this.selected = false,
+    this.autoEdit = false,
   });
 
   final RemoteEntry entry;
@@ -199,6 +200,10 @@ class FileRow extends StatefulWidget {
   final FileEntryActions actions;
   final bool selectionMode;
   final bool selected;
+
+  /// Starts the row in inline name-editing mode (used right after a new file is
+  /// created so the user can rename it from the default `new.txt`).
+  final bool autoEdit;
 
   @override
   State<FileRow> createState() => _FileRowState();
@@ -214,6 +219,16 @@ class _FileRowState extends State<FileRow> {
   void initState() {
     super.initState();
     _renameCtrl = TextEditingController(text: widget.entry.name);
+    if (widget.autoEdit) {
+      _editing = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final text = _renameCtrl.text;
+        final dot = text.lastIndexOf('.');
+        final end = dot > 0 ? dot : text.length;
+        _renameCtrl.selection = TextSelection(baseOffset: 0, extentOffset: end);
+      });
+    }
   }
 
   @override

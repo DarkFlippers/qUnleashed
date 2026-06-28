@@ -62,6 +62,9 @@ class _FileManagerPageState extends State<FileManagerPage> {
   bool _selectionMode = false;
   final Set<String> _selected = <String>{};
 
+  /// Name of a just-created file whose row should open in inline rename mode.
+  String? _pendingRenameName;
+
   @override
   void initState() {
     super.initState();
@@ -376,11 +379,44 @@ class _FileManagerPageState extends State<FileManagerPage> {
     final from = _ctrl.childPath(e.name);
     final to = _ctrl.childPath(newName);
     final ok = await _ctrl.rename(from, to);
-    if (ok) await _ctrl.refresh();
+    if (ok) {
+      _pendingRenameName = null;
+      await _ctrl.refresh();
+    }
     if (!mounted) return;
     if (!ok) {
       context.showNotification('Rename failed', type: QNotificationType.error);
     }
+  }
+
+  /// Picks a free name based on [base] (e.g. `new.txt`, `new1.txt`, …) within
+  /// the current directory so creating a file never clobbers an existing one.
+  String _uniqueName(String base) {
+    final taken = _ctrl.entries.map((e) => e.name).toSet();
+    if (!taken.contains(base)) return base;
+    final dot = base.lastIndexOf('.');
+    final stem = dot > 0 ? base.substring(0, dot) : base;
+    final ext = dot > 0 ? base.substring(dot) : '';
+    var i = 1;
+    while (taken.contains('$stem$i$ext')) {
+      i++;
+    }
+    return '$stem$i$ext';
+  }
+
+  Future<void> _createEmptyFile() async {
+    final name = _uniqueName('new.txt');
+    final ok = await _ctrl.writeBytes(_ctrl.childPath(name), const <int>[]);
+    if (!mounted) return;
+    if (!ok) {
+      context.showNotification(
+        'Create file failed',
+        type: QNotificationType.error,
+      );
+      return;
+    }
+    _pendingRenameName = name;
+    await _ctrl.refresh();
   }
 
   _ClipEntry _clip(RemoteEntry e) => _ClipEntry(
@@ -648,6 +684,17 @@ class _FileManagerPageState extends State<FileManagerPage> {
               ),
             ),
             const SizedBox(height: 8),
+            ListTile(
+              leading: Icon(Icons.note_add_outlined, color: colors.textPrimary),
+              title: Text(
+                'New file',
+                style: TextStyle(color: colors.textPrimary),
+              ),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                _createEmptyFile();
+              },
+            ),
             ListTile(
               leading: SvgPicture.asset(
                 'assets/ic/action/create-folder.svg',
@@ -1260,6 +1307,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
             actions: makeActions(e),
             selectionMode: _selectionMode,
             selected: _selected.contains(e.name),
+            autoEdit: !e.isDir && e.name == _pendingRenameName,
             onTap: () => _onEntryTap(e),
             onLongPress: () => _enterSelection(e),
           );
