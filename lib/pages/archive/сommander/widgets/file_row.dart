@@ -28,6 +28,7 @@ class FileEntryActions {
     this.onRename,
     this.onEmulate,
     this.onEdit,
+    this.onIndexIcon,
   });
 
   final VoidCallback? onDelete;
@@ -35,6 +36,10 @@ class FileEntryActions {
   final VoidCallback? onCopy;
   final VoidCallback? onCut;
   final VoidCallback? onDownload;
+
+  /// For `.fap` files only: downloads the app and caches its embedded icon so
+  /// it can be indexed and shown without re-fetching the whole binary later.
+  final VoidCallback? onIndexIcon;
 
   /// Category capabilities surfaced for files that map to an archive category,
   /// so the file manager offers the same actions as the category pages.
@@ -71,6 +76,7 @@ class _FileIconBadgeState extends State<FileIconBadge> {
   void initState() {
     super.initState();
     _resolveFapIcon();
+    icon_repo.fapIconRevision.addListener(_onIconRepoChanged);
   }
 
   @override
@@ -80,6 +86,16 @@ class _FileIconBadgeState extends State<FileIconBadge> {
       _fapIcon = null;
       _resolveFapIcon();
     }
+  }
+
+  @override
+  void dispose() {
+    icon_repo.fapIconRevision.removeListener(_onIconRepoChanged);
+    super.dispose();
+  }
+
+  void _onIconRepoChanged() {
+    if (mounted) _resolveFapIcon();
   }
 
   void _resolveFapIcon() {
@@ -384,8 +400,6 @@ class _FileRowState extends State<FileRow> {
   }
 }
 
-// ─── Grid tile ───────────────────────────────────────────────────────────────
-
 class FileGridTile extends StatelessWidget {
   const FileGridTile({
     super.key,
@@ -508,6 +522,7 @@ class FileActionsSheet {
     add(Icons.copy_outlined, 'Copy', actions.onCopy);
     add(Icons.drive_file_move_outlined, 'Move', actions.onCut);
     add(Icons.download_outlined, 'Download', actions.onDownload);
+    add(Icons.image_outlined, 'Index icon', actions.onIndexIcon);
     add(Icons.play_arrow, 'Emulate', actions.onEmulate);
     add(Icons.edit_note, 'Edit', actions.onEdit);
     if (!isDir) {

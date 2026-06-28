@@ -1,6 +1,7 @@
 .sources/
 .codex
 .agents
+.claude
 
 # Unleashed projects
 .system/

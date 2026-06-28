@@ -1,6 +1,6 @@
 import 'dart:io' as io;
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -179,6 +179,10 @@ Future<io.Directory> fapIconRepoDirectory() async {
 io.File _fapIconRepoFile(io.Directory dir, String appId) =>
     io.File(pathJoin([dir.path, '${sanitizePathSegment(appId)}.fap.icon']));
 
+
+final ValueNotifier<int> _fapIconRevision = ValueNotifier<int>(0);
+ValueListenable<int> get fapIconRevision => _fapIconRevision;
+
 Future<bool> hasFapIcon(String appId) async {
   final id = appId.trim();
   if (id.isEmpty) return false;
@@ -209,6 +213,7 @@ Future<void> writeFapIcon(String appId, List<int> bytes) async {
   try {
     final dir = await fapIconRepoDirectory();
     await _fapIconRepoFile(dir, id).writeAsBytes(bytes, flush: true);
+    _fapIconRevision.value++;
   } catch (_) {}
 }
 

@@ -1,10 +1,14 @@
+import 'dart:typed_data';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme/theme.dart';
 import 'package:qunleashed/components/appbar.dart';
+import '../../../services/repository/app.dart' as icon_repo;
 import '../../../widgets/notification.dart';
+import '../overview/fap_icon.dart';
 import '../emulate/page.dart';
 import '../category.dart';
 import '../models/key.dart';
@@ -72,8 +76,6 @@ class _FileManagerPageState extends State<FileManagerPage> {
     super.dispose();
   }
 
-  // ─── Navigation ────────────────────────────────────────────────────────────
-
   void _onEntryTap(RemoteEntry e) {
     if (_selectionMode) {
       _toggleSelect(e);
@@ -117,8 +119,6 @@ class _FileManagerPageState extends State<FileManagerPage> {
     return true;
   }
 
-  // ─── Selection ───────────────────────────────────────────────────────────────
-
   void _enterSelection(RemoteEntry e) {
     setState(() {
       _selectionMode = true;
@@ -160,8 +160,6 @@ class _FileManagerPageState extends State<FileManagerPage> {
   List<RemoteEntry> get _selectedEntries =>
       _ctrl.entries.where((e) => _selected.contains(e.name)).toList();
 
-  // ─── Search ──────────────────────────────────────────────────────────────────
-
   void _startSearch() {
     setState(() => _searching = true);
     _searchFocus.requestFocus();
@@ -172,8 +170,6 @@ class _FileManagerPageState extends State<FileManagerPage> {
     _ctrl.setSearch('');
     setState(() => _searching = false);
   }
-
-  // ─── File operations ──────────────────────────────────────────────────────────
 
   Future<void> _launchFap(String remotePath) async {
     final ok = await _ctrl.launchFap(remotePath);
@@ -272,6 +268,43 @@ class _FileManagerPageState extends State<FileManagerPage> {
           ? 'Downloaded to $destDir'
           : 'Failed to download $failures file(s)',
       type: failures == 0 ? QNotificationType.good : QNotificationType.error,
+    );
+  }
+
+  Future<void> _indexFapIcon(RemoteEntry e) async {
+    final remotePath = _ctrl.childPath(e.name);
+    final appId = e.name.toLowerCase().endsWith('.fap')
+        ? e.name.substring(0, e.name.length - 4)
+        : e.name;
+
+    context.showNotification('Indexing icon for ${e.name}…');
+    final bytes = await _ctrl.readBytes(remotePath);
+    if (!mounted) return;
+    if (bytes == null) {
+      context.showNotification(
+        'Failed to download ${e.name}',
+        type: QNotificationType.error,
+      );
+      return;
+    }
+
+    final extracted = extractFapIcon(Uint8List.fromList(bytes));
+    final icon = extracted?.icon;
+    if (icon == null) {
+      context.showNotification(
+        'No icon found in ${e.name}',
+        type: QNotificationType.warning,
+      );
+      return;
+    }
+
+    // Writing bumps icon_repo.fapIconRevision, which the file rows listen to,
+    // so the icon refreshes immediately without recreating the page.
+    await icon_repo.writeFapIcon(appId, icon);
+    if (!mounted) return;
+    context.showNotification(
+      'Icon indexed for ${extracted?.name.isNotEmpty == true ? extracted!.name : appId}',
+      type: QNotificationType.good,
     );
   }
 
@@ -1021,8 +1054,6 @@ class _FileManagerPageState extends State<FileManagerPage> {
     );
   }
 
-  // ─── Body ────────────────────────────────────────────────────────────────────
-
   Widget _buildBody(BuildContext context) {
     final colors = context.appColors;
     if (_ctrl.loading && _ctrl.entries.isEmpty) {
@@ -1149,6 +1180,9 @@ class _FileManagerPageState extends State<FileManagerPage> {
         onCopy: () => _copyEntry(e),
         onCut: () => _cutEntry(e),
         onDownload: () => _downloadEntries([e]),
+        onIndexIcon: (!e.isDir && e.extension == 'fap')
+            ? () => _indexFapIcon(e)
+            : null,
         onEmulate: (cat != null && cat.emulatable)
             ? () => _emulateEntry(e, cat)
             : null,
