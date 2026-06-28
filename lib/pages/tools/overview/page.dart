@@ -71,7 +71,6 @@ class ToolsPage extends StatelessWidget {
           description:
               'Find and save remotes for your devices',
           routeBuilder: _buildIrLibPage,
-          badge: 'Beta',
         ),
         ToolItemModel(
           iconAsset: 'assets/ic/app/sub-tools.svg',
@@ -79,6 +78,7 @@ class ToolsPage extends StatelessWidget {
           title: 'Pulse Plotter',
           description: 'Visualize raw Sub-GHz/Infrared/RFID pulse captures',
           routeBuilder: _buildPlotterPage,
+          badge: 'Beta',
         ),
         ToolItemModel(
           iconAsset: 'assets/ic/fileformat/sub.svg',
