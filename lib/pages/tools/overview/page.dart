@@ -11,6 +11,7 @@ import '../remote/cli/page.dart';
 import '../infrared/categories_page.dart';
 import '../../archive/map/page.dart';
 import '../mifare/mfkey32_page.dart';
+import '../plotter/page.dart';
 import 'models/tool.dart';
 import 'widgets/tool.dart';
 
@@ -73,6 +74,13 @@ class ToolsPage extends StatelessWidget {
           badge: 'Beta',
         ),
         ToolItemModel(
+          iconAsset: 'assets/ic/app/sub-tools.svg',
+          iconColor: const Color(0xFFFF9B34),
+          title: 'Pulse Plotter',
+          description: 'Visualize raw Sub-GHz/Infrared/RFID pulse captures',
+          routeBuilder: _buildPlotterPage,
+        ),
+        ToolItemModel(
           iconAsset: 'assets/ic/fileformat/sub.svg',
           iconColor: const Color(0xFF8BC34A),
           title: 'Saved Locations',
@@ -122,6 +130,8 @@ class ToolsPage extends StatelessWidget {
 }
 
 Widget _buildMfKey32Page(BuildContext context) => const MfKey32Page();
+
+Widget _buildPlotterPage(BuildContext context) => const PulsePlotterPage();
 
 Widget _buildFlipperMapPage(BuildContext context) => const FlipperMapPage();
 

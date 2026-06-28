@@ -9,6 +9,7 @@ import '../../../../theme/theme.dart';
 import '../../../../widgets/notification.dart';
 import '../../editor/page.dart';
 import '../../../tools/paint/editor/page.dart';
+import '../../../tools/plotter/page.dart';
 import '../../models/pin.dart';
 import '../../map/page.dart';
 import '../controller.dart';
@@ -125,6 +126,15 @@ class KeyActionsSheet {
         ),
       );
     }
+    if (!k.isDeleted && k.category.plottable) {
+      actions.add(
+        ActionItem(
+          icon: Icons.show_chart,
+          label: 'Plotter',
+          onTap: () => _openInPlotter(context, controller, k),
+        ),
+      );
+    }
     if (canShowOnMap) {
       actions.add(
         ActionItem(
@@ -209,6 +219,39 @@ class KeyActionsSheet {
     ).push(MaterialPageRoute(builder: (_) => EmulatePage(flipperKey: k)));
   }
 
+  static Future<void> _openInPlotter(
+    BuildContext context,
+    ArchiveController controller,
+    ArchiveKey k,
+  ) async {
+    List<int>? bytes;
+    final localPath = k.localPath;
+    if (localPath != null && localPath.isNotEmpty) {
+      final file = io.File(localPath);
+      if (await file.exists()) bytes = await file.readAsBytes();
+    }
+    if (bytes == null && k.onDevice && controller.isConnected) {
+      final fm = FileManagerController(initialPath: _parent(k.remotePath));
+      bytes = await fm.readBytes(k.remotePath);
+    }
+    if (!context.mounted) return;
+    if (bytes == null) {
+      context.showNotification(
+        'Could not read ${k.fileName}',
+        type: QNotificationType.error,
+      );
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PulsePlotterPage(
+          initialBytes: Uint8List.fromList(bytes!),
+          initialName: k.fileName,
+        ),
+      ),
+    );
+  }
+
   static void _openInEditor(BuildContext context, ArchiveKey k) {
     if (const {'png', 'gif', 'bm'}.contains(k.extension.toLowerCase())) {
       Navigator.of(context).push(
@@ -233,9 +276,6 @@ class KeyActionsSheet {
     );
   }
 
-  /// Downloads [k] and lets the user choose where to save it through the system
-  /// file picker. Uses the already-synced local copy when present, otherwise
-  /// streams the bytes from the connected Flipper.
   static Future<void> _download(
     BuildContext context,
     ArchiveController controller,
@@ -277,9 +317,6 @@ class KeyActionsSheet {
       return;
     }
     if (savedPath == null) return;
-
-    // On desktop saveFile only returns the chosen path; mobile writes the bytes
-    // itself. Persist them on desktop so the file actually lands on disk.
     final isDesktop =
         io.Platform.isWindows || io.Platform.isLinux || io.Platform.isMacOS;
     if (isDesktop) {

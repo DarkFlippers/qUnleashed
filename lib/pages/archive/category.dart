@@ -44,6 +44,7 @@ enum ArchiveCategory {
     flipperAppName: 'Infrared',
     recursiveSearch: true,
     launchOnApp: true,
+    plottable: true,
   ),
   subghz(
     title: 'Sub-GHz',
@@ -55,6 +56,7 @@ enum ArchiveCategory {
     recursiveSearch: true,
     launchOnApp: true,
     locationSupport: true,
+    plottable: true,
   ),
   wardriving(
     title: 'Wardriving',
@@ -66,6 +68,7 @@ enum ArchiveCategory {
     flipperAppName: 'Sub-GHz',
     launchOnApp: true,
     locationSupport: true,
+    plottable: true,
   ),
   badusb(
     title: 'Bad USB',
@@ -100,6 +103,7 @@ enum ArchiveCategory {
     this.launchOnApp = false,
     this.launchOnRpc = false,
     this.locationSupport = false,
+    this.plottable = false,
   });
 
   final String title;
@@ -113,6 +117,7 @@ enum ArchiveCategory {
   final bool launchOnApp;
   final bool launchOnRpc;
   final bool locationSupport;
+  final bool plottable;
 
   Color get color => categoryColor.color;
   bool get emulatable => flipperAppName != null && (launchOnApp || launchOnRpc);
