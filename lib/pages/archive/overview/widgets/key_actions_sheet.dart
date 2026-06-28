@@ -1,5 +1,7 @@
 import 'dart:io' as io;
+import 'dart:typed_data';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../components/icon.dart';
@@ -159,6 +161,15 @@ class KeyActionsSheet {
     final shareIcon = isShareSupported ? Icons.ios_share : Icons.content_copy;
     final shareLabel = isShareSupported ? 'Share' : 'Copy';
     final hasLocal = k.inLocal && (k.localPath?.isNotEmpty ?? false);
+    if (hasLocal || (k.onDevice && connected)) {
+      actions.add(
+        ActionItem(
+          icon: Icons.download_outlined,
+          label: 'Download',
+          onTap: () => _download(context, controller, k),
+        ),
+      );
+    }
     if (hasLocal) {
       actions.add(
         ActionItem(
@@ -219,6 +230,65 @@ class KeyActionsSheet {
       FileManagerController(initialPath: remoteParent),
       k.remotePath,
       displayName: k.name,
+    );
+  }
+
+  /// Downloads [k] and lets the user choose where to save it through the system
+  /// file picker. Uses the already-synced local copy when present, otherwise
+  /// streams the bytes from the connected Flipper.
+  static Future<void> _download(
+    BuildContext context,
+    ArchiveController controller,
+    ArchiveKey k,
+  ) async {
+    List<int>? bytes;
+    final localPath = k.localPath;
+    if (localPath != null && localPath.isNotEmpty) {
+      final file = io.File(localPath);
+      if (await file.exists()) bytes = await file.readAsBytes();
+    }
+    if (bytes == null && k.onDevice && controller.isConnected) {
+      final fm = FileManagerController(initialPath: _parent(k.remotePath));
+      bytes = await fm.readBytes(k.remotePath);
+    }
+    if (!context.mounted) return;
+    if (bytes == null) {
+      context.showNotification(
+        'Download failed',
+        type: QNotificationType.error,
+      );
+      return;
+    }
+
+    String? savedPath;
+    try {
+      savedPath = await FilePicker.platform.saveFile(
+        dialogTitle: 'Save ${k.fileName}',
+        fileName: k.fileName,
+        bytes: Uint8List.fromList(bytes),
+      );
+    } catch (e) {
+      if (context.mounted) {
+        context.showNotification(
+          'Saving is not supported on this platform',
+          type: QNotificationType.error,
+        );
+      }
+      return;
+    }
+    if (savedPath == null) return;
+
+    // On desktop saveFile only returns the chosen path; mobile writes the bytes
+    // itself. Persist them on desktop so the file actually lands on disk.
+    final isDesktop =
+        io.Platform.isWindows || io.Platform.isLinux || io.Platform.isMacOS;
+    if (isDesktop) {
+      await io.File(savedPath).writeAsBytes(bytes, flush: true);
+    }
+    if (!context.mounted) return;
+    context.showNotification(
+      'Saved to $savedPath',
+      type: QNotificationType.good,
     );
   }
 
