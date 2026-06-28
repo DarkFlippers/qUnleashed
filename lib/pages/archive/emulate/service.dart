@@ -9,6 +9,7 @@ enum EmulateError {
   notEmulatable,
   appStartFailed,
   loadFileFailed,
+  busy,
 }
 
 class EmulateResult {
@@ -47,6 +48,10 @@ class EmulateService {
         ),
         timeout: const Duration(seconds: 10),
       );
+    } on FlipperRpcAppSystemLockedException {
+      return EmulateResult.fail(EmulateError.busy);
+    } on FlipperRpcBusyException {
+      return EmulateResult.fail(EmulateError.busy);
     } catch (e) {
       LogService.log('[Emulate] appStart failed: $e');
       return EmulateResult.fail(EmulateError.appStartFailed);
@@ -87,6 +92,10 @@ class EmulateService {
         ),
         timeout: const Duration(seconds: 10),
       );
+    } on FlipperRpcAppSystemLockedException {
+      return EmulateResult.fail(EmulateError.busy);
+    } on FlipperRpcBusyException {
+      return EmulateResult.fail(EmulateError.busy);
     } catch (e) {
       LogService.log('[Emulate] launchApp appStart failed: $e');
       return EmulateResult.fail(EmulateError.appStartFailed);

@@ -6,6 +6,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme/theme.dart';
 import 'package:qunleashed/components/appbar.dart';
+import 'package:flipperlib/flipperlib.dart';
 import '../../../services/repository/app.dart' as icon_repo;
 import '../../../widgets/notification.dart';
 import '../overview/fap_icon.dart';
@@ -172,7 +173,16 @@ class _FileManagerPageState extends State<FileManagerPage> {
   }
 
   Future<void> _launchFap(String remotePath) async {
-    final ok = await _ctrl.launchFap(remotePath);
+    bool ok;
+    try {
+      ok = await _ctrl.launchFap(remotePath);
+    } on FlipperRpcAppSystemLockedException {
+      if (mounted) _openRemoteControlBusy();
+      return;
+    } on FlipperRpcBusyException {
+      if (mounted) _openRemoteControlBusy();
+      return;
+    }
     if (!mounted) return;
     if (!ok) {
       context.showNotification(
@@ -181,6 +191,16 @@ class _FileManagerPageState extends State<FileManagerPage> {
       );
       return;
     }
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const RemoteControlPage()));
+  }
+
+  void _openRemoteControlBusy() {
+    context.showNotification(
+      'Flipper is busy',
+      type: QNotificationType.error,
+    );
     Navigator.of(
       context,
     ).push(MaterialPageRoute(builder: (_) => const RemoteControlPage()));

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../components/icon.dart';
 import '../../../theme/theme.dart';
 import 'package:qunleashed/components/appbar.dart';
+import '../../../widgets/notification.dart';
 import '../../tools/remote/desktop/page.dart';
 import '../models/key.dart';
 import 'service.dart';
@@ -32,6 +33,10 @@ class _EmulatePageState extends State<EmulatePage> {
     if (widget.flipperKey.category.launchOnApp) {
       final result = await _service.launchApp(widget.flipperKey);
       if (!mounted) return;
+      if (result.error == EmulateError.busy) {
+        _openRemoteControlBusy();
+        return;
+      }
       if (result.isOk) {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const RemoteControlPage()),
@@ -48,11 +53,25 @@ class _EmulatePageState extends State<EmulatePage> {
 
     final result = await _service.start(widget.flipperKey);
     if (!mounted) return;
+    if (result.error == EmulateError.busy) {
+      _openRemoteControlBusy();
+      return;
+    }
     setState(() {
       _starting = false;
       _running = result.isOk;
       _error = result.error;
     });
+  }
+
+  void _openRemoteControlBusy() {
+    context.showNotification(
+      'Flipper is busy',
+      type: QNotificationType.error,
+    );
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => const RemoteControlPage()),
+    );
   }
 
   Future<void> _stopAndClose() async {
@@ -78,6 +97,8 @@ class _EmulatePageState extends State<EmulatePage> {
         return 'Could not open the app on Flipper';
       case EmulateError.loadFileFailed:
         return 'Could not load the file into the app';
+      case EmulateError.busy:
+        return 'Flipper is busy';
       case null:
         return '';
     }

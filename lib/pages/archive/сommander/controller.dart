@@ -288,6 +288,10 @@ class FileManagerController extends ChangeNotifier {
         timeout: const Duration(seconds: 15),
       );
       return true;
+    } on FlipperRpcAppSystemLockedException {
+      rethrow;
+    } on FlipperRpcBusyException {
+      rethrow;
     } catch (e) {
       _error = '$e';
       LogService.log('[FileManager] appStart $remotePath failed: $e');
