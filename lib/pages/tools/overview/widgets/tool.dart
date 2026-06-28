@@ -21,23 +21,11 @@ class ToolCardView extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: switch (model) {
           ToolCardGroup group => _GroupBody(group: group),
-          ToolCard card => ToolItem(model: _asItem(card)),
+          ToolCard card => ToolItem(model: card.item),
         },
       ),
     );
   }
-}
-
-ToolItemModel _asItem(ToolCard card) {
-  return ToolItemModel(
-    iconAsset: card.iconAsset,
-    iconColor: card.iconColor,
-    title: card.title,
-    description: card.description,
-    routeBuilder: card.routeBuilder,
-    onTap: card.onTap,
-    badge: card.badge,
-  );
 }
 
 class _GroupBody extends StatelessWidget {
@@ -47,14 +35,13 @@ class _GroupBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hasPreview = group.items.any((item) => item.preview != null);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _GroupHeader(header: group.header),
         for (final (index, item) in group.items.indexed) ...[
           if (index > 0) _ItemDivider(),
-          ToolItem(model: item, alignWithPreview: hasPreview),
+          ToolItem(model: item),
         ],
       ],
     );

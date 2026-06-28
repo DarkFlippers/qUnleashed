@@ -56,17 +56,19 @@ class ToolsPage extends StatelessWidget {
       ),
       items: [
         ToolItemModel(
-          preview: ToolPreviewType.mfKey,
+          iconAsset: 'assets/ic/fileformat/nfc.svg',
+          iconColor: const Color(0xFF34C7A4),
           title: 'Extract MIFARE Keys',
           description: 'Calculate keys from Extract MF Keys',
           routeBuilder: _buildMfKey32Page,
           badge: 'Beta',
         ),
         ToolItemModel(
-          preview: ToolPreviewType.remoteLibrary,
+          iconAsset: 'assets/ic/fileformat/ir.svg',
+          iconColor: const Color(0xFFAF52DE),
           title: 'Remotes Library',
           description:
-              'Find and save remotes for your devices from a wide range of brands and models',
+              'Find and save remotes for your devices',
           routeBuilder: _buildIrLibPage,
           badge: 'Beta',
         ),
@@ -80,18 +82,22 @@ class ToolsPage extends StatelessWidget {
       ],
     ),
     ToolCard(
-      iconAsset: 'assets/ic/app/settings-gear.svg',
-      iconColor: const Color(0xFF9E9E9E),
-      title: 'Settings',
-      description: 'Notifications and app preferences',
-      routeBuilder: _buildSettingsPage,
+      item: ToolItemModel(
+        iconAsset: 'assets/ic/app/settings-gear.svg',
+        iconColor: const Color(0xFF9E9E9E),
+        title: 'Settings',
+        description: 'Notifications and app preferences',
+        routeBuilder: _buildSettingsPage,
+      ),
     ),
     ToolCard(
-      iconAsset: 'assets/ic/info/lg.svg',
-      iconColor: const Color(0xFF589DFF),
-      title: 'About',
-      description: 'Links, community and license',
-      routeBuilder: _buildAboutPage,
+      item: ToolItemModel(
+        iconAsset: 'assets/ic/info/lg.svg',
+        iconColor: const Color(0xFF589DFF),
+        title: 'About',
+        description: 'Links, community and license',
+        routeBuilder: _buildAboutPage,
+      ),
     ),
   ];
 
