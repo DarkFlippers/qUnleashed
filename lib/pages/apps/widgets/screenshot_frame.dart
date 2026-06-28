@@ -36,7 +36,7 @@ class ScreenshotFrame extends StatelessWidget {
         padding: EdgeInsets.all(innerPadding),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(borderRadius - 2),
-          child: FlipperRemoteImage(url: url, fit: BoxFit.cover),
+          child: FlipperRemoteImage(url: url, fit: BoxFit.contain),
         ),
       ),
     );
