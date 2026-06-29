@@ -5,6 +5,7 @@ import '../../../config.dart';
 import '../../../theme/theme.dart';
 import '../../../widgets/page_card.dart';
 import '../controllers/firmware.dart';
+import '../device_scope.dart';
 import '../firmware/directory.dart';
 import 'firmware_changelog_page.dart';
 import 'firmware_update_button.dart';
@@ -94,19 +95,23 @@ class _FirmwareCardState extends State<FirmwareCard> {
   }
 
   void _openChangelog(FirmwareEntry entry, FirmwareVersion version) {
+    final device = DeviceScope.of(context);
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => FirmwareChangelogPage(
-          entry: entry,
-          version: version,
-          changelog: version.changelog,
-          fetchLoading: _fw.fetchLoadingFor(entry),
-          latestVersion: _fw.latestVersionFor(entry),
-          deviceVersion: widget.deviceVersion,
-          deviceInfo: widget.deviceInfo,
-          selectedChannelId: _fw.selectedChannelId(entry),
-          selectedVariant: _fw.selectedVariant(entry),
-          client: _client,
+        builder: (_) => DeviceScope(
+          notifier: device,
+          child: FirmwareChangelogPage(
+            entry: entry,
+            version: version,
+            changelog: version.changelog,
+            fetchLoading: _fw.fetchLoadingFor(entry),
+            latestVersion: _fw.latestVersionFor(entry),
+            deviceVersion: widget.deviceVersion,
+            deviceInfo: widget.deviceInfo,
+            selectedChannelId: _fw.selectedChannelId(entry),
+            selectedVariant: _fw.selectedVariant(entry),
+            client: _client,
+          ),
         ),
       ),
     );
@@ -247,7 +252,7 @@ class _FirmwareSlide extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.w700,
-                    color: entry.colors.primary,
+                    color: colors.accent,
                   ),
                 ),
                 const SizedBox(height: 2),
@@ -293,6 +298,7 @@ class _FirmwareControls extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final accent = context.appColors.accent;
     final selectedChannel = channels.isEmpty
         ? null
         : channels.firstWhere(
@@ -310,7 +316,7 @@ class _FirmwareControls extends StatelessWidget {
             items: channels,
             labelOf: (channel) => channel.title,
             descriptionOf: (channel) => channel.description,
-            accent: entry.colors.primary,
+            accent: accent,
             placeholder: fetchLoading ? 'Loading…' : 'Unavailable',
             onChanged: (channel) => onChannelChanged(channel.id),
           ),
@@ -326,7 +332,7 @@ class _FirmwareControls extends StatelessWidget {
                 UnleashedVariant.compact => 'Firmware only, no apps',
                 UnleashedVariant.extraPacks => 'Extended pack with many apps',
               },
-              accent: entry.colors.primary,
+              accent: accent,
               placeholder: 'Unavailable',
               onChanged: onVariantChanged,
             ),

@@ -203,6 +203,18 @@ class _QIconState extends State<QIcon> {
   String? _key;
   ui.Image? _image;
 
+  void _adopt(ui.Image? cacheImage) {
+    _image?.dispose();
+    _image = cacheImage?.clone();
+  }
+
+  @override
+  void dispose() {
+    _image?.dispose();
+    _image = null;
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final size = widget.size;
@@ -233,9 +245,9 @@ class _QIconState extends State<QIcon> {
       _key = key;
       final cached = _RasterIconCache.instance.ready(key);
       if (cached != null) {
-        _image = cached;
+        _adopt(cached);
       } else {
-        _image = null;
+        _adopt(null);
         _RasterIconCache.instance
             .resolve(
               key: key,
@@ -256,7 +268,7 @@ class _QIconState extends State<QIcon> {
                     ),
             )
             .then((image) {
-              if (mounted && _key == key) setState(() => _image = image);
+              if (mounted && _key == key) setState(() => _adopt(image));
             });
       }
     }
@@ -266,7 +278,7 @@ class _QIconState extends State<QIcon> {
       return SizedBox(width: size, height: size);
     }
     return RawImage(
-      image: image,
+      image: image.clone(),
       width: size,
       height: size,
       fit: BoxFit.contain,

@@ -62,14 +62,18 @@ class QUnleashedApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final controller = QAppThemeController.instance;
     return AnimatedBuilder(
-      animation: QAppThemeController.instance,
-      builder: (context, _) => MaterialApp(
-        title: 'qUnleashed',
-        debugShowCheckedModeBanner: false,
-        theme: buildAppTheme(QAppThemeController.instance.activeFirmware),
-        home: const DevicePage(),
-      ),
+      animation: controller,
+      builder: (context, _) {
+        return MaterialApp(
+          title: 'qUnleashed',
+          debugShowCheckedModeBanner: false,
+          theme: buildAppTheme(controller.brightness, controller.accent),
+          themeAnimationDuration: Duration.zero,
+          home: const DevicePage(),
+        );
+      },
     );
   }
 }

@@ -13,6 +13,16 @@ class QAppThemeController extends ChangeNotifier {
   FirmwareConfig get config => _config;
   FirmwareEntry get activeFirmware => _activeFirmware;
 
+  Brightness get brightness =>
+      _firmwareIsDark(_activeFirmware) ? Brightness.dark : Brightness.light;
+
+  Color get accent => _activeFirmware.colors.primary;
+
+  bool get isDark => brightness == Brightness.dark;
+
+  static bool _firmwareIsDark(FirmwareEntry firmware) =>
+      firmware.shortName.toLowerCase() == 'unlshd';
+
   void setActiveFirmware(FirmwareEntry? firmware) {
     if (firmware == null) return;
     if (identical(_activeFirmware, firmware)) return;
@@ -111,9 +121,6 @@ class QAppColors extends ThemeExtension<QAppColors> {
     required this.terminalText,
     required this.onAccent,
     required this.transparent,
-    required this.firmwarePrimary,
-    required this.firmwareSecondary,
-    required this.firmwareTertiary,
     required this.isDark,
   });
 
@@ -140,32 +147,30 @@ class QAppColors extends ThemeExtension<QAppColors> {
   final Color terminalText;
   final Color onAccent;
   final Color transparent;
-  final Color firmwarePrimary;
-  final Color firmwareSecondary;
-  final Color firmwareTertiary;
   final bool isDark;
 
-  factory QAppColors.fromFirmware(FirmwareEntry? firmware) {
-    final isDark = firmware?.shortName.toLowerCase() == 'unlshd';
-    final primary = firmware?.colors.primary ?? const Color(0xFFFF8200);
-    final secondary = firmware?.colors.secondary ?? const Color(0xFF589DFF);
-    final tertiary = firmware?.colors.tertiary ?? const Color(0xFFFFD580);
+  factory QAppColors.build(Brightness brightness, Color accent) {
+    final isDark = brightness == Brightness.dark;
+    final onAccent = onColorFor(accent);
 
     if (isDark) {
       return QAppColors(
         background: const Color(0xFF090909),
         card: const Color(0xFF151515),
-        accent: primary,
+        accent: accent,
         textPrimary: const Color(0xFFFFFFFF),
         textSecondary: const Color(0xFFC8C8C8),
         textMuted: const Color(0xFF6F6F6F),
         divider: const Color(0xFF2C2C2C),
-        info: secondary,
-        success: tertiary,
+        info: const Color(0xFF589DFF),
+        success: const Color(0xFF2ED34A),
         danger: const Color(0xFFE85858),
         screenBackground: const Color(0xFFDFDFDF),
         screenBorder: const Color(0xFF000000),
-        screenOptionBackground: const Color(0xFF2A1A1A),
+        screenOptionBackground: Color.alphaBlend(
+          accent.withValues(alpha: 0.12),
+          const Color(0xFF151515),
+        ),
         dialogBarrier: const Color(0x8A000000),
         dialogBackground: const Color(0xFF1A1A1A),
         dialogDivider: const Color(0xFF2C2C2C),
@@ -174,11 +179,8 @@ class QAppColors extends ThemeExtension<QAppColors> {
         terminalBackground: const Color(0xFF090909),
         terminalHeader: const Color(0xFF151515),
         terminalText: const Color(0xFF90EE90),
-        onAccent: const Color(0xFFFFFFFF),
+        onAccent: onAccent,
         transparent: Colors.transparent,
-        firmwarePrimary: primary,
-        firmwareSecondary: secondary,
-        firmwareTertiary: tertiary,
         isDark: true,
       );
     }
@@ -186,17 +188,20 @@ class QAppColors extends ThemeExtension<QAppColors> {
     return QAppColors(
       background: const Color(0xFFF1F1F1),
       card: const Color(0xFFFFFFFF),
-      accent: primary,
+      accent: accent,
       textPrimary: const Color(0xFF000000),
       textSecondary: const Color(0xFF616161),
       textMuted: const Color(0xFFAAAAAA),
       divider: const Color(0xFFDFDFDF),
-      info: secondary,
+      info: const Color(0xFF589DFF),
       success: const Color(0xFF2ED34A),
       danger: const Color(0xFFE85858),
       screenBackground: const Color(0xFFDFDFDF),
       screenBorder: const Color(0xFF000000),
-      screenOptionBackground: const Color(0xFFFFF0DE),
+      screenOptionBackground: Color.alphaBlend(
+        accent.withValues(alpha: 0.14),
+        const Color(0xFFFFFFFF),
+      ),
       dialogBarrier: const Color(0x8A000000),
       dialogBackground: const Color(0xFFFFFFFF),
       dialogDivider: const Color(0xFFDFDFDF),
@@ -205,14 +210,16 @@ class QAppColors extends ThemeExtension<QAppColors> {
       terminalBackground: const Color(0xFFF4F4F4),
       terminalHeader: const Color(0xFFFFFFFF),
       terminalText: const Color(0xFF267A26),
-      onAccent: const Color(0xFFFFFFFF),
+      onAccent: onAccent,
       transparent: Colors.transparent,
-      firmwarePrimary: primary,
-      firmwareSecondary: secondary,
-      firmwareTertiary: tertiary,
       isDark: false,
     );
   }
+
+  static Color onColorFor(Color color) =>
+      color.computeLuminance() > 0.55
+          ? const Color(0xFF0A0A0A)
+          : const Color(0xFFFFFFFF);
 
   @override
   QAppColors copyWith({
@@ -239,9 +246,6 @@ class QAppColors extends ThemeExtension<QAppColors> {
     Color? terminalText,
     Color? onAccent,
     Color? transparent,
-    Color? firmwarePrimary,
-    Color? firmwareSecondary,
-    Color? firmwareTertiary,
     bool? isDark,
   }) {
     return QAppColors(
@@ -257,7 +261,8 @@ class QAppColors extends ThemeExtension<QAppColors> {
       danger: danger ?? this.danger,
       screenBackground: screenBackground ?? this.screenBackground,
       screenBorder: screenBorder ?? this.screenBorder,
-      screenOptionBackground: screenOptionBackground ?? this.screenOptionBackground,
+      screenOptionBackground:
+          screenOptionBackground ?? this.screenOptionBackground,
       dialogBarrier: dialogBarrier ?? this.dialogBarrier,
       dialogBackground: dialogBackground ?? this.dialogBackground,
       dialogDivider: dialogDivider ?? this.dialogDivider,
@@ -268,9 +273,6 @@ class QAppColors extends ThemeExtension<QAppColors> {
       terminalText: terminalText ?? this.terminalText,
       onAccent: onAccent ?? this.onAccent,
       transparent: transparent ?? this.transparent,
-      firmwarePrimary: firmwarePrimary ?? this.firmwarePrimary,
-      firmwareSecondary: firmwareSecondary ?? this.firmwareSecondary,
-      firmwareTertiary: firmwareTertiary ?? this.firmwareTertiary,
       isDark: isDark ?? this.isDark,
     );
   }
@@ -283,28 +285,40 @@ class QAppColors extends ThemeExtension<QAppColors> {
       card: Color.lerp(card, other.card, t) ?? card,
       accent: Color.lerp(accent, other.accent, t) ?? accent,
       textPrimary: Color.lerp(textPrimary, other.textPrimary, t) ?? textPrimary,
-      textSecondary: Color.lerp(textSecondary, other.textSecondary, t) ?? textSecondary,
+      textSecondary:
+          Color.lerp(textSecondary, other.textSecondary, t) ?? textSecondary,
       textMuted: Color.lerp(textMuted, other.textMuted, t) ?? textMuted,
       divider: Color.lerp(divider, other.divider, t) ?? divider,
       info: Color.lerp(info, other.info, t) ?? info,
       success: Color.lerp(success, other.success, t) ?? success,
       danger: Color.lerp(danger, other.danger, t) ?? danger,
-      screenBackground: Color.lerp(screenBackground, other.screenBackground, t) ?? screenBackground,
-      screenBorder: Color.lerp(screenBorder, other.screenBorder, t) ?? screenBorder,
-      screenOptionBackground: Color.lerp(screenOptionBackground, other.screenOptionBackground, t) ?? screenOptionBackground,
-      dialogBarrier: Color.lerp(dialogBarrier, other.dialogBarrier, t) ?? dialogBarrier,
-      dialogBackground: Color.lerp(dialogBackground, other.dialogBackground, t) ?? dialogBackground,
-      dialogDivider: Color.lerp(dialogDivider, other.dialogDivider, t) ?? dialogDivider,
+      screenBackground: Color.lerp(screenBackground, other.screenBackground, t) ??
+          screenBackground,
+      screenBorder:
+          Color.lerp(screenBorder, other.screenBorder, t) ?? screenBorder,
+      screenOptionBackground: Color.lerp(
+            screenOptionBackground,
+            other.screenOptionBackground,
+            t,
+          ) ??
+          screenOptionBackground,
+      dialogBarrier:
+          Color.lerp(dialogBarrier, other.dialogBarrier, t) ?? dialogBarrier,
+      dialogBackground: Color.lerp(dialogBackground, other.dialogBackground, t) ??
+          dialogBackground,
+      dialogDivider:
+          Color.lerp(dialogDivider, other.dialogDivider, t) ?? dialogDivider,
       dialogText: Color.lerp(dialogText, other.dialogText, t) ?? dialogText,
       dialogMuted: Color.lerp(dialogMuted, other.dialogMuted, t) ?? dialogMuted,
-      terminalBackground: Color.lerp(terminalBackground, other.terminalBackground, t) ?? terminalBackground,
-      terminalHeader: Color.lerp(terminalHeader, other.terminalHeader, t) ?? terminalHeader,
-      terminalText: Color.lerp(terminalText, other.terminalText, t) ?? terminalText,
+      terminalBackground:
+          Color.lerp(terminalBackground, other.terminalBackground, t) ??
+          terminalBackground,
+      terminalHeader:
+          Color.lerp(terminalHeader, other.terminalHeader, t) ?? terminalHeader,
+      terminalText:
+          Color.lerp(terminalText, other.terminalText, t) ?? terminalText,
       onAccent: Color.lerp(onAccent, other.onAccent, t) ?? onAccent,
       transparent: Color.lerp(transparent, other.transparent, t) ?? transparent,
-      firmwarePrimary: Color.lerp(firmwarePrimary, other.firmwarePrimary, t) ?? firmwarePrimary,
-      firmwareSecondary: Color.lerp(firmwareSecondary, other.firmwareSecondary, t) ?? firmwareSecondary,
-      firmwareTertiary: Color.lerp(firmwareTertiary, other.firmwareTertiary, t) ?? firmwareTertiary,
       isDark: t < 0.5 ? isDark : other.isDark,
     );
   }
@@ -318,20 +332,23 @@ class QAppColors extends ThemeExtension<QAppColors> {
   }
 }
 
-ThemeData buildAppTheme(FirmwareEntry? firmware) {
-  final colors = QAppColors.fromFirmware(firmware);
-  final colorScheme = (colors.isDark ? const ColorScheme.dark() : const ColorScheme.light()).copyWith(
-    primary: colors.accent,
-    onPrimary: colors.onAccent,
-    secondary: colors.info,
-    onSecondary: colors.onAccent,
-    error: colors.danger,
-    onError: colors.onAccent,
-    surface: colors.card,
-    onSurface: colors.textPrimary,
-  );
+ThemeData buildAppTheme(Brightness brightness, Color accent) {
+  final colors = QAppColors.build(brightness, accent);
+  final colorScheme =
+      (colors.isDark ? const ColorScheme.dark() : const ColorScheme.light())
+          .copyWith(
+            primary: colors.accent,
+            onPrimary: colors.onAccent,
+            secondary: colors.info,
+            onSecondary: colors.onAccent,
+            error: colors.danger,
+            onError: colors.onAccent,
+            surface: colors.card,
+            onSurface: colors.textPrimary,
+          );
   return ThemeData(
     useMaterial3: true,
+    brightness: brightness,
     scaffoldBackgroundColor: colors.background,
     colorScheme: colorScheme,
     dividerColor: colors.divider,
@@ -355,7 +372,10 @@ ThemeData buildAppTheme(FirmwareEntry? firmware) {
 }
 
 class FlipperOriginalColors {
-  static QAppColors get _colors => QAppColors.fromFirmware(QAppThemeController.instance.activeFirmware);
+  static QAppColors get _colors => QAppColors.build(
+    QAppThemeController.instance.brightness,
+    QAppThemeController.instance.accent,
+  );
 
   static Color get background => _colors.background;
   static Color get card => _colors.card;
@@ -370,7 +390,8 @@ class FlipperOriginalColors {
   static Color get danger => _colors.danger;
   static Color get flipperScreenBackground => _colors.screenBackground;
   static Color get flipperScreenBorder => _colors.screenBorder;
-  static Color get flipperScreenOptionsBackground => _colors.screenOptionBackground;
+  static Color get flipperScreenOptionsBackground =>
+      _colors.screenOptionBackground;
   static Color get dialogBackground => _colors.dialogBackground;
   static Color get dialogDivider => _colors.dialogDivider;
   static Color get dialogText => _colors.dialogText;

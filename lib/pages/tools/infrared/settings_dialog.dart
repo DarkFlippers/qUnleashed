@@ -184,7 +184,7 @@ class _IrLibSettingsDialogState extends State<IrLibSettingsDialog> {
         ),
         FilledButton(
           style:
-              FilledButton.styleFrom(backgroundColor: colors.firmwarePrimary),
+              FilledButton.styleFrom(backgroundColor: colors.accent),
           onPressed: (_saving || downloading) ? null : _save,
           child: _saving
               ? const SizedBox(
@@ -231,7 +231,7 @@ class _IrLibSettingsDialogState extends State<IrLibSettingsDialog> {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
-          borderSide: BorderSide(color: colors.firmwarePrimary),
+          borderSide: BorderSide(color: colors.accent),
         ),
       ),
     );
@@ -256,7 +256,7 @@ class _PrimaryActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final String label;
-    final Color color = colors.firmwarePrimary;
+    final Color color = colors.accent;
     double? value;
     bool indeterminate = false;
     bool showPercent = false;

@@ -45,8 +45,10 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
 
   bool _dfuPresent = false;
 
+  late QAppColors _colors;
+
   Color get _activeColor => widget.entry.colors.primary;
-  Color get _inactiveColor => FlipperOriginalColors.text16;
+  Color get _inactiveColor => _colors.textMuted;
 
   bool get _isCustom => widget.selectedChannelId == kCustomFirmwareChannelId;
 
@@ -73,6 +75,7 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
 
   @override
   Widget build(BuildContext context) {
+    _colors = context.appColors;
     _dfuPresent = DeviceScope.of(context).dfuPresent;
     if (_updateState is UpdateWaitingForReconnect &&
         widget.client.isConnected) {
@@ -95,6 +98,9 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
             progress: isIndeterminate ? null : progress?.value,
             indeterminate: isIndeterminate,
             onPressed: state.enabled ? _onPressed : null,
+            textStyle: ProgressButton.defaultTextStyle.copyWith(
+              color: QAppColors.onColorFor(borderColor),
+            ),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(4, 4, 4, 12),
@@ -104,7 +110,7 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w400,
-                color: FlipperOriginalColors.text30,
+                color: _colors.textMuted,
               ),
             ),
           ),

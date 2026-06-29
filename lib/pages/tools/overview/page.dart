@@ -139,8 +139,7 @@ Widget _buildIrLibPage(BuildContext context) => const IrCategoriesPage();
 
 Widget _buildAboutPage(BuildContext context) => const AboutPage();
 
-Widget _buildSettingsPage(BuildContext context) =>
-    const NotificationSettingsPage();
+Widget _buildSettingsPage(BuildContext context) => const SettingsPage();
 
 Widget _buildPaintPage(BuildContext context) => const ProjectManagerPage();
 

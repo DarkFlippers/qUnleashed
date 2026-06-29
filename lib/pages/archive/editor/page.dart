@@ -300,11 +300,11 @@ class _TextEditorPageState extends State<TextEditorPage> {
             tooltip: 'Save',
             onPressed: _saving || _loading ? null : _save,
             icon: _saving
-                ? const SizedBox(
+                ? SizedBox(
                     width: 20,
                     height: 20,
                     child: CircularProgressIndicator(
-                      color: Colors.white,
+                      color: colors.onAccent,
                       strokeWidth: 2,
                     ),
                   )

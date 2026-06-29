@@ -162,7 +162,7 @@ class AppIconBadge extends StatelessWidget {
       height: size,
       decoration: BoxDecoration(
         color: colors.accent,
-        border: Border.all(color: Colors.black, width: 1.5),
+        border: Border.all(color: colors.screenBorder, width: 1.5),
         borderRadius: BorderRadius.circular(8),
       ),
       padding: const EdgeInsets.all(4),

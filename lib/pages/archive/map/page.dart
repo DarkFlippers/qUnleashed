@@ -6,7 +6,6 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:latlong2/latlong.dart';
 
-import '../../../config.dart';
 import '../../../theme/theme.dart';
 import 'package:qunleashed/components/appbar.dart';
 import '../../../widgets/notification.dart';
@@ -270,20 +269,12 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
     );
   }
 
-  /// Switches to the full unlshd or OFW firmware color scheme, scoped to this page only.
   static QAppColors _resolveMapColors(QAppColors current, bool dark) {
     if (dark == current.isDark) return current;
-    final firmwares = QAppConfig.firmware.firmwares;
-    final target = dark
-        ? firmwares.firstWhere(
-            (f) => f.shortName == 'unlshd',
-            orElse: () => firmwares.first,
-          )
-        : firmwares.firstWhere(
-            (f) => f.shortName == 'ofw',
-            orElse: () => firmwares.last,
-          );
-    return QAppColors.fromFirmware(target);
+    return QAppColors.build(
+      dark ? Brightness.dark : Brightness.light,
+      current.accent,
+    );
   }
 
   PreferredSizeWidget _buildAppBar(QAppColors colors) {
@@ -305,12 +296,12 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
             tooltip: 'Save location',
             onPressed: _saving ? null : _savePickedLocation,
             icon: _saving
-                ? const SizedBox(
+                ? SizedBox(
                     width: 22,
                     height: 22,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: Colors.white,
+                      color: colors.onAccent,
                     ),
                   )
                 : const Icon(Icons.check),

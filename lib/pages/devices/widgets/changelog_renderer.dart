@@ -114,15 +114,15 @@ class ChangelogRenderer extends StatelessWidget {
           ),
           'code': Style(
             fontFamily: 'monospace',
-            backgroundColor: Colors.black.withValues(alpha: 0.06),
+            backgroundColor: baseTextColor.withValues(alpha: 0.06),
             padding: HtmlPaddings.symmetric(horizontal: 4, vertical: 2),
           ),
           'pre': Style(
             margin: Margins.only(bottom: 14),
             padding: HtmlPaddings.all(12),
-            backgroundColor: Colors.black.withValues(alpha: 0.06),
+            backgroundColor: baseTextColor.withValues(alpha: 0.06),
             border: Border.all(
-              color: Colors.black.withValues(alpha: 0.08),
+              color: baseTextColor.withValues(alpha: 0.08),
               width: 1,
             ),
           ),
@@ -132,23 +132,23 @@ class ChangelogRenderer extends StatelessWidget {
           ),
           'table': Style(
             margin: Margins.only(bottom: 14),
-            backgroundColor: Colors.black.withValues(alpha: 0.04),
+            backgroundColor: baseTextColor.withValues(alpha: 0.04),
             border: Border.all(
-              color: Colors.black.withValues(alpha: 0.06),
+              color: baseTextColor.withValues(alpha: 0.06),
               width: 1,
             ),
           ),
           'tr': Style(
             border: Border(
               bottom: BorderSide(
-                color: Colors.black.withValues(alpha: 0.06),
+                color: baseTextColor.withValues(alpha: 0.06),
                 width: 1,
               ),
             ),
           ),
           'th': Style(
             padding: HtmlPaddings.all(8),
-            backgroundColor: Colors.black.withValues(alpha: 0.05),
+            backgroundColor: baseTextColor.withValues(alpha: 0.05),
             fontWeight: FontWeight.w700,
             color: baseTextColor,
             verticalAlign: VerticalAlign.bottom,

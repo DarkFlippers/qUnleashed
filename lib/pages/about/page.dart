@@ -59,11 +59,11 @@ class _AboutPageState extends State<AboutPage>
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.notifications_outlined),
-            tooltip: 'Notifications',
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: 'Settings',
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(
-                builder: (_) => const NotificationSettingsPage(),
+                builder: (_) => const SettingsPage(),
               ),
             ),
           ),
