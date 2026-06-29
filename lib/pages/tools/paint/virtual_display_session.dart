@@ -43,12 +43,18 @@ class VirtualDisplaySession {
   void enter() {
     _connSub ??= _client.connectionStream.listen(_onConnectionChange);
     _users++;
-    if (_users == 1) _ensureStarted();
+    if (_users == 1) {
+      _client.freezeWatch();
+      _ensureStarted();
+    }
   }
 
   void leave() {
     if (_users > 0) _users--;
-    if (_users == 0) _stop();
+    if (_users == 0) {
+      _client.unfreezeWatch();
+      _stop();
+    }
   }
 
   void enterLive() {

@@ -16,6 +16,7 @@ class RemoteSession extends ChangeNotifier {
     _frameSub = _client.screenFrameStream().listen(_onFrame);
     _statusSub = _client.desktopStatusStream().listen(_applyStatus);
     _connectionSub = _client.connectionStream.listen(_onConnectionState);
+    _client.freezeWatch();
     unawaited(_start());
   }
 
@@ -97,6 +98,7 @@ class RemoteSession extends ChangeNotifier {
   void shutdown() {
     if (_disposed) return;
     _disposed = true;
+    _client.unfreezeWatch();
     for (final h in _held.values) {
       h.longTimer?.cancel();
     }
