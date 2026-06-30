@@ -145,7 +145,7 @@ class _FlipperScreenShell extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        border: Border.all(color: colors.screenBorder, width: 3),
+        border: Border.all(color: display.border, width: 3),
         borderRadius: BorderRadius.circular(16),
         color: display.background,
       ),

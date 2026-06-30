@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../../../../theme/colors/display.dart';
 import '../../../../../theme/theme.dart';
 import '../models/models.dart';
 
@@ -85,7 +86,10 @@ class _DPad extends StatelessWidget {
       height: 162,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        border: Border.all(color: colors.screenBorder, width: 3),
+        border: Border.all(
+          color: DisplayColors.forColors(colors).border,
+          width: 3,
+        ),
       ),
       padding: const EdgeInsets.all(3),
       child: ClipOval(
@@ -162,7 +166,10 @@ class _BackButton extends StatelessWidget {
         height: 54,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          border: Border.all(color: colors.screenBorder, width: 3),
+          border: Border.all(
+            color: DisplayColors.forColors(colors).border,
+            width: 3,
+          ),
         ),
         padding: const EdgeInsets.all(3),
         child: ClipOval(

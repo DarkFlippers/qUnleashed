@@ -132,13 +132,13 @@ class _ScreenShell extends StatelessWidget {
     final display = DisplayColors.forColors(colors);
     return Container(
       decoration: BoxDecoration(
-        border: Border.all(color: colors.screenBorder, width: 3),
+        border: Border.all(color: display.border, width: 3),
         borderRadius: BorderRadius.circular(16),
       ),
       padding: const EdgeInsets.all(6),
       child: Container(
         decoration: BoxDecoration(
-          border: Border.all(color: colors.screenBorder, width: 2),
+          border: Border.all(color: display.border, width: 2),
           borderRadius: BorderRadius.circular(12),
           color: display.background,
         ),
