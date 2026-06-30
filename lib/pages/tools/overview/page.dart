@@ -91,7 +91,7 @@ class ToolsPage extends StatelessWidget {
     ),
     ToolCard(
       item: ToolItemModel(
-        iconAsset: 'assets/ic/app/settings-gear.svg',
+        iconAsset: 'assets/ic/fileformat/settings.svg',
         iconColor: const Color(0xFF9E9E9E),
         title: 'Settings',
         description: 'Notifications and app preferences',
