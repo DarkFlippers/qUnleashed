@@ -513,6 +513,7 @@ class _SlicerControls extends StatelessWidget {
         backgroundColor: colors.accent,
         foregroundColor: colors.onAccent,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
@@ -551,21 +552,23 @@ class _SlicerControls extends StatelessWidget {
                   ],
                 );
               }
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SizedBox(width: 140, child: dropdown),
-                  const SizedBox(width: 10),
-                  Expanded(child: _NumberField(label: 'Short', controller: shortCtrl)),
-                  const SizedBox(width: 10),
-                  Expanded(child: _NumberField(label: 'Long', controller: longCtrl)),
-                  const SizedBox(width: 10),
-                  Expanded(child: _NumberField(label: 'Sync', controller: syncCtrl)),
-                  const SizedBox(width: 10),
-                  Expanded(child: _NumberField(label: 'Gap', controller: gapCtrl)),
-                  const SizedBox(width: 10),
-                  SizedBox(height: 50, child: sliceButton),
-                ],
+              return IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SizedBox(width: 140, child: dropdown),
+                    const SizedBox(width: 10),
+                    Expanded(child: _NumberField(label: 'Short', controller: shortCtrl)),
+                    const SizedBox(width: 10),
+                    Expanded(child: _NumberField(label: 'Long', controller: longCtrl)),
+                    const SizedBox(width: 10),
+                    Expanded(child: _NumberField(label: 'Sync', controller: syncCtrl)),
+                    const SizedBox(width: 10),
+                    Expanded(child: _NumberField(label: 'Gap', controller: gapCtrl)),
+                    const SizedBox(width: 10),
+                    sliceButton,
+                  ],
+                ),
               );
             },
           ),
