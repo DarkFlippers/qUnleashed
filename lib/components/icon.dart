@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../theme/theme.dart';
+
 class _RasterIconCache {
   _RasterIconCache._();
   static final _RasterIconCache instance = _RasterIconCache._();
@@ -329,22 +331,28 @@ class QIconBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isLight = !context.appColors.isDark;
+    final backgroundColor = isLight
+        ? color
+        : color.withValues(alpha: backgroundOpacity);
+    final iconColor = isLight ? const Color(0xFFFFFFFF) : color;
+
     return Container(
       width: size,
       height: size,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: color.withValues(alpha: backgroundOpacity),
+        color: backgroundColor,
         borderRadius: BorderRadius.circular(borderRadius),
       ),
       child: asset != null
-          ? QIcon(asset: asset!, color: color, size: iconSize)
+          ? QIcon(asset: asset!, color: iconColor, size: iconSize)
           : QIcon.xbm(
               bytes: xbm!,
               width: xbmWidth!,
               height: xbmHeight!,
               cacheKey: cacheKey!,
-              color: color,
+              color: iconColor,
               size: iconSize,
             ),
     );
