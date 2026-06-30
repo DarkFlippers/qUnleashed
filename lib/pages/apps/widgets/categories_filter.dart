@@ -25,19 +25,22 @@ class CategoriesFilter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // "All apps" includes every category in the search, so all category chips
+    // read as active in that mode instead of being dimmed.
+    final allSelected = current == null;
     return Wrap(
       spacing: 8,
       runSpacing: 8,
       children: [
         CategoryChip(
           category: _allCategory,
-          selected: current == null,
+          selected: allSelected,
           onTap: () => onSelect(null),
         ),
         for (final cat in categories)
           CategoryChip(
             category: cat,
-            selected: current?.id == cat.id,
+            selected: allSelected || current?.id == cat.id,
             onTap: () => onSelect(cat),
           ),
       ],

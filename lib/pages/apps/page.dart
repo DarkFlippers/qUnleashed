@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../theme/theme.dart';
 import '../../widgets/open_url.dart';
@@ -311,10 +312,14 @@ class _InstalledOnlyChip extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.download_done_rounded,
-              size: 16,
-              color: active ? colors.onAccent : colors.textMuted,
+            SvgPicture.asset(
+              'assets/ic/state/installed.svg',
+              width: 16,
+              height: 16,
+              colorFilter: ColorFilter.mode(
+                active ? colors.onAccent : colors.textMuted,
+                BlendMode.srcIn,
+              ),
             ),
             const SizedBox(width: 6),
             Text(

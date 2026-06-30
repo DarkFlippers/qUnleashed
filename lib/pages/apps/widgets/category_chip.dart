@@ -31,9 +31,7 @@ class CategoryChip extends StatelessWidget {
     final colors = context.appColors;
     final base = parseHexColor(category.color);
     final bg = selected ? base : Color.alphaBlend(base.withAlpha(70), colors.card);
-    final luminance = base.computeLuminance();
-    final fg = luminance > 0.6 ? Colors.black : Colors.white;
-    final textColor = selected ? fg : colors.textPrimary;
+    const textColor = Colors.black;
 
     return Material(
       color: bg,
