@@ -6,6 +6,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme/theme.dart';
 import 'package:qunleashed/components/appbar.dart';
+import 'package:qunleashed/components/icon.dart';
 import 'backend/infrared_backend_api.dart';
 import 'backend/infrared_backend_models.dart';
 import 'brands_page.dart';
@@ -131,6 +132,7 @@ class _IrdbButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
+    final badge = QIconBadgeStyle.of(context, colors.accent);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
       child: Material(
@@ -148,7 +150,7 @@ class _IrdbButton extends StatelessWidget {
                   height: 40,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: colors.accent.withValues(alpha: 0.18),
+                    color: badge.background,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: SvgPicture.asset(
@@ -156,7 +158,7 @@ class _IrdbButton extends StatelessWidget {
                     width: 24,
                     height: 24,
                     colorFilter: ColorFilter.mode(
-                      colors.accent,
+                      badge.foreground,
                       BlendMode.srcIn,
                     ),
                   ),

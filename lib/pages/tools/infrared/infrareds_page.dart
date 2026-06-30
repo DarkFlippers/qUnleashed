@@ -3,6 +3,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme/theme.dart';
 import 'package:qunleashed/components/appbar.dart';
+import 'package:qunleashed/components/icon.dart';
 import 'package:qunleashed/theme/colors/category.dart';
 import '../../../widgets/notification.dart';
 import 'backend/infrared_backend_api.dart';
@@ -110,6 +111,7 @@ class _IrInfraredsPageState extends State<IrInfraredsPage> {
   Widget _buildBody(BuildContext context) {
     final colors = context.appColors;
     final infraredColor = ArchiveCategoryColor.infrared.color;
+    final badge = QIconBadgeStyle.of(context, infraredColor);
     if (_loading) {
       return Center(child: CircularProgressIndicator(color: colors.accent));
     }
@@ -149,7 +151,7 @@ class _IrInfraredsPageState extends State<IrInfraredsPage> {
                       height: 36,
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
-                        color: infraredColor.withValues(alpha: 0.18),
+                        color: badge.background,
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: SvgPicture.asset(
@@ -157,7 +159,7 @@ class _IrInfraredsPageState extends State<IrInfraredsPage> {
                         width: 22,
                         height: 22,
                         colorFilter: ColorFilter.mode(
-                          infraredColor,
+                          badge.foreground,
                           BlendMode.srcIn,
                         ),
                       ),

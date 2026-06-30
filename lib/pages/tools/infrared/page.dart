@@ -3,6 +3,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme/theme.dart';
 import 'package:qunleashed/components/appbar.dart';
+import 'package:qunleashed/components/icon.dart';
 import 'package:qunleashed/theme/colors/category.dart';
 import '../../../widgets/notification.dart';
 import 'controller.dart';
@@ -210,6 +211,10 @@ class _IrEntryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final infraredColor = ArchiveCategoryColor.infrared.color;
+    final badge = QIconBadgeStyle.of(
+      context,
+      entry.isDir ? colors.textMuted : infraredColor,
+    );
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Material(
@@ -227,15 +232,13 @@ class _IrEntryCard extends StatelessWidget {
                   height: 36,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: entry.isDir
-                        ? colors.textMuted.withValues(alpha: 0.18)
-                        : infraredColor.withValues(alpha: 0.18),
+                    color: badge.background,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: entry.isDir
                       ? Icon(
                           Icons.folder_outlined,
-                          color: colors.textPrimary,
+                          color: badge.foreground,
                           size: 22,
                         )
                       : SvgPicture.asset(
@@ -243,7 +246,7 @@ class _IrEntryCard extends StatelessWidget {
                           width: 22,
                           height: 22,
                           colorFilter: ColorFilter.mode(
-                            infraredColor,
+                            badge.foreground,
                             BlendMode.srcIn,
                           ),
                         ),

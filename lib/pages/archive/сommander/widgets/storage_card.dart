@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
+import '../../../../components/icon.dart';
 import '../../../../theme/theme.dart';
 
 /// Row of two storage entry cards (Internal `/int` + External `/ext`) shown on
@@ -143,6 +144,7 @@ class _StorageCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final tint = enabled ? colors.accent : colors.textMuted;
+    final badge = QIconBadgeStyle.of(context, tint, darkOpacity: 0.15);
     final barColor = (percent != null && percent! > 90)
         ? colors.danger
         : colors.accent;
@@ -162,10 +164,10 @@ class _StorageCard extends StatelessWidget {
                 height: _iconSize,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: tint.withValues(alpha: 0.15),
+                  color: badge.background,
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(icon, size: 21, color: tint),
+                child: Icon(icon, size: 21, color: badge.foreground),
               ),
               const SizedBox(width: 10),
               Expanded(

@@ -6,6 +6,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../../theme/theme.dart';
 import 'package:qunleashed/components/appbar.dart';
+import 'package:qunleashed/components/icon.dart';
 import 'package:qunleashed/theme/colors/category.dart';
 import '../../../../widgets/notification.dart';
 import '../../../../widgets/progress_button.dart';
@@ -153,6 +154,7 @@ class _IrFileViewerState extends State<IrFileViewer> {
       );
     }
     final infraredColor = ArchiveCategoryColor.infrared.color;
+    final badge = QIconBadgeStyle.forColors(colors, infraredColor);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -165,14 +167,17 @@ class _IrFileViewerState extends State<IrFileViewer> {
                 height: 36,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: infraredColor.withValues(alpha: 0.18),
+                  color: badge.background,
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: SvgPicture.asset(
                   _infraredAsset,
                   width: 22,
                   height: 22,
-                  colorFilter: ColorFilter.mode(infraredColor, BlendMode.srcIn),
+                  colorFilter: ColorFilter.mode(
+                    badge.foreground,
+                    BlendMode.srcIn,
+                  ),
                 ),
               ),
               const SizedBox(width: 12),

@@ -288,6 +288,50 @@ class _QIconState extends State<QIcon> {
   }
 }
 
+/// Resolved colours for a tinted icon badge (a glyph on a same-colour pill).
+///
+/// This is the single source of truth for how badges look across the app, so
+/// every call site switches with the theme the same way. Light theme paints a
+/// solid [color] fill behind a white glyph; dark theme keeps the translucent
+/// same-colour tint behind a coloured glyph. A near-white [color] would vanish
+/// on the light card, so it falls back to grey.
+@immutable
+class QIconBadgeStyle {
+  const QIconBadgeStyle({required this.background, required this.foreground});
+
+  final Color background;
+  final Color foreground;
+
+  factory QIconBadgeStyle.of(
+    BuildContext context,
+    Color color, {
+    double darkOpacity = 0.18,
+  }) =>
+      QIconBadgeStyle.forColors(
+        context.appColors,
+        color,
+        darkOpacity: darkOpacity,
+      );
+
+  factory QIconBadgeStyle.forColors(
+    QAppColors colors,
+    Color color, {
+    double darkOpacity = 0.18,
+  }) {
+    if (colors.isDark) {
+      return QIconBadgeStyle(
+        background: color.withValues(alpha: darkOpacity),
+        foreground: color,
+      );
+    }
+    final isNearWhite = color.computeLuminance() > 0.9;
+    return QIconBadgeStyle(
+      background: isNearWhite ? const Color(0xFF9E9E9E) : color,
+      foreground: const Color(0xFFFFFFFF),
+    );
+  }
+}
+
 class QIconBadge extends StatelessWidget {
   const QIconBadge({
     super.key,
@@ -331,12 +375,13 @@ class QIconBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isLight = !context.appColors.isDark;
-    final isNearWhite = color.computeLuminance() > 0.9;
-    final backgroundColor = isLight
-        ? (isNearWhite ? const Color(0xFF9E9E9E) : color)
-        : color.withValues(alpha: backgroundOpacity);
-    final iconColor = isLight ? const Color(0xFFFFFFFF) : color;
+    final style = QIconBadgeStyle.of(
+      context,
+      color,
+      darkOpacity: backgroundOpacity,
+    );
+    final backgroundColor = style.background;
+    final iconColor = style.foreground;
 
     return Container(
       width: size,

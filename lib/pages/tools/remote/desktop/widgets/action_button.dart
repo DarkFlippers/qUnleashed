@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../../../../components/icon.dart';
 import '../../../../../theme/theme.dart';
 
 class RemoteControlActionButton extends StatelessWidget {
@@ -22,6 +23,9 @@ class RemoteControlActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
+    final badge = QIconBadgeStyle.of(context, colors.accent);
+    final backgroundColor = badge.background;
+    final iconColor = badge.foreground;
 
     return SizedBox(
       width: width,
@@ -35,16 +39,16 @@ class RemoteControlActionButton extends StatelessWidget {
               width: 48,
               height: 48,
               decoration: BoxDecoration(
-                color: colors.screenOptionBackground,
+                color: backgroundColor,
                 shape: BoxShape.circle,
               ),
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
               child: asset != null
                   ? SvgPicture.asset(
                       asset!,
-                      colorFilter: ColorFilter.mode(colors.accent, BlendMode.srcIn),
+                      colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
                     )
-                  : Icon(icon, color: colors.accent, size: 24),
+                  : Icon(icon, color: iconColor, size: 24),
             ),
           ),
           const SizedBox(height: 8),

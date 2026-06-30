@@ -118,6 +118,7 @@ class _FileIconBadgeState extends State<FileIconBadge> {
     final colors = context.appColors;
     final visual = fileVisualFor(widget.entry, colors);
     final color = widget.muted ? colors.textMuted : visual.color;
+    final badge = QIconBadgeStyle.of(context, color, darkOpacity: 0.14);
     final glyph = widget.size * 0.55;
     final fapIcon = _fapIcon;
 
@@ -128,7 +129,7 @@ class _FileIconBadgeState extends State<FileIconBadge> {
         width: fapIconWidth,
         height: fapIconHeight,
         cacheKey: 'repo:${widget.entry.name}',
-        color: color,
+        color: badge.foreground,
         size: glyph,
       );
     } else if (visual.asset != null) {
@@ -136,10 +137,10 @@ class _FileIconBadgeState extends State<FileIconBadge> {
         visual.asset!,
         width: glyph,
         height: glyph,
-        colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
+        colorFilter: ColorFilter.mode(badge.foreground, BlendMode.srcIn),
       );
     } else {
-      child = Icon(visual.icon, size: glyph, color: color);
+      child = Icon(visual.icon, size: glyph, color: badge.foreground);
     }
 
     return Container(
@@ -147,7 +148,7 @@ class _FileIconBadgeState extends State<FileIconBadge> {
       height: widget.size,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
+        color: badge.background,
         borderRadius: BorderRadius.circular(widget.size * 0.28),
       ),
       child: child,
