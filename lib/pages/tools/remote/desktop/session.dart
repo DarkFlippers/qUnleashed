@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'frame_decoder.dart';
 import 'grayscale_filter.dart';
 import 'models/models.dart';
+import 'screenshot_encoder.dart';
 
 const Duration _kAnimDuration = Duration(milliseconds: 650);
 const Duration _kStopTimeout = Duration(seconds: 2);
@@ -70,12 +71,10 @@ class RemoteSession extends ChangeNotifier {
     if (!value && _pendingFrame != null) _ensureDecodeWorker();
   }
 
-  /// Encodes the current frame as PNG bytes. Returns null if no frame received.
-  Future<Uint8List?> capturePng() async {
-    final img = _frameImage;
-    if (img == null) return null;
-    final byteData = await img.toByteData(format: ui.ImageByteFormat.png);
-    return byteData?.buffer.asUint8List();
+  Uint8List? capturePng() {
+    final raw = _lastRaw;
+    if (raw == null) return null;
+    return encodeScreenshotPng(raw);
   }
 
 
@@ -247,9 +246,6 @@ class RemoteSession extends ChangeNotifier {
     }
     _scheduleUpload(_render(raw));
   }
-
-  // ── Input ──────────────────────────────────────────────────────────────────
-
   Future<void> press(RemoteButton button, {bool long = false}) {
     final item = _enqueue(_animAsset(button));
     final type = long ? InputType.LONG : InputType.SHORT;

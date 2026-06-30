@@ -61,8 +61,6 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
     setState(() {});
   }
 
-  // ── GIF recording ──────────────────────────────────────────────────────────
-
   void _onRawFrame(RawFrameData frame) {
     if (_gifRecorder.state != GifRecordingState.recording) return;
     final autoStop = _gifRecorder.addFrame(frame);
@@ -186,7 +184,7 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
     if (_savingScreenshot) return;
     setState(() => _savingScreenshot = true);
     try {
-      final png = await _session.capturePng();
+      final png = _session.capturePng();
       if (png == null || !mounted) return;
       await copyScreenshotToClipboard(png);
       if (!mounted) return;
@@ -209,7 +207,7 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
     if (_savingScreenshot) return;
     setState(() => _savingScreenshot = true);
     try {
-      final png = await _session.capturePng();
+      final png = _session.capturePng();
       if (png == null || !mounted) return;
       final path = await saveScreenshotToAppStorage(png);
       if (!mounted) return;
@@ -230,8 +228,6 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
 
   void _onHoldBegin(RemoteButton b) => unawaited(_session.beginHold(b));
   void _onHoldEnd(RemoteButton b) => unawaited(_session.endHold(b));
-
-  // ── Build ───────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
