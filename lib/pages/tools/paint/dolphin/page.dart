@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:qunleashed/components/appbar.dart';
 
+import '../../../../theme/colors/display.dart';
 import '../../../../theme/theme.dart';
 import '../../../../widgets/notification.dart';
 import '../project.dart';
@@ -515,7 +516,7 @@ class _AnimPreviewState extends State<_AnimPreview> {
       width: _w,
       height: _h,
       decoration: BoxDecoration(
-        color: colors.screenBackground,
+        color: DisplayColors.forColors(colors).background,
         borderRadius: BorderRadius.circular(6),
         border: Border.all(
           color: widget.highlight

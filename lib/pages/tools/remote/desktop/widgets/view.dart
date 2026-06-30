@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../../../../theme/colors/display.dart';
 import '../../../../../theme/theme.dart';
 import '../models/models.dart';
 
@@ -128,6 +129,7 @@ class _ScreenShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final display = DisplayColors.forColors(colors);
     return Container(
       decoration: BoxDecoration(
         border: Border.all(color: colors.screenBorder, width: 3),
@@ -138,7 +140,7 @@ class _ScreenShell extends StatelessWidget {
         decoration: BoxDecoration(
           border: Border.all(color: colors.screenBorder, width: 2),
           borderRadius: BorderRadius.circular(12),
-          color: colors.screenBackground,
+          color: display.background,
         ),
         padding: const EdgeInsets.all(8),
         child: SizedBox(

@@ -1,6 +1,7 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
+import '../../../../../theme/colors/display.dart';
 import '../../../../../theme/theme.dart';
 import '../../constants.dart';
 import '../controller.dart';
@@ -192,6 +193,7 @@ class _CanvasViewState extends State<CanvasView> {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
+    final display = DisplayColors.forColors(colors);
     return LayoutBuilder(
       builder: (context, constraints) {
         const hPad = 14.0;
@@ -235,7 +237,7 @@ class _CanvasViewState extends State<CanvasView> {
                 width: containerW,
                 height: containerH,
                 decoration: BoxDecoration(
-                  color: colors.screenBackground,
+                  color: display.background,
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
                     color: colors.screenBorder.withAlpha(30),
@@ -258,8 +260,8 @@ class _CanvasViewState extends State<CanvasView> {
                           previewFg: _ctrl.drawFg,
                           pixelSize: ps,
                           showGrid: _ctrl.showGrid && ps >= 3.0,
-                          fgColor: colors.screenBorder,
-                          bgColor: colors.screenBackground,
+                          fgColor: display.foreground,
+                          bgColor: display.background,
                           previewColor: colors.accent,
                           version: _ctrl.pixelVersion,
                           onionPixels: _ctrl.showOnionSkin && _ctrl.currentFrame > 0

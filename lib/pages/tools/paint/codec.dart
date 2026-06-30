@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import '../../../theme/colors/display.dart';
 import 'constants.dart';
 
 abstract final class PaintCodec {
@@ -217,12 +218,15 @@ abstract final class PaintCodec {
   /// for set/clear pixels respectively.
   static Future<ui.Image> frameToImage(
     Uint8List pixels, {
-    int fg = 0xFF000000,
-    int bg = 0xFFDFDFDF,
+    int? fg,
+    int? bg,
   }) async {
+    final display = DisplayColors.current;
+    final fgColor = fg ?? display.foreground.toARGB32();
+    final bgColor = bg ?? display.background.toARGB32();
     final rgba = Uint8List(kCanvasWidth * kCanvasHeight * 4);
     for (int i = 0; i < kCanvasWidth * kCanvasHeight; i++) {
-      final c = pixels[i] != 0 ? fg : bg;
+      final c = pixels[i] != 0 ? fgColor : bgColor;
       rgba[i * 4] = (c >> 16) & 0xFF;
       rgba[i * 4 + 1] = (c >> 8) & 0xFF;
       rgba[i * 4 + 2] = c & 0xFF;

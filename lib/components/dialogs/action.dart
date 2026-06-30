@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../theme/colors/display.dart';
 import '../../theme/theme.dart';
-
-const Color _kFlipperScreenInk = Colors.black;
 
 const double _kDialogWidth = 268;
 const double _kOuterPadding = 16;
@@ -142,12 +141,13 @@ class _FlipperScreenShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
+    final display = DisplayColors.forColors(colors);
 
     return Container(
       decoration: BoxDecoration(
         border: Border.all(color: colors.screenBorder, width: 3),
         borderRadius: BorderRadius.circular(16),
-        color: colors.screenBackground,
+        color: display.background,
       ),
       padding: const EdgeInsets.all(_kScreenPadding),
       child: SizedBox(
@@ -160,8 +160,8 @@ class _FlipperScreenShell extends StatelessWidget {
             child: SvgPicture.asset(
               imageAssetPath,
               fit: BoxFit.contain,
-              colorFilter: const ColorFilter.mode(
-                _kFlipperScreenInk,
+              colorFilter: ColorFilter.mode(
+                display.foreground,
                 BlendMode.srcIn,
               ),
             ),

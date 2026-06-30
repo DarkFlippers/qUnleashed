@@ -60,7 +60,10 @@ FileVisual fileVisualFor(RemoteEntry e, QAppColors colors) {
         color: Color(0xFFEF4444),
       );
     case 'fap':
-      return const FileVisual(icon: Icons.extension, color: Color(0xFF6366F1));
+      return const FileVisual(
+        asset: '$_kFileFormatIcon/plugins.svg',
+        color: Color(0xFF6366F1),
+      );
     case 'txt':
     case 'log':
     case 'md':

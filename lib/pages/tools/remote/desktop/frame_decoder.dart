@@ -4,7 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:flipperlib/flipperlib.dart' hide DateTime, File;
 
-import '../../../../theme/theme.dart';
+import '../../../../theme/colors/display.dart';
 import 'models/models.dart';
 
 const int kFlipperScreenWidth = 128;
@@ -16,8 +16,9 @@ RawFrameData decodeFrameSync(ScreenFrame frame) {
   final pixels = Uint8List(kFlipperScreenWidth * kFlipperScreenHeight * 4);
   final pixelIndices = Uint8List(kFlipperScreenWidth * kFlipperScreenHeight);
   final raw = frame.data;
-  final bg = FlipperOriginalColors.flipperScreenBackground.toARGB32();
-  final fg = FlipperOriginalColors.flipperScreenBorder.toARGB32();
+  final display = DisplayColors.current;
+  final bg = display.background.toARGB32();
+  final fg = display.foreground.toARGB32();
 
   final orientation = switch (frame.orientation) {
     ScreenOrientation.HORIZONTAL => StreamOrientation.horizontal,

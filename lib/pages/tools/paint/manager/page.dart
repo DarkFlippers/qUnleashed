@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import '../../../../theme/colors/display.dart';
 import '../../../../theme/theme.dart';
 import '../../../../widgets/notification.dart';
 import 'package:qunleashed/components/appbar.dart';
@@ -523,7 +524,7 @@ class _ProjectPreviewState extends State<_ProjectPreview> {
       width: _w,
       height: _h,
       decoration: BoxDecoration(
-        color: colors.screenBackground,
+        color: DisplayColors.forColors(colors).background,
         borderRadius: BorderRadius.circular(6),
         border: Border.all(color: colors.screenBorder.withAlpha(40)),
       ),

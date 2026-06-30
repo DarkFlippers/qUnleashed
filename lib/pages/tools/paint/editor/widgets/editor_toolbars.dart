@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../../../../theme/colors/display.dart';
 import '../../../../../theme/theme.dart';
 import 'package:qunleashed/components/appbar.dart';
 import '../../constants.dart';
@@ -60,18 +61,19 @@ class ColorAndZoomRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final display = DisplayColors.forColors(colors);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14),
       child: Row(
         children: [
           PaintColorSwatch(
-            color: colors.screenBorder,
+            color: display.foreground,
             selected: ctrl.drawFg,
             onTap: () => ctrl.setDrawFg(true),
           ),
           const SizedBox(width: 6),
           PaintColorSwatch(
-            color: colors.screenBackground,
+            color: display.background,
             selected: !ctrl.drawFg,
             onTap: () => ctrl.setDrawFg(false),
           ),

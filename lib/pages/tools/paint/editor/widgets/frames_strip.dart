@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
+import '../../../../../theme/colors/display.dart';
 import '../../../../../theme/theme.dart';
 import '../controller.dart';
 import '../painters.dart';
@@ -295,6 +296,7 @@ class _FrameThumbnail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final display = DisplayColors.forColors(colors);
     final borderColor = selected
         ? colors.accent
         : isActive
@@ -308,7 +310,7 @@ class _FrameThumbnail extends StatelessWidget {
             width: 96,
             height: 54,
             decoration: BoxDecoration(
-              color: colors.screenBackground,
+              color: display.background,
               borderRadius: BorderRadius.circular(6),
               border: Border.all(color: borderColor, width: selected ? 2.0 : 1.0),
             ),
@@ -317,8 +319,8 @@ class _FrameThumbnail extends StatelessWidget {
               child: CustomPaint(
                 painter: ThumbnailPainter(
                   pixels: pixels,
-                  fgColor: colors.screenBorder,
-                  bgColor: colors.screenBackground,
+                  fgColor: display.foreground,
+                  bgColor: display.background,
                   version: version,
                 ),
               ),
@@ -332,7 +334,7 @@ class _FrameThumbnail extends StatelessWidget {
               decoration: BoxDecoration(
                 color: isActive
                     ? colors.accent.withAlpha(200)
-                    : colors.screenBackground.withAlpha(200),
+                    : display.background.withAlpha(200),
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Text(
