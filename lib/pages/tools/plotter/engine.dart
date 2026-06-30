@@ -2,15 +2,51 @@ import 'analysis/histogram.dart';
 import 'analysis/slicer.dart';
 import 'models.dart';
 
+class HistogramCell {
+  const HistogramCell({
+    required this.count,
+    required this.mean,
+    required this.devi,
+  });
+
+  final int count;
+  final double mean;
+  final double devi;
+}
+
+class HistogramRow {
+  const HistogramRow({required this.label, required this.cells});
+
+  final String label;
+  final List<HistogramCell> cells;
+}
+
+class GuessParam {
+  const GuessParam(this.label, this.value);
+
+  final String label;
+  final String value;
+}
+
 class PlotterReport {
   PlotterReport({
-    required this.timings,
-    required this.guess,
+    required this.histograms,
+    required this.hasModulation,
+    required this.modulationName,
+    required this.dcBiasPercent,
+    required this.params,
+    required this.rfRawRx,
+    required this.rfRawTx,
     required this.bits,
   });
 
-  final List<String> timings;
-  final String guess;
+  final List<HistogramRow> histograms;
+  final bool hasModulation;
+  final String modulationName;
+  final double dcBiasPercent;
+  final List<GuessParam> params;
+  final String? rfRawRx;
+  final String? rfRawTx;
   final String bits;
 }
 
@@ -67,30 +103,32 @@ class PlotterEngine {
     final g = guessResult;
     String fmt(double? v) => v != null ? v.toStringAsFixed(1) : '-';
 
-    final guessText = StringBuffer()
-      ..writeln(
-        'DC bias (Pulse/Gap skew): '
-        '${(analyzer.pulseGapSkew * 100).toStringAsFixed(1)}%',
-      )
-      ..writeln('Guessing modulation: ${g.name}')
-      ..writeln(
-        'modulation: ${g.modulation ?? 'unknown'}   '
-        'short: ${fmt(g.short)}   long: ${fmt(g.long)}   '
-        'sync: ${fmt(g.sync)}   gap: ${fmt(g.gap)}   '
-        'reset: ${fmt(g.reset)}',
-      )
-      ..writeln('RfRaw (rx): ${analyzer.rfrawB1 ?? '-'}')
-      ..write('RfRaw (tx): ${analyzer.rfrawB0 ?? '-'}');
-
     return PlotterReport(
-      timings: [
-        'Pulses: ${analyzer.histPulses.stringPrint()}',
-        'Gaps: ${analyzer.histGaps.stringPrint()}',
-        'Periods: ${analyzer.histPeriods.stringPrint()}',
-        'Timings: ${analyzer.histTimings.stringPrint()}',
+      histograms: [
+        HistogramRow(label: 'Pulses', cells: _cells(analyzer.histPulses)),
+        HistogramRow(label: 'Gaps', cells: _cells(analyzer.histGaps)),
+        HistogramRow(label: 'Periods', cells: _cells(analyzer.histPeriods)),
+        HistogramRow(label: 'Timings', cells: _cells(analyzer.histTimings)),
       ],
-      guess: guessText.toString(),
+      hasModulation: g.modulation != null,
+      modulationName: g.name,
+      dcBiasPercent: analyzer.pulseGapSkew * 100,
+      params: [
+        GuessParam('Modulation', g.modulation ?? 'unknown'),
+        GuessParam('Short', fmt(g.short)),
+        GuessParam('Long', fmt(g.long)),
+        GuessParam('Sync', fmt(g.sync)),
+        GuessParam('Gap', fmt(g.gap)),
+        GuessParam('Reset', fmt(g.reset)),
+      ],
+      rfRawRx: analyzer.rfrawB1,
+      rfRawTx: analyzer.rfrawB0,
       bits: bitsHex,
     );
   }
+
+  List<HistogramCell> _cells(Histogram h) => [
+        for (final b in h.bins)
+          HistogramCell(count: b.count, mean: b.mean ?? 0, devi: b.devi),
+      ];
 }

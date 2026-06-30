@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../../theme/theme.dart';
 import 'analysis/autorange.dart';
 import 'analysis/slicer.dart';
 
@@ -11,27 +12,88 @@ const double _marginBottom = 50;
 const double _breakpointZoom = 10;
 const double _breakpointPulseInOneX = 75;
 
-const Color _spaceFill = Color(0xFFFAFAFA);
-const Color _combiningFill = Color(0xFFE6ECEE);
-const Color _hiFill = Color(0xFFE0EFE0);
-const Color _hiStroke = Color(0xFF33CC33);
 const double _hiLine = 4;
-const Color _loStroke = Color(0xFFCC3333);
 const double _loLine = 4;
 const double _edgeLine = 1;
 const double _hintLine = 1;
-const Color _hintStroke = Color(0xFFAAAAFF);
 const double _hintAltLine = 3;
-const Color _hintAltStroke = Color(0xFFCC5555);
 const double _fontSize = 10;
-const Color _fontColor = Color(0xFF000000);
-const Color _axisColor = Color(0xFF888888);
 
-class PlotTransform {
-  const PlotTransform(this.k, this.x);
+@immutable
+class PlotterPalette {
+  const PlotterPalette({
+    required this.spaceFill,
+    required this.combiningFill,
+    required this.hiFill,
+    required this.hiStroke,
+    required this.loStroke,
+    required this.hintStroke,
+    required this.hintAltStroke,
+    required this.fontColor,
+    required this.axisColor,
+  });
 
-  final double k;
-  final double x;
+  final Color spaceFill;
+  final Color combiningFill;
+  final Color hiFill;
+  final Color hiStroke;
+  final Color loStroke;
+  final Color hintStroke;
+  final Color hintAltStroke;
+  final Color fontColor;
+  final Color axisColor;
+
+  factory PlotterPalette.fromColors(QAppColors colors) {
+    final dark = colors.isDark;
+    final space =
+        dark ? const Color(0xFF101216) : const Color(0xFFFAFAFA);
+    final hi = colors.success;
+    final lo = colors.danger;
+    final hint = colors.info;
+    return PlotterPalette(
+      spaceFill: space,
+      combiningFill: Color.alphaBlend(
+        hint.withValues(alpha: dark ? 0.20 : 0.12),
+        space,
+      ),
+      hiFill: Color.alphaBlend(
+        hi.withValues(alpha: dark ? 0.24 : 0.18),
+        space,
+      ),
+      hiStroke: hi,
+      loStroke: lo,
+      hintStroke: hint.withValues(alpha: dark ? 0.85 : 0.65),
+      hintAltStroke: lo.withValues(alpha: dark ? 0.85 : 0.70),
+      fontColor: colors.textPrimary,
+      axisColor: colors.textMuted,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is PlotterPalette &&
+      other.spaceFill == spaceFill &&
+      other.combiningFill == combiningFill &&
+      other.hiFill == hiFill &&
+      other.hiStroke == hiStroke &&
+      other.loStroke == loStroke &&
+      other.hintStroke == hintStroke &&
+      other.hintAltStroke == hintAltStroke &&
+      other.fontColor == fontColor &&
+      other.axisColor == axisColor;
+
+  @override
+  int get hashCode => Object.hash(
+        spaceFill,
+        combiningFill,
+        hiFill,
+        hiStroke,
+        loStroke,
+        hintStroke,
+        hintAltStroke,
+        fontColor,
+        axisColor,
+      );
 }
 
 class PulsePlotterPainter extends CustomPainter {
@@ -40,28 +102,33 @@ class PulsePlotterPainter extends CustomPainter {
     required this.dataWidth,
     required this.hints,
     required this.altHints,
-    required this.transform,
-    required this.maxZoom,
+    required this.zoom,
+    required this.left,
+    required this.palette,
   });
 
   final List<double> pulses;
   final double dataWidth;
   final List<Hint> hints;
   final List<Hint> altHints;
-  final PlotTransform transform;
-  final double maxZoom;
+  final double zoom;
+  final double left;
+  final PlotterPalette palette;
 
   @override
   void paint(Canvas canvas, Size size) {
     final width = size.width;
+    if (width <= 0) return;
     final height = kPlotHeight;
     final barHeight = height - _marginTop - _marginBottom;
-    final k = transform.k;
-    final tx = transform.x;
+
+    final k = zoom;
+    final maxZoom = dataWidth > 0 ? math.max(1.0, dataWidth / width) : 1.0;
+    final tx = -left * width * k;
     final sf = k / maxZoom;
 
     _fill(canvas, 0, -1, width, barHeight + _marginTop + _marginBottom,
-        _spaceFill);
+        palette.spaceFill);
 
     final maxRightSide = width * k;
     final pulseInOneX = dataWidth / maxRightSide;
@@ -99,15 +166,15 @@ class PulsePlotterPainter extends CustomPainter {
           _marginTop,
           x * sf,
           barHeight,
-          k < _breakpointZoom ? _combiningFill : _hiFill,
+          k < _breakpointZoom ? palette.combiningFill : palette.hiFill,
         );
         final y = height - barHeight - _marginTop + _hiLine / 2;
         _line(canvas, prevX * sf + tx, y, (prevX + x) * sf + tx, y, _hiLine,
-            _hiStroke);
+            palette.hiStroke);
       } else {
         final y = height - _marginTop - _loLine / 2;
         _line(canvas, prevX * sf + tx, y, (prevX + x) * sf + tx, y, _loLine,
-            _loStroke);
+            palette.loStroke);
       }
 
       final w = x * ((width * k) / dataWidth);
@@ -130,7 +197,7 @@ class PulsePlotterPainter extends CustomPainter {
           prevX * sf + tx,
           height - barHeight - _marginTop,
           _edgeLine,
-          _hiStroke,
+          palette.hiStroke,
         );
         _line(
           canvas,
@@ -139,7 +206,7 @@ class PulsePlotterPainter extends CustomPainter {
           (prevX + x) * sf + tx,
           height - _marginTop,
           _edgeLine,
-          _loStroke,
+          palette.loStroke,
         );
       }
 
@@ -162,10 +229,12 @@ class PulsePlotterPainter extends CustomPainter {
     double? prevHint;
     for (final hint in hs) {
       if (prevHint != hint.x0 && hint.x0 >= 0 && hint.x0 < dataWidth) {
-        _hintLineAt(canvas, hint.x0 * sf + tx, height, _hintLine, _hintStroke);
+        _hintLineAt(
+            canvas, hint.x0 * sf + tx, height, _hintLine, palette.hintStroke);
       }
       if (hint.x1 >= 0 && hint.x1 < dataWidth) {
-        _hintLineAt(canvas, hint.x1 * sf + tx, height, _hintLine, _hintStroke);
+        _hintLineAt(
+            canvas, hint.x1 * sf + tx, height, _hintLine, palette.hintStroke);
       }
       prevHint = hint.x1;
     }
@@ -174,12 +243,12 @@ class PulsePlotterPainter extends CustomPainter {
     prevHint = null;
     for (final hint in alt) {
       if (prevHint != hint.x0 && hint.x0 >= 0 && hint.x0 < dataWidth) {
-        _hintLineAt(
-            canvas, hint.x0 * sf + tx, height, _hintAltLine, _hintAltStroke);
+        _hintLineAt(canvas, hint.x0 * sf + tx, height, _hintAltLine,
+            palette.hintAltStroke);
       }
       if (hint.x1 >= 0 && hint.x1 < dataWidth) {
-        _hintLineAt(
-            canvas, hint.x1 * sf + tx, height, _hintAltLine, _hintAltStroke);
+        _hintLineAt(canvas, hint.x1 * sf + tx, height, _hintAltLine,
+            palette.hintAltStroke);
       }
       prevHint = hint.x1;
     }
@@ -200,7 +269,7 @@ class PulsePlotterPainter extends CustomPainter {
     final timeRange = autorangeTime(dataWidth / 1e6 / k);
 
     final paint = Paint()
-      ..color = _axisColor
+      ..color = palette.axisColor
       ..strokeWidth = 1;
 
     var t = (d0 / step).ceil() * step;
@@ -218,7 +287,7 @@ class PulsePlotterPainter extends CustomPainter {
     final tp = TextPainter(
       text: TextSpan(
         text: text,
-        style: const TextStyle(color: _axisColor, fontSize: 9),
+        style: TextStyle(color: palette.axisColor, fontSize: 9),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
@@ -290,7 +359,7 @@ class PulsePlotterPainter extends CustomPainter {
     final tp = TextPainter(
       text: TextSpan(
         text: text,
-        style: const TextStyle(color: _fontColor, fontSize: _fontSize),
+        style: TextStyle(color: palette.fontColor, fontSize: _fontSize),
       ),
       textDirection: TextDirection.ltr,
     )..layout();
@@ -346,8 +415,8 @@ class PulsePlotterPainter extends CustomPainter {
     return old.pulses != pulses ||
         old.hints != hints ||
         old.altHints != altHints ||
-        old.transform.k != transform.k ||
-        old.transform.x != transform.x ||
-        old.maxZoom != maxZoom;
+        old.zoom != zoom ||
+        old.left != left ||
+        old.palette != palette;
   }
 }
