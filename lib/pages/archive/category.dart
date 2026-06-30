@@ -85,7 +85,7 @@ enum ArchiveCategory {
     flipperDir: 'apps/Scripts',
     extensions: ['js'],
     categoryColor: ArchiveCategoryColor.javascript,
-    asset: 'assets/ic/file/default.svg',
+    asset: 'assets/ic/fileformat/js.svg',
     flipperAppName: 'JS Runner',
     recursiveSearch: true,
     launchOnApp: true,
