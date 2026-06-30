@@ -332,8 +332,9 @@ class QIconBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isLight = !context.appColors.isDark;
+    final isNearWhite = color.computeLuminance() > 0.9;
     final backgroundColor = isLight
-        ? color
+        ? (isNearWhite ? const Color(0xFF9E9E9E) : color)
         : color.withValues(alpha: backgroundOpacity);
     final iconColor = isLight ? const Color(0xFFFFFFFF) : color;
 
