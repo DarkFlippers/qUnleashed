@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../../theme/theme.dart';
-import 'package:qunleashed/components/appbar.dart';
 import '../controller.dart';
 import '../../category.dart';
 import '../../models/key.dart';
@@ -14,7 +13,6 @@ import 'sort.dart';
 import 'table.dart';
 import 'toolbar.dart';
 
-/// Sortable, filterable table of all keys in a single [ArchiveCategory].
 class CategoryPage extends StatefulWidget {
   const CategoryPage({
     super.key,
@@ -52,8 +50,6 @@ class _CategoryPageState extends State<CategoryPage> {
     _searchCtrl.dispose();
     super.dispose();
   }
-
-  // ── Data ──────────────────────────────────────────────────────────────────
 
   List<ArchiveKey> get _allKeys => _ctrl.keysFor(_cat);
 
@@ -175,8 +171,6 @@ class _CategoryPageState extends State<CategoryPage> {
     return 'No ${_cat.title} keys\nPull down to sync';
   }
 
-  // ── Build ─────────────────────────────────────────────────────────────────
-
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
@@ -196,10 +190,15 @@ class _CategoryPageState extends State<CategoryPage> {
 
         return Scaffold(
           backgroundColor: colors.background,
-          appBar: QPageAppBar(
-            title: _cat.title,
+          appBar: AppBar(
             backgroundColor: catColor,
             foregroundColor: Colors.white,
+            elevation: 0,
+            titleSpacing: 0,
+            title: CategoryAppBarTitle(
+              cat: _cat,
+              syncFileName: _ctrl.syncing ? _ctrl.syncProgress?.fileName : null,
+            ),
             actions: [
               CategoryCountBadge(filtered: filtered.length, total: total),
             ],

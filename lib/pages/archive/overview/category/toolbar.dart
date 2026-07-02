@@ -4,8 +4,6 @@ import '../../../../components/icon.dart';
 import '../../../../theme/theme.dart';
 import '../../category.dart';
 
-/// AppBar title: category icon, name, and either the sync filename or the
-/// remote directory hint.
 class CategoryAppBarTitle extends StatelessWidget {
   const CategoryAppBarTitle({super.key, required this.cat, this.syncFileName});
 
@@ -46,7 +44,6 @@ class CategoryAppBarTitle extends StatelessWidget {
   }
 }
 
-/// Pill showing `filtered/total` (or just `total` when nothing is filtered).
 class CategoryCountBadge extends StatelessWidget {
   const CategoryCountBadge({
     super.key,
@@ -65,8 +62,9 @@ class CategoryCountBadge extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.2),
+            color: Colors.white.withValues(alpha: 0.22),
             borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.26)),
           ),
           child: Text(
             filtered < total ? '$filtered/$total' : '$total',
@@ -82,7 +80,6 @@ class CategoryCountBadge extends StatelessWidget {
   }
 }
 
-/// Search field + optional value filter + starred-only toggle.
 class CategoryToolbar extends StatelessWidget {
   const CategoryToolbar({
     super.key,
@@ -129,18 +126,18 @@ class CategoryToolbar extends StatelessWidget {
                 decoration: InputDecoration(
                   hintText: 'Search…',
                   hintStyle: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.5),
+                    color: Colors.white.withValues(alpha: 0.6),
                   ),
                   prefixIcon: Icon(
                     Icons.search_rounded,
-                    color: Colors.white.withValues(alpha: 0.65),
+                    color: Colors.white.withValues(alpha: 0.75),
                     size: 17,
                   ),
                   suffixIcon: query.isNotEmpty
                       ? IconButton(
                           icon: Icon(
                             Icons.close_rounded,
-                            color: Colors.white.withValues(alpha: 0.65),
+                            color: Colors.white.withValues(alpha: 0.75),
                             size: 15,
                           ),
                           onPressed: () {
@@ -150,7 +147,7 @@ class CategoryToolbar extends StatelessWidget {
                         )
                       : null,
                   filled: true,
-                  fillColor: Colors.white.withValues(alpha: 0.14),
+                  fillColor: Colors.white.withValues(alpha: 0.16),
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 10,
                     vertical: 9,
@@ -161,13 +158,16 @@ class CategoryToolbar extends StatelessWidget {
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(9),
-                    borderSide: BorderSide.none,
+                    borderSide: BorderSide(
+                      color: Colors.white.withValues(alpha: 0.28),
+                      width: 1,
+                    ),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(9),
                     borderSide: BorderSide(
-                      color: Colors.white.withValues(alpha: 0.35),
-                      width: 1,
+                      color: Colors.white.withValues(alpha: 0.55),
+                      width: 1.4,
                     ),
                   ),
                   isDense: true,
@@ -218,8 +218,11 @@ class _FilterBtn extends StatelessWidget {
         decoration: BoxDecoration(
           color: active
               ? Colors.white.withValues(alpha: 0.88)
-              : Colors.white.withValues(alpha: 0.14),
+              : Colors.white.withValues(alpha: 0.18),
           borderRadius: BorderRadius.circular(9),
+          border: active
+              ? null
+              : Border.all(color: Colors.white.withValues(alpha: 0.26)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -315,8 +318,11 @@ class _StarBtn extends StatelessWidget {
           decoration: BoxDecoration(
             color: active
                 ? Colors.white.withValues(alpha: 0.88)
-                : Colors.white.withValues(alpha: 0.14),
+                : Colors.white.withValues(alpha: 0.18),
             borderRadius: BorderRadius.circular(9),
+            border: active
+                ? null
+                : Border.all(color: Colors.white.withValues(alpha: 0.26)),
           ),
           child: Icon(
             active ? Icons.star_rounded : Icons.star_outline_rounded,

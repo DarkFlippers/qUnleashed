@@ -8,7 +8,7 @@ enum ArchiveCategoryColor {
   subghz(Color(0xFFFF9B34)),
   wardriving(Color(0xFF64D2FF)),
   badusb(Color(0xFFFF3B30)),
-  javascript(Color(0xFFFFCC00));
+  javascript(Color.fromARGB(255, 231, 175, 23));
 
   const ArchiveCategoryColor(this.color);
 

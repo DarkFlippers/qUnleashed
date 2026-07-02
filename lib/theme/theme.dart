@@ -323,12 +323,22 @@ class QAppColors extends ThemeExtension<QAppColors> {
     );
   }
 
-  /// Adapts a vivid category color for use as an AppBar background.
-  /// In dark mode the color is blended toward black so it doesn't clash
-  /// with the near-black scaffold background.
   Color adaptCategoryHeader(Color base) {
-    if (!isDark) return base;
-    return Color.lerp(base, const Color(0xFF000000), 0.45)!;
+    if (isDark) return Color.lerp(base, const Color(0xFF000000), 0.45)!;
+    final hue = HSLColor.fromColor(base).hue;
+    final maxLuminance = (hue >= 40 && hue <= 70) ? 0.28 : 0.22;
+    if (base.computeLuminance() <= maxLuminance) return base;
+    return _deepenForWhite(base, maxLuminance);
+  }
+
+  static Color _deepenForWhite(Color base, double maxLuminance) {
+    final source = HSLColor.fromColor(base);
+    var hsl = source.withSaturation((source.saturation + 0.06).clamp(0.0, 1.0));
+    while (hsl.toColor().computeLuminance() > maxLuminance &&
+        hsl.lightness > 0.01) {
+      hsl = hsl.withLightness(hsl.lightness - 0.01);
+    }
+    return hsl.toColor();
   }
 }
 

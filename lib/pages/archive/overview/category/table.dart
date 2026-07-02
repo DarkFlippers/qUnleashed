@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
 
-import '../../../../components/icon.dart';
 import '../../../../theme/theme.dart';
 import '../format.dart';
 import '../../category.dart';
 import '../../models/key.dart';
 import 'columns.dart';
 
-/// Sortable header row for the category table.
 class ArchiveColumnHeader extends StatelessWidget {
   const ArchiveColumnHeader({
     super.key,
@@ -111,7 +109,6 @@ class _HeaderCell extends StatelessWidget {
   }
 }
 
-/// A single tappable key row rendered across the visible [cols].
 class ArchiveTableRow extends StatelessWidget {
   const ArchiveTableRow({
     super.key,
@@ -225,40 +222,25 @@ class ArchiveTableRow extends StatelessWidget {
 
   Widget _nameCell(ArchiveKey k) {
     final relDir = k.subFolder.isEmpty ? '/' : '/${k.subFolder}/';
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        QIconBadge(
-          asset: cat.asset,
-          color: cat.color,
-          size: 28,
-          iconSize: 16,
-          backgroundOpacity: 0.14,
-          borderRadius: 7,
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                k.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: colors.textPrimary,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              Text(
-                relDir,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: colors.textMuted, fontSize: 10),
-              ),
-            ],
+        Text(
+          k.name,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: colors.textPrimary,
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
           ),
+        ),
+        Text(
+          relDir,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(color: colors.textMuted, fontSize: 10),
         ),
       ],
     );
