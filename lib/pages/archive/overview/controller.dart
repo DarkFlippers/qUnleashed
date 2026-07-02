@@ -674,11 +674,12 @@ class ArchiveController extends ChangeNotifier {
         return;
       }
       await _storage.ensureLayout(_deviceName);
-      _keys.removeWhere((_, v) => v.category == cat);
       final localEntries = await _storage.listOneCategory(_deviceName, cat);
+      final seen = <String>{};
       for (final entry in localEntries) {
-        _ingestLocal(entry);
+        seen.add(_ingestLocal(entry));
       }
+      _keys.removeWhere((id, v) => v.category == cat && !seen.contains(id));
       notifyListeners();
       if (!_client.isConnected) return;
       if (cat.recursiveSearch) {
@@ -1031,13 +1032,14 @@ class ArchiveController extends ChangeNotifier {
   }
 
   /// Inserts or replaces a key from a locally-stored file entry.
-  void _ingestLocal(LocalKeyEntry entry) {
+  String _ingestLocal(LocalKeyEntry entry) {
     final keyId = _localKey(
       entry.category,
       entry.name,
       entry.extension,
       entry.subFolder,
     );
+    final prev = _keys[keyId];
     _keys[keyId] = ArchiveKey(
       name: entry.name,
       category: entry.category,
@@ -1048,7 +1050,11 @@ class ArchiveController extends ChangeNotifier {
       localPath: entry.path,
       favorite: _favorites.contains(keyId),
       mtime: entry.mtime,
+      protocol: prev?.protocol,
+      extra: prev?.extra,
+      meta: prev?.meta,
     );
+    return keyId;
   }
 
   String _localKey(

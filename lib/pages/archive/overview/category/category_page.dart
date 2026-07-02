@@ -280,7 +280,9 @@ class _CategoryPageState extends State<CategoryPage> {
                           ),
                           Expanded(
                             child: ListView.builder(
-                              physics: const AlwaysScrollableScrollPhysics(),
+                              physics: const AlwaysScrollableScrollPhysics(
+                                parent: ClampingScrollPhysics(),
+                              ),
                               itemCount: filtered.length,
                               itemBuilder: (_, i) {
                                 final key = filtered[i];
