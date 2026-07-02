@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import '../../../../theme/theme.dart';
-import '../format.dart';
 import '../../category.dart';
 import '../../models/key.dart';
 import 'columns.dart';
@@ -10,15 +9,13 @@ class ArchiveColumnHeader extends StatelessWidget {
   const ArchiveColumnHeader({
     super.key,
     required this.cols,
-    required this.nameW,
     required this.sortKey,
     required this.sortAsc,
     required this.onSort,
     required this.colors,
   });
 
-  final List<ArchiveCol> cols;
-  final double nameW;
+  final List<SizedColumn> cols;
   final String sortKey;
   final bool sortAsc;
   final ValueChanged<String> onSort;
@@ -32,13 +29,15 @@ class ArchiveColumnHeader extends StatelessWidget {
       child: Row(
         children: [
           const SizedBox(width: 8),
-          for (final col in cols)
+          for (final e in cols)
             _HeaderCell(
-              col: col,
-              width: col.width == 0 ? nameW : col.width,
-              active: sortKey == col.sortKey,
+              col: e.col,
+              width: e.width,
+              active: sortKey == e.col.sortKey,
               asc: sortAsc,
-              onSort: col.sortKey != null ? () => onSort(col.sortKey!) : null,
+              onSort: e.col.sortKey != null
+                  ? () => onSort(e.col.sortKey!)
+                  : null,
               colors: colors,
             ),
           const SizedBox(width: 8),
@@ -114,15 +113,13 @@ class ArchiveTableRow extends StatelessWidget {
     super.key,
     required this.flipperKey,
     required this.cols,
-    required this.nameW,
     required this.colors,
     required this.cat,
     required this.onTap,
   });
 
   final ArchiveKey flipperKey;
-  final List<ArchiveCol> cols;
-  final double nameW;
+  final List<SizedColumn> cols;
   final QAppColors colors;
   final ArchiveCategory cat;
   final VoidCallback onTap;
@@ -146,12 +143,12 @@ class ArchiveTableRow extends StatelessWidget {
           child: Row(
             children: [
               const SizedBox(width: 8),
-              for (final col in cols)
+              for (final e in cols)
                 SizedBox(
-                  width: col.width == 0 ? nameW : col.width,
+                  width: e.width,
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: _cellContent(col, k),
+                    child: _cellContent(e.col, k),
                   ),
                 ),
               const SizedBox(width: 8),
@@ -164,60 +161,40 @@ class ArchiveTableRow extends StatelessWidget {
 
   Widget _cellContent(ArchiveCol col, ArchiveKey k) {
     if (col.width == 0) return _nameCell(k);
-    switch (col.sortKey) {
-      case 'type':
-        return _textCell(k.protocol ?? '—');
-      case 'uid':
-        return _monoCell(k.meta?['uid'] ?? '—');
-      case 'data':
-        return _monoCell(k.meta?['data'] ?? '—');
-      case 'signals':
-        return _textCell(k.meta?['signals'] ?? '—', right: true);
-      case 'protocols':
-        return _textCell(k.meta?['protocols'] ?? '—');
-      case 'frequency':
-        final freq = k.meta?['frequency'];
-        final hz = int.tryParse(freq ?? '');
-        final label = hz != null
-            ? '${(hz / 1000000).toStringAsFixed(3)} MHz'
-            : (k.extra ?? '—');
-        return _monoCell(label, right: true);
-      case 'protocol':
-        final proto = k.protocol;
-        final hasRaw = k.meta?['has_raw'] == '1';
-        if (proto == null) return _textCell('—');
-        return Row(
-          children: [
-            Flexible(
-              child: Text(
-                proto,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: colors.textSecondary, fontSize: 12),
-              ),
-            ),
-            if (hasRaw && proto != 'RAW') ...[
-              const SizedBox(width: 4),
-              Text(
-                '(raw)',
-                style: TextStyle(color: colors.textMuted, fontSize: 10),
-              ),
-            ],
-          ],
-        );
-      case 'modulation':
-        return _textCell(k.meta?['modulation'] ?? '—');
-      case 'kind':
-        return _textCell(k.meta?['kind'] ?? '—');
-      case 'lines':
-        return _textCell(k.meta?['lines'] ?? '—', right: true);
-      case 'size':
-        return _textCell(fmtSize(k.localSize), right: true, muted: true);
-      case 'mtime':
-        return _textCell(fmtMtime(k.mtime), right: true, muted: true);
-      default:
-        return const SizedBox.shrink();
-    }
+    if (col.sortKey == 'protocol') return _protocolCell(k);
+    final text = columnValue(col, k);
+    final mono =
+        col.sortKey == 'uid' ||
+        col.sortKey == 'data' ||
+        col.sortKey == 'frequency';
+    if (mono) return _monoCell(text, right: col.right);
+    final muted = col.sortKey == 'size' || col.sortKey == 'mtime';
+    return _textCell(text, right: col.right, muted: muted);
+  }
+
+  Widget _protocolCell(ArchiveKey k) {
+    final proto = k.protocol;
+    if (proto == null) return _textCell('—');
+    final hasRaw = k.meta?['has_raw'] == '1';
+    return Row(
+      children: [
+        Flexible(
+          child: Text(
+            proto,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: colors.textSecondary, fontSize: 12),
+          ),
+        ),
+        if (hasRaw && proto != 'RAW') ...[
+          const SizedBox(width: 4),
+          Text(
+            '(raw)',
+            style: TextStyle(color: colors.textMuted, fontSize: 10),
+          ),
+        ],
+      ],
+    );
   }
 
   Widget _nameCell(ArchiveKey k) {

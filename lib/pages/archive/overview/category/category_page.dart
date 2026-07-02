@@ -240,9 +240,10 @@ class _CategoryPageState extends State<CategoryPage> {
           ),
           body: LayoutBuilder(
             builder: (ctx, constraints) {
-              final (visibleCols, nameW) = visibleColumns(
+              final visibleCols = visibleColumns(
                 _cat,
                 constraints.maxWidth,
+                filtered,
               );
 
               return RefreshIndicator(
@@ -264,7 +265,6 @@ class _CategoryPageState extends State<CategoryPage> {
                         children: [
                           ArchiveColumnHeader(
                             cols: visibleCols,
-                            nameW: nameW,
                             sortKey: _sortKey,
                             sortAsc: _sortAsc,
                             onSort: _onSort,
@@ -280,7 +280,6 @@ class _CategoryPageState extends State<CategoryPage> {
                                   key: ValueKey(_keyId(key)),
                                   flipperKey: key,
                                   cols: visibleCols,
-                                  nameW: nameW,
                                   colors: colors,
                                   cat: _cat,
                                   onTap: () => _showKeyActions(context, key),

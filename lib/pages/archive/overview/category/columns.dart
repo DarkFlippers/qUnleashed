@@ -1,6 +1,7 @@
 import '../../category.dart';
+import '../../models/key.dart';
+import '../format.dart';
 
-/// A single column in the category table view.
 class ArchiveCol {
   const ArchiveCol(
     this.label,
@@ -11,22 +12,18 @@ class ArchiveCol {
   });
 
   final String label;
-
-  /// Fixed width in logical pixels, or 0 for the flexible name column.
   final double width;
   final String? sortKey;
   final bool right;
-
-  /// Progressive hide priority when space is tight: 1 = size, 2 = uid/detail,
-  /// 3 = mtime. Null means the column is never hidden.
   final int? hideLevel;
 }
+
+typedef SizedColumn = ({ArchiveCol col, double width});
 
 const double kNameMinWidth = 140;
 const double kRowHeight = 48;
 const double kHeaderHeight = 34;
 
-/// Full column set for [cat], in display order.
 List<ArchiveCol> columnsFor(ArchiveCategory cat) {
   switch (cat) {
     case ArchiveCategory.nfc:
@@ -86,28 +83,89 @@ List<ArchiveCol> columnsFor(ArchiveCategory cat) {
   }
 }
 
-/// Returns the subset of columns that fit in [availableWidth] by progressively
-/// hiding columns in hideLevel order (1→size, 2→uid/detail, 3→mtime), together
-/// with the resolved width of the flexible name column.
-(List<ArchiveCol>, double) visibleColumns(
+String columnValue(ArchiveCol col, ArchiveKey k) {
+  switch (col.sortKey) {
+    case 'type':
+      return k.protocol ?? '—';
+    case 'uid':
+      return k.meta?['uid'] ?? '—';
+    case 'data':
+      return k.meta?['data'] ?? '—';
+    case 'signals':
+      return k.meta?['signals'] ?? '—';
+    case 'protocols':
+      return k.meta?['protocols'] ?? '—';
+    case 'frequency':
+      final hz = int.tryParse(k.meta?['frequency'] ?? '');
+      return hz != null
+          ? '${(hz / 1000000).toStringAsFixed(3)} MHz'
+          : (k.extra ?? '—');
+    case 'protocol':
+      final proto = k.protocol;
+      if (proto == null) return '—';
+      final hasRaw = k.meta?['has_raw'] == '1';
+      return hasRaw && proto != 'RAW' ? '$proto (raw)' : proto;
+    case 'modulation':
+      return k.meta?['modulation'] ?? '—';
+    case 'kind':
+      return k.meta?['kind'] ?? '—';
+    case 'lines':
+      return k.meta?['lines'] ?? '—';
+    case 'size':
+      return fmtSize(k.localSize);
+    case 'mtime':
+      return fmtMtime(k.mtime);
+    default:
+      return '';
+  }
+}
+
+double _requiredWidth(ArchiveCol col, List<ArchiveKey> keys) {
+  final mono = col.sortKey == 'uid' || col.sortKey == 'data';
+  final charW = mono ? 6.9 : 7.2;
+  var contentW = 0.0;
+  for (final k in keys) {
+    final w = (columnValue(col, k).length + 1) * charW;
+    if (w > contentW) contentW = w;
+  }
+  final labelW = col.label.length * 6.6 + 20;
+  final needed = (contentW > labelW ? contentW : labelW) + 8;
+  return needed < col.width ? needed : col.width;
+}
+
+List<SizedColumn> visibleColumns(
   ArchiveCategory cat,
   double availableWidth,
+  List<ArchiveKey> keys,
 ) {
   final all = columnsFor(cat);
-  for (int level = 0; level <= 3; level++) {
+  final req = <ArchiveCol, double>{
+    for (final c in all)
+      if (c.width > 0) c: _requiredWidth(c, keys),
+  };
+
+  List<SizedColumn> sized(List<ArchiveCol> visible, double nameW) => [
+    for (final c in visible) (col: c, width: c.width == 0 ? nameW : req[c]!),
+  ];
+
+  for (var level = 0; level <= 3; level++) {
     final visible = all
         .where((c) => c.hideLevel == null || c.hideLevel! > level)
         .toList();
-    final fixed =
-        visible.where((c) => c.width > 0).fold(0.0, (s, c) => s + c.width);
+    final fixed = visible
+        .where((c) => c.width > 0)
+        .fold(0.0, (s, c) => s + req[c]!);
     final nameW = availableWidth - fixed - 16;
-    if (nameW >= kNameMinWidth) return (visible, nameW);
+    if (nameW >= kNameMinWidth) return sized(visible, nameW);
   }
-  // Fallback: show only non-hideable columns and give name the remaining space.
+
   final core = all.where((c) => c.hideLevel == null).toList();
-  final fixed = core.where((c) => c.width > 0).fold(0.0, (s, c) => s + c.width);
-  return (
-    core,
-    (availableWidth - fixed - 16).clamp(kNameMinWidth, double.infinity)
+  final fixed = core
+      .where((c) => c.width > 0)
+      .fold(0.0, (s, c) => s + req[c]!);
+  final nameW = (availableWidth - fixed - 16).clamp(
+    kNameMinWidth,
+    double.infinity,
   );
+  return sized(core, nameW);
 }
