@@ -273,28 +273,41 @@ class _FilterBtn extends StatelessWidget {
               ),
             ),
             Divider(height: 1, color: colors.divider),
-            ListTile(
-              title: Text('All', style: TextStyle(color: colors.textPrimary)),
-              trailing: selected == null
-                  ? Icon(Icons.check_rounded, color: catColor)
-                  : null,
-              onTap: () {
-                Navigator.pop(context);
-                onChanged(null);
-              },
-            ),
-            for (final o in opts)
-              ListTile(
-                title: Text(o, style: TextStyle(color: colors.textPrimary)),
-                trailing: selected == o
-                    ? Icon(Icons.check_rounded, color: catColor)
-                    : null,
-                onTap: () {
-                  Navigator.pop(context);
-                  onChanged(o);
-                },
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                padding: const EdgeInsets.only(bottom: 8),
+                children: [
+                  ListTile(
+                    title: Text(
+                      'All',
+                      style: TextStyle(color: colors.textPrimary),
+                    ),
+                    trailing: selected == null
+                        ? Icon(Icons.check_rounded, color: catColor)
+                        : null,
+                    onTap: () {
+                      Navigator.pop(context);
+                      onChanged(null);
+                    },
+                  ),
+                  for (final o in opts)
+                    ListTile(
+                      title: Text(
+                        o,
+                        style: TextStyle(color: colors.textPrimary),
+                      ),
+                      trailing: selected == o
+                          ? Icon(Icons.check_rounded, color: catColor)
+                          : null,
+                      onTap: () {
+                        Navigator.pop(context);
+                        onChanged(o);
+                      },
+                    ),
+                ],
               ),
-            const SizedBox(height: 8),
+            ),
           ],
         ),
       ),

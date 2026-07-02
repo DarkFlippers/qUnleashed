@@ -56,10 +56,18 @@ class _CategoryPageState extends State<CategoryPage> {
   List<String> get _filterOptions {
     final opts = <String>{};
     for (final k in _allKeys) {
-      final v = _filterValue(k);
-      if (v != null && v.isNotEmpty) opts.add(v);
+      opts.addAll(_filterTokens(k));
     }
     return opts.toList()..sort();
+  }
+
+  List<String> _filterTokens(ArchiveKey k) {
+    final raw = _filterValue(k);
+    if (raw == null || raw.isEmpty) return const [];
+    return [
+      for (final part in raw.split(','))
+        if (part.trim().isNotEmpty) part.trim(),
+    ];
   }
 
   String? _filterValue(ArchiveKey k) {
@@ -86,7 +94,7 @@ class _CategoryPageState extends State<CategoryPage> {
     var keys = _allKeys;
     if (_starredOnly) keys = keys.where((k) => k.favorite).toList();
     if (_filterVal != null) {
-      keys = keys.where((k) => _filterValue(k) == _filterVal).toList();
+      keys = keys.where((k) => _filterTokens(k).contains(_filterVal)).toList();
     }
     if (_query.isNotEmpty) {
       final q = _query.toLowerCase();
