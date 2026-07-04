@@ -1,4 +1,4 @@
-name: Android, Linux, macOS, and Windows prerelease
+name: Android, iOS, Linux, macOS, and Windows prerelease
 
 on:
   push:
@@ -211,7 +211,7 @@ jobs:
           if-no-files-found: error
 
   build-macos:
-    name: Build macOS release
+    name: Build macOS and iOS releases
     needs: guard
     if: ${{ github.server_url == 'https://github.com' }}
     runs-on: macos-latest
@@ -241,6 +241,11 @@ jobs:
         env:
           MACOS_GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.MACOS_GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
         run: tools/restore_firebase_config.sh macos
+
+      - name: Restore iOS Firebase config
+        env:
+          IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
+        run: tools/restore_firebase_config.sh ios
 
       - name: Derive app version from tag
         shell: bash
@@ -277,11 +282,16 @@ jobs:
       - name: Build macOS release
         run: tools/build/macos.sh
 
-      - name: Upload macOS release asset
+      - name: Build iOS release IPA
+        run: tools/build/ios.sh
+
+      - name: Upload macOS and iOS release assets
         uses: actions/upload-artifact@v4
         with:
           name: release-assets-macos
-          path: dist/qunleashed_*_macos_*.dmg
+          path: |
+            dist/qunleashed_*_macos_*.dmg
+            dist/qunleashed_*_ios_*.ipa
           if-no-files-found: error
 
   publish:
@@ -312,6 +322,7 @@ jobs:
           overwrite_files: true
           files: |
             dist/qunleashed_*_android_*.apk
+            dist/qunleashed_*_ios_*.ipa
             dist/qunleashed_*_linux_x64
             dist/qunleashed_*_macos_*.dmg
             dist/qunleashed_*_windows_x64_raw.zip
