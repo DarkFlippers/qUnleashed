@@ -101,7 +101,7 @@ class PushService {
 
   Future<void> _showForeground(RemoteMessage message) async {
     final notification = message.notification;
-    final title = notification?.title ?? message.data['version'] ?? 'Update';
+    final title = notification?.title ?? 'Update';
     final body = notification?.body ?? '';
 
     await NotificationCenter.instance.plugin.show(
@@ -119,7 +119,6 @@ class PushService {
         iOS: DarwinNotificationDetails(presentAlert: true, presentSound: true),
         macOS: DarwinNotificationDetails(presentAlert: true, presentSound: true),
       ),
-      payload: message.data['download_url'] as String?,
     );
   }
 }
