@@ -1,4 +1,4 @@
-package ru.aperturefox.qunleashed
+package com.darkflippers.qunleashed
 
 import io.flutter.embedding.android.FlutterActivity
 

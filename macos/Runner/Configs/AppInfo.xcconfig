@@ -8,7 +8,7 @@
 PRODUCT_NAME = qUnleashed
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.example.qunleashed
+PRODUCT_BUNDLE_IDENTIFIER = com.darkflippers.qunleashed
 
 // The copyright displayed in application information
-PRODUCT_COPYRIGHT = Copyright © 2026 com.example. All rights reserved.
+PRODUCT_COPYRIGHT = Copyright © 2026 com.darkflippers. All rights reserved.

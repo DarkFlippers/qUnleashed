@@ -26,13 +26,13 @@ val hasReleaseSigningConfig = listOf(
 ).all { !keystoreProperty(it).isNullOrBlank() }
 
 android {
-    namespace = "ru.aperturefox.qunleashed"
+    namespace = "com.darkflippers.qunleashed"
     compileSdk = flutter.compileSdkVersion
 
     ndkVersion = flutter.ndkVersion
 
     defaultConfig {
-        applicationId = "ru.aperturefox.qunleashed"
+        applicationId = "com.darkflippers.qunleashed"
 
         minSdk = 29
         targetSdk = flutter.targetSdkVersion
