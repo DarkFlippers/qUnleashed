@@ -32,15 +32,15 @@ Future<void> showConnectionFailedDialog(
     case FlipperConnectErrorKind.stalePairing:
       return (
         'Pairing is out of date',
-        'This Flipper is no longer paired correctly. Forget it in your system '
-            'Bluetooth settings AND on the Flipper (Settings → Bluetooth → '
+        'This device is no longer paired correctly. Forget it in your system '
+            'Bluetooth settings AND on the device (Settings → Bluetooth → '
             'Forget all paired devices), then connect again.',
       );
     case FlipperConnectErrorKind.pairingIncomplete:
       return (
         'Pairing not completed',
-        'Confirm the pairing request on the Flipper screen and enter the PIN it '
-            'shows. If no request appeared, forget this Flipper in your system '
+        'Confirm the pairing request on the device screen and enter the PIN it '
+            'shows. If no request appeared, forget this device in your system '
             'Bluetooth settings and try again.',
       );
     case FlipperConnectErrorKind.bluetoothUnavailable:
@@ -64,10 +64,10 @@ Future<void> showConnectionFailedDialog(
       );
     case FlipperConnectErrorKind.deviceUnreachable:
       return (
-        'Flipper not reachable',
+        'Device not reachable',
         isBle
-            ? 'The Flipper is out of range or its Bluetooth is off. Move it '
-                  'closer and enable Bluetooth in the Flipper system menu, then '
+            ? 'The device is out of range or its Bluetooth is off. Move it '
+                  'closer and enable Bluetooth in the device system menu, then '
                   'connect again.'
             : 'The device did not respond. Unplug it and plug it back in, then '
                   'connect again.',
@@ -76,7 +76,7 @@ Future<void> showConnectionFailedDialog(
       return (
         'Connection failed',
         isBle
-            ? 'Turn Bluetooth off and on in the Flipper Zero system menu, then '
+            ? 'Turn Bluetooth off and on in the device system menu, then '
                   'connect again. Restart the app only if that does not help.'
             : 'Unplug the device and plug it back in, then connect again. '
                   'Restart the app only if that does not help.',

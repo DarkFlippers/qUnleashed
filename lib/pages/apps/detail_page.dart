@@ -77,7 +77,7 @@ class _AppDetailPageState extends State<AppDetailPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete app?'),
-        content: Text('Remove "${card.name}" from your Flipper?'),
+        content: Text('Remove "${card.name}" from your device?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),

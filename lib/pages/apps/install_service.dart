@@ -355,7 +355,7 @@ class AppsInstallService extends ChangeNotifier {
 
   Future<void> launch(AppCard app, {AppCategory? category}) async {
     if (!isReady) {
-      throw StateError('Flipper is not connected');
+      throw StateError('Device is not connected');
     }
     final path =
         _installedManifests[app.alias]?.path ??

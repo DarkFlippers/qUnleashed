@@ -960,7 +960,7 @@ class ArchiveController extends ChangeNotifier {
   Future<void> restoreKey(ArchiveKey key) async {
     if (!key.isDeleted) return;
     if (!_client.isConnected) {
-      _lastError = 'Connect a Flipper to restore';
+      _lastError = 'Connect a device to restore';
       notifyListeners();
       return;
     }

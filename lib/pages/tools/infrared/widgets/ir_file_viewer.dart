@@ -95,7 +95,7 @@ class _IrFileViewerState extends State<IrFileViewer> {
     if (bytes == null) return;
     if (!_connected) {
       context.showNotification(
-        'Connect a Flipper first',
+        'Connect a device first',
         type: QNotificationType.warning,
       );
       return;
@@ -118,7 +118,7 @@ class _IrFileViewerState extends State<IrFileViewer> {
     }
     if (!mounted) return;
     context.showNotification(
-      ok ? 'Sent to Flipper' : 'Failed to send to Flipper',
+      ok ? 'Sent to the device' : 'Failed to send to the device',
       type: ok ? QNotificationType.good : QNotificationType.error,
     );
   }

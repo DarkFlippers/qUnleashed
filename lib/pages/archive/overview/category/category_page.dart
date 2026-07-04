@@ -174,7 +174,7 @@ class _CategoryPageState extends State<CategoryPage> {
     if (_filterVal != null) return 'No keys matching filter';
     if (_query.isNotEmpty) return 'No results for "$_query"';
     if (!_ctrl.isConnected) {
-      return 'No ${_cat.title} keys\nConnect a Flipper to sync';
+      return 'No ${_cat.title} keys\nConnect a device to sync';
     }
     return 'No ${_cat.title} keys\nPull down to sync';
   }

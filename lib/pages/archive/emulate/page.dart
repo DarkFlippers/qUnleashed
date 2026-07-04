@@ -66,7 +66,7 @@ class _EmulatePageState extends State<EmulatePage> {
 
   void _openRemoteControlBusy() {
     context.showNotification(
-      'Flipper is busy',
+      'Device is busy',
       type: QNotificationType.error,
     );
     Navigator.of(context).pushReplacement(
@@ -90,15 +90,15 @@ class _EmulatePageState extends State<EmulatePage> {
   String _errorMessage(EmulateError? e) {
     switch (e) {
       case EmulateError.notConnected:
-        return 'Flipper is not connected';
+        return 'Device is not connected';
       case EmulateError.notEmulatable:
         return 'This file type cannot be opened on the device';
       case EmulateError.appStartFailed:
-        return 'Could not open the app on Flipper';
+        return 'Could not open the app on the device';
       case EmulateError.loadFileFailed:
         return 'Could not load the file into the app';
       case EmulateError.busy:
-        return 'Flipper is busy';
+        return 'Device is busy';
       case null:
         return '';
     }
@@ -219,7 +219,7 @@ class _EmulatePageState extends State<EmulatePage> {
             CircularProgressIndicator(color: colors.accent),
             const SizedBox(height: 16),
             Text(
-              'Opening app on Flipper...',
+              'Opening app on the device...',
               style: TextStyle(color: colors.textSecondary),
             ),
           ],
@@ -249,7 +249,7 @@ class _EmulatePageState extends State<EmulatePage> {
           Icon(Icons.contactless, size: 64, color: colors.accent),
           const SizedBox(height: 16),
           Text(
-            'File loaded on Flipper',
+            'File loaded on the device',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: colors.textPrimary,
@@ -259,7 +259,7 @@ class _EmulatePageState extends State<EmulatePage> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Use the Flipper buttons to run it.\nStop will close the app.',
+            'Use the device buttons to run it.\nStop will close the app.',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: colors.textMuted,

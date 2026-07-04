@@ -11,9 +11,9 @@ import '../models/models.dart';
 class RemoteControlView extends StatelessWidget {
   static const double _queueHeight = 28;
   static const double _queueSpacing = 4;
-  static const double _logoSpacing = 12;
-  static const double _logoHeight = 22;
-  static const double _logoWidth = 183;
+  // static const double _logoSpacing = 12;
+  // static const double _logoHeight = 22;
+  // static const double _logoWidth = 183;
   static const double _frameChrome = 28;
 
   const RemoteControlView({
@@ -41,8 +41,7 @@ class RemoteControlView extends StatelessWidget {
           0.0,
           double.infinity,
         );
-        final fixedHeight =
-            _queueHeight + _queueSpacing + _logoSpacing + _logoHeight;
+        final fixedHeight = _queueHeight + _queueSpacing;
         final frameMaxHeight =
             (constraints.maxHeight - fixedHeight - _frameChrome).clamp(
               0.0,
@@ -88,6 +87,7 @@ class RemoteControlView extends StatelessWidget {
                     orientation: orientation,
                     frameWidth: frameWidth,
                   ),
+                  /*
                   const SizedBox(height: _logoSpacing),
                   SizedBox(
                     height: _logoHeight,
@@ -104,6 +104,7 @@ class RemoteControlView extends StatelessWidget {
                       ),
                     ),
                   ),
+                  */
                 ],
               ),
             ),

@@ -201,7 +201,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
 
   void _openRemoteControlBusy() {
     context.showNotification(
-      'Flipper is busy',
+      'Device is busy',
       type: QNotificationType.error,
     );
     Navigator.of(

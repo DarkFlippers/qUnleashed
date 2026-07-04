@@ -80,7 +80,7 @@ class DeviceTab extends StatelessWidget {
           topInset: topInset,
           headerHeight: headerHeight,
           title: ctrl.deviceName,
-          subtitle: 'Flipper Zero',
+          subtitle: 'Flipper Zero', // !!! тип устройства под именем — не менять
           active: ctrl.isConnected || inDfu,
           dfu: inDfu,
           infoEntries: wide ? ctrl.deviceInfoEntries : const [],
@@ -200,7 +200,7 @@ class _ConnectedContent extends StatelessWidget {
     final success = await ctrl.playAlert();
     if (!context.mounted) return;
     context.showNotification(
-      success ? 'Alert sent to Flipper' : 'Failed to play alert',
+      success ? 'Alert sent to the device' : 'Failed to play alert',
       type: success ? QNotificationType.good : QNotificationType.error,
     );
   }

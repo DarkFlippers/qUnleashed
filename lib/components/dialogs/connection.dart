@@ -281,7 +281,7 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
               ? 'Searching for devices…'
               : (widget.usbOnly
                     ? 'Waiting for USB connection…'
-                    : 'No Flipper devices found.'),
+                    : 'No devices found.'),
           textAlign: TextAlign.center,
           style: TextStyle(color: colors.dialogMuted, fontSize: 14),
         ),
@@ -327,7 +327,7 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
           : TextButton(
               onPressed: _restoreFilter,
               style: TextButton.styleFrom(foregroundColor: colors.dialogMuted),
-              child: const Text('Show only Flipper devices'),
+              child: const Text('Show only devices'),
             ),
     );
   }

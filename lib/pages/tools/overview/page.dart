@@ -30,14 +30,14 @@ class ToolsPage extends StatelessWidget {
           iconAsset: 'assets/ic/app/controller.svg',
           iconColor: const Color(0xFFFFFFFF),
           title: 'Remote desktop',
-          description: 'View, control, and record the flipper screen',
+          description: 'View, control, and record the device screen',
           routeBuilder: _buildRemoteControlPage,
         ),
         ToolItemModel(
           iconAsset: 'assets/ic/app/cli.svg',
           iconColor: const Color(0xFFFF9B34),
           title: 'Command line',
-          description: 'Open a terminal session on your flipper',
+          description: 'Open a terminal session on your device',
           onTap: _openCliPage,
         ),
         ToolItemModel(

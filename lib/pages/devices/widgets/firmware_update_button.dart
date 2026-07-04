@@ -123,7 +123,7 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
     if (_inProgress) return;
 
     if (!widget.client.isConnected && !_dfuPresent) {
-      setState(() => _inlineMessage = 'Connect a Flipper first');
+      setState(() => _inlineMessage = 'Connect a device first');
       return;
     }
 
@@ -243,7 +243,7 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
       return _ResolvedButtonState(
         label: 'NO CONNECTION',
         color: _inactiveColor,
-        description: description ?? 'Connect a Flipper to install firmware',
+        description: description ?? 'Connect a device to install firmware',
         enabled: false,
       );
     }
@@ -343,13 +343,13 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
       UpdateUploading() => _ResolvedButtonState(
         label: 'INSTALL',
         color: _activeColor,
-        description: 'Installing firmware on Flipper…',
+        description: 'Installing firmware on the device…',
         enabled: false,
       ),
       UpdateStarting() => _ResolvedButtonState(
         label: 'RUN INSTALLER',
         color: _activeColor,
-        description: 'Starting updater on Flipper…',
+        description: 'Starting updater on the device…',
         enabled: false,
       ),
       UpdateRecovering(:final step, :final progress) => _ResolvedButtonState(
@@ -361,13 +361,13 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
       UpdateWaitingForReconnect() => _ResolvedButtonState(
         label: 'RESTARTING',
         color: _activeColor,
-        description: 'Waiting for Flipper to reconnect…',
+        description: 'Waiting for the device to reconnect…',
         enabled: false,
       ),
       UpdateDone() => _ResolvedButtonState(
         label: 'RUN INSTALLER',
         color: _activeColor,
-        description: 'Flipper will reboot and apply the update.',
+        description: 'The device will reboot and apply the update.',
         enabled: false,
       ),
       UpdateError(:final message) => _ResolvedButtonState(
@@ -424,7 +424,7 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
       RecoveryStep.flashingRadio => 'Flashing radio stack… $percent%',
       RecoveryStep.flashingFirmware => 'Flashing firmware… $percent%',
       RecoveryStep.correctingOptionBytes => 'Restoring option bytes…',
-      RecoveryStep.restarting => 'Restarting Flipper…',
+      RecoveryStep.restarting => 'Restarting the device…',
     };
   }
 }

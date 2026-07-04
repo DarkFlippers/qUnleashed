@@ -53,24 +53,7 @@ class FlipperMockupWidget extends StatelessWidget {
                   child: RepaintBoundary(
                     child: dfu
                         ? const _MockupRecoveryScreen()
-                        : OverflowBox(
-                            alignment: Alignment.topLeft,
-                            minWidth: w,
-                            maxWidth: w,
-                            minHeight: h,
-                            maxHeight: h,
-                            child: Transform.translate(
-                              offset: Offset(
-                                -w * (_screenLeft / _templateWidth),
-                                -h * (_screenTop / _templateHeight),
-                              ),
-                              child: SizedBox(
-                                width: w,
-                                height: h,
-                                child: const _MockupInnerScreen(),
-                              ),
-                            ),
-                          ),
+                        : const _MockupInnerScreen(),
                   ),
                 ),
               ),
@@ -259,7 +242,7 @@ class _MockupInnerScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SvgPicture.asset(
-      'assets/pic/device/screen/default.svg',
+      'assets/pic/mifare/update-success.svg',
       fit: BoxFit.fill,
     );
   }

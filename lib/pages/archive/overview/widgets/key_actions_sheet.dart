@@ -107,7 +107,7 @@ class KeyActionsSheet {
           onTap: () async {
             if (!connected) {
               context.showNotification(
-                'Connect a Flipper to restore',
+                'Connect a device to restore',
                 type: QNotificationType.warning,
               );
               return;
@@ -380,13 +380,13 @@ class KeyActionsSheet {
     String message;
     if (connected && onDevice && hasLocal) {
       message =
-          'This file will be permanently deleted from the Flipper and this phone. This cannot be undone.';
+          'This file will be permanently deleted from the device and this phone. This cannot be undone.';
     } else if (connected && onDevice) {
       message =
-          'This file will be permanently deleted from the Flipper. There is no local copy.';
+          'This file will be permanently deleted from the device. There is no local copy.';
     } else if (!connected && onDevice) {
       message =
-          'No Flipper is connected. This file will be deleted only from this phone and will remain on the Flipper.';
+          'No device is connected. This file will be deleted only from this phone and will remain on the device.';
     } else {
       message = 'This local file will be permanently deleted.';
     }

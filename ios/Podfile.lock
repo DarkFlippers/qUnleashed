@@ -1,8 +1,8 @@
 PODS:
   - Flutter (1.0.0)
-  - irondash_engine_context (0.0.1):
+  - flutter_foreground_task (0.0.1):
     - Flutter
-  - permission_handler_apple (9.3.0):
+  - irondash_engine_context (0.0.1):
     - Flutter
   - saver_gallery (0.0.1):
     - Flutter
@@ -14,8 +14,8 @@ PODS:
 
 DEPENDENCIES:
   - Flutter (from `Flutter`)
+  - flutter_foreground_task (from `.symlinks/plugins/flutter_foreground_task/ios`)
   - irondash_engine_context (from `.symlinks/plugins/irondash_engine_context/ios`)
-  - permission_handler_apple (from `.symlinks/plugins/permission_handler_apple/ios`)
   - saver_gallery (from `.symlinks/plugins/saver_gallery/ios`)
   - super_native_extensions (from `.symlinks/plugins/super_native_extensions/ios`)
   - universal_ble (from `.symlinks/plugins/universal_ble/darwin`)
@@ -23,10 +23,10 @@ DEPENDENCIES:
 EXTERNAL SOURCES:
   Flutter:
     :path: Flutter
+  flutter_foreground_task:
+    :path: ".symlinks/plugins/flutter_foreground_task/ios"
   irondash_engine_context:
     :path: ".symlinks/plugins/irondash_engine_context/ios"
-  permission_handler_apple:
-    :path: ".symlinks/plugins/permission_handler_apple/ios"
   saver_gallery:
     :path: ".symlinks/plugins/saver_gallery/ios"
   super_native_extensions:
@@ -36,12 +36,12 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
+  flutter_foreground_task: a159d2c2173b33699ddb3e6c2a067045d7cebb89
   irondash_engine_context: 8e58ca8e0212ee9d1c7dc6a42121849986c88486
-  permission_handler_apple: 4ed2196e43d0651e8ff7ca3483a069d469701f2d
-  saver_gallery: af2d0c762dafda254e0ad025ef0dabd6506cd490
+  saver_gallery: c5ace923bbca25bcb925ad9be8847f9dfdd2f36b
   super_native_extensions: b763c02dc3a8fd078389f410bf15149179020cb4
   universal_ble: 45519b2aeafe62761e2c6309f8927edb5288b914
 
-PODFILE CHECKSUM: c33abd8fc4aa606784d95f916f04450c9ecac5a5
+PODFILE CHECKSUM: 53a6aebc29ccee84c41f92f409fc20cd4ca011f1
 
 COCOAPODS: 1.16.2

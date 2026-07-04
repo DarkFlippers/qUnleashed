@@ -74,7 +74,7 @@ class _ArchivePageState extends State<ArchivePage> {
   Future<void> _launchFap(FapFavorite fav) async {
     if (!_ctrl.isConnected) {
       context.showNotification(
-        'Connect a Flipper to launch apps',
+        'Connect a device to launch apps',
         type: QNotificationType.warning,
       );
       return;

@@ -165,7 +165,7 @@ class AppActionButton extends StatelessWidget {
 
   void _connectHint(BuildContext context) {
     context.showNotification(
-      'Connect Flipper to install apps',
+      'Connect a device to install apps',
       type: QNotificationType.warning,
     );
   }
@@ -209,7 +209,7 @@ class AppActionButton extends StatelessWidget {
           backgroundColor: colors.dialogBackground,
           title: Text('Delete app?', style: TextStyle(color: colors.dialogText)),
           content: Text(
-            'Remove "${app.name}" from your Flipper?',
+            'Remove "${app.name}" from your device?',
             style: TextStyle(color: colors.dialogText),
           ),
           actions: [

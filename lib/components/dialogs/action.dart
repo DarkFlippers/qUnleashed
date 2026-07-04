@@ -12,9 +12,9 @@ const double _kScreenWidth = _kDialogWidth - (_kOuterPadding * 2);
 const double _kImageWidth = _kScreenWidth - (_kScreenPadding * 2);
 const double _kImageHeight = _kImageWidth / _kAssetAspectRatio;
 
-const String kFlipperBusyTitle = 'Flipper is Busy';
+const String kFlipperBusyTitle = 'Device is Busy';
 const String kFlipperBusyMessage =
-    'Exit the current app on Flipper to use this feature';
+    'Exit the current app on the device to use this feature';
 const String kFlipperBusyAction = 'Remoute control';
 const String kFlipperBusyAssetPath = 'assets/pic/status/busy.svg';
 

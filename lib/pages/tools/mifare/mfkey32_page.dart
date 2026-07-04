@@ -121,7 +121,7 @@ class _MfKey32Progress extends StatelessWidget {
       ),
       MfKey32DownloadingRawFile(:final percent) => _ProgressBlock(
         title: 'Calculation Started…',
-        description: 'Downloading raw file from Flipper…',
+        description: 'Downloading raw file from the device…',
         iconAsset: 'assets/pic/mifare/download.svg',
         percent: percent,
         accentColor: context.appColors.info,
@@ -129,7 +129,7 @@ class _MfKey32Progress extends StatelessWidget {
       ),
       MfKey32Uploading() => _ProgressBlock(
         title: 'Calculation Completed',
-        description: 'Syncing with Flipper…',
+        description: 'Syncing with the device…',
         iconAsset: 'assets/pic/mifare/key.svg',
         percent: null,
         accentColor: context.appColors.accent,
@@ -212,7 +212,7 @@ class _WaitingForFlipper extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.only(top: 32, bottom: 18),
           child: Text(
-            'Connecting Flipper…',
+            'Connecting device…',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: colors.textPrimary,
@@ -259,11 +259,11 @@ class _ErrorBlock extends StatelessWidget {
         horizontalPadding: 24,
       ),
       MfKey32ErrorType.flipperConnection => _SimpleError(
-        title: 'Flipper Not Connected',
+        title: 'Device Not Connected',
         descriptions: const [
-          '1. Check Bluetooth connection with Flipper',
-          '2. Make sure Flipper is Turned on',
-          "3. If Flipper doesn’t respond, reboot it and connect to the app via Bluetooth",
+          '1. Check Bluetooth connection with the device',
+          '2. Make sure the device is Turned on',
+          "3. If the device doesn’t respond, reboot it and connect to the app via Bluetooth",
           '4. Restart Mfkey32 (Extract MF Keys)',
         ],
         mockupImageAsset: 'assets/pic/device/screen/dead.svg',
@@ -302,16 +302,16 @@ class _NotFoundError extends StatelessWidget {
           ),
           const SizedBox(height: 24),
           Text(
-            'To extract keys from the reader, collect nonces with your Flipper Zero first:',
+            'To extract keys from the reader, collect nonces with your device first:',
             style: TextStyle(color: colors.textSecondary, fontSize: 16),
           ),
           const SizedBox(height: 12),
           for (final line in const [
-            '1. On your Flipper Zero, go to NFC → Extract MF Keys',
-            '2. Hold Flipper Zero close to the reader',
+            '1. On your device, go to NFC → Extract MF Keys',
+            '2. Hold the device close to the reader',
             '3. Wait until you collect enough nonсes',
             '4. Сomplete nonce collection',
-            '5. In Flipper Mobile App, synchronize with your Flipper Zero and run the Mfkey32 (Extract MF Keys)',
+            '5. In this app, synchronize with your device and run the Mfkey32 (Extract MF Keys)',
           ])
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
@@ -693,7 +693,7 @@ class _DuplicatedKeys extends StatelessWidget {
                   children: [
                     TextSpan(
                       text:
-                          ' (${entry.value == DuplicatedSource.flipper ? 'Found in Flipper Dict.' : 'Found in User Dict.'})',
+                          ' (${entry.value == DuplicatedSource.flipper ? 'Found in Device Dict.' : 'Found in User Dict.'})',
                       style: TextStyle(color: colors.textMuted),
                     ),
                   ],
