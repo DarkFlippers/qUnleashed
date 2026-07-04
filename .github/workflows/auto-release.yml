@@ -229,6 +229,12 @@ jobs:
           channel: stable
           cache: true
 
+      # Firebase pulls grpc as an SPM binary target (grpc.zip from dl.google.com),
+      # which flakes with "network connection was lost" on macOS runners. Both
+      # ios/ and macos/ have CocoaPods set up, so build through pods instead.
+      - name: Disable Swift Package Manager (use CocoaPods)
+        run: flutter config --no-enable-swift-package-manager
+
       - name: Install Flutter dependencies
         run: flutter pub get
 
