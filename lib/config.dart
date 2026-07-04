@@ -8,7 +8,7 @@ class QAppConfig {
       FirmwareEntry(
         name: 'Unleashed',
         shortName: 'unlshd',
-        icon: 'unleashed.jpg',
+        icon: 'cfw.png',
         matchKeywords: ['unleashed', 'darkflippers'],
         colors: FirmwareColors(
           primary: Color(0xFFCC241D),
@@ -19,7 +19,7 @@ class QAppConfig {
       FirmwareEntry(
         name: 'Official firmware',
         shortName: 'ofw',
-        icon: 'flipper.png',
+        icon: 'ofw.png',
         matchKeywords: ['official', 'flipperdevices'],
         colors: FirmwareColors(
           primary: Color(0xFFFF8200),
