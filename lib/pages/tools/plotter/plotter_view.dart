@@ -209,14 +209,82 @@ class _InteractivePlot extends StatefulWidget {
   State<_InteractivePlot> createState() => _InteractivePlotState();
 }
 
+typedef _HoverInfo = ({
+  int index,
+  double duration,
+  bool isHi,
+  double localX,
+  double localY,
+});
+
 class _InteractivePlotState extends State<_InteractivePlot> {
   double _lastScale = 1;
+  _HoverInfo? _hover;
+  List<double>? _prefix;
+  List<double>? _prefixFor;
 
   PlotController get _c => widget.controller;
 
   double _focalFraction(double localX) {
     final w = _c.viewWidth;
     return w <= 0 ? 0.5 : (localX / w).clamp(0.0, 1.0);
+  }
+
+  List<double> _prefixSums(List<double> pulses) {
+    if (identical(_prefixFor, pulses) && _prefix != null) return _prefix!;
+    final p = List<double>.filled(pulses.length + 1, 0);
+    for (var i = 0; i < pulses.length; i++) {
+      p[i + 1] = p[i] + pulses[i];
+    }
+    _prefix = p;
+    _prefixFor = pulses;
+    return p;
+  }
+
+  _HoverInfo? _hoverInfoAt(Offset pos) {
+    final pulses = widget.engine.data.pulses;
+    final dataWidth = widget.engine.width;
+    final width = _c.viewWidth;
+    if (pulses.isEmpty || width <= 0 || dataWidth <= 0) return null;
+
+    final k = _c.zoom;
+    final maxZoom = math.max(1.0, dataWidth / width);
+    final tx = -_c.left * width * k;
+    final sf = k / maxZoom;
+    if (sf <= 0) return null;
+
+    final dataPos = (pos.dx - tx) / sf;
+    if (dataPos < 0 || dataPos > dataWidth) return null;
+
+    final prefix = _prefixSums(pulses);
+    var lo = 0;
+    var hi = pulses.length - 1;
+    while (lo <= hi) {
+      final mid = (lo + hi) >> 1;
+      if (dataPos < prefix[mid]) {
+        hi = mid - 1;
+      } else if (dataPos >= prefix[mid + 1]) {
+        lo = mid + 1;
+      } else {
+        return (
+          index: mid,
+          duration: pulses[mid],
+          isHi: mid % 2 == 0,
+          localX: pos.dx,
+          localY: pos.dy,
+        );
+      }
+    }
+    return null;
+  }
+
+  void _updateHover(Offset pos) {
+    final info = _hoverInfoAt(pos);
+    if (info != _hover) setState(() => _hover = info);
+  }
+
+  void _clearHover() {
+    if (_hover != null) setState(() => _hover = null);
   }
 
   @override
@@ -234,54 +302,143 @@ class _InteractivePlotState extends State<_InteractivePlot> {
           child: LayoutBuilder(
             builder: (context, constraints) {
               _c.setViewWidth(constraints.maxWidth);
-              return Listener(
-                onPointerSignal: (event) {
-                  if (event is PointerScrollEvent) {
-                    final dx = event.scrollDelta.dx;
-                    final dy = event.scrollDelta.dy;
-                    if (dx.abs() > dy.abs()) {
-                      _c.panByPixels(-dx);
-                    } else if (dy != 0) {
-                      final factor = dy < 0 ? 1.1 : 1 / 1.1;
-                      _c.zoomAround(_c.zoom * factor,
-                          _focalFraction(event.localPosition.dx));
-                    }
-                  }
-                },
-                child: GestureDetector(
-                  onScaleStart: (_) => _lastScale = 1,
-                  onScaleUpdate: (details) {
-                    if (details.focalPointDelta.dx != 0) {
-                      _c.panByPixels(details.focalPointDelta.dx);
-                    }
-                    if (details.scale != _lastScale) {
-                      final factor = details.scale / _lastScale;
-                      _lastScale = details.scale;
-                      _c.zoomAround(_c.zoom * factor,
-                          _focalFraction(details.localFocalPoint.dx));
+              return MouseRegion(
+                onHover: (event) => _updateHover(event.localPosition),
+                onExit: (_) => _clearHover(),
+                child: Listener(
+                  onPointerSignal: (event) {
+                    if (event is PointerScrollEvent) {
+                      final dx = event.scrollDelta.dx;
+                      final dy = event.scrollDelta.dy;
+                      if (dx.abs() > dy.abs()) {
+                        _c.panByPixels(-dx);
+                      } else if (dy != 0) {
+                        final factor = dy < 0 ? 1.1 : 1 / 1.1;
+                        _c.zoomAround(_c.zoom * factor,
+                            _focalFraction(event.localPosition.dx));
+                      }
+                      _updateHover(event.localPosition);
                     }
                   },
-                  child: AnimatedBuilder(
-                    animation: _c,
-                    builder: (context, _) => SizedBox(
-                      width: double.infinity,
-                      height: kPlotHeight,
-                      child: CustomPaint(
-                        painter: PulsePlotterPainter(
-                          pulses: widget.engine.data.pulses,
-                          dataWidth: widget.engine.width,
-                          hints: widget.engine.hints,
-                          altHints: widget.engine.altHints,
-                          zoom: _c.zoom,
-                          left: _c.left,
-                          palette: palette,
-                        ),
+                  child: GestureDetector(
+                    onScaleStart: (_) => _lastScale = 1,
+                    onScaleUpdate: (details) {
+                      if (details.focalPointDelta.dx != 0) {
+                        _c.panByPixels(details.focalPointDelta.dx);
+                      }
+                      if (details.scale != _lastScale) {
+                        final factor = details.scale / _lastScale;
+                        _lastScale = details.scale;
+                        _c.zoomAround(_c.zoom * factor,
+                            _focalFraction(details.localFocalPoint.dx));
+                      }
+                    },
+                    child: AnimatedBuilder(
+                      animation: _c,
+                      builder: (context, _) => Stack(
+                        children: [
+                          SizedBox(
+                            width: double.infinity,
+                            height: kPlotHeight,
+                            child: CustomPaint(
+                              painter: PulsePlotterPainter(
+                                pulses: widget.engine.data.pulses,
+                                dataWidth: widget.engine.width,
+                                hints: widget.engine.hints,
+                                altHints: widget.engine.altHints,
+                                zoom: _c.zoom,
+                                left: _c.left,
+                                palette: palette,
+                              ),
+                            ),
+                          ),
+                          if (_hover != null)
+                            _HoverTooltip(
+                              info: _hover!,
+                              viewWidth: _c.viewWidth,
+                              colors: colors,
+                            ),
+                        ],
                       ),
                     ),
                   ),
                 ),
               );
             },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HoverTooltip extends StatelessWidget {
+  const _HoverTooltip({
+    required this.info,
+    required this.viewWidth,
+    required this.colors,
+  });
+
+  final _HoverInfo info;
+  final double viewWidth;
+  final QAppColors colors;
+
+  String get _label {
+    final v = info.duration;
+    final n = v == v.roundToDouble() ? v.toInt().toString() : v.toString();
+    return '$n µs';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = info.isHi ? colors.success : colors.danger;
+    const estWidth = 78.0;
+    const estHeight = 26.0;
+
+    var left = info.localX + 14;
+    if (viewWidth > 0 && left + estWidth > viewWidth) {
+      left = info.localX - estWidth - 14;
+    }
+    if (left < 4) left = 4;
+    var top = info.localY - estHeight - 10;
+    if (top < 4) top = info.localY + 16;
+
+    return Positioned(
+      left: left,
+      top: top,
+      child: IgnorePointer(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(6),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.25),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                info.isHi ? Icons.arrow_upward : Icons.arrow_downward,
+                size: 12,
+                color: Colors.white,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                _label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  fontFeatures: [FontFeature.tabularFigures()],
+                ),
+              ),
+            ],
           ),
         ),
       ),

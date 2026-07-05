@@ -15,7 +15,7 @@ class PlotController extends ChangeNotifier {
   double get left => _left;
   double get viewWidth => _viewWidth;
 
-  static const double maxZoom = 600;
+  static const double maxZoom = 700;
 
   bool get canPan => _zoom > 1.0001;
 

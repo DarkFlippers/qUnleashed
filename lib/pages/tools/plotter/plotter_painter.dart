@@ -178,13 +178,11 @@ class PulsePlotterPainter extends CustomPainter {
       }
 
       final w = x * ((width * k) / dataWidth);
+      final labelX = (prevX + x / 2) * sf + tx;
       if (w > _fontSize * 4) {
-        _text(
-          canvas,
-          _label(x),
-          (prevX + x / 2) * sf + tx,
-          height / 2,
-        );
+        _text(canvas, _label(x), labelX, height / 2);
+      } else if (w > _fontSize * 0.8) {
+        _textVertical(canvas, _label(x), labelX, height / 2);
       }
 
       if (pulseInOneX <= _breakpointPulseInOneX &&
@@ -364,6 +362,24 @@ class PulsePlotterPainter extends CustomPainter {
       textDirection: TextDirection.ltr,
     )..layout();
     tp.paint(canvas, Offset(cx - tp.width / 2, cy - tp.height / 2));
+  }
+
+  void _textVertical(Canvas canvas, String text, double cx, double cyCenter) {
+    if (!cx.isFinite || !cyCenter.isFinite) return;
+    const lineStep = _fontSize + 2;
+    final total = text.length * lineStep;
+    var y = cyCenter - total / 2;
+    for (final ch in text.split('')) {
+      final tp = TextPainter(
+        text: TextSpan(
+          text: ch,
+          style: TextStyle(color: palette.fontColor, fontSize: _fontSize),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      tp.paint(canvas, Offset(cx - tp.width / 2, y + (lineStep - tp.height) / 2));
+      y += lineStep;
+    }
   }
 
   String _label(double v) =>
