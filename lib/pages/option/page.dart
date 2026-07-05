@@ -35,8 +35,8 @@ class _NotificationsCard extends StatefulWidget {
 }
 
 class _NotificationsCardState extends State<_NotificationsCard> {
+  bool _enabled = true;
   bool _devEnabled = false;
-  bool _busy = false;
 
   @override
   void initState() {
@@ -45,17 +45,24 @@ class _NotificationsCardState extends State<_NotificationsCard> {
   }
 
   Future<void> _load() async {
-    final enabled = await PushService.instance.isDevUpdatesEnabled();
-    if (mounted) setState(() => _devEnabled = enabled);
+    final enabled = await PushService.instance.isNotificationsEnabled();
+    final dev = await PushService.instance.isDevUpdatesEnabled();
+    if (mounted) {
+      setState(() {
+        _enabled = enabled;
+        _devEnabled = dev;
+      });
+    }
   }
 
-  Future<void> _setDev(bool value) async {
-    setState(() {
-      _devEnabled = value;
-      _busy = true;
-    });
-    await PushService.instance.setDevUpdatesEnabled(value);
-    if (mounted) setState(() => _busy = false);
+  void _setEnabled(bool value) {
+    setState(() => _enabled = value);
+    PushService.instance.setNotificationsEnabled(value);
+  }
+
+  void _setDev(bool value) {
+    setState(() => _devEnabled = value);
+    PushService.instance.setDevUpdatesEnabled(value);
   }
 
   @override
@@ -75,18 +82,22 @@ class _NotificationsCardState extends State<_NotificationsCard> {
               ),
             ),
           _NotificationRow(
-            title: 'Release updates',
-            subtitle: 'Unleashed and official releases. Always on.',
-            trailing: Icon(Icons.check_circle, color: colors.success, size: 22),
+            title: 'Enable notifications',
+            subtitle: 'Unleashed and official firmware releases.',
+            trailing: Switch(
+              value: _enabled,
+              activeThumbColor: colors.accent,
+              onChanged: supported ? _setEnabled : null,
+            ),
           ),
           Divider(height: 1, color: colors.divider, indent: 14, endIndent: 14),
           _NotificationRow(
             title: 'Development builds',
-            subtitle: 'Get notified about new dev channel builds.',
+            subtitle: 'Also get notified about new dev channel builds.',
             trailing: Switch(
               value: _devEnabled,
               activeThumbColor: colors.accent,
-              onChanged: (supported && !_busy) ? _setDev : null,
+              onChanged: (supported && _enabled) ? _setDev : null,
             ),
           ),
         ],

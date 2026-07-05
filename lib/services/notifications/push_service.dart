@@ -15,14 +15,16 @@ class PushTopics {
   static const unlDev = 'unl_dev';
   static const ofwDev = 'ofw_dev';
 
-  static const mandatory = [unlRelease, ofwRelease];
+  static const release = [unlRelease, ofwRelease];
   static const dev = [unlDev, ofwDev];
+  static const all = [...release, ...dev];
 }
 
 class PushService {
   PushService._();
   static final PushService instance = PushService._();
 
+  static const _prefEnabled = 'push.notifications_enabled';
   static const _prefDevUpdates = 'push.dev_updates_enabled';
   static const _androidChannelId = 'firmware_updates';
 
@@ -53,12 +55,20 @@ class PushService {
       sound: true,
     );
 
-    for (final topic in PushTopics.mandatory) {
-      await messaging.subscribeToTopic(topic);
-    }
-    await _applyDevSubscription(await isDevUpdatesEnabled());
+    await _applySubscriptions();
 
     FirebaseMessaging.onMessage.listen(_showForeground);
+  }
+
+  Future<bool> isNotificationsEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_prefEnabled) ?? true;
+  }
+
+  Future<void> setNotificationsEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_prefEnabled, enabled);
+    if (isSupported) await _applySubscriptions();
   }
 
   Future<bool> isDevUpdatesEnabled() async {
@@ -69,13 +79,22 @@ class PushService {
   Future<void> setDevUpdatesEnabled(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_prefDevUpdates, enabled);
-    if (isSupported) await _applyDevSubscription(enabled);
+    if (isSupported) await _applySubscriptions();
   }
 
-  Future<void> _applyDevSubscription(bool enabled) async {
+  Future<void> _applySubscriptions() async {
     final messaging = FirebaseMessaging.instance;
-    for (final topic in PushTopics.dev) {
-      if (enabled) {
+    final enabled = await isNotificationsEnabled();
+    final devEnabled = await isDevUpdatesEnabled();
+
+    final active = <String>{};
+    if (enabled) {
+      active.addAll(PushTopics.release);
+      if (devEnabled) active.addAll(PushTopics.dev);
+    }
+
+    for (final topic in PushTopics.all) {
+      if (active.contains(topic)) {
         await messaging.subscribeToTopic(topic);
       } else {
         await messaging.unsubscribeFromTopic(topic);
