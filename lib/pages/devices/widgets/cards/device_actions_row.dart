@@ -6,6 +6,7 @@ import '../../../../theme/theme.dart';
 class DeviceActionsRow extends StatelessWidget {
   const DeviceActionsRow({
     super.key,
+    required this.isBle,
     required this.onDisconnect,
     required this.onPlayAlert,
     required this.onReboot,
@@ -16,6 +17,7 @@ class DeviceActionsRow extends StatelessWidget {
   static const double _contentSpacing = 10;
   static const double _minWideButtonWidth = 170;
 
+  final bool isBle;
   final VoidCallback onDisconnect;
   final VoidCallback? onPlayAlert;
   final VoidCallback onReboot;
@@ -37,7 +39,7 @@ class DeviceActionsRow extends StatelessWidget {
               child: SizedBox(
                 height: buttonHeight,
                 child: _DeviceActionButton(
-                  iconAsset: 'assets/ic/device/bluetooth-off.svg',
+                  icon: isBle ? Icons.bluetooth_disabled : Icons.usb_off,
                   label: 'Disconnect',
                   iconColor: colors.accent,
                   textColor: colors.textPrimary,
@@ -87,15 +89,17 @@ class DeviceActionsRow extends StatelessWidget {
 
 class _DeviceActionButton extends StatelessWidget {
   const _DeviceActionButton({
-    required this.iconAsset,
+    this.iconAsset,
+    this.icon,
     required this.label,
     required this.iconColor,
     required this.textColor,
     required this.horizontal,
     required this.onTap,
-  });
+  }) : assert(iconAsset != null || icon != null);
 
-  final String iconAsset;
+  final String? iconAsset;
+  final IconData? icon;
   final String label;
   final Color iconColor;
   final Color textColor;
@@ -143,10 +147,12 @@ class _DeviceActionButton extends StatelessWidget {
     return SizedBox(
       width: DeviceActionsRow._iconSize,
       height: DeviceActionsRow._iconSize,
-      child: SvgPicture.asset(
-        iconAsset,
-        colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
-      ),
+      child: iconAsset != null
+          ? SvgPicture.asset(
+              iconAsset!,
+              colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
+            )
+          : Icon(icon, size: DeviceActionsRow._iconSize, color: iconColor),
     );
   }
 

@@ -49,22 +49,12 @@ class _ConnectActionRow extends StatelessWidget {
         child: Row(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(12, 12, 10, 12),
-              child: SizedBox(
-                width: 44,
-                height: 24,
-                child: Row(
-                  children: [
-                    Icon(Icons.usb, size: 22, color: color),
-                    const SizedBox(width: 2),
-                    Icon(Icons.bluetooth, size: 20, color: color),
-                  ],
-                ),
-              ),
+              padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+              child: Icon(Icons.search, size: 24, color: color),
             ),
             Expanded(
               child: Text(
-                'Connect',
+                'Search',
                 style: TextStyle(
                   color: color,
                   fontSize: 14,

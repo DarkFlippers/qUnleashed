@@ -185,6 +185,7 @@ class _ConnectedContent extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14),
           child: DeviceActionsRow(
+            isBle: ctrl.device?.isBle == true,
             onDisconnect: () => ctrl.disconnect(),
             onPlayAlert: ctrl.alertPlaying ? null : () => _playAlert(context),
             onReboot: () => ctrl.reboot(),
