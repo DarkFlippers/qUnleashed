@@ -3,7 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flipperlib/flipperlib.dart' hide DateTime;
 
-import 'codec.dart';
+import '../../../components/codec/bm.dart';
 
 /// Shared virtual-display session for Pixel Draw. Started once when the user
 /// enters the manager or the editor and stopped only after both are left.
@@ -193,7 +193,7 @@ class VirtualDisplaySession {
       ..start();
     _client
         .sendRpc(
-          Main(guiScreenFrame: ScreenFrame(data: PaintCodec.encodeXBM(frame))),
+          Main(guiScreenFrame: ScreenFrame(data: BmCodec.encodeXBM(frame))),
           priority: FlipperRequestPriority.foreground,
         )
         .then<void>(

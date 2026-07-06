@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
-import '../../tools/paint/codec.dart';
+import '../../../components/codec/bm.dart';
 
 const _manifestMagic = 0x52474448;
 
@@ -72,7 +72,7 @@ FapIconData? extract(Uint8List fapBytes) => extractFapIcon(fapBytes);
 /// decoded or is too short for a [fapIconWidth]×[fapIconHeight] image.
 Uint8List? _decodeIcon(Uint8List field) {
   try {
-    final xbm = PaintCodec.decodeBmFile(field);
+    final xbm = BmCodec.decodeBmFile(field);
     if (xbm == null) return null;
     final rowBytes = (fapIconWidth + 7) >> 3;
     if (xbm.length < rowBytes * fapIconHeight) return null;

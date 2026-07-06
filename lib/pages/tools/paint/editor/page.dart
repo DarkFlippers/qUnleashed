@@ -11,7 +11,7 @@ import '../../../../services/repository/app.dart';
 import '../../../../theme/theme.dart';
 import '../../../../widgets/notification.dart';
 import '../../remote/desktop/gif_encoder.dart';
-import '../codec.dart';
+import '../../../../components/codec/bm.dart';
 import '../constants.dart';
 import '../dolphin_animation.dart';
 import '../project.dart';
@@ -284,7 +284,7 @@ class _PaintPageState extends State<PaintPage> {
     final dest = await _pickDestination();
     if (dest == null) return;
     try {
-      final png = await PaintCodec.frameToPng(_ctrl.frames[_ctrl.currentFrame]);
+      final png = await BmCodec.frameToPng(_ctrl.frames[_ctrl.currentFrame]);
       final file = io.File(pathJoin([dest, '$name.png']));
       await file.writeAsBytes(png, flush: true);
       if (!mounted) return;
@@ -538,7 +538,7 @@ class _PaintPageState extends State<PaintPage> {
     if (bd == null) return;
 
     final pix = Uint8List(kCanvasWidth * kCanvasHeight);
-    PaintCodec.rgbaToPixels(bd.buffer.asUint8List(), pix);
+    BmCodec.rgbaToPixels(bd.buffer.asUint8List(), pix);
     _ctrl.importSinglePixelFrame(pix);
 
     if (!mounted) return;
@@ -562,7 +562,7 @@ class _PaintPageState extends State<PaintPage> {
       img.dispose();
       if (bd == null) continue;
       final pix = Uint8List(kCanvasWidth * kCanvasHeight);
-      PaintCodec.rgbaToPixels(bd.buffer.asUint8List(), pix);
+      BmCodec.rgbaToPixels(bd.buffer.asUint8List(), pix);
       newFrames.add(pix);
     }
     if (newFrames.isEmpty) return;
@@ -582,15 +582,15 @@ class _PaintPageState extends State<PaintPage> {
       final metaText = await metaFile.readAsString();
 
       final passiveFrames =
-          PaintCodec.parseDolphinInt(metaText, 'Passive frames') ?? 0;
+          BmCodec.parseDolphinInt(metaText, 'Passive frames') ?? 0;
       final activeFrames =
-          PaintCodec.parseDolphinInt(metaText, 'Active frames') ?? 0;
+          BmCodec.parseDolphinInt(metaText, 'Active frames') ?? 0;
 
       // Frame dimensions can be smaller than our fixed canvas (e.g. 128×54).
       final width =
-          PaintCodec.parseDolphinInt(metaText, 'Width') ?? kCanvasWidth;
+          BmCodec.parseDolphinInt(metaText, 'Width') ?? kCanvasWidth;
       final height =
-          PaintCodec.parseDolphinInt(metaText, 'Height') ?? kCanvasHeight;
+          BmCodec.parseDolphinInt(metaText, 'Height') ?? kCanvasHeight;
       final expectedBytes = ((width + 7) >> 3) * height;
 
       final orderMatch = RegExp(
@@ -615,10 +615,10 @@ class _PaintPageState extends State<PaintPage> {
           continue;
         }
         final bmData = await bmFile.readAsBytes();
-        final xbm = PaintCodec.decodeBmFile(bmData);
+        final xbm = BmCodec.decodeBmFile(bmData);
         if (xbm == null || xbm.length < expectedBytes) continue;
         newFrames.add(
-          PaintCodec.xbmToPixels(xbm, srcWidth: width, srcHeight: height),
+          BmCodec.xbmToPixels(xbm, srcWidth: width, srcHeight: height),
         );
       }
 
@@ -633,10 +633,10 @@ class _PaintPageState extends State<PaintPage> {
 
       _ctrl.importFramesFromPixels(
         newFrames,
-        fr: PaintCodec.parseDolphinInt(metaText, 'Frame rate') ?? 2,
-        dur: PaintCodec.parseDolphinInt(metaText, 'Duration') ?? 3600,
-        ac: PaintCodec.parseDolphinInt(metaText, 'Active cycles') ?? 1,
-        acd: PaintCodec.parseDolphinInt(metaText, 'Active cooldown') ?? 7,
+        fr: BmCodec.parseDolphinInt(metaText, 'Frame rate') ?? 2,
+        dur: BmCodec.parseDolphinInt(metaText, 'Duration') ?? 3600,
+        ac: BmCodec.parseDolphinInt(metaText, 'Active cycles') ?? 1,
+        acd: BmCodec.parseDolphinInt(metaText, 'Active cooldown') ?? 7,
         pfc: passiveFrames,
       );
 
@@ -655,7 +655,7 @@ class _PaintPageState extends State<PaintPage> {
   }
 
   Future<void> _importBmSingle(Uint8List data) async {
-    final xbm = PaintCodec.decodeBmFile(data);
+    final xbm = BmCodec.decodeBmFile(data);
     // Flipper bitmaps are 128px wide (16 bytes/row); infer the height from the
     // decoded size so non-64px-tall frames (e.g. 128×54) still import.
     const rowBytes = kCanvasWidth ~/ 8;
@@ -669,7 +669,7 @@ class _PaintPageState extends State<PaintPage> {
     }
     final height = xbm.length ~/ rowBytes;
     _ctrl.importSinglePixelFrame(
-      PaintCodec.xbmToPixels(xbm, srcWidth: kCanvasWidth, srcHeight: height),
+      BmCodec.xbmToPixels(xbm, srcWidth: kCanvasWidth, srcHeight: height),
     );
     if (!mounted) return;
     context.showNotification(

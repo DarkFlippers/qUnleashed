@@ -56,6 +56,11 @@ class _StorageUsageCardsState extends State<StorageUsageCards> {
 
   void _subscribe() {
     _sub?.cancel();
+    // Seed from the session snapshot: storage.* is fetched once at connect and
+    // never re-emits on a timer, so a screen opened after an automatic USB link
+    // would otherwise stay blank until the next storage mutation.
+    final snapshot = _client.deviceInfoWatchSnapshot;
+    if (snapshot.isNotEmpty) _info = {..._info, ...snapshot};
     _sub = _client.deviceInfoUpdates.listen(
       (data) {
         if (!mounted || data.isEmpty) return;

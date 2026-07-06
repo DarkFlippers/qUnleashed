@@ -3,15 +3,17 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import '../../../theme/colors/display.dart';
-import 'constants.dart';
+import '../../theme/colors/display.dart';
 
-abstract final class PaintCodec {
+const int kBmWidth = 128;
+const int kBmHeight = 64;
+
+abstract final class BmCodec {
   static Uint8List encodeXBM(Uint8List pixels) {
     final data = Uint8List(1024);
-    for (int y = 0; y < kCanvasHeight; y++) {
-      for (int x = 0; x < kCanvasWidth; x++) {
-        if (pixels[y * kCanvasWidth + x] != 0) {
+    for (int y = 0; y < kBmHeight; y++) {
+      for (int x = 0; x < kBmWidth; x++) {
+        if (pixels[y * kBmWidth + x] != 0) {
           data[y * 16 + (x ~/ 8)] |= (1 << (x & 7));
         }
       }
@@ -19,27 +21,26 @@ abstract final class PaintCodec {
     return data;
   }
 
-  /// Unpacks a 1bpp XBM buffer into the fixed [kCanvasWidth]×[kCanvasHeight]
-  /// pixel grid, bottom-aligned. The source may be shorter than the canvas
-  /// (e.g. Flipper animations are 128 wide but often 54 tall); the blank
-  /// padding then sits at the top, matching how the device draws them.
-  /// [srcWidth] sets the row stride so frames narrower than 128px unpack
-  /// correctly.
+  /// Unpacks a 1bpp XBM buffer into the fixed [kBmWidth]×[kBmHeight] pixel grid,
+  /// bottom-aligned. The source may be shorter than the canvas (e.g. Flipper
+  /// animations are 128 wide but often 54 tall); the blank padding then sits at
+  /// the top, matching how the device draws them. [srcWidth] sets the row stride
+  /// so frames narrower than 128px unpack correctly.
   static Uint8List xbmToPixels(
     Uint8List xbm, {
-    int srcWidth = kCanvasWidth,
-    int srcHeight = kCanvasHeight,
+    int srcWidth = kBmWidth,
+    int srcHeight = kBmHeight,
   }) {
-    final pixels = Uint8List(kCanvasWidth * kCanvasHeight);
+    final pixels = Uint8List(kBmWidth * kBmHeight);
     final rowBytes = (srcWidth + 7) >> 3;
-    final w = math.min(srcWidth, kCanvasWidth);
-    final h = math.min(srcHeight, kCanvasHeight);
-    final offY = kCanvasHeight - h;
+    final w = math.min(srcWidth, kBmWidth);
+    final h = math.min(srcHeight, kBmHeight);
+    final offY = kBmHeight - h;
     for (int y = 0; y < h; y++) {
       for (int x = 0; x < w; x++) {
         final byteIdx = y * rowBytes + (x >> 3);
         if (byteIdx < xbm.length && (xbm[byteIdx] & (1 << (x & 7))) != 0) {
-          pixels[(y + offY) * kCanvasWidth + x] = 1;
+          pixels[(y + offY) * kBmWidth + x] = 1;
         }
       }
     }
@@ -213,19 +214,18 @@ abstract final class PaintCodec {
     return m != null ? int.tryParse(m.group(1)!) : null;
   }
 
-  /// Decodes a 128×64 monochrome pixel buffer into a [ui.Image] suitable for
-  /// direct rendering (e.g. animated previews). [fg]/[bg] are ARGB colors used
-  /// for set/clear pixels respectively.
-  static Future<ui.Image> frameToImage(
-    Uint8List pixels, {
+  static Future<ui.Image> monochromeToImage(
+    Uint8List pixels,
+    int width,
+    int height, {
     int? fg,
     int? bg,
   }) async {
     final display = DisplayColors.current;
     final fgColor = fg ?? display.foreground.toARGB32();
     final bgColor = bg ?? display.background.toARGB32();
-    final rgba = Uint8List(kCanvasWidth * kCanvasHeight * 4);
-    for (int i = 0; i < kCanvasWidth * kCanvasHeight; i++) {
+    final rgba = Uint8List(width * height * 4);
+    for (int i = 0; i < width * height; i++) {
       final c = pixels[i] != 0 ? fgColor : bgColor;
       rgba[i * 4] = (c >> 16) & 0xFF;
       rgba[i * 4 + 1] = (c >> 8) & 0xFF;
@@ -235,8 +235,92 @@ abstract final class PaintCodec {
     final completer = Completer<ui.Image>();
     ui.decodeImageFromPixels(
       rgba,
-      kCanvasWidth,
-      kCanvasHeight,
+      width,
+      height,
+      ui.PixelFormat.rgba8888,
+      completer.complete,
+    );
+    return completer.future;
+  }
+
+  /// Decodes a 128×64 monochrome pixel buffer into a [ui.Image] suitable for
+  /// direct rendering (e.g. animated previews). [fg]/[bg] are ARGB colors used
+  /// for set/clear pixels respectively.
+  static Future<ui.Image> frameToImage(
+    Uint8List pixels, {
+    int? fg,
+    int? bg,
+  }) => monochromeToImage(pixels, kBmWidth, kBmHeight, fg: fg, bg: bg);
+
+  static Future<ui.Image> statusBarPngToImage(
+    Uint8List png, {
+    int? fg,
+    int? bg,
+  }) async {
+    final codec = await ui.instantiateImageCodec(png);
+    final frame = await codec.getNextFrame();
+    final src = frame.image;
+    final w = src.width;
+    final h = src.height;
+    final bd = await src.toByteData(format: ui.ImageByteFormat.rawRgba);
+    src.dispose();
+
+    final dark = Uint8List(w * h);
+    rgbaToPixels(bd!.buffer.asUint8List(), dark);
+
+    // Flood-fill light pixels reachable from the image border: these sit
+    // *outside* the frame outline and must stay transparent.
+    final outside = Uint8List(w * h);
+    final stack = <int>[];
+    void seed(int x, int y) {
+      if (x < 0 || y < 0 || x >= w || y >= h) return;
+      final i = y * w + x;
+      if (dark[i] != 0 || outside[i] != 0) return;
+      outside[i] = 1;
+      stack.add(i);
+    }
+
+    for (int x = 0; x < w; x++) {
+      seed(x, 0);
+      seed(x, h - 1);
+    }
+    for (int y = 0; y < h; y++) {
+      seed(0, y);
+      seed(w - 1, y);
+    }
+    while (stack.isNotEmpty) {
+      final i = stack.removeLast();
+      final x = i % w;
+      final y = i ~/ w;
+      seed(x - 1, y);
+      seed(x + 1, y);
+      seed(x, y - 1);
+      seed(x, y + 1);
+    }
+
+    final display = DisplayColors.current;
+    final fgColor = fg ?? display.foreground.toARGB32();
+    final bgColor = bg ?? display.background.toARGB32();
+    final rgba = Uint8List(w * h * 4);
+    for (int i = 0; i < w * h; i++) {
+      final int c;
+      if (dark[i] != 0) {
+        c = fgColor;
+      } else if (outside[i] != 0) {
+        c = 0x00000000;
+      } else {
+        c = bgColor;
+      }
+      rgba[i * 4] = (c >> 16) & 0xFF;
+      rgba[i * 4 + 1] = (c >> 8) & 0xFF;
+      rgba[i * 4 + 2] = c & 0xFF;
+      rgba[i * 4 + 3] = (c >> 24) & 0xFF;
+    }
+    final completer = Completer<ui.Image>();
+    ui.decodeImageFromPixels(
+      rgba,
+      w,
+      h,
       ui.PixelFormat.rgba8888,
       completer.complete,
     );
@@ -244,10 +328,10 @@ abstract final class PaintCodec {
   }
 
   static Future<Uint8List> frameToPng(Uint8List pixels) async {
-    final rgba = Uint8List(kCanvasWidth * kCanvasHeight * 4);
+    final rgba = Uint8List(kBmWidth * kBmHeight * 4);
     const bg = 0xFFDFDFDF;
     const fg = 0xFF000000;
-    for (int i = 0; i < kCanvasWidth * kCanvasHeight; i++) {
+    for (int i = 0; i < kBmWidth * kBmHeight; i++) {
       final c = pixels[i] != 0 ? fg : bg;
       rgba[i * 4] = (c >> 16) & 0xFF;
       rgba[i * 4 + 1] = (c >> 8) & 0xFF;
@@ -255,7 +339,7 @@ abstract final class PaintCodec {
       rgba[i * 4 + 3] = (c >> 24) & 0xFF;
     }
     final completer = Completer<ui.Image>();
-    ui.decodeImageFromPixels(rgba, kCanvasWidth, kCanvasHeight, ui.PixelFormat.rgba8888, completer.complete);
+    ui.decodeImageFromPixels(rgba, kBmWidth, kBmHeight, ui.PixelFormat.rgba8888, completer.complete);
     final img = await completer.future;
     final bd = await img.toByteData(format: ui.ImageByteFormat.png);
     img.dispose();

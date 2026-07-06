@@ -3,7 +3,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import '../../../services/repository/app.dart';
-import 'codec.dart';
+import '../../../components/codec/bm.dart';
 import 'constants.dart';
 
 /// One Flipper dolphin animation: a folder containing `meta.txt` plus
@@ -69,9 +69,9 @@ class DolphinAnimation {
   Future<Uint8List?> loadFramePixels(int fileIndex) async {
     final bm = io.File(pathJoin([dirPath, 'frame_$fileIndex.bm']));
     if (await bm.exists()) {
-      final xbm = PaintCodec.decodeBmFile(await bm.readAsBytes());
+      final xbm = BmCodec.decodeBmFile(await bm.readAsBytes());
       if (xbm == null || xbm.length < 16) return null;
-      return PaintCodec.xbmToPixels(xbm, srcWidth: width, srcHeight: height);
+      return BmCodec.xbmToPixels(xbm, srcWidth: width, srcHeight: height);
     }
     return null;
   }
@@ -84,7 +84,7 @@ class DolphinAnimation {
       if (idx < 0) continue;
       final pixels = await loadFramePixels(idx);
       if (pixels == null) continue;
-      out[idx] = await PaintCodec.frameToImage(pixels);
+      out[idx] = await BmCodec.frameToImage(pixels);
     }
     return out;
   }
@@ -114,8 +114,8 @@ abstract final class DolphinAnimationParser {
     try {
       final text = await metaFile.readAsString();
 
-      final passive = PaintCodec.parseDolphinInt(text, 'Passive frames') ?? 0;
-      final active = PaintCodec.parseDolphinInt(text, 'Active frames') ?? 0;
+      final passive = BmCodec.parseDolphinInt(text, 'Passive frames') ?? 0;
+      final active = BmCodec.parseDolphinInt(text, 'Active frames') ?? 0;
 
       final orderMatch = RegExp(
         r'^Frames order: (.+)$',
@@ -139,14 +139,14 @@ abstract final class DolphinAnimationParser {
         name: name,
         dirPath: dir.path,
         metaPath: metaFile.path,
-        width: PaintCodec.parseDolphinInt(text, 'Width') ?? kCanvasWidth,
-        height: PaintCodec.parseDolphinInt(text, 'Height') ?? kCanvasHeight,
+        width: BmCodec.parseDolphinInt(text, 'Width') ?? kCanvasWidth,
+        height: BmCodec.parseDolphinInt(text, 'Height') ?? kCanvasHeight,
         passiveFrames: passive,
         activeFrames: active,
-        frameRate: PaintCodec.parseDolphinInt(text, 'Frame rate') ?? 2,
-        duration: PaintCodec.parseDolphinInt(text, 'Duration') ?? 3600,
-        activeCycles: PaintCodec.parseDolphinInt(text, 'Active cycles') ?? 1,
-        activeCooldown: PaintCodec.parseDolphinInt(text, 'Active cooldown') ?? 7,
+        frameRate: BmCodec.parseDolphinInt(text, 'Frame rate') ?? 2,
+        duration: BmCodec.parseDolphinInt(text, 'Duration') ?? 3600,
+        activeCycles: BmCodec.parseDolphinInt(text, 'Active cycles') ?? 1,
+        activeCooldown: BmCodec.parseDolphinInt(text, 'Active cooldown') ?? 7,
         framesOrder: order,
         frameFileCount: maxIdx + 1,
       );
@@ -209,10 +209,10 @@ Future<void> writeDolphinFolder(
   await io.File(pathJoin([dir.path, 'meta.txt'])).writeAsString(meta);
 
   for (int i = 0; i < n; i++) {
-    final xbm = PaintCodec.encodeXBM(frames[i]);
+    final xbm = BmCodec.encodeXBM(frames[i]);
     final bm = compress
-        ? PaintCodec.encodeBmCompressed(xbm)
-        : PaintCodec.encodeBmUncompressed(xbm);
+        ? BmCodec.encodeBmCompressed(xbm)
+        : BmCodec.encodeBmUncompressed(xbm);
     await io.File(pathJoin([dir.path, 'frame_$i.bm'])).writeAsBytes(bm);
   }
 }

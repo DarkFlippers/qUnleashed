@@ -81,4 +81,6 @@ flutter:
     - assets/pic/device/screen/
     - assets/pic/mifare/
     - assets/pic/status/
+    - assets/anim/
+    - assets/anim/L3_Fireplace_128x64/
     - LICENSE
