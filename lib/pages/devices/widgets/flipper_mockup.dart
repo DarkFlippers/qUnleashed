@@ -59,7 +59,7 @@ class FlipperMockupWidget extends StatelessWidget {
                   child: RepaintBoundary(
                     child: dfu
                         ? const _MockupRecoveryScreen()
-                        : const _MockupInnerScreen(),
+                        : _MockupInnerScreen(active: active),
                   ),
                 ),
               ),
@@ -243,7 +243,9 @@ String? _entryValue(List<MapEntry<String, String>> entries, String key) {
 }
 
 class _MockupInnerScreen extends StatefulWidget {
-  const _MockupInnerScreen();
+  const _MockupInnerScreen({required this.active});
+
+  final bool active;
 
   @override
   State<_MockupInnerScreen> createState() => _MockupInnerScreenState();
@@ -255,6 +257,9 @@ class _MockupInnerScreenState extends State<_MockupInnerScreen> {
   static const _statusBarHeight = 11;
   static const _screenBg = Color(0xFFFF8200);
   static const _screenFg = Color(0xFF000000);
+  static const _deadZonePx = 2;
+  static const _liveWidthFactor = (kBmWidth - _deadZonePx * 2) / kBmWidth;
+  static const _liveHeightFactor = (kBmHeight - _deadZonePx * 2) / kBmHeight;
 
   List<ui.Image> _frames = const [];
   ui.Image? _statusBar;
@@ -265,7 +270,29 @@ class _MockupInnerScreenState extends State<_MockupInnerScreen> {
   @override
   void initState() {
     super.initState();
-    _load();
+    if (widget.active) _load();
+  }
+
+  @override
+  void didUpdateWidget(_MockupInnerScreen old) {
+    super.didUpdateWidget(old);
+    if (widget.active && !old.active) {
+      _load();
+    } else if (!widget.active && old.active) {
+      _clear();
+    }
+  }
+
+  void _clear() {
+    _timer?.cancel();
+    _timer = null;
+    _disposeFrames(_frames);
+    _statusBar?.dispose();
+    setState(() {
+      _frames = const [];
+      _statusBar = null;
+      _cursor = 0;
+    });
   }
 
   Future<void> _load() async {
@@ -286,7 +313,7 @@ class _MockupInnerScreenState extends State<_MockupInnerScreen> {
       statusBar = null;
     }
 
-    if (!mounted) {
+    if (!mounted || !widget.active) {
       _disposeFrames(frames);
       statusBar?.dispose();
       return;
@@ -326,31 +353,38 @@ class _MockupInnerScreenState extends State<_MockupInnerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (!widget.active) return const SizedBox.expand();
     return ColoredBox(
       color: _screenBg,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          if (_frames.isNotEmpty)
-            RawImage(
-              image: _frames[_cursor % _frames.length],
-              fit: BoxFit.fill,
-              filterQuality: FilterQuality.none,
-            ),
-          if (_statusBar != null)
-            Align(
-              alignment: Alignment.topCenter,
-              child: FractionallySizedBox(
-                widthFactor: 1,
-                heightFactor: _statusBarHeight / kBmHeight,
-                child: RawImage(
-                  image: _statusBar,
+      child: Center(
+        child: FractionallySizedBox(
+          widthFactor: _liveWidthFactor,
+          heightFactor: _liveHeightFactor,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (_frames.isNotEmpty)
+                RawImage(
+                  image: _frames[_cursor % _frames.length],
                   fit: BoxFit.fill,
                   filterQuality: FilterQuality.none,
                 ),
-              ),
-            ),
-        ],
+              if (_statusBar != null)
+                Align(
+                  alignment: Alignment.topCenter,
+                  child: FractionallySizedBox(
+                    widthFactor: 1,
+                    heightFactor: _statusBarHeight / kBmHeight,
+                    child: RawImage(
+                      image: _statusBar,
+                      fit: BoxFit.fill,
+                      filterQuality: FilterQuality.none,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }
