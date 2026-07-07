@@ -17,10 +17,11 @@ import 'models/manifest.dart';
 const String kAppsRoot = '/ext/apps';
 const String kManifestsRoot = '/ext/apps_manifests';
 const Duration kPreinstalledScanDelay = Duration(milliseconds: 100);
+const Duration kTaskCooldown = Duration(seconds: 1);
 
 enum AppActionType { install, update, delete }
 
-enum AppActionStage { download, upload }
+enum AppActionStage { queued, download, upload }
 
 @immutable
 class AppAction {
@@ -214,25 +215,96 @@ class AppsInstallService extends ChangeNotifier {
     _manifestSizes.clear();
     _preinstalledAliases.clear();
     _preinstalledPaths.clear();
+    final queued = List<_AppTask>.of(_taskQueue);
+    _taskQueue.clear();
+    for (final task in queued) {
+      _actions.remove(task.alias);
+      if (!task.done.isCompleted) task.done.complete(false);
+    }
     notifyListeners();
+  }
+
+  // Device actions run strictly one at a time, with a cooldown after each —
+  // concurrent multi-frame uploads interleaved with delete/rename commands
+  // starve the firmware's flow-control credit and drop the link.
+  final List<_AppTask> _taskQueue = [];
+  bool _taskWorkerRunning = false;
+  final Stopwatch _sinceLastTask = Stopwatch();
+
+  Future<bool> _enqueueTask(String alias, Future<bool> Function() run) {
+    final task = _AppTask(alias, run);
+    _taskQueue.add(task);
+    unawaited(_drainTaskQueue());
+    return task.done.future;
+  }
+
+  Future<void> _drainTaskQueue() async {
+    if (_taskWorkerRunning) return;
+    _taskWorkerRunning = true;
+    try {
+      while (_taskQueue.isNotEmpty) {
+        if (_sinceLastTask.isRunning) {
+          final wait = kTaskCooldown - _sinceLastTask.elapsed;
+          if (wait > Duration.zero) await Future<void>.delayed(wait);
+          _sinceLastTask
+            ..stop()
+            ..reset();
+        }
+        if (_taskQueue.isEmpty) break;
+        final task = _taskQueue.removeAt(0);
+        var ok = false;
+        try {
+          ok = await task.run();
+        } catch (e) {
+          LogService.log('[AppsInstall] task "${task.alias}" failed: $e');
+          if (_actions.remove(task.alias) != null) notifyListeners();
+        }
+        if (!task.done.isCompleted) task.done.complete(ok);
+        _sinceLastTask
+          ..reset()
+          ..start();
+      }
+    } finally {
+      _taskWorkerRunning = false;
+    }
   }
 
   Future<bool> installOrUpdate(
     AppCard app, {
     AppCategory? category,
     AppDetail? detail,
-  }) async {
-    if (!isReady || app.alias.isEmpty) return false;
+  }) {
+    if (!isReady || app.alias.isEmpty) return Future.value(false);
+    if (_actions.containsKey(app.alias)) return Future.value(false);
 
     final wasInstalled =
         _installedAliases.contains(app.alias) ||
         _preinstalledAliases.contains(app.alias);
-    final action = AppAction(
+    _actions[app.alias] = AppAction(
       appId: app.alias,
       type: wasInstalled ? AppActionType.update : AppActionType.install,
+      stage: AppActionStage.queued,
     );
-    _actions[app.alias] = action;
     notifyListeners();
+    return _enqueueTask(
+      app.alias,
+      () => _performInstall(app, category: category, detail: detail),
+    );
+  }
+
+  Future<bool> _performInstall(
+    AppCard app, {
+    AppCategory? category,
+    AppDetail? detail,
+  }) async {
+    final action = _actions[app.alias];
+    if (action == null) return false;
+    if (!isReady) {
+      _actions.remove(app.alias);
+      notifyListeners();
+      return false;
+    }
+    _setActionState(app.alias, stage: AppActionStage.download, progress: 0);
 
     final existingManifest = _installedManifests[app.alias];
     final installDir = await _resolveInstallDir(
@@ -313,7 +385,9 @@ class AppsInstallService extends ChangeNotifier {
       return true;
     } catch (e) {
       LogService.log('[AppsInstall] install ${app.alias} failed: $e');
-      _actions[app.alias] = action.copyWith(error: '$e');
+      _actions[app.alias] = (_actions[app.alias] ?? action).copyWith(
+        error: '$e',
+      );
       notifyListeners();
       await Future<void>.delayed(const Duration(seconds: 2));
       _actions.remove(app.alias);
@@ -322,11 +396,27 @@ class AppsInstallService extends ChangeNotifier {
     }
   }
 
-  Future<bool> uninstall(AppCard app, {AppCategory? category}) async {
-    if (!isReady || app.alias.isEmpty) return false;
-    final action = AppAction(appId: app.alias, type: AppActionType.delete);
-    _actions[app.alias] = action;
+  Future<bool> uninstall(AppCard app, {AppCategory? category}) {
+    if (!isReady || app.alias.isEmpty) return Future.value(false);
+    if (_actions.containsKey(app.alias)) return Future.value(false);
+    _actions[app.alias] = AppAction(
+      appId: app.alias,
+      type: AppActionType.delete,
+      stage: AppActionStage.queued,
+    );
     notifyListeners();
+    return _enqueueTask(app.alias, () => _performUninstall(app, category: category));
+  }
+
+  Future<bool> _performUninstall(AppCard app, {AppCategory? category}) async {
+    final action = _actions[app.alias];
+    if (action == null) return false;
+    if (!isReady) {
+      _actions.remove(app.alias);
+      notifyListeners();
+      return false;
+    }
+    _setActionState(app.alias, stage: AppActionStage.download);
     try {
       final fimPath = '$kManifestsRoot/${app.alias}.fim';
       final fapPath =
@@ -345,7 +435,9 @@ class AppsInstallService extends ChangeNotifier {
       return true;
     } catch (e) {
       LogService.log('[AppsInstall] uninstall ${app.alias} failed: $e');
-      _actions[app.alias] = action.copyWith(error: '$e');
+      _actions[app.alias] = (_actions[app.alias] ?? action).copyWith(
+        error: '$e',
+      );
       notifyListeners();
       await Future<void>.delayed(const Duration(seconds: 2));
       _actions.remove(app.alias);
@@ -781,4 +873,12 @@ class AppsInstallService extends ChangeNotifier {
     return 'Misc';
   }
 
+}
+
+class _AppTask {
+  _AppTask(this.alias, this.run);
+
+  final String alias;
+  final Future<bool> Function() run;
+  final Completer<bool> done = Completer<bool>();
 }

@@ -43,6 +43,15 @@ class _AppsPageState extends State<AppsPage> {
     }
   }
 
+  void _cycleFilter() {
+    final next = switch (_ctrl.filter) {
+      AppsCatalogFilter.all => AppsCatalogFilter.installed,
+      AppsCatalogFilter.installed => AppsCatalogFilter.updates,
+      AppsCatalogFilter.updates => AppsCatalogFilter.all,
+    };
+    _ctrl.setFilter(next);
+  }
+
   void _onLaunched() {
     Navigator.of(
       context,
@@ -128,7 +137,13 @@ class _AppsPageState extends State<AppsPage> {
                 ),
               ),
               const Spacer(),
-              if (_ctrl.install.isReady)
+              if (_ctrl.filter == AppsCatalogFilter.updates)
+                _UpdateAllButton(
+                  enabled:
+                      _ctrl.install.isReady && _ctrl.updatableApps.isNotEmpty,
+                  onTap: _ctrl.updateAll,
+                )
+              else if (_ctrl.install.isReady)
                 _ScanIconButton(
                   scanning: _ctrl.install.scanning,
                   onTap: () => _ctrl.install.rescanInstalled(),
@@ -188,9 +203,10 @@ class _AppsPageState extends State<AppsPage> {
             children: [
               SortDropdown(value: _ctrl.sort, onChanged: _ctrl.selectSort),
               const SizedBox(width: 8),
-              _InstalledOnlyChip(
-                active: _ctrl.installedOnly,
-                onTap: () => _ctrl.setInstalledOnly(!_ctrl.installedOnly),
+              _FilterChip(
+                filter: _ctrl.filter,
+                updatesCount: _ctrl.updatableApps.length,
+                onTap: _cycleFilter,
               ),
             ],
           ),
@@ -291,22 +307,39 @@ class _AppsPageState extends State<AppsPage> {
   }
 }
 
-class _InstalledOnlyChip extends StatelessWidget {
-  const _InstalledOnlyChip({required this.active, required this.onTap});
+class _FilterChip extends StatelessWidget {
+  const _FilterChip({
+    required this.filter,
+    required this.updatesCount,
+    required this.onTap,
+  });
 
-  final bool active;
+  final AppsCatalogFilter filter;
+  final int updatesCount;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
+    final active = filter != AppsCatalogFilter.all;
+    final background = switch (filter) {
+      AppsCatalogFilter.all => colors.card,
+      AppsCatalogFilter.installed => colors.accent,
+      AppsCatalogFilter.updates => colors.success,
+    };
+    final foreground = active ? colors.onAccent : colors.textMuted;
+    final label = switch (filter) {
+      AppsCatalogFilter.all || AppsCatalogFilter.installed => 'Installed',
+      AppsCatalogFilter.updates =>
+        updatesCount > 0 ? 'Updates ($updatesCount)' : 'Updates',
+    };
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
-          color: active ? colors.accent : colors.card,
+          color: background,
           borderRadius: BorderRadius.circular(22),
         ),
         child: Row(
@@ -316,16 +349,52 @@ class _InstalledOnlyChip extends StatelessWidget {
               'assets/ic/state/installed.svg',
               width: 16,
               height: 16,
-              colorFilter: ColorFilter.mode(
-                active ? colors.onAccent : colors.textMuted,
-                BlendMode.srcIn,
-              ),
+              colorFilter: ColorFilter.mode(foreground, BlendMode.srcIn),
             ),
             const SizedBox(width: 6),
             Text(
-              'Installed',
+              label,
               style: TextStyle(
-                color: active ? colors.onAccent : colors.textMuted,
+                color: foreground,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _UpdateAllButton extends StatelessWidget {
+  const _UpdateAllButton({required this.enabled, required this.onTap});
+
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final color = enabled ? colors.success : colors.textMuted;
+    return GestureDetector(
+      onTap: enabled ? onTap : null,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: colors.card,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: color, width: 1.25),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.system_update_alt, size: 16, color: color),
+            const SizedBox(width: 6),
+            Text(
+              'Update all',
+              style: TextStyle(
+                color: color,
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
               ),

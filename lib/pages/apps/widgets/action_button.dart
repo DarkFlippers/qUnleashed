@@ -130,11 +130,14 @@ class AppActionButton extends StatelessWidget {
   }) {
     final progressState = _ProgressState.resolve(type, stage);
     final isLarge = size == AppActionButtonSize.large;
+    final indeterminate =
+        stage == AppActionStage.queued || type == AppActionType.delete;
     return ProgressButton(
       text: progressState.label,
       color: progressState.color,
-      progress: progress,
-      showPercent: true,
+      progress: indeterminate ? null : progress,
+      indeterminate: indeterminate,
+      showPercent: !indeterminate,
       height: isLarge ? 48 : 32,
       borderRadius: isLarge ? 10 : 8,
       horizontalPadding: isLarge ? 12 : 8,
@@ -308,29 +311,20 @@ class _ProgressState {
   final Color color;
 
   static _ProgressState resolve(AppActionType type, AppActionStage stage) {
-    if (stage == AppActionStage.upload) {
-      return _ProgressState(
-        label: 'UPLOAD',
-        color: switch (type) {
-          AppActionType.update => FlipperOriginalColors.green,
-          AppActionType.delete => FlipperOriginalColors.danger,
-          AppActionType.install => FlipperOriginalColors.accent,
-        },
-      );
-    }
-    return switch (type) {
-      AppActionType.update => _ProgressState(
-          label: 'DOWNLOAD',
-          color: FlipperOriginalColors.green,
-        ),
-      AppActionType.delete => _ProgressState(
-          label: 'DOWNLOAD',
-          color: FlipperOriginalColors.danger,
-        ),
-      AppActionType.install => _ProgressState(
-          label: 'DOWNLOAD',
-          color: FlipperOriginalColors.accent,
-        ),
+    final color = switch (type) {
+      AppActionType.update => FlipperOriginalColors.green,
+      AppActionType.delete => FlipperOriginalColors.danger,
+      AppActionType.install => FlipperOriginalColors.accent,
     };
+    if (stage == AppActionStage.queued) {
+      return _ProgressState(label: 'QUEUED', color: color);
+    }
+    if (type == AppActionType.delete) {
+      return _ProgressState(label: 'DELETE', color: color);
+    }
+    return _ProgressState(
+      label: stage == AppActionStage.upload ? 'UPLOAD' : 'DOWNLOAD',
+      color: color,
+    );
   }
 }

@@ -10,6 +10,8 @@ import 'models/category.dart';
 
 export 'install_service.dart' show AppButtonState;
 
+enum AppsCatalogFilter { all, installed, updates }
+
 class AppsCatalogController extends ChangeNotifier {
   AppsCatalogController({
     AppsCatalogApi? api,
@@ -44,21 +46,43 @@ class AppsCatalogController extends ChangeNotifier {
   String _query = '';
   String get query => _query;
 
-  bool _installedOnly = false;
-  bool get installedOnly => _installedOnly;
+  AppsCatalogFilter _filter = AppsCatalogFilter.all;
+  AppsCatalogFilter get filter => _filter;
 
   final List<AppCard> _apps = [];
   List<AppCard> get apps => List.unmodifiable(_apps);
 
   List<AppCard> get displayedApps {
-    if (!_installedOnly) return List.unmodifiable(_apps);
-    return _apps
-        .where(
-          (app) =>
-              install.isInstalled(app) ||
-              install.buttonState(app) == AppButtonState.update,
-        )
-        .toList(growable: false);
+    switch (_filter) {
+      case AppsCatalogFilter.all:
+        return List.unmodifiable(_apps);
+      case AppsCatalogFilter.installed:
+        return _apps
+            .where(
+              (app) =>
+                  install.isInstalled(app) ||
+                  install.buttonState(app) == AppButtonState.update,
+            )
+            .toList(growable: false);
+      case AppsCatalogFilter.updates:
+        return _apps.where((app) {
+          if (install.buttonState(app) == AppButtonState.update) return true;
+          final action = install.actionFor(app);
+          return action != null && action.type == AppActionType.update;
+        }).toList(growable: false);
+    }
+  }
+
+  List<AppCard> get updatableApps => _apps
+      .where((app) => install.buttonState(app) == AppButtonState.update)
+      .toList(growable: false);
+
+  void updateAll() {
+    for (final app in updatableApps) {
+      unawaited(
+        install.installOrUpdate(app, category: categoryById(app.categoryId)),
+      );
+    }
   }
 
   bool _categoriesLoading = false;
@@ -135,9 +159,9 @@ class AppsCatalogController extends ChangeNotifier {
     refresh();
   }
 
-  void setInstalledOnly(bool value) {
-    if (_installedOnly == value) return;
-    _installedOnly = value;
+  void setFilter(AppsCatalogFilter value) {
+    if (_filter == value) return;
+    _filter = value;
     notifyListeners();
   }
 
