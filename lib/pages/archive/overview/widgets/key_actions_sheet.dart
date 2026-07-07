@@ -14,9 +14,9 @@ import '../../models/pin.dart';
 import '../../map/page.dart';
 import '../controller.dart';
 import '../../emulate/page.dart';
-import '../../сommander/controller.dart';
-import '../../сommander/page.dart';
-import '../../сommander/share_remote_file.dart';
+import '../../browser/controller.dart';
+import '../../browser/page.dart';
+import '../../browser/share_remote_file.dart';
 import '../../models/key.dart';
 import 'actions_sheet.dart';
 
