@@ -1,6 +1,7 @@
 import 'dart:io' as io;
 
 import '../../../config.dart';
+import '../../../services/http/app_http.dart';
 import 'directory.dart';
 
 abstract class FirmwareSource {
@@ -60,31 +61,14 @@ class RemoteFirmwareSource implements FirmwareSource {
     String savePath,
     void Function(double progress) onProgress,
   ) async {
-    final client = io.HttpClient();
-    try {
-      final req = await client.getUrl(Uri.parse(url));
-      req.headers.set(io.HttpHeaders.userAgentHeader, 'qunleashed-app');
-      final res = await req.close();
-      if (res.statusCode != 200) {
-        throw io.HttpException(
-          'Download failed: ${res.statusCode}',
-          uri: Uri.parse(url),
-        );
-      }
-      final contentLength = res.contentLength;
-      final sink = io.File(savePath).openWrite();
-      var received = 0;
-      await for (final chunk in res) {
-        sink.add(chunk);
-        received += chunk.length;
-        if (contentLength > 0) onProgress(received / contentLength);
-      }
-      await sink.flush();
-      await sink.close();
-      if (contentLength <= 0) onProgress(1.0);
-    } finally {
-      client.close();
-    }
+    await AppHttp.downloadToFile(
+      Uri.parse(url),
+      savePath,
+      onProgress: (received, total) {
+        if (total != null && total > 0) onProgress(received / total);
+      },
+    );
+    onProgress(1.0);
   }
 }
 

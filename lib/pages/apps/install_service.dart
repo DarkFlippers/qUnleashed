@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io' as io;
 
 import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flutter/foundation.dart';
 
+import '../../services/http/app_http.dart';
 import '../../services/repository/app.dart';
 import '../archive/overview/fap_icon.dart';
 import 'catalog_api.dart';
@@ -679,19 +679,7 @@ class AppsInstallService extends ChangeNotifier {
 
   Future<Uint8List?> _fetchBytes(String url) async {
     try {
-      final http = io.HttpClient();
-      try {
-        final req = await http.getUrl(Uri.parse(url));
-        final res = await req.close();
-        if (res.statusCode != 200) return null;
-        final bytes = <int>[];
-        await for (final chunk in res) {
-          bytes.addAll(chunk);
-        }
-        return Uint8List.fromList(bytes);
-      } finally {
-        http.close(force: true);
-      }
+      return await AppHttp.getBytes(Uri.parse(url));
     } catch (_) {
       return null;
     }
@@ -710,19 +698,7 @@ class AppsInstallService extends ChangeNotifier {
   Future<String> _fetchIconBase64(String url) async {
     if (url.isEmpty) return '';
     try {
-      final http = io.HttpClient();
-      try {
-        final req = await http.getUrl(Uri.parse(url));
-        final res = await req.close();
-        if (res.statusCode != 200) return '';
-        final bytes = <int>[];
-        await for (final chunk in res) {
-          bytes.addAll(chunk);
-        }
-        return base64Encode(bytes);
-      } finally {
-        http.close(force: true);
-      }
+      return base64Encode(await AppHttp.getBytes(Uri.parse(url)));
     } catch (_) {
       return '';
     }

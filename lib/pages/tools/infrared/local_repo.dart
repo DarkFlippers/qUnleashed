@@ -5,6 +5,7 @@ import 'dart:isolate';
 import 'package:archive/archive_io.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../../../services/http/app_http.dart';
 import '../../../services/repository/app.dart';
 
 class IrLibDownloadProgress {
@@ -101,34 +102,24 @@ class IrLibLocalRepo {
     final url = Uri.parse(
       'https://codeload.github.com/$owner/$repo/zip/refs/heads/$branch',
     );
-    final client = io.HttpClient()
-      ..connectionTimeout = const Duration(seconds: 30);
-    final req = await client.getUrl(url);
-    req.headers.set(io.HttpHeaders.userAgentHeader, 'qunleashed-irlib');
-    if (token.trim().isNotEmpty) {
-      req.headers.set(
-        io.HttpHeaders.authorizationHeader,
-        'Bearer ${token.trim()}',
-      );
-    }
-    final res = await req.close();
-    if (res.statusCode < 200 || res.statusCode >= 300) {
-      client.close(force: true);
-      throw Exception('Download failed (${res.statusCode}) for $url');
-    }
-
-    final total = res.contentLength;
-    var received = 0;
     final tempDir = await getTemporaryDirectory();
     final sep = io.Platform.pathSeparator;
     final tempZip = io.File(
       '${tempDir.path}${sep}irdb-${DateTime.now().millisecondsSinceEpoch}.zip',
     );
-    final sink = tempZip.openWrite();
-    try {
-      await for (final chunk in res) {
-        sink.add(chunk);
-        received += chunk.length;
+    var received = 0;
+    var total = 0;
+    await AppHttp.downloadToFile(
+      url,
+      tempZip.path,
+      headers: {
+        io.HttpHeaders.userAgentHeader: 'qunleashed-irlib',
+        if (token.trim().isNotEmpty)
+          io.HttpHeaders.authorizationHeader: 'Bearer ${token.trim()}',
+      },
+      onProgress: (bytes, totalBytes) {
+        received = bytes;
+        total = totalBytes ?? 0;
         onProgress?.call(
           IrLibDownloadProgress(
             stage: 'Downloading',
@@ -136,12 +127,8 @@ class IrLibLocalRepo {
             total: total,
           ),
         );
-      }
-      await sink.flush();
-    } finally {
-      await sink.close();
-      client.close(force: true);
-    }
+      },
+    );
 
     onProgress?.call(
       IrLibDownloadProgress(

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io' as io;
 
+import '../../../../services/http/app_http.dart';
 import 'infrared_backend_models.dart';
 
 class InfraredBackendException implements Exception {
@@ -19,18 +20,14 @@ class InfraredBackendApi {
   InfraredBackendApi({
     this.host = 'https://infrared.flipperzero.one',
     this.userAgent = 'qunleashed-infrared',
-    Duration timeout = const Duration(seconds: 25),
-  }) : _http = io.HttpClient()..connectionTimeout = timeout;
+  });
 
   final String host;
   final String userAgent;
-  final io.HttpClient _http;
   bool _closed = false;
 
   void close() {
-    if (_closed) return;
     _closed = true;
-    _http.close(force: true);
   }
 
   Future<List<DeviceCategory>> getCategories() async {
@@ -87,11 +84,10 @@ class InfraredBackendApi {
 
   Future<dynamic> _getJson(Uri uri) async {
     if (_closed) throw StateError('InfraredBackendApi has been closed');
-    final req = await _http.getUrl(uri);
-    req.headers
-      ..set(io.HttpHeaders.userAgentHeader, userAgent)
-      ..set(io.HttpHeaders.acceptHeader, 'application/json');
-    final res = await req.close();
+    final res = await AppHttp.get(uri, headers: {
+      io.HttpHeaders.userAgentHeader: userAgent,
+      io.HttpHeaders.acceptHeader: 'application/json',
+    });
     final text = await res.transform(utf8.decoder).join();
     if (res.statusCode < 200 || res.statusCode >= 300) {
       throw InfraredBackendException(res.statusCode, uri.toString(), text);

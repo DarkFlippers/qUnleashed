@@ -1,9 +1,5 @@
-import 'dart:convert';
-import 'dart:io';
-
-import 'package:flutter/foundation.dart';
-
 import '../../../config.dart';
+import '../../../services/http/app_http.dart';
 
 enum FirmwareChannel {
   release,
@@ -171,24 +167,9 @@ abstract class FirmwareParser {
   bool get hasCached => _cache != null;
 
   Future<FirmwareDirectory> fetch() async {
-    final client = HttpClient();
-    try {
-      final req = await client.getUrl(Uri.parse(directoryUrl));
-      req.headers.set(HttpHeaders.userAgentHeader, 'qunleashed-app');
-      req.headers.set(HttpHeaders.acceptHeader, 'application/json');
-      final res = await req.close();
-      if (res.statusCode != 200) {
-        throw HttpException(
-          'Server returned ${res.statusCode}',
-          uri: Uri.parse(directoryUrl),
-        );
-      }
-      final body = await res.transform(utf8.decoder).join();
-      final json = await compute(jsonDecode, body) as Map<String, dynamic>;
-      return _cache = FirmwareDirectory.fromJson(json);
-    } finally {
-      client.close();
-    }
+    final json =
+        await AppHttp.getJson(Uri.parse(directoryUrl)) as Map<String, dynamic>;
+    return _cache = FirmwareDirectory.fromJson(json);
   }
 
   Future<FirmwareDirectory> get() async => _cache ?? await fetch();

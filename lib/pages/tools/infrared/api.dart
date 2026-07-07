@@ -4,6 +4,7 @@ import 'dart:io' as io;
 
 import 'package:flutter/foundation.dart';
 
+import '../../../services/http/app_http.dart';
 import 'models.dart';
 
 class IrLibException implements Exception {
@@ -25,8 +26,7 @@ class IrLibApi {
     this.userAgent = 'qunleashed-irlib',
     this.token = '',
     this.localRoot = '',
-    Duration timeout = const Duration(seconds: 25),
-  }) : _http = io.HttpClient()..connectionTimeout = timeout;
+  });
 
   final String owner;
   final String repo;
@@ -35,7 +35,6 @@ class IrLibApi {
   final String token;
   final String localRoot;
 
-  final io.HttpClient _http;
   bool _closed = false;
 
   final Map<String, List<IrEntry>> _listCache = {};
@@ -44,9 +43,7 @@ class IrLibApi {
   bool get useLocal => localRoot.trim().isNotEmpty;
 
   void close() {
-    if (_closed) return;
     _closed = true;
-    _http.close(force: true);
   }
 
   void invalidateList(String path) {
@@ -225,13 +222,11 @@ class IrLibApi {
 
   Future<io.HttpClientResponse> _send(Uri uri) async {
     if (_closed) throw StateError('IrLibApi has been closed');
-    final req = await _http.getUrl(uri);
-    req.headers
-      ..set(io.HttpHeaders.userAgentHeader, userAgent)
-      ..set(io.HttpHeaders.acceptHeader, 'application/vnd.github+json');
-    if (token.trim().isNotEmpty) {
-      req.headers.set(io.HttpHeaders.authorizationHeader, 'Bearer ${token.trim()}');
-    }
-    return req.close();
+    return AppHttp.get(uri, headers: {
+      io.HttpHeaders.userAgentHeader: userAgent,
+      io.HttpHeaders.acceptHeader: 'application/vnd.github+json',
+      if (token.trim().isNotEmpty)
+        io.HttpHeaders.authorizationHeader: 'Bearer ${token.trim()}',
+    });
   }
 }

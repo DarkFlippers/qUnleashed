@@ -4,6 +4,7 @@ import 'dart:io' as io;
 
 import 'package:flutter/foundation.dart';
 
+import '../../services/http/app_http.dart';
 import 'models/card.dart';
 import 'models/category.dart';
 import 'models/detail.dart';
@@ -56,21 +57,17 @@ class AppsCatalogApi {
   String? api;
   String? target;
 
-  final io.HttpClient _http;
   bool _closed = false;
 
   AppsCatalogApi({
     this.baseUrl = defaultBaseUrl,
-    this.userAgent = 'qunleashed-app',
+    this.userAgent = AppHttp.userAgent,
     this.api,
     this.target,
-    Duration timeout = const Duration(seconds: 25),
-  }) : _http = io.HttpClient()..connectionTimeout = timeout;
+  });
 
   void close() {
-    if (_closed) return;
     _closed = true;
-    _http.close(force: true);
   }
 
   Future<List<AppCategory>> fetchCategories({int limit = 500}) async {
@@ -199,10 +196,9 @@ class AppsCatalogApi {
     if (_closed) {
       throw StateError('AppsCatalogApi has been closed');
     }
-    final req = await _http.getUrl(uri);
-    req.headers
-      ..set(io.HttpHeaders.userAgentHeader, userAgent)
-      ..set(io.HttpHeaders.acceptHeader, 'application/json');
-    return req.close();
+    return AppHttp.get(uri, headers: {
+      io.HttpHeaders.userAgentHeader: userAgent,
+      io.HttpHeaders.acceptHeader: 'application/json',
+    });
   }
 }
