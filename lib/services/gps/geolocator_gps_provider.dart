@@ -6,8 +6,15 @@ import 'package:flutter/services.dart';
 import 'package:flipperlib/flipperlib.dart';
 import 'package:geolocator/geolocator.dart';
 
+import 'gnss_satellites.dart';
+
 class GeolocatorGpsProvider implements GpsLocationProvider {
-  static const Duration _keepAlive = Duration(seconds: 2);
+  GeolocatorGpsProvider({GnssSatelliteSource? gnss})
+      : _gnss = gnss ?? GnssSatelliteSource();
+
+  static const Duration _gnssPollInterval = Duration(seconds: 2);
+
+  final GnssSatelliteSource _gnss;
 
   @override
   Future<GpsReadiness> ensureReady() async {
@@ -31,67 +38,30 @@ class GeolocatorGpsProvider implements GpsLocationProvider {
 
   @override
   Stream<GpsFix> watch(int frequencyHz) {
-    final hz = frequencyHz < 1 ? 1 : frequencyHz;
-    final minInterval = Duration(milliseconds: (1000 / hz).round());
-
     final controller = StreamController<GpsFix>();
     StreamSubscription<Position>? positionSub;
-    Timer? flushTimer;
-    Timer? keepAliveTimer;
-    Position? pending;
-    GpsFix? lastSent;
-    final sinceEmit = Stopwatch();
-
-    void emit(GpsFix fix) {
-      lastSent = fix;
-      sinceEmit
-        ..reset()
-        ..start();
-      controller.add(fix);
-    }
-
-    void flush() {
-      flushTimer = null;
-      final position = pending;
-      if (position == null) return;
-      pending = null;
-      emit(_toFix(position));
-    }
+    Timer? gnssTimer;
 
     controller.onListen = () {
+      unawaited(_gnss.start());
+      gnssTimer =
+          Timer.periodic(_gnssPollInterval, (_) => unawaited(_gnss.poll()));
       positionSub = Geolocator.getPositionStream(
-        locationSettings: _locationSettings(minInterval),
+        locationSettings: _locationSettings(frequencyHz),
       ).listen(
-        (position) {
-          pending = position;
-          final elapsed = sinceEmit.elapsed;
-          if (!sinceEmit.isRunning || elapsed >= minInterval) {
-            flushTimer?.cancel();
-            flush();
-          } else {
-            flushTimer ??= Timer(minInterval - elapsed, flush);
-          }
-        },
+        (position) => controller.add(_toFix(position)),
         onError: controller.addError,
       );
-      keepAliveTimer = Timer.periodic(_keepAlive, (_) {
-        final fix = lastSent;
-        if (fix != null && sinceEmit.elapsed >= _keepAlive) {
-          emit(fix);
-        }
-      });
     };
 
-    Future<void> stop() async {
-      flushTimer?.cancel();
-      flushTimer = null;
-      keepAliveTimer?.cancel();
-      keepAliveTimer = null;
+    controller.onCancel = () async {
+      gnssTimer?.cancel();
+      gnssTimer = null;
       await positionSub?.cancel();
       positionSub = null;
-    }
+      await _gnss.stop();
+    };
 
-    controller.onCancel = stop;
     return controller.stream;
   }
 
@@ -103,17 +73,18 @@ class GeolocatorGpsProvider implements GpsLocationProvider {
     return _toFix(position);
   }
 
-  LocationSettings _locationSettings(Duration interval) {
+  LocationSettings _locationSettings(int frequencyHz) {
+    const accuracy = LocationAccuracy.high;
+    final interval = frequencyHz > 0
+        ? Duration(milliseconds: (1000 / frequencyHz).round())
+        : null;
     if (Platform.isAndroid) {
-      return AndroidSettings(
-        accuracy: LocationAccuracy.high,
-        intervalDuration: interval,
-      );
+      return AndroidSettings(accuracy: accuracy, intervalDuration: interval);
     }
     if (Platform.isIOS || Platform.isMacOS) {
-      return AppleSettings(accuracy: LocationAccuracy.high);
+      return AppleSettings(accuracy: accuracy);
     }
-    return const LocationSettings(accuracy: LocationAccuracy.high);
+    return const LocationSettings(accuracy: accuracy);
   }
 
   GpsFix _toFix(Position position) => GpsFix(
@@ -123,5 +94,9 @@ class GeolocatorGpsProvider implements GpsLocationProvider {
         speed: position.speed,
         altitude: position.altitude,
         accuracy: position.accuracy,
+        satellites: resolveSatellites(
+          accuracy: position.accuracy,
+          realCount: _gnss.cached,
+        ),
       );
 }

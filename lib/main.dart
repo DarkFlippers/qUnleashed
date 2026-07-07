@@ -29,9 +29,6 @@ void _bootstrapAmbientServices() {
     ),
   );
 
-  // Android-only: holds a foreground service while connected so the OS does not
-  // throttle the process (and drop the BLE link) with the screen off / in the
-  // background. No-op on every other platform.
   unawaited(
     _guard(
       'ble foreground service',
