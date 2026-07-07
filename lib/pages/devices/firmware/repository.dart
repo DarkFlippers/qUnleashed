@@ -15,7 +15,7 @@ class FirmwareRepository extends ChangeNotifier {
   bool isLoading(FirmwareEntry entry) => _loading.contains(entry.shortName);
 
   Future<void> ensure(FirmwareEntry entry) async {
-    if (parserForEntry(entry).hasCached) return;
+    if (parserForEntry(entry).isFresh) return;
     await _fetch(entry);
   }
 

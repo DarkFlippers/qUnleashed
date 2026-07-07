@@ -159,20 +159,33 @@ FirmwareParser parserForEntry(FirmwareEntry entry) => switch (entry.shortName) {
 };
 
 abstract class FirmwareParser {
+  static const Duration _ttl = Duration(minutes: 10);
+
   FirmwareDirectory? _cache;
+  DateTime? _fetchedAt;
 
   String get directoryUrl;
 
   FirmwareDirectory? get cached => _cache;
   bool get hasCached => _cache != null;
 
+  /// True while the in-memory directory is younger than [_ttl]; after that a
+  /// re-fetch is needed so fresh releases show up without an app restart.
+  bool get isFresh =>
+      _cache != null &&
+      _fetchedAt != null &&
+      DateTime.now().difference(_fetchedAt!) < _ttl;
+
   Future<FirmwareDirectory> fetch() async {
     final json =
-        await AppHttp.getJson(Uri.parse(directoryUrl)) as Map<String, dynamic>;
+        await AppHttp.getJsonCached(Uri.parse(directoryUrl), ttl: _ttl)
+            as Map<String, dynamic>;
+    _fetchedAt = DateTime.now();
     return _cache = FirmwareDirectory.fromJson(json);
   }
 
-  Future<FirmwareDirectory> get() async => _cache ?? await fetch();
+  Future<FirmwareDirectory> get() async =>
+      isFresh ? _cache! : await fetch();
 
   FirmwareVersion? getLatestVersionById(String channelId) =>
       _cache?.channelById(channelId)?.latest;
