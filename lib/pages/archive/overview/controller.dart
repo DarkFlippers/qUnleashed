@@ -171,41 +171,20 @@ class ArchiveController extends ChangeNotifier {
 
   Future<bool> _awaitRealDeviceName() async {
     if (!_client.isConnected) return false;
-    final cachedName = _client.getName();
-    if (cachedName != null && cachedName.isNotEmpty) {
-      _setDeviceName(cachedName);
-      return true;
-    }
     try {
-      await _client.awaitDeviceInfo().timeout(
+      // awaitName resolves from the cache instantly, or as soon as the name
+      // arrives mid-fetch; it throws when the fetch fails or has no name.
+      final name = await _client.awaitName().timeout(
         const Duration(seconds: 20),
-        onTimeout: () async {
-          final response = await _client.deviceInfo(
-            timeout: const Duration(seconds: 15),
-            priority: FlipperRequestPriority.foreground,
-          );
-          return {
-            for (final item in response.items)
-              if (item.key.trim().isNotEmpty)
-                item.key.trim(): item.value.trim(),
-          };
-        },
       );
+      _setDeviceName(name);
+      return true;
     } catch (e) {
       _lastError = '$e';
       LogService.log('[Archive] device metadata failed: $e');
       notifyListeners();
       return false;
     }
-    final name = _client.getName();
-    if (name == null || name.isEmpty) {
-      _lastError = 'Device metadata does not contain hardware name';
-      LogService.log('[Archive] device metadata has no hardware name');
-      notifyListeners();
-      return false;
-    }
-    _setDeviceName(name);
-    return true;
   }
 
   void _setDeviceName(String name) {
@@ -905,7 +884,14 @@ class ArchiveController extends ChangeNotifier {
     }
   }
 
-  bool _needsDownload(ArchiveKey k) => k.remoteSize > 0;
+  // A key needs a download only when the local copy is missing or its size
+  // no longer matches the device's. Re-downloading everything on every sync
+  // used to re-transfer the whole archive over BLE each time.
+  bool _needsDownload(ArchiveKey k) {
+    if (k.remoteSize <= 0) return false;
+    if (!k.hasLocalFile) return true;
+    return k.localSize != k.remoteSize;
+  }
 
   /// Downloads every pending key id in order, publishing [_syncProgress] before
   /// each file and after it completes. Shared by [syncAll] and [syncCategory].
@@ -1014,15 +1000,10 @@ class ArchiveController extends ChangeNotifier {
     bool logErrors = true,
   }) async {
     try {
-      final batch = await _client.storageRead(
-        ReadRequest(path: path),
+      return await _client.storageReadChunked(
+        path,
         timeout: const Duration(minutes: 2),
       );
-      final bytes = <int>[];
-      for (final r in batch.items) {
-        if (r.hasFile()) bytes.addAll(r.file.data);
-      }
-      return bytes;
     } catch (e) {
       if (logErrors) {
         LogService.log('[Archive] read $path failed: $e');
