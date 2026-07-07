@@ -1,5 +1,8 @@
 import 'dart:io' as io;
 
+import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
+
 import '../../../config.dart';
 import '../../../services/http/app_http.dart';
 import 'directory.dart';
@@ -53,8 +56,27 @@ class RemoteFirmwareSource implements FirmwareSource {
 
     final tgzPath = '$tmpDir/update.tgz';
     await _download(tgzFile.url, tgzPath, onProgress);
+    await _verifySha256(tgzPath, tgzFile.sha256);
     return tgzPath;
   }
+
+  // This archive gets flashed to the device; a truncated or tampered download
+  // must never reach it. Variant builds publish no checksum (sha256 empty) and
+  // are skipped.
+  static Future<void> _verifySha256(String path, String expected) async {
+    final want = expected.trim().toLowerCase();
+    if (want.isEmpty) return;
+    final got = await compute(_fileSha256, path);
+    if (got != want) {
+      throw FirmwareSourceException(
+        'Firmware archive checksum mismatch (expected $want, got $got); '
+        'the download is corrupted — try again',
+      );
+    }
+  }
+
+  static String _fileSha256(String path) =>
+      sha256.convert(io.File(path).readAsBytesSync()).toString();
 
   static Future<void> _download(
     String url,
