@@ -43,7 +43,33 @@ void _bootstrapAmbientServices() {
   // internet connection.
   client.attachNetworkResponder();
 
+  // Battery/storage polling is pointless while nobody can see it; freezing it
+  // in the background saves both the phone's and the Flipper's battery.
+  WidgetsBinding.instance.addObserver(_WatchLifecycleObserver(client));
+
   unawaited(_guard('push notifications', () => PushService.instance.start()));
+}
+
+class _WatchLifecycleObserver with WidgetsBindingObserver {
+  _WatchLifecycleObserver(this._client);
+
+  final FlipperClient _client;
+  bool _frozen = false;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final background =
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.detached;
+    if (background == _frozen) return;
+    _frozen = background;
+    if (background) {
+      _client.freezeWatch();
+    } else {
+      _client.unfreezeWatch();
+    }
+  }
 }
 
 Future<void> _guard(String label, Future<void> Function() task) async {
