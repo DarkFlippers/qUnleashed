@@ -15,6 +15,7 @@ class DeviceController extends ChangeNotifier {
     _usbEventsSub = _client.usbEvents.listen((_) => _scheduleAutoConnect());
     _dfuPresentSub = _dfuDetector.presence.listen(setDfuPresent);
     _devicesSub = _client.devicesStream.listen((_) => _notify());
+    _sessionsSub = _client.sessionsStream.listen((_) => _notify());
     _dfuDetector.start();
     _knownDevices.addListener(_notify);
     _knownDevices.load().whenComplete(_scheduleAutoConnect);
@@ -37,6 +38,7 @@ class DeviceController extends ChangeNotifier {
 
   bool _dfuPresent = false;
   bool _recovering = false;
+  String? _loadedForDeviceId;
 
   String? _userDisconnectedId;
   String? _connectingKnownId;
@@ -46,6 +48,7 @@ class DeviceController extends ChangeNotifier {
 
   StreamSubscription<FlipperConnectionState>? _connectionSub;
   StreamSubscription<List<FlipperDevice>>? _devicesSub;
+  StreamSubscription<List<FlipperSessionInfo>>? _sessionsSub;
   StreamSubscription<Map<String, String>>? _infoStreamSub;
   StreamSubscription<void>? _usbEventsSub;
   StreamSubscription<bool>? _dfuPresentSub;
@@ -67,6 +70,14 @@ class DeviceController extends ChangeNotifier {
   String? get connectingKnownId => _connectingKnownId;
 
   bool isKnownPresent(KnownDevice known) => _findPresent(known) != null;
+
+  bool isKnownActive(KnownDevice known) {
+    final device = _client.connectedDevice;
+    return device != null && known.matches(device);
+  }
+
+  bool isKnownSessionConnected(KnownDevice known) =>
+      _client.isDeviceConnected(known.id, link: FlipperLink.ble);
 
   DeviceConnectionState get connectionState {
     if (_recovering) return DeviceConnectionState.recovering;
@@ -96,18 +107,27 @@ class DeviceController extends ChangeNotifier {
   Future<void> disconnect() async {
     _userDisconnectedId = _device?.id;
     await _client.disconnect();
+    // A warm session may have been promoted to active; its connected event
+    // re-drives the page state instead of the disconnected reset.
+    if (_client.isConnected) return;
     _resetSession();
   }
 
-  /// Connects to a remembered device, re-discovering it first when it is not
-  /// in the current device list. Throws on failure.
+  /// Connects to a remembered device, or instantly swaps to it when it
+  /// already holds a warm session. Re-discovers the device first when it is
+  /// not in the current device list. Throws on failure.
   Future<void> connectKnown(KnownDevice known) async {
-    if (isConnected || _client.isConnecting || _connectingKnownId != null) {
-      return;
-    }
+    if (_client.isConnecting || _connectingKnownId != null) return;
+    if (isKnownActive(known)) return;
     _connectingKnownId = known.id;
     _notify();
     try {
+      if (isKnownSessionConnected(known)) {
+        await _client.activateById(known.id, link: FlipperLink.ble);
+        final device = _client.connectedDevice;
+        if (device != null) _setupDevice(device);
+        return;
+      }
       final device = await _resolveKnown(known);
       if (device == null) {
         throw StateError('Device not found: ${known.name}');
@@ -117,6 +137,13 @@ class DeviceController extends ChangeNotifier {
       _connectingKnownId = null;
       _notify();
     }
+  }
+
+  /// Disconnects the session held by a remembered device — the active one
+  /// (with warm-session promotion) or a warm one.
+  Future<void> disconnectKnown(KnownDevice known) {
+    if (isKnownActive(known)) return disconnect();
+    return _client.disconnectDevice(known.id, link: FlipperLink.ble);
   }
 
   Future<void> forgetKnown(KnownDevice known) => _knownDevices.forget(known);
@@ -263,6 +290,7 @@ class DeviceController extends ChangeNotifier {
     _cancelDataStreams();
     _connectionSub?.cancel();
     _devicesSub?.cancel();
+    _sessionsSub?.cancel();
     _usbEventsSub?.cancel();
     _dfuPresentSub?.cancel();
     _dfuDetector.dispose();
@@ -281,6 +309,7 @@ class DeviceController extends ChangeNotifier {
     _deviceLoading = false;
     _deviceInfoConnected = false;
     _info = {};
+    _loadedForDeviceId = null;
     _infoRequestGeneration++;
     _notify();
   }
@@ -289,11 +318,25 @@ class DeviceController extends ChangeNotifier {
     _device = device;
     _deviceDisconnected = false;
     _knownDevices.remember(device);
+    _ensureDataLoading();
     _notify();
+  }
+
+  // Loading is (re)started when the active device changed or the previous
+  // session's data died with a disconnect; a load already in flight for this
+  // device is left alone.
+  void _ensureDataLoading() {
+    final device = _device;
+    if (device == null) return;
+    if (_loadedForDeviceId == device.id &&
+        (_deviceLoading || _deviceInfoConnected)) {
+      return;
+    }
     _startDataLoading();
   }
 
   void _startDataLoading() {
+    _loadedForDeviceId = _device?.id;
     _cancelDataStreams();
     _deviceLoading = true;
     _deviceInfoConnected = false;
@@ -332,8 +375,13 @@ class DeviceController extends ChangeNotifier {
     // page does not flip to the disconnected view while connecting.
     if (state.connecting) return;
     if (state.connected) {
-      _device = state.device;
+      final incoming = state.device;
+      if (incoming != null) _device = incoming;
       _deviceDisconnected = false;
+      // Covers the transitions the controller does not drive itself: a warm
+      // session promoted to active after a disconnect, an activation swap and
+      // a restored link after an automatic reconnect.
+      _ensureDataLoading();
       _notify();
       return;
     }

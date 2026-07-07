@@ -63,13 +63,13 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
     _connectingDevice = _client.isConnecting ? _client.connectingDevice : null;
     _connSub = _client.connectionStream.listen(_onConnectionState);
     _displayed = _filterDevices(_client.devices);
-    // Only kick off a scan when the radio is free: BLE scans are refused while a
-    // connection is active OR in progress, so scanning here would just log "scan
-    // skipped" and never surface the device. The live/in-flight device is
-    // injected into the list by _filterDevices instead, so its row (with a
-    // disconnect/cancel button) shows without needing a scan.
-    if (_activeDevice == null && !_client.isConnecting) {
-    _startScan();
+    // Only kick off a scan when no connect attempt holds the radio. A live
+    // session no longer blocks scanning — that is how a second device gets
+    // discovered while the first stays connected. The in-flight device is
+    // injected into the list by _filterDevices, so its row (with a cancel
+    // button) shows without needing a scan.
+    if (!_client.isConnecting) {
+      _startScan();
     }
     // Refresh USB devices on hotplug events instead of polling on a timer.
     _usbEventsSub = _client.usbEvents.listen((_) => _refreshUsb());

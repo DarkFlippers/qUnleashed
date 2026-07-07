@@ -29,9 +29,12 @@ class ConnectCard extends StatelessWidget {
             _KnownDeviceRow(
               device: known[i],
               online: ctrl.isKnownPresent(known[i]),
+              active: ctrl.isKnownActive(known[i]),
+              sessionConnected: ctrl.isKnownSessionConnected(known[i]),
               busy: _isBusy(ctrl, known[i]),
               onTap: () => _connectKnown(context, known[i]),
               onForget: () => ctrl.forgetKnown(known[i]),
+              onDisconnect: () => ctrl.disconnectKnown(known[i]),
             ),
           ],
         ],
@@ -112,34 +115,52 @@ class _KnownDeviceRow extends StatelessWidget {
   const _KnownDeviceRow({
     required this.device,
     required this.online,
+    required this.active,
+    required this.sessionConnected,
     required this.busy,
     required this.onTap,
     required this.onForget,
+    required this.onDisconnect,
   });
 
   final KnownDevice device;
   final bool online;
+  final bool active;
+  final bool sessionConnected;
   final bool busy;
   final VoidCallback onTap;
   final VoidCallback onForget;
+  final VoidCallback onDisconnect;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final subtitle = busy ? 'Connecting…' : device.id;
+    final subtitle = busy
+        ? 'Connecting…'
+        : active
+        ? 'Active'
+        : sessionConnected
+        ? 'Connected — tap to switch'
+        : device.id;
 
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: busy ? null : onTap,
+        onTap: busy || active ? null : onTap,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
           child: Row(
             children: [
               Icon(
-                Icons.bluetooth,
+                active || sessionConnected
+                    ? Icons.bluetooth_connected
+                    : Icons.bluetooth,
                 size: 24,
-                color: online ? colors.info : colors.textMuted,
+                color: active
+                    ? colors.accent
+                    : (online || sessionConnected)
+                    ? colors.info
+                    : colors.textMuted,
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -174,6 +195,15 @@ class _KnownDeviceRow extends StatelessWidget {
                   child: CircularProgressIndicator(
                     strokeWidth: 2.5,
                     color: colors.accent,
+                  ),
+                )
+              else if (active || sessionConnected)
+                Tooltip(
+                  message: 'Disconnect',
+                  child: InkResponse(
+                    onTap: onDisconnect,
+                    radius: 18,
+                    child: Icon(Icons.link_off, size: 18, color: colors.danger),
                   ),
                 )
               else

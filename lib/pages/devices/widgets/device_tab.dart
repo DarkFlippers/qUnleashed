@@ -192,6 +192,8 @@ class _ConnectedContent extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 14),
+        const ConnectCard(),
+        const SizedBox(height: 14),
       ],
     );
   }

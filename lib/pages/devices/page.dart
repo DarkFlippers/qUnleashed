@@ -36,7 +36,7 @@ class _DevicePageState extends State<DevicePage> {
     _ctrl.dispose();
     _archiveController.removeListener(_onArchiveChanged);
     _archiveController.dispose();
-    _ctrl.client.disconnect();
+    _ctrl.client.disconnectAll();
     super.dispose();
   }
 
