@@ -208,15 +208,10 @@ class FileManagerController extends ChangeNotifier {
 
   Future<List<int>?> readBytes(String remotePath) async {
     try {
-      final batch = await _client.storageRead(
-        ReadRequest(path: remotePath),
+      return await _client.storageReadChunked(
+        remotePath,
         timeout: const Duration(minutes: 5),
       );
-      final bytes = <int>[];
-      for (final r in batch.items) {
-        if (r.hasFile()) bytes.addAll(r.file.data);
-      }
-      return bytes;
     } catch (e) {
       _error = '$e';
       LogService.log('[FileManager] read $remotePath failed: $e');

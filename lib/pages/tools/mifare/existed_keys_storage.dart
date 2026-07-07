@@ -69,14 +69,10 @@ class ExistedKeysStorage {
 
   Future<List<String>> _loadDict(String path) async {
     try {
-      final batch = await _client.storageRead(
-        ReadRequest(path: path),
+      final bytes = await _client.storageReadChunked(
+        path,
         timeout: const Duration(minutes: 5),
       );
-      final bytes = <int>[];
-      for (final response in batch.items) {
-        if (response.hasFile()) bytes.addAll(response.file.data);
-      }
       return const Utf8Decoder()
           .convert(bytes)
           .split('\n')

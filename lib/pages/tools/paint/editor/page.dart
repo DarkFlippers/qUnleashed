@@ -110,15 +110,8 @@ class _PaintPageState extends State<PaintPage> {
 
   Future<void> _loadRemoteFile(String path) async {
     try {
-      final batch = await (widget.client ?? FlipperOneClient().get())
-          .storageRead(
-            ReadRequest(path: path),
-            timeout: const Duration(minutes: 5),
-          );
-      final bytes = <int>[];
-      for (final response in batch.items) {
-        if (response.hasFile()) bytes.addAll(response.file.data);
-      }
+      final bytes = await (widget.client ?? FlipperOneClient().get())
+          .storageReadChunked(path, timeout: const Duration(minutes: 5));
       if (bytes.isEmpty) {
         throw StateError('File is empty');
       }

@@ -128,14 +128,10 @@ class MfKey32Controller extends ChangeNotifier {
 
   Future<String?> _downloadNonceLog() async {
     try {
-      final batch = await _client.storageRead(
-        ReadRequest(path: pathNonceLog),
+      final bytes = await _client.storageReadChunked(
+        pathNonceLog,
         timeout: const Duration(minutes: 5),
       );
-      final bytes = <int>[];
-      for (final response in batch.items) {
-        if (response.hasFile()) bytes.addAll(response.file.data);
-      }
       return const Utf8Decoder().convert(bytes);
     } catch (e) {
       LogService.log('[MfKey32] download nonce log failed: $e');

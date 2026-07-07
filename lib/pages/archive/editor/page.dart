@@ -213,15 +213,10 @@ class _TextEditorPageState extends State<TextEditorPage> {
 
   Future<List<int>?> _readBytes(String path) async {
     try {
-      final batch = await _client.storageRead(
-        ReadRequest(path: path),
+      return await _client.storageReadChunked(
+        path,
         timeout: const Duration(minutes: 5),
       );
-      final bytes = <int>[];
-      for (final r in batch.items) {
-        if (r.hasFile()) bytes.addAll(r.file.data);
-      }
-      return bytes;
     } catch (e) {
       LogService.log('[TextEditor] read $path failed: $e');
       return null;
