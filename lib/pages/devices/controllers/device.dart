@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/foundation.dart';
 
+import '../../../services/connection/known_devices.dart';
 import '../../../theme/theme.dart';
 import '../models/connection_state.dart';
 import '../models/device_info.dart';
@@ -13,14 +14,17 @@ class DeviceController extends ChangeNotifier {
     _connectionSub = _client.connectionStream.listen(_onConnectionState);
     _usbEventsSub = _client.usbEvents.listen((_) => _scheduleAutoConnect());
     _dfuPresentSub = _dfuDetector.presence.listen(setDfuPresent);
+    _devicesSub = _client.devicesStream.listen((_) => _notify());
     _dfuDetector.start();
-    _scheduleAutoConnect();
+    _knownDevices.addListener(_notify);
+    _knownDevices.load().whenComplete(_scheduleAutoConnect);
   }
 
   static const Duration _autoConnectDebounce = Duration(milliseconds: 500);
 
   final FlipperClient _client = FlipperOneClient().get();
   final DfuDetector _dfuDetector = DfuDetector();
+  final KnownDevicesStore _knownDevices = KnownDevicesStore.instance;
 
   FlipperDevice? _device;
   bool _deviceDisconnected = false;
@@ -35,10 +39,13 @@ class DeviceController extends ChangeNotifier {
   bool _recovering = false;
 
   String? _userDisconnectedId;
+  String? _connectingKnownId;
+  bool _bleAutoScanDone = false;
   final Set<String> _autoConnectAttemptedIds = {};
   Timer? _autoConnectTimer;
 
   StreamSubscription<FlipperConnectionState>? _connectionSub;
+  StreamSubscription<List<FlipperDevice>>? _devicesSub;
   StreamSubscription<Map<String, String>>? _infoStreamSub;
   StreamSubscription<void>? _usbEventsSub;
   StreamSubscription<bool>? _dfuPresentSub;
@@ -55,6 +62,11 @@ class DeviceController extends ChangeNotifier {
   Map<String, String> get info => _info;
 
   bool get isConnected => _device != null && !_deviceDisconnected;
+
+  List<KnownDevice> get knownDevices => _knownDevices.devices;
+  String? get connectingKnownId => _connectingKnownId;
+
+  bool isKnownPresent(KnownDevice known) => _findPresent(known) != null;
 
   DeviceConnectionState get connectionState {
     if (_recovering) return DeviceConnectionState.recovering;
@@ -86,6 +98,28 @@ class DeviceController extends ChangeNotifier {
     await _client.disconnect();
     _resetSession();
   }
+
+  /// Connects to a remembered device, re-discovering it first when it is not
+  /// in the current device list. Throws on failure.
+  Future<void> connectKnown(KnownDevice known) async {
+    if (isConnected || _client.isConnecting || _connectingKnownId != null) {
+      return;
+    }
+    _connectingKnownId = known.id;
+    _notify();
+    try {
+      final device = await _resolveKnown(known);
+      if (device == null) {
+        throw StateError('Device not found: ${known.name}');
+      }
+      await connect(device);
+    } finally {
+      _connectingKnownId = null;
+      _notify();
+    }
+  }
+
+  Future<void> forgetKnown(KnownDevice known) => _knownDevices.forget(known);
 
   void synchronize() => _startDataLoading();
 
@@ -145,29 +179,30 @@ class DeviceController extends ChangeNotifier {
     if (_disposed || _recovering) return;
     if (isConnected || _client.isConnecting) return;
 
+    final last = _knownDevices.lastDevice;
     try {
       await _client.refreshUsbOnly();
+      if (last != null) {
+        await _client.refreshBleKnown();
+        if (_findPresent(last) == null && !_bleAutoScanDone) {
+          _bleAutoScanDone = true;
+          await _client.scanBle(timeout: const Duration(seconds: 8));
+        }
+      }
     } catch (e) {
-      LogService.log('[DeviceController] auto-connect USB refresh failed: $e');
+      LogService.log('[DeviceController] auto-connect discovery failed: $e');
     }
     if (_disposed || isConnected || _client.isConnecting) return;
 
-    final usbDevices = _client.devices.where((d) => d.isUsb).toList();
-    final presentIds = usbDevices.map((d) => d.id).toSet();
+    final present = _client.devices;
+    final presentIds = present.map((d) => d.id).toSet();
     _autoConnectAttemptedIds.removeWhere((id) => !presentIds.contains(id));
     if (_userDisconnectedId != null &&
         !presentIds.contains(_userDisconnectedId)) {
       _userDisconnectedId = null;
     }
 
-    FlipperDevice? candidate;
-    for (final d in usbDevices) {
-      if (d.id == _userDisconnectedId) continue;
-      if (_autoConnectAttemptedIds.contains(d.id)) continue;
-      if (!_client.isFlipperDevice(d)) continue;
-      candidate = d;
-      break;
-    }
+    final candidate = _autoConnectCandidate(present, last);
     if (candidate == null) return;
 
     _autoConnectAttemptedIds.add(candidate.id);
@@ -179,14 +214,55 @@ class DeviceController extends ChangeNotifier {
     }
   }
 
+  // A plugged-in USB Flipper always wins: the cable is an explicit user
+  // action. With no USB present, the last remembered BLE device connects;
+  // an unknown BLE device never does.
+  FlipperDevice? _autoConnectCandidate(
+    List<FlipperDevice> present,
+    KnownDevice? last,
+  ) {
+    bool eligible(FlipperDevice d) =>
+        d.id != _userDisconnectedId &&
+        !_autoConnectAttemptedIds.contains(d.id);
+
+    for (final d in present) {
+      if (d.isUsb && eligible(d) && _client.isFlipperDevice(d)) return d;
+    }
+    if (last != null) {
+      for (final d in present) {
+        if (last.matches(d) && eligible(d)) return d;
+      }
+    }
+    return null;
+  }
+
+  Future<FlipperDevice?> _resolveKnown(KnownDevice known) async {
+    final present = _findPresent(known);
+    if (present != null) return present;
+    await _client.refreshBleKnown();
+    final found = _findPresent(known);
+    if (found != null) return found;
+    await _client.scanBle(timeout: const Duration(seconds: 8));
+    return _findPresent(known);
+  }
+
+  FlipperDevice? _findPresent(KnownDevice known) {
+    for (final device in _client.devices) {
+      if (known.matches(device)) return device;
+    }
+    return null;
+  }
+
   // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   @override
   void dispose() {
     _disposed = true;
+    _knownDevices.removeListener(_notify);
     _autoConnectTimer?.cancel();
     _cancelDataStreams();
     _connectionSub?.cancel();
+    _devicesSub?.cancel();
     _usbEventsSub?.cancel();
     _dfuPresentSub?.cancel();
     _dfuDetector.dispose();
@@ -212,6 +288,7 @@ class DeviceController extends ChangeNotifier {
   void _setupDevice(FlipperDevice device) {
     _device = device;
     _deviceDisconnected = false;
+    _knownDevices.remember(device);
     _notify();
     _startDataLoading();
   }
@@ -236,6 +313,13 @@ class DeviceController extends ChangeNotifier {
         (k) => k.startsWith('firmware') || k == 'software_revision',
       )) {
         QAppThemeController.instance.syncFirmwareFromDeviceInfo(_info);
+      }
+      final hardwareName = _info['hardware_name']?.trim();
+      final connected = _device;
+      if (connected != null &&
+          hardwareName != null &&
+          hardwareName.isNotEmpty) {
+        _knownDevices.updateName(connected, hardwareName);
       }
       _notify();
     }, onError: (e) => LogService.log('[DeviceController] info stream: $e'));

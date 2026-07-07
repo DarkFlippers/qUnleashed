@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../../../../components/dialogs/connection.dart';
 import '../../../../components/dialogs/connection_error.dart';
+import '../../../../services/connection/known_devices.dart';
 import '../../../../theme/theme.dart';
 import '../../../../widgets/page_card.dart';
+import '../../controllers/device.dart';
 import '../../device_scope.dart';
 
 class ConnectCard extends StatelessWidget {
@@ -11,12 +13,49 @@ class ConnectCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ctrl = DeviceScope.of(context);
+    final colors = context.appColors;
+    final known = ctrl.knownDevices;
+
     return FlipperPageCard(
-      child: _ConnectActionRow(
-        color: context.appColors.accent,
-        onTap: () => _openPicker(context),
+      child: Column(
+        children: [
+          _ConnectActionRow(
+            color: colors.accent,
+            onTap: () => _openPicker(context),
+          ),
+          for (var i = 0; i < known.length; i++) ...[
+            Divider(height: 1, color: colors.divider),
+            _KnownDeviceRow(
+              device: known[i],
+              online: ctrl.isKnownPresent(known[i]),
+              busy: _isBusy(ctrl, known[i]),
+              onTap: () => _connectKnown(context, known[i]),
+              onForget: () => ctrl.forgetKnown(known[i]),
+            ),
+          ],
+        ],
       ),
     );
+  }
+
+  static bool _isBusy(DeviceController ctrl, KnownDevice known) {
+    if (ctrl.connectingKnownId == known.id) return true;
+    final connecting = ctrl.client.connectingDevice;
+    return connecting != null && known.matches(connecting);
+  }
+
+  static Future<void> _connectKnown(
+    BuildContext context,
+    KnownDevice known,
+  ) async {
+    final ctrl = DeviceScope.of(context);
+    try {
+      await ctrl.connectKnown(known);
+    } catch (e) {
+      if (!context.mounted) return;
+      await showConnectionFailedDialog(context, e, isBle: true);
+    }
   }
 
   static Future<void> _openPicker(BuildContext context) async {
@@ -68,3 +107,89 @@ class _ConnectActionRow extends StatelessWidget {
     );
   }
 }
+
+class _KnownDeviceRow extends StatelessWidget {
+  const _KnownDeviceRow({
+    required this.device,
+    required this.online,
+    required this.busy,
+    required this.onTap,
+    required this.onForget,
+  });
+
+  final KnownDevice device;
+  final bool online;
+  final bool busy;
+  final VoidCallback onTap;
+  final VoidCallback onForget;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final subtitle = busy ? 'Connecting…' : device.id;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: busy ? null : onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+          child: Row(
+            children: [
+              Icon(
+                Icons.bluetooth,
+                size: 24,
+                color: online ? colors.info : colors.textMuted,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      device.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: colors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 12, color: colors.textMuted),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              if (busy)
+                SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    color: colors.accent,
+                  ),
+                )
+              else
+                Tooltip(
+                  message: 'Forget',
+                  child: InkResponse(
+                    onTap: onForget,
+                    radius: 18,
+                    child: Icon(Icons.close, size: 18, color: colors.textMuted),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
