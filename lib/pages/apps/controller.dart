@@ -84,12 +84,19 @@ class AppsCatalogController extends ChangeNotifier {
     }
   }
 
+  // connectionStream emits several events per session (mode changes,
+  // reconnects); the catalog load + manifest refresh must run once per
+  // connection, not once per event.
+  bool _sessionSynced = false;
+
   void _onConnection(FlipperConnectionState state) {
     if (!state.connected || state.mode != FlipperMode.rpc) {
+      _sessionSynced = false;
       _api.target = null;
       _api.api = null;
       install.onDisconnect();
-    } else {
+    } else if (!_sessionSynced) {
+      _sessionSynced = true;
       install.loadCatalog().then((_) => install.refreshManifests());
     }
   }
@@ -134,17 +141,31 @@ class AppsCatalogController extends ChangeNotifier {
     notifyListeners();
   }
 
+  static const Duration _loadErrorCooldown = Duration(seconds: 3);
+  // Stopwatch, not DateTime: the flipperlib protobuf exports shadow
+  // dart:core's DateTime in this file.
+  final Stopwatch _sinceLoadError = Stopwatch();
+
   Future<void> refresh() async {
     _apps.clear();
     _offset = 0;
     _reachedEnd = false;
     _lastError = null;
+    _sinceLoadError
+      ..stop()
+      ..reset();
     notifyListeners();
     await loadMore();
   }
 
   Future<void> loadMore() async {
     if (_appsLoading || _reachedEnd) return;
+    // A transient network error no longer ends the pagination; the cooldown
+    // keeps the scroll listener from hammering the API in a retry loop.
+    if (_sinceLoadError.isRunning &&
+        _sinceLoadError.elapsed < _loadErrorCooldown) {
+      return;
+    }
     _appsLoading = true;
     notifyListeners();
     try {
@@ -159,10 +180,15 @@ class AppsCatalogController extends ChangeNotifier {
       _offset = page.nextOffset;
       if (!page.hasMore) _reachedEnd = true;
       _lastError = null;
+      _sinceLoadError
+        ..stop()
+        ..reset();
       install.cacheCatalogIcons(page.items);
     } catch (e) {
       _lastError = e;
-      _reachedEnd = true;
+      _sinceLoadError
+        ..reset()
+        ..start();
     } finally {
       _appsLoading = false;
       notifyListeners();

@@ -1,8 +1,4 @@
-﻿import 'dart:async';
-import 'dart:convert';
-import 'dart:io' as io;
-
-import 'package:flutter/foundation.dart';
+﻿import 'dart:io' as io;
 
 import '../../services/http/app_http.dart';
 import 'models/card.dart';
@@ -76,7 +72,7 @@ class AppsCatalogApi {
       'api': ?api,
       'target': ?target,
     });
-    final body = await _getJson(uri);
+    final body = await _getJson(uri, ttl: const Duration(hours: 1));
     if (body is! List) {
       throw AppsCatalogException(0, uri.toString(), 'expected list');
     }
@@ -108,7 +104,14 @@ class AppsCatalogApi {
       'api': ?api,
       'target': ?target,
     });
-    final body = await _getJson(uri);
+    // Search results are too volatile to cache on disk; browse pages get a
+    // short TTL so re-opening the tab does not re-download them.
+    final body = await _getJson(
+      uri,
+      ttl: query != null && query.isNotEmpty
+          ? null
+          : const Duration(minutes: 5),
+    );
     if (body is! List) {
       throw AppsCatalogException(0, uri.toString(), 'expected list');
     }
@@ -129,7 +132,7 @@ class AppsCatalogApi {
       'api': ?api,
       'target': ?target,
     });
-    final body = await _getJson(uri);
+    final body = await _getJson(uri, ttl: const Duration(minutes: 5));
     if (body is! Map<String, dynamic>) {
       throw AppsCatalogException(0, uri.toString(), 'expected object');
     }
@@ -150,7 +153,12 @@ class AppsCatalogApi {
       '/application/version/$versionId/build/compatible',
       {'target': t, 'api': a},
     );
-    return _getBytes(uri, onProgress: onProgress);
+    if (_closed) throw StateError('AppsCatalogApi has been closed');
+    return AppHttp.getBytes(
+      uri,
+      headers: {io.HttpHeaders.userAgentHeader: userAgent},
+      onProgress: onProgress,
+    );
   }
 
   Uri _uri(String path, Map<String, String> query) {
@@ -161,44 +169,13 @@ class AppsCatalogApi {
     );
   }
 
-  Future<dynamic> _getJson(Uri uri) async {
-    final res = await _send(uri);
-    final text = await res.transform(utf8.decoder).join();
-    if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw AppsCatalogException(res.statusCode, uri.toString(), text);
-    }
-    if (text.isEmpty) return null;
-    return compute(jsonDecode, text);
-  }
-
-  Future<List<int>> _getBytes(
-    Uri uri, {
-    void Function(int receivedBytes, int? totalBytes)? onProgress,
-  }) async {
-    final res = await _send(uri);
-    if (res.statusCode < 200 || res.statusCode >= 300) {
-      final text = await res.transform(utf8.decoder).join();
-      throw AppsCatalogException(res.statusCode, uri.toString(), text);
-    }
-    final totalBytes = res.contentLength > 0 ? res.contentLength : null;
-    final out = <int>[];
-    var receivedBytes = 0;
-    onProgress?.call(0, totalBytes);
-    await for (final chunk in res) {
-      out.addAll(chunk);
-      receivedBytes += chunk.length;
-      onProgress?.call(receivedBytes, totalBytes);
-    }
-    return out;
-  }
-
-  Future<io.HttpClientResponse> _send(Uri uri) async {
+  // A null [ttl] bypasses the disk cache (volatile queries).
+  Future<dynamic> _getJson(Uri uri, {Duration? ttl}) async {
     if (_closed) {
       throw StateError('AppsCatalogApi has been closed');
     }
-    return AppHttp.get(uri, headers: {
-      io.HttpHeaders.userAgentHeader: userAgent,
-      io.HttpHeaders.acceptHeader: 'application/json',
-    });
+    final headers = {io.HttpHeaders.userAgentHeader: userAgent};
+    if (ttl == null) return AppHttp.getJson(uri, headers: headers);
+    return AppHttp.getJsonCached(uri, ttl: ttl, headers: headers);
   }
 }
