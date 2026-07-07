@@ -16,7 +16,6 @@ import 'models/manifest.dart';
 
 const String kAppsRoot = '/ext/apps';
 const String kManifestsRoot = '/ext/apps_manifests';
-const String kTempRoot = '/ext/.tmp/qunleashed';
 const Duration kPreinstalledScanDelay = Duration(milliseconds: 100);
 
 enum AppActionType { install, update, delete }
@@ -70,6 +69,9 @@ class AppsInstallService extends ChangeNotifier {
   final Set<String> _installedAliases = {};
   Set<String> get installedAliases => Set.unmodifiable(_installedAliases);
   final Map<String, AppManifest> _installedManifests = {};
+  // .fim file sizes from the last read, persisted in the catalog cache: a
+  // manifest whose listed size is unchanged is not re-read from the device.
+  final Map<String, int> _manifestSizes = {};
   final Set<String> _preinstalledAliases = {};
   final Map<String, String> _preinstalledPaths = {};
   final Map<String, String> _categoryNamesById = {};
@@ -163,8 +165,11 @@ class AppsInstallService extends ChangeNotifier {
         ListRequest(path: kManifestsRoot),
         timeout: const Duration(seconds: 20),
       );
+      final prevManifests = Map<String, AppManifest>.from(_installedManifests);
+      final prevSizes = Map<String, int>.from(_manifestSizes);
       _installedAliases.clear();
       _installedManifests.clear();
+      _manifestSizes.clear();
       for (final item in list.items) {
         for (final f in item.file) {
           if (f.type != File_FileType.FILE) continue;
@@ -172,8 +177,17 @@ class AppsInstallService extends ChangeNotifier {
           final alias = f.name.substring(0, f.name.length - 4);
           if (alias.isEmpty) continue;
           _installedAliases.add(alias);
+          final cached = prevManifests[alias];
+          if (cached != null && prevSizes[alias] == f.size) {
+            _installedManifests[alias] = cached;
+            _manifestSizes[alias] = f.size;
+            continue;
+          }
           final manifest = await _readManifest('$kManifestsRoot/${f.name}');
-          if (manifest != null) _installedManifests[alias] = manifest;
+          if (manifest != null) {
+            _installedManifests[alias] = manifest;
+            _manifestSizes[alias] = f.size;
+          }
           notifyListeners();
         }
       }
@@ -183,6 +197,7 @@ class AppsInstallService extends ChangeNotifier {
         _preinstalledPaths.remove(alias);
       }
       _manifestsRefreshed = true;
+      await _saveCatalog();
     } catch (e) {
       LogService.log('[AppsInstall] refreshManifests failed: $e');
     } finally {
@@ -196,6 +211,7 @@ class AppsInstallService extends ChangeNotifier {
     _manifestsRefreshed = false;
     _installedAliases.clear();
     _installedManifests.clear();
+    _manifestSizes.clear();
     _preinstalledAliases.clear();
     _preinstalledPaths.clear();
     notifyListeners();
@@ -218,8 +234,6 @@ class AppsInstallService extends ChangeNotifier {
     _actions[app.alias] = action;
     notifyListeners();
 
-    await _ensureDeviceFilters();
-
     final existingManifest = _installedManifests[app.alias];
     final installDir = await _resolveInstallDir(
       app,
@@ -230,10 +244,10 @@ class AppsInstallService extends ChangeNotifier {
         ? existingManifest!.path
         : '$installDir/${app.alias}.fap';
     final fimPath = '$kManifestsRoot/${app.alias}.fim';
-    final tempFap = _tempFapPath(app);
-    final tempFim = _tempFimPath(app);
 
     try {
+      await _ensureDeviceFilters(required: true);
+
       var cv = detail?.card.currentVersion ?? app.currentVersion;
       var build = cv?.currentBuild;
       if (cv == null || cv.id.isEmpty || build == null) {
@@ -271,16 +285,14 @@ class AppsInstallService extends ChangeNotifier {
 
       unawaited(_cacheFapIcon(app.alias, fapBytes));
 
-      await _ensureDir(kTempRoot);
       await _ensureDir(kAppsRoot);
       await _ensureDir(installDir);
       await _ensureDir(kManifestsRoot);
 
-      await _safeDelete(tempFap);
-      await _safeDelete(tempFim);
-
-      await client.storageWriteChunked(
-        tempFap,
+      // Safe replace (upload to a temp sibling, then swap): the installed app
+      // survives an interrupted or cancelled transfer.
+      await client.storageWriteChunkedSafe(
+        fapPath,
         fapBytes,
         onProgress: (p) => _setActionState(
           app.alias,
@@ -288,24 +300,12 @@ class AppsInstallService extends ChangeNotifier {
           progress: p,
         ),
       );
-
-      await client.storageWriteChunked(tempFim, manifestBytes);
+      await client.storageWriteChunkedSafe(fimPath, manifestBytes);
       _setActionState(app.alias, stage: AppActionStage.upload, progress: 1.0);
-
-      await _safeDelete(fapPath);
-      await _safeDelete(fimPath);
-
-      await client.storageRename(
-        RenameRequest(oldPath: tempFap, newPath: fapPath),
-        timeout: const Duration(seconds: 30),
-      );
-      await client.storageRename(
-        RenameRequest(oldPath: tempFim, newPath: fimPath),
-        timeout: const Duration(seconds: 30),
-      );
 
       _installedAliases.add(app.alias);
       _installedManifests[app.alias] = manifest;
+      _manifestSizes[app.alias] = manifestBytes.length;
       _preinstalledAliases.remove(app.alias);
       _preinstalledPaths.remove(app.alias);
       _actions.remove(app.alias);
@@ -337,6 +337,7 @@ class AppsInstallService extends ChangeNotifier {
       await _safeDelete(fapPath);
       _installedAliases.remove(app.alias);
       _installedManifests.remove(app.alias);
+      _manifestSizes.remove(app.alias);
       _preinstalledAliases.remove(app.alias);
       _preinstalledPaths.remove(app.alias);
       _actions.remove(app.alias);
@@ -388,6 +389,7 @@ class AppsInstallService extends ChangeNotifier {
       );
       _installedAliases.clear();
       _installedManifests.clear();
+      _manifestSizes.clear();
       _preinstalledAliases.clear();
       _preinstalledPaths.clear();
       for (final item in list.items) {
@@ -398,7 +400,10 @@ class AppsInstallService extends ChangeNotifier {
           if (alias.isEmpty) continue;
           _installedAliases.add(alias);
           final manifest = await _readManifest('$kManifestsRoot/${f.name}');
-          if (manifest != null) _installedManifests[alias] = manifest;
+          if (manifest != null) {
+            _installedManifests[alias] = manifest;
+            _manifestSizes[alias] = f.size;
+          }
           notifyListeners();
         }
       }
@@ -433,6 +438,7 @@ class AppsInstallService extends ChangeNotifier {
 
       _installedAliases.clear();
       _installedManifests.clear();
+      _manifestSizes.clear();
       _preinstalledAliases.clear();
       _preinstalledPaths.clear();
 
@@ -443,6 +449,8 @@ class AppsInstallService extends ChangeNotifier {
         final path = (entry['path'] as String?)?.trim() ?? '';
         if (alias.isEmpty || path.isEmpty) continue;
         _installedAliases.add(alias);
+        final fimSize = (entry['fim_size'] as num?)?.toInt();
+        if (fimSize != null && fimSize > 0) _manifestSizes[alias] = fimSize;
         _installedManifests[alias] = AppManifest(
           uid: (entry['uid'] as String?) ?? '',
           versionUid: (entry['version_uid'] as String?) ?? '',
@@ -492,6 +500,7 @@ class AppsInstallService extends ChangeNotifier {
           'sdk_api': m.sdkApi,
           'icon_base64': m.iconBase64,
           'dev_catalog': m.devCatalog,
+          if (_manifestSizes[e.key] != null) 'fim_size': _manifestSizes[e.key],
         };
       }).toList();
 
@@ -521,7 +530,10 @@ class AppsInstallService extends ChangeNotifier {
     }
   }
 
-  Future<void> _ensureDeviceFilters() async {
+  /// Fills [api.target] / [api.api] from the connected device. With
+  /// [required] the failure is surfaced to the caller instead of resurfacing
+  /// later as a cryptic "target / .api must be set" from the download.
+  Future<void> _ensureDeviceFilters({bool required = false}) async {
     if (api.target != null && api.api != null) return;
     try {
       final info = await client.awaitDeviceInfo().timeout(
@@ -548,6 +560,12 @@ class AppsInstallService extends ChangeNotifier {
       if (major != null) api.api = '$major.${minor ?? '0'}';
     } catch (e) {
       LogService.log('[AppsInstall] deviceInfo failed: $e');
+    }
+    if (required && (api.target == null || api.api == null)) {
+      throw StateError(
+        'Could not read the firmware target/API from the device; '
+        'reconnect the Flipper and try again',
+      );
     }
   }
 
@@ -706,14 +724,10 @@ class AppsInstallService extends ChangeNotifier {
 
   Future<AppManifest?> _readManifest(String path) async {
     try {
-      final res = await client.storageRead(
-        ReadRequest(path: path),
+      final bytes = await client.storageReadChunked(
+        path,
         timeout: const Duration(seconds: 20),
       );
-      final bytes = <int>[];
-      for (final item in res.items) {
-        if (item.hasFile()) bytes.addAll(item.file.data);
-      }
       if (bytes.isEmpty) return null;
       return AppManifest.tryParse(utf8.decode(bytes, allowMalformed: true));
     } catch (e) {
@@ -767,11 +781,4 @@ class AppsInstallService extends ChangeNotifier {
     return 'Misc';
   }
 
-  String _tempFapPath(AppCard app) => '$kTempRoot/${_tempKey(app)}.fap';
-  String _tempFimPath(AppCard app) => '$kTempRoot/${_tempKey(app)}.fim';
-
-  String _tempKey(AppCard app) {
-    final raw = app.id.isNotEmpty ? app.id : app.alias;
-    return raw.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
-  }
 }
