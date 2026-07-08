@@ -376,31 +376,12 @@ class _UpdateAllButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final color = enabled ? colors.success : colors.textMuted;
-    return GestureDetector(
-      onTap: enabled ? onTap : null,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-        decoration: BoxDecoration(
-          color: colors.card,
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: color, width: 1.25),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.system_update_alt, size: 16, color: color),
-            const SizedBox(width: 6),
-            Text(
-              'Update all',
-              style: TextStyle(
-                color: color,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
+    return IconButton(
+      tooltip: 'Update all',
+      onPressed: enabled ? onTap : null,
+      icon: Icon(
+        Icons.system_update_alt,
+        color: enabled ? colors.textPrimary : colors.textMuted,
       ),
     );
   }

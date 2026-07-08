@@ -136,7 +136,13 @@ class AppsInstallService extends ChangeNotifier {
       return AppButtonState.preinstalled;
     }
 
-    if (manifest != null) {
+    final sameCatalogApp =
+        manifest != null &&
+        !manifest.devCatalog &&
+        (manifest.uid.isEmpty ||
+            app.id.isEmpty ||
+            manifest.uid == app.id);
+    if (manifest != null && sameCatalogApp) {
       final deviceApi = api.api;
       if (manifest.versionUid.isNotEmpty &&
           cv.id.isNotEmpty &&
