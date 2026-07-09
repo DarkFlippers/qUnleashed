@@ -123,7 +123,8 @@ class FirmwareInstaller {
     _log(
       'DFU files: firmware=$firmwareName(${firmware.data.length}B) '
       'radio=${fuf.radio}(${radio?.data.length ?? 0}B) '
-      'radioAddr=0x${(fuf.radioAddress ?? 0).toRadixString(16)} '
+      'manifest radioAddr=0x${(fuf.radioAddress ?? 0).toRadixString(16)} '
+      '(unused: target is derived from SFSA, as in qFlipper) '
       'obRef=${fuf.obReference?.length} '
       'obCompare=${fuf.obCompareMask?.length} '
       'obWrite=${fuf.obWriteMask?.length}',
@@ -132,7 +133,6 @@ class FirmwareInstaller {
     final request = RecoveryRequest(
       firmwareDfu: Uint8List.fromList(firmware.data),
       radioBin: radio == null ? null : Uint8List.fromList(radio.data),
-      radioAddress: fuf.radioAddress,
       obReference: fuf.obReference!,
       obCompareMask: fuf.obCompareMask!,
       obWriteMask: fuf.obWriteMask!,

@@ -3,10 +3,35 @@ import 'dart:typed_data';
 import 'package:flipperlib/dfu/dfu_memory_layout.dart';
 import 'package:flipperlib/dfu/dfuse_file.dart';
 import 'package:flipperlib/dfu/recovery_runner.dart';
+import 'package:flipperlib/dfu/stm32wb55/fus_state.dart';
 import 'package:flipperlib/dfu/stm32wb55/option_bytes.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  group('FusState', () {
+    test('normalizes status bytes exactly like qFlipper', () {
+      expect(FusState(0x00, 0x00).status, FusStatus.idle);
+      expect(FusState(0x05, 0x00).status, FusStatus.idle);
+      expect(FusState(0x17, 0x00).status, FusStatus.fwUpgradeOngoing);
+      expect(FusState(0x2A, 0x00).status, FusStatus.fusUpgradeOngoing);
+      expect(FusState(0x3F, 0x00).status, FusStatus.serviceOngoing);
+      expect(FusState(0xFF, 0xFE).status, FusStatus.errorOccured);
+      expect(FusState(0x47, 0x00).status, 0x40);
+    });
+
+    test('only the sentinel is invalid', () {
+      expect(FusState(0x47, 0x00).isValid, isTrue);
+      expect(FusState(0xFF, 0xFF).isValid, isTrue);
+      expect(FusState.invalid.isValid, isFalse);
+    });
+
+    test('keeps the raw error byte', () {
+      expect(FusState(0xFF, 0xFE).error, FusError.notRunning);
+      expect(FusState(0x00, 0x11).error, FusError.rollBackError);
+      expect(FusState(0x00, 0x42).error, 0x42);
+    });
+  });
+
   group('DfuMemoryLayout', () {
     test('parses a single-bank descriptor and computes page addresses', () {
       final layout = DfuMemoryLayout.fromStringDescriptor(
