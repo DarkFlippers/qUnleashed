@@ -69,6 +69,13 @@ class DeviceController extends ChangeNotifier {
   List<KnownDevice> get knownDevices => _knownDevices.devices;
   String? get connectingKnownId => _connectingKnownId;
 
+  /// Live USB links only: a USB Flipper is listed while its session exists
+  /// and vanishes with it — USB has no history and is never remembered.
+  List<FlipperSessionInfo> get usbSessions => [
+    for (final session in _client.sessions)
+      if (session.device.isUsb && session.connected) session,
+  ];
+
   bool isKnownPresent(KnownDevice known) => _findPresent(known) != null;
 
   bool isKnownActive(KnownDevice known) {
@@ -144,6 +151,27 @@ class DeviceController extends ChangeNotifier {
   Future<void> disconnectKnown(KnownDevice known) {
     if (isKnownActive(known)) return disconnect();
     return _client.disconnectDevice(known.id, link: FlipperLink.ble);
+  }
+
+  /// Swaps the active session to an already-connected device.
+  Future<void> activateSession(FlipperDevice device) async {
+    if (_client.isConnecting || _connectingKnownId != null) return;
+    if (_isActiveDevice(device)) return;
+    await _client.activateById(device.id, link: device.link);
+    final connected = _client.connectedDevice;
+    if (connected != null) _setupDevice(connected);
+  }
+
+  Future<void> disconnectSession(FlipperDevice device) {
+    if (_isActiveDevice(device)) return disconnect();
+    return _client.disconnectDevice(device.id, link: device.link);
+  }
+
+  bool _isActiveDevice(FlipperDevice device) {
+    final current = _client.connectedDevice;
+    return current != null &&
+        current.id == device.id &&
+        current.link == device.link;
   }
 
   Future<void> forgetKnown(KnownDevice known) => _knownDevices.forget(known);

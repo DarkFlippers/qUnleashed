@@ -16,6 +16,7 @@ class ConnectCard extends StatelessWidget {
     final ctrl = DeviceScope.of(context);
     final colors = context.appColors;
     final known = ctrl.knownDevices;
+    final usb = ctrl.usbSessions;
 
     return FlipperPageCard(
       child: Column(
@@ -24,10 +25,25 @@ class ConnectCard extends StatelessWidget {
             color: colors.accent,
             onTap: () => _openPicker(context),
           ),
+          for (final session in usb) ...[
+            Divider(height: 1, color: colors.divider),
+            _DeviceRow(
+              name: session.device.name,
+              isUsb: true,
+              online: true,
+              active: session.active,
+              sessionConnected: session.connected,
+              busy: false,
+              onTap: () => ctrl.activateSession(session.device),
+              onDisconnect: () => ctrl.disconnectSession(session.device),
+            ),
+          ],
           for (var i = 0; i < known.length; i++) ...[
             Divider(height: 1, color: colors.divider),
-            _KnownDeviceRow(
-              device: known[i],
+            _DeviceRow(
+              name: known[i].name,
+              idLabel: known[i].id,
+              isUsb: false,
               online: ctrl.isKnownPresent(known[i]),
               active: ctrl.isKnownActive(known[i]),
               sessionConnected: ctrl.isKnownSessionConnected(known[i]),
@@ -111,25 +127,29 @@ class _ConnectActionRow extends StatelessWidget {
   }
 }
 
-class _KnownDeviceRow extends StatelessWidget {
-  const _KnownDeviceRow({
-    required this.device,
+class _DeviceRow extends StatelessWidget {
+  const _DeviceRow({
+    required this.name,
+    required this.isUsb,
     required this.online,
     required this.active,
     required this.sessionConnected,
     required this.busy,
     required this.onTap,
-    required this.onForget,
     required this.onDisconnect,
+    this.idLabel,
+    this.onForget,
   });
 
-  final KnownDevice device;
+  final String name;
+  final String? idLabel;
+  final bool isUsb;
   final bool online;
   final bool active;
   final bool sessionConnected;
   final bool busy;
   final VoidCallback onTap;
-  final VoidCallback onForget;
+  final VoidCallback? onForget;
   final VoidCallback onDisconnect;
 
   @override
@@ -141,7 +161,7 @@ class _KnownDeviceRow extends StatelessWidget {
         ? 'Active'
         : sessionConnected
         ? 'Connected — tap to switch'
-        : device.id;
+        : (idLabel ?? '');
 
     return Material(
       color: Colors.transparent,
@@ -152,7 +172,9 @@ class _KnownDeviceRow extends StatelessWidget {
           child: Row(
             children: [
               Icon(
-                active || sessionConnected
+                isUsb
+                    ? Icons.usb
+                    : active || sessionConnected
                     ? Icons.bluetooth_connected
                     : Icons.bluetooth,
                 size: 24,
@@ -168,7 +190,7 @@ class _KnownDeviceRow extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      device.name,
+                      name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -206,7 +228,7 @@ class _KnownDeviceRow extends StatelessWidget {
                     child: Icon(Icons.link_off, size: 18, color: colors.danger),
                   ),
                 )
-              else
+              else if (onForget != null)
                 Tooltip(
                   message: 'Forget',
                   child: InkResponse(
