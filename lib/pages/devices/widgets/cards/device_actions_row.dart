@@ -6,8 +6,7 @@ import '../../../../theme/theme.dart';
 class DeviceActionsRow extends StatelessWidget {
   const DeviceActionsRow({
     super.key,
-    required this.isBle,
-    required this.onDisconnect,
+    required this.onRemoteControl,
     required this.onPlayAlert,
     required this.onReboot,
   });
@@ -17,8 +16,7 @@ class DeviceActionsRow extends StatelessWidget {
   static const double _contentSpacing = 10;
   static const double _minWideButtonWidth = 170;
 
-  final bool isBle;
-  final VoidCallback onDisconnect;
+  final VoidCallback onRemoteControl;
   final VoidCallback? onPlayAlert;
   final VoidCallback onReboot;
 
@@ -39,12 +37,12 @@ class DeviceActionsRow extends StatelessWidget {
               child: SizedBox(
                 height: buttonHeight,
                 child: _DeviceActionButton(
-                  icon: isBle ? Icons.bluetooth_disabled : Icons.usb_off,
-                  label: 'Disconnect',
+                  iconAsset: 'assets/ic/app/controller.svg',
+                  label: 'Remote',
                   iconColor: colors.accent,
                   textColor: colors.textPrimary,
                   horizontal: horizontal,
-                  onTap: onDisconnect,
+                  onTap: onRemoteControl,
                 ),
               ),
             ),

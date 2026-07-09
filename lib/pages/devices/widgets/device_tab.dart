@@ -5,6 +5,7 @@ import '../../../theme/theme.dart';
 import '../../../widgets/info_line.dart';
 import '../../../widgets/notification.dart';
 import '../../../widgets/page_card.dart';
+import '../../tools/remote/desktop/page.dart';
 import '../device_scope.dart';
 import '../firmware/repository.dart';
 import '../models/connection_state.dart';
@@ -185,8 +186,9 @@ class _ConnectedContent extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14),
           child: DeviceActionsRow(
-            isBle: ctrl.device?.isBle == true,
-            onDisconnect: () => ctrl.disconnect(),
+            onRemoteControl: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const RemoteControlPage()),
+            ),
             onPlayAlert: ctrl.alertPlaying ? null : () => _playAlert(context),
             onReboot: () => ctrl.reboot(),
           ),
