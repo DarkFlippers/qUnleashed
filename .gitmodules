@@ -4,5 +4,5 @@
 	branch = 808695143e7d6eb225398bcfd29e0009066e2c93
 [submodule "lib/modules/flipperlib"]
 	path = lib/modules/flipperlib
-	url = https://github.com/apfxtech/FlipperDartAPI.git
-	branch = main
+	url = https://github.com/DarkFlippers/dart-flipperlib.git
+	branch = dev
