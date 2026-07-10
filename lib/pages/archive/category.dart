@@ -49,7 +49,7 @@ enum ArchiveCategory {
   subghz(
     title: 'Sub-GHz',
     flipperDir: 'subghz',
-    extensions: ['bin', 'sub'],
+    extensions: ['sub'],
     categoryColor: ArchiveCategoryColor.subghz,
     asset: 'assets/ic/fileformat/sub.svg',
     flipperAppName: 'Sub-GHz',
@@ -61,7 +61,7 @@ enum ArchiveCategory {
   wardriving(
     title: 'Wardriving',
     flipperDir: 'subghz/wardriving',
-    extensions: ['bin', 'sub'],
+    extensions: ['sub'],
     categoryColor: ArchiveCategoryColor.wardriving,
     asset: 'assets/ic/fileformat/sub.svg',
     subDirs: ['autosaved'],
