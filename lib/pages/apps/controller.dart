@@ -13,24 +13,17 @@ export 'install_service.dart' show AppButtonState;
 enum AppsCatalogFilter { all, installed, updates }
 
 class AppsCatalogController extends ChangeNotifier {
-  AppsCatalogController({
-    AppsCatalogApi? api,
-    FlipperClient? client,
-    this.pageSize = 48,
-  }) : _api = api ?? AppsCatalogApi(),
-       _ownsApi = api == null,
-       _client = client ?? FlipperOneClient().get() {
-    install = AppsInstallService(client: _client, api: _api);
+  AppsCatalogController({this.pageSize = 48})
+    : install = AppsInstallService.shared() {
+    _api = install.api;
+    _client = install.client;
     install.addListener(notifyListeners);
-    _connectionSub = _client.connectionStream.listen(_onConnection);
   }
 
-  final AppsCatalogApi _api;
-  final bool _ownsApi;
-  final FlipperClient _client;
+  late final AppsCatalogApi _api;
+  late final FlipperClient _client;
   final int pageSize;
-  late final AppsInstallService install;
-  StreamSubscription<FlipperConnectionState>? _connectionSub;
+  final AppsInstallService install;
 
   FlipperClient get client => _client;
 
@@ -103,26 +96,6 @@ class AppsCatalogController extends ChangeNotifier {
   Future<void> initialize() async {
     if (_categories.isEmpty) await loadCategories();
     if (_apps.isEmpty) await refresh();
-    if (install.isReady && !install.manifestsRefreshed) {
-      install.loadCatalog().then((_) => install.refreshManifests());
-    }
-  }
-
-  // connectionStream emits several events per session (mode changes,
-  // reconnects); the catalog load + manifest refresh must run once per
-  // connection, not once per event.
-  bool _sessionSynced = false;
-
-  void _onConnection(FlipperConnectionState state) {
-    if (!state.connected || state.mode != FlipperMode.rpc) {
-      _sessionSynced = false;
-      _api.target = null;
-      _api.api = null;
-      install.onDisconnect();
-    } else if (!_sessionSynced) {
-      _sessionSynced = true;
-      install.loadCatalog().then((_) => install.refreshManifests());
-    }
   }
 
   Future<void> loadCategories() async {
@@ -228,10 +201,7 @@ class AppsCatalogController extends ChangeNotifier {
 
   @override
   void dispose() {
-    _connectionSub?.cancel();
     install.removeListener(notifyListeners);
-    install.dispose();
-    if (_ownsApi) _api.close();
     super.dispose();
   }
 }

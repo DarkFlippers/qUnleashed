@@ -62,10 +62,21 @@ enum AppButtonState {
 }
 
 class AppsInstallService extends ChangeNotifier {
-  AppsInstallService({required this.client, required this.api});
+  AppsInstallService({required this.client, required this.api}) {
+    _connSub = client.connectionStream.listen(_onConnection);
+    if (isReady) _handleReady(client.activeDevice?.id);
+  }
+
+  static AppsInstallService? _sharedInstance;
+  static AppsInstallService shared() => _sharedInstance ??= AppsInstallService(
+    client: FlipperOneClient().get(),
+    api: AppsCatalogApi(),
+  );
 
   final FlipperClient client;
   final AppsCatalogApi api;
+
+  StreamSubscription<FlipperConnectionState>? _connSub;
 
   final Set<String> _installedAliases = {};
   Set<String> get installedAliases => Set.unmodifiable(_installedAliases);
@@ -216,9 +227,43 @@ class AppsInstallService extends ChangeNotifier {
     }
   }
 
-  /// Resets per-connection state. Call when the device disconnects.
-  void onDisconnect() {
+  bool _sessionSynced = false;
+  String? _deviceId;
+
+  void _onConnection(FlipperConnectionState state) {
+    if (!state.connected || state.mode != FlipperMode.rpc) {
+      _sessionSynced = false;
+      _manifestsRefreshed = false;
+      notifyListeners();
+      return;
+    }
+    _handleReady(state.device?.id);
+  }
+
+  void _handleReady(String? deviceId) {
+    if (deviceId != null && deviceId != _deviceId) {
+      _resetDeviceState();
+      _deviceId = deviceId;
+    }
+    if (!_sessionSynced) {
+      _sessionSynced = true;
+      unawaited(
+        _enqueueTask('', () async {
+          await loadCatalog();
+          await refreshManifests();
+          return true;
+        }, needsLink: true),
+      );
+    }
+    unawaited(_drainTaskQueue());
+  }
+
+  void _resetDeviceState() {
+    _sessionSynced = false;
     _manifestsRefreshed = false;
+    _scannedOnce = false;
+    api.target = null;
+    api.api = null;
     _installedAliases.clear();
     _installedManifests.clear();
     _manifestSizes.clear();
@@ -227,21 +272,34 @@ class AppsInstallService extends ChangeNotifier {
     final queued = List<_AppTask>.of(_taskQueue);
     _taskQueue.clear();
     for (final task in queued) {
-      _actions.remove(task.alias);
       if (!task.done.isCompleted) task.done.complete(false);
     }
+    _actions.clear();
+    _preparedInstalls.clear();
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _connSub?.cancel();
+    super.dispose();
   }
 
   // Device actions run strictly one at a time, with a cooldown after each —
   // concurrent multi-frame uploads interleaved with delete/rename commands
   // starve the firmware's flow-control credit and drop the link.
   final List<_AppTask> _taskQueue = [];
+  final Map<String, _PreparedInstall> _preparedInstalls = {};
   bool _taskWorkerRunning = false;
   final Stopwatch _sinceLastTask = Stopwatch();
+  static const int _maxLinkRetries = 5;
 
-  Future<bool> _enqueueTask(String alias, Future<bool> Function() run) {
-    final task = _AppTask(alias, run);
+  Future<bool> _enqueueTask(
+    String alias,
+    Future<bool> Function() run, {
+    bool needsLink = false,
+  }) {
+    final task = _AppTask(alias, run, needsLink: needsLink);
     _taskQueue.add(task);
     unawaited(_drainTaskQueue());
     return task.done.future;
@@ -252,6 +310,7 @@ class AppsInstallService extends ChangeNotifier {
     _taskWorkerRunning = true;
     try {
       while (_taskQueue.isNotEmpty) {
+        if (!isReady && _taskQueue.first.needsLink) break;
         if (_sinceLastTask.isRunning) {
           final wait = kTaskCooldown - _sinceLastTask.elapsed;
           if (wait > Duration.zero) await Future<void>.delayed(wait);
@@ -262,12 +321,26 @@ class AppsInstallService extends ChangeNotifier {
         if (_taskQueue.isEmpty) break;
         final task = _taskQueue.removeAt(0);
         var ok = false;
+        var requeued = false;
         try {
           ok = await task.run();
+        } on _LinkDroppedException {
+          task.attempts += 1;
+          task.needsLink = true;
+          requeued =
+              task.attempts <= _maxLinkRetries &&
+              _actions.containsKey(task.alias);
+          if (requeued) {
+            _taskQueue.insert(0, task);
+          } else {
+            _preparedInstalls.remove(task.alias);
+            if (_actions.remove(task.alias) != null) notifyListeners();
+          }
         } catch (e) {
           LogService.log('[AppsInstall] task "${task.alias}" failed: $e');
           if (_actions.remove(task.alias) != null) notifyListeners();
         }
+        if (requeued) continue;
         if (!task.done.isCompleted) task.done.complete(ok);
         _sinceLastTask
           ..reset()
@@ -308,63 +381,80 @@ class AppsInstallService extends ChangeNotifier {
   }) async {
     final action = _actions[app.alias];
     if (action == null) return false;
-    if (!isReady) {
-      _actions.remove(app.alias);
-      notifyListeners();
-      return false;
-    }
-    _setActionState(app.alias, stage: AppActionStage.download, progress: 0);
-
-    final existingManifest = _installedManifests[app.alias];
-    final installDir = await _resolveInstallDir(
-      app,
-      category: category,
-      manifest: existingManifest,
-    );
-    final fapPath = existingManifest?.path.isNotEmpty == true
-        ? existingManifest!.path
-        : '$installDir/${app.alias}.fap';
-    final fimPath = '$kManifestsRoot/${app.alias}.fim';
 
     try {
-      await _ensureDeviceFilters(required: true);
+      var prepared = _preparedInstalls[app.alias];
+      if (prepared == null) {
+        _setActionState(app.alias, stage: AppActionStage.download, progress: 0);
+        if ((api.target == null || api.api == null) && !isReady) {
+          throw const _LinkDroppedException();
+        }
+        await _ensureDeviceFilters(required: true);
 
-      var cv = detail?.card.currentVersion ?? app.currentVersion;
-      var build = cv?.currentBuild;
-      if (cv == null || cv.id.isEmpty || build == null) {
-        final fetched = await api.fetchApp(app.alias);
-        cv = fetched.card.currentVersion;
-        build = cv?.currentBuild;
-      }
-      if (cv == null || cv.id.isEmpty || build == null) {
-        throw StateError('No installable version available');
+        var cv = detail?.card.currentVersion ?? app.currentVersion;
+        var build = cv?.currentBuild;
+        if (cv == null || cv.id.isEmpty || build == null) {
+          final fetched = await api.fetchApp(app.alias);
+          cv = fetched.card.currentVersion;
+          build = cv?.currentBuild;
+        }
+        if (cv == null || cv.id.isEmpty || build == null) {
+          throw StateError('No installable version available');
+        }
+
+        final existingManifest = _installedManifests[app.alias];
+        final installDir = await _resolveInstallDir(
+          app,
+          category: category,
+          manifest: existingManifest,
+        );
+        final fapPath = existingManifest?.path.isNotEmpty == true
+            ? existingManifest!.path
+            : '$installDir/${app.alias}.fap';
+
+        final iconBase64 = await _fetchIconBase64(cv.iconUri);
+        final manifest = AppManifest(
+          uid: app.id,
+          versionUid: cv.id,
+          fullName: cv.name.isNotEmpty ? cv.name : app.name,
+          path: fapPath,
+          iconBase64: iconBase64,
+          sdkApi: api.api ?? build.sdk?.api ?? '',
+          devCatalog: false,
+        );
+        final fapBytes = await api.fetchFapBuild(
+          cv.id,
+          onProgress: (receivedBytes, totalBytes) {
+            if (totalBytes == null || totalBytes <= 0) return;
+            _setActionState(
+              app.alias,
+              stage: AppActionStage.download,
+              progress: receivedBytes / totalBytes,
+            );
+          },
+        );
+        _setActionState(
+          app.alias,
+          stage: AppActionStage.download,
+          progress: 1.0,
+        );
+
+        unawaited(_cacheFapIcon(app.alias, fapBytes));
+
+        prepared = _PreparedInstall(manifest: manifest, fapBytes: fapBytes);
+        _preparedInstalls[app.alias] = prepared;
       }
 
-      final iconBase64 = await _fetchIconBase64(cv.iconUri);
-      final manifest = AppManifest(
-        uid: app.id,
-        versionUid: cv.id,
-        fullName: cv.name.isNotEmpty ? cv.name : app.name,
-        path: fapPath,
-        iconBase64: iconBase64,
-        sdkApi: api.api ?? build.sdk?.api ?? '',
-        devCatalog: false,
-      );
+      if (!isReady) throw const _LinkDroppedException();
+
+      final manifest = prepared.manifest;
+      final fapPath = manifest.path;
+      final fimPath = '$kManifestsRoot/${app.alias}.fim';
       final manifestBytes = utf8.encode(manifest.encode());
-      final fapBytes = await api.fetchFapBuild(
-        cv.id,
-        onProgress: (receivedBytes, totalBytes) {
-          if (totalBytes == null || totalBytes <= 0) return;
-          _setActionState(
-            app.alias,
-            stage: AppActionStage.download,
-            progress: receivedBytes / totalBytes,
-          );
-        },
-      );
-      _setActionState(app.alias, stage: AppActionStage.download, progress: 1.0);
-
-      unawaited(_cacheFapIcon(app.alias, fapBytes));
+      final lastSlash = fapPath.lastIndexOf('/');
+      final installDir = lastSlash > 0
+          ? fapPath.substring(0, lastSlash)
+          : kAppsRoot;
 
       await _ensureDir(kAppsRoot);
       await _ensureDir(installDir);
@@ -374,7 +464,7 @@ class AppsInstallService extends ChangeNotifier {
       // survives an interrupted or cancelled transfer.
       await client.storageWriteChunkedSafe(
         fapPath,
-        fapBytes,
+        prepared.fapBytes,
         onProgress: (p) => _setActionState(
           app.alias,
           stage: AppActionStage.upload,
@@ -389,10 +479,16 @@ class AppsInstallService extends ChangeNotifier {
       _manifestSizes[app.alias] = manifestBytes.length;
       _preinstalledAliases.remove(app.alias);
       _preinstalledPaths.remove(app.alias);
+      _preparedInstalls.remove(app.alias);
       _actions.remove(app.alias);
       notifyListeners();
       return true;
     } catch (e) {
+      if (e is _LinkDroppedException || !isReady) {
+        _setActionState(app.alias, stage: AppActionStage.queued, progress: 0);
+        throw const _LinkDroppedException();
+      }
+      _preparedInstalls.remove(app.alias);
       LogService.log('[AppsInstall] install ${app.alias} failed: $e');
       _actions[app.alias] = (_actions[app.alias] ?? action).copyWith(
         error: '$e',
@@ -414,17 +510,17 @@ class AppsInstallService extends ChangeNotifier {
       stage: AppActionStage.queued,
     );
     notifyListeners();
-    return _enqueueTask(app.alias, () => _performUninstall(app, category: category));
+    return _enqueueTask(
+      app.alias,
+      () => _performUninstall(app, category: category),
+      needsLink: true,
+    );
   }
 
   Future<bool> _performUninstall(AppCard app, {AppCategory? category}) async {
     final action = _actions[app.alias];
     if (action == null) return false;
-    if (!isReady) {
-      _actions.remove(app.alias);
-      notifyListeners();
-      return false;
-    }
+    if (!isReady) throw const _LinkDroppedException();
     _setActionState(app.alias, stage: AppActionStage.download);
     try {
       final fimPath = '$kManifestsRoot/${app.alias}.fim';
@@ -443,6 +539,10 @@ class AppsInstallService extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
+      if (!isReady) {
+        _setActionState(app.alias, stage: AppActionStage.queued, progress: 0);
+        throw const _LinkDroppedException();
+      }
       LogService.log('[AppsInstall] uninstall ${app.alias} failed: $e');
       _actions[app.alias] = (_actions[app.alias] ?? action).copyWith(
         error: '$e',
@@ -888,9 +988,22 @@ class AppsInstallService extends ChangeNotifier {
 }
 
 class _AppTask {
-  _AppTask(this.alias, this.run);
+  _AppTask(this.alias, this.run, {this.needsLink = false});
 
   final String alias;
   final Future<bool> Function() run;
   final Completer<bool> done = Completer<bool>();
+  int attempts = 0;
+  bool needsLink;
+}
+
+class _PreparedInstall {
+  _PreparedInstall({required this.manifest, required this.fapBytes});
+
+  final AppManifest manifest;
+  final List<int> fapBytes;
+}
+
+class _LinkDroppedException implements Exception {
+  const _LinkDroppedException();
 }
