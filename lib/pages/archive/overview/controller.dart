@@ -14,16 +14,20 @@ import '../../../services/repository/app.dart' as icon_repo;
 import '../models/fap.dart';
 import '../models/key.dart';
 
+enum SyncPhase { checking, downloading }
+
 class SyncProgress {
   SyncProgress({
     required this.current,
     required this.total,
     required this.fileName,
+    this.phase = SyncPhase.downloading,
     this.fileProgress,
   });
   final int current;
   final int total;
   final String fileName;
+  final SyncPhase phase;
   final double? fileProgress;
 
   double? get ratio {
@@ -967,6 +971,7 @@ class ArchiveController extends ChangeNotifier {
         current: done,
         total: pendingIds.length,
         fileName: key.fileName,
+        phase: SyncPhase.checking,
       );
       notifyListeners();
 
@@ -989,6 +994,7 @@ class ArchiveController extends ChangeNotifier {
           current: done,
           total: pendingIds.length,
           fileName: key.fileName,
+          phase: SyncPhase.downloading,
           fileProgress: fileProgress,
         );
         notifyListeners();

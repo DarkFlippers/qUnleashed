@@ -36,7 +36,9 @@ class SyncProgressView extends StatelessWidget {
                 child: Text(
                   p == null
                       ? 'Syncing...'
-                      : 'Syncing ${p.current}/${p.total}  ${p.fileName}'
+                      : p.phase == SyncPhase.checking
+                      ? 'Syncing ${p.current}/${p.total}  ${p.fileName}'
+                      : 'Download ${p.current}/${p.total}  ${p.fileName}'
                             '${filePercent == null ? '' : '  $filePercent%'}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
