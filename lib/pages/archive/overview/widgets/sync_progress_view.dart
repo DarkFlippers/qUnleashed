@@ -12,7 +12,10 @@ class SyncProgressView extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final p = progress;
-    final ratio = (p == null || p.total == 0) ? null : p.current / p.total;
+    final ratio = p?.ratio;
+    final filePercent = (p == null || p.fileProgress == null)
+        ? null
+        : (p.fileProgress! * 100).clamp(0, 100).toStringAsFixed(0);
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
       child: Column(
@@ -33,7 +36,8 @@ class SyncProgressView extends StatelessWidget {
                 child: Text(
                   p == null
                       ? 'Syncing...'
-                      : 'Syncing ${p.current}/${p.total}  ${p.fileName}',
+                      : 'Syncing ${p.current}/${p.total}  ${p.fileName}'
+                            '${filePercent == null ? '' : '  $filePercent%'}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(color: colors.textSecondary, fontSize: 13),

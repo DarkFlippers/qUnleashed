@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io' as io;
 
+import 'package:crypto/crypto.dart';
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/foundation.dart';
 
@@ -18,10 +19,17 @@ class SyncProgress {
     required this.current,
     required this.total,
     required this.fileName,
+    this.fileProgress,
   });
   final int current;
   final int total;
   final String fileName;
+  final double? fileProgress;
+
+  double? get ratio {
+    if (total == 0) return null;
+    return ((current + (fileProgress ?? 0)) / total).clamp(0.0, 1.0);
+  }
 }
 
 enum ArchiveSyncStatus { idle, syncing, synced }
@@ -55,6 +63,10 @@ class ArchiveController extends ChangeNotifier {
   ArchiveSyncStatus _syncStatus = ArchiveSyncStatus.idle;
   SyncProgress? _syncProgress;
   String? _lastError;
+  String? _lastReadError;
+  int _lastDownloadedOk = 0;
+  int _lastUpToDate = 0;
+  int _lastDownloadedTotal = 0;
   Set<String> _favorites = <String>{};
   List<FapFavorite> _fapFavorites = <FapFavorite>[];
 
@@ -68,6 +80,9 @@ class ArchiveController extends ChangeNotifier {
   ArchiveSyncStatus get syncStatus => _syncStatus;
   SyncProgress? get syncProgress => _syncProgress;
   String? get lastError => _lastError;
+  int get lastDownloadedOk => _lastDownloadedOk;
+  int get lastUpToDate => _lastUpToDate;
+  int get lastDownloadedTotal => _lastDownloadedTotal;
   String get deviceName => _deviceName;
   bool get isConnected => _client.isConnected;
   ArchiveStorage get storage => _storage;
@@ -171,20 +186,41 @@ class ArchiveController extends ChangeNotifier {
 
   Future<bool> _awaitRealDeviceName() async {
     if (!_client.isConnected) return false;
-    try {
-      // awaitName resolves from the cache instantly, or as soon as the name
-      // arrives mid-fetch; it throws when the fetch fails or has no name.
-      final name = await _client.awaitName().timeout(
-        const Duration(seconds: 20),
-      );
-      _setDeviceName(name);
+    final cachedName = _client.getName();
+    if (cachedName != null && cachedName.isNotEmpty) {
+      _setDeviceName(cachedName);
       return true;
+    }
+    try {
+      await _client.awaitDeviceInfo().timeout(
+        const Duration(seconds: 20),
+        onTimeout: () async {
+          final response = await _client.deviceInfo(
+            timeout: const Duration(seconds: 15),
+            priority: FlipperRequestPriority.foreground,
+          );
+          return {
+            for (final item in response.items)
+              if (item.key.trim().isNotEmpty)
+                item.key.trim(): item.value.trim(),
+          };
+        },
+      );
     } catch (e) {
       _lastError = '$e';
       LogService.log('[Archive] device metadata failed: $e');
       notifyListeners();
       return false;
     }
+    final name = _client.getName();
+    if (name == null || name.isEmpty) {
+      _lastError = 'Device metadata does not contain hardware name';
+      LogService.log('[Archive] device metadata has no hardware name');
+      notifyListeners();
+      return false;
+    }
+    _setDeviceName(name);
+    return true;
   }
 
   void _setDeviceName(String name) {
@@ -702,7 +738,9 @@ class ArchiveController extends ChangeNotifier {
           .map((e) => e.key)
           .toList();
       await _downloadPending(pendingIds);
-      _syncStatus = ArchiveSyncStatus.synced;
+      _syncStatus = _lastError == null
+          ? ArchiveSyncStatus.synced
+          : ArchiveSyncStatus.idle;
       await _parseMetaForCategory(category);
     } catch (e) {
       _syncStatus = ArchiveSyncStatus.idle;
@@ -872,7 +910,9 @@ class ArchiveController extends ChangeNotifier {
           .map((e) => e.key)
           .toList();
       await _downloadPending(pendingIds);
-      _syncStatus = ArchiveSyncStatus.synced;
+      _syncStatus = _lastError == null
+          ? ArchiveSyncStatus.synced
+          : ArchiveSyncStatus.idle;
     } catch (e) {
       _syncStatus = ArchiveSyncStatus.idle;
       _lastError = '$e';
@@ -884,34 +924,92 @@ class ArchiveController extends ChangeNotifier {
     }
   }
 
-  // A key needs a download only when the local copy is missing or its size
-  // no longer matches the device's. Re-downloading everything on every sync
-  // used to re-transfer the whole archive over BLE each time.
-  bool _needsDownload(ArchiveKey k) {
-    if (k.remoteSize <= 0) return false;
-    if (!k.hasLocalFile) return true;
-    return k.localSize != k.remoteSize;
+  bool _needsDownload(ArchiveKey k) => k.remoteSize > 0;
+
+  Future<bool> _localMatchesRemote(ArchiveKey key) async {
+    final localPath = key.localPath;
+    if (localPath == null || localPath.isEmpty) return false;
+    try {
+      final localBytes = await io.File(localPath).readAsBytes();
+      final localMd5 = md5.convert(localBytes).toString().toLowerCase();
+      final batch = await _client.storageMd5sum(
+        Md5sumRequest(path: key.remotePath),
+        timeout: const Duration(seconds: 15),
+      );
+      final remoteMd5 = (batch.items.isNotEmpty ? batch.items.first.md5sum : '')
+          .trim()
+          .toLowerCase();
+      return remoteMd5.isNotEmpty && remoteMd5 == localMd5;
+    } catch (e) {
+      LogService.log('[Archive] md5 check ${key.remotePath} failed: $e');
+      return false;
+    }
   }
 
   /// Downloads every pending key id in order, publishing [_syncProgress] before
   /// each file and after it completes. Shared by [syncAll] and [syncCategory].
   Future<void> _downloadPending(List<String> pendingIds) async {
     var done = 0;
+    var failed = 0;
+    _lastReadError = null;
+    _lastDownloadedOk = 0;
+    _lastUpToDate = 0;
+    _lastDownloadedTotal = pendingIds.length;
+    LogService.log('[Archive] checking ${pendingIds.length} candidate file(s)');
     for (final keyId in pendingIds) {
       final key = _keys[keyId];
       if (key == null) {
         done++;
         continue;
       }
+
       _syncProgress = SyncProgress(
         current: done,
         total: pendingIds.length,
         fileName: key.fileName,
       );
       notifyListeners();
-      await _downloadAndApply(keyId, key);
+
+      if (key.hasLocalFile && await _localMatchesRemote(key)) {
+        _lastUpToDate++;
+        done++;
+        notifyListeners();
+        continue;
+      }
+
+      var lastPublished = -1.0;
+      void publish(double fileProgress) {
+        if (fileProgress > 0 &&
+            fileProgress < 1 &&
+            (fileProgress - lastPublished).abs() < 0.01) {
+          return;
+        }
+        lastPublished = fileProgress;
+        _syncProgress = SyncProgress(
+          current: done,
+          total: pendingIds.length,
+          fileName: key.fileName,
+          fileProgress: fileProgress,
+        );
+        notifyListeners();
+      }
+
+      publish(0);
+      final ok = await _downloadAndApply(keyId, key, onProgress: publish);
+      if (ok) {
+        _lastDownloadedOk++;
+      } else {
+        failed++;
+      }
       done++;
       notifyListeners();
+    }
+    if (failed > 0) {
+      final ok = pendingIds.length - failed;
+      _lastError =
+          'Downloaded $ok/${pendingIds.length}; $failed failed'
+          '${_lastReadError == null ? '' : ': $_lastReadError'}';
+      LogService.log('[Archive] $_lastError');
     }
     _syncProgress = SyncProgress(
       current: done,
@@ -966,47 +1064,67 @@ class ArchiveController extends ChangeNotifier {
     await refresh();
   }
 
-  Future<void> _downloadAndApply(String keyId, ArchiveKey key) async {
-    if (key.hasLocalFile) {
-      await _storage.hardDelete(
+  Future<bool> _downloadAndApply(
+    String keyId,
+    ArchiveKey key, {
+    void Function(double fileProgress)? onProgress,
+  }) async {
+    final bytes = await _readRemoteBytes(
+      key.remotePath,
+      expectedSize: key.remoteSize,
+      onProgress: onProgress,
+    );
+    if (bytes == null) return false;
+    try {
+      if (key.hasLocalFile) {
+        await _storage.hardDelete(
+          _deviceName,
+          key.category,
+          key.fileName,
+          subFolder: key.subFolder,
+        );
+      }
+      final file = await _storage.saveBytes(
         _deviceName,
         key.category,
         key.fileName,
+        bytes,
         subFolder: key.subFolder,
       );
+      final size = await file.length();
+      final stat = await file.stat();
+      _keys[keyId] = key.copyWith(
+        state: ArchiveKeyState.synced,
+        localSize: size,
+        localPath: file.path,
+        remoteSize: key.remoteSize > 0 ? key.remoteSize : size,
+        mtime: stat.modified,
+      );
+      return true;
+    } catch (e) {
+      _lastReadError = 'save ${key.fileName} failed: $e';
+      LogService.log('[Archive] ${_lastReadError!}');
+      return false;
     }
-    final bytes = await _readRemoteBytes(key.remotePath);
-    if (bytes == null) return;
-    final file = await _storage.saveBytes(
-      _deviceName,
-      key.category,
-      key.fileName,
-      bytes,
-      subFolder: key.subFolder,
-    );
-    final size = await file.length();
-    final stat = await file.stat();
-    _keys[keyId] = key.copyWith(
-      state: ArchiveKeyState.synced,
-      localSize: size,
-      localPath: file.path,
-      remoteSize: key.remoteSize > 0 ? key.remoteSize : size,
-      mtime: stat.modified,
-    );
   }
 
   Future<List<int>?> _readRemoteBytes(
     String path, {
     bool logErrors = true,
+    int expectedSize = 0,
+    void Function(double progress)? onProgress,
   }) async {
     try {
       return await _client.storageReadChunked(
         path,
-        timeout: const Duration(minutes: 2),
+        expectedSize: expectedSize,
+        onProgress: onProgress,
+        timeout: const Duration(minutes: 5),
       );
     } catch (e) {
+      _lastReadError = 'read $path failed: $e';
       if (logErrors) {
-        LogService.log('[Archive] read $path failed: $e');
+        LogService.log('[Archive] ${_lastReadError!}');
       }
       return null;
     }

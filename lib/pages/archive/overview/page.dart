@@ -121,6 +121,25 @@ class _ArchivePageState extends State<ArchivePage> {
     );
     if (confirmed == true && mounted) {
       await _ctrl.fullSync();
+      if (!mounted) return;
+      final error = _ctrl.lastError;
+      final downloaded = _ctrl.lastDownloadedOk;
+      final upToDate = _ctrl.lastUpToDate;
+      final message =
+          error ??
+          (downloaded > 0
+              ? 'Synced $downloaded file(s)'
+                    '${upToDate > 0 ? ', $upToDate up to date' : ''}'
+              : 'Already up to date ($upToDate file(s))');
+      context.showNotification(
+        message,
+        type: error == null
+            ? QNotificationType.good
+            : QNotificationType.error,
+        duration: error == null
+            ? const Duration(seconds: 2)
+            : const Duration(seconds: 6),
+      );
     }
   }
 
