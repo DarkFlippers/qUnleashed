@@ -10,6 +10,7 @@ import 'models/models.dart';
 import 'screenshot_encoder.dart';
 
 const Duration _kAnimDuration = Duration(milliseconds: 650);
+const Duration _kUnlockedFlashDuration = Duration(seconds: 1);
 const Duration _kStopTimeout = Duration(seconds: 2);
 
 class RemoteSession extends ChangeNotifier {
@@ -46,6 +47,9 @@ class RemoteSession extends ChangeNotifier {
 
   StreamOrientation _orientation = StreamOrientation.horizontal;
   bool _isLocked = true;
+  bool _lockStatusKnown = false;
+  bool _justUnlocked = false;
+  Timer? _unlockedFlashTimer;
   bool _isDisconnected = false;
   bool _disposed = false;
   bool _stopped = false;
@@ -58,7 +62,7 @@ class RemoteSession extends ChangeNotifier {
 
   ValueListenable<ui.Image?> get frameListenable => _frameNotifier;
   StreamOrientation get orientation => _orientation;
-  bool get isLocked => _isLocked;
+  bool get justUnlocked => _justUnlocked;
   bool get isDisconnected => _isDisconnected;
   bool get grayscaleEnabled => _grayscaleEnabled;
   List<QueuedButton> get queue => _queue;
@@ -102,6 +106,7 @@ class RemoteSession extends ChangeNotifier {
       h.longTimer?.cancel();
     }
     _held.clear();
+    _unlockedFlashTimer?.cancel();
     _frameSub?.cancel();
     _statusSub?.cancel();
     _connectionSub?.cancel();
@@ -149,8 +154,21 @@ class RemoteSession extends ChangeNotifier {
 
   void _applyStatus(Status status) {
     if (_disposed) return;
+    final wasLocked = _isLocked;
     _isLocked = status.locked;
+    if (_lockStatusKnown && wasLocked && !status.locked) _flashUnlocked();
+    _lockStatusKnown = true;
     _safeNotify();
+  }
+
+  void _flashUnlocked() {
+    _unlockedFlashTimer?.cancel();
+    _justUnlocked = true;
+    _unlockedFlashTimer = Timer(_kUnlockedFlashDuration, () {
+      if (_disposed) return;
+      _justUnlocked = false;
+      _safeNotify();
+    });
   }
 
   void _onFrame(ScreenFrame frame) {
@@ -306,10 +324,7 @@ class RemoteSession extends ChangeNotifier {
       for (final f in frames) {
         if (f.hasDesktopStatus()) _applyStatus(f.desktopStatus);
       }
-    } catch (_) {
-      _isLocked = false;
-      _safeNotify();
-    }
+    } catch (_) {}
   }
 
   Future<void> _send(InputKey key, InputType type) =>

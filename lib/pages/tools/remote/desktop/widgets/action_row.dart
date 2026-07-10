@@ -11,7 +11,7 @@ class RemoteActionRow extends StatelessWidget {
     required this.isVertical,
     required this.gifState,
     required this.gifElapsedMs,
-    required this.isLocked,
+    required this.justUnlocked,
     required this.savingScreenshot,
     required this.onCopy,
     required this.onSave,
@@ -25,11 +25,11 @@ class RemoteActionRow extends StatelessWidget {
   final bool isVertical;
   final GifRecordingState gifState;
   final int gifElapsedMs;
-  final bool isLocked;
+  final bool justUnlocked;
   final bool savingScreenshot;
   final AsyncCallback onCopy;
   final AsyncCallback onSave;
-  final AsyncCallback? onUnlock;
+  final AsyncCallback onUnlock;
   final VoidCallback onStartGif;
   final VoidCallback onPauseResumeGif;
   final AsyncCallback onStopGif;
@@ -51,7 +51,7 @@ class RemoteActionRow extends StatelessWidget {
 
     return _IdleControls(
       isVertical: isVertical,
-      isLocked: isLocked,
+      justUnlocked: justUnlocked,
       savingScreenshot: savingScreenshot,
       gifBusy: gifState == GifRecordingState.encoding,
       onCopy: onCopy,
@@ -65,7 +65,7 @@ class RemoteActionRow extends StatelessWidget {
 class _IdleControls extends StatelessWidget {
   const _IdleControls({
     required this.isVertical,
-    required this.isLocked,
+    required this.justUnlocked,
     required this.savingScreenshot,
     required this.gifBusy,
     required this.onCopy,
@@ -75,12 +75,12 @@ class _IdleControls extends StatelessWidget {
   });
 
   final bool isVertical;
-  final bool isLocked;
+  final bool justUnlocked;
   final bool savingScreenshot;
   final bool gifBusy;
   final AsyncCallback onCopy;
   final AsyncCallback onSave;
-  final AsyncCallback? onUnlock;
+  final AsyncCallback onUnlock;
   final VoidCallback onStartGif;
 
   @override
@@ -110,10 +110,10 @@ class _IdleControls extends StatelessWidget {
           Expanded(
             child: Center(
               child: RemoteControlActionButton(
-                asset: isLocked
+                asset: justUnlocked
                     ? 'assets/ic/action/unlock.svg'
                     : 'assets/ic/action/lock.svg',
-                label: isLocked ? 'Unlock' : 'Unlocked',
+                label: justUnlocked ? 'Unlocked' : 'Unlock',
                 onTap: onUnlock,
               ),
             ),

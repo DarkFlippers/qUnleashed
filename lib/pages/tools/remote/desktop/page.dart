@@ -290,13 +290,11 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
                               isVertical: isVertical,
                               gifState: _gifRecorder.state,
                               gifElapsedMs: _gifRecorder.elapsedMs,
-                              isLocked: _session.isLocked,
+                              justUnlocked: _session.justUnlocked,
                               savingScreenshot: _savingScreenshot,
                               onCopy: _copyScreenshot,
                               onSave: _saveScreenshot,
-                              onUnlock: _session.isLocked
-                                  ? _session.unlock
-                                  : null,
+                              onUnlock: _session.unlock,
                               onStartGif: _startGifRecording,
                               onPauseResumeGif: _togglePauseGifRecording,
                               onStopGif: _stopGifRecording,
