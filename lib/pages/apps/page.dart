@@ -7,9 +7,11 @@ import '../tools/remote/desktop/page.dart';
 import 'detail_page.dart';
 import 'controller.dart';
 import 'models/card.dart';
+import 'models/category.dart';
 import 'widgets/action_button.dart';
 import 'widgets/card.dart';
 import 'widgets/categories_filter.dart';
+import 'widgets/flipper_image.dart';
 import 'widgets/sort_dropdown.dart';
 
 const String _kContributingUrl =
@@ -56,6 +58,15 @@ class _AppsPageState extends State<AppsPage> {
     Navigator.of(
       context,
     ).push(MaterialPageRoute(builder: (_) => const RemoteControlPage()));
+  }
+
+  AppCategory? _scanningCategory() {
+    final name = _ctrl.install.scanningCategoryName?.trim().toLowerCase();
+    if (name == null || name.isEmpty) return null;
+    for (final cat in _ctrl.categories) {
+      if (cat.name.trim().toLowerCase() == name) return cat;
+    }
+    return null;
   }
 
   void _openApp(AppCard app) {
@@ -146,6 +157,7 @@ class _AppsPageState extends State<AppsPage> {
               else if (_ctrl.install.isReady)
                 _ScanIconButton(
                   scanning: _ctrl.install.scanning,
+                  category: _scanningCategory(),
                   onTap: () => _ctrl.install.rescanInstalled(),
                 ),
               IconButton(
@@ -388,16 +400,24 @@ class _UpdateAllButton extends StatelessWidget {
 }
 
 class _ScanIconButton extends StatelessWidget {
-  const _ScanIconButton({required this.scanning, required this.onTap});
+  const _ScanIconButton({
+    required this.scanning,
+    required this.onTap,
+    this.category,
+  });
 
   final bool scanning;
+  final AppCategory? category;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
+    final iconUri = category?.iconUri;
     return Tooltip(
-      message: 'Scan device for all apps',
+      message: scanning && category != null
+          ? 'Scanning ${category!.name}…'
+          : 'Scan device for all apps',
       child: IconButton(
         onPressed: scanning ? null : onTap,
         icon: AnimatedSwitcher(
@@ -407,9 +427,31 @@ class _ScanIconButton extends StatelessWidget {
                   key: const ValueKey('scan-loading'),
                   width: 20,
                   height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: colors.textPrimary,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: colors.textPrimary,
+                      ),
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 160),
+                        child: iconUri != null && iconUri.isNotEmpty
+                            ? SafeNetworkSvg(
+                                key: ValueKey('scan-cat-${category!.id}'),
+                                url: iconUri,
+                                width: 10,
+                                height: 10,
+                                colorFilter: ColorFilter.mode(
+                                  colors.textPrimary,
+                                  BlendMode.srcIn,
+                                ),
+                              )
+                            : const SizedBox.shrink(
+                                key: ValueKey('scan-cat-none'),
+                              ),
+                      ),
+                    ],
                   ),
                 )
               : Icon(

@@ -86,6 +86,9 @@ class AppsInstallService extends ChangeNotifier {
   bool _scanning = false;
   bool get scanning => _scanning;
 
+  String? _scanningCategoryName;
+  String? get scanningCategoryName => _scanningCategoryName;
+
   bool _manifestsRefreshed = false;
   bool get manifestsRefreshed => _manifestsRefreshed;
 
@@ -513,6 +516,7 @@ class AppsInstallService extends ChangeNotifier {
       LogService.log('[AppsInstall] rescanInstalled failed: $e');
     } finally {
       _scanning = false;
+      _scanningCategoryName = null;
       notifyListeners();
     }
   }
@@ -702,6 +706,8 @@ class AppsInstallService extends ChangeNotifier {
         LogService.log(
           '[AppsInstall] preinstalled scan category ${i + 1}/${categoryDirs.length}: $dirName',
         );
+        _scanningCategoryName = dirName;
+        notifyListeners();
         await _scanPreinstalledCategory('$kAppsRoot/$dirName');
         notifyListeners();
         if (i != categoryDirs.length - 1) {
