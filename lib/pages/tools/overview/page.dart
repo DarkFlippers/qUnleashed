@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
@@ -33,13 +35,14 @@ class ToolsPage extends StatelessWidget {
           description: 'View, control, and record the device screen',
           routeBuilder: _buildRemoteControlPage,
         ),
-        ToolItemModel(
-          iconAsset: 'assets/ic/app/cli.svg',
-          iconColor: const Color(0xFFFF9B34),
-          title: 'Command line',
-          description: 'Open a terminal session on your device',
-          onTap: _openCliPage,
-        ),
+        if (!Platform.isIOS)
+          ToolItemModel(
+            iconAsset: 'assets/ic/app/cli.svg',
+            iconColor: const Color(0xFFFF9B34),
+            title: 'Command line',
+            description: 'Open a terminal session on your device',
+            onTap: _openCliPage,
+          ),
         ToolItemModel(
           iconAsset: 'assets/ic/app/paint-large.svg',
           iconColor: const Color(0xFFE85858),
