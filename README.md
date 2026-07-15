@@ -4,19 +4,57 @@
 
 ## Features
 
-qUnleashed keeps the familiar companion-app workflows from the original Flipper Android App and extends them for custom firmware, desktop-friendly USB access, stronger local archive tooling and additional tools.
+qUnleashed keeps the familiar companion-app workflows from the original Flipper Android App and extends them for custom firmware: USB support on mobile **and** desktop, firmware repair from DFU mode, phone GPS/internet sharing, a stronger local archive and a bigger toolbox.
 
-- **Connection.** Like the original app, qUnleashed connects to Flipper Zero over BLE; unlike the original Android-only workflow, it also supports a desktop USB flow and uses the same app surface for device info, storage operations, CLI access and remote control.
-- **Updater.** The original app focuses on the official firmware update flow; qUnleashed is firmware-centric for Unleashed/custom firmware, with release tracking, changelogs, downloads and in-app install.
-- **Device info.** The original app shows connected Flipper status and firmware data; qUnleashed expands this view with Unleashed-oriented version, build date, storage state and raw device details.
-- **Archive.** The original app provides Archive for saved Flipper keys; qUnleashed turns it into a local-first per-device archive with synced, remote-only, local-only and deleted states, favorites, restore actions and local/remote deletion.
-- **Archive categories.** The original archive covers standard key types; qUnleashed additionally handles Sub-GHz, Wardriving, RFID 125, NFC, Infrared and iButton files, including known subfolders such as Wardriving autosaves.
-- **File Manager.** The original app has a Flipper file manager; qUnleashed keeps this workflow and supports browsing `/ext`, hidden-file visibility, folder creation, rename, delete, download, upload and direct text editing.
-- **Screen streaming and remote control.** The original app supports screen streaming and device controls; qUnleashed keeps live screen streaming, button input and adds convenient CLI access for low-level control.
-- **Apps catalog.** The original app has FAP Hub; qUnleashed provides an apps catalog with search, categories, sorting, app details, screenshots and install actions.
-- **Tools.** The original app includes NFC/Mfkey32 and infrared tools; qUnleashed keeps MIFARE Classic Mfkey32 recovery and adds a dedicated tools hub with Infrared library and FlipperMap.
-- **Infrared library.** The original app supports the official infrared remote-control source and editor flow; qUnleashed keeps official-source compatibility and additionally supports IRDB by browsing the public `Lucaslhm/Flipper-IRDB` repository, searching the whole library, previewing and editing `.ir` files, saving remotes into the local archive or sending them straight to `/ext/infrared` on a connected Flipper.
-- **FlipperMap.** The original app has no direct FlipperMap equivalent; qUnleashed parses synced archive files for latitude and longitude metadata, displays them on an interactive map, shows the current phone position, calculates distance, bearing and walking time, and links each pin back to the saved Flipper file.
+### Connection
+
+- **BLE and USB on every platform that allows it.** qUnleashed connects to Flipper Zero over BLE on all supported platforms, and over a USB serial cable on **Android, Windows, macOS and Linux** (iOS is BLE-only — Apple does not expose USB serial to apps). Both transports drive the same app surface: device info, archive sync, file manager, apps, remote control and CLI.
+- **Multiple devices.** The app remembers known Flippers, keeps warm sessions for them, switches between devices instantly and reconnects automatically (a plugged-in USB device takes priority over the last BLE one).
+- **Reliable background link.** On Android a foreground service keeps the BLE connection alive while the app is in the background.
+
+### Firmware
+
+- **Updater.** Firmware-centric for Unleashed: release/dev channel tracking with changelogs, downloads and in-app install, including Unleashed variants (base, extra apps, compact). Official firmware channels are supported as well.
+- **Repair from DFU mode.** If the firmware is broken, qUnleashed can fully re-flash the device over USB in DFU/recovery mode — core firmware, radio stack and FUS handling — mirroring qFlipper's Full Repair flow.
+- **Release notifications.** Optional push notifications for new Unleashed and official firmware releases, with a separate opt-in for dev-channel builds.
+
+### Device
+
+- **Device info.** Connected Flipper status expanded with firmware version and build date, battery details, internal/external storage state and a raw device-details sheet.
+- **GPS and internet sharing.** On firmware builds with the RPC GPS/network extension, the app feeds the phone's location to Flipper apps and proxies network connections from the Flipper through the phone's internet, with live TX/RX traffic stats on the device card.
+- **Remote desktop.** Live screen streaming and button control, physical-keyboard input on desktop, screenshot export and GIF recording of the Flipper screen.
+- **Command line.** A full CLI terminal session on the device (USB; not available on iOS).
+
+### Archive
+
+- **Local-first per-device archive** with synced, remote-only, local-only and deleted states, favorites, restore actions and local/remote deletion.
+- **Categories.** Sub-GHz, Wardriving (including autosaves), RFID 125, NFC, Infrared, iButton, Bad USB and JavaScript files.
+- **Launch from the app.** Saved keys can be emulated/launched on the connected Flipper straight from the archive — NFC, RFID and iButton via RPC emulation, Sub-GHz, Infrared, Bad USB and JavaScript via the matching Flipper app.
+- **Editing and sharing.** Built-in text editor with Flipper file-format syntax highlighting, plus sharing of remote files.
+- **File Manager.** Browse both `/ext` and `/int`, hidden-file visibility, folder creation, rename, delete, download, upload and direct text editing.
+
+### Apps
+
+- **Apps catalog.** Search, categories, sorting, app details and screenshots on top of the official catalog, with install, update and delete actions and detection of already-installed and preinstalled apps.
+
+### Tools
+
+- **Pixel Draw.** A pixel-art editor for the Flipper screen: project manager, multi-frame animations, dolphin animation import and live preview directly on the device display.
+- **Extract MIFARE Keys.** MIFARE Classic Mfkey32 key recovery from device nonces, computed natively on the phone.
+- **Remotes Library.** Official infrared remote source plus the public `Lucaslhm/Flipper-IRDB` repository: browse by brand/category, search the whole library, preview and edit `.ir` files, save remotes into the local archive or send them straight to `/ext/infrared`.
+- **Pulse Plotter.** Visualize raw Sub-GHz/Infrared/RFID pulse captures with zooming, histograms and slicing helpers — open captures right from the archive.
+- **Saved Locations.** Parses synced archive files for latitude/longitude metadata, shows them as pins on an interactive map with the current phone position, distance, bearing and walking time, and links each pin back to the saved Flipper file.
+
+## Support ApertureFox projects
+<p align="left">
+  <a href="https://boosty.to/apfxtech/donate">
+    <img src="https://img.shields.io/badge/Boosty-Support-F15F2C?style=for-the-badge&logo=boosty&logoColor=white" alt="Boosty"/>
+  </a>
+  <a href="https://yoomoney.ru/fundraise/1IV33POM6H4.260711">
+    <img src="https://img.shields.io/badge/YooMoney-RU%20only-8B3FFD?style=for-the-badge&logo=yoomoney&logoColor=white" alt="YooMoney"/>
+  </a>
+</p>
+GRAM (TON): UQAntlM9gsL92ODiNxNbH4SPpfL5OpYm2gbbuNYZuE9vDEYK
 
 ## Screenshots
 
