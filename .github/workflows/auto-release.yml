@@ -333,3 +333,45 @@ jobs:
             dist/qunleashed_*_macos_*.dmg
             dist/qunleashed_*_windows_x64_raw.zip
             dist/qunleashed_*_windows_x64.exe
+
+  sync-version:
+    name: Sync pubspec version with tag
+    needs: publish
+    if: ${{ github.server_url == 'https://github.com' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout default branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Update pubspec.yaml version from tag
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if [[ ! "$tag" =~ ([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+            echo "::error::Tag must contain a semantic version like 0.6.1, alpha-0.6.1, or v0.6.1."
+            exit 1
+          fi
+
+          major="${BASH_REMATCH[1]}"
+          minor="${BASH_REMATCH[2]}"
+          patch="${BASH_REMATCH[3]}"
+          version_name="${major}.${minor}.${patch}"
+          version_code=$((10#$major * 1000000 + 10#$minor * 1000 + 10#$patch))
+          target="${version_name}+${version_code}"
+
+          current="$(sed -nE 's/^version:[[:space:]]*(.+)[[:space:]]*$/\1/p' pubspec.yaml | head -n 1)"
+          if [[ "$current" == "$target" ]]; then
+            echo "pubspec.yaml already at version $target"
+            exit 0
+          fi
+
+          sed -i -E "s/^version:.*/version: $target/" pubspec.yaml
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Bump version to $target" pubspec.yaml
+          git push origin "HEAD:${{ github.event.repository.default_branch }}"
