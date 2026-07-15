@@ -4,7 +4,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$RootDir = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+$RootDir = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
 $AppName = "qunleashed"
 $VersionName = $env:QUNLEASHED_VERSION_NAME
 if ([string]::IsNullOrWhiteSpace($VersionName)) {
