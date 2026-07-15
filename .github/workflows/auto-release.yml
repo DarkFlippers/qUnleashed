@@ -88,7 +88,7 @@ jobs:
           {
             echo "QUNLEASHED_VERSION_NAME=$version_name"
             echo "QUNLEASHED_VERSION_CODE=$version_code"
-            echo "QUNLEASHED_FLUTTER_BUILD_ARGS=--build-name=$version_name --build-number=$version_code"
+            echo "QUNLEASHED_FLUTTER_BUILD_ARGS=--build-name=$version_name --build-number=$version_code --dart-define=QUNLEASHED_RELEASE_TAG=$tag"
           } >> "$GITHUB_ENV"
 
           echo "Version name: $version_name"
@@ -186,7 +186,7 @@ jobs:
           {
             echo "QUNLEASHED_VERSION_NAME=$version_name"
             echo "QUNLEASHED_VERSION_CODE=$version_code"
-            echo "QUNLEASHED_FLUTTER_BUILD_ARGS=--build-name=$version_name --build-number=$version_code"
+            echo "QUNLEASHED_FLUTTER_BUILD_ARGS=--build-name=$version_name --build-number=$version_code --dart-define=QUNLEASHED_RELEASE_TAG=$tag"
           } >> "$GITHUB_ENV"
 
           echo "Version name: $version_name"
@@ -276,7 +276,7 @@ jobs:
           {
             echo "QUNLEASHED_VERSION_NAME=$version_name"
             echo "QUNLEASHED_VERSION_CODE=$version_code"
-            echo "QUNLEASHED_FLUTTER_BUILD_ARGS=--build-name=$version_name --build-number=$version_code"
+            echo "QUNLEASHED_FLUTTER_BUILD_ARGS=--build-name=$version_name --build-number=$version_code --dart-define=QUNLEASHED_RELEASE_TAG=$tag"
           } >> "$GITHUB_ENV"
 
           echo "Version name: $version_name"

@@ -15,6 +15,7 @@ import '../../archive/map/page.dart';
 import '../mifare/mfkey32_page.dart';
 import '../plotter/page.dart';
 import 'models/tool.dart';
+import 'widgets/app_version.dart';
 import 'widgets/tool.dart';
 
 class ToolsPage extends StatelessWidget {
@@ -124,7 +125,10 @@ class ToolsPage extends StatelessWidget {
         child: SingleChildScrollView(
           padding: const EdgeInsets.only(top: 9, bottom: 14),
           child: Column(
-            children: [for (final tool in _tools) ToolCardView(model: tool)],
+            children: [
+              for (final tool in _tools) ToolCardView(model: tool),
+              const AppVersionLabel(),
+            ],
           ),
         ),
       ),
