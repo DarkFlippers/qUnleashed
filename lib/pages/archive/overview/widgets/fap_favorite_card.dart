@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../components/icon.dart';
 import '../../../../theme/theme.dart';
 import '../fap_icon.dart';
-import '../../models/fap.dart';
+import '../../data/models/fap.dart';
 
 /// Favorites-list card for an on-device app (`.fap`). Renders the icon
 /// extracted from the app binary when available, falling back to the default

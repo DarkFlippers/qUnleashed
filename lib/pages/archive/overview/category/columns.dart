@@ -1,5 +1,5 @@
-import '../../category.dart';
-import '../../models/key.dart';
+import '../../data/category.dart';
+import '../../data/models/key.dart';
 import '../format.dart';
 
 class ArchiveCol {

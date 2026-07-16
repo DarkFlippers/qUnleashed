@@ -1,6 +1,6 @@
 import 'dart:io' as io;
 
-import '../../category.dart';
+import 'category.dart';
 
 class ArchiveKeyMeta {
   const ArchiveKeyMeta({

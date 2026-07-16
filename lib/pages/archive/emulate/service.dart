@@ -3,8 +3,8 @@ import 'dart:convert';
 
 import 'package:flipperlib/flipperlib.dart';
 
-import '../models/key.dart';
-import '../overview/metadata/parser.dart';
+import '../data/models/key.dart';
+import '../data/parser.dart';
 
 enum EmulateError {
   notConnected,

@@ -4,8 +4,8 @@ import 'package:flutter/material.dart';
 
 import '../../../../theme/theme.dart';
 import '../controller.dart';
-import '../../category.dart';
-import '../../models/key.dart';
+import '../../data/category.dart';
+import '../../data/models/key.dart';
 import '../widgets/empty_view.dart';
 import '../widgets/key_actions_sheet.dart';
 import 'columns.dart';

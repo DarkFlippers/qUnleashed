@@ -2,7 +2,7 @@
 
 import '../../../../components/icon.dart';
 import '../../../../theme/theme.dart';
-import '../../category.dart';
+import '../../data/category.dart';
 
 class CategoryTile extends StatelessWidget {
   const CategoryTile({

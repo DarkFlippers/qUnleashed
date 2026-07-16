@@ -10,14 +10,14 @@ import '../../../../widgets/notification.dart';
 import '../../editor/page.dart';
 import '../../../tools/paint/editor/page.dart';
 import '../../../tools/plotter/page.dart';
-import '../../models/pin.dart';
+import '../../data/models/pin.dart';
 import '../../map/page.dart';
 import '../controller.dart';
 import '../../emulate/page.dart';
 import '../../browser/controller.dart';
 import '../../browser/page.dart';
 import '../../browser/share_remote_file.dart';
-import '../../models/key.dart';
+import '../../data/models/key.dart';
 import 'actions_sheet.dart';
 
 /// Builds the archive-specific action set for an [ArchiveKey] and presents it

@@ -7,12 +7,12 @@ import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/foundation.dart';
 
 import 'fap_icon.dart';
-import 'metadata/parser.dart';
+import '../data/parser.dart';
 import 'storage.dart';
-import '../category.dart';
+import '../data/category.dart';
 import '../../../services/repository/app.dart' as icon_repo;
-import '../models/fap.dart';
-import '../models/key.dart';
+import '../data/models/fap.dart';
+import '../data/models/key.dart';
 
 enum SyncPhase { checking, downloading }
 

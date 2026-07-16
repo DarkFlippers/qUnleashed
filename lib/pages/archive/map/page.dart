@@ -10,7 +10,7 @@ import '../../../theme/theme.dart';
 import 'package:qunleashed/components/appbar.dart';
 import '../../../widgets/notification.dart';
 import 'controller.dart';
-import '../models/pin.dart';
+import '../data/models/pin.dart';
 
 part 'widgets/circle_button.dart';
 part 'widgets/map_settings_panel.dart';
