@@ -356,7 +356,7 @@ class ArchiveStorage {
     await for (final entity in dir.list(followLinks: false)) {
       final name = entity.uri.pathSegments.where((s) => s.isNotEmpty).last;
       if (entity is io.Directory) {
-        if (ArchiveCategory.isIgnoredSubDir(name)) continue;
+        if (cat.isIgnoredSubDir(name)) continue;
         final childRelPath = relPath.isEmpty ? name : '$relPath/$name';
         await _walkDir(entity, cat, out, relPath: childRelPath);
       } else if (entity is io.File) {

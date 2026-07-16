@@ -862,7 +862,7 @@ class ArchiveController extends ChangeNotifier {
         for (final f in r.file) {
           final name = f.name;
           if (f.type == File_FileType.DIR) {
-            if (ArchiveCategory.isIgnoredSubDir(name)) continue;
+            if (cat.isIgnoredSubDir(name)) continue;
             final childRelPath = relPath.isEmpty ? name : '$relPath/$name';
             await _collectRemoteFiles(
               cat,
