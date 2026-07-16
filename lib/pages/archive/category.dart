@@ -1,6 +1,51 @@
 import 'package:flutter/material.dart';
 import 'package:qunleashed/theme/colors/category.dart';
 
+import 'models/key.dart';
+
+enum LaunchMethod { none, app, rpc }
+
+class LaunchRule {
+  const LaunchRule({this.whenProtocol, this.whenMeta, required this.method});
+
+  final String? whenProtocol;
+  final ({String key, String value})? whenMeta;
+  final LaunchMethod method;
+}
+
+class LaunchConfig {
+  const LaunchConfig({
+    this.defaultMethod = LaunchMethod.none,
+    this.rules = const [],
+    this.holdToSend = false,
+  });
+
+  final LaunchMethod defaultMethod;
+  final List<LaunchRule> rules;
+  final bool holdToSend;
+
+  bool get canLaunch =>
+      defaultMethod != LaunchMethod.none ||
+      rules.any((r) => r.method != LaunchMethod.none);
+
+  bool get hasProtocolRules => rules.any((r) => r.whenProtocol != null);
+
+  LaunchMethod resolve({String? protocol, Map<String, String>? meta}) {
+    for (final r in rules) {
+      if (r.whenProtocol != null &&
+          protocol != null &&
+          protocol.toLowerCase() == r.whenProtocol!.toLowerCase()) {
+        return r.method;
+      }
+      final whenMeta = r.whenMeta;
+      if (whenMeta != null && meta != null && meta[whenMeta.key] == whenMeta.value) {
+        return r.method;
+      }
+    }
+    return defaultMethod;
+  }
+}
+
 enum ArchiveCategory {
   nfc(
     title: 'NFC',
@@ -10,7 +55,7 @@ enum ArchiveCategory {
     asset: 'assets/ic/fileformat/nfc.svg',
     flipperAppName: 'NFC',
     recursiveSearch: true,
-    launchOnRpc: true,
+    launch: LaunchConfig(defaultMethod: LaunchMethod.rpc),
     locationSupport: true,
   ),
   rfid(
@@ -21,7 +66,7 @@ enum ArchiveCategory {
     asset: 'assets/ic/fileformat/rfid.svg',
     flipperAppName: '125 kHz RFID',
     recursiveSearch: true,
-    launchOnRpc: true,
+    launch: LaunchConfig(defaultMethod: LaunchMethod.rpc),
     locationSupport: true,
   ),
   ibutton(
@@ -32,7 +77,7 @@ enum ArchiveCategory {
     asset: 'assets/ic/fileformat/ibutton.svg',
     flipperAppName: 'iButton',
     recursiveSearch: true,
-    launchOnRpc: true,
+    launch: LaunchConfig(defaultMethod: LaunchMethod.rpc),
     locationSupport: true,
   ),
   infrared(
@@ -43,7 +88,7 @@ enum ArchiveCategory {
     asset: 'assets/ic/fileformat/ir.svg',
     flipperAppName: 'Infrared',
     recursiveSearch: true,
-    launchOnApp: true,
+    launch: LaunchConfig(defaultMethod: LaunchMethod.app),
     plottable: true,
   ),
   subghz(
@@ -54,8 +99,12 @@ enum ArchiveCategory {
     asset: 'assets/ic/fileformat/sub.svg',
     flipperAppName: 'Sub-GHz',
     recursiveSearch: true,
-    launchOnRpc: true,
-    rpcHoldToSend: true,
+    launch: LaunchConfig(
+      defaultMethod: LaunchMethod.app,
+      rules: [LaunchRule(whenProtocol: 'BinRAW', method: LaunchMethod.rpc)],
+      holdToSend: true,
+    ),
+    ignoredSubDirs: ['wardriving'],
     locationSupport: true,
     plottable: true,
   ),
@@ -67,7 +116,11 @@ enum ArchiveCategory {
     asset: 'assets/ic/fileformat/sub.svg',
     subDirs: ['autosaved'],
     flipperAppName: 'Sub-GHz',
-    launchOnRpc: true,
+    launch: LaunchConfig(
+      defaultMethod: LaunchMethod.app,
+      rules: [LaunchRule(whenProtocol: 'BinRAW', method: LaunchMethod.rpc)],
+      holdToSend: true,
+    ),
     locationSupport: true,
     plottable: true,
   ),
@@ -79,7 +132,8 @@ enum ArchiveCategory {
     asset: 'assets/ic/fileformat/badusb.svg',
     flipperAppName: 'Bad USB',
     recursiveSearch: true,
-    launchOnApp: true,
+    launch: LaunchConfig(defaultMethod: LaunchMethod.app),
+    ignoredFilePrefixes: ['demo_', 'install_qflipper_'],
   ),
   javascript(
     title: 'JavaScript',
@@ -89,7 +143,7 @@ enum ArchiveCategory {
     asset: 'assets/ic/fileformat/js.svg',
     flipperAppName: 'JS Runner',
     recursiveSearch: true,
-    launchOnApp: true,
+    launch: LaunchConfig(defaultMethod: LaunchMethod.app),
   );
 
   const ArchiveCategory({
@@ -101,9 +155,9 @@ enum ArchiveCategory {
     this.subDirs = const <String>[],
     this.flipperAppName,
     this.recursiveSearch = false,
-    this.launchOnApp = false,
-    this.launchOnRpc = false,
-    this.rpcHoldToSend = false,
+    this.launch = const LaunchConfig(),
+    this.ignoredSubDirs = const <String>[],
+    this.ignoredFilePrefixes = const <String>[],
     this.locationSupport = false,
     this.plottable = false,
   });
@@ -116,21 +170,26 @@ enum ArchiveCategory {
   final List<String> subDirs;
   final String? flipperAppName;
   final bool recursiveSearch;
-  final bool launchOnApp;
-  final bool launchOnRpc;
-  final bool rpcHoldToSend;
+  final LaunchConfig launch;
+  final List<String> ignoredSubDirs;
+  final List<String> ignoredFilePrefixes;
   final bool locationSupport;
   final bool plottable;
 
   Color get color => categoryColor.color;
-  bool get emulatable => flipperAppName != null && (launchOnApp || launchOnRpc);
+  bool get emulatable => flipperAppName != null && launch.canLaunch;
+  bool get holdToSend => launch.holdToSend;
   String get extension => extensions.first;
   String get remoteDir => '/ext/$flipperDir';
 
-  static bool isIgnoredSubDir(String name) {
-    if (name == 'wardriving' || name == 'assets') return true;
-    if (name.startsWith('_') || name.startsWith('.')) return true;
-    return false;
+  LaunchMethod launchMethodFor(ArchiveKey key) =>
+      launch.resolve(protocol: key.protocol, meta: key.meta);
+
+  bool isIgnoredSubDir(String name) {
+    if (name == 'assets' || name.startsWith('_') || name.startsWith('.')) {
+      return true;
+    }
+    return ignoredSubDirs.contains(name);
   }
 
   String? matchExtension(String fileName) {
@@ -143,9 +202,8 @@ enum ArchiveCategory {
 
   bool isIgnoredFile(String fileName) {
     final lower = fileName.toLowerCase();
-    if (this == ArchiveCategory.badusb) {
-      if (lower.startsWith('demo_')) return true;
-      if (lower.startsWith('install_qflipper_')) return true;
+    for (final prefix in ignoredFilePrefixes) {
+      if (lower.startsWith(prefix)) return true;
     }
     return false;
   }

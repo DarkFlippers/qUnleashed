@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flipperlib/flipperlib.dart';
 
 import '../../../components/icon.dart';
 import '../../../theme/theme.dart';
 import 'package:qunleashed/components/appbar.dart';
 import '../../../widgets/notification.dart';
 import '../../tools/remote/desktop/page.dart';
+import '../category.dart';
 import '../models/key.dart';
 import 'service.dart';
 
@@ -32,38 +34,59 @@ class _EmulatePageState extends State<EmulatePage> {
   }
 
   Future<void> _start() async {
-    if (widget.flipperKey.category.launchOnApp) {
-      final result = await _service.launchApp(widget.flipperKey);
+    final k = widget.flipperKey;
+    final cat = k.category;
+    var method = cat.launchMethodFor(k);
+    LogService.log(
+      '[Emulate] start ${k.remotePath} cat=${cat.name} '
+      'protocol=${k.protocol} hasProtocolRules=${cat.launch.hasProtocolRules} '
+      'method=$method',
+    );
+    if (cat.launch.hasProtocolRules && k.protocol == null) {
+      final proto = await _service.fetchProtocol(k);
       if (!mounted) return;
-      if (result.error == EmulateError.busy) {
-        _openRemoteControlBusy();
-        return;
-      }
-      if (result.isOk) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const RemoteControlPage()),
-        );
-        return;
-      }
-      setState(() {
-        _starting = false;
-        _running = false;
-        _error = result.error;
-      });
-      return;
+      method = cat.launch.resolve(protocol: proto, meta: k.meta);
+      LogService.log('[Emulate] fetched protocol=$proto -> method=$method');
     }
 
-    final result = await _service.start(widget.flipperKey);
-    if (!mounted) return;
-    if (result.error == EmulateError.busy) {
-      _openRemoteControlBusy();
-      return;
+    switch (method) {
+      case LaunchMethod.app:
+        final result = await _service.launchApp(k);
+        if (!mounted) return;
+        if (result.error == EmulateError.busy) {
+          _openRemoteControlBusy();
+          return;
+        }
+        if (result.isOk) {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const RemoteControlPage()),
+          );
+          return;
+        }
+        setState(() {
+          _starting = false;
+          _running = false;
+          _error = result.error;
+        });
+      case LaunchMethod.rpc:
+        final result = await _service.start(k);
+        if (!mounted) return;
+        if (result.error == EmulateError.busy) {
+          _openRemoteControlBusy();
+          return;
+        }
+        setState(() {
+          _starting = false;
+          _running = result.isOk;
+          _error = result.error;
+        });
+      case LaunchMethod.none:
+        setState(() {
+          _starting = false;
+          _running = false;
+          _error = EmulateError.notEmulatable;
+        });
     }
-    setState(() {
-      _starting = false;
-      _running = result.isOk;
-      _error = result.error;
-    });
   }
 
   void _openRemoteControlBusy() {
@@ -194,7 +217,7 @@ class _EmulatePageState extends State<EmulatePage> {
                 ),
                 const SizedBox(height: 24),
                 Expanded(child: _buildStatus(context)),
-                if (_running && k.category.rpcHoldToSend) ...[
+                if (_running && k.category.holdToSend) ...[
                   Listener(
                     onPointerDown: (_) => _onSendDown(),
                     onPointerUp: (_) => _onSendUp(),
@@ -303,7 +326,7 @@ class _EmulatePageState extends State<EmulatePage> {
           ),
           const SizedBox(height: 8),
           Text(
-            widget.flipperKey.category.rpcHoldToSend
+            widget.flipperKey.category.holdToSend
                 ? 'Hold “Send” to transmit.\nStop will close the app.'
                 : 'Use the device buttons to run it.\nStop will close the app.',
             textAlign: TextAlign.center,

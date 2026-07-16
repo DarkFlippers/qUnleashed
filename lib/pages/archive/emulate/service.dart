@@ -1,8 +1,10 @@
 ﻿import 'dart:async';
+import 'dart:convert';
 
 import 'package:flipperlib/flipperlib.dart';
 
 import '../models/key.dart';
+import '../overview/metadata/parser.dart';
 
 enum EmulateError {
   notConnected,
@@ -37,9 +39,6 @@ class EmulateService {
 
   Future<EmulateResult> start(ArchiveKey key) async {
     if (!_client.isConnected) return EmulateResult.fail(EmulateError.notConnected);
-    if (!key.category.launchOnRpc) {
-      return EmulateResult.fail(EmulateError.notEmulatable);
-    }
     if (_running || _stopFuture != null) await stop();
 
     final appName = key.category.flipperAppName;
@@ -95,9 +94,6 @@ class EmulateService {
 
   Future<EmulateResult> launchApp(ArchiveKey key) async {
     if (!_client.isConnected) return EmulateResult.fail(EmulateError.notConnected);
-    if (!key.category.launchOnApp) {
-      return EmulateResult.fail(EmulateError.notEmulatable);
-    }
 
     final appName = key.category.flipperAppName;
     if (appName == null) return EmulateResult.fail(EmulateError.notEmulatable);
@@ -120,6 +116,17 @@ class EmulateService {
     }
 
     return EmulateResult.ok();
+  }
+
+  Future<String?> fetchProtocol(ArchiveKey key) async {
+    try {
+      final bytes = await _client.storageReadChunked(key.remotePath);
+      final content = utf8.decode(bytes, allowMalformed: true);
+      return parseArchiveKeyMetaContent(key.category, content).protocol;
+    } catch (e) {
+      LogService.log('[Emulate] fetchProtocol failed: $e');
+      return null;
+    }
   }
 
   Future<void> sendPress() {
