@@ -21,6 +21,8 @@ class _EmulatePageState extends State<EmulatePage> {
   final EmulateService _service = EmulateService();
   bool _starting = true;
   bool _running = false;
+  bool _closing = false;
+  bool _sending = false;
   EmulateError? _error;
 
   @override
@@ -75,8 +77,26 @@ class _EmulatePageState extends State<EmulatePage> {
   }
 
   Future<void> _stopAndClose() async {
+    if (_closing) return;
+    _closing = true;
     await _service.stop();
-    if (mounted) Navigator.of(context).pop();
+    if (!mounted) return;
+    Navigator.of(context).pop();
+  }
+
+  Future<void> _onSendDown() async {
+    if (!_running || _closing) return;
+    setState(() => _sending = true);
+    await _service.sendPress();
+  }
+
+  Future<void> _onSendUp() async {
+    if (!mounted) {
+      await _service.sendRelease();
+      return;
+    }
+    setState(() => _sending = false);
+    await _service.sendRelease();
   }
 
   @override
@@ -174,6 +194,30 @@ class _EmulatePageState extends State<EmulatePage> {
                 ),
                 const SizedBox(height: 24),
                 Expanded(child: _buildStatus(context)),
+                if (_running && k.category.rpcHoldToSend) ...[
+                  Listener(
+                    onPointerDown: (_) => _onSendDown(),
+                    onPointerUp: (_) => _onSendUp(),
+                    onPointerCancel: (_) => _onSendUp(),
+                    child: ElevatedButton.icon(
+                      onPressed: () {},
+                      icon: Icon(
+                        _sending ? Icons.wifi_tethering : Icons.wifi_tethering_off,
+                      ),
+                      label: Text(_sending ? 'Sending…' : 'Hold to Send'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _sending ? colors.accent : colors.card,
+                        foregroundColor:
+                            _sending ? colors.onAccent : colors.textPrimary,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 if (_running)
                   ElevatedButton.icon(
                     onPressed: _stopAndClose,
@@ -259,7 +303,9 @@ class _EmulatePageState extends State<EmulatePage> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Use the device buttons to run it.\nStop will close the app.',
+            widget.flipperKey.category.rpcHoldToSend
+                ? 'Hold “Send” to transmit.\nStop will close the app.'
+                : 'Use the device buttons to run it.\nStop will close the app.',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: colors.textMuted,
