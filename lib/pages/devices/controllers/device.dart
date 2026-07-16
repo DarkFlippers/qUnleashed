@@ -69,11 +69,13 @@ class DeviceController extends ChangeNotifier {
   List<KnownDevice> get knownDevices => _knownDevices.devices;
   String? get connectingKnownId => _connectingKnownId;
 
-  /// Live USB links only: a USB Flipper is listed while its session exists
-  /// and vanishes with it — USB has no history and is never remembered.
+  /// Live USB/virtual links only: listed while the session exists and
+  /// vanishing with it — neither has history and is never remembered.
   List<FlipperSessionInfo> get usbSessions => [
     for (final session in _client.sessions)
-      if (session.device.isUsb && session.connected) session,
+      if ((session.device.isUsb || session.device.isVirtual) &&
+          session.connected)
+        session,
   ];
 
   bool isKnownPresent(KnownDevice known) => _findPresent(known) != null;

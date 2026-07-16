@@ -407,6 +407,8 @@ class _DeviceListItem extends StatelessWidget {
     final displayName = device.name;
     final subtitle = connecting
         ? 'Connecting…'
+        : device.isVirtual
+        ? 'Embedded emulator'
         : (isBle ? device.id : (device.serialNumber ?? device.id));
 
     return InkWell(
@@ -416,7 +418,9 @@ class _DeviceListItem extends StatelessWidget {
         child: Row(
           children: [
             Icon(
-              isBle
+              device.isVirtual
+                  ? Icons.memory
+                  : isBle
                   ? (_active ? Icons.bluetooth_connected : Icons.bluetooth)
                   : Icons.usb,
               color: isBle ? colors.info : colors.accent,

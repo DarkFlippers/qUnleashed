@@ -30,6 +30,7 @@ class ConnectCard extends StatelessWidget {
             _DeviceRow(
               name: session.device.name,
               isUsb: true,
+              icon: session.device.isVirtual ? Icons.memory : null,
               online: true,
               active: session.active,
               sessionConnected: session.connected,
@@ -139,11 +140,13 @@ class _DeviceRow extends StatelessWidget {
     required this.onDisconnect,
     this.idLabel,
     this.onForget,
+    this.icon,
   });
 
   final String name;
   final String? idLabel;
   final bool isUsb;
+  final IconData? icon;
   final bool online;
   final bool active;
   final bool sessionConnected;
@@ -172,11 +175,12 @@ class _DeviceRow extends StatelessWidget {
           child: Row(
             children: [
               Icon(
-                isUsb
-                    ? Icons.usb
-                    : active || sessionConnected
-                    ? Icons.bluetooth_connected
-                    : Icons.bluetooth,
+                icon ??
+                    (isUsb
+                        ? Icons.usb
+                        : active || sessionConnected
+                        ? Icons.bluetooth_connected
+                        : Icons.bluetooth),
                 size: 24,
                 color: active
                     ? colors.accent

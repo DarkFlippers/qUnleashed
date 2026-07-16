@@ -84,10 +84,17 @@ class DeviceTab extends StatelessWidget {
           subtitle: 'Flipper Zero', // !!! тип устройства под именем — не менять
           active: ctrl.isConnected || inDfu,
           dfu: inDfu,
+          virtual: ctrl.device?.isVirtual == true,
           infoEntries: wide ? ctrl.deviceInfoEntries : const [],
           deviceInfo: ctrl.info,
-          connectionLabel: ctrl.device?.isBle == true ? 'BLE' : 'USB',
-          connectionIcon: ctrl.device?.isBle == true
+          connectionLabel: ctrl.device?.isVirtual == true
+              ? 'VIRTUAL'
+              : ctrl.device?.isBle == true
+              ? 'BLE'
+              : 'USB',
+          connectionIcon: ctrl.device?.isVirtual == true
+              ? Icons.memory
+              : ctrl.device?.isBle == true
               ? Icons.bluetooth
               : Icons.usb,
           onOpenFullInfo: ctrl.isConnected

@@ -2,8 +2,11 @@ import 'dart:async';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flipperlib/flipperlib.dart'
+    show VirtualFlipperButton, VirtualFlipperEngine;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/services.dart'
+    show KeyDownEvent, KeyUpEvent, LogicalKeyboardKey, rootBundle;
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../components/codec/bm.dart';
@@ -15,6 +18,7 @@ class FlipperMockupWidget extends StatelessWidget {
     super.key,
     required this.active,
     this.dfu = false,
+    this.virtual = false,
   });
 
   static const _templateWidth = 238.0;
@@ -27,6 +31,10 @@ class FlipperMockupWidget extends StatelessWidget {
   final bool active;
 
   final bool dfu;
+
+  /// Renders the embedded emulator's live screen instead of the stock
+  /// animation (and forwards keyboard input to its buttons).
+  final bool virtual;
 
   @override
   Widget build(BuildContext context) {
@@ -59,6 +67,8 @@ class FlipperMockupWidget extends StatelessWidget {
                   child: RepaintBoundary(
                     child: dfu
                         ? const _MockupRecoveryScreen()
+                        : virtual && active
+                        ? const VirtualFlipperLiveScreen()
                         : _MockupInnerScreen(active: active),
                   ),
                 ),
@@ -81,10 +91,12 @@ class FlipperMockupHero extends StatelessWidget {
     required this.connectionLabel,
     required this.connectionIcon,
     this.dfu = false,
+    this.virtual = false,
   });
 
   final bool active;
   final bool dfu;
+  final bool virtual;
   final String title;
   final List<MapEntry<String, String>> infoEntries;
   final Map<String, String> deviceInfo;
@@ -119,7 +131,7 @@ class FlipperMockupHero extends StatelessWidget {
       children: [
         SizedBox(
           height: 100,
-          child: FlipperMockupWidget(active: active, dfu: dfu),
+          child: FlipperMockupWidget(active: active, dfu: dfu, virtual: virtual),
         ),
         const SizedBox(width: 24),
         Expanded(
@@ -168,6 +180,10 @@ class FlipperMockupHero extends StatelessWidget {
                     fontFeatures: const [FontFeature.tabularFigures()],
                   ),
                 ),
+              ],
+              if (virtual && active) ...[
+                const SizedBox(height: 8),
+                const VirtualFlipperControls(),
               ],
             ],
           ),
@@ -495,6 +511,179 @@ class _MockupRecoveryScreen extends StatelessWidget {
           fit: BoxFit.contain,
         ),
       ),
+    );
+  }
+}
+
+/// Live 128x64 screen of the embedded emulator, polled off its frame counter.
+/// Click to focus; arrow keys move, Enter = OK, Backspace/Escape = Back.
+class VirtualFlipperLiveScreen extends StatefulWidget {
+  const VirtualFlipperLiveScreen({super.key});
+
+  @override
+  State<VirtualFlipperLiveScreen> createState() =>
+      _VirtualFlipperLiveScreenState();
+}
+
+class _VirtualFlipperLiveScreenState extends State<VirtualFlipperLiveScreen> {
+  static const _screenBg = Color(0xFFFF8200);
+  static const _screenFg = Color(0xFF000000);
+
+  final _focusNode = FocusNode(debugLabel: 'VirtualFlipperScreen');
+  Timer? _timer;
+  Uint8List _frame = Uint8List(0);
+  int _seq = -1;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(milliseconds: 33), (_) {
+      final engine = VirtualFlipperEngine.instance;
+      final seq = engine.frameSeq;
+      if (seq == _seq || !mounted) return;
+      _seq = seq;
+      setState(() => _frame = engine.copyFrame());
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  static VirtualFlipperButton? _buttonFor(LogicalKeyboardKey key) {
+    if (key == LogicalKeyboardKey.arrowUp) return VirtualFlipperButton.up;
+    if (key == LogicalKeyboardKey.arrowDown) return VirtualFlipperButton.down;
+    if (key == LogicalKeyboardKey.arrowLeft) return VirtualFlipperButton.left;
+    if (key == LogicalKeyboardKey.arrowRight) {
+      return VirtualFlipperButton.right;
+    }
+    if (key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.space) {
+      return VirtualFlipperButton.ok;
+    }
+    if (key == LogicalKeyboardKey.backspace ||
+        key == LogicalKeyboardKey.escape) {
+      return VirtualFlipperButton.back;
+    }
+    return null;
+  }
+
+  KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
+    final button = _buttonFor(event.logicalKey);
+    if (button == null) return KeyEventResult.ignored;
+    if (event is KeyDownEvent) {
+      VirtualFlipperEngine.instance.setButton(button, true);
+    } else if (event is KeyUpEvent) {
+      VirtualFlipperEngine.instance.setButton(button, false);
+    }
+    return KeyEventResult.handled;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Focus(
+      focusNode: _focusNode,
+      onKeyEvent: _onKeyEvent,
+      child: GestureDetector(
+        onTap: _focusNode.requestFocus,
+        child: CustomPaint(
+          painter: _VirtualFramePainter(
+            frame: _frame,
+            fg: _screenFg,
+            bg: _screenBg,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _VirtualFramePainter extends CustomPainter {
+  _VirtualFramePainter({required this.frame, required this.fg, required this.bg});
+
+  final Uint8List frame;
+  final Color fg;
+  final Color bg;
+
+  static const _w = VirtualFlipperEngine.frameWidth;
+  static const _h = VirtualFlipperEngine.frameHeight;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRect(Offset.zero & size, Paint()..color = bg);
+    if (frame.length < _w * _h) return;
+    final paint = Paint()..color = fg;
+    final cellW = size.width / _w;
+    final cellH = size.height / _h;
+    for (var y = 0; y < _h; y++) {
+      final row = y * _w;
+      var x = 0;
+      while (x < _w) {
+        if (frame[row + x] == 0) {
+          x++;
+          continue;
+        }
+        // run-length the lit pixels of the row into one rect
+        final start = x;
+        while (x < _w && frame[row + x] != 0) {
+          x++;
+        }
+        canvas.drawRect(
+          Rect.fromLTWH(start * cellW, y * cellH, (x - start) * cellW, cellH),
+          paint,
+        );
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_VirtualFramePainter old) => old.frame != frame;
+}
+
+/// On-screen buttons for the virtual device (hero header row).
+class VirtualFlipperControls extends StatelessWidget {
+  const VirtualFlipperControls({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    Widget btn(IconData icon, VirtualFlipperButton button, String tooltip) {
+      return Tooltip(
+        message: tooltip,
+        child: Listener(
+          onPointerDown: (_) =>
+              VirtualFlipperEngine.instance.setButton(button, true),
+          onPointerUp: (_) =>
+              VirtualFlipperEngine.instance.setButton(button, false),
+          onPointerCancel: (_) =>
+              VirtualFlipperEngine.instance.setButton(button, false),
+          child: Container(
+            width: 26,
+            height: 26,
+            margin: const EdgeInsets.only(right: 4),
+            decoration: BoxDecoration(
+              color: colors.onAccent.withValues(alpha: .16),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: colors.onAccent.withValues(alpha: .28)),
+            ),
+            child: Icon(icon, size: 16, color: colors.onAccent),
+          ),
+        ),
+      );
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        btn(Icons.keyboard_arrow_left, VirtualFlipperButton.left, 'Left'),
+        btn(Icons.keyboard_arrow_up, VirtualFlipperButton.up, 'Up'),
+        btn(Icons.keyboard_arrow_down, VirtualFlipperButton.down, 'Down'),
+        btn(Icons.keyboard_arrow_right, VirtualFlipperButton.right, 'Right'),
+        btn(Icons.radio_button_checked, VirtualFlipperButton.ok, 'OK'),
+        btn(Icons.u_turn_left, VirtualFlipperButton.back, 'Back'),
+      ],
     );
   }
 }
