@@ -54,7 +54,8 @@ enum ArchiveCategory {
     asset: 'assets/ic/fileformat/sub.svg',
     flipperAppName: 'Sub-GHz',
     recursiveSearch: true,
-    launchOnApp: true,
+    launchOnRpc: true,
+    rpcHoldToSend: true,
     locationSupport: true,
     plottable: true,
   ),
@@ -66,7 +67,7 @@ enum ArchiveCategory {
     asset: 'assets/ic/fileformat/sub.svg',
     subDirs: ['autosaved'],
     flipperAppName: 'Sub-GHz',
-    launchOnApp: true,
+    launchOnRpc: true,
     locationSupport: true,
     plottable: true,
   ),
@@ -102,6 +103,7 @@ enum ArchiveCategory {
     this.recursiveSearch = false,
     this.launchOnApp = false,
     this.launchOnRpc = false,
+    this.rpcHoldToSend = false,
     this.locationSupport = false,
     this.plottable = false,
   });
@@ -116,6 +118,7 @@ enum ArchiveCategory {
   final bool recursiveSearch;
   final bool launchOnApp;
   final bool launchOnRpc;
+  final bool rpcHoldToSend;
   final bool locationSupport;
   final bool plottable;
 
