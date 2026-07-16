@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../components/icon.dart';
 import '../../../../theme/theme.dart';
-import '../../category.dart';
+import '../../data/category.dart';
 
 class CategoryAppBarTitle extends StatelessWidget {
   const CategoryAppBarTitle({super.key, required this.cat, this.syncFileName});

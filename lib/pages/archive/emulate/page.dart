@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:flipperlib/flipperlib.dart';
 
 import '../../../components/icon.dart';
 import '../../../theme/theme.dart';
 import 'package:qunleashed/components/appbar.dart';
 import '../../../widgets/notification.dart';
 import '../../tools/remote/desktop/page.dart';
-import '../category.dart';
-import '../models/key.dart';
+import '../data/category.dart';
+import '../data/models/key.dart';
 import 'service.dart';
 
 class EmulatePage extends StatefulWidget {
@@ -37,16 +36,10 @@ class _EmulatePageState extends State<EmulatePage> {
     final k = widget.flipperKey;
     final cat = k.category;
     var method = cat.launchMethodFor(k);
-    LogService.log(
-      '[Emulate] start ${k.remotePath} cat=${cat.name} '
-      'protocol=${k.protocol} hasProtocolRules=${cat.launch.hasProtocolRules} '
-      'method=$method',
-    );
     if (cat.launch.hasProtocolRules && k.protocol == null) {
       final proto = await _service.fetchProtocol(k);
       if (!mounted) return;
       method = cat.launch.resolve(protocol: proto, meta: k.meta);
-      LogService.log('[Emulate] fetched protocol=$proto -> method=$method');
     }
 
     switch (method) {

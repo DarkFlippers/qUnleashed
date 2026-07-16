@@ -2,7 +2,7 @@
 
 import '../../../../theme/theme.dart';
 import '../controller.dart';
-import '../../category.dart';
+import '../../data/category.dart';
 import 'category_tile.dart';
 
 class CategoriesCard extends StatelessWidget {
