@@ -1,11 +1,18 @@
 import 'package:flutter/material.dart';
 
-import '../../services/notifications/push_service.dart';
 import '../../theme/theme.dart';
-import '../../widgets/page_card.dart';
+import 'connected_devices_page.dart';
+import 'notifications_page.dart';
+import 'storage_page.dart';
+import 'widgets/settings_group.dart';
+import 'widgets/settings_tile.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
+
+  void _open(BuildContext context, WidgetBuilder builder) {
+    Navigator.of(context).push(MaterialPageRoute(builder: builder));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -19,133 +26,39 @@ class SettingsPage extends StatelessWidget {
       ),
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: 10),
-        children: const [
-          _NotificationsCard(),
-        ],
-      ),
-    );
-  }
-}
-
-class _NotificationsCard extends StatefulWidget {
-  const _NotificationsCard();
-
-  @override
-  State<_NotificationsCard> createState() => _NotificationsCardState();
-}
-
-class _NotificationsCardState extends State<_NotificationsCard> {
-  bool _enabled = true;
-  bool _devEnabled = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    final enabled = await PushService.instance.isNotificationsEnabled();
-    final dev = await PushService.instance.isDevUpdatesEnabled();
-    if (mounted) {
-      setState(() {
-        _enabled = enabled;
-        _devEnabled = dev;
-      });
-    }
-  }
-
-  void _setEnabled(bool value) {
-    setState(() => _enabled = value);
-    PushService.instance.setNotificationsEnabled(value);
-  }
-
-  void _setDev(bool value) {
-    setState(() => _devEnabled = value);
-    PushService.instance.setDevUpdatesEnabled(value);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.appColors;
-    final supported = PushService.isSupported;
-    return FlipperPageCard(
-      title: 'Notifications',
-      child: Column(
         children: [
-          if (!supported)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 0, 14, 6),
-              child: Text(
-                'Push notifications are not available on this platform.',
-                style: TextStyle(fontSize: 12.5, color: colors.textMuted),
+          SettingsGroup(
+            children: [
+              SettingsCategoryTile(
+                title: 'Notifications',
+                subtitle: 'App and firmware releases',
+                asset: 'assets/ic/app/bell.svg',
+                color: const Color(0xFFE85858),
+                onTap: () =>
+                    _open(context, (_) => const NotificationsSettingsPage()),
               ),
-            ),
-          _NotificationRow(
-            title: 'Enable notifications',
-            subtitle: 'Unleashed and official firmware releases.',
-            trailing: Switch(
-              value: _enabled,
-              activeThumbColor: colors.accent,
-              onChanged: supported ? _setEnabled : null,
-            ),
+            ],
           ),
-          Divider(height: 1, color: colors.divider, indent: 14, endIndent: 14),
-          _NotificationRow(
-            title: 'Development builds',
-            subtitle: 'Also get notified about new dev channel builds.',
-            trailing: Switch(
-              value: _devEnabled,
-              activeThumbColor: colors.accent,
-              onChanged: (supported && _enabled) ? _setDev : null,
-            ),
+          const SizedBox(height: 10),
+          SettingsGroup(
+            children: [
+              SettingsCategoryTile(
+                title: 'Connected devices',
+                subtitle: 'Bluetooth, USB, known devices',
+                asset: 'assets/ic/device/flipper.svg',
+                color: const Color(0xFF589DFF),
+                onTap: () =>
+                    _open(context, (_) => const ConnectedDevicesSettingsPage()),
+              ),
+              SettingsCategoryTile(
+                title: 'Storage',
+                subtitle: 'SD card, internal storage',
+                asset: 'assets/ic/storage/sd.svg',
+                color: const Color(0xFF8BC34A),
+                onTap: () => _open(context, (_) => const StorageSettingsPage()),
+              ),
+            ],
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _NotificationRow extends StatelessWidget {
-  const _NotificationRow({
-    required this.title,
-    required this.subtitle,
-    required this.trailing,
-  });
-
-  final String title;
-  final String subtitle;
-  final Widget trailing;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.appColors;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: colors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  style: TextStyle(fontSize: 12, color: colors.textSecondary),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 10),
-          trailing,
         ],
       ),
     );
