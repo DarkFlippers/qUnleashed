@@ -67,7 +67,7 @@ final List<_StorageArea> _areas = [
   _StorageArea(
     group: _groupInternal,
     title: 'Network cache',
-    subtitle: 'Cached firmware and app catalog responses',
+    subtitle: 'Cached app catalog responses',
     resolve: AppHttp.httpCacheDirectory,
   ),
   _StorageArea(
