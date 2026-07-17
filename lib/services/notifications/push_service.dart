@@ -10,20 +10,23 @@ import '../../firebase_options.dart';
 import 'notification_center.dart';
 
 class PushTopics {
+  static const appRelease = 'app_release';
   static const unlRelease = 'unl_release';
   static const ofwRelease = 'ofw_release';
   static const unlDev = 'unl_dev';
   static const ofwDev = 'ofw_dev';
 
+  static const app = [appRelease];
   static const release = [unlRelease, ofwRelease];
   static const dev = [unlDev, ofwDev];
-  static const all = [...release, ...dev];
+  static const all = [...app, ...release, ...dev];
 }
 
 class PushService {
   PushService._();
   static final PushService instance = PushService._();
 
+  static const _prefAppReleases = 'push.app_releases_enabled';
   static const _prefEnabled = 'push.notifications_enabled';
   static const _prefDevUpdates = 'push.dev_updates_enabled';
   static const _androidChannelId = 'firmware_updates';
@@ -60,23 +63,34 @@ class PushService {
     FirebaseMessaging.onMessage.listen(_showForeground);
   }
 
-  Future<bool> isNotificationsEnabled() async {
+  Future<bool> isAppReleasesEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_prefAppReleases) ?? true;
+  }
+
+  Future<void> setAppReleasesEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_prefAppReleases, enabled);
+    if (isSupported) await _applySubscriptions();
+  }
+
+  Future<bool> isFirmwareReleasesEnabled() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(_prefEnabled) ?? true;
   }
 
-  Future<void> setNotificationsEnabled(bool enabled) async {
+  Future<void> setFirmwareReleasesEnabled(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_prefEnabled, enabled);
     if (isSupported) await _applySubscriptions();
   }
 
-  Future<bool> isDevUpdatesEnabled() async {
+  Future<bool> isFirmwareDevEnabled() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(_prefDevUpdates) ?? false;
   }
 
-  Future<void> setDevUpdatesEnabled(bool enabled) async {
+  Future<void> setFirmwareDevEnabled(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_prefDevUpdates, enabled);
     if (isSupported) await _applySubscriptions();
@@ -84,10 +98,12 @@ class PushService {
 
   Future<void> _applySubscriptions() async {
     final messaging = FirebaseMessaging.instance;
-    final enabled = await isNotificationsEnabled();
-    final devEnabled = await isDevUpdatesEnabled();
+    final appEnabled = await isAppReleasesEnabled();
+    final enabled = await isFirmwareReleasesEnabled();
+    final devEnabled = await isFirmwareDevEnabled();
 
     final active = <String>{};
+    if (appEnabled) active.addAll(PushTopics.app);
     if (enabled) {
       active.addAll(PushTopics.release);
       if (devEnabled) active.addAll(PushTopics.dev);
