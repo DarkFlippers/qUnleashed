@@ -18,6 +18,7 @@ import 'theme/theme.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await LogService.initialize();
+  await QAppThemeController.instance.loadThemeMode();
   runApp(const QUnleashedApp());
   _bootstrapAmbientServices();
 }

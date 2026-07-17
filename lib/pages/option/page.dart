@@ -4,6 +4,7 @@ import '../../theme/theme.dart';
 import 'connected_devices_page.dart';
 import 'notifications_page.dart';
 import 'storage_page.dart';
+import 'theme_page.dart';
 import 'widgets/settings_group.dart';
 import 'widgets/settings_tile.dart';
 
@@ -56,6 +57,13 @@ class SettingsPage extends StatelessWidget {
                 asset: 'assets/ic/storage/sd.svg',
                 color: const Color(0xFF8BC34A),
                 onTap: () => _open(context, (_) => const StorageSettingsPage()),
+              ),
+              SettingsCategoryTile(
+                title: 'Theme',
+                subtitle: 'Firmware, system, dark or light',
+                asset: 'assets/ic/app/paint.svg',
+                color: const Color(0xFFB388FF),
+                onTap: () => _open(context, (_) => const ThemeSettingsPage()),
               ),
             ],
           ),
