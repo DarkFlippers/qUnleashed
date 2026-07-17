@@ -32,7 +32,7 @@ class ArchiveStorage {
   Future<io.Directory> resolveRootDir() async {
     final cached = _cachedRoot;
     if (cached != null) return cached;
-    final root = await appDocumentsDirectory();
+    final root = await appDevicesDirectory();
     _cachedRoot = root;
     return root;
   }
@@ -95,6 +95,7 @@ class ArchiveStorage {
       ),
       io.File(pathJoin([docs.path, 'qunleashed', 'archive', '.last_device'])),
       io.File(pathJoin([docs.path, 'qUnleashed', 'archive', '.last_device'])),
+      io.File(pathJoin([(await appDocumentsDirectory()).path, '.last_device'])),
     ];
     for (final file in candidates) {
       if (!await file.exists()) continue;
@@ -139,6 +140,7 @@ class ArchiveStorage {
       io.Directory(pathJoin([docs.path, 'qUnleashed', 'archive'])),
       currentName,
     );
+    await _migrateLegacyRoot(await appDocumentsDirectory(), currentName);
     await _migrateLegacyRoot(root, currentName);
   }
 
