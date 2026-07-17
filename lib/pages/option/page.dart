@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../../services/emulator/emulator_settings.dart';
 import '../../theme/theme.dart';
 import 'connected_devices_page.dart';
+import 'emulator_page.dart';
 import 'notifications_page.dart';
 import 'storage_page.dart';
 import 'theme_page.dart';
@@ -67,6 +69,21 @@ class SettingsPage extends StatelessWidget {
               ),
             ],
           ),
+          if (EmulatorSettings.instance.isSupported) ...[
+            const SizedBox(height: 10),
+            SettingsGroup(
+              children: [
+                SettingsCategoryTile(
+                  title: 'Emulator',
+                  subtitle: 'Virtual Flipper, device name',
+                  asset: 'assets/ic/app/controller.svg',
+                  color: const Color(0xFF26A69A),
+                  onTap: () =>
+                      _open(context, (_) => const EmulatorSettingsPage()),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );

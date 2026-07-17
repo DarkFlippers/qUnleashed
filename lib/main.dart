@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import 'pages/devices/page.dart';
 import 'services/connection/foreground_service.dart';
+import 'services/emulator/emulator_settings.dart';
 import 'services/connection/notification_service.dart';
 import 'services/gps/geolocator_gps_provider.dart';
 import 'services/notifications/push_service.dart';
@@ -19,6 +20,9 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await LogService.initialize();
   await QAppThemeController.instance.loadThemeMode();
+  // Push saved emulator config into the engine's gates before any discovery so
+  // the VirtualFlipper only appears (and carries its OTP name) when enabled.
+  await _guard('emulator settings', EmulatorSettings.instance.apply);
   runApp(const QUnleashedApp());
   _bootstrapAmbientServices();
 }
