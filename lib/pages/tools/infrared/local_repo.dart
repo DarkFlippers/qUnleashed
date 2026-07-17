@@ -48,8 +48,7 @@ class IrLibLocalRepo {
   Future<io.Directory> resolveRoot() async {
     final cached = _cachedRoot;
     if (cached != null) return cached;
-    final base = await appDocumentsDirectory();
-    final dir = io.Directory(pathJoin([base.path, 'IRDB']));
+    final dir = await irLibRepositoryDirectory();
     _cachedRoot = dir;
     return dir;
   }
