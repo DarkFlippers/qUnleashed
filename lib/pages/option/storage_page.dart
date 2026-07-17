@@ -3,6 +3,7 @@ import 'dart:io' as io;
 import 'package:flutter/material.dart';
 
 import '../../components/icon.dart';
+import '../../services/http/app_http.dart';
 import '../../services/repository/app.dart';
 import '../../theme/theme.dart';
 import '../../widgets/notification.dart';
@@ -11,48 +12,66 @@ import 'widgets/settings_tile.dart';
 
 class _StorageArea {
   const _StorageArea({
+    required this.group,
     required this.title,
     required this.subtitle,
     required this.resolve,
   });
 
+  final String group;
   final String title;
   final String subtitle;
   final Future<io.Directory> Function() resolve;
 }
 
+const _groupAppFolders = 'App folders';
+const _groupInternal = 'Internal';
+
 final List<_StorageArea> _areas = [
   _StorageArea(
+    group: _groupAppFolders,
     title: 'Device data',
     subtitle: 'Synced archive and app catalogs per device',
     resolve: appDevicesDirectory,
   ),
   _StorageArea(
+    group: _groupAppFolders,
     title: 'Screenshots',
     subtitle: 'Saved device screen captures',
     resolve: appScreenshotsDirectory,
   ),
   _StorageArea(
+    group: _groupAppFolders,
     title: 'Recordings',
     subtitle: 'Saved device screen recordings',
     resolve: appRecordingsDirectory,
   ),
   _StorageArea(
+    group: _groupAppFolders,
     title: 'Animations',
     subtitle: 'Pixel Draw projects and dolphin animations',
     resolve: appAnimationsDirectory,
   ),
   _StorageArea(
+    group: _groupAppFolders,
     title: 'IR library',
     subtitle: 'Downloaded infrared remotes repository',
     resolve: irLibRepositoryDirectory,
   ),
   _StorageArea(
+    group: _groupInternal,
     title: 'App icon cache',
     subtitle: 'Cached application icons',
     resolve: fapIconRepoDirectory,
   ),
   _StorageArea(
+    group: _groupInternal,
+    title: 'Network cache',
+    subtitle: 'Cached firmware and app catalog responses',
+    resolve: AppHttp.httpCacheDirectory,
+  ),
+  _StorageArea(
+    group: _groupInternal,
     title: 'Share cache',
     subtitle: 'Temporary files created for sharing',
     resolve: shareCacheDirectory,
@@ -148,18 +167,22 @@ class _StorageSettingsPageState extends State<StorageSettingsPage> {
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: 10),
         children: [
-          SettingsGroup(
-            title: 'App folders',
-            children: [
-              for (var i = 0; i < _areas.length; i++)
-                _StorageAreaTile(
-                  area: _areas[i],
-                  size: _sizes[i],
-                  clearing: _clearing.contains(i),
-                  onClear: () => _clearArea(i),
-                ),
-            ],
-          ),
+          for (final group in const [_groupAppFolders, _groupInternal]) ...[
+            SettingsGroup(
+              title: group,
+              children: [
+                for (var i = 0; i < _areas.length; i++)
+                  if (_areas[i].group == group)
+                    _StorageAreaTile(
+                      area: _areas[i],
+                      size: _sizes[i],
+                      clearing: _clearing.contains(i),
+                      onClear: () => _clearArea(i),
+                    ),
+              ],
+            ),
+            if (group != _groupInternal) const SizedBox(height: 10),
+          ],
         ],
       ),
     );
