@@ -169,8 +169,6 @@ abstract class FirmwareParser {
   FirmwareDirectory? get cached => _cache;
   bool get hasCached => _cache != null;
 
-  /// True while the in-memory directory is younger than [_ttl]; after that a
-  /// re-fetch is needed so fresh releases show up without an app restart.
   bool get isFresh =>
       _cache != null &&
       _fetchedAt != null &&
@@ -178,8 +176,7 @@ abstract class FirmwareParser {
 
   Future<FirmwareDirectory> fetch() async {
     final json =
-        await AppHttp.getJsonCached(Uri.parse(directoryUrl), ttl: _ttl)
-            as Map<String, dynamic>;
+        await AppHttp.getJson(Uri.parse(directoryUrl)) as Map<String, dynamic>;
     _fetchedAt = DateTime.now();
     return _cache = FirmwareDirectory.fromJson(json);
   }
