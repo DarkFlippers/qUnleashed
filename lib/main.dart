@@ -8,11 +8,17 @@ import 'services/connection/foreground_service.dart';
 import 'services/connection/notification_service.dart';
 import 'services/gps/geolocator_gps_provider.dart';
 import 'services/notifications/push_service.dart';
+// ╔═══════════════════════════════════════════════════════════════════════╗
+// ║  TODO: УДАЛИТЬ В РЕЛИЗЕ — импорт и вызов legacy-миграции ниже,        ║
+// ║  затем удалить весь файл services/repository/legacy_migration.dart    ║
+// ╚═══════════════════════════════════════════════════════════════════════╝
+import 'services/repository/legacy_migration.dart';
 import 'theme/theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await LogService.initialize();
+  await QAppThemeController.instance.loadThemeMode();
   runApp(const QUnleashedApp());
   _bootstrapAmbientServices();
 }
@@ -20,6 +26,12 @@ Future<void> main() async {
 /// genuinely unexpected runtime errors (IO, OS permission denials), not a
 /// substitute for correct per-platform configuration.
 void _bootstrapAmbientServices() {
+  // ╔═════════════════════════════════════════════════════════════════════╗
+  // ║  TODO: УДАЛИТЬ В РЕЛИЗЕ — автоматическая миграция старой раскладки  ║
+  // ║  Documents/qUnleashed (см. services/repository/legacy_migration.dart)║
+  // ╚═════════════════════════════════════════════════════════════════════╝
+  unawaited(_guard('legacy layout migration', migrateLegacyLayout));
+
   final client = FlipperOneClient().get();
 
   unawaited(

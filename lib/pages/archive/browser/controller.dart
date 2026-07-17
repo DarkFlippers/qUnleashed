@@ -530,8 +530,8 @@ class FileManagerController extends ChangeNotifier {
         ? relative.substring(0, relative.lastIndexOf('/'))
         : '';
     final localParent = parent.replaceAll('/', sep);
-    final root = await appDocumentsDirectory();
-    return pathJoin([root.path, 'downloads', localParent]);
+    final root = await shareCacheDirectory();
+    return pathJoin([root.path, localParent]);
   }
 
   String _basename(String path) {

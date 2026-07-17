@@ -61,6 +61,10 @@ class AppHttp {
 
   static io.Directory? _jsonCacheDir;
 
+  /// The on-disk JSON HTTP cache directory (inside the app support container).
+  /// Exposed so the Storage settings can report its size and clear it.
+  static Future<io.Directory> httpCacheDirectory() => _ensureJsonCacheDir();
+
   static Future<io.Directory> _ensureJsonCacheDir() async {
     final existing = _jsonCacheDir;
     if (existing != null) return existing;

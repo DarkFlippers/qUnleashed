@@ -1,6 +1,6 @@
 import 'dart:io' as io;
 
-import '../../category.dart';
+import 'category.dart';
 
 class ArchiveKeyMeta {
   const ArchiveKeyMeta({
@@ -22,13 +22,13 @@ Future<ArchiveKeyMeta?> parseArchiveKeyMeta(
     final file = io.File(localPath);
     if (!await file.exists()) return null;
     final content = await file.readAsString();
-    return _parse(cat, content);
+    return parseArchiveKeyMetaContent(cat, content);
   } catch (_) {
     return null;
   }
 }
 
-ArchiveKeyMeta _parse(ArchiveCategory cat, String content) {
+ArchiveKeyMeta parseArchiveKeyMetaContent(ArchiveCategory cat, String content) {
   final lines = content.split('\n').map((l) => l.trim()).toList();
   switch (cat) {
     case ArchiveCategory.nfc:

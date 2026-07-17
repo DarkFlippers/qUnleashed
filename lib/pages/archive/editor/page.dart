@@ -11,8 +11,8 @@ import '../../../theme/theme.dart';
 import 'package:qunleashed/components/appbar.dart';
 import '../../../widgets/notification.dart';
 import '../../../theme/colors/editor.dart';
-import '../category.dart';
-import '../models/key.dart';
+import '../data/category.dart';
+import '../data/models/key.dart';
 import '../emulate/page.dart';
 import 'syntax.dart';
 

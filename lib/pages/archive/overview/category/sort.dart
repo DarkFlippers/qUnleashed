@@ -1,4 +1,4 @@
-import '../../models/key.dart';
+import '../../data/models/key.dart';
 
 /// Returns a new list of [keys] sorted by [sortKey], ascending when [asc].
 /// Numeric meta fields fall back to 0 and text fields to the empty string.

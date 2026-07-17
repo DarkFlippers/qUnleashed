@@ -1,27 +1,93 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../config.dart';
 
-class QAppThemeController extends ChangeNotifier {
-  QAppThemeController._();
+enum QThemeMode {
+  firmware('Match firmware'),
+  system('Match system'),
+  dark('Always dark'),
+  light('Always light');
+
+  const QThemeMode(this.label);
+
+  final String label;
+}
+
+class QAppThemeController extends ChangeNotifier with WidgetsBindingObserver {
+  QAppThemeController._() {
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  static const String _prefThemeMode = 'theme.mode';
 
   static final QAppThemeController instance = QAppThemeController._();
 
   final FirmwareConfig _config = QAppConfig.firmware;
   FirmwareEntry _activeFirmware = QAppConfig.defaultFirmware;
+  QThemeMode _themeMode = QThemeMode.firmware;
 
   FirmwareConfig get config => _config;
   FirmwareEntry get activeFirmware => _activeFirmware;
+  QThemeMode get themeMode => _themeMode;
 
-  Brightness get brightness =>
-      _firmwareIsDark(_activeFirmware) ? Brightness.dark : Brightness.light;
+  Brightness get brightness {
+    switch (_themeMode) {
+      case QThemeMode.firmware:
+        return _firmwareIsDark(_activeFirmware)
+            ? Brightness.dark
+            : Brightness.light;
+      case QThemeMode.system:
+        return WidgetsBinding.instance.platformDispatcher.platformBrightness;
+      case QThemeMode.dark:
+        return Brightness.dark;
+      case QThemeMode.light:
+        return Brightness.light;
+    }
+  }
 
-  Color get accent => _activeFirmware.colors.primary;
+  Color get accent {
+    final wantDark = isDark;
+    for (final firmware in _config.firmwares) {
+      if (_firmwareIsDark(firmware) == wantDark) {
+        return firmware.colors.primary;
+      }
+    }
+    return _activeFirmware.colors.primary;
+  }
 
   bool get isDark => brightness == Brightness.dark;
 
   static bool _firmwareIsDark(FirmwareEntry firmware) =>
       firmware.shortName.toLowerCase() == 'unlshd';
+
+  Future<void> loadThemeMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_prefThemeMode);
+    if (raw == null) return;
+    for (final mode in QThemeMode.values) {
+      if (mode.name == raw) {
+        if (mode != _themeMode) {
+          _themeMode = mode;
+          notifyListeners();
+        }
+        return;
+      }
+    }
+  }
+
+  Future<void> setThemeMode(QThemeMode mode) async {
+    if (mode == _themeMode) return;
+    _themeMode = mode;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_prefThemeMode, mode.name);
+  }
+
+  @override
+  void didChangePlatformBrightness() {
+    if (_themeMode == QThemeMode.system) notifyListeners();
+  }
 
   void setActiveFirmware(FirmwareEntry? firmware) {
     if (firmware == null) return;

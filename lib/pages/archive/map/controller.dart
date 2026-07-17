@@ -7,10 +7,10 @@ import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 
-import '../overview/metadata/parser.dart';
+import '../data/parser.dart';
 import '../overview/storage.dart';
-import '../category.dart';
-import '../models/pin.dart';
+import '../data/category.dart';
+import '../data/models/pin.dart';
 
 enum MapLocationStatus { idle, requesting, granted, denied, serviceDisabled, error }
 

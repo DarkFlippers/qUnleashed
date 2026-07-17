@@ -99,10 +99,17 @@ class IrLibSettingsStorage {
   Future<io.File> _file() async {
     final cached = _cachedFile;
     if (cached != null) return cached;
-    final base = await appDocumentsDirectory();
-    final dir = io.Directory(pathJoin([base.path, 'irlib']));
-    await dir.create(recursive: true);
-    final f = io.File(pathJoin([dir.path, 'settings.json']));
+    final f = await irLibSettingsFile();
+    if (!await f.exists()) {
+      final base = await appDocumentsDirectory();
+      final legacy = io.File(
+        pathJoin([base.path, 'irlib', 'settings.json']),
+      );
+      if (await legacy.exists()) {
+        await f.parent.create(recursive: true);
+        await legacy.copy(f.path);
+      }
+    }
     _cachedFile = f;
     return f;
   }

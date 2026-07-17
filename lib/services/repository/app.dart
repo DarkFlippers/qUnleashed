@@ -5,14 +5,17 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 const String kAppDocumentsFolderName = 'qUnleashed';
-const String kAppsCatalogFileName = 'catalog.json';
+const String kDevicesFolderName = 'Devices';
+const String kAppsCatalogFileName = '.catalog.json';
 const String kScreenshotsFolderName = 'Screenshots';
 const String kRecordingsFolderName = 'Recordings';
 const String kAnimationsFolderName = 'Animations';
-const String kProjectsFolderName = 'projects';
+const String kProjectsFolderName = 'Projects';
+const String kResourcesFolderName = '.resources';
+const String kIrLibFolderName = 'irlib';
 
 Future<io.File> installedCatalogFile(String deviceName) async {
-  final root = await appDocumentsDirectory();
+  final root = await appDevicesDirectory();
   return io.File(
     pathJoin([
       root.path,
@@ -125,6 +128,32 @@ Future<io.Directory> appDocumentsDirectory() async {
   return dir;
 }
 
+Future<io.Directory> appDevicesDirectory() async {
+  final root = await appDocumentsDirectory();
+  final dir = io.Directory(pathJoin([root.path, kDevicesFolderName]));
+  await dir.create(recursive: true);
+  return dir;
+}
+
+Future<io.Directory> appResourcesDirectory() async {
+  final root = await appDocumentsDirectory();
+  final dir = io.Directory(pathJoin([root.path, kResourcesFolderName]));
+  await dir.create(recursive: true);
+  return dir;
+}
+
+Future<io.Directory> irLibRepositoryDirectory() async {
+  final root = await appResourcesDirectory();
+  return io.Directory(pathJoin([root.path, kIrLibFolderName]));
+}
+
+Future<io.Directory> shareCacheDirectory() async {
+  final base = await getTemporaryDirectory();
+  final dir = io.Directory(pathJoin([base.path, 'qunleashed_share']));
+  await dir.create(recursive: true);
+  return dir;
+}
+
 Future<io.Directory> appScreenshotsDirectory() async {
   final root = await appDocumentsDirectory();
   final dir = io.Directory(pathJoin([root.path, kScreenshotsFolderName]));
@@ -147,7 +176,7 @@ Future<io.Directory> appAnimationsDirectory() async {
 }
 
 /// Saved Pixel Draw projects (each a Dolphin animation folder: meta.txt +
-/// frame_*.bm). Lives under `Animations/projects`.
+/// frame_*.bm). Lives under `Animations/Projects`.
 Future<io.Directory> appProjectsDirectory() async {
   final root = await appAnimationsDirectory();
   final dir = io.Directory(pathJoin([root.path, kProjectsFolderName]));
@@ -155,11 +184,11 @@ Future<io.Directory> appProjectsDirectory() async {
   return dir;
 }
 
-const String kDolphinAnimationsFolderName = 'dolphin';
+const String kDolphinAnimationsFolderName = 'Dolphin';
 
 /// Local mirror of the Flipper's `/ext/dolphin` directory, where each
 /// sub-folder is one animation (meta.txt + frame_*.bm) and a manifest.txt
-/// describes the set. Lives under `Animations/dolphin`.
+/// describes the set. Lives under `Animations/Dolphin`.
 Future<io.Directory> appDolphinAnimationsDirectory() async {
   final root = await appAnimationsDirectory();
   final dir = io.Directory(pathJoin([root.path, kDolphinAnimationsFolderName]));
@@ -222,6 +251,36 @@ Future<io.Directory> legacyApplicationDocumentsDirectory(
 ) async {
   final base = await getApplicationDocumentsDirectory();
   return io.Directory(pathJoin([base.path, ...parts]));
+}
+
+Future<int> directorySize(io.Directory dir) async {
+  if (!await dir.exists()) return 0;
+  var total = 0;
+  try {
+    await for (final entity in dir.list(recursive: true, followLinks: false)) {
+      if (entity is! io.File) continue;
+      try {
+        total += await entity.length();
+      } catch (_) {}
+    }
+  } catch (_) {}
+  return total;
+}
+
+Future<void> clearDirectory(io.Directory dir) async {
+  if (!await dir.exists()) return;
+  await for (final entity in dir.list(followLinks: false)) {
+    try {
+      await entity.delete(recursive: true);
+    } catch (_) {}
+  }
+}
+
+const String kIrLibSettingsFileName = '.irlib.settings.json';
+
+Future<io.File> irLibSettingsFile() async {
+  final root = await appResourcesDirectory();
+  return io.File(pathJoin([root.path, kIrLibSettingsFileName]));
 }
 
 String? _macosRealHomeDirectory() {

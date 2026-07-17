@@ -5,7 +5,8 @@ import '../../../theme/theme.dart';
 import 'package:qunleashed/components/appbar.dart';
 import '../../../widgets/notification.dart';
 import '../../tools/remote/desktop/page.dart';
-import '../models/key.dart';
+import '../data/category.dart';
+import '../data/models/key.dart';
 import 'service.dart';
 
 class EmulatePage extends StatefulWidget {
@@ -21,6 +22,8 @@ class _EmulatePageState extends State<EmulatePage> {
   final EmulateService _service = EmulateService();
   bool _starting = true;
   bool _running = false;
+  bool _closing = false;
+  bool _sending = false;
   EmulateError? _error;
 
   @override
@@ -30,38 +33,53 @@ class _EmulatePageState extends State<EmulatePage> {
   }
 
   Future<void> _start() async {
-    if (widget.flipperKey.category.launchOnApp) {
-      final result = await _service.launchApp(widget.flipperKey);
+    final k = widget.flipperKey;
+    final cat = k.category;
+    var method = cat.launchMethodFor(k);
+    if (cat.launch.hasProtocolRules && k.protocol == null) {
+      final proto = await _service.fetchProtocol(k);
       if (!mounted) return;
-      if (result.error == EmulateError.busy) {
-        _openRemoteControlBusy();
-        return;
-      }
-      if (result.isOk) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const RemoteControlPage()),
-        );
-        return;
-      }
-      setState(() {
-        _starting = false;
-        _running = false;
-        _error = result.error;
-      });
-      return;
+      method = cat.launch.resolve(protocol: proto, meta: k.meta);
     }
 
-    final result = await _service.start(widget.flipperKey);
-    if (!mounted) return;
-    if (result.error == EmulateError.busy) {
-      _openRemoteControlBusy();
-      return;
+    switch (method) {
+      case LaunchMethod.app:
+        final result = await _service.launchApp(k);
+        if (!mounted) return;
+        if (result.error == EmulateError.busy) {
+          _openRemoteControlBusy();
+          return;
+        }
+        if (result.isOk) {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const RemoteControlPage()),
+          );
+          return;
+        }
+        setState(() {
+          _starting = false;
+          _running = false;
+          _error = result.error;
+        });
+      case LaunchMethod.rpc:
+        final result = await _service.start(k);
+        if (!mounted) return;
+        if (result.error == EmulateError.busy) {
+          _openRemoteControlBusy();
+          return;
+        }
+        setState(() {
+          _starting = false;
+          _running = result.isOk;
+          _error = result.error;
+        });
+      case LaunchMethod.none:
+        setState(() {
+          _starting = false;
+          _running = false;
+          _error = EmulateError.notEmulatable;
+        });
     }
-    setState(() {
-      _starting = false;
-      _running = result.isOk;
-      _error = result.error;
-    });
   }
 
   void _openRemoteControlBusy() {
@@ -75,8 +93,26 @@ class _EmulatePageState extends State<EmulatePage> {
   }
 
   Future<void> _stopAndClose() async {
+    if (_closing) return;
+    _closing = true;
     await _service.stop();
-    if (mounted) Navigator.of(context).pop();
+    if (!mounted) return;
+    Navigator.of(context).pop();
+  }
+
+  Future<void> _onSendDown() async {
+    if (!_running || _closing) return;
+    setState(() => _sending = true);
+    await _service.sendPress();
+  }
+
+  Future<void> _onSendUp() async {
+    if (!mounted) {
+      await _service.sendRelease();
+      return;
+    }
+    setState(() => _sending = false);
+    await _service.sendRelease();
   }
 
   @override
@@ -174,6 +210,30 @@ class _EmulatePageState extends State<EmulatePage> {
                 ),
                 const SizedBox(height: 24),
                 Expanded(child: _buildStatus(context)),
+                if (_running && k.category.holdToSend) ...[
+                  Listener(
+                    onPointerDown: (_) => _onSendDown(),
+                    onPointerUp: (_) => _onSendUp(),
+                    onPointerCancel: (_) => _onSendUp(),
+                    child: ElevatedButton.icon(
+                      onPressed: () {},
+                      icon: Icon(
+                        _sending ? Icons.wifi_tethering : Icons.wifi_tethering_off,
+                      ),
+                      label: Text(_sending ? 'Sending…' : 'Hold to Send'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _sending ? colors.accent : colors.card,
+                        foregroundColor:
+                            _sending ? colors.onAccent : colors.textPrimary,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 if (_running)
                   ElevatedButton.icon(
                     onPressed: _stopAndClose,
@@ -259,7 +319,9 @@ class _EmulatePageState extends State<EmulatePage> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Use the device buttons to run it.\nStop will close the app.',
+            widget.flipperKey.category.holdToSend
+                ? 'Hold “Send” to transmit.\nStop will close the app.'
+                : 'Use the device buttons to run it.\nStop will close the app.',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: colors.textMuted,

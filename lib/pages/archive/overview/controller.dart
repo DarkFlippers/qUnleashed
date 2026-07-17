@@ -7,12 +7,12 @@ import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/foundation.dart';
 
 import 'fap_icon.dart';
-import 'metadata/parser.dart';
+import '../data/parser.dart';
 import 'storage.dart';
-import '../category.dart';
+import '../data/category.dart';
 import '../../../services/repository/app.dart' as icon_repo;
-import '../models/fap.dart';
-import '../models/key.dart';
+import '../data/models/fap.dart';
+import '../data/models/key.dart';
 
 enum SyncPhase { checking, downloading }
 
@@ -862,7 +862,7 @@ class ArchiveController extends ChangeNotifier {
         for (final f in r.file) {
           final name = f.name;
           if (f.type == File_FileType.DIR) {
-            if (ArchiveCategory.isIgnoredSubDir(name)) continue;
+            if (cat.isIgnoredSubDir(name)) continue;
             final childRelPath = relPath.isEmpty ? name : '$relPath/$name';
             await _collectRemoteFiles(
               cat,
