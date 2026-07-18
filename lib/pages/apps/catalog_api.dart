@@ -1,4 +1,7 @@
 ﻿import 'dart:io' as io;
+import 'dart:math' as math;
+
+import 'package:flipperlib/flipperlib.dart' show LogService;
 
 import '../../services/http/app_http.dart';
 import 'models/card.dart';
@@ -120,6 +123,72 @@ class AppsCatalogApi {
         .map(AppCard.fromJson)
         .toList(growable: false);
     return AppsPage(items: items, offset: offset, limit: limit);
+  }
+
+  static const int _maxKeysPerQuery = 500;
+
+  Future<List<AppCard>> fetchAppsByKeys(
+    List<String> keys, {
+    AppsSort sortBy = AppsSort.newUpdates,
+  }) async {
+    final unique = <String>{
+      for (final k in keys)
+        if (k.isNotEmpty) k,
+    }.toList(growable: false);
+    LogService.log(
+      '[Catalog] fetchAppsByKeys: ${keys.length} in, ${unique.length} unique, target=$target api=$api',
+    );
+    if (unique.isEmpty) return const [];
+
+    final result = <AppCard>[];
+    for (var i = 0; i < unique.length; i += _maxKeysPerQuery) {
+      final end = math.min(i + _maxKeysPerQuery, unique.length);
+      final chunk = unique.sublist(i, end);
+      final decoded = await _postJson('/1/application', {
+        'limit': chunk.length,
+        'offset': 0,
+        'sort_by': sortBy.field,
+        'sort_order': sortBy.order,
+        'applications': chunk,
+        if (api != null) 'api': api,
+        if (target != null) 'target': target,
+      });
+      if (decoded is! List) {
+        throw AppsCatalogException(
+            0, '$baseUrl/1/application', 'expected list');
+      }
+      LogService.log(
+        '[Catalog] returned ${decoded.length} for ${chunk.length} requested',
+      );
+      result.addAll(
+        decoded.whereType<Map<String, dynamic>>().map(AppCard.fromJson),
+      );
+    }
+    LogService.log(
+      '[Catalog] fetchAppsByKeys resolved ${result.length}/${unique.length}',
+    );
+    return result;
+  }
+
+  Future<dynamic> _postJson(String path, Object body) {
+    if (_closed) throw StateError('AppsCatalogApi has been closed');
+    return AppHttp.postJson(
+      _uri(path, const {}),
+      body,
+      headers: {io.HttpHeaders.userAgentHeader: userAgent},
+    );
+  }
+
+  Future<AppCard> fetchAppCard(String idOrAlias) async {
+    final uri = _uri('/application/$idOrAlias', {
+      'api': ?api,
+      'target': ?target,
+    });
+    final body = await _getJson(uri, ttl: const Duration(minutes: 30));
+    if (body is! Map<String, dynamic>) {
+      throw AppsCatalogException(0, uri.toString(), 'expected object');
+    }
+    return AppCard.fromJson(body);
   }
 
   Future<AppDetail> fetchApp(

@@ -233,7 +233,7 @@ class _AppsPageState extends State<AppsPage> {
     final apps = _ctrl.displayedApps;
 
     if (apps.isEmpty) {
-      if (_ctrl.appsLoading) {
+      if (_ctrl.viewLoading) {
         return SliverFillRemaining(
           hasScrollBody: false,
           child: Center(child: CircularProgressIndicator(color: colors.accent)),
@@ -248,7 +248,7 @@ class _AppsPageState extends State<AppsPage> {
               Icon(Icons.apps, size: 48, color: colors.textMuted),
               const SizedBox(height: 8),
               Text(
-                _ctrl.lastError != null
+                _ctrl.viewError != null
                     ? 'Failed to load apps'
                     : 'No apps found',
                 style: TextStyle(color: colors.textMuted, fontSize: 14),

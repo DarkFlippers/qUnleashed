@@ -88,6 +88,41 @@ class AppsInstallService extends ChangeNotifier {
   final Map<String, String> _preinstalledPaths = {};
   final Map<String, String> _categoryNamesById = {};
 
+  final Map<String, AppCard> _onlineByUid = {};
+  final Map<String, AppCard> _onlineByAlias = {};
+  bool _installedCardsLoading = false;
+  bool get installedCardsLoading => _installedCardsLoading;
+  Object? _installedCardsError;
+  Object? get installedCardsError => _installedCardsError;
+  String? _installedCardsSig;
+
+  List<AppCard> get installedCards {
+    final result = <AppCard>[];
+    final seen = <String>{};
+    for (final alias in _installedAliases) {
+      if (!seen.add(alias)) continue;
+      final uid = _installedManifests[alias]?.uid ?? '';
+      final online =
+          (uid.isNotEmpty ? _onlineByUid[uid] : null) ?? _onlineByAlias[alias];
+      result.add(online ?? _bareCard(alias, uid));
+    }
+    for (final alias in _preinstalledAliases) {
+      if (!seen.add(alias)) continue;
+      result.add(_onlineByAlias[alias] ?? _bareCard(alias, ''));
+    }
+    return result;
+  }
+
+  AppCard _bareCard(String alias, String uid) => AppCard(
+    id: uid,
+    alias: alias,
+    categoryId: '',
+    author: '',
+    downloads: 0,
+    createdAt: 0,
+    updatedAt: 0,
+  );
+
   final Map<String, AppAction> _actions = {};
   Map<String, AppAction> get actions => Map.unmodifiable(_actions);
 
@@ -219,12 +254,110 @@ class AppsInstallService extends ChangeNotifier {
       }
       _manifestsRefreshed = true;
       await _saveCatalog();
+      LogService.log(
+        '[AppsInstall] manifests: ${_installedAliases.length} installed, ${_preinstalledAliases.length} preinstalled',
+      );
+      await ensureInstalledCards(force: true);
     } catch (e) {
       LogService.log('[AppsInstall] refreshManifests failed: $e');
     } finally {
       _scanning = false;
       notifyListeners();
     }
+  }
+
+  String _installedSetSignature() {
+    final uids = _installedManifests.values
+        .map((m) => m.uid)
+        .where((u) => u.isNotEmpty)
+        .toList()
+      ..sort();
+    final pre = _preinstalledAliases.toList()..sort();
+    return '${uids.join(',')}|${pre.join(',')}';
+  }
+
+  Future<void> ensureInstalledCards({bool force = false}) async {
+    if (_installedCardsLoading) return;
+    final sig = _installedSetSignature();
+    if (!force && _installedCardsSig == sig) return;
+    _installedCardsSig = sig;
+    _installedCardsLoading = true;
+    _installedCardsError = null;
+    notifyListeners();
+
+    final uids = _installedManifests.values
+        .map((m) => m.uid)
+        .where((u) => u.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
+    LogService.log(
+      '[AppsInstall] ensureInstalledCards: ${_installedAliases.length} installed, ${uids.length} with uid',
+    );
+    try {
+      await _ensureDeviceFilters();
+      _onlineByUid.clear();
+      _onlineByAlias.clear();
+
+      final byUid =
+          uids.isEmpty ? const <AppCard>[] : await api.fetchAppsByKeys(uids);
+      for (final c in byUid) {
+        if (c.id.isNotEmpty) _onlineByUid[c.id] = c;
+        if (c.alias.isNotEmpty) _onlineByAlias[c.alias] = c;
+      }
+
+      final unresolved = <String>[
+        for (final alias in _installedAliases)
+          if (alias.isNotEmpty && !_isResolved(alias)) alias,
+        for (final alias in _preinstalledAliases)
+          if (alias.isNotEmpty && !_onlineByAlias.containsKey(alias)) alias,
+      ];
+      LogService.log(
+        '[AppsInstall] pass 2: ${unresolved.length} apps unresolved by uid, resolving by alias (per-app GET)',
+      );
+      var resolvedByAlias = 0;
+      for (var i = 0; i < unresolved.length; i += 8) {
+        final batch = unresolved.skip(i).take(8);
+        final cards = await Future.wait(
+          batch.map((alias) async {
+            try {
+              return await api.fetchAppCard(alias);
+            } catch (_) {
+              return null;
+            }
+          }),
+        );
+        for (final c in cards) {
+          if (c == null) continue;
+          if (c.id.isNotEmpty) _onlineByUid[c.id] = c;
+          if (c.alias.isNotEmpty) _onlineByAlias[c.alias] = c;
+          resolvedByAlias++;
+        }
+        notifyListeners();
+      }
+      LogService.log(
+        '[AppsInstall] pass 2: resolved $resolvedByAlias/${unresolved.length} by alias',
+      );
+
+      _installedCardsError = null;
+      final total = installedCards.length;
+      final online = installedCards.where((c) => c.currentVersion != null).length;
+      LogService.log(
+        '[AppsInstall] installed built: $total cards, $online online, ${total - online} unresolved',
+      );
+    } catch (e) {
+      _installedCardsSig = null;
+      _installedCardsError = e;
+      LogService.log('[AppsInstall] resolve installed failed: $e');
+    } finally {
+      _installedCardsLoading = false;
+      notifyListeners();
+    }
+  }
+
+  bool _isResolved(String alias) {
+    final uid = _installedManifests[alias]?.uid ?? '';
+    return (uid.isNotEmpty && _onlineByUid.containsKey(uid)) ||
+        _onlineByAlias.containsKey(alias);
   }
 
   bool _sessionSynced = false;
@@ -269,6 +402,9 @@ class AppsInstallService extends ChangeNotifier {
     _manifestSizes.clear();
     _preinstalledAliases.clear();
     _preinstalledPaths.clear();
+    _onlineByUid.clear();
+    _onlineByAlias.clear();
+    _installedCardsSig = null;
     final queued = List<_AppTask>.of(_taskQueue);
     _taskQueue.clear();
     for (final task in queued) {
@@ -482,6 +618,7 @@ class AppsInstallService extends ChangeNotifier {
       _preparedInstalls.remove(app.alias);
       _actions.remove(app.alias);
       notifyListeners();
+      unawaited(ensureInstalledCards(force: true));
       return true;
     } catch (e) {
       if (e is _LinkDroppedException || !isReady) {
@@ -536,7 +673,9 @@ class AppsInstallService extends ChangeNotifier {
       _preinstalledAliases.remove(app.alias);
       _preinstalledPaths.remove(app.alias);
       _actions.remove(app.alias);
+      _onlineByAlias.remove(app.alias);
       notifyListeners();
+      unawaited(ensureInstalledCards(force: true));
       return true;
     } catch (e) {
       if (!isReady) {

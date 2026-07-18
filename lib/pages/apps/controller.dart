@@ -50,15 +50,9 @@ class AppsCatalogController extends ChangeNotifier {
       case AppsCatalogFilter.all:
         return List.unmodifiable(_apps);
       case AppsCatalogFilter.installed:
-        return _apps
-            .where(
-              (app) =>
-                  install.isInstalled(app) ||
-                  install.buttonState(app) == AppButtonState.update,
-            )
-            .toList(growable: false);
+        return _installedInView;
       case AppsCatalogFilter.updates:
-        return _apps.where((app) {
+        return _installedInView.where((app) {
           if (install.buttonState(app) == AppButtonState.update) return true;
           final action = install.actionFor(app);
           return action != null && action.type == AppActionType.update;
@@ -66,7 +60,26 @@ class AppsCatalogController extends ChangeNotifier {
     }
   }
 
-  List<AppCard> get updatableApps => _apps
+  List<AppCard> get _installedInView {
+    final categoryId = _currentCategory?.id;
+    return [
+      for (final app in install.installedCards)
+        if (app.currentVersion != null &&
+            (categoryId == null ||
+                categoryId.isEmpty ||
+                app.categoryId == categoryId))
+          app,
+    ];
+  }
+
+  bool get viewLoading => _filter == AppsCatalogFilter.all
+      ? _appsLoading
+      : install.installedCardsLoading;
+  Object? get viewError => _filter == AppsCatalogFilter.all
+      ? _lastError
+      : install.installedCardsError;
+
+  List<AppCard> get updatableApps => install.installedCards
       .where((app) => install.buttonState(app) == AppButtonState.update)
       .toList(growable: false);
 
@@ -135,6 +148,9 @@ class AppsCatalogController extends ChangeNotifier {
   void setFilter(AppsCatalogFilter value) {
     if (_filter == value) return;
     _filter = value;
+    if (value != AppsCatalogFilter.all) {
+      unawaited(install.ensureInstalledCards());
+    }
     notifyListeners();
   }
 

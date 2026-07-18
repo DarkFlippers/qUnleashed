@@ -59,6 +59,28 @@ class AppHttp {
     return compute(jsonDecode, text);
   }
 
+  static Future<dynamic> postJson(
+    Uri uri,
+    Object body, {
+    Map<String, String> headers = const {},
+  }) async {
+    final req = await client.postUrl(uri);
+    req.headers
+      ..set(io.HttpHeaders.acceptHeader, 'application/json')
+      ..set(io.HttpHeaders.contentTypeHeader, 'application/json');
+    for (final entry in headers.entries) {
+      req.headers.set(entry.key, entry.value);
+    }
+    req.write(jsonEncode(body));
+    final res = await req.close();
+    final text = await res.transform(utf8.decoder).join();
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw AppHttpException(res.statusCode, uri.toString(), text);
+    }
+    if (text.isEmpty) return null;
+    return compute(jsonDecode, text);
+  }
+
   static io.Directory? _jsonCacheDir;
 
   /// The on-disk JSON HTTP cache directory (inside the app support container).
