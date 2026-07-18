@@ -170,13 +170,14 @@ class _CategoryPageState extends State<CategoryPage> {
   }
 
   String _emptyTitle() {
-    if (_starredOnly) return 'No starred ${_cat.title} keys';
-    if (_filterVal != null) return 'No keys matching filter';
+    final noun = _cat.itemNounPlural;
+    if (_starredOnly) return 'No starred ${_cat.title} $noun';
+    if (_filterVal != null) return 'No $noun matching filter';
     if (_query.isNotEmpty) return 'No results for "$_query"';
     if (!_ctrl.isConnected) {
-      return 'No ${_cat.title} keys\nConnect a device to sync';
+      return 'No ${_cat.title} $noun\nConnect a device to sync';
     }
-    return 'No ${_cat.title} keys\nPull down to sync';
+    return 'No ${_cat.title} $noun\nPull down to sync';
   }
 
   @override

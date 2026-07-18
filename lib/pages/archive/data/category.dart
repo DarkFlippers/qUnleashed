@@ -139,6 +139,21 @@ enum ArchiveCategory {
   final bool plottable;
 
   Color get color => categoryColor.color;
+
+  String get itemNoun {
+    switch (this) {
+      case ArchiveCategory.infrared:
+        return 'remote';
+      case ArchiveCategory.badusb:
+      case ArchiveCategory.javascript:
+        return 'script';
+      default:
+        return 'key';
+    }
+  }
+
+  String get itemNounPlural => '${itemNoun}s';
+
   bool get emulatable => flipperAppName != null && launch.canLaunch;
   bool get holdToSend => launch.holdToSend;
   String get extension => extensions.first;
