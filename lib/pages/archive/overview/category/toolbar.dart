@@ -125,9 +125,7 @@ class _CategorySyncButtonState extends State<CategorySyncButton>
       _spin
           .animateTo(
             1,
-            duration: Duration(
-              milliseconds: (900 * (1 - _spin.value)).round(),
-            ),
+            duration: Duration(milliseconds: (900 * (1 - _spin.value)).round()),
           )
           .whenComplete(() {
             if (mounted) _spin.reset();
@@ -288,6 +286,127 @@ class CategoryToolbar extends StatelessWidget {
             _StarBtn(active: starredOnly, onToggle: onStarredToggle),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class CategorySelectionToolbar extends StatelessWidget {
+  const CategorySelectionToolbar({
+    super.key,
+    required this.count,
+    required this.allSelected,
+    required this.catColor,
+    required this.onClose,
+    required this.onToggleAll,
+    required this.onActions,
+  });
+
+  final int count;
+  final bool allSelected;
+  final Color catColor;
+  final VoidCallback onClose;
+  final VoidCallback onToggleAll;
+  final VoidCallback onActions;
+
+  static const double _h = 36;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: catColor,
+      padding: const EdgeInsets.fromLTRB(6, 0, 8, 10),
+      child: SizedBox(
+        height: _h,
+        child: Row(
+          children: [
+            IconButton(
+              onPressed: onClose,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+              icon: const Icon(
+                Icons.close_rounded,
+                color: Colors.white,
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 2),
+            Text(
+              '$count selected',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const Spacer(),
+            _PillButton(
+              onTap: onToggleAll,
+              filled: false,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    allSelected
+                        ? Icons.deselect_rounded
+                        : Icons.select_all_rounded,
+                    size: 16,
+                    color: Colors.white,
+                  ),
+                  const SizedBox(width: 5),
+                  Text(
+                    allSelected ? 'None' : 'All',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 6),
+            _PillButton(
+              onTap: onActions,
+              filled: true,
+              child: Icon(Icons.more_horiz_rounded, size: 18, color: catColor),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PillButton extends StatelessWidget {
+  const _PillButton({
+    required this.onTap,
+    required this.filled,
+    required this.child,
+  });
+
+  final VoidCallback onTap;
+  final bool filled;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 36,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: filled
+              ? Colors.white.withValues(alpha: 0.88)
+              : Colors.white.withValues(alpha: 0.18),
+          borderRadius: BorderRadius.circular(9),
+          border: filled
+              ? null
+              : Border.all(color: Colors.white.withValues(alpha: 0.26)),
+        ),
+        child: child,
       ),
     );
   }

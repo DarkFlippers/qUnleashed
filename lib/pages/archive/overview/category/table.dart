@@ -6,6 +6,8 @@ import '../../data/models/key.dart';
 import '../widgets/progress_fill.dart';
 import 'columns.dart';
 
+const double kSelectionIndicatorWidth = 26;
+
 class ArchiveColumnHeader extends StatelessWidget {
   const ArchiveColumnHeader({
     super.key,
@@ -14,6 +16,7 @@ class ArchiveColumnHeader extends StatelessWidget {
     required this.sortAsc,
     required this.onSort,
     required this.colors,
+    this.selectionMode = false,
   });
 
   final List<SizedColumn> cols;
@@ -21,6 +24,7 @@ class ArchiveColumnHeader extends StatelessWidget {
   final bool sortAsc;
   final ValueChanged<String> onSort;
   final QAppColors colors;
+  final bool selectionMode;
 
   @override
   Widget build(BuildContext context) {
@@ -30,6 +34,7 @@ class ArchiveColumnHeader extends StatelessWidget {
       child: Row(
         children: [
           const SizedBox(width: 8),
+          if (selectionMode) const SizedBox(width: kSelectionIndicatorWidth),
           for (final e in cols)
             _HeaderCell(
               col: e.col,
@@ -117,6 +122,9 @@ class ArchiveTableRow extends StatelessWidget {
     required this.colors,
     required this.cat,
     required this.onTap,
+    this.onLongPress,
+    this.selectionMode = false,
+    this.selected = false,
     this.progress,
   });
 
@@ -125,18 +133,22 @@ class ArchiveTableRow extends StatelessWidget {
   final QAppColors colors;
   final ArchiveCategory cat;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
+  final bool selectionMode;
+  final bool selected;
   final double? progress;
 
   @override
   Widget build(BuildContext context) {
     final k = flipperKey;
     return Material(
-      color: colors.card,
+      color: selected ? cat.color.withValues(alpha: 0.12) : colors.card,
       child: Stack(
         children: [
           ProgressFill(progress: progress),
           InkWell(
             onTap: onTap,
+            onLongPress: onLongPress,
             splashColor: cat.color.withValues(alpha: 0.06),
             highlightColor: cat.color.withValues(alpha: 0.04),
             child: Container(
@@ -151,6 +163,7 @@ class ArchiveTableRow extends StatelessWidget {
               child: Row(
                 children: [
                   const SizedBox(width: 8),
+                  if (selectionMode) _selectionIndicator(),
                   for (final e in cols)
                     SizedBox(
                       width: e.width,
@@ -165,6 +178,19 @@ class ArchiveTableRow extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _selectionIndicator() {
+    return SizedBox(
+      width: kSelectionIndicatorWidth,
+      child: Icon(
+        selected
+            ? Icons.check_circle_rounded
+            : Icons.radio_button_unchecked_rounded,
+        size: 20,
+        color: selected ? cat.color : colors.textMuted,
       ),
     );
   }

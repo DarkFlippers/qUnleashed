@@ -302,6 +302,34 @@ class ArchiveController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setKeysFavorite(Iterable<ArchiveKey> keys, bool favorite) async {
+    var changed = false;
+    for (final key in keys) {
+      final keyId = _localKey(
+        key.category,
+        key.name,
+        key.extension,
+        key.subFolder,
+      );
+      final has = _favorites.contains(keyId);
+      if (favorite && !has) {
+        _favorites.add(keyId);
+        changed = true;
+      } else if (!favorite && has) {
+        _favorites.remove(keyId);
+        changed = true;
+      }
+      final existing = _keys[keyId];
+      if (existing != null) {
+        _keys[keyId] = existing.copyWith(favorite: _favorites.contains(keyId));
+      }
+    }
+    if (changed) {
+      unawaited(_storage.writeFavorites(_deviceName, _favorites));
+      notifyListeners();
+    }
+  }
+
   void _applyFavorites() {
     for (final entry in _keys.entries.toList()) {
       final isFav = _favorites.contains(entry.key);
@@ -1052,6 +1080,31 @@ class ArchiveController extends ChangeNotifier {
     } catch (e) {
       _lastError = '$e';
       LogService.log('[Archive] delete failed: $e');
+    }
+    await refresh();
+  }
+
+  Future<void> deleteKeys(Iterable<ArchiveKey> keys) async {
+    for (final key in keys) {
+      try {
+        if (_client.isConnected && key.onDevice) {
+          await _client.storageDelete(
+            DeleteRequest(path: key.remotePath, recursive: false),
+            timeout: const Duration(seconds: 30),
+          );
+        }
+        if (key.inLocal || key.localPath != null) {
+          await _storage.hardDelete(
+            _deviceName,
+            key.category,
+            key.fileName,
+            subFolder: key.subFolder,
+          );
+        }
+      } catch (e) {
+        _lastError = '$e';
+        LogService.log('[Archive] delete failed: $e');
+      }
     }
     await refresh();
   }
