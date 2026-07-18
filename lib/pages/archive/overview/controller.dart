@@ -514,17 +514,27 @@ class ArchiveController extends ChangeNotifier {
     await _parseMetaForCategory(cat);
   }
 
-  Future<void> _parseMetaForCategory(ArchiveCategory cat) async {
+  /// Parses metadata for every deleted key, whatever its category. Backs the
+  /// unified deleted table, whose Protocol column reads [ArchiveKey.protocol].
+  Future<void> loadMetaForDeleted() async {
+    await _parseMeta((k) => k.isDeleted);
+  }
+
+  Future<void> _parseMetaForCategory(ArchiveCategory cat) =>
+      _parseMeta((k) => k.category == cat);
+
+  Future<void> _parseMeta(bool Function(ArchiveKey key) test) async {
     var changed = false;
     for (final entry in _keys.entries.toList()) {
-      if (entry.value.category != cat) continue;
-      if (entry.value.localPath == null) continue;
-      if (entry.value.meta != null) continue;
-      final parsed = await parseArchiveKeyMeta(cat, entry.value.localPath);
+      final key = entry.value;
+      if (!test(key)) continue;
+      if (key.localPath == null) continue;
+      if (key.meta != null) continue;
+      final parsed = await parseArchiveKeyMeta(key.category, key.localPath);
       if (parsed == null) continue;
-      _keys[entry.key] = entry.value.copyWith(
-        protocol: parsed.protocol ?? entry.value.protocol,
-        extra: parsed.extra ?? entry.value.extra,
+      _keys[entry.key] = key.copyWith(
+        protocol: parsed.protocol ?? key.protocol,
+        extra: parsed.extra ?? key.extra,
         meta: parsed.meta,
       );
       changed = true;

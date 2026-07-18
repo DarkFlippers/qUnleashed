@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../components/icon.dart';
 import '../../../../theme/theme.dart';
 import '../../data/category.dart';
 import '../../data/models/key.dart';
@@ -126,6 +127,7 @@ class ArchiveTableRow extends StatelessWidget {
     this.selectionMode = false,
     this.selected = false,
     this.progress,
+    this.showCategoryIcon = false,
   });
 
   final ArchiveKey flipperKey;
@@ -137,6 +139,10 @@ class ArchiveTableRow extends StatelessWidget {
   final bool selectionMode;
   final bool selected;
   final double? progress;
+
+  /// Prefixes the name cell with the key's category icon. Used by the unified
+  /// deleted table, where rows mix categories; off for single-category pages.
+  final bool showCategoryIcon;
 
   @override
   Widget build(BuildContext context) {
@@ -235,7 +241,7 @@ class ArchiveTableRow extends StatelessWidget {
 
   Widget _nameCell(ArchiveKey k) {
     final relDir = k.subFolder.isEmpty ? '/' : '/${k.subFolder}/';
-    return Column(
+    final labels = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -255,6 +261,21 @@ class ArchiveTableRow extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: TextStyle(color: colors.textMuted, fontSize: 10),
         ),
+      ],
+    );
+    if (!showCategoryIcon) return labels;
+    return Row(
+      children: [
+        QIconBadge(
+          asset: k.category.asset,
+          color: k.category.color,
+          size: 28,
+          iconSize: 16,
+          backgroundOpacity: 0.14,
+          borderRadius: 7,
+        ),
+        const SizedBox(width: 8),
+        Expanded(child: labels),
       ],
     );
   }

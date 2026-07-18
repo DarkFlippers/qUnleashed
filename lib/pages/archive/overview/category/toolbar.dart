@@ -191,6 +191,7 @@ class CategoryToolbar extends StatelessWidget {
     required this.onQueryChanged,
     required this.onFilterChanged,
     required this.onStarredToggle,
+    this.showStar = true,
   });
 
   final TextEditingController searchCtrl;
@@ -203,6 +204,10 @@ class CategoryToolbar extends StatelessWidget {
   final ValueChanged<String> onQueryChanged;
   final ValueChanged<String?> onFilterChanged;
   final VoidCallback onStarredToggle;
+
+  /// Whether to show the "starred only" toggle. Off in the deleted table, where
+  /// favouriting does not apply.
+  final bool showStar;
 
   static const double _h = 36;
 
@@ -282,8 +287,10 @@ class CategoryToolbar extends StatelessWidget {
                 onChanged: onFilterChanged,
               ),
             ],
-            const SizedBox(width: 4),
-            _StarBtn(active: starredOnly, onToggle: onStarredToggle),
+            if (showStar) ...[
+              const SizedBox(width: 4),
+              _StarBtn(active: starredOnly, onToggle: onStarredToggle),
+            ],
           ],
         ),
       ),

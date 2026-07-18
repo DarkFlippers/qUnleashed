@@ -24,6 +24,18 @@ const double kNameMinWidth = 140;
 const double kRowHeight = 48;
 const double kHeaderHeight = 34;
 
+/// Single column set for the unified "Deleted" table, which mixes files from
+/// every category. Keeps only fields common to all of them: name/folder (with a
+/// per-row category icon), the parsed protocol/type, size and modified time.
+const List<ArchiveCol> _deletedColumns = [
+  ArchiveCol('Name / Folder', 0, sortKey: 'name'),
+  ArchiveCol('Protocol', 150, sortKey: 'protocol', hideLevel: 3),
+  ArchiveCol('Size', 68, sortKey: 'size', right: true, hideLevel: 1),
+  ArchiveCol('Modified', 88, sortKey: 'mtime', right: true, hideLevel: 2),
+];
+
+List<ArchiveCol> deletedColumns() => _deletedColumns;
+
 List<ArchiveCol> columnsFor(ArchiveCategory cat) {
   switch (cat) {
     case ArchiveCategory.nfc:
@@ -137,8 +149,17 @@ List<SizedColumn> visibleColumns(
   ArchiveCategory cat,
   double availableWidth,
   List<ArchiveKey> keys,
+) =>
+    layoutColumns(columnsFor(cat), availableWidth, keys);
+
+/// Resolves the visible subset of [all] and their widths for [availableWidth],
+/// progressively hiding higher [ArchiveCol.hideLevel] columns until the name
+/// column fits. Shared by the per-category and unified deleted tables.
+List<SizedColumn> layoutColumns(
+  List<ArchiveCol> all,
+  double availableWidth,
+  List<ArchiveKey> keys,
 ) {
-  final all = columnsFor(cat);
   final req = <ArchiveCol, double>{
     for (final c in all)
       if (c.width > 0) c: _requiredWidth(c, keys),
