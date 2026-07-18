@@ -203,6 +203,8 @@ class _CategoryPageState extends State<CategoryPage> {
             backgroundColor: catColor,
             foregroundColor: Colors.white,
             elevation: 0,
+            scrolledUnderElevation: 0,
+            surfaceTintColor: Colors.transparent,
             titleSpacing: 0,
             title: CategoryAppBarTitle(
               cat: _cat,
