@@ -284,21 +284,16 @@ class _FileManagerPageState extends State<FileManagerPage> {
     // A single file fills its own row inline; batches use the external bar.
     if (entries.length == 1 && !entries.single.isDir) {
       final ok = await _ctrl.downloadEntryTo(entries.single, destDir: destDir);
-      if (!mounted) return;
-      context.showNotification(
-        ok ? 'Downloaded to $destDir' : 'Download failed',
-        type: ok ? QNotificationType.good : QNotificationType.error,
-      );
+      if (!mounted || ok) return;
+      context.showNotification('Download failed', type: QNotificationType.error);
       return;
     }
 
     final failures = await _ctrl.downloadEntriesTo(entries, destDir: destDir);
-    if (!mounted) return;
+    if (!mounted || failures == 0) return;
     context.showNotification(
-      failures == 0
-          ? 'Downloaded to $destDir'
-          : 'Failed to download $failures file(s)',
-      type: failures == 0 ? QNotificationType.good : QNotificationType.error,
+      'Failed to download $failures file(s)',
+      type: QNotificationType.error,
     );
   }
 

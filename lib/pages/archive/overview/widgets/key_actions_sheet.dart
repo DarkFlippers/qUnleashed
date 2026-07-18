@@ -326,11 +326,6 @@ class KeyActionsSheet {
     if (isDesktop) {
       await io.File(savedPath).writeAsBytes(bytes, flush: true);
     }
-    if (!context.mounted) return;
-    context.showNotification(
-      'Saved to $savedPath',
-      type: QNotificationType.good,
-    );
   }
 
   static void _openInFileManager(BuildContext context, ArchiveKey k) {
