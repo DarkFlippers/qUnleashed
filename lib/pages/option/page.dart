@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/theme.dart';
-import 'connected_devices_page.dart';
+// import 'connected_devices_page.dart';
 import 'notifications_page.dart';
 import 'storage_page.dart';
 import 'theme_page.dart';
@@ -43,14 +43,14 @@ class SettingsPage extends StatelessWidget {
           const SizedBox(height: 10),
           SettingsGroup(
             children: [
-              SettingsCategoryTile(
-                title: 'Connected devices',
-                subtitle: 'Bluetooth, USB, known devices',
-                asset: 'assets/ic/device/flipper.svg',
-                color: const Color(0xFF589DFF),
-                onTap: () =>
-                    _open(context, (_) => const ConnectedDevicesSettingsPage()),
-              ),
+              // SettingsCategoryTile(
+              //   title: 'Connected devices',
+              //   subtitle: 'Bluetooth, USB, known devices',
+              //   asset: 'assets/ic/device/flipper.svg',
+              //   color: const Color(0xFF589DFF),
+              //   onTap: () =>
+              //       _open(context, (_) => const ConnectedDevicesSettingsPage()),
+              // ),
               SettingsCategoryTile(
                 title: 'Storage',
                 subtitle: 'SD card, internal storage',
