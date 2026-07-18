@@ -14,7 +14,6 @@ import '../../data/models/pin.dart';
 import '../../map/page.dart';
 import '../controller.dart';
 import '../../emulate/page.dart';
-import '../../browser/controller.dart';
 import '../../browser/page.dart';
 import '../../browser/share_remote_file.dart';
 import '../../data/models/key.dart';
@@ -194,7 +193,7 @@ class KeyActionsSheet {
         ActionItem(
           icon: shareIcon,
           label: shareLabel,
-          onTap: () => _shareFromDevice(context, k),
+          onTap: () => _shareFromDevice(context, controller, k),
         ),
       );
     }
@@ -231,8 +230,7 @@ class KeyActionsSheet {
       if (await file.exists()) bytes = await file.readAsBytes();
     }
     if (bytes == null && k.onDevice && controller.isConnected) {
-      final fm = FileManagerController(initialPath: _parent(k.remotePath));
-      bytes = await fm.readBytes(k.remotePath);
+      bytes = await controller.readKeyBytes(k);
     }
     if (!context.mounted) return;
     if (bytes == null) {
@@ -266,14 +264,21 @@ class KeyActionsSheet {
     );
   }
 
-  static void _shareFromDevice(BuildContext context, ArchiveKey k) {
-    final remoteParent = _parent(k.remotePath);
-    shareRemoteFile(
-      context,
-      FileManagerController(initialPath: remoteParent),
-      k.remotePath,
-      displayName: k.name,
-    );
+  static Future<void> _shareFromDevice(
+    BuildContext context,
+    ArchiveController controller,
+    ArchiveKey k,
+  ) async {
+    final path = await controller.downloadKeyToCache(k);
+    if (!context.mounted) return;
+    if (path == null) {
+      context.showNotification(
+        'Download failed',
+        type: QNotificationType.error,
+      );
+      return;
+    }
+    await shareLocalFile(context, path, displayName: k.name);
   }
 
   static Future<void> _download(
@@ -288,8 +293,7 @@ class KeyActionsSheet {
       if (await file.exists()) bytes = await file.readAsBytes();
     }
     if (bytes == null && k.onDevice && controller.isConnected) {
-      final fm = FileManagerController(initialPath: _parent(k.remotePath));
-      bytes = await fm.readBytes(k.remotePath);
+      bytes = await controller.readKeyBytes(k);
     }
     if (!context.mounted) return;
     if (bytes == null) {

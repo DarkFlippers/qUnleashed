@@ -60,14 +60,16 @@ class _ArchivePageState extends State<ArchivePage> {
   }
 
   void _openDeleted() {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => DeletedPage(controller: _ctrl)),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => DeletedPage(controller: _ctrl)));
   }
 
   void _openFileManager(String initialPath) {
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => FileManagerPage(initialPath: initialPath)),
+      MaterialPageRoute(
+        builder: (_) => FileManagerPage(initialPath: initialPath),
+      ),
     );
   }
 
@@ -82,9 +84,9 @@ class _ArchivePageState extends State<ArchivePage> {
     final ok = await _ctrl.launchFapFavorite(fav);
     if (!mounted) return;
     if (ok) {
-      Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const RemoteControlPage()),
-      );
+      Navigator.of(
+        context,
+      ).push(MaterialPageRoute(builder: (_) => const RemoteControlPage()));
     } else {
       context.showNotification(
         'Failed to launch ${fav.name}',
@@ -133,9 +135,7 @@ class _ArchivePageState extends State<ArchivePage> {
               : 'Already up to date ($upToDate file(s))');
       context.showNotification(
         message,
-        type: error == null
-            ? QNotificationType.good
-            : QNotificationType.error,
+        type: error == null ? QNotificationType.good : QNotificationType.error,
         duration: error == null
             ? const Duration(seconds: 2)
             : const Duration(seconds: 6),
@@ -174,11 +174,13 @@ class _ArchivePageState extends State<ArchivePage> {
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(c),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(c),
+            child: const Text('Cancel'),
+          ),
           TextButton(
-              onPressed: () => Navigator.pop(c, ctrl.text.trim()),
-              child: const Text('Rename')),
+            onPressed: () => Navigator.pop(c, ctrl.text.trim()),
+            child: const Text('Rename'),
+          ),
         ],
       ),
     );
@@ -299,6 +301,7 @@ class _ArchivePageState extends State<ArchivePage> {
           final k = keys[i];
           return KeyCard(
             flipperKey: k,
+            progress: _ctrl.progressForKey(k),
             onTap: () => _showKeyActions(context, k),
             onToggleStar: () => _ctrl.toggleFavorite(k),
           );

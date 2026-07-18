@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../theme/theme.dart';
 import '../../data/category.dart';
 import '../../data/models/key.dart';
+import '../widgets/progress_fill.dart';
 import 'columns.dart';
 
 class ArchiveColumnHeader extends StatelessWidget {
@@ -116,6 +117,7 @@ class ArchiveTableRow extends StatelessWidget {
     required this.colors,
     required this.cat,
     required this.onTap,
+    this.progress,
   });
 
   final ArchiveKey flipperKey;
@@ -123,38 +125,46 @@ class ArchiveTableRow extends StatelessWidget {
   final QAppColors colors;
   final ArchiveCategory cat;
   final VoidCallback onTap;
+  final double? progress;
 
   @override
   Widget build(BuildContext context) {
     final k = flipperKey;
     return Material(
       color: colors.card,
-      child: InkWell(
-        onTap: onTap,
-        splashColor: cat.color.withValues(alpha: 0.06),
-        highlightColor: cat.color.withValues(alpha: 0.04),
-        child: Container(
-          height: kRowHeight,
-          decoration: BoxDecoration(
-            border: Border(
-              bottom: BorderSide(color: colors.divider.withValues(alpha: 0.6)),
-            ),
-          ),
-          child: Row(
-            children: [
-              const SizedBox(width: 8),
-              for (final e in cols)
-                SizedBox(
-                  width: e.width,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: _cellContent(e.col, k),
+      child: Stack(
+        children: [
+          ProgressFill(progress: progress),
+          InkWell(
+            onTap: onTap,
+            splashColor: cat.color.withValues(alpha: 0.06),
+            highlightColor: cat.color.withValues(alpha: 0.04),
+            child: Container(
+              height: kRowHeight,
+              decoration: BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(
+                    color: colors.divider.withValues(alpha: 0.6),
                   ),
                 ),
-              const SizedBox(width: 8),
-            ],
+              ),
+              child: Row(
+                children: [
+                  const SizedBox(width: 8),
+                  for (final e in cols)
+                    SizedBox(
+                      width: e.width,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        child: _cellContent(e.col, k),
+                      ),
+                    ),
+                  const SizedBox(width: 8),
+                ],
+              ),
+            ),
           ),
-        ),
+        ],
       ),
     );
   }

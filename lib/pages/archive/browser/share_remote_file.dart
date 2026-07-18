@@ -87,8 +87,12 @@ Future<void> shareRemoteFile(
   FileManagerController controller,
   String remotePath, {
   String? displayName,
+  int expectedSize = 0,
 }) async {
-  final localPath = await controller.downloadTo(remotePath);
+  final localPath = await controller.downloadTo(
+    remotePath,
+    expectedSize: expectedSize,
+  );
   if (!context.mounted) return;
   if (localPath == null) {
     context.showNotification(
@@ -134,15 +138,15 @@ Future<void> shareLocalFile(
   }
 
   final box = context.findRenderObject() as RenderBox?;
-  final origin = box != null
-      ? box.localToGlobal(Offset.zero) & box.size
-      : null;
+  final origin = box != null ? box.localToGlobal(Offset.zero) & box.size : null;
 
   try {
-    await Share.shareXFiles(
-      [XFile(localPath, name: displayName ?? _basename(localPath.replaceAll('\\', '/')))],
-      sharePositionOrigin: origin,
-    );
+    await Share.shareXFiles([
+      XFile(
+        localPath,
+        name: displayName ?? _basename(localPath.replaceAll('\\', '/')),
+      ),
+    ], sharePositionOrigin: origin);
   } catch (e) {
     if (context.mounted) {
       context.showNotification(
@@ -165,9 +169,7 @@ Future<void> shareLocalFile(
 }
 
 bool get _supportsClipboardFileUri =>
-    io.Platform.isWindows ||
-    io.Platform.isLinux ||
-    io.Platform.isMacOS;
+    io.Platform.isWindows || io.Platform.isLinux || io.Platform.isMacOS;
 
 Future<bool> _copyFileToClipboard(io.File file) async {
   if (!_supportsClipboardFileUri) return false;
@@ -175,8 +177,9 @@ Future<bool> _copyFileToClipboard(io.File file) async {
     final clipboard = SystemClipboard.instance;
     if (clipboard == null) return false;
     final uri = file.absolute.uri;
-    final item = DataWriterItem(suggestedName: _basename(file.path.replaceAll('\\', '/')))
-      ..add(Formats.fileUri(uri));
+    final item = DataWriterItem(
+      suggestedName: _basename(file.path.replaceAll('\\', '/')),
+    )..add(Formats.fileUri(uri));
     await clipboard.write([item]);
     return true;
   } catch (_) {

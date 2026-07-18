@@ -7,6 +7,7 @@ import '../../../../services/repository/app.dart' as icon_repo;
 import '../../../../theme/theme.dart';
 import '../../overview/fap_icon.dart';
 import '../../overview/widgets/actions_sheet.dart';
+import '../../overview/widgets/progress_fill.dart';
 import '../share_remote_file.dart';
 import '../controller.dart';
 import 'file_type.dart';
@@ -193,6 +194,7 @@ class FileRow extends StatefulWidget {
     this.selectionMode = false,
     this.selected = false,
     this.autoEdit = false,
+    this.progress,
   });
 
   final RemoteEntry entry;
@@ -201,6 +203,7 @@ class FileRow extends StatefulWidget {
   final FileEntryActions actions;
   final bool selectionMode;
   final bool selected;
+  final double? progress;
 
   /// Starts the row in inline name-editing mode (used right after a new file is
   /// created so the user can rename it from the default `new.txt`).
@@ -281,80 +284,88 @@ class _FileRowState extends State<FileRow> {
             ? colors.accent.withValues(alpha: 0.12)
             : colors.card,
         borderRadius: BorderRadius.circular(12),
-        child: InkWell(
-          onTap: blocked ? null : widget.onTap,
-          onLongPress: blocked
-              ? null
-              : (widget.onLongPress ?? _showActionsSheet),
-          onSecondaryTap: blocked ? null : _showActionsSheet,
-          borderRadius: BorderRadius.circular(12),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
-            child: Row(
-              children: [
-                Stack(
-                  clipBehavior: Clip.none,
+        clipBehavior: Clip.antiAlias,
+        child: Stack(
+          children: [
+            ProgressFill(progress: widget.progress),
+            InkWell(
+              onTap: blocked ? null : widget.onTap,
+              onLongPress: blocked
+                  ? null
+                  : (widget.onLongPress ?? _showActionsSheet),
+              onSecondaryTap: blocked ? null : _showActionsSheet,
+              borderRadius: BorderRadius.circular(12),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+                child: Row(
                   children: [
-                    FileIconBadge(entry: widget.entry, muted: muted),
-                    if (widget.selectionMode && widget.selected)
-                      const Positioned(
-                        right: -3,
-                        bottom: -3,
-                        child: _SelectionCheck(),
-                      ),
-                  ],
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _editing
-                      ? TextField(
-                          controller: _renameCtrl,
-                          autofocus: true,
-                          style: TextStyle(
-                            color: colors.textPrimary,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
+                    Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        FileIconBadge(entry: widget.entry, muted: muted),
+                        if (widget.selectionMode && widget.selected)
+                          const Positioned(
+                            right: -3,
+                            bottom: -3,
+                            child: _SelectionCheck(),
                           ),
-                          decoration: const InputDecoration(
-                            isDense: true,
-                            contentPadding: EdgeInsets.zero,
-                            border: InputBorder.none,
-                          ),
-                          onSubmitted: (_) => _commitEdit(),
-                        )
-                      : Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              _renaming ? _renameCtrl.text : widget.entry.name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                      ],
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _editing
+                          ? TextField(
+                              controller: _renameCtrl,
+                              autofocus: true,
                               style: TextStyle(
-                                color: (muted || _renaming)
-                                    ? colors.textMuted
-                                    : colors.textPrimary,
+                                color: colors.textPrimary,
                                 fontSize: 15,
                                 fontWeight: FontWeight.w600,
                               ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              _subtitle(),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: colors.textMuted,
-                                fontSize: 12,
+                              decoration: const InputDecoration(
+                                isDense: true,
+                                contentPadding: EdgeInsets.zero,
+                                border: InputBorder.none,
                               ),
+                              onSubmitted: (_) => _commitEdit(),
+                            )
+                          : Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _renaming
+                                      ? _renameCtrl.text
+                                      : widget.entry.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: (muted || _renaming)
+                                        ? colors.textMuted
+                                        : colors.textPrimary,
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  _subtitle(),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: colors.textMuted,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
+                    ),
+                    const SizedBox(width: 4),
+                    _buildTrailing(colors, isDir, blocked),
+                  ],
                 ),
-                const SizedBox(width: 4),
-                _buildTrailing(colors, isDir, blocked),
-              ],
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );
@@ -425,6 +436,7 @@ class FileGridTile extends StatelessWidget {
     this.onLongPress,
     this.selectionMode = false,
     this.selected = false,
+    this.progress,
   });
 
   final RemoteEntry entry;
@@ -433,6 +445,7 @@ class FileGridTile extends StatelessWidget {
   final FileEntryActions actions;
   final bool selectionMode;
   final bool selected;
+  final double? progress;
 
   void _showActionsSheet(BuildContext context) {
     FileActionsSheet.show(context, entry: entry, actions: actions);
@@ -446,50 +459,56 @@ class FileGridTile extends StatelessWidget {
     return Material(
       color: selected ? colors.accent.withValues(alpha: 0.12) : colors.card,
       borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        onTap: onTap,
-        onLongPress: onLongPress ?? () => _showActionsSheet(context),
-        onSecondaryTap: () => _showActionsSheet(context),
-        borderRadius: BorderRadius.circular(14),
-        child: Padding(
-          // Fixed top inset + fixed name height → the icon always sits at the
-          // same position regardless of how many lines the name takes.
-          padding: const EdgeInsets.fromLTRB(6, 12, 6, 8),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.start,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Stack(
-                clipBehavior: Clip.none,
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        children: [
+          ProgressFill(progress: progress),
+          InkWell(
+            onTap: onTap,
+            onLongPress: onLongPress ?? () => _showActionsSheet(context),
+            onSecondaryTap: () => _showActionsSheet(context),
+            borderRadius: BorderRadius.circular(14),
+            child: Padding(
+              // Fixed top inset + fixed name height → the icon always sits at
+              // the same position regardless of how many lines the name takes.
+              padding: const EdgeInsets.fromLTRB(6, 12, 6, 8),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  FileIconBadge(entry: entry, size: 44, muted: muted),
-                  if (selectionMode && selected)
-                    const Positioned(
-                      right: -3,
-                      bottom: -3,
-                      child: _SelectionCheck(),
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      FileIconBadge(entry: entry, size: 44, muted: muted),
+                      if (selectionMode && selected)
+                        const Positioned(
+                          right: -3,
+                          bottom: -3,
+                          child: _SelectionCheck(),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    height: 30,
+                    child: Text(
+                      entry.name,
+                      maxLines: 2,
+                      textAlign: TextAlign.center,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: muted ? colors.textMuted : colors.textPrimary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        height: 1.2,
+                      ),
                     ),
+                  ),
                 ],
               ),
-              const SizedBox(height: 8),
-              SizedBox(
-                height: 30,
-                child: Text(
-                  entry.name,
-                  maxLines: 2,
-                  textAlign: TextAlign.center,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: muted ? colors.textMuted : colors.textPrimary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    height: 1.2,
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }

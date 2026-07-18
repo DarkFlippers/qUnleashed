@@ -66,6 +66,8 @@ class ArchiveController extends ChangeNotifier {
   bool _syncing = false;
   ArchiveSyncStatus _syncStatus = ArchiveSyncStatus.idle;
   SyncProgress? _syncProgress;
+  String? _busyPath;
+  double _busyProgress = 0;
   String? _lastError;
   String? _lastReadError;
   int _lastDownloadedOk = 0;
@@ -83,6 +85,13 @@ class ArchiveController extends ChangeNotifier {
   bool get syncing => _syncing;
   ArchiveSyncStatus get syncStatus => _syncStatus;
   SyncProgress? get syncProgress => _syncProgress;
+
+  /// Inline transfer progress (0..1) for [k] while it is being downloaded from
+  /// the device by a single-file action, or null when it is idle. The key's
+  /// file element paints a fill from this.
+  double? progressForKey(ArchiveKey k) =>
+      _busyPath == k.remotePath ? _busyProgress : null;
+
   String? get lastError => _lastError;
   int get lastDownloadedOk => _lastDownloadedOk;
   int get lastUpToDate => _lastUpToDate;
@@ -1112,6 +1121,46 @@ class ArchiveController extends ChangeNotifier {
       LogService.log('[Archive] ${_lastReadError!}');
       return false;
     }
+  }
+
+  /// Reads [k] from the device, publishing inline per-key transfer progress so
+  /// its file element renders a fill. Returns null on failure.
+  Future<List<int>?> readKeyBytes(ArchiveKey k) async {
+    _busyPath = k.remotePath;
+    _busyProgress = 0;
+    notifyListeners();
+    var last = -1.0;
+    try {
+      return await _readRemoteBytes(
+        k.remotePath,
+        expectedSize: k.remoteSize,
+        onProgress: (p) {
+          _busyProgress = p.clamp(0.0, 1.0);
+          if (_busyProgress - last >= 0.01 || _busyProgress >= 1.0) {
+            last = _busyProgress;
+            notifyListeners();
+          }
+        },
+      );
+    } finally {
+      _busyPath = null;
+      _busyProgress = 0;
+      notifyListeners();
+    }
+  }
+
+  /// Downloads [k] into the share cache with inline progress and returns the
+  /// local file path (for sharing), or null on failure.
+  Future<String?> downloadKeyToCache(ArchiveKey k) async {
+    final bytes = await readKeyBytes(k);
+    if (bytes == null) return null;
+    final root = await icon_repo.shareCacheDirectory();
+    final dir = io.Directory(root.path);
+    await dir.create(recursive: true);
+    final sep = io.Platform.pathSeparator;
+    final file = io.File('${dir.path}$sep${k.fileName}');
+    await file.writeAsBytes(bytes, flush: true);
+    return file.path;
   }
 
   Future<List<int>?> _readRemoteBytes(

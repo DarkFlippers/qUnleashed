@@ -292,6 +292,7 @@ class _CategoryPageState extends State<CategoryPage> {
                                   cols: visibleCols,
                                   colors: colors,
                                   cat: _cat,
+                                  progress: _ctrl.progressForKey(key),
                                   onTap: () => _showKeyActions(context, key),
                                 );
                               },
