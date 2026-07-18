@@ -1084,16 +1084,20 @@ class ArchiveController extends ChangeNotifier {
     await refresh();
   }
 
-  Future<void> deleteKeys(Iterable<ArchiveKey> keys) async {
+  Future<void> deleteKeys(
+    Iterable<ArchiveKey> keys, {
+    bool local = true,
+    bool remote = true,
+  }) async {
     for (final key in keys) {
       try {
-        if (_client.isConnected && key.onDevice) {
+        if (remote && _client.isConnected && key.onDevice) {
           await _client.storageDelete(
             DeleteRequest(path: key.remotePath, recursive: false),
             timeout: const Duration(seconds: 30),
           );
         }
-        if (key.inLocal || key.localPath != null) {
+        if (local && (key.inLocal || key.localPath != null)) {
           await _storage.hardDelete(
             _deviceName,
             key.category,
