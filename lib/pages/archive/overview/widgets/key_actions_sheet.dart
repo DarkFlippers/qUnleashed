@@ -213,6 +213,24 @@ class KeyActionsSheet {
     List<ArchiveKey> keys, {
     VoidCallback? onDone,
   }) {
+    if (keys.isNotEmpty && keys.every((k) => k.isDeleted)) {
+      return [
+        ActionItem(
+          icon: Icons.delete_forever,
+          label: 'Delete',
+          destructive: true,
+          onTap: () => confirmAndDelete(
+            context,
+            controller,
+            keys,
+            local: true,
+            remote: false,
+            onDone: onDone,
+          ),
+        ),
+      ];
+    }
+
     final canDeleteLocal = keys.any((k) => k.hasLocalFile);
     final canDeleteRemote =
         controller.isConnected && keys.any((k) => !k.isDeleted);
@@ -222,7 +240,7 @@ class KeyActionsSheet {
           icon: Icons.phonelink_erase_outlined,
           label: 'Delete local',
           destructive: true,
-          onTap: () => _confirmAndDelete(
+          onTap: () => confirmAndDelete(
             context,
             controller,
             keys,
@@ -236,7 +254,7 @@ class KeyActionsSheet {
           icon: Icons.delete_forever,
           label: 'Delete remote',
           destructive: true,
-          onTap: () => _confirmAndDelete(
+          onTap: () => confirmAndDelete(
             context,
             controller,
             keys,
@@ -404,7 +422,7 @@ class KeyActionsSheet {
     return path.substring(0, idx);
   }
 
-  static Future<void> _confirmAndDelete(
+  static Future<void> confirmAndDelete(
     BuildContext context,
     ArchiveController controller,
     List<ArchiveKey> keys, {
