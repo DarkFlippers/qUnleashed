@@ -1174,8 +1174,14 @@ class _FileManagerPageState extends State<FileManagerPage> {
       onRefresh: _ctrl.refresh,
       child: CustomScrollView(
         slivers: [
-          ..._buildSection(colors, 'Folders', _ctrl.folders, grid),
-          ..._buildSection(colors, 'Files', _ctrl.files, grid),
+          ..._buildSection(colors, 'Folders', _ctrl.folders, grid, isFirst: true),
+          ..._buildSection(
+            colors,
+            'Files',
+            _ctrl.files,
+            grid,
+            isFirst: _ctrl.folders.isEmpty,
+          ),
           const SliverToBoxAdapter(child: SizedBox(height: 96)),
         ],
       ),
@@ -1226,12 +1232,13 @@ class _FileManagerPageState extends State<FileManagerPage> {
     QAppColors colors,
     String label,
     List<RemoteEntry> items,
-    bool grid,
-  ) {
+    bool grid, {
+    bool isFirst = false,
+  }) {
     if (items.isEmpty) return const [];
     final header = SliverToBoxAdapter(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+        padding: EdgeInsets.fromLTRB(20, isFirst ? 4 : 16, 20, 8),
         child: Text(
           '$label · ${items.length}',
           style: TextStyle(
