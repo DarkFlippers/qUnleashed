@@ -21,7 +21,7 @@ class DeviceController extends ChangeNotifier {
     _knownDevices.load().whenComplete(_scheduleAutoConnect);
   }
 
-  static const Duration _autoConnectDebounce = Duration(milliseconds: 500);
+  static const Duration _autoConnectDebounce = Duration(milliseconds: 250);
 
   final FlipperClient _client = FlipperOneClient().get();
   final DfuDetector _dfuDetector = DfuDetector();
