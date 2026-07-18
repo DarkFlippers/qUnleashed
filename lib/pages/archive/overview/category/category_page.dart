@@ -208,6 +208,12 @@ class _CategoryPageState extends State<CategoryPage> {
               syncFileName: _ctrl.syncing ? _ctrl.syncProgress?.fileName : null,
             ),
             actions: [
+              CategorySyncButton(
+                syncing: _ctrl.syncing,
+                enabled: _ctrl.isConnected,
+                catColor: catColor,
+                onTap: () => _ctrl.syncCategory(_cat),
+              ),
               CategoryCountBadge(filtered: filtered.length, total: total),
             ],
             bottom: PreferredSize(

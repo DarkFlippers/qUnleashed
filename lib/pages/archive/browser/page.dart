@@ -889,29 +889,38 @@ class _FileManagerPageState extends State<FileManagerPage> {
                           ? Icons.visibility_off
                           : Icons.visibility,
                       size: 20,
+                      color: colors.textSecondary,
                     ),
                     const SizedBox(width: 12),
                     Text(_ctrl.showHidden ? 'Hide hidden' : 'Show hidden'),
                   ],
                 ),
               ),
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: 'select',
                 child: Row(
                   children: [
-                    Icon(Icons.check_circle_outline, size: 20),
-                    SizedBox(width: 12),
-                    Text('Select'),
+                    Icon(
+                      Icons.check_circle_outline,
+                      size: 20,
+                      color: colors.textSecondary,
+                    ),
+                    const SizedBox(width: 12),
+                    const Text('Select'),
                   ],
                 ),
               ),
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: 'refresh',
                 child: Row(
                   children: [
-                    Icon(Icons.refresh, size: 20),
-                    SizedBox(width: 12),
-                    Text('Refresh'),
+                    Icon(
+                      Icons.refresh,
+                      size: 20,
+                      color: colors.textSecondary,
+                    ),
+                    const SizedBox(width: 12),
+                    const Text('Refresh'),
                   ],
                 ),
               ),
@@ -967,6 +976,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
                   Icon(
                     _selected.length == all ? Icons.deselect : Icons.select_all,
                     size: 20,
+                    color: colors.textSecondary,
                   ),
                   const SizedBox(width: 12),
                   Text(_selected.length == all ? 'Deselect all' : 'Select all'),

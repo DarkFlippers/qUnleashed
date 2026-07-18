@@ -44,6 +44,9 @@ class CategoryAppBarTitle extends StatelessWidget {
   }
 }
 
+/// Shared pill height so the count badge and sync button line up exactly.
+const double kCategoryPillHeight = 24;
+
 class CategoryCountBadge extends StatelessWidget {
   const CategoryCountBadge({
     super.key,
@@ -60,7 +63,9 @@ class CategoryCountBadge extends StatelessWidget {
       padding: const EdgeInsets.only(right: 6),
       child: Center(
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          height: kCategoryPillHeight,
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
           decoration: BoxDecoration(
             color: Colors.white.withValues(alpha: 0.22),
             borderRadius: BorderRadius.circular(10),
@@ -72,6 +77,101 @@ class CategoryCountBadge extends StatelessWidget {
               color: Colors.white,
               fontSize: 12,
               fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class CategorySyncButton extends StatefulWidget {
+  const CategorySyncButton({
+    super.key,
+    required this.syncing,
+    required this.enabled,
+    required this.catColor,
+    required this.onTap,
+  });
+
+  final bool syncing;
+  final bool enabled;
+  final Color catColor;
+  final VoidCallback onTap;
+
+  @override
+  State<CategorySyncButton> createState() => _CategorySyncButtonState();
+}
+
+class _CategorySyncButtonState extends State<CategorySyncButton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _spin = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.syncing) _spin.repeat();
+  }
+
+  @override
+  void didUpdateWidget(CategorySyncButton oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.syncing && !oldWidget.syncing) {
+      _spin.repeat();
+    } else if (!widget.syncing && oldWidget.syncing) {
+      _spin
+          .animateTo(
+            1,
+            duration: Duration(
+              milliseconds: (900 * (1 - _spin.value)).round(),
+            ),
+          )
+          .whenComplete(() {
+            if (mounted) _spin.reset();
+          });
+    }
+  }
+
+  @override
+  void dispose() {
+    _spin.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final active = widget.syncing;
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: Center(
+        child: GestureDetector(
+          onTap: (widget.enabled && !widget.syncing) ? widget.onTap : null,
+          child: Opacity(
+            opacity: widget.enabled ? 1 : 0.45,
+            child: Container(
+              height: kCategoryPillHeight,
+              alignment: Alignment.center,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              decoration: BoxDecoration(
+                color: active
+                    ? Colors.white.withValues(alpha: 0.88)
+                    : Colors.white.withValues(alpha: 0.22),
+                borderRadius: BorderRadius.circular(10),
+                border: active
+                    ? null
+                    : Border.all(color: Colors.white.withValues(alpha: 0.26)),
+              ),
+              child: RotationTransition(
+                turns: _spin,
+                child: Icon(
+                  Icons.sync_rounded,
+                  size: 14,
+                  color: active ? widget.catColor : Colors.white,
+                ),
+              ),
             ),
           ),
         ),
