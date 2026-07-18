@@ -1123,6 +1123,49 @@ class ArchiveController extends ChangeNotifier {
     await refresh();
   }
 
+  /// Restores every deleted key in [keys] back to the device. Each key is marked
+  /// as restored (and so drops out of the deleted list) the moment its own write
+  /// succeeds, so the list empties one file at a time rather than all at once.
+  Future<void> restoreKeys(Iterable<ArchiveKey> keys) async {
+    if (!_client.isConnected) {
+      _lastError = 'Connect a device to restore';
+      notifyListeners();
+      return;
+    }
+    for (final key in keys) {
+      if (!key.isDeleted) continue;
+      try {
+        final bytes = await _storage.readBytes(
+          _deviceName,
+          key.category,
+          key.fileName,
+          subFolder: key.subFolder,
+        );
+        if (bytes == null) continue;
+        await _client.storageWriteChunked(key.remotePath, bytes);
+        final keyId = _localKey(
+          key.category,
+          key.name,
+          key.extension,
+          key.subFolder,
+        );
+        final existing = _keys[keyId];
+        if (existing != null) {
+          _keys[keyId] = existing.copyWith(
+            state: existing.hasLocalFile
+                ? ArchiveKeyState.synced
+                : ArchiveKeyState.local,
+          );
+          notifyListeners();
+        }
+      } catch (e) {
+        _lastError = '$e';
+        LogService.log('[Archive] restore ${key.fileName} failed: $e');
+      }
+    }
+    await refresh();
+  }
+
   Future<bool> _downloadAndApply(
     String keyId,
     ArchiveKey key, {
