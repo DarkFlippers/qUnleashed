@@ -40,6 +40,8 @@ class FileManagerController extends ChangeNotifier {
   bool _showHidden = false;
   double _transferProgress = 0;
   String? _transferLabel;
+  String? _busyEntry;
+  double _busyEntryProgress = 0;
   FileSortMode _sortMode = FileSortMode.type;
   bool _sortAscending = true;
   FileViewMode _viewMode = FileViewMode.list;
@@ -53,6 +55,11 @@ class FileManagerController extends ChangeNotifier {
   bool get showHidden => _showHidden;
   double get transferProgress => _transferProgress;
   String? get transferLabel => _transferLabel;
+
+  /// Inline transfer progress (0..1) for the entry named [name] in the current
+  /// directory while a single-file action is downloading it, or null when idle.
+  double? entryProgress(String name) =>
+      _busyEntry == name ? _busyEntryProgress : null;
   FileSortMode get sortMode => _sortMode;
   bool get sortAscending => _sortAscending;
   FileViewMode get viewMode => _viewMode;
@@ -72,11 +79,15 @@ class FileManagerController extends ChangeNotifier {
     switch (_sortMode) {
       case FileSortMode.size:
         final c = a.size.compareTo(b.size);
-        return (c != 0 ? c : a.name.toLowerCase().compareTo(b.name.toLowerCase())) *
+        return (c != 0
+                ? c
+                : a.name.toLowerCase().compareTo(b.name.toLowerCase())) *
             dir;
       case FileSortMode.type:
         final c = a.extension.compareTo(b.extension);
-        return (c != 0 ? c : a.name.toLowerCase().compareTo(b.name.toLowerCase())) *
+        return (c != 0
+                ? c
+                : a.name.toLowerCase().compareTo(b.name.toLowerCase())) *
             dir;
       case FileSortMode.name:
         return a.name.toLowerCase().compareTo(b.name.toLowerCase()) * dir;
@@ -123,8 +134,9 @@ class FileManagerController extends ChangeNotifier {
   }
 
   void toggleViewMode() {
-    _viewMode =
-        _viewMode == FileViewMode.list ? FileViewMode.grid : FileViewMode.list;
+    _viewMode = _viewMode == FileViewMode.list
+        ? FileViewMode.grid
+        : FileViewMode.list;
     _notify();
   }
 
@@ -366,8 +378,12 @@ class FileManagerController extends ChangeNotifier {
     }
   }
 
-  Future<String?> downloadTo(String remotePath, {String? localFolder}) async {
-    final bytes = await readBytes(remotePath);
+  Future<String?> downloadTo(
+    String remotePath, {
+    String? localFolder,
+    int expectedSize = 0,
+  }) async {
+    final bytes = await _readEntryWithProgress(remotePath, expectedSize);
     if (bytes == null) return null;
     final dir = io.Directory(
       localFolder ?? await _defaultDownloadDir(remotePath),
@@ -377,6 +393,66 @@ class FileManagerController extends ChangeNotifier {
     final file = io.File('${dir.path}$sep${_basename(remotePath)}');
     await file.writeAsBytes(bytes, flush: true);
     return file.path;
+  }
+
+  /// Downloads a single [entry] from the current directory into [destDir],
+  /// publishing inline per-entry progress so its file row renders a fill (used
+  /// when exactly one file is downloaded). Returns false on failure.
+  Future<bool> downloadEntryTo(
+    RemoteEntry entry, {
+    required String destDir,
+  }) async {
+    final sep = io.Platform.pathSeparator;
+    final remote = childPath(entry.name);
+    final local = '$destDir$sep${entry.name}';
+    final bytes = await _readEntryWithProgress(remote, entry.size);
+    if (bytes == null) return false;
+    try {
+      final file = io.File(local);
+      await file.parent.create(recursive: true);
+      await file.writeAsBytes(bytes, flush: true);
+      return true;
+    } catch (e) {
+      _error = '$e';
+      LogService.log('[FileManager] download $remote failed: $e');
+      _notify();
+      return false;
+    }
+  }
+
+  /// Streams [remotePath] into memory while publishing inline per-entry progress
+  /// (keyed by the entry's basename). Returns null on failure.
+  Future<List<int>?> _readEntryWithProgress(
+    String remotePath,
+    int expectedSize,
+  ) async {
+    _busyEntry = _basename(remotePath);
+    _busyEntryProgress = 0;
+    _notify();
+    var last = -1.0;
+    try {
+      return await _client.storageReadChunked(
+        remotePath,
+        expectedSize: expectedSize,
+        onProgress: (p) {
+          _busyEntryProgress = p.clamp(0.0, 1.0);
+          if (_busyEntryProgress - last >= 0.01 || _busyEntryProgress >= 1.0) {
+            last = _busyEntryProgress;
+            _notify();
+          }
+        },
+        timeout: const Duration(minutes: 5),
+      );
+    } catch (e) {
+      _error = '$e';
+      LogService.log('[FileManager] read $remotePath failed: $e');
+      _notify();
+      return null;
+    } finally {
+      _busyEntry = null;
+      _busyEntryProgress = 0;
+      _notify();
+    }
   }
 
   /// Downloads [entries] from the current directory into [destDir] (files and
@@ -413,7 +489,8 @@ class FileManagerController extends ChangeNotifier {
     var lastNotified = -1.0;
     void publish(double p) {
       _transferProgress = p.clamp(0.0, 1.0);
-      if (_transferProgress - lastNotified >= 0.01 || _transferProgress >= 1.0) {
+      if (_transferProgress - lastNotified >= 0.01 ||
+          _transferProgress >= 1.0) {
         lastNotified = _transferProgress;
         _notify();
       }
@@ -444,7 +521,9 @@ class FileManagerController extends ChangeNotifier {
         }
         doneBytes += size;
         doneFiles++;
-        publish(totalBytes > 0 ? doneBytes / totalBytes : doneFiles / totalFiles);
+        publish(
+          totalBytes > 0 ? doneBytes / totalBytes : doneFiles / totalFiles,
+        );
       }
     } finally {
       _transferLabel = null;

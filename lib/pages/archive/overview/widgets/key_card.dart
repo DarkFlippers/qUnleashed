@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../components/icon.dart';
 import '../../../../theme/theme.dart';
 import '../../data/models/key.dart';
+import 'progress_fill.dart';
 
 class KeyCard extends StatelessWidget {
   const KeyCard({
@@ -10,11 +11,13 @@ class KeyCard extends StatelessWidget {
     required this.flipperKey,
     required this.onTap,
     this.onToggleStar,
+    this.progress,
   });
 
   final ArchiveKey flipperKey;
   final VoidCallback onTap;
   final VoidCallback? onToggleStar;
+  final double? progress;
 
   @override
   Widget build(BuildContext context) {
@@ -22,51 +25,60 @@ class KeyCard extends StatelessWidget {
     return Material(
       color: colors.card,
       borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
-          child: Row(
-            children: [
-              QIconBadge(
-                asset: flipperKey.category.asset,
-                color: flipperKey.category.color,
-                iconSize: 22,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      flipperKey.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: colors.textPrimary,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        children: [
+          ProgressFill(progress: progress),
+          InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+              child: Row(
+                children: [
+                  QIconBadge(
+                    asset: flipperKey.category.asset,
+                    color: flipperKey.category.color,
+                    iconSize: 22,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          flipperKey.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: colors.textPrimary,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        _SubtitleRow(
+                          category: flipperKey.category.title,
+                          subFolder: flipperKey.subFolder,
+                          muted: colors.textMuted,
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 2),
-                    _SubtitleRow(
-                      category: flipperKey.category.title,
-                      subFolder: flipperKey.subFolder,
-                      muted: colors.textMuted,
+                  ),
+                  const SizedBox(width: 8),
+                  _StateBadge(state: flipperKey.state),
+                  if (onToggleStar != null) ...[
+                    const SizedBox(width: 8),
+                    _StarButton(
+                      onTap: onToggleStar!,
+                      starred: flipperKey.favorite,
                     ),
                   ],
-                ),
+                ],
               ),
-              const SizedBox(width: 8),
-              _StateBadge(state: flipperKey.state),
-              if (onToggleStar != null) ...[
-                const SizedBox(width: 8),
-                _StarButton(onTap: onToggleStar!, starred: flipperKey.favorite),
-              ],
-            ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }

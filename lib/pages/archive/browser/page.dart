@@ -200,10 +200,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
   }
 
   void _openRemoteControlBusy() {
-    context.showNotification(
-      'Device is busy',
-      type: QNotificationType.error,
-    );
+    context.showNotification('Device is busy', type: QNotificationType.error);
     Navigator.of(
       context,
     ).push(MaterialPageRoute(builder: (_) => const RemoteControlPage()));
@@ -283,6 +280,17 @@ class _FileManagerPageState extends State<FileManagerPage> {
     }
     final destDir = await _pickDestinationDir();
     if (!mounted || destDir == null) return;
+
+    // A single file fills its own row inline; batches use the external bar.
+    if (entries.length == 1 && !entries.single.isDir) {
+      final ok = await _ctrl.downloadEntryTo(entries.single, destDir: destDir);
+      if (!mounted) return;
+      context.showNotification(
+        ok ? 'Downloaded to $destDir' : 'Download failed',
+        type: ok ? QNotificationType.good : QNotificationType.error,
+      );
+      return;
+    }
 
     final failures = await _ctrl.downloadEntriesTo(entries, destDir: destDir);
     if (!mounted) return;
@@ -1243,6 +1251,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
                 _ctrl,
                 _ctrl.childPath(e.name),
                 displayName: e.name,
+                expectedSize: e.size,
               ),
         onCopy: () => _copyEntry(e),
         onCut: () => _cutEntry(e),
@@ -1285,6 +1294,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
               actions: makeActions(e),
               selectionMode: _selectionMode,
               selected: _selected.contains(e.name),
+              progress: _ctrl.entryProgress(e.name),
               onTap: () => _onEntryTap(e),
               onLongPress: () => _enterSelection(e),
             );
@@ -1307,6 +1317,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
             actions: makeActions(e),
             selectionMode: _selectionMode,
             selected: _selected.contains(e.name),
+            progress: _ctrl.entryProgress(e.name),
             autoEdit: !e.isDir && e.name == _pendingRenameName,
             onTap: () => _onEntryTap(e),
             onLongPress: () => _enterSelection(e),
