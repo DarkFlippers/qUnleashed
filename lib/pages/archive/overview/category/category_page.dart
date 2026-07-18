@@ -161,47 +161,6 @@ class _CategoryPageState extends State<CategoryPage> {
     _exitSelection();
   }
 
-  Future<void> _bulkDelete(
-    BuildContext context, {
-    required bool local,
-    required bool remote,
-  }) async {
-    final keys = _selectedKeys;
-    if (keys.isEmpty) return;
-    final colors = context.appColors;
-    final where = local ? 'this phone' : 'the device';
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: colors.dialogBackground,
-        title: Text(
-          'Delete ${keys.length} ${keys.length == 1 ? 'file' : 'files'} from $where?',
-          style: TextStyle(color: colors.dialogText),
-        ),
-        content: Text(
-          local
-              ? 'The selected files will be permanently deleted from this phone. Copies on the device are kept.'
-              : 'The selected files will be permanently deleted from the device. Local copies on this phone are kept.',
-          style: TextStyle(color: colors.dialogMuted, height: 1.4),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Delete', style: TextStyle(color: colors.danger)),
-          ),
-        ],
-      ),
-    );
-    if (ok == true) {
-      await _ctrl.deleteKeys(keys, local: local, remote: remote);
-      _exitSelection();
-    }
-  }
-
   void _onSort(String key) {
     setState(() {
       if (_sortKey == key) {
@@ -448,7 +407,6 @@ class _CategoryPageState extends State<CategoryPage> {
     final anyLocal = keys.any(
       (k) => k.inLocal && (k.localPath?.isNotEmpty ?? false),
     );
-    final anyOnDevice = keys.any((k) => k.onDevice);
 
     final actions = <ActionItem>[
       ActionItem(
@@ -462,20 +420,12 @@ class _CategoryPageState extends State<CategoryPage> {
           label: 'Download',
           onTap: () => _bulkDownload(context),
         ),
-      if (anyLocal)
-        ActionItem(
-          icon: Icons.phonelink_erase_outlined,
-          label: 'Delete local',
-          destructive: true,
-          onTap: () => _bulkDelete(context, local: true, remote: false),
-        ),
-      if (anyOnDevice && _ctrl.isConnected)
-        ActionItem(
-          icon: Icons.delete_forever,
-          label: 'Delete remote',
-          destructive: true,
-          onTap: () => _bulkDelete(context, local: false, remote: true),
-        ),
+      ...KeyActionsSheet.deleteActions(
+        context,
+        _ctrl,
+        keys,
+        onDone: _exitSelection,
+      ),
     ];
 
     await ActionsSheet.show(

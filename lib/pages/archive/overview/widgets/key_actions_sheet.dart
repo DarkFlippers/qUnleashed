@@ -198,16 +198,54 @@ class KeyActionsSheet {
       );
     }
 
-    actions.add(
-      ActionItem(
-        icon: Icons.delete_forever,
-        label: 'Delete',
-        destructive: true,
-        onTap: () => _confirmAndDelete(context, controller, k, connected),
-      ),
-    );
+    actions.addAll(deleteActions(context, controller, [k]));
 
     return actions;
+  }
+
+  /// The single source of truth for the "Delete local" / "Delete remote"
+  /// actions, shared by the single-file menu and the multi-select sheet. Each
+  /// button is shown only when it applies to [keys] and runs its own
+  /// confirmation before deleting; [onDone] fires after a confirmed delete.
+  static List<ActionItem> deleteActions(
+    BuildContext context,
+    ArchiveController controller,
+    List<ArchiveKey> keys, {
+    VoidCallback? onDone,
+  }) {
+    final canDeleteLocal = keys.any((k) => k.hasLocalFile);
+    final canDeleteRemote =
+        controller.isConnected && keys.any((k) => !k.isDeleted);
+    return [
+      if (canDeleteLocal)
+        ActionItem(
+          icon: Icons.phonelink_erase_outlined,
+          label: 'Delete local',
+          destructive: true,
+          onTap: () => _confirmAndDelete(
+            context,
+            controller,
+            keys,
+            local: true,
+            remote: false,
+            onDone: onDone,
+          ),
+        ),
+      if (canDeleteRemote)
+        ActionItem(
+          icon: Icons.delete_forever,
+          label: 'Delete remote',
+          destructive: true,
+          onTap: () => _confirmAndDelete(
+            context,
+            controller,
+            keys,
+            local: false,
+            remote: true,
+            onDone: onDone,
+          ),
+        ),
+    ];
   }
 
   /// Opens [k] on the connected Flipper. Public so the file manager can reuse
@@ -369,35 +407,26 @@ class KeyActionsSheet {
   static Future<void> _confirmAndDelete(
     BuildContext context,
     ArchiveController controller,
-    ArchiveKey k,
-    bool connected,
-  ) async {
+    List<ArchiveKey> keys, {
+    required bool local,
+    required bool remote,
+    VoidCallback? onDone,
+  }) async {
+    if (keys.isEmpty) return;
     final colors = context.appColors;
-    final hasLocal = k.inLocal;
-    final onDevice = k.onDevice;
-
-    String message;
-    if (connected && onDevice && hasLocal) {
-      message =
-          'This file will be permanently deleted from the device and this phone. This cannot be undone.';
-    } else if (connected && onDevice) {
-      message =
-          'This file will be permanently deleted from the device. There is no local copy.';
-    } else if (!connected && onDevice) {
-      message =
-          'No device is connected. This file will be deleted only from this phone and will remain on the device.';
-    } else {
-      message = 'This local file will be permanently deleted.';
-    }
+    final where = local ? 'this phone' : 'the device';
+    final title = keys.length == 1
+        ? 'Delete ${keys.first.name} from $where?'
+        : 'Delete ${keys.length} files from $where?';
+    final message = local
+        ? 'Permanently deleted from this phone. Copies on the device are kept.'
+        : 'Permanently deleted from the device. Local copies on this phone are kept.';
 
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: colors.dialogBackground,
-        title: Text(
-          'Delete ${k.name}?',
-          style: TextStyle(color: colors.dialogText),
-        ),
+        title: Text(title, style: TextStyle(color: colors.dialogText)),
         content: Text(
           message,
           style: TextStyle(color: colors.dialogMuted, height: 1.4),
@@ -415,7 +444,8 @@ class KeyActionsSheet {
       ),
     );
     if (ok == true) {
-      await controller.deleteKey(k);
+      await controller.deleteKeys(keys, local: local, remote: remote);
+      onDone?.call();
     }
   }
 

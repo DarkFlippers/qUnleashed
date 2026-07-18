@@ -1071,29 +1071,6 @@ class ArchiveController extends ChangeNotifier {
     );
   }
 
-  Future<void> deleteKey(ArchiveKey key) async {
-    try {
-      if (_client.isConnected && key.onDevice) {
-        await _client.storageDelete(
-          DeleteRequest(path: key.remotePath, recursive: false),
-          timeout: const Duration(seconds: 30),
-        );
-      }
-      if (key.inLocal || key.localPath != null) {
-        await _storage.hardDelete(
-          _deviceName,
-          key.category,
-          key.fileName,
-          subFolder: key.subFolder,
-        );
-      }
-    } catch (e) {
-      _lastError = '$e';
-      LogService.log('[Archive] delete failed: $e');
-    }
-    await refresh();
-  }
-
   Future<void> deleteKeys(
     Iterable<ArchiveKey> keys, {
     bool local = true,
@@ -1101,7 +1078,7 @@ class ArchiveController extends ChangeNotifier {
   }) async {
     for (final key in keys) {
       try {
-        if (remote && _client.isConnected && key.onDevice) {
+        if (remote && _client.isConnected && !key.isDeleted) {
           await _client.storageDelete(
             DeleteRequest(path: key.remotePath, recursive: false),
             timeout: const Duration(seconds: 30),
