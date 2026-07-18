@@ -262,7 +262,8 @@ class _CategoryPageState extends State<CategoryPage> {
 
               return RefreshIndicator(
                 color: catColor,
-                onRefresh: () => _ctrl.syncCategory(_cat),
+                displacement: 15,
+                onRefresh: () async => unawaited(_ctrl.syncCategory(_cat)),
                 child: filtered.isEmpty
                     ? SingleChildScrollView(
                         physics: const AlwaysScrollableScrollPhysics(),
