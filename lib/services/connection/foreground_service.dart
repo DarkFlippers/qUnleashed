@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:geolocator/geolocator.dart';
 
 /// Keeps the BLE link alive on Android while the screen is off or the app is
 /// backgrounded.
@@ -161,9 +162,14 @@ class BleForegroundService with WidgetsBindingObserver {
       }
     }
 
+    final serviceTypes = <ForegroundServiceTypes>[
+      ForegroundServiceTypes.connectedDevice,
+      if (await _locationGranted()) ForegroundServiceTypes.location,
+    ];
+
     final result = await FlutterForegroundTask.startService(
       serviceId: _serviceId,
-      serviceTypes: const [ForegroundServiceTypes.connectedDevice],
+      serviceTypes: serviceTypes,
       notificationTitle: 'Connected to $_deviceName',
       notificationText: 'Holding the BLE link in the background',
     );
@@ -172,6 +178,16 @@ class BleForegroundService with WidgetsBindingObserver {
     } else if (result is ServiceRequestFailure) {
       // Surface the real cause (PlatformException), not the wrapper's toString.
       LogService.log('[ForegroundService] start failed: ${result.error}');
+    }
+  }
+
+  Future<bool> _locationGranted() async {
+    try {
+      final permission = await Geolocator.checkPermission();
+      return permission == LocationPermission.always ||
+          permission == LocationPermission.whileInUse;
+    } catch (_) {
+      return false;
     }
   }
 
