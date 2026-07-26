@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../components/cardlist.dart';
 import '../../theme/theme.dart';
-import 'widgets/settings_group.dart';
-import 'widgets/settings_tile.dart';
 
 class ThemeSettingsPage extends StatelessWidget {
   const ThemeSettingsPage({super.key});
@@ -14,6 +13,49 @@ class ThemeSettingsPage extends StatelessWidget {
     QThemeMode.light: 'Always use the light theme.',
   };
 
+  Widget _tile(BuildContext context, QThemeMode mode, bool selected) {
+    final colors = context.appColors;
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                mode.label,
+                style: TextStyle(
+                  color: colors.textPrimary,
+                  fontSize: 14,
+                  height: 1.2,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                _subtitles[mode]!,
+                style: TextStyle(
+                  color: colors.textMuted,
+                  fontSize: 12,
+                  height: 1.2,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        Padding(
+          padding: const EdgeInsets.only(right: 4),
+          child: Icon(
+            selected ? Icons.check_circle : Icons.circle_outlined,
+            size: 22,
+            color: selected ? colors.accent : colors.textMuted,
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final controller = QAppThemeController.instance;
@@ -21,7 +63,6 @@ class ThemeSettingsPage extends StatelessWidget {
       animation: controller,
       builder: (context, _) {
         final colors = context.appColors;
-        final modes = QThemeMode.values;
         return Scaffold(
           backgroundColor: colors.background,
           appBar: AppBar(
@@ -32,82 +73,16 @@ class ThemeSettingsPage extends StatelessWidget {
           body: ListView(
             padding: const EdgeInsets.symmetric(vertical: 10),
             children: [
-              SettingsGroup(
-                children: [
-                  for (final mode in modes)
-                    _ThemeModeTile(
-                      title: mode.label,
-                      subtitle: _subtitles[mode]!,
-                      selected: controller.themeMode == mode,
-                      onTap: () => controller.setThemeMode(mode),
-                    ),
-                ],
+              GroupedCardList<QThemeMode>(
+                items: QThemeMode.values,
+                onTap: (mode) => () => controller.setThemeMode(mode),
+                itemBuilder: (context, mode) =>
+                    _tile(context, mode, controller.themeMode == mode),
               ),
             ],
           ),
         );
       },
-    );
-  }
-}
-
-class _ThemeModeTile extends StatelessWidget {
-  const _ThemeModeTile({
-    required this.title,
-    required this.subtitle,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String title;
-  final String subtitle;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.appColors;
-    return SettingsTileShell(
-      onTap: onTap,
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: colors.textPrimary,
-                    fontSize: 14,
-                    height: 1.2,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    color: colors.textMuted,
-                    fontSize: 12,
-                    height: 1.2,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          Padding(
-            padding: const EdgeInsets.only(right: 4),
-            child: Icon(
-              selected ? Icons.check_circle : Icons.circle_outlined,
-              size: 22,
-              color: selected ? colors.accent : colors.textMuted,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

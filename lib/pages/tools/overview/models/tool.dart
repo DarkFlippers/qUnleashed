@@ -1,23 +1,11 @@
 import 'package:flutter/widgets.dart';
 
-sealed class ToolCardModel {
-  const ToolCardModel();
-}
+class ToolGroup {
+  const ToolGroup({this.header, required this.items})
+    : assert(items.length > 0, 'A tool group must contain at least one item');
 
-class ToolCardGroup extends ToolCardModel {
-  const ToolCardGroup({
-    required this.header,
-    required this.items,
-  }) : assert(items.length > 0, 'A tool group must contain at least one item');
-
-  final ToolCardHeader header;
+  final ToolCardHeader? header;
   final List<ToolItemModel> items;
-}
-
-class ToolCard extends ToolCardModel {
-  const ToolCard({required this.item});
-
-  final ToolItemModel item;
 }
 
 class ToolCardHeader {

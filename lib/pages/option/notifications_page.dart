@@ -1,9 +1,22 @@
 import 'package:flutter/material.dart';
 
+import '../../components/cardlist.dart';
 import '../../services/notifications/push_service.dart';
 import '../../theme/theme.dart';
-import 'widgets/settings_group.dart';
-import 'widgets/settings_tile.dart';
+
+class _Toggle {
+  const _Toggle({
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String title;
+  final String subtitle;
+  final bool value;
+  final ValueChanged<bool>? onChanged;
+}
 
 class NotificationsSettingsPage extends StatefulWidget {
   const NotificationsSettingsPage({super.key});
@@ -53,6 +66,52 @@ class _NotificationsSettingsPageState extends State<NotificationsSettingsPage> {
     PushService.instance.setFirmwareDevEnabled(value);
   }
 
+  Widget _tile(BuildContext context, _Toggle t) {
+    final colors = context.appColors;
+    final enabled = t.onChanged != null;
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                t.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: enabled ? colors.textPrimary : colors.textMuted,
+                  fontSize: 14,
+                  height: 1.2,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                t.subtitle,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: colors.textMuted,
+                  fontSize: 12,
+                  height: 1.2,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        Switch(
+          value: t.value,
+          activeThumbColor: colors.accent,
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          onChanged: t.onChanged,
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
@@ -75,28 +134,31 @@ class _NotificationsSettingsPageState extends State<NotificationsSettingsPage> {
                 style: TextStyle(fontSize: 12.5, color: colors.textMuted),
               ),
             ),
-          SettingsGroup(
+          GroupedCardList<_Toggle>(
             title: 'Application',
-            children: [
-              SettingsSwitchTile(
+            items: [
+              _Toggle(
                 title: 'App releases',
                 subtitle: 'New qUnleashed app versions.',
                 value: _appReleases,
                 onChanged: supported ? _setAppReleases : null,
               ),
             ],
+            onTap: (t) =>
+                t.onChanged == null ? null : () => t.onChanged!(!t.value),
+            itemBuilder: _tile,
           ),
           const SizedBox(height: 10),
-          SettingsGroup(
+          GroupedCardList<_Toggle>(
             title: 'Firmware',
-            children: [
-              SettingsSwitchTile(
+            items: [
+              _Toggle(
                 title: 'Firmware releases',
                 subtitle: 'Unleashed and official firmware releases.',
                 value: _firmwareReleases,
                 onChanged: supported ? _setFirmwareReleases : null,
               ),
-              SettingsSwitchTile(
+              _Toggle(
                 title: 'Dev channel',
                 subtitle: 'Also get notified about new dev channel builds.',
                 value: _firmwareDev,
@@ -104,6 +166,9 @@ class _NotificationsSettingsPageState extends State<NotificationsSettingsPage> {
                     (supported && _firmwareReleases) ? _setFirmwareDev : null,
               ),
             ],
+            onTap: (t) =>
+                t.onChanged == null ? null : () => t.onChanged!(!t.value),
+            itemBuilder: _tile,
           ),
         ],
       ),

@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
+import '../../../components/cardlist.dart';
+import '../../../components/icon.dart';
 import '../../../theme/theme.dart';
 import '../../../components/dialogs/action.dart';
 import '../../about/page.dart';
@@ -16,13 +18,14 @@ import '../mifare/mfkey32_page.dart';
 import '../plotter/page.dart';
 import 'models/tool.dart';
 import 'widgets/app_version.dart';
-import 'widgets/tool.dart';
+import 'widgets/tool_item_badge.dart';
+import 'widgets/tool_item_text.dart';
 
 class ToolsPage extends StatelessWidget {
   const ToolsPage({super.key});
 
-  static final List<ToolCardModel> _tools = [
-    ToolCardGroup(
+  static final List<ToolGroup> _tools = [
+    ToolGroup(
       header: const ToolCardHeader(
         iconAsset: 'assets/ic/device/flipper.svg',
         iconColor: Color(0xFF589DFF),
@@ -53,7 +56,7 @@ class ToolsPage extends StatelessWidget {
         ),
       ],
     ),
-    ToolCardGroup(
+    ToolGroup(
       header: const ToolCardHeader(
         iconAsset: 'assets/ic/app/files.svg',
         iconColor: Color(0xFF8BC34A),
@@ -93,25 +96,90 @@ class ToolsPage extends StatelessWidget {
         ),
       ],
     ),
-    ToolCard(
-      item: ToolItemModel(
-        iconAsset: 'assets/ic/fileformat/settings.svg',
-        iconColor: const Color(0xFF9E9E9E),
-        title: 'Settings',
-        description: 'Notifications and app preferences',
-        routeBuilder: _buildSettingsPage,
-      ),
+    ToolGroup(
+      items: [
+        ToolItemModel(
+          iconAsset: 'assets/ic/fileformat/settings.svg',
+          iconColor: const Color(0xFF9E9E9E),
+          title: 'Settings',
+          description: 'Notifications and app preferences',
+          routeBuilder: _buildSettingsPage,
+        ),
+      ],
     ),
-    ToolCard(
-      item: ToolItemModel(
-        iconAsset: 'assets/ic/info/lg.svg',
-        iconColor: const Color(0xFF589DFF),
-        title: 'About',
-        description: 'Links, community and license',
-        routeBuilder: _buildAboutPage,
-      ),
+    ToolGroup(
+      items: [
+        ToolItemModel(
+          iconAsset: 'assets/ic/info/lg.svg',
+          iconColor: const Color(0xFF589DFF),
+          title: 'About',
+          description: 'Links, community and license',
+          routeBuilder: _buildAboutPage,
+        ),
+      ],
     ),
   ];
+
+  Widget _groupHeader(ToolCardHeader header, QAppColors colors) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+      child: Row(
+        children: [
+          QIcon(asset: header.iconAsset, color: header.iconColor, size: 24),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              header.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: colors.textPrimary,
+                fontSize: 16,
+                height: 1.2,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _toolItem(BuildContext context, ToolItemModel item) {
+    final colors = context.appColors;
+    return Row(
+      children: [
+        QIconBadge(asset: item.iconAsset, color: item.iconColor),
+        const SizedBox(width: 8),
+        Expanded(
+          child: ToolItemText(
+            title: item.title,
+            description: item.description,
+          ),
+        ),
+        if (item.badge != null) ToolItemBadge(label: item.badge!),
+        Padding(
+          padding: const EdgeInsets.only(left: 8),
+          child: QIcon(
+            asset: 'assets/ic/nav/navigate-tool.svg',
+            color: colors.textMuted,
+            size: 16,
+          ),
+        ),
+      ],
+    );
+  }
+
+  VoidCallback? _resolveTap(BuildContext context, ToolItemModel item) {
+    final onTap = item.onTap;
+    if (onTap != null) return () => onTap(context);
+    final routeBuilder = item.routeBuilder;
+    if (routeBuilder != null) {
+      return () =>
+          Navigator.of(context).push(MaterialPageRoute(builder: routeBuilder));
+    }
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -126,7 +194,18 @@ class ToolsPage extends StatelessWidget {
           padding: const EdgeInsets.only(top: 9, bottom: 14),
           child: Column(
             children: [
-              for (final tool in _tools) ToolCardView(model: tool),
+              for (final group in _tools)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 5),
+                  child: GroupedCardList<ToolItemModel>(
+                    header: group.header == null
+                        ? null
+                        : _groupHeader(group.header!, colors),
+                    items: group.items,
+                    onTap: (item) => _resolveTap(context, item),
+                    itemBuilder: _toolItem,
+                  ),
+                ),
               const AppVersionLabel(),
             ],
           ),

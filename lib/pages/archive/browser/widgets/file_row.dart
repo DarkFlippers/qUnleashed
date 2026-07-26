@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../../../components/cardlist.dart';
 import '../../../../components/icon.dart';
 import '../../../../services/repository/app.dart' as icon_repo;
 import '../../../../theme/theme.dart';
@@ -275,6 +276,7 @@ class _FileRowState extends State<FileRow> {
     final isDir = widget.entry.isDir;
     final muted = widget.entry.isHidden;
     final blocked = _editing || _renaming;
+    final radius = GroupedCardCorners.of(context);
 
     return MouseRegion(
       onEnter: _isDesktop ? (_) => setState(() => _hovered = true) : null,
@@ -283,7 +285,7 @@ class _FileRowState extends State<FileRow> {
         color: widget.selected
             ? colors.accent.withValues(alpha: 0.12)
             : colors.card,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: radius,
         clipBehavior: Clip.antiAlias,
         child: Stack(
           children: [
@@ -294,7 +296,7 @@ class _FileRowState extends State<FileRow> {
                   ? null
                   : (widget.onLongPress ?? _showActionsSheet),
               onSecondaryTap: blocked ? null : _showActionsSheet,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: radius,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
                 child: Row(
@@ -455,19 +457,24 @@ class FileGridTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final muted = entry.isHidden;
+    final radius = GroupedCardCorners.of(context);
 
     return Material(
       color: selected ? colors.accent.withValues(alpha: 0.12) : colors.card,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: radius,
       clipBehavior: Clip.antiAlias,
       child: Stack(
+        // Expand so the tap target and content fill the whole cell; without
+        // this the InkWell/Column shrink-wrap to the name width, making tiles
+        // look uneven and leaving most of the cell untappable.
+        fit: StackFit.expand,
         children: [
           ProgressFill(progress: progress),
           InkWell(
             onTap: onTap,
             onLongPress: onLongPress ?? () => _showActionsSheet(context),
             onSecondaryTap: () => _showActionsSheet(context),
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: radius,
             child: Padding(
               // Fixed top inset + fixed name height → the icon always sits at
               // the same position regardless of how many lines the name takes.

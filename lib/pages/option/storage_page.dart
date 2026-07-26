@@ -2,13 +2,12 @@ import 'dart:io' as io;
 
 import 'package:flutter/material.dart';
 
+import '../../components/cardlist.dart';
 import '../../components/icon.dart';
 import '../../services/http/app_http.dart';
 import '../../services/repository/app.dart';
 import '../../theme/theme.dart';
 import '../../widgets/notification.dart';
-import 'widgets/settings_group.dart';
-import 'widgets/settings_tile.dart';
 
 class _StorageArea {
   const _StorageArea({
@@ -154,6 +153,68 @@ class _StorageSettingsPageState extends State<StorageSettingsPage> {
     }
   }
 
+  Widget _tile(BuildContext context, int index) {
+    final colors = context.appColors;
+    final area = _areas[index];
+    final size = _sizes[index];
+    final clearing = _clearing.contains(index);
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                area.title,
+                style: TextStyle(
+                  color: colors.textPrimary,
+                  fontSize: 14,
+                  height: 1.2,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                area.subtitle,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: colors.textMuted,
+                  fontSize: 12,
+                  height: 1.2,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          size == null ? '…' : formatBytes(size),
+          style: TextStyle(color: colors.textSecondary, fontSize: 12),
+        ),
+        const SizedBox(width: 2),
+        if (clearing)
+          const Padding(
+            padding: EdgeInsets.all(12),
+            child: SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          )
+        else
+          IconButton(
+            onPressed: (size ?? 0) > 0 ? () => _clearArea(index) : null,
+            icon: QIcon(
+              asset: 'assets/ic/action/trash.svg',
+              color: (size ?? 0) > 0 ? colors.danger : colors.textMuted,
+              size: 18,
+            ),
+          ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
@@ -168,97 +229,16 @@ class _StorageSettingsPageState extends State<StorageSettingsPage> {
         padding: const EdgeInsets.symmetric(vertical: 10),
         children: [
           for (final group in const [_groupAppFolders, _groupInternal]) ...[
-            SettingsGroup(
+            GroupedCardList<int>(
               title: group,
-              children: [
+              items: [
                 for (var i = 0; i < _areas.length; i++)
-                  if (_areas[i].group == group)
-                    _StorageAreaTile(
-                      area: _areas[i],
-                      size: _sizes[i],
-                      clearing: _clearing.contains(i),
-                      onClear: () => _clearArea(i),
-                    ),
+                  if (_areas[i].group == group) i,
               ],
+              itemBuilder: _tile,
             ),
             if (group != _groupInternal) const SizedBox(height: 10),
           ],
-        ],
-      ),
-    );
-  }
-}
-
-class _StorageAreaTile extends StatelessWidget {
-  const _StorageAreaTile({
-    required this.area,
-    required this.size,
-    required this.clearing,
-    required this.onClear,
-  });
-
-  final _StorageArea area;
-  final int? size;
-  final bool clearing;
-  final VoidCallback onClear;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.appColors;
-    return SettingsTileShell(
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  area.title,
-                  style: TextStyle(
-                    color: colors.textPrimary,
-                    fontSize: 14,
-                    height: 1.2,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  area.subtitle,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: colors.textMuted,
-                    fontSize: 12,
-                    height: 1.2,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            size == null ? '…' : formatBytes(size!),
-            style: TextStyle(color: colors.textSecondary, fontSize: 12),
-          ),
-          const SizedBox(width: 2),
-          if (clearing)
-            const Padding(
-              padding: EdgeInsets.all(12),
-              child: SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            )
-          else
-            IconButton(
-              onPressed: (size ?? 0) > 0 ? onClear : null,
-              icon: QIcon(
-                asset: 'assets/ic/action/trash.svg',
-                color: (size ?? 0) > 0 ? colors.danger : colors.textMuted,
-                size: 18,
-              ),
-            ),
         ],
       ),
     );

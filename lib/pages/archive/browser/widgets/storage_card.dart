@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
+import '../../../../components/cardlist.dart';
 import '../../../../components/icon.dart';
 import '../../../../theme/theme.dart';
 
@@ -93,35 +94,56 @@ class _StorageUsageCardsState extends State<StorageUsageCards> {
     final extUsed = _info['storage.sdcard.used'];
     final intUsed = _info['storage.internal.used'];
 
-    return Row(
-      children: [
-        Expanded(
-          child: _StorageCard(
-            title: 'Internal',
-            icon: Icons.smartphone,
-            enabled: enabled,
-            loading: loading,
-            onTap: widget.onOpenInternal,
-            // `/int` capacity isn't exposed, so no fill bar — just used size.
-            percent: null,
-            usageText: intUsed,
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _StorageCard(
-            title: 'External',
-            icon: Icons.sd_card,
-            enabled: enabled,
-            loading: loading,
-            onTap: widget.onOpenExternal,
-            percent: extPercent,
-            usageText: extUsed,
-          ),
-        ),
-      ],
+    final entries = [
+      _StorageEntry(
+        title: 'Internal',
+        icon: Icons.smartphone,
+        onTap: widget.onOpenInternal,
+        // `/int` capacity isn't exposed, so no fill bar — just used size.
+        percent: null,
+        usageText: intUsed,
+      ),
+      _StorageEntry(
+        title: 'External',
+        icon: Icons.sd_card,
+        onTap: widget.onOpenExternal,
+        percent: extPercent,
+        usageText: extUsed,
+      ),
+    ];
+
+    return GroupedCardGrid<_StorageEntry>(
+      items: entries,
+      crossAxisCount: 2,
+      mainAxisExtent: null,
+      wrapItems: false,
+      itemBuilder: (context, e) => _StorageCard(
+        title: e.title,
+        icon: e.icon,
+        enabled: enabled,
+        loading: loading,
+        onTap: e.onTap,
+        percent: e.percent,
+        usageText: e.usageText,
+      ),
     );
   }
+}
+
+class _StorageEntry {
+  const _StorageEntry({
+    required this.title,
+    required this.icon,
+    required this.onTap,
+    required this.percent,
+    required this.usageText,
+  });
+
+  final String title;
+  final IconData icon;
+  final VoidCallback onTap;
+  final double? percent;
+  final String? usageText;
 }
 
 class _StorageCard extends StatelessWidget {
@@ -156,7 +178,7 @@ class _StorageCard extends StatelessWidget {
 
     return Material(
       color: colors.card,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: GroupedCardCorners.of(context),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: enabled ? onTap : null,

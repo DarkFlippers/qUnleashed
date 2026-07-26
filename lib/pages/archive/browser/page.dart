@@ -6,6 +6,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme/theme.dart';
 import 'package:qunleashed/components/appbar.dart';
+import 'package:qunleashed/components/cardlist.dart';
 import 'package:flipperlib/flipperlib.dart';
 import '../../../services/repository/app.dart' as icon_repo;
 import '../../../widgets/notification.dart';
@@ -1174,9 +1175,8 @@ class _FileManagerPageState extends State<FileManagerPage> {
       onRefresh: _ctrl.refresh,
       child: CustomScrollView(
         slivers: [
-          ..._buildSection(colors, 'Folders', _ctrl.folders, grid, isFirst: true),
+          ..._buildSection('Folders', _ctrl.folders, grid, isFirst: true),
           ..._buildSection(
-            colors,
             'Files',
             _ctrl.files,
             grid,
@@ -1229,27 +1229,12 @@ class _FileManagerPageState extends State<FileManagerPage> {
   }
 
   List<Widget> _buildSection(
-    QAppColors colors,
     String label,
     List<RemoteEntry> items,
     bool grid, {
     bool isFirst = false,
   }) {
     if (items.isEmpty) return const [];
-    final header = SliverToBoxAdapter(
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(20, isFirst ? 4 : 16, 20, 8),
-        child: Text(
-          '$label · ${items.length}',
-          style: TextStyle(
-            color: colors.textMuted,
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0.5,
-          ),
-        ),
-      ),
-    );
 
     FileEntryActions makeActions(RemoteEntry e) {
       final cat = e.isDir ? null : ArchiveCategory.fromExtension(e.extension);
@@ -1287,21 +1272,13 @@ class _FileManagerPageState extends State<FileManagerPage> {
       );
     }
 
-    if (grid) {
-      final body = SliverPadding(
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        sliver: SliverGrid(
-          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-            maxCrossAxisExtent: 104,
-            // Fixed tile height keeps the layout stable regardless of how
-            // narrow the column gets (e.g. a small desktop window).
-            mainAxisExtent: 104,
-            mainAxisSpacing: 10,
-            crossAxisSpacing: 10,
-          ),
-          delegate: SliverChildBuilderDelegate((_, i) {
-            final e = items[i];
-            return FileGridTile(
+    final title = '$label · ${items.length}';
+    final Widget group = grid
+        ? GroupedCardGrid<RemoteEntry>(
+            title: title,
+            items: items,
+            wrapItems: false,
+            itemBuilder: (context, e) => FileGridTile(
               entry: e,
               actions: makeActions(e),
               selectionMode: _selectionMode,
@@ -1309,34 +1286,32 @@ class _FileManagerPageState extends State<FileManagerPage> {
               progress: _ctrl.entryProgress(e.name),
               onTap: () => _onEntryTap(e),
               onLongPress: () => _enterSelection(e),
-            );
-          }, childCount: items.length),
-        ),
-      );
-      return [header, body];
-    }
-
-    final body = SliverPadding(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      sliver: SliverList.separated(
-        itemCount: items.length,
-        separatorBuilder: (_, _) => const SizedBox(height: 6),
-        itemBuilder: (_, i) {
-          final e = items[i];
-          return FileRow(
-            key: ValueKey('${e.isDir}:${e.name}'),
-            entry: e,
-            actions: makeActions(e),
-            selectionMode: _selectionMode,
-            selected: _selected.contains(e.name),
-            progress: _ctrl.entryProgress(e.name),
-            autoEdit: !e.isDir && e.name == _pendingRenameName,
-            onTap: () => _onEntryTap(e),
-            onLongPress: () => _enterSelection(e),
+            ),
+          )
+        : GroupedCardList<RemoteEntry>(
+            title: title,
+            items: items,
+            wrapItems: false,
+            itemBuilder: (context, e) => FileRow(
+              key: ValueKey('${e.isDir}:${e.name}'),
+              entry: e,
+              actions: makeActions(e),
+              selectionMode: _selectionMode,
+              selected: _selected.contains(e.name),
+              progress: _ctrl.entryProgress(e.name),
+              autoEdit: !e.isDir && e.name == _pendingRenameName,
+              onTap: () => _onEntryTap(e),
+              onLongPress: () => _enterSelection(e),
+            ),
           );
-        },
+
+    return [
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: EdgeInsets.only(top: isFirst ? 4 : 12),
+          child: group,
+        ),
       ),
-    );
-    return [header, body];
+    ];
   }
 }
