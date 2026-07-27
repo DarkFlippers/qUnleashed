@@ -4,7 +4,7 @@ import 'package:flutter_html/flutter_html.dart';
 import 'package:flutter_html_table/flutter_html_table.dart';
 import 'package:markdown/markdown.dart' as md;
 
-import '../../../pages/apps/widgets/flipper_image.dart';
+import '../../../pages/apps/catalog/widgets/flipper_image.dart';
 import '../../../widgets/open_url.dart';
 
 String buildChangelogHtml(String data) {

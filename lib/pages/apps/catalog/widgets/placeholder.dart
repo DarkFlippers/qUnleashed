@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../widgets/page_placeholder.dart';
+import '../../../../widgets/page_placeholder.dart';
 
 class AppsPlaceholder extends StatelessWidget {
   const AppsPlaceholder({super.key});

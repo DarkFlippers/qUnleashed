@@ -1,7 +1,7 @@
 ﻿import 'package:flutter/material.dart';
 
-import '../../../theme/theme.dart';
-import '../models/category.dart';
+import '../../../../theme/theme.dart';
+import '../../data/models/category.dart';
 import 'flipper_image.dart';
 
 Color parseHexColor(String hex, {Color fallback = const Color(0xFFEBEBEB)}) {

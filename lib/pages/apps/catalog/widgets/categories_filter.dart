@@ -1,6 +1,6 @@
 ﻿import 'package:flutter/material.dart';
 
-import '../models/category.dart';
+import '../../data/models/category.dart';
 import 'category_chip.dart';
 
 class CategoriesFilter extends StatelessWidget {

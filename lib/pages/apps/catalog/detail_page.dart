@@ -1,15 +1,14 @@
 import 'package:flutter/material.dart';
 
-import '../../theme/theme.dart';
+import '../../../theme/theme.dart';
 import 'package:qunleashed/components/appbar.dart';
-import '../devices/widgets/changelog_renderer.dart';
-import '../../widgets/open_url.dart';
-import '../tools/remote/desktop/page.dart';
-import 'catalog_api.dart';
-import 'install_service.dart';
-import 'models/card.dart';
-import 'models/category.dart';
-import 'models/detail.dart';
+import '../../devices/widgets/changelog_renderer.dart';
+import '../../../widgets/open_url.dart';
+import '../../tools/remote/desktop/page.dart';
+import '../data/models/card.dart';
+import '../data/models/category.dart';
+import '../data/models/detail.dart';
+import 'controller.dart';
 import 'screenshots_viewer.dart';
 import 'widgets/action_button.dart';
 import 'widgets/category_chip.dart';
@@ -20,14 +19,12 @@ class AppDetailPage extends StatefulWidget {
   const AppDetailPage({
     super.key,
     required this.alias,
-    required this.api,
-    required this.installService,
+    required this.controller,
     this.knownCategory,
   });
 
   final String alias;
-  final AppsCatalogApi api;
-  final AppsInstallService installService;
+  final AppsCatalogController controller;
   final AppCategory? knownCategory;
 
   @override
@@ -35,6 +32,8 @@ class AppDetailPage extends StatefulWidget {
 }
 
 class _AppDetailPageState extends State<AppDetailPage> {
+  AppsCatalogController get _ctrl => widget.controller;
+
   AppDetail? _detail;
   Object? _error;
   bool _loading = true;
@@ -51,7 +50,7 @@ class _AppDetailPageState extends State<AppDetailPage> {
       _error = null;
     });
     try {
-      final d = await widget.api.fetchApp(widget.alias);
+      final d = await _ctrl.api.fetchApp(widget.alias);
       if (!mounted) return;
       setState(() {
         _detail = d;
@@ -91,7 +90,7 @@ class _AppDetailPageState extends State<AppDetailPage> {
       ),
     );
     if (ok == true) {
-      await widget.installService.uninstall(card, category: cat);
+      await _ctrl.engine.uninstall(card, category: cat);
     }
   }
 
@@ -99,7 +98,7 @@ class _AppDetailPageState extends State<AppDetailPage> {
   Widget build(BuildContext context) {
     final colors = context.appColors;
     return AnimatedBuilder(
-      animation: widget.installService,
+      animation: _ctrl,
       builder: (context, _) => Scaffold(
         backgroundColor: colors.background,
         appBar: QPageAppBar(
@@ -108,7 +107,7 @@ class _AppDetailPageState extends State<AppDetailPage> {
           foregroundColor: colors.onAccent,
           actions: [
             if (_detail != null) ...[
-              if (widget.installService.isInstalled(_detail!.card))
+              if (_ctrl.engine.isInstalled(_detail!.card))
                 QPageAppBarAction(
                   tooltip: 'Delete app',
                   icon: const Icon(Icons.delete_outline),
@@ -165,8 +164,8 @@ class _AppDetailPageState extends State<AppDetailPage> {
       children: [
         _Header(
           detail: detail,
+          controller: _ctrl,
           knownCategory: widget.knownCategory,
-          installService: widget.installService,
           onLaunched: _onLaunched,
         ),
         const SizedBox(height: 18),
@@ -212,13 +211,13 @@ class _AppDetailPageState extends State<AppDetailPage> {
 class _Header extends StatelessWidget {
   const _Header({
     required this.detail,
-    required this.installService,
+    required this.controller,
     this.knownCategory,
     this.onLaunched,
   });
 
   final AppDetail detail;
-  final AppsInstallService installService;
+  final AppsCatalogController controller;
   final AppCategory? knownCategory;
   final VoidCallback? onLaunched;
 
@@ -229,7 +228,7 @@ class _Header extends StatelessWidget {
     final cv = card.currentVersion;
     final cat =
         knownCategory ??
-        AppCategory(id: card.categoryId, name: 'вЂ”', color: 'EBEBEB');
+        AppCategory(id: card.categoryId, name: '—', color: 'EBEBEB');
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -276,7 +275,7 @@ class _Header extends StatelessWidget {
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
                       CategoryChip(category: cat, selected: true),
-                      _Meta(label: 'Version', value: cv?.version ?? 'вЂ”'),
+                      _Meta(label: 'Version', value: cv?.version ?? '—'),
                       _Meta(
                         label: 'Size',
                         value: _formatBytes(detail.buildMetadata?.length),
@@ -294,7 +293,8 @@ class _Header extends StatelessWidget {
         SizedBox(
           width: double.infinity,
           child: AppActionButton(
-            service: installService,
+            engine: controller.engine,
+            state: controller.stateFor(card),
             app: card,
             category: knownCategory,
             detail: detail,
@@ -307,7 +307,7 @@ class _Header extends StatelessWidget {
   }
 
   String _formatBytes(int? bytes) {
-    if (bytes == null || bytes <= 0) return 'вЂ”';
+    if (bytes == null || bytes <= 0) return '—';
     const units = ['B', 'KB', 'MB', 'GB'];
     var b = bytes.toDouble();
     var i = 0;

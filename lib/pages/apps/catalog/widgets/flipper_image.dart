@@ -5,8 +5,8 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-import '../../../services/http/app_http.dart';
-import '../../../theme/theme.dart';
+import '../../../../services/http/app_http.dart';
+import '../../../../theme/theme.dart';
 
 /// LRU cache of fetched SVG bytes keyed by URL, with in-flight request
 /// deduplication so a grid mounting many tiles with the same icon issues a

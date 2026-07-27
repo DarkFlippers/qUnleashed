@@ -26,6 +26,17 @@ Future<io.File> installedCatalogFile(String deviceName) async {
   );
 }
 
+/// Local mirror of the device's `/ext/apps`, where the manager backs up every
+/// `.fap`. Lives at `Devices/<name>/apps`.
+Future<io.Directory> appsBackupDirectory(String deviceName) async {
+  final root = await appDevicesDirectory();
+  final dir = io.Directory(
+    pathJoin([root.path, sanitizePathSegment(deviceName), 'apps']),
+  );
+  await dir.create(recursive: true);
+  return dir;
+}
+
 String pathJoin(Iterable<String> parts) {
   final sep = io.Platform.pathSeparator;
   final out = <String>[];

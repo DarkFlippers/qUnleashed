@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../widgets/root_scaffold.dart';
-import '../apps/page.dart';
+import '../apps/catalog/page.dart';
 import '../archive/overview/controller.dart';
 import '../archive/overview/page.dart';
 import '../tools/overview/page.dart';
@@ -63,7 +63,7 @@ class _DevicePageState extends State<DevicePage> {
               children: [
                 const DeviceTab(),
                 ArchivePage(controller: _archiveController),
-                _appsMounted ? const AppsPage() : const SizedBox.shrink(),
+                _appsMounted ? const AppsCatalogPage() : const SizedBox.shrink(),
                 const ToolsPage(),
               ],
             ),

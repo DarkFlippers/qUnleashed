@@ -1,8 +1,8 @@
 ﻿import 'package:flutter/material.dart';
 
-import '../../../theme/theme.dart';
-import '../models/card.dart';
-import '../models/category.dart';
+import '../../../../theme/theme.dart';
+import '../../data/models/card.dart';
+import '../../data/models/category.dart';
 import 'flipper_image.dart';
 import 'screenshot_frame.dart';
 

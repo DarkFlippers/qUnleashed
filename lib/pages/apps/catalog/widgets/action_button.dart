@@ -1,20 +1,22 @@
-﻿import 'package:flipperlib/flipperlib.dart';
+import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
-import '../../../theme/theme.dart';
-import '../../../components/dialogs/action.dart';
-import '../../../widgets/notification.dart';
-import '../../../widgets/progress_button.dart';
-import '../../tools/remote/desktop/page.dart';
-import '../install_service.dart';
-import '../models/card.dart';
-import '../models/category.dart';
-import '../models/detail.dart';
+import '../../../../theme/theme.dart';
+import '../../../../components/dialogs/action.dart';
+import '../../../../widgets/notification.dart';
+import '../../../../widgets/progress_button.dart';
+import '../../../tools/remote/desktop/page.dart';
+import '../../data/catalog_state.dart';
+import '../../data/install_engine.dart';
+import '../../data/models/card.dart';
+import '../../data/models/category.dart';
+import '../../data/models/detail.dart';
 
 class AppActionButton extends StatelessWidget {
   const AppActionButton({
     super.key,
-    required this.service,
+    required this.engine,
+    required this.state,
     required this.app,
     this.category,
     this.detail,
@@ -22,7 +24,8 @@ class AppActionButton extends StatelessWidget {
     this.size = AppActionButtonSize.compact,
   });
 
-  final AppsInstallService service;
+  final InstallEngine engine;
+  final CatalogAppState state;
   final AppCard app;
   final AppCategory? category;
   final AppDetail? detail;
@@ -32,8 +35,7 @@ class AppActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final state = service.buttonState(app);
-    final action = service.actionFor(app);
+    final action = engine.actionFor(app);
 
     if (action != null) {
       return _ActionRow(
@@ -46,7 +48,7 @@ class AppActionButton extends StatelessWidget {
       );
     }
 
-    if (!service.isReady) {
+    if (!engine.isReady) {
       return _ActionRow(
         size: size,
         primary: _buildButton(
@@ -58,30 +60,28 @@ class AppActionButton extends StatelessWidget {
     }
 
     switch (state) {
-      case AppButtonState.install:
+      case CatalogAppState.install:
         return _ActionRow(
           size: size,
           primary: _buildButton(
             label: 'INSTALL',
             color: colors.accent,
-            onTap: () => service.installOrUpdate(app, category: category, detail: detail),
+            onTap: () =>
+                engine.installOrUpdate(app, category: category, detail: detail),
           ),
         );
-      case AppButtonState.update:
+      case CatalogAppState.update:
         return _ActionRow(
           size: size,
           primary: _buildButton(
             label: 'UPDATE',
             color: colors.success,
-            onTap: () => service.installOrUpdate(app, category: category, detail: detail),
+            onTap: () =>
+                engine.installOrUpdate(app, category: category, detail: detail),
           ),
-          secondary: _DeleteButton(
-            size: size,
-            onTap: () => _confirmDelete(context),
-          ),
+          secondary: _DeleteButton(size: size, onTap: () => _confirmDelete(context)),
         );
-      case AppButtonState.preinstalled:
-      case AppButtonState.installed:
+      case CatalogAppState.open:
         return _ActionRow(
           size: size,
           primary: _buildButton(
@@ -89,36 +89,7 @@ class AppActionButton extends StatelessWidget {
             color: colors.accent,
             onTap: () => _launchApp(context),
           ),
-          secondary: _DeleteButton(
-            size: size,
-            onTap: () => _confirmDelete(context),
-          ),
-        );
-      case AppButtonState.unsupported:
-        return _ActionRow(
-          size: size,
-          primary: _buildButton(
-            label: 'N/A',
-            color: colors.divider,
-            onTap: null,
-          ),
-          secondary: _DeleteButton(
-            size: size,
-            onTap: () => _confirmDelete(context),
-          ),
-        );
-      case AppButtonState.inProgress:
-        return _ActionRow(
-          size: size,
-          primary: _buildProgressButton(
-            type: AppActionType.install,
-            stage: AppActionStage.download,
-            progress: 0,
-          ),
-          secondary: _DeleteButton(
-            size: size,
-            onTap: () => _confirmDelete(context),
-          ),
+          secondary: _DeleteButton(size: size, onTap: () => _confirmDelete(context)),
         );
     }
   }
@@ -175,7 +146,7 @@ class AppActionButton extends StatelessWidget {
 
   Future<void> _launchApp(BuildContext context) async {
     try {
-      await service.launch(app, category: category);
+      await engine.launch(app, category: category);
       onLaunched?.call();
     } catch (e) {
       if (!context.mounted) return;
@@ -229,7 +200,7 @@ class AppActionButton extends StatelessWidget {
       },
     );
     if (ok == true) {
-      await service.uninstall(app, category: category);
+      await engine.uninstall(app, category: category);
     }
   }
 }
@@ -237,11 +208,7 @@ class AppActionButton extends StatelessWidget {
 enum AppActionButtonSize { compact, large }
 
 class _ActionRow extends StatelessWidget {
-  const _ActionRow({
-    required this.size,
-    required this.primary,
-    this.secondary,
-  });
+  const _ActionRow({required this.size, required this.primary, this.secondary});
 
   final AppActionButtonSize size;
   final Widget primary;
