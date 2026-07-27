@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io' as io;
 import 'dart:math';
 
 import 'package:flipperlib/flipperlib.dart';
@@ -24,9 +25,15 @@ const _kRightPadding = 12.0;
 const _kBottomPadding = 12.0;
 
 class TextEditorPage extends StatefulWidget {
-  const TextEditorPage({super.key, required this.remotePath, this.client});
+  const TextEditorPage({
+    super.key,
+    required this.remotePath,
+    this.localPath,
+    this.client,
+  });
 
   final String remotePath;
+  final String? localPath;
   final FlipperClient? client;
 
   @override
@@ -186,7 +193,7 @@ class _TextEditorPageState extends State<TextEditorPage> {
       _loading = true;
       _error = null;
     });
-    final bytes = await _readBytes(widget.remotePath);
+    final bytes = await _readBytes();
     if (!mounted) return;
     if (bytes == null) {
       setState(() {
@@ -211,31 +218,50 @@ class _TextEditorPageState extends State<TextEditorPage> {
     _readLinePositions();
   }
 
-  Future<List<int>?> _readBytes(String path) async {
+  Future<List<int>?> _readBytes() async {
+    final local = widget.localPath;
+    if (local != null && local.isNotEmpty) {
+      try {
+        final file = io.File(local);
+        if (await file.exists()) return await file.readAsBytes();
+      } catch (e) {
+        LogService.log('[TextEditor] local read $local failed: $e');
+      }
+    }
     try {
       return await _client.storageReadChunked(
-        path,
+        widget.remotePath,
         timeout: const Duration(minutes: 5),
       );
     } catch (e) {
-      LogService.log('[TextEditor] read $path failed: $e');
+      LogService.log('[TextEditor] read ${widget.remotePath} failed: $e');
       return null;
     }
   }
 
-  Future<bool> _writeBytes(String path, List<int> data) async {
+  Future<bool> _writeBytes(List<int> data) async {
+    final local = widget.localPath;
+    if (local != null && local.isNotEmpty) {
+      try {
+        await io.File(local).writeAsBytes(data, flush: true);
+        return true;
+      } catch (e) {
+        LogService.log('[TextEditor] local write $local failed: $e');
+        return false;
+      }
+    }
     try {
-      await _client.storageWriteChunked(path, data);
+      await _client.storageWriteChunked(widget.remotePath, data);
       return true;
     } catch (e) {
-      LogService.log('[TextEditor] write $path failed: $e');
+      LogService.log('[TextEditor] write ${widget.remotePath} failed: $e');
       return false;
     }
   }
 
   Future<void> _save() async {
     setState(() => _saving = true);
-    final ok = await _writeBytes(widget.remotePath, utf8.encode(_text.text));
+    final ok = await _writeBytes(utf8.encode(_text.text));
     if (!mounted) return;
     if (ok) {
       _savedLines = _text.text.split('\n');

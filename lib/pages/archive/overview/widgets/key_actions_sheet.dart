@@ -151,6 +151,12 @@ class KeyActionsSheet {
         ),
       );
     }
+    final hasLocal = k.inLocal && (k.localPath?.isNotEmpty ?? false);
+    final isImage = const {
+      'png',
+      'gif',
+      'bm',
+    }.contains(k.extension.toLowerCase());
     if (k.onDevice && connected) {
       actions.add(
         ActionItem(
@@ -159,17 +165,18 @@ class KeyActionsSheet {
           onTap: () => _openInFileManager(context, k),
         ),
       );
+    }
+    if ((k.onDevice && connected) || (hasLocal && !isImage)) {
       actions.add(
         ActionItem(
           icon: Icons.edit_note,
           label: 'Edit',
-          onTap: () => _openInEditor(context, k),
+          onTap: () => _openInEditor(context, controller, k),
         ),
       );
     }
     final shareIcon = isShareSupported ? Icons.ios_share : Icons.content_copy;
     final shareLabel = isShareSupported ? 'Share' : 'Copy';
-    final hasLocal = k.inLocal && (k.localPath?.isNotEmpty ?? false);
     if (hasLocal || (k.onDevice && connected)) {
       actions.add(
         ActionItem(
@@ -306,16 +313,26 @@ class KeyActionsSheet {
     );
   }
 
-  static void _openInEditor(BuildContext context, ArchiveKey k) {
+  static void _openInEditor(
+    BuildContext context,
+    ArchiveController controller,
+    ArchiveKey k,
+  ) {
     if (const {'png', 'gif', 'bm'}.contains(k.extension.toLowerCase())) {
       Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => PaintPage(remotePath: k.remotePath)),
       );
       return;
     }
+    final onDevice = k.onDevice && controller.isConnected;
+    final localPath = k.localPath;
+    final local = (!onDevice && localPath != null && localPath.isNotEmpty)
+        ? localPath
+        : null;
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => TextEditorPage(remotePath: k.remotePath),
+        builder: (_) =>
+            TextEditorPage(remotePath: k.remotePath, localPath: local),
       ),
     );
   }
