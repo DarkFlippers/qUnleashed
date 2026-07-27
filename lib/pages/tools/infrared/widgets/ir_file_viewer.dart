@@ -10,6 +10,7 @@ import 'package:qunleashed/components/icon.dart';
 import 'package:qunleashed/theme/colors/category.dart';
 import '../../../../widgets/notification.dart';
 import '../../../../widgets/progress_button.dart';
+import 'package:qunleashed/services/progress_throttle.dart';
 
 typedef IrFileSendHandler =
     Future<bool> Function({
@@ -104,11 +105,12 @@ class _IrFileViewerState extends State<IrFileViewer> {
       _sending = true;
       _sendProgress = 0;
     });
+    final throttle = ProgressThrottle();
     final ok = await widget.onSend(
       bytes: bytes,
       onProgress: (p) {
         if (!mounted) return;
-        setState(() => _sendProgress = p);
+        if (throttle.shouldEmit(p)) setState(() => _sendProgress = p);
       },
     );
     if (!mounted) return;

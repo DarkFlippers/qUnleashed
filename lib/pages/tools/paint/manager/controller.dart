@@ -4,6 +4,7 @@ import 'dart:io' as io;
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/foundation.dart';
 
+import '../../../../services/progress_throttle.dart';
 import '../../../../services/repository/app.dart';
 import '../project.dart';
 import '../virtual_display_session.dart';
@@ -157,6 +158,7 @@ class ProjectManagerController extends ChangeNotifier {
       }
 
       var fileIndex = 0;
+      final throttle = ProgressThrottle();
       for (final key in order) {
         for (final f in groups[key]!) {
           fileIndex++;
@@ -173,7 +175,7 @@ class ProjectManagerController extends ChangeNotifier {
                 0.0,
                 1.0,
               );
-              _notify();
+              if (throttle.shouldEmit(_importProgress!)) _notify();
             },
           );
 

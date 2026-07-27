@@ -3,6 +3,7 @@ import 'dart:io' as io;
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/foundation.dart';
 
+import '../../../services/progress_throttle.dart';
 import '../../../services/repository/app.dart';
 
 class RemoteEntry {
@@ -236,13 +237,14 @@ class FileManagerController extends ChangeNotifier {
     _transferLabel = 'Uploading ${_basename(remotePath)}';
     _transferProgress = 0;
     _notify();
+    final throttle = ProgressThrottle();
     try {
       await _client.storageWriteChunked(
         remotePath,
         data,
         onProgress: (p) {
           _transferProgress = p;
-          _notify();
+          if (throttle.shouldEmit(p)) _notify();
         },
       );
       return true;
@@ -429,17 +431,14 @@ class FileManagerController extends ChangeNotifier {
     _busyEntry = _basename(remotePath);
     _busyEntryProgress = 0;
     _notify();
-    var last = -1.0;
+    final throttle = ProgressThrottle();
     try {
       return await _client.storageReadChunked(
         remotePath,
         expectedSize: expectedSize,
         onProgress: (p) {
           _busyEntryProgress = p.clamp(0.0, 1.0);
-          if (_busyEntryProgress - last >= 0.01 || _busyEntryProgress >= 1.0) {
-            last = _busyEntryProgress;
-            _notify();
-          }
+          if (throttle.shouldEmit(_busyEntryProgress)) _notify();
         },
         timeout: const Duration(minutes: 5),
       );
@@ -484,16 +483,10 @@ class FileManagerController extends ChangeNotifier {
     _transferProgress = 0;
     _notify();
 
-    // Throttle notifications: only repaint when progress moves ≥1% (read frames
-    // are small and frequent), plus once per file for the label and at the end.
-    var lastNotified = -1.0;
+    final throttle = ProgressThrottle();
     void publish(double p) {
       _transferProgress = p.clamp(0.0, 1.0);
-      if (_transferProgress - lastNotified >= 0.01 ||
-          _transferProgress >= 1.0) {
-        lastNotified = _transferProgress;
-        _notify();
-      }
+      if (throttle.shouldEmit(_transferProgress)) _notify();
     }
 
     var doneBytes = 0;

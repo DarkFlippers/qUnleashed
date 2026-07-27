@@ -5,6 +5,7 @@ import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flutter/foundation.dart';
 
 import '../../../services/http/app_http.dart';
+import '../../../services/progress_throttle.dart';
 import '../../../services/repository/app.dart';
 import '../../archive/overview/fap_icon.dart';
 import 'apps_backend.dart';
@@ -81,6 +82,7 @@ class InstallEngine extends ChangeNotifier {
   final Map<String, _PreparedInstall> _preparedInstalls = {};
   bool _taskWorkerRunning = false;
   final Stopwatch _sinceLastTask = Stopwatch();
+  final ProgressThrottle _progressThrottle = ProgressThrottle();
   static const int _maxLinkRetries = 5;
 
   Future<bool> _enqueueTask(
@@ -429,11 +431,16 @@ class InstallEngine extends ChangeNotifier {
   void _setActionState(String alias, {AppActionStage? stage, double? progress}) {
     final current = _actions[alias];
     if (current == null) return;
-    _actions[alias] = current.copyWith(
+    final next = current.copyWith(
       stage: stage,
       progress: (progress ?? current.progress).clamp(0, 1).toDouble(),
     );
-    notifyListeners();
+    _actions[alias] = next;
+    final stageChanged = next.stage != current.stage;
+    if (stageChanged) _progressThrottle.reset();
+    if (stageChanged || _progressThrottle.shouldEmit(next.progress)) {
+      notifyListeners();
+    }
   }
 
   Future<void> _ensureDir(String path) async {

@@ -10,6 +10,7 @@ import 'fap_icon.dart';
 import '../data/parser.dart';
 import 'storage.dart';
 import '../data/category.dart';
+import '../../../services/progress_throttle.dart';
 import '../../../services/repository/app.dart' as icon_repo;
 import '../data/models/fap.dart';
 import '../data/models/key.dart';
@@ -1029,14 +1030,13 @@ class ArchiveController extends ChangeNotifier {
         continue;
       }
 
-      var lastPublished = -1.0;
+      final throttle = ProgressThrottle();
       void publish(double fileProgress) {
         if (fileProgress > 0 &&
             fileProgress < 1 &&
-            (fileProgress - lastPublished).abs() < 0.01) {
+            !throttle.shouldEmit(fileProgress)) {
           return;
         }
-        lastPublished = fileProgress;
         _syncProgress = SyncProgress(
           current: done,
           total: pendingIds.length,
@@ -1216,17 +1216,14 @@ class ArchiveController extends ChangeNotifier {
     _busyPath = k.remotePath;
     _busyProgress = 0;
     notifyListeners();
-    var last = -1.0;
+    final throttle = ProgressThrottle();
     try {
       return await _readRemoteBytes(
         k.remotePath,
         expectedSize: k.remoteSize,
         onProgress: (p) {
           _busyProgress = p.clamp(0.0, 1.0);
-          if (_busyProgress - last >= 0.01 || _busyProgress >= 1.0) {
-            last = _busyProgress;
-            notifyListeners();
-          }
+          if (throttle.shouldEmit(_busyProgress)) notifyListeners();
         },
       );
     } finally {

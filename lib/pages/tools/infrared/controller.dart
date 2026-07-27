@@ -4,6 +4,7 @@ import 'dart:io' as io;
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/foundation.dart';
 
+import '../../../services/progress_throttle.dart';
 import '../../archive/overview/storage.dart';
 import '../../archive/data/category.dart';
 import 'api.dart';
@@ -92,14 +93,16 @@ class IrLibController extends ChangeNotifier {
     _error = null;
     notifyListeners();
     try {
+      final throttle = ProgressThrottle();
       final dir = await _localRepo.download(
         owner: _settings.owner,
         repo: _settings.repo,
         branch: _settings.branch,
         token: _settings.githubToken,
         onProgress: (p) {
+          final prev = _downloadProgress;
           _downloadProgress = p;
-          notifyListeners();
+          if (prev?.stage != p.stage || throttle.tick()) notifyListeners();
         },
       );
       _settings = _settings.copyWith(localPath: dir.path);
@@ -208,11 +211,12 @@ class IrLibController extends ChangeNotifier {
     _searchProgressPath = '';
     notifyListeners();
     try {
+      final throttle = ProgressThrottle();
       final results = await _api.searchAllIrFiles(
         query: q,
         onProgress: (found, current) {
           _searchProgressPath = current;
-          notifyListeners();
+          if (throttle.tick()) notifyListeners();
         },
       );
       _searchResults = results;

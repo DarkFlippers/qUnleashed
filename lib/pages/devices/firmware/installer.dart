@@ -7,6 +7,7 @@ import 'package:flipperlib/flipperlib.dart';
 import 'package:flipperlib/dfu/stm32wb55/option_bytes.dart';
 import 'package:flutter/foundation.dart';
 
+import '../../../services/progress_throttle.dart';
 import 'source.dart';
 import 'update_state.dart';
 
@@ -27,9 +28,12 @@ class FirmwareInstaller {
     try {
       if (source.isRemote) onState(const UpdateFetching());
 
+      final downloadThrottle = ProgressThrottle();
       final archivePath = await source.resolveArchive(
         tempDir.path,
-        (p) => onState(UpdateDownloading(p)),
+        (p) {
+          if (downloadThrottle.shouldEmit(p)) onState(UpdateDownloading(p));
+        },
       );
 
       final extracted = await _extractFlat(archivePath);
@@ -55,6 +59,7 @@ class FirmwareInstaller {
       );
       var bytesUploaded = 0;
       String? manifestPath;
+      final uploadThrottle = ProgressThrottle();
 
       for (final f in extracted.files) {
         final flipperPath = '$remoteDir/${f.name}';
@@ -70,7 +75,9 @@ class FirmwareInstaller {
             final overall = totalSize == 0
                 ? 1.0
                 : (entryStart + fileBytes * p) / totalSize;
-            onState(UpdateUploading(overall));
+            if (uploadThrottle.shouldEmit(overall)) {
+              onState(UpdateUploading(overall));
+            }
           },
         );
         bytesUploaded += fileBytes;
