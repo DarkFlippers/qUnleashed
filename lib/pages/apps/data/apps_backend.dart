@@ -1,10 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flipperlib/flipperlib.dart' hide File;
 
 import 'catalog_api.dart';
+import 'catalog_mode.dart';
 import 'device_source.dart';
 import 'install_engine.dart';
 import 'manifest_registry.dart';
+import 'models/card.dart';
+import 'update_registry.dart';
 
 const String kAppsRoot = '/ext/apps';
 const String kManifestsRoot = '/ext/apps_manifests';
@@ -35,12 +40,40 @@ class AppsBackend {
     engine: engine,
     backend: this,
   );
+  late final UpdateRegistry updates = UpdateRegistry(
+    client: client,
+    api: api,
+    manifests: manifests,
+    engine: engine,
+    backend: this,
+  );
 
   String? _deviceId;
 
   bool get isReady => client.isConnected && client.mode == FlipperMode.rpc;
 
-  bool apiFallbackEnabled = false;
+  final ValueNotifier<CatalogMode> mode =
+      ValueNotifier(CatalogMode.resolving);
+
+  String? _deviceApi;
+  String? _deviceTarget;
+  String? get deviceApi => _deviceApi;
+  String? get deviceTarget => _deviceTarget;
+
+  List<AppSdk> serverSdks = const [];
+  AppSdk? serverLatestSdk;
+  String? get serverApi => serverLatestSdk?.api;
+
+  String? _compatApi;
+  String? get compatApi => _compatApi;
+
+  bool _modeResolving = false;
+  String? _resolvedForDeviceId;
+
+  bool get apiFallbackEnabled => mode.value == CatalogMode.compatibility;
+
+  bool get ignoreSdkMismatch =>
+      mode.value == CatalogMode.compatibility || api.unfiltered;
 
   final ValueNotifier<int> compatibilityNeeded = ValueNotifier(0);
   String? fallbackApi;
@@ -50,41 +83,117 @@ class AppsBackend {
     if (!apiFallbackEnabled) compatibilityNeeded.value++;
   }
 
-  void enableApiFallback() {
-    apiFallbackEnabled = true;
+  (int, int)? get targetSdk => parseApi(_deviceApi);
+
+  Future<void> resolveMode({bool force = false}) async {
+    if (_modeResolving) return;
+    if (!force &&
+        mode.value != CatalogMode.resolving &&
+        mode.value != CatalogMode.mismatch) {
+      return;
+    }
+    _modeResolving = true;
+    if (force) mode.value = CatalogMode.resolving;
+    try {
+      await ensureDeviceFilters();
+
+      try {
+        serverSdks = await api.fetchSdks();
+      } catch (e) {
+        LogService.log('[AppsBackend] fetchSdks failed: $e');
+      }
+
+      final target = _deviceTarget;
+      final targetSdks = target == null
+          ? serverSdks
+          : serverSdks.where((s) => s.target == target).toList();
+      serverLatestSdk = latestSdk(targetSdks);
+
+      if (_deviceApi == null || _deviceTarget == null || targetSdks.isEmpty) {
+        api.api = _deviceApi;
+        api.target = _deviceTarget;
+        api.unfiltered = false;
+        _compatApi = null;
+        mode.value = CatalogMode.normal;
+        return;
+      }
+
+      if (serverHasApi(targetSdks, _deviceApi)) {
+        api.api = _deviceApi;
+        api.target = _deviceTarget;
+        api.unfiltered = false;
+        _compatApi = null;
+        mode.value = CatalogMode.normal;
+      } else {
+        _compatApi = pickCompatApi(targetSdks, _deviceApi);
+        mode.value = CatalogMode.mismatch;
+      }
+      LogService.log(
+        '[AppsBackend] mode=${mode.value.name} device=$_deviceApi '
+        'server=$serverApi compat=$_compatApi',
+      );
+    } finally {
+      _modeResolving = false;
+      if (mode.value != CatalogMode.resolving) {
+        _resolvedForDeviceId = _deviceId;
+      }
+    }
   }
 
-  (int, int)? get targetSdk {
-    final a = api.api;
-    if (a == null || a.isEmpty) return null;
-    final parts = a.split('.');
-    final major = int.tryParse(parts[0]);
-    if (major == null) return null;
-    final minor = parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0;
-    return (major, minor);
+  void chooseCompatibility() {
+    final compat = _compatApi;
+    if (compat == null || _deviceTarget == null) {
+      api.api = null;
+      api.target = null;
+      api.unfiltered = true;
+    } else {
+      api.api = compat;
+      api.target = _deviceTarget;
+      api.unfiltered = false;
+    }
+    mode.value = CatalogMode.compatibility;
+  }
+
+  void declineCatalog() {
+    mode.value = CatalogMode.disabled;
   }
 
   void _onConnection(FlipperConnectionState state) {
     if (!state.connected || state.mode != FlipperMode.rpc) {
-      api.target = null;
-      api.api = null;
+      _resetDeviceState();
+      _resolvedForDeviceId = null;
+      mode.value = CatalogMode.normal;
       manifests.handleDisconnect();
       device.handleDisconnect();
+      updates.handleDisconnect();
       return;
     }
     final id = state.device?.id;
     if (id != null && id != _deviceId) {
       _deviceId = id;
-      api.target = null;
-      api.api = null;
-      api.apiRejectedByCatalog = false;
+      _resetDeviceState();
+      _resolvedForDeviceId = null;
       manifests.handleDeviceChange();
       device.handleDeviceChange();
+      updates.handleDeviceChange();
+    }
+    if (_resolvedForDeviceId != _deviceId && !_modeResolving) {
+      mode.value = CatalogMode.resolving;
+      unawaited(resolveMode(force: true));
     }
   }
 
+  void _resetDeviceState() {
+    api.target = null;
+    api.api = null;
+    api.unfiltered = false;
+    _deviceApi = null;
+    _deviceTarget = null;
+    _compatApi = null;
+  }
+
   Future<void> ensureDeviceFilters({bool required = false}) async {
-    if (api.target != null && api.api != null) return;
+    if (_deviceApi != null && _deviceTarget != null) return;
     if (!isReady && !required) return;
     try {
       final info =
@@ -106,12 +215,14 @@ class AppsBackend {
         'api.minor',
         'api_minor',
       ]);
-      if (target != null) api.target = 'f$target';
-      if (major != null) api.api = '$major.${minor ?? '0'}';
+      if (target != null) _deviceTarget = 'f$target';
+      if (major != null) _deviceApi = '$major.${minor ?? '0'}';
+      if (_deviceTarget != null && api.target == null) api.target = _deviceTarget;
+      if (_deviceApi != null && api.api == null) api.api = _deviceApi;
     } catch (e) {
       LogService.log('[AppsBackend] deviceInfo failed: $e');
     }
-    if (required && (api.target == null || api.api == null)) {
+    if (required && (_deviceTarget == null || _deviceApi == null)) {
       throw StateError(
         'Could not read the firmware target/API from the device; '
         'reconnect the Flipper and try again',

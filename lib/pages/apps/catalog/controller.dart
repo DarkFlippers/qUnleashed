@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import '../data/apps_backend.dart';
 import '../data/catalog_api.dart';
+import '../data/catalog_mode.dart';
 import '../data/catalog_state.dart';
 import '../data/install_engine.dart';
 import '../data/manifest_registry.dart';
@@ -12,6 +13,7 @@ import '../data/models/card.dart';
 import '../data/models/category.dart';
 import '../icons/icon_resolver.dart';
 
+export '../data/catalog_mode.dart' show CatalogMode;
 export '../data/catalog_state.dart' show CatalogAppState;
 export '../data/install_engine.dart' show AppAction, AppActionType, AppActionStage;
 
@@ -19,6 +21,7 @@ class AppsCatalogController extends ChangeNotifier {
   AppsCatalogController({this.pageSize = 48}) {
     _backend.manifests.addListener(notifyListeners);
     _backend.engine.addListener(notifyListeners);
+    _backend.mode.addListener(_onModeChanged);
   }
 
   final AppsBackend _backend = AppsBackend.instance;
@@ -65,19 +68,18 @@ class AppsCatalogController extends ChangeNotifier {
             ? manifests.byUid(app.id)
             : manifests.byAlias(app.alias),
         targetSdk: _backend.targetSdk,
-        ignoreSdkMismatch:
-            _backend.apiFallbackEnabled || api.apiRejectedByCatalog,
+        ignoreSdkMismatch: _backend.ignoreSdkMismatch,
       );
 
-  ValueListenable<int> get compatibilityNeeded => _backend.compatibilityNeeded;
+  ValueListenable<CatalogMode> get mode => _backend.mode;
   bool get apiFallbackEnabled => _backend.apiFallbackEnabled;
-  String? get deviceApi => _backend.api.api;
-  String? get fallbackApi => _backend.fallbackApi;
+  String? get deviceApi => _backend.deviceApi;
+  String? get serverApi => _backend.serverApi;
+  String? get compatApi => _backend.compatApi;
 
-  void enableCompatibility() {
-    _backend.enableApiFallback();
-    notifyListeners();
-  }
+  void chooseCompatibility() => _backend.chooseCompatibility();
+  void declineCatalog() => _backend.declineCatalog();
+  Future<void> refreshMode() => _backend.resolveMode(force: true);
 
   AppCategory? categoryById(String id) {
     for (final c in _categories) {
@@ -87,10 +89,24 @@ class AppsCatalogController extends ChangeNotifier {
   }
 
   Future<void> initialize() async {
-    await _backend.ensureDeviceFilters();
     unawaited(manifests.ensureFresh());
+    await _backend.resolveMode();
+    await _maybeLoad();
+  }
+
+  Future<void> _maybeLoad() async {
+    final m = _backend.mode.value;
+    if (m != CatalogMode.normal && m != CatalogMode.compatibility) return;
     if (_categories.isEmpty) await loadCategories();
     if (_apps.isEmpty) await refresh();
+  }
+
+  void _onModeChanged() {
+    notifyListeners();
+    final m = _backend.mode.value;
+    if (m == CatalogMode.normal || m == CatalogMode.compatibility) {
+      unawaited(_maybeLoad());
+    }
   }
 
   Future<void> loadCategories() async {
@@ -180,6 +196,7 @@ class AppsCatalogController extends ChangeNotifier {
   void dispose() {
     _backend.manifests.removeListener(notifyListeners);
     _backend.engine.removeListener(notifyListeners);
+    _backend.mode.removeListener(_onModeChanged);
     super.dispose();
   }
 }

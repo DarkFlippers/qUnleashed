@@ -7,7 +7,6 @@ import '../../../widgets/notification.dart';
 import '../../archive/overview/category/columns.dart';
 import '../../archive/overview/category/table.dart';
 import '../../archive/overview/category/toolbar.dart';
-import '../../archive/overview/widgets/actions_sheet.dart';
 import '../../archive/overview/widgets/empty_view.dart';
 import '../../archive/overview/widgets/progress_fill.dart';
 import '../../tools/remote/desktop/page.dart';
@@ -15,10 +14,14 @@ import '../data/apps_backend.dart';
 import '../data/device_source.dart';
 import '../data/install_engine.dart';
 import '../data/models/installed_app.dart';
+import '../data/update_registry.dart';
 import '../icons/app_icon.dart';
+import 'app_action_sheet.dart';
 
 class AppsManagerPage extends StatefulWidget {
-  const AppsManagerPage({super.key});
+  const AppsManagerPage({super.key, this.onOpenCatalog});
+
+  final VoidCallback? onOpenCatalog;
 
   @override
   State<AppsManagerPage> createState() => _AppsManagerPageState();
@@ -33,15 +36,43 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
   String _sortKey = 'name';
   bool _sortAsc = true;
 
+  final Map<String, String> _categoryNames = {};
+
   DeviceSource get _device => _backend.device;
   InstallEngine get _engine => _backend.engine;
+  UpdateRegistry get _updates => _backend.updates;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) unawaited(_device.prime());
+      if (mounted) unawaited(_primeAll());
     });
+  }
+
+  Future<void> _primeAll() async {
+    await _device.prime();
+    await _updates.ensureFresh();
+    await _loadCategoryNames();
+  }
+
+  Future<void> _loadCategoryNames() async {
+    if (_categoryNames.isNotEmpty) return;
+    try {
+      final cats = await _backend.api.fetchCategories();
+      if (!mounted) return;
+      setState(() {
+        for (final c in cats) {
+          if (c.id.isNotEmpty) _categoryNames[c.id] = c.name;
+        }
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _update(InstalledApp app) async {
+    final card = _updates.cardForUid(app.uid);
+    if (card == null) return;
+    await _engine.installOrUpdate(card);
   }
 
   @override
@@ -66,7 +97,11 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
     } else {
       out = out.toList();
     }
+    final updatable = _updates.updatableAliases;
     out.sort((a, b) {
+      final au = updatable.contains(a.alias);
+      final bu = updatable.contains(b.alias);
+      if (au != bu) return au ? -1 : 1;
       final int cmp;
       switch (_sortKey) {
         case 'folder':
@@ -160,27 +195,18 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
   }
 
   void _showActions(InstalledApp app, Color header) {
-    ActionsSheet.show(
+    AppActionSheet.show(
       context,
-      leading: _Badge(app: app, color: header, size: 36, iconSize: 20),
-      title: app.name,
-      subtitle: '/ext/apps/${app.folder}',
-      actions: [
-        ActionItem(icon: Icons.play_arrow_rounded, label: 'Open', onTap: () => _launch(app)),
-        ActionItem(icon: Icons.restore, label: 'Restore', onTap: () => _restore(app)),
-        ActionItem(
-          icon: Icons.sd_card_outlined,
-          label: 'Delete copy',
-          destructive: true,
-          onTap: () => _deleteLocal(app),
-        ),
-        ActionItem(
-          icon: Icons.delete_outline,
-          label: 'Uninstall',
-          destructive: true,
-          onTap: () => _uninstall(app),
-        ),
-      ],
+      app: app,
+      initialCard: _updates.cardForUid(app.uid),
+      fetchCard: () => _backend.api.fetchAppCard(app.alias),
+      categoryNameFor: (id) => _categoryNames[id],
+      isUpdatable: _updates.updatableAliases.contains(app.alias),
+      onUpdate: () => _update(app),
+      onOpen: () => _launch(app),
+      onRestore: () => _restore(app),
+      onDeleteCopy: () => _deleteLocal(app),
+      onUninstall: () => _uninstall(app),
     );
   }
 
@@ -190,7 +216,7 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
     final header = colors.accent;
 
     return AnimatedBuilder(
-      animation: Listenable.merge([_device, _engine]),
+      animation: Listenable.merge([_device, _engine, _updates]),
       builder: (context, _) {
         final all = _device.apps;
         final folders = _device.groups;
@@ -209,10 +235,10 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
             elevation: 0,
             scrolledUnderElevation: 0,
             surfaceTintColor: Colors.transparent,
-            titleSpacing: 0,
+            titleSpacing: 16,
             title: const Row(
               children: [
-                Icon(Icons.smartphone, color: Colors.white, size: 18),
+                Icon(Icons.manage_search, color: Colors.white, size: 18),
                 SizedBox(width: 8),
                 Text('Apps manager',
                     style: TextStyle(
@@ -222,6 +248,11 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
               ],
             ),
             actions: [
+              IconButton(
+                icon: const Icon(Icons.storefront_outlined, color: Colors.white),
+                tooltip: 'Catalog',
+                onPressed: widget.onOpenCatalog,
+              ),
               CategorySyncButton(
                 syncing: _device.scanning,
                 enabled: _backend.isReady,
@@ -304,6 +335,7 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
               : LayoutBuilder(
                   builder: (ctx, constraints) {
                     final cols = _columns(constraints.maxWidth);
+                    final updatable = _updates.updatableAliases;
                     return Column(
                       children: [
                         ArchiveColumnHeader(
@@ -330,6 +362,7 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
                                   cols: cols,
                                   colors: colors,
                                   header: header,
+                                  updatable: updatable.contains(app.alias),
                                   action: _engine.actions[app.alias],
                                   onTap: () => _showActions(app, header),
                                 );
@@ -373,6 +406,7 @@ class _AppRow extends StatelessWidget {
     required this.cols,
     required this.colors,
     required this.header,
+    required this.updatable,
     required this.action,
     required this.onTap,
   });
@@ -381,6 +415,7 @@ class _AppRow extends StatelessWidget {
   final List<SizedColumn> cols;
   final QAppColors colors;
   final Color header;
+  final bool updatable;
   final AppAction? action;
   final VoidCallback onTap;
 
@@ -472,6 +507,25 @@ class _AppRow extends StatelessWidget {
                 ],
               ),
             ),
+            if (updatable) ...[
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: colors.success.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  'UPDATE',
+                  style: TextStyle(
+                    color: colors.success,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+              ),
+            ],
           ],
         );
     }
