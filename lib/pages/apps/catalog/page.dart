@@ -211,25 +211,15 @@ class _CatalogViewState extends State<CatalogView> {
                   message:
                       'Compatibility mode: installing builds for API ${_ctrl.compatApi ?? '?'}',
                   child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    width: 24,
+                    height: 24,
+                    alignment: Alignment.center,
                     decoration: BoxDecoration(
                       color: colors.accent.withValues(alpha: 0.18),
-                      borderRadius: BorderRadius.circular(20),
+                      shape: BoxShape.circle,
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.warning_amber_rounded,
-                            size: 13, color: colors.accent),
-                        const SizedBox(width: 4),
-                        Text('Compat',
-                            style: TextStyle(
-                                color: colors.accent,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700)),
-                      ],
-                    ),
+                    child: Icon(Icons.warning_amber_rounded,
+                        size: 15, color: colors.accent),
                   ),
                 ),
               ],

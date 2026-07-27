@@ -93,8 +93,9 @@ class DeviceSource extends ChangeNotifier {
   }
 
   Future<void> prime() async {
-    await manifests.ensureFresh();
     await _loadLocalApps();
+    notifyListeners();
+    await manifests.ensureFresh();
     _warmManifestIcons();
     notifyListeners();
   }
@@ -153,8 +154,8 @@ class DeviceSource extends ChangeNotifier {
         notifyListeners();
         final local = io.File(pathJoin(
             [dir.path, sanitizePathSegment(d.folder), '${d.alias}.fap']));
-        final needs =
-            !await local.exists() || !await _localMatchesRemote(local, d.devicePath);
+        final needs = !await local.exists() ||
+            !await _localMatchesRemote(local, d.md5, d.devicePath);
         if (needs) {
           try {
             final bytes = await client.storageReadChunked(
@@ -187,8 +188,15 @@ class DeviceSource extends ChangeNotifier {
     }
   }
 
-  Future<List<({String alias, String folder, String devicePath, int size})>>
-      _walkDevice() async {
+  Future<
+      List<
+          ({
+            String alias,
+            String folder,
+            String devicePath,
+            String md5,
+            int size
+          })>> _walkDevice() async {
     final root = await client.storageList(
       ListRequest(path: kAppsRoot),
       timeout: const Duration(seconds: 20),
@@ -198,13 +206,19 @@ class DeviceSource extends ChangeNotifier {
         for (final f in item.file)
           if (f.type == File_FileType.DIR && f.name.isNotEmpty) f.name,
     ];
-    final out = <({String alias, String folder, String devicePath, int size})>[];
+    final out = <({
+      String alias,
+      String folder,
+      String devicePath,
+      String md5,
+      int size
+    })>[];
     for (final folder in folders) {
       if (!isReady) break;
       _syncingItem = folder;
       notifyListeners();
       final list = await client.storageList(
-        ListRequest(path: '$kAppsRoot/$folder'),
+        ListRequest(path: '$kAppsRoot/$folder', includeMd5: true),
         timeout: const Duration(seconds: 20),
       );
       for (final item in list.items) {
@@ -217,6 +231,7 @@ class DeviceSource extends ChangeNotifier {
             alias: alias,
             folder: folder,
             devicePath: '$kAppsRoot/$folder/${f.name}',
+            md5: f.md5sum,
             size: f.size,
           ));
         }
@@ -225,18 +240,22 @@ class DeviceSource extends ChangeNotifier {
     return out;
   }
 
-  Future<bool> _localMatchesRemote(io.File local, String devicePath) async {
+  Future<bool> _localMatchesRemote(
+      io.File local, String remoteMd5, String devicePath) async {
     try {
-      final localMd5 = md5.convert(await local.readAsBytes()).toString().toLowerCase();
-      final batch = await client.storageMd5sum(
-        Md5sumRequest(path: devicePath),
-        timeout: const Duration(seconds: 15),
-      );
-      final remoteMd5 =
-          (batch.items.isNotEmpty ? batch.items.first.md5sum : '')
-              .trim()
-              .toLowerCase();
-      return remoteMd5.isNotEmpty && remoteMd5 == localMd5;
+      final localMd5 =
+          md5.convert(await local.readAsBytes()).toString().toLowerCase();
+      var wanted = remoteMd5.trim().toLowerCase();
+      if (wanted.isEmpty) {
+        final batch = await client.storageMd5sum(
+          Md5sumRequest(path: devicePath),
+          timeout: const Duration(seconds: 15),
+        );
+        wanted = (batch.items.isNotEmpty ? batch.items.first.md5sum : '')
+            .trim()
+            .toLowerCase();
+      }
+      return wanted.isNotEmpty && wanted == localMd5;
     } catch (e) {
       LogService.log('[DeviceSource] md5 check $devicePath failed: $e');
       return false;
@@ -302,6 +321,12 @@ class DeviceSource extends ChangeNotifier {
     _local.clear();
     _syncDone = 0;
     _syncTotal = 0;
+    notifyListeners();
+    unawaited(_refreshLocal());
+  }
+
+  Future<void> _refreshLocal() async {
+    await _loadLocalApps();
     notifyListeners();
   }
 }

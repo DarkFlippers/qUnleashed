@@ -75,6 +75,11 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
     await _engine.installOrUpdate(card);
   }
 
+  void _updateAll() {
+    if (_updates.count == 0) return;
+    _updates.updateAll();
+  }
+
   @override
   void dispose() {
     _searchCtrl.dispose();
@@ -248,6 +253,15 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
               ],
             ),
             actions: [
+              if (_updates.count > 0)
+                IconButton(
+                  icon: Badge(
+                    label: Text('${_updates.count}'),
+                    child: const Icon(Icons.update, color: Colors.white),
+                  ),
+                  tooltip: 'Update all',
+                  onPressed: _updateAll,
+                ),
               IconButton(
                 icon: const Icon(Icons.storefront_outlined, color: Colors.white),
                 tooltip: 'Catalog',
