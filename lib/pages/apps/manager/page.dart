@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../components/icon.dart';
 import '../../../theme/theme.dart';
 import '../../../widgets/notification.dart';
 import '../../archive/overview/category/columns.dart';
@@ -572,18 +573,19 @@ class _Badge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final style = QIconBadgeStyle.of(context, color, darkOpacity: 0.14);
     return Container(
       width: size,
       height: size,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
+        color: style.background,
         borderRadius: BorderRadius.circular(7),
       ),
       child: AppIcon(
         alias: app.alias,
         size: iconSize,
-        color: color,
+        color: style.foreground,
         manifest: app.manifest,
       ),
     );
