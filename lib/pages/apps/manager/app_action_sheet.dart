@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../theme/theme.dart';
+import '../catalog/widgets/screenshot_frame.dart';
 import '../data/models/card.dart';
 import '../data/models/installed_app.dart';
 import '../icons/app_icon.dart';
@@ -95,6 +96,7 @@ class _ActionDialogState extends State<_ActionDialog> {
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final app = widget.app;
+    final manifest = app.manifest;
     final accent = colors.accent;
     final card = _card;
     final cv = card?.currentVersion;
@@ -103,11 +105,13 @@ class _ActionDialogState extends State<_ActionDialog> {
     final version = cv?.version ?? '';
     final category =
         card != null ? (widget.categoryNameFor(card.categoryId) ?? '') : '';
+    final sdkApi = manifest?.sdkApi ?? '';
 
     final meta = <String>[
       if (category.isNotEmpty) category,
       if (version.isNotEmpty) 'v$version',
       if (app.size > 0) _fmtSize(app.size),
+      if (sdkApi.isNotEmpty) 'API $sdkApi',
     ].join('  ·  ');
 
     final media = MediaQuery.of(context).size;
@@ -183,14 +187,21 @@ class _ActionDialogState extends State<_ActionDialog> {
               ],
               const SizedBox(height: 2),
               Text(
-                '/ext/apps/${app.folder}',
+                app.path.isNotEmpty ? app.path : '/ext/apps/${app.folder}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(color: colors.textMuted, fontSize: 11),
               ),
-              const SizedBox(height: 14),
-              _screenshots(colors, shots),
-              const SizedBox(height: 16),
+              if (shots.isNotEmpty) ...[
+                const SizedBox(height: 14),
+                _screenshots(colors, shots),
+                const SizedBox(height: 16),
+              ] else if (_loading) ...[
+                const SizedBox(height: 14),
+                _loadingStrip(colors),
+                const SizedBox(height: 16),
+              ] else
+                const SizedBox(height: 14),
               if (widget.isUpdatable) ...[
                 _ActionButton(
                   label: 'Update',
@@ -254,34 +265,27 @@ class _ActionDialogState extends State<_ActionDialog> {
   }
 
   Widget _screenshots(QAppColors colors, List<String> shots) {
-    if (shots.isEmpty) {
-      return Container(
-        height: 118,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: colors.card,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: _loading
-            ? SizedBox(
-                width: 22,
-                height: 22,
-                child: CircularProgressIndicator(
-                    strokeWidth: 2, color: colors.accent),
-              )
-            : Text(
-                'No screenshots',
-                style: TextStyle(color: colors.textMuted, fontSize: 12),
-              ),
-      );
-    }
     return SizedBox(
       height: 118,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: shots.length,
         separatorBuilder: (_, _) => const SizedBox(width: 8),
-        itemBuilder: (_, i) => _Shot(url: shots[i], colors: colors),
+        itemBuilder: (_, i) => ScreenshotFrame(url: shots[i]),
+      ),
+    );
+  }
+
+  Widget _loadingStrip(QAppColors colors) {
+    return SizedBox(
+      height: 36,
+      child: Center(
+        child: SizedBox(
+          width: 20,
+          height: 20,
+          child: CircularProgressIndicator(
+              strokeWidth: 2, color: colors.accent),
+        ),
       ),
     );
   }
@@ -323,49 +327,6 @@ class _UpdateTag extends StatelessWidget {
           fontSize: 10,
           fontWeight: FontWeight.w800,
           letterSpacing: 0.4,
-        ),
-      ),
-    );
-  }
-}
-
-class _Shot extends StatelessWidget {
-  const _Shot({required this.url, required this.colors});
-
-  final String url;
-  final QAppColors colors;
-
-  @override
-  Widget build(BuildContext context) {
-    return AspectRatio(
-      aspectRatio: 256 / 128,
-      child: Container(
-        decoration: BoxDecoration(
-          color: colors.isDark ? colors.screenBackground : colors.accent,
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: Colors.black, width: 2),
-        ),
-        padding: const EdgeInsets.all(4),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(4),
-          child: Image.network(
-            url,
-            fit: BoxFit.contain,
-            gaplessPlayback: true,
-            errorBuilder: (_, _, _) => const SizedBox.shrink(),
-            loadingBuilder: (ctx, child, progress) => progress == null
-                ? child
-                : Center(
-                    child: SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: colors.accent,
-                      ),
-                    ),
-                  ),
-          ),
         ),
       ),
     );
