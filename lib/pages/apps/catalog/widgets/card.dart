@@ -1,5 +1,6 @@
 ﻿import 'package:flutter/material.dart';
 
+import '../../../../components/icon.dart';
 import '../../../../theme/theme.dart';
 import '../../data/models/card.dart';
 import '../../data/models/category.dart';
@@ -149,26 +150,37 @@ class _CardHeader extends StatelessWidget {
 }
 
 class AppIconBadge extends StatelessWidget {
-  const AppIconBadge({super.key, required this.url, this.size = 48});
+  const AppIconBadge({
+    super.key,
+    required this.url,
+    this.size = 48,
+    this.borderRadius = 11,
+  });
 
   final String url;
   final double size;
+  final double borderRadius;
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.appColors;
+    final style = QIconBadgeStyle.of(context, context.appColors.accent);
     return Container(
       width: size,
       height: size,
+      alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: colors.accent,
-        border: Border.all(color: colors.screenBorder, width: 1.5),
-        borderRadius: BorderRadius.circular(8),
+        color: style.background,
+        borderRadius: BorderRadius.circular(borderRadius),
       ),
-      padding: const EdgeInsets.all(4),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(5),
-        child: FlipperRemoteImage(url: url, fit: BoxFit.contain),
+      child: SizedBox(
+        width: size * 0.6,
+        height: size * 0.6,
+        child: FlipperRemoteImage(
+          url: url,
+          fit: BoxFit.contain,
+          tint: style.foreground,
+          placeholderColor: style.foreground,
+        ),
       ),
     );
   }

@@ -119,6 +119,7 @@ class FlipperRemoteImage extends StatelessWidget {
     this.pixelated = true,
     this.placeholderAsset = 'assets/pic/app/placeholder.svg',
     this.placeholderColor,
+    this.tint,
   });
 
   final String url;
@@ -127,35 +128,45 @@ class FlipperRemoteImage extends StatelessWidget {
   final String placeholderAsset;
   final Color? placeholderColor;
 
+  /// Recolours the (monochrome) image to this colour, matching how tinted icon
+  /// badges render a glyph elsewhere. Leave null to show the image as-is.
+  final Color? tint;
+
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final tint = placeholderColor ?? colors.textMuted;
+    final placeholderTint = placeholderColor ?? tint ?? colors.textMuted;
 
     if (url.isEmpty) {
-      return _placeholder(tint);
+      return _placeholder(placeholderTint);
     }
+
+    final colorFilter =
+        tint == null ? null : ColorFilter.mode(tint!, BlendMode.srcIn);
 
     final isSvg = url.toLowerCase().endsWith('.svg');
     if (isSvg) {
       return SafeNetworkSvg(
         url: url,
         fit: fit,
-        placeholder: _placeholder(tint),
+        colorFilter: colorFilter,
+        placeholder: _placeholder(placeholderTint),
       );
     }
 
-    return Image.network(
+    final image = Image.network(
       url,
       fit: fit,
       filterQuality: pixelated ? FilterQuality.none : FilterQuality.medium,
       gaplessPlayback: true,
       loadingBuilder: (context, child, progress) {
         if (progress == null) return child;
-        return _placeholder(tint);
+        return _placeholder(placeholderTint);
       },
-      errorBuilder: (_, _, _) => _placeholder(tint),
+      errorBuilder: (_, _, _) => _placeholder(placeholderTint),
     );
+    if (colorFilter == null) return image;
+    return ColorFiltered(colorFilter: colorFilter, child: image);
   }
 
   Widget _placeholder(Color tint) {

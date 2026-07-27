@@ -11,8 +11,8 @@ import '../data/models/detail.dart';
 import 'controller.dart';
 import 'screenshots_viewer.dart';
 import 'widgets/action_button.dart';
+import 'widgets/card.dart';
 import 'widgets/category_chip.dart';
-import 'widgets/flipper_image.dart';
 import 'widgets/screenshot_frame.dart';
 
 class AppDetailPage extends StatefulWidget {
@@ -235,23 +235,7 @@ class _Header extends StatelessWidget {
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: 64,
-              height: 64,
-              decoration: BoxDecoration(
-                color: colors.accent,
-                border: Border.all(color: Colors.black, width: 2),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              padding: const EdgeInsets.all(4),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: FlipperRemoteImage(
-                  url: card.iconUri,
-                  fit: BoxFit.contain,
-                ),
-              ),
-            ),
+            AppIconBadge(url: card.iconUri, size: 64, borderRadius: 14),
             const SizedBox(width: 14),
             Expanded(
               child: Column(
