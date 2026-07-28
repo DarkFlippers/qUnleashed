@@ -416,8 +416,6 @@ class _KeyFavTile extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 8),
-        _KeyStateBadge(state: flipperKey.state),
-        const SizedBox(width: 8),
         _FavStarButton(onTap: onToggleStar),
       ],
     );
@@ -550,33 +548,5 @@ class _KeySubtitle extends StatelessWidget {
         ),
       ],
     );
-  }
-}
-
-class _KeyStateBadge extends StatelessWidget {
-  const _KeyStateBadge({required this.state});
-
-  final ArchiveKeyState state;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.appColors;
-    final IconData icon;
-    final Color tint;
-    switch (state) {
-      case ArchiveKeyState.synced:
-        icon = Icons.cloud_done_outlined;
-        tint = colors.success;
-        break;
-      case ArchiveKeyState.local:
-        icon = Icons.sd_storage_outlined;
-        tint = colors.textMuted;
-        break;
-      case ArchiveKeyState.deleted:
-        icon = Icons.delete_outline;
-        tint = colors.danger;
-        break;
-    }
-    return Icon(icon, color: tint, size: 20);
   }
 }
