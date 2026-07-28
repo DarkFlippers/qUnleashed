@@ -176,6 +176,8 @@ class AppsBackend {
       manifests.handleDeviceChange();
       device.handleDeviceChange();
       updates.handleDeviceChange();
+    } else {
+      device.handleConnect();
     }
     if (_resolvedForDeviceId != _deviceId && !_modeResolving) {
       mode.value = CatalogMode.resolving;

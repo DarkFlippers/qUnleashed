@@ -305,7 +305,7 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
     Color header,
   ) {
     final colors = context.appColors;
-    if (!_backend.isReady) {
+    if (!_backend.isReady && _device.apps.isEmpty) {
       return const ArchiveEmptyView(
         icon: Icons.usb_off,
         title: 'Connect a device',
@@ -319,6 +319,7 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
           _ScanProgress(
             folder: _device.scanningFolder,
             progress: _device.scanProgress,
+            fileProgress: _device.fileProgress,
             color: header,
             colors: colors,
           ),
@@ -596,12 +597,14 @@ class _ScanProgress extends StatelessWidget {
   const _ScanProgress({
     required this.folder,
     required this.progress,
+    required this.fileProgress,
     required this.color,
     required this.colors,
   });
 
   final String? folder;
   final double progress;
+  final double? fileProgress;
   final Color color;
   final QAppColors colors;
 
@@ -629,9 +632,14 @@ class _ScanProgress extends StatelessWidget {
                   style: TextStyle(color: colors.textMuted, fontSize: 11),
                 ),
               ),
-              if (progress > 0)
-                Text('${(progress * 100).round()}%',
-                    style: TextStyle(color: colors.textMuted, fontSize: 11)),
+              if (progress > 0 || fileProgress != null)
+                Text(
+                  fileProgress == null
+                      ? '${(progress * 100).round()}%'
+                      : '${(progress * 100).round()}% / '
+                          '${(fileProgress! * 100).round()}%',
+                  style: TextStyle(color: colors.textMuted, fontSize: 11),
+                ),
             ],
           ),
         ),

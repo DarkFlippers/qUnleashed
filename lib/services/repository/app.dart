@@ -14,6 +14,20 @@ const String kProjectsFolderName = 'Projects';
 const String kResourcesFolderName = '.resources';
 const String kIrLibFolderName = 'irlib';
 
+/// Name of the last connected device, written by the archive to
+/// `Devices/.last_device`. Lets offline screens resolve their local folder.
+Future<String?> lastDeviceName() async {
+  try {
+    final root = await appDevicesDirectory();
+    final file = io.File(pathJoin([root.path, '.last_device']));
+    if (!await file.exists()) return null;
+    final raw = (await file.readAsString()).trim();
+    return raw.isEmpty ? null : raw;
+  } catch (_) {
+    return null;
+  }
+}
+
 Future<io.File> installedCatalogFile(String deviceName) async {
   final root = await appDevicesDirectory();
   return io.File(

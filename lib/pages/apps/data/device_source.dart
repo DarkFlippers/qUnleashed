@@ -5,6 +5,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flutter/foundation.dart';
 
+import '../../../services/progress_throttle.dart';
 import '../../../services/repository/app.dart';
 import '../icons/icon_resolver.dart';
 import 'apps_backend.dart';
@@ -71,6 +72,12 @@ class DeviceSource extends ChangeNotifier {
   String? _syncingItem;
   String? get scanningFolder => _syncingItem;
   double get scanProgress => _syncTotal == 0 ? 0 : _syncDone / _syncTotal;
+
+  bool _downloading = false;
+  double _fileProgress = 0;
+  final ProgressThrottle _progressThrottle = ProgressThrottle();
+
+  double? get fileProgress => _downloading ? _fileProgress : null;
 
   Object? _error;
   Object? get error => _error;
@@ -158,8 +165,17 @@ class DeviceSource extends ChangeNotifier {
             !await _localMatchesRemote(local, d.md5, d.devicePath);
         if (needs) {
           try {
+            _downloading = true;
+            _fileProgress = 0;
+            _progressThrottle.reset();
+            notifyListeners();
             final bytes = await client.storageReadChunked(
               d.devicePath,
+              expectedSize: d.size,
+              onProgress: (p) {
+                _fileProgress = p;
+                if (_progressThrottle.shouldEmit(p)) notifyListeners();
+              },
               timeout: const Duration(seconds: 60),
               priority: FlipperRequestPriority.background,
             );
@@ -170,6 +186,9 @@ class DeviceSource extends ChangeNotifier {
             }
           } catch (e) {
             LogService.log('[DeviceSource] download "${d.alias}" failed: $e');
+          } finally {
+            _downloading = false;
+            _fileProgress = 0;
           }
         }
         _syncDone++;
@@ -218,7 +237,7 @@ class DeviceSource extends ChangeNotifier {
       _syncingItem = folder;
       notifyListeners();
       final list = await client.storageList(
-        ListRequest(path: '$kAppsRoot/$folder', includeMd5: true),
+        ListRequest(path: '$kAppsRoot/$folder'),
         timeout: const Duration(seconds: 20),
       );
       for (final item in list.items) {
@@ -308,14 +327,19 @@ class DeviceSource extends ChangeNotifier {
   }
 
   Future<String?> _deviceName() async {
-    try {
-      return await client.awaitName().timeout(const Duration(seconds: 5));
-    } catch (_) {
-      return client.getName();
+    if (isReady) {
+      try {
+        return await client.awaitName().timeout(const Duration(seconds: 5));
+      } catch (_) {}
     }
+    final live = client.getName();
+    if (live != null && live.isNotEmpty) return live;
+    return lastDeviceName();
   }
 
   void handleDisconnect() => notifyListeners();
+
+  void handleConnect() => notifyListeners();
 
   void handleDeviceChange() {
     _local.clear();
