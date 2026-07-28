@@ -237,12 +237,7 @@ class _ScreenshotsStrip extends StatelessWidget {
         physics: const ClampingScrollPhysics(),
         itemCount: screenshots.length,
         separatorBuilder: (_, _) => const SizedBox(width: 6),
-        itemBuilder: (context, i) {
-          return SizedBox(
-            width: 168,
-            child: ScreenshotFrame(url: screenshots[i]),
-          );
-        },
+        itemBuilder: (context, i) => ScreenshotFrame(url: screenshots[i]),
       ),
     );
   }

@@ -25,15 +25,15 @@ class ScreenshotFrame extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final bg = colors.isDark ? colors.screenBackground : colors.accent;
-    return AspectRatio(
-      aspectRatio: aspectRatio,
-      child: Container(
-        decoration: BoxDecoration(
-          color: bg,
-          border: Border.all(color: borderColor, width: borderWidth),
-          borderRadius: BorderRadius.circular(borderRadius),
-        ),
-        padding: EdgeInsets.all(innerPadding),
+    return Container(
+      decoration: BoxDecoration(
+        color: bg,
+        border: Border.all(color: borderColor, width: borderWidth),
+        borderRadius: BorderRadius.circular(borderRadius),
+      ),
+      padding: EdgeInsets.all(innerPadding),
+      child: AspectRatio(
+        aspectRatio: aspectRatio,
         child: ClipRRect(
           borderRadius: BorderRadius.circular(borderRadius - 2),
           child: FlipperRemoteImage(url: url, fit: BoxFit.contain),

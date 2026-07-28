@@ -353,10 +353,7 @@ class _ScreenshotsRow extends StatelessWidget {
               initialIndex: i,
               title: title,
             ),
-            child: AspectRatio(
-              aspectRatio: 256 / 128,
-              child: ScreenshotFrame(url: screenshots[i]),
-            ),
+            child: ScreenshotFrame(url: screenshots[i]),
           );
         },
       ),
