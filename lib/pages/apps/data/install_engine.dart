@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:crypto/crypto.dart';
 import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flutter/foundation.dart';
 
@@ -18,7 +19,7 @@ import 'models/manifest.dart';
 
 enum AppActionType { install, update, delete }
 
-enum AppActionStage { queued, download, upload }
+enum AppActionStage { queued, download, upload, check }
 
 @immutable
 class AppAction {
@@ -271,7 +272,7 @@ class InstallEngine extends ChangeNotifier {
       await _ensureDir(installDir);
       await _ensureDir(kManifestsRoot);
 
-      await client.storageWriteChunkedSafe(
+      await client.storageWriteChunked(
         fapPath,
         prepared.fapBytes,
         onProgress: (p) => _setActionState(
@@ -280,8 +281,11 @@ class InstallEngine extends ChangeNotifier {
           progress: p,
         ),
       );
-      await client.storageWriteChunkedSafe(fimPath, manifestBytes);
-      _setActionState(app.alias, stage: AppActionStage.upload, progress: 1);
+      _setActionState(app.alias, stage: AppActionStage.check, progress: 1);
+      await _verifyUpload(fapPath, prepared.fapBytes);
+
+      await client.storageWriteChunked(fimPath, manifestBytes);
+      await _verifyUpload(fimPath, manifestBytes);
 
       manifests.put(app.alias, manifest, fimSize: manifestBytes.length);
       _preparedInstalls.remove(app.alias);
@@ -410,16 +414,19 @@ class InstallEngine extends ChangeNotifier {
       final dir = lastSlash > 0 ? fapPath.substring(0, lastSlash) : kAppsRoot;
       await _ensureDir(kAppsRoot);
       await _ensureDir(dir);
-      await client.storageWriteChunkedSafe(
+      await client.storageWriteChunked(
         fapPath,
         fapBytes,
         onProgress: (p) =>
             _setActionState(alias, stage: AppActionStage.upload, progress: p),
       );
+      _setActionState(alias, stage: AppActionStage.check, progress: 1);
+      await _verifyUpload(fapPath, fapBytes);
       if (manifest != null) {
         await _ensureDir(kManifestsRoot);
         final bytes = utf8.encode(manifest.encode());
-        await client.storageWriteChunkedSafe('$kManifestsRoot/$alias.fim', bytes);
+        await client.storageWriteChunked('$kManifestsRoot/$alias.fim', bytes);
+        await _verifyUpload('$kManifestsRoot/$alias.fim', bytes);
         manifests.put(alias, manifest, fimSize: bytes.length);
       }
       _actions.remove(alias);
@@ -441,6 +448,33 @@ class InstallEngine extends ChangeNotifier {
     if (stageChanged || _progressThrottle.shouldEmit(next.progress)) {
       notifyListeners();
     }
+  }
+
+  Future<void> _verifyUpload(String path, List<int> bytes) async {
+    final expected = md5.convert(bytes).toString().toLowerCase();
+    String actual;
+    try {
+      final batch = await client.storageMd5sum(
+        Md5sumRequest(path: path),
+        timeout: const Duration(seconds: 30),
+      );
+      actual = (batch.items.isNotEmpty ? batch.items.first.md5sum : '')
+          .trim()
+          .toLowerCase();
+    } catch (e) {
+      LogService.log('[InstallEngine] md5 of "$path" unavailable: $e');
+      return;
+    }
+    if (actual.isEmpty) {
+      LogService.log('[InstallEngine] md5 of "$path" came back empty');
+      return;
+    }
+    if (actual != expected) {
+      throw StateError(
+        'Uploaded "$path" is corrupted: md5 $actual, expected $expected',
+      );
+    }
+    LogService.log('[InstallEngine] md5 of "$path" verified');
   }
 
   Future<void> _ensureDir(String path) async {

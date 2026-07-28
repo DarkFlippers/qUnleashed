@@ -101,8 +101,9 @@ class AppActionButton extends StatelessWidget {
   }) {
     final progressState = _ProgressState.resolve(type, stage);
     final isLarge = size == AppActionButtonSize.large;
-    final indeterminate =
-        stage == AppActionStage.queued || type == AppActionType.delete;
+    final indeterminate = stage == AppActionStage.queued ||
+        stage == AppActionStage.check ||
+        type == AppActionType.delete;
     return ProgressButton(
       text: progressState.label,
       color: progressState.color,
@@ -285,6 +286,9 @@ class _ProgressState {
     };
     if (stage == AppActionStage.queued) {
       return _ProgressState(label: 'QUEUED', color: color);
+    }
+    if (stage == AppActionStage.check) {
+      return _ProgressState(label: 'CHECK', color: color);
     }
     if (type == AppActionType.delete) {
       return _ProgressState(label: 'DELETE', color: color);
