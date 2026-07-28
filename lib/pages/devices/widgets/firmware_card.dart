@@ -133,8 +133,9 @@ class _FirmwareCardState extends State<FirmwareCard> {
       trailing: hasChangelog
           ? _WhatsNewButton(
               onTap: () {
-                if (latestFirmware != null)
+                if (latestFirmware != null) {
                   _openChangelog(entry, latestFirmware);
+                }
               },
             )
           : null,
