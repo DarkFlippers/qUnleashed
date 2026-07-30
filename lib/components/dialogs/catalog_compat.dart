@@ -2,36 +2,21 @@ import 'package:flutter/material.dart';
 
 import '../../theme/theme.dart';
 
-enum CatalogCompatChoice { compat, decline }
-
 class CatalogCompatDialog extends StatelessWidget {
   const CatalogCompatDialog({
     super.key,
     required this.deviceApi,
     required this.serverApi,
     required this.compatApi,
+    required this.onUseCompatibility,
+    required this.onDecline,
   });
 
   final String? deviceApi;
   final String? serverApi;
   final String? compatApi;
-
-  static Future<CatalogCompatChoice?> show(
-    BuildContext context, {
-    required String? deviceApi,
-    required String? serverApi,
-    required String? compatApi,
-  }) {
-    return showDialog<CatalogCompatChoice>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => CatalogCompatDialog(
-        deviceApi: deviceApi,
-        serverApi: serverApi,
-        compatApi: compatApi,
-      ),
-    );
-  }
+  final VoidCallback onUseCompatibility;
+  final VoidCallback onDecline;
 
   @override
   Widget build(BuildContext context) {
@@ -82,8 +67,7 @@ class CatalogCompatDialog extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: FilledButton(
-                onPressed: () =>
-                    Navigator.of(context).pop(CatalogCompatChoice.compat),
+                onPressed: onUseCompatibility,
                 style: FilledButton.styleFrom(
                   backgroundColor: colors.accent,
                   foregroundColor: Colors.white,
@@ -101,8 +85,7 @@ class CatalogCompatDialog extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: OutlinedButton(
-                onPressed: () =>
-                    Navigator.of(context).pop(CatalogCompatChoice.decline),
+                onPressed: onDecline,
                 style: OutlinedButton.styleFrom(
                   foregroundColor: colors.dialogMuted,
                   side: BorderSide(color: colors.dialogDivider),
@@ -124,29 +107,15 @@ class CatalogIncompatibleDialog extends StatelessWidget {
     required this.tooOld,
     required this.deviceApi,
     required this.serverApi,
+    required this.onOpenManager,
+    required this.onRecheck,
   });
 
   final bool tooOld;
   final String? deviceApi;
   final String? serverApi;
-
-  static Future<bool> show(
-    BuildContext context, {
-    required bool tooOld,
-    required String? deviceApi,
-    required String? serverApi,
-  }) async {
-    final recheck = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => CatalogIncompatibleDialog(
-        tooOld: tooOld,
-        deviceApi: deviceApi,
-        serverApi: serverApi,
-      ),
-    );
-    return recheck == true;
-  }
+  final VoidCallback onOpenManager;
+  final VoidCallback onRecheck;
 
   @override
   Widget build(BuildContext context) {
@@ -205,7 +174,7 @@ class CatalogIncompatibleDialog extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: FilledButton(
-                onPressed: () => Navigator.of(context).pop(false),
+                onPressed: onOpenManager,
                 style: FilledButton.styleFrom(
                   backgroundColor: colors.accent,
                   foregroundColor: Colors.white,
@@ -218,7 +187,7 @@ class CatalogIncompatibleDialog extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: OutlinedButton(
-                onPressed: () => Navigator.of(context).pop(true),
+                onPressed: onRecheck,
                 style: OutlinedButton.styleFrom(
                   foregroundColor: colors.dialogMuted,
                   side: BorderSide(color: colors.dialogDivider),

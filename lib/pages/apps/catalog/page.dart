@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../components/dialogs/catalog_compat.dart';
@@ -57,8 +59,6 @@ class _CatalogViewState extends State<CatalogView> {
   final ScrollController _scroll = ScrollController();
   final TextEditingController _searchCtrl = TextEditingController();
   bool _searchOpen = false;
-  bool _compatDialogOpen = false;
-  bool _incompatDialogOpen = false;
   bool _incompatKnown = false;
 
   @override
@@ -121,63 +121,15 @@ class _CatalogViewState extends State<CatalogView> {
 
   void _syncMode() {
     final mode = _ctrl.mode.value;
-    if (mode != CatalogMode.incompatible) _incompatKnown = false;
-    if (!widget.active || _compatDialogOpen || _incompatDialogOpen) return;
-    if (mode == CatalogMode.mismatch) {
-      _compatDialogOpen = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) => _showCompatDialog());
+    if (mode != CatalogMode.incompatible) {
+      _incompatKnown = false;
       return;
     }
-    if (mode != CatalogMode.incompatible) return;
-    if (!_incompatKnown) {
-      _incompatKnown = true;
-      WidgetsBinding.instance.addPostFrameCallback(
-        (_) => widget.onOpenManager?.call(),
-      );
-      return;
-    }
-    _incompatDialogOpen = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) => _showIncompatDialog());
-  }
-
-  Future<void> _showIncompatDialog() async {
-    if (!mounted || _ctrl.mode.value != CatalogMode.incompatible) {
-      _incompatDialogOpen = false;
-      return;
-    }
-    final recheck = await CatalogIncompatibleDialog.show(
-      context,
-      tooOld: _ctrl.incompatibility == ApiVerdict.tooOld,
-      deviceApi: _ctrl.deviceApi,
-      serverApi: _ctrl.serverApi,
+    if (_incompatKnown) return;
+    _incompatKnown = true;
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => widget.onOpenManager?.call(),
     );
-    _incompatDialogOpen = false;
-    if (!mounted) return;
-    if (recheck) {
-      await _ctrl.refreshMode();
-      return;
-    }
-    widget.onOpenManager?.call();
-  }
-
-  Future<void> _showCompatDialog() async {
-    if (!mounted || _ctrl.mode.value != CatalogMode.mismatch) {
-      _compatDialogOpen = false;
-      return;
-    }
-    final choice = await CatalogCompatDialog.show(
-      context,
-      deviceApi: _ctrl.deviceApi,
-      serverApi: _ctrl.serverApi,
-      compatApi: _ctrl.compatApi,
-    );
-    _compatDialogOpen = false;
-    if (!mounted) return;
-    if (choice == CatalogCompatChoice.compat) {
-      _ctrl.chooseCompatibility();
-    } else if (choice == CatalogCompatChoice.decline) {
-      widget.onOpenManager?.call();
-    }
   }
 
   Widget _buildForMode(BuildContext context) {
@@ -186,13 +138,36 @@ class _CatalogViewState extends State<CatalogView> {
       case CatalogMode.resolving:
         return Center(child: CircularProgressIndicator(color: colors.accent));
       case CatalogMode.mismatch:
-        return const SizedBox.shrink();
+        return _dialogLayer(
+          CatalogCompatDialog(
+            deviceApi: _ctrl.deviceApi,
+            serverApi: _ctrl.serverApi,
+            compatApi: _ctrl.compatApi,
+            onUseCompatibility: _ctrl.chooseCompatibility,
+            onDecline: () => widget.onOpenManager?.call(),
+          ),
+        );
       case CatalogMode.incompatible:
-        return const SizedBox.shrink();
+        return _dialogLayer(
+          CatalogIncompatibleDialog(
+            tooOld: _ctrl.incompatibility == ApiVerdict.tooOld,
+            deviceApi: _ctrl.deviceApi,
+            serverApi: _ctrl.serverApi,
+            onOpenManager: () => widget.onOpenManager?.call(),
+            onRecheck: () => unawaited(_ctrl.refreshMode()),
+          ),
+        );
       case CatalogMode.normal:
       case CatalogMode.compatibility:
         return _buildCatalog(context);
     }
+  }
+
+  Widget _dialogLayer(Widget dialog) {
+    return ColoredBox(
+      color: context.appColors.dialogBarrier,
+      child: Center(child: SingleChildScrollView(child: dialog)),
+    );
   }
 
   Widget _buildCatalog(BuildContext context) {
