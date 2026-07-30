@@ -1,6 +1,6 @@
 class ProgressThrottle {
   ProgressThrottle({
-    this.minDelta = 0.01,
+    this.minDelta = 0.002,
     Duration minInterval = const Duration(milliseconds: 150),
   }) : _minIntervalMs = minInterval.inMilliseconds;
 
