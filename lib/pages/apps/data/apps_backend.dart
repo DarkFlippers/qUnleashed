@@ -67,6 +67,9 @@ class AppsBackend {
   String? _compatApi;
   String? get compatApi => _compatApi;
 
+  ApiVerdict? _incompatibility;
+  ApiVerdict? get incompatibility => _incompatibility;
+
   bool _modeResolving = false;
   String? _resolvedForDeviceId;
 
@@ -89,7 +92,8 @@ class AppsBackend {
     if (_modeResolving) return;
     if (!force &&
         mode.value != CatalogMode.resolving &&
-        mode.value != CatalogMode.mismatch) {
+        mode.value != CatalogMode.mismatch &&
+        mode.value != CatalogMode.incompatible) {
       return;
     }
     _modeResolving = true;
@@ -114,23 +118,31 @@ class AppsBackend {
         api.target = _deviceTarget;
         api.unfiltered = false;
         _compatApi = null;
+        _incompatibility = null;
         mode.value = CatalogMode.normal;
         return;
       }
 
-      if (serverHasApi(targetSdks, _deviceApi)) {
-        api.api = _deviceApi;
+      final res = resolveCatalogApi(targetSdks, _deviceApi);
+      if (res.verdict == ApiVerdict.normal) {
+        api.api = res.api ?? _deviceApi;
         api.target = _deviceTarget;
         api.unfiltered = false;
         _compatApi = null;
+        _incompatibility = null;
         mode.value = CatalogMode.normal;
-      } else {
-        _compatApi = pickCompatApi(targetSdks, _deviceApi);
+      } else if (res.verdict == ApiVerdict.mismatch) {
+        _compatApi = res.api;
+        _incompatibility = null;
         mode.value = CatalogMode.mismatch;
+      } else {
+        _compatApi = null;
+        _incompatibility = res.verdict;
+        mode.value = CatalogMode.incompatible;
       }
       LogService.log(
         '[AppsBackend] mode=${mode.value.name} device=$_deviceApi '
-        'server=$serverApi compat=$_compatApi',
+        'server=$serverApi picked=${res.api} compat=$_compatApi',
       );
     } finally {
       _modeResolving = false;
@@ -192,6 +204,7 @@ class AppsBackend {
     _deviceApi = null;
     _deviceTarget = null;
     _compatApi = null;
+    _incompatibility = null;
   }
 
   Future<void> ensureDeviceFilters({bool required = false}) async {

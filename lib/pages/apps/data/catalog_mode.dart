@@ -1,6 +1,15 @@
 import 'models/card.dart';
 
-enum CatalogMode { resolving, normal, mismatch, compatibility, disabled }
+enum CatalogMode { resolving, normal, mismatch, incompatible, compatibility, disabled }
+
+enum ApiVerdict { normal, mismatch, tooOld, tooNew }
+
+class ApiResolution {
+  const ApiResolution(this.verdict, [this.api]);
+
+  final ApiVerdict verdict;
+  final String? api;
+}
 
 (int, int)? parseApi(String? raw) {
   if (raw == null || raw.isEmpty) return null;
@@ -16,14 +25,44 @@ int compareApi((int, int) a, (int, int) b) {
   return a.$2.compareTo(b.$2);
 }
 
-bool serverHasApi(List<AppSdk> sdks, String? deviceApi) {
-  final target = parseApi(deviceApi);
-  if (target == null) return false;
+ApiResolution resolveCatalogApi(List<AppSdk> sdks, String? deviceApi) {
+  final device = parseApi(deviceApi);
+
+  ((int, int), String)? sameBelow;
+  ((int, int), String)? sameAbove;
+  ((int, int), String)? adjacentBelow;
+  int? maxMajor;
+
   for (final s in sdks) {
     final a = parseApi(s.api);
-    if (a != null && compareApi(a, target) == 0) return true;
+    if (a == null) continue;
+    if (maxMajor == null || a.$1 > maxMajor) maxMajor = a.$1;
+    if (device == null) continue;
+    if (a.$1 == device.$1) {
+      if (a.$2 <= device.$2) {
+        if (sameBelow == null || a.$2 > sameBelow.$1.$2) sameBelow = (a, s.api);
+      } else {
+        if (sameAbove == null || a.$2 < sameAbove.$1.$2) sameAbove = (a, s.api);
+      }
+    } else if (a.$1 == device.$1 - 1) {
+      if (adjacentBelow == null || compareApi(a, adjacentBelow.$1) > 0) {
+        adjacentBelow = (a, s.api);
+      }
+    }
   }
-  return false;
+
+  if (maxMajor == null) return ApiResolution(ApiVerdict.normal, deviceApi);
+  if (device == null) {
+    return ApiResolution(ApiVerdict.mismatch, latestSdk(sdks)?.api);
+  }
+  if (sameBelow != null) return ApiResolution(ApiVerdict.normal, sameBelow.$2);
+  if (sameAbove != null) return ApiResolution(ApiVerdict.mismatch, sameAbove.$2);
+  if (adjacentBelow != null) {
+    return ApiResolution(ApiVerdict.mismatch, adjacentBelow.$2);
+  }
+  return maxMajor > device.$1
+      ? const ApiResolution(ApiVerdict.tooOld)
+      : const ApiResolution(ApiVerdict.tooNew);
 }
 
 AppSdk? latestSdk(List<AppSdk> sdks) {
@@ -39,31 +78,4 @@ AppSdk? latestSdk(List<AppSdk> sdks) {
     }
   }
   return best;
-}
-
-String? pickCompatApi(List<AppSdk> sdks, String? deviceApi) {
-  final device = parseApi(deviceApi);
-  if (sdks.isEmpty) return null;
-
-  AppSdk? bestLeq;
-  (int, int)? bestLeqApi;
-  AppSdk? lowest;
-  (int, int)? lowestApi;
-
-  for (final s in sdks) {
-    final a = parseApi(s.api);
-    if (a == null) continue;
-    if (lowestApi == null || compareApi(a, lowestApi) < 0) {
-      lowest = s;
-      lowestApi = a;
-    }
-    if (device != null && compareApi(a, device) <= 0) {
-      if (bestLeqApi == null || compareApi(a, bestLeqApi) > 0) {
-        bestLeq = s;
-        bestLeqApi = a;
-      }
-    }
-  }
-
-  return (bestLeq ?? lowest)?.api;
 }

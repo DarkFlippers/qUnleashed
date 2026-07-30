@@ -13,7 +13,7 @@ import '../data/models/card.dart';
 import '../data/models/category.dart';
 import '../icons/icon_resolver.dart';
 
-export '../data/catalog_mode.dart' show CatalogMode;
+export '../data/catalog_mode.dart' show CatalogMode, ApiVerdict;
 export '../data/catalog_state.dart' show CatalogAppState;
 export '../data/install_engine.dart' show AppAction, AppActionType, AppActionStage;
 
@@ -76,6 +76,7 @@ class AppsCatalogController extends ChangeNotifier {
   String? get deviceApi => _backend.deviceApi;
   String? get serverApi => _backend.serverApi;
   String? get compatApi => _backend.compatApi;
+  ApiVerdict? get incompatibility => _backend.incompatibility;
 
   void chooseCompatibility() => _backend.chooseCompatibility();
   void declineCatalog() => _backend.declineCatalog();

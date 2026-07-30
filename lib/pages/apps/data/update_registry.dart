@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import 'apps_backend.dart';
 import 'catalog_api.dart';
+import 'catalog_mode.dart';
 import 'catalog_state.dart';
 import 'install_engine.dart';
 import 'manifest_registry.dart';
@@ -80,6 +81,13 @@ class UpdateRegistry extends ChangeNotifier {
 
   Future<void> refresh({bool force = false}) async {
     if (_loading || !isReady) return;
+    if (backend.mode.value == CatalogMode.incompatible) {
+      _cardsByUid.clear();
+      _updates = const [];
+      _loaded = true;
+      notifyListeners();
+      return;
+    }
     _loading = true;
     _error = null;
     notifyListeners();

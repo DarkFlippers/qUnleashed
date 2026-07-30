@@ -149,6 +149,14 @@ class _CatalogViewState extends State<CatalogView> {
         return Center(child: CircularProgressIndicator(color: colors.accent));
       case CatalogMode.mismatch:
         return _MismatchPrompt(onChoose: _showCompatDialog);
+      case CatalogMode.incompatible:
+        return _IncompatibleView(
+          tooOld: _ctrl.incompatibility == ApiVerdict.tooOld,
+          deviceApi: _ctrl.deviceApi,
+          serverApi: _ctrl.serverApi,
+          onOpenManager: widget.onOpenManager,
+          onRecheck: _ctrl.refreshMode,
+        );
       case CatalogMode.disabled:
         return _DisabledView(
           onOpenManager: widget.onOpenManager,
@@ -542,6 +550,87 @@ class _ApiRow extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _IncompatibleView extends StatelessWidget {
+  const _IncompatibleView({
+    required this.tooOld,
+    required this.deviceApi,
+    required this.serverApi,
+    required this.onOpenManager,
+    required this.onRecheck,
+  });
+
+  final bool tooOld;
+  final String? deviceApi;
+  final String? serverApi;
+  final VoidCallback? onOpenManager;
+  final Future<void> Function() onRecheck;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              tooOld ? Icons.system_update : Icons.hourglass_top,
+              size: 56,
+              color: colors.textMuted,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Catalog unavailable',
+              style: TextStyle(
+                color: colors.textPrimary,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 12),
+            _ApiRow(
+              label: 'Your firmware',
+              value: deviceApi ?? '—',
+              colors: colors,
+            ),
+            const SizedBox(height: 4),
+            _ApiRow(label: 'Catalog', value: serverApi ?? '—', colors: colors),
+            const SizedBox(height: 12),
+            Text(
+              tooOld
+                  ? 'The firmware API is too old for the app catalog. Update '
+                      'the firmware to use the catalog. Only the apps manager '
+                      'is available, app updates are disabled.'
+                  : 'The firmware API is newer than the catalog supports. '
+                      'Only the apps manager is available until the catalog '
+                      'catches up, app updates are disabled.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: colors.textSecondary, fontSize: 13),
+            ),
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: onOpenManager,
+              icon: const Icon(Icons.smartphone, size: 18),
+              label: const Text('Open apps manager'),
+              style: FilledButton.styleFrom(
+                backgroundColor: colors.accent,
+                foregroundColor: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: onRecheck,
+              child: Text('Re-check compatibility',
+                  style: TextStyle(color: colors.textMuted)),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
