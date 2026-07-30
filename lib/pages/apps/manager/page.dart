@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../components/dialogs/app_action.dart';
+import '../../../components/dialogs/confirm.dart';
 import '../../../components/icon.dart';
 import '../../../theme/theme.dart';
 import '../../../widgets/notification.dart';
@@ -17,7 +19,6 @@ import '../data/install_engine.dart';
 import '../data/models/installed_app.dart';
 import '../data/update_registry.dart';
 import '../icons/app_icon.dart';
-import 'app_action_sheet.dart';
 
 class AppsManagerPage extends StatefulWidget {
   const AppsManagerPage({super.key, this.onOpenCatalog});
@@ -152,29 +153,8 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
     }
   }
 
-  Future<bool> _confirm(String title, String body) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) {
-        final colors = ctx.appColors;
-        return AlertDialog(
-          backgroundColor: colors.dialogBackground,
-          title: Text(title, style: TextStyle(color: colors.dialogText)),
-          content: Text(body, style: TextStyle(color: colors.dialogText)),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(false),
-              child: Text('Cancel', style: TextStyle(color: colors.dialogMuted)),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(true),
-              child: Text('OK', style: TextStyle(color: colors.danger)),
-            ),
-          ],
-        );
-      },
-    );
-    return ok == true;
+  Future<bool> _confirm(String title, String body) {
+    return QConfirmDialog.show(context, title: title, message: body);
   }
 
   Future<void> _deleteLocal(InstalledApp app) async {

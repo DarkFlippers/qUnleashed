@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../components/dialogs/catalog_compat.dart';
+import '../../../components/dialogs/catalog_states.dart';
 import '../../../theme/theme.dart';
 import '../../../widgets/open_url.dart';
 import '../../tools/remote/desktop/page.dart';
@@ -30,7 +32,10 @@ class _AppsCatalogPageState extends State<AppsCatalogPage> {
     return IndexedStack(
       index: _manager ? 1 : 0,
       children: [
-        CatalogView(onOpenManager: () => setState(() => _manager = true)),
+        CatalogView(
+          active: !_manager,
+          onOpenManager: () => setState(() => _manager = true),
+        ),
         AppsManagerPage(onOpenCatalog: () => setState(() => _manager = false)),
       ],
     );
@@ -38,9 +43,10 @@ class _AppsCatalogPageState extends State<AppsCatalogPage> {
 }
 
 class CatalogView extends StatefulWidget {
-  const CatalogView({super.key, this.onOpenManager});
+  const CatalogView({super.key, this.onOpenManager, this.active = true});
 
   final VoidCallback? onOpenManager;
+  final bool active;
 
   @override
   State<CatalogView> createState() => _CatalogViewState();
@@ -52,6 +58,8 @@ class _CatalogViewState extends State<CatalogView> {
   final TextEditingController _searchCtrl = TextEditingController();
   bool _searchOpen = false;
   bool _compatDialogOpen = false;
+  bool _incompatDialogOpen = false;
+  bool _incompatKnown = false;
 
   @override
   void initState() {
@@ -102,7 +110,7 @@ class _CatalogViewState extends State<CatalogView> {
     return AnimatedBuilder(
       animation: _ctrl,
       builder: (context, _) {
-        _maybeShowCompatDialog();
+        _syncMode();
         return Scaffold(
           backgroundColor: colors.background,
           body: SafeArea(child: _buildForMode(context)),
@@ -111,11 +119,45 @@ class _CatalogViewState extends State<CatalogView> {
     );
   }
 
-  void _maybeShowCompatDialog() {
-    if (_compatDialogOpen) return;
-    if (_ctrl.mode.value != CatalogMode.mismatch) return;
-    _compatDialogOpen = true;
-    WidgetsBinding.instance.addPostFrameCallback((_) => _showCompatDialog());
+  void _syncMode() {
+    final mode = _ctrl.mode.value;
+    if (mode != CatalogMode.incompatible) _incompatKnown = false;
+    if (!widget.active || _compatDialogOpen || _incompatDialogOpen) return;
+    if (mode == CatalogMode.mismatch) {
+      _compatDialogOpen = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _showCompatDialog());
+      return;
+    }
+    if (mode != CatalogMode.incompatible) return;
+    if (!_incompatKnown) {
+      _incompatKnown = true;
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => widget.onOpenManager?.call(),
+      );
+      return;
+    }
+    _incompatDialogOpen = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _showIncompatDialog());
+  }
+
+  Future<void> _showIncompatDialog() async {
+    if (!mounted || _ctrl.mode.value != CatalogMode.incompatible) {
+      _incompatDialogOpen = false;
+      return;
+    }
+    final recheck = await CatalogIncompatibleDialog.show(
+      context,
+      tooOld: _ctrl.incompatibility == ApiVerdict.tooOld,
+      deviceApi: _ctrl.deviceApi,
+      serverApi: _ctrl.serverApi,
+    );
+    _incompatDialogOpen = false;
+    if (!mounted) return;
+    if (recheck) {
+      await _ctrl.refreshMode();
+      return;
+    }
+    widget.onOpenManager?.call();
   }
 
   Future<void> _showCompatDialog() async {
@@ -123,21 +165,17 @@ class _CatalogViewState extends State<CatalogView> {
       _compatDialogOpen = false;
       return;
     }
-    final choice = await showDialog<_CompatChoice>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => _CompatDialog(
-        deviceApi: _ctrl.deviceApi,
-        serverApi: _ctrl.serverApi,
-        compatApi: _ctrl.compatApi,
-      ),
+    final choice = await CatalogCompatDialog.show(
+      context,
+      deviceApi: _ctrl.deviceApi,
+      serverApi: _ctrl.serverApi,
+      compatApi: _ctrl.compatApi,
     );
     _compatDialogOpen = false;
     if (!mounted) return;
-    if (choice == _CompatChoice.compat) {
+    if (choice == CatalogCompatChoice.compat) {
       _ctrl.chooseCompatibility();
-    } else if (choice == _CompatChoice.decline) {
-      _ctrl.declineCatalog();
+    } else if (choice == CatalogCompatChoice.decline) {
       widget.onOpenManager?.call();
     }
   }
@@ -148,20 +186,9 @@ class _CatalogViewState extends State<CatalogView> {
       case CatalogMode.resolving:
         return Center(child: CircularProgressIndicator(color: colors.accent));
       case CatalogMode.mismatch:
-        return _MismatchPrompt(onChoose: _showCompatDialog);
+        return const SizedBox.shrink();
       case CatalogMode.incompatible:
-        return _IncompatibleView(
-          tooOld: _ctrl.incompatibility == ApiVerdict.tooOld,
-          deviceApi: _ctrl.deviceApi,
-          serverApi: _ctrl.serverApi,
-          onOpenManager: widget.onOpenManager,
-          onRecheck: _ctrl.refreshMode,
-        );
-      case CatalogMode.disabled:
-        return _DisabledView(
-          onOpenManager: widget.onOpenManager,
-          onRecheck: _ctrl.refreshMode,
-        );
+        return const SizedBox.shrink();
       case CatalogMode.normal:
       case CatalogMode.compatibility:
         return _buildCatalog(context);
@@ -308,21 +335,7 @@ class _CatalogViewState extends State<CatalogView> {
       }
       return SliverFillRemaining(
         hasScrollBody: false,
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.apps, size: 48, color: colors.textMuted),
-              const SizedBox(height: 8),
-              Text(
-                _ctrl.lastError != null
-                    ? 'Failed to load apps'
-                    : 'No apps found',
-                style: TextStyle(color: colors.textMuted, fontSize: 14),
-              ),
-            ],
-          ),
-        ),
+        child: CatalogEmptyView(failed: _ctrl.lastError != null),
       );
     }
 
@@ -385,307 +398,3 @@ class _CatalogViewState extends State<CatalogView> {
   }
 }
 
-enum _CompatChoice { compat, decline }
-
-class _MismatchPrompt extends StatelessWidget {
-  const _MismatchPrompt({required this.onChoose});
-
-  final Future<void> Function() onChoose;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.appColors;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.warning_amber_rounded,
-                size: 56, color: Colors.amber.shade600),
-            const SizedBox(height: 12),
-            Text(
-              'Compatibility check needed',
-              style: TextStyle(
-                color: colors.textPrimary,
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 16),
-            FilledButton(
-              onPressed: onChoose,
-              style: FilledButton.styleFrom(
-                backgroundColor: colors.accent,
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('Choose an option'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _CompatDialog extends StatelessWidget {
-  const _CompatDialog({
-    required this.deviceApi,
-    required this.serverApi,
-    required this.compatApi,
-  });
-
-  final String? deviceApi;
-  final String? serverApi;
-  final String? compatApi;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.appColors;
-    return AlertDialog(
-      backgroundColor: colors.dialogBackground,
-      title: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.warning_amber_rounded,
-              size: 56, color: Colors.amber.shade600),
-          const SizedBox(height: 12),
-          Text(
-            'Catalog / firmware mismatch',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: colors.dialogText,
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ],
-      ),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _ApiRow(
-            label: 'Your firmware',
-            value: deviceApi ?? '—',
-            colors: colors,
-          ),
-          const SizedBox(height: 4),
-          _ApiRow(label: 'Catalog', value: serverApi ?? '—', colors: colors),
-          const SizedBox(height: 14),
-          Text(
-            'The catalog has no builds for your firmware API. Apps installed '
-            'in compatibility mode may work incorrectly or fail to launch.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: colors.dialogText, fontSize: 13),
-          ),
-        ],
-      ),
-      actionsAlignment: MainAxisAlignment.center,
-      actions: [
-        Column(
-          children: [
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: () =>
-                    Navigator.of(context).pop(_CompatChoice.compat),
-                style: FilledButton.styleFrom(
-                  backgroundColor: colors.accent,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                ),
-                child: Text(
-                  compatApi != null
-                      ? 'Use compatibility mode (API $compatApi)'
-                      : 'Use compatibility mode',
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton(
-                onPressed: () =>
-                    Navigator.of(context).pop(_CompatChoice.decline),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: colors.dialogMuted,
-                  side: BorderSide(color: colors.dialogDivider),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                ),
-                child: const Text('Not now - apps manager only'),
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-class _ApiRow extends StatelessWidget {
-  const _ApiRow({
-    required this.label,
-    required this.value,
-    required this.colors,
-  });
-
-  final String label;
-  final String value;
-  final QAppColors colors;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Text('$label: ',
-            style: TextStyle(color: colors.textMuted, fontSize: 13)),
-        Text(
-          'API $value',
-          style: TextStyle(
-            color: colors.textPrimary,
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _IncompatibleView extends StatelessWidget {
-  const _IncompatibleView({
-    required this.tooOld,
-    required this.deviceApi,
-    required this.serverApi,
-    required this.onOpenManager,
-    required this.onRecheck,
-  });
-
-  final bool tooOld;
-  final String? deviceApi;
-  final String? serverApi;
-  final VoidCallback? onOpenManager;
-  final Future<void> Function() onRecheck;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.appColors;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              tooOld ? Icons.system_update : Icons.hourglass_top,
-              size: 56,
-              color: colors.textMuted,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Catalog unavailable',
-              style: TextStyle(
-                color: colors.textPrimary,
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 12),
-            _ApiRow(
-              label: 'Your firmware',
-              value: deviceApi ?? '—',
-              colors: colors,
-            ),
-            const SizedBox(height: 4),
-            _ApiRow(label: 'Catalog', value: serverApi ?? '—', colors: colors),
-            const SizedBox(height: 12),
-            Text(
-              tooOld
-                  ? 'The firmware API is too old for the app catalog. Update '
-                      'the firmware to use the catalog. Only the apps manager '
-                      'is available, app updates are disabled.'
-                  : 'The firmware API is newer than the catalog supports. '
-                      'Only the apps manager is available until the catalog '
-                      'catches up, app updates are disabled.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: colors.textSecondary, fontSize: 13),
-            ),
-            const SizedBox(height: 20),
-            FilledButton.icon(
-              onPressed: onOpenManager,
-              icon: const Icon(Icons.smartphone, size: 18),
-              label: const Text('Open apps manager'),
-              style: FilledButton.styleFrom(
-                backgroundColor: colors.accent,
-                foregroundColor: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 8),
-            TextButton(
-              onPressed: onRecheck,
-              child: Text('Re-check compatibility',
-                  style: TextStyle(color: colors.textMuted)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DisabledView extends StatelessWidget {
-  const _DisabledView({required this.onOpenManager, required this.onRecheck});
-
-  final VoidCallback? onOpenManager;
-  final Future<void> Function() onRecheck;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.appColors;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.block, size: 56, color: colors.textMuted),
-            const SizedBox(height: 12),
-            Text(
-              'Catalog disabled',
-              style: TextStyle(
-                color: colors.textPrimary,
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Compatibility mode was declined. Only the apps manager is '
-              'available for this firmware.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: colors.textSecondary, fontSize: 13),
-            ),
-            const SizedBox(height: 20),
-            FilledButton.icon(
-              onPressed: onOpenManager,
-              icon: const Icon(Icons.smartphone, size: 18),
-              label: const Text('Open apps manager'),
-              style: FilledButton.styleFrom(
-                backgroundColor: colors.accent,
-                foregroundColor: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 8),
-            TextButton(
-              onPressed: onRecheck,
-              child: Text('Re-check compatibility',
-                  style: TextStyle(color: colors.textMuted)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}

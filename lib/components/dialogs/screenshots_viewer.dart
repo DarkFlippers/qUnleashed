@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'widgets/flipper_image.dart';
+import '../../pages/apps/catalog/widgets/flipper_image.dart';
 
 class ScreenshotsViewer extends StatefulWidget {
   const ScreenshotsViewer({

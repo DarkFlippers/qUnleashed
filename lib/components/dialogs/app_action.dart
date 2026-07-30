@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
-import '../../../theme/theme.dart';
-import '../catalog/widgets/screenshot_frame.dart';
-import '../data/models/card.dart';
-import '../data/models/installed_app.dart';
-import '../icons/app_icon.dart';
+import '../../pages/apps/catalog/widgets/screenshot_frame.dart';
+import '../../pages/apps/data/models/card.dart';
+import '../../pages/apps/data/models/installed_app.dart';
+import '../../pages/apps/icons/app_icon.dart';
+import '../../theme/theme.dart';
 
 class AppActionSheet {
   static Future<void> show(

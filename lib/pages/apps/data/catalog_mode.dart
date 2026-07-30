@@ -1,6 +1,6 @@
 import 'models/card.dart';
 
-enum CatalogMode { resolving, normal, mismatch, incompatible, compatibility, disabled }
+enum CatalogMode { resolving, normal, mismatch, incompatible, compatibility }
 
 enum ApiVerdict { normal, mismatch, tooOld, tooNew }
 

@@ -166,10 +166,6 @@ class AppsBackend {
     mode.value = CatalogMode.compatibility;
   }
 
-  void declineCatalog() {
-    mode.value = CatalogMode.disabled;
-  }
-
   void _onConnection(FlipperConnectionState state) {
     if (!state.connected || state.mode != FlipperMode.rpc) {
       _resetDeviceState();

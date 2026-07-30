@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../../components/dialogs/confirm.dart';
+import '../../../components/dialogs/catalog_states.dart';
+import '../../../components/dialogs/screenshots_viewer.dart';
 import '../../../theme/theme.dart';
 import 'package:qunleashed/components/appbar.dart';
 import '../../devices/widgets/changelog_renderer.dart';
@@ -9,7 +12,6 @@ import '../data/models/card.dart';
 import '../data/models/category.dart';
 import '../data/models/detail.dart';
 import 'controller.dart';
-import 'screenshots_viewer.dart';
 import 'widgets/action_button.dart';
 import 'widgets/card.dart';
 import 'widgets/category_chip.dart';
@@ -72,24 +74,13 @@ class _AppDetailPageState extends State<AppDetailPage> {
   }
 
   Future<void> _confirmDelete(AppCard card, AppCategory? cat) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete app?'),
-        content: Text('Remove "${card.name}" from your device?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+    final ok = await QConfirmDialog.show(
+      context,
+      title: 'Delete app?',
+      message: 'Remove "${card.name}" from your device?',
+      confirmLabel: 'Delete',
     );
-    if (ok == true) {
+    if (ok) {
       await _ctrl.engine.uninstall(card, category: cat);
     }
   }
@@ -138,21 +129,7 @@ class _AppDetailPageState extends State<AppDetailPage> {
       return Center(child: CircularProgressIndicator(color: colors.accent));
     }
     if (_error != null || _detail == null) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.error_outline, color: colors.danger, size: 48),
-            const SizedBox(height: 8),
-            Text(
-              'Failed to load app',
-              style: TextStyle(color: colors.textPrimary),
-            ),
-            const SizedBox(height: 12),
-            TextButton(onPressed: _load, child: const Text('Retry')),
-          ],
-        ),
-      );
+      return AppDetailErrorView(onRetry: _load);
     }
 
     final detail = _detail!;

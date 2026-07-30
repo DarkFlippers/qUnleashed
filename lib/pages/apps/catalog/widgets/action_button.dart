@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../theme/theme.dart';
 import '../../../../components/dialogs/action.dart';
+import '../../../../components/dialogs/confirm.dart';
 import '../../../../widgets/notification.dart';
 import '../../../../widgets/progress_button.dart';
 import '../../../tools/remote/desktop/page.dart';
@@ -176,31 +177,13 @@ class AppActionButton extends StatelessWidget {
   }
 
   Future<void> _confirmDelete(BuildContext context) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) {
-        final colors = ctx.appColors;
-        return AlertDialog(
-          backgroundColor: colors.dialogBackground,
-          title: Text('Delete app?', style: TextStyle(color: colors.dialogText)),
-          content: Text(
-            'Remove "${app.name}" from your device?',
-            style: TextStyle(color: colors.dialogText),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(false),
-              child: Text('Cancel', style: TextStyle(color: colors.dialogMuted)),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(true),
-              child: Text('Delete', style: TextStyle(color: colors.danger)),
-            ),
-          ],
-        );
-      },
+    final ok = await QConfirmDialog.show(
+      context,
+      title: 'Delete app?',
+      message: 'Remove "${app.name}" from your device?',
+      confirmLabel: 'Delete',
     );
-    if (ok == true) {
+    if (ok) {
       await engine.uninstall(app, category: category);
     }
   }

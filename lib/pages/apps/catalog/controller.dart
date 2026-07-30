@@ -79,7 +79,6 @@ class AppsCatalogController extends ChangeNotifier {
   ApiVerdict? get incompatibility => _backend.incompatibility;
 
   void chooseCompatibility() => _backend.chooseCompatibility();
-  void declineCatalog() => _backend.declineCatalog();
   Future<void> refreshMode() => _backend.resolveMode(force: true);
 
   AppCategory? categoryById(String id) {
