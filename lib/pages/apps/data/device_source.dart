@@ -299,6 +299,29 @@ class DeviceSource extends ChangeNotifier {
     );
   }
 
+  Future<void> adoptInstalled({
+    required String alias,
+    required String devicePath,
+    required List<int> fapBytes,
+  }) async {
+    if (alias.isEmpty) return;
+    final folder = _folderFromPath(devicePath);
+    try {
+      final name = await _deviceName();
+      if (name != null) {
+        final dir = await appsBackupDirectory(name);
+        final file = io.File(
+            pathJoin([dir.path, sanitizePathSegment(folder), '$alias.fap']));
+        await file.parent.create(recursive: true);
+        await file.writeAsBytes(fapBytes, flush: true);
+      }
+    } catch (e) {
+      LogService.log('[DeviceSource] local copy of "$alias" failed: $e');
+    }
+    _local[alias] = (size: fapBytes.length, folder: folder);
+    notifyListeners();
+  }
+
   Future<void> deleteLocal(InstalledApp app) async {
     try {
       final name = await _deviceName();

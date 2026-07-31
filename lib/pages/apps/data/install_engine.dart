@@ -304,6 +304,11 @@ class InstallEngine extends ChangeNotifier {
       await _verifyUpload(fimPath, manifestBytes);
 
       manifests.put(app.alias, manifest, fimSize: manifestBytes.length);
+      await backend.device.adoptInstalled(
+        alias: app.alias,
+        devicePath: fapPath,
+        fapBytes: prepared.fapBytes,
+      );
       _preparedInstalls.remove(app.alias);
       _actions.remove(app.alias);
       notifyListeners();
