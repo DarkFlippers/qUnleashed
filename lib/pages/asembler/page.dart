@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../theme/theme.dart';
 import '../../widgets/notification.dart';
 import 'controller.dart';
+import 'settings_page.dart';
 import 'widgets/log_view.dart';
 import 'widgets/progress_panel.dart';
 
@@ -17,10 +18,19 @@ class AssemblerConsolePage extends StatelessWidget {
     return Scaffold(
       backgroundColor: colors.background,
       appBar: AppBar(
-        title: const Text('Build console'),
+        title: const Text('Assembler'),
         backgroundColor: colors.background,
         surfaceTintColor: colors.transparent,
         actions: [
+          IconButton(
+            tooltip: 'Assembler settings',
+            icon: Icon(Icons.settings_outlined, color: colors.textPrimary),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const AssemblerSettingsPage(fromConsole: true),
+              ),
+            ),
+          ),
           AnimatedBuilder(
             animation: controller,
             builder: (context, _) => IconButton(

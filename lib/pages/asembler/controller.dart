@@ -2,8 +2,21 @@ import 'dart:io';
 
 import 'package:dartufbt/dartufbt.dart';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-const String kAssemblerIndexUrl = 'https://up.unleashedflip.com/directory.json';
+const String kOfficialIndexUrl =
+    'https://update.flipperzero.one/firmware/directory.json';
+const String kUnleashedIndexUrl = 'https://up.unleashedflip.com/directory.json';
+
+enum AssemblerSdkSource {
+  unleashed(kUnleashedIndexUrl),
+  official(kOfficialIndexUrl),
+  custom(null);
+
+  const AssemblerSdkSource(this.url);
+
+  final String? url;
+}
 
 enum AssemblerLineKind { message, build, raw }
 
@@ -37,7 +50,12 @@ class AssemblerController extends ChangeNotifier {
   UfbtProgress? _progress;
   AssemblerJob _job = AssemblerJob.none;
   UfbtUpdateChannel _channel = UfbtUpdateChannel.release;
+  AssemblerSdkSource _sdkSource = AssemblerSdkSource.unleashed;
+  String _customIndexUrl = '';
   bool _pendingNewline = false;
+
+  static const String _prefSdkSource = 'assembler_sdk_source';
+  static const String _prefCustomIndexUrl = 'assembler_custom_index_url';
 
   UfbtLogger get logger => _logger;
   UfbtStatus? get status => _status;
@@ -45,7 +63,13 @@ class AssemblerController extends ChangeNotifier {
   AssemblerJob get job => _job;
   bool get busy => _job != AssemblerJob.none;
   UfbtUpdateChannel get channel => _channel;
+  AssemblerSdkSource get sdkSource => _sdkSource;
+  String get customIndexUrl => _customIndexUrl;
   bool get verbose => _logger.verbose;
+
+  String? get indexUrl => _sdkSource == AssemblerSdkSource.custom
+      ? (_customIndexUrl.isEmpty ? null : _customIndexUrl)
+      : _sdkSource.url;
 
   UfbtInstaller get installer =>
       _installer ??= UfbtInstaller(logger: _logger, paths: UfbtPaths.resolve());
@@ -54,6 +78,34 @@ class AssemblerController extends ChangeNotifier {
     if (_channel == value || busy) return;
     _channel = value;
     notifyListeners();
+  }
+
+  Future<void> loadSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    final source = prefs.getString(_prefSdkSource);
+    _sdkSource = AssemblerSdkSource.values.firstWhere(
+      (value) => value.name == source,
+      orElse: () => AssemblerSdkSource.unleashed,
+    );
+    _customIndexUrl = prefs.getString(_prefCustomIndexUrl) ?? '';
+    notifyListeners();
+  }
+
+  Future<void> setSdkSource(AssemblerSdkSource value) async {
+    if (_sdkSource == value || busy) return;
+    _sdkSource = value;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_prefSdkSource, value.name);
+  }
+
+  Future<void> setCustomIndexUrl(String value) async {
+    final url = value.trim();
+    if (_customIndexUrl == url) return;
+    _customIndexUrl = url;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_prefCustomIndexUrl, url);
   }
 
   void setVerbose(bool value) {
@@ -77,7 +129,7 @@ class AssemblerController extends ChangeNotifier {
 
   SdkDeployTask taskForChannel({bool force = false}) => SdkDeployTask.channel(
     channel: _channel,
-    indexUrl: kAssemblerIndexUrl,
+    indexUrl: indexUrl,
     force: force,
   );
 
@@ -89,10 +141,24 @@ class AssemblerController extends ChangeNotifier {
   }
 
   Future<bool> downloadToolchain({bool force = false}) {
-    return _run(
-      AssemblerJob.toolchain,
-      () => installer.installToolchain(force: force),
-    );
+    return _run(AssemblerJob.toolchain, () async {
+      final before = installer.toolchainDeployer.status();
+      _logger.info(
+        'Checking toolchain: '
+        '${before.isDeployed ? 'installed v${before.installedVersion}' : 'not installed'}, '
+        'SDK needs v${before.version}',
+      );
+      final ok = await installer.installToolchain(force: force);
+      final after = installer.toolchainDeployer.status();
+      if (!ok) {
+        _logger.error('Toolchain deploy failed');
+      } else if (before.isUpToDate && !force) {
+        _logger.info('Toolchain v${after.installedVersion} is up to date');
+      } else {
+        _logger.info('Toolchain deployed: v${after.installedVersion}');
+      }
+      return ok;
+    });
   }
 
   String? _buildAlias;

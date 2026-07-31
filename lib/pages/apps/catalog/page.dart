@@ -6,7 +6,8 @@ import '../../../components/dialogs/catalog_compat.dart';
 import '../../../components/dialogs/catalog_states.dart';
 import '../../../theme/theme.dart';
 import '../../../widgets/open_url.dart';
-import '../../asembler/intro_page.dart';
+import '../../asembler/controller.dart';
+import '../../asembler/page.dart';
 import '../../tools/remote/desktop/page.dart';
 import '../manager/page.dart';
 import 'detail_page.dart';
@@ -80,11 +81,12 @@ class _CatalogViewState extends State<CatalogView> {
   }
 
   void _openAssembler() {
-    _ctrl.chooseSourceBuild();
     Navigator.of(
       context,
-    ).push(MaterialPageRoute(builder: (_) => const AssemblerIntroPage()));
+    ).push(MaterialPageRoute(builder: (_) => const AssemblerConsolePage()));
   }
+
+  void _chooseSourceBuild() => _ctrl.chooseSourceBuild();
 
   void _onLaunched() {
     Navigator.of(
@@ -122,14 +124,28 @@ class _CatalogViewState extends State<CatalogView> {
         return Scaffold(
           backgroundColor: colors.background,
           body: SafeArea(child: _buildForMode(context)),
+          floatingActionButton: _showsCatalog && AssemblerController.isSupported
+              ? FloatingActionButton(
+                  backgroundColor: colors.accent,
+                  foregroundColor: colors.onAccent,
+                  tooltip: 'Assembler',
+                  onPressed: _openAssembler,
+                  child: const Icon(Icons.construction),
+                )
+              : null,
         );
       },
     );
   }
 
+  bool get _showsCatalog =>
+      _ctrl.mode.value == CatalogMode.normal ||
+      _ctrl.mode.value == CatalogMode.compatibility;
+
   void _syncMode() {
     final mode = _ctrl.mode.value;
-    if (mode != CatalogMode.incompatible) {
+    if (mode != CatalogMode.incompatible ||
+        _ctrl.incompatibility == ApiVerdict.tooNew) {
       _incompatKnown = false;
       return;
     }
@@ -150,16 +166,25 @@ class _CatalogViewState extends State<CatalogView> {
           CatalogCompatDialog(
             deviceApi: _ctrl.deviceApi,
             serverApi: _ctrl.serverApi,
-            compatApi: _ctrl.compatApi,
-            onBuildFromSource: _openAssembler,
+            onBuildFromSource: _chooseSourceBuild,
             onIgnoreAndContinue: _ctrl.chooseCompatibility,
             onDecline: () => widget.onOpenManager?.call(),
           ),
         );
       case CatalogMode.incompatible:
+        if (_ctrl.incompatibility == ApiVerdict.tooNew) {
+          return _dialogLayer(
+            CatalogCompatDialog(
+              deviceApi: _ctrl.deviceApi,
+              serverApi: _ctrl.serverApi,
+              onBuildFromSource: _chooseSourceBuild,
+              onIgnoreAndContinue: null,
+              onDecline: () => widget.onOpenManager?.call(),
+            ),
+          );
+        }
         return _dialogLayer(
           CatalogIncompatibleDialog(
-            tooOld: _ctrl.incompatibility == ApiVerdict.tooOld,
             deviceApi: _ctrl.deviceApi,
             serverApi: _ctrl.serverApi,
             onOpenManager: () => widget.onOpenManager?.call(),

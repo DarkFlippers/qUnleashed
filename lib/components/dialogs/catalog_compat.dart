@@ -7,7 +7,6 @@ class CatalogCompatDialog extends StatelessWidget {
     super.key,
     required this.deviceApi,
     required this.serverApi,
-    required this.compatApi,
     required this.onBuildFromSource,
     required this.onIgnoreAndContinue,
     required this.onDecline,
@@ -15,9 +14,8 @@ class CatalogCompatDialog extends StatelessWidget {
 
   final String? deviceApi;
   final String? serverApi;
-  final String? compatApi;
   final VoidCallback onBuildFromSource;
-  final VoidCallback onIgnoreAndContinue;
+  final VoidCallback? onIgnoreAndContinue;
   final VoidCallback onDecline;
 
   @override
@@ -68,24 +66,21 @@ class CatalogCompatDialog extends StatelessWidget {
           children: [
             _CompatAction(
               primary: true,
-              label: 'Compatibility mode - build from source',
-              description:
-                  'Downloads the app source bundle instead of a ready FAP '
-                  'and compiles it locally for your firmware. Needs a '
-                  'one-time SDK download, desktop only.',
+              label: 'Compatibility mode',
+              description: 'Builds apps from source for your firmware.',
               onPressed: onBuildFromSource,
             ),
             const SizedBox(height: 8),
-            _CompatAction(
-              label: compatApi != null
-                  ? 'Ignore the warning and continue (API $compatApi)'
-                  : 'Ignore the warning and continue',
-              description:
-                  'Installs builds made for another API. Such apps may '
-                  'misbehave or fail to launch at all.',
-              onPressed: onIgnoreAndContinue,
-            ),
-            const SizedBox(height: 8),
+            if (onIgnoreAndContinue != null) ...[
+              _CompatAction(
+                label: 'Ignore warning',
+                description:
+                    'Installs builds made for another API. Such apps may '
+                    'misbehave or fail to launch at all.',
+                onPressed: onIgnoreAndContinue!,
+              ),
+              const SizedBox(height: 8),
+            ],
             _CompatAction(
               label: 'Apps manager only',
               description:
@@ -159,14 +154,12 @@ class _CompatAction extends StatelessWidget {
 class CatalogIncompatibleDialog extends StatelessWidget {
   const CatalogIncompatibleDialog({
     super.key,
-    required this.tooOld,
     required this.deviceApi,
     required this.serverApi,
     required this.onOpenManager,
     required this.onRecheck,
   });
 
-  final bool tooOld;
   final String? deviceApi;
   final String? serverApi;
   final VoidCallback onOpenManager;
@@ -180,11 +173,7 @@ class CatalogIncompatibleDialog extends StatelessWidget {
       title: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            tooOld ? Icons.system_update : Icons.hourglass_top,
-            size: 56,
-            color: colors.dialogMuted,
-          ),
+          Icon(Icons.system_update, size: 56, color: colors.dialogMuted),
           const SizedBox(height: 12),
           Text(
             'Catalog unavailable',
@@ -210,13 +199,10 @@ class CatalogIncompatibleDialog extends StatelessWidget {
               label: 'Catalog API', value: serverApi ?? '—', colors: colors),
           const SizedBox(height: 14),
           Text(
-            tooOld
-                ? 'The firmware API is too old for the app catalog. Update '
-                    'the firmware to use the catalog. Only the apps manager '
-                    'is available, app updates are disabled.'
-                : 'The firmware API is newer than the catalog supports. '
-                    'Only the apps manager is available until the catalog '
-                    'catches up, app updates are disabled.',
+            'The firmware API is too old for the app catalog, even building '
+            'from source is not supported. Update the firmware to use the '
+            'catalog. Only the apps manager is available, app updates are '
+            'disabled.',
             textAlign: TextAlign.center,
             style: TextStyle(color: colors.dialogText, fontSize: 13),
           ),

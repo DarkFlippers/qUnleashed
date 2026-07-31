@@ -1,16 +1,25 @@
 import 'package:dartufbt/dartufbt.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:qunleashed/components/dialogs/catalog_compat.dart';
 import 'package:qunleashed/pages/asembler/controller.dart';
-import 'package:qunleashed/pages/asembler/intro_page.dart';
 import 'package:qunleashed/pages/asembler/page.dart';
+import 'package:qunleashed/pages/asembler/settings_page.dart';
+import 'package:qunleashed/pages/asembler/widgets/progress_panel.dart';
 import 'package:qunleashed/theme/theme.dart';
 
 Widget _wrap(Widget child) => MaterialApp(
   theme: buildAppTheme(Brightness.dark, const Color(0xFFCC241D)),
   home: child,
 );
+
+void _expectOneOf(List<String> labels) {
+  final shown = labels
+      .where((label) => find.text(label).evaluate().isNotEmpty)
+      .toList();
+  expect(shown, hasLength(1), reason: 'expected one of $labels, got $shown');
+}
 
 void main() {
   testWidgets('compat dialog offers three ways to proceed', (tester) async {
@@ -23,7 +32,6 @@ void main() {
         CatalogCompatDialog(
           deviceApi: '88.2',
           serverApi: '86.0',
-          compatApi: '86.0',
           onBuildFromSource: () => pressed.add('source'),
           onIgnoreAndContinue: () => pressed.add('ignore'),
           onDecline: () => pressed.add('manager'),
@@ -32,37 +40,76 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Compatibility mode - build from source'), findsOneWidget);
+    expect(find.text('Compatibility mode'), findsOneWidget);
     expect(
-      find.text('Ignore the warning and continue (API 86.0)'),
+      find.text('Builds apps from source for your firmware.'),
       findsOneWidget,
     );
+    expect(find.text('Ignore warning'), findsOneWidget);
     expect(find.text('Apps manager only'), findsOneWidget);
 
-    await tester.tap(find.text('Compatibility mode - build from source'));
-    await tester.tap(find.text('Ignore the warning and continue (API 86.0)'));
+    await tester.tap(find.text('Compatibility mode'));
+    await tester.tap(find.text('Ignore warning'));
     await tester.tap(find.text('Apps manager only'));
     expect(pressed, ['source', 'ignore', 'manager']);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('intro page renders and switches SDK channel', (tester) async {
+  testWidgets('compat dialog drops the ignore option when asked', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      _wrap(
+        CatalogCompatDialog(
+          deviceApi: '90.0',
+          serverApi: '86.0',
+          onBuildFromSource: () {},
+          onIgnoreAndContinue: null,
+          onDecline: () {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Compatibility mode'), findsOneWidget);
+    expect(find.text('Ignore warning'), findsNothing);
+    expect(find.text('Apps manager only'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('settings page renders and switches SDK channel', (tester) async {
+    SharedPreferences.setMockInitialValues(const {});
     final controller = AssemblerController.instance;
     controller.setChannel(UfbtUpdateChannel.release);
     await tester.binding.setSurfaceSize(const Size(900, 1600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    await tester.pumpWidget(_wrap(const AssemblerIntroPage()));
+    await tester.pumpWidget(_wrap(const AssemblerSettingsPage()));
     await tester.pumpAndSettle();
 
-    expect(find.text('Assembler'), findsOneWidget);
-    expect(find.text('Build apps from source'), findsOneWidget);
+    expect(find.text('Assembler settings'), findsOneWidget);
+    expect(find.text('Flibler (Flipper Assembler Tool)'), findsOneWidget);
     expect(find.text('Release'), findsOneWidget);
     expect(find.text('Development'), findsOneWidget);
-    expect(find.text('Download SDK'), findsOneWidget);
-    expect(find.textContaining('Download toolchain'), findsOneWidget);
+    expect(find.text('Unleashed'), findsOneWidget);
+    expect(find.text('Official'), findsOneWidget);
+    expect(find.text('Custom'), findsOneWidget);
+    expect(find.text(kUnleashedIndexUrl), findsOneWidget);
+    expect(find.text(kOfficialIndexUrl), findsOneWidget);
+    // The labels follow the local ufbt state, so only one of each set shows.
+    _expectOneOf(const ['Download SDK', 'Update SDK', 'Downloading SDK…']);
+    _expectOneOf(const [
+      'Download toolchain',
+      'Update toolchain',
+      'Toolchain ready',
+      'Downloading toolchain…',
+    ]);
     expect(find.text('SDK'), findsOneWidget);
     expect(find.text('Toolchain'), findsOneWidget);
+    expect(find.byType(AssemblerProgressPanel), findsNothing);
 
     await tester.tap(find.text('Development'));
     await tester.pumpAndSettle();
@@ -72,6 +119,26 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  test(
+    'toolchain check reports its outcome when nothing is downloaded',
+    () async {
+      final controller = AssemblerController.instance;
+      if (!AssemblerController.isSupported ||
+          !controller.installer.status().toolchain.isUpToDate) {
+        markTestSkipped('toolchain is not deployed');
+        return;
+      }
+      controller.clearLog();
+
+      expect(await controller.downloadToolchain(), isTrue);
+
+      final log = controller.logAsText();
+      expect(log, contains('Checking toolchain'));
+      expect(log, contains('is up to date'));
+      controller.clearLog();
+    },
+  );
+
   testWidgets('console page shows logger output and progress', (tester) async {
     final controller = AssemblerController.instance;
     controller.clearLog();
@@ -79,7 +146,7 @@ void main() {
     await tester.pumpWidget(_wrap(const AssemblerConsolePage()));
     await tester.pumpAndSettle();
 
-    expect(find.text('Build console'), findsOneWidget);
+    expect(find.text('Assembler'), findsOneWidget);
     expect(find.text('No output yet'), findsOneWidget);
 
     controller.logger.info('Deploying SDK for f7');
