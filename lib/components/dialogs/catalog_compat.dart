@@ -14,7 +14,7 @@ class CatalogCompatDialog extends StatelessWidget {
 
   final String? deviceApi;
   final String? serverApi;
-  final VoidCallback onBuildFromSource;
+  final VoidCallback? onBuildFromSource;
   final VoidCallback? onIgnoreAndContinue;
   final VoidCallback onDecline;
 
@@ -26,8 +26,11 @@ class CatalogCompatDialog extends StatelessWidget {
       title: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.warning_amber_rounded,
-              size: 56, color: Colors.amber.shade600),
+          Icon(
+            Icons.warning_amber_rounded,
+            size: 56,
+            color: Colors.amber.shade600,
+          ),
           const SizedBox(height: 12),
           Text(
             'Catalog / firmware mismatch',
@@ -50,7 +53,10 @@ class CatalogCompatDialog extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           CatalogApiRow(
-              label: 'Catalog API', value: serverApi ?? '—', colors: colors),
+            label: 'Catalog API',
+            value: serverApi ?? '—',
+            colors: colors,
+          ),
           const SizedBox(height: 14),
           Text(
             'The catalog has no builds for your firmware API. Pick how to '
@@ -64,13 +70,15 @@ class CatalogCompatDialog extends StatelessWidget {
       actions: [
         Column(
           children: [
-            _CompatAction(
-              primary: true,
-              label: 'Compatibility mode',
-              description: 'Builds apps from source for your firmware.',
-              onPressed: onBuildFromSource,
-            ),
-            const SizedBox(height: 8),
+            if (onBuildFromSource != null) ...[
+              _CompatAction(
+                primary: true,
+                label: 'Compatibility mode',
+                description: 'Builds apps from source for your firmware.',
+                onPressed: onBuildFromSource!,
+              ),
+              const SizedBox(height: 8),
+            ],
             if (onIgnoreAndContinue != null) ...[
               _CompatAction(
                 label: 'Ignore warning',
@@ -196,7 +204,10 @@ class CatalogIncompatibleDialog extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           CatalogApiRow(
-              label: 'Catalog API', value: serverApi ?? '—', colors: colors),
+            label: 'Catalog API',
+            value: serverApi ?? '—',
+            colors: colors,
+          ),
           const SizedBox(height: 14),
           Text(
             'The firmware API is too old for the app catalog, even building '
@@ -261,12 +272,11 @@ class CatalogApiRow extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Text('$label: ',
-            style: TextStyle(color: colors.textPrimary, fontSize: 13)),
         Text(
-          value,
-          style: TextStyle(color: colors.accent, fontSize: 13),
+          '$label: ',
+          style: TextStyle(color: colors.textPrimary, fontSize: 13),
         ),
+        Text(value, style: TextStyle(color: colors.accent, fontSize: 13)),
       ],
     );
   }

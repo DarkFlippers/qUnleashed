@@ -166,7 +166,9 @@ class _CatalogViewState extends State<CatalogView> {
           CatalogCompatDialog(
             deviceApi: _ctrl.deviceApi,
             serverApi: _ctrl.serverApi,
-            onBuildFromSource: _chooseSourceBuild,
+            onBuildFromSource: AssemblerController.isSupported
+                ? _chooseSourceBuild
+                : null,
             onIgnoreAndContinue: _ctrl.chooseCompatibility,
             onDecline: () => widget.onOpenManager?.call(),
           ),
@@ -177,7 +179,9 @@ class _CatalogViewState extends State<CatalogView> {
             CatalogCompatDialog(
               deviceApi: _ctrl.deviceApi,
               serverApi: _ctrl.serverApi,
-              onBuildFromSource: _chooseSourceBuild,
+              onBuildFromSource: AssemblerController.isSupported
+                  ? _chooseSourceBuild
+                  : null,
               onIgnoreAndContinue: null,
               onDecline: () => widget.onOpenManager?.call(),
             ),
@@ -262,8 +266,11 @@ class _CatalogViewState extends State<CatalogView> {
                       color: colors.accent.withValues(alpha: 0.18),
                       shape: BoxShape.circle,
                     ),
-                    child: Icon(Icons.warning_amber_rounded,
-                        size: 15, color: colors.accent),
+                    child: Icon(
+                      Icons.warning_amber_rounded,
+                      size: 15,
+                      color: colors.accent,
+                    ),
                   ),
                 ),
               ],
@@ -353,8 +360,10 @@ class _CatalogViewState extends State<CatalogView> {
       sliver: SliverLayoutBuilder(
         builder: (context, constraints) {
           const cardWidth = 360.0;
-          final cross =
-              (constraints.crossAxisExtent / cardWidth).floor().clamp(1, 6);
+          final cross = (constraints.crossAxisExtent / cardWidth).floor().clamp(
+            1,
+            6,
+          );
           return SliverGrid(
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: cross,
@@ -406,4 +415,3 @@ class _CatalogViewState extends State<CatalogView> {
     return const SizedBox(height: 16);
   }
 }
-

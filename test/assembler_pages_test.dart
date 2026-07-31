@@ -80,6 +80,30 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('compat dialog drops source builds off desktop', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(900, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      _wrap(
+        CatalogCompatDialog(
+          deviceApi: '88.2',
+          serverApi: '86.0',
+          onBuildFromSource: null,
+          onIgnoreAndContinue: () {},
+          onDecline: () {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Compatibility mode'), findsNothing);
+    expect(find.textContaining('desktop'), findsNothing);
+    expect(find.text('Ignore warning'), findsOneWidget);
+    expect(find.text('Apps manager only'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('settings page renders and switches SDK channel', (tester) async {
     SharedPreferences.setMockInitialValues(const {});
     final controller = AssemblerController.instance;
