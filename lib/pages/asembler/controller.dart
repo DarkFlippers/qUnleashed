@@ -18,6 +18,22 @@ enum AssemblerSdkSource {
   final String? url;
 }
 
+final StringBuffer _terminalLine = StringBuffer();
+
+/// Mirrors the ufbt log into the Dart console the way a terminal shows it:
+/// whole lines only, and of a redrawn progress bar just its last frame.
+void _mirrorToTerminal(String text) {
+  final parts = text.split('\n');
+  for (var i = 0; i < parts.length - 1; i++) {
+    _terminalLine.write(parts[i]);
+    final line = _terminalLine.toString();
+    _terminalLine.clear();
+    final redraw = line.lastIndexOf('\r');
+    debugPrint(redraw < 0 ? line : line.substring(redraw + 1));
+  }
+  _terminalLine.write(parts.last);
+}
+
 enum AssemblerLineKind { message, build, raw }
 
 class AssemblerLine {
@@ -33,6 +49,7 @@ enum AssemblerJob { none, sdk, toolchain, build }
 class AssemblerController extends ChangeNotifier {
   AssemblerController._() {
     _logger.addSink(_onEvent);
+    _logger.addSink(UfbtConsoleSink(output: _mirrorToTerminal).call);
   }
 
   static final AssemblerController instance = AssemblerController._();

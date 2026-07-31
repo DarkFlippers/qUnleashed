@@ -258,7 +258,9 @@ class InstallEngine extends ChangeNotifier {
               if (canFallback) backend.flagCompatibilityNeeded(appApi);
               throw StateError(
                 canFallback
-                    ? 'App is built for API $appApi; enable compatibility mode to install'
+                    ? 'App is built for API $appApi, firmware has '
+                          '${api.api ?? '?'}; ignore the warning or build it '
+                          'from source to install'
                     : 'No compatible build for this firmware (API ${api.api ?? '?'})',
               );
             }

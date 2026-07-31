@@ -47,13 +47,36 @@ class _AssemblerLogViewState extends State<AssemblerLogView> {
   }
 
   Color _colorFor(AssemblerLine line, QAppColors colors) {
-    if (line.kind == AssemblerLineKind.build) return colors.accent;
+    if (line.kind == AssemblerLineKind.build) return colors.textPrimary;
     return switch (line.level) {
       UfbtLogLevel.debug => colors.textMuted,
       UfbtLogLevel.warning => Colors.amber.shade600,
       UfbtLogLevel.error || UfbtLogLevel.critical => colors.danger,
-      _ => colors.terminalText,
+      _ => colors.textPrimary,
     };
+  }
+
+  static final RegExp _buildTag = RegExp(r'^\t([^\t]+)\t([\s\S]*)$');
+
+  Widget _line(AssemblerLine line, QAppColors colors, TextStyle style) {
+    if (line.kind == AssemblerLineKind.build) {
+      final match = _buildTag.firstMatch(line.text);
+      if (match != null) {
+        return Text.rich(
+          TextSpan(
+            children: [
+              TextSpan(
+                text: '\t${match.group(1)}',
+                style: style.copyWith(color: colors.accent),
+              ),
+              TextSpan(text: '\t${match.group(2)}'),
+            ],
+          ),
+          style: style,
+        );
+      }
+    }
+    return Text(line.text.isEmpty ? ' ' : line.text, style: style);
   }
 
   @override
@@ -91,9 +114,10 @@ class _AssemblerLogViewState extends State<AssemblerLogView> {
                           itemCount: lines.length,
                           itemBuilder: (context, index) {
                             final line = lines[index];
-                            return Text(
-                              line.text.isEmpty ? ' ' : line.text,
-                              style: TextStyle(
+                            return _line(
+                              line,
+                              colors,
+                              TextStyle(
                                 color: _colorFor(line, colors),
                                 fontSize: 11.5,
                                 height: 1.45,

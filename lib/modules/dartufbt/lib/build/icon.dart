@@ -27,12 +27,45 @@ class IconCodec {
   final Heatshrink heatshrink;
 
   FlipperImage fileToImage(File file) {
-    final decoded = img.decodeImage(file.readAsBytesSync());
+    final bytes = file.readAsBytesSync();
+    final decoder = _decoderFor(bytes);
+    final decoded = decoder == null
+        ? img.decodeImage(bytes)
+        : decoder.decode(bytes);
     if (decoded == null) {
       throw FormatException('Failed to decode image ${file.path}');
     }
+    // Netpbm bitmaps store 1 as black, PnmDecoder hands it back as white while
+    // PIL, which fbt builds with, keeps it black.
+    if (_isPbm(bytes)) img.invert(decoded);
     return toImage(decoded);
   }
+
+  /// Picks the decoder by file signature, the way PIL does for fbt. Sniffing it
+  /// with `decodeImage` is not enough: its TGA probe accepts anything short,
+  /// so a Netpbm `.icon` is decoded as TGA and blows up mid-stream.
+  static img.Decoder? _decoderFor(Uint8List bytes) {
+    if (bytes.length < 4) return null;
+    if (bytes[0] == 0x89 &&
+        bytes[1] == 0x50 &&
+        bytes[2] == 0x4E &&
+        bytes[3] == 0x47) {
+      return img.PngDecoder();
+    }
+    if (bytes[0] == 0x50 &&
+        const [0x31, 0x32, 0x33, 0x35, 0x36].contains(bytes[1])) {
+      return img.PnmDecoder();
+    }
+    if (bytes[0] == 0x42 && bytes[1] == 0x4D) return img.BmpDecoder();
+    if (bytes[0] == 0xFF && bytes[1] == 0xD8) return img.JpegDecoder();
+    if (bytes[0] == 0x47 && bytes[1] == 0x49 && bytes[2] == 0x46) {
+      return img.GifDecoder();
+    }
+    return null;
+  }
+
+  static bool _isPbm(Uint8List bytes) =>
+      bytes.length > 1 && bytes[0] == 0x50 && bytes[1] == 0x31;
 
   FlipperImage toImage(img.Image source) {
     final xbm = _toXbm(source);

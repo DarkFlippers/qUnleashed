@@ -142,6 +142,11 @@ class AppsBackend {
         _incompatibility = res.verdict;
         mode.value = CatalogMode.incompatible;
       }
+      // A reconnect must not drop the source build the user already picked,
+      // otherwise the dialog comes back and installs fall to the API fallback.
+      if (sourceBuildEnabled && res.verdict != ApiVerdict.normal) {
+        chooseSourceBuild();
+      }
       LogService.log(
         '[AppsBackend] mode=${mode.value.name} device=$_deviceApi '
         'server=$serverApi picked=${res.api} compat=$_compatApi',
@@ -190,6 +195,7 @@ class AppsBackend {
     final id = state.device?.id;
     if (id != null && id != _deviceId) {
       _deviceId = id;
+      sourceBuildEnabled = false;
       _resetDeviceState();
       _resolvedForDeviceId = null;
       manifests.handleDeviceChange();

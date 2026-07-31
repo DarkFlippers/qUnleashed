@@ -163,6 +163,26 @@ void main() {
     },
   );
 
+  test('logger is mirrored into the dart console', () async {
+    final controller = AssemblerController.instance;
+    final printed = <String>[];
+    final original = debugPrint;
+    debugPrint = (message, {wrapWidth}) => printed.add(message ?? '');
+    addTearDown(() => debugPrint = original);
+
+    controller.clearLog();
+    controller.logger.info('Deploying SDK for f7');
+    controller.logger.build('CC', 'app/hello_world.c');
+    final task = controller.logger.progress('Downloading:', total: 100);
+    task.finish();
+    controller.clearLog();
+
+    expect(printed.any((l) => l.endsWith('[I] Deploying SDK for f7')), isTrue);
+    expect(printed, contains('\tCC\tapp/hello_world.c'));
+    expect(printed, contains('Downloading:'));
+    expect(printed.any((l) => l.contains('100.0%')), isTrue);
+  });
+
   testWidgets('console page shows logger output and progress', (tester) async {
     final controller = AssemblerController.instance;
     controller.clearLog();
@@ -180,8 +200,27 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('[I] Deploying SDK for f7'), findsOneWidget);
-    expect(find.text('\tCC\tapp/hello_world.c'), findsOneWidget);
+    expect(
+      find.text('\tCC\tapp/hello_world.c', findRichText: true),
+      findsOneWidget,
+    );
     expect(find.text('Checking for tar..yes'), findsOneWidget);
+
+    // Only the build tag is coloured, the value follows the theme.
+    final buildLine = tester.widget<RichText>(
+      find.byWidgetPredicate(
+        (w) => w is RichText && w.text.toPlainText().startsWith('\tCC\t'),
+      ),
+    );
+    final spans = <TextSpan>[];
+    buildLine.text.visitChildren((span) {
+      if (span is TextSpan && (span.text ?? '').isNotEmpty) spans.add(span);
+      return true;
+    });
+    expect(spans[0].text, '\tCC');
+    expect(spans[0].style?.color, const Color(0xFFCC241D));
+    expect(spans[1].text, '\tapp/hello_world.c');
+    expect(spans[1].style?.color, isNull);
 
     final task = controller.logger.progress(
       'Downloading toolchain:',
