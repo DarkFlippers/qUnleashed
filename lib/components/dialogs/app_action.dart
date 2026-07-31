@@ -99,23 +99,8 @@ class _ActionDialogState extends State<_ActionDialog> {
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final app = widget.app;
-    final manifest = app.manifest;
     final accent = colors.accent;
-    final card = _card;
-    final cv = card?.currentVersion;
-    final author = card?.author ?? '';
-    final embedded = app.fap?.manifest;
-    final version = _firstOf(cv?.version, embedded?.version);
-    final category =
-        card != null ? (widget.categoryNameFor(card.categoryId) ?? '') : '';
-    final sdkApi = _firstOf(manifest?.sdkApi, embedded?.api);
-
-    final meta = <String>[
-      if (category.isNotEmpty) category,
-      if (version.isNotEmpty) 'v$version',
-      if (app.size > 0) _fmtSize(app.size),
-      if (sdkApi.isNotEmpty) 'API $sdkApi',
-    ].join('  ·  ');
+    final author = _card?.author ?? '';
 
     final media = MediaQuery.of(context).size;
 
@@ -167,37 +152,25 @@ class _ActionDialogState extends State<_ActionDialog> {
                             height: 1.15,
                           ),
                         ),
-                        if (author.isNotEmpty)
-                          Text(
-                            'by $author',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                                color: colors.textMuted, fontSize: 12),
-                          ),
+                        Text(
+                          app.path.isNotEmpty
+                              ? app.path
+                              : '/ext/apps/${app.folder}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              color: colors.textMuted, fontSize: 11),
+                        ),
                       ],
                     ),
                   ),
                   if (widget.isUpdatable) _UpdateTag(color: colors.success),
                 ],
               ),
-              if (meta.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Text(
-                  meta,
-                  style: TextStyle(color: colors.textSecondary, fontSize: 12),
-                ),
-              ],
-              const SizedBox(height: 2),
-              Text(
-                app.path.isNotEmpty ? app.path : '/ext/apps/${app.folder}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: colors.textMuted, fontSize: 11),
-              ),
               const SizedBox(height: 14),
               FapFactsPanel(
                 app: app,
+                author: author,
                 deviceApi: widget.deviceApi,
                 deviceTarget: widget.deviceTarget,
               ),
@@ -264,25 +237,9 @@ class _ActionDialogState extends State<_ActionDialog> {
     );
   }
 
-  String _firstOf(String? preferred, String? fallback) {
-    if (preferred != null && preferred.isNotEmpty) return preferred;
-    return fallback ?? '';
-  }
-
   void _run(VoidCallback action) {
     Navigator.of(context).pop();
     action();
-  }
-
-  String _fmtSize(int bytes) {
-    const units = ['B', 'KB', 'MB', 'GB'];
-    var b = bytes.toDouble();
-    var i = 0;
-    while (b >= 1024 && i < units.length - 1) {
-      b /= 1024;
-      i++;
-    }
-    return '${b.toStringAsFixed(b >= 10 || i == 0 ? 0 : 1)} ${units[i]}';
   }
 }
 

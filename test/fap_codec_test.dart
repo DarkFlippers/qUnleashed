@@ -39,7 +39,6 @@ void main() {
       expect(info.ramTotal, 256 + 64 + 128 + 32);
       expect(info.ramLargestBlock, 256);
       expect(info.hasFastRelocations, isTrue);
-      expect(info.debugLink, 'test_app_d.elf');
     });
 
     test('skips ARM sections the firmware ignores', () {
@@ -146,9 +145,10 @@ void main() {
       await pump(tester, app(fap: FapInfo.parse(_buildFap())));
 
       expect(find.text('Runs on this firmware'), findsOneWidget);
-      expect(find.text('API 86.3 · f7'), findsOneWidget);
+      expect(find.text('86.3'), findsOneWidget);
+      expect(find.text('f7'), findsOneWidget);
+      expect(find.text('480 B'), findsOneWidget);
       expect(find.textContaining('2 files'), findsOneWidget);
-      expect(find.textContaining('imported symbols'), findsOneWidget);
       expect(find.text('fast (fastfap)'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
@@ -271,7 +271,6 @@ Uint8List _buildFap({
     kFapAssetsSection: _buildAssets(),
     '.symtab': _buildSymtab(),
     '.strtab': strtab,
-    kFapDebugLinkSection: Uint8List.fromList([...'test_app_d.elf'.codeUnits, 0]),
   };
 
   final names = ['', ...payloads.keys, '.shstrtab'];
@@ -294,7 +293,6 @@ Uint8List _buildFap({
     (kFapAssetsSection, shtProgbits, 0, payloads[kFapAssetsSection]!),
     ('.symtab', shtSymtab, 0, payloads['.symtab']!),
     ('.strtab', shtStrtab, 0, payloads['.strtab']!),
-    (kFapDebugLinkSection, shtProgbits, 0, payloads[kFapDebugLinkSection]!),
     ('.shstrtab', shtStrtab, 0, shstrtabBytes),
   ];
 

@@ -8,7 +8,6 @@ const int kFapAssetsVersion = 1;
 
 const String kFapMetaSection = '.fapmeta';
 const String kFapAssetsSection = '.fapassets';
-const String kFapDebugLinkSection = '.gnu_debuglink';
 const String kFapFastRelPrefix = '.fast.rel';
 
 const int _shtNobits = 8;
@@ -370,7 +369,6 @@ class FapInfo {
     required this.sections,
     required this.imports,
     required this.assets,
-    required this.debugLink,
     required this.hasFastRelocations,
   });
 
@@ -379,7 +377,6 @@ class FapInfo {
   final List<ElfSectionHeader> sections;
   final List<String> imports;
   final FapAssets? assets;
-  final String? debugLink;
   final bool hasFastRelocations;
 
   static FapInfo? parse(Uint8List bytes) {
@@ -388,7 +385,6 @@ class FapInfo {
 
     final metaSection = elf.sectionBytes(kFapMetaSection);
     final assetsSection = elf.sectionBytes(kFapAssetsSection);
-    final debugLinkSection = elf.sectionBytes(kFapDebugLinkSection);
 
     return FapInfo(
       fileSize: bytes.length,
@@ -396,9 +392,6 @@ class FapInfo {
       sections: List.unmodifiable(elf.sections),
       imports: List.unmodifiable(elf.undefinedSymbols()),
       assets: assetsSection == null ? null : FapAssets.parse(assetsSection),
-      debugLink: debugLinkSection == null
-          ? null
-          : _readCString(debugLinkSection, 0),
       hasFastRelocations: elf.sections.any(
         (s) => s.name.startsWith(kFapFastRelPrefix) && !_isArmSection(s.name),
       ),

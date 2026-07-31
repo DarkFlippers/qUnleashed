@@ -11,11 +11,13 @@ class FapFactsPanel extends StatelessWidget {
   const FapFactsPanel({
     super.key,
     required this.app,
+    this.author,
     this.deviceApi,
     this.deviceTarget,
   });
 
   final InstalledApp app;
+  final String? author;
   final String? deviceApi;
   final String? deviceTarget;
 
@@ -59,26 +61,23 @@ class FapFactsPanel extends StatelessWidget {
         _Facts(
           colors: colors,
           rows: [
+            if (author != null && author!.isNotEmpty) ('Author', author!),
             if (manifest != null) ...[
               ('Version', manifest.version),
-              ('Built for', 'API ${manifest.api} · ${manifest.target}'),
+              ('API', manifest.api),
+              ('Target', manifest.target),
               if (!manifest.isPlugin)
                 ('Stack', _fmtSize(manifest.stackSize))
               else
                 ('Type', 'Plugin'),
             ],
-            (
-              'RAM to load',
-              '${_fmtSize(info.ramTotal)} · largest block '
-                  '${_fmtSize(info.ramLargestBlock)}'
-            ),
-            (
-              'Layout',
-              'code ${_fmtSize(info.codeSize)} · const '
-                  '${_fmtSize(info.readOnlyDataSize)} · data '
-                  '${_fmtSize(info.dataSize)} · bss ${_fmtSize(info.bssSize)}'
-            ),
-            ('API calls', '${info.imports.length} imported symbols'),
+            ('RAM to load', _fmtSize(info.ramTotal)),
+            ('Largest block', _fmtSize(info.ramLargestBlock)),
+            ('Code', _fmtSize(info.codeSize)),
+            ('Const', _fmtSize(info.readOnlyDataSize)),
+            ('Data', _fmtSize(info.dataSize)),
+            ('BSS', _fmtSize(info.bssSize)),
+            ('API imports', '${info.imports.length}'),
             if (assets != null) ('Assets', '${assets.files.length} files'),
             if (assets != null && assets.plugins.isNotEmpty)
               ('Plugins', '${assets.plugins.length} embedded'),
@@ -86,8 +85,6 @@ class FapFactsPanel extends StatelessWidget {
               'Relocations',
               info.hasFastRelocations ? 'fast (fastfap)' : 'standard'
             ),
-            if (info.debugLink != null && info.debugLink!.isNotEmpty)
-              ('Debug link', info.debugLink!),
             ('File', _fmtSize(info.fileSize)),
           ],
         ),
