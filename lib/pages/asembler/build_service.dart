@@ -19,10 +19,7 @@ class AssemblerBuildService {
 
   static const String manifestName = 'application.fam';
 
-  static Future<List<int>> buildFromBundle({
-    required List<int> bundle,
-    required String alias,
-  }) async {
+  static void ensureReady() {
     final controller = AssemblerController.instance;
     if (!AssemblerController.isSupported) {
       throw const AssemblerNotReadyException(
@@ -41,6 +38,52 @@ class AssemblerBuildService {
         'Toolchain is not installed, open the assembler and download it',
       );
     }
+  }
+
+  /// Builds a project checked out anywhere on disk, the way `ufbt` does in a
+  /// source folder.
+  static Future<List<FapBuildResult>> buildProject({
+    required Directory root,
+    String? alias,
+  }) {
+    ensureReady();
+    final controller = AssemblerController.instance;
+    final appDir = findAppDir(root);
+    if (appDir == null) {
+      throw AssemblerNotReadyException(
+        'No $manifestName found in ${root.path}',
+      );
+    }
+    return controller.runBuild(alias ?? _name(appDir.path), () async {
+      final builder = FapBuilder(
+        logger: controller.logger,
+        paths: controller.installer.paths,
+      );
+      final results = await builder.buildAll(
+        appDir: appDir,
+        outputDir: Directory(UfbtPaths.join(root.path, 'dist')),
+      );
+      for (final result in results) {
+        if (!result.success || result.fap == null) {
+          throw AssemblerNotReadyException(
+            result.error ?? 'Build failed, see the build console',
+          );
+        }
+        controller.logger.info('Built ${result.fap!.path}');
+      }
+      return results;
+    });
+  }
+
+  static String _name(String path) =>
+      path.split(RegExp(r'[/\\]')).where((p) => p.isNotEmpty).last;
+
+  static Future<List<int>> buildFromBundle({
+    required List<int> bundle,
+    required String alias,
+  }) async {
+    ensureReady();
+    final controller = AssemblerController.instance;
 
     return controller.runBuild(alias, () async {
       final paths = controller.installer.paths;
@@ -70,7 +113,7 @@ class AssemblerBuildService {
       }
       task.finish();
 
-      final appDir = _findAppDir(root);
+      final appDir = findAppDir(root);
       if (appDir == null) {
         throw AssemblerNotReadyException(
           'No $manifestName found in the source bundle',
@@ -92,7 +135,7 @@ class AssemblerBuildService {
     });
   }
 
-  static Directory? _findAppDir(Directory root) {
+  static Directory? findAppDir(Directory root) {
     final preferred = Directory(UfbtPaths.join(root.path, 'code'));
     if (File(UfbtPaths.join(preferred.path, manifestName)).existsSync()) {
       return preferred;

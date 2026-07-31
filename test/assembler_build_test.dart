@@ -5,6 +5,7 @@ import 'package:dartufbt/dartufbt.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/asembler/build_service.dart';
 import 'package:qunleashed/pages/asembler/controller.dart';
+import 'package:qunleashed/pages/asembler/project/controller.dart';
 
 /// Requires a deployed ufbt state and a catalog source bundle:
 ///   DARTUFBT_BUNDLE=/path/to/bundle.zip flutter test test/assembler_build_test.dart
@@ -45,5 +46,55 @@ void main() {
     },
     timeout: const Timeout(Duration(minutes: 10)),
     skip: ready ? false : 'ufbt state or DARTUFBT_BUNDLE is not available',
+  );
+
+  final projectPath = Platform.environment['DARTUFBT_PROJECT'];
+  test(
+    'builds a project folder picked in the tool',
+    () async {
+      final project = FliblerProjectController();
+      project.setFolder(projectPath!);
+
+      expect(await project.loadProject(), isTrue, reason: project.error);
+      expect(project.app!.appid, isNotEmpty);
+      expect(project.icon, isNotNull);
+      expect(project.targetPath, startsWith('/ext/apps/'));
+      expect(project.targetPath, endsWith('.fap'));
+
+      // Sending needs a device, the build itself must still produce the FAP.
+      await project.build();
+      expect(project.fap!.existsSync(), isTrue);
+    },
+    timeout: const Timeout(Duration(minutes: 10)),
+    skip:
+        AssemblerController.isSupported &&
+            projectPath != null &&
+            Directory(projectPath).existsSync() &&
+            controller.installer.status().isReady
+        ? false
+        : 'ufbt state or DARTUFBT_PROJECT is not available',
+  );
+
+  final repoUrl = Platform.environment['DARTUFBT_REPO'];
+  test(
+    'clones a repository link and builds it',
+    () async {
+      final project = FliblerProjectController();
+      project.setKind(FliblerSourceKind.repository);
+      project.setRepo(repoUrl!);
+
+      expect(await project.loadProject(), isTrue, reason: project.error);
+      expect(project.app!.appid, isNotEmpty);
+
+      await project.build();
+      expect(project.fap!.existsSync(), isTrue);
+    },
+    timeout: const Timeout(Duration(minutes: 15)),
+    skip:
+        AssemblerController.isSupported &&
+            repoUrl != null &&
+            controller.installer.status().isReady
+        ? false
+        : 'ufbt state or DARTUFBT_REPO is not available',
   );
 }

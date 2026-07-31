@@ -8,6 +8,8 @@ import '../../../components/icon.dart';
 import '../../../theme/theme.dart';
 import '../../../components/dialogs/action.dart';
 import '../../about/page.dart';
+import '../../asembler/controller.dart';
+import '../../asembler/project/page.dart';
 import '../../option/page.dart';
 import '../paint/manager/page.dart';
 import '../remote/desktop/page.dart';
@@ -58,6 +60,24 @@ class ToolsPage extends StatelessWidget {
     ),
     ToolGroup(
       header: const ToolCardHeader(
+        iconAsset: 'assets/ic/app/apps.svg',
+        iconColor: Color(0xFF4DB6AC),
+        title: 'Apps',
+      ),
+      items: [
+        if (AssemblerController.isSupported)
+          ToolItemModel(
+            iconAsset: 'assets/ic/fileformat/plugins.svg',
+            iconColor: const Color(0xFF4DB6AC),
+            title: 'Flibler',
+            description: 'Build an app from a folder or repo',
+            routeBuilder: _buildFliblerPage,
+            badge: 'Beta',
+          ),
+      ],
+    ),
+    ToolGroup(
+      header: const ToolCardHeader(
         iconAsset: 'assets/ic/app/files.svg',
         iconColor: Color(0xFF8BC34A),
         title: 'File utils',
@@ -75,8 +95,7 @@ class ToolsPage extends StatelessWidget {
           iconAsset: 'assets/ic/fileformat/ir.svg',
           iconColor: const Color(0xFFAF52DE),
           title: 'Remotes Library',
-          description:
-              'Find and save remotes for your devices',
+          description: 'Find and save remotes for your devices',
           routeBuilder: _buildIrLibPage,
         ),
         ToolItemModel(
@@ -152,10 +171,7 @@ class ToolsPage extends StatelessWidget {
         QIconBadge(asset: item.iconAsset, color: item.iconColor),
         const SizedBox(width: 8),
         Expanded(
-          child: ToolItemText(
-            title: item.title,
-            description: item.description,
-          ),
+          child: ToolItemText(title: item.title, description: item.description),
         ),
         if (item.badge != null) ToolItemBadge(label: item.badge!),
         Padding(
@@ -195,17 +211,18 @@ class ToolsPage extends StatelessWidget {
           child: Column(
             children: [
               for (final group in _tools)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 5),
-                  child: GroupedCardList<ToolItemModel>(
-                    header: group.header == null
-                        ? null
-                        : _groupHeader(group.header!, colors),
-                    items: group.items,
-                    onTap: (item) => _resolveTap(context, item),
-                    itemBuilder: _toolItem,
+                if (group.items.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 5),
+                    child: GroupedCardList<ToolItemModel>(
+                      header: group.header == null
+                          ? null
+                          : _groupHeader(group.header!, colors),
+                      items: group.items,
+                      onTap: (item) => _resolveTap(context, item),
+                      itemBuilder: _toolItem,
+                    ),
                   ),
-                ),
               const AppVersionLabel(),
             ],
           ),
@@ -228,6 +245,8 @@ Widget _buildAboutPage(BuildContext context) => const AboutPage();
 Widget _buildSettingsPage(BuildContext context) => const SettingsPage();
 
 Widget _buildPaintPage(BuildContext context) => const ProjectManagerPage();
+
+Widget _buildFliblerPage(BuildContext context) => const FliblerProjectPage();
 
 Widget _buildRemoteControlPage(BuildContext context) =>
     const RemoteControlPage();
