@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../components/dialogs/catalog_compat.dart';
+import '../../../components/icon.dart';
 import '../../../components/dialogs/catalog_states.dart';
 import '../../../theme/theme.dart';
 import '../../../widgets/open_url.dart';
@@ -130,7 +131,11 @@ class _CatalogViewState extends State<CatalogView> {
                   foregroundColor: colors.onAccent,
                   tooltip: 'Assembler',
                   onPressed: _openAssembler,
-                  child: const Icon(Icons.construction),
+                  child: QIcon(
+                    asset: 'assets/ic/fileformat/settings.svg',
+                    color: colors.onAccent,
+                    size: 24,
+                  ),
                 )
               : null,
         );
