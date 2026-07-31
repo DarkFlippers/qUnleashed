@@ -162,10 +162,9 @@ class _CatalogViewState extends State<CatalogView> {
   }
 
   Widget _buildForMode(BuildContext context) {
-    final colors = context.appColors;
     switch (_ctrl.mode.value) {
       case CatalogMode.resolving:
-        return Center(child: CircularProgressIndicator(color: colors.accent));
+        return const SizedBox.shrink();
       case CatalogMode.mismatch:
         return _dialogLayer(
           CatalogCompatDialog(
