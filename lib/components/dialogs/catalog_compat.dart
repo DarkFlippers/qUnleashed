@@ -8,14 +8,16 @@ class CatalogCompatDialog extends StatelessWidget {
     required this.deviceApi,
     required this.serverApi,
     required this.compatApi,
-    required this.onUseCompatibility,
+    required this.onBuildFromSource,
+    required this.onIgnoreAndContinue,
     required this.onDecline,
   });
 
   final String? deviceApi;
   final String? serverApi;
   final String? compatApi;
-  final VoidCallback onUseCompatibility;
+  final VoidCallback onBuildFromSource;
+  final VoidCallback onIgnoreAndContinue;
   final VoidCallback onDecline;
 
   @override
@@ -53,8 +55,8 @@ class CatalogCompatDialog extends StatelessWidget {
               label: 'Catalog API', value: serverApi ?? '—', colors: colors),
           const SizedBox(height: 14),
           Text(
-            'The catalog has no builds for your firmware API. Apps installed '
-            'in compatibility mode may work incorrectly or fail to launch.',
+            'The catalog has no builds for your firmware API. Pick how to '
+            'proceed:',
             textAlign: TextAlign.center,
             style: TextStyle(color: colors.dialogText, fontSize: 13),
           ),
@@ -64,37 +66,90 @@ class CatalogCompatDialog extends StatelessWidget {
       actions: [
         Column(
           children: [
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: onUseCompatibility,
+            _CompatAction(
+              primary: true,
+              label: 'Compatibility mode - build from source',
+              description:
+                  'Downloads the app source bundle instead of a ready FAP '
+                  'and compiles it locally for your firmware. Needs a '
+                  'one-time SDK download, desktop only.',
+              onPressed: onBuildFromSource,
+            ),
+            const SizedBox(height: 8),
+            _CompatAction(
+              label: compatApi != null
+                  ? 'Ignore the warning and continue (API $compatApi)'
+                  : 'Ignore the warning and continue',
+              description:
+                  'Installs builds made for another API. Such apps may '
+                  'misbehave or fail to launch at all.',
+              onPressed: onIgnoreAndContinue,
+            ),
+            const SizedBox(height: 8),
+            _CompatAction(
+              label: 'Apps manager only',
+              description:
+                  'Keeps the catalog closed, you can still manage apps '
+                  'already installed on the device.',
+              onPressed: onDecline,
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _CompatAction extends StatelessWidget {
+  const _CompatAction({
+    required this.label,
+    required this.description,
+    required this.onPressed,
+    this.primary = false,
+  });
+
+  final String label;
+  final String description;
+  final VoidCallback onPressed;
+  final bool primary;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        primary
+            ? FilledButton(
+                onPressed: onPressed,
                 style: FilledButton.styleFrom(
                   backgroundColor: colors.accent,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 12),
                 ),
-                child: Text(
-                  compatApi != null
-                      ? 'Use compatibility mode (API $compatApi)'
-                      : 'Use compatibility mode',
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton(
-                onPressed: onDecline,
+                child: Text(label, textAlign: TextAlign.center),
+              )
+            : OutlinedButton(
+                onPressed: onPressed,
                 style: OutlinedButton.styleFrom(
                   foregroundColor: colors.dialogMuted,
                   side: BorderSide(color: colors.dialogDivider),
                   padding: const EdgeInsets.symmetric(vertical: 12),
                 ),
-                child: const Text('Not now - apps manager only'),
+                child: Text(label, textAlign: TextAlign.center),
               ),
+        const SizedBox(height: 4),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Text(
+            description,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: colors.dialogMuted,
+              fontSize: 11.5,
+              height: 1.3,
             ),
-          ],
+          ),
         ),
       ],
     );

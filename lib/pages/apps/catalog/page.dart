@@ -6,6 +6,7 @@ import '../../../components/dialogs/catalog_compat.dart';
 import '../../../components/dialogs/catalog_states.dart';
 import '../../../theme/theme.dart';
 import '../../../widgets/open_url.dart';
+import '../../asembler/intro_page.dart';
 import '../../tools/remote/desktop/page.dart';
 import '../manager/page.dart';
 import 'detail_page.dart';
@@ -78,6 +79,13 @@ class _CatalogViewState extends State<CatalogView> {
     }
   }
 
+  void _openAssembler() {
+    _ctrl.chooseSourceBuild();
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const AssemblerIntroPage()));
+  }
+
   void _onLaunched() {
     Navigator.of(
       context,
@@ -143,7 +151,8 @@ class _CatalogViewState extends State<CatalogView> {
             deviceApi: _ctrl.deviceApi,
             serverApi: _ctrl.serverApi,
             compatApi: _ctrl.compatApi,
-            onUseCompatibility: _ctrl.chooseCompatibility,
+            onBuildFromSource: _openAssembler,
+            onIgnoreAndContinue: _ctrl.chooseCompatibility,
             onDecline: () => widget.onOpenManager?.call(),
           ),
         );

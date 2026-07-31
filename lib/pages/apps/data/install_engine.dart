@@ -9,6 +9,7 @@ import '../../../services/http/app_http.dart';
 import '../../../services/progress_throttle.dart';
 import '../../../services/repository/app.dart';
 import '../../archive/overview/fap_icon.dart';
+import '../../asembler/build_service.dart';
 import 'apps_backend.dart';
 import 'catalog_api.dart';
 import 'manifest_registry.dart';
@@ -19,7 +20,7 @@ import 'models/manifest.dart';
 
 enum AppActionType { install, update, delete }
 
-enum AppActionStage { queued, download, upload, check }
+enum AppActionStage { queued, download, build, upload, check }
 
 @immutable
 class AppAction {
@@ -223,31 +224,44 @@ class InstallEngine extends ChangeNotifier {
         }
 
         List<int> fapBytes;
-        try {
-          fapBytes = await api.fetchFapBuild(cv.id, onProgress: onProgress);
-        } on AppHttpException catch (e) {
-          if (e.statusCode != 404) rethrow;
-          var appApi = buildApi;
-          if (appApi.isEmpty) {
-            try {
-              final d = await api.fetchApp(app.alias);
-              appApi = d.card.currentVersion?.currentBuild?.sdk?.api ?? '';
-            } catch (_) {}
-          }
-          final canFallback = appApi.isNotEmpty && appApi != api.api;
-          if (canFallback && backend.apiFallbackEnabled) {
-            fapBytes = await api.fetchFapBuild(
-              cv.id,
-              onProgress: onProgress,
-              apiOverride: appApi,
-            );
-          } else {
-            if (canFallback) backend.flagCompatibilityNeeded(appApi);
-            throw StateError(
-              canFallback
-                  ? 'App is built for API $appApi; enable compatibility mode to install'
-                  : 'No compatible build for this firmware (API ${api.api ?? '?'})',
-            );
+        if (backend.sourceBuildEnabled) {
+          final bundle = await api.fetchSourceBundle(
+            cv.id,
+            onProgress: onProgress,
+          );
+          _setActionState(app.alias, stage: AppActionStage.build, progress: 0);
+          fapBytes = await AssemblerBuildService.buildFromBundle(
+            bundle: bundle,
+            alias: app.alias,
+          );
+          _setActionState(app.alias, stage: AppActionStage.build, progress: 1);
+        } else {
+          try {
+            fapBytes = await api.fetchFapBuild(cv.id, onProgress: onProgress);
+          } on AppHttpException catch (e) {
+            if (e.statusCode != 404) rethrow;
+            var appApi = buildApi;
+            if (appApi.isEmpty) {
+              try {
+                final d = await api.fetchApp(app.alias);
+                appApi = d.card.currentVersion?.currentBuild?.sdk?.api ?? '';
+              } catch (_) {}
+            }
+            final canFallback = appApi.isNotEmpty && appApi != api.api;
+            if (canFallback && backend.apiFallbackEnabled) {
+              fapBytes = await api.fetchFapBuild(
+                cv.id,
+                onProgress: onProgress,
+                apiOverride: appApi,
+              );
+            } else {
+              if (canFallback) backend.flagCompatibilityNeeded(appApi);
+              throw StateError(
+                canFallback
+                    ? 'App is built for API $appApi; enable compatibility mode to install'
+                    : 'No compatible build for this firmware (API ${api.api ?? '?'})',
+              );
+            }
           }
         }
         _setActionState(app.alias, stage: AppActionStage.download, progress: 1);

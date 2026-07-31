@@ -75,6 +75,8 @@ class AppsBackend {
 
   bool get apiFallbackEnabled => mode.value == CatalogMode.compatibility;
 
+  bool sourceBuildEnabled = false;
+
   bool get ignoreSdkMismatch =>
       mode.value == CatalogMode.compatibility || api.unfiltered;
 
@@ -152,7 +154,16 @@ class AppsBackend {
     }
   }
 
+  void chooseSourceBuild() {
+    sourceBuildEnabled = true;
+    api.api = null;
+    api.target = null;
+    api.unfiltered = true;
+    mode.value = CatalogMode.compatibility;
+  }
+
   void chooseCompatibility() {
+    sourceBuildEnabled = false;
     final compat = _compatApi;
     if (compat == null || _deviceTarget == null) {
       api.api = null;
