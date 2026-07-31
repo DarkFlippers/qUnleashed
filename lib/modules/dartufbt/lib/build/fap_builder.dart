@@ -32,6 +32,7 @@ class FapBuildResult {
     this.debugElf,
     this.unresolvedSymbols = const [],
     this.error,
+    this.distPath,
   });
 
   final bool success;
@@ -40,6 +41,10 @@ class FapBuildResult {
   final File? debugElf;
   final List<String> unresolvedSymbols;
   final String? error;
+
+  /// Where the artifact belongs on the SD card, relative to its root, the way
+  /// fbt lays out `dist_entries`. Null for plugins embedded into their app.
+  final String? distPath;
 }
 
 class FapBuilder {
@@ -85,34 +90,51 @@ class FapBuilder {
     String? appid,
     Directory? outputDir,
   }) async {
-    final apps = FlipperApplication.loadManifest(appDir);
-    final app = appid == null
-        ? apps.firstWhere(
-            (candidate) => candidate.isExternal,
-            orElse: () => throw const FapBuildException(
-              'No external application found in manifest',
-            ),
-          )
-        : apps.firstWhere(
-            (candidate) => candidate.appid == appid,
-            orElse: () =>
-                throw FapBuildException('Application $appid not found'),
-          );
-
-    try {
-      return await _buildApp(
-        app,
-        outputDir ?? Directory('${appDir.path}/dist'),
-      );
-    } on FapBuildException catch (e) {
-      logger.error('$e');
-      return FapBuildResult(success: false, app: app, error: '$e');
-    }
+    final results = await buildAll(appDir: appDir, outputDir: outputDir);
+    final failed = results.where((result) => !result.success);
+    if (failed.isNotEmpty) return failed.first;
+    return results.firstWhere(
+      (result) =>
+          appid == null ? result.app!.isExternal : result.app!.appid == appid,
+      orElse: () => results.last,
+    );
   }
+
+  /// Builds every app of the manifest, as fbt does: plugins become `.fal` and
+  /// the ones marked `fal_embedded` are packed into the assets of the app they
+  /// belong to, so they have to be built first.
+  Future<List<FapBuildResult>> buildAll({
+    required Directory appDir,
+    Directory? outputDir,
+  }) async {
+    final apps = FlipperApplication.loadManifest(appDir);
+    if (apps.isEmpty) {
+      throw const FapBuildException('No application found in manifest');
+    }
+    final out = outputDir ?? Directory('${appDir.path}/dist');
+    final embedded = apps.where(_isEmbeddedPlugin).toList();
+    final ordered = [...embedded, ...apps.where((a) => !_isEmbeddedPlugin(a))];
+
+    final results = <FapBuildResult>[];
+    for (final app in ordered) {
+      try {
+        results.add(await _buildApp(app, out, apps));
+      } on FapBuildException catch (e) {
+        logger.error('$e');
+        results.add(FapBuildResult(success: false, app: app, error: '$e'));
+        break;
+      }
+    }
+    return results;
+  }
+
+  static bool _isEmbeddedPlugin(FlipperApplication app) =>
+      app.apptype == FlipperAppType.plugin && app.falEmbedded;
 
   Future<FapBuildResult> _buildApp(
     FlipperApplication app,
     Directory outputDir,
+    List<FlipperApplication> manifest,
   ) async {
     final headersDir = _component('sdk_headers.dir');
     final libDir = _component('lib.dir');
@@ -240,12 +262,20 @@ class FapBuilder {
       '$metaSection=contents,noload,readonly,data',
     ];
 
-    if (app.fapFileAssets != null) {
+    final assetsDirs = <Directory>[
+      if (app.fapFileAssets != null)
+        Directory(UfbtPaths.join(app.appDir.path, app.fapFileAssets!)),
+      if (manifest.any(
+        (plugin) =>
+            _isEmbeddedPlugin(plugin) && plugin.requires.contains(app.appid),
+      ))
+        Directory(UfbtPaths.join(workDir.path, 'assets')),
+    ];
+
+    if (assetsDirs.isNotEmpty) {
       final assetsFile = File(UfbtPaths.join(workDir.path, fileAssetsSection));
       logger.build('APPFILE', assetsFile.path);
-      FileBundler([
-        Directory(UfbtPaths.join(app.appDir.path, app.fapFileAssets!)),
-      ]).export(assetsFile);
+      FileBundler(assetsDirs).export(assetsFile);
       objcopyArgs.addAll([
         '--add-section',
         '$fileAssetsSection=${assetsFile.path}',
@@ -268,10 +298,23 @@ class FapBuilder {
 
     final unresolved = await _validateImports(fap, symbols, app, opts);
 
+    final artifactName = fap.uri.pathSegments.last;
+    if (_isEmbeddedPlugin(app)) {
+      for (final parent in app.requires) {
+        final dir = Directory(
+          UfbtPaths.join(
+            UfbtPaths.join(appsWorkDir.path, parent),
+            'assets${Platform.pathSeparator}plugins',
+          ),
+        )..createSync(recursive: true);
+        final embedded = UfbtPaths.join(dir.path, artifactName);
+        logger.build('EMBED', embedded);
+        fap.copySync(embedded);
+      }
+    }
+
     outputDir.createSync(recursive: true);
-    final installed = File(
-      UfbtPaths.join(outputDir.path, fap.uri.pathSegments.last),
-    );
+    final installed = File(UfbtPaths.join(outputDir.path, artifactName));
     fap.copySync(installed.path);
 
     return FapBuildResult(
@@ -280,7 +323,17 @@ class FapBuilder {
       fap: installed,
       debugElf: debugElf,
       unresolvedSymbols: unresolved,
+      distPath: _distPath(app, artifactName),
     );
+  }
+
+  static String? _distPath(FlipperApplication app, String artifactName) {
+    if (app.apptype != FlipperAppType.plugin) {
+      return 'apps/${app.fapCategory}/$artifactName';
+    }
+    if (app.falEmbedded) return null;
+    final parent = app.requires.isEmpty ? '' : app.requires.first;
+    return 'apps_data/$parent/plugins/$artifactName';
   }
 
   Future<String> _buildPrivateLib(

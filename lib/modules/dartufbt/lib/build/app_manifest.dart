@@ -85,6 +85,9 @@ class FlipperApplication {
     required this.fapIcon,
     required this.fapLibs,
     required this.fapCategory,
+    required this.fapAuthor,
+    required this.fapDescription,
+    required this.fapWeburl,
     required this.cdefines,
     required this.fapIconAssets,
     required this.fapIconAssetsSymbol,
@@ -92,6 +95,7 @@ class FlipperApplication {
     required this.fapFileAssets,
     required this.targets,
     required this.requires,
+    required this.falEmbedded,
     required this.appDir,
   });
 
@@ -108,6 +112,9 @@ class FlipperApplication {
   final String? fapIcon;
   final List<String> fapLibs;
   final String fapCategory;
+  final String fapAuthor;
+  final String fapDescription;
+  final String fapWeburl;
   final List<String> cdefines;
   final String? fapIconAssets;
   final String? fapIconAssetsSymbol;
@@ -115,6 +122,7 @@ class FlipperApplication {
   final String? fapFileAssets;
   final List<String> targets;
   final List<String> requires;
+  final bool falEmbedded;
   final Directory appDir;
 
   bool get isExternal =>
@@ -183,6 +191,9 @@ class FlipperApplication {
       fapIcon: _string(call['fap_icon']),
       fapLibs: _strings(call['fap_libs']) ?? const [],
       fapCategory: _string(call['fap_category']) ?? '',
+      fapAuthor: _string(call['fap_author']) ?? '',
+      fapDescription: _string(call['fap_description']) ?? '',
+      fapWeburl: _string(call['fap_weburl']) ?? '',
       cdefines: _strings(call['cdefines']) ?? const [],
       fapIconAssets: _string(call['fap_icon_assets']),
       fapIconAssetsSymbol: _string(call['fap_icon_assets_symbol']),
@@ -190,6 +201,7 @@ class FlipperApplication {
       fapFileAssets: _string(call['fap_file_assets']),
       targets: _strings(call['targets']) ?? const ['all'],
       requires: _strings(call['requires']) ?? const [],
+      falEmbedded: _bool(call['fal_embedded']) ?? false,
       appDir: appDir,
     );
   }
@@ -222,6 +234,8 @@ class FlipperApplication {
 String? _string(Object? value) => value is String ? value : null;
 
 int? _int(Object? value) => value is int ? value : null;
+
+bool? _bool(Object? value) => value is bool ? value : null;
 
 List<String>? _strings(Object? value) {
   if (value is String) return [value];
