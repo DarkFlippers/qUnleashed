@@ -1,5 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:qunleashed/pages/asembler/project/controller.dart';
 import 'package:qunleashed/pages/asembler/project/git_source.dart';
 import 'package:qunleashed/pages/asembler/project/page.dart';
@@ -47,7 +50,19 @@ void main() {
     });
   });
 
-  testWidgets('project page offers both sources', (tester) async {
+  testWidgets('project page takes a link, a folder and recents in one tap', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({
+      'flibler_recent_sources': [
+        jsonEncode({
+          'kind': 'repository',
+          'value': 'https://github.com/user/repo',
+          'name': 'Hello App',
+        }),
+        jsonEncode({'kind': 'folder', 'value': '/tmp/project'}),
+      ],
+    });
     await tester.binding.setSurfaceSize(const Size(900, 1400));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -60,16 +75,15 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Flibler'), findsOneWidget);
-    expect(find.text('Local folder'), findsOneWidget);
-    expect(find.text('Repository link'), findsOneWidget);
-    expect(find.text('Choose folder'), findsOneWidget);
-    expect(find.text('Build and send'), findsOneWidget);
-    expect(find.text('Pick a project folder first'), findsOneWidget);
-
-    await tester.tap(find.text('Repository link'));
-    await tester.pumpAndSettle();
     expect(find.byType(TextField), findsOneWidget);
-    expect(find.text('Choose folder'), findsNothing);
+    expect(find.byTooltip('Paste and load'), findsOneWidget);
+    expect(find.byTooltip('Choose folder'), findsOneWidget);
+    expect(find.text('BUILD'), findsOneWidget);
+
+    expect(find.text('Recent projects'), findsOneWidget);
+    expect(find.text('Hello App'), findsOneWidget);
+    expect(find.text('https://github.com/user/repo'), findsOneWidget);
+    expect(find.text('/tmp/project'), findsOneWidget);
 
     expect(tester.takeException(), isNull);
   });
@@ -80,9 +94,48 @@ void main() {
     expect(controller.canLoad, isFalse);
     expect(controller.canBuild, isFalse);
 
-    controller.setKind(FliblerSourceKind.repository);
     controller.setRepo('https://github.com/user/repo');
+    expect(controller.kind, FliblerSourceKind.repository);
     expect(controller.canLoad, isTrue);
     expect(controller.canBuild, isFalse);
+  });
+
+  test('typing a link switches the source, clearing it returns the folder', () {
+    final controller = FliblerProjectController();
+    controller.setFolder('/tmp/project');
+    expect(controller.kind, FliblerSourceKind.folder);
+
+    controller.setRepo('https://github.com/user/repo');
+    expect(controller.kind, FliblerSourceKind.repository);
+
+    controller.setRepo('');
+    expect(controller.kind, FliblerSourceKind.folder);
+    expect(controller.canLoad, isTrue);
+  });
+
+  test('recent sources survive a reload and can be removed', () async {
+    SharedPreferences.setMockInitialValues({
+      'flibler_recent_sources': [
+        jsonEncode({
+          'kind': 'repository',
+          'value': 'https://github.com/user/repo',
+          'name': 'Hello App',
+        }),
+        jsonEncode({'kind': 'folder', 'value': '/tmp/project'}),
+        'not a json entry',
+      ],
+    });
+    final controller = FliblerProjectController();
+    await controller.loadRecent();
+
+    expect(controller.recent, hasLength(2));
+    expect(controller.recent.first.name, 'Hello App');
+    expect(controller.recent.last.kind, FliblerSourceKind.folder);
+
+    await controller.removeRecent(controller.recent.first);
+    expect(controller.recent, hasLength(1));
+
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getStringList('flibler_recent_sources'), hasLength(1));
   });
 }

@@ -1,9 +1,13 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:dartufbt/dartufbt.dart';
 import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../components/codec/fap.dart';
 import '../../../services/progress_throttle.dart';
 import '../build_service.dart';
 import '../controller.dart';
@@ -13,6 +17,44 @@ enum FliblerSourceKind { folder, repository }
 
 const String kFliblerAppsRoot = '/ext/apps';
 const String kFliblerFallbackCategory = 'Tools';
+const String kFliblerRecentPrefsKey = 'flibler_recent_sources';
+const int kFliblerRecentLimit = 5;
+
+class FliblerRecentSource {
+  const FliblerRecentSource({
+    required this.kind,
+    required this.value,
+    this.name = '',
+  });
+
+  final FliblerSourceKind kind;
+  final String value;
+  final String name;
+
+  static FliblerRecentSource? decode(String raw) {
+    try {
+      final map = jsonDecode(raw);
+      if (map is! Map<String, dynamic>) return null;
+      final value = map['value'];
+      if (value is! String || value.isEmpty) return null;
+      return FliblerRecentSource(
+        kind: map['kind'] == 'folder'
+            ? FliblerSourceKind.folder
+            : FliblerSourceKind.repository,
+        value: value,
+        name: map['name'] is String ? map['name'] as String : '',
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String encode() => jsonEncode({
+    'kind': kind == FliblerSourceKind.folder ? 'folder' : 'repository',
+    'value': value,
+    'name': name,
+  });
+}
 
 class FliblerProjectController extends ChangeNotifier {
   FliblerProjectController({FlipperClient? client})
@@ -28,6 +70,8 @@ class FliblerProjectController extends ChangeNotifier {
   FlipperApplication? _app;
   FlipperImage? _icon;
   List<FapBuildResult> _built = const [];
+  FapInfo? _builtInfo;
+  List<FliblerRecentSource> _recent = const [];
   String? _error;
   String? _installedPath;
   bool _loading = false;
@@ -40,6 +84,8 @@ class FliblerProjectController extends ChangeNotifier {
   FlipperApplication? get app => _app;
   FlipperImage? get icon => _icon;
   List<FapBuildResult> get built => _built;
+  FapInfo? get builtInfo => _builtInfo;
+  List<FliblerRecentSource> get recent => _recent;
 
   FapBuildResult? get result => _built.isEmpty
       ? null
@@ -103,6 +149,9 @@ class FliblerProjectController extends ChangeNotifier {
   void setRepo(String url) {
     if (_repoUrl == url) return;
     _repoUrl = url;
+    _kind = url.trim().isEmpty && _folderPath.isNotEmpty
+        ? FliblerSourceKind.folder
+        : FliblerSourceKind.repository;
     _forget();
     notifyListeners();
   }
@@ -112,8 +161,47 @@ class FliblerProjectController extends ChangeNotifier {
     _app = null;
     _icon = null;
     _built = const [];
+    _builtInfo = null;
     _installedPath = null;
     _error = null;
+  }
+
+  Future<void> loadRecent() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getStringList(kFliblerRecentPrefsKey) ?? const [];
+    _recent = [for (final entry in raw) ?FliblerRecentSource.decode(entry)];
+    notifyListeners();
+  }
+
+  Future<void> removeRecent(FliblerRecentSource entry) async {
+    _recent = _recent.where((e) => e.value != entry.value).toList();
+    notifyListeners();
+    await _saveRecent();
+  }
+
+  Future<void> _saveRecent() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(
+      kFliblerRecentPrefsKey,
+      [for (final entry in _recent) entry.encode()],
+    );
+  }
+
+  Future<void> _rememberSource() async {
+    final app = _app;
+    if (app == null) return;
+    final entry = FliblerRecentSource(
+      kind: _kind,
+      value: _kind == FliblerSourceKind.folder ? _folderPath : _repoUrl.trim(),
+      name: app.name.isEmpty ? app.appid : app.name,
+    );
+    if (entry.value.isEmpty) return;
+    _recent = [
+      entry,
+      ..._recent.where((e) => e.value != entry.value),
+    ].take(kFliblerRecentLimit).toList();
+    notifyListeners();
+    await _saveRecent();
   }
 
   /// Resolves the source, so the app it holds can be shown before a build:
@@ -141,6 +229,7 @@ class FliblerProjectController extends ChangeNotifier {
         'Loaded ${_app!.name.isEmpty ? _app!.appid : _app!.name}'
         '${_app!.fapAuthor.isEmpty ? '' : ' by ${_app!.fapAuthor}'}',
       );
+      unawaited(_rememberSource());
       return true;
     } catch (e) {
       _error = '$e';
@@ -176,6 +265,7 @@ class FliblerProjectController extends ChangeNotifier {
 
     try {
       _built = await AssemblerBuildService.buildProject(root: appDir);
+      _builtInfo = _parseBuilt();
       notifyListeners();
     } catch (e) {
       _error = '$e';
@@ -207,6 +297,27 @@ class FliblerProjectController extends ChangeNotifier {
         UfbtPaths.join(_assembler.installer.paths.stateDir.path, 'projects'),
       ),
       logger: _assembler.logger,
+    );
+  }
+
+  FapInfo? _parseBuilt() {
+    final file = result?.fap;
+    if (file == null) return null;
+    try {
+      return FapInfo.parse(file.readAsBytesSync());
+    } catch (e) {
+      _assembler.logger.warning('Could not parse the built fap: $e');
+      return null;
+    }
+  }
+
+  Future<void> launchOnDevice() async {
+    final path = targetPath;
+    if (path.isEmpty) throw StateError('Nothing built yet');
+    if (!deviceReady) throw StateError('Connect the device first');
+    await _client.appStart(
+      StartRequest(name: path, args: ''),
+      timeout: const Duration(seconds: 15),
     );
   }
 
