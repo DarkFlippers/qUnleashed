@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flutter/foundation.dart';
 
+import '../../asembler/controller.dart';
 import '../data/apps_backend.dart';
 import '../data/catalog_api.dart';
 import '../data/catalog_mode.dart';
@@ -22,6 +23,9 @@ class AppsCatalogController extends ChangeNotifier {
     _backend.manifests.addListener(notifyListeners);
     _backend.engine.addListener(notifyListeners);
     _backend.mode.addListener(_onModeChanged);
+    // Switching between the local and the server builder changes what the
+    // install buttons do, so the grid has to hear about it.
+    AssemblerController.instance.addListener(notifyListeners);
   }
 
   final AppsBackend _backend = AppsBackend.instance;
@@ -79,6 +83,7 @@ class AppsCatalogController extends ChangeNotifier {
   ApiVerdict? get incompatibility => _backend.incompatibility;
 
   void chooseCompatibility() => _backend.chooseCompatibility();
+  void chooseSourceBuild() => _backend.chooseSourceBuild();
   Future<void> refreshMode() => _backend.resolveMode(force: true);
 
   AppCategory? categoryById(String id) {
@@ -197,6 +202,7 @@ class AppsCatalogController extends ChangeNotifier {
     _backend.manifests.removeListener(notifyListeners);
     _backend.engine.removeListener(notifyListeners);
     _backend.mode.removeListener(_onModeChanged);
+    AssemblerController.instance.removeListener(notifyListeners);
     super.dispose();
   }
 }

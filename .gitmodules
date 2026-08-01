@@ -6,3 +6,6 @@
 	path = lib/modules/flipperlib
 	url = https://github.com/DarkFlippers/dart-flipperlib.git
 	branch = dev
+[submodule "lib/modules/dartufbt"]
+	path = lib/modules/dartufbt
+	url = https://github.com/DarkFlippers/dart-ufbt.git

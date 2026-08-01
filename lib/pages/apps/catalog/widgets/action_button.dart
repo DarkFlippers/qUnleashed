@@ -67,8 +67,7 @@ class AppActionButton extends StatelessWidget {
           primary: _buildButton(
             label: 'INSTALL',
             color: colors.accent,
-            onTap: () =>
-                engine.installOrUpdate(app, category: category, detail: detail),
+            onTap: () => _install(context),
           ),
         );
       case CatalogAppState.update:
@@ -77,8 +76,7 @@ class AppActionButton extends StatelessWidget {
           primary: _buildButton(
             label: 'UPDATE',
             color: colors.success,
-            onTap: () =>
-                engine.installOrUpdate(app, category: category, detail: detail),
+            onTap: () => _install(context),
           ),
           secondary: _DeleteButton(size: size, onTap: () => _confirmDelete(context)),
         );
@@ -104,6 +102,7 @@ class AppActionButton extends StatelessWidget {
     final isLarge = size == AppActionButtonSize.large;
     final indeterminate = stage == AppActionStage.queued ||
         stage == AppActionStage.check ||
+        stage == AppActionStage.build ||
         type == AppActionType.delete;
     return ProgressButton(
       text: progressState.label,
@@ -144,6 +143,18 @@ class AppActionButton extends StatelessWidget {
       'Connect a device to install apps',
       type: QNotificationType.warning,
     );
+  }
+
+  void _install(BuildContext context) {
+    final blocker = engine.serverBuildBlocker(app.alias);
+    if (blocker != null) {
+      context.showNotification(
+        'Server is building "$blocker", wait for it to finish',
+        type: QNotificationType.warning,
+      );
+      return;
+    }
+    engine.installOrUpdate(app, category: category, detail: detail);
   }
 
   Future<void> _launchApp(BuildContext context) async {
@@ -272,6 +283,9 @@ class _ProgressState {
     }
     if (stage == AppActionStage.check) {
       return _ProgressState(label: 'CHECK', color: color);
+    }
+    if (stage == AppActionStage.build) {
+      return _ProgressState(label: 'BUILD', color: color);
     }
     if (type == AppActionType.delete) {
       return _ProgressState(label: 'DELETE', color: color);

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../components/cardlist.dart';
 import '../../components/icon.dart';
 import '../../theme/theme.dart';
+import '../asembler/settings_page.dart';
 import 'notifications_page.dart';
 import 'storage_page.dart';
 import 'theme_page.dart';
@@ -119,6 +120,20 @@ class SettingsPage extends StatelessWidget {
                 asset: 'assets/ic/app/paint.svg',
                 color: const Color(0xFFB388FF),
                 page: (_) => const ThemeSettingsPage(),
+              ),
+            ],
+            onTap: (c) => _open(context, c.page),
+            itemBuilder: _tile,
+          ),
+          const SizedBox(height: 10),
+          GroupedCardList<_Category>(
+            items: [
+              _Category(
+                title: 'Flibler',
+                subtitle: 'Flipper Assembler Tool, builds apps from source',
+                asset: 'assets/ic/fileformat/settings.svg',
+                color: const Color(0xFF4DB6AC),
+                page: (_) => const AssemblerSettingsPage(),
               ),
             ],
             onTap: (c) => _open(context, c.page),

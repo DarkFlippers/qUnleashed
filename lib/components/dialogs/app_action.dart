@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
-import '../../pages/apps/catalog/widgets/screenshot_frame.dart';
 import '../../pages/apps/data/models/card.dart';
 import '../../pages/apps/data/models/installed_app.dart';
 import '../../pages/apps/icons/app_icon.dart';
+import '../../pages/apps/manager/widgets/fap_facts.dart';
 import '../../theme/theme.dart';
 
 class AppActionSheet {
@@ -19,6 +19,8 @@ class AppActionSheet {
     required VoidCallback onRestore,
     required VoidCallback onDeleteCopy,
     required VoidCallback onUninstall,
+    String? deviceApi,
+    String? deviceTarget,
   }) {
     return showDialog<void>(
       context: context,
@@ -34,6 +36,8 @@ class AppActionSheet {
         onRestore: onRestore,
         onDeleteCopy: onDeleteCopy,
         onUninstall: onUninstall,
+        deviceApi: deviceApi,
+        deviceTarget: deviceTarget,
       ),
     );
   }
@@ -51,6 +55,8 @@ class _ActionDialog extends StatefulWidget {
     required this.onRestore,
     required this.onDeleteCopy,
     required this.onUninstall,
+    required this.deviceApi,
+    required this.deviceTarget,
   });
 
   final InstalledApp app;
@@ -63,6 +69,8 @@ class _ActionDialog extends StatefulWidget {
   final VoidCallback onRestore;
   final VoidCallback onDeleteCopy;
   final VoidCallback onUninstall;
+  final String? deviceApi;
+  final String? deviceTarget;
 
   @override
   State<_ActionDialog> createState() => _ActionDialogState();
@@ -70,25 +78,20 @@ class _ActionDialog extends StatefulWidget {
 
 class _ActionDialogState extends State<_ActionDialog> {
   AppCard? _card;
-  bool _loading = false;
 
   @override
   void initState() {
     super.initState();
     _card = widget.initialCard;
-    final shots = _card?.currentVersion?.screenshots ?? const [];
-    if (_card == null || shots.isEmpty) _load();
+    if (_card == null) _load();
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
     try {
       final fetched = await widget.fetchCard();
       if (mounted) setState(() => _card = fetched);
     } catch (_) {
       // App not in the catalog (sideloaded) — keep whatever we have.
-    } finally {
-      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -96,23 +99,8 @@ class _ActionDialogState extends State<_ActionDialog> {
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final app = widget.app;
-    final manifest = app.manifest;
     final accent = colors.accent;
-    final card = _card;
-    final cv = card?.currentVersion;
-    final shots = cv?.screenshots ?? const <String>[];
-    final author = card?.author ?? '';
-    final version = cv?.version ?? '';
-    final category =
-        card != null ? (widget.categoryNameFor(card.categoryId) ?? '') : '';
-    final sdkApi = manifest?.sdkApi ?? '';
-
-    final meta = <String>[
-      if (category.isNotEmpty) category,
-      if (version.isNotEmpty) 'v$version',
-      if (app.size > 0) _fmtSize(app.size),
-      if (sdkApi.isNotEmpty) 'API $sdkApi',
-    ].join('  ·  ');
+    final author = _card?.author ?? '';
 
     final media = MediaQuery.of(context).size;
 
@@ -164,44 +152,30 @@ class _ActionDialogState extends State<_ActionDialog> {
                             height: 1.15,
                           ),
                         ),
-                        if (author.isNotEmpty)
-                          Text(
-                            'by $author',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                                color: colors.textMuted, fontSize: 12),
-                          ),
+                        Text(
+                          app.path.isNotEmpty
+                              ? app.path
+                              : '/ext/apps/${app.folder}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              color: colors.textMuted, fontSize: 11),
+                        ),
                       ],
                     ),
                   ),
                   if (widget.isUpdatable) _UpdateTag(color: colors.success),
                 ],
               ),
-              if (meta.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Text(
-                  meta,
-                  style: TextStyle(color: colors.textSecondary, fontSize: 12),
-                ),
-              ],
-              const SizedBox(height: 2),
-              Text(
-                app.path.isNotEmpty ? app.path : '/ext/apps/${app.folder}',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: colors.textMuted, fontSize: 11),
+              const SizedBox(height: 14),
+              FapFactsPanel(
+                info: app.fap,
+                checked: app.fapChecked,
+                author: author,
+                deviceApi: widget.deviceApi,
+                deviceTarget: widget.deviceTarget,
               ),
-              if (shots.isNotEmpty) ...[
-                const SizedBox(height: 14),
-                _screenshots(colors, shots),
-                const SizedBox(height: 16),
-              ] else if (_loading) ...[
-                const SizedBox(height: 14),
-                _loadingStrip(colors),
-                const SizedBox(height: 16),
-              ] else
-                const SizedBox(height: 14),
+              const SizedBox(height: 16),
               if (widget.isUpdatable) ...[
                 _ActionButton(
                   label: 'Update',
@@ -264,46 +238,9 @@ class _ActionDialogState extends State<_ActionDialog> {
     );
   }
 
-  Widget _screenshots(QAppColors colors, List<String> shots) {
-    return SizedBox(
-      height: 118,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: shots.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 8),
-        itemBuilder: (_, i) => ScreenshotFrame(url: shots[i]),
-      ),
-    );
-  }
-
-  Widget _loadingStrip(QAppColors colors) {
-    return SizedBox(
-      height: 36,
-      child: Center(
-        child: SizedBox(
-          width: 20,
-          height: 20,
-          child: CircularProgressIndicator(
-              strokeWidth: 2, color: colors.accent),
-        ),
-      ),
-    );
-  }
-
   void _run(VoidCallback action) {
     Navigator.of(context).pop();
     action();
-  }
-
-  String _fmtSize(int bytes) {
-    const units = ['B', 'KB', 'MB', 'GB'];
-    var b = bytes.toDouble();
-    var i = 0;
-    while (b >= 1024 && i < units.length - 1) {
-      b /= 1024;
-      i++;
-    }
-    return '${b.toStringAsFixed(b >= 10 || i == 0 ? 0 : 1)} ${units[i]}';
   }
 }
 

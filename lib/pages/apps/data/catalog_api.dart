@@ -253,6 +253,22 @@ class AppsCatalogApi {
     );
   }
 
+  Uri sourceBundleUri(String versionId) =>
+      _uri('/application/version/$versionId/bundle', const {});
+
+  Future<List<int>> fetchSourceBundle(
+    String versionId, {
+    void Function(int receivedBytes, int? totalBytes)? onProgress,
+  }) async {
+    final uri = sourceBundleUri(versionId);
+    if (_closed) throw StateError('AppsCatalogApi has been closed');
+    return AppHttp.getBytes(
+      uri,
+      headers: {io.HttpHeaders.userAgentHeader: userAgent},
+      onProgress: onProgress,
+    );
+  }
+
   Uri _uri(String path, Map<String, String> query) {
     final base = Uri.parse(baseUrl);
     return base.replace(

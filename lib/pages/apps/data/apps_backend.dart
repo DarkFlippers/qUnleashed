@@ -75,6 +75,8 @@ class AppsBackend {
 
   bool get apiFallbackEnabled => mode.value == CatalogMode.compatibility;
 
+  bool sourceBuildEnabled = false;
+
   bool get ignoreSdkMismatch =>
       mode.value == CatalogMode.compatibility || api.unfiltered;
 
@@ -140,6 +142,11 @@ class AppsBackend {
         _incompatibility = res.verdict;
         mode.value = CatalogMode.incompatible;
       }
+      // A reconnect must not drop the source build the user already picked,
+      // otherwise the dialog comes back and installs fall to the API fallback.
+      if (sourceBuildEnabled && res.verdict != ApiVerdict.normal) {
+        chooseSourceBuild();
+      }
       LogService.log(
         '[AppsBackend] mode=${mode.value.name} device=$_deviceApi '
         'server=$serverApi picked=${res.api} compat=$_compatApi',
@@ -152,7 +159,16 @@ class AppsBackend {
     }
   }
 
+  void chooseSourceBuild() {
+    sourceBuildEnabled = true;
+    api.api = null;
+    api.target = null;
+    api.unfiltered = true;
+    mode.value = CatalogMode.compatibility;
+  }
+
   void chooseCompatibility() {
+    sourceBuildEnabled = false;
     final compat = _compatApi;
     if (compat == null || _deviceTarget == null) {
       api.api = null;
@@ -179,6 +195,7 @@ class AppsBackend {
     final id = state.device?.id;
     if (id != null && id != _deviceId) {
       _deviceId = id;
+      sourceBuildEnabled = false;
       _resetDeviceState();
       _resolvedForDeviceId = null;
       manifests.handleDeviceChange();

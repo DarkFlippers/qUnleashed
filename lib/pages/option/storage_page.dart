@@ -1,5 +1,6 @@
 import 'dart:io' as io;
 
+import 'package:dartufbt/dartufbt.dart';
 import 'package:flutter/material.dart';
 
 import '../../components/cardlist.dart';
@@ -8,6 +9,7 @@ import '../../services/http/app_http.dart';
 import '../../services/repository/app.dart';
 import '../../theme/theme.dart';
 import '../../widgets/notification.dart';
+import '../asembler/controller.dart';
 
 class _StorageArea {
   const _StorageArea({
@@ -15,16 +17,32 @@ class _StorageArea {
     required this.title,
     required this.subtitle,
     required this.resolve,
+    this.clear,
   });
 
   final String group;
   final String title;
   final String subtitle;
   final Future<io.Directory> Function() resolve;
+
+  /// Set when clearing needs more than wiping the folder, as for the SDK that
+  /// also has to reset the assembler status.
+  final Future<void> Function()? clear;
 }
 
 const _groupAppFolders = 'App folders';
 const _groupInternal = 'Internal';
+const _groupFlibler = 'Flibler (ufbt)';
+
+Future<void> _clearUfbtSdk() async {
+  await clearDirectory(UfbtPaths.resolve().currentSdkDir);
+  AssemblerController.instance.refreshStatus();
+}
+
+Future<void> _clearUfbtToolchain() async {
+  await clearDirectory(UfbtPaths.resolve().toolchainDir);
+  AssemblerController.instance.refreshStatus();
+}
 
 final List<_StorageArea> _areas = [
   _StorageArea(
@@ -75,6 +93,28 @@ final List<_StorageArea> _areas = [
     subtitle: 'Temporary files created for sharing',
     resolve: shareCacheDirectory,
   ),
+  if (AssemblerController.isSupported) ...[
+    _StorageArea(
+      group: _groupFlibler,
+      title: 'Firmware SDK',
+      subtitle: 'Deployed SDK used for builds',
+      resolve: () async => UfbtPaths.resolve().currentSdkDir,
+      clear: _clearUfbtSdk,
+    ),
+    _StorageArea(
+      group: _groupFlibler,
+      title: 'ARM toolchain',
+      subtitle: 'GCC toolchain for compiling',
+      resolve: () async => UfbtPaths.resolve().toolchainDir,
+      clear: _clearUfbtToolchain,
+    ),
+  ],
+];
+
+final List<String> _groups = [
+  _groupAppFolders,
+  _groupInternal,
+  if (AssemblerController.isSupported) _groupFlibler,
 ];
 
 class StorageSettingsPage extends StatefulWidget {
@@ -133,7 +173,12 @@ class _StorageSettingsPageState extends State<StorageSettingsPage> {
 
     setState(() => _clearing.add(index));
     try {
-      await clearDirectory(await area.resolve());
+      final clear = area.clear;
+      if (clear != null) {
+        await clear();
+      } else {
+        await clearDirectory(await area.resolve());
+      }
       if (mounted) {
         context.showNotification(
           '${area.title} cleared',
@@ -228,7 +273,7 @@ class _StorageSettingsPageState extends State<StorageSettingsPage> {
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: 10),
         children: [
-          for (final group in const [_groupAppFolders, _groupInternal]) ...[
+          for (final group in _groups) ...[
             GroupedCardList<int>(
               title: group,
               items: [
@@ -237,7 +282,7 @@ class _StorageSettingsPageState extends State<StorageSettingsPage> {
               ],
               itemBuilder: _tile,
             ),
-            if (group != _groupInternal) const SizedBox(height: 10),
+            if (group != _groups.last) const SizedBox(height: 10),
           ],
         ],
       ),

@@ -16,6 +16,7 @@ import '../../tools/remote/desktop/page.dart';
 import '../data/apps_backend.dart';
 import '../data/device_source.dart';
 import '../data/install_engine.dart';
+import '../data/models/fap_details.dart';
 import '../data/models/installed_app.dart';
 import '../data/update_registry.dart';
 import '../icons/app_icon.dart';
@@ -193,6 +194,8 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
       onRestore: () => _restore(app),
       onDeleteCopy: () => _deleteLocal(app),
       onUninstall: () => _uninstall(app),
+      deviceApi: _backend.deviceApi,
+      deviceTarget: _backend.deviceTarget,
     );
   }
 
@@ -359,6 +362,13 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
                                   colors: colors,
                                   header: header,
                                   updatable: updatable.contains(app.alias),
+                                  compat: app.fapChecked
+                                      ? evaluateFap(
+                                          app.fap,
+                                          deviceApi: _backend.deviceApi,
+                                          deviceTarget: _backend.deviceTarget,
+                                        )
+                                      : null,
                                   action: _engine.actions[app.alias],
                                   onTap: () => _showActions(app, header),
                                 );
@@ -403,6 +413,7 @@ class _AppRow extends StatelessWidget {
     required this.colors,
     required this.header,
     required this.updatable,
+    required this.compat,
     required this.action,
     required this.onTap,
   });
@@ -412,6 +423,7 @@ class _AppRow extends StatelessWidget {
   final QAppColors colors;
   final Color header;
   final bool updatable;
+  final FapCompat? compat;
   final AppAction? action;
   final VoidCallback onTap;
 
@@ -503,24 +515,13 @@ class _AppRow extends StatelessWidget {
                 ],
               ),
             ),
+            if (compat != null && compat!.isBlocking) ...[
+              const SizedBox(width: 6),
+              _Tag(label: compat!.badge, color: colors.danger),
+            ],
             if (updatable) ...[
               const SizedBox(width: 6),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: colors.success.withValues(alpha: 0.16),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  'UPDATE',
-                  style: TextStyle(
-                    color: colors.success,
-                    fontSize: 9,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.3,
-                  ),
-                ),
-              ),
+              _Tag(label: 'UPDATE', color: colors.success),
             ],
           ],
         );
@@ -536,6 +537,33 @@ class _AppRow extends StatelessWidget {
       i++;
     }
     return '${b.toStringAsFixed(b >= 10 || i == 0 ? 0 : 1)} ${units[i]}';
+  }
+}
+
+class _Tag extends StatelessWidget {
+  const _Tag({required this.label, required this.color});
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 9,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.3,
+        ),
+      ),
+    );
   }
 }
 

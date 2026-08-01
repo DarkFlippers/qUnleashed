@@ -5,6 +5,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flutter/foundation.dart';
 
+import '../../../components/codec/fap.dart';
 import '../../../services/progress_throttle.dart';
 import '../../../services/repository/app.dart';
 import '../icons/icon_resolver.dart';
@@ -33,7 +34,13 @@ class DeviceSource extends ChangeNotifier {
 
   bool get isReady => client.isConnected && client.mode == FlipperMode.rpc;
 
-  final Map<String, ({int size, String folder})> _local = {};
+  final Map<String, ({int size, String folder, String path, int stamp})>
+      _local = {};
+
+  final Map<String, FapInfo?> _parsed = {};
+  final Map<String, int> _parsedStamp = {};
+
+  FapInfo? infoFor(String alias) => _parsed[alias];
 
   List<InstalledApp> get apps {
     final ids = <String>{
@@ -58,6 +65,8 @@ class DeviceSource extends ChangeNotifier {
         size: local?.size ?? 0,
         md5: '',
         manifest: m,
+        fap: _parsed[alias],
+        fapChecked: _parsed.containsKey(alias),
       ));
     }
     out.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
@@ -105,10 +114,11 @@ class DeviceSource extends ChangeNotifier {
     await manifests.ensureFresh();
     _warmManifestIcons();
     notifyListeners();
+    await _parseLocalFaps();
   }
 
   Future<void> _loadLocalApps() async {
-    final map = <String, ({int size, String folder})>{};
+    final map = <String, ({int size, String folder, String path, int stamp})>{};
     try {
       final name = await _deviceName();
       if (name != null) {
@@ -124,10 +134,14 @@ class DeviceSource extends ChangeNotifier {
             final parent = e.parent.path;
             final folder = parent.substring(parent.lastIndexOf(sep) + 1);
             int size = 0;
+            int stamp = 0;
             try {
-              size = await e.length();
+              final stat = await e.stat();
+              size = stat.size;
+              stamp = stat.modified.millisecondsSinceEpoch;
             } catch (_) {}
-            map[alias] = (size: size, folder: folder);
+            map[alias] =
+                (size: size, folder: folder, path: e.path, stamp: stamp);
           }
         }
       }
@@ -135,6 +149,36 @@ class DeviceSource extends ChangeNotifier {
     _local
       ..clear()
       ..addAll(map);
+  }
+
+  /// Reads every local `.fap` copy that changed since the last pass and keeps
+  /// its parsed manifest, sections and assets around for the manager UI.
+  Future<void> _parseLocalFaps() async {
+    var changed = false;
+
+    for (final entry in _local.entries) {
+      final alias = entry.key;
+      final stamp = Object.hash(entry.value.size, entry.value.stamp);
+      if (_parsed.containsKey(alias) && _parsedStamp[alias] == stamp) continue;
+      try {
+        final bytes = await io.File(entry.value.path).readAsBytes();
+        _parsed[alias] = FapInfo.parse(bytes);
+      } catch (e) {
+        LogService.log('[DeviceSource] parse "$alias" failed: $e');
+        _parsed[alias] = null;
+      }
+      _parsedStamp[alias] = stamp;
+      changed = true;
+    }
+
+    for (final alias in _parsed.keys.toList()) {
+      if (_local.containsKey(alias)) continue;
+      _parsed.remove(alias);
+      _parsedStamp.remove(alias);
+      changed = true;
+    }
+
+    if (changed) notifyListeners();
   }
 
   Future<void> scan() async {
@@ -193,6 +237,7 @@ class DeviceSource extends ChangeNotifier {
         }
         _syncDone++;
         await _loadLocalApps();
+        await _parseLocalFaps();
         notifyListeners();
       }
       _warmManifestIcons();
@@ -299,6 +344,38 @@ class DeviceSource extends ChangeNotifier {
     );
   }
 
+  Future<void> adoptInstalled({
+    required String alias,
+    required String devicePath,
+    required List<int> fapBytes,
+  }) async {
+    if (alias.isEmpty) return;
+    final folder = _folderFromPath(devicePath);
+    var localPath = '';
+    try {
+      final name = await _deviceName();
+      if (name != null) {
+        final dir = await appsBackupDirectory(name);
+        final file = io.File(
+            pathJoin([dir.path, sanitizePathSegment(folder), '$alias.fap']));
+        await file.parent.create(recursive: true);
+        await file.writeAsBytes(fapBytes, flush: true);
+        localPath = file.path;
+      }
+    } catch (e) {
+      LogService.log('[DeviceSource] local copy of "$alias" failed: $e');
+    }
+    _local[alias] = (
+      size: fapBytes.length,
+      folder: folder,
+      path: localPath,
+      stamp: 0,
+    );
+    _parsed[alias] = FapInfo.parse(Uint8List.fromList(fapBytes));
+    _parsedStamp.remove(alias);
+    notifyListeners();
+  }
+
   Future<void> deleteLocal(InstalledApp app) async {
     try {
       final name = await _deviceName();
@@ -309,6 +386,7 @@ class DeviceSource extends ChangeNotifier {
       if (await file.exists()) await file.delete();
     } catch (_) {}
     await _loadLocalApps();
+    await _parseLocalFaps();
     notifyListeners();
   }
 
@@ -343,6 +421,8 @@ class DeviceSource extends ChangeNotifier {
 
   void handleDeviceChange() {
     _local.clear();
+    _parsed.clear();
+    _parsedStamp.clear();
     _syncDone = 0;
     _syncTotal = 0;
     notifyListeners();
@@ -352,5 +432,6 @@ class DeviceSource extends ChangeNotifier {
   Future<void> _refreshLocal() async {
     await _loadLocalApps();
     notifyListeners();
+    await _parseLocalFaps();
   }
 }
