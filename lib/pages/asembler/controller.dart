@@ -46,6 +46,8 @@ class AssemblerLine {
 
 enum AssemblerJob { none, sdk, toolchain, build }
 
+enum AssemblerBackend { local, server }
+
 class AssemblerController extends ChangeNotifier {
   AssemblerController._() {
     _logger.addSink(_onEvent);
@@ -69,10 +71,14 @@ class AssemblerController extends ChangeNotifier {
   UfbtUpdateChannel _channel = UfbtUpdateChannel.release;
   AssemblerSdkSource _sdkSource = AssemblerSdkSource.unleashed;
   String _customIndexUrl = '';
+  AssemblerBackend _backend = isSupported
+      ? AssemblerBackend.local
+      : AssemblerBackend.server;
   bool _pendingNewline = false;
 
   static const String _prefSdkSource = 'assembler_sdk_source';
   static const String _prefCustomIndexUrl = 'assembler_custom_index_url';
+  static const String _prefBackend = 'assembler_backend';
 
   UfbtLogger get logger => _logger;
   UfbtStatus? get status => _status;
@@ -83,6 +89,12 @@ class AssemblerController extends ChangeNotifier {
   AssemblerSdkSource get sdkSource => _sdkSource;
   String get customIndexUrl => _customIndexUrl;
   bool get verbose => _logger.verbose;
+
+  /// Where source builds run. Off desktop the local toolchain does not exist,
+  /// so the stored choice is ignored and the server is the only option.
+  AssemblerBackend get backend =>
+      isSupported ? _backend : AssemblerBackend.server;
+  bool get usesServerBuild => backend == AssemblerBackend.server;
 
   String? get indexUrl => _sdkSource == AssemblerSdkSource.custom
       ? (_customIndexUrl.isEmpty ? null : _customIndexUrl)
@@ -105,7 +117,20 @@ class AssemblerController extends ChangeNotifier {
       orElse: () => AssemblerSdkSource.unleashed,
     );
     _customIndexUrl = prefs.getString(_prefCustomIndexUrl) ?? '';
+    final backend = prefs.getString(_prefBackend);
+    _backend = AssemblerBackend.values.firstWhere(
+      (value) => value.name == backend,
+      orElse: () => AssemblerBackend.local,
+    );
     notifyListeners();
+  }
+
+  Future<void> setBackend(AssemblerBackend value) async {
+    if (_backend == value || busy) return;
+    _backend = value;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_prefBackend, value.name);
   }
 
   Future<void> setSdkSource(AssemblerSdkSource value) async {

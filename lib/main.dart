@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
+import 'pages/asembler/controller.dart';
 import 'pages/devices/page.dart';
 import 'services/connection/foreground_service.dart';
 import 'services/connection/notification_service.dart';
@@ -19,6 +20,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await LogService.initialize();
   await QAppThemeController.instance.loadThemeMode();
+  await AssemblerController.instance.loadSettings();
   runApp(const QUnleashedApp());
   _bootstrapAmbientServices();
 }

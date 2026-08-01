@@ -170,9 +170,7 @@ class _CatalogViewState extends State<CatalogView> {
           CatalogCompatDialog(
             deviceApi: _ctrl.deviceApi,
             serverApi: _ctrl.serverApi,
-            onBuildFromSource: AssemblerController.isSupported
-                ? _chooseSourceBuild
-                : null,
+            onBuildFromSource: _chooseSourceBuild,
             onIgnoreAndContinue: _ctrl.chooseCompatibility,
             onDecline: () => widget.onOpenManager?.call(),
           ),
@@ -183,9 +181,7 @@ class _CatalogViewState extends State<CatalogView> {
             CatalogCompatDialog(
               deviceApi: _ctrl.deviceApi,
               serverApi: _ctrl.serverApi,
-              onBuildFromSource: AssemblerController.isSupported
-                  ? _chooseSourceBuild
-                  : null,
+              onBuildFromSource: _chooseSourceBuild,
               onIgnoreAndContinue: null,
               onDecline: () => widget.onOpenManager?.call(),
             ),

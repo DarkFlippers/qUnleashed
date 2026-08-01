@@ -10,6 +10,7 @@ import '../../../components/dialogs/action.dart';
 import '../../about/page.dart';
 import '../../asembler/controller.dart';
 import '../../asembler/project/page.dart';
+import '../../asembler/settings_page.dart';
 import '../../option/page.dart';
 import '../paint/manager/page.dart';
 import '../remote/desktop/page.dart';
@@ -25,6 +26,21 @@ import 'widgets/tool_item_text.dart';
 
 class ToolsPage extends StatelessWidget {
   const ToolsPage({super.key});
+
+  /// Desktop opens the local builder; phones have no toolchain, so they open
+  /// the server setup instead.
+  static final ToolItemModel _flibler = ToolItemModel(
+    iconAsset: 'assets/ic/fileformat/plugins.svg',
+    iconColor: const Color(0xFF4DB6AC),
+    title: 'Flibler',
+    description: AssemblerController.isSupported
+        ? 'Build an app from a folder or repo'
+        : 'Builds apps for your firmware on the server',
+    routeBuilder: AssemblerController.isSupported
+        ? _buildFliblerPage
+        : _buildAssemblerSettingsPage,
+    badge: 'Beta',
+  );
 
   static final List<ToolGroup> _tools = [
     ToolGroup(
@@ -64,17 +80,7 @@ class ToolsPage extends StatelessWidget {
         iconColor: Color(0xFF4DB6AC),
         title: 'Apps',
       ),
-      items: [
-        if (AssemblerController.isSupported)
-          ToolItemModel(
-            iconAsset: 'assets/ic/fileformat/plugins.svg',
-            iconColor: const Color(0xFF4DB6AC),
-            title: 'Flibler',
-            description: 'Build an app from a folder or repo',
-            routeBuilder: _buildFliblerPage,
-            badge: 'Beta',
-          ),
-      ],
+      items: [_flibler],
     ),
     ToolGroup(
       header: const ToolCardHeader(
@@ -247,6 +253,9 @@ Widget _buildSettingsPage(BuildContext context) => const SettingsPage();
 Widget _buildPaintPage(BuildContext context) => const ProjectManagerPage();
 
 Widget _buildFliblerPage(BuildContext context) => const FliblerProjectPage();
+
+Widget _buildAssemblerSettingsPage(BuildContext context) =>
+    const AssemblerSettingsPage();
 
 Widget _buildRemoteControlPage(BuildContext context) =>
     const RemoteControlPage();

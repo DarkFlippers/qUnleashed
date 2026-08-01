@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dartufbt/dartufbt.dart';
 import 'package:flutter/material.dart';
 
@@ -5,13 +7,21 @@ import '../../components/cardlist.dart';
 import '../../theme/theme.dart';
 import 'controller.dart';
 import 'page.dart';
+import 'remote/remote_build_service.dart';
 
 class AssemblerSettingsPage extends StatefulWidget {
-  const AssemblerSettingsPage({super.key, this.fromConsole = false});
+  const AssemblerSettingsPage({
+    super.key,
+    this.fromConsole = false,
+    this.remote,
+  });
 
   /// Set when the console pushed this page, so a job started here goes back to
   /// it instead of stacking a second console on top.
   final bool fromConsole;
+
+  /// Injectable for tests; the app always uses the configured singleton.
+  final RemoteBuildService? remote;
 
   @override
   State<AssemblerSettingsPage> createState() => _AssemblerSettingsPageState();
@@ -36,13 +46,67 @@ class _AssemblerSettingsPageState extends State<AssemblerSettingsPage> {
     AssemblerSdkSource.custom: 'Custom',
   };
 
+  static const Map<AssemblerBackend, String> _backendTitles = {
+    AssemblerBackend.local: 'This computer',
+    AssemblerBackend.server: 'Build server',
+  };
+
+  RemoteBuildService get _remote => widget.remote ?? RemoteBuildService.instance;
+  RemoteServerStatus? _serverStatus;
+  String? _serverError;
+  bool _serverLoading = false;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _ctrl.refreshStatus();
-      _ctrl.loadSettings();
+      if (_ctrl.usesServerBuild) unawaited(_loadServerStatus());
     });
+  }
+
+  Future<void> _loadServerStatus() async {
+    if (_serverLoading) return;
+    setState(() {
+      _serverLoading = true;
+      _serverError = null;
+    });
+    RemoteServerStatus? status;
+    String? error;
+    try {
+      status = await _remote.serverStatus();
+    } catch (e) {
+      error = '$e';
+    }
+    if (!mounted) return;
+    setState(() {
+      _serverStatus = status;
+      _serverError = error;
+      _serverLoading = false;
+    });
+  }
+
+  Future<void> _selectBackend(AssemblerBackend backend) async {
+    await _ctrl.setBackend(backend);
+    if (backend == AssemblerBackend.server && _serverStatus == null) {
+      unawaited(_loadServerStatus());
+    }
+  }
+
+  Widget _backendTile(BuildContext context, AssemblerBackend backend) {
+    final local = backend == AssemblerBackend.local;
+    final supported = AssemblerController.isSupported;
+    return _radioTile(
+      context,
+      title: _backendTitles[backend]!,
+      subtitle: local
+          ? (supported
+                ? 'Faster: compiles here, needs the SDK and toolchain below'
+                : 'Not available: the ARM toolchain has no mobile build')
+          : 'Slower: waits in the server queue, downloads nothing here',
+      selected: _ctrl.backend == backend,
+      dimmed: local && !supported,
+    );
   }
 
   void _showConsole() {
@@ -84,11 +148,13 @@ class _AssemblerSettingsPageState extends State<AssemblerSettingsPage> {
           const SizedBox(height: 10),
           Text(
             'Flibler uses the uFBT utility to build an app for the firmware '
-            'you pick: it downloads the app source bundle instead of a ready '
-            'FAP and compiles it locally against the SDK of that firmware.\n\n'
-            'It needs two one-time downloads: the firmware SDK (~22 MB) and '
-            'the ARM toolchain (~340 MB). They are stored in the same place '
-            'ufbt uses, so an existing ufbt setup is reused as is.',
+            'you pick: it takes the app source bundle instead of a ready FAP '
+            'and compiles it against the SDK of that firmware.\n\n'
+            'On this computer that needs two one-time downloads — the firmware '
+            'SDK (~22 MB) and the ARM toolchain (~340 MB), stored where ufbt '
+            'keeps them, so an existing ufbt setup is reused as is. The build '
+            'server does the same job remotely and downloads nothing here, '
+            'which is the only option on phones.',
             style: TextStyle(
               color: colors.textSecondary,
               fontSize: 12.5,
@@ -105,6 +171,7 @@ class _AssemblerSettingsPageState extends State<AssemblerSettingsPage> {
     required String title,
     required String subtitle,
     required bool selected,
+    bool dimmed = false,
   }) {
     final colors = context.appColors;
     return Row(
@@ -117,7 +184,7 @@ class _AssemblerSettingsPageState extends State<AssemblerSettingsPage> {
               Text(
                 title,
                 style: TextStyle(
-                  color: colors.textPrimary,
+                  color: dimmed ? colors.textMuted : colors.textPrimary,
                   fontSize: 14,
                   height: 1.2,
                   fontWeight: FontWeight.w500,
@@ -357,6 +424,7 @@ class _AssemblerSettingsPageState extends State<AssemblerSettingsPage> {
   }
 
   List<Widget> _statusTiles(BuildContext context) {
+    if (_ctrl.usesServerBuild) return _remoteStatusTiles(context);
     final status = _ctrl.status;
     if (status == null) {
       return [_statusRow(context, 'State', 'Not checked yet')];
@@ -385,6 +453,42 @@ class _AssemblerSettingsPageState extends State<AssemblerSettingsPage> {
     ];
   }
 
+  List<Widget> _remoteStatusTiles(BuildContext context) {
+    final status = _serverStatus;
+    return [
+      _statusRow(context, 'Address', Uri.parse(_remote.serverUrl).host),
+      if (!_remote.canBuild)
+        _statusRow(context, 'Signing key', 'Missing in this build'),
+      _statusRow(
+        context,
+        'Server',
+        _serverLoading
+            ? 'Checking…'
+            : _serverError != null
+            ? 'Unreachable'
+            : status != null
+            ? 'Online · v${status.version}'
+            : 'Not checked yet',
+        ok: _serverError == null && status != null,
+      ),
+      _statusRow(
+        context,
+        'SDK',
+        status == null
+            ? '—'
+            : status.sdkVersions.isEmpty
+            ? 'Deploys on first build'
+            : status.sdkVersions.join(', '),
+        ok: status != null && status.sdkVersions.isNotEmpty,
+      ),
+      _statusRow(
+        context,
+        'Queue',
+        status == null ? '—' : '${status.queueLength} in line',
+      ),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
@@ -410,18 +514,19 @@ class _AssemblerSettingsPageState extends State<AssemblerSettingsPage> {
                 child: _intro(context),
               ),
               const SizedBox(height: 14),
-              if (!supported)
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: kGroupedHorizontalPadding,
-                  ),
-                  child: Text(
-                    'Local builds are available on desktop only — the ARM '
-                    'toolchain has no Android build.',
-                    style: TextStyle(color: colors.danger, fontSize: 12.5),
-                  ),
-                )
-              else ...[
+              GroupedCardList<AssemblerBackend>(
+                title: 'Build with',
+                items: AssemblerBackend.values,
+                onTap: (backend) {
+                  if (busy || (backend == AssemblerBackend.local && !supported)) {
+                    return null;
+                  }
+                  return () => _selectBackend(backend);
+                },
+                itemBuilder: _backendTile,
+              ),
+              const SizedBox(height: 14),
+              if (!_ctrl.usesServerBuild) ...[
                 GroupedCardList<UfbtUpdateChannel>(
                   title: 'SDK channel',
                   items: const [
@@ -440,25 +545,39 @@ class _AssemblerSettingsPageState extends State<AssemblerSettingsPage> {
                   itemBuilder: _sourceTile,
                 ),
                 const SizedBox(height: 14),
-                GroupedCardList<Widget>(
-                  title: 'Status',
-                  items: _statusTiles(context),
-                  itemBuilder: (context, tile) => tile,
-                ),
-                const SizedBox(height: 14),
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: kGroupedHorizontalPadding,
-                  ),
-                  child: Column(
-                    children: [
-                      _sdkAction(context),
-                      const SizedBox(height: 10),
-                      _toolchainAction(context),
-                    ],
-                  ),
-                ),
               ],
+              GroupedCardList<Widget>(
+                title: 'Status',
+                items: _statusTiles(context),
+                itemBuilder: (context, tile) => tile,
+              ),
+              const SizedBox(height: 14),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: kGroupedHorizontalPadding,
+                ),
+                child: _ctrl.usesServerBuild
+                    ? _action(
+                        context,
+                        label: _serverLoading ? 'Checking…' : 'Check server',
+                        caption:
+                            _serverError ??
+                            (_remote.canBuild
+                                ? 'Apps are compiled remotely, nothing to '
+                                      'download here'
+                                : 'Builds need a signing key: rebuild the app '
+                                      'with --dart-define=QU_BUILD_SERVER_KEY'),
+                        primary: false,
+                        onPressed: _serverLoading ? null : _loadServerStatus,
+                      )
+                    : Column(
+                        children: [
+                          _sdkAction(context),
+                          const SizedBox(height: 10),
+                          _toolchainAction(context),
+                        ],
+                      ),
+              ),
               const SizedBox(height: 20),
             ],
           ),
