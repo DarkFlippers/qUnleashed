@@ -10,6 +10,8 @@ import '../../../services/progress_throttle.dart';
 import '../../../services/repository/app.dart';
 import '../../archive/overview/fap_icon.dart';
 import '../../asembler/build_service.dart';
+import '../../asembler/controller.dart';
+import '../../asembler/remote/remote_build_service.dart';
 import 'apps_backend.dart';
 import 'catalog_api.dart';
 import 'manifest_registry.dart';
@@ -126,11 +128,11 @@ class InstallEngine extends ChangeNotifier {
             _taskQueue.insert(0, task);
           } else {
             _preparedInstalls.remove(task.alias);
-            if (_actions.remove(task.alias) != null) notifyListeners();
+            if (_clearAction(task.alias)) notifyListeners();
           }
         } catch (e) {
           LogService.log('[InstallEngine] task "${task.alias}" failed: $e');
-          if (_actions.remove(task.alias) != null) notifyListeners();
+          if (_clearAction(task.alias)) notifyListeners();
         }
         if (requeued) continue;
         if (!task.done.isCompleted) task.done.complete(ok);
@@ -143,6 +145,27 @@ class InstallEngine extends ChangeNotifier {
     }
   }
 
+  bool get _remoteBuildMode =>
+      backend.sourceBuildEnabled && AssemblerController.instance.usesServerBuild;
+
+  String? _serverBuildAlias;
+
+  /// The server takes one job at a time, so a second install has to wait. The
+  /// occupied alias is tracked instead of scanning [actions] because callers
+  /// ask on every tap.
+  String? serverBuildBlocker(String alias) {
+    final active = _serverBuildAlias;
+    return active != null && active != alias ? active : null;
+  }
+
+  /// Every path that finishes an action goes through here so the server slot
+  /// is released exactly once.
+  bool _clearAction(String alias) {
+    final removed = _actions.remove(alias) != null;
+    if (_serverBuildAlias == alias) _serverBuildAlias = null;
+    return removed;
+  }
+
   Future<bool> installOrUpdate(
     AppCard app, {
     AppCategory? category,
@@ -152,6 +175,7 @@ class InstallEngine extends ChangeNotifier {
     if (_actions.containsKey(app.alias)) return Future.value(false);
 
     final wasInstalled = isInstalled(app);
+    if (_remoteBuildMode) _serverBuildAlias = app.alias;
     _actions[app.alias] = AppAction(
       alias: app.alias,
       type: wasInstalled ? AppActionType.update : AppActionType.install,
@@ -225,16 +249,20 @@ class InstallEngine extends ChangeNotifier {
 
         List<int> fapBytes;
         if (backend.sourceBuildEnabled) {
-          final bundle = await api.fetchSourceBundle(
-            cv.id,
-            onProgress: onProgress,
-          );
-          _setActionState(app.alias, stage: AppActionStage.build, progress: 0);
-          fapBytes = await AssemblerBuildService.buildFromBundle(
-            bundle: bundle,
-            alias: app.alias,
-          );
-          _setActionState(app.alias, stage: AppActionStage.build, progress: 1);
+          if (!AssemblerController.instance.usesServerBuild) {
+            final bundle = await api.fetchSourceBundle(
+              cv.id,
+              onProgress: onProgress,
+            );
+            _setActionState(app.alias, stage: AppActionStage.build, progress: 0);
+            fapBytes = await AssemblerBuildService.buildFromBundle(
+              bundle: bundle,
+              alias: app.alias,
+            );
+            _setActionState(app.alias, stage: AppActionStage.build, progress: 1);
+          } else {
+            fapBytes = await _buildOnServer(app, cv);
+          }
         } else {
           try {
             fapBytes = await api.fetchFapBuild(cv.id, onProgress: onProgress);
@@ -310,7 +338,7 @@ class InstallEngine extends ChangeNotifier {
         fapBytes: prepared.fapBytes,
       );
       _preparedInstalls.remove(app.alias);
-      _actions.remove(app.alias);
+      _clearAction(app.alias);
       notifyListeners();
       return true;
     } catch (e) {
@@ -323,10 +351,40 @@ class InstallEngine extends ChangeNotifier {
       _actions[app.alias] = (_actions[app.alias] ?? action).copyWith(error: '$e');
       notifyListeners();
       await Future<void>.delayed(const Duration(seconds: 2));
-      _actions.remove(app.alias);
+      _clearAction(app.alias);
       notifyListeners();
       return false;
     }
+  }
+
+  Future<List<int>> _buildOnServer(AppCard app, AppCurrentVersion cv) {
+    _setActionState(app.alias, stage: AppActionStage.queued, progress: 0);
+    return RemoteBuildService.instance.build(
+      bundleUrl: api.sourceBundleUri(cv.id).toString(),
+      alias: app.alias,
+      target: backend.deviceTarget ?? 'f7',
+      api: backend.deviceApi,
+      uid: app.id,
+      versionUid: cv.id,
+      onPhase: (phase, progress) {
+        switch (phase) {
+          case RemoteBuildPhase.queued:
+            _setActionState(
+              app.alias,
+              stage: AppActionStage.queued,
+              progress: 0,
+            );
+          case RemoteBuildPhase.building:
+            _setActionState(app.alias, stage: AppActionStage.build, progress: 0);
+          case RemoteBuildPhase.download:
+            _setActionState(
+              app.alias,
+              stage: AppActionStage.download,
+              progress: progress,
+            );
+        }
+      },
+    );
   }
 
   Future<bool> uninstall(AppCard app, {AppCategory? category}) {
@@ -357,7 +415,7 @@ class InstallEngine extends ChangeNotifier {
       await _safeDelete(fimPath);
       await _safeDelete(fapPath);
       manifests.removeAlias(app.alias);
-      _actions.remove(app.alias);
+      _clearAction(app.alias);
       notifyListeners();
       return true;
     } catch (e) {
@@ -369,7 +427,7 @@ class InstallEngine extends ChangeNotifier {
       _actions[app.alias] = (_actions[app.alias] ?? action).copyWith(error: '$e');
       notifyListeners();
       await Future<void>.delayed(const Duration(seconds: 2));
-      _actions.remove(app.alias);
+      _clearAction(app.alias);
       notifyListeners();
       return false;
     }
@@ -410,7 +468,7 @@ class InstallEngine extends ChangeNotifier {
       await _safeDelete('$kManifestsRoot/$alias.fim');
       await _safeDelete(fapPath);
       manifests.removeAlias(alias);
-      _actions.remove(alias);
+      _clearAction(alias);
       notifyListeners();
       return true;
     }, needsLink: true);
@@ -450,7 +508,7 @@ class InstallEngine extends ChangeNotifier {
         await _verifyUpload('$kManifestsRoot/$alias.fim', bytes);
         manifests.put(alias, manifest, fimSize: bytes.length);
       }
-      _actions.remove(alias);
+      _clearAction(alias);
       notifyListeners();
       return true;
     }, needsLink: true);
@@ -574,6 +632,7 @@ class InstallEngine extends ChangeNotifier {
     }
     _taskQueue.clear();
     _actions.clear();
+    _serverBuildAlias = null;
     _preparedInstalls.clear();
     notifyListeners();
   }

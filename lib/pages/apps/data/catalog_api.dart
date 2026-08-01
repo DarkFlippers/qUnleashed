@@ -253,11 +253,14 @@ class AppsCatalogApi {
     );
   }
 
+  Uri sourceBundleUri(String versionId) =>
+      _uri('/application/version/$versionId/bundle', const {});
+
   Future<List<int>> fetchSourceBundle(
     String versionId, {
     void Function(int receivedBytes, int? totalBytes)? onProgress,
   }) async {
-    final uri = _uri('/application/version/$versionId/bundle', const {});
+    final uri = sourceBundleUri(versionId);
     if (_closed) throw StateError('AppsCatalogApi has been closed');
     return AppHttp.getBytes(
       uri,
