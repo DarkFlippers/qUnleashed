@@ -169,7 +169,8 @@ class _ActionDialogState extends State<_ActionDialog> {
               ),
               const SizedBox(height: 14),
               FapFactsPanel(
-                app: app,
+                info: app.fap,
+                checked: app.fapChecked,
                 author: author,
                 deviceApi: widget.deviceApi,
                 deviceTarget: widget.deviceTarget,

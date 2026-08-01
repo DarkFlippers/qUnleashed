@@ -1,22 +1,25 @@
 import 'package:flutter/material.dart';
 
+import '../../../../components/codec/fap.dart';
 import '../../../../theme/theme.dart';
 import '../../data/models/fap_details.dart';
-import '../../data/models/installed_app.dart';
 
-/// Everything the manager can tell about an app by reading its local `.fap`
-/// copy: the embedded manifest, what the loader would allocate for it and the
-/// assets it unpacks onto the SD card.
+/// Everything a `.fap` tells about itself: the embedded manifest, what the
+/// loader would allocate for it and the assets it unpacks onto the SD card.
 class FapFactsPanel extends StatelessWidget {
   const FapFactsPanel({
     super.key,
-    required this.app,
+    required this.info,
+    this.checked = true,
+    this.showVerdict = true,
     this.author,
     this.deviceApi,
     this.deviceTarget,
   });
 
-  final InstalledApp app;
+  final FapInfo? info;
+  final bool checked;
+  final bool showVerdict;
   final String? author;
   final String? deviceApi;
   final String? deviceTarget;
@@ -25,7 +28,7 @@ class FapFactsPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.appColors;
 
-    if (!app.fapChecked) {
+    if (!checked) {
       return _Note(
         icon: Icons.sync,
         text: 'Sync the manager to read this app from the device',
@@ -34,7 +37,7 @@ class FapFactsPanel extends StatelessWidget {
       );
     }
 
-    final info = app.fap;
+    final info = this.info;
     final compat = evaluateFap(
       info,
       deviceApi: deviceApi,
@@ -56,8 +59,10 @@ class FapFactsPanel extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _Verdict(compat: compat, colors: colors),
-        const SizedBox(height: 10),
+        if (showVerdict) ...[
+          _Verdict(compat: compat, colors: colors),
+          const SizedBox(height: 10),
+        ],
         _Facts(
           colors: colors,
           rows: [

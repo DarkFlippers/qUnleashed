@@ -117,7 +117,8 @@ void main() {
           theme: buildAppTheme(Brightness.dark, Colors.orange),
           home: Scaffold(
             body: FapFactsPanel(
-              app: app,
+              info: app.fap,
+              checked: app.fapChecked,
               deviceApi: '86.9',
               deviceTarget: 'f7',
             ),
