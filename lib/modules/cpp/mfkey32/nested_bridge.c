@@ -25,8 +25,10 @@
 // the keystream under-constrains the 48-bit state, so `qunleashed_nested_enum_*`
 // below exposes the whole candidate set for external filtering instead.
 //
-// Returns the recovered key (48-bit, big-endian nibble order matching PM3's
-// crypto1_get_lfsr) and sets *found to 1 when a key satisfied every sample.
+// Returns the 48-bit key value produced by PM3's crypto1_get_lfsr (the same
+// layout crypto1_init consumes). *found is set to 1 when a candidate satisfied
+// every sample; with a single sample that only means a candidate was produced
+// (not that the key is unique) — use qunleashed_nested_enum_candidates instead.
 QUNLEASHED_EXPORT uint64_t qunleashed_nested_recover_key(
     uint32_t uid,
     uint32_t nt0,
@@ -77,8 +79,8 @@ QUNLEASHED_EXPORT uint64_t qunleashed_nested_recover_key(
 //
 // Writes up to `capacity` recovered keys into `out_keys` and returns the number
 // of candidates found (which may exceed `capacity`, in which case the buffer was
-// truncated). Used for the static-encrypted / single-nonce path, where a
-// per-card dictionary disambiguates the true key.
+// truncated). Intended for the static-encrypted / single-nonce path (not yet
+// wired into Dart), where a per-CUID dictionary disambiguates the true key.
 QUNLEASHED_EXPORT uint32_t qunleashed_nested_enum_candidates(
     uint32_t uid,
     uint32_t nt0,

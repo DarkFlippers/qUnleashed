@@ -2,6 +2,7 @@ enum MfKey32ErrorType {
   notFoundFile,
   readWrite,
   flipperConnection,
+  recoveryFailed,
 }
 
 sealed class MfKey32State {

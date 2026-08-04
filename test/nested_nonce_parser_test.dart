@@ -65,5 +65,55 @@ Sec 1 key B cuid 5bcbb2e4 nt0 d7707ed1 ks0 65bc542b par0 0110 dist 0
       const line = 'Sec 3 key A cuid 5bcbb2e4 nt0 garbage';
       expect(NestedNonceParser.parse(line), isEmpty);
     });
+
+    test('treats two identical nonces as static-encrypted (not a pair)', () {
+      // Two full samples but nt0 == nt1: no extra constraint, so not
+      // recoverable as a weak-nested pair. Guards a silent wrong-key result.
+      const line =
+          'Sec 5 key A cuid 5bcbb2e4 nt0 a0bbe1ef ks0 c70d97e3 par0 1110 '
+          'nt1 a0bbe1ef ks1 c70d97e3 par1 1110 dist 0';
+
+      final nonce = NestedNonceParser.parse(line).single;
+      expect(nonce.samples, hasLength(2));
+      expect(nonce.hasPair, isFalse);
+      expect(nonce.kind, NestedAttackKind.staticEncrypted);
+    });
+
+    test('drops a line whose second sample is present but malformed', () {
+      // A valid first sample with a corrupt nt1 must not be silently downgraded
+      // to a single-sample nonce — the whole line is dropped.
+      const line =
+          'Sec 6 key A cuid 5bcbb2e4 nt0 a0bbe1ef ks0 c70d97e3 par0 1110 '
+          'nt1 zzzzzzzz ks1 8a2107ad par1 1010 dist 0';
+      expect(NestedNonceParser.parse(line), isEmpty);
+    });
+
+    test('drops a sample with an out-of-range (non 32-bit) value', () {
+      const line =
+          'Sec 6 key A cuid 5bcbb2e4 nt0 1a0bbe1ef ks0 c70d97e3 par0 1110';
+      expect(NestedNonceParser.parse(line), isEmpty);
+    });
+
+    test('rejects structurally invalid lines but keeps valid neighbours', () {
+      const file = '''
+Sec x key A cuid 5bcbb2e4 nt0 a0bbe1ef ks0 c70d97e3 par0 1110
+Sec 0 key Z cuid 5bcbb2e4 nt0 a0bbe1ef ks0 c70d97e3 par0 1110
+Sec 0 key A nt0 a0bbe1ef ks0 c70d97e3 par0 1110
+Sec 1 key B cuid 5bcbb2e4 nt0 d7707ed1 ks0 65bc542b par0 0110 dist 0
+''';
+      final nonces = NestedNonceParser.parse(file);
+      expect(nonces, hasLength(1));
+      expect(nonces.single.sector, 1);
+      expect(nonces.single.keyType, NestedKeyType.b);
+    });
+
+    test('parses dist as null when absent and as its value when present', () {
+      const withoutDist =
+          'Sec 0 key A cuid 5bcbb2e4 nt0 a0bbe1ef ks0 c70d97e3 par0 1110';
+      const withDist =
+          'Sec 0 key A cuid 5bcbb2e4 nt0 a0bbe1ef ks0 c70d97e3 par0 1110 dist 5';
+      expect(NestedNonceParser.parse(withoutDist).single.dist, isNull);
+      expect(NestedNonceParser.parse(withDist).single.dist, 5);
+    });
   });
 }

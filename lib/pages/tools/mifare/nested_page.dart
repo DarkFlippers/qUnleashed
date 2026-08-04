@@ -153,6 +153,9 @@ class _StatusBlock extends StatelessWidget {
               '(NFC → the sector key you know → collect), then sync and retry.',
         MfKey32ErrorType.readWrite => 'SD card is full or not accessible',
         MfKey32ErrorType.flipperConnection => 'Device not connected',
+        MfKey32ErrorType.recoveryFailed =>
+          'Key recovery is unavailable on this build — the native component '
+          'could not be loaded. Update the app and try again.',
       };
 }
 

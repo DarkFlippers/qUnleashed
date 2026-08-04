@@ -271,6 +271,17 @@ class _ErrorBlock extends StatelessWidget {
         textAlign: TextAlign.start,
         horizontalPadding: 14,
       ),
+      MfKey32ErrorType.recoveryFailed => _SimpleError(
+        title: 'Key Recovery Unavailable',
+        descriptions: const [
+          'The native recovery component could not be loaded on this build.',
+          'Update the app to the latest version and try again.',
+        ],
+        mockupImageAsset: 'assets/pic/device/screen/dead.svg',
+        active: false,
+        textAlign: TextAlign.center,
+        horizontalPadding: 24,
+      ),
     };
   }
 }

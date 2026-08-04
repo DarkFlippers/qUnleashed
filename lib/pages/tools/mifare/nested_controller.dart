@@ -62,6 +62,9 @@ class NestedController extends ChangeNotifier {
     _running = true;
     try {
       await _run();
+    } catch (e, st) {
+      LogService.log('[Nested] Unexpected failure: $e\n$st');
+      _emit(const MfKey32Error(MfKey32ErrorType.recoveryFailed));
     } finally {
       _running = false;
       notifyListeners();
@@ -90,15 +93,21 @@ class NestedController extends ChangeNotifier {
     }
 
     _emit(const MfKey32Calculating(0));
+    // Recovery is memory-heavy (~50 MB transient per isolate) and a fully
+    // collected card yields dozens of pairs, so cap how many run concurrently
+    // to keep peak memory bounded instead of spawning one isolate per pair.
+    const maxConcurrent = 4;
     var completed = 0;
-    await Future.wait(
-      pairs.map((nonce) async {
-        final key = await _recoverer.recoverKey(nonce);
-        LogService.log('[Nested] ${nonce.sectorName}/${nonce.keyName} = $key');
-        completed++;
-        _onFoundKey(nonce, key, pairs.length, completed);
-      }),
-    );
+    for (var offset = 0; offset < pairs.length; offset += maxConcurrent) {
+      await Future.wait(
+        pairs.skip(offset).take(maxConcurrent).map((nonce) async {
+          final key = await _recoverer.recoverKey(nonce);
+          LogService.log('[Nested] ${nonce.sectorName}/${nonce.keyName} = $key');
+          completed++;
+          _onFoundKey(nonce, key, pairs.length, completed);
+        }),
+      );
+    }
 
     _emit(const MfKey32Uploading());
     late final List<String> addedKeys;
@@ -113,8 +122,7 @@ class NestedController extends ChangeNotifier {
   }
 
   Future<bool> _prepare() async {
-    await _api.checkNonceFileExist(_client);
-    if (!_api.isNonceFileExist) {
+    if (!await _api.nonceFileExists(_client)) {
       LogService.log('[Nested] Not found $pathNestedLog');
       _emit(const MfKey32Error(MfKey32ErrorType.notFoundFile));
       return false;
@@ -159,10 +167,6 @@ class NestedController extends ChangeNotifier {
   }
 
   void _onFoundKey(NestedNonce nonce, BigInt? key, int total, int completed) {
-    final currentState = _state;
-    if (currentState is MfKey32Calculating) {
-      _emit(MfKey32Calculating(completed / total));
-    }
     _existedKeysStorage.onNewKey(
       FoundedKey(
         sectorName: nonce.sectorName,
@@ -170,6 +174,10 @@ class NestedController extends ChangeNotifier {
         key: key?.toRadixString(16).padLeft(12, '0').toUpperCase(),
       ),
     );
+    // Update progress and publish the new key in a single rebuild.
+    if (_state is MfKey32Calculating) {
+      _state = MfKey32Calculating(completed / total);
+    }
     notifyListeners();
   }
 
