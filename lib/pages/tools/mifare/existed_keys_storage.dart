@@ -13,8 +13,10 @@ typedef DictWriter = Future<void> Function(String path, List<int> data);
 class ExistedKeysStorage {
   ExistedKeysStorage(FlipperClient client)
     : this.withSeams(
-        reader: (path) =>
-            client.storageReadChunked(path, timeout: const Duration(minutes: 5)),
+        reader: (path) => client.storageReadChunked(
+          path,
+          timeout: const Duration(minutes: 5),
+        ),
         writer: (path, data) => client.storageWriteChunked(path, data),
       );
 
@@ -110,7 +112,9 @@ class ExistedKeysStorage {
       // upload() can't overwrite it with a partial set; the system dict is
       // best-effort and degrades to empty.
       if (abortOnReadError) rethrow;
-      LogService.log('[ExistedKeysStorage] optional dict $path load failed: $e');
+      LogService.log(
+        '[ExistedKeysStorage] optional dict $path load failed: $e',
+      );
       return const [];
     }
   }

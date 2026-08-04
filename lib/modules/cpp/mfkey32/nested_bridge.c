@@ -90,7 +90,7 @@ static uint32_t gen_static_candidates(
     uint64_t* out_keys,
     uint32_t capacity) {
   const uint8_t nt_par_enc = par ^ 0x0F;
-  struct Crypto1State *rs, *r, *s;
+  struct Crypto1State *rs, *r;
   uint64_t key;
   uint32_t count = 0;
 
@@ -98,30 +98,26 @@ static uint32_t gen_static_candidates(
   if (rs == NULL) {
     return 0;
   }
-  s = crypto1_create(0);
-  if (s == NULL) {
-    free(rs);
-    return 0;
-  }
 
+  const uint8_t expected = oddparity8(nt & 0xFF);
   for (r = rs; (r->odd | r->even) && count < capacity; ++r) {
+    // r is already positioned after producing ks0; feeding one more word (0)
+    // yields ks2, whose top bit encrypts the last nonce byte's parity. Copy the
+    // state so the rollback below only runs for candidates that pass parity.
+    struct Crypto1State tmp = *r;
+    const uint32_t ks2 = crypto1_word(&tmp, 0, 0);
+    const uint8_t got = (uint8_t)((nt_par_enc & 1) ^ ((ks2 >> 24) & 1));
+    if (expected != got) {
+      continue;
+    }
     lfsr_rollback_word(r, uid ^ nt, 0);
     crypto1_get_lfsr(r, &key);
-
-    crypto1_init(s, key);
-    crypto1_word(s, uid ^ nt, 0);
-    const uint32_t ks2 = crypto1_word(s, 0, 0);
-    const uint8_t expected = oddparity8(nt & 0xFF);
-    const uint8_t got = (uint8_t)((nt_par_enc & 1) ^ ((ks2 >> 24) & 1));
-    if (expected == got) {
-      if (out_keys != NULL) {
-        out_keys[count] = key;
-      }
-      count++;
+    if (out_keys != NULL) {
+      out_keys[count] = key;
     }
+    count++;
   }
 
-  crypto1_destroy(s);
   free(rs);
   return count;
 }

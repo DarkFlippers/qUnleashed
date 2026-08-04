@@ -102,3 +102,7 @@ class MfKey32Nonce {
   final int nr1;
   final int ar1;
 }
+
+/// Formats a recovered 48-bit MIFARE Classic key as 12 uppercase hex digits.
+String formatMifareKey(int key) =>
+    key.toRadixString(16).padLeft(12, '0').toUpperCase();

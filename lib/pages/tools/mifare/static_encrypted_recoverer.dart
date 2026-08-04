@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
+import 'mfkey32_models.dart';
 import 'mifare_native.dart';
 import 'nested_models.dart';
 
@@ -160,7 +161,7 @@ class NativeStaticEncryptedRecoverer implements StaticEncryptedRecoverer {
         // Serialize here so only a flat byte buffer crosses the isolate boundary.
         final body = candidates.isEmpty
             ? Uint8List(0)
-            : utf8.encode('${candidates.map(_formatKey).join('\n')}\n');
+            : utf8.encode('${candidates.map(formatMifareKey).join('\n')}\n');
         results.add(
           StaticCandidateDict(cuid: cuid, count: candidates.length, body: body),
         );
@@ -173,9 +174,6 @@ class NativeStaticEncryptedRecoverer implements StaticEncryptedRecoverer {
       calloc.free(countB);
     }
   }
-
-  static String _formatKey(int key) =>
-      key.toRadixString(16).padLeft(12, '0').toUpperCase();
 }
 
 class _NoncePayload {

@@ -15,12 +15,17 @@ import 'mfkey32_models.dart'
         MfKey32Error,
         MfKey32ErrorType,
         FoundedInformation,
-        FoundedKey;
+        FoundedKey,
+        formatMifareKey;
 import 'nested_api.dart';
 import 'nested_models.dart';
 import 'nested_nonce_parser.dart';
 import 'nested_recoverer.dart';
 import 'static_encrypted_recoverer.dart';
+
+/// Why the static-encrypted candidate step failed. The weak-key result (if any)
+/// is still saved and reported regardless.
+enum StaticCandidateError { generationFailed, writeFailed }
 
 /// Drives the nested key-recovery flow: download `.nested.log` from the Flipper,
 /// recover weak-PRNG nested keys (two-sample lines) locally and sync them into
@@ -55,7 +60,7 @@ class NestedController extends ChangeNotifier {
   String _rawNonceLog = '';
   bool _running = false;
   List<({int cuid, int count})> _staticCandidateSummary = const [];
-  String? _staticError;
+  StaticCandidateError? _staticError;
 
   MfKey32State get state => _state;
   FoundedInformation get foundedInformation =>
@@ -70,7 +75,7 @@ class NestedController extends ChangeNotifier {
 
   /// Set when the static-encrypted candidate step failed. The weak-key result
   /// (if any) is still saved and reported regardless.
-  String? get staticError => _staticError;
+  StaticCandidateError? get staticError => _staticError;
 
   Future<void> start() async {
     if (_running) return;
@@ -152,16 +157,17 @@ class NestedController extends ChangeNotifier {
       dicts = await _staticRecoverer.buildCandidateDicts(singles);
     } catch (e, st) {
       LogService.log('[Nested] Candidate generation failed: $e\n$st');
-      _staticError =
-          'Could not generate static-encrypted candidates '
-          '(native component unavailable).';
+      _staticError = StaticCandidateError.generationFailed;
       return;
     }
 
-    final summary = <({int cuid, int count})>[];
+    // The summary reflects what was generated per card, independent of the write
+    // outcome (a write failure is reported separately via [staticError]).
+    _staticCandidateSummary = List.unmodifiable([
+      for (final dict in dicts) (cuid: dict.cuid, count: dict.count),
+    ]);
+
     for (final dict in dicts) {
-      summary.add((cuid: dict.cuid, count: dict.count));
-      _staticCandidateSummary = List.unmodifiable(summary);
       if (dict.count == 0) continue; // surfaced with count 0; nothing to write
       try {
         await _client.storageWriteChunked(_cuidDictPath(dict.cuid), dict.body);
@@ -169,9 +175,8 @@ class NestedController extends ChangeNotifier {
         LogService.log(
           '[Nested] Candidate dict write failed (${dict.cuid}): $e',
         );
-        _staticError =
-            'Could not write the candidate dictionary to the device.';
-        return; // already-written dicts + summary survive; weak keys still saved
+        _staticError = StaticCandidateError.writeFailed;
+        return; // written dicts + summary survive; weak keys still saved
       }
     }
   }
@@ -229,7 +234,7 @@ class NestedController extends ChangeNotifier {
       FoundedKey(
         sectorName: nonce.sectorName,
         keyName: nonce.keyName,
-        key: key?.toRadixString(16).padLeft(12, '0').toUpperCase(),
+        key: key == null ? null : formatMifareKey(key.toInt()),
       ),
     );
     // Update progress and publish the new key in a single rebuild.

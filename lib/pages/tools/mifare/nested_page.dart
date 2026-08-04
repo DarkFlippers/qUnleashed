@@ -170,7 +170,7 @@ class _StaticCandidatesNote extends StatelessWidget {
   final List<({int cuid, int count})> summary;
 
   /// Non-null when the static-encrypted step failed (weak keys still saved).
-  final String? error;
+  final StaticCandidateError? error;
 
   @override
   Widget build(BuildContext context) {
@@ -194,7 +194,7 @@ class _StaticCandidatesNote extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 2),
               child: SelectableText(
                 'Card ${entry.cuid.toRadixString(16).padLeft(8, '0').toUpperCase()}'
-                '${entry.count == 0 ? ' — no candidates generated' : ' — ${entry.count} candidate keys written to dictionary'}',
+                '${entry.count == 0 ? ' — no candidates generated' : ' — ${entry.count} candidate keys'}',
                 style: TextStyle(
                   color: colors.textPrimary,
                   fontSize: 12,
@@ -204,10 +204,13 @@ class _StaticCandidatesNote extends StatelessWidget {
             ),
           if (error != null) ...[
             const SizedBox(height: 8),
-            Text(
-              error!,
-              style: TextStyle(color: colors.textMuted, fontSize: 13),
-            ),
+            Text(switch (error!) {
+              StaticCandidateError.generationFailed =>
+                'Could not generate candidates — the native component could '
+                    'not be loaded.',
+              StaticCandidateError.writeFailed =>
+                'Could not write the candidate dictionary to the device.',
+            }, style: TextStyle(color: colors.textMuted, fontSize: 13)),
           ],
           const SizedBox(height: 8),
           Text(
