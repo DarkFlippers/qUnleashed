@@ -16,6 +16,7 @@ import '../data/category.dart';
 import '../data/models/key.dart';
 import '../emulate/page.dart';
 import 'syntax.dart';
+import '../../../services/logging/log_service.dart';
 
 const _kFontSize = 13.0;
 const _kLineHeight = _kFontSize * 1.4;

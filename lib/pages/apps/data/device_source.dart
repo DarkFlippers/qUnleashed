@@ -14,6 +14,7 @@ import 'catalog_api.dart';
 import 'install_engine.dart';
 import 'manifest_registry.dart';
 import 'models/installed_app.dart';
+import '../../../services/logging/log_service.dart';
 
 class DeviceSource extends ChangeNotifier {
   DeviceSource({

@@ -11,6 +11,7 @@ import 'package:xterm/xterm.dart';
 import 'package:qunleashed/components/appbar.dart';
 import '../../../../components/dialogs/connection_error.dart';
 import '../../../../components/dialogs/connection.dart';
+import '../../../../services/logging/log_service.dart';
 
 const _kBackgroundColor = Color(0xFF000000);
 const _kForegroundColor = Color(0xFFE0E0E0);

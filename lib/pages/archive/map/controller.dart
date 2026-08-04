@@ -7,6 +7,7 @@ import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 
+import '../../../services/gps/gps_responder.dart';
 import '../data/parser.dart';
 import '../overview/storage.dart';
 import '../data/category.dart';

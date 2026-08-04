@@ -22,6 +22,7 @@ import 'models/tool.dart';
 import 'widgets/app_version.dart';
 import 'widgets/tool_item_badge.dart';
 import 'widgets/tool_item_text.dart';
+import '../../../services/logging/log_service.dart';
 
 class ToolsPage extends StatelessWidget {
   const ToolsPage({super.key});

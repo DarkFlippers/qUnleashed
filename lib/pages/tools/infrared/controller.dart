@@ -11,6 +11,7 @@ import 'api.dart';
 import 'local_repo.dart';
 import 'models.dart';
 import 'settings.dart';
+import '../../../services/logging/log_service.dart';
 
 class IrLibController extends ChangeNotifier {
   IrLibController({

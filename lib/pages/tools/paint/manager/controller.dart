@@ -8,6 +8,7 @@ import '../../../../services/progress_throttle.dart';
 import '../../../../services/repository/app.dart';
 import '../project.dart';
 import '../virtual_display_session.dart';
+import '../../../../services/logging/log_service.dart';
 
 /// Remote dolphin directory on the Flipper SD card.
 const String kDeviceDolphinPath = '/ext/dolphin';

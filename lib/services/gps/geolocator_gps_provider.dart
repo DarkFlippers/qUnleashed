@@ -3,10 +3,10 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 
-import 'package:flipperlib/flipperlib.dart';
 import 'package:geolocator/geolocator.dart';
 
 import 'gnss_satellites.dart';
+import 'gps_responder.dart';
 
 class GeolocatorGpsProvider implements GpsLocationProvider {
   GeolocatorGpsProvider({GnssSatelliteSource? gnss})

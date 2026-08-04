@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io' as io;
 
 import 'package:file_picker/file_picker.dart';
-import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../components/icon.dart';
@@ -18,6 +17,7 @@ import 'columns.dart';
 import 'sort.dart';
 import 'table.dart';
 import 'toolbar.dart';
+import '../../../../services/logging/log_service.dart';
 
 class CategoryPage extends StatefulWidget {
   const CategoryPage({

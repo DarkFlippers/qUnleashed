@@ -8,6 +8,7 @@ import 'key_nonce_parser.dart';
 import 'mfkey32_api.dart';
 import 'mfkey32_models.dart';
 import 'mfkey32_recoverer.dart';
+import '../../../services/logging/log_service.dart';
 
 const _totalPercent = 1.0;
 

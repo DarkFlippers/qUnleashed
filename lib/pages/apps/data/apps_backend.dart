@@ -10,6 +10,7 @@ import 'install_engine.dart';
 import 'manifest_registry.dart';
 import 'models/card.dart';
 import 'update_registry.dart';
+import '../../../services/logging/log_service.dart';
 
 const String kAppsRoot = '/ext/apps';
 const String kManifestsRoot = '/ext/apps_manifests';

@@ -14,6 +14,7 @@ import '../../../services/progress_throttle.dart';
 import '../../../services/repository/app.dart' as icon_repo;
 import '../data/models/fap.dart';
 import '../data/models/key.dart';
+import '../../../services/logging/log_service.dart';
 
 enum SyncPhase { checking, downloading }
 

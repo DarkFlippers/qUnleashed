@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../../services/progress_throttle.dart';
 import '../../../services/repository/app.dart';
+import '../../../services/logging/log_service.dart';
 
 class RemoteEntry {
   RemoteEntry({required this.name, required this.size, required this.isDir});

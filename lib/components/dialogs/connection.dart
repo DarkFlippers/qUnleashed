@@ -4,6 +4,7 @@ import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
 import '../../theme/theme.dart';
+import '../../services/logging/log_service.dart';
 
 Future<FlipperDevice?> showConnectionDialog(
   BuildContext context, {

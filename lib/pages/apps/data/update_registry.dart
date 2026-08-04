@@ -11,6 +11,7 @@ import 'install_engine.dart';
 import 'manifest_registry.dart';
 import 'models/card.dart';
 import 'models/manifest.dart';
+import '../../../services/logging/log_service.dart';
 
 @immutable
 class AppUpdate {

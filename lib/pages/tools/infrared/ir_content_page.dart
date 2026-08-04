@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../../archive/data/category.dart';
 import '../../archive/overview/storage.dart';
 import 'widgets/ir_file_viewer.dart';
+import '../../../services/logging/log_service.dart';
 
 class IrContentPage extends StatefulWidget {
   const IrContentPage({

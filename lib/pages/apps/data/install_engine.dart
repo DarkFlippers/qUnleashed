@@ -19,6 +19,7 @@ import 'models/card.dart';
 import 'models/category.dart';
 import 'models/detail.dart';
 import 'models/manifest.dart';
+import '../../../services/logging/log_service.dart';
 
 enum AppActionType { install, update, delete }
 

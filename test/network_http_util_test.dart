@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import 'package:flipperlib/api/http_util.dart';
+import 'package:qunleashed/services/network/http_util.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

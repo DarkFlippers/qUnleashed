@@ -4,12 +4,12 @@ import 'dart:io' as io;
 
 import 'package:archive/archive_io.dart';
 import 'package:flipperlib/flipperlib.dart';
-import 'package:flipperlib/dfu/stm32wb55/option_bytes.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../../services/progress_throttle.dart';
 import 'source.dart';
 import 'update_state.dart';
+import '../../../services/logging/log_service.dart';
 
 const _tag = '[FirmwareInstaller]';
 const _remoteRoot = '/ext/update';

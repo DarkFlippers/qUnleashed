@@ -1,6 +1,6 @@
-import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
+import '../../../../services/network/network_traffic.dart';
 import '../../../../theme/theme.dart';
 import 'summary_card.dart';
 

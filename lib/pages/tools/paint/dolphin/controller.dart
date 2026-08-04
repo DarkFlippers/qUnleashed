@@ -8,6 +8,7 @@ import '../project.dart';
 import '../virtual_display_session.dart';
 import 'dolphin_pack.dart';
 import 'manifest.dart';
+import '../../../../services/logging/log_service.dart';
 
 /// One selectable animation in the sync screen: a local [PaintProject] paired
 /// with its editable [ManifestEntry] (selection + butthurt/level/weight).

@@ -5,6 +5,7 @@ import 'package:flipperlib/flipperlib.dart';
 
 import '../data/models/key.dart';
 import '../data/parser.dart';
+import '../../../services/logging/log_service.dart';
 
 enum EmulateError {
   notConnected,
