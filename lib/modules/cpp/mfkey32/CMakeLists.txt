@@ -8,6 +8,7 @@ set(CRAPTO1_DIR "${NFC_TOOLS_DIR}/mfkey32v2/crapto1")
 
 add_library(qunleashed_mfkey32 SHARED
   mfkey32_bridge.c
+  nested_bridge.c
   "${CRAPTO1_DIR}/bucketsort.c"
   "${CRAPTO1_DIR}/crapto1.c"
   "${CRAPTO1_DIR}/crypto1.c"

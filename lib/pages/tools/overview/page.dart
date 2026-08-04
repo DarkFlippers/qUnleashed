@@ -17,6 +17,7 @@ import '../remote/cli/page.dart';
 import '../infrared/categories_page.dart';
 import '../../archive/map/page.dart';
 import '../mifare/mfkey32_page.dart';
+import '../mifare/nested_page.dart';
 import '../plotter/page.dart';
 import 'models/tool.dart';
 import 'widgets/app_version.dart';
@@ -89,6 +90,14 @@ class ToolsPage extends StatelessWidget {
           title: 'Extract MIFARE Keys',
           description: 'Calculate keys from Extract MF Keys',
           routeBuilder: _buildMfKey32Page,
+          badge: 'Beta',
+        ),
+        ToolItemModel(
+          iconAsset: 'assets/ic/fileformat/nfc.svg',
+          iconColor: const Color(0xFF34C7A4),
+          title: 'Nested MIFARE Keys',
+          description: 'Recover keys from nested nonces (.nested.log)',
+          routeBuilder: _buildNestedPage,
           badge: 'Beta',
         ),
         ToolItemModel(
@@ -233,6 +242,8 @@ class ToolsPage extends StatelessWidget {
 }
 
 Widget _buildMfKey32Page(BuildContext context) => const MfKey32Page();
+
+Widget _buildNestedPage(BuildContext context) => const NestedPage();
 
 Widget _buildPlotterPage(BuildContext context) => const PulsePlotterPage();
 
