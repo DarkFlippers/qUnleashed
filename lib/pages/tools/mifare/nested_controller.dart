@@ -28,17 +28,19 @@ import 'static_encrypted_recoverer.dart';
 ///
 /// Single-sample static-encrypted (FM11RF08S) lines can't be resolved to a
 /// unique key offline, so for those we generate a per-CUID candidate dictionary
-/// (`mf_classic_dict_<cuid>.nfc`) that the device verifies against the tag.
+/// (`mf_classic_dict_<cuid>.nfc`) that the device verifies against the tag. That
+/// step is supplementary: if it fails, the recovered weak keys are still saved
+/// and reported, and the static failure is surfaced separately via [staticError].
 class NestedController extends ChangeNotifier {
   NestedController({
     FlipperClient? client,
     NestedApi? api,
     NestedRecoverer? recoverer,
     StaticEncryptedRecoverer? staticRecoverer,
-  })  : _client = client ?? FlipperOneClient().get(),
-        _api = api ?? NestedApiImpl(),
-        _recoverer = recoverer ?? NativeNestedRecoverer(),
-        _staticRecoverer = staticRecoverer ?? NativeStaticEncryptedRecoverer() {
+  }) : _client = client ?? FlipperOneClient().get(),
+       _api = api ?? NestedApiImpl(),
+       _recoverer = recoverer ?? NativeNestedRecoverer(),
+       _staticRecoverer = staticRecoverer ?? NativeStaticEncryptedRecoverer() {
     _state = const MfKey32Error(MfKey32ErrorType.flipperConnection);
     _existedKeysStorage = ExistedKeysStorage(_client);
   }
@@ -52,16 +54,23 @@ class NestedController extends ChangeNotifier {
   late MfKey32State _state;
   String _rawNonceLog = '';
   bool _running = false;
-  Map<int, int> _staticCandidateDicts = const {};
+  List<({int cuid, int count})> _staticCandidateSummary = const [];
+  String? _staticError;
 
   MfKey32State get state => _state;
   FoundedInformation get foundedInformation =>
       _existedKeysStorage.foundedInformation;
   bool get running => _running;
 
-  /// Per-CUID candidate dictionaries written this run: cuid -> candidate count.
-  /// These need on-device verification against the tag.
-  Map<int, int> get staticCandidateDicts => _staticCandidateDicts;
+  /// Per-CUID candidate dictionaries written this run (cuid, candidate count).
+  /// These need on-device verification against the tag. A count of 0 means the
+  /// card's nonces were processed but yielded no candidates.
+  List<({int cuid, int count})> get staticCandidateSummary =>
+      _staticCandidateSummary;
+
+  /// Set when the static-encrypted candidate step failed. The weak-key result
+  /// (if any) is still saved and reported regardless.
+  String? get staticError => _staticError;
 
   Future<void> start() async {
     if (_running) return;
@@ -79,7 +88,8 @@ class NestedController extends ChangeNotifier {
 
   Future<void> _run() async {
     LogService.log('[Nested] Start calculation');
-    _staticCandidateDicts = const {};
+    _staticCandidateSummary = const [];
+    _staticError = null;
 
     if (!_client.isConnected) {
       _emit(const MfKey32Error(MfKey32ErrorType.flipperConnection));
@@ -103,7 +113,9 @@ class NestedController extends ChangeNotifier {
       await Future.wait(
         pairs.skip(offset).take(maxConcurrent).map((nonce) async {
           final key = await _recoverer.recoverKey(nonce);
-          LogService.log('[Nested] ${nonce.sectorName}/${nonce.keyName} = $key');
+          LogService.log(
+            '[Nested] ${nonce.sectorName}/${nonce.keyName} = $key',
+          );
           completed++;
           _onFoundKey(nonce, key, pairs.length, completed);
         }),
@@ -120,14 +132,10 @@ class NestedController extends ChangeNotifier {
       return;
     }
 
+    // Static-encrypted candidates are supplementary — a failure here must not
+    // erase the weak-key result that was just saved, so it never throws out.
     if (singles.isNotEmpty) {
-      try {
-        await _writeStaticCandidateDicts(singles);
-      } catch (e) {
-        LogService.log('[Nested] Static-encrypted candidate dict failed: $e');
-        _emit(const MfKey32Error(MfKey32ErrorType.readWrite));
-        return;
-      }
+      await _generateAndWriteStaticDicts(singles);
     }
 
     _emit(MfKey32Saved(addedKeys));
@@ -135,19 +143,37 @@ class NestedController extends ChangeNotifier {
 
   /// Generates FM11RF08S candidate keys for single-sample nonces and writes each
   /// card's candidates to `mf_classic_dict_<cuid>.nfc`, where the device's own
-  /// dictionary attack can confirm the real keys against the tag.
-  Future<void> _writeStaticCandidateDicts(List<NestedNonce> singles) async {
-    final dicts = await _staticRecoverer.buildCandidateDicts(singles);
-    final summary = <int, int>{};
-    for (final dict in dicts) {
-      if (dict.keys.isEmpty) continue;
-      await _client.storageWriteChunked(
-        _cuidDictPath(dict.cuid),
-        utf8.encode('${dict.keys.join('\n')}\n'),
-      );
-      summary[dict.cuid] = dict.keys.length;
+  /// dictionary attack can confirm the real keys against the tag. Records a
+  /// per-card summary (incrementally, so a mid-way failure keeps what was
+  /// written) and reports any failure via [staticError] rather than throwing.
+  Future<void> _generateAndWriteStaticDicts(List<NestedNonce> singles) async {
+    final List<StaticCandidateDict> dicts;
+    try {
+      dicts = await _staticRecoverer.buildCandidateDicts(singles);
+    } catch (e, st) {
+      LogService.log('[Nested] Candidate generation failed: $e\n$st');
+      _staticError =
+          'Could not generate static-encrypted candidates '
+          '(native component unavailable).';
+      return;
     }
-    _staticCandidateDicts = summary;
+
+    final summary = <({int cuid, int count})>[];
+    for (final dict in dicts) {
+      summary.add((cuid: dict.cuid, count: dict.count));
+      _staticCandidateSummary = List.unmodifiable(summary);
+      if (dict.count == 0) continue; // surfaced with count 0; nothing to write
+      try {
+        await _client.storageWriteChunked(_cuidDictPath(dict.cuid), dict.body);
+      } catch (e) {
+        LogService.log(
+          '[Nested] Candidate dict write failed (${dict.cuid}): $e',
+        );
+        _staticError =
+            'Could not write the candidate dictionary to the device.';
+        return; // already-written dicts + summary survive; weak keys still saved
+      }
+    }
   }
 
   static String _cuidDictPath(int cuid) =>

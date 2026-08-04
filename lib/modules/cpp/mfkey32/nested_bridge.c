@@ -24,7 +24,8 @@
 // With two distinct samples the key is fully determined (a wrong candidate
 // reproduces a second 32-bit keystream word with probability ~2^-32). With a
 // single sample the keystream under-constrains the 48-bit state, so the
-// candidate-enumeration APIs below expose the whole set for external filtering.
+// candidate-enumeration APIs below expose the parity-filtered candidate set for
+// external filtering (qunleashed_rf08s_reduce_pair narrows it further).
 //
 // Returns the 48-bit key value produced by PM3's crypto1_get_lfsr (the same
 // layout crypto1_init consumes). *found is set to 1 when a candidate satisfied
@@ -78,9 +79,9 @@ QUNLEASHED_EXPORT uint64_t qunleashed_nested_recover_key(
 // by the one leaked parity bit (the FM11RF08S "staticnested_1nt" step).
 //
 // The Flipper stores the transmitted parity inverted, so nt_par_enc = par ^ 0xF
-// (validated against a known key). Keeping only candidates whose second
-// keystream byte reproduces the observed parity halves the set. Writes up to
-// `capacity` keys into `out_keys` and returns the number written.
+// (validated against a known-key capture). Keeping only candidates whose first
+// bit of the second keystream word reproduces the observed parity halves the
+// set. Writes up to `capacity` keys into `out_keys` and returns the count written.
 static uint32_t gen_static_candidates(
     uint32_t uid,
     uint32_t nt,
@@ -98,6 +99,10 @@ static uint32_t gen_static_candidates(
     return 0;
   }
   s = crypto1_create(0);
+  if (s == NULL) {
+    free(rs);
+    return 0;
+  }
 
   for (r = rs; (r->odd | r->even) && count < capacity; ++r) {
     lfsr_rollback_word(r, uid ^ nt, 0);
@@ -134,8 +139,9 @@ QUNLEASHED_EXPORT uint32_t qunleashed_static_candidates(
 // --- FM11RF08S seednt16 relation (Doegox 2024) -----------------------------
 // The true keyA and keyB of a sector map their (different) nonces back to the
 // same 16-bit "seed" nonce, so intersecting the two candidate lists on this
-// value drops most false candidates. Ported verbatim from PM3's
-// staticnested_2x1nt_rf08s.
+// value drops many false candidates (fewer as the lists approach the 2^16 seed
+// space). Adapted from PM3's staticnested_2x1nt_rf08s (logic unchanged;
+// `key >> i >> 4` == upstream `key >> (i + 4)`).
 
 static uint16_t g_s_lfsr16[1 << 16];
 static uint16_t g_i_lfsr16[1 << 16];

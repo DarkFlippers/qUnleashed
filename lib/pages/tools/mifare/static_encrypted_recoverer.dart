@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:ffi';
 import 'dart:isolate';
+import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
@@ -9,13 +11,23 @@ import 'nested_models.dart';
 /// Per-CUID candidate dictionary produced for the static-encrypted / single-nonce
 /// path. A single nonce under-constrains the key (tens of thousands of
 /// candidates), so these must be verified against the tag on the device.
+///
+/// The keys are serialized to [body] (newline-joined 12-hex uppercase, ready to
+/// write to `mf_classic_dict_<cuid>.nfc`) inside the worker isolate — returning
+/// the raw strings would copy up to ~1M entries across the isolate boundary for
+/// data that is only ever written and discarded. [count] is 0 when generation
+/// produced no candidates (e.g. an allocation failure), in which case [body] is
+/// empty and nothing should be written.
 class StaticCandidateDict {
-  const StaticCandidateDict({required this.cuid, required this.keys});
+  const StaticCandidateDict({
+    required this.cuid,
+    required this.count,
+    required this.body,
+  });
 
   final int cuid;
-
-  /// Candidate keys as 12-hex-digit uppercase strings, deduplicated.
-  final List<String> keys;
+  final int count;
+  final Uint8List body;
 }
 
 abstract class StaticEncryptedRecoverer {
@@ -27,42 +39,46 @@ abstract class StaticEncryptedRecoverer {
   );
 }
 
-// Raw candidate buffers are sized above the ~135k maximum a single nonce yields.
+// Raw candidate buffers are sized above the ~135k maximum a single nonce yields
+// (observed: 135075 for a 32-bit keystream via lfsr_recovery32).
 const _capacity = 1 << 18;
 
-typedef _StaticNative = Uint32 Function(
-    Uint32, Uint32, Uint32, Uint32, Pointer<Uint64>, Uint32);
-typedef _StaticDart = int Function(
-    int, int, int, int, Pointer<Uint64>, int);
+typedef _StaticNative =
+    Uint32 Function(Uint32, Uint32, Uint32, Uint32, Pointer<Uint64>, Uint32);
+typedef _StaticDart = int Function(int, int, int, int, Pointer<Uint64>, int);
 
-typedef _ReduceNative = Void Function(
-    Uint32,
-    Uint32,
-    Uint32,
-    Uint32,
-    Uint32,
-    Uint32,
-    Uint32,
-    Pointer<Uint64>,
-    Uint32,
-    Pointer<Uint32>,
-    Pointer<Uint64>,
-    Uint32,
-    Pointer<Uint32>);
-typedef _ReduceDart = void Function(
-    int,
-    int,
-    int,
-    int,
-    int,
-    int,
-    int,
-    Pointer<Uint64>,
-    int,
-    Pointer<Uint32>,
-    Pointer<Uint64>,
-    int,
-    Pointer<Uint32>);
+typedef _ReduceNative =
+    Void Function(
+      Uint32,
+      Uint32,
+      Uint32,
+      Uint32,
+      Uint32,
+      Uint32,
+      Uint32,
+      Pointer<Uint64>,
+      Uint32,
+      Pointer<Uint32>,
+      Pointer<Uint64>,
+      Uint32,
+      Pointer<Uint32>,
+    );
+typedef _ReduceDart =
+    void Function(
+      int,
+      int,
+      int,
+      int,
+      int,
+      int,
+      int,
+      Pointer<Uint64>,
+      int,
+      Pointer<Uint32>,
+      Pointer<Uint64>,
+      int,
+      Pointer<Uint32>,
+    );
 
 class NativeStaticEncryptedRecoverer implements StaticEncryptedRecoverer {
   @override
@@ -86,12 +102,16 @@ class NativeStaticEncryptedRecoverer implements StaticEncryptedRecoverer {
     return Isolate.run(() => _buildInIsolate(singles));
   }
 
-  static List<StaticCandidateDict> _buildInIsolate(List<_NoncePayload> singles) {
+  static List<StaticCandidateDict> _buildInIsolate(
+    List<_NoncePayload> singles,
+  ) {
     final library = openMifareNativeLibrary();
-    final staticFn = library
-        .lookupFunction<_StaticNative, _StaticDart>('qunleashed_static_candidates');
-    final reduceFn = library
-        .lookupFunction<_ReduceNative, _ReduceDart>('qunleashed_rf08s_reduce_pair');
+    final staticFn = library.lookupFunction<_StaticNative, _StaticDart>(
+      'qunleashed_static_candidates',
+    );
+    final reduceFn = library.lookupFunction<_ReduceNative, _ReduceDart>(
+      'qunleashed_rf08s_reduce_pair',
+    );
 
     final outA = calloc<Uint64>(_capacity);
     final outB = calloc<Uint64>(_capacity);
@@ -102,8 +122,9 @@ class NativeStaticEncryptedRecoverer implements StaticEncryptedRecoverer {
       final grouped = <int, Map<int, Map<bool, _NoncePayload>>>{};
       for (final s in singles) {
         grouped
-            .putIfAbsent(s.cuid, () => {})
-            .putIfAbsent(s.sector, () => {})[s.isKeyA] = s;
+                .putIfAbsent(s.cuid, () => {})
+                .putIfAbsent(s.sector, () => {})[s.isKeyA] =
+            s;
       }
 
       final results = <StaticCandidateDict>[];
@@ -113,8 +134,21 @@ class NativeStaticEncryptedRecoverer implements StaticEncryptedRecoverer {
           final a = keys[true];
           final b = keys[false];
           if (a != null && b != null) {
-            reduceFn(cuid, a.nt, a.ks, a.par, b.nt, b.ks, b.par, outA, _capacity,
-                countA, outB, _capacity, countB);
+            reduceFn(
+              cuid,
+              a.nt,
+              a.ks,
+              a.par,
+              b.nt,
+              b.ks,
+              b.par,
+              outA,
+              _capacity,
+              countA,
+              outB,
+              _capacity,
+              countB,
+            );
             candidates.addAll(outA.asTypedList(countA.value));
             candidates.addAll(outB.asTypedList(countB.value));
           } else {
@@ -123,13 +157,12 @@ class NativeStaticEncryptedRecoverer implements StaticEncryptedRecoverer {
             candidates.addAll(outA.asTypedList(n));
           }
         }
+        // Serialize here so only a flat byte buffer crosses the isolate boundary.
+        final body = candidates.isEmpty
+            ? Uint8List(0)
+            : utf8.encode('${candidates.map(_formatKey).join('\n')}\n');
         results.add(
-          StaticCandidateDict(
-            cuid: cuid,
-            keys: candidates
-                .map((k) => k.toRadixString(16).padLeft(12, '0').toUpperCase())
-                .toList(growable: false),
-          ),
+          StaticCandidateDict(cuid: cuid, count: candidates.length, body: body),
         );
       });
       return results;
@@ -140,6 +173,9 @@ class NativeStaticEncryptedRecoverer implements StaticEncryptedRecoverer {
       calloc.free(countB);
     }
   }
+
+  static String _formatKey(int key) =>
+      key.toRadixString(16).padLeft(12, '0').toUpperCase();
 }
 
 class _NoncePayload {

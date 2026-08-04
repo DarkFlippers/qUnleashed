@@ -14,25 +14,27 @@ abstract class NestedRecoverer {
   Future<BigInt?> recoverKey(NestedNonce nonce);
 }
 
-typedef _RecoverNative = Uint64 Function(
-  Uint32 uid,
-  Uint32 nt0,
-  Uint32 ks0,
-  Uint32 nt1,
-  Uint32 ks1,
-  Int32 hasSecond,
-  Pointer<Int32> found,
-);
+typedef _RecoverNative =
+    Uint64 Function(
+      Uint32 uid,
+      Uint32 nt0,
+      Uint32 ks0,
+      Uint32 nt1,
+      Uint32 ks1,
+      Int32 hasSecond,
+      Pointer<Int32> found,
+    );
 
-typedef _RecoverDart = int Function(
-  int uid,
-  int nt0,
-  int ks0,
-  int nt1,
-  int ks1,
-  int hasSecond,
-  Pointer<Int32> found,
-);
+typedef _RecoverDart =
+    int Function(
+      int uid,
+      int nt0,
+      int ks0,
+      int nt1,
+      int ks1,
+      int hasSecond,
+      Pointer<Int32> found,
+    );
 
 class NativeNestedRecoverer implements NestedRecoverer {
   NativeNestedRecoverer();

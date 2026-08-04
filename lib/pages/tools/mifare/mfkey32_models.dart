@@ -65,10 +65,7 @@ class FoundedInformation {
   }
 }
 
-enum DuplicatedSource {
-  flipper,
-  user,
-}
+enum DuplicatedSource { flipper, user }
 
 class FoundedKey {
   const FoundedKey({

@@ -23,9 +23,9 @@ enum NestedAttackKind {
 
 class NestedSample {
   const NestedSample({required this.nt, required this.ks, required this.par})
-      : assert(nt >= 0 && nt <= 0xFFFFFFFF, 'nt is a 32-bit word'),
-        assert(ks >= 0 && ks <= 0xFFFFFFFF, 'ks is a 32-bit word'),
-        assert(par >= 0 && par <= 0xF, 'par is four bits');
+    : assert(nt >= 0 && nt <= 0xFFFFFFFF, 'nt is a 32-bit word'),
+      assert(ks >= 0 && ks <= 0xFFFFFFFF, 'ks is a 32-bit word'),
+      assert(par >= 0 && par <= 0xF, 'par is four bits');
 
   /// Plaintext tag nonce, resolved on-device by the firmware.
   final int nt;
@@ -44,11 +44,11 @@ class NestedNonce {
     required this.cuid,
     required List<NestedSample> samples,
     this.dist,
-  })  : assert(
-          samples.isNotEmpty && samples.length <= 2,
-          'a nested line carries one or two samples',
-        ),
-        samples = List.unmodifiable(samples);
+  }) : assert(
+         samples.isNotEmpty && samples.length <= 2,
+         'a nested line carries one or two samples',
+       ),
+       samples = List.unmodifiable(samples);
 
   final int sector;
   final NestedKeyType keyType;

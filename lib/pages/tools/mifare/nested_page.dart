@@ -82,8 +82,12 @@ class _NestedPageState extends State<NestedPage> {
           padding: const EdgeInsets.all(16),
           children: [
             _StatusBlock(state: _controller.state),
-            if (_controller.staticCandidateDicts.isNotEmpty)
-              _StaticCandidatesNote(dicts: _controller.staticCandidateDicts),
+            if (_controller.staticCandidateSummary.isNotEmpty ||
+                _controller.staticError != null)
+              _StaticCandidatesNote(
+                summary: _controller.staticCandidateSummary,
+                error: _controller.staticError,
+              ),
             if (_controller.foundedInformation.keys.isNotEmpty)
               _KeysBlock(controller: _controller),
           ],
@@ -104,17 +108,17 @@ class _StatusBlock extends StatelessWidget {
     final (title, showBar, percent) = switch (state) {
       MfKey32WaitingForFlipper() => ('Connecting device…', true, null),
       MfKey32DownloadingRawFile(:final percent) => (
-          'Downloading nonces…',
-          true,
-          percent,
-        ),
+        'Downloading nonces…',
+        true,
+        percent,
+      ),
       MfKey32Calculating(:final percent) => ('Recovering keys…', true, percent),
       MfKey32Uploading() => ('Syncing with the device…', true, null),
       MfKey32Saved(:final keys) => (
-          keys.isEmpty ? 'No new keys found' : '${keys.length} new key(s) added',
-          false,
-          null,
-        ),
+        keys.isEmpty ? 'No new keys found' : '${keys.length} new key(s) added',
+        false,
+        null,
+      ),
       MfKey32Error(:final errorType) => (_errorText(errorType), false, null),
     };
 
@@ -148,22 +152,25 @@ class _StatusBlock extends StatelessWidget {
   }
 
   static String _errorText(MfKey32ErrorType type) => switch (type) {
-        MfKey32ErrorType.notFoundFile =>
-          'No .nested.log found. Collect nested nonces on the device first '
-              '(NFC → the sector key you know → collect), then sync and retry.',
-        MfKey32ErrorType.readWrite => 'SD card is full or not accessible',
-        MfKey32ErrorType.flipperConnection => 'Device not connected',
-        MfKey32ErrorType.recoveryFailed =>
-          'Key recovery is unavailable on this build — the native component '
+    MfKey32ErrorType.notFoundFile =>
+      'No .nested.log found. Collect nested nonces on the device first '
+          '(NFC → the sector key you know → collect), then sync and retry.',
+    MfKey32ErrorType.readWrite => 'SD card is full or not accessible',
+    MfKey32ErrorType.flipperConnection => 'Device not connected',
+    MfKey32ErrorType.recoveryFailed =>
+      'Key recovery is unavailable on this build — the native component '
           'could not be loaded. Update the app and try again.',
-      };
+  };
 }
 
 class _StaticCandidatesNote extends StatelessWidget {
-  const _StaticCandidatesNote({required this.dicts});
+  const _StaticCandidatesNote({required this.summary, this.error});
 
-  /// cuid -> candidate count written to that card's dictionary.
-  final Map<int, int> dicts;
+  /// (cuid, candidate count) per card processed this run.
+  final List<({int cuid, int count})> summary;
+
+  /// Non-null when the static-encrypted step failed (weak keys still saved).
+  final String? error;
 
   @override
   Widget build(BuildContext context) {
@@ -182,12 +189,12 @@ class _StaticCandidatesNote extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
-          for (final entry in dicts.entries)
+          for (final entry in summary)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 2),
               child: SelectableText(
-                'Card ${entry.key.toRadixString(16).padLeft(8, '0').toUpperCase()}'
-                ' — ${entry.value} candidate keys written to dictionary',
+                'Card ${entry.cuid.toRadixString(16).padLeft(8, '0').toUpperCase()}'
+                '${entry.count == 0 ? ' — no candidates generated' : ' — ${entry.count} candidate keys written to dictionary'}',
                 style: TextStyle(
                   color: colors.textPrimary,
                   fontSize: 12,
@@ -195,6 +202,13 @@ class _StaticCandidatesNote extends StatelessWidget {
                 ),
               ),
             ),
+          if (error != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              error!,
+              style: TextStyle(color: colors.textMuted, fontSize: 13),
+            ),
+          ],
           const SizedBox(height: 8),
           Text(
             'A single static-encrypted nonce cannot be resolved to one key '
