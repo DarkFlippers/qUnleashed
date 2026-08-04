@@ -19,23 +19,24 @@ class ExistedKeysStorage {
   FoundedInformation get foundedInformation => _foundedInformation;
 
   Future<void> load() async {
-    final foundedUserDict = await _loadDict(flipperDictUserPath);
+    // The user dict is read-modify-written by upload(): load() seeds _userKeys
+    // from it and upload() writes the whole set back. So a *real* read failure
+    // here must abort the run — proceeding with a truncated set would erase the
+    // user's saved keys. Only a genuinely missing file counts as "empty".
+    final foundedUserDict = await _loadDict(flipperDictUserPath, required: true);
     _userDict.addAll(foundedUserDict);
     _userKeys.addAll(foundedUserDict);
-    final foundedDict = await _loadDict(flipperDictPath);
+    // The system dict is read-only (duplicate detection only), so a transient
+    // failure degrades dedup rather than failing the whole run.
+    final foundedDict = await _loadDict(flipperDictPath, required: false);
     _flipperKeys.addAll(foundedDict);
   }
 
   Future<List<String>> upload() async {
     final text = '${_userKeys.join('\n')}\n';
-    try {
-      await _client.storageWriteChunked(
-        flipperDictUserPath,
-        utf8.encode(text),
-      );
-    } catch (e) {
-      LogService.log('[ExistedKeysStorage] #upload Unhandled exception: $e');
-    }
+    // Let write failures propagate so the caller surfaces an error instead of
+    // reporting a false "keys added" success.
+    await _client.storageWriteChunked(flipperDictUserPath, utf8.encode(text));
     return _userKeys.where((key) => !_userDict.contains(key)).toSet().toList();
   }
 
@@ -67,7 +68,7 @@ class ExistedKeysStorage {
     );
   }
 
-  Future<List<String>> _loadDict(String path) async {
+  Future<List<String>> _loadDict(String path, {required bool required}) async {
     try {
       final bytes = await _client.storageReadChunked(
         path,
@@ -78,8 +79,15 @@ class ExistedKeysStorage {
           .split('\n')
           .where((line) => !line.startsWith('/') && line.isNotEmpty)
           .toList();
+    } on FlipperRpcStorageNotExistException {
+      // No such file yet — a legitimately empty dictionary (e.g. first run).
+      return const [];
     } catch (e) {
-      LogService.log('[MfKey32] failed load dict $path: $e');
+      // A real read failure. For the user dict this must abort the run so
+      // upload() can't overwrite it with a partial set; the system dict is
+      // best-effort and degrades to empty.
+      if (required) rethrow;
+      LogService.log('[ExistedKeysStorage] optional dict $path load failed: $e');
       return const [];
     }
   }
