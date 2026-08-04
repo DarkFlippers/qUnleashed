@@ -82,8 +82,8 @@ class _NestedPageState extends State<NestedPage> {
           padding: const EdgeInsets.all(16),
           children: [
             _StatusBlock(state: _controller.state),
-            if (_controller.deferredStaticEncrypted > 0)
-              _DeferredNote(count: _controller.deferredStaticEncrypted),
+            if (_controller.staticCandidateDicts.isNotEmpty)
+              _StaticCandidatesNote(dicts: _controller.staticCandidateDicts),
             if (_controller.foundedInformation.keys.isNotEmpty)
               _KeysBlock(controller: _controller),
           ],
@@ -159,21 +159,50 @@ class _StatusBlock extends StatelessWidget {
       };
 }
 
-class _DeferredNote extends StatelessWidget {
-  const _DeferredNote({required this.count});
+class _StaticCandidatesNote extends StatelessWidget {
+  const _StaticCandidatesNote({required this.dicts});
 
-  final int count;
+  /// cuid -> candidate count written to that card's dictionary.
+  final Map<int, int> dicts;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
     return Padding(
       padding: const EdgeInsets.only(top: 16),
-      child: Text(
-        '$count static-encrypted (FM11RF08S) nonce(s) detected. These resolve '
-        'to a per-card candidate dictionary that must be verified against the '
-        'tag on the device — support planned.',
-        style: TextStyle(color: colors.textMuted, fontSize: 13),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Static-encrypted (FM11RF08S) candidates',
+            style: TextStyle(
+              color: colors.textPrimary,
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 6),
+          for (final entry in dicts.entries)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: SelectableText(
+                'Card ${entry.key.toRadixString(16).padLeft(8, '0').toUpperCase()}'
+                ' — ${entry.value} candidate keys written to dictionary',
+                style: TextStyle(
+                  color: colors.textPrimary,
+                  fontSize: 12,
+                  fontFamily: 'monospace',
+                ),
+              ),
+            ),
+          const SizedBox(height: 8),
+          Text(
+            'A single static-encrypted nonce cannot be resolved to one key '
+            'off-device. Read the card (or run a dictionary attack) on your '
+            'Flipper to confirm the real keys from these candidates.',
+            style: TextStyle(color: colors.textMuted, fontSize: 13),
+          ),
+        ],
       ),
     );
   }

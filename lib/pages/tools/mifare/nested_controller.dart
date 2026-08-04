@@ -20,21 +20,25 @@ import 'nested_api.dart';
 import 'nested_models.dart';
 import 'nested_nonce_parser.dart';
 import 'nested_recoverer.dart';
+import 'static_encrypted_recoverer.dart';
 
 /// Drives the nested key-recovery flow: download `.nested.log` from the Flipper,
-/// recover weak-PRNG nested keys (two-sample lines) locally, and sync the
-/// results back into the user dictionary.
+/// recover weak-PRNG nested keys (two-sample lines) locally and sync them into
+/// the user dictionary.
 ///
-/// Single-sample static-encrypted (FM11RF08S) lines are counted but not yet
-/// solved — that path needs a per-card cross-sector solver and lands next.
+/// Single-sample static-encrypted (FM11RF08S) lines can't be resolved to a
+/// unique key offline, so for those we generate a per-CUID candidate dictionary
+/// (`mf_classic_dict_<cuid>.nfc`) that the device verifies against the tag.
 class NestedController extends ChangeNotifier {
   NestedController({
     FlipperClient? client,
     NestedApi? api,
     NestedRecoverer? recoverer,
+    StaticEncryptedRecoverer? staticRecoverer,
   })  : _client = client ?? FlipperOneClient().get(),
         _api = api ?? NestedApiImpl(),
-        _recoverer = recoverer ?? NativeNestedRecoverer() {
+        _recoverer = recoverer ?? NativeNestedRecoverer(),
+        _staticRecoverer = staticRecoverer ?? NativeStaticEncryptedRecoverer() {
     _state = const MfKey32Error(MfKey32ErrorType.flipperConnection);
     _existedKeysStorage = ExistedKeysStorage(_client);
   }
@@ -42,20 +46,22 @@ class NestedController extends ChangeNotifier {
   final FlipperClient _client;
   final NestedApi _api;
   final NestedRecoverer _recoverer;
+  final StaticEncryptedRecoverer _staticRecoverer;
   late final ExistedKeysStorage _existedKeysStorage;
 
   late MfKey32State _state;
   String _rawNonceLog = '';
   bool _running = false;
-  int _deferredStaticEncrypted = 0;
+  Map<int, int> _staticCandidateDicts = const {};
 
   MfKey32State get state => _state;
   FoundedInformation get foundedInformation =>
       _existedKeysStorage.foundedInformation;
   bool get running => _running;
 
-  /// Number of static-encrypted nonces skipped this run (feature pending).
-  int get deferredStaticEncrypted => _deferredStaticEncrypted;
+  /// Per-CUID candidate dictionaries written this run: cuid -> candidate count.
+  /// These need on-device verification against the tag.
+  Map<int, int> get staticCandidateDicts => _staticCandidateDicts;
 
   Future<void> start() async {
     if (_running) return;
@@ -73,7 +79,7 @@ class NestedController extends ChangeNotifier {
 
   Future<void> _run() async {
     LogService.log('[Nested] Start calculation');
-    _deferredStaticEncrypted = 0;
+    _staticCandidateDicts = const {};
 
     if (!_client.isConnected) {
       _emit(const MfKey32Error(MfKey32ErrorType.flipperConnection));
@@ -85,12 +91,7 @@ class NestedController extends ChangeNotifier {
 
     final nonces = NestedNonceParser.parse(_rawNonceLog);
     final pairs = nonces.where((n) => n.hasPair).toList(growable: false);
-    _deferredStaticEncrypted = nonces.length - pairs.length;
-    if (_deferredStaticEncrypted > 0) {
-      LogService.log(
-        '[Nested] Deferred $_deferredStaticEncrypted static-encrypted nonce(s)',
-      );
-    }
+    final singles = nonces.where((n) => !n.hasPair).toList(growable: false);
 
     _emit(const MfKey32Calculating(0));
     // Recovery is memory-heavy (~50 MB transient per isolate) and a fully
@@ -118,8 +119,39 @@ class NestedController extends ChangeNotifier {
       _emit(const MfKey32Error(MfKey32ErrorType.readWrite));
       return;
     }
+
+    if (singles.isNotEmpty) {
+      try {
+        await _writeStaticCandidateDicts(singles);
+      } catch (e) {
+        LogService.log('[Nested] Static-encrypted candidate dict failed: $e');
+        _emit(const MfKey32Error(MfKey32ErrorType.readWrite));
+        return;
+      }
+    }
+
     _emit(MfKey32Saved(addedKeys));
   }
+
+  /// Generates FM11RF08S candidate keys for single-sample nonces and writes each
+  /// card's candidates to `mf_classic_dict_<cuid>.nfc`, where the device's own
+  /// dictionary attack can confirm the real keys against the tag.
+  Future<void> _writeStaticCandidateDicts(List<NestedNonce> singles) async {
+    final dicts = await _staticRecoverer.buildCandidateDicts(singles);
+    final summary = <int, int>{};
+    for (final dict in dicts) {
+      if (dict.keys.isEmpty) continue;
+      await _client.storageWriteChunked(
+        _cuidDictPath(dict.cuid),
+        utf8.encode('${dict.keys.join('\n')}\n'),
+      );
+      summary[dict.cuid] = dict.keys.length;
+    }
+    _staticCandidateDicts = summary;
+  }
+
+  static String _cuidDictPath(int cuid) =>
+      '/ext/nfc/assets/mf_classic_dict_${cuid.toRadixString(16).padLeft(8, '0')}.nfc';
 
   Future<bool> _prepare() async {
     if (!await _api.nonceFileExists(_client)) {
