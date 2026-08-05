@@ -1,5 +1,17 @@
 # Project-level configuration.
 cmake_minimum_required(VERSION 3.14)
+
+# Build the Windows desktop app with the LLVM clang-cl toolset instead of plain
+# MSVC, so the hardnested SIMD engine (which uses GCC/Clang vector extensions
+# MSVC lacks) compiles. Must be set before project(). Requires the "C++ Clang
+# tools for Windows" component (Visual Studio or the standalone Build Tools).
+# Opt out with -DQUNLEASHED_NO_CLANGCL=ON (or -T <toolset>): the app still builds
+# under plain MSVC, just without hardnested (it is auto-skipped there). Switching
+# toolset needs a fresh configure - run `flutter clean` first.
+if(NOT DEFINED CMAKE_GENERATOR_TOOLSET AND NOT DEFINED QUNLEASHED_NO_CLANGCL)
+  set(CMAKE_GENERATOR_TOOLSET "ClangCL")
+endif()
+
 project(qunleashed LANGUAGES CXX)
 
 # The name of the executable created for the application. Change this to change
