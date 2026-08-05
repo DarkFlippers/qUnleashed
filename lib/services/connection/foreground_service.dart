@@ -60,6 +60,15 @@ class BleForegroundService with WidgetsBindingObserver {
     _started = true;
     WidgetsBinding.instance.addObserver(this);
     _sub = client.connectionStream.listen(_onState);
+    // A fresh isolate may find a service left over from a previous process
+    // (task removal restarts it sticky). Adopt its actual running state so the
+    // reconcile below stops it unless a live session backs it — the
+    // notification must never claim a connection that no longer exists.
+    if (await FlutterForegroundTask.isRunningService) {
+      _serviceRunning = true;
+      _wantRunning = client.isConnected || client.isConnecting;
+      _sync();
+    }
   }
 
   void stop() {
@@ -138,6 +147,10 @@ class BleForegroundService with WidgetsBindingObserver {
         allowWakeLock: true,
         allowWifiLock: true,
         autoRunOnBoot: false,
+        // A revived service has no isolate behind it (no task handler): it
+        // would only show a stale "Connected" notification. Die with the
+        // process; the next app start reconnects and starts a truthful one.
+        allowAutoRestart: false,
       ),
     );
   }

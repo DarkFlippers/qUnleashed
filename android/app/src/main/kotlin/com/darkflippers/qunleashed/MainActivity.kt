@@ -6,18 +6,37 @@ import android.location.LocationManager
 import android.os.Build
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.embedding.engine.FlutterEngineCache
+import io.flutter.embedding.engine.dart.DartExecutor
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
+    companion object {
+        private const val ENGINE_ID = "qunleashed_main"
+    }
+
     private val gnssChannel = "qunleashed/gnss"
+    private var gnssMethodChannel: MethodChannel? = null
     private var locationManager: LocationManager? = null
     private var gnssCallback: GnssStatus.Callback? = null
     private var satellitesInUse: Int = -1
 
+    override fun getCachedEngineId(): String {
+        if (FlutterEngineCache.getInstance().get(ENGINE_ID) == null) {
+            val engine = FlutterEngine(applicationContext)
+            engine.dartExecutor.executeDartEntrypoint(
+                DartExecutor.DartEntrypoint.createDefault(),
+            )
+            FlutterEngineCache.getInstance().put(ENGINE_ID, engine)
+        }
+        return ENGINE_ID
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, gnssChannel)
-            .setMethodCallHandler { call, result ->
+        val channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, gnssChannel)
+        gnssMethodChannel = channel
+        channel.setMethodCallHandler { call, result ->
                 when (call.method) {
                     "start" -> {
                         startGnss()
@@ -33,6 +52,12 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
+        gnssMethodChannel?.setMethodCallHandler(null)
+        gnssMethodChannel = null
+        super.cleanUpFlutterEngine(flutterEngine)
     }
 
     private fun startGnss() {
