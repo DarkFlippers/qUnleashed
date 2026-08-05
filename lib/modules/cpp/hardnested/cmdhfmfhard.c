@@ -27,6 +27,8 @@
 //   * PM3 client includes (comms/ui/fileutils/util_posix/commonutil/proxmark3)
 //     replaced by hn_compat.h; crapto1/parity and the vendored hardnested
 //     engine headers are kept as-is.
+//   * <lz4frame.h> -> vendored "lz4frame.h" (../lz4); <bzlib.h> -> "bzlib_stub.h"
+//     (tables ship LZ4-compressed, so the bz2 branch is dead).
 //   * acquire_nonces() (the device-comms path) is stubbed out - the Flipper
 //     collects nonces into .nested.log and the app supplies them directly.
 //   * Appended qunleashed_hardnested_set_tables_path() and
@@ -41,8 +43,8 @@
 #include <locale.h>
 #include <math.h>
 #include <time.h> // MingW
-#include <lz4frame.h>
-#include <bzlib.h>
+#include "lz4frame.h"
+#include "bzlib_stub.h"  // tables ship LZ4-compressed; bz2 path is dead (stub)
 #include "hn_compat.h"
 
 #include "crapto1/crapto1.h"
@@ -2603,10 +2605,12 @@ int mfnestedhard(uint8_t blockNo, uint8_t keyType, uint8_t *key, uint8_t trgBloc
 //
 // Returns PM3_SUCCESS if the key was recovered, PM3_EFAILED otherwise.
 // ---------------------------------------------------------------------------
+#include "hardnested_bridge.h"
+
 // Root dir containing hardnested_tables/ (see hn_compat.h / searchFile).
 char g_hardnested_tables_path[1024] = "";
 
-void qunleashed_hardnested_set_tables_path(const char *path) {
+QUNLEASHED_EXPORT void qunleashed_hardnested_set_tables_path(const char *path) {
     if (path == NULL) {
         g_hardnested_tables_path[0] = '\0';
         return;
@@ -2615,11 +2619,11 @@ void qunleashed_hardnested_set_tables_path(const char *path) {
     g_hardnested_tables_path[sizeof(g_hardnested_tables_path) - 1] = '\0';
 }
 
-int qunleashed_hardnested_recover(uint32_t in_cuid,
-                                  const uint32_t *nt_enc,
-                                  const uint8_t *par_enc,
-                                  uint32_t count,
-                                  uint64_t *foundkey) {
+QUNLEASHED_EXPORT int qunleashed_hardnested_recover(uint32_t in_cuid,
+                                                    const uint32_t *nt_enc,
+                                                    const uint8_t *par_enc,
+                                                    uint32_t count,
+                                                    uint64_t *foundkey) {
     if (nt_enc == NULL || par_enc == NULL || foundkey == NULL || count == 0) {
         return PM3_EINVARG;
     }

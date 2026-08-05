@@ -10,6 +10,12 @@
 
 #include <stdint.h>
 
+#if defined(_WIN32)
+#define QUNLEASHED_EXPORT __declspec(dllexport)
+#else
+#define QUNLEASHED_EXPORT __attribute__((visibility("default")))
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -17,7 +23,7 @@ extern "C" {
 // Point the solver at the directory that contains the hardnested_tables/ folder
 // (the bundled bitflip tables the app has extracted to a writable location).
 // Must be called before qunleashed_hardnested_recover(); pass NULL to clear.
-void qunleashed_hardnested_set_tables_path(const char *path);
+QUNLEASHED_EXPORT void qunleashed_hardnested_set_tables_path(const char *path);
 
 // Run the offline hardnested solve over nonces parsed from a .nested.log.
 //   in_cuid  : 4-byte card UID (the "cuid" field of the log line)
@@ -29,11 +35,11 @@ void qunleashed_hardnested_set_tables_path(const char *path);
 // Returns 0 (PM3_SUCCESS) on recovery, negative otherwise: -19 no key found,
 // -10 too few nonces to cover all 256 first bytes (or not a genuine hardened
 // nonce set), -2 bad args.
-int qunleashed_hardnested_recover(uint32_t in_cuid,
-                                  const uint32_t *nt_enc,
-                                  const uint8_t *par_enc,
-                                  uint32_t count,
-                                  uint64_t *foundkey);
+QUNLEASHED_EXPORT int qunleashed_hardnested_recover(uint32_t in_cuid,
+                                                    const uint32_t *nt_enc,
+                                                    const uint8_t *par_enc,
+                                                    uint32_t count,
+                                                    uint64_t *foundkey);
 
 #ifdef __cplusplus
 }

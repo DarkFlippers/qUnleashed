@@ -73,14 +73,36 @@ x86 per-variant flags (mirrors PM3 `deps/hardnested.cmake`):
 ARM: build the `nosimd` object (`-DNOSIMD_BUILD`) + a `neon` object (arm64: plain;
 arm32: `-mfpu=neon`).
 
+## Build wiring (DONE for the CMake platforms)
+`lib/modules/cpp/mfkey32/CMakeLists.txt` now builds hardnested into the existing
+`qunleashed_mfkey32` shared lib: the per-ISA SIMD object libraries (mirroring PM3
+`hardnested.cmake`, gated on `CMAKE_SYSTEM_PROCESSOR`), `cmdhfmfhard.c` +
+`hardnested_bruteforce.c`, and the vendored lz4 (`../lz4`). The two bridge
+symbols are exported via `QUNLEASHED_EXPORT`. Windows/Linux/Android all consume
+this one CMakeLists (add_subdirectory / gradle externalNativeBuild).
+
+**Validated** (MinGW gcc 13, `CMAKE_SYSTEM_PROCESSOR=AMD64`): configures, builds
+all 6 x86 variants, links (Threads + vendored lz4, no system deps), exports all
+six `qunleashed_*` symbols, and the resulting DLL recovers the known key
+end-to-end when loaded like Dart FFI will load it.
+
+Toolchain handling: real MSVC can't compile the engine (GCC/Clang vector
+extensions), so hardnested is skipped under `CMAKE_C_COMPILER_ID==MSVC` and the
+Windows desktop build must use **clang-cl** (flags passed via the `/clang:`
+prefix). `msvc_compat.h` is force-included for real MSVC only (it would collapse
+the SIMD vector types under clang-cl).
+
 ## Remaining work
-1. Build wiring: replicate the per-ISA multi-compile in `windows/linux/android`
-   CMake and the macOS/iOS Xcode project (gated on `CMAKE_SYSTEM_PROCESSOR`),
-   linking lz4 + bz2. Add `cmdhfmfhard.c` + `hardnested_bruteforce.c` to the
-   native library and export the two bridge symbols.
-2. Tables: bundle the ~9.2 MB `hardnested_tables/*.lz4` (351 files) as Flutter
-   assets, extract them to a writable dir on first use, and pass that dir to
-   `qunleashed_hardnested_set_tables_path()`.
-3. Dart FFI + isolate + a `.nested.log` hardnested-line parser (1 sample/line,
-   no `dist`; `par_enc = log_par ^ 0xF`, to confirm against a real capture) + UI.
-4. Validate end-to-end against a real hardnested capture (pending sample).
+1. **clang-cl on Windows**: verify the `/clang:-m*` flags + provide a
+   pthreads-win32 shim (pthreads exist on Linux/Android/macOS/iOS and MinGW, but
+   not clang-cl). Untestable on this box (no clang-cl/VS installed).
+2. **macOS/iOS Xcode**: add the per-ISA multi-compile + these sources to the
+   Xcode project (the CMake path doesn't cover Apple).
+3. **Tables**: bundle the ~9.2 MB `hardnested_tables/*.lz4` (351 files) as Flutter
+   assets, extract to a writable dir on first use, pass that dir to
+   `qunleashed_hardnested_set_tables_path()`. (Raw tables are ~700 MB - sparse
+   bitmaps - so they must stay lz4-compressed and be decompressed by the C code.)
+4. **Dart** FFI + isolate + a `.nested.log` hardnested-line parser (1 sample/line,
+   no `dist`; `par_enc = log_par ^ 0xF`, bit order to confirm vs a real capture)
+   + UI.
+5. Validate end-to-end against a real hardnested capture (pending sample).
