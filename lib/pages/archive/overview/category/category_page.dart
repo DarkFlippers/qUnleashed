@@ -13,6 +13,7 @@ import '../../data/models/key.dart';
 import '../widgets/actions_sheet.dart';
 import '../widgets/empty_view.dart';
 import '../widgets/key_actions_sheet.dart';
+import '../widgets/sync_progress_bar.dart';
 import 'columns.dart';
 import 'sort.dart';
 import 'table.dart';
@@ -265,12 +266,7 @@ class _CategoryPageState extends State<CategoryPage> {
               scrolledUnderElevation: 0,
               surfaceTintColor: Colors.transparent,
               titleSpacing: 0,
-              title: CategoryAppBarTitle(
-                cat: _cat,
-                syncFileName: _ctrl.syncing
-                    ? _ctrl.syncProgress?.fileName
-                    : null,
-              ),
+              title: CategoryAppBarTitle(cat: _cat),
               actions: [
                 CategorySyncButton(
                   syncing: _ctrl.syncing,
@@ -281,120 +277,128 @@ class _CategoryPageState extends State<CategoryPage> {
                 CategoryCountBadge(filtered: filtered.length, total: total),
               ],
               bottom: PreferredSize(
-                preferredSize: Size.fromHeight(_ctrl.syncing ? 53 : 50),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _selectionMode
-                        ? CategorySelectionToolbar(
-                            count: _selected.length,
-                            allSelected: allSelected,
-                            catColor: catColor,
-                            onClose: _exitSelection,
-                            onToggleAll: () =>
-                                _setAllSelected(filtered, !allSelected),
-                            onActions: () => _showBulkActions(context),
-                          )
-                        : CategoryToolbar(
-                            searchCtrl: _searchCtrl,
-                            query: _query,
-                            filterVal: _filterVal,
-                            filterOpts: filterOpts,
-                            starredOnly: _starredOnly,
-                            catColor: catColor,
-                            colors: colors,
-                            onQueryChanged: (v) => setState(() => _query = v),
-                            onFilterChanged: (v) =>
-                                setState(() => _filterVal = v),
-                            onStarredToggle: () =>
-                                setState(() => _starredOnly = !_starredOnly),
-                          ),
-                    if (_ctrl.syncing) ...[
-                      const SizedBox(height: 1),
-                      LinearProgressIndicator(
-                        value: () {
-                          final p = _ctrl.syncProgress;
-                          return (p == null || p.total == 0)
-                              ? null
-                              : p.current / p.total;
-                        }(),
-                        minHeight: 2,
-                        color: Colors.white.withValues(alpha: 0.9),
-                        backgroundColor: Colors.white.withValues(alpha: 0.25),
+                preferredSize: const Size.fromHeight(50),
+                child: _selectionMode
+                    ? CategorySelectionToolbar(
+                        count: _selected.length,
+                        allSelected: allSelected,
+                        catColor: catColor,
+                        onClose: _exitSelection,
+                        onToggleAll: () =>
+                            _setAllSelected(filtered, !allSelected),
+                        onActions: () => _showBulkActions(context),
+                      )
+                    : CategoryToolbar(
+                        searchCtrl: _searchCtrl,
+                        query: _query,
+                        filterVal: _filterVal,
+                        filterOpts: filterOpts,
+                        starredOnly: _starredOnly,
+                        catColor: catColor,
+                        colors: colors,
+                        onQueryChanged: (v) => setState(() => _query = v),
+                        onFilterChanged: (v) => setState(() => _filterVal = v),
+                        onStarredToggle: () =>
+                            setState(() => _starredOnly = !_starredOnly),
                       ),
-                    ],
-                  ],
-                ),
               ),
             ),
-            body: LayoutBuilder(
-              builder: (ctx, constraints) {
-                final visibleCols = visibleColumns(
-                  _cat,
-                  constraints.maxWidth -
-                      (_selectionMode ? kSelectionIndicatorWidth : 0),
-                  filtered,
-                );
-
-                return RefreshIndicator(
-                  color: catColor,
-                  displacement: 15,
-                  onRefresh: () async => unawaited(_ctrl.syncCategory(_cat)),
-                  child: filtered.isEmpty
-                      ? SingleChildScrollView(
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          child: SizedBox(
-                            height: constraints.maxHeight,
-                            child: ArchiveEmptyView(
-                              icon: Icons.folder_open,
-                              title: _emptyTitle(),
-                              subtitle: _ctrl.lastError,
-                            ),
-                          ),
-                        )
-                      : Column(
-                          children: [
-                            ArchiveColumnHeader(
-                              cols: visibleCols,
-                              sortKey: _sortKey,
-                              sortAsc: _sortAsc,
-                              onSort: _onSort,
-                              colors: colors,
-                              selectionMode: _selectionMode,
-                            ),
-                            Expanded(
-                              child: ListView.builder(
-                                physics: const AlwaysScrollableScrollPhysics(
-                                  parent: ClampingScrollPhysics(),
-                                ),
-                                itemCount: filtered.length,
-                                itemBuilder: (_, i) {
-                                  final key = filtered[i];
-                                  return ArchiveTableRow(
-                                    key: ValueKey(_keyId(key)),
-                                    flipperKey: key,
-                                    cols: visibleCols,
-                                    colors: colors,
-                                    cat: _cat,
-                                    progress: _ctrl.progressForKey(key),
-                                    selectionMode: _selectionMode,
-                                    selected: _selected.contains(_keyId(key)),
-                                    onTap: () => _selectionMode
-                                        ? _toggleSelect(key)
-                                        : _showKeyActions(context, key),
-                                    onLongPress: () => _selectionMode
-                                        ? _toggleSelect(key)
-                                        : _enterSelection(key),
-                                  );
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
-                );
-              },
+            body: Column(
+              children: [
+                if (_ctrl.syncing) _syncBar(catColor),
+                Expanded(child: _buildTable(catColor, colors, filtered)),
+              ],
             ),
           ),
+        );
+      },
+    );
+  }
+
+  Widget _syncBar(Color catColor) {
+    final p = _ctrl.syncProgress;
+    final checking = p?.phase == SyncPhase.checking;
+    return SyncProgressBar(
+      icon: checking ? Icons.sync_rounded : Icons.download_rounded,
+      label: p == null
+          ? 'Syncing…'
+          : '${checking ? 'Syncing' : 'Downloading'} '
+                '${p.current}/${p.total} · ${p.fileName}',
+      progress: (p == null || p.total == 0) ? 0 : p.current / p.total,
+      fileProgress: p?.fileProgress,
+      color: catColor,
+    );
+  }
+
+  Widget _buildTable(
+    Color catColor,
+    QAppColors colors,
+    List<ArchiveKey> filtered,
+  ) {
+    return LayoutBuilder(
+      builder: (ctx, constraints) {
+        final visibleCols = visibleColumns(
+          _cat,
+          constraints.maxWidth -
+              (_selectionMode ? kSelectionIndicatorWidth : 0),
+          filtered,
+        );
+
+        return RefreshIndicator(
+          color: catColor,
+          displacement: 15,
+          onRefresh: () async => unawaited(_ctrl.syncCategory(_cat)),
+          child: filtered.isEmpty
+              ? SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  child: SizedBox(
+                    height: constraints.maxHeight,
+                    child: ArchiveEmptyView(
+                      icon: Icons.folder_open,
+                      title: _emptyTitle(),
+                      subtitle: _ctrl.lastError,
+                    ),
+                  ),
+                )
+              : Column(
+                  children: [
+                    ArchiveColumnHeader(
+                      cols: visibleCols,
+                      sortKey: _sortKey,
+                      sortAsc: _sortAsc,
+                      onSort: _onSort,
+                      colors: colors,
+                      selectionMode: _selectionMode,
+                    ),
+                    Expanded(
+                      child: ListView.builder(
+                        physics: const AlwaysScrollableScrollPhysics(
+                          parent: ClampingScrollPhysics(),
+                        ),
+                        itemCount: filtered.length,
+                        itemBuilder: (_, i) {
+                          final key = filtered[i];
+                          return ArchiveTableRow(
+                            key: ValueKey(_keyId(key)),
+                            flipperKey: key,
+                            cols: visibleCols,
+                            colors: colors,
+                            cat: _cat,
+                            progress: _ctrl.progressForKey(key),
+                            selectionMode: _selectionMode,
+                            selected: _selected.contains(_keyId(key)),
+                            onTap: () => _selectionMode
+                                ? _toggleSelect(key)
+                                : _showKeyActions(context, key),
+                            onLongPress: () => _selectionMode
+                                ? _toggleSelect(key)
+                                : _enterSelection(key),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
         );
       },
     );

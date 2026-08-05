@@ -5,10 +5,9 @@ import '../../../../theme/theme.dart';
 import '../../data/category.dart';
 
 class CategoryAppBarTitle extends StatelessWidget {
-  const CategoryAppBarTitle({super.key, required this.cat, this.syncFileName});
+  const CategoryAppBarTitle({super.key, required this.cat});
 
   final ArchiveCategory cat;
-  final String? syncFileName;
 
   @override
   Widget build(BuildContext context) {
@@ -27,13 +26,11 @@ class CategoryAppBarTitle extends StatelessWidget {
         const SizedBox(width: 8),
         Flexible(
           child: Text(
-            syncFileName ?? cat.remoteDir,
+            cat.remoteDir,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: Colors.white.withValues(
-                alpha: syncFileName != null ? 0.85 : 0.5,
-              ),
+              color: Colors.white.withValues(alpha: 0.5),
               fontSize: 12,
               fontWeight: FontWeight.w400,
             ),
