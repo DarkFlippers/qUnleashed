@@ -105,13 +105,19 @@ without `-lpthread`): the full multithreaded solve recovers the known key over
 the Win32 shim. The actual clang-cl *driver* is untestable here (no clang-cl/VS
 on this box) - verify the `/clang:-m*` flags on a real Windows clang-cl build.
 
+The ClangCL toolset is selected automatically: `windows/CMakeLists.txt` sets
+`CMAKE_GENERATOR_TOOLSET = ClangCL` before `project()` (opt out with
+`-DQUNLEASHED_NO_CLANGCL=ON` to build under plain MSVC without hardnested).
+Requires the "C++ Clang tools for Windows" component (VS or standalone Build
+Tools); `flutter clean` before switching toolset.
+
 ## Done elsewhere
 - **Tables** bundled as `assets/hardnested_tables/` + `hardnested_tables.dart`
   extraction (~9.2 MB lz4; raw is ~700 MB, so they stay compressed and the C
   code decompresses them). Committed with the Dart FFI recoverer.
 - **Dart FFI + isolate**: `hardnested_recoverer.dart`.
 
-## macOS / iOS Xcode integration (arm64) - artifacts ready, wiring to apply
+## macOS / iOS Xcode integration (arm64) - WIRED (verify with an Xcode build)
 
 The CMake path (Windows/Linux/Android) doesn't cover Apple; Flutter builds Apple
 via `Runner.xcodeproj`, which hand-adds the C sources (see the existing
@@ -127,11 +133,15 @@ NOSIMD, so those two variants are all that must link.
 arm64). x86_64 (Intel) Macs would need the full 6-variant x86 set with per-file
 `-m` flags, so exclude the hardnested sources on that slice.
 
-Add to **both** `macos/Runner.xcodeproj` and `ios/Runner.xcodeproj` (Runner
-target), mirroring the existing `nested_bridge.c` entries - easiest via Xcode's
-File -> Add Files so it writes correct project entries:
+Added to **both** `macos/Runner.xcodeproj` and `ios/Runner.xcodeproj` (Runner
+target), mirroring the existing `nested_bridge.c` entries (build-file/file-ref
+UUIDs `51AA…`/`51AB…` in the `0006-000F` / `0016-001F` range). Structure was
+checked (balanced braces/parens; correct def/ref counts), but **not** built - no
+Mac/Xcode here - so confirm with an Xcode build. If anything is off, delete the
+`51A*…0006-001F` entries + the two build settings and re-add via Xcode's
+File -> Add Files.
 
-Sources (all under `lib/modules/cpp/`):
+Sources added (all under `lib/modules/cpp/`):
 - `hardnested/cmdhfmfhard.c`, `hardnested/hardnested_bruteforce.c`
 - `hardnested/apple/hn_apple_bf_simd.c`, `.../hn_apple_bf_nosimd.c`,
   `.../hn_apple_ba_simd.c`, `.../hn_apple_ba_nosimd.c`
@@ -139,19 +149,19 @@ Sources (all under `lib/modules/cpp/`):
   the wrappers `#include` them)
 - `lz4/lz4.c`, `lz4/lz4hc.c`, `lz4/lz4frame.c`, `lz4/xxhash.c`
 
-Build settings (Runner target, all configs):
-- `HEADER_SEARCH_PATHS` += (relative to the project dir, i.e. `$(SRCROOT)/..`):
-  `lib/modules/cpp/hardnested`, `lib/modules/cpp/lz4`,
-  `lib/modules/cpp/nfc-tools/mfkey32v2`,
-  `lib/modules/cpp/nfc-tools/mfkey32v2/crapto1`
-- `EXCLUDED_SOURCE_FILE_NAMES[arch=x86_64]` = the 10 sources above (arm64-only).
+Build settings added to the Runner app-target configs (Debug/Release/Profile),
+via `$(inherited)` so CocoaPods paths are preserved:
+- `HEADER_SEARCH_PATHS` += `$(SRCROOT)/../lib/modules/cpp/{hardnested,lz4,
+  nfc-tools/mfkey32v2,nfc-tools/mfkey32v2/crapto1}`
+- `EXCLUDED_SOURCE_FILE_NAMES[arch=x86_64]` = the 10 sources above (arm64-only,
+  so Intel-Mac / Intel-simulator builds still link, just without hardnested).
 - `GCC_C_LANGUAGE_STANDARD` is already `gnu11` (VLAs in cmdhfmfhard.c need C99+).
 - No `-fcommon` needed on arm64 (verified: the only cross-variant collisions are
   x86 symbol-suffix clashes, which don't occur on arm64).
 
 ## Remaining work
-1. **Apply the Apple Xcode wiring above** and verify with an Xcode build (not
-   possible on the Windows dev box).
+1. **Verify the Windows (clang-cl) and Apple (Xcode) builds** on real toolchains
+   - both are wired but unbuildable on this box.
 2. **Dart parser + routing + UI**: a `.nested.log` hardnested-line parser
    (1 sample/line, no `dist`; `par_enc = log_par ^ 0xF`, bit order to confirm vs
    a real capture) + route by nonce count + UI. Deferred until a real capture.
