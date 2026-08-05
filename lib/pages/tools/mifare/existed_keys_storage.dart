@@ -32,7 +32,10 @@ class ExistedKeysStorage {
   FoundedInformation _foundedInformation = const FoundedInformation();
   final Set<String> _flipperKeys = {};
   final Set<String> _userDict = {};
-  final List<String> _userKeys = [];
+  // The write-back set for the user dict (seeded from it, then extended with new
+  // keys). A Set so a key recovered from several sectors in one run - or already
+  // duplicated in the loaded dict - is written once. Insertion order preserved.
+  final Set<String> _userKeys = {};
 
   FoundedInformation get foundedInformation => _foundedInformation;
 
@@ -61,7 +64,7 @@ class ExistedKeysStorage {
     // Let write failures propagate so the caller surfaces an error instead of
     // reporting a false "keys added" success.
     await _writer(flipperDictUserPath, utf8.encode(text));
-    return _userKeys.where((key) => !_userDict.contains(key)).toSet().toList();
+    return _userKeys.where((key) => !_userDict.contains(key)).toList();
   }
 
   void onNewKey(FoundedKey foundedKey) {
