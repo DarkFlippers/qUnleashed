@@ -1,168 +1,75 @@
-# Hardnested attack (vendored from Proxmark3)
+# Hardnested attack (host-side)
 
-Ciphertext-only attack on hardened MIFARE Classic (Meijer/Verdult 2015),
-bit-sliced brute-forcer (aczid). Vendored from `proxmark3/client/` (crapto1
-comes from the existing `../nfc-tools` submodule). The Flipper firmware only
-collects nonces into `.nested.log`; the whole attack runs here on the app host.
+Ciphertext-only attack on hardened MIFARE Classic (Meijer/Verdult 2015). The
+Flipper firmware only collects nonces into `.nested.log`; the whole attack runs
+here on the companion-app host, built into the `qunleashed_hardnested` FFI lib.
 
-## Status
-- **Crack engine ported and bench-validated.** All six x86 SIMD variants +
-  runtime dispatch + the driver, linked against our crapto1, run PM3's
-  `hardnested_bf_bench_data.bin` benchmark at ~1.7 Gstates/s on the AVX2 path.
-- **Orchestration + app bridge ported and validated end-to-end.** The offline
-  solve from `cmdhfmfhard.c` (bitflip-table loading, sum-property analysis,
-  candidate/statelist generation → `brute_force_bs`) compiles against
-  `hn_compat.h` and recovers a **known key from synthetic nonces**, both via
-  PM3's own `mfnestedhard(tests=1)` self-test and via our
-  `qunleashed_hardnested_recover()` bridge (recovers `010320102024` from
-  ~3000–6000 nonces in ~7 s incl. table load; fails gracefully below full
-  first-byte coverage). Validation used MinGW gcc 13 + a synthetic nonce
-  generator that mirrors PM3's `simulate_MFplus_RNG` (crapto1 primitives only).
-- **Not yet wired into the app build; no Dart bridge; tables not yet bundled**
-  (next steps below).
+## Origin
+Vendored from **[ChameleonUltraGUI](https://github.com/GameTec-live/ChameleonUltraGUI)**
+(`chameleonultragui/src`), a shipping cross-platform Flutter app that solves
+hardnested host-side. Its engine is a Proxmark3 fork (GPL) made **MSVC-compatible**,
+so it builds with the default toolchain on every platform - **no clang-cl needed**.
+`minlzlib/` is Alex Ionescu's minimal XZ decoder (MIT, see `minlzlib/LICENSE`).
 
-## Files
-- `hardnested_bf_core.c/.h` — bit-sliced crack kernels, compiled per ISA.
-- `hardnested_bitarray_core.c/.h` — bit-array ops, compiled per ISA.
-- `hardnested_bruteforce.c/.h` — driver (`brute_force_bs`, `brute_force_benchmark`,
-  `verify_key`) + the runtime SIMD dispatcher (in the `NOSIMD_BUILD` object).
-- `cmdhfmfhard.c` — the offline solve orchestration (adapted from PM3, see
-  below) + the `qunleashed_hardnested_*` bridge appended at the end.
-- `hardnested_bridge.h` — public declarations of the two bridge entry points.
-- `hn_compat.h` — shim replacing PM3 client deps (ui/comms/fileutils/util_posix/
-  commonutil): `PrintAndLogEx` no-op, `msclock`, `num_CPUs`, `bytes_to_num`, PM3
-  return codes, and a `searchFile` that resolves tables under the app-set
-  `g_hardnested_tables_path` (checking existence for the raw→lz4→bz2 fallback).
+We deliberately chose this over a from-scratch PM3 port: the PM3 engine uses
+GCC/Clang vector extensions MSVC can't compile, which would have forced clang-cl
+on Windows. This fork adds an `#ifdef _MSC_VER` scalar fallback instead.
 
-The PM3 table *generator* (`hardnested_tables.c`, `write_bitflips_file`) is **not**
-vendored — the solve loads the shipped precomputed tables via
-`init_bitflip_bitarrays`; it never regenerates them.
+## Why no clang / how the SIMD works
+`hardnested_bf_core.c` selects the bitslice type by compiler:
+- GCC/Clang: `__attribute__((vector_size))` → baseline SIMD (SSE2 on x86, NEON on
+  ARM). ~4× the scalar path.
+- MSVC (`_MSC_VER`): plain `uint32_t` scalar (32-wide). Compiles cleanly; slower.
 
-## Adaptations vs upstream
-- `hardnested_bf_core.c`: `#include "ui.h"` → `hn_compat.h`.
-- `hardnested_bruteforce.c`: dropped PM3 includes, added `hn_compat.h`.
-- `cmdhfmfhard.c`: PM3 client includes → `hn_compat.h` (crapto1/parity + engine
-  headers kept); `acquire_nonces()` (device comms) stubbed to `PM3_EFAILED`;
-  appended `qunleashed_hardnested_set_tables_path()` and
-  `qunleashed_hardnested_recover()`. The attack itself is upstream and untouched.
+It is a **single variant** (no per-ISA AVX2 dispatch), so the build is simple and
+portable. Trade-off: Windows-MSVC runs scalar (~8× slower than AVX2), fine for a
+companion app; Linux/macOS/Android get baseline SIMD. Fast AVX2 would require
+clang-cl on Windows and per-ISA object libraries - intentionally not done.
 
-## Bridge contract (`hardnested_bridge.h`)
-`qunleashed_hardnested_recover(cuid, nt_enc[], par_enc[], count, &foundkey)`
-runs the same solve as `mfnestedhard()`'s file path. `par_enc[i]` is a 4-bit
-nibble, **bit3 = parity of the MSB nonce byte** … bit0 = LSB byte (PM3
-`add_nonce` convention). Call `qunleashed_hardnested_set_tables_path(dir)` first,
-pointing at the folder that contains `hardnested_tables/`.
+## Tables
+The ~319 bitflip state tables are **embedded** (XZ-compressed) in
+`hardnested/tables.c` and decompressed in-memory by minlzlib via
+`get_bitflip()`. No Flutter assets, no first-run extraction, no runtime path
+wiring - the lib is self-contained.
 
-## Build recipe (validated with MinGW gcc 13)
-`bf_core.c` and `bitarray_core.c` are compiled **once per instruction set**, each
-producing suffixed symbols (`_NOSIMD`/`_MMX`/`_SSE2`/`_AVX`/`_AVX2`/`_AVX512` on
-x86; `_NEON` on ARM). The dispatcher lives in the `NOSIMD_BUILD` object and picks
-the best at runtime, so **all** variants for the target arch must be linked.
-`bruteforce.c` and `cmdhfmfhard.c` are compiled once (no SIMD). Link
-`-llz4 -lbz2 -lm -lpthread`. Include paths: this dir + the crapto1 dir and its
-parent.
+## Bridge (the FFI entry)
+`qunleashed_hardnested_bridge.c` exports:
+```c
+int qunleashed_hardnested_recover(uint32_t cuid, const uint32_t *nt_enc,
+                                  const uint8_t *par_enc, uint32_t count,
+                                  uint64_t *foundkey);   // 0 = ok
+```
+It packs the parallel `nt_enc[]`/`par_enc[]` arrays into the PM3 in-memory binary
+nonce format (`[cuid:4][blk:1][keyty:1]` then `[nt1:4][nt2:4][par:1]` records)
+and calls the engine's `mfnestedhard(..., nonces, length)`. Keeping the array API
+means the Dart side just passes the parsed nonces; `par_enc[i]` is the 4-bit
+encrypted-parity nibble (bit3 = MSB nonce byte … bit0 = LSB).
 
-x86 per-variant flags (mirrors PM3 `deps/hardnested.cmake`):
-- nosimd: `-DNOSIMD_BUILD -mno-mmx -mno-sse2 -mno-avx -mno-avx2 -mno-avx512f`
-- mmx:    `-mmmx -mno-sse2 -mno-avx -mno-avx2 -mno-avx512f`
-- sse2:   `-mmmx -msse2 -mno-avx -mno-avx2 -mno-avx512f`
-- avx:    `-mmmx -msse2 -mavx -mno-avx2 -mno-avx512f`
-- avx2:   `-mmmx -msse2 -mavx -mavx2 -mno-avx512f`
-- avx512: `-mmmx -msse2 -mavx -mavx2 -mavx512f`
+## Threads
+Real pthreads on Linux/Android/macOS/iOS and MinGW (winpthreads); the bundled
+`pthread_shim.h` (Win32 SRWLOCK + `_beginthreadex`) on clang-cl/MSVC, which ship
+no `<pthread.h>`. `hardnested.c` and `hardnested_bruteforce.c` include it through
+a `_WIN32 && !__MINGW32__` guard.
 
-ARM: build the `nosimd` object (`-DNOSIMD_BUILD`) + a `neon` object (arm64: plain;
-arm32: `-mfpu=neon`).
+## Build (validated with MinGW gcc 13)
+`CMakeLists.txt` builds the `qunleashed_hardnested` shared lib (engine + minlzlib
++ bridge), single variant, `-O3` on GCC/Clang. Validated: the built DLL recovers
+a known key from synthetic nonces via the bridge (~12 s incl. table decompress),
+loading 319 embedded tables through minlzlib - no external files.
 
-## Build wiring (DONE for the CMake platforms)
-`lib/modules/cpp/mfkey32/CMakeLists.txt` now builds hardnested into the existing
-`qunleashed_mfkey32` shared lib: the per-ISA SIMD object libraries (mirroring PM3
-`hardnested.cmake`, gated on `CMAKE_SYSTEM_PROCESSOR`), `cmdhfmfhard.c` +
-`hardnested_bruteforce.c`, and the vendored lz4 (`../lz4`). The two bridge
-symbols are exported via `QUNLEASHED_EXPORT`. Windows/Linux/Android all consume
-this one CMakeLists (add_subdirectory / gradle externalNativeBuild).
+`_In_=` is defined only under MinGW (which defines `_WIN32` but lacks MSVC's
+`sal.h` that minlzlib references); real MSVC has `sal.h`, Linux/macOS don't take
+the `_WIN32` path.
 
-**Validated** (MinGW gcc 13, `CMAKE_SYSTEM_PROCESSOR=AMD64`): configures, builds
-all 6 x86 variants, links (Threads + vendored lz4, no system deps), exports all
-six `qunleashed_*` symbols, and the resulting DLL recovers the known key
-end-to-end when loaded like Dart FFI will load it.
-
-Toolchain handling: real MSVC can't compile the engine (GCC/Clang vector
-extensions), so hardnested is skipped under `CMAKE_C_COMPILER_ID==MSVC` and the
-Windows desktop build must use **clang-cl** (flags passed via the `/clang:`
-prefix). `msvc_compat.h` is force-included for real MSVC only (it would collapse
-the SIMD vector types under clang-cl).
-
-## clang-cl on Windows (pthreads shim DONE)
-`hn_compat.h` selects threads: real pthreads on Linux/Android/macOS/iOS and MinGW
-(winpthreads), and `pthread_shim.h` (a Win32-backed shim: SRWLOCK mutexes +
-`_beginthreadex`) on clang-cl / MSVC, which ship no `<pthread.h>`. The removed
-direct `#include <pthread.h>` in `hardnested_bruteforce.c` now comes through
-`hn_compat.h`. The shim covers the exact surface used (create/join, non-recursive
-mutex). SIMD flags are passed to clang-cl via the `/clang:` prefix in the CMake.
-
-**Validated** (MinGW gcc 13 with `-DQUNLEASHED_FORCE_PTHREAD_SHIM`, linked
-without `-lpthread`): the full multithreaded solve recovers the known key over
-the Win32 shim. The actual clang-cl *driver* is untestable here (no clang-cl/VS
-on this box) - verify the `/clang:-m*` flags on a real Windows clang-cl build.
-
-The ClangCL toolset is selected automatically: `windows/CMakeLists.txt` sets
-`CMAKE_GENERATOR_TOOLSET = ClangCL` before `project()` (opt out with
-`-DQUNLEASHED_NO_CLANGCL=ON` to build under plain MSVC without hardnested).
-Requires the "C++ Clang tools for Windows" component (VS or standalone Build
-Tools); `flutter clean` before switching toolset.
-
-## Done elsewhere
-- **Tables** bundled as `assets/hardnested_tables/` + `hardnested_tables.dart`
-  extraction (~9.2 MB lz4; raw is ~700 MB, so they stay compressed and the C
-  code decompresses them). Committed with the Dart FFI recoverer.
-- **Dart FFI + isolate**: `hardnested_recoverer.dart`.
-
-## macOS / iOS Xcode integration (arm64) - WIRED (verify with an Xcode build)
-
-The CMake path (Windows/Linux/Android) doesn't cover Apple; Flutter builds Apple
-via `Runner.xcodeproj`, which hand-adds the C sources (see the existing
-`mfkey32_bridge.c` / `nested_bridge.c` entries). Xcode compiles each source once,
-so the per-ISA engine is provided through the wrapper TUs in `apple/`:
-`hn_apple_bf_simd.c` / `hn_apple_ba_simd.c` (the target's SIMD variant = **NEON**
-on arm64) and `hn_apple_bf_nosimd.c` / `hn_apple_ba_nosimd.c` (the NOSIMD build +
-runtime dispatcher). On arm64 the NEON branch gates on `!NOSIMD_BUILD`, so the
-two variants get distinct symbols; the dispatcher then references only NEON +
-NOSIMD, so those two variants are all that must link.
-
-**Apple hardnested is arm64-only** (iOS is always arm64; Apple Silicon macOS is
-arm64). x86_64 (Intel) Macs would need the full 6-variant x86 set with per-file
-`-m` flags, so exclude the hardnested sources on that slice.
-
-Added to **both** `macos/Runner.xcodeproj` and `ios/Runner.xcodeproj` (Runner
-target), mirroring the existing `nested_bridge.c` entries (build-file/file-ref
-UUIDs `51AA…`/`51AB…` in the `0006-000F` / `0016-001F` range). Structure was
-checked (balanced braces/parens; correct def/ref counts), but **not** built - no
-Mac/Xcode here - so confirm with an Xcode build. If anything is off, delete the
-`51A*…0006-001F` entries + the two build settings and re-add via Xcode's
-File -> Add Files.
-
-Sources added (all under `lib/modules/cpp/`):
-- `hardnested/cmdhfmfhard.c`, `hardnested/hardnested_bruteforce.c`
-- `hardnested/apple/hn_apple_bf_simd.c`, `.../hn_apple_bf_nosimd.c`,
-  `.../hn_apple_ba_simd.c`, `.../hn_apple_ba_nosimd.c`
-  (do **not** add `hardnested_bf_core.c` / `hardnested_bitarray_core.c` directly;
-  the wrappers `#include` them)
-- `lz4/lz4.c`, `lz4/lz4hc.c`, `lz4/lz4frame.c`, `lz4/xxhash.c`
-
-Build settings added to the Runner app-target configs (Debug/Release/Profile),
-via `$(inherited)` so CocoaPods paths are preserved:
-- `HEADER_SEARCH_PATHS` += `$(SRCROOT)/../lib/modules/cpp/{hardnested,lz4,
-  nfc-tools/mfkey32v2,nfc-tools/mfkey32v2/crapto1}`
-- `EXCLUDED_SOURCE_FILE_NAMES[arch=x86_64]` = the 10 sources above (arm64-only,
-  so Intel-Mac / Intel-simulator builds still link, just without hardnested).
-- `GCC_C_LANGUAGE_STANDARD` is already `gnu11` (VLAs in cmdhfmfhard.c need C99+).
-- No `-fcommon` needed on arm64 (verified: the only cross-variant collisions are
-  x86 symbol-suffix clashes, which don't occur on arm64).
+Note: this lib bundles its own crapto1 (from the CUG fork), separate from the
+`nfc-tools` submodule crapto1 used by `qunleashed_mfkey32`. They live in
+different shared libs, so the duplicate symbols never clash.
 
 ## Remaining work
-1. **Verify the Windows (clang-cl) and Apple (Xcode) builds** on real toolchains
-   - both are wired but unbuildable on this box.
-2. **Dart parser + routing + UI**: a `.nested.log` hardnested-line parser
-   (1 sample/line, no `dist`; `par_enc = log_par ^ 0xF`, bit order to confirm vs
-   a real capture) + route by nonce count + UI. Deferred until a real capture.
+1. Wire `qunleashed_hardnested` into the platform builds: `windows`/`linux`
+   runner CMake `add_subdirectory`, Android gradle externalNativeBuild,
+   macOS/iOS Xcode. (MSVC/Xcode/NDK untestable on this box.)
+2. Dart: `hardnested_recoverer.dart` load `qunleashed_hardnested` + call the
+   bridge; a `.nested.log` hardnested parser (deferred until a real capture)
+   + routing/UI.
 3. End-to-end validation against a real hardnested capture.
