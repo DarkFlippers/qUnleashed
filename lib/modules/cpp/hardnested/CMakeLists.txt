@@ -42,6 +42,17 @@ set_target_properties(qunleashed_hardnested PROPERTIES
   POSITION_INDEPENDENT_CODE ON
 )
 
+# Force-include hn_namespace.h into every source so the vendored crapto1 symbols
+# are renamed (see the header) - lets this lib coexist with qunleashed_mfkey32's
+# crapto1 in a single binary (Apple). The Apple podspec applies the same flag.
+if(MSVC)
+  target_compile_options(qunleashed_hardnested PRIVATE
+    "/FI${CMAKE_CURRENT_SOURCE_DIR}/hn_namespace.h")
+else()
+  target_compile_options(qunleashed_hardnested PRIVATE
+    -include "${CMAKE_CURRENT_SOURCE_DIR}/hn_namespace.h")
+endif()
+
 # Perf: -O3 on GCC/Clang. MSVC uses its own default optimization.
 if(NOT MSVC)
   target_compile_options(qunleashed_hardnested PRIVATE -O3)
