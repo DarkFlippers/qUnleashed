@@ -7,8 +7,16 @@ enum RecoverSource {
   tag,
 }
 
-/// Which attack produced an entry.
-enum RecoverKind { mfkey32, weakNested, staticEncrypted, hardnested }
+/// Which attack / tag type produced an entry. `staticNonce` and `weakNested`
+/// both solve with the same crapto1 nested math; they differ only by whether the
+/// tag's nonce advances (`dist != 0` = weak, `dist == 0` = static).
+enum RecoverKind {
+  mfkey32,
+  weakNested,
+  staticNonce,
+  staticEncrypted,
+  hardnested,
+}
 
 /// One row of the grouped recovery summary (grouped in the UI by
 /// source → card (cuid) → sector/key).

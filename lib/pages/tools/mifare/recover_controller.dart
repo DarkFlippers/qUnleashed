@@ -16,12 +16,6 @@ import 'nested_recoverer.dart';
 import 'recover_models.dart';
 import 'static_encrypted_recoverer.dart';
 
-/// A `(cuid, sector, key)` group of single-sample nested nonces with at least
-/// this many nonces is a hardened-PRNG (hardnested) collection; exactly one is
-/// the static / static-encrypted case (static never yields more than one nonce
-/// for the same sector+key). See BUILD_NOTES / the nested-log format.
-const int _hardnestedGroupMin = 2;
-
 String _cuidDictPath(int cuid) =>
     '/ext/nfc/assets/mf_classic_dict_${cuid.toRadixString(16).padLeft(8, '0')}.nfc';
 
@@ -198,7 +192,7 @@ class RecoverController extends ChangeNotifier {
     }
   }
 
-  // ---- tag: weak nested ----
+  // ---- tag: two-sample nested (weak PRNG or static nonce) ----
 
   List<NestedNonce> _dedupeWeak(Iterable<NestedNonce> pairs) {
     final byKey = <String, NestedNonce>{};
@@ -226,7 +220,11 @@ class RecoverController extends ChangeNotifier {
           _entries.add(
             RecoverEntry(
               source: RecoverSource.tag,
-              kind: RecoverKind.weakNested,
+              // dist == 0 => the nonce never advances (static nonce); a nonzero
+              // distance is a genuine weak PRNG. Same recovery either way.
+              kind: n.dist == 0
+                  ? RecoverKind.staticNonce
+                  : RecoverKind.weakNested,
               cuid: n.cuid,
               sectorName: n.sectorName,
               keyName: n.keyName,
@@ -241,23 +239,25 @@ class RecoverController extends ChangeNotifier {
 
   // ---- tag: split single-sample nonces into static vs hardnested ----
 
+  /// Splits single-sample nested nonces the way the firmware distinguishes them:
+  /// a line with a `dist` field is static-encrypted (FM11RF08S); one without is
+  /// hardnested. Hardnested nonces are grouped by (cuid, sector, key) into the
+  /// nonce set each attack runs over.
   (List<NestedNonce>, List<List<NestedNonce>>) _splitSingles(
     Iterable<NestedNonce> singles,
   ) {
-    final groups = <String, List<NestedNonce>>{};
-    for (final n in singles) {
-      groups.putIfAbsent('${n.cuid}-${n.sector}-${n.keyType}', () => []).add(n);
-    }
     final staticSingles = <NestedNonce>[];
-    final hardGroups = <List<NestedNonce>>[];
-    for (final group in groups.values) {
-      if (group.length < _hardnestedGroupMin) {
-        staticSingles.add(group.first);
+    final hardGroups = <String, List<NestedNonce>>{};
+    for (final n in singles) {
+      if (n.dist != null) {
+        staticSingles.add(n);
       } else {
-        hardGroups.add(group);
+        hardGroups
+            .putIfAbsent('${n.cuid}-${n.sector}-${n.keyType}', () => [])
+            .add(n);
       }
     }
-    return (staticSingles, hardGroups);
+    return (staticSingles, hardGroups.values.toList(growable: false));
   }
 
   // ---- tag: hardnested ----

@@ -209,7 +209,8 @@ class _EntryRow extends StatelessWidget {
 
   static String _kindLabel(RecoverKind kind) => switch (kind) {
     RecoverKind.mfkey32 => 'mfkey32',
-    RecoverKind.weakNested => 'nested',
+    RecoverKind.weakNested => 'weak nested',
+    RecoverKind.staticNonce => 'static nonce',
     RecoverKind.staticEncrypted => 'static-encrypted',
     RecoverKind.hardnested => 'hardnested',
   };
