@@ -111,11 +111,48 @@ on this box) - verify the `/clang:-m*` flags on a real Windows clang-cl build.
   code decompresses them). Committed with the Dart FFI recoverer.
 - **Dart FFI + isolate**: `hardnested_recoverer.dart`.
 
+## macOS / iOS Xcode integration (arm64) - artifacts ready, wiring to apply
+
+The CMake path (Windows/Linux/Android) doesn't cover Apple; Flutter builds Apple
+via `Runner.xcodeproj`, which hand-adds the C sources (see the existing
+`mfkey32_bridge.c` / `nested_bridge.c` entries). Xcode compiles each source once,
+so the per-ISA engine is provided through the wrapper TUs in `apple/`:
+`hn_apple_bf_simd.c` / `hn_apple_ba_simd.c` (the target's SIMD variant = **NEON**
+on arm64) and `hn_apple_bf_nosimd.c` / `hn_apple_ba_nosimd.c` (the NOSIMD build +
+runtime dispatcher). On arm64 the NEON branch gates on `!NOSIMD_BUILD`, so the
+two variants get distinct symbols; the dispatcher then references only NEON +
+NOSIMD, so those two variants are all that must link.
+
+**Apple hardnested is arm64-only** (iOS is always arm64; Apple Silicon macOS is
+arm64). x86_64 (Intel) Macs would need the full 6-variant x86 set with per-file
+`-m` flags, so exclude the hardnested sources on that slice.
+
+Add to **both** `macos/Runner.xcodeproj` and `ios/Runner.xcodeproj` (Runner
+target), mirroring the existing `nested_bridge.c` entries - easiest via Xcode's
+File -> Add Files so it writes correct project entries:
+
+Sources (all under `lib/modules/cpp/`):
+- `hardnested/cmdhfmfhard.c`, `hardnested/hardnested_bruteforce.c`
+- `hardnested/apple/hn_apple_bf_simd.c`, `.../hn_apple_bf_nosimd.c`,
+  `.../hn_apple_ba_simd.c`, `.../hn_apple_ba_nosimd.c`
+  (do **not** add `hardnested_bf_core.c` / `hardnested_bitarray_core.c` directly;
+  the wrappers `#include` them)
+- `lz4/lz4.c`, `lz4/lz4hc.c`, `lz4/lz4frame.c`, `lz4/xxhash.c`
+
+Build settings (Runner target, all configs):
+- `HEADER_SEARCH_PATHS` += (relative to the project dir, i.e. `$(SRCROOT)/..`):
+  `lib/modules/cpp/hardnested`, `lib/modules/cpp/lz4`,
+  `lib/modules/cpp/nfc-tools/mfkey32v2`,
+  `lib/modules/cpp/nfc-tools/mfkey32v2/crapto1`
+- `EXCLUDED_SOURCE_FILE_NAMES[arch=x86_64]` = the 10 sources above (arm64-only).
+- `GCC_C_LANGUAGE_STANDARD` is already `gnu11` (VLAs in cmdhfmfhard.c need C99+).
+- No `-fcommon` needed on arm64 (verified: the only cross-variant collisions are
+  x86 symbol-suffix clashes, which don't occur on arm64).
+
 ## Remaining work
-1. **macOS/iOS Xcode**: add the per-ISA multi-compile + these sources to the
-   Xcode project (the CMake path doesn't cover Apple).
+1. **Apply the Apple Xcode wiring above** and verify with an Xcode build (not
+   possible on the Windows dev box).
 2. **Dart parser + routing + UI**: a `.nested.log` hardnested-line parser
    (1 sample/line, no `dist`; `par_enc = log_par ^ 0xF`, bit order to confirm vs
    a real capture) + route by nonce count + UI. Deferred until a real capture.
 3. End-to-end validation against a real hardnested capture.
-5. Validate end-to-end against a real hardnested capture (pending sample).
