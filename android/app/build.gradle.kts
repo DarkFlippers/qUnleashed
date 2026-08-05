@@ -58,7 +58,8 @@ android {
 
     externalNativeBuild {
         cmake {
-            path = file("../../lib/modules/cpp/mfkey32/CMakeLists.txt")
+            // Top-level CMake builds both qunleashed_mfkey32 and qunleashed_hardnested.
+            path = file("../../lib/modules/cpp/CMakeLists.txt")
         }
     }
 

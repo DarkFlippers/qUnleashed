@@ -15,16 +15,6 @@
 		51AB00000000000000000003 /* crapto1.c in Sources */ = {isa = PBXBuildFile; fileRef = 51AB00000000000000000013 /* crapto1.c */; };
 		51AB00000000000000000004 /* crypto1.c in Sources */ = {isa = PBXBuildFile; fileRef = 51AB00000000000000000014 /* crypto1.c */; };
 		51AB00000000000000000005 /* nested_bridge.c in Sources */ = {isa = PBXBuildFile; fileRef = 51AB00000000000000000015 /* nested_bridge.c */; };
-		51AB00000000000000000006 /* cmdhfmfhard.c in Sources */ = {isa = PBXBuildFile; fileRef = 51AB00000000000000000016 /* cmdhfmfhard.c */; };
-		51AB00000000000000000007 /* hardnested_bruteforce.c in Sources */ = {isa = PBXBuildFile; fileRef = 51AB00000000000000000017 /* hardnested_bruteforce.c */; };
-		51AB00000000000000000008 /* hn_apple_bf_simd.c in Sources */ = {isa = PBXBuildFile; fileRef = 51AB00000000000000000018 /* hn_apple_bf_simd.c */; };
-		51AB00000000000000000009 /* hn_apple_bf_nosimd.c in Sources */ = {isa = PBXBuildFile; fileRef = 51AB00000000000000000019 /* hn_apple_bf_nosimd.c */; };
-		51AB0000000000000000000A /* hn_apple_ba_simd.c in Sources */ = {isa = PBXBuildFile; fileRef = 51AB0000000000000000001A /* hn_apple_ba_simd.c */; };
-		51AB0000000000000000000B /* hn_apple_ba_nosimd.c in Sources */ = {isa = PBXBuildFile; fileRef = 51AB0000000000000000001B /* hn_apple_ba_nosimd.c */; };
-		51AB0000000000000000000C /* lz4.c in Sources */ = {isa = PBXBuildFile; fileRef = 51AB0000000000000000001C /* lz4.c */; };
-		51AB0000000000000000000D /* lz4hc.c in Sources */ = {isa = PBXBuildFile; fileRef = 51AB0000000000000000001D /* lz4hc.c */; };
-		51AB0000000000000000000E /* lz4frame.c in Sources */ = {isa = PBXBuildFile; fileRef = 51AB0000000000000000001E /* lz4frame.c */; };
-		51AB0000000000000000000F /* xxhash.c in Sources */ = {isa = PBXBuildFile; fileRef = 51AB0000000000000000001F /* xxhash.c */; };
 		74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74858FAE1ED2DC5600515810 /* AppDelegate.swift */; };
 		7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */; };
 		78A318202AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage in Frameworks */ = {isa = PBXBuildFile; productRef = 78A3181F2AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage */; };
@@ -74,16 +64,6 @@
 		51AB00000000000000000013 /* crapto1.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = crapto1.c; path = "../lib/modules/cpp/nfc-tools/mfkey32v2/crapto1/crapto1.c"; sourceTree = SOURCE_ROOT; };
 		51AB00000000000000000014 /* crypto1.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = crypto1.c; path = "../lib/modules/cpp/nfc-tools/mfkey32v2/crapto1/crypto1.c"; sourceTree = SOURCE_ROOT; };
 		51AB00000000000000000015 /* nested_bridge.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = nested_bridge.c; path = ../lib/modules/cpp/mfkey32/nested_bridge.c; sourceTree = SOURCE_ROOT; };
-		51AB00000000000000000016 /* cmdhfmfhard.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = cmdhfmfhard.c; path = "../lib/modules/cpp/hardnested/cmdhfmfhard.c"; sourceTree = SOURCE_ROOT; };
-		51AB00000000000000000017 /* hardnested_bruteforce.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = hardnested_bruteforce.c; path = "../lib/modules/cpp/hardnested/hardnested_bruteforce.c"; sourceTree = SOURCE_ROOT; };
-		51AB00000000000000000018 /* hn_apple_bf_simd.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = hn_apple_bf_simd.c; path = "../lib/modules/cpp/hardnested/apple/hn_apple_bf_simd.c"; sourceTree = SOURCE_ROOT; };
-		51AB00000000000000000019 /* hn_apple_bf_nosimd.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = hn_apple_bf_nosimd.c; path = "../lib/modules/cpp/hardnested/apple/hn_apple_bf_nosimd.c"; sourceTree = SOURCE_ROOT; };
-		51AB0000000000000000001A /* hn_apple_ba_simd.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = hn_apple_ba_simd.c; path = "../lib/modules/cpp/hardnested/apple/hn_apple_ba_simd.c"; sourceTree = SOURCE_ROOT; };
-		51AB0000000000000000001B /* hn_apple_ba_nosimd.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = hn_apple_ba_nosimd.c; path = "../lib/modules/cpp/hardnested/apple/hn_apple_ba_nosimd.c"; sourceTree = SOURCE_ROOT; };
-		51AB0000000000000000001C /* lz4.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = lz4.c; path = "../lib/modules/cpp/lz4/lz4.c"; sourceTree = SOURCE_ROOT; };
-		51AB0000000000000000001D /* lz4hc.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = lz4hc.c; path = "../lib/modules/cpp/lz4/lz4hc.c"; sourceTree = SOURCE_ROOT; };
-		51AB0000000000000000001E /* lz4frame.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = lz4frame.c; path = "../lib/modules/cpp/lz4/lz4frame.c"; sourceTree = SOURCE_ROOT; };
-		51AB0000000000000000001F /* xxhash.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = xxhash.c; path = "../lib/modules/cpp/lz4/xxhash.c"; sourceTree = SOURCE_ROOT; };
 		74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Runner-Bridging-Header.h"; sourceTree = "<group>"; };
 		74858FAE1ED2DC5600515810 /* AppDelegate.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
@@ -191,16 +171,6 @@
 				51AB00000000000000000013 /* crapto1.c */,
 				51AB00000000000000000014 /* crypto1.c */,
 				51AB00000000000000000015 /* nested_bridge.c */,
-				51AB00000000000000000016 /* cmdhfmfhard.c */,
-				51AB00000000000000000017 /* hardnested_bruteforce.c */,
-				51AB00000000000000000018 /* hn_apple_bf_simd.c */,
-				51AB00000000000000000019 /* hn_apple_bf_nosimd.c */,
-				51AB0000000000000000001A /* hn_apple_ba_simd.c */,
-				51AB0000000000000000001B /* hn_apple_ba_nosimd.c */,
-				51AB0000000000000000001C /* lz4.c */,
-				51AB0000000000000000001D /* lz4hc.c */,
-				51AB0000000000000000001E /* lz4frame.c */,
-				51AB0000000000000000001F /* xxhash.c */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 			);
 			path = Runner;
@@ -465,16 +435,6 @@
 				51AB00000000000000000003 /* crapto1.c in Sources */,
 				51AB00000000000000000004 /* crypto1.c in Sources */,
 				51AB00000000000000000005 /* nested_bridge.c in Sources */,
-				51AB00000000000000000006 /* cmdhfmfhard.c in Sources */,
-				51AB00000000000000000007 /* hardnested_bruteforce.c in Sources */,
-				51AB00000000000000000008 /* hn_apple_bf_simd.c in Sources */,
-				51AB00000000000000000009 /* hn_apple_bf_nosimd.c in Sources */,
-				51AB0000000000000000000A /* hn_apple_ba_simd.c in Sources */,
-				51AB0000000000000000000B /* hn_apple_ba_nosimd.c in Sources */,
-				51AB0000000000000000000C /* lz4.c in Sources */,
-				51AB0000000000000000000D /* lz4hc.c in Sources */,
-				51AB0000000000000000000E /* lz4frame.c in Sources */,
-				51AB0000000000000000000F /* xxhash.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -564,25 +524,6 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 7AFA3C8E1D35360C0083082E /* Release.xcconfig */;
 			buildSettings = {
-				HEADER_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(SRCROOT)/../lib/modules/cpp/hardnested",
-					"$(SRCROOT)/../lib/modules/cpp/lz4",
-					"$(SRCROOT)/../lib/modules/cpp/nfc-tools/mfkey32v2",
-					"$(SRCROOT)/../lib/modules/cpp/nfc-tools/mfkey32v2/crapto1",
-				);
-				"EXCLUDED_SOURCE_FILE_NAMES[arch=x86_64]" = (
-					cmdhfmfhard.c,
-					hardnested_bruteforce.c,
-					hn_apple_bf_simd.c,
-					hn_apple_bf_nosimd.c,
-					hn_apple_ba_simd.c,
-					hn_apple_ba_nosimd.c,
-					lz4.c,
-					lz4hc.c,
-					lz4frame.c,
-					xxhash.c,
-				);
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_IDENTITY = "Apple Development";
@@ -768,25 +709,6 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 9740EEB21CF90195004384FC /* Debug.xcconfig */;
 			buildSettings = {
-				HEADER_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(SRCROOT)/../lib/modules/cpp/hardnested",
-					"$(SRCROOT)/../lib/modules/cpp/lz4",
-					"$(SRCROOT)/../lib/modules/cpp/nfc-tools/mfkey32v2",
-					"$(SRCROOT)/../lib/modules/cpp/nfc-tools/mfkey32v2/crapto1",
-				);
-				"EXCLUDED_SOURCE_FILE_NAMES[arch=x86_64]" = (
-					cmdhfmfhard.c,
-					hardnested_bruteforce.c,
-					hn_apple_bf_simd.c,
-					hn_apple_bf_nosimd.c,
-					hn_apple_ba_simd.c,
-					hn_apple_ba_nosimd.c,
-					lz4.c,
-					lz4hc.c,
-					lz4frame.c,
-					xxhash.c,
-				);
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_IDENTITY = "Apple Development";
@@ -812,25 +734,6 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 7AFA3C8E1D35360C0083082E /* Release.xcconfig */;
 			buildSettings = {
-				HEADER_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(SRCROOT)/../lib/modules/cpp/hardnested",
-					"$(SRCROOT)/../lib/modules/cpp/lz4",
-					"$(SRCROOT)/../lib/modules/cpp/nfc-tools/mfkey32v2",
-					"$(SRCROOT)/../lib/modules/cpp/nfc-tools/mfkey32v2/crapto1",
-				);
-				"EXCLUDED_SOURCE_FILE_NAMES[arch=x86_64]" = (
-					cmdhfmfhard.c,
-					hardnested_bruteforce.c,
-					hn_apple_bf_simd.c,
-					hn_apple_bf_nosimd.c,
-					hn_apple_ba_simd.c,
-					hn_apple_ba_nosimd.c,
-					lz4.c,
-					lz4hc.c,
-					lz4frame.c,
-					xxhash.c,
-				);
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_IDENTITY = "Apple Development";

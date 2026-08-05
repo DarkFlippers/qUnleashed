@@ -65,11 +65,20 @@ Note: this lib bundles its own crapto1 (from the CUG fork), separate from the
 `nfc-tools` submodule crapto1 used by `qunleashed_mfkey32`. They live in
 different shared libs, so the duplicate symbols never clash.
 
+## Build wiring
+`lib/modules/cpp/CMakeLists.txt` is a top-level target that builds both
+`qunleashed_mfkey32` and `qunleashed_hardnested`. Windows/Linux runner CMake
+`add_subdirectory` it (and bundle both DLLs/SOs); Android's gradle
+`externalNativeBuild` points at it. Validated (MinGW gcc 13): both libs build
+together and export their bridges. macOS/iOS are **not** wired yet (the CMake
+path doesn't cover Apple).
+
 ## Remaining work
-1. Wire `qunleashed_hardnested` into the platform builds: `windows`/`linux`
-   runner CMake `add_subdirectory`, Android gradle externalNativeBuild,
-   macOS/iOS Xcode. (MSVC/Xcode/NDK untestable on this box.)
-2. Dart: `hardnested_recoverer.dart` load `qunleashed_hardnested` + call the
-   bridge; a `.nested.log` hardnested parser (deferred until a real capture)
-   + routing/UI.
+1. **macOS/iOS**: add `qunleashed_hardnested` to the Apple build. CUG uses a
+   CocoaPods podspec (`recovery.podspec`) that unity-builds the sources - the
+   clean Flutter-FFI-on-Apple pattern; recommended over hand-adding ~24 files to
+   Runner.xcodeproj. Needs a Mac/Xcode to verify (unavailable here).
+2. **Dart**: a `.nested.log` hardnested-line parser + routing (by nonce count)
+   + UI. `hardnested_recoverer.dart` + the FFI already work; deferred until a
+   real hardnested capture confirms the log line format / `par_enc` mapping.
 3. End-to-end validation against a real hardnested capture.
