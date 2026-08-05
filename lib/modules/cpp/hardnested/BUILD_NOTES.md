@@ -92,17 +92,30 @@ Windows desktop build must use **clang-cl** (flags passed via the `/clang:`
 prefix). `msvc_compat.h` is force-included for real MSVC only (it would collapse
 the SIMD vector types under clang-cl).
 
+## clang-cl on Windows (pthreads shim DONE)
+`hn_compat.h` selects threads: real pthreads on Linux/Android/macOS/iOS and MinGW
+(winpthreads), and `pthread_shim.h` (a Win32-backed shim: SRWLOCK mutexes +
+`_beginthreadex`) on clang-cl / MSVC, which ship no `<pthread.h>`. The removed
+direct `#include <pthread.h>` in `hardnested_bruteforce.c` now comes through
+`hn_compat.h`. The shim covers the exact surface used (create/join, non-recursive
+mutex). SIMD flags are passed to clang-cl via the `/clang:` prefix in the CMake.
+
+**Validated** (MinGW gcc 13 with `-DQUNLEASHED_FORCE_PTHREAD_SHIM`, linked
+without `-lpthread`): the full multithreaded solve recovers the known key over
+the Win32 shim. The actual clang-cl *driver* is untestable here (no clang-cl/VS
+on this box) - verify the `/clang:-m*` flags on a real Windows clang-cl build.
+
+## Done elsewhere
+- **Tables** bundled as `assets/hardnested_tables/` + `hardnested_tables.dart`
+  extraction (~9.2 MB lz4; raw is ~700 MB, so they stay compressed and the C
+  code decompresses them). Committed with the Dart FFI recoverer.
+- **Dart FFI + isolate**: `hardnested_recoverer.dart`.
+
 ## Remaining work
-1. **clang-cl on Windows**: verify the `/clang:-m*` flags + provide a
-   pthreads-win32 shim (pthreads exist on Linux/Android/macOS/iOS and MinGW, but
-   not clang-cl). Untestable on this box (no clang-cl/VS installed).
-2. **macOS/iOS Xcode**: add the per-ISA multi-compile + these sources to the
+1. **macOS/iOS Xcode**: add the per-ISA multi-compile + these sources to the
    Xcode project (the CMake path doesn't cover Apple).
-3. **Tables**: bundle the ~9.2 MB `hardnested_tables/*.lz4` (351 files) as Flutter
-   assets, extract to a writable dir on first use, pass that dir to
-   `qunleashed_hardnested_set_tables_path()`. (Raw tables are ~700 MB - sparse
-   bitmaps - so they must stay lz4-compressed and be decompressed by the C code.)
-4. **Dart** FFI + isolate + a `.nested.log` hardnested-line parser (1 sample/line,
-   no `dist`; `par_enc = log_par ^ 0xF`, bit order to confirm vs a real capture)
-   + UI.
+2. **Dart parser + routing + UI**: a `.nested.log` hardnested-line parser
+   (1 sample/line, no `dist`; `par_enc = log_par ^ 0xF`, bit order to confirm vs
+   a real capture) + route by nonce count + UI. Deferred until a real capture.
+3. End-to-end validation against a real hardnested capture.
 5. Validate end-to-end against a real hardnested capture (pending sample).

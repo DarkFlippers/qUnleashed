@@ -53,7 +53,7 @@ THE SOFTWARE.
 #include <inttypes.h>
 #include <stdbool.h>
 #include <stdio.h>
-#include <pthread.h>
+// pthreads come from hn_compat.h above (real, or the Win32 shim on clang-cl).
 #include <string.h>
 #include <stdlib.h>
 

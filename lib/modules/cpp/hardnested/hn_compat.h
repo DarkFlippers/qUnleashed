@@ -8,7 +8,16 @@
 #include <string.h>
 #include <stdio.h>
 #include <time.h>
+
+// Threads: real pthreads on Linux/Android/macOS/iOS and MinGW (winpthreads);
+// a Win32-backed shim on clang-cl / MSVC, which ship no <pthread.h>.
+// QUNLEASHED_FORCE_PTHREAD_SHIM lets the shim be exercised under MinGW for tests.
+#if defined(QUNLEASHED_FORCE_PTHREAD_SHIM) || \
+    (defined(_WIN32) && !defined(__MINGW32__))
+#include "pthread_shim.h"
+#else
 #include <pthread.h>
+#endif
 
 // ---- ui.h ----
 #define PrintAndLogEx(...) \
