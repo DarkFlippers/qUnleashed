@@ -106,3 +106,7 @@ class MfKey32Nonce {
 /// Formats a recovered 48-bit MIFARE Classic key as 12 uppercase hex digits.
 String formatMifareKey(int key) =>
     key.toRadixString(16).padLeft(12, '0').toUpperCase();
+
+/// Formats a card UID as 8 lowercase hex digits - the on-device
+/// `mf_classic_dict_<cuid>.nfc` filename convention.
+String formatCuid(int cuid) => cuid.toRadixString(16).padLeft(8, '0');

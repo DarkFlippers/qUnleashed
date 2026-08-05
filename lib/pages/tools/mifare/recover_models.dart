@@ -1,3 +1,5 @@
+import 'mfkey32_models.dart';
+
 /// Where a recovered key's nonces came from.
 enum RecoverSource {
   /// `.mfkey32.log` — the key a *reader* used against an emulated card.
@@ -51,5 +53,5 @@ class RecoverEntry {
   /// Extra context (e.g. "too few nonces — collect more", or a write failure).
   final String? note;
 
-  String get cuidHex => cuid.toRadixString(16).padLeft(8, '0').toUpperCase();
+  String get cuidHex => formatCuid(cuid).toUpperCase();
 }

@@ -7,6 +7,11 @@ import 'mfkey32_models.dart';
 const flipperDictUserPath = '/ext/nfc/assets/mf_classic_dict_user.nfc';
 const flipperDictPath = '/ext/nfc/assets/mf_classic_dict.nfc';
 
+/// Per-card static-encrypted candidate dictionary. A single source of truth for
+/// the name so the device write and the UI label can never drift apart.
+String cuidDictFileName(int cuid) => 'mf_classic_dict_${formatCuid(cuid)}.nfc';
+String cuidDictPath(int cuid) => '/ext/nfc/assets/${cuidDictFileName(cuid)}';
+
 typedef DictReader = Future<List<int>> Function(String path);
 typedef DictWriter = Future<void> Function(String path, List<int> data);
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../theme/theme.dart';
 import '../../../widgets/progress_button.dart';
+import 'existed_keys_storage.dart';
 import 'mfkey32_models.dart';
 import 'recover_controller.dart';
 import 'recover_models.dart';
@@ -83,7 +84,7 @@ class _RecoverPageState extends State<RecoverPage> {
           padding: const EdgeInsets.all(16),
           children: [
             _StatusBlock(state: _controller.state),
-            ..._buildGroups(context, _controller),
+            ..._buildGroups(_controller),
           ],
         ),
       ),
@@ -92,7 +93,7 @@ class _RecoverPageState extends State<RecoverPage> {
 }
 
 /// Groups the flat entries by source → card (cuid) for the summary.
-List<Widget> _buildGroups(BuildContext context, RecoverController controller) {
+List<Widget> _buildGroups(RecoverController controller) {
   final entries = controller.entries;
   if (entries.isEmpty) return const [];
 
@@ -107,7 +108,7 @@ List<Widget> _buildGroups(BuildContext context, RecoverController controller) {
   final widgets = <Widget>[];
   for (final source in RecoverSource.values) {
     final cards = bySource[source];
-    if (cards == null || cards.isEmpty) continue;
+    if (cards == null) continue;
     widgets.add(_SourceHeader(source: source));
     for (final cardEntry in cards.entries) {
       widgets.add(
@@ -232,7 +233,7 @@ class _EntryRow extends StatelessWidget {
     } else if (entry.candidateCount != null) {
       line =
           '${entry.candidateCount} static-encrypted candidate key(s) '
-          '→ mf_classic_dict_${entry.cuidHex.toLowerCase()}.nfc';
+          '→ ${cuidDictFileName(entry.cuid)}';
       color = colors.textMuted;
     } else {
       line = '${where != null ? '$where — ' : ''}${_kindLabel(entry.kind)}';
@@ -269,11 +270,7 @@ class _StatusBlock extends StatelessWidget {
     final colors = context.appColors;
     final (title, showBar, percent) = switch (state) {
       MfKey32WaitingForFlipper() => ('Connecting device…', true, null),
-      MfKey32DownloadingRawFile(:final percent) => (
-        'Downloading nonces…',
-        true,
-        percent,
-      ),
+      MfKey32DownloadingRawFile() => ('Downloading nonces…', true, null),
       MfKey32Calculating(:final percent) => ('Recovering keys…', true, percent),
       MfKey32Uploading() => ('Syncing with the device…', true, null),
       MfKey32Saved(:final keys) => (

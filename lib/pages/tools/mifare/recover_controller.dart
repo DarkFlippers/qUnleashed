@@ -1,3 +1,4 @@
+import 'dart:collection';
 import 'dart:convert';
 
 import 'package:flipperlib/flipperlib.dart';
@@ -14,17 +15,15 @@ import 'nested_models.dart';
 import 'nested_nonce_parser.dart';
 import 'nested_recoverer.dart';
 import 'recover_models.dart';
+import 'recover_routing.dart';
 import 'static_encrypted_recoverer.dart';
-
-String _cuidDictPath(int cuid) =>
-    '/ext/nfc/assets/mf_classic_dict_${cuid.toRadixString(16).padLeft(8, '0')}.nfc';
 
 /// Unified "Recover MIFARE Keys" flow: pulls whichever of `.mfkey32.log`
 /// (reader) and `.nested.log` (tag) exist, auto-routes each entry to the right
-/// attack (mfkey32 / weak nested / static-encrypted / hardnested), and syncs
-/// every resolved key into the user dictionary. Static-encrypted nonces can't be
-/// resolved to one key offline, so they instead produce a per-card candidate
-/// dictionary for on-device verification.
+/// attack (mfkey32 / nested — weak or static nonce / static-encrypted /
+/// hardnested), and syncs every resolved key into the user dictionary.
+/// Static-encrypted nonces can't be resolved to one key offline, so they
+/// instead produce a per-card candidate dictionary for on-device verification.
 class RecoverController extends ChangeNotifier {
   RecoverController({
     FlipperClient? client,
@@ -57,6 +56,10 @@ class RecoverController extends ChangeNotifier {
 
   late MfKey32State _state;
   bool _running = false;
+  // Set from dispose(): the page can be popped (Stop) while _run() is still in
+  // flight. Once true we neither notify the disposed ChangeNotifier nor start
+  // any further recovery or device write.
+  bool _disposed = false;
   final List<RecoverEntry> _entries = [];
   Set<String> _addedKeys = const {};
 
@@ -67,11 +70,17 @@ class RecoverController extends ChangeNotifier {
   bool get running => _running;
 
   /// Every recovery result gathered this run, in completion order.
-  List<RecoverEntry> get entries => List.unmodifiable(_entries);
+  List<RecoverEntry> get entries => UnmodifiableListView(_entries);
 
   /// Keys newly written to the user dictionary this run (i.e. not already in the
   /// user or system dict). Lets the UI tag each key new vs. already-known.
   Set<String> get addedKeys => _addedKeys;
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
 
   Future<void> start() async {
     if (_running) return;
@@ -83,7 +92,7 @@ class RecoverController extends ChangeNotifier {
       _emit(const MfKey32Error(MfKey32ErrorType.recoveryFailed));
     } finally {
       _running = false;
-      notifyListeners();
+      if (!_disposed) notifyListeners();
     }
   }
 
@@ -109,10 +118,17 @@ class RecoverController extends ChangeNotifier {
     }
 
     _emit(const MfKey32DownloadingRawFile(0));
-    final readerText = hasReaderLog ? await _download(pathNonceLog) : null;
-    final tagText = hasTagLog ? await _download(pathNestedLog) : null;
-    if (readerText == null && tagText == null) {
-      _emit(const MfKey32Error(MfKey32ErrorType.notFoundFile));
+    final String? readerText;
+    final String? tagText;
+    try {
+      readerText = hasReaderLog ? await _download(pathNonceLog) : null;
+      tagText = hasTagLog ? await _download(pathNestedLog) : null;
+    } catch (e) {
+      // The files were confirmed to exist above, so a failure here is a real
+      // read error - surface it instead of silently proceeding as if the log
+      // were empty (which would drop every key it held under a success screen).
+      LogService.log('[Recover] download failed: $e');
+      _emit(const MfKey32Error(MfKey32ErrorType.readWrite));
       return;
     }
 
@@ -127,12 +143,12 @@ class RecoverController extends ChangeNotifier {
     // Plan the work up front so progress is meaningful across both logs.
     final readerNonces = readerText == null
         ? const <MfKey32Nonce>[]
-        : _dedupeReader(KeyNonceParser.parse(readerText));
+        : dedupeReaderNonces(KeyNonceParser.parse(readerText));
     final tagNonces = tagText == null
         ? const <NestedNonce>[]
         : NestedNonceParser.parse(tagText);
-    final weak = _dedupeWeak(tagNonces.where((n) => n.hasPair));
-    final (staticSingles, hardGroups) = _splitSingles(
+    final weak = dedupeWeakNonces(tagNonces.where((n) => n.hasPair));
+    final (staticSingles, hardGroups) = splitSingles(
       tagNonces.where((n) => !n.hasPair),
     );
     _totalUnits =
@@ -145,9 +161,13 @@ class RecoverController extends ChangeNotifier {
     await _recoverReader(readerNonces);
     await _recoverWeak(weak);
     for (final group in hardGroups) {
+      if (_disposed) return;
       await _recoverHardnested(group);
     }
     if (staticSingles.isNotEmpty) await _recoverStatic(staticSingles);
+    // The user can back out (Stop) mid-run; don't rewrite the user dict (a
+    // read-modify-write over the shared client) after that point.
+    if (_disposed) return;
 
     _emit(const MfKey32Uploading());
     try {
@@ -163,143 +183,87 @@ class RecoverController extends ChangeNotifier {
 
   // ---- reader (mfkey32) ----
 
-  List<MfKey32Nonce> _dedupeReader(List<MfKey32Nonce> nonces) {
-    final byKey = <String, MfKey32Nonce>{};
-    for (final n in nonces) {
-      byKey.putIfAbsent('${n.uid}-${n.sectorName}-${n.keyName}', () => n);
-    }
-    return byKey.values.toList(growable: false);
-  }
-
   Future<void> _recoverReader(List<MfKey32Nonce> nonces) async {
     for (final n in nonces) {
+      if (_disposed) return;
       final key = await _mfRecoverer.bruteforceKey(n);
-      final keyHex = key == null ? null : formatMifareKey(key.toInt());
-      _storage.onNewKey(
-        FoundedKey(sectorName: n.sectorName, keyName: n.keyName, key: keyHex),
+      _recordKey(
+        source: RecoverSource.reader,
+        kind: RecoverKind.mfkey32,
+        cuid: n.uid,
+        sectorName: n.sectorName,
+        keyName: n.keyName,
+        key: key,
       );
-      _entries.add(
-        RecoverEntry(
-          source: RecoverSource.reader,
-          kind: RecoverKind.mfkey32,
-          cuid: n.uid,
-          sectorName: n.sectorName,
-          keyName: n.keyName,
-          key: keyHex,
-        ),
-      );
-      _tick();
     }
   }
 
   // ---- tag: two-sample nested (weak PRNG or static nonce) ----
 
-  List<NestedNonce> _dedupeWeak(Iterable<NestedNonce> pairs) {
-    final byKey = <String, NestedNonce>{};
-    for (final n in pairs) {
-      byKey.putIfAbsent('${n.cuid}-${n.sector}-${n.keyType}', () => n);
-    }
-    return byKey.values.toList(growable: false);
-  }
-
   Future<void> _recoverWeak(List<NestedNonce> weak) async {
     // Recovery is memory-heavy (~50 MB per isolate); cap concurrency.
     const maxConcurrent = 4;
     for (var i = 0; i < weak.length; i += maxConcurrent) {
+      if (_disposed) return;
       await Future.wait(
         weak.skip(i).take(maxConcurrent).map((n) async {
           final key = await _nestedRecoverer.recoverKey(n);
-          final keyHex = key == null ? null : formatMifareKey(key.toInt());
-          _storage.onNewKey(
-            FoundedKey(
-              sectorName: n.sectorName,
-              keyName: n.keyName,
-              key: keyHex,
-            ),
+          _recordKey(
+            source: RecoverSource.tag,
+            kind: weakKind(n),
+            cuid: n.cuid,
+            sectorName: n.sectorName,
+            keyName: n.keyName,
+            key: key,
           );
-          _entries.add(
-            RecoverEntry(
-              source: RecoverSource.tag,
-              // dist == 0 => the nonce never advances (static nonce); a nonzero
-              // distance is a genuine weak PRNG. Same recovery either way.
-              kind: n.dist == 0
-                  ? RecoverKind.staticNonce
-                  : RecoverKind.weakNested,
-              cuid: n.cuid,
-              sectorName: n.sectorName,
-              keyName: n.keyName,
-              key: keyHex,
-            ),
-          );
-          _tick();
         }),
       );
     }
-  }
-
-  // ---- tag: split single-sample nonces into static vs hardnested ----
-
-  /// Splits single-sample nested nonces the way the firmware distinguishes them:
-  /// a line with a `dist` field is static-encrypted (FM11RF08S); one without is
-  /// hardnested. Hardnested nonces are grouped by (cuid, sector, key) into the
-  /// nonce set each attack runs over.
-  (List<NestedNonce>, List<List<NestedNonce>>) _splitSingles(
-    Iterable<NestedNonce> singles,
-  ) {
-    final staticSingles = <NestedNonce>[];
-    final hardGroups = <String, List<NestedNonce>>{};
-    for (final n in singles) {
-      if (n.dist != null) {
-        staticSingles.add(n);
-      } else {
-        hardGroups
-            .putIfAbsent('${n.cuid}-${n.sector}-${n.keyType}', () => [])
-            .add(n);
-      }
-    }
-    return (staticSingles, hardGroups.values.toList(growable: false));
   }
 
   // ---- tag: hardnested ----
 
   Future<void> _recoverHardnested(List<NestedNonce> group) async {
     final first = group.first;
-    // For a hardened card the plaintext nonce is unknown (nt=0), so the
-    // encrypted nonce is nt ^ ks; par is the encrypted-parity nibble as-is.
+    // The firmware stores the plaintext nonce nt and keystream ks = nt_enc ^ nt,
+    // so the encrypted nonce is recovered as nt ^ ks (this holds for any nt);
+    // par is the encrypted-parity nibble as-is.
     final ntEnc = group
         .map((n) => n.samples[0].nt ^ n.samples[0].ks)
         .toList(growable: false);
     final parEnc = group.map((n) => n.samples[0].par).toList(growable: false);
-    final key = await _hardnestedRecoverer.recoverKey(
-      cuid: first.cuid,
-      ntEnc: ntEnc,
-      parEnc: parEnc,
-    );
-    final keyHex = key == null ? null : formatMifareKey(key.toInt());
-    if (keyHex != null) {
-      _storage.onNewKey(
-        FoundedKey(
-          sectorName: first.sectorName,
-          keyName: first.keyName,
-          key: keyHex,
-        ),
-      );
-    }
-    _entries.add(
-      RecoverEntry(
-        source: RecoverSource.tag,
-        kind: RecoverKind.hardnested,
+    BigInt? key;
+    String? note;
+    try {
+      key = await _hardnestedRecoverer.recoverKey(
         cuid: first.cuid,
-        sectorName: first.sectorName,
-        keyName: first.keyName,
-        key: keyHex,
-        note: keyHex == null
-            ? 'Not recovered — likely too few nonces (${group.length}). '
-                  'Collect more on the device and retry.'
-            : null,
-      ),
+        ntEnc: ntEnc,
+        parEnc: parEnc,
+      );
+      // A null key here means the engine ran and found nothing; only a group
+      // too small to attack (< 2 nonces) is a "collect more" situation.
+      if (key == null) {
+        note = group.length < 2
+            ? 'Not recovered — only ${group.length} nonce collected; '
+                  'collect more on the device and retry.'
+            : 'Not recovered from ${group.length} nonces — no key found.';
+      }
+    } catch (e, st) {
+      // A missing/broken native engine must not abort the whole run and discard
+      // the reader/weak keys already recovered - degrade this group to a note
+      // and carry on to the user-dict upload.
+      LogService.log('[Recover] hardnested engine failed: $e\n$st');
+      note = 'Hardnested recovery is unavailable on this build.';
+    }
+    _recordKey(
+      source: RecoverSource.tag,
+      kind: RecoverKind.hardnested,
+      cuid: first.cuid,
+      sectorName: first.sectorName,
+      keyName: first.keyName,
+      key: key,
+      note: note,
     );
-    _tick();
   }
 
   // ---- tag: static-encrypted candidate dictionaries ----
@@ -315,7 +279,7 @@ class RecoverController extends ChangeNotifier {
           source: RecoverSource.tag,
           kind: RecoverKind.staticEncrypted,
           cuid: singles.first.cuid,
-          note: 'Candidate generation failed (native component unavailable).',
+          note: 'Candidate generation failed.',
         ),
       );
       _tick();
@@ -323,11 +287,12 @@ class RecoverController extends ChangeNotifier {
     }
 
     for (final dict in dicts) {
+      if (_disposed) return;
       String? note;
       if (dict.count > 0) {
         try {
           await _client.storageWriteChunked(
-            _cuidDictPath(dict.cuid),
+            cuidDictPath(dict.cuid),
             dict.body,
           );
         } catch (e) {
@@ -350,20 +315,46 @@ class RecoverController extends ChangeNotifier {
 
   // ---- helpers ----
 
-  Future<String?> _download(String path) async {
-    try {
-      final bytes = await _client.storageReadChunked(
-        path,
-        timeout: const Duration(minutes: 5),
-      );
-      return const Utf8Decoder().convert(bytes);
-    } catch (e) {
-      LogService.log('[Recover] download $path failed: $e');
-      return null;
-    }
+  /// Formats [key], records it against the user dict (a no-op for a null key),
+  /// appends the summary entry and advances progress - the shared tail of the
+  /// three single-key phases (reader / weak / hardnested).
+  void _recordKey({
+    required RecoverSource source,
+    required RecoverKind kind,
+    required int cuid,
+    required String sectorName,
+    required String keyName,
+    BigInt? key,
+    String? note,
+  }) {
+    final keyHex = key == null ? null : formatMifareKey(key.toInt());
+    _storage.onNewKey(
+      FoundedKey(sectorName: sectorName, keyName: keyName, key: keyHex),
+    );
+    _entries.add(
+      RecoverEntry(
+        source: source,
+        kind: kind,
+        cuid: cuid,
+        sectorName: sectorName,
+        keyName: keyName,
+        key: keyHex,
+        note: note,
+      ),
+    );
+    _tick();
+  }
+
+  Future<String> _download(String path) async {
+    final bytes = await _client.storageReadChunked(
+      path,
+      timeout: const Duration(minutes: 5),
+    );
+    return const Utf8Decoder().convert(bytes);
   }
 
   void _tick() {
+    if (_disposed) return;
     _doneUnits++;
     if (_state is MfKey32Calculating && _totalUnits > 0) {
       _emit(MfKey32Calculating(_doneUnits / _totalUnits));
@@ -373,6 +364,7 @@ class RecoverController extends ChangeNotifier {
   }
 
   void _emit(MfKey32State state) {
+    if (_disposed) return;
     _state = state;
     notifyListeners();
   }

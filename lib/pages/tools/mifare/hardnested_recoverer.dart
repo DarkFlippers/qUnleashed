@@ -39,17 +39,17 @@ typedef _RecoverDart =
     );
 
 class NativeHardnestedRecoverer implements HardnestedRecoverer {
-  NativeHardnestedRecoverer();
-
   @override
   Future<BigInt?> recoverKey({
     required int cuid,
     required List<int> ntEnc,
     required List<int> parEnc,
   }) {
-    // Needs at least two nonces (the engine consumes them in pairs) and the
-    // arrays must line up.
-    if (ntEnc.length < 2 || ntEnc.length != parEnc.length) {
+    // ntEnc/parEnc are parallel arrays built from the same nonce group, so a
+    // length mismatch is a caller bug (assert), not a "too few nonces" result.
+    assert(ntEnc.length == parEnc.length, 'ntEnc/parEnc must be parallel');
+    // The engine consumes nonces in pairs, so it needs at least two.
+    if (ntEnc.length < 2) {
       return Future.value(null);
     }
     final payload = _HardnestedPayload(

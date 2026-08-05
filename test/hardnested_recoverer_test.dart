@@ -12,15 +12,15 @@ void main() {
       );
     });
 
-    test('mismatched nt/par lengths return null', () async {
+    test('mismatched nt/par lengths assert (a caller bug, not a data case)', () {
       final recoverer = NativeHardnestedRecoverer();
       expect(
-        await recoverer.recoverKey(
+        () => recoverer.recoverKey(
           cuid: 0x11223344,
           ntEnc: [1, 2, 3],
           parEnc: [0, 1],
         ),
-        isNull,
+        throwsA(isA<AssertionError>()),
       );
     });
 
