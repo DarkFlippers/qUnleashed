@@ -1,5 +1,7 @@
 //-----------------------------------------------------------------------------
 // Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
+// Ported from the Proxmark3 project for the hardnested engine:
+// https://github.com/RfidResearchGroup/proxmark3
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -13,42 +15,22 @@
 //
 // See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
-// Utility functions used in many places, not specific to any piece of code.
+// utilities requiring Posix library functions
 //-----------------------------------------------------------------------------
 
-#ifndef __COMMONUTIL_H
-#define __COMMONUTIL_H
+#ifndef UTIL_POSIX_H__
+#define UTIL_POSIX_H__
 
 #include "common.h"
 
-// endian change for 16bit
-#ifdef __GNUC__
-#ifndef BSWAP_16
-#define BSWAP_16(x) __builtin_bswap16(x)
-#endif
+#ifdef _WIN32
+# include <windows.h>
+# define sleep(n) Sleep(1000 *(n))
+# define msleep(n) Sleep((n))
 #else
-#ifdef _MSC_VER
-#ifndef BSWAP_16
-#define BSWAP_16(x) _byteswap_ushort(x)
-#endif
-#else
-#ifndef BSWAP_16
-# define BSWAP_16(x) ((( ((x) & 0xFF00 ) >> 8))| ( (((x) & 0x00FF) << 8)))
-#endif
-#endif
-#endif
+void msleep(uint32_t n); // sleep n milliseconds
+#endif // _WIN32
 
-#ifndef BITMASK
-# define BITMASK(X) (1 << (X))
-#endif
-#ifndef ARRAYLEN
-# define ARRAYLEN(x) (sizeof(x)/sizeof((x)[0]))
-#endif
-
-#ifndef NTIME
-# define NTIME(n) for (int _index = 0; _index < n; _index++)
-#endif
-
-uint64_t bytes_to_num(uint8_t *src, size_t len);
+uint64_t msclock(void);      // a milliseconds clock
 
 #endif

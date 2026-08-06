@@ -1,5 +1,7 @@
 //-----------------------------------------------------------------------------
 // Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
+// Ported from the Proxmark3 project for the hardnested engine:
+// https://github.com/RfidResearchGroup/proxmark3
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -13,28 +15,29 @@
 //
 // See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
-// utilities
+// UI utilities
 //-----------------------------------------------------------------------------
-#ifndef __UTIL_H_
-#define __UTIL_H_
 
-#include "common.h"
+/* Ensure strtok_r is available even with -std=c99; must be included before
+ */
 
-#ifdef ANDROID
-#include <endian.h>
-#endif
+#include "ui.h"
+#include "commonutil.h" // ARRAYLEN
+#include <stdio.h>      // for Mingw readline
+#include <stdarg.h>
+#include <stdlib.h>
 
-// used for save/load files
-#ifndef FILE_PATH_SIZE
-# define FILE_PATH_SIZE 1000
-#endif
+#include "util.h"
 
-extern uint8_t g_debugMode;
-extern uint8_t g_printAndLog;
+#include <string.h>
 
-#define PRINTANDLOG_PRINT 1
-#define PRINTANDLOG_LOG   2
+void PrintAndLogEx(const char *fmt, ...)
+{
+    char buffer[2048] = {0};
 
-int num_CPUs(void); // number of logical CPUs
-
-#endif
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(buffer, sizeof(buffer), fmt, args);
+    va_end(args);
+    printf("%s\n", buffer);
+}

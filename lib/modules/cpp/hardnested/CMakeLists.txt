@@ -17,10 +17,10 @@ add_library(qunleashed_hardnested SHARED
   hardnested/hardnested_bitarray_core.c
   hardnested/hardnested_bruteforce.c
   hardnested/tables.c
-  pm3/commonutil.c
-  pm3/ui.c
-  pm3/util.c
-  pm3/util_posix.c
+  commonutil.c
+  ui.c
+  util.c
+  util_posix.c
   minlzlib/inputbuf.c
   minlzlib/dictbuf.c
   minlzlib/lzma2dec.c
@@ -34,7 +34,6 @@ target_include_directories(qunleashed_hardnested PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}"
   "${CMAKE_CURRENT_SOURCE_DIR}/hardnested"
   "${CMAKE_CURRENT_SOURCE_DIR}/minlzlib"
-  "${CMAKE_CURRENT_SOURCE_DIR}/pm3"
 )
 
 set_target_properties(qunleashed_hardnested PROPERTIES

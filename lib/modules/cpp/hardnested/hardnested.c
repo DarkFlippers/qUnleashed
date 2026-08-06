@@ -36,9 +36,9 @@
 #include <math.h>
 #include <time.h> // MingW
 
-#include "pm3/commonutil.h" // ARRAYLEN
-#include "pm3/ui.h"
-#include "pm3/util_posix.h"
+#include "commonutil.h" // ARRAYLEN
+#include "ui.h"
+#include "util_posix.h"
 #include "crapto1.h"
 #include "parity.h"
 #include "hardnested/tables.h"

@@ -32,7 +32,7 @@ bundled minlzlib.
     'DEFINES_MODULE' => 'YES',
     'GCC_C_LANGUAGE_STANDARD' => 'gnu11',
     'GCC_TREAT_WARNINGS_AS_ERRORS' => 'NO',
-    'HEADER_SEARCH_PATHS' => '"$(PODS_TARGET_SRCROOT)/.." "$(PODS_TARGET_SRCROOT)/../hardnested" "$(PODS_TARGET_SRCROOT)/../minlzlib" "$(PODS_TARGET_SRCROOT)/../pm3"',
+    'HEADER_SEARCH_PATHS' => '"$(PODS_TARGET_SRCROOT)/.." "$(PODS_TARGET_SRCROOT)/../hardnested" "$(PODS_TARGET_SRCROOT)/../minlzlib"',
     'OTHER_CFLAGS' => '-O3 -include "$(PODS_TARGET_SRCROOT)/../hn_namespace.h"',
     'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386',
   }

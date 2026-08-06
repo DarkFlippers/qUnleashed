@@ -21,7 +21,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
-#include "../pm3/ui.h"
+#include "../ui.h"
 #include "../hardnested.h"
 
 typedef struct bitflip_info

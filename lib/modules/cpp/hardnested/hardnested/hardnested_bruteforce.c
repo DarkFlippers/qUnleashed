@@ -60,12 +60,12 @@ THE SOFTWARE.
 #include <string.h>
 #include <stdlib.h>
 
-#include "../pm3/common.h"
+#include "../common.h"
 #include "../hardnested.h"
 #include "hardnested_bf_core.h"
-#include "../pm3/ui.h"
-#include "../pm3/util.h"
-#include "../pm3/util_posix.h"
+#include "../ui.h"
+#include "../util.h"
+#include "../util_posix.h"
 #include "../crapto1.h"
 #include "../parity.h"
 #include "hardnested_benchmark_data.h"

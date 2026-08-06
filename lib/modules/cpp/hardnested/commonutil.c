@@ -1,5 +1,7 @@
 //-----------------------------------------------------------------------------
 // Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
+// Ported from the Proxmark3 project for the hardnested engine:
+// https://github.com/RfidResearchGroup/proxmark3
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -13,22 +15,15 @@
 //
 // See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
-// utilities requiring Posix library functions
+// Utility functions used in many places, not specific to any piece of code.
 //-----------------------------------------------------------------------------
+#include "commonutil.h"
 
-#ifndef UTIL_POSIX_H__
-#define UTIL_POSIX_H__
-
-#include "common.h"
-
-#ifdef _WIN32
-# include <windows.h>
-# define sleep(n) Sleep(1000 *(n))
-# define msleep(n) Sleep((n))
-#else
-void msleep(uint32_t n); // sleep n milliseconds
-#endif // _WIN32
-
-uint64_t msclock(void);      // a milliseconds clock
-
-#endif
+uint64_t bytes_to_num(uint8_t *src, size_t len) {
+    uint64_t num = 0;
+    while (len--) {
+        num = (num << 8) | (*src);
+        src++;
+    }
+    return num;
+}

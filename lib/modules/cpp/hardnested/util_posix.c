@@ -1,5 +1,7 @@
 //-----------------------------------------------------------------------------
 // Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
+// Ported from the Proxmark3 project for the hardnested engine:
+// https://github.com/RfidResearchGroup/proxmark3
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by

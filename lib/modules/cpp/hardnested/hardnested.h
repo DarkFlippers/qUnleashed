@@ -16,7 +16,7 @@
 // hf mf hardnested command
 //-----------------------------------------------------------------------------
 
-#include "pm3/common.h"
+#include "common.h"
 
 int mfnestedhard(uint8_t blockNo, uint8_t keyType, uint8_t *key, uint8_t trgBlockNo, uint8_t trgKeyType, uint8_t *trgkey,
                  bool nonce_file_read, bool nonce_file_write, bool slow, uint64_t *foundkey, char *nonces_char, uint32_t length);

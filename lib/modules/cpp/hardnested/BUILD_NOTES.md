@@ -10,6 +10,10 @@ Vendored from **[ChameleonUltraGUI](https://github.com/GameTec-live/ChameleonUlt
 hardnested host-side. Its engine is a Proxmark3 fork (GPL) made **MSVC-compatible**,
 so it builds with the default toolchain on every platform - **no clang-cl needed**.
 `minlzlib/` is Alex Ionescu's minimal XZ decoder (MIT, see `minlzlib/LICENSE`).
+The small Proxmark3 support files the engine needs (logging, timing, endian /
+`ARRAYLEN` helpers - `commonutil`, `ui`, `util`, `util_posix`, `common`, `ansi`)
+sit alongside the engine sources here; each keeps its Proxmark3 provenance header
+linking the upstream repo (they were previously under a confusing `pm3/` folder).
 
 We deliberately chose this over a from-scratch PM3 port: the PM3 engine uses
 GCC/Clang vector extensions MSVC can't compile, which would have forced clang-cl

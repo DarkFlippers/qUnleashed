@@ -1,5 +1,7 @@
 //-----------------------------------------------------------------------------
 // Copyright (C) Proxmark3 contributors. See AUTHORS.md for details.
+// Ported from the Proxmark3 project for the hardnested engine:
+// https://github.com/RfidResearchGroup/proxmark3
 //
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -13,18 +15,42 @@
 //
 // See LICENSE.txt for the text of the license.
 //-----------------------------------------------------------------------------
-// UI utilities
+// Utility functions used in many places, not specific to any piece of code.
 //-----------------------------------------------------------------------------
 
-#ifndef HARDNESTED_UI_H__
-#define HARDNESTED_UI_H__
+#ifndef __COMMONUTIL_H
+#define __COMMONUTIL_H
 
-typedef enum
-{
-    EVEN_STATE = 0,
-    ODD_STATE = 1
-} odd_even_t;
+#include "common.h"
 
-void PrintAndLogEx(const char *fmt, ...);
+// endian change for 16bit
+#ifdef __GNUC__
+#ifndef BSWAP_16
+#define BSWAP_16(x) __builtin_bswap16(x)
+#endif
+#else
+#ifdef _MSC_VER
+#ifndef BSWAP_16
+#define BSWAP_16(x) _byteswap_ushort(x)
+#endif
+#else
+#ifndef BSWAP_16
+# define BSWAP_16(x) ((( ((x) & 0xFF00 ) >> 8))| ( (((x) & 0x00FF) << 8)))
+#endif
+#endif
+#endif
+
+#ifndef BITMASK
+# define BITMASK(X) (1 << (X))
+#endif
+#ifndef ARRAYLEN
+# define ARRAYLEN(x) (sizeof(x)/sizeof((x)[0]))
+#endif
+
+#ifndef NTIME
+# define NTIME(n) for (int _index = 0; _index < n; _index++)
+#endif
+
+uint64_t bytes_to_num(uint8_t *src, size_t len);
 
 #endif
