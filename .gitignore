@@ -1,20 +1,40 @@
-.sources/
+# TEMP
+.github/CODEOWNERS
+.github/FUNDING.yml
+.github/labeler.yml
+.github/pull_request_template.md
+
+# Tools
 .codex
 .agents
 .claude
 
+# Build
+*.apk
+*.app
+*.exe
+*.zip
+*.ipa
+*.bin
+.dist/
+.build/
+.buildlog/
+
+# MacOS
+.DS_Store
+
 # Unleashed projects
 .system/
+
+# Other projects
+.sources/
 
 # Miscellaneous
 *.class
 *.log
 *.pyc
 *.swp
-.DS_Store
 .atom/
-.build/
-.buildlog/
 .history
 .svn/
 .swiftpm/
@@ -57,7 +77,7 @@ app.*.map.json
 /lib/modules/cpp/flipengine/
 
 # Firebase configuration is restored from GitHub Secrets in CI.
-/lib/firebase_options.dart
+/lib/services/notifications/firebase_options.dart
 /android/app/google-services.json
 /ios/Runner/GoogleService-Info.plist
 /macos/Runner/GoogleService-Info.plist
