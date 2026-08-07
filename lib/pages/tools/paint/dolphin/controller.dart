@@ -8,7 +8,7 @@ import '../project.dart';
 import '../virtual_display_session.dart';
 import 'dolphin_pack.dart';
 import 'manifest.dart';
-import '../../../../services/logging/log_service.dart';
+import '../../../../services/logging.dart';
 
 /// One selectable animation in the sync screen: a local [PaintProject] paired
 /// with its editable [ManifestEntry] (selection + butthurt/level/weight).
@@ -62,10 +62,7 @@ class ManifestSyncController extends ChangeNotifier {
     try {
       final projects = await PaintProject.scanAll();
       final manifest = await DolphinManifest.loadLocal();
-      _items = [
-        for (final p in projects)
-          SyncItem(p, _entryFor(p, manifest)),
-      ];
+      _items = [for (final p in projects) SyncItem(p, _entryFor(p, manifest))];
     } catch (e) {
       _error = '$e';
       LogService.log('[ManifestSync] load failed: $e');
@@ -141,7 +138,10 @@ class ManifestSyncController extends ChangeNotifier {
     try {
       final preview = await item.project.loadDevicePreview();
       if (token != _previewToken || _disposed) return;
-      VirtualDisplaySession.instance.setPreview(preview.frames, preview.delayMs);
+      VirtualDisplaySession.instance.setPreview(
+        preview.frames,
+        preview.delayMs,
+      );
     } catch (_) {}
   }
 
@@ -194,9 +194,7 @@ class ManifestSyncController extends ChangeNotifier {
       _status = 'Writing manifest…';
       _progress = selected.length / total;
       _notify();
-      final manifestText = DolphinManifest.build(
-        selected.map((i) => i.entry),
-      );
+      final manifestText = DolphinManifest.build(selected.map((i) => i.entry));
       await _client.storageWriteChunked(
         '$kDeviceDolphinPath/manifest.txt',
         manifestText.codeUnits,

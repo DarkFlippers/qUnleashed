@@ -2,12 +2,12 @@ import 'package:dartufbt/dartufbt.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:qunleashed/components/dialogs/catalog_compat.dart';
-import 'package:qunleashed/pages/asembler/controller.dart';
-import 'package:qunleashed/pages/asembler/page.dart';
-import 'package:qunleashed/pages/asembler/remote/remote_build_service.dart';
-import 'package:qunleashed/pages/asembler/settings_page.dart';
-import 'package:qunleashed/pages/asembler/widgets/progress_panel.dart';
+import 'package:qunleashed/pages/apps/catalog/widgets/compat_dialog.dart';
+import 'package:qunleashed/services/assembler/controller.dart';
+import 'package:qunleashed/pages/flibler/page.dart';
+import 'package:qunleashed/services/assembler/remote_build_service.dart';
+import 'package:qunleashed/pages/flibler/settings_page.dart';
+import 'package:qunleashed/pages/flibler/widgets/progress_panel.dart';
 import 'package:qunleashed/theme/theme.dart';
 
 Widget _wrap(Widget child) => MaterialApp(
@@ -170,7 +170,9 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(900, 1600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    await tester.pumpWidget(_wrap(AssemblerSettingsPage(remote: _StubRemote())));
+    await tester.pumpWidget(
+      _wrap(AssemblerSettingsPage(remote: _StubRemote())),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('Build with'), findsOneWidget);
@@ -199,7 +201,9 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(900, 1600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    await tester.pumpWidget(_wrap(AssemblerSettingsPage(remote: _StubRemote())));
+    await tester.pumpWidget(
+      _wrap(AssemblerSettingsPage(remote: _StubRemote())),
+    );
     await tester.pumpAndSettle();
 
     // One "Status" group serves both backends; here it holds the server rows.

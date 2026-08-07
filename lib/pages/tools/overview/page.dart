@@ -5,24 +5,21 @@ import 'package:flutter/material.dart';
 
 import '../../../components/cardlist.dart';
 import '../../../components/icon.dart';
+import '../../../components/navigation.dart';
 import '../../../theme/theme.dart';
 import '../../../components/dialogs/action.dart';
-import '../../about/page.dart';
-import '../../asembler/controller.dart';
-import '../../asembler/project/page.dart';
-import '../../option/page.dart';
+import '../../../services/assembler/controller.dart';
 import '../paint/manager/page.dart';
 import '../remote/desktop/page.dart';
 import '../remote/cli/page.dart';
 import '../infrared/categories_page.dart';
-import '../../archive/map/page.dart';
 import '../mifare/mfkey32_page.dart';
 import '../plotter/page.dart';
 import 'models/tool.dart';
 import 'widgets/app_version.dart';
 import 'widgets/tool_item_badge.dart';
 import 'widgets/tool_item_text.dart';
-import '../../../services/logging/log_service.dart';
+import '../../../services/logging.dart';
 
 class ToolsPage extends StatelessWidget {
   const ToolsPage({super.key});
@@ -72,7 +69,7 @@ class ToolsPage extends StatelessWidget {
             iconColor: const Color(0xFF4DB6AC),
             title: 'Flibler',
             description: 'Build an app from a folder or repo',
-            routeBuilder: _buildFliblerPage,
+            onTap: _openFliblerPage,
             badge: 'Beta',
           ),
         ],
@@ -112,7 +109,7 @@ class ToolsPage extends StatelessWidget {
           iconColor: const Color(0xFF8BC34A),
           title: 'Saved Locations',
           description: 'View saved files by recording location',
-          routeBuilder: _buildFlipperMapPage,
+          onTap: _openFlipperMapPage,
         ),
       ],
     ),
@@ -123,7 +120,7 @@ class ToolsPage extends StatelessWidget {
           iconColor: const Color(0xFF9E9E9E),
           title: 'Settings',
           description: 'Notifications and app preferences',
-          routeBuilder: _buildSettingsPage,
+          onTap: _openSettingsPage,
         ),
       ],
     ),
@@ -134,7 +131,7 @@ class ToolsPage extends StatelessWidget {
           iconColor: const Color(0xFF589DFF),
           title: 'About',
           description: 'Links, community and license',
-          routeBuilder: _buildAboutPage,
+          onTap: _openAboutPage,
         ),
       ],
     ),
@@ -237,17 +234,25 @@ Widget _buildMfKey32Page(BuildContext context) => const MfKey32Page();
 
 Widget _buildPlotterPage(BuildContext context) => const PulsePlotterPage();
 
-Widget _buildFlipperMapPage(BuildContext context) => const FlipperMapPage();
+Future<void> _openFlipperMapPage(BuildContext context) async {
+  await openRoute(context, AppRoute.archiveMap);
+}
 
 Widget _buildIrLibPage(BuildContext context) => const IrCategoriesPage();
 
-Widget _buildAboutPage(BuildContext context) => const AboutPage();
+Future<void> _openAboutPage(BuildContext context) async {
+  await openRoute(context, AppRoute.about);
+}
 
-Widget _buildSettingsPage(BuildContext context) => const SettingsPage();
+Future<void> _openSettingsPage(BuildContext context) async {
+  await openRoute(context, AppRoute.appSettings);
+}
 
 Widget _buildPaintPage(BuildContext context) => const ProjectManagerPage();
 
-Widget _buildFliblerPage(BuildContext context) => const FliblerProjectPage();
+Future<void> _openFliblerPage(BuildContext context) async {
+  await openRoute(context, AppRoute.fliblerProject);
+}
 
 Widget _buildRemoteControlPage(BuildContext context) =>
     const RemoteControlPage();

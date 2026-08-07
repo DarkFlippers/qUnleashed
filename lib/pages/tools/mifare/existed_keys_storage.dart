@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flipperlib/flipperlib.dart';
 
 import 'mfkey32_models.dart';
+import '../../../services/logging.dart';
 
 const flipperDictUserPath = '/ext/nfc/assets/mf_classic_dict_user.nfc';
 const flipperDictPath = '/ext/nfc/assets/mf_classic_dict.nfc';
@@ -29,10 +30,7 @@ class ExistedKeysStorage {
   Future<List<String>> upload() async {
     final text = '${_userKeys.join('\n')}\n';
     try {
-      await _client.storageWriteChunked(
-        flipperDictUserPath,
-        utf8.encode(text),
-      );
+      await _client.storageWriteChunked(flipperDictUserPath, utf8.encode(text));
     } catch (e) {
       LogService.log('[ExistedKeysStorage] #upload Unhandled exception: $e');
     }
@@ -50,8 +48,9 @@ class ExistedKeysStorage {
 
     final keys = List<FoundedKey>.of(_foundedInformation.keys)..add(foundedKey);
     final uniqueKeys = Set<String>.of(_foundedInformation.uniqueKeys);
-    final duplicated =
-        Map<String, DuplicatedSource>.of(_foundedInformation.duplicated);
+    final duplicated = Map<String, DuplicatedSource>.of(
+      _foundedInformation.duplicated,
+    );
 
     if (existed == null && key != null) {
       uniqueKeys.add(key);

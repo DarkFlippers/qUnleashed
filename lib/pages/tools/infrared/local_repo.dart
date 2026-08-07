@@ -6,7 +6,7 @@ import 'package:archive/archive_io.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../../services/http/app_http.dart';
-import '../../../services/repository/app.dart';
+import '../../../services/storage/paths.dart';
 
 class IrLibDownloadProgress {
   IrLibDownloadProgress({
@@ -172,8 +172,7 @@ class IrLibLocalRepo {
     required String zipPath,
     required String rootPath,
     required String sep,
-    required void Function(int extracted, int totalFiles, bool done)
-        onProgress,
+    required void Function(int extracted, int totalFiles, bool done) onProgress,
   }) async {
     final receivePort = ReceivePort();
     final errorPort = ReceivePort();

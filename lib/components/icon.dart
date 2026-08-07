@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../services/logging.dart';
 import '../theme/theme.dart';
 
 class _RasterIconCache {
@@ -79,7 +80,7 @@ class _RasterIconCache {
     int? pixelSize,
     Object? error,
   }) {
-    if (!kDebugMode) return;
+    if (!LogService.debugOn) return;
 
     final details = <String>[
       'pending=${_pending.length}',
@@ -88,7 +89,7 @@ class _RasterIconCache {
       if (pixelSize != null) 'pixelSize=$pixelSize',
       if (error != null) 'error=$error',
     ];
-    debugPrint('[QIconCache] $action; ${details.join('; ')}');
+    LogService.log('[QIconCache] $action; ${details.join('; ')}');
   }
 
   static Future<ui.Image> _rasterize({

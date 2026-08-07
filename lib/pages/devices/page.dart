@@ -1,139 +1,282 @@
 import 'package:flutter/material.dart';
+import 'package:super_clipboard/super_clipboard.dart';
 
-import '../../widgets/root_scaffold.dart';
-import '../apps/catalog/page.dart';
-import '../archive/overview/controller.dart';
-import '../archive/overview/page.dart';
-import '../tools/overview/page.dart';
-import 'controllers/device.dart';
+import '../../components/navigation.dart';
+import '../../theme/theme.dart';
+import 'widgets/info_line.dart';
+import '../../components/notification.dart';
+import 'widgets/page_card.dart';
 import 'device_scope.dart';
+import 'firmware/repository.dart';
 import 'models/connection_state.dart';
-import 'widgets/device_tab.dart';
+import 'widgets/cards/battery_card.dart';
+import 'widgets/cards/connect_card.dart';
+import 'widgets/cards/device_actions_row.dart';
+import 'widgets/cards/device_info_card.dart';
+import 'widgets/cards/network_card.dart';
+import 'widgets/cards/storage_card.dart';
+import 'widgets/firmware_card.dart';
+import 'widgets/full_info_sheet.dart';
+import 'widgets/page_header.dart';
 
-class DevicePage extends StatefulWidget {
-  const DevicePage({super.key});
+class DeviceTab extends StatelessWidget {
+  const DeviceTab({super.key});
 
-  @override
-  State<DevicePage> createState() => _DevicePageState();
-}
-
-class _DevicePageState extends State<DevicePage> {
-  final DeviceController _ctrl = DeviceController();
-  final ArchiveController _archiveController = ArchiveController();
-
-  FlipperRootTab _tab = FlipperRootTab.device;
-  bool _appsMounted = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _archiveController.addListener(_onArchiveChanged);
-    _archiveController.initialize();
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    _archiveController.removeListener(_onArchiveChanged);
-    _archiveController.dispose();
-    _ctrl.client.disconnectAll();
-    super.dispose();
-  }
-
-  void _onArchiveChanged() {
-    if (mounted) setState(() {});
-  }
+  static const double _headerContentHeight = 114;
+  static const double _contentMaxWidth = 1120;
 
   @override
   Widget build(BuildContext context) {
-    return DeviceScope(
-      notifier: _ctrl,
-      child: ListenableBuilder(
-        listenable: _ctrl,
-        builder: (context, _) {
-          final iconAsset = _deviceIconAsset();
-          return FlipperRootScaffold(
-            currentTab: _tab,
-            onTabSelected: _selectTab,
-            deviceIconAsset: iconAsset,
-            deviceLabel: _deviceLabel(),
-            deviceSyncing: iconAsset == _syncIcon,
-            child: IndexedStack(
-              index: _tab.index,
-              children: [
-                const DeviceTab(),
-                ArchivePage(controller: _archiveController),
-                _appsMounted ? const AppsCatalogPage() : const SizedBox.shrink(),
-                const ToolsPage(),
-              ],
+    final ctrl = DeviceScope.of(context);
+    final topInset = MediaQuery.paddingOf(context).top;
+    final headerHeight = topInset + _headerContentHeight;
+    final wide = MediaQuery.sizeOf(context).width >= 560;
+    final state = ctrl.connectionState;
+    final inDfu =
+        state == DeviceConnectionState.dfu ||
+        state == DeviceConnectionState.recovering;
+
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: ScrollConfiguration(
+            behavior: ScrollConfiguration.of(
+              context,
+            ).copyWith(scrollbars: false),
+            child: RefreshIndicator(
+              onRefresh: () => _onRefresh(context),
+              edgeOffset: headerHeight,
+              displacement: 28,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: EdgeInsets.only(top: headerHeight + 14, bottom: 14),
+                children: [
+                  Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(
+                        maxWidth: _contentMaxWidth,
+                      ),
+                      child: Column(
+                        children: [
+                          // Always in tree — preserves carousel state across
+                          // connect/disconnect without rebuilding.
+                          FirmwareCard(
+                            deviceVersion: ctrl.firmwareVersion,
+                            deviceInfo: ctrl.info,
+                          ),
+                          AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 220),
+                            child: _stateContent(ctrl.connectionState, wide),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          );
-        },
-      ),
+          ),
+        ),
+        DevicePageHeader(
+          topInset: topInset,
+          headerHeight: headerHeight,
+          title: ctrl.deviceName,
+          subtitle: 'Flipper Zero', // !!! тип устройства под именем — не менять
+          active: ctrl.isConnected || inDfu,
+          dfu: inDfu,
+          infoEntries: wide ? ctrl.deviceInfoEntries : const [],
+          deviceInfo: ctrl.info,
+          connectionLabel: ctrl.device?.isBle == true ? 'BLE' : 'USB',
+          connectionIcon: ctrl.device?.isBle == true
+              ? Icons.bluetooth
+              : Icons.usb,
+          onOpenFullInfo: ctrl.isConnected
+              ? () => _openFullInfo(context)
+              : null,
+        ),
+      ],
     );
   }
 
-  void _selectTab(FlipperRootTab tab) {
-    setState(() {
-      if (tab == FlipperRootTab.apps) _appsMounted = true;
-      _tab = tab;
-    });
-  }
-
-  static const _syncIcon = 'assets/ic/connect/sync.svg';
-
-  String _deviceIconAsset() {
-    switch (_ctrl.connectionState) {
-      case DeviceConnectionState.disconnected:
-        return _ctrl.device != null
-            ? 'assets/ic/connect/disconnected.svg'
-            : 'assets/ic/connect/missing.svg';
-      case DeviceConnectionState.connecting:
-      case DeviceConnectionState.recovering:
-        return _syncIcon;
-      case DeviceConnectionState.dfu:
-        return 'assets/ic/connect/disconnected.svg';
+  static Widget _stateContent(DeviceConnectionState state, bool wide) {
+    switch (state) {
       case DeviceConnectionState.connected:
-        if (_ctrl.deviceLoading) return _syncIcon;
-        switch (_syncStatus) {
-          case ArchiveSyncStatus.syncing:
-            return _syncIcon;
-          case ArchiveSyncStatus.synced:
-            return _ctrl.deviceInfoConnected
-                ? _transportIcon()
-                : 'assets/ic/connect/synced.svg';
-          case ArchiveSyncStatus.idle:
-            return _transportIcon();
-        }
+        return _ConnectedContent(key: const ValueKey('connected'), wide: wide);
+      case DeviceConnectionState.dfu:
+      case DeviceConnectionState.recovering:
+        return const SizedBox.shrink(key: ValueKey('recovery'));
+      case DeviceConnectionState.disconnected:
+      case DeviceConnectionState.connecting:
+        return const _DisconnectedContent(key: ValueKey('disconnected'));
     }
   }
 
-  String _transportIcon() => _ctrl.device?.isBle == true
-      ? 'assets/ic/connect/ble.svg'
-      : 'assets/ic/connect/usb.svg';
-
-  String _deviceLabel() {
-    switch (_ctrl.connectionState) {
-      case DeviceConnectionState.disconnected:
-        return _ctrl.device != null ? 'Disconnected' : 'No device';
-      case DeviceConnectionState.connecting:
-        return 'Connecting';
-      case DeviceConnectionState.dfu:
-        return 'DFU';
-      case DeviceConnectionState.recovering:
-        return 'Recovering';
-      case DeviceConnectionState.connected:
-        if (_ctrl.deviceLoading) return 'Syncing';
-        switch (_syncStatus) {
-          case ArchiveSyncStatus.syncing:
-            return 'Syncing';
-          case ArchiveSyncStatus.synced:
-            return _ctrl.deviceInfoConnected ? 'Connected' : 'Synced';
-          case ArchiveSyncStatus.idle:
-            return 'Connected';
-        }
-    }
+  static Future<void> _onRefresh(BuildContext context) async {
+    DeviceScope.of(context).synchronize();
+    await FirmwareRepository.instance.refresh();
   }
 
-  ArchiveSyncStatus get _syncStatus => _archiveController.syncStatus;
+  static void _openFullInfo(BuildContext context) {
+    final ctrl = DeviceScope.of(context);
+    showDeviceFullInfoSheet(
+      context,
+      title: 'Full Info',
+      cards: [
+        FlipperPageCard(
+          title: 'Firmware',
+          child: Column(
+            children: [
+              for (var i = 0; i < ctrl.deviceInfoEntries.length; i++) ...[
+                FlipperInfoLine(
+                  label: ctrl.deviceInfoEntries[i].key,
+                  value: ctrl.deviceInfoEntries[i].value,
+                ),
+                if (i != ctrl.deviceInfoEntries.length - 1)
+                  Divider(height: 1, color: context.appColors.divider),
+              ],
+            ],
+          ),
+        ),
+        RawInfoCard(entries: ctrl.info),
+      ],
+    );
+  }
+}
+
+// ── Connected content ─────────────────────────────────────────────────────────
+
+class _ConnectedContent extends StatelessWidget {
+  const _ConnectedContent({super.key, required this.wide});
+
+  final bool wide;
+
+  @override
+  Widget build(BuildContext context) {
+    final ctrl = DeviceScope.of(context);
+
+    return Column(
+      children: [
+        const SizedBox(height: 14),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: _ResponsiveCardGrid(
+            children: [
+              BatterySummaryCard(deviceInfo: ctrl.info),
+              StorageSummaryCard(deviceInfo: ctrl.info),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 14),
+          child: NetworkSummaryCard(),
+        ),
+        if (!wide) ...[
+          const SizedBox(height: 14),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            child: DeviceInfoCard(
+              entries: ctrl.deviceInfoEntries,
+              onOpenFullInfo: () => DeviceTab._openFullInfo(context),
+              onExport: () => _exportDeviceInfo(context),
+            ),
+          ),
+        ],
+        const SizedBox(height: 14),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: DeviceActionsRow(
+            onRemoteControl: () => openRoute(context, AppRoute.remoteControl),
+            onPlayAlert: ctrl.alertPlaying ? null : () => _playAlert(context),
+            onReboot: () => ctrl.reboot(),
+          ),
+        ),
+        const SizedBox(height: 14),
+        const ConnectCard(),
+        const SizedBox(height: 14),
+      ],
+    );
+  }
+
+  static Future<void> _playAlert(BuildContext context) async {
+    final ctrl = DeviceScope.of(context);
+    final success = await ctrl.playAlert();
+    if (!context.mounted) return;
+    context.showNotification(
+      success ? 'Alert sent to the device' : 'Failed to play alert',
+      type: success ? QNotificationType.good : QNotificationType.error,
+    );
+  }
+
+  static Future<void> _exportDeviceInfo(BuildContext context) async {
+    final clipboard = SystemClipboard.instance;
+    if (clipboard == null) {
+      if (!context.mounted) return;
+      context.showNotification(
+        'Clipboard not available',
+        type: QNotificationType.warning,
+      );
+      return;
+    }
+    final ctrl = DeviceScope.of(context);
+    final item = DataWriterItem()
+      ..add(Formats.plainText(ctrl.buildExportDump()));
+    await clipboard.write([item]);
+    if (!context.mounted) return;
+    context.showNotification(
+      'Device info copied to clipboard',
+      type: QNotificationType.good,
+    );
+  }
+}
+
+// ── Disconnected content ──────────────────────────────────────────────────────
+
+class _DisconnectedContent extends StatelessWidget {
+  const _DisconnectedContent({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Column(children: [SizedBox(height: 14), ConnectCard()]);
+  }
+}
+
+class _ResponsiveCardGrid extends StatelessWidget {
+  const _ResponsiveCardGrid({required this.children});
+
+  final List<Widget> children;
+  static const double _spacing = 14;
+  static const double _minCardWidth = 300;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = (constraints.maxWidth / _minCardWidth).floor().clamp(
+          1,
+          children.length,
+        );
+        final cardWidth =
+            (constraints.maxWidth - (_spacing * (columns - 1))) / columns;
+        if (columns == 1) {
+          return Column(
+            children: [
+              for (var i = 0; i < children.length; i++) ...[
+                SizedBox(width: double.infinity, child: children[i]),
+                if (i != children.length - 1) const SizedBox(height: _spacing),
+              ],
+            ],
+          );
+        }
+        return Wrap(
+          spacing: _spacing,
+          runSpacing: _spacing,
+          children: [
+            for (final child in children)
+              SizedBox(width: cardWidth, child: child),
+          ],
+        );
+      },
+    );
+  }
 }

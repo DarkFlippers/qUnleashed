@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../../widgets/open_url.dart';
-import '../../widgets/pixel_button.dart';
-import '../option/page.dart';
+import '../../components/navigation.dart';
+import '../../components/open_url.dart';
+import 'widgets/pixel_button.dart';
 import 'license_page.dart';
 
 class AboutPage extends StatefulWidget {
@@ -61,11 +61,7 @@ class _AboutPageState extends State<AboutPage>
           IconButton(
             icon: const Icon(Icons.settings_outlined),
             tooltip: 'Settings',
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => const SettingsPage(),
-              ),
-            ),
+            onPressed: () => openRoute(context, AppRoute.appSettings),
           ),
         ],
       ),

@@ -10,13 +10,13 @@ import 'package:highlight/highlight.dart' show Node, highlight;
 
 import '../../../theme/theme.dart';
 import 'package:qunleashed/components/appbar.dart';
-import '../../../widgets/notification.dart';
+import '../../../components/notification.dart';
 import '../../../theme/colors/editor.dart';
-import '../data/category.dart';
-import '../data/models/key.dart';
+import '../../../components/archive/category.dart';
+import '../../../components/archive/models/key.dart';
 import '../emulate/page.dart';
 import 'syntax.dart';
-import '../../../services/logging/log_service.dart';
+import '../../../services/logging.dart';
 
 const _kFontSize = 13.0;
 const _kLineHeight = _kFontSize * 1.4;
@@ -293,9 +293,9 @@ class _TextEditorPageState extends State<TextEditorPage> {
       extension: 'js',
       remotePath: widget.remotePath,
     );
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => EmulatePage(flipperKey: key)),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => EmulatePage(flipperKey: key)));
   }
 
   double _lastWidth = 0;

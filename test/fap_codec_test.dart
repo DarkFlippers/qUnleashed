@@ -3,9 +3,9 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/components/codec/fap.dart';
-import 'package:qunleashed/pages/apps/data/models/fap_details.dart';
+import 'package:qunleashed/components/codec/fap_details.dart';
 import 'package:qunleashed/pages/apps/data/models/installed_app.dart';
-import 'package:qunleashed/pages/apps/manager/widgets/fap_facts.dart';
+import 'package:qunleashed/components/fap_facts.dart';
 import 'package:qunleashed/theme/theme.dart';
 
 void main() {
@@ -53,7 +53,10 @@ void main() {
       final assets = FapInfo.parse(_buildFap())!.assets!;
 
       expect(assets.dirs, ['sounds']);
-      expect(assets.files.map((f) => f.path), ['plugins/extra.fal', 'tone.wav']);
+      expect(assets.files.map((f) => f.path), [
+        'plugins/extra.fal',
+        'tone.wav',
+      ]);
       expect(assets.totalSize, 7);
       expect(assets.signature, '0102030405060708090a0b0c0d0e0f10');
       expect(assets.plugins.single.path, 'plugins/extra.fal');
@@ -74,28 +77,36 @@ void main() {
         FapInfo.parse(_buildFap(apiMajor: apiMajor, target: target))!;
 
     test('passes an app built for the same API major', () {
-      final compat =
-          evaluateFap(info(), deviceApi: '86.9', deviceTarget: 'f7');
+      final compat = evaluateFap(info(), deviceApi: '86.9', deviceTarget: 'f7');
       expect(compat.verdict, FapVerdict.ok);
       expect(compat.isBlocking, isFalse);
     });
 
     test('flags an app built for an older API', () {
-      final compat =
-          evaluateFap(info(apiMajor: 85), deviceApi: '86.9', deviceTarget: 'f7');
+      final compat = evaluateFap(
+        info(apiMajor: 85),
+        deviceApi: '86.9',
+        deviceTarget: 'f7',
+      );
       expect(compat.verdict, FapVerdict.apiTooOld);
       expect(compat.isBlocking, isTrue);
     });
 
     test('flags an app built for a newer API', () {
-      final compat =
-          evaluateFap(info(apiMajor: 88), deviceApi: '86.9', deviceTarget: 'f7');
+      final compat = evaluateFap(
+        info(apiMajor: 88),
+        deviceApi: '86.9',
+        deviceTarget: 'f7',
+      );
       expect(compat.verdict, FapVerdict.apiTooNew);
     });
 
     test('flags a hardware target mismatch', () {
-      final compat =
-          evaluateFap(info(target: 18), deviceApi: '86.9', deviceTarget: 'f7');
+      final compat = evaluateFap(
+        info(target: 18),
+        deviceApi: '86.9',
+        deviceTarget: 'f7',
+      );
       expect(compat.verdict, FapVerdict.targetMismatch);
     });
 
@@ -128,14 +139,14 @@ void main() {
     }
 
     InstalledApp app({FapInfo? fap, bool checked = true}) => InstalledApp(
-          alias: 'test_app',
-          path: '/ext/apps/Tools/test_app.fap',
-          folder: 'Tools',
-          size: 512,
-          md5: '',
-          fap: fap,
-          fapChecked: checked,
-        );
+      alias: 'test_app',
+      path: '/ext/apps/Tools/test_app.fap',
+      folder: 'Tools',
+      size: 512,
+      md5: '',
+      fap: fap,
+      fapChecked: checked,
+    );
 
     testWidgets('asks for a sync when the file was not read', (tester) async {
       await pump(tester, app(checked: false));
@@ -332,7 +343,11 @@ Uint8List _buildFap({
     data.setUint32(base + 4, type, Endian.little);
     data.setUint32(base + 8, flags, Endian.little);
     data.setUint32(base + 16, offsets[i], Endian.little);
-    data.setUint32(base + 20, name == '.bss' ? 128 : bytes.length, Endian.little);
+    data.setUint32(
+      base + 20,
+      name == '.bss' ? 128 : bytes.length,
+      Endian.little,
+    );
     data.setUint32(base + 24, name == '.symtab' ? 9 : 0, Endian.little);
     data.setUint32(base + 32, 4, Endian.little);
     out.setRange(offsets[i], offsets[i] + bytes.length, bytes);

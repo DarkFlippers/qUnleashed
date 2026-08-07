@@ -6,15 +6,17 @@ import 'package:crypto/crypto.dart';
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/foundation.dart';
 
-import 'fap_icon.dart';
-import '../data/parser.dart';
-import 'storage.dart';
-import '../data/category.dart';
+import '../../../components/codec/fap_icon.dart';
+import '../../../components/archive/parser.dart';
+import '../../../components/path.dart';
+import '../../../services/archive/storage.dart';
+import '../../../components/archive/category.dart';
 import '../../../services/progress_throttle.dart';
-import '../../../services/repository/app.dart' as icon_repo;
-import '../data/models/fap.dart';
-import '../data/models/key.dart';
-import '../../../services/logging/log_service.dart';
+import '../../../services/storage/paths.dart' as icon_repo;
+import '../../../services/storage/fap_icons.dart' as icon_repo;
+import '../../../components/archive/models/fap.dart';
+import '../../../components/archive/models/key.dart';
+import '../../../services/logging.dart';
 
 enum SyncPhase { checking, downloading }
 
@@ -276,8 +278,7 @@ class ArchiveController extends ChangeNotifier {
   }
 
   static String _fapNameFromPath(String remotePath) {
-    final slash = remotePath.lastIndexOf('/');
-    var name = slash >= 0 ? remotePath.substring(slash + 1) : remotePath;
+    var name = basename(remotePath);
     if (name.toLowerCase().endsWith('.fap')) {
       name = name.substring(0, name.length - 4);
     }

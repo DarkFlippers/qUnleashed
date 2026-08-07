@@ -27,7 +27,10 @@ Future<void> showConnectionFailedDialog(
   );
 }
 
-(String, String) _describe(FlipperConnectErrorKind kind, {required bool isBle}) {
+(String, String) _describe(
+  FlipperConnectErrorKind kind, {
+  required bool isBle,
+}) {
   switch (kind) {
     case FlipperConnectErrorKind.stalePairing:
       return (

@@ -1,4 +1,4 @@
-import '../../../config.dart';
+import '../../../components/config.dart';
 import '../../../services/http/app_http.dart';
 
 enum FirmwareChannel {
@@ -181,8 +181,7 @@ abstract class FirmwareParser {
     return _cache = FirmwareDirectory.fromJson(json);
   }
 
-  Future<FirmwareDirectory> get() async =>
-      isFresh ? _cache! : await fetch();
+  Future<FirmwareDirectory> get() async => isFresh ? _cache! : await fetch();
 
   FirmwareVersion? getLatestVersionById(String channelId) =>
       _cache?.channelById(channelId)?.latest;

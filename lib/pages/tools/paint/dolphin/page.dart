@@ -6,7 +6,7 @@ import 'package:qunleashed/components/appbar.dart';
 
 import '../../../../theme/colors/display.dart';
 import '../../../../theme/theme.dart';
-import '../../../../widgets/notification.dart';
+import '../../../../components/notification.dart';
 import '../project.dart';
 import 'controller.dart';
 
@@ -63,7 +63,10 @@ class _ManifestSyncPageState extends State<ManifestSyncPage> {
       builder: (ctx) => AlertDialog(
         backgroundColor: colors.dialogBackground,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        title: Text('Send to device', style: TextStyle(color: colors.dialogText)),
+        title: Text(
+          'Send to device',
+          style: TextStyle(color: colors.dialogText),
+        ),
         content: Text(
           'Upload $count animation${count == 1 ? '' : 's'} and rewrite '
           '/ext/dolphin/manifest.txt on the device?',
@@ -72,7 +75,10 @@ class _ManifestSyncPageState extends State<ManifestSyncPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancel', style: TextStyle(color: colors.textSecondary)),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: colors.textSecondary),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
@@ -422,9 +428,7 @@ class _SyncCardState extends State<_SyncCard> {
             activeColor: colors.accent,
             inactiveColor: colors.divider,
             label: '$value',
-            onChanged: widget.enabled
-                ? (v) => onChanged(v.round())
-                : null,
+            onChanged: widget.enabled ? (v) => onChanged(v.round()) : null,
           ),
         ),
         SizedBox(
@@ -540,7 +544,11 @@ class _AnimPreviewState extends State<_AnimPreview> {
       );
     }
     if (_frames.isEmpty) {
-      return Icon(Icons.broken_image_outlined, size: 18, color: colors.textMuted);
+      return Icon(
+        Icons.broken_image_outlined,
+        size: 18,
+        color: colors.textMuted,
+      );
     }
     return RawImage(
       image: _frames[_cursor % _frames.length],

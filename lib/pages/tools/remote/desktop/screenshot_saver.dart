@@ -3,7 +3,9 @@ import 'dart:typed_data';
 
 import 'package:super_clipboard/super_clipboard.dart';
 
-import '../../../../services/repository/app.dart';
+import '../../../../components/path.dart';
+import '../../../../components/share.dart';
+import '../../../../services/storage/paths.dart';
 
 Future<void> copyScreenshotToClipboard(Uint8List png) async {
   final clipboard = SystemClipboard.instance;
@@ -17,8 +19,7 @@ Future<String> saveScreenshotToAppStorage(Uint8List png) async {
       'flipper_screenshot_${DateTime.now().millisecondsSinceEpoch}.png';
   final dir = await appScreenshotsDirectory();
   await dir.create(recursive: true);
-  final sep = io.Platform.pathSeparator;
-  final file = io.File('${dir.path}$sep$fileName');
+  final file = io.File(pathJoin([dir.path, fileName]));
   await file.writeAsBytes(png, flush: true);
   return file.path;
 }
@@ -29,18 +30,12 @@ Future<String> saveGifToAppStorage(Uint8List gif) async {
       'flipper_recording_${DateTime.now().millisecondsSinceEpoch}.gif';
   final dir = await appRecordingsDirectory();
   await dir.create(recursive: true);
-  final sep = io.Platform.pathSeparator;
-  final file = io.File('${dir.path}$sep$fileName');
+  final file = io.File(pathJoin([dir.path, fileName]));
   await file.writeAsBytes(gif, flush: true);
   return file.path;
 }
 
 /// Copies the GIF file at [filePath] to the system clipboard as a file
 /// reference (paste-as-file on desktop, no-op on mobile).
-Future<void> copyGifFileToClipboard(String filePath) async {
-  if (io.Platform.isAndroid || io.Platform.isIOS) return;
-  final clipboard = SystemClipboard.instance;
-  if (clipboard == null) throw StateError('Clipboard not available');
-  final item = DataWriterItem()..add(Formats.fileUri(Uri.file(filePath)));
-  await clipboard.write([item]);
-}
+Future<void> copyGifFileToClipboard(String filePath) =>
+    copyFileToClipboard(filePath);

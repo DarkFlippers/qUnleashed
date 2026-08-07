@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 
+import '../../../components/format.dart';
 import '../../../components/dialogs/confirm.dart';
-import '../../../components/dialogs/catalog_states.dart';
-import '../../../components/dialogs/screenshots_viewer.dart';
+import 'widgets/states.dart';
+import 'widgets/screenshots_viewer.dart';
+import '../../../components/navigation.dart';
 import '../../../theme/theme.dart';
 import 'package:qunleashed/components/appbar.dart';
-import '../../devices/widgets/changelog_renderer.dart';
-import '../../../widgets/open_url.dart';
-import '../../tools/remote/desktop/page.dart';
+import '../../../components/changelog_renderer.dart';
+import '../../../components/open_url.dart';
 import '../data/models/card.dart';
 import '../data/models/category.dart';
 import '../data/models/detail.dart';
@@ -68,9 +69,7 @@ class _AppDetailPageState extends State<AppDetailPage> {
   }
 
   void _onLaunched() {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const RemoteControlPage()));
+    openRoute(context, AppRoute.remoteControl);
   }
 
   Future<void> _confirmDelete(AppCard card, AppCategory? cat) async {
@@ -269,14 +268,7 @@ class _Header extends StatelessWidget {
 
   String _formatBytes(int? bytes) {
     if (bytes == null || bytes <= 0) return '—';
-    const units = ['B', 'KB', 'MB', 'GB'];
-    var b = bytes.toDouble();
-    var i = 0;
-    while (b >= 1024 && i < units.length - 1) {
-      b /= 1024;
-      i++;
-    }
-    return '${b.toStringAsFixed(b >= 10 || i == 0 ? 0 : 1)} ${units[i]}';
+    return formatBytesScaled(bytes);
   }
 }
 

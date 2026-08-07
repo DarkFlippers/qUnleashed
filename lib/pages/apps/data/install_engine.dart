@@ -7,19 +7,19 @@ import 'package:flutter/foundation.dart';
 
 import '../../../services/http/app_http.dart';
 import '../../../services/progress_throttle.dart';
-import '../../../services/repository/app.dart';
-import '../../archive/overview/fap_icon.dart';
-import '../../asembler/build_service.dart';
-import '../../asembler/controller.dart';
-import '../../asembler/remote/remote_build_service.dart';
-import 'apps_backend.dart';
+import '../../../services/storage/fap_icons.dart';
+import '../../../components/codec/fap_icon.dart';
+import '../../../services/assembler/build_service.dart';
+import '../../../services/assembler/controller.dart';
+import '../../../services/assembler/remote_build_service.dart';
+import 'catalog_context.dart';
 import 'catalog_api.dart';
 import 'manifest_registry.dart';
 import 'models/card.dart';
 import 'models/category.dart';
 import 'models/detail.dart';
 import 'models/manifest.dart';
-import '../../../services/logging/log_service.dart';
+import '../../../services/logging.dart';
 
 enum AppActionType { install, update, delete }
 
@@ -45,14 +45,13 @@ class AppAction {
     AppActionStage? stage,
     double? progress,
     String? error,
-  }) =>
-      AppAction(
-        alias: alias,
-        type: type,
-        stage: stage ?? this.stage,
-        progress: progress ?? this.progress,
-        error: error,
-      );
+  }) => AppAction(
+    alias: alias,
+    type: type,
+    stage: stage ?? this.stage,
+    progress: progress ?? this.progress,
+    error: error,
+  );
 }
 
 class InstallEngine extends ChangeNotifier {
@@ -60,13 +59,23 @@ class InstallEngine extends ChangeNotifier {
     required this.client,
     required this.api,
     required this.manifests,
-    required this.backend,
+    required this.catalog,
+    required this.onInstalled,
   });
 
   final FlipperClient client;
   final AppsCatalogApi api;
   final ManifestRegistry manifests;
-  final AppsBackend backend;
+  final CatalogContext catalog;
+
+  /// Called after a successful install so the device list can adopt the app
+  /// without the engine reaching into its sibling registry.
+  final Future<void> Function({
+    required String alias,
+    required String devicePath,
+    required List<int> fapBytes,
+  })
+  onInstalled;
 
   bool get isReady => client.isConnected && client.mode == FlipperMode.rpc;
 
@@ -123,7 +132,8 @@ class InstallEngine extends ChangeNotifier {
         } on _LinkDroppedException {
           task.attempts += 1;
           task.needsLink = true;
-          requeued = task.attempts <= _maxLinkRetries &&
+          requeued =
+              task.attempts <= _maxLinkRetries &&
               _actions.containsKey(task.alias);
           if (requeued) {
             _taskQueue.insert(0, task);
@@ -147,7 +157,8 @@ class InstallEngine extends ChangeNotifier {
   }
 
   bool get _remoteBuildMode =>
-      backend.sourceBuildEnabled && AssemblerController.instance.usesServerBuild;
+      catalog.sourceBuildEnabled &&
+      AssemblerController.instance.usesServerBuild;
 
   String? _serverBuildAlias;
 
@@ -204,7 +215,7 @@ class InstallEngine extends ChangeNotifier {
         if ((api.target == null || api.api == null) && !isReady) {
           throw const _LinkDroppedException();
         }
-        await backend.ensureDeviceFilters(required: true);
+        await catalog.ensureDeviceFilters(required: true);
 
         var cv = detail?.card.currentVersion ?? app.currentVersion;
         var build = cv?.currentBuild;
@@ -249,18 +260,26 @@ class InstallEngine extends ChangeNotifier {
         }
 
         List<int> fapBytes;
-        if (backend.sourceBuildEnabled) {
+        if (catalog.sourceBuildEnabled) {
           if (!AssemblerController.instance.usesServerBuild) {
             final bundle = await api.fetchSourceBundle(
               cv.id,
               onProgress: onProgress,
             );
-            _setActionState(app.alias, stage: AppActionStage.build, progress: 0);
+            _setActionState(
+              app.alias,
+              stage: AppActionStage.build,
+              progress: 0,
+            );
             fapBytes = await AssemblerBuildService.buildFromBundle(
               bundle: bundle,
               alias: app.alias,
             );
-            _setActionState(app.alias, stage: AppActionStage.build, progress: 1);
+            _setActionState(
+              app.alias,
+              stage: AppActionStage.build,
+              progress: 1,
+            );
           } else {
             fapBytes = await _buildOnServer(app, cv);
           }
@@ -277,14 +296,14 @@ class InstallEngine extends ChangeNotifier {
               } catch (_) {}
             }
             final canFallback = appApi.isNotEmpty && appApi != api.api;
-            if (canFallback && backend.apiFallbackEnabled) {
+            if (canFallback && catalog.apiFallbackEnabled) {
               fapBytes = await api.fetchFapBuild(
                 cv.id,
                 onProgress: onProgress,
                 apiOverride: appApi,
               );
             } else {
-              if (canFallback) backend.flagCompatibilityNeeded(appApi);
+              if (canFallback) catalog.flagCompatibilityNeeded(appApi);
               throw StateError(
                 canFallback
                     ? 'App is built for API $appApi, firmware has '
@@ -310,8 +329,9 @@ class InstallEngine extends ChangeNotifier {
       final fimPath = '$kManifestsRoot/${app.alias}.fim';
       final manifestBytes = utf8.encode(manifest.encode());
       final lastSlash = fapPath.lastIndexOf('/');
-      final installDir =
-          lastSlash > 0 ? fapPath.substring(0, lastSlash) : kAppsRoot;
+      final installDir = lastSlash > 0
+          ? fapPath.substring(0, lastSlash)
+          : kAppsRoot;
 
       await _ensureDir(kAppsRoot);
       await _ensureDir(installDir);
@@ -333,7 +353,7 @@ class InstallEngine extends ChangeNotifier {
       await _verifyUpload(fimPath, manifestBytes);
 
       manifests.put(app.alias, manifest, fimSize: manifestBytes.length);
-      await backend.device.adoptInstalled(
+      await onInstalled(
         alias: app.alias,
         devicePath: fapPath,
         fapBytes: prepared.fapBytes,
@@ -349,7 +369,9 @@ class InstallEngine extends ChangeNotifier {
       }
       _preparedInstalls.remove(app.alias);
       LogService.log('[InstallEngine] install ${app.alias} failed: $e');
-      _actions[app.alias] = (_actions[app.alias] ?? action).copyWith(error: '$e');
+      _actions[app.alias] = (_actions[app.alias] ?? action).copyWith(
+        error: '$e',
+      );
       notifyListeners();
       await Future<void>.delayed(const Duration(seconds: 2));
       _clearAction(app.alias);
@@ -363,8 +385,8 @@ class InstallEngine extends ChangeNotifier {
     return RemoteBuildService.instance.build(
       bundleUrl: api.sourceBundleUri(cv.id).toString(),
       alias: app.alias,
-      target: backend.deviceTarget ?? 'f7',
-      api: backend.deviceApi,
+      target: catalog.deviceTarget ?? 'f7',
+      api: catalog.deviceApi,
       uid: app.id,
       versionUid: cv.id,
       onPhase: (phase, progress) {
@@ -376,7 +398,11 @@ class InstallEngine extends ChangeNotifier {
               progress: 0,
             );
           case RemoteBuildPhase.building:
-            _setActionState(app.alias, stage: AppActionStage.build, progress: 0);
+            _setActionState(
+              app.alias,
+              stage: AppActionStage.build,
+              progress: 0,
+            );
           case RemoteBuildPhase.download:
             _setActionState(
               app.alias,
@@ -411,7 +437,8 @@ class InstallEngine extends ChangeNotifier {
     _setActionState(app.alias, stage: AppActionStage.download);
     try {
       final fimPath = '$kManifestsRoot/${app.alias}.fim';
-      final fapPath = manifests.byAlias(app.alias)?.path ??
+      final fapPath =
+          manifests.byAlias(app.alias)?.path ??
           '${await _resolveInstallDir(app, category: category)}/${app.alias}.fap';
       await _safeDelete(fimPath);
       await _safeDelete(fapPath);
@@ -425,7 +452,9 @@ class InstallEngine extends ChangeNotifier {
         throw const _LinkDroppedException();
       }
       LogService.log('[InstallEngine] uninstall ${app.alias} failed: $e');
-      _actions[app.alias] = (_actions[app.alias] ?? action).copyWith(error: '$e');
+      _actions[app.alias] = (_actions[app.alias] ?? action).copyWith(
+        error: '$e',
+      );
       notifyListeners();
       await Future<void>.delayed(const Duration(seconds: 2));
       _clearAction(app.alias);
@@ -436,7 +465,8 @@ class InstallEngine extends ChangeNotifier {
 
   Future<void> launch(AppCard app, {AppCategory? category}) async {
     if (!isReady) throw StateError('Device is not connected');
-    final path = manifests.byAlias(app.alias)?.path ??
+    final path =
+        manifests.byAlias(app.alias)?.path ??
         '${await _resolveInstallDir(app, category: category)}/${app.alias}.fap';
     await client.appStart(
       StartRequest(name: path, args: ''),
@@ -515,7 +545,11 @@ class InstallEngine extends ChangeNotifier {
     }, needsLink: true);
   }
 
-  void _setActionState(String alias, {AppActionStage? stage, double? progress}) {
+  void _setActionState(
+    String alias, {
+    AppActionStage? stage,
+    double? progress,
+  }) {
     final current = _actions[alias];
     if (current == null) return;
     final next = current.copyWith(
@@ -602,7 +636,9 @@ class InstallEngine extends ChangeNotifier {
         final resolved = _categoryNamesById[categoryId];
         if (resolved != null && resolved.isNotEmpty) return resolved;
       } catch (e) {
-        LogService.log('[InstallEngine] resolve category "$categoryId" failed: $e');
+        LogService.log(
+          '[InstallEngine] resolve category "$categoryId" failed: $e',
+        );
       }
     }
     return categoryId.isNotEmpty ? categoryId : 'Misc';

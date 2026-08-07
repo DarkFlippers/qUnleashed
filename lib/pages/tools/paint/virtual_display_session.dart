@@ -4,6 +4,8 @@ import 'dart:typed_data';
 import 'package:flipperlib/flipperlib.dart' hide DateTime;
 
 import '../../../components/codec/bm.dart';
+import '../../../services/connection/device_info_watch.dart';
+import '../../../services/logging.dart';
 
 /// Shared virtual-display session for Pixel Draw. Started once when the user
 /// enters the manager or the editor and stopped only after both are left.
@@ -44,7 +46,7 @@ class VirtualDisplaySession {
     _connSub ??= _client.connectionStream.listen(_onConnectionChange);
     _users++;
     if (_users == 1) {
-      _client.freezeWatch();
+      DeviceInfoWatchService.instance.freeze();
       _ensureStarted();
     }
   }
@@ -52,7 +54,7 @@ class VirtualDisplaySession {
   void leave() {
     if (_users > 0) _users--;
     if (_users == 0) {
-      _client.unfreezeWatch();
+      DeviceInfoWatchService.instance.unfreeze();
       _stop();
     }
   }

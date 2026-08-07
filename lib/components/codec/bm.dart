@@ -175,7 +175,9 @@ abstract final class BmCodec {
       int bestOff = 0;
       for (int j = winStart; j < i; j++) {
         int len = 0;
-        while (len < 16 && i + len < data.length && data[j + len] == data[i + len]) {
+        while (len < 16 &&
+            i + len < data.length &&
+            data[j + len] == data[i + len]) {
           len++;
         }
         if (len > bestLen) {
@@ -246,11 +248,8 @@ abstract final class BmCodec {
   /// Decodes a 128×64 monochrome pixel buffer into a [ui.Image] suitable for
   /// direct rendering (e.g. animated previews). [fg]/[bg] are ARGB colors used
   /// for set/clear pixels respectively.
-  static Future<ui.Image> frameToImage(
-    Uint8List pixels, {
-    int? fg,
-    int? bg,
-  }) => monochromeToImage(pixels, kBmWidth, kBmHeight, fg: fg, bg: bg);
+  static Future<ui.Image> frameToImage(Uint8List pixels, {int? fg, int? bg}) =>
+      monochromeToImage(pixels, kBmWidth, kBmHeight, fg: fg, bg: bg);
 
   static Future<ui.Image> statusBarPngToImage(
     Uint8List png, {
@@ -339,7 +338,13 @@ abstract final class BmCodec {
       rgba[i * 4 + 3] = (c >> 24) & 0xFF;
     }
     final completer = Completer<ui.Image>();
-    ui.decodeImageFromPixels(rgba, kBmWidth, kBmHeight, ui.PixelFormat.rgba8888, completer.complete);
+    ui.decodeImageFromPixels(
+      rgba,
+      kBmWidth,
+      kBmHeight,
+      ui.PixelFormat.rgba8888,
+      completer.complete,
+    );
     final img = await completer.future;
     final bd = await img.toByteData(format: ui.ImageByteFormat.png);
     img.dispose();

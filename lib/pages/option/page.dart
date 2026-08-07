@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../components/cardlist.dart';
 import '../../components/icon.dart';
+import '../../components/navigation.dart';
 import '../../theme/theme.dart';
-import '../asembler/settings_page.dart';
 import 'notifications_page.dart';
 import 'storage_page.dart';
 import 'theme_page.dart';
@@ -14,14 +14,18 @@ class _Category {
     required this.subtitle,
     required this.asset,
     required this.color,
-    required this.page,
-  });
+    this.page,
+    this.route,
+  }) : assert(page != null || route != null);
 
   final String title;
   final String subtitle;
   final String asset;
   final Color color;
-  final WidgetBuilder page;
+
+  /// Screen owned by this feature; screens of other features go through [route].
+  final WidgetBuilder? page;
+  final AppRoute? route;
 }
 
 class SettingsPage extends StatelessWidget {
@@ -75,8 +79,13 @@ class SettingsPage extends StatelessWidget {
     );
   }
 
-  VoidCallback _open(BuildContext context, WidgetBuilder page) =>
-      () => Navigator.of(context).push(MaterialPageRoute(builder: page));
+  VoidCallback _open(BuildContext context, _Category category) {
+    final page = category.page;
+    if (page == null) {
+      return () => openRoute(context, category.route!);
+    }
+    return () => Navigator.of(context).push(MaterialPageRoute(builder: page));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -101,7 +110,7 @@ class SettingsPage extends StatelessWidget {
                 page: (_) => const NotificationsSettingsPage(),
               ),
             ],
-            onTap: (c) => _open(context, c.page),
+            onTap: (c) => _open(context, c),
             itemBuilder: _tile,
           ),
           const SizedBox(height: 10),
@@ -122,7 +131,7 @@ class SettingsPage extends StatelessWidget {
                 page: (_) => const ThemeSettingsPage(),
               ),
             ],
-            onTap: (c) => _open(context, c.page),
+            onTap: (c) => _open(context, c),
             itemBuilder: _tile,
           ),
           const SizedBox(height: 10),
@@ -133,10 +142,10 @@ class SettingsPage extends StatelessWidget {
                 subtitle: 'Flipper Assembler Tool, builds apps from source',
                 asset: 'assets/ic/fileformat/settings.svg',
                 color: const Color(0xFF4DB6AC),
-                page: (_) => const AssemblerSettingsPage(),
+                route: AppRoute.assemblerSettings,
               ),
             ],
-            onTap: (c) => _open(context, c.page),
+            onTap: (c) => _open(context, c),
             itemBuilder: _tile,
           ),
         ],

@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:qunleashed/pages/asembler/remote/remote_build_service.dart';
+import 'package:qunleashed/services/assembler/remote_build_service.dart';
 
 /// The live test runs only against a real deployment:
 ///   QU_BUILD_SERVER_URL=https://flibler.aperturefox.ru \
@@ -17,9 +17,10 @@ String _expectedSign(HttpRequest request, List<int> body) {
   final bodyHash = sha256.convert(body).toString();
   final message =
       '$time\n${request.method}\n${request.uri.path}\n$bodyHash\n$_clientId';
-  return Hmac(sha256, utf8.encode(_secret))
-      .convert(utf8.encode(message))
-      .toString();
+  return Hmac(
+    sha256,
+    utf8.encode(_secret),
+  ).convert(utf8.encode(message)).toString();
 }
 
 class _FakeBuildServer {
@@ -309,7 +310,11 @@ void main() {
         target: 'f7',
       ),
       throwsA(
-        isA<RemoteBuildException>().having((e) => e.message, 'message', message),
+        isA<RemoteBuildException>().having(
+          (e) => e.message,
+          'message',
+          message,
+        ),
       ),
     );
     expect(service.busy, isFalse);
@@ -326,8 +331,16 @@ void main() {
   test('submit rejects surface the new status codes', () async {
     await expectSubmitError(400, 'Invalid target', contains('Invalid target'));
     await expectSubmitError(404, 'Bundle not found', contains('App bundle'));
-    await expectSubmitError(429, 'Build queue is full', contains('queue is full'));
-    await expectSubmitError(502, 'Bad gateway', contains('bundle host is unavailable'));
+    await expectSubmitError(
+      429,
+      'Build queue is full',
+      contains('queue is full'),
+    );
+    await expectSubmitError(
+      502,
+      'Bad gateway',
+      contains('bundle host is unavailable'),
+    );
     await expectSubmitError(504, 'Timeout', contains('bundle host timed out'));
   });
 
@@ -356,7 +369,11 @@ void main() {
         target: 'f7',
       ),
       throwsA(
-        isA<RemoteBuildException>().having((e) => e.message, 'message', message),
+        isA<RemoteBuildException>().having(
+          (e) => e.message,
+          'message',
+          message,
+        ),
       ),
     );
     expect(service.busy, isFalse);

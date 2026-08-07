@@ -49,15 +49,15 @@ class QConfirmDialog extends StatelessWidget {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(false),
-          child:
-              Text(cancelLabel, style: TextStyle(color: colors.dialogMuted)),
+          child: Text(cancelLabel, style: TextStyle(color: colors.dialogMuted)),
         ),
         TextButton(
           onPressed: () => Navigator.of(context).pop(true),
           child: Text(
             confirmLabel,
             style: TextStyle(
-                color: destructive ? colors.danger : colors.accent),
+              color: destructive ? colors.danger : colors.accent,
+            ),
           ),
         ),
       ],

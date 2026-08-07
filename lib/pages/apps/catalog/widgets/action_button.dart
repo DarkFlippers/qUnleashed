@@ -1,12 +1,12 @@
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
+import '../../../../components/navigation.dart';
 import '../../../../theme/theme.dart';
 import '../../../../components/dialogs/action.dart';
 import '../../../../components/dialogs/confirm.dart';
-import '../../../../widgets/notification.dart';
-import '../../../../widgets/progress_button.dart';
-import '../../../tools/remote/desktop/page.dart';
+import '../../../../components/notification.dart';
+import '../../../../components/progress_button.dart';
 import '../../data/catalog_state.dart';
 import '../../data/install_engine.dart';
 import '../../data/models/card.dart';
@@ -78,7 +78,10 @@ class AppActionButton extends StatelessWidget {
             color: colors.success,
             onTap: () => _install(context),
           ),
-          secondary: _DeleteButton(size: size, onTap: () => _confirmDelete(context)),
+          secondary: _DeleteButton(
+            size: size,
+            onTap: () => _confirmDelete(context),
+          ),
         );
       case CatalogAppState.open:
         return _ActionRow(
@@ -88,7 +91,10 @@ class AppActionButton extends StatelessWidget {
             color: colors.accent,
             onTap: () => _launchApp(context),
           ),
-          secondary: _DeleteButton(size: size, onTap: () => _confirmDelete(context)),
+          secondary: _DeleteButton(
+            size: size,
+            onTap: () => _confirmDelete(context),
+          ),
         );
     }
   }
@@ -100,7 +106,8 @@ class AppActionButton extends StatelessWidget {
   }) {
     final progressState = _ProgressState.resolve(type, stage);
     final isLarge = size == AppActionButtonSize.large;
-    final indeterminate = stage == AppActionStage.queued ||
+    final indeterminate =
+        stage == AppActionStage.queued ||
         stage == AppActionStage.check ||
         stage == AppActionStage.build ||
         type == AppActionType.delete;
@@ -175,15 +182,16 @@ class AppActionButton extends StatelessWidget {
             actionText: kFlipperBusyAction,
             onAction: () {
               Navigator.of(dialogContext).pop();
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const RemoteControlPage()),
-              );
+              openRoute(context, AppRoute.remoteControl);
             },
           ),
         );
         return;
       }
-      context.showNotification('Open failed: $e', type: QNotificationType.error);
+      context.showNotification(
+        'Open failed: $e',
+        type: QNotificationType.error,
+      );
     }
   }
 

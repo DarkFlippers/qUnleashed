@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../../../components/icon.dart';
+import '../../../components/navigation.dart';
 import '../../../theme/theme.dart';
 import 'package:qunleashed/components/appbar.dart';
-import '../../../widgets/notification.dart';
-import '../../tools/remote/desktop/page.dart';
-import '../data/category.dart';
-import '../data/models/key.dart';
+import '../../../components/notification.dart';
+import '../../../components/archive/category.dart';
+import '../../../components/archive/models/key.dart';
 import 'service.dart';
 
 class EmulatePage extends StatefulWidget {
@@ -35,7 +35,7 @@ class _EmulatePageState extends State<EmulatePage> {
   Future<void> _start() async {
     final k = widget.flipperKey;
     final cat = k.category;
-    var method = cat.launchMethodFor(k);
+    var method = k.launchMethod;
     if (cat.launch.hasProtocolRules && k.protocol == null) {
       final proto = await _service.fetchProtocol(k);
       if (!mounted) return;
@@ -51,9 +51,7 @@ class _EmulatePageState extends State<EmulatePage> {
           return;
         }
         if (result.isOk) {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (_) => const RemoteControlPage()),
-          );
+          openRoute(context, AppRoute.remoteControl, replace: true);
           return;
         }
         setState(() {
@@ -83,13 +81,8 @@ class _EmulatePageState extends State<EmulatePage> {
   }
 
   void _openRemoteControlBusy() {
-    context.showNotification(
-      'Device is busy',
-      type: QNotificationType.error,
-    );
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const RemoteControlPage()),
-    );
+    context.showNotification('Device is busy', type: QNotificationType.error);
+    openRoute(context, AppRoute.remoteControl, replace: true);
   }
 
   Future<void> _stopAndClose() async {
@@ -218,13 +211,16 @@ class _EmulatePageState extends State<EmulatePage> {
                     child: ElevatedButton.icon(
                       onPressed: () {},
                       icon: Icon(
-                        _sending ? Icons.wifi_tethering : Icons.wifi_tethering_off,
+                        _sending
+                            ? Icons.wifi_tethering
+                            : Icons.wifi_tethering_off,
                       ),
                       label: Text(_sending ? 'Sending…' : 'Hold to Send'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: _sending ? colors.accent : colors.card,
-                        foregroundColor:
-                            _sending ? colors.onAccent : colors.textPrimary,
+                        foregroundColor: _sending
+                            ? colors.onAccent
+                            : colors.textPrimary,
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),

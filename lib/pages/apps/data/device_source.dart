@@ -6,15 +6,16 @@ import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flutter/foundation.dart';
 
 import '../../../components/codec/fap.dart';
+import '../../../components/path.dart';
 import '../../../services/progress_throttle.dart';
-import '../../../services/repository/app.dart';
+import '../../../services/storage/paths.dart';
 import '../icons/icon_resolver.dart';
-import 'apps_backend.dart';
+import 'catalog_context.dart';
 import 'catalog_api.dart';
 import 'install_engine.dart';
 import 'manifest_registry.dart';
 import 'models/installed_app.dart';
-import '../../../services/logging/log_service.dart';
+import '../../../services/logging.dart';
 
 class DeviceSource extends ChangeNotifier {
   DeviceSource({
@@ -22,7 +23,6 @@ class DeviceSource extends ChangeNotifier {
     required this.api,
     required this.manifests,
     required this.engine,
-    required this.backend,
   }) {
     manifests.addListener(notifyListeners);
   }
@@ -31,12 +31,11 @@ class DeviceSource extends ChangeNotifier {
   final AppsCatalogApi api;
   final ManifestRegistry manifests;
   final InstallEngine engine;
-  final AppsBackend backend;
 
   bool get isReady => client.isConnected && client.mode == FlipperMode.rpc;
 
   final Map<String, ({int size, String folder, String path, int stamp})>
-      _local = {};
+  _local = {};
 
   final Map<String, FapInfo?> _parsed = {};
   final Map<String, int> _parsedStamp = {};
@@ -54,21 +53,24 @@ class DeviceSource extends ChangeNotifier {
       if (alias.isEmpty) continue;
       final m = manifests.byAlias(alias);
       final local = _local[alias];
-      final folder = local?.folder ??
+      final folder =
+          local?.folder ??
           (m != null && m.path.isNotEmpty ? _folderFromPath(m.path) : '');
       final devicePath = m != null && m.path.isNotEmpty
           ? m.path
           : '$kAppsRoot/$folder/$alias.fap';
-      out.add(InstalledApp(
-        alias: alias,
-        path: devicePath,
-        folder: folder,
-        size: local?.size ?? 0,
-        md5: '',
-        manifest: m,
-        fap: _parsed[alias],
-        fapChecked: _parsed.containsKey(alias),
-      ));
+      out.add(
+        InstalledApp(
+          alias: alias,
+          path: devicePath,
+          folder: folder,
+          size: local?.size ?? 0,
+          md5: '',
+          manifest: m,
+          fap: _parsed[alias],
+          fapChecked: _parsed.containsKey(alias),
+        ),
+      );
     }
     out.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     return List.unmodifiable(out);
@@ -98,7 +100,7 @@ class DeviceSource extends ChangeNotifier {
   }
 
   String _aliasFromPath(String path) {
-    final base = path.substring(path.lastIndexOf('/') + 1);
+    final base = basename(path);
     return base.endsWith('.fap') ? base.substring(0, base.length - 4) : base;
   }
 
@@ -141,8 +143,12 @@ class DeviceSource extends ChangeNotifier {
               size = stat.size;
               stamp = stat.modified.millisecondsSinceEpoch;
             } catch (_) {}
-            map[alias] =
-                (size: size, folder: folder, path: e.path, stamp: stamp);
+            map[alias] = (
+              size: size,
+              folder: folder,
+              path: e.path,
+              stamp: stamp,
+            );
           }
         }
       }
@@ -204,9 +210,11 @@ class DeviceSource extends ChangeNotifier {
         if (!isReady) break;
         _syncingItem = d.alias;
         notifyListeners();
-        final local = io.File(pathJoin(
-            [dir.path, sanitizePathSegment(d.folder), '${d.alias}.fap']));
-        final needs = !await local.exists() ||
+        final local = io.File(
+          pathJoin([dir.path, sanitizePathSegment(d.folder), '${d.alias}.fap']),
+        );
+        final needs =
+            !await local.exists() ||
             !await _localMatchesRemote(local, d.md5, d.devicePath);
         if (needs) {
           try {
@@ -254,14 +262,11 @@ class DeviceSource extends ChangeNotifier {
   }
 
   Future<
-      List<
-          ({
-            String alias,
-            String folder,
-            String devicePath,
-            String md5,
-            int size
-          })>> _walkDevice() async {
+    List<
+      ({String alias, String folder, String devicePath, String md5, int size})
+    >
+  >
+  _walkDevice() async {
     final root = await client.storageList(
       ListRequest(path: kAppsRoot),
       timeout: const Duration(seconds: 20),
@@ -271,13 +276,16 @@ class DeviceSource extends ChangeNotifier {
         for (final f in item.file)
           if (f.type == File_FileType.DIR && f.name.isNotEmpty) f.name,
     ];
-    final out = <({
-      String alias,
-      String folder,
-      String devicePath,
-      String md5,
-      int size
-    })>[];
+    final out =
+        <
+          ({
+            String alias,
+            String folder,
+            String devicePath,
+            String md5,
+            int size,
+          })
+        >[];
     for (final folder in folders) {
       if (!isReady) break;
       _syncingItem = folder;
@@ -306,10 +314,15 @@ class DeviceSource extends ChangeNotifier {
   }
 
   Future<bool> _localMatchesRemote(
-      io.File local, String remoteMd5, String devicePath) async {
+    io.File local,
+    String remoteMd5,
+    String devicePath,
+  ) async {
     try {
-      final localMd5 =
-          md5.convert(await local.readAsBytes()).toString().toLowerCase();
+      final localMd5 = md5
+          .convert(await local.readAsBytes())
+          .toString()
+          .toLowerCase();
       var wanted = remoteMd5.trim().toLowerCase();
       if (wanted.isEmpty) {
         final batch = await client.storageMd5sum(
@@ -333,8 +346,9 @@ class DeviceSource extends ChangeNotifier {
     final name = await _deviceName();
     if (name == null) return false;
     final dir = await appsBackupDirectory(name);
-    final file = io.File(pathJoin(
-        [dir.path, sanitizePathSegment(app.folder), '${app.alias}.fap']));
+    final file = io.File(
+      pathJoin([dir.path, sanitizePathSegment(app.folder), '${app.alias}.fap']),
+    );
     if (!await file.exists()) return false;
     final bytes = await file.readAsBytes();
     return engine.restore(
@@ -358,7 +372,8 @@ class DeviceSource extends ChangeNotifier {
       if (name != null) {
         final dir = await appsBackupDirectory(name);
         final file = io.File(
-            pathJoin([dir.path, sanitizePathSegment(folder), '$alias.fap']));
+          pathJoin([dir.path, sanitizePathSegment(folder), '$alias.fap']),
+        );
         await file.parent.create(recursive: true);
         await file.writeAsBytes(fapBytes, flush: true);
         localPath = file.path;
@@ -382,8 +397,13 @@ class DeviceSource extends ChangeNotifier {
       final name = await _deviceName();
       if (name == null) return;
       final dir = await appsBackupDirectory(name);
-      final file = io.File(pathJoin(
-          [dir.path, sanitizePathSegment(app.folder), '${app.alias}.fap']));
+      final file = io.File(
+        pathJoin([
+          dir.path,
+          sanitizePathSegment(app.folder),
+          '${app.alias}.fap',
+        ]),
+      );
       if (await file.exists()) await file.delete();
     } catch (_) {}
     await _loadLocalApps();

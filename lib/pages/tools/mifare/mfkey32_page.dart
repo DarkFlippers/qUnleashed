@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme/theme.dart';
-import '../../../widgets/progress_button.dart';
+import '../../../components/progress_button.dart';
 import 'mfkey32_controller.dart';
 import 'mfkey32_models.dart';
 

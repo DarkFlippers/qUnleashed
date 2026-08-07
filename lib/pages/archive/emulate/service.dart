@@ -1,11 +1,11 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flipperlib/flipperlib.dart';
 
-import '../data/models/key.dart';
-import '../data/parser.dart';
-import '../../../services/logging/log_service.dart';
+import '../../../components/archive/models/key.dart';
+import '../../../components/archive/parser.dart';
+import '../../../services/logging.dart';
 
 enum EmulateError {
   notConnected,
@@ -24,7 +24,7 @@ class EmulateResult {
 
 class EmulateService {
   EmulateService({FlipperClient? client})
-      : _client = client ?? FlipperOneClient().get();
+    : _client = client ?? FlipperOneClient().get();
 
   final FlipperClient _client;
   bool _running = false;
@@ -39,7 +39,9 @@ class EmulateService {
   ArchiveKey? get activeKey => _activeKey;
 
   Future<EmulateResult> start(ArchiveKey key) async {
-    if (!_client.isConnected) return EmulateResult.fail(EmulateError.notConnected);
+    if (!_client.isConnected) {
+      return EmulateResult.fail(EmulateError.notConnected);
+    }
     if (_running || _stopFuture != null) await stop();
 
     final appName = key.category.flipperAppName;
@@ -54,10 +56,7 @@ class EmulateService {
 
     try {
       await _client.appStart(
-        StartRequest(
-          name: appName,
-          args: 'RPC',
-        ),
+        StartRequest(name: appName, args: 'RPC'),
         timeout: const Duration(seconds: 10),
       );
     } on FlipperRpcAppSystemLockedException {
@@ -71,7 +70,9 @@ class EmulateService {
 
     final ready = await started;
     if (!ready) {
-      LogService.log('[Emulate] APP_STARTED not seen, proceeding after fallback');
+      LogService.log(
+        '[Emulate] APP_STARTED not seen, proceeding after fallback',
+      );
       await Future<void>.delayed(const Duration(milliseconds: 400));
     }
 
@@ -94,17 +95,16 @@ class EmulateService {
   }
 
   Future<EmulateResult> launchApp(ArchiveKey key) async {
-    if (!_client.isConnected) return EmulateResult.fail(EmulateError.notConnected);
+    if (!_client.isConnected) {
+      return EmulateResult.fail(EmulateError.notConnected);
+    }
 
     final appName = key.category.flipperAppName;
     if (appName == null) return EmulateResult.fail(EmulateError.notEmulatable);
 
     try {
       await _client.appStart(
-        StartRequest(
-          name: appName,
-          args: key.remotePath,
-        ),
+        StartRequest(name: appName, args: key.remotePath),
         timeout: const Duration(seconds: 10),
       );
     } on FlipperRpcAppSystemLockedException {
@@ -168,7 +168,9 @@ class EmulateService {
         _sceneLoaded = true;
         return true;
       } catch (e) {
-        LogService.log('[Emulate] reload before send failed (try $attempt): $e');
+        LogService.log(
+          '[Emulate] reload before send failed (try $attempt): $e',
+        );
         await Future<void>.delayed(const Duration(milliseconds: 150));
       }
     }

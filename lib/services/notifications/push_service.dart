@@ -6,7 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../firebase_options.dart';
+import 'firebase_options.dart';
 import 'notification_center.dart';
 
 class PushTopics {
@@ -152,7 +152,10 @@ class PushService {
           priority: Priority.high,
         ),
         iOS: DarwinNotificationDetails(presentAlert: true, presentSound: true),
-        macOS: DarwinNotificationDetails(presentAlert: true, presentSound: true),
+        macOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentSound: true,
+        ),
       ),
     );
   }

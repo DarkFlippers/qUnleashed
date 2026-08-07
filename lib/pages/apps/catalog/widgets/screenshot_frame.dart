@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../theme/theme.dart';
-import 'flipper_image.dart';
+import '../../../../components/remote_image.dart';
 
 class ScreenshotFrame extends StatelessWidget {
   const ScreenshotFrame({

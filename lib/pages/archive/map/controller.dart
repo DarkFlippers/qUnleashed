@@ -7,18 +7,25 @@ import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 
-import '../../../services/gps/gps_responder.dart';
-import '../data/parser.dart';
-import '../overview/storage.dart';
-import '../data/category.dart';
-import '../data/models/pin.dart';
+import '../../../services/rpc/gps/gps_responder.dart';
+import '../../../components/archive/parser.dart';
+import '../../../services/archive/storage.dart';
+import '../../../components/archive/category.dart';
+import '../../../components/archive/models/pin.dart';
 
-enum MapLocationStatus { idle, requesting, granted, denied, serviceDisabled, error }
+enum MapLocationStatus {
+  idle,
+  requesting,
+  granted,
+  denied,
+  serviceDisabled,
+  error,
+}
 
 class MapToolController extends ChangeNotifier {
   MapToolController({ArchiveStorage? storage, FlipperClient? client})
-      : _storage = storage ?? ArchiveStorage(),
-        _client = client ?? FlipperOneClient().get();
+    : _storage = storage ?? ArchiveStorage(),
+      _client = client ?? FlipperOneClient().get();
 
   final ArchiveStorage _storage;
   final FlipperClient _client;
@@ -91,7 +98,8 @@ class MapToolController extends ChangeNotifier {
       final deviceName = await _resolveDeviceName();
       if (deviceName == null || deviceName.isEmpty) {
         _pins = const [];
-        _loadError = 'No synced Flipper found. Connect and sync first in Archive.';
+        _loadError =
+            'No synced Flipper found. Connect and sync first in Archive.';
         return;
       }
       final entries = await _storage.listAll(deviceName);
@@ -132,9 +140,13 @@ class MapToolController extends ChangeNotifier {
         final colon = line.indexOf(':');
         if (colon < 0) continue;
         final value = line.substring(colon + 1).trim();
-        if (lower.startsWith('latitude:') || lower.startsWith('latitute:') || lower.startsWith('lat:')) {
+        if (lower.startsWith('latitude:') ||
+            lower.startsWith('latitute:') ||
+            lower.startsWith('lat:')) {
           lat = double.tryParse(value);
-        } else if (lower.startsWith('longitude:') || lower.startsWith('lon:') || lower.startsWith('lng:')) {
+        } else if (lower.startsWith('longitude:') ||
+            lower.startsWith('lon:') ||
+            lower.startsWith('lng:')) {
           lon = double.tryParse(value);
         }
       }
@@ -190,7 +202,11 @@ class MapToolController extends ChangeNotifier {
     }
   }
 
-  static String _patchCoordinates(String original, double latitude, double longitude) {
+  static String _patchCoordinates(
+    String original,
+    double latitude,
+    double longitude,
+  ) {
     final latStr = latitude.toStringAsFixed(6);
     final lonStr = longitude.toStringAsFixed(6);
     final lines = original.split('\n');
@@ -241,28 +257,32 @@ class MapToolController extends ChangeNotifier {
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
       }
-      if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) {
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
         _locationStatus = MapLocationStatus.denied;
         _locationError = 'Location permission denied';
         notifyListeners();
         return;
       }
       final pos = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
       );
       _setUserPosition(pos);
       _locationStatus = MapLocationStatus.granted;
       notifyListeners();
       _posSub?.cancel();
-      _posSub = Geolocator.getPositionStream(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          distanceFilter: 5,
-        ),
-      ).listen((position) {
-        _setUserPosition(position);
-        notifyListeners();
-      });
+      _posSub =
+          Geolocator.getPositionStream(
+            locationSettings: const LocationSettings(
+              accuracy: LocationAccuracy.high,
+              distanceFilter: 5,
+            ),
+          ).listen((position) {
+            _setUserPosition(position);
+            notifyListeners();
+          });
     } catch (e) {
       _locationStatus = MapLocationStatus.error;
       _locationError = '$e';
@@ -312,8 +332,12 @@ class MapToolController extends ChangeNotifier {
     const r = 6371000.0;
     final dLat = _rad(lat2 - lat1);
     final dLon = _rad(lon2 - lon1);
-    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
-        math.cos(_rad(lat1)) * math.cos(_rad(lat2)) * math.sin(dLon / 2) * math.sin(dLon / 2);
+    final a =
+        math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(_rad(lat1)) *
+            math.cos(_rad(lat2)) *
+            math.sin(dLon / 2) *
+            math.sin(dLon / 2);
     final c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
     return r * c;
   }
@@ -323,7 +347,9 @@ class MapToolController extends ChangeNotifier {
     final phi2 = _rad(lat2);
     final dl = _rad(lon2 - lon1);
     final y = math.sin(dl) * math.cos(phi2);
-    final x = math.cos(phi1) * math.sin(phi2) - math.sin(phi1) * math.cos(phi2) * math.cos(dl);
+    final x =
+        math.cos(phi1) * math.sin(phi2) -
+        math.sin(phi1) * math.cos(phi2) * math.cos(dl);
     final brng = math.atan2(y, x) * 180 / math.pi;
     return (brng + 360) % 360;
   }

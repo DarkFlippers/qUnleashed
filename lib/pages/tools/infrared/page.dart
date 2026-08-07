@@ -3,9 +3,10 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme/theme.dart';
 import 'package:qunleashed/components/appbar.dart';
+import 'package:qunleashed/components/format.dart';
 import 'package:qunleashed/components/icon.dart';
 import 'package:qunleashed/theme/colors/category.dart';
-import '../../../widgets/notification.dart';
+import '../../../components/notification.dart';
 import 'controller.dart';
 import 'file_page.dart';
 import 'models.dart';
@@ -291,9 +292,7 @@ class _IrEntryCard extends StatelessWidget {
 
   String _formatSize(int size) {
     if (size <= 0) return 'вЂ”';
-    if (size < 1024) return '$size B';
-    if (size < 1024 * 1024) return '${(size / 1024).toStringAsFixed(1)} KB';
-    return '${(size / (1024 * 1024)).toStringAsFixed(1)} MB';
+    return formatBytes(size, gigabytes: false);
   }
 }
 

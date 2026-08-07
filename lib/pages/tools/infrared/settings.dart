@@ -2,7 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io' as io;
 
-import '../../../services/repository/app.dart';
+import '../../../components/path.dart';
+import '../../../services/storage/paths.dart';
 
 const String kDefaultIrdbUrl = 'https://github.com/Lucaslhm/Flipper-IRDB';
 
@@ -102,9 +103,7 @@ class IrLibSettingsStorage {
     final f = await irLibSettingsFile();
     if (!await f.exists()) {
       final base = await appDocumentsDirectory();
-      final legacy = io.File(
-        pathJoin([base.path, 'irlib', 'settings.json']),
-      );
+      final legacy = io.File(pathJoin([base.path, 'irlib', 'settings.json']));
       if (await legacy.exists()) {
         await f.parent.create(recursive: true);
         await legacy.copy(f.path);

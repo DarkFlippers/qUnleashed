@@ -6,19 +6,19 @@ import 'package:flutter/material.dart';
 
 import '../../../../components/icon.dart';
 import '../../../../theme/theme.dart';
-import '../../../../widgets/notification.dart';
+import '../../../../components/notification.dart';
 import '../controller.dart';
-import '../../data/category.dart';
-import '../../data/models/key.dart';
-import '../widgets/actions_sheet.dart';
-import '../widgets/empty_view.dart';
+import '../../../../components/archive/category.dart';
+import '../../../../components/archive/models/key.dart';
+import '../../widgets/actions_sheet.dart';
+import '../../../../components/filelist/empty_view.dart';
 import '../widgets/key_actions_sheet.dart';
 import '../widgets/sync_progress_bar.dart';
-import 'columns.dart';
+import '../../../../components/filelist/columns.dart';
 import 'sort.dart';
-import 'table.dart';
-import 'toolbar.dart';
-import '../../../../services/logging/log_service.dart';
+import '../../../../components/filelist/table.dart';
+import '../../../../components/filelist/toolbar.dart';
+import '../../../../services/logging.dart';
 
 class CategoryPage extends StatefulWidget {
   const CategoryPage({

@@ -4,12 +4,14 @@ import 'package:dartufbt/dartufbt.dart';
 import 'package:flutter/material.dart';
 
 import '../../components/cardlist.dart';
+import '../../components/format.dart';
 import '../../components/icon.dart';
 import '../../services/http/app_http.dart';
-import '../../services/repository/app.dart';
+import '../../services/storage/paths.dart';
+import '../../services/storage/fap_icons.dart';
 import '../../theme/theme.dart';
-import '../../widgets/notification.dart';
-import '../asembler/controller.dart';
+import '../../components/notification.dart';
+import '../../services/assembler/controller.dart';
 
 class _StorageArea {
   const _StorageArea({
@@ -234,7 +236,7 @@ class _StorageSettingsPageState extends State<StorageSettingsPage> {
         ),
         const SizedBox(width: 8),
         Text(
-          size == null ? '…' : formatBytes(size),
+          size == null ? '…' : formatBytesScaled(size, topUnitPrecision: 2),
           style: TextStyle(color: colors.textSecondary, fontSize: 12),
         ),
         const SizedBox(width: 2),
@@ -288,14 +290,4 @@ class _StorageSettingsPageState extends State<StorageSettingsPage> {
       ),
     );
   }
-}
-
-String formatBytes(int bytes) {
-  if (bytes < 1024) return '$bytes B';
-  final kb = bytes / 1024;
-  if (kb < 1024) return '${kb.toStringAsFixed(kb < 10 ? 1 : 0)} KB';
-  final mb = kb / 1024;
-  if (mb < 1024) return '${mb.toStringAsFixed(mb < 10 ? 1 : 0)} MB';
-  final gb = mb / 1024;
-  return '${gb.toStringAsFixed(2)} GB';
 }

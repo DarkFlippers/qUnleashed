@@ -2,7 +2,8 @@ import 'dart:io' as io;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import '../../../services/repository/app.dart';
+import '../../../components/path.dart';
+import '../../../services/storage/paths.dart';
 import 'dolphin_animation.dart';
 
 /// Decoded preview frames for a project, plus the per-frame delay used to
@@ -156,8 +157,4 @@ abstract final class PaintDraftStore {
   }
 }
 
-String _baseName(String path) {
-  final norm = path.replaceAll('\\', '/');
-  final idx = norm.lastIndexOf('/');
-  return idx < 0 ? norm : norm.substring(idx + 1);
-}
+String _baseName(String path) => basename(path.replaceAll('\\', '/'));

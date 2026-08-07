@@ -2,8 +2,8 @@ import 'dart:io' as io;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import '../../../services/repository/app.dart';
 import '../../../components/codec/bm.dart';
+import '../../../components/path.dart';
 import 'constants.dart';
 
 /// One Flipper dolphin animation: a folder containing `meta.txt` plus

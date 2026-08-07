@@ -1,9 +1,9 @@
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
-import '../../../config.dart';
+import '../../../components/config.dart';
 import '../../../theme/theme.dart';
-import '../../../widgets/page_card.dart';
+import 'page_card.dart';
 import '../controllers/firmware.dart';
 import '../device_scope.dart';
 import '../firmware/directory.dart';

@@ -2,10 +2,10 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
-import '../../../config.dart';
+import '../../../components/config.dart';
 import '../../../theme/theme.dart';
-import '../../../widgets/notification.dart';
-import '../../../widgets/progress_button.dart';
+import '../../../components/notification.dart';
+import '../../../components/progress_button.dart';
 import '../device_scope.dart';
 import '../firmware/directory.dart';
 import '../firmware/installer.dart';

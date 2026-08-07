@@ -2,14 +2,13 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../../../components/dialogs/catalog_compat.dart';
+import 'widgets/compat_dialog.dart';
 import '../../../components/icon.dart';
-import '../../../components/dialogs/catalog_states.dart';
+import 'widgets/states.dart';
+import '../../../components/navigation.dart';
 import '../../../theme/theme.dart';
-import '../../../widgets/open_url.dart';
-import '../../asembler/controller.dart';
-import '../../asembler/page.dart';
-import '../../tools/remote/desktop/page.dart';
+import '../../../components/open_url.dart';
+import '../../../services/assembler/controller.dart';
 import '../manager/page.dart';
 import 'detail_page.dart';
 import 'controller.dart';
@@ -82,17 +81,13 @@ class _CatalogViewState extends State<CatalogView> {
   }
 
   void _openAssembler() {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const AssemblerConsolePage()));
+    openRoute(context, AppRoute.assemblerConsole);
   }
 
   void _chooseSourceBuild() => _ctrl.chooseSourceBuild();
 
   void _onLaunched() {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const RemoteControlPage()));
+    openRoute(context, AppRoute.remoteControl);
   }
 
   void _openApp(AppCard app) {

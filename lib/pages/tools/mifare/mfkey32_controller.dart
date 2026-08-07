@@ -8,7 +8,7 @@ import 'key_nonce_parser.dart';
 import 'mfkey32_api.dart';
 import 'mfkey32_models.dart';
 import 'mfkey32_recoverer.dart';
-import '../../../services/logging/log_service.dart';
+import '../../../services/logging.dart';
 
 const _totalPercent = 1.0;
 
@@ -17,9 +17,9 @@ class MfKey32Controller extends ChangeNotifier {
     FlipperClient? client,
     MfKey32Api? mfKey32Api,
     MfKey32Recoverer? recoverer,
-  })  : _client = client ?? FlipperOneClient().get(),
-        _mfKey32Api = mfKey32Api ?? MfKey32ApiImpl(),
-        _recoverer = recoverer ?? NativeMfKey32Recoverer() {
+  }) : _client = client ?? FlipperOneClient().get(),
+       _mfKey32Api = mfKey32Api ?? MfKey32ApiImpl(),
+       _recoverer = recoverer ?? NativeMfKey32Recoverer() {
     _state = const MfKey32Error(MfKey32ErrorType.flipperConnection);
     _existedKeysStorage = ExistedKeysStorage(_client);
   }
@@ -67,11 +67,13 @@ class MfKey32Controller extends ChangeNotifier {
 
     final nonces = KeyNonceParser.parse(_fileWithNonce);
     _emit(const MfKey32Calculating(0));
-    await Future.wait(nonces.map((nonce) async {
-      final key = await _recoverer.bruteforceKey(nonce);
-      LogService.log('[MfKey32ViewModel] Key for nonce $nonce = $key');
-      _onFoundKey(nonce, key, nonces.length);
-    }));
+    await Future.wait(
+      nonces.map((nonce) async {
+        final key = await _recoverer.bruteforceKey(nonce);
+        LogService.log('[MfKey32ViewModel] Key for nonce $nonce = $key');
+        _onFoundKey(nonce, key, nonces.length);
+      }),
+    );
 
     _emit(const MfKey32Uploading());
     late final List<String> addedKeys;
@@ -147,7 +149,9 @@ class MfKey32Controller extends ChangeNotifier {
         timeout: const Duration(seconds: 30),
       );
     } catch (e) {
-      LogService.log('[MfKey32ViewModel] #deleteBruteforceApp could not delete: $e');
+      LogService.log(
+        '[MfKey32ViewModel] #deleteBruteforceApp could not delete: $e',
+      );
     }
     await _mfKey32Api.checkBruteforceFileExist(_client);
   }

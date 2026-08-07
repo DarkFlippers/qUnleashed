@@ -8,8 +8,8 @@ import '../../../../theme/theme.dart';
 import 'package:qunleashed/components/appbar.dart';
 import 'package:qunleashed/components/icon.dart';
 import 'package:qunleashed/theme/colors/category.dart';
-import '../../../../widgets/notification.dart';
-import '../../../../widgets/progress_button.dart';
+import '../../../../components/notification.dart';
+import '../../../../components/progress_button.dart';
 import 'package:qunleashed/services/progress_throttle.dart';
 
 typedef IrFileSendHandler =

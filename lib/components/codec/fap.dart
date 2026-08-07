@@ -108,37 +108,44 @@ class ElfImage {
           ? _checkedInt(data.getUint64(base + 48, endian))
           : data.getUint32(base + 32, endian);
       if (offset == null || size == null) return null;
-      raw.add(ElfSectionHeader(
-        index: i,
-        name: '',
-        type: data.getUint32(base + 4, endian),
-        flags: flags ?? 0,
-        offset: offset,
-        size: size,
-        link: data.getUint32(base + (is64Bit ? 40 : 24), endian),
-        align: align ?? 0,
-      ));
+      raw.add(
+        ElfSectionHeader(
+          index: i,
+          name: '',
+          type: data.getUint32(base + 4, endian),
+          flags: flags ?? 0,
+          offset: offset,
+          size: size,
+          link: data.getUint32(base + (is64Bit ? 40 : 24), endian),
+          align: align ?? 0,
+        ),
+      );
     }
 
     final names = raw[nameIndex];
     if (!_hasRange(bytes.length, names.offset, names.size)) return null;
-    final nameTable =
-        Uint8List.sublistView(bytes, names.offset, names.offset + names.size);
+    final nameTable = Uint8List.sublistView(
+      bytes,
+      names.offset,
+      names.offset + names.size,
+    );
 
     final sections = <ElfSectionHeader>[];
     for (var i = 0; i < raw.length; i++) {
       final base = tableOffset + i * headerSize;
       final section = raw[i];
-      sections.add(ElfSectionHeader(
-        index: section.index,
-        name: _readCString(nameTable, data.getUint32(base, endian)) ?? '',
-        type: section.type,
-        flags: section.flags,
-        offset: section.offset,
-        size: section.size,
-        link: section.link,
-        align: section.align,
-      ));
+      sections.add(
+        ElfSectionHeader(
+          index: section.index,
+          name: _readCString(nameTable, data.getUint32(base, endian)) ?? '',
+          type: section.type,
+          flags: section.flags,
+          offset: section.offset,
+          size: section.size,
+          link: section.link,
+          align: section.align,
+        ),
+      );
     }
 
     return ElfImage._(bytes, data, is64Bit, endian, sections);
@@ -260,11 +267,7 @@ class FapManifest {
       versionMajor: data.getUint16(18, Endian.little),
       name: _readFixedAscii(section, nameOffset, nameLength),
       hasIcon: section[hasIconOffset] != 0,
-      icon: Uint8List.sublistView(
-        section,
-        iconOffset,
-        iconOffset + iconLength,
-      ),
+      icon: Uint8List.sublistView(section, iconOffset, iconOffset + iconLength),
     );
   }
 }
@@ -352,11 +355,7 @@ class FapAssets {
       files.add(FapAssetFile(path: _readCString(raw, 0) ?? '', size: size));
     }
 
-    return FapAssets(
-      dirs: dirs,
-      files: files,
-      signature: _hex(signature),
-    );
+    return FapAssets(dirs: dirs, files: files, signature: _hex(signature));
   }
 }
 
@@ -403,11 +402,13 @@ class FapInfo {
   /// Sections the loader copies into the heap, in the order firmware
   /// `elf_preload_section()` decides on them.
   List<ElfSectionHeader> get loadedSections => sections
-      .where((s) =>
-          s.size > 0 &&
-          !_isArmSection(s.name) &&
-          (s.isAllocated ||
-              (!s.isInfoLink && s.name.startsWith(kFapFastRelPrefix))))
+      .where(
+        (s) =>
+            s.size > 0 &&
+            !_isArmSection(s.name) &&
+            (s.isAllocated ||
+                (!s.isInfoLink && s.name.startsWith(kFapFastRelPrefix))),
+      )
       .toList();
 
   /// Total heap the app needs once every loadable section is allocated.
