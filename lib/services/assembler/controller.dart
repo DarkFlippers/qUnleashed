@@ -4,6 +4,8 @@ import 'package:dartufbt/dartufbt.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'remote_build_service.dart';
+
 const String kOfficialIndexUrl =
     'https://update.flipperzero.one/firmware/directory.json';
 const String kUnleashedIndexUrl = 'https://up.unleashedflip.com/directory.json';
@@ -148,6 +150,43 @@ class AssemblerController extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_prefCustomIndexUrl, url);
+  }
+
+  static const Duration _probeTtl = Duration(minutes: 5);
+  static const Duration _probeTimeout = Duration(seconds: 10);
+
+  bool? _serverReachable;
+  final Stopwatch _sinceProbe = Stopwatch();
+  Future<bool>? _probe;
+
+  /// Whether source builds can run at all with the backend picked in the
+  /// settings: on this computer that is the platform, on the server a live
+  /// answer from it. The catalog asks on every mode resolution, so the server
+  /// answer is cached for [_probeTtl].
+  Future<bool> builderAvailable({bool force = false}) {
+    if (!usesServerBuild) return Future.value(isSupported);
+    if (!RemoteBuildService.instance.canBuild) return Future.value(false);
+    final cached = _serverReachable;
+    if (!force && cached != null && _sinceProbe.elapsed < _probeTtl) {
+      return Future.value(cached);
+    }
+    return _probe ??= _probeServer();
+  }
+
+  Future<bool> _probeServer() async {
+    var reachable = false;
+    try {
+      await RemoteBuildService.instance.serverStatus().timeout(_probeTimeout);
+      reachable = true;
+    } catch (e) {
+      debugPrint('[Assembler] build server unreachable: $e');
+    }
+    _serverReachable = reachable;
+    _sinceProbe
+      ..reset()
+      ..start();
+    _probe = null;
+    return reachable;
   }
 
   void setVerbose(bool value) {
