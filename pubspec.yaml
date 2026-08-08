@@ -14,7 +14,7 @@ dependencies:
     path: lib/modules/flipperlib
   dartufbt:
     path: lib/modules/dartufbt
-  universal_ble: ^1.0.0
+  universal_ble: ^2.1.1
   usb_serial: ^0.5.2
   permission_handler: ^11.3.1
   flutter_libserialport: ^0.6.0
