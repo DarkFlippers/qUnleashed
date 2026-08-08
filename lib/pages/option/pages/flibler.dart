@@ -3,11 +3,11 @@ import 'dart:async';
 import 'package:dartufbt/dartufbt.dart';
 import 'package:flutter/material.dart';
 
-import '../../components/cardlist.dart';
-import '../../components/navigation.dart';
-import '../../theme/theme.dart';
-import '../../services/assembler/controller.dart';
-import '../../services/assembler/remote_build_service.dart';
+import '../../../components/cardlist.dart';
+import '../../../components/navigation.dart';
+import '../../../theme/theme.dart';
+import '../../../services/assembler/controller.dart';
+import '../../../services/assembler/remote_build_service.dart';
 
 class AssemblerSettingsPage extends StatefulWidget {
   const AssemblerSettingsPage({
@@ -102,9 +102,9 @@ class _AssemblerSettingsPageState extends State<AssemblerSettingsPage> {
       title: _backendTitles[backend]!,
       subtitle: local
           ? (supported
-                ? 'Faster: compiles here, needs the SDK and toolchain below'
-                : 'Not available: the ARM toolchain has no mobile build')
-          : 'Slower: waits in the server queue, downloads nothing here',
+                ? 'Faster: compiles here, needs toolchain'
+                : 'Not available')
+          : 'Slower: waits in the server queue',
       selected: _ctrl.backend == backend,
       dimmed: local && !supported,
     );
@@ -117,52 +117,6 @@ class _AssemblerSettingsPageState extends State<AssemblerSettingsPage> {
       return;
     }
     openRoute(context, AppRoute.assemblerConsole);
-  }
-
-  Widget _intro(BuildContext context) {
-    final colors = context.appColors;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
-      decoration: BoxDecoration(
-        color: colors.card,
-        borderRadius: BorderRadius.circular(kGroupedOuterRadius),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.construction, size: 22, color: colors.accent),
-              const SizedBox(width: 8),
-              Text(
-                'Flibler (Flipper Assembler Tool)',
-                style: TextStyle(
-                  color: colors.textPrimary,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'Flibler uses the uFBT utility to build an app for the firmware '
-            'you pick: it takes the app source bundle instead of a ready FAP '
-            'and compiles it against the SDK of that firmware.\n\n'
-            'On this computer that needs two one-time downloads — the firmware '
-            'SDK (~22 MB) and the ARM toolchain (~340 MB), stored where ufbt '
-            'keeps them, so an existing ufbt setup is reused as is. The build '
-            'server does the same job remotely and downloads nothing here, '
-            'which is the only option on phones.',
-            style: TextStyle(
-              color: colors.textSecondary,
-              fontSize: 12.5,
-              height: 1.45,
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   Widget _radioTile(
@@ -506,13 +460,6 @@ class _AssemblerSettingsPageState extends State<AssemblerSettingsPage> {
           body: ListView(
             padding: const EdgeInsets.symmetric(vertical: 10),
             children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: kGroupedHorizontalPadding,
-                ),
-                child: _intro(context),
-              ),
-              const SizedBox(height: 14),
               GroupedCardList<AssemblerBackend>(
                 title: 'Build with',
                 items: AssemblerBackend.values,

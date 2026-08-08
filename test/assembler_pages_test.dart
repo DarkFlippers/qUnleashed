@@ -6,7 +6,7 @@ import 'package:qunleashed/pages/apps/catalog/widgets/compat_dialog.dart';
 import 'package:qunleashed/services/assembler/controller.dart';
 import 'package:qunleashed/pages/flibler/page.dart';
 import 'package:qunleashed/services/assembler/remote_build_service.dart';
-import 'package:qunleashed/pages/flibler/settings_page.dart';
+import 'package:qunleashed/pages/option/pages/flibler.dart';
 import 'package:qunleashed/pages/flibler/widgets/progress_panel.dart';
 import 'package:qunleashed/theme/theme.dart';
 
@@ -132,7 +132,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Assembler settings'), findsOneWidget);
-    expect(find.text('Flibler (Flipper Assembler Tool)'), findsOneWidget);
     expect(find.text('Release'), findsOneWidget);
     expect(find.text('Development'), findsOneWidget);
     expect(find.text('Unleashed'), findsOneWidget);

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../components/cardlist.dart';
-import '../../theme/theme.dart';
+import '../../../components/cardlist.dart';
+import '../../../theme/theme.dart';
 
 class ThemeSettingsPage extends StatelessWidget {
   const ThemeSettingsPage({super.key});

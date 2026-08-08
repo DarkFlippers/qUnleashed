@@ -13,7 +13,6 @@ import '../../../components/notification.dart';
 import '../../../components/progress_button.dart';
 import '../../../components/fap_facts.dart';
 import '../page.dart';
-import '../settings_page.dart';
 import 'controller.dart';
 
 class FliblerProjectPage extends StatefulWidget {
@@ -123,9 +122,7 @@ class _FliblerProjectPageState extends State<FliblerProjectPage> {
   }
 
   void _openSettings() {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const AssemblerSettingsPage()));
+    openRoute(context, AppRoute.assemblerSettings);
   }
 
   Widget _padded(Widget child) => Padding(

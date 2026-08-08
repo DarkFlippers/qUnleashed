@@ -4,9 +4,10 @@ import '../../components/cardlist.dart';
 import '../../components/icon.dart';
 import '../../components/navigation.dart';
 import '../../theme/theme.dart';
-import 'notifications_page.dart';
-import 'storage_page.dart';
-import 'theme_page.dart';
+import 'pages/flibler.dart';
+import 'pages/push.dart';
+import 'pages/storage.dart';
+import 'pages/theme.dart';
 
 class _Category {
   const _Category({
@@ -142,7 +143,7 @@ class SettingsPage extends StatelessWidget {
                 subtitle: 'Flipper Assembler Tool, builds apps from source',
                 asset: 'assets/ic/fileformat/settings.svg',
                 color: const Color(0xFF4DB6AC),
-                route: AppRoute.assemblerSettings,
+                page: (_) => const AssemblerSettingsPage(),
               ),
             ],
             onTap: (c) => _open(context, c),

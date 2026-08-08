@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../theme/theme.dart';
+import '../../components/navigation.dart';
 import '../../components/notification.dart';
 import '../../services/assembler/controller.dart';
-import 'settings_page.dart';
 import 'widgets/log_view.dart';
 import 'widgets/progress_panel.dart';
 
@@ -25,11 +25,8 @@ class AssemblerConsolePage extends StatelessWidget {
           IconButton(
             tooltip: 'Assembler settings',
             icon: Icon(Icons.settings_outlined, color: colors.textPrimary),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => const AssemblerSettingsPage(fromConsole: true),
-              ),
-            ),
+            onPressed: () =>
+                openRoute(context, AppRoute.assemblerSettings, args: true),
           ),
           AnimatedBuilder(
             animation: controller,
