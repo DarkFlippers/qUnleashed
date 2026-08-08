@@ -1,4 +1,4 @@
-import '../../../components/codec/api_version.dart';
+import '../../../components/codec/fap/api_version.dart';
 import 'models/card.dart';
 
 enum CatalogMode { resolving, normal, mismatch, incompatible, compatibility }

@@ -8,7 +8,7 @@ import 'package:flutter/foundation.dart';
 import '../../../services/http/app_http.dart';
 import '../../../services/progress_throttle.dart';
 import '../../../services/storage/fap_icons.dart';
-import '../../../components/codec/fap_icon.dart';
+import '../../../components/codec/fap/icon.dart';
 import '../../../services/assembler/build_service.dart';
 import '../../../services/assembler/controller.dart';
 import '../../../services/assembler/remote_build_service.dart';

@@ -11,7 +11,7 @@ import 'package:qunleashed/components/cardlist.dart';
 import 'package:flipperlib/flipperlib.dart';
 import '../../../services/storage/fap_icons.dart' as icon_repo;
 import '../../../components/notification.dart';
-import '../../../components/codec/fap_icon.dart';
+import '../../../components/codec/fap/icon.dart';
 import '../emulate/page.dart';
 import '../../../components/archive/category.dart';
 import '../../../components/archive/models/key.dart';

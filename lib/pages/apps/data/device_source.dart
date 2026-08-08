@@ -5,7 +5,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flutter/foundation.dart';
 
-import '../../../components/codec/fap.dart';
+import '../../../components/codec/fap/info.dart';
 import '../../../components/path.dart';
 import '../../../services/progress_throttle.dart';
 import '../../../services/storage/paths.dart';

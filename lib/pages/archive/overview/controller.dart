@@ -6,7 +6,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/foundation.dart';
 
-import '../../../components/codec/fap_icon.dart';
+import '../../../components/codec/fap/icon.dart';
 import '../../../components/archive/parser.dart';
 import '../../../components/path.dart';
 import '../../../services/archive/storage.dart';

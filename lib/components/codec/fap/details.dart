@@ -1,5 +1,5 @@
 import 'api_version.dart';
-import 'fap.dart';
+import 'info.dart';
 
 /// Why a `.fap` would be refused by the firmware loader, mirroring
 /// `flipper_application_validate_manifest()` in

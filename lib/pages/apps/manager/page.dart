@@ -17,7 +17,7 @@ import '../../../components/filelist/progress_fill.dart';
 import '../data/apps_backend.dart';
 import '../data/device_source.dart';
 import '../data/install_engine.dart';
-import '../../../components/codec/fap_details.dart';
+import '../../../components/codec/fap/details.dart';
 import '../data/models/installed_app.dart';
 import '../data/update_registry.dart';
 import '../icons/app_icon.dart';

@@ -2,8 +2,11 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:qunleashed/components/codec/fap.dart';
-import 'package:qunleashed/components/codec/fap_details.dart';
+import 'package:qunleashed/components/codec/fap/elf.dart';
+import 'package:qunleashed/components/codec/fap/info.dart';
+import 'package:qunleashed/components/codec/fap/details.dart';
+import 'package:qunleashed/components/codec/fap/assets.dart';
+import 'package:qunleashed/components/codec/fap/manifest.dart';
 import 'package:qunleashed/pages/apps/data/models/installed_app.dart';
 import 'package:qunleashed/components/fap_facts.dart';
 import 'package:qunleashed/theme/theme.dart';

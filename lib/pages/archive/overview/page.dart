@@ -14,7 +14,7 @@ import 'controller.dart';
 import '../../../components/archive/category.dart';
 import '../../../components/archive/models/fap.dart';
 import '../../../components/archive/models/key.dart';
-import '../../../components/codec/fap_icon.dart';
+import '../../../components/codec/fap/icon.dart';
 import '../../../components/filelist/empty_view.dart';
 import 'widgets/key_actions_sheet.dart';
 import '../../../components/filelist/progress_fill.dart';

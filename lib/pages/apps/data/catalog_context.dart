@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flutter/foundation.dart';
 
-import '../../../components/codec/api_version.dart';
+import '../../../components/codec/fap/api_version.dart';
 import '../../../services/logging.dart';
 import 'catalog_api.dart';
 import 'catalog_mode.dart';

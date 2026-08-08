@@ -7,7 +7,7 @@ import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../../components/codec/fap.dart';
+import '../../../components/codec/fap/info.dart';
 import '../../../services/progress_throttle.dart';
 import '../../../services/assembler/build_service.dart';
 import '../../../services/assembler/controller.dart';

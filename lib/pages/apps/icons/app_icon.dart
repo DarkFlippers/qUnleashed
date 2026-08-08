@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../components/icon.dart';
 import '../../../services/storage/fap_icons.dart';
-import '../../../components/codec/fap_icon.dart';
+import '../../../components/codec/fap/icon.dart';
 import '../data/models/manifest.dart';
 import 'icon_resolver.dart';
 

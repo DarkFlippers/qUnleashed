@@ -7,7 +7,7 @@ import '../../../../components/format.dart';
 import '../../../../components/icon.dart';
 import '../../../../services/storage/fap_icons.dart' as icon_repo;
 import '../../../../theme/theme.dart';
-import '../../../../components/codec/fap_icon.dart';
+import '../../../../components/codec/fap/icon.dart';
 import '../../widgets/actions_sheet.dart';
 import '../../../../components/filelist/progress_fill.dart';
 import '../share_remote_file.dart';

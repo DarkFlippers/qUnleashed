@@ -4,7 +4,7 @@ import 'dart:typed_data';
 
 import '../../../services/http/app_http.dart';
 import '../../../services/storage/fap_icons.dart';
-import '../../../components/codec/fap_icon.dart';
+import '../../../components/codec/fap/icon.dart';
 import '../data/models/card.dart';
 import '../data/models/manifest.dart';
 import 'icon_codec.dart';

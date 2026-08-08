@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
-import 'codec/fap.dart';
 import 'format.dart';
 import '../theme/theme.dart';
-import 'codec/fap_details.dart';
+import 'codec/fap/details.dart';
+import 'codec/fap/info.dart';
 
 /// Everything a `.fap` tells about itself: the embedded manifest, what the
 /// loader would allocate for it and the assets it unpacks onto the SD card.
