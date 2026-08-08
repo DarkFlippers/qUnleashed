@@ -64,17 +64,18 @@ class AppsBackend {
   String? get serverApi => catalog.serverApi;
   String? get compatApi => catalog.compatApi;
   ApiVerdict? get incompatibility => catalog.incompatibility;
+  bool get catalogOffline => catalog.catalogOffline;
   bool get apiFallbackEnabled => catalog.apiFallbackEnabled;
   bool get sourceBuildEnabled => catalog.sourceBuildEnabled;
   bool get ignoreSdkMismatch => catalog.ignoreSdkMismatch;
-  ValueNotifier<int> get compatibilityNeeded => catalog.compatibilityNeeded;
-  String? get fallbackApi => catalog.fallbackApi;
+  CatalogModePreference get preference => catalog.preference;
   (int, int)? get targetSdk => catalog.targetSdk;
 
   Future<void> resolveMode({bool force = false}) =>
       catalog.resolveMode(force: force);
-  void chooseSourceBuild() => catalog.chooseSourceBuild();
-  void chooseCompatibility() => catalog.chooseCompatibility();
+  Future<void> loadPreference() => catalog.loadPreference();
+  Future<void> setPreference(CatalogModePreference value) =>
+      catalog.setPreference(value);
   Future<void> ensureDeviceFilters({bool required = false}) =>
       catalog.ensureDeviceFilters(required: required);
 
@@ -103,7 +104,6 @@ class AppsBackend {
     final id = state.device?.id;
     if (id != null && id != _deviceId) {
       _deviceId = id;
-      catalog.sourceBuildEnabled = false;
       catalog.resetDeviceState();
       catalog.resolvedForDeviceId = null;
       manifests.handleDeviceChange();

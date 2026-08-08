@@ -83,8 +83,6 @@ class AppsCatalogController extends ChangeNotifier {
   String? get compatApi => _backend.compatApi;
   ApiVerdict? get incompatibility => _backend.incompatibility;
 
-  void chooseCompatibility() => _backend.chooseCompatibility();
-  void chooseSourceBuild() => _backend.chooseSourceBuild();
   Future<void> refreshMode() => _backend.resolveMode(force: true);
 
   AppCategory? categoryById(String id) {
@@ -100,19 +98,20 @@ class AppsCatalogController extends ChangeNotifier {
     await _maybeLoad();
   }
 
+  static bool showsCatalog(CatalogMode mode) =>
+      mode == CatalogMode.normal ||
+      mode == CatalogMode.nearestApi ||
+      mode == CatalogMode.sourceBuild;
+
   Future<void> _maybeLoad() async {
-    final m = _backend.mode.value;
-    if (m != CatalogMode.normal && m != CatalogMode.compatibility) return;
+    if (!showsCatalog(_backend.mode.value)) return;
     if (_categories.isEmpty) await loadCategories();
     if (_apps.isEmpty) await refresh();
   }
 
   void _onModeChanged() {
     notifyListeners();
-    final m = _backend.mode.value;
-    if (m == CatalogMode.normal || m == CatalogMode.compatibility) {
-      unawaited(_maybeLoad());
-    }
+    if (showsCatalog(_backend.mode.value)) unawaited(_maybeLoad());
   }
 
   Future<void> loadCategories() async {

@@ -4,6 +4,7 @@ import '../../components/cardlist.dart';
 import '../../components/icon.dart';
 import '../../components/navigation.dart';
 import '../../theme/theme.dart';
+import 'pages/apps.dart';
 import 'pages/flibler.dart';
 import 'pages/push.dart';
 import 'pages/storage.dart';
@@ -138,6 +139,13 @@ class SettingsPage extends StatelessWidget {
           const SizedBox(height: 10),
           GroupedCardList<_Category>(
             items: [
+              _Category(
+                title: 'Apps',
+                subtitle: 'Catalog mode, firmware API compatibility',
+                asset: 'assets/ic/app/apps.svg',
+                color: const Color(0xFF5C9BE8),
+                page: (_) => const AppsSettingsPage(),
+              ),
               _Category(
                 title: 'Flibler',
                 subtitle: 'Flipper Assembler Tool, builds apps from source',

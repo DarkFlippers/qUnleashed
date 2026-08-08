@@ -83,7 +83,7 @@ class UpdateRegistry extends ChangeNotifier {
 
   Future<void> refresh({bool force = false}) async {
     if (_loading || !isReady) return;
-    if (catalog.mode.value == CatalogMode.incompatible) {
+    if (catalog.mode.value == CatalogMode.managerOnly) {
       _cardsByUid.clear();
       _updates = const [];
       _loaded = true;

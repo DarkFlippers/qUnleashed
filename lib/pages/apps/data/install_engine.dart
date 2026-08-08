@@ -303,12 +303,11 @@ class InstallEngine extends ChangeNotifier {
                 apiOverride: appApi,
               );
             } else {
-              if (canFallback) catalog.flagCompatibilityNeeded(appApi);
               throw StateError(
                 canFallback
                     ? 'App is built for API $appApi, firmware has '
-                          '${api.api ?? '?'}; ignore the warning or build it '
-                          'from source to install'
+                          '${api.api ?? '?'}; switch the catalog mode in the '
+                          'apps settings to install it'
                     : 'No compatible build for this firmware (API ${api.api ?? '?'})',
               );
             }
