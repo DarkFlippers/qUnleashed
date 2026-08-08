@@ -1235,6 +1235,37 @@ class ArchiveController extends ChangeNotifier {
     }
   }
 
+  Future<bool> writeKeyBytes(ArchiveKey k, List<int> bytes) async {
+    if (!_client.isConnected) {
+      _lastError = 'Connect a device to save';
+      notifyListeners();
+      return false;
+    }
+    _busyPath = k.remotePath;
+    _busyProgress = 0;
+    notifyListeners();
+    final throttle = ProgressThrottle();
+    try {
+      await _client.storageWriteChunked(
+        k.remotePath,
+        bytes,
+        onProgress: (p) {
+          _busyProgress = p.clamp(0.0, 1.0);
+          if (throttle.shouldEmit(_busyProgress)) notifyListeners();
+        },
+      );
+      return true;
+    } catch (e) {
+      _lastError = '$e';
+      LogService.log('[Archive] write ${k.remotePath} failed: $e');
+      return false;
+    } finally {
+      _busyPath = null;
+      _busyProgress = 0;
+      notifyListeners();
+    }
+  }
+
   /// Downloads [k] into the share cache with inline progress and returns the
   /// local file path (for sharing), or null on failure.
   Future<String?> downloadKeyToCache(ArchiveKey k) async {

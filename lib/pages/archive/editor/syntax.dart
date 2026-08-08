@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:highlight/highlight.dart' show Mode, highlight;
 
 import '../../../theme/colors/editor.dart';
 
-const _duckyscriptCommands = [
+const Set<String> duckyscriptCommands = {
   'ALT',
   'BACKSPACE',
   'CAPSLOCK',
@@ -44,32 +43,96 @@ const _duckyscriptCommands = [
   'TAB',
   'UP',
   'WINDOWS',
-];
+};
 
-final duckyscript = Mode(
-  aliases: ['badusb', 'ducky'],
-  case_insensitive: true,
-  disableAutodetect: true,
-  contains: [
-    Mode(className: 'comment', begin: r'^\s*(REM\b|#)', end: r'$'),
-    Mode(className: 'number', begin: r'\b\d+\b', relevance: 0),
-    Mode(
-      className: 'keyword',
-      begin: '\\b(${_duckyscriptCommands.join('|')})\\b',
-      relevance: 0,
-    ),
-    Mode(className: 'string', begin: r'[A-Za-z0-9_-]+', relevance: 0),
-  ],
-);
+const Set<String> codeKeywords = {
+  'abstract',
+  'as',
+  'async',
+  'await',
+  'break',
+  'case',
+  'catch',
+  'class',
+  'const',
+  'continue',
+  'default',
+  'delete',
+  'do',
+  'else',
+  'enum',
+  'export',
+  'extends',
+  'extension',
+  'factory',
+  'final',
+  'finally',
+  'for',
+  'from',
+  'function',
+  'get',
+  'if',
+  'implements',
+  'import',
+  'in',
+  'instanceof',
+  'interface',
+  'is',
+  'late',
+  'let',
+  'mixin',
+  'new',
+  'of',
+  'on',
+  'operator',
+  'return',
+  'set',
+  'static',
+  'super',
+  'switch',
+  'this',
+  'throw',
+  'try',
+  'typedef',
+  'typeof',
+  'var',
+  'void',
+  'while',
+  'with',
+  'yield',
+};
 
-final duckyscriptEditorTheme = {
+const Set<String> codeLiterals = {
+  'true',
+  'false',
+  'null',
+  'undefined',
+  'NaN',
+  'Infinity',
+};
+
+const Set<String> codeBuiltIns = {
+  'Array',
+  'BigInt',
+  'Boolean',
+  'Date',
+  'JSON',
+  'Map',
+  'Math',
+  'Number',
+  'Object',
+  'Promise',
+  'RegExp',
+  'Set',
+  'String',
+  'Symbol',
+  'console',
+};
+
+final Map<String, TextStyle> duckyscriptEditorTheme = {
   ...dartEditorTheme,
   'keyword': dartEditorTheme['doctag']!.copyWith(fontWeight: FontWeight.w600),
   'comment': dartEditorTheme['comment']!,
   'number': dartEditorTheme['title.function']!,
   'string': dartEditorTheme['root']!.copyWith(backgroundColor: null),
 };
-
-void registerDuckyscriptLanguage() {
-  highlight.registerLanguage('duckyscript', duckyscript);
-}

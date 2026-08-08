@@ -15,7 +15,7 @@ import '../../../components/codec/fap/icon.dart';
 import '../emulate/page.dart';
 import '../../../components/archive/category.dart';
 import '../../../components/archive/models/key.dart';
-import '../editor/page.dart';
+import '../editor/open.dart';
 import 'share_remote_file.dart';
 import 'controller.dart';
 import 'widgets/file_row.dart';
@@ -99,7 +99,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
       _openPaintEditor(_ctrl.childPath(e.name));
       return;
     }
-    _openTextEditor(_ctrl.childPath(e.name));
+    _openTextEditor(e);
   }
 
   Future<void> _navigateTo(String path) async {
@@ -202,13 +202,18 @@ class _FileManagerPageState extends State<FileManagerPage> {
     openRoute(context, AppRoute.remoteControl);
   }
 
-  Future<void> _openTextEditor(String remotePath) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) =>
-            TextEditorPage(remotePath: remotePath, client: _ctrl.client),
-      ),
+  Future<void> _openTextEditor(RemoteEntry e) async {
+    final remotePath = _ctrl.childPath(e.name);
+    await openRemoteFileInEditor(
+      context,
+      remotePath: remotePath,
+      download: () => _ctrl.downloadTo(remotePath, expectedSize: e.size),
+      upload: (bytes) => _ctrl.writeBytes(remotePath, bytes),
+      onRun: e.extension == 'js'
+          ? () => _emulateEntry(e, ArchiveCategory.javascript)
+          : null,
     );
+    if (!mounted) return;
     await _ctrl.refresh();
   }
 
@@ -1255,11 +1260,10 @@ class _FileManagerPageState extends State<FileManagerPage> {
             : null,
         onEdit: _isEditable(e)
             ? () {
-                final path = _ctrl.childPath(e.name);
                 if (_isPaintFile(e)) {
-                  _openPaintEditor(path);
+                  _openPaintEditor(_ctrl.childPath(e.name));
                 } else {
-                  _openTextEditor(path);
+                  _openTextEditor(e);
                 }
               }
             : null,
