@@ -40,7 +40,7 @@ class FileManagerController extends ChangeNotifier {
   bool _loading = false;
   String? _error;
   List<RemoteEntry> _entries = const [];
-  bool _showHidden = false;
+  bool _showHidden = true;
   double _transferProgress = 0;
   String? _transferLabel;
   String? _busyEntry;
