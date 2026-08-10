@@ -83,7 +83,13 @@ class _RecoverPageState extends State<RecoverPage> {
         body: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            _StatusBlock(state: _controller.state),
+            _StatusBlock(
+              state: _controller.state,
+              totalUnits: _controller.totalUnits,
+              hasCandidates: _controller.entries.any(
+                (e) => e.candidateCount != null,
+              ),
+            ),
             ..._buildGroups(_controller),
           ],
         ),
@@ -115,7 +121,6 @@ List<Widget> _buildGroups(RecoverController controller) {
         _CardBlock(
           cuidHex: cardEntry.value.first.cuidHex,
           entries: cardEntry.value,
-          addedKeys: controller.addedKeys,
         ),
       );
     }
@@ -132,8 +137,14 @@ class _SourceHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final (label, hint) = switch (source) {
-      RecoverSource.reader => ('Reader', 'from .mfkey32.log — a reader\'s key'),
-      RecoverSource.tag => ('Tag', 'from .nested.log — keys off a card'),
+      RecoverSource.reader => (
+        'Reader',
+        'Key a reader used on your emulated card · .mfkey32.log',
+      ),
+      RecoverSource.tag => (
+        'Card',
+        'Keys recovered from a card you scanned · .nested.log',
+      ),
     };
     return Padding(
       padding: const EdgeInsets.only(top: 20, bottom: 4),
@@ -163,15 +174,10 @@ class _SourceHeader extends StatelessWidget {
 }
 
 class _CardBlock extends StatelessWidget {
-  const _CardBlock({
-    required this.cuidHex,
-    required this.entries,
-    required this.addedKeys,
-  });
+  const _CardBlock({required this.cuidHex, required this.entries});
 
   final String cuidHex;
   final List<RecoverEntry> entries;
-  final Set<String> addedKeys;
 
   @override
   Widget build(BuildContext context) {
@@ -194,7 +200,7 @@ class _CardBlock extends StatelessWidget {
           for (final entry in entries)
             Padding(
               padding: const EdgeInsets.only(left: 8, top: 3, bottom: 3),
-              child: _EntryRow(entry: entry, addedKeys: addedKeys),
+              child: _EntryRow(entry: entry),
             ),
         ],
       ),
@@ -203,10 +209,9 @@ class _CardBlock extends StatelessWidget {
 }
 
 class _EntryRow extends StatelessWidget {
-  const _EntryRow({required this.entry, required this.addedKeys});
+  const _EntryRow({required this.entry});
 
   final RecoverEntry entry;
-  final Set<String> addedKeys;
 
   static String _kindLabel(RecoverKind kind) => switch (kind) {
     RecoverKind.mfkey32 => 'mfkey32',
@@ -224,16 +229,19 @@ class _EntryRow extends StatelessWidget {
         : null;
 
     final String line;
+    String? explainer;
     Color color = colors.textPrimary;
     if (entry.key != null) {
-      final known = !addedKeys.contains(entry.key);
+      // isNew is decided at recovery time, so this tag is already correct while
+      // the run is still in progress - not only in the final summary.
+      final tag = entry.isNew == false ? 'already in dict' : 'new';
       line =
-          '${where ?? ''} — ${entry.key}'
-          '  [${_kindLabel(entry.kind)}${known ? ', already in dict' : ', new'}]';
+          '${where ?? ''} — ${entry.key}  [${_kindLabel(entry.kind)}, $tag]';
     } else if (entry.candidateCount != null) {
       line =
-          '${entry.candidateCount} static-encrypted candidate key(s) '
-          '→ ${cuidDictFileName(entry.cuid)}';
+          '${entry.candidateCount} candidate keys → ${cuidDictFileName(entry.cuid)}';
+      explainer =
+          'The real key for this card is one of these candidates.';
       color = colors.textMuted;
     } else {
       line = '${where != null ? '$where — ' : ''}${_kindLabel(entry.kind)}';
@@ -247,23 +255,30 @@ class _EntryRow extends StatelessWidget {
           line,
           style: TextStyle(color: color, fontSize: 12, fontFamily: 'monospace'),
         ),
-        if (entry.note != null)
-          Padding(
-            padding: const EdgeInsets.only(top: 2),
-            child: Text(
-              entry.note!,
-              style: TextStyle(color: colors.textMuted, fontSize: 12),
+        for (final sub in [explainer, entry.note])
+          if (sub != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                sub,
+                style: TextStyle(color: colors.textMuted, fontSize: 12),
+              ),
             ),
-          ),
       ],
     );
   }
 }
 
 class _StatusBlock extends StatelessWidget {
-  const _StatusBlock({required this.state});
+  const _StatusBlock({
+    required this.state,
+    required this.totalUnits,
+    required this.hasCandidates,
+  });
 
   final MfKey32State state;
+  final int totalUnits;
+  final bool hasCandidates;
 
   @override
   Widget build(BuildContext context) {
@@ -271,10 +286,21 @@ class _StatusBlock extends StatelessWidget {
     final (title, showBar, percent) = switch (state) {
       MfKey32WaitingForFlipper() => ('Connecting device…', true, null),
       MfKey32DownloadingRawFile() => ('Downloading nonces…', true, null),
-      MfKey32Calculating(:final percent) => ('Recovering keys…', true, percent),
+      // A single unit (one weak/static/hardnested card, or the static-encrypted
+      // batch) has no meaningful percentage - it would only read 0% then 100%.
+      // Show an indeterminate bar there; a real percentage only for many units.
+      MfKey32Calculating(:final percent) => (
+        'Recovering keys…',
+        true,
+        totalUnits > 1 ? percent : null,
+      ),
       MfKey32Uploading() => ('Syncing with the device…', true, null),
       MfKey32Saved(:final keys) => (
-        keys.isEmpty ? 'No new keys added' : '${keys.length} new key(s) added',
+        keys.isNotEmpty
+            ? '${keys.length} new key(s) added'
+            : hasCandidates
+            ? 'Candidate keys saved'
+            : 'No new keys added',
         false,
         null,
       ),

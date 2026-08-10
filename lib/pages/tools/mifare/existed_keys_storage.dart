@@ -72,7 +72,11 @@ class ExistedKeysStorage {
     return _userKeys.where((key) => !_userDict.contains(key)).toList();
   }
 
-  void onNewKey(FoundedKey foundedKey) {
+  /// Records [foundedKey] and folds its key into the user-dict write-back set.
+  /// Returns whether the key is new to the user + system dictionaries (true),
+  /// already known (false), or null when there is no key - so the caller can
+  /// tag the result immediately rather than waiting for the end-of-run set.
+  bool? onNewKey(FoundedKey foundedKey) {
     final key = foundedKey.key;
     DuplicatedSource? existed;
     if (key != null && _flipperKeys.contains(key)) {
@@ -99,6 +103,8 @@ class ExistedKeysStorage {
       uniqueKeys: uniqueKeys,
       duplicated: duplicated,
     );
+
+    return key == null ? null : existed == null;
   }
 
   Future<List<String>> _loadDict(

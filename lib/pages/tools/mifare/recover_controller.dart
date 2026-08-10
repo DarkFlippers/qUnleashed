@@ -72,6 +72,11 @@ class RecoverController extends ChangeNotifier {
   /// Every recovery result gathered this run, in completion order.
   List<RecoverEntry> get entries => UnmodifiableListView(_entries);
 
+  /// Total recovery units this run (reader keys + weak/static pairs + hardnested
+  /// groups + one for the static-encrypted batch). The UI shows an indeterminate
+  /// bar when this is <= 1, where a percentage would only ever read 0% then 100%.
+  int get totalUnits => _totalUnits;
+
   /// Keys newly written to the user dictionary this run (i.e. not already in the
   /// user or system dict). Lets the UI tag each key new vs. already-known.
   Set<String> get addedKeys => _addedKeys;
@@ -328,7 +333,7 @@ class RecoverController extends ChangeNotifier {
     String? note,
   }) {
     final keyHex = key == null ? null : formatMifareKey(key.toInt());
-    _storage.onNewKey(
+    final isNew = _storage.onNewKey(
       FoundedKey(sectorName: sectorName, keyName: keyName, key: keyHex),
     );
     _entries.add(
@@ -339,6 +344,7 @@ class RecoverController extends ChangeNotifier {
         sectorName: sectorName,
         keyName: keyName,
         key: keyHex,
+        isNew: isNew,
         note: note,
       ),
     );

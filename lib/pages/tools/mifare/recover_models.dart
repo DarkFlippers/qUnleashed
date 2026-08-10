@@ -30,6 +30,7 @@ class RecoverEntry {
     this.sectorName,
     this.keyName,
     this.key,
+    this.isNew,
     this.candidateCount,
     this.note,
   });
@@ -46,6 +47,12 @@ class RecoverEntry {
   /// Recovered 12-hex-digit key, or null when not resolved to one key
   /// (static-encrypted candidates, or a failed / too-few-nonces hardnested group).
   final String? key;
+
+  /// Whether [key] was new to the user + system dictionaries (true) or already
+  /// known (false); null when there is no resolved key. Decided at recovery time
+  /// so the "new / already in dict" tag is correct during progress, not only in
+  /// the final summary.
+  final bool? isNew;
 
   /// Static-encrypted: number of candidate keys written to `mf_classic_dict_<cuid>.nfc`.
   final int? candidateCount;

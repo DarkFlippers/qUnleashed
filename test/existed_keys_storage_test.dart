@@ -56,6 +56,45 @@ void main() {
       },
     );
 
+    test('onNewKey reports new vs already-known (drives the live tag)', () async {
+      final storage = ExistedKeysStorage.withSeams(
+        reader: (path) async {
+          if (path == flipperDictUserPath) return utf8.encode('A0A1A2A3A4A5\n');
+          if (path == flipperDictPath) return utf8.encode('FFFFFFFFFFFF\n');
+          return const <int>[];
+        },
+        writer: _noWrite,
+      );
+      await storage.load();
+
+      // A key already in the user or system dict is not new.
+      expect(
+        storage.onNewKey(
+          const FoundedKey(sectorName: '0', keyName: 'A', key: 'A0A1A2A3A4A5'),
+        ),
+        isFalse,
+      );
+      expect(
+        storage.onNewKey(
+          const FoundedKey(sectorName: '0', keyName: 'B', key: 'FFFFFFFFFFFF'),
+        ),
+        isFalse,
+      );
+      // A genuinely unseen key is new; a null (unrecovered) key gives no verdict.
+      expect(
+        storage.onNewKey(
+          const FoundedKey(sectorName: '1', keyName: 'A', key: 'B0B1B2B3B4B5'),
+        ),
+        isTrue,
+      );
+      expect(
+        storage.onNewKey(
+          const FoundedKey(sectorName: '2', keyName: 'A', key: null),
+        ),
+        isNull,
+      );
+    });
+
     test('upload propagates a write failure (no false success)', () async {
       final storage = ExistedKeysStorage.withSeams(
         reader: _notExist,
