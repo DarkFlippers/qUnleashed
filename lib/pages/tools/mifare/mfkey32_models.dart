@@ -26,13 +26,22 @@ class MfKey32Uploading extends MfKey32State {
 }
 
 class MfKey32Saved extends MfKey32State {
-  const MfKey32Saved({required this.keys, this.hasCandidates = false});
+  const MfKey32Saved({
+    required this.keys,
+    this.hasCandidates = false,
+    this.hasFailures = false,
+  });
 
   /// Keys newly written to the user dictionary this run.
   final List<String> keys;
 
   /// True when a per-card static-encrypted candidate dictionary was written.
   final bool hasCandidates;
+
+  /// True when a step failed (an attack engine was unavailable, or a candidate
+  /// dictionary couldn't be generated or written) even though the run otherwise
+  /// completed - so the summary avoids a clean "success" headline.
+  final bool hasFailures;
 }
 
 class MfKey32Error extends MfKey32State {

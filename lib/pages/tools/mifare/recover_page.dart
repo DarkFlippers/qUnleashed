@@ -275,8 +275,8 @@ class _StatusBlock extends StatelessWidget {
         totalUnits > 1 ? '$doneUnits / $totalUnits' : '…',
       ),
       MfKey32Uploading() => ('Syncing with the device…', '…'),
-      MfKey32Saved(:final keys, :final hasCandidates) => (
-        _savedTitle(keys.length, hasCandidates),
+      MfKey32Saved(:final keys, :final hasCandidates, :final hasFailures) => (
+        _savedTitle(keys.length, hasCandidates, hasFailures),
         null,
       ),
       MfKey32Error(:final errorType) => (_errorText(errorType), null),
@@ -310,12 +310,18 @@ class _StatusBlock extends StatelessWidget {
     );
   }
 
-  static String _savedTitle(int newKeys, bool hasCandidates) {
+  static String _savedTitle(int newKeys, bool hasCandidates, bool hadFailure) {
+    final String base;
     if (newKeys > 0) {
-      return '$newKeys new ${newKeys == 1 ? 'key' : 'keys'} added';
+      base = '$newKeys new ${newKeys == 1 ? 'key' : 'keys'} added';
+    } else if (hasCandidates) {
+      base = 'Candidate keys saved';
+    } else if (hadFailure) {
+      return 'Recovery finished with errors';
+    } else {
+      return 'No new keys added';
     }
-    if (hasCandidates) return 'Candidate keys saved';
-    return 'No new keys added';
+    return hadFailure ? '$base — some steps failed' : base;
   }
 
   static String _errorText(MfKey32ErrorType type) => switch (type) {
@@ -323,10 +329,12 @@ class _StatusBlock extends StatelessWidget {
       'No .mfkey32.log or .nested.log found. Collect nonces on the device '
           '(emulate a card against a reader, or read a card with a known key), '
           'then sync and retry.',
-    MfKey32ErrorType.readWrite => 'SD card is full or not accessible',
+    MfKey32ErrorType.readWrite =>
+      'Couldn\'t read or write device storage — it may be full, disconnected, '
+          'or busy.',
     MfKey32ErrorType.flipperConnection => 'Device not connected',
     MfKey32ErrorType.recoveryFailed =>
-      'Key recovery is unavailable on this build — a native component could '
-          'not be loaded. Update the app and try again.',
+      'Key recovery failed unexpectedly. Reconnect the device and retry; if it '
+          'persists, update the app.',
   };
 }

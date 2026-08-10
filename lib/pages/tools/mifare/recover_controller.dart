@@ -65,6 +65,10 @@ class RecoverController extends ChangeNotifier {
   // Set true once a per-card static-encrypted candidate dictionary is actually
   // written, so the summary can distinguish "candidates saved" from "nothing".
   bool _wroteCandidates = false;
+  // Set true when a step fails (an engine was unavailable, or candidates could
+  // not be generated/written) though the run still completes - the summary then
+  // shows a partial-failure headline instead of a clean success.
+  bool _hadFailure = false;
 
   int _totalUnits = 0;
   int _doneUnits = 0;
@@ -107,6 +111,7 @@ class RecoverController extends ChangeNotifier {
   Future<void> _run() async {
     _entries.clear();
     _wroteCandidates = false;
+    _hadFailure = false;
     _totalUnits = 0;
     _doneUnits = 0;
 
@@ -117,9 +122,19 @@ class RecoverController extends ChangeNotifier {
 
     _emit(const MfKey32WaitingForFlipper());
 
-    await _mfApi.checkBruteforceFileExist(_client);
-    final hasReaderLog = _mfApi.isBruteforceFileExist;
-    final hasTagLog = await _nestedApi.nonceFileExists(_client);
+    final bool hasReaderLog;
+    final bool hasTagLog;
+    try {
+      await _mfApi.checkBruteforceFileExist(_client);
+      hasReaderLog = _mfApi.isBruteforceFileExist;
+      hasTagLog = await _nestedApi.nonceFileExists(_client);
+    } catch (e, st) {
+      // A device RPC failure here (disconnect, BLE drop) is a connection
+      // problem - not the catch-all "recovery unavailable" error below.
+      LogService.error('[Recover] file-existence probe failed: $e\n$st');
+      _emit(const MfKey32Error(MfKey32ErrorType.flipperConnection));
+      return;
+    }
     if (!hasReaderLog && !hasTagLog) {
       _emit(const MfKey32Error(MfKey32ErrorType.notFoundFile));
       return;
@@ -187,7 +202,13 @@ class RecoverController extends ChangeNotifier {
       return;
     }
 
-    _emit(MfKey32Saved(keys: added, hasCandidates: _wroteCandidates));
+    _emit(
+      MfKey32Saved(
+        keys: added,
+        hasCandidates: _wroteCandidates,
+        hasFailures: _hadFailure,
+      ),
+    );
   }
 
   // ---- reader (mfkey32) ----
@@ -262,6 +283,7 @@ class RecoverController extends ChangeNotifier {
       // the reader/weak keys already recovered - degrade this group to a note
       // and carry on to the user-dict upload.
       LogService.error('[Recover] hardnested engine failed: $e\n$st');
+      _hadFailure = true;
       note = 'Hardnested recovery is unavailable on this build.';
     }
     _recordKey(
@@ -283,6 +305,7 @@ class RecoverController extends ChangeNotifier {
       dicts = await _staticRecoverer.buildCandidateDicts(singles);
     } catch (e, st) {
       LogService.error('[Recover] static candidate gen failed: $e\n$st');
+      _hadFailure = true;
       _entries.add(
         RecoverEntry(
           source: RecoverSource.tag,
@@ -300,6 +323,7 @@ class RecoverController extends ChangeNotifier {
       if (dict.count == 0) {
         // Generation produced nothing (e.g. an allocation failure) and no file
         // was written - report it as a failure, not a 0-candidate "result".
+        _hadFailure = true;
         _entries.add(
           RecoverEntry(
             source: RecoverSource.tag,
@@ -316,6 +340,7 @@ class RecoverController extends ChangeNotifier {
         _wroteCandidates = true;
       } catch (e, st) {
         LogService.error('[Recover] static dict write failed: $e\n$st');
+        _hadFailure = true;
         note = 'Could not write the candidate dictionary to the device.';
       }
       _entries.add(
