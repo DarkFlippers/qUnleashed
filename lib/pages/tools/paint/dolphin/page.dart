@@ -6,6 +6,7 @@ import 'package:qunleashed/components/appbar.dart';
 
 import '../../../../theme/colors/display.dart';
 import '../../../../theme/theme.dart';
+import '../../../../components/filelist/sync_progress_bar.dart';
 import '../../../../components/notification.dart';
 import '../project.dart';
 import 'controller.dart';
@@ -137,28 +138,17 @@ class _ManifestSyncPageState extends State<ManifestSyncPage> {
   }
 
   Widget _buildProgress(QAppColors colors) {
-    return Container(
-      color: colors.card,
-      padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            _ctrl.status ?? 'Sending…',
-            style: TextStyle(color: colors.textSecondary, fontSize: 12),
-          ),
-          const SizedBox(height: 6),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              value: _ctrl.progress,
-              minHeight: 5,
-              backgroundColor: colors.divider,
-              color: colors.accent,
-            ),
-          ),
-        ],
-      ),
+    final p = _ctrl.progress;
+    final checking = p == null || p.phase == SendPhase.checking;
+    return SyncProgressBar(
+      icon: checking ? Icons.sync_rounded : Icons.upload_rounded,
+      label: p == null
+          ? 'Preparing…'
+          : '${checking ? 'Checking' : 'Sending'} '
+                '${p.current}/${p.total} · ${p.fileName}',
+      progress: p?.ratio ?? 0,
+      fileProgress: p?.fileProgress,
+      color: colors.accent,
     );
   }
 

@@ -13,7 +13,7 @@ import '../../../../components/archive/models/key.dart';
 import '../../widgets/actions_sheet.dart';
 import '../../../../components/filelist/empty_view.dart';
 import '../widgets/key_actions_sheet.dart';
-import '../widgets/sync_progress_bar.dart';
+import '../../../../components/filelist/sync_progress_bar.dart';
 import '../../../../components/filelist/columns.dart';
 import 'sort.dart';
 import '../../../../components/filelist/table.dart';

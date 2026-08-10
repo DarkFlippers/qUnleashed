@@ -1,19 +1,17 @@
 ## Main changes
-- Version: 0.10.4 (build 10004)
-* Apps: **Build catalog apps from source when the device API does not match** - the mismatch dialog now offers three ways out: compatibility mode, ignore the warning, or apps manager only; in source mode the install engine fetches the catalog source bundle and compiles the FAP against the firmware SDK instead of pulling a prebuilt one
-* Flibler: **New tool that builds a Flipper app from a folder or a repo link** - one field takes a local path or a GitHub URL (branch and subfolder included), the page keeps recent projects, shows the FAP facts after a build and can launch the result on the device (Beta)
-* Flibler: **Local or server builds** - desktop compiles with its own toolchain, everything else sends the job to the build server; the choice lives in the Flibler settings next to the SDK channel and the SDK index source
-* Flibler: **Signed client for the remote build server** - requests are signed, the server keeps a build queue and a cache, so a phone gets the same FAP without an ARM toolchain
-* dartufbt: **Native Dart port of ufbt** - SDK deployment over `directory.json`, ARM toolchain deployment and a full FAP builder that shares `~/.ufbt` with the Python ufbt, so an existing setup is reused as is; the output is byte-identical to ufbt (verified on `air_mouse` and `example_images`, including the debug ELF) and heatshrink is ported from the firmware encoder
-* Connection: **The live session continues across app reopens on Android** - a cached FlutterEngine keeps the isolate, and the BLE session inside it, alive with the process instead of dying with the activity; the foreground service reconciles against the real session on isolate start and no longer auto-restarts headless, and system-connected devices are surfaced without a scan
-* Apps: **An installed app lands in the manager without a rescan** - the install engine hands the app over to the device list right after the install
-* Apps: **Reworked manager table** - fap metadata is read from the app itself, the facts panel works from a bare `FapInfo`, and the rows follow the catalog layout
+- Version: 0.10.6 (build 10006), changes since 0.10.4 (build 10004)
+* Apps: **The catalog picks its working mode by itself** - no more compatibility dialogs; when the firmware API is ahead of the catalog the app either builds the FAP from source (if a builder is available), installs the build of the nearest API the catalog has, or falls back to the apps manager. The chosen mode is shown as a badge in the catalog header and can be forced in Settings → Apps
+* Apps: **Installs can be cancelled** - the progress button turns into CANCEL (and the manager sheet gets a Cancel entry); a job that has not started just leaves the queue, a running one stops at its next checkpoint and the partial file is dropped from the device
+* Apps: **The install queue survives a flaky link** - installs are queued locally and a reconnect no longer kills them: tasks wait for the link and retry, and the queue is cleared only when the device is really gone. A second install no longer waits for the build server to be free
+* Archive: **Rewritten text editor** - lines are rendered on demand, so big files open without freezing; syntax highlighting, a file from the device is downloaded to a temporary file first and uploaded back on save, and a JS script can be run right from the editor
+* Archive: **Hidden files are shown by default** in the file browser
 * Archive: **Category sync shows the same progress as the apps manager** - a bar with the file name and percentages under the toolbar instead of the file name in the app bar title
+* Connection: **The live session continues across app reopens on Android** - the session stays alive with the process instead of dying with the activity, and system-connected devices are surfaced without a scan
+* Settings: **Regrouped settings** - a new Apps page (catalog mode), and the theme, storage, notifications and Flibler pages moved under one place
+* Flibler: **Faster start** - the build server availability check is cached instead of being repeated on every entry
+* Android: the unused `READ_MEDIA_IMAGES` permission is gone
 ## Other changes
-* Lib: new file layout - `app/`, `components/`, `pages/`, `services/`; a screen of another feature is opened through a route, not by importing its page
-* Flipperlib: slimmed down to the protobuf API, transports and DFU - the GPS and Network RPC responders, the device info watch and the logging facade moved into the app
-* Repository: dropped the one-shot legacy layout migration
-* Android: removed the unused `READ_MEDIA_IMAGES` permission
-* Repo: flipperlib and dartufbt are submodules now, and the prebuilt `app-release.apk` is gone from the tree
-* Workflow: release builds get the build server secrets
-* Tools: Flibler is listed on desktop only - there is no local toolchain elsewhere, so those source builds go through the server
+* Lib: new file layout - `app/`, `components/`, `pages/`, `services/`, settings pages under `option/pages/`, the FAP codec split into `codec/fap/`
+* Flipperlib: slimmed down to the protobuf API, transports and DFU, protobuf regenerated; flipperlib and dartufbt are submodules pinned to the published packages
+* Repository: dropped the one-shot legacy layout migration and the prebuilt `app-release.apk`
+* Tests: catalog mode, apps settings page, text editor and FAP codec

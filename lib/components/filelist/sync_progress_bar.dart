@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../../../theme/theme.dart';
+import '../../theme/theme.dart';
 
 class SyncProgressBar extends StatelessWidget {
   const SyncProgressBar({
