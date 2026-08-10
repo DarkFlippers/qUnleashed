@@ -86,6 +86,7 @@ class _RecoverPageState extends State<RecoverPage> {
             _StatusBlock(
               state: _controller.state,
               totalUnits: _controller.totalUnits,
+              doneUnits: _controller.doneUnits,
               hasCandidates: _controller.entries.any(
                 (e) => e.candidateCount != null,
               ),
@@ -241,7 +242,7 @@ class _EntryRow extends StatelessWidget {
       line =
           '${entry.candidateCount} candidate keys → ${cuidDictFileName(entry.cuid)}';
       explainer =
-          'The real key for this card is one of these candidates.';
+          'Possible keys for this card — the correct ones are among them.';
       color = colors.textMuted;
     } else {
       line = '${where != null ? '$where — ' : ''}${_kindLabel(entry.kind)}';
@@ -273,28 +274,32 @@ class _StatusBlock extends StatelessWidget {
   const _StatusBlock({
     required this.state,
     required this.totalUnits,
+    required this.doneUnits,
     required this.hasCandidates,
   });
 
   final MfKey32State state;
   final int totalUnits;
+  final int doneUnits;
   final bool hasCandidates;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final (title, showBar, percent) = switch (state) {
-      MfKey32WaitingForFlipper() => ('Connecting device…', true, null),
-      MfKey32DownloadingRawFile() => ('Downloading nonces…', true, null),
-      // A single unit (one weak/static/hardnested card, or the static-encrypted
-      // batch) has no meaningful percentage - it would only read 0% then 100%.
-      // Show an indeterminate bar there; a real percentage only for many units.
-      MfKey32Calculating(:final percent) => (
+    // Each recovery unit is atomic (a native call with no sub-progress) and
+    // units vary wildly in duration (a hardnested attack dwarfs an mfkey32 one),
+    // so a percentage freezes between units and misleads. Instead the bar always
+    // animates (liveness) and, when there is more than one unit, shows how many
+    // are done - honest progress that never looks stuck.
+    final (title, showBar, barText) = switch (state) {
+      MfKey32WaitingForFlipper() => ('Connecting device…', true, '…'),
+      MfKey32DownloadingRawFile() => ('Downloading nonces…', true, '…'),
+      MfKey32Calculating() => (
         'Recovering keys…',
         true,
-        totalUnits > 1 ? percent : null,
+        totalUnits > 1 ? '$doneUnits / $totalUnits' : '…',
       ),
-      MfKey32Uploading() => ('Syncing with the device…', true, null),
+      MfKey32Uploading() => ('Syncing with the device…', true, '…'),
       MfKey32Saved(:final keys) => (
         keys.isNotEmpty
             ? '${keys.length} new key(s) added'
@@ -302,9 +307,9 @@ class _StatusBlock extends StatelessWidget {
             ? 'Candidate keys saved'
             : 'No new keys added',
         false,
-        null,
+        '',
       ),
-      MfKey32Error(:final errorType) => (_errorText(errorType), false, null),
+      MfKey32Error(:final errorType) => (_errorText(errorType), false, ''),
     };
 
     return Column(
@@ -324,12 +329,11 @@ class _StatusBlock extends StatelessWidget {
         ),
         if (showBar)
           ProgressButton(
-            text: percent == null ? '…' : '',
+            text: barText,
             color: colors.accent,
             progressColor: colors.accent,
-            progress: percent?.clamp(0.0, 1.0),
-            indeterminate: percent == null,
-            showPercent: percent != null,
+            indeterminate: true,
+            showPercent: false,
             height: 46,
           ),
       ],

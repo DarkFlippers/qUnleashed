@@ -74,9 +74,13 @@ class RecoverController extends ChangeNotifier {
   List<RecoverEntry> get entries => UnmodifiableListView(_entries);
 
   /// Total recovery units this run (reader keys + weak/static pairs + hardnested
-  /// groups + one for the static-encrypted batch). The UI shows an indeterminate
-  /// bar when this is <= 1, where a percentage would only ever read 0% then 100%.
+  /// groups + one for the static-encrypted batch). Drives the "N of M" readout.
   int get totalUnits => _totalUnits;
+
+  /// Units finished so far. Each unit is atomic (a native recovery call that
+  /// can't report sub-progress), so the UI pairs this count with an animated
+  /// bar rather than a percentage that would freeze between units.
+  int get doneUnits => _doneUnits;
 
   /// Keys newly written to the user dictionary this run (i.e. not already in the
   /// user or system dict). Lets the UI tag each key new vs. already-known.
