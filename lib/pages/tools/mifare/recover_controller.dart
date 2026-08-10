@@ -62,7 +62,9 @@ class RecoverController extends ChangeNotifier {
   // any further recovery or device write.
   bool _disposed = false;
   final List<RecoverEntry> _entries = [];
-  Set<String> _addedKeys = const {};
+  // Set true once a per-card static-encrypted candidate dictionary is actually
+  // written, so the summary can distinguish "candidates saved" from "nothing".
+  bool _wroteCandidates = false;
 
   int _totalUnits = 0;
   int _doneUnits = 0;
@@ -77,14 +79,10 @@ class RecoverController extends ChangeNotifier {
   /// groups + one for the static-encrypted batch). Drives the "N of M" readout.
   int get totalUnits => _totalUnits;
 
-  /// Units finished so far. Each unit is atomic (a native recovery call that
-  /// can't report sub-progress), so the UI pairs this count with an animated
-  /// bar rather than a percentage that would freeze between units.
+  /// Units finished so far. Each unit runs to completion with no sub-progress,
+  /// so the UI pairs this count with an animated bar rather than a percentage
+  /// that would freeze between units.
   int get doneUnits => _doneUnits;
-
-  /// Keys newly written to the user dictionary this run (i.e. not already in the
-  /// user or system dict). Lets the UI tag each key new vs. already-known.
-  Set<String> get addedKeys => _addedKeys;
 
   @override
   void dispose() {
@@ -98,7 +96,7 @@ class RecoverController extends ChangeNotifier {
     try {
       await _run();
     } catch (e, st) {
-      LogService.log('[Recover] Unexpected failure: $e\n$st');
+      LogService.error('[Recover] Unexpected failure: $e\n$st');
       _emit(const MfKey32Error(MfKey32ErrorType.recoveryFailed));
     } finally {
       _running = false;
@@ -108,7 +106,7 @@ class RecoverController extends ChangeNotifier {
 
   Future<void> _run() async {
     _entries.clear();
-    _addedKeys = const {};
+    _wroteCandidates = false;
     _totalUnits = 0;
     _doneUnits = 0;
 
@@ -127,25 +125,25 @@ class RecoverController extends ChangeNotifier {
       return;
     }
 
-    _emit(const MfKey32DownloadingRawFile(0));
+    _emit(const MfKey32DownloadingRawFile());
     final String? readerText;
     final String? tagText;
     try {
       readerText = hasReaderLog ? await _download(pathNonceLog) : null;
       tagText = hasTagLog ? await _download(pathNestedLog) : null;
-    } catch (e) {
+    } catch (e, st) {
       // The files were confirmed to exist above, so a failure here is a real
       // read error - surface it instead of silently proceeding as if the log
       // were empty (which would drop every key it held under a success screen).
-      LogService.log('[Recover] download failed: $e');
+      LogService.error('[Recover] download failed: $e\n$st');
       _emit(const MfKey32Error(MfKey32ErrorType.readWrite));
       return;
     }
 
     try {
       await _storage.load();
-    } catch (e) {
-      LogService.log('[Recover] load keys failed: $e');
+    } catch (e, st) {
+      LogService.error('[Recover] load keys failed: $e\n$st');
       _emit(const MfKey32Error(MfKey32ErrorType.readWrite));
       return;
     }
@@ -166,7 +164,7 @@ class RecoverController extends ChangeNotifier {
         weak.length +
         hardGroups.length +
         (staticSingles.isEmpty ? 0 : 1);
-    _emit(const MfKey32Calculating(0));
+    _emit(const MfKey32Calculating());
 
     await _recoverReader(readerNonces);
     await _recoverWeak(weak);
@@ -180,15 +178,16 @@ class RecoverController extends ChangeNotifier {
     if (_disposed) return;
 
     _emit(const MfKey32Uploading());
+    final List<String> added;
     try {
-      _addedKeys = (await _storage.upload()).toSet();
-    } catch (e) {
-      LogService.log('[Recover] save keys failed: $e');
+      added = await _storage.upload();
+    } catch (e, st) {
+      LogService.error('[Recover] save keys failed: $e\n$st');
       _emit(const MfKey32Error(MfKey32ErrorType.readWrite));
       return;
     }
 
-    _emit(MfKey32Saved(_addedKeys.toList()));
+    _emit(MfKey32Saved(keys: added, hasCandidates: _wroteCandidates));
   }
 
   // ---- reader (mfkey32) ----
@@ -262,7 +261,7 @@ class RecoverController extends ChangeNotifier {
       // A missing/broken native engine must not abort the whole run and discard
       // the reader/weak keys already recovered - degrade this group to a note
       // and carry on to the user-dict upload.
-      LogService.log('[Recover] hardnested engine failed: $e\n$st');
+      LogService.error('[Recover] hardnested engine failed: $e\n$st');
       note = 'Hardnested recovery is unavailable on this build.';
     }
     _recordKey(
@@ -283,7 +282,7 @@ class RecoverController extends ChangeNotifier {
     try {
       dicts = await _staticRecoverer.buildCandidateDicts(singles);
     } catch (e, st) {
-      LogService.log('[Recover] static candidate gen failed: $e\n$st');
+      LogService.error('[Recover] static candidate gen failed: $e\n$st');
       _entries.add(
         RecoverEntry(
           source: RecoverSource.tag,
@@ -298,17 +297,26 @@ class RecoverController extends ChangeNotifier {
 
     for (final dict in dicts) {
       if (_disposed) return;
+      if (dict.count == 0) {
+        // Generation produced nothing (e.g. an allocation failure) and no file
+        // was written - report it as a failure, not a 0-candidate "result".
+        _entries.add(
+          RecoverEntry(
+            source: RecoverSource.tag,
+            kind: RecoverKind.staticEncrypted,
+            cuid: dict.cuid,
+            note: 'No candidate keys could be generated for this card.',
+          ),
+        );
+        continue;
+      }
       String? note;
-      if (dict.count > 0) {
-        try {
-          await _client.storageWriteChunked(
-            cuidDictPath(dict.cuid),
-            dict.body,
-          );
-        } catch (e) {
-          LogService.log('[Recover] static dict write failed: $e');
-          note = 'Could not write the candidate dictionary to the device.';
-        }
+      try {
+        await _client.storageWriteChunked(cuidDictPath(dict.cuid), dict.body);
+        _wroteCandidates = true;
+      } catch (e, st) {
+        LogService.error('[Recover] static dict write failed: $e\n$st');
+        note = 'Could not write the candidate dictionary to the device.';
       }
       _entries.add(
         RecoverEntry(
@@ -325,9 +333,9 @@ class RecoverController extends ChangeNotifier {
 
   // ---- helpers ----
 
-  /// Formats [key], records it against the user dict (a no-op for a null key),
-  /// appends the summary entry and advances progress - the shared tail of the
-  /// three single-key phases (reader / weak / hardnested).
+  /// Formats [key], registers it against the user dict when present (deciding
+  /// new-vs-known now), appends the summary entry and advances progress - the
+  /// shared tail of the three single-key phases (reader / weak / hardnested).
   void _recordKey({
     required RecoverSource source,
     required RecoverKind kind,
@@ -338,9 +346,7 @@ class RecoverController extends ChangeNotifier {
     String? note,
   }) {
     final keyHex = key == null ? null : formatMifareKey(key.toInt());
-    final isNew = _storage.onNewKey(
-      FoundedKey(sectorName: sectorName, keyName: keyName, key: keyHex),
-    );
+    final isNew = keyHex == null ? null : _storage.registerKey(keyHex);
     _entries.add(
       RecoverEntry(
         source: source,
@@ -367,11 +373,7 @@ class RecoverController extends ChangeNotifier {
   void _tick() {
     if (_disposed) return;
     _doneUnits++;
-    if (_state is MfKey32Calculating && _totalUnits > 0) {
-      _emit(MfKey32Calculating(_doneUnits / _totalUnits));
-    } else {
-      notifyListeners();
-    }
+    notifyListeners();
   }
 
   void _emit(MfKey32State state) {

@@ -4,7 +4,6 @@ import 'package:flipperlib/flipperlib.dart'
     show FlipperRpcStorageNotExistException, Main;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/tools/mifare/existed_keys_storage.dart';
-import 'package:qunleashed/pages/tools/mifare/mfkey32_models.dart';
 
 Future<List<int>> _notExist(String path) async =>
     throw FlipperRpcStorageNotExistException(Main());
@@ -32,12 +31,8 @@ void main() {
         writer: _noWrite,
       );
       await storage.load(); // must not throw
-      storage.onNewKey(
-        const FoundedKey(sectorName: '0', keyName: 'A', key: 'FFFFFFFFFFFF'),
-      );
-      // Loaded as empty, so the key is new, not a duplicate.
-      expect(storage.foundedInformation.uniqueKeys, contains('FFFFFFFFFFFF'));
-      expect(storage.foundedInformation.duplicated, isEmpty);
+      // Loaded as empty, so any key is new, not a duplicate.
+      expect(storage.registerKey('FFFFFFFFFFFF'), isTrue);
     });
 
     test(
@@ -56,7 +51,7 @@ void main() {
       },
     );
 
-    test('onNewKey reports new vs already-known (drives the live tag)', () async {
+    test('registerKey reports new vs already-known (drives the live tag)', () async {
       final storage = ExistedKeysStorage.withSeams(
         reader: (path) async {
           if (path == flipperDictUserPath) return utf8.encode('A0A1A2A3A4A5\n');
@@ -68,31 +63,10 @@ void main() {
       await storage.load();
 
       // A key already in the user or system dict is not new.
-      expect(
-        storage.onNewKey(
-          const FoundedKey(sectorName: '0', keyName: 'A', key: 'A0A1A2A3A4A5'),
-        ),
-        isFalse,
-      );
-      expect(
-        storage.onNewKey(
-          const FoundedKey(sectorName: '0', keyName: 'B', key: 'FFFFFFFFFFFF'),
-        ),
-        isFalse,
-      );
-      // A genuinely unseen key is new; a null (unrecovered) key gives no verdict.
-      expect(
-        storage.onNewKey(
-          const FoundedKey(sectorName: '1', keyName: 'A', key: 'B0B1B2B3B4B5'),
-        ),
-        isTrue,
-      );
-      expect(
-        storage.onNewKey(
-          const FoundedKey(sectorName: '2', keyName: 'A', key: null),
-        ),
-        isNull,
-      );
+      expect(storage.registerKey('A0A1A2A3A4A5'), isFalse);
+      expect(storage.registerKey('FFFFFFFFFFFF'), isFalse);
+      // A genuinely unseen key is new.
+      expect(storage.registerKey('B0B1B2B3B4B5'), isTrue);
     });
 
     test('upload propagates a write failure (no false success)', () async {
@@ -101,9 +75,7 @@ void main() {
         writer: (path, data) async => throw Exception('disk full'),
       );
       await storage.load();
-      storage.onNewKey(
-        const FoundedKey(sectorName: '0', keyName: 'A', key: 'A0A1A2A3A4A5'),
-      );
+      storage.registerKey('A0A1A2A3A4A5');
       await expectLater(storage.upload(), throwsA(isA<Exception>()));
     });
 
@@ -118,12 +90,8 @@ void main() {
           writer: (path, data) async => written[path] = utf8.decode(data),
         );
         await storage.load(); // seeds the user dict with the existing key
-        storage.onNewKey(
-          const FoundedKey(sectorName: '0', keyName: 'A', key: 'A0A1A2A3A4A5'),
-        ); // duplicate of the existing key
-        storage.onNewKey(
-          const FoundedKey(sectorName: '1', keyName: 'B', key: 'B0B1B2B3B4B5'),
-        ); // new key
+        storage.registerKey('A0A1A2A3A4A5'); // duplicate of the existing key
+        storage.registerKey('B0B1B2B3B4B5'); // new key
 
         final added = await storage.upload();
         expect(added, ['B0B1B2B3B4B5']); // only the new key is reported

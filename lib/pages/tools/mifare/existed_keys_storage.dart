@@ -35,15 +35,12 @@ class ExistedKeysStorage {
 
   final DictReader _reader;
   final DictWriter _writer;
-  FoundedInformation _foundedInformation = const FoundedInformation();
   final Set<String> _flipperKeys = {};
   final Set<String> _userDict = {};
   // The write-back set for the user dict (seeded from it, then extended with new
   // keys). A Set so a key recovered from several sectors in one run - or already
   // duplicated in the loaded dict - is written once. Insertion order preserved.
   final Set<String> _userKeys = {};
-
-  FoundedInformation get foundedInformation => _foundedInformation;
 
   Future<void> load() async {
     // The user dict is read-modify-written by upload(): load() seeds _userKeys
@@ -73,39 +70,14 @@ class ExistedKeysStorage {
     return _userKeys.where((key) => !_userDict.contains(key)).toList();
   }
 
-  /// Records [foundedKey] and folds its key into the user-dict write-back set.
-  /// Returns whether the key is new to the user + system dictionaries (true),
-  /// already known (false), or null when there is no key - so the caller can
-  /// tag the result immediately rather than waiting for the end-of-run set.
-  bool? onNewKey(FoundedKey foundedKey) {
-    final key = foundedKey.key;
-    DuplicatedSource? existed;
-    if (key != null && _flipperKeys.contains(key)) {
-      existed = DuplicatedSource.flipper;
-    } else if (key != null && _userDict.contains(key)) {
-      existed = DuplicatedSource.user;
-    }
-
-    final keys = List<FoundedKey>.of(_foundedInformation.keys)..add(foundedKey);
-    final uniqueKeys = Set<String>.of(_foundedInformation.uniqueKeys);
-    final duplicated = Map<String, DuplicatedSource>.of(
-      _foundedInformation.duplicated,
-    );
-
-    if (existed == null && key != null) {
-      uniqueKeys.add(key);
-      _userKeys.add(key);
-    } else if (existed != null && key != null) {
-      duplicated[key] = existed;
-    }
-
-    _foundedInformation = _foundedInformation.copyWith(
-      keys: keys,
-      uniqueKeys: uniqueKeys,
-      duplicated: duplicated,
-    );
-
-    return key == null ? null : existed == null;
+  /// Registers a newly recovered [key], folding it into the user-dict write-back
+  /// set only when it's new to both the user and system dictionaries. Returns
+  /// whether it was new - so the caller can tag the result during the run rather
+  /// than waiting for the end-of-run set.
+  bool registerKey(String key) {
+    final isNew = !_flipperKeys.contains(key) && !_userDict.contains(key);
+    if (isNew) _userKeys.add(key);
+    return isNew;
   }
 
   Future<List<String>> _loadDict(
@@ -127,7 +99,7 @@ class ExistedKeysStorage {
       // upload() can't overwrite it with a partial set; the system dict is
       // best-effort and degrades to empty.
       if (abortOnReadError) rethrow;
-      LogService.log(
+      LogService.error(
         '[ExistedKeysStorage] optional dict $path load failed: $e',
       );
       return const [];

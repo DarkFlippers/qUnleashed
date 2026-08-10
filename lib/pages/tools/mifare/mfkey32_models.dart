@@ -14,15 +14,11 @@ class MfKey32WaitingForFlipper extends MfKey32State {
 }
 
 class MfKey32DownloadingRawFile extends MfKey32State {
-  const MfKey32DownloadingRawFile(this.percent);
-
-  final double percent;
+  const MfKey32DownloadingRawFile();
 }
 
 class MfKey32Calculating extends MfKey32State {
-  const MfKey32Calculating(this.percent);
-
-  final double percent;
+  const MfKey32Calculating();
 }
 
 class MfKey32Uploading extends MfKey32State {
@@ -30,53 +26,19 @@ class MfKey32Uploading extends MfKey32State {
 }
 
 class MfKey32Saved extends MfKey32State {
-  const MfKey32Saved(this.keys);
+  const MfKey32Saved({required this.keys, this.hasCandidates = false});
 
+  /// Keys newly written to the user dictionary this run.
   final List<String> keys;
+
+  /// True when a per-card static-encrypted candidate dictionary was written.
+  final bool hasCandidates;
 }
 
 class MfKey32Error extends MfKey32State {
   const MfKey32Error(this.errorType);
 
   final MfKey32ErrorType errorType;
-}
-
-class FoundedInformation {
-  const FoundedInformation({
-    this.keys = const [],
-    this.uniqueKeys = const {},
-    this.duplicated = const {},
-  });
-
-  final List<FoundedKey> keys;
-  final Set<String> uniqueKeys;
-  final Map<String, DuplicatedSource> duplicated;
-
-  FoundedInformation copyWith({
-    List<FoundedKey>? keys,
-    Set<String>? uniqueKeys,
-    Map<String, DuplicatedSource>? duplicated,
-  }) {
-    return FoundedInformation(
-      keys: keys ?? this.keys,
-      uniqueKeys: uniqueKeys ?? this.uniqueKeys,
-      duplicated: duplicated ?? this.duplicated,
-    );
-  }
-}
-
-enum DuplicatedSource { flipper, user }
-
-class FoundedKey {
-  const FoundedKey({
-    required this.sectorName,
-    required this.keyName,
-    required this.key,
-  });
-
-  final String sectorName;
-  final String keyName;
-  final String? key;
 }
 
 class MfKey32Nonce {

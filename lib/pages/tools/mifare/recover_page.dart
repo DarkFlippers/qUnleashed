@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../../../theme/theme.dart';
+import '../../../components/dialogs/confirm.dart';
 import '../../../components/progress_button.dart';
+import '../../../theme/theme.dart';
 import 'existed_keys_storage.dart';
 import 'mfkey32_models.dart';
 import 'recover_controller.dart';
@@ -35,33 +36,13 @@ class _RecoverPageState extends State<RecoverPage> {
     if (mounted) setState(() {});
   }
 
-  Future<bool> _confirmAbort() async {
-    final abort = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: context.appColors.dialogBackground,
-        title: Text(
-          'Stop Key Recovery?',
-          style: TextStyle(color: context.appColors.dialogText),
-        ),
-        content: Text(
-          'You can restart it later',
-          style: TextStyle(color: context.appColors.dialogMuted),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Stop'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Continue'),
-          ),
-        ],
-      ),
-    );
-    return abort ?? false;
-  }
+  Future<bool> _confirmAbort() => QConfirmDialog.show(
+    context,
+    title: 'Stop Key Recovery?',
+    message: 'You can restart it later',
+    confirmLabel: 'Stop',
+    cancelLabel: 'Continue',
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -87,9 +68,6 @@ class _RecoverPageState extends State<RecoverPage> {
               state: _controller.state,
               totalUnits: _controller.totalUnits,
               doneUnits: _controller.doneUnits,
-              hasCandidates: _controller.entries.any(
-                (e) => e.candidateCount != null,
-              ),
             ),
             ..._buildGroups(_controller),
           ],
@@ -140,7 +118,7 @@ class _SourceHeader extends StatelessWidget {
     final (label, hint) = switch (source) {
       RecoverSource.reader => (
         'Reader',
-        'Key a reader used on your emulated card · .mfkey32.log',
+        'Keys a reader used against your emulated card · .mfkey32.log',
       ),
       RecoverSource.tag => (
         'Card',
@@ -275,41 +253,33 @@ class _StatusBlock extends StatelessWidget {
     required this.state,
     required this.totalUnits,
     required this.doneUnits,
-    required this.hasCandidates,
   });
 
   final MfKey32State state;
   final int totalUnits;
   final int doneUnits;
-  final bool hasCandidates;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    // Each recovery unit is atomic (a native call with no sub-progress) and
-    // units vary wildly in duration (a hardnested attack dwarfs an mfkey32 one),
-    // so a percentage freezes between units and misleads. Instead the bar always
+    // Each recovery unit runs to completion with no sub-progress, and units vary
+    // wildly in duration (a hardnested attack dwarfs an mfkey32 one), so a
+    // percentage freezes between units and misleads. Instead the bar always
     // animates (liveness) and, when there is more than one unit, shows how many
-    // are done - honest progress that never looks stuck.
-    final (title, showBar, barText) = switch (state) {
-      MfKey32WaitingForFlipper() => ('Connecting device…', true, '…'),
-      MfKey32DownloadingRawFile() => ('Downloading nonces…', true, '…'),
+    // are done. A null barText hides the bar (the terminal Saved / Error states).
+    final (String title, String? barText) = switch (state) {
+      MfKey32WaitingForFlipper() => ('Connecting device…', '…'),
+      MfKey32DownloadingRawFile() => ('Downloading nonces…', '…'),
       MfKey32Calculating() => (
         'Recovering keys…',
-        true,
         totalUnits > 1 ? '$doneUnits / $totalUnits' : '…',
       ),
-      MfKey32Uploading() => ('Syncing with the device…', true, '…'),
-      MfKey32Saved(:final keys) => (
-        keys.isNotEmpty
-            ? '${keys.length} new key(s) added'
-            : hasCandidates
-            ? 'Candidate keys saved'
-            : 'No new keys added',
-        false,
-        '',
+      MfKey32Uploading() => ('Syncing with the device…', '…'),
+      MfKey32Saved(:final keys, :final hasCandidates) => (
+        _savedTitle(keys.length, hasCandidates),
+        null,
       ),
-      MfKey32Error(:final errorType) => (_errorText(errorType), false, ''),
+      MfKey32Error(:final errorType) => (_errorText(errorType), null),
     };
 
     return Column(
@@ -327,7 +297,7 @@ class _StatusBlock extends StatelessWidget {
             ),
           ),
         ),
-        if (showBar)
+        if (barText != null)
           ProgressButton(
             text: barText,
             color: colors.accent,
@@ -338,6 +308,14 @@ class _StatusBlock extends StatelessWidget {
           ),
       ],
     );
+  }
+
+  static String _savedTitle(int newKeys, bool hasCandidates) {
+    if (newKeys > 0) {
+      return '$newKeys new ${newKeys == 1 ? 'key' : 'keys'} added';
+    }
+    if (hasCandidates) return 'Candidate keys saved';
+    return 'No new keys added';
   }
 
   static String _errorText(MfKey32ErrorType type) => switch (type) {
