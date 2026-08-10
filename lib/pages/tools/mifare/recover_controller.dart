@@ -42,7 +42,7 @@ class RecoverController extends ChangeNotifier {
        _staticRecoverer = staticRecoverer ?? NativeStaticEncryptedRecoverer(),
        _hardnestedRecoverer =
            hardnestedRecoverer ?? NativeHardnestedRecoverer() {
-    _state = const MfKey32Error(MfKey32ErrorType.flipperConnection);
+    _state = const RecoverError(RecoverErrorType.flipperConnection);
     _storage = ExistedKeysStorage(_client);
   }
 
@@ -55,7 +55,7 @@ class RecoverController extends ChangeNotifier {
   final HardnestedRecoverer _hardnestedRecoverer;
   late final ExistedKeysStorage _storage;
 
-  late MfKey32State _state;
+  late RecoverState _state;
   bool _running = false;
   // Set from dispose(): the page can be popped (Stop) while _run() is still in
   // flight. Once true we neither notify the disposed ChangeNotifier nor start
@@ -73,7 +73,7 @@ class RecoverController extends ChangeNotifier {
   int _totalUnits = 0;
   int _doneUnits = 0;
 
-  MfKey32State get state => _state;
+  RecoverState get state => _state;
   bool get running => _running;
 
   /// Every recovery result gathered this run, in completion order.
@@ -101,7 +101,7 @@ class RecoverController extends ChangeNotifier {
       await _run();
     } catch (e, st) {
       LogService.error('[Recover] Unexpected failure: $e\n$st');
-      _emit(const MfKey32Error(MfKey32ErrorType.recoveryFailed));
+      _emit(const RecoverError(RecoverErrorType.recoveryFailed));
     } finally {
       _running = false;
       if (!_disposed) notifyListeners();
@@ -116,11 +116,11 @@ class RecoverController extends ChangeNotifier {
     _doneUnits = 0;
 
     if (!_client.isConnected) {
-      _emit(const MfKey32Error(MfKey32ErrorType.flipperConnection));
+      _emit(const RecoverError(RecoverErrorType.flipperConnection));
       return;
     }
 
-    _emit(const MfKey32WaitingForFlipper());
+    _emit(const RecoverWaitingForDevice());
 
     final bool hasReaderLog;
     final bool hasTagLog;
@@ -132,15 +132,15 @@ class RecoverController extends ChangeNotifier {
       // A device RPC failure here (disconnect, BLE drop) is a connection
       // problem - not the catch-all "recovery unavailable" error below.
       LogService.error('[Recover] file-existence probe failed: $e\n$st');
-      _emit(const MfKey32Error(MfKey32ErrorType.flipperConnection));
+      _emit(const RecoverError(RecoverErrorType.flipperConnection));
       return;
     }
     if (!hasReaderLog && !hasTagLog) {
-      _emit(const MfKey32Error(MfKey32ErrorType.notFoundFile));
+      _emit(const RecoverError(RecoverErrorType.notFoundFile));
       return;
     }
 
-    _emit(const MfKey32DownloadingRawFile());
+    _emit(const RecoverDownloading());
     final String? readerText;
     final String? tagText;
     try {
@@ -151,7 +151,7 @@ class RecoverController extends ChangeNotifier {
       // read error - surface it instead of silently proceeding as if the log
       // were empty (which would drop every key it held under a success screen).
       LogService.error('[Recover] download failed: $e\n$st');
-      _emit(const MfKey32Error(MfKey32ErrorType.readWrite));
+      _emit(const RecoverError(RecoverErrorType.readWrite));
       return;
     }
 
@@ -159,7 +159,7 @@ class RecoverController extends ChangeNotifier {
       await _storage.load();
     } catch (e, st) {
       LogService.error('[Recover] load keys failed: $e\n$st');
-      _emit(const MfKey32Error(MfKey32ErrorType.readWrite));
+      _emit(const RecoverError(RecoverErrorType.readWrite));
       return;
     }
 
@@ -179,7 +179,7 @@ class RecoverController extends ChangeNotifier {
         weak.length +
         hardGroups.length +
         (staticSingles.isEmpty ? 0 : 1);
-    _emit(const MfKey32Calculating());
+    _emit(const RecoverCalculating());
 
     await _recoverReader(readerNonces);
     await _recoverWeak(weak);
@@ -192,18 +192,18 @@ class RecoverController extends ChangeNotifier {
     // read-modify-write over the shared client) after that point.
     if (_disposed) return;
 
-    _emit(const MfKey32Uploading());
+    _emit(const RecoverUploading());
     final List<String> added;
     try {
       added = await _storage.upload();
     } catch (e, st) {
       LogService.error('[Recover] save keys failed: $e\n$st');
-      _emit(const MfKey32Error(MfKey32ErrorType.readWrite));
+      _emit(const RecoverError(RecoverErrorType.readWrite));
       return;
     }
 
     _emit(
-      MfKey32Saved(
+      RecoverSaved(
         keys: added,
         hasCandidates: _wroteCandidates,
         hasFailures: _hadFailure,
@@ -401,7 +401,7 @@ class RecoverController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _emit(MfKey32State state) {
+  void _emit(RecoverState state) {
     if (_disposed) return;
     _state = state;
     notifyListeners();

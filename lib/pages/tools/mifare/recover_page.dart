@@ -4,7 +4,6 @@ import '../../../components/dialogs/confirm.dart';
 import '../../../components/progress_button.dart';
 import '../../../theme/theme.dart';
 import 'existed_keys_storage.dart';
-import 'mfkey32_models.dart';
 import 'recover_controller.dart';
 import 'recover_models.dart';
 
@@ -255,7 +254,7 @@ class _StatusBlock extends StatelessWidget {
     required this.doneUnits,
   });
 
-  final MfKey32State state;
+  final RecoverState state;
   final int totalUnits;
   final int doneUnits;
 
@@ -268,18 +267,18 @@ class _StatusBlock extends StatelessWidget {
     // animates (liveness) and, when there is more than one unit, shows how many
     // are done. A null barText hides the bar (the terminal Saved / Error states).
     final (String title, String? barText) = switch (state) {
-      MfKey32WaitingForFlipper() => ('Connecting device…', '…'),
-      MfKey32DownloadingRawFile() => ('Downloading nonces…', '…'),
-      MfKey32Calculating() => (
+      RecoverWaitingForDevice() => ('Connecting device…', '…'),
+      RecoverDownloading() => ('Downloading nonces…', '…'),
+      RecoverCalculating() => (
         'Recovering keys…',
         totalUnits > 1 ? '$doneUnits / $totalUnits' : '…',
       ),
-      MfKey32Uploading() => ('Syncing with the device…', '…'),
-      MfKey32Saved(:final keys, :final hasCandidates, :final hasFailures) => (
+      RecoverUploading() => ('Syncing with the device…', '…'),
+      RecoverSaved(:final keys, :final hasCandidates, :final hasFailures) => (
         _savedTitle(keys.length, hasCandidates, hasFailures),
         null,
       ),
-      MfKey32Error(:final errorType) => (_errorText(errorType), null),
+      RecoverError(:final errorType) => (_errorText(errorType), null),
     };
 
     return Column(
@@ -324,16 +323,16 @@ class _StatusBlock extends StatelessWidget {
     return hadFailure ? '$base — some steps failed' : base;
   }
 
-  static String _errorText(MfKey32ErrorType type) => switch (type) {
-    MfKey32ErrorType.notFoundFile =>
+  static String _errorText(RecoverErrorType type) => switch (type) {
+    RecoverErrorType.notFoundFile =>
       'No .mfkey32.log or .nested.log found. Collect nonces on the device '
           '(emulate a card against a reader, or read a card with a known key), '
           'then sync and retry.',
-    MfKey32ErrorType.readWrite =>
+    RecoverErrorType.readWrite =>
       'Couldn\'t read or write device storage — it may be full, disconnected, '
           'or busy.',
-    MfKey32ErrorType.flipperConnection => 'Device not connected',
-    MfKey32ErrorType.recoveryFailed =>
+    RecoverErrorType.flipperConnection => 'Device not connected',
+    RecoverErrorType.recoveryFailed =>
       'Key recovery failed unexpectedly. Reconnect the device and retry; if it '
           'persists, update the app.',
   };
