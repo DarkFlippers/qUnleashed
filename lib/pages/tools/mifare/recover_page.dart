@@ -263,22 +263,28 @@ class _StatusBlock extends StatelessWidget {
     final colors = context.appColors;
     // Each recovery unit runs to completion with no sub-progress, and units vary
     // wildly in duration (a hardnested attack dwarfs an mfkey32 one), so a
-    // percentage freezes between units and misleads. Instead the bar always
+    // percentage freezes between units and misleads. Instead the recovery bar
     // animates (liveness) and, when there is more than one unit, shows how many
     // are done. A null barText hides the bar (the terminal Saved / Error states).
-    final (String title, String? barText) = switch (state) {
-      RecoverWaitingForDevice() => ('Connecting device…', '…'),
-      RecoverDownloading() => ('Downloading nonces…', '…'),
+    final (String title, String? barText, double? progress) = switch (state) {
+      RecoverWaitingForDevice() => ('Connecting device…', '…', null),
+      RecoverDownloading(:final progress) => (
+        'Downloading nonces…',
+        progress == null ? '…' : '${(progress * 100).round()}%',
+        progress,
+      ),
       RecoverCalculating() => (
         'Recovering keys…',
         totalUnits > 1 ? '$doneUnits / $totalUnits' : '…',
+        null,
       ),
-      RecoverUploading() => ('Syncing with the device…', '…'),
+      RecoverUploading() => ('Syncing with the device…', '…', null),
       RecoverSaved(:final keys, :final hasCandidates, :final hasFailures) => (
         _savedTitle(keys.length, hasCandidates, hasFailures),
         null,
+        null,
       ),
-      RecoverError(:final errorType) => (_errorText(errorType), null),
+      RecoverError(:final errorType) => (_errorText(errorType), null, null),
     };
 
     return Column(
@@ -301,7 +307,8 @@ class _StatusBlock extends StatelessWidget {
             text: barText,
             color: colors.accent,
             progressColor: colors.accent,
-            indeterminate: true,
+            progress: progress,
+            indeterminate: progress == null,
             showPercent: false,
             height: 46,
           ),

@@ -5,6 +5,7 @@ import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../../services/logging.dart';
+import '../../../services/progress_throttle.dart';
 import 'existed_keys_storage.dart';
 import 'hardnested_recoverer.dart';
 import 'key_nonce_parser.dart';
@@ -141,11 +142,38 @@ class RecoverController extends ChangeNotifier {
     }
 
     _emit(const RecoverDownloading());
+    final readerSize = hasReaderLog ? await _fileSize(pathNonceLog) : 0;
+    final tagSize = hasTagLog ? await _fileSize(pathNestedLog) : 0;
+    final totalBytes =
+        (hasReaderLog && readerSize == 0) || (hasTagLog && tagSize == 0)
+        ? 0
+        : readerSize + tagSize;
+    final throttle = ProgressThrottle();
+    var doneBytes = 0;
+    void report(int fileBytes) {
+      if (totalBytes == 0) return;
+      final progress = ((doneBytes + fileBytes) / totalBytes).clamp(0.0, 1.0);
+      if (throttle.shouldEmit(progress)) _emit(RecoverDownloading(progress));
+    }
+
     final String? readerText;
     final String? tagText;
     try {
-      readerText = hasReaderLog ? await _download(pathNonceLog) : null;
-      tagText = hasTagLog ? await _download(pathNestedLog) : null;
+      readerText = hasReaderLog
+          ? await _download(
+              pathNonceLog,
+              expectedSize: readerSize,
+              onProgress: (p) => report((p * readerSize).round()),
+            )
+          : null;
+      doneBytes += readerSize;
+      tagText = hasTagLog
+          ? await _download(
+              pathNestedLog,
+              expectedSize: tagSize,
+              onProgress: (p) => report((p * tagSize).round()),
+            )
+          : null;
     } catch (e, st) {
       // The files were confirmed to exist above, so a failure here is a real
       // read error - surface it instead of silently proceeding as if the log
@@ -387,12 +415,29 @@ class RecoverController extends ChangeNotifier {
     _tick();
   }
 
-  Future<String> _download(String path) async {
+  Future<String> _download(
+    String path, {
+    int expectedSize = 0,
+    void Function(double progress)? onProgress,
+  }) async {
     final bytes = await _client.storageReadChunked(
       path,
+      expectedSize: expectedSize,
+      onProgress: onProgress,
       timeout: const Duration(minutes: 5),
     );
     return const Utf8Decoder().convert(bytes);
+  }
+
+  Future<int> _fileSize(String path) async {
+    try {
+      final batch = await _client.storageStat(StatRequest(path: path));
+      final response = batch.firstOrNull;
+      return response != null && response.hasFile() ? response.file.size : 0;
+    } catch (e) {
+      LogService.error('[Recover] stat $path failed: $e');
+      return 0;
+    }
   }
 
   void _tick() {

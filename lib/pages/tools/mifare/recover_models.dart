@@ -73,7 +73,9 @@ class RecoverWaitingForDevice extends RecoverState {
 }
 
 class RecoverDownloading extends RecoverState {
-  const RecoverDownloading();
+  const RecoverDownloading([this.progress]);
+
+  final double? progress;
 }
 
 class RecoverCalculating extends RecoverState {
