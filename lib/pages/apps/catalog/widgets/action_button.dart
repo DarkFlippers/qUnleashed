@@ -45,6 +45,7 @@ class AppActionButton extends StatelessWidget {
           type: action.type,
           stage: action.stage,
           progress: action.progress,
+          cancelling: engine.isCancelling(app.alias),
         ),
       );
     }
@@ -67,7 +68,7 @@ class AppActionButton extends StatelessWidget {
           primary: _buildButton(
             label: 'INSTALL',
             color: colors.accent,
-            onTap: () => _install(context),
+            onTap: _install,
           ),
         );
       case CatalogAppState.update:
@@ -76,7 +77,7 @@ class AppActionButton extends StatelessWidget {
           primary: _buildButton(
             label: 'UPDATE',
             color: colors.success,
-            onTap: () => _install(context),
+            onTap: _install,
           ),
           secondary: _DeleteButton(
             size: size,
@@ -103,10 +104,12 @@ class AppActionButton extends StatelessWidget {
     required AppActionType type,
     required AppActionStage stage,
     required double progress,
+    required bool cancelling,
   }) {
-    final progressState = _ProgressState.resolve(type, stage);
+    final progressState = _ProgressState.resolve(type, stage, cancelling);
     final isLarge = size == AppActionButtonSize.large;
     final indeterminate =
+        cancelling ||
         stage == AppActionStage.queued ||
         stage == AppActionStage.check ||
         stage == AppActionStage.build ||
@@ -114,6 +117,7 @@ class AppActionButton extends StatelessWidget {
     return ProgressButton(
       text: progressState.label,
       color: progressState.color,
+      onPressed: cancelling ? null : () => engine.cancel(app.alias),
       progress: indeterminate ? null : progress,
       indeterminate: indeterminate,
       showPercent: !indeterminate,
@@ -152,15 +156,7 @@ class AppActionButton extends StatelessWidget {
     );
   }
 
-  void _install(BuildContext context) {
-    final blocker = engine.serverBuildBlocker(app.alias);
-    if (blocker != null) {
-      context.showNotification(
-        'Server is building "$blocker", wait for it to finish',
-        type: QNotificationType.warning,
-      );
-      return;
-    }
+  void _install() {
     engine.installOrUpdate(app, category: category, detail: detail);
   }
 
@@ -280,12 +276,19 @@ class _ProgressState {
   final String label;
   final Color color;
 
-  static _ProgressState resolve(AppActionType type, AppActionStage stage) {
+  static _ProgressState resolve(
+    AppActionType type,
+    AppActionStage stage,
+    bool cancelling,
+  ) {
     final color = switch (type) {
       AppActionType.update => FlipperOriginalColors.green,
       AppActionType.delete => FlipperOriginalColors.danger,
       AppActionType.install => FlipperOriginalColors.accent,
     };
+    if (cancelling) {
+      return _ProgressState(label: 'CANCEL', color: color);
+    }
     if (stage == AppActionStage.queued) {
       return _ProgressState(label: 'QUEUED', color: color);
     }

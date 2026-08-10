@@ -203,6 +203,9 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
       onRestore: () => _restore(app),
       onDeleteCopy: () => _deleteLocal(app),
       onUninstall: () => _uninstall(app),
+      onCancel: _engine.actions.containsKey(app.alias)
+          ? () => _engine.cancel(app.alias)
+          : null,
       deviceApi: _backend.deviceApi,
       deviceTarget: _backend.deviceTarget,
     );

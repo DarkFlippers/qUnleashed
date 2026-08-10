@@ -94,6 +94,7 @@ class InstallEngine extends ChangeNotifier {
 
   final List<_AppTask> _taskQueue = [];
   final Map<String, _PreparedInstall> _preparedInstalls = {};
+  final Set<String> _cancelling = {};
   bool _taskWorkerRunning = false;
   final Stopwatch _sinceLastTask = Stopwatch();
   final ProgressThrottle _progressThrottle = ProgressThrottle();
@@ -134,13 +135,17 @@ class InstallEngine extends ChangeNotifier {
           task.needsLink = true;
           requeued =
               task.attempts <= _maxLinkRetries &&
-              _actions.containsKey(task.alias);
+              _actions.containsKey(task.alias) &&
+              !_cancelling.contains(task.alias);
           if (requeued) {
             _taskQueue.insert(0, task);
           } else {
             _preparedInstalls.remove(task.alias);
             if (_clearAction(task.alias)) notifyListeners();
           }
+        } on FlipperWriteCancelledException {
+          _preparedInstalls.remove(task.alias);
+          if (_clearAction(task.alias)) notifyListeners();
         } catch (e) {
           LogService.log('[InstallEngine] task "${task.alias}" failed: $e');
           if (_clearAction(task.alias)) notifyListeners();
@@ -156,26 +161,34 @@ class InstallEngine extends ChangeNotifier {
     }
   }
 
-  bool get _remoteBuildMode =>
-      catalog.sourceBuildEnabled &&
-      AssemblerController.instance.usesServerBuild;
-
-  String? _serverBuildAlias;
-
-  /// The server takes one job at a time, so a second install has to wait. The
-  /// occupied alias is tracked instead of scanning [actions] because callers
-  /// ask on every tap.
-  String? serverBuildBlocker(String alias) {
-    final active = _serverBuildAlias;
-    return active != null && active != alias ? active : null;
+  bool _clearAction(String alias) {
+    _cancelling.remove(alias);
+    return _actions.remove(alias) != null;
   }
 
-  /// Every path that finishes an action goes through here so the server slot
-  /// is released exactly once.
-  bool _clearAction(String alias) {
-    final removed = _actions.remove(alias) != null;
-    if (_serverBuildAlias == alias) _serverBuildAlias = null;
-    return removed;
+  bool isCancelling(String alias) => _cancelling.contains(alias);
+
+  /// A task that has not started yet simply leaves the queue. The running one
+  /// cannot be torn out from under the device, so it is flagged and unwinds at
+  /// its next checkpoint: the upload closes the firmware write stream and drops
+  /// the partial file, the download and the server build stop being waited on.
+  void cancel(String alias) {
+    if (alias.isEmpty || !_actions.containsKey(alias)) return;
+    final index = _taskQueue.indexWhere((task) => task.alias == alias);
+    if (index >= 0) {
+      final task = _taskQueue.removeAt(index);
+      if (!task.done.isCompleted) task.done.complete(false);
+      _preparedInstalls.remove(alias);
+      _clearAction(alias);
+      notifyListeners();
+      return;
+    }
+    _cancelling.add(alias);
+    notifyListeners();
+  }
+
+  void _throwIfCancelled(String alias) {
+    if (_cancelling.contains(alias)) throw const _CancelledException();
   }
 
   Future<bool> installOrUpdate(
@@ -187,7 +200,6 @@ class InstallEngine extends ChangeNotifier {
     if (_actions.containsKey(app.alias)) return Future.value(false);
 
     final wasInstalled = isInstalled(app);
-    if (_remoteBuildMode) _serverBuildAlias = app.alias;
     _actions[app.alias] = AppAction(
       alias: app.alias,
       type: wasInstalled ? AppActionType.update : AppActionType.install,
@@ -216,6 +228,7 @@ class InstallEngine extends ChangeNotifier {
           throw const _LinkDroppedException();
         }
         await catalog.ensureDeviceFilters(required: true);
+        _throwIfCancelled(app.alias);
 
         var cv = detail?.card.currentVersion ?? app.currentVersion;
         var build = cv?.currentBuild;
@@ -251,6 +264,9 @@ class InstallEngine extends ChangeNotifier {
         );
 
         void onProgress(int receivedBytes, int? totalBytes) {
+          // Throwing out of the progress callback tears down the HTTP stream,
+          // which is the only way to stop a download in flight.
+          _throwIfCancelled(app.alias);
           if (totalBytes == null || totalBytes <= 0) return;
           _setActionState(
             app.alias,
@@ -313,6 +329,7 @@ class InstallEngine extends ChangeNotifier {
             }
           }
         }
+        _throwIfCancelled(app.alias);
         _setActionState(app.alias, stage: AppActionStage.download, progress: 1);
 
         unawaited(_cacheFapIcon(app.alias, fapBytes));
@@ -321,6 +338,7 @@ class InstallEngine extends ChangeNotifier {
         _preparedInstalls[app.alias] = prepared;
       }
 
+      _throwIfCancelled(app.alias);
       if (!isReady) throw const _LinkDroppedException();
 
       final manifest = prepared.manifest;
@@ -344,6 +362,7 @@ class InstallEngine extends ChangeNotifier {
           stage: AppActionStage.upload,
           progress: p,
         ),
+        isCancelled: () => _cancelling.contains(app.alias),
       );
       _setActionState(app.alias, stage: AppActionStage.check, progress: 1);
       await _verifyUpload(fapPath, prepared.fapBytes);
@@ -362,6 +381,13 @@ class InstallEngine extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
+      if (_cancelling.contains(app.alias)) {
+        _preparedInstalls.remove(app.alias);
+        LogService.log('[InstallEngine] install ${app.alias} cancelled');
+        _clearAction(app.alias);
+        notifyListeners();
+        return false;
+      }
       if (e is _LinkDroppedException || !isReady) {
         _setActionState(app.alias, stage: AppActionStage.queued, progress: 0);
         throw const _LinkDroppedException();
@@ -388,6 +414,7 @@ class InstallEngine extends ChangeNotifier {
       api: catalog.deviceApi,
       uid: app.id,
       versionUid: cv.id,
+      isCancelled: () => _cancelling.contains(app.alias),
       onPhase: (phase, progress) {
         switch (phase) {
           case RemoteBuildPhase.queued:
@@ -528,6 +555,7 @@ class InstallEngine extends ChangeNotifier {
         fapBytes,
         onProgress: (p) =>
             _setActionState(alias, stage: AppActionStage.upload, progress: p),
+        isCancelled: () => _cancelling.contains(alias),
       );
       _setActionState(alias, stage: AppActionStage.check, progress: 1);
       await _verifyUpload(fapPath, fapBytes);
@@ -668,10 +696,29 @@ class InstallEngine extends ChangeNotifier {
     }
     _taskQueue.clear();
     _actions.clear();
-    _serverBuildAlias = null;
     _preparedInstalls.clear();
+    _cancelling.clear();
     notifyListeners();
   }
+
+  /// A dropped link only pauses the queue: the worker stops at the first task
+  /// that needs the device and [handleConnect] picks it up again. A disconnect
+  /// with no reconnect behind it means nothing will ever drain the queue, so it
+  /// ends here instead of hanging on a device that is gone.
+  void handleDisconnect({required bool reconnecting}) {
+    if (reconnecting) {
+      notifyListeners();
+      return;
+    }
+    handleReset();
+  }
+
+  void handleConnect() {
+    unawaited(_drainTaskQueue());
+    notifyListeners();
+  }
+
+  void handleDeviceChange() => handleReset();
 }
 
 class _AppTask {
@@ -693,4 +740,8 @@ class _PreparedInstall {
 
 class _LinkDroppedException implements Exception {
   const _LinkDroppedException();
+}
+
+class _CancelledException implements Exception {
+  const _CancelledException();
 }

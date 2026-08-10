@@ -19,6 +19,7 @@ class AppActionSheet {
     required VoidCallback onRestore,
     required VoidCallback onDeleteCopy,
     required VoidCallback onUninstall,
+    VoidCallback? onCancel,
     String? deviceApi,
     String? deviceTarget,
   }) {
@@ -36,6 +37,7 @@ class AppActionSheet {
         onRestore: onRestore,
         onDeleteCopy: onDeleteCopy,
         onUninstall: onUninstall,
+        onCancel: onCancel,
         deviceApi: deviceApi,
         deviceTarget: deviceTarget,
       ),
@@ -55,6 +57,7 @@ class _ActionDialog extends StatefulWidget {
     required this.onRestore,
     required this.onDeleteCopy,
     required this.onUninstall,
+    required this.onCancel,
     required this.deviceApi,
     required this.deviceTarget,
   });
@@ -69,6 +72,7 @@ class _ActionDialog extends StatefulWidget {
   final VoidCallback onRestore;
   final VoidCallback onDeleteCopy;
   final VoidCallback onUninstall;
+  final VoidCallback? onCancel;
   final String? deviceApi;
   final String? deviceTarget;
 
@@ -178,6 +182,16 @@ class _ActionDialogState extends State<_ActionDialog> {
                 deviceTarget: widget.deviceTarget,
               ),
               const SizedBox(height: 16),
+              if (widget.onCancel != null) ...[
+                _ActionButton(
+                  label: 'Cancel',
+                  icon: Icons.close,
+                  color: colors.danger,
+                  filled: true,
+                  onTap: () => _run(widget.onCancel!),
+                ),
+                const SizedBox(height: 8),
+              ],
               if (widget.isUpdatable) ...[
                 _ActionButton(
                   label: 'Update',

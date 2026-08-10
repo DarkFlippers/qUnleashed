@@ -28,6 +28,16 @@ class RemoteBuildException implements Exception {
   String toString() => message;
 }
 
+/// The caller stopped waiting for the build. A job that was still queued is
+/// dropped on the server as well; one that already started keeps building
+/// there and holds this client's slot until it finishes.
+class RemoteBuildCancelledException implements Exception {
+  const RemoteBuildCancelledException();
+
+  @override
+  String toString() => 'Build cancelled';
+}
+
 enum RemoteBuildPhase { queued, building, download }
 
 enum _RemoteCall { status, submit, poll, artifact }
@@ -135,6 +145,7 @@ class RemoteBuildService {
     String channel = 'release',
     String? indexUrl,
     void Function(RemoteBuildPhase phase, double progress)? onPhase,
+    bool Function()? isCancelled,
   }) async {
     if (!canBuild) {
       throw RemoteBuildException(
@@ -168,6 +179,10 @@ class RemoteBuildService {
       }
       final deadline = DateTime.now().add(timeout);
       while (true) {
+        if (isCancelled?.call() ?? false) {
+          await _cancelJob(id, clientId);
+          throw const RemoteBuildCancelledException();
+        }
         switch (status['status'] as String? ?? '') {
           case 'ready':
             return await _downloadArtifact(id, clientId, onPhase);
@@ -223,6 +238,23 @@ class RemoteBuildService {
       throw RemoteBuildException('Build server returned an empty artifact');
     }
     return bytes;
+  }
+
+  /// Best effort: the server drops the job only while it is still queued, a
+  /// 409 means the build had already started and nothing can stop it there.
+  Future<void> _cancelJob(String id, String clientId) async {
+    final path = '/api/v1/builds/$id';
+    try {
+      final request = await AppHttp.client.deleteUrl(_endpoint(path));
+      _signedHeaders(
+        'DELETE',
+        path,
+        const [],
+        clientId,
+      ).forEach(request.headers.set);
+      final response = await request.close();
+      await response.drain<void>();
+    } catch (_) {}
   }
 
   Future<Map<String, dynamic>> _postJson(

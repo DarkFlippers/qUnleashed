@@ -99,6 +99,12 @@ class AppsBackend {
       manifests.handleDisconnect();
       device.handleDisconnect();
       updates.handleDisconnect();
+      // A link that is coming back — a reconnect, a connect attempt or a mode
+      // switch on a live session — keeps the install queue, everything else
+      // ends it.
+      engine.handleDisconnect(
+        reconnecting: state.connected || state.reconnecting || state.connecting,
+      );
       return;
     }
     final id = state.device?.id;
@@ -109,8 +115,10 @@ class AppsBackend {
       manifests.handleDeviceChange();
       device.handleDeviceChange();
       updates.handleDeviceChange();
+      engine.handleDeviceChange();
     } else {
       device.handleConnect();
+      engine.handleConnect();
     }
     if (catalog.resolvedForDeviceId != _deviceId && !catalog.isResolving) {
       catalog.mode.value = CatalogMode.resolving;
