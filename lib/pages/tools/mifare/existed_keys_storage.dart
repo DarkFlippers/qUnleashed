@@ -63,11 +63,15 @@ class ExistedKeysStorage {
   }
 
   Future<List<String>> upload() async {
-    final text = '${_userKeys.join('\n')}\n';
+    // _userKeys is seeded from the user dict and only grows, so an empty delta
+    // means the dict is unchanged - skip the write-back entirely (no pointless
+    // device write, and no spurious write error on a run that found nothing new).
+    final added = _userKeys.where((key) => !_userDict.contains(key)).toList();
+    if (added.isEmpty) return added;
     // Let write failures propagate so the caller surfaces an error instead of
     // reporting a false "keys added" success.
-    await _writer(flipperDictUserPath, utf8.encode(text));
-    return _userKeys.where((key) => !_userDict.contains(key)).toList();
+    await _writer(flipperDictUserPath, utf8.encode('${_userKeys.join('\n')}\n'));
+    return added;
   }
 
   /// Registers a newly recovered [key], folding it into the user-dict write-back
