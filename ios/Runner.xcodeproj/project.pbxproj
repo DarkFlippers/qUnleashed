@@ -14,6 +14,7 @@
 		51AB00000000000000000002 /* bucketsort.c in Sources */ = {isa = PBXBuildFile; fileRef = 51AB00000000000000000012 /* bucketsort.c */; };
 		51AB00000000000000000003 /* crapto1.c in Sources */ = {isa = PBXBuildFile; fileRef = 51AB00000000000000000013 /* crapto1.c */; };
 		51AB00000000000000000004 /* crypto1.c in Sources */ = {isa = PBXBuildFile; fileRef = 51AB00000000000000000014 /* crypto1.c */; };
+		51AB00000000000000000005 /* nested_bridge.c in Sources */ = {isa = PBXBuildFile; fileRef = 51AB00000000000000000015 /* nested_bridge.c */; };
 		74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74858FAE1ED2DC5600515810 /* AppDelegate.swift */; };
 		7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */; };
 		78A318202AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage in Frameworks */ = {isa = PBXBuildFile; productRef = 78A3181F2AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage */; };
@@ -62,6 +63,7 @@
 		51AB00000000000000000012 /* bucketsort.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = bucketsort.c; path = "../lib/modules/cpp/nfc-tools/mfkey32v2/crapto1/bucketsort.c"; sourceTree = SOURCE_ROOT; };
 		51AB00000000000000000013 /* crapto1.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = crapto1.c; path = "../lib/modules/cpp/nfc-tools/mfkey32v2/crapto1/crapto1.c"; sourceTree = SOURCE_ROOT; };
 		51AB00000000000000000014 /* crypto1.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = crypto1.c; path = "../lib/modules/cpp/nfc-tools/mfkey32v2/crapto1/crypto1.c"; sourceTree = SOURCE_ROOT; };
+		51AB00000000000000000015 /* nested_bridge.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = nested_bridge.c; path = ../lib/modules/cpp/mfkey32/nested_bridge.c; sourceTree = SOURCE_ROOT; };
 		74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Runner-Bridging-Header.h"; sourceTree = "<group>"; };
 		74858FAE1ED2DC5600515810 /* AppDelegate.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
@@ -168,6 +170,7 @@
 				51AB00000000000000000012 /* bucketsort.c */,
 				51AB00000000000000000013 /* crapto1.c */,
 				51AB00000000000000000014 /* crypto1.c */,
+				51AB00000000000000000015 /* nested_bridge.c */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 			);
 			path = Runner;
@@ -431,6 +434,7 @@
 				51AB00000000000000000002 /* bucketsort.c in Sources */,
 				51AB00000000000000000003 /* crapto1.c in Sources */,
 				51AB00000000000000000004 /* crypto1.c in Sources */,
+				51AB00000000000000000005 /* nested_bridge.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
