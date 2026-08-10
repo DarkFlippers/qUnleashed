@@ -3,9 +3,9 @@ import 'dart:typed_data';
 
 import 'package:dartufbt/dartufbt.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:qunleashed/pages/asembler/build_service.dart';
-import 'package:qunleashed/pages/asembler/controller.dart';
-import 'package:qunleashed/pages/asembler/project/controller.dart';
+import 'package:qunleashed/services/assembler/build_service.dart';
+import 'package:qunleashed/services/assembler/controller.dart';
+import 'package:qunleashed/pages/flibler/project/controller.dart';
 
 /// Requires a deployed ufbt state and a catalog source bundle:
 ///   DARTUFBT_BUNDLE=/path/to/bundle.zip flutter test test/assembler_build_test.dart

@@ -3,10 +3,10 @@ import 'dart:convert';
 
 import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flutter/foundation.dart';
-
-import '../../../services/repository/app.dart';
-import 'apps_backend.dart' show kManifestsRoot;
+import '../../../services/storage/paths.dart';
+import 'catalog_context.dart' show kManifestsRoot;
 import 'models/manifest.dart';
+import '../../../services/logging.dart';
 
 class ManifestRegistry extends ChangeNotifier {
   ManifestRegistry({required this.client});

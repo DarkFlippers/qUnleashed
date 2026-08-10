@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flipperlib/flipperlib.dart';
 
+import '../../../services/logging.dart';
 import 'mfkey32_models.dart';
 
 const flipperDictUserPath = '/ext/nfc/assets/mf_classic_dict_user.nfc';

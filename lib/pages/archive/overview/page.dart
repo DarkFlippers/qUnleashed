@@ -3,21 +3,21 @@ import 'dart:io' as io;
 import 'package:flutter/material.dart';
 import '../../../components/cardlist.dart';
 import '../../../components/icon.dart';
+import '../../../components/navigation.dart';
 import '../../../theme/theme.dart';
-import '../../../widgets/notification.dart';
-import '../../tools/remote/desktop/page.dart';
+import '../../../components/notification.dart';
 import '../browser/page.dart';
 import '../browser/widgets/storage_card.dart';
 import 'category/category_page.dart';
 import 'category/deleted_page.dart';
 import 'controller.dart';
-import '../data/category.dart';
-import '../data/models/fap.dart';
-import '../data/models/key.dart';
-import 'fap_icon.dart';
-import 'widgets/empty_view.dart';
+import '../../../components/archive/category.dart';
+import '../../../components/archive/models/fap.dart';
+import '../../../components/archive/models/key.dart';
+import '../../../components/codec/fap/icon.dart';
+import '../../../components/filelist/empty_view.dart';
 import 'widgets/key_actions_sheet.dart';
-import 'widgets/progress_fill.dart';
+import '../../../components/filelist/progress_fill.dart';
 import 'widgets/sync_progress_view.dart';
 
 class ArchivePage extends StatefulWidget {
@@ -138,9 +138,7 @@ class _ArchivePageState extends State<ArchivePage> {
     final ok = await _ctrl.launchFapFavorite(fav);
     if (!mounted) return;
     if (ok) {
-      Navigator.of(
-        context,
-      ).push(MaterialPageRoute(builder: (_) => const RemoteControlPage()));
+      openRoute(context, AppRoute.remoteControl);
     } else {
       context.showNotification(
         'Failed to launch ${fav.name}',

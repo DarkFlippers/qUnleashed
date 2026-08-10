@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-import '../../../config.dart';
+import '../../../components/config.dart';
 import 'directory.dart';
 
 class FirmwareRepository extends ChangeNotifier {

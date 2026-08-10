@@ -1,6 +1,7 @@
-import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
+import '../../../../components/format.dart';
+import '../../../../services/rpc/network/network_traffic.dart';
 import '../../../../theme/theme.dart';
 import 'summary_card.dart';
 
@@ -81,17 +82,8 @@ class NetworkSummaryCard extends StatelessWidget {
     );
   }
 
-  static String _bytes(int value) {
-    if (value < 1024) return '$value B';
-    const units = ['KB', 'MB', 'GB', 'TB'];
-    var size = value / 1024;
-    var unit = 0;
-    while (size >= 1024 && unit < units.length - 1) {
-      size /= 1024;
-      unit++;
-    }
-    return '${size.toStringAsFixed(size >= 100 ? 0 : 1)} ${units[unit]}';
-  }
+  static String _bytes(int value) =>
+      formatBytesScaled(value, maxUnit: 4, coarseAt: 100);
 }
 
 /// A chunky arrow tile that pulses on each burst of traffic and fades back

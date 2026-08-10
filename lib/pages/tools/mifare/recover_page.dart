@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../theme/theme.dart';
-import '../../../widgets/progress_button.dart';
+import '../../../components/progress_button.dart';
 import 'existed_keys_storage.dart';
 import 'mfkey32_models.dart';
 import 'recover_controller.dart';

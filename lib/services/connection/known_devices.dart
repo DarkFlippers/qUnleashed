@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flipperlib/flipperlib.dart' hide DateTime;
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../logging.dart';
 
 class KnownDevice {
   const KnownDevice({

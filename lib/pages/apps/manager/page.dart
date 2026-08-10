@@ -2,21 +2,22 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../../../components/dialogs/app_action.dart';
+import 'widgets/app_action.dart';
 import '../../../components/dialogs/confirm.dart';
+import '../../../components/format.dart';
 import '../../../components/icon.dart';
+import '../../../components/navigation.dart';
 import '../../../theme/theme.dart';
-import '../../../widgets/notification.dart';
-import '../../archive/overview/category/columns.dart';
-import '../../archive/overview/category/table.dart';
-import '../../archive/overview/category/toolbar.dart';
-import '../../archive/overview/widgets/empty_view.dart';
-import '../../archive/overview/widgets/progress_fill.dart';
-import '../../tools/remote/desktop/page.dart';
+import '../../../components/notification.dart';
+import '../../../components/filelist/columns.dart';
+import '../../../components/filelist/table.dart';
+import '../../../components/filelist/toolbar.dart';
+import '../../../components/filelist/empty_view.dart';
+import '../../../components/filelist/progress_fill.dart';
 import '../data/apps_backend.dart';
 import '../data/device_source.dart';
 import '../data/install_engine.dart';
-import '../data/models/fap_details.dart';
+import '../../../components/codec/fap/details.dart';
 import '../data/models/installed_app.dart';
 import '../data/update_registry.dart';
 import '../icons/app_icon.dart';
@@ -97,10 +98,12 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
     if (_query.isNotEmpty) {
       final q = _query.toLowerCase();
       out = out
-          .where((a) =>
-              a.name.toLowerCase().contains(q) ||
-              a.alias.toLowerCase().contains(q) ||
-              a.folder.toLowerCase().contains(q))
+          .where(
+            (a) =>
+                a.name.toLowerCase().contains(q) ||
+                a.alias.toLowerCase().contains(q) ||
+                a.folder.toLowerCase().contains(q),
+          )
           .toList();
     } else {
       out = out.toList();
@@ -114,7 +117,9 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
       switch (_sortKey) {
         case 'folder':
           final f = a.folder.toLowerCase().compareTo(b.folder.toLowerCase());
-          cmp = f != 0 ? f : a.name.toLowerCase().compareTo(b.name.toLowerCase());
+          cmp = f != 0
+              ? f
+              : a.name.toLowerCase().compareTo(b.name.toLowerCase());
         case 'size':
           cmp = a.size.compareTo(b.size);
         default:
@@ -137,9 +142,7 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
   }
 
   void _onLaunched() {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const RemoteControlPage()),
-    );
+    openRoute(context, AppRoute.remoteControl);
   }
 
   Future<void> _launch(InstalledApp app) async {
@@ -148,8 +151,10 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
       _onLaunched();
     } catch (e) {
       if (mounted) {
-        context.showNotification('Open failed: $e',
-            type: QNotificationType.error);
+        context.showNotification(
+          'Open failed: $e',
+          type: QNotificationType.error,
+        );
       }
     }
   }
@@ -159,15 +164,19 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
   }
 
   Future<void> _deleteLocal(InstalledApp app) async {
-    if (await _confirm('Delete local copy?',
-        'Remove the downloaded "${app.name}.fap" from this computer? The app stays on the Flipper.')) {
+    if (await _confirm(
+      'Delete local copy?',
+      'Remove the downloaded "${app.name}.fap" from this computer? The app stays on the Flipper.',
+    )) {
       await _device.deleteLocal(app);
     }
   }
 
   Future<void> _uninstall(InstalledApp app) async {
-    if (await _confirm('Uninstall from device?',
-        'Delete "${app.name}" from the Flipper (the local backup is removed too).')) {
+    if (await _confirm(
+      'Uninstall from device?',
+      'Delete "${app.name}" from the Flipper (the local backup is removed too).',
+    )) {
       await _device.uninstallFromDevice(app);
     }
   }
@@ -194,6 +203,9 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
       onRestore: () => _restore(app),
       onDeleteCopy: () => _deleteLocal(app),
       onUninstall: () => _uninstall(app),
+      onCancel: _engine.actions.containsKey(app.alias)
+          ? () => _engine.cancel(app.alias)
+          : null,
       deviceApi: _backend.deviceApi,
       deviceTarget: _backend.deviceTarget,
     );
@@ -229,11 +241,14 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
               children: [
                 Icon(Icons.manage_search, color: Colors.white, size: 18),
                 SizedBox(width: 8),
-                Text('Apps manager',
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 17,
-                        fontWeight: FontWeight.w600)),
+                Text(
+                  'Apps manager',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ],
             ),
             actions: [
@@ -247,7 +262,10 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
                   onPressed: _updateAll,
                 ),
               IconButton(
-                icon: const Icon(Icons.storefront_outlined, color: Colors.white),
+                icon: const Icon(
+                  Icons.storefront_outlined,
+                  color: Colors.white,
+                ),
                 tooltip: 'Catalog',
                 onPressed: widget.onOpenCatalog,
               ),
@@ -309,28 +327,30 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
         Expanded(
           child: visible.isEmpty
               ? (_device.scanning
-                  ? const SizedBox.shrink()
-                  : RefreshIndicator(
-                      color: header,
-                      onRefresh: _device.prime,
-                      child: ListView(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        children: [
-                          SizedBox(
-                            height: MediaQuery.of(context).size.height * 0.5,
-                            child: ArchiveEmptyView(
-                              icon: Icons.apps,
-                              title: _query.isNotEmpty || _folderFilter != null
-                                  ? 'Nothing matches'
-                                  : 'No apps yet',
-                              subtitle: _query.isNotEmpty || _folderFilter != null
-                                  ? null
-                                  : 'Tap sync to load apps from the Flipper',
+                    ? const SizedBox.shrink()
+                    : RefreshIndicator(
+                        color: header,
+                        onRefresh: _device.prime,
+                        child: ListView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          children: [
+                            SizedBox(
+                              height: MediaQuery.of(context).size.height * 0.5,
+                              child: ArchiveEmptyView(
+                                icon: Icons.apps,
+                                title:
+                                    _query.isNotEmpty || _folderFilter != null
+                                    ? 'Nothing matches'
+                                    : 'No apps yet',
+                                subtitle:
+                                    _query.isNotEmpty || _folderFilter != null
+                                    ? null
+                                    : 'Tap sync to load apps from the Flipper',
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
-                    ))
+                          ],
+                        ),
+                      ))
               : LayoutBuilder(
                   builder: (ctx, constraints) {
                     final cols = _columns(constraints.maxWidth);
@@ -390,16 +410,22 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
     const folderW = 118.0;
     final showFolder = avail > 420;
     final fixed = sizeW + (showFolder ? folderW : 0);
-    final nameW =
-        (avail - fixed - 24).clamp(kNameMinWidth, double.infinity).toDouble();
+    final nameW = (avail - fixed - 24)
+        .clamp(kNameMinWidth, double.infinity)
+        .toDouble();
     return [
-      (col: const ArchiveCol('Name / Folder', 0, sortKey: 'name'), width: nameW),
+      (
+        col: const ArchiveCol('Name / Folder', 0, sortKey: 'name'),
+        width: nameW,
+      ),
       if (showFolder)
-        (col: const ArchiveCol('Folder', folderW, sortKey: 'folder'),
-            width: folderW),
+        (
+          col: const ArchiveCol('Folder', folderW, sortKey: 'folder'),
+          width: folderW,
+        ),
       (
         col: const ArchiveCol('Size', sizeW, sortKey: 'size', right: true),
-        width: sizeW
+        width: sizeW,
       ),
     ];
   }
@@ -442,7 +468,9 @@ class _AppRow extends StatelessWidget {
               height: kRowHeight,
               decoration: BoxDecoration(
                 border: Border(
-                  bottom: BorderSide(color: colors.divider.withValues(alpha: 0.6)),
+                  bottom: BorderSide(
+                    color: colors.divider.withValues(alpha: 0.6),
+                  ),
                 ),
               ),
               child: Row(
@@ -528,16 +556,7 @@ class _AppRow extends StatelessWidget {
     }
   }
 
-  String _fmtSize(int bytes) {
-    const units = ['B', 'KB', 'MB'];
-    var b = bytes.toDouble();
-    var i = 0;
-    while (b >= 1024 && i < units.length - 1) {
-      b /= 1024;
-      i++;
-    }
-    return '${b.toStringAsFixed(b >= 10 || i == 0 ? 0 : 1)} ${units[i]}';
-  }
+  String _fmtSize(int bytes) => formatBytesScaled(bytes, maxUnit: 2);
 }
 
 class _Tag extends StatelessWidget {
@@ -645,7 +664,7 @@ class _ScanProgress extends StatelessWidget {
                   fileProgress == null
                       ? '${(progress * 100).round()}%'
                       : '${(progress * 100).round()}% / '
-                          '${(fileProgress! * 100).round()}%',
+                            '${(fileProgress! * 100).round()}%',
                   style: TextStyle(color: colors.textMuted, fontSize: 11),
                 ),
             ],
@@ -655,4 +674,3 @@ class _ScanProgress extends StatelessWidget {
     );
   }
 }
-

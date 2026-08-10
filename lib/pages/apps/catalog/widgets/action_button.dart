@@ -1,12 +1,12 @@
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
+import '../../../../components/navigation.dart';
 import '../../../../theme/theme.dart';
 import '../../../../components/dialogs/action.dart';
 import '../../../../components/dialogs/confirm.dart';
-import '../../../../widgets/notification.dart';
-import '../../../../widgets/progress_button.dart';
-import '../../../tools/remote/desktop/page.dart';
+import '../../../../components/notification.dart';
+import '../../../../components/progress_button.dart';
 import '../../data/catalog_state.dart';
 import '../../data/install_engine.dart';
 import '../../data/models/card.dart';
@@ -45,6 +45,7 @@ class AppActionButton extends StatelessWidget {
           type: action.type,
           stage: action.stage,
           progress: action.progress,
+          cancelling: engine.isCancelling(app.alias),
         ),
       );
     }
@@ -67,7 +68,7 @@ class AppActionButton extends StatelessWidget {
           primary: _buildButton(
             label: 'INSTALL',
             color: colors.accent,
-            onTap: () => _install(context),
+            onTap: _install,
           ),
         );
       case CatalogAppState.update:
@@ -76,9 +77,12 @@ class AppActionButton extends StatelessWidget {
           primary: _buildButton(
             label: 'UPDATE',
             color: colors.success,
-            onTap: () => _install(context),
+            onTap: _install,
           ),
-          secondary: _DeleteButton(size: size, onTap: () => _confirmDelete(context)),
+          secondary: _DeleteButton(
+            size: size,
+            onTap: () => _confirmDelete(context),
+          ),
         );
       case CatalogAppState.open:
         return _ActionRow(
@@ -88,7 +92,10 @@ class AppActionButton extends StatelessWidget {
             color: colors.accent,
             onTap: () => _launchApp(context),
           ),
-          secondary: _DeleteButton(size: size, onTap: () => _confirmDelete(context)),
+          secondary: _DeleteButton(
+            size: size,
+            onTap: () => _confirmDelete(context),
+          ),
         );
     }
   }
@@ -97,16 +104,20 @@ class AppActionButton extends StatelessWidget {
     required AppActionType type,
     required AppActionStage stage,
     required double progress,
+    required bool cancelling,
   }) {
-    final progressState = _ProgressState.resolve(type, stage);
+    final progressState = _ProgressState.resolve(type, stage, cancelling);
     final isLarge = size == AppActionButtonSize.large;
-    final indeterminate = stage == AppActionStage.queued ||
+    final indeterminate =
+        cancelling ||
+        stage == AppActionStage.queued ||
         stage == AppActionStage.check ||
         stage == AppActionStage.build ||
         type == AppActionType.delete;
     return ProgressButton(
       text: progressState.label,
       color: progressState.color,
+      onPressed: cancelling ? null : () => engine.cancel(app.alias),
       progress: indeterminate ? null : progress,
       indeterminate: indeterminate,
       showPercent: !indeterminate,
@@ -145,15 +156,7 @@ class AppActionButton extends StatelessWidget {
     );
   }
 
-  void _install(BuildContext context) {
-    final blocker = engine.serverBuildBlocker(app.alias);
-    if (blocker != null) {
-      context.showNotification(
-        'Server is building "$blocker", wait for it to finish',
-        type: QNotificationType.warning,
-      );
-      return;
-    }
+  void _install() {
     engine.installOrUpdate(app, category: category, detail: detail);
   }
 
@@ -175,15 +178,16 @@ class AppActionButton extends StatelessWidget {
             actionText: kFlipperBusyAction,
             onAction: () {
               Navigator.of(dialogContext).pop();
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const RemoteControlPage()),
-              );
+              openRoute(context, AppRoute.remoteControl);
             },
           ),
         );
         return;
       }
-      context.showNotification('Open failed: $e', type: QNotificationType.error);
+      context.showNotification(
+        'Open failed: $e',
+        type: QNotificationType.error,
+      );
     }
   }
 
@@ -272,12 +276,19 @@ class _ProgressState {
   final String label;
   final Color color;
 
-  static _ProgressState resolve(AppActionType type, AppActionStage stage) {
+  static _ProgressState resolve(
+    AppActionType type,
+    AppActionStage stage,
+    bool cancelling,
+  ) {
     final color = switch (type) {
       AppActionType.update => FlipperOriginalColors.green,
       AppActionType.delete => FlipperOriginalColors.danger,
       AppActionType.install => FlipperOriginalColors.accent,
     };
+    if (cancelling) {
+      return _ProgressState(label: 'CANCEL', color: color);
+    }
     if (stage == AppActionStage.queued) {
       return _ProgressState(label: 'QUEUED', color: color);
     }

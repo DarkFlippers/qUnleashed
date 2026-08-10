@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-import '../../../config.dart';
+import '../../../components/config.dart';
 import '../../../theme/theme.dart';
 import '../firmware/directory.dart';
 import '../firmware/repository.dart';

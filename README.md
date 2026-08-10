@@ -1,6 +1,28 @@
-# qUnleashed
+<p align="center">
+  <img src="assets/img/firmware/cfw.png" alt="qUnleashed" width="96" height="96">
+</p>
+
+<p align="center">
+  <strong>A Flutter companion app for Flipper Zero, built for Unleashed and other firmware.</strong>
+  <br>
+  BLE/USB connection, firmware updates and DFU repair, remote control, archive,
+  file manager and a toolbox — one codebase, five platforms.
+</p>
+
+<p align="center">
+  <img alt="Version" src="https://img.shields.io/badge/dynamic/yaml?url=https%3A%2F%2Fraw.githubusercontent.com%2FDarkFlippers%2FqUnleashed%2Fmain%2Fpubspec.yaml&query=%24.version&label=version&color=4C8DFF">
+  <img alt="Flutter" src="https://img.shields.io/badge/Flutter-Multiplatform-02569B?logo=flutter&logoColor=white">
+  <img alt="Dart" src="https://img.shields.io/badge/dynamic/yaml?url=https%3A%2F%2Fraw.githubusercontent.com%2FDarkFlippers%2FqUnleashed%2Fmain%2Fpubspec.yaml&query=%24.environment.sdk&label=Dart%20SDK&color=0175C2&logo=dart">
+  <img alt="Platforms" src="https://img.shields.io/badge/platform-Android%20%7C%20iOS%20%7C%20macOS%20%7C%20Windows%20%7C%20Linux-blue">
+  <img alt="License" src="https://img.shields.io/github/license/DarkFlippers/qUnleashed">
+</p>
 
 `qUnleashed` is a Flutter companion app for **Flipper Zero**, written from scratch as an alternative to **[Flipper Android App](https://github.com/flipperdevices/Flipper-Android-App.git)** and tailored for custom firmware, first of all **[Unleashed firmware](https://github.com/DarkFlippers/unleashed-firmware.git)** by **[DarkFlippers](https://github.com/DarkFlippers)**. The app is optimized around Unleashed-specific workflows: tracking firmware releases, reading changelogs, downloading updates and installing them directly from the app, while also reworking and extending parts of the original Flipper app experience.
+
+[![English Telegram Chat](https://img.shields.io/endpoint?color=neon&style=flat&url=https%3A%2F%2Ftg.sumanjay.workers.dev%2Fflipperzero_unofficial)](https://t.me/flipperzero_unofficial)
+[![Russian Telegram Chat](https://img.shields.io/endpoint?color=neon&style=flat&url=https%3A%2F%2Ftg.sumanjay.workers.dev%2Fflipperzero_unofficial_ru)](https://t.me/flipperzero_unofficial_ru)
+[![Ukraine Telegram Chat](https://img.shields.io/endpoint?color=neon&style=flat&url=https%3A%2F%2Ftg.sumanjay.workers.dev%2Fflipperzero_unofficial_ua)](https://t.me/flipperzero_unofficial_ua)
+[![Discord Server](https://img.shields.io/discord/937479784148115456?style=flat&logo=discord&label=Discord&color=%237289DA&link=https%3A%2F%2Fdiscord.unleashedflip.com%2F)](https://discord.unleashedflip.com)
 
 ## Features
 

@@ -8,9 +8,9 @@ import 'package:latlong2/latlong.dart';
 
 import '../../../theme/theme.dart';
 import 'package:qunleashed/components/appbar.dart';
-import '../../../widgets/notification.dart';
+import '../../../components/notification.dart';
 import 'controller.dart';
-import '../data/models/pin.dart';
+import '../../../components/archive/models/pin.dart';
 
 part 'widgets/circle_button.dart';
 part 'widgets/map_settings_panel.dart';
@@ -687,11 +687,7 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
                 BoxShadow(color: Colors.black38, blurRadius: 4),
               ],
             ),
-            child: const Icon(
-              Icons.gps_fixed,
-              color: Colors.white,
-              size: 18,
-            ),
+            child: const Icon(Icons.gps_fixed, color: Colors.white, size: 18),
           ),
         ),
       );

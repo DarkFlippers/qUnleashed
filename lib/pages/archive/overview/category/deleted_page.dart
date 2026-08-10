@@ -4,14 +4,14 @@ import 'package:flutter/material.dart';
 
 import '../../../../theme/theme.dart';
 import '../controller.dart';
-import '../../data/models/key.dart';
-import '../widgets/actions_sheet.dart';
-import '../widgets/empty_view.dart';
+import '../../../../components/archive/models/key.dart';
+import '../../widgets/actions_sheet.dart';
+import '../../../../components/filelist/empty_view.dart';
 import '../widgets/key_actions_sheet.dart';
-import 'columns.dart';
+import '../../../../components/filelist/columns.dart';
 import 'sort.dart';
-import 'table.dart';
-import 'toolbar.dart';
+import '../../../../components/filelist/table.dart';
+import '../../../../components/filelist/toolbar.dart';
 
 /// Lists keys deleted remotely but still cached on this device, using the same
 /// table design as the per-category pages. Unlike those, every category shares a
@@ -218,7 +218,10 @@ class _DeletedPageState extends State<DeletedPage> {
               titleSpacing: 0,
               title: const _DeletedAppBarTitle(),
               actions: [
-                CategoryCountBadge(filtered: filtered.length, total: all.length),
+                CategoryCountBadge(
+                  filtered: filtered.length,
+                  total: all.length,
+                ),
               ],
               bottom: PreferredSize(
                 preferredSize: const Size.fromHeight(50),
@@ -350,7 +353,7 @@ class _DeletedAppBarTitle extends StatelessWidget {
             fontSize: 17,
             fontWeight: FontWeight.w600,
           ),
-        )
+        ),
       ],
     );
   }

@@ -3,8 +3,10 @@ import 'dart:io' as io;
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/foundation.dart';
 
+import '../../../components/path.dart';
 import '../../../services/progress_throttle.dart';
-import '../../../services/repository/app.dart';
+import '../../../services/storage/paths.dart';
+import '../../../services/logging.dart';
 
 class RemoteEntry {
   RemoteEntry({required this.name, required this.size, required this.isDir});
@@ -38,7 +40,7 @@ class FileManagerController extends ChangeNotifier {
   bool _loading = false;
   String? _error;
   List<RemoteEntry> _entries = const [];
-  bool _showHidden = false;
+  bool _showHidden = true;
   double _transferProgress = 0;
   String? _transferLabel;
   String? _busyEntry;
@@ -234,7 +236,7 @@ class FileManagerController extends ChangeNotifier {
   }
 
   Future<bool> writeBytes(String remotePath, List<int> data) async {
-    _transferLabel = 'Uploading ${_basename(remotePath)}';
+    _transferLabel = 'Uploading ${basename(remotePath)}';
     _transferProgress = 0;
     _notify();
     final throttle = ProgressThrottle();
@@ -392,7 +394,7 @@ class FileManagerController extends ChangeNotifier {
     );
     await dir.create(recursive: true);
     final sep = io.Platform.pathSeparator;
-    final file = io.File('${dir.path}$sep${_basename(remotePath)}');
+    final file = io.File('${dir.path}$sep${basename(remotePath)}');
     await file.writeAsBytes(bytes, flush: true);
     return file.path;
   }
@@ -428,7 +430,7 @@ class FileManagerController extends ChangeNotifier {
     String remotePath,
     int expectedSize,
   ) async {
-    _busyEntry = _basename(remotePath);
+    _busyEntry = basename(remotePath);
     _busyEntryProgress = 0;
     _notify();
     final throttle = ProgressThrottle();
@@ -495,7 +497,7 @@ class FileManagerController extends ChangeNotifier {
     try {
       for (final (remote, local, size) in plan) {
         _transferLabel =
-            'Downloading ${_basename(remote)}  (${doneFiles + 1}/$totalFiles)';
+            'Downloading ${basename(remote)}  (${doneFiles + 1}/$totalFiles)';
         _notify();
         final base = doneBytes;
         final bytes = await _readForDownload(remote, size, (p) {
@@ -589,7 +591,7 @@ class FileManagerController extends ChangeNotifier {
       return false;
     }
     final bytes = await file.readAsBytes();
-    final name = targetName ?? _basename(localPath.replaceAll('\\', '/'));
+    final name = targetName ?? basename(localPath.replaceAll('\\', '/'));
     return writeBytes(childPath(name), bytes);
   }
 
@@ -604,11 +606,6 @@ class FileManagerController extends ChangeNotifier {
     final localParent = parent.replaceAll('/', sep);
     final root = await shareCacheDirectory();
     return pathJoin([root.path, localParent]);
-  }
-
-  String _basename(String path) {
-    final idx = path.lastIndexOf('/');
-    return idx < 0 ? path : path.substring(idx + 1);
   }
 
   String _normalize(String p) {

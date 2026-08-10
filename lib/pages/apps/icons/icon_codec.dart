@@ -1,7 +1,8 @@
 import 'dart:io' as io;
 import 'dart:typed_data';
 
-import '../../archive/overview/fap_icon.dart' show fapIconWidth, fapIconHeight;
+import '../../../components/codec/fap/icon.dart'
+    show fapIconWidth, fapIconHeight;
 
 Uint8List? decodeCatalogIconToFapBits(Uint8List png) {
   try {

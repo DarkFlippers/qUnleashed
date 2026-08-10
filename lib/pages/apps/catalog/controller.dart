@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flutter/foundation.dart';
 
-import '../../asembler/controller.dart';
+import '../../../services/assembler/controller.dart';
 import '../data/apps_backend.dart';
 import '../data/catalog_api.dart';
 import '../data/catalog_mode.dart';
@@ -16,7 +16,8 @@ import '../icons/icon_resolver.dart';
 
 export '../data/catalog_mode.dart' show CatalogMode, ApiVerdict;
 export '../data/catalog_state.dart' show CatalogAppState;
-export '../data/install_engine.dart' show AppAction, AppActionType, AppActionStage;
+export '../data/install_engine.dart'
+    show AppAction, AppActionType, AppActionStage;
 
 class AppsCatalogController extends ChangeNotifier {
   AppsCatalogController({this.pageSize = 48}) {
@@ -67,13 +68,13 @@ class AppsCatalogController extends ChangeNotifier {
   Object? get lastError => _lastError;
 
   CatalogAppState stateFor(AppCard app) => catalogAppState(
-        card: app,
-        manifest: app.id.isNotEmpty
-            ? manifests.byUid(app.id)
-            : manifests.byAlias(app.alias),
-        targetSdk: _backend.targetSdk,
-        ignoreSdkMismatch: _backend.ignoreSdkMismatch,
-      );
+    card: app,
+    manifest: app.id.isNotEmpty
+        ? manifests.byUid(app.id)
+        : manifests.byAlias(app.alias),
+    targetSdk: _backend.targetSdk,
+    ignoreSdkMismatch: _backend.ignoreSdkMismatch,
+  );
 
   ValueListenable<CatalogMode> get mode => _backend.mode;
   bool get apiFallbackEnabled => _backend.apiFallbackEnabled;
@@ -82,8 +83,6 @@ class AppsCatalogController extends ChangeNotifier {
   String? get compatApi => _backend.compatApi;
   ApiVerdict? get incompatibility => _backend.incompatibility;
 
-  void chooseCompatibility() => _backend.chooseCompatibility();
-  void chooseSourceBuild() => _backend.chooseSourceBuild();
   Future<void> refreshMode() => _backend.resolveMode(force: true);
 
   AppCategory? categoryById(String id) {
@@ -99,19 +98,20 @@ class AppsCatalogController extends ChangeNotifier {
     await _maybeLoad();
   }
 
+  static bool showsCatalog(CatalogMode mode) =>
+      mode == CatalogMode.normal ||
+      mode == CatalogMode.nearestApi ||
+      mode == CatalogMode.sourceBuild;
+
   Future<void> _maybeLoad() async {
-    final m = _backend.mode.value;
-    if (m != CatalogMode.normal && m != CatalogMode.compatibility) return;
+    if (!showsCatalog(_backend.mode.value)) return;
     if (_categories.isEmpty) await loadCategories();
     if (_apps.isEmpty) await refresh();
   }
 
   void _onModeChanged() {
     notifyListeners();
-    final m = _backend.mode.value;
-    if (m == CatalogMode.normal || m == CatalogMode.compatibility) {
-      unawaited(_maybeLoad());
-    }
+    if (showsCatalog(_backend.mode.value)) unawaited(_maybeLoad());
   }
 
   Future<void> loadCategories() async {

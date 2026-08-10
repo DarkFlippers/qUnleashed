@@ -3,7 +3,7 @@ import 'dart:io' as io;
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 
-import '../../../config.dart';
+import '../../../components/config.dart';
 import '../../../services/http/app_http.dart';
 import 'directory.dart';
 

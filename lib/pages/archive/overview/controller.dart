@@ -6,14 +6,17 @@ import 'package:crypto/crypto.dart';
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/foundation.dart';
 
-import 'fap_icon.dart';
-import '../data/parser.dart';
-import 'storage.dart';
-import '../data/category.dart';
+import '../../../components/codec/fap/icon.dart';
+import '../../../components/archive/parser.dart';
+import '../../../components/path.dart';
+import '../../../services/archive/storage.dart';
+import '../../../components/archive/category.dart';
 import '../../../services/progress_throttle.dart';
-import '../../../services/repository/app.dart' as icon_repo;
-import '../data/models/fap.dart';
-import '../data/models/key.dart';
+import '../../../services/storage/paths.dart' as icon_repo;
+import '../../../services/storage/fap_icons.dart' as icon_repo;
+import '../../../components/archive/models/fap.dart';
+import '../../../components/archive/models/key.dart';
+import '../../../services/logging.dart';
 
 enum SyncPhase { checking, downloading }
 
@@ -275,8 +278,7 @@ class ArchiveController extends ChangeNotifier {
   }
 
   static String _fapNameFromPath(String remotePath) {
-    final slash = remotePath.lastIndexOf('/');
-    var name = slash >= 0 ? remotePath.substring(slash + 1) : remotePath;
+    var name = basename(remotePath);
     if (name.toLowerCase().endsWith('.fap')) {
       name = name.substring(0, name.length - 4);
     }
@@ -1226,6 +1228,37 @@ class ArchiveController extends ChangeNotifier {
           if (throttle.shouldEmit(_busyProgress)) notifyListeners();
         },
       );
+    } finally {
+      _busyPath = null;
+      _busyProgress = 0;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> writeKeyBytes(ArchiveKey k, List<int> bytes) async {
+    if (!_client.isConnected) {
+      _lastError = 'Connect a device to save';
+      notifyListeners();
+      return false;
+    }
+    _busyPath = k.remotePath;
+    _busyProgress = 0;
+    notifyListeners();
+    final throttle = ProgressThrottle();
+    try {
+      await _client.storageWriteChunked(
+        k.remotePath,
+        bytes,
+        onProgress: (p) {
+          _busyProgress = p.clamp(0.0, 1.0);
+          if (throttle.shouldEmit(_busyProgress)) notifyListeners();
+        },
+      );
+      return true;
+    } catch (e) {
+      _lastError = '$e';
+      LogService.log('[Archive] write ${k.remotePath} failed: $e');
+      return false;
     } finally {
       _busyPath = null;
       _busyProgress = 0;

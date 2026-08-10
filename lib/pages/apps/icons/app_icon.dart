@@ -3,8 +3,8 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../../../components/icon.dart';
-import '../../../services/repository/app.dart';
-import '../../archive/overview/fap_icon.dart';
+import '../../../services/storage/fap_icons.dart';
+import '../../../components/codec/fap/icon.dart';
 import '../data/models/manifest.dart';
 import 'icon_resolver.dart';
 
@@ -53,7 +53,10 @@ class _AppIconState extends State<AppIcon> {
     if (alias.isEmpty) return;
     var bytes = await readFapIcon(alias);
     if (bytes == null && widget.manifest != null) {
-      if (await IconResolver.instance.ensureFromManifest(alias, widget.manifest!)) {
+      if (await IconResolver.instance.ensureFromManifest(
+        alias,
+        widget.manifest!,
+      )) {
         bytes = await readFapIcon(alias);
       }
     }

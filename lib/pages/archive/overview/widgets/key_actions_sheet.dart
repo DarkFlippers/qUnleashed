@@ -5,19 +5,18 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../components/icon.dart';
+import '../../../../components/navigation.dart';
 import '../../../../theme/theme.dart';
-import '../../../../widgets/notification.dart';
-import '../../editor/page.dart';
-import '../../../tools/paint/editor/page.dart';
-import '../../../tools/plotter/page.dart';
-import '../../data/models/pin.dart';
+import '../../../../components/notification.dart';
+import '../../editor/open.dart';
+import '../../../../components/archive/models/pin.dart';
 import '../../map/page.dart';
 import '../controller.dart';
 import '../../emulate/page.dart';
 import '../../browser/page.dart';
 import '../../browser/share_remote_file.dart';
-import '../../data/models/key.dart';
-import 'actions_sheet.dart';
+import '../../../../components/archive/models/key.dart';
+import '../../widgets/actions_sheet.dart';
 
 /// Builds the archive-specific action set for an [ArchiveKey] and presents it
 /// through the shared [ActionsSheet], so the file manager and the category
@@ -303,37 +302,44 @@ class KeyActionsSheet {
       );
       return;
     }
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => PulsePlotterPage(
-          initialBytes: Uint8List.fromList(bytes!),
-          initialName: k.fileName,
-        ),
-      ),
+    openRoute(
+      context,
+      AppRoute.plotter,
+      args: PlotterArgs(bytes: Uint8List.fromList(bytes), name: k.fileName),
     );
   }
 
-  static void _openInEditor(
+  static Future<void> _openInEditor(
     BuildContext context,
     ArchiveController controller,
     ArchiveKey k,
-  ) {
+  ) async {
     if (const {'png', 'gif', 'bm'}.contains(k.extension.toLowerCase())) {
-      Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => PaintPage(remotePath: k.remotePath)),
+      openRoute(
+        context,
+        AppRoute.pixelEditor,
+        args: PixelEditorArgs(remotePath: k.remotePath),
       );
       return;
     }
-    final onDevice = k.onDevice && controller.isConnected;
+    if (k.onDevice && controller.isConnected) {
+      await openRemoteFileInEditor(
+        context,
+        remotePath: k.remotePath,
+        download: () => controller.downloadKeyToCache(k),
+        upload: (bytes) => controller.writeKeyBytes(k, bytes),
+        onRun: k.extension.toLowerCase() == 'js'
+            ? () => emulateOnFlipper(context, k)
+            : null,
+      );
+      return;
+    }
     final localPath = k.localPath;
-    final local = (!onDevice && localPath != null && localPath.isNotEmpty)
-        ? localPath
-        : null;
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) =>
-            TextEditorPage(remotePath: k.remotePath, localPath: local),
-      ),
+    if (localPath == null || localPath.isEmpty) return;
+    await openLocalFileInEditor(
+      context,
+      localPath: localPath,
+      title: k.fileName,
     );
   }
 

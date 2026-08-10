@@ -3,9 +3,9 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:qunleashed/pages/asembler/project/controller.dart';
-import 'package:qunleashed/pages/asembler/project/git_source.dart';
-import 'package:qunleashed/pages/asembler/project/page.dart';
+import 'package:qunleashed/pages/flibler/project/controller.dart';
+import 'package:qunleashed/pages/flibler/project/git_source.dart';
+import 'package:qunleashed/pages/flibler/project/page.dart';
 import 'package:qunleashed/theme/theme.dart';
 
 void main() {

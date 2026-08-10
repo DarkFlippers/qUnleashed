@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../../theme/theme.dart';
-import '../../../widgets/notification.dart';
-import '../../../widgets/progress_button.dart';
+import '../../../components/notification.dart';
+import '../../../components/progress_button.dart';
 import 'controller.dart';
 import 'local_repo.dart';
 import 'settings.dart';
@@ -55,8 +55,9 @@ class _IrLibSettingsDialogState extends State<IrLibSettingsDialog> {
   }
 
   IrdbRepoRef? _parsedRef() {
-    final urlText =
-        _urlCtrl.text.trim().isEmpty ? kDefaultIrdbUrl : _urlCtrl.text.trim();
+    final urlText = _urlCtrl.text.trim().isEmpty
+        ? kDefaultIrdbUrl
+        : _urlCtrl.text.trim();
     return IrdbRepoRef.tryParse(urlText);
   }
 
@@ -74,12 +75,14 @@ class _IrLibSettingsDialogState extends State<IrLibSettingsDialog> {
         cur.githubToken == _tokenCtrl.text.trim()) {
       return true;
     }
-    await widget.controller.updateSettings(cur.copyWith(
-      owner: ref.owner,
-      repo: ref.repo,
-      branch: ref.branch,
-      githubToken: _tokenCtrl.text.trim(),
-    ));
+    await widget.controller.updateSettings(
+      cur.copyWith(
+        owner: ref.owner,
+        repo: ref.repo,
+        branch: ref.branch,
+        githubToken: _tokenCtrl.text.trim(),
+      ),
+    );
     return true;
   }
 
@@ -105,10 +108,7 @@ class _IrLibSettingsDialogState extends State<IrLibSettingsDialog> {
     final ok = await widget.controller.downloadLocalRepo();
     if (!mounted) return;
     if (ok) {
-      context.showNotification(
-        'IRDB downloaded',
-        type: QNotificationType.good,
-      );
+      context.showNotification('IRDB downloaded', type: QNotificationType.good);
     } else {
       context.showNotification(
         widget.controller.error ?? 'Download failed',
@@ -178,19 +178,20 @@ class _IrLibSettingsDialogState extends State<IrLibSettingsDialog> {
       ),
       actions: [
         TextButton(
-          onPressed:
-              (_saving || downloading) ? null : () => Navigator.of(context).pop(),
+          onPressed: (_saving || downloading)
+              ? null
+              : () => Navigator.of(context).pop(),
           child: Text('Cancel', style: TextStyle(color: colors.textMuted)),
         ),
         FilledButton(
-          style:
-              FilledButton.styleFrom(backgroundColor: colors.accent),
+          style: FilledButton.styleFrom(backgroundColor: colors.accent),
           onPressed: (_saving || downloading) ? null : _save,
           child: _saving
               ? const SizedBox(
                   width: 18,
                   height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2))
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
               : const Text('Save'),
         ),
       ],
@@ -217,17 +218,23 @@ class _IrLibSettingsDialogState extends State<IrLibSettingsDialog> {
         labelStyle: TextStyle(color: colors.textMuted, fontSize: 13),
         hintText: hint,
         hintStyle: TextStyle(
-            color: colors.textMuted.withValues(alpha: 0.6), fontSize: 13),
+          color: colors.textMuted.withValues(alpha: 0.6),
+          fontSize: 13,
+        ),
         errorText: errorText,
         isDense: true,
         suffixIcon: suffix,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
-          borderSide: BorderSide(color: colors.textMuted.withValues(alpha: 0.3)),
+          borderSide: BorderSide(
+            color: colors.textMuted.withValues(alpha: 0.3),
+          ),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
-          borderSide: BorderSide(color: colors.textMuted.withValues(alpha: 0.3)),
+          borderSide: BorderSide(
+            color: colors.textMuted.withValues(alpha: 0.3),
+          ),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
@@ -265,7 +272,8 @@ class _PrimaryActionButton extends StatelessWidget {
     if (downloading) {
       final p = progress;
       final unpacking = p?.stage == 'Unpacking' || (p?.isExtracting ?? false);
-      final hasPercent = p != null &&
+      final hasPercent =
+          p != null &&
           ((unpacking && p.totalFiles > 0) ||
               (!unpacking && (p.total > 0 || p.received > 0)));
       label = unpacking ? 'UNPACKING' : 'DOWNLOADING';

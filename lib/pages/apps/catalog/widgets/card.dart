@@ -1,10 +1,10 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 import '../../../../components/icon.dart';
 import '../../../../theme/theme.dart';
 import '../../data/models/card.dart';
 import '../../data/models/category.dart';
-import 'flipper_image.dart';
+import '../../../../components/remote_image.dart';
 import 'screenshot_frame.dart';
 
 class AppCardView extends StatefulWidget {
@@ -102,7 +102,11 @@ class _AppCardViewState extends State<AppCardView> {
 }
 
 class _CardHeader extends StatelessWidget {
-  const _CardHeader({required this.app, required this.category, required this.action});
+  const _CardHeader({
+    required this.app,
+    required this.category,
+    required this.action,
+  });
 
   final AppCard app;
   final AppCategory? category;
@@ -203,7 +207,10 @@ class _CategoryInline extends StatelessWidget {
             url: cat.iconUri!,
             width: 12,
             height: 12,
-            colorFilter: ColorFilter.mode(colors.textSecondary, BlendMode.srcIn),
+            colorFilter: ColorFilter.mode(
+              colors.textSecondary,
+              BlendMode.srcIn,
+            ),
           ),
           const SizedBox(width: 4),
         ],

@@ -1,6 +1,7 @@
 import 'dart:io' as io;
 import 'dart:typed_data';
 
+import '../../../../components/path.dart';
 import '../project.dart';
 
 /// A single file to upload into an animation's folder on the device
@@ -38,9 +39,5 @@ abstract final class DolphinPack {
     return out;
   }
 
-  static String _baseName(String path) {
-    final norm = path.replaceAll('\\', '/');
-    final idx = norm.lastIndexOf('/');
-    return idx < 0 ? norm : norm.substring(idx + 1);
-  }
+  static String _baseName(String path) => basename(path.replaceAll('\\', '/'));
 }

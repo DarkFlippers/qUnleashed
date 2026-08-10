@@ -1,10 +1,6 @@
 import 'dart:typed_data';
 
-import 'package:flipperlib/dfu/dfu_memory_layout.dart';
-import 'package:flipperlib/dfu/dfuse_file.dart';
-import 'package:flipperlib/dfu/recovery_runner.dart';
-import 'package:flipperlib/dfu/stm32wb55/fus_state.dart';
-import 'package:flipperlib/dfu/stm32wb55/option_bytes.dart';
+import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

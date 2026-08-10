@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 
-import 'package:flipperlib/api/http_util.dart';
+import 'package:qunleashed/services/rpc/network/http_util.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -15,7 +15,9 @@ void main() {
     });
 
     test('parses LF separated headers and trims whitespace', () {
-      final headers = parseHeaderBlock('X-Token:   abc123  \nHost: example.com');
+      final headers = parseHeaderBlock(
+        'X-Token:   abc123  \nHost: example.com',
+      );
       expect(headers['X-Token'], 'abc123');
       expect(headers['Host'], 'example.com');
     });

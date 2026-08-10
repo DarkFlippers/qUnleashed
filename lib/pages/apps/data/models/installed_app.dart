@@ -1,4 +1,4 @@
-import '../../../../components/codec/fap.dart';
+import '../../../../components/codec/fap/info.dart';
 import 'manifest.dart';
 
 class InstalledApp {

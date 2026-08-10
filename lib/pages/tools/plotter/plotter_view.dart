@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../theme/theme.dart';
-import '../../../widgets/notification.dart';
+import '../../../components/notification.dart';
 import 'analysis/slicer.dart';
 import 'engine.dart';
 import 'models.dart';
@@ -96,13 +96,15 @@ class _PlotterViewState extends State<PlotterView> {
 
   void _onSlice() {
     FocusScope.of(context).unfocus();
-    _engine.setSlicer(SlicerParams(
-      modulation: _modulation,
-      short: _parseField(_shortCtrl),
-      long: _parseField(_longCtrl),
-      sync: _parseField(_syncCtrl),
-      gap: _parseField(_gapCtrl),
-    ));
+    _engine.setSlicer(
+      SlicerParams(
+        modulation: _modulation,
+        short: _parseField(_shortCtrl),
+        long: _parseField(_longCtrl),
+        sync: _parseField(_syncCtrl),
+        gap: _parseField(_gapCtrl),
+      ),
+    );
     setState(() {});
   }
 
@@ -128,8 +130,9 @@ class _PlotterViewState extends State<PlotterView> {
           onModulationChanged: (v) => setState(() => _modulation = v ?? ''),
           onSlice: _onSlice,
         );
-        final modulation =
-            report.hasModulation ? _ModulationCard(report: report) : null;
+        final modulation = report.hasModulation
+            ? _ModulationCard(report: report)
+            : null;
         final histogram = _HistogramTable(rows: report.histograms);
         final bits = _BitsCard(
           bits: report.bits,
@@ -185,10 +188,7 @@ class _PlotterViewState extends State<PlotterView> {
             const SizedBox(height: 16),
             slicer,
             const SizedBox(height: 16),
-            if (modulation != null) ...[
-              modulation,
-              const SizedBox(height: 16),
-            ],
+            if (modulation != null) ...[modulation, const SizedBox(height: 16)],
             histogram,
             const SizedBox(height: 16),
             bits,
@@ -314,8 +314,10 @@ class _InteractivePlotState extends State<_InteractivePlot> {
                         _c.panByPixels(-dx);
                       } else if (dy != 0) {
                         final factor = dy < 0 ? 1.1 : 1 / 1.1;
-                        _c.zoomAround(_c.zoom * factor,
-                            _focalFraction(event.localPosition.dx));
+                        _c.zoomAround(
+                          _c.zoom * factor,
+                          _focalFraction(event.localPosition.dx),
+                        );
                       }
                       _updateHover(event.localPosition);
                     }
@@ -329,8 +331,10 @@ class _InteractivePlotState extends State<_InteractivePlot> {
                       if (details.scale != _lastScale) {
                         final factor = details.scale / _lastScale;
                         _lastScale = details.scale;
-                        _c.zoomAround(_c.zoom * factor,
-                            _focalFraction(details.localFocalPoint.dx));
+                        _c.zoomAround(
+                          _c.zoom * factor,
+                          _focalFraction(details.localFocalPoint.dx),
+                        );
                       }
                     },
                     child: AnimatedBuilder(
@@ -567,8 +571,11 @@ class _ViewControls extends StatelessWidget {
               Row(
                 children: [
                   const SizedBox(width: 8),
-                  Icon(Icons.swap_horiz,
-                      size: 18, color: canPan ? colors.textMuted : colors.divider),
+                  Icon(
+                    Icons.swap_horiz,
+                    size: 18,
+                    color: canPan ? colors.textMuted : colors.divider,
+                  ),
                   Expanded(
                     child: SliderTheme(
                       data: _sliderTheme(colors),
@@ -589,14 +596,14 @@ class _ViewControls extends StatelessWidget {
   }
 
   SliderThemeData _sliderTheme(QAppColors colors) => SliderThemeData(
-        activeTrackColor: colors.accent,
-        inactiveTrackColor: colors.divider,
-        thumbColor: colors.accent,
-        overlayColor: colors.accent.withValues(alpha: 0.16),
-        trackHeight: 3,
-        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
-        overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
-      );
+    activeTrackColor: colors.accent,
+    inactiveTrackColor: colors.divider,
+    thumbColor: colors.accent,
+    overlayColor: colors.accent.withValues(alpha: 0.16),
+    trackHeight: 3,
+    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+    overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
+  );
 }
 
 class _RoundIconButton extends StatelessWidget {
@@ -645,8 +652,9 @@ class _SlicerControls extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final selected =
-        _slicerOptions.any((o) => o.value == modulation) ? modulation : null;
+    final selected = _slicerOptions.any((o) => o.value == modulation)
+        ? modulation
+        : null;
 
     final dropdown = DropdownButtonFormField<String>(
       initialValue: selected,
@@ -689,21 +697,41 @@ class _SlicerControls extends StatelessWidget {
                   children: [
                     dropdown,
                     const SizedBox(height: 10),
-                    Row(children: [
-                      Expanded(
-                          child: _NumberField(label: 'Short', controller: shortCtrl)),
-                      const SizedBox(width: 10),
-                      Expanded(
-                          child: _NumberField(label: 'Long', controller: longCtrl)),
-                    ]),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _NumberField(
+                            label: 'Short',
+                            controller: shortCtrl,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _NumberField(
+                            label: 'Long',
+                            controller: longCtrl,
+                          ),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 10),
-                    Row(children: [
-                      Expanded(
-                          child: _NumberField(label: 'Sync', controller: syncCtrl)),
-                      const SizedBox(width: 10),
-                      Expanded(
-                          child: _NumberField(label: 'Gap', controller: gapCtrl)),
-                    ]),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _NumberField(
+                            label: 'Sync',
+                            controller: syncCtrl,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _NumberField(
+                            label: 'Gap',
+                            controller: gapCtrl,
+                          ),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 12),
                     SizedBox(width: double.infinity, child: sliceButton),
                   ],
@@ -715,13 +743,24 @@ class _SlicerControls extends StatelessWidget {
                   children: [
                     SizedBox(width: 140, child: dropdown),
                     const SizedBox(width: 10),
-                    Expanded(child: _NumberField(label: 'Short', controller: shortCtrl)),
+                    Expanded(
+                      child: _NumberField(
+                        label: 'Short',
+                        controller: shortCtrl,
+                      ),
+                    ),
                     const SizedBox(width: 10),
-                    Expanded(child: _NumberField(label: 'Long', controller: longCtrl)),
+                    Expanded(
+                      child: _NumberField(label: 'Long', controller: longCtrl),
+                    ),
                     const SizedBox(width: 10),
-                    Expanded(child: _NumberField(label: 'Sync', controller: syncCtrl)),
+                    Expanded(
+                      child: _NumberField(label: 'Sync', controller: syncCtrl),
+                    ),
                     const SizedBox(width: 10),
-                    Expanded(child: _NumberField(label: 'Gap', controller: gapCtrl)),
+                    Expanded(
+                      child: _NumberField(label: 'Gap', controller: gapCtrl),
+                    ),
                     const SizedBox(width: 10),
                     sliceButton,
                   ],
@@ -879,44 +918,45 @@ class _HistogramTable extends StatelessWidget {
   }
 
   Widget _labelCell(QAppColors colors, String label) => Padding(
-        padding: const EdgeInsets.fromLTRB(0, 5, 20, 5),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: colors.textSecondary,
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      );
+    padding: const EdgeInsets.fromLTRB(0, 5, 20, 5),
+    child: Text(
+      label,
+      style: TextStyle(
+        color: colors.textSecondary,
+        fontSize: 12,
+        fontWeight: FontWeight.w700,
+      ),
+    ),
+  );
 
   Widget _dataCell(QAppColors colors, HistogramCell cell) => Padding(
-        padding: const EdgeInsets.fromLTRB(0, 5, 20, 5),
-        child: RichText(
-          text: TextSpan(
-            style: const TextStyle(
-              fontSize: 12,
-              fontFeatures: [FontFeature.tabularFigures()],
-            ),
-            children: [
-              TextSpan(
-                text: '${cell.count}× ',
-                style:
-                    TextStyle(color: colors.accent, fontWeight: FontWeight.w700),
-              ),
-              TextSpan(
-                text: cell.mean.toStringAsFixed(1),
-                style: TextStyle(
-                    color: colors.textPrimary, fontWeight: FontWeight.w600),
-              ),
-              TextSpan(
-                text: ' ±${cell.devi.toStringAsFixed(1)} µs',
-                style: TextStyle(color: colors.textMuted),
-              ),
-            ],
-          ),
+    padding: const EdgeInsets.fromLTRB(0, 5, 20, 5),
+    child: RichText(
+      text: TextSpan(
+        style: const TextStyle(
+          fontSize: 12,
+          fontFeatures: [FontFeature.tabularFigures()],
         ),
-      );
+        children: [
+          TextSpan(
+            text: '${cell.count}× ',
+            style: TextStyle(color: colors.accent, fontWeight: FontWeight.w700),
+          ),
+          TextSpan(
+            text: cell.mean.toStringAsFixed(1),
+            style: TextStyle(
+              color: colors.textPrimary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          TextSpan(
+            text: ' ±${cell.devi.toStringAsFixed(1)} µs',
+            style: TextStyle(color: colors.textMuted),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 class _BitsCard extends StatelessWidget {
@@ -939,7 +979,8 @@ class _BitsCard extends StatelessWidget {
           Row(
             children: [
               const Expanded(
-                  child: _SectionTitle('Decoded bits', icon: Icons.tag)),
+                child: _SectionTitle('Decoded bits', icon: Icons.tag),
+              ),
               if (bits.isNotEmpty) _CopyButton(value: bits, label: 'bits'),
             ],
           ),

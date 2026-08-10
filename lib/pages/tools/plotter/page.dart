@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'package:qunleashed/components/appbar.dart';
 import '../../../theme/theme.dart';
-import '../../../widgets/notification.dart';
+import '../../../components/notification.dart';
 import 'models.dart';
 import 'parsing.dart';
 import 'plotter_view.dart';
@@ -14,11 +14,7 @@ const double _maxContentWidth = 720;
 const double _wideContentThreshold = 1000;
 
 class PulsePlotterPage extends StatefulWidget {
-  const PulsePlotterPage({
-    super.key,
-    this.initialBytes,
-    this.initialName,
-  });
+  const PulsePlotterPage({super.key, this.initialBytes, this.initialName});
 
   final Uint8List? initialBytes;
   final String? initialName;
@@ -71,8 +67,9 @@ class _PulsePlotterPageState extends State<PulsePlotterPage> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _loading = false);
-      final message =
-          e is PlotterParseException ? e.message : 'Could not parse this file';
+      final message = e is PlotterParseException
+          ? e.message
+          : 'Could not parse this file';
       context.showNotification(message, type: QNotificationType.error);
     }
   }
@@ -303,8 +300,11 @@ class _AboutSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final body =
-        TextStyle(color: colors.textSecondary, fontSize: 13, height: 1.5);
+    final body = TextStyle(
+      color: colors.textSecondary,
+      fontSize: 13,
+      height: 1.5,
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

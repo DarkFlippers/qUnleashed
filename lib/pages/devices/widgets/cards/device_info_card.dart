@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../../../theme/theme.dart';
-import '../../../../widgets/action_row.dart';
-import '../../../../widgets/info_line.dart';
+import '../action_row.dart';
+import '../info_line.dart';
 import '../navigate_icon.dart';
 import 'summary_card.dart';
 

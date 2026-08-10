@@ -199,7 +199,7 @@ SPEC CHECKSUMS:
   share_plus: 510bf0af1a42cd602274b4629920c9649c52f4cc
   shared_preferences_foundation: 7036424c3d8ec98dfe75ff1667cb0cd531ec82bb
   super_native_extensions: c2795d6d9aedf4a79fae25cb6160b71b50549189
-  universal_ble: 45519b2aeafe62761e2c6309f8927edb5288b914
+  universal_ble: a322ebabee64f0ec27a313e89a5dd6967f37a60f
   url_launcher_macos: f87a979182d112f911de6820aefddaf56ee9fbfd
   window_manager: b729e31d38fb04905235df9ea896128991cad99e
 

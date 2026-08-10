@@ -1,6 +1,7 @@
 import 'dart:io' as io;
 
-import '../../../../services/repository/app.dart';
+import '../../../../components/path.dart';
+import '../../../../services/storage/paths.dart';
 
 /// Per-animation settings as stored in a Flipper `manifest.txt`
 /// (`Filetype: Flipper Animation Manifest`). Mirrors the editable fields of

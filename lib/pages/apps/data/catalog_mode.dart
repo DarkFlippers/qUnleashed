@@ -1,28 +1,79 @@
+import '../../../components/codec/fap/api_version.dart';
 import 'models/card.dart';
 
-enum CatalogMode { resolving, normal, mismatch, incompatible, compatibility }
+/// How the catalog works right now. Resolved automatically from the firmware
+/// API, the catalog SDK list and the builder availability; the user only ever
+/// overrides it from the apps settings.
+enum CatalogMode {
+  resolving,
+  normal,
+  sourceBuild,
+  nearestApi,
+  managerOnly;
+
+  String get label => switch (this) {
+    CatalogMode.resolving => 'Checking…',
+    CatalogMode.normal => 'Catalog',
+    CatalogMode.sourceBuild => 'Built from source',
+    CatalogMode.nearestApi => 'Nearest API',
+    CatalogMode.managerOnly => 'Manager only',
+  };
+}
+
+/// What the apps settings page allows instead of the automatic decision.
+enum CatalogModePreference {
+  auto,
+  catalog,
+  sourceBuild,
+  manager;
+
+  static CatalogModePreference parse(String? raw) {
+    for (final value in CatalogModePreference.values) {
+      if (value.name == raw) return value;
+    }
+    return CatalogModePreference.auto;
+  }
+}
 
 enum ApiVerdict { normal, mismatch, tooOld, tooNew }
+
+/// Picks the working mode: the catalog as is when the API matches, source
+/// builds when it does not and the builder can run, the nearest catalog API
+/// when it cannot, and the apps manager when nothing else is left.
+CatalogMode resolveCatalogMode({
+  required ApiVerdict verdict,
+  required bool hasNearestApi,
+  required bool builderAvailable,
+  CatalogModePreference preference = CatalogModePreference.auto,
+}) {
+  if (preference == CatalogModePreference.manager) {
+    return CatalogMode.managerOnly;
+  }
+  if (preference == CatalogModePreference.catalog) {
+    if (verdict == ApiVerdict.normal) return CatalogMode.normal;
+    return hasNearestApi ? CatalogMode.nearestApi : CatalogMode.managerOnly;
+  }
+  if (preference == CatalogModePreference.sourceBuild && builderAvailable) {
+    return CatalogMode.sourceBuild;
+  }
+  switch (verdict) {
+    case ApiVerdict.normal:
+      return CatalogMode.normal;
+    case ApiVerdict.mismatch:
+      if (builderAvailable) return CatalogMode.sourceBuild;
+      return hasNearestApi ? CatalogMode.nearestApi : CatalogMode.managerOnly;
+    case ApiVerdict.tooNew:
+      return builderAvailable ? CatalogMode.sourceBuild : CatalogMode.managerOnly;
+    case ApiVerdict.tooOld:
+      return CatalogMode.managerOnly;
+  }
+}
 
 class ApiResolution {
   const ApiResolution(this.verdict, [this.api]);
 
   final ApiVerdict verdict;
   final String? api;
-}
-
-(int, int)? parseApi(String? raw) {
-  if (raw == null || raw.isEmpty) return null;
-  final parts = raw.split('.');
-  final major = int.tryParse(parts[0]);
-  if (major == null) return null;
-  final minor = parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0;
-  return (major, minor);
-}
-
-int compareApi((int, int) a, (int, int) b) {
-  if (a.$1 != b.$1) return a.$1.compareTo(b.$1);
-  return a.$2.compareTo(b.$2);
 }
 
 ApiResolution resolveCatalogApi(List<AppSdk> sdks, String? deviceApi) {

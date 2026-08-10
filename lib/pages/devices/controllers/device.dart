@@ -3,7 +3,9 @@ import 'dart:async';
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/foundation.dart';
 
+import '../../../services/connection/device_info_watch.dart';
 import '../../../services/connection/known_devices.dart';
+import '../../../services/logging.dart';
 import '../../../theme/theme.dart';
 import '../models/connection_state.dart';
 import '../models/device_info.dart';
@@ -277,8 +279,7 @@ class DeviceController extends ChangeNotifier {
     KnownDevice? last,
   ) {
     bool eligible(FlipperDevice d) =>
-        d.id != _userDisconnectedId &&
-        !_autoConnectAttemptedIds.contains(d.id);
+        d.id != _userDisconnectedId && !_autoConnectAttemptedIds.contains(d.id);
 
     for (final d in present) {
       if (d.isUsb && eligible(d) && _client.isFlipperDevice(d)) return d;
@@ -395,7 +396,7 @@ class DeviceController extends ChangeNotifier {
       _notify();
     }, onError: (e) => LogService.log('[DeviceController] info stream: $e'));
 
-    _client.startDeviceInfoCollection();
+    DeviceInfoWatchService.instance.start(_client);
   }
 
   void _onConnectionState(FlipperConnectionState state) {
@@ -424,6 +425,6 @@ class DeviceController extends ChangeNotifier {
   void _cancelDataStreams() {
     _infoStreamSub?.cancel();
     _infoStreamSub = null;
-    _client.stopDeviceInfoCollection();
+    DeviceInfoWatchService.instance.stop();
   }
 }

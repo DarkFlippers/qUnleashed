@@ -1,8 +1,8 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 import '../../../../theme/theme.dart';
 import '../../data/models/category.dart';
-import 'flipper_image.dart';
+import '../../../../components/remote_image.dart';
 
 Color parseHexColor(String hex, {Color fallback = const Color(0xFFEBEBEB)}) {
   var s = hex.trim();
@@ -30,7 +30,9 @@ class CategoryChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final base = parseHexColor(category.color);
-    final bg = selected ? base : Color.alphaBlend(base.withAlpha(70), colors.card);
+    final bg = selected
+        ? base
+        : Color.alphaBlend(base.withAlpha(70), colors.card);
     const textColor = Colors.black;
 
     return Material(

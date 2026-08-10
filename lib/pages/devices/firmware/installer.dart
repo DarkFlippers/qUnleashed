@@ -4,12 +4,12 @@ import 'dart:io' as io;
 
 import 'package:archive/archive_io.dart';
 import 'package:flipperlib/flipperlib.dart';
-import 'package:flipperlib/dfu/stm32wb55/option_bytes.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../../services/progress_throttle.dart';
 import 'source.dart';
 import 'update_state.dart';
+import '../../../services/logging.dart';
 
 const _tag = '[FirmwareInstaller]';
 const _remoteRoot = '/ext/update';
@@ -29,12 +29,9 @@ class FirmwareInstaller {
       if (source.isRemote) onState(const UpdateFetching());
 
       final downloadThrottle = ProgressThrottle();
-      final archivePath = await source.resolveArchive(
-        tempDir.path,
-        (p) {
-          if (downloadThrottle.shouldEmit(p)) onState(UpdateDownloading(p));
-        },
-      );
+      final archivePath = await source.resolveArchive(tempDir.path, (p) {
+        if (downloadThrottle.shouldEmit(p)) onState(UpdateDownloading(p));
+      });
 
       final extracted = await _extractFlat(archivePath);
       if (extracted.dirName == null || extracted.files.isEmpty) {

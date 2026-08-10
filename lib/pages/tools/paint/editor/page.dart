@@ -7,9 +7,11 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flipperlib/flipperlib.dart' hide DateTime;
 import 'package:flutter/material.dart';
 
-import '../../../../services/repository/app.dart';
+import '../../../../components/path.dart';
+import '../../../../services/logging.dart';
+import '../../../../services/storage/paths.dart';
 import '../../../../theme/theme.dart';
-import '../../../../widgets/notification.dart';
+import '../../../../components/notification.dart';
 import '../../remote/desktop/gif_encoder.dart';
 import '../../../../components/codec/bm.dart';
 import '../constants.dart';
@@ -161,7 +163,7 @@ class _PaintPageState extends State<PaintPage> {
         compress: _ctrl.compressBm,
       );
     } catch (e) {
-      debugPrint('[PaintEditor] autosave draft failed: $e');
+      LogService.log('[PaintEditor] autosave draft failed: $e');
     } finally {
       _savingDraft = false;
     }
@@ -580,8 +582,7 @@ class _PaintPageState extends State<PaintPage> {
           BmCodec.parseDolphinInt(metaText, 'Active frames') ?? 0;
 
       // Frame dimensions can be smaller than our fixed canvas (e.g. 128×54).
-      final width =
-          BmCodec.parseDolphinInt(metaText, 'Width') ?? kCanvasWidth;
+      final width = BmCodec.parseDolphinInt(metaText, 'Width') ?? kCanvasWidth;
       final height =
           BmCodec.parseDolphinInt(metaText, 'Height') ?? kCanvasHeight;
       final expectedBytes = ((width + 7) >> 3) * height;

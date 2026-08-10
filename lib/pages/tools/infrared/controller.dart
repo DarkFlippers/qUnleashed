@@ -1,16 +1,17 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:io' as io;
 
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../../services/progress_throttle.dart';
-import '../../archive/overview/storage.dart';
-import '../../archive/data/category.dart';
+import '../../../services/archive/storage.dart';
+import '../../../components/archive/category.dart';
 import 'api.dart';
 import 'local_repo.dart';
 import 'models.dart';
 import 'settings.dart';
+import '../../../services/logging.dart';
 
 class IrLibController extends ChangeNotifier {
   IrLibController({
@@ -19,11 +20,11 @@ class IrLibController extends ChangeNotifier {
     ArchiveStorage? storage,
     IrLibSettingsStorage? settingsStorage,
     IrLibLocalRepo? localRepo,
-  })  : _api = api ?? IrLibApi(),
-        _client = client ?? FlipperOneClient().get(),
-        _storage = storage ?? ArchiveStorage(),
-        _settingsStorage = settingsStorage ?? IrLibSettingsStorage(),
-        _localRepo = localRepo ?? IrLibLocalRepo();
+  }) : _api = api ?? IrLibApi(),
+       _client = client ?? FlipperOneClient().get(),
+       _storage = storage ?? ArchiveStorage(),
+       _settingsStorage = settingsStorage ?? IrLibSettingsStorage(),
+       _localRepo = localRepo ?? IrLibLocalRepo();
 
   IrLibApi _api;
   final FlipperClient _client;
@@ -281,11 +282,7 @@ class IrLibController extends ChangeNotifier {
         }
       });
       await Future.any<void>([
-        _client.storageWriteChunked(
-          remotePath,
-          bytes,
-          onProgress: onProgress,
-        ),
+        _client.storageWriteChunked(remotePath, bytes, onProgress: onProgress),
         disconnected.future,
       ]).whenComplete(sub.cancel);
       return true;

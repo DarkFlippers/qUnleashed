@@ -4,9 +4,10 @@ import 'dart:convert';
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
-import '../../archive/data/category.dart';
-import '../../archive/overview/storage.dart';
+import '../../../components/archive/category.dart';
+import '../../../services/archive/storage.dart';
 import 'widgets/ir_file_viewer.dart';
+import '../../../services/logging.dart';
 
 class IrContentPage extends StatefulWidget {
   const IrContentPage({
@@ -42,8 +43,9 @@ class _IrContentPageState extends State<IrContentPage> {
   }
 
   String _safeName(String original) {
-    final name =
-        original.toLowerCase().endsWith('.ir') ? original : '$original.ir';
+    final name = original.toLowerCase().endsWith('.ir')
+        ? original
+        : '$original.ir';
     return name.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_');
   }
 

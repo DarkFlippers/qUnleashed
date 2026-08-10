@@ -4,19 +4,18 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../../components/navigation.dart';
 import '../../../theme/theme.dart';
 import 'package:qunleashed/components/appbar.dart';
 import 'package:qunleashed/components/cardlist.dart';
 import 'package:flipperlib/flipperlib.dart';
-import '../../../services/repository/app.dart' as icon_repo;
-import '../../../widgets/notification.dart';
-import '../overview/fap_icon.dart';
+import '../../../services/storage/fap_icons.dart' as icon_repo;
+import '../../../components/notification.dart';
+import '../../../components/codec/fap/icon.dart';
 import '../emulate/page.dart';
-import '../data/category.dart';
-import '../data/models/key.dart';
-import '../editor/page.dart';
-import '../../tools/paint/editor/page.dart';
-import '../../tools/remote/desktop/page.dart';
+import '../../../components/archive/category.dart';
+import '../../../components/archive/models/key.dart';
+import '../editor/open.dart';
 import 'share_remote_file.dart';
 import 'controller.dart';
 import 'widgets/file_row.dart';
@@ -100,7 +99,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
       _openPaintEditor(_ctrl.childPath(e.name));
       return;
     }
-    _openTextEditor(_ctrl.childPath(e.name));
+    _openTextEditor(e);
   }
 
   Future<void> _navigateTo(String path) async {
@@ -195,33 +194,34 @@ class _FileManagerPageState extends State<FileManagerPage> {
       );
       return;
     }
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const RemoteControlPage()));
+    openRoute(context, AppRoute.remoteControl);
   }
 
   void _openRemoteControlBusy() {
     context.showNotification('Device is busy', type: QNotificationType.error);
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const RemoteControlPage()));
+    openRoute(context, AppRoute.remoteControl);
   }
 
-  Future<void> _openTextEditor(String remotePath) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) =>
-            TextEditorPage(remotePath: remotePath, client: _ctrl.client),
-      ),
+  Future<void> _openTextEditor(RemoteEntry e) async {
+    final remotePath = _ctrl.childPath(e.name);
+    await openRemoteFileInEditor(
+      context,
+      remotePath: remotePath,
+      download: () => _ctrl.downloadTo(remotePath, expectedSize: e.size),
+      upload: (bytes) => _ctrl.writeBytes(remotePath, bytes),
+      onRun: e.extension == 'js'
+          ? () => _emulateEntry(e, ArchiveCategory.javascript)
+          : null,
     );
+    if (!mounted) return;
     await _ctrl.refresh();
   }
 
   Future<void> _openPaintEditor(String remotePath) async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => PaintPage(remotePath: remotePath, client: _ctrl.client),
-      ),
+    await openRoute(
+      context,
+      AppRoute.pixelEditor,
+      args: PixelEditorArgs(remotePath: remotePath, client: _ctrl.client),
     );
   }
 
@@ -286,7 +286,10 @@ class _FileManagerPageState extends State<FileManagerPage> {
     if (entries.length == 1 && !entries.single.isDir) {
       final ok = await _ctrl.downloadEntryTo(entries.single, destDir: destDir);
       if (!mounted || ok) return;
-      context.showNotification('Download failed', type: QNotificationType.error);
+      context.showNotification(
+        'Download failed',
+        type: QNotificationType.error,
+      );
       return;
     }
 
@@ -915,11 +918,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
                 value: 'refresh',
                 child: Row(
                   children: [
-                    Icon(
-                      Icons.refresh,
-                      size: 20,
-                      color: colors.textSecondary,
-                    ),
+                    Icon(Icons.refresh, size: 20, color: colors.textSecondary),
                     const SizedBox(width: 12),
                     const Text('Refresh'),
                   ],
@@ -1261,11 +1260,10 @@ class _FileManagerPageState extends State<FileManagerPage> {
             : null,
         onEdit: _isEditable(e)
             ? () {
-                final path = _ctrl.childPath(e.name);
                 if (_isPaintFile(e)) {
-                  _openPaintEditor(path);
+                  _openPaintEditor(_ctrl.childPath(e.name));
                 } else {
-                  _openTextEditor(path);
+                  _openTextEditor(e);
                 }
               }
             : null,

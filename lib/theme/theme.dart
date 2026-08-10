@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../config.dart';
+import '../components/config.dart';
 
 enum QThemeMode {
   firmware('Match firmware'),
@@ -282,10 +282,9 @@ class QAppColors extends ThemeExtension<QAppColors> {
     );
   }
 
-  static Color onColorFor(Color color) =>
-      color.computeLuminance() > 0.55
-          ? const Color(0xFF0A0A0A)
-          : const Color(0xFFFFFFFF);
+  static Color onColorFor(Color color) => color.computeLuminance() > 0.55
+      ? const Color(0xFF0A0A0A)
+      : const Color(0xFFFFFFFF);
 
   @override
   QAppColors copyWith({
@@ -358,19 +357,18 @@ class QAppColors extends ThemeExtension<QAppColors> {
       info: Color.lerp(info, other.info, t) ?? info,
       success: Color.lerp(success, other.success, t) ?? success,
       danger: Color.lerp(danger, other.danger, t) ?? danger,
-      screenBackground: Color.lerp(screenBackground, other.screenBackground, t) ??
+      screenBackground:
+          Color.lerp(screenBackground, other.screenBackground, t) ??
           screenBackground,
       screenBorder:
           Color.lerp(screenBorder, other.screenBorder, t) ?? screenBorder,
-      screenOptionBackground: Color.lerp(
-            screenOptionBackground,
-            other.screenOptionBackground,
-            t,
-          ) ??
+      screenOptionBackground:
+          Color.lerp(screenOptionBackground, other.screenOptionBackground, t) ??
           screenOptionBackground,
       dialogBarrier:
           Color.lerp(dialogBarrier, other.dialogBarrier, t) ?? dialogBarrier,
-      dialogBackground: Color.lerp(dialogBackground, other.dialogBackground, t) ??
+      dialogBackground:
+          Color.lerp(dialogBackground, other.dialogBackground, t) ??
           dialogBackground,
       dialogDivider:
           Color.lerp(dialogDivider, other.dialogDivider, t) ?? dialogDivider,
@@ -437,9 +435,7 @@ ThemeData buildAppTheme(Brightness brightness, Color accent) {
         iconSize: 20,
         minimumSize: const Size.square(40),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       ),
     ),
     progressIndicatorTheme: ProgressIndicatorThemeData(color: colors.accent),

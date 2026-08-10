@@ -3,17 +3,26 @@
 ## Catalog / firmware API compatibility
 
 The device reports its API as `major.minor`. The firmware FAP loader enforces
-the major version only, so the catalog mode is resolved against the catalog SDK
-list (`GET /sdk`, filtered by hardware target):
+the major version only, so the working mode is resolved against the catalog SDK
+list (`GET /sdk`, filtered by hardware target) and picked automatically — the
+user is never asked. `CatalogMode` is the result:
 
-| Situation | Example (device / catalog) | Behavior |
+| Situation | Example (device / catalog) | Mode |
 |---|---|---|
-| Exact API present in catalog | 87.1 / 87.1 | normal |
-| Same major, catalog has minor ≤ device | 87.6 / 87.1 | normal, silently uses 87.1 |
-| Same major, only higher minors | 87.0 / 87.5 | warning dialog, candidate 87.5 |
-| Device one major ahead of catalog | 88.0 / max 87.1 | warning dialog, candidate 87.1 |
-| Device 2+ majors ahead | 89.x / max 87.1 | incompatible: apps manager only, no updates, wait for the catalog |
-| Device older than the whole catalog | 86.x / 87+ | incompatible: apps manager only, no updates, update the firmware |
+| Exact API present in catalog | 87.1 / 87.1 | `normal` |
+| Same major, catalog has minor ≤ device | 87.6 / 87.1 | `normal`, silently uses 87.1 |
+| Catalog behind the firmware, Flibler available | 87.0 / 87.5, 88.0 / max 87.1 | `sourceBuild`: apps are compiled from source |
+| Catalog behind the firmware, no builder | 88.0 / max 87.1 | `nearestApi`: installs builds of the closest API the catalog has |
+| Device 2+ majors ahead, no builder | 89.x / max 87.1 | `managerOnly` |
+| Device older than the whole catalog | 86.x / 87+ | `managerOnly` |
+| Catalog failed or timed out (`kCatalogTimeout`) | — | `managerOnly` |
+
+The builder counts as available when the backend chosen in the Flibler settings
+can run: this computer on desktop, or a build server that answers its status
+endpoint (cached for a few minutes, see `AssemblerController.builderAvailable`).
+Settings → Apps overrides the decision (`CatalogModePreference`), the catalog
+header shows the resolved mode as a badge, and `managerOnly` also disables the
+catalog button in the apps manager.
 
 The API sent to the server is always one the catalog knows; the device API is
 kept for local checks (installed apps and updates compare major strictly and

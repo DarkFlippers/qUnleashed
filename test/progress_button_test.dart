@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:qunleashed/widgets/progress_button.dart';
+import 'package:qunleashed/components/progress_button.dart';
 
 void main() {
   testWidgets('can restart indeterminate animation', (tester) async {

@@ -2,10 +2,11 @@ import 'dart:io' as io;
 
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:super_clipboard/super_clipboard.dart';
 
+import '../../../components/path.dart';
+import '../../../components/share.dart';
 import '../../../theme/theme.dart';
-import '../../../widgets/notification.dart';
+import '../../../components/notification.dart';
 import 'controller.dart';
 
 bool get isShareSupported =>
@@ -105,7 +106,7 @@ Future<void> shareRemoteFile(
   await shareLocalFile(
     context,
     localPath,
-    displayName: displayName ?? _basename(remotePath),
+    displayName: displayName ?? basename(remotePath),
   );
 }
 
@@ -125,7 +126,7 @@ Future<void> shareLocalFile(
     return;
   }
 
-  final clipboardOk = await _copyFileToClipboard(file);
+  final clipboardOk = await copyFileToClipboard(file.path);
 
   if (!context.mounted) return;
 
@@ -144,7 +145,7 @@ Future<void> shareLocalFile(
     await Share.shareXFiles([
       XFile(
         localPath,
-        name: displayName ?? _basename(localPath.replaceAll('\\', '/')),
+        name: displayName ?? basename(localPath.replaceAll('\\', '/')),
       ),
     ], sharePositionOrigin: origin);
   } catch (e) {
@@ -166,28 +167,4 @@ Future<void> shareLocalFile(
         : 'Shared (clipboard unavailable)',
     type: QNotificationType.good,
   );
-}
-
-bool get _supportsClipboardFileUri =>
-    io.Platform.isWindows || io.Platform.isLinux || io.Platform.isMacOS;
-
-Future<bool> _copyFileToClipboard(io.File file) async {
-  if (!_supportsClipboardFileUri) return false;
-  try {
-    final clipboard = SystemClipboard.instance;
-    if (clipboard == null) return false;
-    final uri = file.absolute.uri;
-    final item = DataWriterItem(
-      suggestedName: _basename(file.path.replaceAll('\\', '/')),
-    )..add(Formats.fileUri(uri));
-    await clipboard.write([item]);
-    return true;
-  } catch (_) {
-    return false;
-  }
-}
-
-String _basename(String path) {
-  final idx = path.lastIndexOf('/');
-  return idx < 0 ? path : path.substring(idx + 1);
 }

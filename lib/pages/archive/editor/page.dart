@@ -1,191 +1,74 @@
 import 'dart:convert';
 import 'dart:io' as io;
-import 'dart:math';
 
-import 'package:flipperlib/flipperlib.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
-import 'package:highlight/highlight.dart' show Node, highlight;
-
-import '../../../theme/theme.dart';
 import 'package:qunleashed/components/appbar.dart';
-import '../../../widgets/notification.dart';
-import '../../../theme/colors/editor.dart';
-import '../data/category.dart';
-import '../data/models/key.dart';
-import '../emulate/page.dart';
-import 'syntax.dart';
 
-const _kFontSize = 13.0;
-const _kLineHeight = _kFontSize * 1.4;
-const _kTopPadding = 12.0;
-const _kLeftPadding = 8.0;
-const _kRightPadding = 12.0;
-const _kBottomPadding = 12.0;
+import '../../../components/notification.dart';
+import '../../../components/path.dart';
+import '../../../services/logging.dart';
+import '../../../theme/colors/editor.dart';
+import '../../../theme/theme.dart';
+import 'document.dart';
+import 'highlighter.dart';
+import 'style.dart';
+import 'widgets/line_row.dart';
 
 class TextEditorPage extends StatefulWidget {
   const TextEditorPage({
     super.key,
-    required this.remotePath,
-    this.localPath,
-    this.client,
+    required this.localPath,
+    this.title,
+    this.onSave,
+    this.onRun,
   });
 
-  final String remotePath;
-  final String? localPath;
-  final FlipperClient? client;
+  final String localPath;
+  final String? title;
+  final Future<bool> Function(List<int> bytes)? onSave;
+  final VoidCallback? onRun;
 
   @override
   State<TextEditorPage> createState() => _TextEditorPageState();
 }
 
 class _TextEditorPageState extends State<TextEditorPage> {
-  late final _HighlightController _text;
+  static const String _zwsp = '\u200b';
+
   final ScrollController _scroll = ScrollController();
+  final TextEditingController _field = TextEditingController();
+  final FocusNode _focus = FocusNode();
   final GlobalKey _fieldKey = GlobalKey();
-  late final FlipperClient _client;
+
+  late final String _name;
+  late final LineHighlighter _highlighter;
+
+  EditorDocument? _doc;
+  int? _editing;
+  bool _editingModified = false;
+  bool _retargeting = false;
+  String _fieldText = '';
 
   bool _loading = true;
   bool _saving = false;
   String? _error;
 
-  List<String> _savedLines = [];
-  Set<int> _modifiedLines = {};
-  int _lineCount = 1;
-
-  // Y-координаты начала каждой физической строки, взятые прямо из RenderEditable.
-  List<double> _lineY = [];
-
-  double get _gutterWidth =>
-      max(34.0, _lineCount.toString().length * 7.5 + 14.0);
-
   @override
   void initState() {
     super.initState();
-    registerDuckyscriptLanguage();
-    final language = _languageForPath(widget.remotePath);
-    _text = _HighlightController(
-      language: language,
-      theme: language == 'duckyscript'
-          ? duckyscriptEditorTheme
-          : dartEditorTheme,
-    );
-    _client = widget.client ?? FlipperOneClient().get();
-    _text.addListener(_onTextChanged);
+    _name = widget.title ?? basename(widget.localPath.replaceAll('\\', '/'));
+    _highlighter = LineHighlighter.forFileName(_name);
+    _focus.addListener(_onFocusChanged);
     _load();
-  }
-
-  static String _languageForPath(String path) {
-    final name = path.split('/').last.toLowerCase();
-    if (name.endsWith('.js')) return 'javascript';
-    if (name.endsWith('.txt')) return 'duckyscript';
-    return 'dart';
   }
 
   @override
   void dispose() {
-    _text.removeListener(_onTextChanged);
-    _text.dispose();
+    _focus.removeListener(_onFocusChanged);
+    _focus.dispose();
+    _field.dispose();
     _scroll.dispose();
     super.dispose();
-  }
-
-  // После каждого рендер-фрейма читаем позиции строк из RenderEditable.
-  // getLocalRectForCaret возвращает Y относительно вьюпорта (уже вычтен scrollOffset).
-  // Добавляем scrollOffset чтобы получить Y в координатах контента — они не меняются при скролле.
-  void _readLinePositions() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final re = _findRenderEditable(
-        _fieldKey.currentContext?.findRenderObject(),
-      );
-      if (re == null) return;
-
-      final scroll = _scroll.hasClients ? _scroll.offset : 0.0;
-      final lines = _text.text.split('\n');
-      final ys = <double>[];
-      var offset = 0;
-      for (final line in lines) {
-        final viewportY = re
-            .getLocalRectForCaret(TextPosition(offset: offset))
-            .top;
-        ys.add(viewportY + scroll); // конвертируем в контентные координаты
-        offset += line.length + 1;
-      }
-
-      if (!listEquals(ys, _lineY)) {
-        setState(() => _lineY = ys);
-      }
-    });
-  }
-
-  static RenderEditable? _findRenderEditable(RenderObject? ro) {
-    if (ro is RenderEditable) return ro;
-    RenderEditable? found;
-    ro?.visitChildren((child) {
-      found ??= _findRenderEditable(child);
-    });
-    return found;
-  }
-
-  void _onTextChanged() {
-    final lines = _text.text.split('\n');
-    final modified = _computeModified(_savedLines, lines);
-    if (lines.length != _lineCount || !setEquals(modified, _modifiedLines)) {
-      setState(() {
-        _lineCount = lines.length;
-        _modifiedLines = modified;
-      });
-    }
-    _readLinePositions();
-  }
-
-  Set<int> _computeModified(List<String> saved, List<String> current) {
-    var lo = 0;
-    final minLen = min(saved.length, current.length);
-    while (lo < minLen && saved[lo] == current[lo]) {
-      lo++;
-    }
-    if (lo == saved.length && lo == current.length) return {};
-
-    var hiS = saved.length;
-    var hiC = current.length;
-    while (hiS > lo && hiC > lo && saved[hiS - 1] == current[hiC - 1]) {
-      hiS--;
-      hiC--;
-    }
-
-    final s = saved.sublist(lo, hiS);
-    final c = current.sublist(lo, hiC);
-    final n = s.length;
-    final m = c.length;
-    if (n == 0) return {for (var i = lo; i < lo + m; i++) i};
-    if (m == 0) return {};
-
-    final dp = List.generate(n + 1, (_) => List.filled(m + 1, 0));
-    for (var i = 1; i <= n; i++) {
-      for (var j = 1; j <= m; j++) {
-        dp[i][j] = s[i - 1] == c[j - 1]
-            ? dp[i - 1][j - 1] + 1
-            : max(dp[i - 1][j], dp[i][j - 1]);
-      }
-    }
-
-    final modified = <int>{};
-    var i = n, j = m;
-    while (j > 0) {
-      if (i > 0 && s[i - 1] == c[j - 1]) {
-        i--;
-        j--;
-      } else if (i == 0 || dp[i][j - 1] >= dp[i - 1][j]) {
-        modified.add(lo + j - 1);
-        j--;
-      } else {
-        i--;
-      }
-    }
-    return modified;
   }
 
   Future<void> _load() async {
@@ -193,85 +76,149 @@ class _TextEditorPageState extends State<TextEditorPage> {
       _loading = true;
       _error = null;
     });
-    final bytes = await _readBytes();
-    if (!mounted) return;
-    if (bytes == null) {
-      setState(() {
-        _loading = false;
-        _error = 'Failed to read file';
-      });
-      return;
-    }
-    String decoded;
+    String? text;
     try {
-      decoded = utf8.decode(bytes, allowMalformed: true);
-    } catch (_) {
-      decoded = String.fromCharCodes(bytes);
+      final bytes = await Future(
+        () => io.File(widget.localPath).readAsBytesSync(),
+      );
+      text = utf8.decode(bytes, allowMalformed: true);
+    } catch (e) {
+      LogService.log('[TextEditor] read ${widget.localPath} failed: $e');
     }
-    _savedLines = decoded.split('\n');
-    _text.text = decoded;
+    if (!mounted) return;
     setState(() {
       _loading = false;
-      _lineCount = _savedLines.length;
-      _modifiedLines = {};
+      if (text == null) {
+        _error = 'Failed to read file';
+      } else {
+        _doc = EditorDocument.fromText(text);
+      }
     });
-    _readLinePositions();
   }
 
-  Future<List<int>?> _readBytes() async {
-    final local = widget.localPath;
-    if (local != null && local.isNotEmpty) {
-      try {
-        final file = io.File(local);
-        if (await file.exists()) return await file.readAsBytes();
-      } catch (e) {
-        LogService.log('[TextEditor] local read $local failed: $e');
+  void _onFocusChanged() {
+    if (_focus.hasFocus || _editing == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _retargeting || _focus.hasFocus || _editing == null) {
+        return;
       }
-    }
-    try {
-      return await _client.storageReadChunked(
-        widget.remotePath,
-        timeout: const Duration(minutes: 5),
-      );
-    } catch (e) {
-      LogService.log('[TextEditor] read ${widget.remotePath} failed: $e');
-      return null;
-    }
+      setState(() => _editing = null);
+    });
   }
 
-  Future<bool> _writeBytes(List<int> data) async {
-    final local = widget.localPath;
-    if (local != null && local.isNotEmpty) {
-      try {
-        await io.File(local).writeAsBytes(data, flush: true);
-        return true;
-      } catch (e) {
-        LogService.log('[TextEditor] local write $local failed: $e');
-        return false;
-      }
+  void _startEditing(int index, int offset) {
+    final doc = _doc;
+    if (doc == null) return;
+    setState(() {
+      _editing = index;
+      _editingModified = doc.isModified(index);
+    });
+    _setField(doc.lineAt(index), offset);
+    _focus.requestFocus();
+  }
+
+  void _setField(String line, int caret) {
+    _fieldText = '$_zwsp$line';
+    _field.value = TextEditingValue(
+      text: _fieldText,
+      selection: TextSelection.collapsed(
+        offset: caret.clamp(0, line.length) + 1,
+      ),
+    );
+  }
+
+  void _moveEditing(EditorDocument doc, int index, int caret) {
+    _retargeting = true;
+    setState(() {
+      _editing = index;
+      _editingModified = doc.isModified(index);
+    });
+    _setField(doc.lineAt(index), caret);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_editing != null && !_focus.hasFocus) _focus.requestFocus();
+      WidgetsBinding.instance.addPostFrameCallback((_) => _retargeting = false);
+    });
+  }
+
+  int _contentOffset(String value, int fieldOffset) => value
+      .substring(0, fieldOffset.clamp(0, value.length))
+      .replaceAll(_zwsp, '')
+      .length;
+
+  void _onFieldChanged(String value) {
+    final doc = _doc;
+    final index = _editing;
+    if (doc == null || index == null) return;
+
+    final previous = _fieldText;
+    final selection = _field.selection;
+    _fieldText = value;
+
+    final backspacedIntoPreviousLine =
+        index > 0 &&
+        previous.startsWith(_zwsp) &&
+        value == previous.substring(1) &&
+        selection.isCollapsed &&
+        selection.baseOffset == 0;
+    if (backspacedIntoPreviousLine) {
+      final caret = doc.mergeWithPrevious(index);
+      _moveEditing(doc, index - 1, caret);
+      return;
     }
-    try {
-      await _client.storageWriteChunked(widget.remotePath, data);
-      return true;
-    } catch (e) {
-      LogService.log('[TextEditor] write ${widget.remotePath} failed: $e');
-      return false;
+
+    final content = value.replaceAll(_zwsp, '');
+    final caret = _contentOffset(value, selection.baseOffset);
+
+    if (content.contains('\n')) {
+      final parts = content.split('\n');
+      doc.replaceWithLines(index, parts);
+      var target = index;
+      var offset = 0;
+      var consumed = 0;
+      for (var i = 0; i < parts.length; i++) {
+        final end = consumed + parts[i].length;
+        if (caret <= end) {
+          target = index + i;
+          offset = caret - consumed;
+          break;
+        }
+        consumed = end + 1;
+      }
+      _moveEditing(doc, target, offset);
+      return;
+    }
+
+    doc.replace(index, content);
+    if (value != '$_zwsp$content') _setField(content, caret);
+
+    final modified = doc.isModified(index);
+    if (modified != _editingModified) {
+      setState(() => _editingModified = modified);
     }
   }
 
   Future<void> _save() async {
+    final doc = _doc;
+    if (doc == null) return;
     setState(() => _saving = true);
-    final ok = await _writeBytes(utf8.encode(_text.text));
-    if (!mounted) return;
-    if (ok) {
-      _savedLines = _text.text.split('\n');
-      setState(() {
-        _saving = false;
-        _modifiedLines = {};
-      });
-    } else {
-      setState(() => _saving = false);
+    final bytes = utf8.encode(doc.text);
+    var ok = true;
+    try {
+      await Future(
+        () => io.File(widget.localPath).writeAsBytesSync(bytes, flush: true),
+      );
+    } catch (e) {
+      LogService.log('[TextEditor] write ${widget.localPath} failed: $e');
+      ok = false;
     }
+    final onSave = widget.onSave;
+    if (ok && onSave != null) ok = await onSave(bytes);
+    if (!mounted) return;
+    setState(() {
+      _saving = false;
+      if (ok) doc.markSaved();
+    });
     context.showNotification(
       ok ? 'Saved' : 'Save failed',
       type: ok ? QNotificationType.good : QNotificationType.error,
@@ -279,47 +226,25 @@ class _TextEditorPageState extends State<TextEditorPage> {
     if (ok) Navigator.of(context).pop(true);
   }
 
-  bool get _isJs => widget.remotePath.toLowerCase().endsWith('.js');
-
-  void _runJs() {
-    final name = widget.remotePath.split('/').last;
-    final dot = name.lastIndexOf('.');
-    final stem = dot > 0 ? name.substring(0, dot) : name;
-    final key = ArchiveKey(
-      name: stem,
-      category: ArchiveCategory.javascript,
-      state: ArchiveKeyState.synced,
-      extension: 'js',
-      remotePath: widget.remotePath,
-    );
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => EmulatePage(flipperKey: key)),
-    );
-  }
-
-  double _lastWidth = 0;
-
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final name = widget.remotePath.split('/').last;
-
     return Scaffold(
       backgroundColor: colors.background,
       appBar: QPageAppBar(
-        title: name,
+        title: _name,
         backgroundColor: colors.accent,
         foregroundColor: colors.onAccent,
         actions: [
-          if (_isJs)
+          if (widget.onRun != null)
             QPageAppBarAction(
               tooltip: 'Run',
-              onPressed: _loading ? null : _runJs,
+              onPressed: _loading ? null : widget.onRun,
               icon: const Icon(Icons.play_arrow),
             ),
           QPageAppBarAction(
             tooltip: 'Save',
-            onPressed: _saving || _loading ? null : _save,
+            onPressed: (_saving || _loading || _doc == null) ? null : _save,
             icon: _saving
                 ? SizedBox(
                     width: 20,
@@ -333,223 +258,95 @@ class _TextEditorPageState extends State<TextEditorPage> {
           ),
         ],
       ),
-      body: _loading
-          ? Center(child: CircularProgressIndicator(color: colors.accent))
-          : _error != null
-          ? Center(
-              child: Text(_error!, style: TextStyle(color: colors.danger)),
-            )
-          : Container(
-              color:
-                  dartEditorTheme['root']?.backgroundColor ??
-                  colors.terminalBackground,
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  if (constraints.maxWidth != _lastWidth) {
-                    _lastWidth = constraints.maxWidth;
-                    _readLinePositions();
-                  }
-                  return Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // Гаттер: цифры рисуются по Y из RenderEditable
-                      AnimatedBuilder(
-                        animation: _scroll,
-                        builder: (context, _) => SizedBox(
-                          width: _gutterWidth,
-                          child: CustomPaint(
-                            painter: _GutterPainter(
-                              lineCount: _lineCount,
-                              lineY: _lineY,
-                              modifiedLines: _modifiedLines,
-                              scrollOffset: _scroll.hasClients
-                                  ? _scroll.offset
-                                  : 0,
-                            ),
-                          ),
-                        ),
-                      ),
-                      // Текстовое поле с переносами строк
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(
-                            _kLeftPadding,
-                            _kTopPadding,
-                            _kRightPadding,
-                            _kBottomPadding,
-                          ),
-                          child: TextField(
-                            key: _fieldKey,
-                            controller: _text,
-                            scrollController: _scroll,
-                            maxLines: null,
-                            expands: true,
-                            textAlignVertical: TextAlignVertical.top,
-                            cursorColor: colors.accent,
-                            style: const TextStyle(
-                              color: Color(0xffd6deeb),
-                              fontFamily: 'monospace',
-                              fontSize: _kFontSize,
-                              height: _kLineHeight / _kFontSize,
-                            ),
-                            decoration: const InputDecoration(
-                              border: InputBorder.none,
-                              focusedBorder: InputBorder.none,
-                              enabledBorder: InputBorder.none,
-                              errorBorder: InputBorder.none,
-                              disabledBorder: InputBorder.none,
-                              isCollapsed: true,
-                              contentPadding: EdgeInsets.zero,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              ),
-            ),
+      body: _buildBody(colors),
     );
   }
-}
 
-class _GutterPainter extends CustomPainter {
-  const _GutterPainter({
-    required this.lineCount,
-    required this.lineY,
-    required this.modifiedLines,
-    required this.scrollOffset,
-  });
-
-  final int lineCount;
-  // Y начала каждой физической строки из RenderEditable.
-  final List<double> lineY;
-  final Set<int> modifiedLines;
-  final double scrollOffset;
-
-  static const _bg = Color(0xff0d1115);
-  static const _fg = Color(0xff4a5568);
-  static const _modFg = Color(0xffffa500);
-  static const _modBg = Color(0x15ffa500);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas.drawRect(Offset.zero & size, Paint()..color = _bg);
-
-    for (var i = 0; i < lineCount; i++) {
-      // Берём Y прямо из списка, заполненного из RenderEditable.
-      // Fallback на арифметику только пока позиции ещё не пришли (первый кадр).
-      final contentY = i < lineY.length ? lineY[i] : i * _kLineHeight;
-      final top = _kTopPadding + contentY - scrollOffset;
-      final bottom = top + _kLineHeight;
-      if (bottom < 0 || top > size.height) continue;
-
-      final modified = modifiedLines.contains(i);
-      if (modified) {
-        canvas.drawRect(
-          Rect.fromLTWH(2, top, size.width - 2, _kLineHeight),
-          Paint()..color = _modBg,
-        );
-        canvas.drawRect(
-          Rect.fromLTWH(0, top, 2, _kLineHeight),
-          Paint()..color = _modFg,
-        );
-      }
-
-      final tp = TextPainter(
-        text: TextSpan(
-          text: '${i + 1}',
-          style: TextStyle(
-            fontFamily: 'monospace',
-            fontSize: 11,
-            color: modified ? _modFg : _fg,
-          ),
-        ),
-        textDirection: TextDirection.ltr,
-      )..layout();
-      tp.paint(
-        canvas,
-        Offset(size.width - tp.width - 6, top + (_kLineHeight - tp.height) / 2),
+  Widget _buildBody(QAppColors colors) {
+    if (_loading) {
+      return Center(child: CircularProgressIndicator(color: colors.accent));
+    }
+    final error = _error;
+    if (error != null) {
+      return Center(
+        child: Text(error, style: TextStyle(color: colors.danger)),
       );
     }
-  }
+    final doc = _doc!;
+    final gutterWidth = editorGutterWidth(doc.length);
 
-  @override
-  bool shouldRepaint(_GutterPainter old) =>
-      old.scrollOffset != scrollOffset ||
-      old.lineCount != lineCount ||
-      !setEquals(old.modifiedLines, modifiedLines) ||
-      !listEquals(old.lineY, lineY);
-}
-
-class _HighlightController extends TextEditingController {
-  _HighlightController({required this.language, required this.theme});
-
-  final String language;
-  final Map<String, TextStyle> theme;
-
-  @override
-  TextSpan buildTextSpan({
-    required BuildContext context,
-    TextStyle? style,
-    required bool withComposing,
-  }) {
-    final rootStyle = (style ?? const TextStyle()).merge(theme['root']);
-    return TextSpan(
-      style: rootStyle.copyWith(backgroundColor: Colors.transparent),
-      children: _convert(highlight.parse(text, language: language).nodes ?? []),
+    return MediaQuery.withNoTextScaling(
+      child: ColoredBox(
+        color:
+            dartEditorTheme['root']?.backgroundColor ??
+            colors.terminalBackground,
+        child: Stack(
+          children: [
+            Positioned(
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: gutterWidth,
+              child: const ColoredBox(color: kEditorGutterBackground),
+            ),
+            Scrollbar(
+              controller: _scroll,
+              child: ListView.builder(
+                controller: _scroll,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                itemCount: doc.length,
+                addAutomaticKeepAlives: false,
+                addSemanticIndexes: false,
+                itemBuilder: (context, index) =>
+                    _buildLine(doc, index, gutterWidth, colors),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
-  List<TextSpan> _convert(List<Node> nodes) => nodes.map(_convertNode).toList();
-
-  TextSpan _convertNode(Node node) {
-    final value = node.value;
-    if (value != null) {
-      final style = _styleFor(node.className);
-      if (node.className == null || node.className == 'subst') {
-        return TextSpan(children: _highlightFunctions(value, style));
-      }
-      return TextSpan(text: value, style: style);
+  Widget _buildLine(
+    EditorDocument doc,
+    int index,
+    double gutterWidth,
+    QAppColors colors,
+  ) {
+    if (index != _editing) {
+      return EditorLineView(
+        span: _highlighter.spanFor(doc.lineAt(index)),
+        number: index + 1,
+        modified: doc.isModified(index),
+        gutterWidth: gutterWidth,
+        onTapAtOffset: (offset) => _startEditing(index, offset),
+      );
     }
-    final children = node.children;
-    if (children == null || children.isEmpty) {
-      return TextSpan(style: _styleFor(node.className));
-    }
-    return TextSpan(
-      style: _styleFor(node.className),
-      children: _convert(children),
+    return EditorLineField(
+      number: index + 1,
+      modified: _editingModified,
+      gutterWidth: gutterWidth,
+      child: TextField(
+        key: _fieldKey,
+        controller: _field,
+        focusNode: _focus,
+        maxLines: null,
+        style: kEditorTextStyle,
+        strutStyle: kEditorStrutStyle,
+        cursorColor: colors.accent,
+        keyboardType: TextInputType.multiline,
+        textInputAction: TextInputAction.newline,
+        decoration: const InputDecoration(
+          border: InputBorder.none,
+          focusedBorder: InputBorder.none,
+          enabledBorder: InputBorder.none,
+          errorBorder: InputBorder.none,
+          disabledBorder: InputBorder.none,
+          isCollapsed: true,
+          contentPadding: EdgeInsets.zero,
+        ),
+        onChanged: _onFieldChanged,
+      ),
     );
-  }
-
-  TextStyle? _styleFor(String? cls) {
-    if (cls == null) return null;
-    return theme[cls] ??
-        theme[cls.replaceAll('.', '-')] ??
-        theme[cls.split('.').last] ??
-        theme[cls.split('-').last];
-  }
-
-  static final _fnPattern = RegExp(
-    r'(?:\b[A-Za-z_][A-Za-z0-9_]*\s*\.\s*)?(?<name>[A-Za-z_][A-Za-z0-9_]*)\s*\(',
-  );
-
-  static List<TextSpan> _highlightFunctions(String src, TextStyle? base) {
-    final spans = <TextSpan>[];
-    var idx = 0;
-    for (final m in _fnPattern.allMatches(src)) {
-      final name = m.namedGroup('name')!;
-      final start = m.start + m.group(0)!.lastIndexOf(name);
-      if (start < idx) continue;
-      if (start > idx) {
-        spans.add(TextSpan(text: src.substring(idx, start), style: base));
-      }
-      spans.add(TextSpan(text: name, style: dartFunctionStyle));
-      idx = start + name.length;
-    }
-    if (idx < src.length) {
-      spans.add(TextSpan(text: src.substring(idx), style: base));
-    }
-    return spans;
   }
 }

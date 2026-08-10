@@ -2,11 +2,11 @@ import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import '../../../config.dart';
+import '../../../components/config.dart';
 import '../../../theme/theme.dart';
 import '../firmware/directory.dart';
 import 'package:qunleashed/components/appbar.dart';
-import 'changelog_renderer.dart';
+import '../../../components/changelog_renderer.dart';
 import 'firmware_update_button.dart';
 
 class FirmwareChangelogPage extends StatefulWidget {

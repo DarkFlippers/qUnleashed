@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flipperlib/flipperlib.dart' hide DateTime, File;
 import 'package:flutter/foundation.dart';
 
+import '../../../../services/connection/device_info_watch.dart';
 import 'frame_decoder.dart';
 import 'grayscale_filter.dart';
 import 'models/models.dart';
@@ -18,7 +19,7 @@ class RemoteSession extends ChangeNotifier {
     _frameSub = _client.screenFrameStream().listen(_onFrame);
     _statusSub = _client.desktopStatusStream().listen(_applyStatus);
     _connectionSub = _client.connectionStream.listen(_onConnectionState);
-    _client.freezeWatch();
+    DeviceInfoWatchService.instance.freeze();
     unawaited(_start());
   }
 
@@ -39,7 +40,6 @@ class RemoteSession extends ChangeNotifier {
   Uint8List? _pendingRgba;
   bool _uploadBusy = false;
   bool _recording = false;
-
 
   final GrayscaleFilter _grayscale = GrayscaleFilter();
   bool _grayscaleEnabled = false;
@@ -81,7 +81,6 @@ class RemoteSession extends ChangeNotifier {
     return encodeScreenshotPng(raw);
   }
 
-
   Future<void> _start() async {
     if (!_client.isConnected) {
       _isDisconnected = true;
@@ -101,7 +100,7 @@ class RemoteSession extends ChangeNotifier {
   void shutdown() {
     if (_disposed) return;
     _disposed = true;
-    _client.unfreezeWatch();
+    DeviceInfoWatchService.instance.unfreeze();
     for (final h in _held.values) {
       h.longTimer?.cancel();
     }
@@ -174,7 +173,6 @@ class RemoteSession extends ChangeNotifier {
   void _onFrame(ScreenFrame frame) {
     if (_disposed) return;
     if (_recording) {
-
       _ingest(decodeFrameSync(frame));
       return;
     }
@@ -230,7 +228,7 @@ class RemoteSession extends ChangeNotifier {
     unawaited(_pumpUpload());
   }
 
- Future<void> _pumpUpload() async {
+  Future<void> _pumpUpload() async {
     try {
       while (!_disposed) {
         final rgba = _pendingRgba;
@@ -264,6 +262,7 @@ class RemoteSession extends ChangeNotifier {
     }
     _scheduleUpload(_render(raw));
   }
+
   Future<void> press(RemoteButton button, {bool long = false}) {
     final item = _enqueue(_animAsset(button));
     final type = long ? InputType.LONG : InputType.SHORT;

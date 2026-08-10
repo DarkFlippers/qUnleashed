@@ -1,15 +1,13 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
-import '../../../components/dialogs/catalog_compat.dart';
 import '../../../components/icon.dart';
-import '../../../components/dialogs/catalog_states.dart';
+import 'widgets/mode_badge.dart';
+import 'widgets/states.dart';
+import '../../../components/navigation.dart';
 import '../../../theme/theme.dart';
-import '../../../widgets/open_url.dart';
-import '../../asembler/controller.dart';
-import '../../asembler/page.dart';
-import '../../tools/remote/desktop/page.dart';
+import '../../../components/open_url.dart';
+import '../../../services/assembler/controller.dart';
+import '../data/apps_backend.dart';
 import '../manager/page.dart';
 import 'detail_page.dart';
 import 'controller.dart';
@@ -34,15 +32,25 @@ class _AppsCatalogPageState extends State<AppsCatalogPage> {
 
   @override
   Widget build(BuildContext context) {
-    return IndexedStack(
-      index: _manager ? 1 : 0,
-      children: [
-        CatalogView(
-          active: !_manager,
-          onOpenManager: () => setState(() => _manager = true),
-        ),
-        AppsManagerPage(onOpenCatalog: () => setState(() => _manager = false)),
-      ],
+    return ValueListenableBuilder<CatalogMode>(
+      valueListenable: AppsBackend.instance.mode,
+      builder: (context, mode, _) {
+        final hasCatalog = AppsCatalogController.showsCatalog(mode);
+        return IndexedStack(
+          index: _manager ? 1 : 0,
+          children: [
+            CatalogView(
+              active: !_manager,
+              onOpenManager: () => setState(() => _manager = true),
+            ),
+            AppsManagerPage(
+              onOpenCatalog: hasCatalog
+                  ? () => setState(() => _manager = false)
+                  : null,
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -62,7 +70,7 @@ class _CatalogViewState extends State<CatalogView> {
   final ScrollController _scroll = ScrollController();
   final TextEditingController _searchCtrl = TextEditingController();
   bool _searchOpen = false;
-  bool _incompatKnown = false;
+  bool _managerHandoff = false;
 
   @override
   void initState() {
@@ -82,17 +90,11 @@ class _CatalogViewState extends State<CatalogView> {
   }
 
   void _openAssembler() {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const AssemblerConsolePage()));
+    openRoute(context, AppRoute.assemblerConsole);
   }
 
-  void _chooseSourceBuild() => _ctrl.chooseSourceBuild();
-
   void _onLaunched() {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const RemoteControlPage()));
+    openRoute(context, AppRoute.remoteControl);
   }
 
   void _openApp(AppCard app) {
@@ -125,7 +127,7 @@ class _CatalogViewState extends State<CatalogView> {
         return Scaffold(
           backgroundColor: colors.background,
           body: SafeArea(child: _buildForMode(context)),
-          floatingActionButton: _showsCatalog && AssemblerController.isSupported
+          floatingActionButton: _showsBuilder
               ? FloatingActionButton(
                   backgroundColor: colors.accent,
                   foregroundColor: colors.onAccent,
@@ -143,69 +145,34 @@ class _CatalogViewState extends State<CatalogView> {
     );
   }
 
-  bool get _showsCatalog =>
-      _ctrl.mode.value == CatalogMode.normal ||
-      _ctrl.mode.value == CatalogMode.compatibility;
+  bool get _showsCatalog => AppsCatalogController.showsCatalog(_ctrl.mode.value);
+
+  /// The assembler console only has something to show while the catalog builds
+  /// apps from source, so the button follows the mode, not the platform alone.
+  bool get _showsBuilder =>
+      _ctrl.mode.value == CatalogMode.sourceBuild &&
+      AssemblerController.isSupported;
 
   void _syncMode() {
-    final mode = _ctrl.mode.value;
-    if (mode != CatalogMode.incompatible ||
-        _ctrl.incompatibility == ApiVerdict.tooNew) {
-      _incompatKnown = false;
+    if (_ctrl.mode.value != CatalogMode.managerOnly) {
+      _managerHandoff = false;
       return;
     }
-    if (_incompatKnown) return;
-    _incompatKnown = true;
+    if (_managerHandoff) return;
+    _managerHandoff = true;
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => widget.onOpenManager?.call(),
     );
   }
 
   Widget _buildForMode(BuildContext context) {
-    switch (_ctrl.mode.value) {
-      case CatalogMode.resolving:
-        return const SizedBox.shrink();
-      case CatalogMode.mismatch:
-        return _dialogLayer(
-          CatalogCompatDialog(
-            deviceApi: _ctrl.deviceApi,
-            serverApi: _ctrl.serverApi,
-            onBuildFromSource: _chooseSourceBuild,
-            onIgnoreAndContinue: _ctrl.chooseCompatibility,
-            onDecline: () => widget.onOpenManager?.call(),
-          ),
-        );
-      case CatalogMode.incompatible:
-        if (_ctrl.incompatibility == ApiVerdict.tooNew) {
-          return _dialogLayer(
-            CatalogCompatDialog(
-              deviceApi: _ctrl.deviceApi,
-              serverApi: _ctrl.serverApi,
-              onBuildFromSource: _chooseSourceBuild,
-              onIgnoreAndContinue: null,
-              onDecline: () => widget.onOpenManager?.call(),
-            ),
-          );
-        }
-        return _dialogLayer(
-          CatalogIncompatibleDialog(
-            deviceApi: _ctrl.deviceApi,
-            serverApi: _ctrl.serverApi,
-            onOpenManager: () => widget.onOpenManager?.call(),
-            onRecheck: () => unawaited(_ctrl.refreshMode()),
-          ),
-        );
-      case CatalogMode.normal:
-      case CatalogMode.compatibility:
-        return _buildCatalog(context);
+    if (_showsCatalog) return _buildCatalog(context);
+    if (_ctrl.mode.value == CatalogMode.resolving) {
+      return Center(
+        child: CircularProgressIndicator(color: context.appColors.accent),
+      );
     }
-  }
-
-  Widget _dialogLayer(Widget dialog) {
-    return ColoredBox(
-      color: context.appColors.dialogBarrier,
-      child: Center(child: SingleChildScrollView(child: dialog)),
-    );
+    return const SizedBox.shrink();
   }
 
   Widget _buildCatalog(BuildContext context) {
@@ -253,27 +220,12 @@ class _CatalogViewState extends State<CatalogView> {
                   color: colors.textPrimary,
                 ),
               ),
-              if (_ctrl.apiFallbackEnabled) ...[
-                const SizedBox(width: 8),
-                Tooltip(
-                  message:
-                      'Compatibility mode: installing builds for API ${_ctrl.compatApi ?? '?'}',
-                  child: Container(
-                    width: 24,
-                    height: 24,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: colors.accent.withValues(alpha: 0.18),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      Icons.warning_amber_rounded,
-                      size: 15,
-                      color: colors.accent,
-                    ),
-                  ),
-                ),
-              ],
+              const SizedBox(width: 8),
+              CatalogModeBadge(
+                mode: _ctrl.mode.value,
+                deviceApi: _ctrl.deviceApi,
+                catalogApi: _ctrl.compatApi ?? _ctrl.serverApi,
+              ),
               const Spacer(),
               IconButton(
                 icon: Icon(Icons.manage_search, color: colors.textPrimary),

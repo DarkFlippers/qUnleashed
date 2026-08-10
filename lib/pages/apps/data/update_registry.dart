@@ -3,7 +3,8 @@ import 'dart:async';
 import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flutter/foundation.dart';
 
-import 'apps_backend.dart';
+import '../../../components/path.dart';
+import 'catalog_context.dart';
 import 'catalog_api.dart';
 import 'catalog_mode.dart';
 import 'catalog_state.dart';
@@ -11,6 +12,7 @@ import 'install_engine.dart';
 import 'manifest_registry.dart';
 import 'models/card.dart';
 import 'models/manifest.dart';
+import '../../../services/logging.dart';
 
 @immutable
 class AppUpdate {
@@ -40,7 +42,7 @@ class UpdateRegistry extends ChangeNotifier {
     required this.api,
     required this.manifests,
     required this.engine,
-    required this.backend,
+    required this.catalog,
   }) {
     manifests.addListener(_recompute);
     engine.addListener(_onEngineChanged);
@@ -50,7 +52,7 @@ class UpdateRegistry extends ChangeNotifier {
   final AppsCatalogApi api;
   final ManifestRegistry manifests;
   final InstallEngine engine;
-  final AppsBackend backend;
+  final CatalogContext catalog;
 
   final Map<String, AppCard> _cardsByUid = {};
 
@@ -72,7 +74,7 @@ class UpdateRegistry extends ChangeNotifier {
 
   bool get isReady => client.isConnected && client.mode == FlipperMode.rpc;
 
-  bool get _ignoreSdkMismatch => backend.ignoreSdkMismatch;
+  bool get _ignoreSdkMismatch => catalog.ignoreSdkMismatch;
 
   Future<void> ensureFresh() async {
     if (_loaded || _loading) return;
@@ -81,7 +83,7 @@ class UpdateRegistry extends ChangeNotifier {
 
   Future<void> refresh({bool force = false}) async {
     if (_loading || !isReady) return;
-    if (backend.mode.value == CatalogMode.incompatible) {
+    if (catalog.mode.value == CatalogMode.managerOnly) {
       _cardsByUid.clear();
       _updates = const [];
       _loaded = true;
@@ -92,7 +94,7 @@ class UpdateRegistry extends ChangeNotifier {
     _error = null;
     notifyListeners();
     try {
-      await backend.ensureDeviceFilters(required: true);
+      await catalog.ensureDeviceFilters(required: true);
       if (force) {
         await manifests.refresh(force: true);
       }
@@ -119,8 +121,9 @@ class UpdateRegistry extends ChangeNotifier {
         );
       _rebuild(installed);
       _loaded = true;
-      final withVer =
-          installed.values.where((m) => m.versionUid.isNotEmpty).length;
+      final withVer = installed.values
+          .where((m) => m.versionUid.isNotEmpty)
+          .length;
       LogService.log(
         '[Updates] installed=${installed.length} withVersionUid=$withVer '
         'cards=${cards.length} updates=${_updates.length}',
@@ -176,15 +179,17 @@ class UpdateRegistry extends ChangeNotifier {
       final state = catalogAppState(
         card: card,
         manifest: manifest,
-        targetSdk: backend.targetSdk,
+        targetSdk: catalog.targetSdk,
         ignoreSdkMismatch: _ignoreSdkMismatch,
       );
       if (state != CatalogAppState.update) continue;
-      out.add(AppUpdate(
-        alias: _aliasFor(card, manifest),
-        card: card,
-        manifest: manifest,
-      ));
+      out.add(
+        AppUpdate(
+          alias: _aliasFor(card, manifest),
+          card: card,
+          manifest: manifest,
+        ),
+      );
     }
     out.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     _updates = out;
@@ -194,7 +199,7 @@ class UpdateRegistry extends ChangeNotifier {
     if (card.alias.isNotEmpty) return card.alias;
     final path = manifest.path;
     if (path.isEmpty) return '';
-    final base = path.substring(path.lastIndexOf('/') + 1);
+    final base = basename(path);
     return base.endsWith('.fap') ? base.substring(0, base.length - 4) : base;
   }
 

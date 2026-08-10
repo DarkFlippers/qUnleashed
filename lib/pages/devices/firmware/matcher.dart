@@ -1,4 +1,4 @@
-import '../../../config.dart';
+import '../../../components/config.dart';
 import 'directory.dart';
 
 enum InstallAction { noUpdate, install, update }

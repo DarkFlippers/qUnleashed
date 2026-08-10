@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../../theme/theme.dart';
-import '../../../widgets/info_line.dart';
-import '../../../widgets/page_card.dart';
+import 'info_line.dart';
+import 'page_card.dart';
 
 void showDeviceFullInfoSheet(
   BuildContext context, {
@@ -62,17 +62,15 @@ void showDeviceFullInfoSheet(
 }
 
 class RawInfoCard extends StatelessWidget {
-  const RawInfoCard({
-    super.key,
-    required this.entries,
-  });
+  const RawInfoCard({super.key, required this.entries});
 
   final Map<String, String> entries;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final sorted = entries.entries.toList()..sort((a, b) => a.key.compareTo(b.key));
+    final sorted = entries.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
     return FlipperPageCard(
       title: 'Raw Data',
       child: sorted.isEmpty
@@ -87,7 +85,8 @@ class RawInfoCard extends StatelessWidget {
               children: [
                 for (var i = 0; i < sorted.length; i++) ...[
                   FlipperInfoLine(label: sorted[i].key, value: sorted[i].value),
-                  if (i != sorted.length - 1) Divider(height: 1, color: colors.divider),
+                  if (i != sorted.length - 1)
+                    Divider(height: 1, color: colors.divider),
                 ],
               ],
             ),

@@ -2,12 +2,11 @@ import 'package:dartufbt/dartufbt.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:qunleashed/components/dialogs/catalog_compat.dart';
-import 'package:qunleashed/pages/asembler/controller.dart';
-import 'package:qunleashed/pages/asembler/page.dart';
-import 'package:qunleashed/pages/asembler/remote/remote_build_service.dart';
-import 'package:qunleashed/pages/asembler/settings_page.dart';
-import 'package:qunleashed/pages/asembler/widgets/progress_panel.dart';
+import 'package:qunleashed/services/assembler/controller.dart';
+import 'package:qunleashed/pages/flibler/page.dart';
+import 'package:qunleashed/services/assembler/remote_build_service.dart';
+import 'package:qunleashed/pages/option/pages/flibler.dart';
+import 'package:qunleashed/pages/flibler/widgets/progress_panel.dart';
 import 'package:qunleashed/theme/theme.dart';
 
 Widget _wrap(Widget child) => MaterialApp(
@@ -37,90 +36,6 @@ void _expectOneOf(List<String> labels) {
 }
 
 void main() {
-  testWidgets('compat dialog offers three ways to proceed', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(900, 1200));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-
-    final pressed = <String>[];
-    await tester.pumpWidget(
-      _wrap(
-        CatalogCompatDialog(
-          deviceApi: '88.2',
-          serverApi: '86.0',
-          onBuildFromSource: () => pressed.add('source'),
-          onIgnoreAndContinue: () => pressed.add('ignore'),
-          onDecline: () => pressed.add('manager'),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('Compatibility mode'), findsOneWidget);
-    expect(
-      find.text('Builds apps from source for your firmware.'),
-      findsOneWidget,
-    );
-    expect(find.text('Ignore warning'), findsOneWidget);
-    expect(find.text('Apps manager only'), findsOneWidget);
-
-    await tester.tap(find.text('Compatibility mode'));
-    await tester.tap(find.text('Ignore warning'));
-    await tester.tap(find.text('Apps manager only'));
-    expect(pressed, ['source', 'ignore', 'manager']);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('compat dialog drops the ignore option when asked', (
-    tester,
-  ) async {
-    await tester.binding.setSurfaceSize(const Size(900, 1200));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-
-    await tester.pumpWidget(
-      _wrap(
-        CatalogCompatDialog(
-          deviceApi: '90.0',
-          serverApi: '86.0',
-          onBuildFromSource: () {},
-          onIgnoreAndContinue: null,
-          onDecline: () {},
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('Compatibility mode'), findsOneWidget);
-    expect(find.text('Ignore warning'), findsNothing);
-    expect(find.text('Apps manager only'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('compat dialog hides source builds without a handler', (
-    tester,
-  ) async {
-    await tester.binding.setSurfaceSize(const Size(900, 1200));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-
-    await tester.pumpWidget(
-      _wrap(
-        CatalogCompatDialog(
-          deviceApi: '88.2',
-          serverApi: '86.0',
-          onBuildFromSource: null,
-          onIgnoreAndContinue: () {},
-          onDecline: () {},
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('Compatibility mode'), findsNothing);
-    expect(find.textContaining('desktop'), findsNothing);
-    expect(find.text('Ignore warning'), findsOneWidget);
-    expect(find.text('Apps manager only'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
-
   testWidgets('settings page renders and switches SDK channel', (tester) async {
     SharedPreferences.setMockInitialValues(const {});
     final controller = AssemblerController.instance;
@@ -132,7 +47,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Assembler settings'), findsOneWidget);
-    expect(find.text('Flibler (Flipper Assembler Tool)'), findsOneWidget);
     expect(find.text('Release'), findsOneWidget);
     expect(find.text('Development'), findsOneWidget);
     expect(find.text('Unleashed'), findsOneWidget);
@@ -170,7 +84,9 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(900, 1600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    await tester.pumpWidget(_wrap(AssemblerSettingsPage(remote: _StubRemote())));
+    await tester.pumpWidget(
+      _wrap(AssemblerSettingsPage(remote: _StubRemote())),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('Build with'), findsOneWidget);
@@ -199,7 +115,9 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(900, 1600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
-    await tester.pumpWidget(_wrap(AssemblerSettingsPage(remote: _StubRemote())));
+    await tester.pumpWidget(
+      _wrap(AssemblerSettingsPage(remote: _StubRemote())),
+    );
     await tester.pumpAndSettle();
 
     // One "Status" group serves both backends; here it holds the server rows.

@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../theme/colors/display.dart';
 import '../../../../theme/theme.dart';
-import '../../../../widgets/notification.dart';
+import '../../../../components/notification.dart';
 import 'package:qunleashed/components/appbar.dart';
 import '../editor/page.dart';
 import '../project.dart';

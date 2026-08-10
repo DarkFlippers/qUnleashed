@@ -6,9 +6,10 @@ import 'package:flutter/material.dart';
 import '../../../../components/cardlist.dart';
 import '../../../../components/icon.dart';
 import '../../../../theme/theme.dart';
+import '../../../../services/logging.dart';
 
 /// Row of two storage entry cards (Internal `/int` + External `/ext`) shown on
-/// the archive screen. Subscribes to [FlipperWatchApi.deviceInfoUpdates] — the
+/// the archive screen. Subscribes to [FlipperClient.deviceInfoUpdates] — the
 /// shared broadcast stream — and merges storage keys as they arrive.
 class StorageUsageCards extends StatefulWidget {
   const StorageUsageCards({
@@ -62,13 +63,10 @@ class _StorageUsageCardsState extends State<StorageUsageCards> {
     // would otherwise stay blank until the next storage mutation.
     final snapshot = _client.deviceInfoWatchSnapshot;
     if (snapshot.isNotEmpty) _info = {..._info, ...snapshot};
-    _sub = _client.deviceInfoUpdates.listen(
-      (data) {
-        if (!mounted || data.isEmpty) return;
-        setState(() => _info = {..._info, ...data});
-      },
-      onError: (e) => LogService.log('[StorageCards] watchStorage: $e'),
-    );
+    _sub = _client.deviceInfoUpdates.listen((data) {
+      if (!mounted || data.isEmpty) return;
+      setState(() => _info = {..._info, ...data});
+    }, onError: (e) => LogService.log('[StorageCards] watchStorage: $e'));
   }
 
   double? _percent(String prefix) {

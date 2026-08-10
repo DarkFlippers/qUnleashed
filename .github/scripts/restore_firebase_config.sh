@@ -17,7 +17,7 @@ restore_secret_file() {
 
 case "${1:-}" in
   dart)
-    restore_secret_file FIREBASE_OPTIONS_DART_BASE64 lib/firebase_options.dart
+    restore_secret_file FIREBASE_OPTIONS_DART_BASE64 lib/services/notifications/firebase_options.dart
     ;;
   android)
     restore_secret_file ANDROID_GOOGLE_SERVICES_JSON_BASE64 android/app/google-services.json
