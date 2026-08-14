@@ -62,7 +62,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
   bool _selectionMode = false;
   final Set<String> _selected = <String>{};
 
-  /// Name of a just-created file whose row should open in inline rename mode.
+  /// Name of the entry whose row should open in inline rename mode.
   String? _pendingRenameName;
 
   @override
@@ -301,40 +301,73 @@ class _FileManagerPageState extends State<FileManagerPage> {
     );
   }
 
-  Future<void> _indexFapIcon(RemoteEntry e) async {
+  Future<bool> _indexFapIcon(RemoteEntry e, {bool silent = false}) async {
     final remotePath = _ctrl.childPath(e.name);
     final appId = e.name.toLowerCase().endsWith('.fap')
         ? e.name.substring(0, e.name.length - 4)
         : e.name;
 
-    context.showNotification('Indexing icon for ${e.name}…');
+    if (!silent) context.showNotification('Indexing icon for ${e.name}…');
     final bytes = await _ctrl.readBytes(remotePath);
-    if (!mounted) return;
+    if (!mounted) return false;
     if (bytes == null) {
-      context.showNotification(
-        'Failed to download ${e.name}',
-        type: QNotificationType.error,
-      );
-      return;
+      if (!silent) {
+        context.showNotification(
+          'Failed to download ${e.name}',
+          type: QNotificationType.error,
+        );
+      }
+      return false;
     }
 
     final extracted = extractFapIcon(Uint8List.fromList(bytes));
     final icon = extracted?.icon;
     if (icon == null) {
-      context.showNotification(
-        'No icon found in ${e.name}',
-        type: QNotificationType.warning,
-      );
-      return;
+      if (!silent) {
+        context.showNotification(
+          'No icon found in ${e.name}',
+          type: QNotificationType.warning,
+        );
+      }
+      return false;
     }
 
     // Writing bumps icon_repo.fapIconRevision, which the file rows listen to,
     // so the icon refreshes immediately without recreating the page.
     await icon_repo.writeFapIcon(appId, icon);
-    if (!mounted) return;
+    if (!mounted || silent) return true;
     context.showNotification(
       'Icon indexed for ${extracted?.name.isNotEmpty == true ? extracted!.name : appId}',
       type: QNotificationType.good,
+    );
+    return true;
+  }
+
+  /// True when every selected entry is a `.fap`, which is the only case where
+  /// batch icon indexing makes sense.
+  bool get _selectionAllFap =>
+      _selected.isNotEmpty &&
+      _selectedEntries.every((e) => !e.isDir && e.extension == 'fap');
+
+  Future<void> _indexFapIconsSelected() async {
+    final items = _selectedEntries;
+    if (items.isEmpty) return;
+    context.showNotification(
+      'Indexing ${items.length} icon${items.length == 1 ? '' : 's'}…',
+    );
+    var indexed = 0;
+    for (final e in items) {
+      if (await _indexFapIcon(e, silent: true)) indexed++;
+      if (!mounted) return;
+    }
+    _exitSelection();
+    context.showNotification(
+      indexed == items.length
+          ? 'Indexed $indexed icon${indexed == 1 ? '' : 's'}'
+          : 'Indexed $indexed of ${items.length} icons',
+      type: indexed == items.length
+          ? QNotificationType.good
+          : QNotificationType.warning,
     );
   }
 
@@ -380,6 +413,17 @@ class _FileManagerPageState extends State<FileManagerPage> {
     final items = _selectedEntries.toList();
     await _downloadEntries(items);
     if (mounted) _exitSelection();
+  }
+
+  void _renameSelected() {
+    final items = _selectedEntries;
+    if (items.length != 1) return;
+    final name = items.first.name;
+    _exitSelection();
+    setState(() => _pendingRenameName = name);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _pendingRenameName = null;
+    });
   }
 
   Future<void> _renameEntry(RemoteEntry e, String newName) async {
@@ -966,9 +1010,46 @@ class _FileManagerPageState extends State<FileManagerPage> {
           tooltip: '',
           icon: const Icon(Icons.more_vert),
           onSelected: (v) {
-            if (v == 'all') _selectAll();
+            switch (v) {
+              case 'rename':
+                _renameSelected();
+              case 'index':
+                _indexFapIconsSelected();
+              case 'all':
+                _selectAll();
+            }
           },
           itemBuilder: (_) => [
+            if (_selected.length == 1 && _ctrl.viewMode == FileViewMode.list)
+              PopupMenuItem(
+                value: 'rename',
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.drive_file_rename_outline,
+                      size: 20,
+                      color: colors.textSecondary,
+                    ),
+                    const SizedBox(width: 12),
+                    const Text('Rename'),
+                  ],
+                ),
+              ),
+            if (_selectionAllFap)
+              PopupMenuItem(
+                value: 'index',
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.image_outlined,
+                      size: 20,
+                      color: colors.textSecondary,
+                    ),
+                    const SizedBox(width: 12),
+                    Text(_selected.length == 1 ? 'Index icon' : 'Index icons'),
+                  ],
+                ),
+              ),
             PopupMenuItem(
               value: 'all',
               child: Row(
@@ -1297,7 +1378,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
               selectionMode: _selectionMode,
               selected: _selected.contains(e.name),
               progress: _ctrl.entryProgress(e.name),
-              autoEdit: !e.isDir && e.name == _pendingRenameName,
+              autoEdit: e.name == _pendingRenameName,
               onTap: () => _onEntryTap(e),
               onLongPress: () => _enterSelection(e),
             ),

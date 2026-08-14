@@ -225,16 +225,27 @@ class _FileRowState extends State<FileRow> {
   void initState() {
     super.initState();
     _renameCtrl = TextEditingController(text: widget.entry.name);
-    if (widget.autoEdit) {
-      _editing = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        final text = _renameCtrl.text;
-        final dot = text.lastIndexOf('.');
-        final end = dot > 0 ? dot : text.length;
-        _renameCtrl.selection = TextSelection(baseOffset: 0, extentOffset: end);
-      });
+    if (widget.autoEdit) _beginAutoEdit();
+  }
+
+  @override
+  void didUpdateWidget(FileRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.autoEdit && !oldWidget.autoEdit && !_editing && !_renaming) {
+      _renameCtrl.text = widget.entry.name;
+      setState(_beginAutoEdit);
     }
+  }
+
+  void _beginAutoEdit() {
+    _editing = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final text = _renameCtrl.text;
+      final dot = text.lastIndexOf('.');
+      final end = dot > 0 ? dot : text.length;
+      _renameCtrl.selection = TextSelection(baseOffset: 0, extentOffset: end);
+    });
   }
 
   @override
@@ -293,9 +304,7 @@ class _FileRowState extends State<FileRow> {
             ProgressFill(progress: widget.progress),
             InkWell(
               onTap: blocked ? null : widget.onTap,
-              onLongPress: blocked
-                  ? null
-                  : (widget.onLongPress ?? _showActionsSheet),
+              onLongPress: blocked ? null : widget.onLongPress,
               onSecondaryTap: blocked ? null : _showActionsSheet,
               borderRadius: radius,
               child: Padding(
@@ -473,7 +482,7 @@ class FileGridTile extends StatelessWidget {
           ProgressFill(progress: progress),
           InkWell(
             onTap: onTap,
-            onLongPress: onLongPress ?? () => _showActionsSheet(context),
+            onLongPress: onLongPress,
             onSecondaryTap: () => _showActionsSheet(context),
             borderRadius: radius,
             child: Padding(
