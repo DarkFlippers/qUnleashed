@@ -127,7 +127,7 @@ packages:
       path: "lib/modules/dartufbt"
       relative: true
     source: path
-    version: "0.1.1"
+    version: "0.1.2"
   dbus:
     dependency: transitive
     description:
@@ -262,7 +262,7 @@ packages:
       path: "lib/modules/flipperlib"
       relative: true
     source: path
-    version: "1.0.0"
+    version: "1.0.1"
   flutter:
     dependency: "direct main"
     description: flutter
