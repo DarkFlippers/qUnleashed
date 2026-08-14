@@ -56,6 +56,7 @@ class RemoteSession extends ChangeNotifier {
 
   final List<QueuedButton> _queue = [];
   final Map<RemoteButton, _HeldButton> _held = {};
+  final Set<InputKey> _wireDown = {};
 
   int? _lastBgColor;
   int? _lastFgColor;
@@ -111,7 +112,7 @@ class RemoteSession extends ChangeNotifier {
     _connectionSub?.cancel();
     _pendingFrame = null;
     _pendingRgba = null;
-    unawaited(_stopRemote());
+    unawaited(_chain(_releaseWireDown).whenComplete(_stopRemote));
   }
 
   Future<void> _stopRemote() async {
@@ -267,17 +268,13 @@ class RemoteSession extends ChangeNotifier {
     final item = _enqueue(_animAsset(button));
     final type = long ? InputType.LONG : InputType.SHORT;
     final key = _key(button);
-    _inputChain = _inputChain.then((_) async {
-      try {
-        _forget(key, InputType.PRESS);
-        _forget(key, type);
-        await _send(key, InputType.RELEASE);
-      } catch (_) {
-      } finally {
-        _dequeue(item);
-      }
+    return _chain(() async {
+      await Future.wait([
+        _down(key),
+        _typed(key, type),
+        _up(key, onAnswer: () => _dequeue(item)),
+      ]);
     });
-    return _inputChain;
   }
 
   Future<void> beginHold(RemoteButton button) {
@@ -287,12 +284,11 @@ class RemoteSession extends ChangeNotifier {
     _held[button] = state;
     final key = _key(button);
     state.longTimer = Timer(const Duration(milliseconds: 500), () {
-      if (!_held.containsKey(button) || _held[button] != state) return;
+      if (!identical(_held[button], state)) return;
       state.longFired = true;
-      _forget(key, InputType.LONG);
+      unawaited(_chain(() => _typed(key, InputType.LONG)));
     });
-    _forget(key, InputType.PRESS);
-    return _inputChain;
+    return _chain(() => _down(key));
   }
 
   Future<void> endHold(RemoteButton button) {
@@ -300,18 +296,12 @@ class RemoteSession extends ChangeNotifier {
     if (state == null) return _inputChain;
     state.longTimer?.cancel();
     final key = _key(button);
-    _inputChain = _inputChain.then((_) async {
-      try {
-        if (!state.longFired) {
-          _forget(key, InputType.SHORT);
-        }
-        await _send(key, InputType.RELEASE);
-      } catch (_) {
-      } finally {
-        _dequeue(state.item);
-      }
+    return _chain(() async {
+      await Future.wait([
+        if (!state.longFired) _typed(key, InputType.SHORT),
+        _up(key, onAnswer: () => _dequeue(state.item)),
+      ]);
     });
-    return _inputChain;
   }
 
   Future<void> unlock() async {
@@ -326,15 +316,60 @@ class RemoteSession extends ChangeNotifier {
     } catch (_) {}
   }
 
-  Future<void> _send(InputKey key, InputType type) =>
-      _client.guiSendInput(SendInputEventRequest(key: key, type: type));
+  Future<void> _chain(Future<void> Function() action) {
+    final next = _inputChain.then((_) async {
+      try {
+        await action();
+      } catch (_) {}
+    });
+    _inputChain = next;
+    return next;
+  }
 
-  void _forget(InputKey key, InputType type) {
+  Future<void> _sendInput(InputKey key, InputType type) => _client
+      .guiSendInputAndForget(SendInputEventRequest(key: key, type: type))
+      .catchError((_) {});
+
+  Future<void> _down(InputKey key) {
+    if (!_wireDown.add(key)) return Future<void>.value();
+    return _sendInput(key, InputType.PRESS);
+  }
+
+  Future<void> _typed(InputKey key, InputType type) {
+    if (!_wireDown.contains(key)) return Future<void>.value();
+    return _sendInput(key, type);
+  }
+
+  Future<void> _up(InputKey key, {void Function()? onAnswer}) {
+    if (!_wireDown.remove(key)) {
+      onAnswer?.call();
+      return Future<void>.value();
+    }
+    final sent = Completer<void>();
     unawaited(
       _client
-          .guiSendInputAndForget(SendInputEventRequest(key: key, type: type))
-          .catchError((_) {}),
+          .guiSendInput(
+            SendInputEventRequest(key: key, type: InputType.RELEASE),
+            onSent: () {
+              if (!sent.isCompleted) sent.complete();
+            },
+          )
+          .catchError((_) => <Main>[])
+          .whenComplete(() {
+            if (!sent.isCompleted) sent.complete();
+            onAnswer?.call();
+          }),
     );
+    return sent.future;
+  }
+
+  Future<void> _releaseWireDown() async {
+    final keys = _wireDown.toList();
+    _wireDown.clear();
+    if (keys.isEmpty || !_client.isConnected) return;
+    await Future.wait([
+      for (final key in keys) _sendInput(key, InputType.RELEASE),
+    ]);
   }
 
   QueuedButton _enqueue(String asset) {
