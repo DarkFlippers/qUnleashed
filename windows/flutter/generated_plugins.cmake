@@ -6,11 +6,10 @@ list(APPEND FLUTTER_PLUGIN_LIST
   firebase_core
   flutter_libserialport
   geolocator_windows
-  irondash_engine_context
+  pasteboard
   permission_handler_windows
   screen_retriever_windows
   share_plus
-  super_native_extensions
   universal_ble
   url_launcher_windows
   window_manager

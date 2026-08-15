@@ -17,6 +17,16 @@ subprojects {
 }
 subprojects {
     project.evaluationDependsOn(":app")
+
+    listOf("com.android.application", "com.android.library").forEach { pluginId ->
+        plugins.withId(pluginId) {
+            val appNdkVersion =
+                (project(":app").extensions.getByName("android")
+                    as com.android.build.gradle.BaseExtension).ndkVersion
+            (extensions.getByName("android") as com.android.build.gradle.BaseExtension)
+                .ndkVersion = appNdkVersion
+        }
+    }
 }
 
 tasks.register<Delete>("clean") {

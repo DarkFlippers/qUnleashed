@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:super_clipboard/super_clipboard.dart';
+import 'package:pasteboard/pasteboard.dart';
 
 import '../../components/navigation.dart';
 import '../../theme/theme.dart';
@@ -209,19 +209,8 @@ class _ConnectedContent extends StatelessWidget {
   }
 
   static Future<void> _exportDeviceInfo(BuildContext context) async {
-    final clipboard = SystemClipboard.instance;
-    if (clipboard == null) {
-      if (!context.mounted) return;
-      context.showNotification(
-        'Clipboard not available',
-        type: QNotificationType.warning,
-      );
-      return;
-    }
     final ctrl = DeviceScope.of(context);
-    final item = DataWriterItem()
-      ..add(Formats.plainText(ctrl.buildExportDump()));
-    await clipboard.write([item]);
+    Pasteboard.writeText(ctrl.buildExportDump());
     if (!context.mounted) return;
     context.showNotification(
       'Device info copied to clipboard',

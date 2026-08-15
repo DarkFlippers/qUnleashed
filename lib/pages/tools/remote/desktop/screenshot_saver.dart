@@ -1,18 +1,14 @@
 import 'dart:io' as io;
 import 'dart:typed_data';
 
-import 'package:super_clipboard/super_clipboard.dart';
+import 'package:pasteboard/pasteboard.dart';
 
 import '../../../../components/path.dart';
 import '../../../../components/share.dart';
 import '../../../../services/storage/paths.dart';
 
-Future<void> copyScreenshotToClipboard(Uint8List png) async {
-  final clipboard = SystemClipboard.instance;
-  if (clipboard == null) throw StateError('Clipboard not available');
-  final item = DataWriterItem()..add(Formats.png(png));
-  await clipboard.write([item]);
-}
+Future<void> copyScreenshotToClipboard(Uint8List png) =>
+    Pasteboard.writeImage(png);
 
 Future<String> saveScreenshotToAppStorage(Uint8List png) async {
   final fileName =
