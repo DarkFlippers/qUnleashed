@@ -1,5 +1,3 @@
-import 'dart:io' as io;
-
 import 'package:flutter/material.dart';
 import '../../../components/cardlist.dart';
 import '../../../components/icon.dart';
@@ -233,13 +231,6 @@ class _ArchivePageState extends State<ArchivePage> {
     }
   }
 
-  double _topInset(BuildContext context) {
-    if (io.Platform.isAndroid || io.Platform.isIOS) {
-      return MediaQuery.paddingOf(context).top;
-    }
-    return 0;
-  }
-
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
@@ -248,30 +239,34 @@ class _ArchivePageState extends State<ArchivePage> {
       builder: (context, _) {
         return Scaffold(
           backgroundColor: colors.background,
-          body: RefreshIndicator(
-            color: colors.accent,
-            onRefresh: _confirmFullSync,
-            child: CustomScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              slivers: [
-                SliverToBoxAdapter(child: SizedBox(height: _topInset(context))),
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 16, bottom: 4),
-                    child: StorageUsageCards(
-                      enabled: _ctrl.isConnected,
-                      onOpenInternal: () => _openFileManager('/int'),
-                      onOpenExternal: () => _openFileManager('/ext'),
+          body: SafeArea(
+            left: false,
+            right: false,
+            bottom: false,
+            child: RefreshIndicator(
+              color: colors.accent,
+              onRefresh: _confirmFullSync,
+              child: CustomScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 16, bottom: 4),
+                      child: StorageUsageCards(
+                        enabled: _ctrl.isConnected,
+                        onOpenInternal: () => _openFileManager('/int'),
+                        onOpenExternal: () => _openFileManager('/ext'),
+                      ),
                     ),
                   ),
-                ),
-                SliverToBoxAdapter(child: _categoriesCard(context)),
-                if (_ctrl.syncing)
-                  SliverToBoxAdapter(
-                    child: SyncProgressView(progress: _ctrl.syncProgress),
-                  ),
-                ..._buildKeysSlivers(context),
-              ],
+                  SliverToBoxAdapter(child: _categoriesCard(context)),
+                  if (_ctrl.syncing)
+                    SliverToBoxAdapter(
+                      child: SyncProgressView(progress: _ctrl.syncProgress),
+                    ),
+                  ..._buildKeysSlivers(context),
+                ],
+              ),
             ),
           ),
         );
