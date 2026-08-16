@@ -18,8 +18,14 @@ class UpdateDownloading extends UpdateState {
 }
 
 class UpdateUploading extends UpdateState {
-  const UpdateUploading(this.progress);
+  const UpdateUploading(
+    this.progress, {
+    this.fileIndex = 0,
+    this.fileCount = 0,
+  });
   final double progress;
+  final int fileIndex;
+  final int fileCount;
 }
 
 class UpdateStarting extends UpdateState {

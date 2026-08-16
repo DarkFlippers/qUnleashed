@@ -340,12 +340,15 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
         description: 'Downloading firmware…',
         enabled: false,
       ),
-      UpdateUploading() => _ResolvedButtonState(
-        label: 'INSTALL',
-        color: _activeColor,
-        description: 'Installing firmware on the device…',
-        enabled: false,
-      ),
+      UpdateUploading(:final fileIndex, :final fileCount) =>
+        _ResolvedButtonState(
+          label: 'INSTALLING',
+          color: _activeColor,
+          description: fileCount == 0
+              ? 'Installing firmware on the device…'
+              : 'Installing firmware… $fileIndex/$fileCount files',
+          enabled: false,
+        ),
       UpdateStarting() => _ResolvedButtonState(
         label: 'RUN INSTALLER',
         color: _activeColor,

@@ -50,34 +50,29 @@ class FirmwareInstaller {
       await _mkdirSafe(client, _remoteRoot);
       await _mkdirSafe(client, remoteDir);
 
-      final totalSize = extracted.files.fold<int>(
-        0,
-        (s, f) => s + f.data.length,
-      );
-      var bytesUploaded = 0;
+      final files = extracted.files;
       String? manifestPath;
       final uploadThrottle = ProgressThrottle();
 
-      for (final f in extracted.files) {
+      for (var i = 0; i < files.length; i++) {
+        final f = files[i];
         final flipperPath = '$remoteDir/${f.name}';
         if (f.name == 'update.fuf') manifestPath = flipperPath;
 
         _log('uploading ${f.name} (${f.data.length}B)');
-        final fileBytes = f.data.length;
-        final entryStart = bytesUploaded;
+        uploadThrottle.reset();
+        onState(UpdateUploading(0, fileIndex: i + 1, fileCount: files.length));
         await client.storageWriteChunked(
           flipperPath,
           f.data,
           onProgress: (p) {
-            final overall = totalSize == 0
-                ? 1.0
-                : (entryStart + fileBytes * p) / totalSize;
-            if (uploadThrottle.shouldEmit(overall)) {
-              onState(UpdateUploading(overall));
+            if (uploadThrottle.shouldEmit(p)) {
+              onState(
+                UpdateUploading(p, fileIndex: i + 1, fileCount: files.length),
+              );
             }
           },
         );
-        bytesUploaded += fileBytes;
       }
 
       if (manifestPath == null) {
