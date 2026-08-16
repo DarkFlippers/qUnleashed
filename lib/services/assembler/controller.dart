@@ -4,7 +4,10 @@ import 'package:dartufbt/dartufbt.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'backend_mode.dart';
 import 'remote_build_service.dart';
+
+export 'backend_mode.dart';
 
 const String kOfficialIndexUrl =
     'https://update.flipperzero.one/firmware/directory.json';
@@ -48,8 +51,6 @@ class AssemblerLine {
 
 enum AssemblerJob { none, sdk, toolchain, build }
 
-enum AssemblerBackend { local, server }
-
 class AssemblerController extends ChangeNotifier {
   AssemblerController._() {
     _logger.addSink(_onEvent);
@@ -73,9 +74,8 @@ class AssemblerController extends ChangeNotifier {
   UfbtUpdateChannel _channel = UfbtUpdateChannel.release;
   AssemblerSdkSource _sdkSource = AssemblerSdkSource.unleashed;
   String _customIndexUrl = '';
-  AssemblerBackend _backend = isSupported
-      ? AssemblerBackend.local
-      : AssemblerBackend.server;
+  AssemblerBackendPreference _preference = AssemblerBackendPreference.auto;
+  bool _localFaulted = false;
   bool _pendingNewline = false;
 
   static const String _prefSdkSource = 'assembler_sdk_source';
@@ -92,10 +92,23 @@ class AssemblerController extends ChangeNotifier {
   String get customIndexUrl => _customIndexUrl;
   bool get verbose => _logger.verbose;
 
-  /// Where source builds run. Off desktop the local toolchain does not exist,
-  /// so the stored choice is ignored and the server is the only option.
-  AssemblerBackend get backend =>
-      isSupported ? _backend : AssemblerBackend.server;
+  AssemblerBackendPreference get preference => _preference;
+
+  /// Whether this computer can compile right now: the platform runs ufbt and
+  /// its SDK and toolchain are both deployed. Read from [refreshStatus], so a
+  /// state folder deleted behind the app's back shows up on the next check.
+  bool get localReady => isSupported && (_status?.isReady ?? false);
+
+  /// Where source builds run, resolved from the facts on every read: this
+  /// computer while its toolchain works, the build server otherwise.
+  AssemblerBackendChoice get backendChoice => resolveAssemblerBackend(
+    platformSupported: isSupported,
+    localReady: localReady,
+    localFaulted: _localFaulted,
+    preference: _preference,
+  );
+
+  AssemblerBackend get backend => backendChoice.backend;
   bool get usesServerBuild => backend == AssemblerBackend.server;
 
   String? get indexUrl => _sdkSource == AssemblerSdkSource.custom
@@ -119,21 +132,36 @@ class AssemblerController extends ChangeNotifier {
       orElse: () => AssemblerSdkSource.unleashed,
     );
     _customIndexUrl = prefs.getString(_prefCustomIndexUrl) ?? '';
-    final backend = prefs.getString(_prefBackend);
-    _backend = AssemblerBackend.values.firstWhere(
-      (value) => value.name == backend,
-      orElse: () => AssemblerBackend.local,
+    _preference = AssemblerBackendPreference.parse(
+      prefs.getString(_prefBackend),
     );
+    refreshStatus();
     notifyListeners();
   }
 
-  Future<void> setBackend(AssemblerBackend value) async {
-    if (_backend == value || busy) return;
-    _backend = value;
+  Future<void> setPreference(AssemblerBackendPreference value) async {
+    if (_preference == value || busy) return;
+    _preference = value;
+    if (value == AssemblerBackendPreference.auto) {
+      _localFaulted = false;
+      refreshStatus();
+    }
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_prefBackend, value.name);
   }
+
+  /// Called when a local build could not run at all — a missing toolchain
+  /// binary, an unreadable state folder, a process that would not start. The
+  /// server takes over until the SDK or the toolchain is deployed again.
+  void markLocalFault(Object error) {
+    _logger.warning('Local builds are unavailable: $error');
+    if (_localFaulted) return;
+    _localFaulted = true;
+    notifyListeners();
+  }
+
+  bool get localFaulted => _localFaulted;
 
   Future<void> setSdkSource(AssemblerSdkSource value) async {
     if (_sdkSource == value || busy) return;
@@ -159,12 +187,13 @@ class AssemblerController extends ChangeNotifier {
   final Stopwatch _sinceProbe = Stopwatch();
   Future<bool>? _probe;
 
-  /// Whether source builds can run at all with the backend picked in the
-  /// settings: on this computer that is the platform, on the server a live
-  /// answer from it. The catalog asks on every mode resolution, so the server
-  /// answer is cached for [_probeTtl].
+  /// Whether source builds can run at all: locally when this computer is ready
+  /// to compile, otherwise a live answer from the build server that would take
+  /// over. The catalog asks on every mode resolution, so the server answer is
+  /// cached for [_probeTtl].
   Future<bool> builderAvailable({bool force = false}) {
-    if (!usesServerBuild) return Future.value(isSupported);
+    refreshStatus();
+    if (backend == AssemblerBackend.local) return Future.value(true);
     if (!RemoteBuildService.instance.canBuild) return Future.value(false);
     final cached = _serverReachable;
     if (!force && cached != null && _sinceProbe.elapsed < _probeTtl) {
@@ -278,6 +307,9 @@ class AssemblerController extends ChangeNotifier {
       _job = AssemblerJob.none;
       _progress = null;
       _status = installer.status();
+      // A fresh SDK or toolchain is the answer to whatever broke the local
+      // builds, so they get another chance right away.
+      if (ok) _localFaulted = false;
       notifyListeners();
     }
     return ok;

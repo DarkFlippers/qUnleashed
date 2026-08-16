@@ -267,6 +267,9 @@ class FliblerProjectController extends ChangeNotifier {
       _builtInfo = _parseBuilt();
       notifyListeners();
     } catch (e) {
+      // A project has no source bundle the server could fetch, so this build
+      // ends here; the fault still moves catalog builds to the server.
+      if (isLocalEnvironmentFailure(e)) _assembler.markLocalFault(e);
       _error = '$e';
       _assembler.logger.error('$e');
       notifyListeners();

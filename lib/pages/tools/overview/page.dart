@@ -24,7 +24,10 @@ import '../../../services/logging.dart';
 class ToolsPage extends StatelessWidget {
   const ToolsPage({super.key});
 
-  static final List<ToolGroup> _tools = [
+  /// [localBuilds] is on only while builds run on this computer: without a
+  /// deployed SDK and toolchain, or with the build server in charge, the tool
+  /// has nothing to compile a folder or a repo with.
+  static List<ToolGroup> _toolGroups(bool localBuilds) => [
     ToolGroup(
       header: const ToolCardHeader(
         iconAsset: 'assets/ic/device/flipper.svg',
@@ -56,7 +59,7 @@ class ToolsPage extends StatelessWidget {
         ),
       ],
     ),
-    if (AssemblerController.isSupported)
+    if (localBuilds)
       ToolGroup(
         header: const ToolCardHeader(
           iconAsset: 'assets/ic/app/apps.svg',
@@ -206,23 +209,28 @@ class ToolsPage extends StatelessWidget {
         bottom: false,
         child: SingleChildScrollView(
           padding: const EdgeInsets.only(top: 9, bottom: 14),
-          child: Column(
-            children: [
-              for (final group in _tools)
-                if (group.items.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 5),
-                    child: GroupedCardList<ToolItemModel>(
-                      header: group.header == null
-                          ? null
-                          : _groupHeader(group.header!, colors),
-                      items: group.items,
-                      onTap: (item) => _resolveTap(context, item),
-                      itemBuilder: _toolItem,
+          child: AnimatedBuilder(
+            animation: AssemblerController.instance,
+            builder: (context, _) => Column(
+              children: [
+                for (final group in _toolGroups(
+                  AssemblerController.instance.backendChoice.isLocal,
+                ))
+                  if (group.items.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 5),
+                      child: GroupedCardList<ToolItemModel>(
+                        header: group.header == null
+                            ? null
+                            : _groupHeader(group.header!, colors),
+                        items: group.items,
+                        onTap: (item) => _resolveTap(context, item),
+                        itemBuilder: _toolItem,
+                      ),
                     ),
-                  ),
-              const AppVersionLabel(),
-            ],
+                const AppVersionLabel(),
+              ],
+            ),
           ),
         ),
       ),

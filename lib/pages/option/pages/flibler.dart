@@ -46,9 +46,15 @@ class _AssemblerSettingsPageState extends State<AssemblerSettingsPage> {
     AssemblerSdkSource.custom: 'Custom',
   };
 
-  static const Map<AssemblerBackend, String> _backendTitles = {
-    AssemblerBackend.local: 'This computer',
-    AssemblerBackend.server: 'Build server',
+  static const Map<AssemblerBackendPreference, String> _backendTitles = {
+    AssemblerBackendPreference.auto: 'Automatic',
+    AssemblerBackendPreference.server: 'Build server',
+  };
+
+  static const Map<AssemblerBackendPreference, String> _backendSubtitles = {
+    AssemblerBackendPreference.auto:
+        'This computer when its SDK and toolchain are ready, else the server',
+    AssemblerBackendPreference.server: 'Always waits in the server queue',
   };
 
   RemoteBuildService get _remote =>
@@ -62,7 +68,7 @@ class _AssemblerSettingsPageState extends State<AssemblerSettingsPage> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _ctrl.refreshStatus();
-      if (_ctrl.usesServerBuild) unawaited(_loadServerStatus());
+      unawaited(_loadServerStatus());
     });
   }
 
@@ -87,26 +93,22 @@ class _AssemblerSettingsPageState extends State<AssemblerSettingsPage> {
     });
   }
 
-  Future<void> _selectBackend(AssemblerBackend backend) async {
-    await _ctrl.setBackend(backend);
-    if (backend == AssemblerBackend.server && _serverStatus == null) {
+  Future<void> _selectBackend(AssemblerBackendPreference preference) async {
+    await _ctrl.setPreference(preference);
+    if (_ctrl.usesServerBuild && _serverStatus == null) {
       unawaited(_loadServerStatus());
     }
   }
 
-  Widget _backendTile(BuildContext context, AssemblerBackend backend) {
-    final local = backend == AssemblerBackend.local;
-    final supported = AssemblerController.isSupported;
+  Widget _backendTile(
+    BuildContext context,
+    AssemblerBackendPreference preference,
+  ) {
     return _radioTile(
       context,
-      title: _backendTitles[backend]!,
-      subtitle: local
-          ? (supported
-                ? 'Faster: compiles here, needs toolchain'
-                : 'Not available')
-          : 'Slower: waits in the server queue',
-      selected: _ctrl.backend == backend,
-      dimmed: local && !supported,
+      title: _backendTitles[preference]!,
+      subtitle: _backendSubtitles[preference]!,
+      selected: _ctrl.preference == preference,
     );
   }
 
@@ -124,7 +126,6 @@ class _AssemblerSettingsPageState extends State<AssemblerSettingsPage> {
     required String title,
     required String subtitle,
     required bool selected,
-    bool dimmed = false,
   }) {
     final colors = context.appColors;
     return Row(
@@ -137,7 +138,7 @@ class _AssemblerSettingsPageState extends State<AssemblerSettingsPage> {
               Text(
                 title,
                 style: TextStyle(
-                  color: dimmed ? colors.textMuted : colors.textPrimary,
+                  color: colors.textPrimary,
                   fontSize: 14,
                   height: 1.2,
                   fontWeight: FontWeight.w500,
@@ -167,6 +168,29 @@ class _AssemblerSettingsPageState extends State<AssemblerSettingsPage> {
           ),
         ),
       ],
+    );
+  }
+
+  /// Says where the next build actually goes, since "Automatic" only becomes
+  /// an answer once the local ufbt state is known.
+  Widget _activeBackendNote(BuildContext context) {
+    final choice = _ctrl.backendChoice;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        kGroupedHorizontalPadding + 4,
+        8,
+        kGroupedHorizontalPadding + 4,
+        0,
+      ),
+      child: Text(
+        'Now: ${choice.isLocal ? 'this computer' : 'build server'} '
+        '— ${choice.reason.label}',
+        style: TextStyle(
+          color: context.appColors.textMuted,
+          fontSize: 12,
+          height: 1.2,
+        ),
+      ),
     );
   }
 
@@ -376,8 +400,7 @@ class _AssemblerSettingsPageState extends State<AssemblerSettingsPage> {
     );
   }
 
-  List<Widget> _statusTiles(BuildContext context) {
-    if (_ctrl.usesServerBuild) return _remoteStatusTiles(context);
+  List<Widget> _localStatusTiles(BuildContext context) {
     final status = _ctrl.status;
     if (status == null) {
       return [_statusRow(context, 'State', 'Not checked yet')];
@@ -426,7 +449,7 @@ class _AssemblerSettingsPageState extends State<AssemblerSettingsPage> {
       ),
       _statusRow(
         context,
-        'SDK',
+        'Deployed SDK',
         status == null
             ? '—'
             : status.sdkVersions.isEmpty
@@ -460,20 +483,19 @@ class _AssemblerSettingsPageState extends State<AssemblerSettingsPage> {
           body: ListView(
             padding: const EdgeInsets.symmetric(vertical: 10),
             children: [
-              GroupedCardList<AssemblerBackend>(
+              GroupedCardList<AssemblerBackendPreference>(
                 title: 'Build with',
-                items: AssemblerBackend.values,
-                onTap: (backend) {
-                  if (busy ||
-                      (backend == AssemblerBackend.local && !supported)) {
-                    return null;
-                  }
-                  return () => _selectBackend(backend);
-                },
+                items: AssemblerBackendPreference.values,
+                onTap: (preference) =>
+                    busy ? null : () => _selectBackend(preference),
                 itemBuilder: _backendTile,
               ),
+              _activeBackendNote(context),
               const SizedBox(height: 14),
-              if (!_ctrl.usesServerBuild) ...[
+              // The local controls stay on desktop whatever the resolved
+              // backend is: this is the only place the SDK can be downloaded,
+              // and until it is, builds keep going to the server.
+              if (supported) ...[
                 GroupedCardList<UfbtUpdateChannel>(
                   title: 'SDK channel',
                   items: const [
@@ -492,10 +514,29 @@ class _AssemblerSettingsPageState extends State<AssemblerSettingsPage> {
                   itemBuilder: _sourceTile,
                 ),
                 const SizedBox(height: 14),
+                GroupedCardList<Widget>(
+                  title: 'This computer',
+                  items: _localStatusTiles(context),
+                  itemBuilder: (context, tile) => tile,
+                ),
+                const SizedBox(height: 14),
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: kGroupedHorizontalPadding,
+                  ),
+                  child: Column(
+                    children: [
+                      _sdkAction(context),
+                      const SizedBox(height: 10),
+                      _toolchainAction(context),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
               ],
               GroupedCardList<Widget>(
-                title: 'Status',
-                items: _statusTiles(context),
+                title: 'Server',
+                items: _remoteStatusTiles(context),
                 itemBuilder: (context, tile) => tile,
               ),
               const SizedBox(height: 14),
@@ -503,27 +544,19 @@ class _AssemblerSettingsPageState extends State<AssemblerSettingsPage> {
                 padding: const EdgeInsets.symmetric(
                   horizontal: kGroupedHorizontalPadding,
                 ),
-                child: _ctrl.usesServerBuild
-                    ? _action(
-                        context,
-                        label: _serverLoading ? 'Checking…' : 'Check server',
-                        caption:
-                            _serverError ??
-                            (_remote.canBuild
-                                ? 'Apps are compiled remotely, nothing to '
-                                      'download here'
-                                : 'Builds need a signing key: rebuild the app '
-                                      'with --dart-define=QU_BUILD_SERVER_KEY'),
-                        primary: false,
-                        onPressed: _serverLoading ? null : _loadServerStatus,
-                      )
-                    : Column(
-                        children: [
-                          _sdkAction(context),
-                          const SizedBox(height: 10),
-                          _toolchainAction(context),
-                        ],
-                      ),
+                child: _action(
+                  context,
+                  label: _serverLoading ? 'Checking…' : 'Check server',
+                  caption:
+                      _serverError ??
+                      (_remote.canBuild
+                          ? 'Apps are compiled remotely, nothing to '
+                                'download here'
+                          : 'Builds need a signing key: rebuild the app '
+                                'with --dart-define=QU_BUILD_SERVER_KEY'),
+                  primary: false,
+                  onPressed: _serverLoading ? null : _loadServerStatus,
+                ),
               ),
               const SizedBox(height: 20),
             ],

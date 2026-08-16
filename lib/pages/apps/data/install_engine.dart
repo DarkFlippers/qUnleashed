@@ -9,9 +9,7 @@ import '../../../services/http/app_http.dart';
 import '../../../services/progress_throttle.dart';
 import '../../../services/storage/fap_icons.dart';
 import '../../../components/codec/fap/icon.dart';
-import '../../../services/assembler/build_service.dart';
-import '../../../services/assembler/controller.dart';
-import '../../../services/assembler/remote_build_service.dart';
+import '../../../services/assembler/app_build_router.dart';
 import 'catalog_context.dart';
 import 'catalog_api.dart';
 import 'manifest_registry.dart';
@@ -277,28 +275,7 @@ class InstallEngine extends ChangeNotifier {
 
         List<int> fapBytes;
         if (catalog.sourceBuildEnabled) {
-          if (!AssemblerController.instance.usesServerBuild) {
-            final bundle = await api.fetchSourceBundle(
-              cv.id,
-              onProgress: onProgress,
-            );
-            _setActionState(
-              app.alias,
-              stage: AppActionStage.build,
-              progress: 0,
-            );
-            fapBytes = await AssemblerBuildService.buildFromBundle(
-              bundle: bundle,
-              alias: app.alias,
-            );
-            _setActionState(
-              app.alias,
-              stage: AppActionStage.build,
-              progress: 1,
-            );
-          } else {
-            fapBytes = await _buildOnServer(app, cv);
-          }
+          fapBytes = await _buildFromSource(app, cv);
         } else {
           try {
             fapBytes = await api.fetchFapBuild(cv.id, onProgress: onProgress);
@@ -405,37 +382,33 @@ class InstallEngine extends ChangeNotifier {
     }
   }
 
-  Future<List<int>> _buildOnServer(AppCard app, AppCurrentVersion cv) {
-    _setActionState(app.alias, stage: AppActionStage.queued, progress: 0);
-    return RemoteBuildService.instance.build(
-      bundleUrl: api.sourceBundleUri(cv.id).toString(),
+  /// Where the build happens is the router's call: this computer while it can
+  /// compile, the build server otherwise, including when a local build turns
+  /// out to have no working toolchain behind it.
+  Future<List<int>> _buildFromSource(AppCard app, AppCurrentVersion cv) {
+    return AppBuildRouter.build(
       alias: app.alias,
+      bundleUrl: api.sourceBundleUri(cv.id).toString(),
       target: catalog.deviceTarget ?? 'f7',
       api: catalog.deviceApi,
       uid: app.id,
       versionUid: cv.id,
+      fetchBundle: (onProgress) =>
+          api.fetchSourceBundle(cv.id, onProgress: onProgress),
       isCancelled: () => _cancelling.contains(app.alias),
-      onPhase: (phase, progress) {
-        switch (phase) {
-          case RemoteBuildPhase.queued:
-            _setActionState(
-              app.alias,
-              stage: AppActionStage.queued,
-              progress: 0,
-            );
-          case RemoteBuildPhase.building:
-            _setActionState(
-              app.alias,
-              stage: AppActionStage.build,
-              progress: 0,
-            );
-          case RemoteBuildPhase.download:
-            _setActionState(
-              app.alias,
-              stage: AppActionStage.download,
-              progress: progress,
-            );
-        }
+      onStage: (stage, progress) {
+        // Throwing out of a progress callback is how a download in flight is
+        // stopped, so the cancel check rides along with the stage updates.
+        _throwIfCancelled(app.alias);
+        _setActionState(
+          app.alias,
+          stage: switch (stage) {
+            AppBuildStage.queued => AppActionStage.queued,
+            AppBuildStage.download => AppActionStage.download,
+            AppBuildStage.build => AppActionStage.build,
+          },
+          progress: progress,
+        );
       },
     );
   }

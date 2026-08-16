@@ -5,6 +5,9 @@ import 'package:dartufbt/dartufbt.dart';
 
 import 'controller.dart';
 
+/// The local toolchain cannot run: it is missing, incomplete or unusable on
+/// this platform. Nothing was compiled, so the same build may be handed to the
+/// build server instead.
 class AssemblerNotReadyException implements Exception {
   const AssemblerNotReadyException(this.message);
 
@@ -13,6 +16,27 @@ class AssemblerNotReadyException implements Exception {
   @override
   String toString() => message;
 }
+
+/// The toolchain ran and the app did not build. Rebuilding it elsewhere would
+/// fail the same way, so this one is shown to the user as is.
+class AssemblerBuildFailedException implements Exception {
+  const AssemblerBuildFailedException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
+/// Whether a failed local build says something about this computer rather than
+/// about the app: everything here can be retried on the build server.
+bool isLocalEnvironmentFailure(Object error) =>
+    error is AssemblerNotReadyException ||
+    error is FapEnvironmentException ||
+    error is FileSystemException ||
+    error is ProcessException ||
+    error is OSError ||
+    error is ArchiveException;
 
 class AssemblerBuildService {
   const AssemblerBuildService._();
@@ -50,7 +74,7 @@ class AssemblerBuildService {
     final controller = AssemblerController.instance;
     final appDir = findAppDir(root);
     if (appDir == null) {
-      throw AssemblerNotReadyException(
+      throw AssemblerBuildFailedException(
         'No $manifestName found in ${root.path}',
       );
     }
@@ -65,7 +89,7 @@ class AssemblerBuildService {
       );
       for (final result in results) {
         if (!result.success || result.fap == null) {
-          throw AssemblerNotReadyException(
+          throw AssemblerBuildFailedException(
             result.error ?? 'Build failed, see the build console',
           );
         }
@@ -115,7 +139,7 @@ class AssemblerBuildService {
 
       final appDir = findAppDir(root);
       if (appDir == null) {
-        throw AssemblerNotReadyException(
+        throw AssemblerBuildFailedException(
           'No $manifestName found in the source bundle',
         );
       }
@@ -126,7 +150,7 @@ class AssemblerBuildService {
         outputDir: Directory(UfbtPaths.join(root.path, 'dist')),
       );
       if (!result.success || result.fap == null) {
-        throw AssemblerNotReadyException(
+        throw AssemblerBuildFailedException(
           result.error ?? 'Build failed, see the build console',
         );
       }
