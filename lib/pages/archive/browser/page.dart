@@ -1149,7 +1149,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
                 ),
               ),
               Text(
-                indeterminate ? '…' : '${(progress * 100).toStringAsFixed(0)}%',
+                indeterminate ? '…' : '${(progress * 100).toStringAsFixed(1)}%',
                 style: TextStyle(color: colors.textSecondary, fontSize: 12),
               ),
             ],
