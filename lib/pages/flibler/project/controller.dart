@@ -18,6 +18,7 @@ enum FliblerSourceKind { folder, repository }
 const String kFliblerAppsRoot = '/ext/apps';
 const String kFliblerFallbackCategory = 'Tools';
 const String kFliblerRecentPrefsKey = 'flibler_recent_sources';
+const String kFliblerLastFolderPrefsKey = 'flibler_last_folder';
 const int kFliblerRecentLimit = 5;
 
 class FliblerRecentSource {
@@ -72,6 +73,7 @@ class FliblerProjectController extends ChangeNotifier {
   List<FapBuildResult> _built = const [];
   FapInfo? _builtInfo;
   List<FliblerRecentSource> _recent = const [];
+  String _lastFolder = '';
   String? _error;
   String? _installedPath;
   bool _loading = false;
@@ -86,6 +88,13 @@ class FliblerProjectController extends ChangeNotifier {
   List<FapBuildResult> get built => _built;
   FapInfo? get builtInfo => _builtInfo;
   List<FliblerRecentSource> get recent => _recent;
+
+  /// Where the folder picker opens: the folder picked last time, kept across
+  /// restarts until another one is picked. Empty when it is gone from disk.
+  String get lastFolder =>
+      _lastFolder.isNotEmpty && Directory(_lastFolder).existsSync()
+      ? _lastFolder
+      : '';
 
   FapBuildResult? get result => _built.isEmpty
       ? null
@@ -144,6 +153,7 @@ class FliblerProjectController extends ChangeNotifier {
     _kind = FliblerSourceKind.folder;
     _forget();
     notifyListeners();
+    unawaited(_saveLastFolder(path));
   }
 
   void setRepo(String url) {
@@ -170,7 +180,15 @@ class FliblerProjectController extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getStringList(kFliblerRecentPrefsKey) ?? const [];
     _recent = [for (final entry in raw) ?FliblerRecentSource.decode(entry)];
+    _lastFolder = prefs.getString(kFliblerLastFolderPrefsKey) ?? '';
     notifyListeners();
+  }
+
+  Future<void> _saveLastFolder(String path) async {
+    if (path.isEmpty || path == _lastFolder) return;
+    _lastFolder = path;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(kFliblerLastFolderPrefsKey, path);
   }
 
   Future<void> removeRecent(FliblerRecentSource entry) async {

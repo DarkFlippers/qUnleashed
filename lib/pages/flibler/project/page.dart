@@ -44,8 +44,10 @@ class _FliblerProjectPageState extends State<FliblerProjectPage> {
   }
 
   Future<void> _pickFolder() async {
+    final lastFolder = _ctrl.lastFolder;
     final path = await FilePicker.platform.getDirectoryPath(
       dialogTitle: 'Pick a project folder',
+      initialDirectory: lastFolder.isEmpty ? null : lastFolder,
     );
     if (path == null) return;
     _repoField.clear();
