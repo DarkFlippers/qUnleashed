@@ -345,12 +345,13 @@ class _AssemblerSettingsPageState extends State<AssemblerSettingsPage> {
       label: running
           ? 'Downloading toolchain…'
           : upToDate
-          ? 'Toolchain ready'
+          ? 'Reinstall toolchain'
           : deployed
           ? 'Update toolchain'
           : 'Download toolchain',
       caption: upToDate
-          ? 'Have v${toolchain?.installedVersion}, nothing to download'
+          ? 'Have v${toolchain?.installedVersion}, downloads and unpacks it '
+                'again, ~340 MB'
           : deployed
           ? 'Have v${toolchain?.installedVersion}, replaces with '
                 'v${toolchain?.version}, ~340 MB'
@@ -358,7 +359,7 @@ class _AssemblerSettingsPageState extends State<AssemblerSettingsPage> {
       primary: !upToDate,
       onPressed: () async {
         _showConsole();
-        await _ctrl.downloadToolchain();
+        await _ctrl.downloadToolchain(force: upToDate);
       },
     );
   }

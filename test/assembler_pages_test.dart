@@ -60,7 +60,7 @@ void main() {
     _expectOneOf(const [
       'Download toolchain',
       'Update toolchain',
-      'Toolchain ready',
+      'Reinstall toolchain',
       'Downloading toolchain…',
     ]);
     expect(find.text('SDK'), findsOneWidget);
