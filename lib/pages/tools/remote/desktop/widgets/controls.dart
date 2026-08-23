@@ -4,6 +4,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../../../theme/colors/display.dart';
 import '../../../../../theme/theme.dart';
+import '../layout.dart';
 import '../models/models.dart';
 
 const Color _kFlipperOrange = Color(0xFFFF8200);
@@ -23,16 +24,17 @@ class _AccentColorMapper extends ColorMapper {
   }
 }
 
-class RemoteControlControls extends StatelessWidget {
-  static const double _layoutWidth = 246;
-  static const double _layoutHeight = 162;
-
-  const RemoteControlControls({
+class RemoteControls extends StatelessWidget {
+  const RemoteControls({
     super.key,
+    required this.size,
+    required this.arrangement,
     required this.onHoldBegin,
     required this.onHoldEnd,
   });
 
+  final Size size;
+  final RemoteControlsArrangement arrangement;
   final void Function(RemoteButton) onHoldBegin;
   final void Function(RemoteButton) onHoldEnd;
 
@@ -40,28 +42,45 @@ class RemoteControlControls extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.appColors;
 
-    return FittedBox(
-      fit: BoxFit.scaleDown,
-      alignment: Alignment.bottomCenter,
-      child: SizedBox(
-        width: _layoutWidth,
-        height: _layoutHeight,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            _DPad(
-              colors: colors,
-              onHoldBegin: onHoldBegin,
-              onHoldEnd: onHoldEnd,
-            ),
-            const SizedBox(width: 30),
-            _BackButton(
-              colors: colors,
-              onHoldBegin: () => onHoldBegin(RemoteButton.back),
-              onHoldEnd: () => onHoldEnd(RemoteButton.back),
-            ),
-          ],
+    final device = arrangement == RemoteControlsArrangement.device;
+    final dpad = _DPad(
+      colors: colors,
+      size: device
+          ? RemoteControlsGeometry.deviceDpad
+          : RemoteControlsGeometry.dpad,
+      onHoldBegin: onHoldBegin,
+      onHoldEnd: onHoldEnd,
+    );
+    final back = _BackButton(
+      colors: colors,
+      size: device
+          ? RemoteControlsGeometry.deviceBack
+          : RemoteControlsGeometry.back,
+      onHoldBegin: () => onHoldBegin(RemoteButton.back),
+      onHoldEnd: () => onHoldEnd(RemoteButton.back),
+    );
+
+    return SizedBox.fromSize(
+      size: size,
+      child: FittedBox(
+        fit: BoxFit.contain,
+        child: SizedBox.fromSize(
+          size: RemoteControlsGeometry.design(arrangement),
+          child: arrangement == RemoteControlsArrangement.inline
+              ? Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    dpad,
+                    const SizedBox(width: RemoteControlsGeometry.inlineGap),
+                    back,
+                  ],
+                )
+              : Stack(
+                  children: [
+                    Positioned(left: 0, top: 0, child: dpad),
+                    Positioned(right: 0, bottom: 0, child: back),
+                  ],
+                ),
         ),
       ),
     );
@@ -71,19 +90,21 @@ class RemoteControlControls extends StatelessWidget {
 class _DPad extends StatelessWidget {
   const _DPad({
     required this.colors,
+    required this.size,
     required this.onHoldBegin,
     required this.onHoldEnd,
   });
 
   final QAppColors colors;
+  final double size;
   final void Function(RemoteButton) onHoldBegin;
   final void Function(RemoteButton) onHoldEnd;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 162,
-      height: 162,
+      width: size,
+      height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         border: Border.all(
@@ -148,11 +169,13 @@ class _DPad extends StatelessWidget {
 class _BackButton extends StatelessWidget {
   const _BackButton({
     required this.colors,
+    required this.size,
     required this.onHoldBegin,
     required this.onHoldEnd,
   });
 
   final QAppColors colors;
+  final double size;
   final VoidCallback onHoldBegin;
   final VoidCallback onHoldEnd;
 
@@ -162,8 +185,8 @@ class _BackButton extends StatelessWidget {
       onHoldBegin: onHoldBegin,
       onHoldEnd: onHoldEnd,
       child: Container(
-        width: 54,
-        height: 54,
+        width: size,
+        height: size,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           border: Border.all(

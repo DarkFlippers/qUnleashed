@@ -6,7 +6,6 @@ import 'package:flutter/foundation.dart';
 
 import '../../../../services/connection/device_info_watch.dart';
 import 'frame_decoder.dart';
-import 'grayscale_filter.dart';
 import 'models/models.dart';
 import 'screenshot_encoder.dart';
 
@@ -15,7 +14,8 @@ const Duration _kUnlockedFlashDuration = Duration(seconds: 1);
 const Duration _kStopTimeout = Duration(seconds: 2);
 
 class RemoteSession extends ChangeNotifier {
-  RemoteSession() {
+  RemoteSession({FlipperClient? client})
+    : _client = client ?? FlipperOneClient().get() {
     _frameSub = _client.screenFrameStream().listen(_onFrame);
     _statusSub = _client.desktopStatusStream().listen(_applyStatus);
     _connectionSub = _client.connectionStream.listen(_onConnectionState);
@@ -23,7 +23,7 @@ class RemoteSession extends ChangeNotifier {
     unawaited(_start());
   }
 
-  final FlipperClient _client = FlipperOneClient().get();
+  final FlipperClient _client;
 
   StreamSubscription<ScreenFrame>? _frameSub;
   StreamSubscription<Status>? _statusSub;
@@ -41,8 +41,6 @@ class RemoteSession extends ChangeNotifier {
   bool _uploadBusy = false;
   bool _recording = false;
 
-  final GrayscaleFilter _grayscale = GrayscaleFilter();
-  bool _grayscaleEnabled = false;
   RawFrameData? _lastRaw;
 
   StreamOrientation _orientation = StreamOrientation.horizontal;
@@ -51,6 +49,7 @@ class RemoteSession extends ChangeNotifier {
   bool _justUnlocked = false;
   Timer? _unlockedFlashTimer;
   bool _isDisconnected = false;
+  bool _sessionBusy = false;
   bool _disposed = false;
   bool _stopped = false;
 
@@ -65,7 +64,7 @@ class RemoteSession extends ChangeNotifier {
   StreamOrientation get orientation => _orientation;
   bool get justUnlocked => _justUnlocked;
   bool get isDisconnected => _isDisconnected;
-  bool get grayscaleEnabled => _grayscaleEnabled;
+  bool get sessionBusy => _sessionBusy;
   List<QueuedButton> get queue => _queue;
   int? get lastBgColor => _lastBgColor;
   int? get lastFgColor => _lastFgColor;
@@ -82,19 +81,39 @@ class RemoteSession extends ChangeNotifier {
     return encodeScreenshotPng(raw);
   }
 
+  /// Asks for the stream straight away — a stale "not connected" flag must not
+  /// keep the page from trying, so the verdict comes from the call itself.
   Future<void> _start() async {
-    if (!_client.isConnected) {
-      _isDisconnected = true;
-      _safeNotify();
-      return;
+    try {
+      await _client.guiStartScreenStream(
+        priority: FlipperRequestPriority.rightNow,
+      );
+      await _client.desktopStatusSubscribe();
+      final frames = await _client.desktopIsLocked();
+      for (final f in frames) {
+        if (f.hasDesktopStatus()) _applyStatus(f.desktopStatus);
+      }
+    } catch (_) {
+      if (_disposed) return;
+      if (!_isDisconnected) {
+        _isDisconnected = true;
+        _safeNotify();
+      }
     }
-    await _client.guiStartScreenStream(
-      priority: FlipperRequestPriority.rightNow,
-    );
-    await _client.desktopStatusSubscribe();
-    final frames = await _client.desktopIsLocked();
-    for (final f in frames) {
-      if (f.hasDesktopStatus()) _applyStatus(f.desktopStatus);
+  }
+
+  /// Re-opens the screen stream on the current link without leaving the page.
+  Future<void> requestSession() async {
+    if (_disposed || _sessionBusy) return;
+    _sessionBusy = true;
+    _safeNotify();
+    try {
+      await _start();
+    } finally {
+      if (!_disposed) {
+        _sessionBusy = false;
+        _safeNotify();
+      }
     }
   }
 
@@ -142,6 +161,7 @@ class RemoteSession extends ChangeNotifier {
 
   void _onConnectionState(FlipperConnectionState state) {
     if (_disposed) return;
+
     if (!state.connected && !_isDisconnected) {
       _isDisconnected = true;
       final prev = _frameImage;
@@ -173,6 +193,10 @@ class RemoteSession extends ChangeNotifier {
 
   void _onFrame(ScreenFrame frame) {
     if (_disposed) return;
+    if (_isDisconnected) {
+      _isDisconnected = false;
+      _safeNotify();
+    }
     if (_recording) {
       _ingest(decodeFrameSync(frame));
       return;
@@ -208,18 +232,9 @@ class RemoteSession extends ChangeNotifier {
     final orientationChanged = raw.orientation != _orientation;
     _orientation = raw.orientation;
     onRawFrame?.call(raw);
-    if (orientationChanged) {
-      _grayscale.reset();
-      _safeNotify();
-    }
+    if (orientationChanged) _safeNotify();
     _lastRaw = raw;
-    if (_grayscaleEnabled) _grayscale.push(raw.pixelIndices);
-    _scheduleUpload(_render(raw));
-  }
-
-  Uint8List _render(RawFrameData raw) {
-    if (!_grayscaleEnabled) return raw.rgba;
-    return _grayscale.render(raw.pixelIndices.length, raw.bgColor, raw.fgColor);
+    _scheduleUpload(raw.rgba);
   }
 
   void _scheduleUpload(Uint8List rgba) {
@@ -248,20 +263,6 @@ class RemoteSession extends ChangeNotifier {
     } finally {
       _uploadBusy = false;
     }
-  }
-
-  void setGrayscaleEnabled(bool enabled) {
-    if (_disposed || _grayscaleEnabled == enabled) return;
-    _grayscaleEnabled = enabled;
-    _safeNotify();
-    final raw = _lastRaw;
-    if (raw == null) return;
-    if (enabled) {
-      _grayscale
-        ..reset()
-        ..push(raw.pixelIndices);
-    }
-    _scheduleUpload(_render(raw));
   }
 
   Future<void> press(RemoteButton button, {bool long = false}) {
