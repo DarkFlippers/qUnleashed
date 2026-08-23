@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io' as io;
 
 import 'package:archive/archive_io.dart';
+import 'package:crypto/crypto.dart';
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/foundation.dart';
 
@@ -58,6 +59,12 @@ class FirmwareInstaller {
         final f = files[i];
         final flipperPath = '$remoteDir/${f.name}';
         if (f.name == 'update.fuf') manifestPath = flipperPath;
+
+        onState(UpdateVerifying(fileIndex: i + 1, fileCount: files.length));
+        if (await _remoteMatches(client, flipperPath, f.md5)) {
+          _log('keeping ${f.name}: md5 matches (${f.md5})');
+          continue;
+        }
 
         _log('uploading ${f.name} (${f.data.length}B)');
         uploadThrottle.reset();
@@ -256,10 +263,37 @@ class FirmwareInstaller {
       dirName ??= parts.first;
       if (parts.first != dirName) continue;
       final basename = parts.last;
-      files.add(_UpdateFile(basename, f.content as List<int>));
+      final content = f.content as List<int>;
+      files.add(
+        _UpdateFile(
+          basename,
+          content,
+          md5.convert(content).toString().toLowerCase(),
+        ),
+      );
     }
 
     return (dirName: dirName, files: files);
+  }
+
+  static Future<bool> _remoteMatches(
+    FlipperClient client,
+    String path,
+    String localMd5,
+  ) async {
+    try {
+      final batch = await client.storageMd5sum(
+        Md5sumRequest(path: path),
+        timeout: const Duration(seconds: 60),
+      );
+      final remote = (batch.items.isNotEmpty ? batch.items.first.md5sum : '')
+          .trim()
+          .toLowerCase();
+      return remote.isNotEmpty && remote == localMd5;
+    } catch (e) {
+      _log('md5 check $path failed: $e');
+      return false;
+    }
   }
 
   static Future<void> _mkdirSafe(FlipperClient client, String path) async {
@@ -270,9 +304,10 @@ class FirmwareInstaller {
 }
 
 class _UpdateFile {
-  _UpdateFile(this.name, this.data);
+  _UpdateFile(this.name, this.data, this.md5);
   final String name;
   final List<int> data;
+  final String md5;
 }
 
 class _Fuf {

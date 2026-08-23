@@ -17,6 +17,12 @@ class UpdateDownloading extends UpdateState {
   final double progress;
 }
 
+class UpdateVerifying extends UpdateState {
+  const UpdateVerifying({this.fileIndex = 0, this.fileCount = 0});
+  final int fileIndex;
+  final int fileCount;
+}
+
 class UpdateUploading extends UpdateState {
   const UpdateUploading(
     this.progress, {

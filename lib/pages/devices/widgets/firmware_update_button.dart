@@ -67,6 +67,7 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
     final state = _updateState;
     return state is UpdateFetching ||
         state is UpdateDownloading ||
+        state is UpdateVerifying ||
         state is UpdateUploading ||
         state is UpdateStarting ||
         state is UpdateRecovering ||
@@ -340,6 +341,15 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
         description: 'Downloading firmware…',
         enabled: false,
       ),
+      UpdateVerifying(:final fileIndex, :final fileCount) =>
+        _ResolvedButtonState(
+          label: 'CHECKING',
+          color: _activeColor,
+          description: fileCount == 0
+              ? 'Checking files on the device…'
+              : 'Checking files… $fileIndex/$fileCount files',
+          enabled: false,
+        ),
       UpdateUploading(:final fileIndex, :final fileCount) =>
         _ResolvedButtonState(
           label: 'INSTALLING',
@@ -388,6 +398,10 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
       UpdateFetching() => _ProgressVisual(value: null, color: state.color),
       UpdateDownloading(:final progress) => _ProgressVisual(
         value: progress,
+        color: state.color,
+      ),
+      UpdateVerifying(:final fileIndex, :final fileCount) => _ProgressVisual(
+        value: fileCount == 0 ? null : fileIndex / fileCount,
         color: state.color,
       ),
       UpdateUploading(:final progress) => _ProgressVisual(
