@@ -2,8 +2,10 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 
 import 'package:geolocator/geolocator.dart';
+import 'package:permission_handler/permission_handler.dart' as ph;
 
 import 'gnss_satellites.dart';
 import 'gps_responder.dart';
@@ -26,6 +28,9 @@ class GeolocatorGpsProvider implements GpsLocationProvider {
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
       }
+      if (Platform.isIOS && permission == LocationPermission.whileInUse) {
+        permission = await _escalateToAlways();
+      }
       final granted =
           permission == LocationPermission.always ||
           permission == LocationPermission.whileInUse;
@@ -35,6 +40,20 @@ class GeolocatorGpsProvider implements GpsLocationProvider {
     } on UnimplementedError {
       return GpsReadiness.notSupported;
     }
+  }
+
+  Future<LocationPermission> _escalateToAlways() async {
+    if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
+      return LocationPermission.whileInUse;
+    }
+    try {
+      await ph.Permission.locationAlways.request();
+    } on PlatformException {
+      return LocationPermission.whileInUse;
+    } on MissingPluginException {
+      return LocationPermission.whileInUse;
+    }
+    return Geolocator.checkPermission();
   }
 
   @override
@@ -86,7 +105,11 @@ class GeolocatorGpsProvider implements GpsLocationProvider {
       return AndroidSettings(accuracy: accuracy, intervalDuration: interval);
     }
     if (Platform.isIOS || Platform.isMacOS) {
-      return AppleSettings(accuracy: accuracy);
+      return AppleSettings(
+        accuracy: accuracy,
+        allowBackgroundLocationUpdates: true,
+        showBackgroundLocationIndicator: true,
+      );
     }
     return const LocationSettings(accuracy: accuracy);
   }

@@ -4,6 +4,8 @@
 <dict>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>FlipperMap uses your location to show distance to saved Flipper files.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>qUnleashed keeps sending your location to Flipper apps that request GPS while the app is in the background.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>This app uses Bluetooth to connect to your Flipper Zero device.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
@@ -63,7 +65,9 @@
 	<true/>
 	<key>UIBackgroundModes</key>
 	<array>
+		<string>bluetooth-central</string>
 		<string>fetch</string>
+		<string>location</string>
 	</array>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
