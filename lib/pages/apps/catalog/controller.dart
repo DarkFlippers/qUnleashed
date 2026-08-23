@@ -7,6 +7,7 @@ import '../../../services/assembler/controller.dart';
 import '../data/apps_backend.dart';
 import '../data/catalog_api.dart';
 import '../data/catalog_mode.dart';
+import '../data/categories.dart';
 import '../data/catalog_state.dart';
 import '../data/install_engine.dart';
 import '../data/manifest_registry.dart';
@@ -116,9 +117,10 @@ class AppsCatalogController extends ChangeNotifier {
 
   Future<void> loadCategories() async {
     _categoriesLoading = true;
+    _categories = await CategoryRegistry.instance.ensureBundled();
     notifyListeners();
     try {
-      _categories = await api.fetchCategories();
+      _categories = await CategoryRegistry.instance.refreshFromCatalog(api);
       _lastError = null;
     } catch (e) {
       _lastError = e;

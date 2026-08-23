@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../components/icon.dart';
 import '../../../../theme/theme.dart';
 import '../../data/models/category.dart';
 import '../../../../components/remote_image.dart';
@@ -46,7 +47,11 @@ class CategoryChip extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (category.iconUri != null && category.iconUri!.isNotEmpty) ...[
+              if (category.iconAsset != null) ...[
+                QIcon(asset: category.iconAsset!, color: textColor, size: 14),
+                const SizedBox(width: 6),
+              ] else if (category.iconUri != null &&
+                  category.iconUri!.isNotEmpty) ...[
                 SafeNetworkSvg(
                   url: category.iconUri!,
                   width: 14,

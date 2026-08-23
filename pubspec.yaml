@@ -70,6 +70,7 @@ flutter:
         - asset: assets/font/gravity-bold-8.ttf
   assets:
     - assets/ic/action/
+    - assets/ic/appcat/
     - assets/ic/app/
     - assets/ic/connect/
     - assets/ic/control/
@@ -90,4 +91,5 @@ flutter:
     - assets/pic/status/
     - assets/anim/
     - assets/anim/L3_Fireplace_128x64/
+    - assets/atp/
     - LICENSE

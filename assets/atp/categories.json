@@ -1,0 +1,79 @@
+[
+  {
+    "id": "64971d0f6617ba37a4bc79b3",
+    "name": "Sub-GHz",
+    "color": "A5F4BE",
+    "priority": 0,
+    "icon": "subghz"
+  },
+  {
+    "id": "64971d10577d519190ede5c2",
+    "name": "RFID",
+    "color": "FFF493",
+    "priority": 1,
+    "icon": "rfid"
+  },
+  {
+    "id": "64971d10be1a76c06747de26",
+    "name": "NFC",
+    "color": "98CEFE",
+    "priority": 2,
+    "icon": "nfc"
+  },
+  {
+    "id": "64971d106617ba37a4bc79b6",
+    "name": "Infrared",
+    "color": "FE938C",
+    "priority": 3,
+    "icon": "infrared"
+  },
+  {
+    "id": "64971d106617ba37a4bc79b9",
+    "name": "GPIO",
+    "color": "A7F2EA",
+    "priority": 4,
+    "icon": "gpio"
+  },
+  {
+    "id": "64971d11be1a76c06747de29",
+    "name": "iButton",
+    "color": "E1BBA6",
+    "priority": 5,
+    "icon": "ibutton"
+  },
+  {
+    "id": "64971d11be1a76c06747de2c",
+    "name": "USB",
+    "color": "FFBEE9",
+    "priority": 6,
+    "icon": "usb"
+  },
+  {
+    "id": "64971d11be1a76c06747de2f",
+    "name": "Games",
+    "color": "FFC486",
+    "priority": 7,
+    "icon": "games"
+  },
+  {
+    "id": "64971d116617ba37a4bc79bc",
+    "name": "Media",
+    "color": "DFB5FF",
+    "priority": 8,
+    "icon": "media"
+  },
+  {
+    "id": "64971d11577d519190ede5c5",
+    "name": "Tools",
+    "color": "DFF159",
+    "priority": 9,
+    "icon": "tools"
+  },
+  {
+    "id": "64a69817effe1f448a4053b4",
+    "name": "Bluetooth",
+    "color": "8BACFF",
+    "priority": 10,
+    "icon": "bluetooth"
+  }
+]

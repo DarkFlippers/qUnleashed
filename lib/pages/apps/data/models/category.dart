@@ -3,6 +3,7 @@ class AppCategory {
   final String name;
   final String color;
   final String? iconUri;
+  final String? iconAsset;
   final int? applicationsCount;
   final int? priority;
 
@@ -11,9 +12,20 @@ class AppCategory {
     required this.name,
     required this.color,
     this.iconUri,
+    this.iconAsset,
     this.applicationsCount,
     this.priority,
   });
+
+  AppCategory withIconAsset(String? asset) => AppCategory(
+    id: id,
+    name: name,
+    color: color,
+    iconUri: iconUri,
+    iconAsset: asset ?? iconAsset,
+    applicationsCount: applicationsCount,
+    priority: priority,
+  );
 
   factory AppCategory.fromJson(Map<String, dynamic> json) {
     return AppCategory(

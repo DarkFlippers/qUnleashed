@@ -202,7 +202,10 @@ class _CategoryInline extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (cat.iconUri != null && cat.iconUri!.isNotEmpty) ...[
+        if (cat.iconAsset != null) ...[
+          QIcon(asset: cat.iconAsset!, color: colors.textSecondary, size: 12),
+          const SizedBox(width: 4),
+        ] else if (cat.iconUri != null && cat.iconUri!.isNotEmpty) ...[
           SafeNetworkSvg(
             url: cat.iconUri!,
             width: 12,
