@@ -394,7 +394,8 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
                     ? const SizedBox.shrink()
                     : RefreshIndicator(
                         color: header,
-                        onRefresh: _device.prime,
+                        displacement: 15,
+                        onRefresh: () async => unawaited(_device.prime()),
                         child: ListView(
                           physics: const AlwaysScrollableScrollPhysics(),
                           children: [
@@ -431,7 +432,8 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
                         Expanded(
                           child: RefreshIndicator(
                             color: header,
-                            onRefresh: _device.prime,
+                            displacement: 15,
+                            onRefresh: () async => unawaited(_device.prime()),
                             child: ListView.builder(
                               physics: const AlwaysScrollableScrollPhysics(
                                 parent: ClampingScrollPhysics(),

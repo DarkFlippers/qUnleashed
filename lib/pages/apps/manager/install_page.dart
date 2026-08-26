@@ -7,6 +7,7 @@ import '../../../components/codec/fap/icon.dart';
 import '../../../components/filelist/columns.dart';
 import '../../../components/filelist/empty_view.dart';
 import '../../../components/filelist/progress_fill.dart';
+import '../../../components/filelist/sync_progress_bar.dart';
 import '../../../components/filelist/table.dart';
 import '../../../components/filelist/toolbar.dart';
 import '../../../components/codec/fap/info.dart';
@@ -396,7 +397,18 @@ class _AtpInstallPageState extends State<AtpInstallPage> {
               ),
             ),
           ),
-          body: _buildBody(context, visible, header),
+          body: Column(
+            children: [
+              if (_atp.loading)
+                SyncProgressBar(
+                  icon: Icons.sync_rounded,
+                  label: 'Syncing the release index…',
+                  progress: 0,
+                  color: header,
+                ),
+              Expanded(child: _buildBody(context, visible, header)),
+            ],
+          ),
         );
       },
     );
@@ -411,7 +423,7 @@ class _AtpInstallPageState extends State<AtpInstallPage> {
     if (_atp.entries.isEmpty) {
       return ArchiveEmptyView(
         icon: Icons.extension_off,
-        title: _atp.loading ? 'Loading the index…' : 'No apps in the release',
+        title: _atp.loading ? 'Reading the release…' : 'No apps in the release',
         subtitle: _atp.loading ? null : 'Sync to fetch the latest pack',
       );
     }
@@ -437,7 +449,8 @@ class _AtpInstallPageState extends State<AtpInstallPage> {
             Expanded(
               child: RefreshIndicator(
                 color: header,
-                onRefresh: _refresh,
+                displacement: 15,
+                onRefresh: () async => unawaited(_refresh()),
                 child: ListView.builder(
                   physics: const AlwaysScrollableScrollPhysics(
                     parent: ClampingScrollPhysics(),
