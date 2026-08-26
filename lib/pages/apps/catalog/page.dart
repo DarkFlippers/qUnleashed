@@ -5,7 +5,6 @@ import 'widgets/mode_badge.dart';
 import 'widgets/states.dart';
 import '../../../components/navigation.dart';
 import '../../../theme/theme.dart';
-import '../../../components/open_url.dart';
 import '../../../services/assembler/controller.dart';
 import '../data/apps_backend.dart';
 import '../manager/install_page.dart';
@@ -17,9 +16,7 @@ import 'widgets/card.dart';
 import 'widgets/categories_filter.dart';
 import 'widgets/action_button.dart';
 import 'widgets/sort_dropdown.dart';
-
-const String _kContributingUrl =
-    'https://github.com/flipperdevices/flipper-application-catalog/blob/main/documentation/Contributing.md';
+import 'widgets/submit_dialog.dart';
 
 class AppsCatalogPage extends StatefulWidget {
   const AppsCatalogPage({super.key});
@@ -283,7 +280,7 @@ class _CatalogViewState extends State<CatalogView> {
               IconButton(
                 icon: Icon(Icons.add_circle_outline, color: colors.textPrimary),
                 tooltip: 'How to submit your app',
-                onPressed: () => openUrl(context, _kContributingUrl),
+                onPressed: () => SubmitAppDialog.show(context),
               ),
               IconButton(
                 icon: Icon(
