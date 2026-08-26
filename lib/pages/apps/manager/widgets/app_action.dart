@@ -1,112 +1,74 @@
 import 'package:flutter/material.dart';
 
-import '../../data/models/card.dart';
-import '../../data/models/installed_app.dart';
-import '../../icons/app_icon.dart';
-import '../../../../components/fap_facts.dart';
 import '../../../../theme/theme.dart';
+
+class AppActionEntry {
+  const AppActionEntry({
+    required this.label,
+    required this.icon,
+    required this.color,
+    required this.onTap,
+    this.filled = false,
+    this.half = false,
+  });
+
+  final String label;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+  final bool filled;
+
+  /// Placed side by side with the next entry instead of taking the full row.
+  final bool half;
+}
 
 class AppActionSheet {
   static Future<void> show(
     BuildContext context, {
-    required InstalledApp app,
-    AppCard? initialCard,
-    required Future<AppCard> Function() fetchCard,
-    required String? Function(String categoryId) categoryNameFor,
-    required bool isUpdatable,
-    required VoidCallback onUpdate,
-    required VoidCallback onOpen,
-    required VoidCallback onRestore,
-    required VoidCallback onDeleteCopy,
-    required VoidCallback onUninstall,
-    VoidCallback? onCancel,
-    String? deviceApi,
-    String? deviceTarget,
+    required Widget icon,
+    required String title,
+    required String subtitle,
+    required Widget details,
+    required List<AppActionEntry> Function(BuildContext context) actions,
+    Widget? trailing,
   }) {
     return showDialog<void>(
       context: context,
       barrierDismissible: true,
       builder: (_) => _ActionDialog(
-        app: app,
-        initialCard: initialCard,
-        fetchCard: fetchCard,
-        categoryNameFor: categoryNameFor,
-        isUpdatable: isUpdatable,
-        onUpdate: onUpdate,
-        onOpen: onOpen,
-        onRestore: onRestore,
-        onDeleteCopy: onDeleteCopy,
-        onUninstall: onUninstall,
-        onCancel: onCancel,
-        deviceApi: deviceApi,
-        deviceTarget: deviceTarget,
+        icon: icon,
+        title: title,
+        subtitle: subtitle,
+        details: details,
+        actions: actions,
+        trailing: trailing,
       ),
     );
   }
 }
 
-class _ActionDialog extends StatefulWidget {
+class _ActionDialog extends StatelessWidget {
   const _ActionDialog({
-    required this.app,
-    required this.initialCard,
-    required this.fetchCard,
-    required this.categoryNameFor,
-    required this.isUpdatable,
-    required this.onUpdate,
-    required this.onOpen,
-    required this.onRestore,
-    required this.onDeleteCopy,
-    required this.onUninstall,
-    required this.onCancel,
-    required this.deviceApi,
-    required this.deviceTarget,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.details,
+    required this.actions,
+    required this.trailing,
   });
 
-  final InstalledApp app;
-  final AppCard? initialCard;
-  final Future<AppCard> Function() fetchCard;
-  final String? Function(String categoryId) categoryNameFor;
-  final bool isUpdatable;
-  final VoidCallback onUpdate;
-  final VoidCallback onOpen;
-  final VoidCallback onRestore;
-  final VoidCallback onDeleteCopy;
-  final VoidCallback onUninstall;
-  final VoidCallback? onCancel;
-  final String? deviceApi;
-  final String? deviceTarget;
-
-  @override
-  State<_ActionDialog> createState() => _ActionDialogState();
-}
-
-class _ActionDialogState extends State<_ActionDialog> {
-  AppCard? _card;
-
-  @override
-  void initState() {
-    super.initState();
-    _card = widget.initialCard;
-    if (_card == null) _load();
-  }
-
-  Future<void> _load() async {
-    try {
-      final fetched = await widget.fetchCard();
-      if (mounted) setState(() => _card = fetched);
-    } catch (_) {
-      // App not in the catalog (sideloaded) — keep whatever we have.
-    }
-  }
+  final Widget icon;
+  final String title;
+  final String subtitle;
+  final Widget details;
+  final List<AppActionEntry> Function(BuildContext context) actions;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final app = widget.app;
-    final accent = colors.accent;
-    final author = _card?.author ?? '';
-
     final media = MediaQuery.of(context).size;
+    final entries = actions(context);
 
     return Dialog(
       backgroundColor: colors.dialogBackground,
@@ -130,15 +92,10 @@ class _ActionDialogState extends State<_ActionDialog> {
                     height: 46,
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      color: accent.withValues(alpha: 0.14),
+                      color: colors.accent.withValues(alpha: 0.14),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: AppIcon(
-                      alias: app.alias,
-                      size: 26,
-                      color: accent,
-                      manifest: app.manifest,
-                    ),
+                    child: icon,
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -146,7 +103,7 @@ class _ActionDialogState extends State<_ActionDialog> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          app.name,
+                          title,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -157,9 +114,7 @@ class _ActionDialogState extends State<_ActionDialog> {
                           ),
                         ),
                         Text(
-                          app.path.isNotEmpty
-                              ? app.path
-                              : '/ext/apps/${app.folder}',
+                          subtitle,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -170,83 +125,13 @@ class _ActionDialogState extends State<_ActionDialog> {
                       ],
                     ),
                   ),
-                  if (widget.isUpdatable) _UpdateTag(color: colors.success),
+                  ?trailing,
                 ],
               ),
               const SizedBox(height: 14),
-              FapFactsPanel(
-                info: app.fap,
-                checked: app.fapChecked,
-                author: author,
-                deviceApi: widget.deviceApi,
-                deviceTarget: widget.deviceTarget,
-              ),
+              details,
               const SizedBox(height: 16),
-              if (widget.onCancel != null) ...[
-                _ActionButton(
-                  label: 'Cancel',
-                  icon: Icons.close,
-                  color: colors.danger,
-                  filled: true,
-                  onTap: () => _run(widget.onCancel!),
-                ),
-                const SizedBox(height: 8),
-              ],
-              if (widget.isUpdatable) ...[
-                _ActionButton(
-                  label: 'Update',
-                  icon: Icons.system_update_alt,
-                  color: colors.success,
-                  filled: true,
-                  onTap: () => _run(widget.onUpdate),
-                ),
-                const SizedBox(height: 8),
-              ],
-              Row(
-                children: [
-                  Expanded(
-                    child: _ActionButton(
-                      label: 'Open',
-                      icon: Icons.play_arrow_rounded,
-                      color: accent,
-                      filled: !widget.isUpdatable,
-                      onTap: () => _run(widget.onOpen),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _ActionButton(
-                      label: 'Restore',
-                      icon: Icons.restore,
-                      color: accent,
-                      onTap: () => _run(widget.onRestore),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: _ActionButton(
-                      label: 'Delete copy',
-                      icon: Icons.sd_card_outlined,
-                      color: colors.danger,
-                      onTap: () => _run(widget.onDeleteCopy),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _ActionButton(
-                      label: 'Uninstall',
-                      icon: Icons.delete_outline,
-                      color: colors.danger,
-                      filled: true,
-                      onTap: () => _run(widget.onUninstall),
-                    ),
-                  ),
-                ],
-              ),
+              ..._buildActions(context, entries),
             ],
           ),
         ),
@@ -254,34 +139,43 @@ class _ActionDialogState extends State<_ActionDialog> {
     );
   }
 
-  void _run(VoidCallback action) {
-    Navigator.of(context).pop();
-    action();
+  List<Widget> _buildActions(
+    BuildContext context,
+    List<AppActionEntry> entries,
+  ) {
+    final out = <Widget>[];
+    for (var i = 0; i < entries.length; i++) {
+      final entry = entries[i];
+      final next = i + 1 < entries.length ? entries[i + 1] : null;
+      if (entry.half && next != null && next.half) {
+        out.add(
+          Row(
+            children: [
+              Expanded(child: _button(context, entry)),
+              const SizedBox(width: 8),
+              Expanded(child: _button(context, next)),
+            ],
+          ),
+        );
+        i++;
+      } else {
+        out.add(_button(context, entry));
+      }
+      if (i + 1 < entries.length) out.add(const SizedBox(height: 8));
+    }
+    return out;
   }
-}
 
-class _UpdateTag extends StatelessWidget {
-  const _UpdateTag({required this.color});
-
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        'UPDATE',
-        style: TextStyle(
-          color: color,
-          fontSize: 10,
-          fontWeight: FontWeight.w800,
-          letterSpacing: 0.4,
-        ),
-      ),
+  Widget _button(BuildContext context, AppActionEntry entry) {
+    return _ActionButton(
+      label: entry.label,
+      icon: entry.icon,
+      color: entry.color,
+      filled: entry.filled,
+      onTap: () {
+        Navigator.of(context).pop();
+        entry.onTap();
+      },
     );
   }
 }

@@ -18,14 +18,16 @@ import '../data/apps_backend.dart';
 import '../data/device_source.dart';
 import '../data/install_engine.dart';
 import '../../../components/codec/fap/details.dart';
+import '../../../components/fap_facts.dart';
 import '../data/models/installed_app.dart';
 import '../data/update_registry.dart';
 import '../icons/app_icon.dart';
 
 class AppsManagerPage extends StatefulWidget {
-  const AppsManagerPage({super.key, this.onOpenCatalog});
+  const AppsManagerPage({super.key, this.onOpenCatalog, this.onOpenPlugins});
 
   final VoidCallback? onOpenCatalog;
+  final VoidCallback? onOpenPlugins;
 
   @override
   State<AppsManagerPage> createState() => _AppsManagerPageState();
@@ -55,6 +57,7 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
   }
 
   Future<void> _primeAll() async {
+    unawaited(_backend.ensureIndex());
     await _device.prime();
     await _updates.ensureFresh();
     await _loadCategoryNames();
@@ -122,6 +125,10 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
               : a.name.toLowerCase().compareTo(b.name.toLowerCase());
         case 'size':
           cmp = a.size.compareTo(b.size);
+        case 'version':
+          cmp = (a.fap?.manifest?.version ?? '').compareTo(
+            b.fap?.manifest?.version ?? '',
+          );
         default:
           cmp = a.name.toLowerCase().compareTo(b.name.toLowerCase());
       }
@@ -191,23 +198,75 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
   }
 
   void _showActions(InstalledApp app, Color header) {
+    final colors = context.appColors;
+    final card = _updates.cardForUid(app.uid);
+    final updatable = _updates.updatableAliases.contains(app.alias);
+    final busy = _engine.actions.containsKey(app.alias);
     AppActionSheet.show(
       context,
-      app: app,
-      initialCard: _updates.cardForUid(app.uid),
-      fetchCard: () => _backend.api.fetchAppCard(app.alias),
-      categoryNameFor: (id) => _categoryNames[id],
-      isUpdatable: _updates.updatableAliases.contains(app.alias),
-      onUpdate: () => _update(app),
-      onOpen: () => _launch(app),
-      onRestore: () => _restore(app),
-      onDeleteCopy: () => _deleteLocal(app),
-      onUninstall: () => _uninstall(app),
-      onCancel: _engine.actions.containsKey(app.alias)
-          ? () => _engine.cancel(app.alias)
-          : null,
-      deviceApi: _backend.deviceApi,
-      deviceTarget: _backend.deviceTarget,
+      icon: AppIcon(
+        alias: app.alias,
+        size: 26,
+        color: colors.accent,
+        manifest: app.manifest,
+      ),
+      title: app.name,
+      subtitle: app.path.isNotEmpty ? app.path : '/ext/apps/${app.folder}',
+      details: FapFactsPanel(
+        info: app.fap,
+        checked: app.fapChecked,
+        author: card?.author ?? '',
+        deviceApi: _backend.deviceApi,
+        deviceTarget: _backend.deviceTarget,
+      ),
+      actions: (ctx) => [
+        if (busy)
+          AppActionEntry(
+            label: 'Cancel',
+            icon: Icons.close,
+            color: colors.danger,
+            filled: true,
+            onTap: () => _engine.cancel(app.alias),
+          )
+        else if (updatable)
+          AppActionEntry(
+            label: 'Update',
+            icon: Icons.system_update_alt,
+            color: colors.success,
+            filled: true,
+            onTap: () => unawaited(_update(app)),
+          ),
+        AppActionEntry(
+          label: 'Open',
+          icon: Icons.play_arrow_rounded,
+          color: colors.accent,
+          filled: !updatable,
+          half: true,
+          onTap: () => unawaited(_launch(app)),
+        ),
+        AppActionEntry(
+          label: 'Restore',
+          icon: Icons.restore,
+          color: colors.accent,
+          half: true,
+          onTap: () => unawaited(_restore(app)),
+        ),
+        AppActionEntry(
+          label: 'Delete copy',
+          icon: Icons.sd_card_outlined,
+          color: colors.danger,
+          half: true,
+          onTap: () => unawaited(_deleteLocal(app)),
+        ),
+        AppActionEntry(
+          label: 'Uninstall',
+          icon: Icons.delete_outline,
+          color: colors.danger,
+          filled: true,
+          half: true,
+          onTap: () => unawaited(_uninstall(app)),
+        ),
+      ],
     );
   }
 
@@ -261,6 +320,11 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
                   tooltip: 'Update all',
                   onPressed: _updateAll,
                 ),
+              IconButton(
+                icon: const Icon(Icons.extension, color: Colors.white),
+                tooltip: 'All-the-plugins',
+                onPressed: widget.onOpenPlugins,
+              ),
               IconButton(
                 icon: const Icon(
                   Icons.storefront_outlined,
@@ -407,9 +471,12 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
 
   List<SizedColumn> _columns(double avail) {
     const sizeW = 64.0;
+    const versionW = 74.0;
     const folderW = 118.0;
-    final showFolder = avail > 420;
-    final fixed = sizeW + (showFolder ? folderW : 0);
+    final showFolder = avail > 460;
+    final showVersion = avail > 360;
+    final fixed =
+        sizeW + (showFolder ? folderW : 0) + (showVersion ? versionW : 0);
     final nameW = (avail - fixed - 24)
         .clamp(kNameMinWidth, double.infinity)
         .toDouble();
@@ -422,6 +489,16 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
         (
           col: const ArchiveCol('Folder', folderW, sortKey: 'folder'),
           width: folderW,
+        ),
+      if (showVersion)
+        (
+          col: const ArchiveCol(
+            'Version',
+            versionW,
+            sortKey: 'version',
+            right: true,
+          ),
+          width: versionW,
         ),
       (
         col: const ArchiveCol('Size', sizeW, sortKey: 'size', right: true),
@@ -514,6 +591,35 @@ class _AppRow extends StatelessWidget {
             style: TextStyle(color: colors.textSecondary, fontSize: 12),
           ),
         );
+      case 'version':
+        final manifest = app.fap?.manifest;
+        final blocking = compat?.isBlocking ?? false;
+        return Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(
+              manifest?.version ?? '—',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: updatable ? colors.success : colors.textSecondary,
+                fontSize: 12,
+                fontWeight: updatable ? FontWeight.w700 : FontWeight.w400,
+              ),
+            ),
+            if (manifest != null)
+              Text(
+                manifest.api,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: blocking ? colors.danger : colors.textMuted,
+                  fontSize: 10,
+                ),
+              ),
+          ],
+        );
       default:
         return Row(
           children: [
@@ -543,47 +649,12 @@ class _AppRow extends StatelessWidget {
                 ],
               ),
             ),
-            if (compat != null && compat!.isBlocking) ...[
-              const SizedBox(width: 6),
-              _Tag(label: compat!.badge, color: colors.danger),
-            ],
-            if (updatable) ...[
-              const SizedBox(width: 6),
-              _Tag(label: 'UPDATE', color: colors.success),
-            ],
           ],
         );
     }
   }
 
   String _fmtSize(int bytes) => formatBytesScaled(bytes, maxUnit: 2);
-}
-
-class _Tag extends StatelessWidget {
-  const _Tag({required this.label, required this.color});
-
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontSize: 9,
-          fontWeight: FontWeight.w800,
-          letterSpacing: 0.3,
-        ),
-      ),
-    );
-  }
 }
 
 class _Badge extends StatelessWidget {

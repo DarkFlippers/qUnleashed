@@ -13,6 +13,7 @@ class FapFactsPanel extends StatelessWidget {
     required this.info,
     this.checked = true,
     this.showVerdict = true,
+    this.pendingNote = 'Sync the manager to read this app from the device',
     this.author,
     this.deviceApi,
     this.deviceTarget,
@@ -21,6 +22,7 @@ class FapFactsPanel extends StatelessWidget {
   final FapInfo? info;
   final bool checked;
   final bool showVerdict;
+  final String pendingNote;
   final String? author;
   final String? deviceApi;
   final String? deviceTarget;
@@ -32,7 +34,7 @@ class FapFactsPanel extends StatelessWidget {
     if (!checked) {
       return _Note(
         icon: Icons.sync,
-        text: 'Sync the manager to read this app from the device',
+        text: pendingNote,
         color: colors.textMuted,
         colors: colors,
       );
@@ -60,7 +62,7 @@ class FapFactsPanel extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (showVerdict) ...[
+        if (showVerdict && compat.isBlocking) ...[
           _Verdict(compat: compat, colors: colors),
           const SizedBox(height: 10),
         ],

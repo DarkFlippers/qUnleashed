@@ -159,7 +159,7 @@ void main() {
     testWidgets('shows what the loader would allocate', (tester) async {
       await pump(tester, app(fap: FapInfo.parse(_buildFap())));
 
-      expect(find.text('Runs on this firmware'), findsOneWidget);
+      expect(find.text('Runs on this firmware'), findsNothing);
       expect(find.text('86.3'), findsOneWidget);
       expect(find.text('f7'), findsOneWidget);
       expect(find.text('480 B'), findsOneWidget);
