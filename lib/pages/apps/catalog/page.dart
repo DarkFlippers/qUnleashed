@@ -8,6 +8,7 @@ import '../../../theme/theme.dart';
 import '../../../components/open_url.dart';
 import '../../../services/assembler/controller.dart';
 import '../data/apps_backend.dart';
+import '../manager/install_page.dart';
 import '../manager/page.dart';
 import 'detail_page.dart';
 import 'controller.dart';
@@ -27,8 +28,31 @@ class AppsCatalogPage extends StatefulWidget {
   State<AppsCatalogPage> createState() => _AppsCatalogPageState();
 }
 
-class _AppsCatalogPageState extends State<AppsCatalogPage> {
-  bool _manager = false;
+enum AppsView { catalog, manager, plugins }
+
+class _AppsCatalogPageState extends State<AppsCatalogPage>
+    with SingleTickerProviderStateMixin {
+  AppsView _view = AppsView.catalog;
+
+  late final AnimationController _fade = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 200),
+    value: 1,
+  );
+
+  void _show(AppsView view) {
+    if (_view == view) return;
+    setState(() => _view = view);
+    _fade
+      ..value = 0
+      ..forward();
+  }
+
+  @override
+  void dispose() {
+    _fade.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -36,17 +60,41 @@ class _AppsCatalogPageState extends State<AppsCatalogPage> {
       valueListenable: AppsBackend.instance.mode,
       builder: (context, mode, _) {
         final hasCatalog = AppsCatalogController.showsCatalog(mode);
-        return IndexedStack(
-          index: _manager ? 1 : 0,
+        return Stack(
           children: [
-            CatalogView(
-              active: !_manager,
-              onOpenManager: () => setState(() => _manager = true),
+            IndexedStack(
+              index: _view.index,
+              sizing: StackFit.expand,
+              children: [
+                CatalogView(
+                  active: _view == AppsView.catalog,
+                  onOpenManager: () => _show(AppsView.manager),
+                ),
+                AppsManagerPage(
+                  onOpenCatalog: hasCatalog
+                      ? () => _show(AppsView.catalog)
+                      : null,
+                  onOpenPlugins: () => _show(AppsView.plugins),
+                ),
+                AtpInstallPage(
+                  onOpenCatalog: hasCatalog
+                      ? () => _show(AppsView.catalog)
+                      : null,
+                  onOpenManager: () => _show(AppsView.manager),
+                ),
+              ],
             ),
-            AppsManagerPage(
-              onOpenCatalog: hasCatalog
-                  ? () => setState(() => _manager = false)
-                  : null,
+            IgnorePointer(
+              child: FadeTransition(
+                opacity: Tween<double>(
+                  begin: 1,
+                  end: 0,
+                ).animate(CurvedAnimation(parent: _fade, curve: Curves.easeOut)),
+                child: ColoredBox(
+                  color: context.appColors.background,
+                  child: const SizedBox.expand(),
+                ),
+              ),
             ),
           ],
         );
@@ -103,7 +151,7 @@ class _CatalogViewState extends State<CatalogView> {
         builder: (_) => AppDetailPage(
           alias: app.alias,
           controller: _ctrl,
-          knownCategory: _ctrl.categoryById(app.categoryId),
+          knownCategory: _ctrl.categoryFor(app),
         ),
       ),
     );
@@ -325,7 +373,7 @@ class _CatalogViewState extends State<CatalogView> {
             ),
             delegate: SliverChildBuilderDelegate((context, index) {
               final app = apps[index];
-              final cat = _ctrl.categoryById(app.categoryId);
+              final cat = _ctrl.categoryFor(app);
               return AppCardView(
                 app: app,
                 category: cat,
