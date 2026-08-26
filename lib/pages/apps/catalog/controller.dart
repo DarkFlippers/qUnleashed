@@ -9,10 +9,12 @@ import '../data/catalog_api.dart';
 import '../data/catalog_mode.dart';
 import '../data/categories.dart';
 import '../data/catalog_state.dart';
+import '../data/catalog_feed.dart';
 import '../data/install_engine.dart';
 import '../data/manifest_registry.dart';
 import '../data/models/card.dart';
 import '../data/models/category.dart';
+import '../data/sort.dart';
 import '../icons/icon_resolver.dart';
 
 export '../data/catalog_mode.dart' show CatalogMode, ApiVerdict;
@@ -40,6 +42,11 @@ class AppsCatalogController extends ChangeNotifier {
   ManifestRegistry get manifests => _backend.manifests;
   bool get isReady => _backend.isReady;
 
+  late final CatalogFeed _catalogFeed = CatalogFeed(api);
+
+  final List<AppCard> _catalogCards = [];
+  final Set<String> _catalogAliases = {};
+
   List<AppCategory> _categories = const [];
   List<AppCategory> get categories => _categories;
 
@@ -64,7 +71,6 @@ class AppsCatalogController extends ChangeNotifier {
   bool _reachedEnd = false;
   bool get reachedEnd => _reachedEnd;
 
-  int _offset = 0;
   Object? _lastError;
   Object? get lastError => _lastError;
 
@@ -93,6 +99,8 @@ class AppsCatalogController extends ChangeNotifier {
     return null;
   }
 
+  AppCategory? categoryFor(AppCard app) => categoryById(app.categoryId);
+
   Future<void> initialize() async {
     unawaited(manifests.ensureFresh());
     await _backend.resolveMode();
@@ -111,7 +119,7 @@ class AppsCatalogController extends ChangeNotifier {
   }
 
   void _onModeChanged() {
-    notifyListeners();
+    unawaited(refresh());
     if (showsCatalog(_backend.mode.value)) unawaited(_maybeLoad());
   }
 
@@ -153,13 +161,15 @@ class AppsCatalogController extends ChangeNotifier {
   final Stopwatch _sinceLoadError = Stopwatch();
 
   Future<void> refresh() async {
-    _apps.clear();
-    _offset = 0;
+    _catalogCards.clear();
+    _catalogAliases.clear();
     _reachedEnd = false;
     _lastError = null;
+    _catalogFeed.reset();
     _sinceLoadError
       ..stop()
       ..reset();
+    _rebuild();
     notifyListeners();
     await loadMore();
   }
@@ -173,17 +183,19 @@ class AppsCatalogController extends ChangeNotifier {
     _appsLoading = true;
     notifyListeners();
     try {
-      final page = await api.fetchApps(
-        offset: _offset,
+      final items = await _catalogFeed.next(
         limit: pageSize,
-        sortBy: _sort,
-        categoryId: _currentCategory?.id,
-        query: _query.isEmpty ? null : _query,
+        sort: _sort,
+        category: _currentCategory,
+        query: _query,
       );
-      _apps.addAll(page.items);
-      _offset = page.nextOffset;
-      if (!page.hasMore) _reachedEnd = true;
-      IconResolver.instance.warmFromCatalog(page.items);
+      for (final card in items) {
+        if (!_catalogAliases.add(card.alias)) continue;
+        _catalogCards.add(card);
+      }
+      if (!_catalogFeed.hasMore) _reachedEnd = true;
+      IconResolver.instance.warmFromCatalog(items);
+      _rebuild();
       _lastError = null;
       _sinceLoadError
         ..stop()
@@ -197,6 +209,12 @@ class AppsCatalogController extends ChangeNotifier {
       _appsLoading = false;
       notifyListeners();
     }
+  }
+
+  void _rebuild() {
+    _apps
+      ..clear()
+      ..addAll(sortAppCards(_catalogCards, _sort));
   }
 
   @override

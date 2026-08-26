@@ -10,7 +10,8 @@ enum AppsSort {
   newUpdates(field: 'updated_at', order: -1),
   oldUpdates(field: 'updated_at', order: 1),
   newReleases(field: 'created_at', order: -1),
-  oldReleases(field: 'created_at', order: 1);
+  oldReleases(field: 'created_at', order: 1),
+  alphabetical(field: 'updated_at', order: -1);
 
   final String field;
   final int order;

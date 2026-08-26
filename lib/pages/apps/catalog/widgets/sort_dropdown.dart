@@ -14,6 +14,7 @@ class SortDropdown extends StatelessWidget {
     AppsSort.newReleases: 'New Releases',
     AppsSort.oldUpdates: 'Old Updates',
     AppsSort.oldReleases: 'Old Releases',
+    AppsSort.alphabetical: 'Name A–Z',
   };
 
   @override
