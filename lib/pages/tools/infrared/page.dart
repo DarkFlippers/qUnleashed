@@ -108,17 +108,20 @@ class _IrLibPageState extends State<IrLibPage> {
                 ),
               ],
             ),
-            body: Column(
-              children: [
-                IrSearchField(
-                  controller: _searchCtrl,
-                  hintText: 'Search whole IRDB',
-                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
-                  onSubmitted: (q) => _ctrl.startSearch(q),
-                  onClear: _ctrl.clearSearch,
-                ),
-                Expanded(child: _buildBody(context)),
-              ],
+            body: SafeArea(
+              top: false,
+              child: Column(
+                children: [
+                  IrSearchField(
+                    controller: _searchCtrl,
+                    hintText: 'Search whole IRDB',
+                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+                    onSubmitted: (q) => _ctrl.startSearch(q),
+                    onClear: _ctrl.clearSearch,
+                  ),
+                  Expanded(child: _buildBody(context)),
+                ],
+              ),
             ),
           );
         },

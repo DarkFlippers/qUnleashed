@@ -85,16 +85,19 @@ class _IrBrandsPageState extends State<IrBrandsPage> {
         backgroundColor: colors.accent,
         foregroundColor: colors.onAccent,
       ),
-      body: Column(
-        children: [
-          IrSearchField(
-            controller: _searchCtrl,
-            hintText: 'Search brand…',
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
-            onChanged: (v) => setState(() => _query = v),
-          ),
-          Expanded(child: _buildBody(context)),
-        ],
+      body: SafeArea(
+        top: false,
+        child: Column(
+          children: [
+            IrSearchField(
+              controller: _searchCtrl,
+              hintText: 'Search brand…',
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+              onChanged: (v) => setState(() => _query = v),
+            ),
+            Expanded(child: _buildBody(context)),
+          ],
+        ),
       ),
     );
   }

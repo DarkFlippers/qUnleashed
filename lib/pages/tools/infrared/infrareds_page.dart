@@ -104,7 +104,7 @@ class _IrInfraredsPageState extends State<IrInfraredsPage> {
         backgroundColor: colors.accent,
         foregroundColor: colors.onAccent,
       ),
-      body: _buildBody(context),
+      body: SafeArea(top: false, child: _buildBody(context)),
     );
   }
 

@@ -135,7 +135,7 @@ class _IrFileViewerState extends State<IrFileViewer> {
         backgroundColor: colors.accent,
         foregroundColor: colors.onAccent,
       ),
-      body: _buildBody(colors),
+      body: SafeArea(top: false, child: _buildBody(colors)),
     );
   }
 

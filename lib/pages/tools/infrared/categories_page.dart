@@ -80,44 +80,48 @@ class _IrCategoriesPageState extends State<IrCategoriesPage> {
         backgroundColor: colors.accent,
         foregroundColor: colors.onAccent,
       ),
-      body: RefreshIndicator(
-        color: colors.accent,
-        onRefresh: _load,
-        child: CustomScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          slivers: [
-            SliverToBoxAdapter(child: _IrdbButton(onTap: _openIrdb)),
-            const SliverToBoxAdapter(child: SizedBox(height: 8)),
-            if (_loading)
-              const SliverFillRemaining(
-                hasScrollBody: false,
-                child: _LoadingGrid(),
-              )
-            else if (_error != null && _categories.isEmpty)
-              SliverFillRemaining(
-                hasScrollBody: false,
-                child: _ErrorView(message: _error!, onRetry: _load),
-              )
-            else
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
-                sliver: SliverGrid(
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    mainAxisSpacing: 12,
-                    crossAxisSpacing: 12,
-                    childAspectRatio: 1.3,
-                  ),
-                  delegate: SliverChildBuilderDelegate(
-                    (context, i) => _DeviceCategoryCard(
-                      category: _categories[i],
-                      onTap: () => _openCategory(_categories[i]),
+      body: SafeArea(
+        top: false,
+        child: RefreshIndicator(
+          color: colors.accent,
+          onRefresh: _load,
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              SliverToBoxAdapter(child: _IrdbButton(onTap: _openIrdb)),
+              const SliverToBoxAdapter(child: SizedBox(height: 8)),
+              if (_loading)
+                const SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: _LoadingGrid(),
+                )
+              else if (_error != null && _categories.isEmpty)
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: _ErrorView(message: _error!, onRetry: _load),
+                )
+              else
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
+                  sliver: SliverGrid(
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          mainAxisSpacing: 12,
+                          crossAxisSpacing: 12,
+                          childAspectRatio: 1.3,
+                        ),
+                    delegate: SliverChildBuilderDelegate(
+                      (context, i) => _DeviceCategoryCard(
+                        category: _categories[i],
+                        onTap: () => _openCategory(_categories[i]),
+                      ),
+                      childCount: _categories.length,
                     ),
-                    childCount: _categories.length,
                   ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );
