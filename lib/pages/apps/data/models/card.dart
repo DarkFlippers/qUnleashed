@@ -1,3 +1,7 @@
+import '../atp/atp_index.dart';
+
+const String kAtpUidPrefix = 'atp:';
+
 class AppSdk {
   final String id;
   final String name;
@@ -95,6 +99,7 @@ class AppCard {
   final int createdAt;
   final int updatedAt;
   final AppCurrentVersion? currentVersion;
+  final AtpEntry? atp;
 
   const AppCard({
     required this.id,
@@ -105,7 +110,42 @@ class AppCard {
     required this.createdAt,
     required this.updatedAt,
     this.currentVersion,
+    this.atp,
   });
+
+  factory AppCard.fromAtp(AtpEntry entry, {required String api}) {
+    return AppCard(
+      id: '$kAtpUidPrefix${entry.appId}',
+      alias: entry.appId,
+      categoryId: '',
+      author: '',
+      downloads: 0,
+      createdAt: 0,
+      updatedAt: 0,
+      currentVersion: AppCurrentVersion(
+        id: entry.md5,
+        status: 'RELEASED',
+        name: entry.displayName,
+        version: entry.version,
+        shortDescription: '',
+        iconUri: '',
+        screenshots: const [],
+        currentBuild: AppBuild(
+          id: entry.md5,
+          sdk: AppSdk(
+            id: api,
+            name: api,
+            target: '',
+            api: api,
+            isLatestRelease: false,
+          ),
+        ),
+      ),
+      atp: entry,
+    );
+  }
+
+  bool get isAtp => id.startsWith(kAtpUidPrefix);
 
   factory AppCard.fromJson(Map<String, dynamic> json) {
     return AppCard(
