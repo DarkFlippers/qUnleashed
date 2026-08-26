@@ -4,6 +4,7 @@ import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flutter/foundation.dart';
 
 import '../../../components/path.dart';
+import 'atp/atp_source.dart';
 import 'catalog_context.dart';
 import 'catalog_api.dart';
 import 'catalog_mode.dart';
@@ -113,12 +114,18 @@ class UpdateRegistry extends ChangeNotifier {
         return;
       }
 
-      final cards = await api.fetchAppsByUids(installed.keys.toList());
+      final catalogUids = installed.keys
+          .where((uid) => !uid.startsWith(kAtpUidPrefix))
+          .toList();
+      final cards = catalogUids.isEmpty
+          ? const <AppCard>[]
+          : await api.fetchAppsByUids(catalogUids);
       _cardsByUid
         ..clear()
         ..addEntries(
           cards.where((c) => c.id.isNotEmpty).map((c) => MapEntry(c.id, c)),
-        );
+        )
+        ..addEntries(_atpCards(installed.keys));
       _rebuild(installed);
       _loaded = true;
       final withVer = installed.values
@@ -157,6 +164,17 @@ class UpdateRegistry extends ChangeNotifier {
       }
     } finally {
       manifests.removeListener(listener);
+    }
+  }
+
+  Iterable<MapEntry<String, AppCard>> _atpCards(Iterable<String> uids) sync* {
+    final source = AtpSource.instance;
+    final api = source.block?.api ?? '';
+    for (final uid in uids) {
+      if (!uid.startsWith(kAtpUidPrefix)) continue;
+      final entry = source.entryFor(uid.substring(kAtpUidPrefix.length));
+      if (entry == null) continue;
+      yield MapEntry(uid, AppCard.fromAtp(entry, api: api));
     }
   }
 

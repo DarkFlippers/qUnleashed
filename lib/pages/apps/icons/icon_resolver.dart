@@ -4,10 +4,23 @@ import 'dart:typed_data';
 
 import '../../../services/http/app_http.dart';
 import '../../../services/storage/fap_icons.dart';
+import '../../../components/codec/bm.dart';
 import '../../../components/codec/fap/icon.dart';
 import '../data/models/card.dart';
 import '../data/models/manifest.dart';
 import 'icon_codec.dart';
+
+Uint8List? _fapMetaIcon(Uint8List raw) {
+  try {
+    final bits = BmCodec.decodeBmFile(raw);
+    if (bits == null) return null;
+    final rowBytes = (fapIconWidth + 7) >> 3;
+    if (bits.length < rowBytes * fapIconHeight) return null;
+    return bits.any((byte) => byte != 0) ? bits : null;
+  } catch (_) {
+    return null;
+  }
+}
 
 class IconResolver {
   IconResolver._();
@@ -50,8 +63,8 @@ class IconResolver {
     if (alias.isEmpty || manifest.iconBase64.isEmpty) return false;
     try {
       if (await hasFapIcon(alias)) return true;
-      final png = base64Decode(manifest.iconBase64);
-      final bits = decodeCatalogIconToFapBits(Uint8List.fromList(png));
+      final raw = Uint8List.fromList(base64Decode(manifest.iconBase64));
+      final bits = decodeCatalogIconToFapBits(raw) ?? _fapMetaIcon(raw);
       if (bits == null) return false;
       await writeFapIcon(alias, bits);
       return true;

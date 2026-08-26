@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flipperlib/flipperlib.dart' hide File;
 
+import 'atp/atp_source.dart';
+import 'binary_sources.dart';
 import 'catalog_api.dart';
 import 'catalog_context.dart';
 import 'catalog_mode.dart';
@@ -24,6 +26,7 @@ class AppsBackend {
 
   final FlipperClient client = FlipperOneClient().get();
   final AppsCatalogApi api = AppsCatalogApi();
+  final AtpSource atp = AtpSource.instance;
 
   late final CatalogContext catalog = CatalogContext(
     client: client,
@@ -32,11 +35,16 @@ class AppsBackend {
   );
 
   late final ManifestRegistry manifests = ManifestRegistry(client: client);
+  late final AppSourceRegistry sources = AppSourceRegistry(
+    catalog: CatalogBinarySource(api: api, catalog: catalog),
+    atp: AtpBinarySource(atp),
+  );
   late final InstallEngine engine = InstallEngine(
     client: client,
     api: api,
     manifests: manifests,
     catalog: catalog,
+    sources: sources,
     onInstalled: _adoptInstalled,
   );
   late final DeviceSource device = DeviceSource(
@@ -71,8 +79,16 @@ class AppsBackend {
   CatalogModePreference get preference => catalog.preference;
   (int, int)? get targetSdk => catalog.targetSdk;
 
-  Future<void> resolveMode({bool force = false}) =>
-      catalog.resolveMode(force: force);
+  Future<void> resolveMode({bool force = false}) async {
+    await catalog.resolveMode(force: force);
+    await ensureIndex();
+  }
+
+  Future<void> ensureIndex() async {
+    atp.bindTarget(deviceTarget);
+    await atp.ensureLoaded();
+  }
+
   Future<void> loadPreference() => catalog.loadPreference();
   Future<void> setPreference(CatalogModePreference value) =>
       catalog.setPreference(value);

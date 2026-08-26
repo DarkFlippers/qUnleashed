@@ -5,11 +5,10 @@ import 'package:crypto/crypto.dart';
 import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flutter/foundation.dart';
 
-import '../../../services/http/app_http.dart';
 import '../../../services/progress_throttle.dart';
 import '../../../services/storage/fap_icons.dart';
 import '../../../components/codec/fap/icon.dart';
-import '../../../services/assembler/app_build_router.dart';
+import 'binary_sources.dart';
 import 'catalog_context.dart';
 import 'catalog_api.dart';
 import 'manifest_registry.dart';
@@ -58,6 +57,7 @@ class InstallEngine extends ChangeNotifier {
     required this.api,
     required this.manifests,
     required this.catalog,
+    required this.sources,
     required this.onInstalled,
   });
 
@@ -65,6 +65,7 @@ class InstallEngine extends ChangeNotifier {
   final AppsCatalogApi api;
   final ManifestRegistry manifests;
   final CatalogContext catalog;
+  final AppSourceRegistry sources;
 
   /// Called after a successful install so the device list can adopt the app
   /// without the engine reaching into its sibling registry.
@@ -228,14 +229,14 @@ class InstallEngine extends ChangeNotifier {
         await catalog.ensureDeviceFilters(required: true);
         _throwIfCancelled(app.alias);
 
+        final source = sources.forCard(app);
+
         var cv = detail?.card.currentVersion ?? app.currentVersion;
-        var build = cv?.currentBuild;
-        if (cv == null || cv.id.isEmpty || build == null) {
+        if (cv == null || cv.id.isEmpty || cv.currentBuild == null) {
           final fetched = await api.fetchApp(app.alias);
           cv = fetched.card.currentVersion;
-          build = cv?.currentBuild;
         }
-        if (cv == null || cv.id.isEmpty || build == null) {
+        if (cv == null || cv.id.isEmpty || cv.currentBuild == null) {
           throw StateError('No installable version available');
         }
 
@@ -245,73 +246,53 @@ class InstallEngine extends ChangeNotifier {
           category: category,
           manifest: existingManifest,
         );
-        final fapPath = existingManifest?.path.isNotEmpty == true
-            ? existingManifest!.path
-            : '$installDir/${app.alias}.fap';
+        final fapPath = '$installDir/${app.alias}.fap';
+        final previousPath = existingManifest?.path ?? '';
+        if (previousPath.isNotEmpty && previousPath != fapPath) {
+          LogService.log(
+            '[InstallEngine] ${app.alias} moves from $previousPath to $fapPath',
+          );
+        }
 
-        final iconBase64 = await _fetchIconBase64(cv.iconUri);
-        final buildApi = build.sdk?.api ?? api.api ?? '';
         final manifest = AppManifest(
           uid: app.id,
           versionUid: cv.id,
           fullName: cv.name.isNotEmpty ? cv.name : app.name,
           path: fapPath,
-          iconBase64: iconBase64,
-          sdkApi: buildApi,
+          iconBase64: await source.iconBase64(app, cv),
+          sdkApi: source.buildApi(app, cv),
           devCatalog: false,
         );
 
-        void onProgress(int receivedBytes, int? totalBytes) {
-          // Throwing out of the progress callback tears down the HTTP stream,
-          // which is the only way to stop a download in flight.
-          _throwIfCancelled(app.alias);
-          if (totalBytes == null || totalBytes <= 0) return;
-          _setActionState(
-            app.alias,
-            stage: AppActionStage.download,
-            progress: receivedBytes / totalBytes,
-          );
-        }
-
-        List<int> fapBytes;
-        if (catalog.sourceBuildEnabled) {
-          fapBytes = await _buildFromSource(app, cv);
-        } else {
-          try {
-            fapBytes = await api.fetchFapBuild(cv.id, onProgress: onProgress);
-          } on AppHttpException catch (e) {
-            if (e.statusCode != 404) rethrow;
-            var appApi = buildApi;
-            if (appApi.isEmpty) {
-              try {
-                final d = await api.fetchApp(app.alias);
-                appApi = d.card.currentVersion?.currentBuild?.sdk?.api ?? '';
-              } catch (_) {}
-            }
-            final canFallback = appApi.isNotEmpty && appApi != api.api;
-            if (canFallback && catalog.apiFallbackEnabled) {
-              fapBytes = await api.fetchFapBuild(
-                cv.id,
-                onProgress: onProgress,
-                apiOverride: appApi,
-              );
-            } else {
-              throw StateError(
-                canFallback
-                    ? 'App is built for API $appApi, firmware has '
-                          '${api.api ?? '?'}; switch the catalog mode in the '
-                          'apps settings to install it'
-                    : 'No compatible build for this firmware (API ${api.api ?? '?'})',
-              );
-            }
-          }
-        }
+        final fapBytes = await source.fetch(
+          app,
+          version: cv,
+          onProgress: (stage, progress) {
+            // Throwing out of a progress callback tears down the HTTP stream,
+            // which is the only way to stop a download in flight.
+            _throwIfCancelled(app.alias);
+            _setActionState(
+              app.alias,
+              stage: switch (stage) {
+                BinaryStage.queued => AppActionStage.queued,
+                BinaryStage.download => AppActionStage.download,
+                BinaryStage.build => AppActionStage.build,
+              },
+              progress: progress,
+            );
+          },
+          isCancelled: () => _cancelling.contains(app.alias),
+        );
         _throwIfCancelled(app.alias);
         _setActionState(app.alias, stage: AppActionStage.download, progress: 1);
 
         unawaited(_cacheFapIcon(app.alias, fapBytes));
 
-        prepared = _PreparedInstall(manifest: manifest, fapBytes: fapBytes);
+        prepared = _PreparedInstall(
+          manifest: manifest,
+          fapBytes: fapBytes,
+          previousPath: previousPath,
+        );
         _preparedInstalls[app.alias] = prepared;
       }
 
@@ -347,6 +328,10 @@ class InstallEngine extends ChangeNotifier {
       await client.storageWriteChunked(fimPath, manifestBytes);
       await _verifyUpload(fimPath, manifestBytes);
 
+      if (prepared.previousPath.isNotEmpty &&
+          prepared.previousPath != fapPath) {
+        await _safeDelete(prepared.previousPath);
+      }
       manifests.put(app.alias, manifest, fimSize: manifestBytes.length);
       await onInstalled(
         alias: app.alias,
@@ -380,37 +365,6 @@ class InstallEngine extends ChangeNotifier {
       notifyListeners();
       return false;
     }
-  }
-
-  /// Where the build happens is the router's call: this computer while it can
-  /// compile, the build server otherwise, including when a local build turns
-  /// out to have no working toolchain behind it.
-  Future<List<int>> _buildFromSource(AppCard app, AppCurrentVersion cv) {
-    return AppBuildRouter.build(
-      alias: app.alias,
-      bundleUrl: api.sourceBundleUri(cv.id).toString(),
-      target: catalog.deviceTarget ?? 'f7',
-      api: catalog.deviceApi,
-      uid: app.id,
-      versionUid: cv.id,
-      fetchBundle: (onProgress) =>
-          api.fetchSourceBundle(cv.id, onProgress: onProgress),
-      isCancelled: () => _cancelling.contains(app.alias),
-      onStage: (stage, progress) {
-        // Throwing out of a progress callback is how a download in flight is
-        // stopped, so the cancel check rides along with the stage updates.
-        _throwIfCancelled(app.alias);
-        _setActionState(
-          app.alias,
-          stage: switch (stage) {
-            AppBuildStage.queued => AppActionStage.queued,
-            AppBuildStage.download => AppActionStage.download,
-            AppBuildStage.build => AppActionStage.build,
-          },
-          progress: progress,
-        );
-      },
-    );
   }
 
   Future<bool> uninstall(AppCard app, {AppCategory? category}) {
@@ -608,6 +562,8 @@ class InstallEngine extends ChangeNotifier {
     AppCategory? category,
     AppManifest? manifest,
   }) async {
+    final fromIndex = sources.installDir(app.alias);
+    if (fromIndex != null) return fromIndex;
     final manifestPath = manifest?.path ?? manifests.byAlias(app.alias)?.path;
     if (manifestPath != null && manifestPath.isNotEmpty) {
       final lastSlash = manifestPath.lastIndexOf('/');
@@ -642,15 +598,6 @@ class InstallEngine extends ChangeNotifier {
       }
     }
     return categoryId.isNotEmpty ? categoryId : 'Misc';
-  }
-
-  Future<String> _fetchIconBase64(String url) async {
-    if (url.isEmpty) return '';
-    try {
-      return base64Encode(await AppHttp.getBytes(Uri.parse(url)));
-    } catch (_) {
-      return '';
-    }
   }
 
   Future<void> _cacheFapIcon(String alias, List<int> fapBytes) async {
@@ -705,10 +652,17 @@ class _AppTask {
 }
 
 class _PreparedInstall {
-  _PreparedInstall({required this.manifest, required this.fapBytes});
+  _PreparedInstall({
+    required this.manifest,
+    required this.fapBytes,
+    this.previousPath = '',
+  });
 
   final AppManifest manifest;
   final List<int> fapBytes;
+
+  /// Where the app used to sit when the index moved it to another folder.
+  final String previousPath;
 }
 
 class _LinkDroppedException implements Exception {
