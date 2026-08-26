@@ -78,6 +78,12 @@ final List<_StorageArea> _areas = [
     resolve: irLibRepositoryDirectory,
   ),
   _StorageArea(
+    group: _groupAppFolders,
+    title: 'All-the-plugins',
+    subtitle: 'Downloaded apps index and release binaries',
+    resolve: atpRepositoryDirectory,
+  ),
+  _StorageArea(
     group: _groupInternal,
     title: 'App icon cache',
     subtitle: 'Cached application icons',

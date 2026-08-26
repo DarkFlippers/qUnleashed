@@ -14,6 +14,8 @@ const String kAnimationsFolderName = 'Animations';
 const String kProjectsFolderName = 'Projects';
 const String kResourcesFolderName = '.resources';
 const String kIrLibFolderName = 'irlib';
+const String kAtpFolderName = 'all-the-plugins';
+const String kAtpIndexFileName = 'index.txt';
 
 /// Name of the last connected device, written by the archive to
 /// `Devices/.last_device`. Lets offline screens resolve their local folder.
@@ -141,6 +143,18 @@ Future<io.Directory> appResourcesDirectory() async {
 Future<io.Directory> irLibRepositoryDirectory() async {
   final root = await appResourcesDirectory();
   return io.Directory(pathJoin([root.path, kIrLibFolderName]));
+}
+
+Future<io.Directory> atpRepositoryDirectory() async {
+  final root = await appResourcesDirectory();
+  final dir = io.Directory(pathJoin([root.path, kAtpFolderName]));
+  await dir.create(recursive: true);
+  return dir;
+}
+
+Future<io.File> atpIndexFile() async {
+  final root = await atpRepositoryDirectory();
+  return io.File(pathJoin([root.path, kAtpIndexFileName]));
 }
 
 Future<io.Directory> shareCacheDirectory() async {
