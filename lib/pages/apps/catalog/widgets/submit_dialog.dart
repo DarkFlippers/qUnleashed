@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../components/config.dart';
 import '../../../../components/open_url.dart';
 import '../../../../theme/theme.dart';
 
@@ -7,6 +8,11 @@ const String kOfwContributingUrl =
     'https://github.com/flipperdevices/flipper-application-catalog/blob/main/documentation/Contributing.md';
 const String kAtpNewAppUrl =
     'https://github.com/xMasterX/all-the-plugins/issues/new?template=02_new_app.yml';
+
+Color _firmwareColor(String shortName) => QAppConfig.firmware.firmwares
+    .firstWhere((entry) => entry.shortName == shortName)
+    .colors
+    .primary;
 
 class SubmitAppDialog extends StatelessWidget {
   const SubmitAppDialog({super.key});
@@ -70,7 +76,7 @@ class SubmitAppDialog extends StatelessWidget {
               const SizedBox(height: 16),
               _SubmitOption(
                 icon: Icons.storefront_outlined,
-                color: colors.accent,
+                color: _firmwareColor('ofw'),
                 title: 'Official catalog',
                 subtitle: 'flipper-application-catalog',
                 text:
@@ -85,7 +91,7 @@ class SubmitAppDialog extends StatelessWidget {
               const SizedBox(height: 12),
               _SubmitOption(
                 icon: Icons.extension,
-                color: colors.info,
+                color: _firmwareColor('unlshd'),
                 title: 'Built-in Unleashed plugins',
                 subtitle: 'all-the-plugins',
                 text:
