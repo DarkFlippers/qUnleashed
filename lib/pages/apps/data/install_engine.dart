@@ -9,6 +9,7 @@ import '../../../services/progress_throttle.dart';
 import '../../../services/storage/fap_icons.dart';
 import '../../../components/codec/fap/icon.dart';
 import 'binary_sources.dart';
+import 'categories.dart';
 import 'catalog_context.dart';
 import 'catalog_api.dart';
 import 'manifest_registry.dart';
@@ -28,26 +29,19 @@ class AppAction {
   final AppActionType type;
   final AppActionStage stage;
   final double progress;
-  final String? error;
 
   const AppAction({
     required this.alias,
     required this.type,
     this.stage = AppActionStage.download,
     this.progress = 0,
-    this.error,
   });
 
-  AppAction copyWith({
-    AppActionStage? stage,
-    double? progress,
-    String? error,
-  }) => AppAction(
+  AppAction copyWith({AppActionStage? stage, double? progress}) => AppAction(
     alias: alias,
     type: type,
     stage: stage ?? this.stage,
     progress: progress ?? this.progress,
-    error: error,
   );
 }
 
@@ -76,7 +70,7 @@ class InstallEngine extends ChangeNotifier {
   })
   onInstalled;
 
-  bool get isReady => client.isConnected && client.mode == FlipperMode.rpc;
+  bool get isReady => client.isRpcReady;
 
   final Map<String, AppAction> _actions = {};
   Map<String, AppAction> get actions => Map.unmodifiable(_actions);
@@ -88,8 +82,6 @@ class InstallEngine extends ChangeNotifier {
     if (app.id.isNotEmpty && manifests.byUid(app.id) != null) return true;
     return app.alias.isNotEmpty && manifests.byAlias(app.alias) != null;
   }
-
-  final Map<String, String> _categoryNamesById = {};
 
   final List<_AppTask> _taskQueue = [];
   final Map<String, _PreparedInstall> _preparedInstalls = {};
@@ -216,8 +208,7 @@ class InstallEngine extends ChangeNotifier {
     AppCategory? category,
     AppDetail? detail,
   }) async {
-    final action = _actions[app.alias];
-    if (action == null) return false;
+    if (!_actions.containsKey(app.alias)) return false;
 
     try {
       var prepared = _preparedInstalls[app.alias];
@@ -332,7 +323,7 @@ class InstallEngine extends ChangeNotifier {
           prepared.previousPath != fapPath) {
         await _safeDelete(prepared.previousPath);
       }
-      manifests.put(app.alias, manifest, fimSize: manifestBytes.length);
+      manifests.put(app.alias, manifest);
       await onInstalled(
         alias: app.alias,
         devicePath: fapPath,
@@ -355,75 +346,80 @@ class InstallEngine extends ChangeNotifier {
         throw const _LinkDroppedException();
       }
       _preparedInstalls.remove(app.alias);
-      LogService.log('[InstallEngine] install ${app.alias} failed: $e');
-      _actions[app.alias] = (_actions[app.alias] ?? action).copyWith(
-        error: '$e',
-      );
-      notifyListeners();
-      await Future<void>.delayed(const Duration(seconds: 2));
-      _clearAction(app.alias);
-      notifyListeners();
-      return false;
+      return _failAction(app.alias, e, 'install');
     }
   }
 
-  Future<bool> uninstall(AppCard app, {AppCategory? category}) {
-    if (!isReady || app.alias.isEmpty) return Future.value(false);
-    if (_actions.containsKey(app.alias)) return Future.value(false);
-    _actions[app.alias] = AppAction(
-      alias: app.alias,
+  Future<bool> _failAction(String alias, Object error, String what) async {
+    LogService.log('[InstallEngine] $what $alias failed: $error');
+    await Future<void>.delayed(const Duration(seconds: 2));
+    _clearAction(alias);
+    notifyListeners();
+    return false;
+  }
+
+  Future<bool> uninstall(
+    AppCard app, {
+    AppCategory? category,
+  }) => _enqueueDelete(
+    app.alias,
+    () async =>
+        manifests.byAlias(app.alias)?.path ??
+        '${await _resolveInstallDir(app, category: category)}/${app.alias}.fap',
+  );
+
+  Future<bool> deleteInstalled({
+    required String alias,
+    required String fapPath,
+  }) => _enqueueDelete(alias, () async => fapPath);
+
+  Future<bool> _enqueueDelete(
+    String alias,
+    Future<String> Function() resolveFapPath,
+  ) {
+    if (!isReady || alias.isEmpty) return Future.value(false);
+    if (_actions.containsKey(alias)) return Future.value(false);
+    _actions[alias] = AppAction(
+      alias: alias,
       type: AppActionType.delete,
       stage: AppActionStage.queued,
     );
     notifyListeners();
     return _enqueueTask(
-      app.alias,
-      () => _performUninstall(app, category: category),
+      alias,
+      () => _performDelete(alias, resolveFapPath),
       needsLink: true,
     );
   }
 
-  Future<bool> _performUninstall(AppCard app, {AppCategory? category}) async {
-    final action = _actions[app.alias];
-    if (action == null) return false;
+  Future<bool> _performDelete(
+    String alias,
+    Future<String> Function() resolveFapPath,
+  ) async {
+    if (!_actions.containsKey(alias)) return false;
     if (!isReady) throw const _LinkDroppedException();
-    _setActionState(app.alias, stage: AppActionStage.download);
+    _setActionState(alias, stage: AppActionStage.download);
     try {
-      final fimPath = '$kManifestsRoot/${app.alias}.fim';
-      final fapPath =
-          manifests.byAlias(app.alias)?.path ??
-          '${await _resolveInstallDir(app, category: category)}/${app.alias}.fap';
-      await _safeDelete(fimPath);
+      final fapPath = await resolveFapPath();
+      await _safeDelete('$kManifestsRoot/$alias.fim');
       await _safeDelete(fapPath);
-      manifests.removeAlias(app.alias);
-      _clearAction(app.alias);
+      manifests.removeAlias(alias);
+      _clearAction(alias);
       notifyListeners();
       return true;
     } catch (e) {
       if (!isReady) {
-        _setActionState(app.alias, stage: AppActionStage.queued, progress: 0);
+        _setActionState(alias, stage: AppActionStage.queued, progress: 0);
         throw const _LinkDroppedException();
       }
-      LogService.log('[InstallEngine] uninstall ${app.alias} failed: $e');
-      _actions[app.alias] = (_actions[app.alias] ?? action).copyWith(
-        error: '$e',
-      );
-      notifyListeners();
-      await Future<void>.delayed(const Duration(seconds: 2));
-      _clearAction(app.alias);
-      notifyListeners();
-      return false;
+      return _failAction(alias, e, 'uninstall');
     }
   }
 
   Future<void> launch(AppCard app, {AppCategory? category}) async {
-    if (!isReady) throw StateError('Device is not connected');
-    final path =
-        manifests.byAlias(app.alias)?.path ??
-        '${await _resolveInstallDir(app, category: category)}/${app.alias}.fap';
-    await client.appStart(
-      StartRequest(name: path, args: ''),
-      timeout: const Duration(seconds: 15),
+    await launchPath(
+      manifests.byAlias(app.alias)?.path ??
+          '${await _resolveInstallDir(app, category: category)}/${app.alias}.fap',
     );
   }
 
@@ -433,29 +429,6 @@ class InstallEngine extends ChangeNotifier {
       StartRequest(name: path, args: ''),
       timeout: const Duration(seconds: 15),
     );
-  }
-
-  Future<bool> deleteInstalled({
-    required String alias,
-    required String fapPath,
-  }) {
-    if (!isReady || alias.isEmpty) return Future.value(false);
-    if (_actions.containsKey(alias)) return Future.value(false);
-    _actions[alias] = AppAction(
-      alias: alias,
-      type: AppActionType.delete,
-      stage: AppActionStage.queued,
-    );
-    notifyListeners();
-    return _enqueueTask(alias, () async {
-      _setActionState(alias, stage: AppActionStage.download);
-      await _safeDelete('$kManifestsRoot/$alias.fim');
-      await _safeDelete(fapPath);
-      manifests.removeAlias(alias);
-      _clearAction(alias);
-      notifyListeners();
-      return true;
-    }, needsLink: true);
   }
 
   Future<bool> restore({
@@ -491,7 +464,7 @@ class InstallEngine extends ChangeNotifier {
         final bytes = utf8.encode(manifest.encode());
         await client.storageWriteChunked('$kManifestsRoot/$alias.fim', bytes);
         await _verifyUpload('$kManifestsRoot/$alias.fim', bytes);
-        manifests.put(alias, manifest, fimSize: bytes.length);
+        manifests.put(alias, manifest);
       }
       _clearAction(alias);
       notifyListeners();
@@ -579,23 +552,13 @@ class InstallEngine extends ChangeNotifier {
   ) async {
     final direct = category?.name.trim();
     if (direct != null && direct.isNotEmpty) return direct;
-    final cached = _categoryNamesById[categoryId];
-    if (cached != null && cached.isNotEmpty) return cached;
-    if (categoryId.isNotEmpty) {
-      try {
-        final categories = await api.fetchCategories();
-        for (final item in categories) {
-          if (item.id.isNotEmpty && item.name.isNotEmpty) {
-            _categoryNamesById[item.id] = item.name;
-          }
-        }
-        final resolved = _categoryNamesById[categoryId];
-        if (resolved != null && resolved.isNotEmpty) return resolved;
-      } catch (e) {
-        LogService.log(
-          '[InstallEngine] resolve category "$categoryId" failed: $e',
-        );
-      }
+    try {
+      final resolved = await CategoryRegistry.instance.nameFor(api, categoryId);
+      if (resolved != null) return resolved;
+    } catch (e) {
+      LogService.log(
+        '[InstallEngine] resolve category "$categoryId" failed: $e',
+      );
     }
     return categoryId.isNotEmpty ? categoryId : 'Misc';
   }

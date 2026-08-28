@@ -4,7 +4,7 @@ import 'dart:convert';
 import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flutter/foundation.dart';
 import '../../../services/storage/paths.dart';
-import 'catalog_context.dart' show kManifestsRoot;
+import 'catalog_context.dart' show kManifestsRoot, FlipperRpcReady;
 import 'models/manifest.dart';
 import '../../../services/logging.dart';
 
@@ -20,18 +20,13 @@ class ManifestRegistry extends ChangeNotifier {
   bool _loading = false;
   bool get loading => _loading;
 
-  Object? _error;
-  Object? get error => _error;
-
   bool _loaded = false;
-  bool get loaded => _loaded;
 
-  bool get _isReady => client.isConnected && client.mode == FlipperMode.rpc;
+  bool get _isReady => client.isRpcReady;
 
   AppManifest? byUid(String uid) => uid.isEmpty ? null : _byUid[uid];
   AppManifest? byAlias(String alias) => alias.isEmpty ? null : _byAlias[alias];
   List<AppManifest> get all => List.unmodifiable(_byAlias.values);
-  Set<String> get installedUids => _byUid.keys.toSet();
 
   Future<void> ensureFresh() async {
     if (_loaded || _loading) return;
@@ -42,7 +37,6 @@ class ManifestRegistry extends ChangeNotifier {
     if (_loading) return;
     if (!_isReady) return;
     _loading = true;
-    _error = null;
     notifyListeners();
     try {
       if (_byAlias.isEmpty) await _loadCache();
@@ -92,7 +86,6 @@ class ManifestRegistry extends ChangeNotifier {
       );
       await _saveCache();
     } catch (e) {
-      _error = e;
       LogService.log('[Manifests] refresh failed: $e');
     } finally {
       _loading = false;
@@ -105,7 +98,7 @@ class ManifestRegistry extends ChangeNotifier {
     if (manifest.uid.isNotEmpty) _byUid[manifest.uid] = manifest;
   }
 
-  void put(String alias, AppManifest manifest, {int? fimSize}) {
+  void put(String alias, AppManifest manifest) {
     _index(alias, manifest);
     unawaited(_saveCache());
     notifyListeners();
