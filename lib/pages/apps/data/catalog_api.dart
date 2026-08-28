@@ -55,18 +55,12 @@ class AppsCatalogApi {
   String? api;
   String? target;
 
-  bool _closed = false;
-
   AppsCatalogApi({
     this.baseUrl = defaultBaseUrl,
     this.userAgent = AppHttp.userAgent,
     this.api,
     this.target,
   });
-
-  void close() {
-    _closed = true;
-  }
 
   bool unfiltered = false;
 
@@ -176,7 +170,6 @@ class AppsCatalogApi {
       for (var i = 0; i < clean.length; i += _maxUidBatch) {
         final chunk = clean.sublist(i, math.min(i + _maxUidBatch, clean.length));
         final uri = _uri('/1/application', const {});
-        if (_closed) throw StateError('AppsCatalogApi has been closed');
         final body = await AppHttp.postJson(
           uri,
           <String, dynamic>{
@@ -197,19 +190,6 @@ class AppsCatalogApi {
         );
       }
       return out;
-    });
-  }
-
-  Future<AppCard> fetchAppCard(String idOrAlias) {
-    return _withApiFallback(() async {
-      final uri = _uri('/application/$idOrAlias', {
-        ..._apiParams(),
-      });
-      final body = await _getJson(uri, ttl: const Duration(minutes: 30));
-      if (body is! Map<String, dynamic>) {
-        throw AppsCatalogException(0, uri.toString(), 'expected object');
-      }
-      return AppCard.fromJson(body);
     });
   }
 
@@ -246,7 +226,6 @@ class AppsCatalogApi {
       '/application/version/$versionId/build/compatible',
       {'target': t, 'api': a},
     );
-    if (_closed) throw StateError('AppsCatalogApi has been closed');
     return AppHttp.getBytes(
       uri,
       headers: {io.HttpHeaders.userAgentHeader: userAgent},
@@ -262,7 +241,6 @@ class AppsCatalogApi {
     void Function(int receivedBytes, int? totalBytes)? onProgress,
   }) async {
     final uri = sourceBundleUri(versionId);
-    if (_closed) throw StateError('AppsCatalogApi has been closed');
     return AppHttp.getBytes(
       uri,
       headers: {io.HttpHeaders.userAgentHeader: userAgent},
@@ -279,9 +257,6 @@ class AppsCatalogApi {
   }
 
   Future<dynamic> _getJson(Uri uri, {Duration? ttl}) async {
-    if (_closed) {
-      throw StateError('AppsCatalogApi has been closed');
-    }
     final headers = {io.HttpHeaders.userAgentHeader: userAgent};
     if (ttl == null) return AppHttp.getJson(uri, headers: headers);
     return AppHttp.getJsonCached(uri, ttl: ttl, headers: headers);

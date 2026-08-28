@@ -8,7 +8,6 @@ class AppSdk {
   final String target;
   final String api;
   final bool isLatestRelease;
-  final int? releasedAt;
 
   const AppSdk({
     required this.id,
@@ -16,7 +15,6 @@ class AppSdk {
     required this.target,
     required this.api,
     required this.isLatestRelease,
-    this.releasedAt,
   });
 
   factory AppSdk.fromJson(Map<String, dynamic> json) {
@@ -26,7 +24,6 @@ class AppSdk {
       target: (json['target'] ?? '') as String,
       api: (json['api'] ?? '').toString(),
       isLatestRelease: (json['is_latest_release'] ?? false) as bool,
-      releasedAt: (json['released_at'] as num?)?.toInt(),
     );
   }
 }
@@ -34,9 +31,8 @@ class AppSdk {
 class AppBuild {
   final String id;
   final AppSdk? sdk;
-  final String? fapHash;
 
-  const AppBuild({required this.id, this.sdk, this.fapHash});
+  const AppBuild({required this.id, this.sdk});
 
   factory AppBuild.fromJson(Map<String, dynamic> json) {
     return AppBuild(
@@ -44,14 +40,12 @@ class AppBuild {
       sdk: json['sdk'] is Map<String, dynamic>
           ? AppSdk.fromJson(json['sdk'] as Map<String, dynamic>)
           : null,
-      fapHash: json['fap_hash'] as String?,
     );
   }
 }
 
 class AppCurrentVersion {
   final String id;
-  final String status;
   final String name;
   final String version;
   final String shortDescription;
@@ -61,7 +55,6 @@ class AppCurrentVersion {
 
   const AppCurrentVersion({
     required this.id,
-    required this.status,
     required this.name,
     required this.version,
     required this.shortDescription,
@@ -77,7 +70,6 @@ class AppCurrentVersion {
         const <String>[];
     return AppCurrentVersion(
       id: (json['id'] ?? json['_id'] ?? '') as String,
-      status: (json['status'] ?? '') as String,
       name: (json['name'] ?? '') as String,
       version: (json['version'] ?? '') as String,
       shortDescription: (json['short_description'] ?? '') as String,
@@ -95,7 +87,6 @@ class AppCard {
   final String alias;
   final String categoryId;
   final String author;
-  final int downloads;
   final int createdAt;
   final int updatedAt;
   final AppCurrentVersion? currentVersion;
@@ -106,7 +97,6 @@ class AppCard {
     required this.alias,
     required this.categoryId,
     required this.author,
-    required this.downloads,
     required this.createdAt,
     required this.updatedAt,
     this.currentVersion,
@@ -119,12 +109,10 @@ class AppCard {
       alias: entry.appId,
       categoryId: '',
       author: '',
-      downloads: 0,
       createdAt: 0,
       updatedAt: 0,
       currentVersion: AppCurrentVersion(
         id: entry.md5,
-        status: 'RELEASED',
         name: entry.displayName,
         version: entry.version,
         shortDescription: '',
@@ -153,7 +141,6 @@ class AppCard {
       alias: (json['alias'] ?? '') as String,
       categoryId: (json['category_id'] ?? '') as String,
       author: (json['author'] ?? '') as String,
-      downloads: (json['downloads'] as num?)?.toInt() ?? 0,
       createdAt: (json['created_at'] as num?)?.toInt() ?? 0,
       updatedAt: (json['updated_at'] as num?)?.toInt() ?? 0,
       currentVersion: json['current_version'] is Map<String, dynamic>

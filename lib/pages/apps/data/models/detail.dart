@@ -1,36 +1,22 @@
 ﻿import 'card.dart';
 
 class AppBuildMetadata {
-  final String id;
-  final String filename;
   final int length;
 
-  const AppBuildMetadata({
-    required this.id,
-    required this.filename,
-    required this.length,
-  });
+  const AppBuildMetadata({required this.length});
 
   factory AppBuildMetadata.fromJson(Map<String, dynamic> json) {
-    return AppBuildMetadata(
-      id: (json['id'] ?? '') as String,
-      filename: (json['filename'] ?? '') as String,
-      length: (json['length'] as num?)?.toInt() ?? 0,
-    );
+    return AppBuildMetadata(length: (json['length'] as num?)?.toInt() ?? 0);
   }
 }
 
 class AppSourceCode {
-  final String type;
   final String uri;
 
-  const AppSourceCode({required this.type, required this.uri});
+  const AppSourceCode({required this.uri});
 
   factory AppSourceCode.fromJson(Map<String, dynamic> json) {
-    return AppSourceCode(
-      type: (json['type'] ?? '') as String,
-      uri: (json['uri'] ?? '') as String,
-    );
+    return AppSourceCode(uri: (json['uri'] ?? '') as String);
   }
 }
 

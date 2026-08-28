@@ -4,7 +4,6 @@ class AppCategory {
   final String color;
   final String? iconUri;
   final String? iconAsset;
-  final int? applicationsCount;
   final int? priority;
 
   const AppCategory({
@@ -13,7 +12,6 @@ class AppCategory {
     required this.color,
     this.iconUri,
     this.iconAsset,
-    this.applicationsCount,
     this.priority,
   });
 
@@ -23,7 +21,6 @@ class AppCategory {
     color: color,
     iconUri: iconUri,
     iconAsset: asset ?? iconAsset,
-    applicationsCount: applicationsCount,
     priority: priority,
   );
 
@@ -33,7 +30,6 @@ class AppCategory {
       name: (json['name'] ?? '') as String,
       color: (json['color'] ?? '') as String,
       iconUri: json['icon_uri'] as String?,
-      applicationsCount: (json['applications'] as num?)?.toInt(),
       priority: (json['priority'] as num?)?.toInt(),
     );
   }

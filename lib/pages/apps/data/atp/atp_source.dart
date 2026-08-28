@@ -13,7 +13,6 @@ import '../../../../services/logging.dart';
 import '../../../../services/storage/paths.dart';
 import 'atp_index.dart';
 
-const String kAtpRepoUrl = 'https://github.com/xMasterX/all-the-plugins';
 const String _kLatestReleaseUrl =
     'https://api.github.com/repos/xMasterX/all-the-plugins/releases/latest';
 const String _kIndexAssetName = 'apps_index.txt';
@@ -31,12 +30,9 @@ class AtpSource extends ChangeNotifier {
 
   bool _loading = false;
   bool _loaded = false;
-  Object? _error;
 
   AtpBlock? get block => _block;
   bool get loading => _loading;
-  bool get loaded => _loaded;
-  Object? get error => _error;
   String get tag => _block?.tag ?? '';
   List<AtpEntry> get entries => _block?.entries ?? const [];
   AtpEntry? entryFor(String appId) => appId.isEmpty ? null : _byAppId[appId];
@@ -72,12 +68,10 @@ class AtpSource extends ChangeNotifier {
         if (cached != null) {
           _index = AtpIndex.parse(cached);
           _loaded = true;
-          _error = null;
           _rebind();
           LogService.log('[ATP] index: ${_index!.blocks.length} block(s)');
         }
       } catch (e) {
-        _error = e;
         LogService.log('[ATP] index cache read failed: $e');
       } finally {
         _loading = false;
@@ -110,11 +104,9 @@ class AtpSource extends ChangeNotifier {
         _index = AtpIndex.parse(body);
         _icons.clear();
         _loaded = true;
-        _error = null;
         _rebind();
       }
     } catch (e) {
-      _error = e;
       LogService.log('[ATP] release index download failed: $e');
     } finally {
       _loading = false;

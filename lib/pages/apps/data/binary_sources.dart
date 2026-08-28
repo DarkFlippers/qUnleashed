@@ -15,10 +15,6 @@ enum BinaryStage { queued, download, build }
 typedef BinaryProgress = void Function(BinaryStage stage, double progress);
 
 abstract class AppBinarySource {
-  String get id;
-
-  String get label;
-
   Future<List<int>> fetch(
     AppCard card, {
     required AppCurrentVersion version,
@@ -36,12 +32,6 @@ class CatalogBinarySource implements AppBinarySource {
 
   final AppsCatalogApi api;
   final CatalogContext catalog;
-
-  @override
-  String get id => 'catalog';
-
-  @override
-  String get label => 'Apps catalog';
 
   @override
   String buildApi(AppCard card, AppCurrentVersion version) =>
@@ -126,12 +116,6 @@ class AtpBinarySource implements AppBinarySource {
   AtpBinarySource(this.source);
 
   final AtpSource source;
-
-  @override
-  String get id => 'atp';
-
-  @override
-  String get label => 'All-the-plugins';
 
   @override
   String buildApi(AppCard card, AppCurrentVersion version) =>

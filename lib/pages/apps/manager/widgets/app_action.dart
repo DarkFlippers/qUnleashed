@@ -30,7 +30,6 @@ class AppActionSheet {
     required String subtitle,
     required Widget details,
     required List<AppActionEntry> Function(BuildContext context) actions,
-    Widget? trailing,
   }) {
     return showDialog<void>(
       context: context,
@@ -41,7 +40,6 @@ class AppActionSheet {
         subtitle: subtitle,
         details: details,
         actions: actions,
-        trailing: trailing,
       ),
     );
   }
@@ -54,7 +52,6 @@ class _ActionDialog extends StatelessWidget {
     required this.subtitle,
     required this.details,
     required this.actions,
-    required this.trailing,
   });
 
   final Widget icon;
@@ -62,7 +59,6 @@ class _ActionDialog extends StatelessWidget {
   final String subtitle;
   final Widget details;
   final List<AppActionEntry> Function(BuildContext context) actions;
-  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -125,7 +121,6 @@ class _ActionDialog extends StatelessWidget {
                       ],
                     ),
                   ),
-                  ?trailing,
                 ],
               ),
               const SizedBox(height: 14),

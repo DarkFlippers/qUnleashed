@@ -24,8 +24,6 @@ class AtpEntry {
 
   String get displayName => name.isNotEmpty ? name : appId;
 
-  String get category => folder.split('/').first.trim();
-
   String get installDir => folder.isEmpty ? kAppsRoot : '$kAppsRoot/$folder';
 
   String get installPath => '$installDir/$appId.fap';
@@ -74,8 +72,6 @@ class AtpIndex {
   const AtpIndex(this.blocks);
 
   final List<AtpBlock> blocks;
-
-  bool get isEmpty => blocks.isEmpty;
 
   /// The pack of the release, picked for the hardware target alone: what it was
   /// built against is the firmware's business at load time, not a reason to
