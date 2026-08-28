@@ -1,12 +1,9 @@
-import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
-import '../../../../components/navigation.dart';
 import '../../../../theme/theme.dart';
-import '../../../../components/dialogs/action.dart';
-import '../../../../components/dialogs/confirm.dart';
 import '../../../../components/notification.dart';
 import '../../../../components/progress_button.dart';
+import '../../actions.dart';
 import '../../data/catalog_state.dart';
 import '../../data/install_engine.dart';
 import '../../data/models/card.dart';
@@ -21,7 +18,6 @@ class AppActionButton extends StatelessWidget {
     required this.app,
     this.category,
     this.detail,
-    this.onLaunched,
     this.size = AppActionButtonSize.compact,
   });
 
@@ -30,7 +26,6 @@ class AppActionButton extends StatelessWidget {
   final AppCard app;
   final AppCategory? category;
   final AppDetail? detail;
-  final VoidCallback? onLaunched;
   final AppActionButtonSize size;
 
   @override
@@ -160,48 +155,11 @@ class AppActionButton extends StatelessWidget {
     engine.installOrUpdate(app, category: category, detail: detail);
   }
 
-  Future<void> _launchApp(BuildContext context) async {
-    try {
-      await engine.launch(app, category: category);
-      onLaunched?.call();
-    } catch (e) {
-      if (!context.mounted) return;
-      final colors = context.appColors;
-      if (e is FlipperRpcAppSystemLockedException) {
-        await showDialog<void>(
-          context: context,
-          barrierColor: colors.dialogBarrier,
-          builder: (dialogContext) => FlipperActionDialog(
-            imageAssetPath: kFlipperBusyAssetPath,
-            title: kFlipperBusyTitle,
-            text: kFlipperBusyMessage,
-            actionText: kFlipperBusyAction,
-            onAction: () {
-              Navigator.of(dialogContext).pop();
-              openRoute(context, AppRoute.remoteControl);
-            },
-          ),
-        );
-        return;
-      }
-      context.showNotification(
-        'Open failed: $e',
-        type: QNotificationType.error,
-      );
-    }
-  }
+  Future<void> _launchApp(BuildContext context) =>
+      launchApp(context, () => engine.launch(app, category: category));
 
-  Future<void> _confirmDelete(BuildContext context) async {
-    final ok = await QConfirmDialog.show(
-      context,
-      title: 'Delete app?',
-      message: 'Remove "${app.name}" from your device?',
-      confirmLabel: 'Delete',
-    );
-    if (ok) {
-      await engine.uninstall(app, category: category);
-    }
-  }
+  Future<void> _confirmDelete(BuildContext context) =>
+      confirmDeleteApp(context, engine: engine, app: app, category: category);
 }
 
 enum AppActionButtonSize { compact, large }

@@ -1,15 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../../../components/format.dart';
-import '../../../components/dialogs/confirm.dart';
+import '../actions.dart';
 import 'widgets/states.dart';
 import 'widgets/screenshots_viewer.dart';
-import '../../../components/navigation.dart';
 import '../../../theme/theme.dart';
 import 'package:qunleashed/components/appbar.dart';
 import '../../../components/changelog_renderer.dart';
 import '../../../components/open_url.dart';
-import '../data/models/card.dart';
 import '../data/models/category.dart';
 import '../data/models/detail.dart';
 import 'controller.dart';
@@ -68,22 +66,6 @@ class _AppDetailPageState extends State<AppDetailPage> {
     }
   }
 
-  void _onLaunched() {
-    openRoute(context, AppRoute.remoteControl);
-  }
-
-  Future<void> _confirmDelete(AppCard card, AppCategory? cat) async {
-    final ok = await QConfirmDialog.show(
-      context,
-      title: 'Delete app?',
-      message: 'Remove "${card.name}" from your device?',
-      confirmLabel: 'Delete',
-    );
-    if (ok) {
-      await _ctrl.engine.uninstall(card, category: cat);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
@@ -101,8 +83,12 @@ class _AppDetailPageState extends State<AppDetailPage> {
                 QPageAppBarAction(
                   tooltip: 'Delete app',
                   icon: const Icon(Icons.delete_outline),
-                  onPressed: () =>
-                      _confirmDelete(_detail!.card, widget.knownCategory),
+                  onPressed: () => confirmDeleteApp(
+                    context,
+                    engine: _ctrl.engine,
+                    app: _detail!.card,
+                    category: widget.knownCategory,
+                  ),
                 ),
               QPageAppBarAction(
                 tooltip: 'Open app page',
@@ -142,7 +128,6 @@ class _AppDetailPageState extends State<AppDetailPage> {
           detail: detail,
           controller: _ctrl,
           knownCategory: widget.knownCategory,
-          onLaunched: _onLaunched,
         ),
         const SizedBox(height: 18),
         if (cv != null && cv.screenshots.isNotEmpty) ...[
@@ -189,13 +174,11 @@ class _Header extends StatelessWidget {
     required this.detail,
     required this.controller,
     this.knownCategory,
-    this.onLaunched,
   });
 
   final AppDetail detail;
   final AppsCatalogController controller;
   final AppCategory? knownCategory;
-  final VoidCallback? onLaunched;
 
   @override
   Widget build(BuildContext context) {
@@ -258,7 +241,6 @@ class _Header extends StatelessWidget {
             app: card,
             category: knownCategory,
             detail: detail,
-            onLaunched: onLaunched,
             size: AppActionButtonSize.large,
           ),
         ),

@@ -138,10 +138,6 @@ class _CatalogViewState extends State<CatalogView> {
     openRoute(context, AppRoute.assemblerConsole);
   }
 
-  void _onLaunched() {
-    openRoute(context, AppRoute.remoteControl);
-  }
-
   void _openApp(AppCard app) {
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -380,7 +376,6 @@ class _CatalogViewState extends State<CatalogView> {
                   state: _ctrl.stateFor(app),
                   app: app,
                   category: cat,
-                  onLaunched: _onLaunched,
                 ),
               );
             }, childCount: apps.length),
