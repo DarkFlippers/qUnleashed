@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flutter/foundation.dart';
 
-import '../../../components/path.dart';
 import 'atp/atp_source.dart';
 import 'catalog_context.dart';
 import 'catalog_api.dart';
@@ -58,22 +57,15 @@ class UpdateRegistry extends ChangeNotifier {
   final Map<String, AppCard> _cardsByUid = {};
 
   List<AppUpdate> _updates = const [];
-  List<AppUpdate> get updates => List.unmodifiable(_updates);
   int get count => _updates.length;
 
   AppCard? cardForUid(String uid) => uid.isEmpty ? null : _cardsByUid[uid];
   Set<String> get updatableAliases => _updates.map((u) => u.alias).toSet();
 
   bool _loading = false;
-  bool get loading => _loading;
-
   bool _loaded = false;
-  bool get loaded => _loaded;
 
-  Object? _error;
-  Object? get error => _error;
-
-  bool get isReady => client.isConnected && client.mode == FlipperMode.rpc;
+  bool get isReady => client.isRpcReady;
 
   bool get _ignoreSdkMismatch => catalog.ignoreSdkMismatch;
 
@@ -92,7 +84,6 @@ class UpdateRegistry extends ChangeNotifier {
       return;
     }
     _loading = true;
-    _error = null;
     notifyListeners();
     try {
       await catalog.ensureDeviceFilters(required: true);
@@ -136,7 +127,6 @@ class UpdateRegistry extends ChangeNotifier {
         'cards=${cards.length} updates=${_updates.length}',
       );
     } catch (e) {
-      _error = e;
       LogService.log('[Updates] refresh failed: $e');
     } finally {
       _loading = false;
@@ -215,10 +205,7 @@ class UpdateRegistry extends ChangeNotifier {
 
   String _aliasFor(AppCard card, AppManifest manifest) {
     if (card.alias.isNotEmpty) return card.alias;
-    final path = manifest.path;
-    if (path.isEmpty) return '';
-    final base = basename(path);
-    return base.endsWith('.fap') ? base.substring(0, base.length - 4) : base;
+    return manifest.path.isEmpty ? '' : aliasFromFapPath(manifest.path);
   }
 
   void updateAll() {
@@ -240,7 +227,6 @@ class UpdateRegistry extends ChangeNotifier {
     _cardsByUid.clear();
     _updates = const [];
     _loaded = false;
-    _error = null;
     notifyListeners();
   }
 

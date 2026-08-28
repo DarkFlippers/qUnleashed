@@ -32,7 +32,7 @@ class DeviceSource extends ChangeNotifier {
   final ManifestRegistry manifests;
   final InstallEngine engine;
 
-  bool get isReady => client.isConnected && client.mode == FlipperMode.rpc;
+  bool get isReady => client.isRpcReady;
 
   final Map<String, ({int size, String folder, String path, int stamp})>
   _local = {};
@@ -45,7 +45,7 @@ class DeviceSource extends ChangeNotifier {
   List<InstalledApp> get apps {
     final ids = <String>{
       for (final m in manifests.all)
-        if (m.path.isNotEmpty) _aliasFromPath(m.path),
+        if (m.path.isNotEmpty) aliasFromFapPath(m.path),
       ..._local.keys,
     };
     final out = <InstalledApp>[];
@@ -65,7 +65,6 @@ class DeviceSource extends ChangeNotifier {
           path: devicePath,
           folder: folder,
           size: local?.size ?? 0,
-          md5: '',
           manifest: m,
           fap: _parsed[alias],
           fapChecked: _parsed.containsKey(alias),
@@ -91,17 +90,9 @@ class DeviceSource extends ChangeNotifier {
 
   double? get fileProgress => _downloading ? _fileProgress : null;
 
-  Object? _error;
-  Object? get error => _error;
-
   List<String> get groups {
     final set = <String>{for (final a in apps) a.folder};
     return set.toList()..sort();
-  }
-
-  String _aliasFromPath(String path) {
-    final base = basename(path);
-    return base.endsWith('.fap') ? base.substring(0, base.length - 4) : base;
   }
 
   String _folderFromPath(String path) {
@@ -191,7 +182,6 @@ class DeviceSource extends ChangeNotifier {
   Future<void> scan() async {
     if (!isReady || _syncing) return;
     _syncing = true;
-    _error = null;
     _syncDone = 0;
     _syncTotal = 0;
     _syncingItem = null;
@@ -252,7 +242,6 @@ class DeviceSource extends ChangeNotifier {
       _warmManifestIcons();
       LogService.log('[DeviceSource] sync: ${apps.length} apps');
     } catch (e) {
-      _error = e;
       LogService.log('[DeviceSource] sync failed: $e');
     } finally {
       _syncing = false;

@@ -63,7 +63,7 @@ class AppsBackend {
 
   String? _deviceId;
 
-  bool get isReady => client.isConnected && client.mode == FlipperMode.rpc;
+  bool get isReady => client.isRpcReady;
 
   ValueNotifier<CatalogMode> get mode => catalog.mode;
   String? get deviceApi => catalog.deviceApi;
@@ -71,10 +71,7 @@ class AppsBackend {
   List<AppSdk> get serverSdks => catalog.serverSdks;
   String? get serverApi => catalog.serverApi;
   String? get compatApi => catalog.compatApi;
-  ApiVerdict? get incompatibility => catalog.incompatibility;
   bool get catalogOffline => catalog.catalogOffline;
-  bool get apiFallbackEnabled => catalog.apiFallbackEnabled;
-  bool get sourceBuildEnabled => catalog.sourceBuildEnabled;
   bool get ignoreSdkMismatch => catalog.ignoreSdkMismatch;
   CatalogModePreference get preference => catalog.preference;
   (int, int)? get targetSdk => catalog.targetSdk;
@@ -92,8 +89,6 @@ class AppsBackend {
   Future<void> loadPreference() => catalog.loadPreference();
   Future<void> setPreference(CatalogModePreference value) =>
       catalog.setPreference(value);
-  Future<void> ensureDeviceFilters({bool required = false}) =>
-      catalog.ensureDeviceFilters(required: required);
 
   Future<void> _adoptInstalled({
     required String alias,

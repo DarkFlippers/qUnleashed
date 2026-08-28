@@ -18,8 +18,6 @@ class CategoryRegistry {
   List<AppCategory> _all = const [];
   final Map<String, String> _assetsById = {};
 
-  List<AppCategory> get all => _all;
-
   Future<List<AppCategory>> ensureBundled() async {
     if (_bundled.isNotEmpty) return _all;
     try {
@@ -46,6 +44,20 @@ class CategoryRegistry {
       LogService.log('[Categories] bundled list failed: $e');
     }
     return _all;
+  }
+
+  /// Resolves a category name by id, going to the catalog only when the id is
+  /// not in the list already loaded.
+  Future<String?> nameFor(AppsCatalogApi api, String id) async {
+    if (id.isEmpty) return null;
+    String? pick(List<AppCategory> list) {
+      for (final category in list) {
+        if (category.id == id && category.name.isNotEmpty) return category.name;
+      }
+      return null;
+    }
+
+    return pick(_all) ?? pick(await refreshFromCatalog(api));
   }
 
   Future<List<AppCategory>> refreshFromCatalog(AppsCatalogApi api) async {

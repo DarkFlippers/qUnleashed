@@ -10,8 +10,6 @@ class InstalledApp {
 
   final int size;
 
-  final String md5;
-
   final AppManifest? manifest;
 
   /// Parsed contents of the local `.fap` copy, `null` when the file could not
@@ -26,7 +24,6 @@ class InstalledApp {
     required this.path,
     required this.folder,
     required this.size,
-    required this.md5,
     this.manifest,
     this.fap,
     this.fapChecked = false,

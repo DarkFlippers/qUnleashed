@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flutter/foundation.dart';
 
 import '../../../services/assembler/controller.dart';
@@ -17,7 +16,7 @@ import '../data/models/category.dart';
 import '../data/sort.dart';
 import '../icons/icon_resolver.dart';
 
-export '../data/catalog_mode.dart' show CatalogMode, ApiVerdict;
+export '../data/catalog_mode.dart' show CatalogMode;
 export '../data/catalog_state.dart' show CatalogAppState;
 export '../data/install_engine.dart'
     show AppAction, AppActionType, AppActionStage;
@@ -35,12 +34,9 @@ class AppsCatalogController extends ChangeNotifier {
   final AppsBackend _backend = AppsBackend.instance;
   final int pageSize;
 
-  AppsBackend get backend => _backend;
   AppsCatalogApi get api => _backend.api;
-  FlipperClient get client => _backend.client;
   InstallEngine get engine => _backend.engine;
   ManifestRegistry get manifests => _backend.manifests;
-  bool get isReady => _backend.isReady;
 
   late final CatalogFeed _catalogFeed = CatalogFeed(api);
 
@@ -57,7 +53,6 @@ class AppsCatalogController extends ChangeNotifier {
   AppsSort get sort => _sort;
 
   String _query = '';
-  String get query => _query;
 
   final List<AppCard> _apps = [];
   List<AppCard> get apps => List.unmodifiable(_apps);
@@ -84,13 +79,9 @@ class AppsCatalogController extends ChangeNotifier {
   );
 
   ValueListenable<CatalogMode> get mode => _backend.mode;
-  bool get apiFallbackEnabled => _backend.apiFallbackEnabled;
   String? get deviceApi => _backend.deviceApi;
   String? get serverApi => _backend.serverApi;
   String? get compatApi => _backend.compatApi;
-  ApiVerdict? get incompatibility => _backend.incompatibility;
-
-  Future<void> refreshMode() => _backend.resolveMode(force: true);
 
   AppCategory? categoryById(String id) {
     for (final c in _categories) {

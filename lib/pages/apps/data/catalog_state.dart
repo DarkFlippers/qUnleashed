@@ -1,3 +1,4 @@
+import '../../../components/codec/fap/api_version.dart';
 import 'models/card.dart';
 import 'models/manifest.dart';
 
@@ -20,7 +21,7 @@ CatalogAppState catalogAppState({
     return CatalogAppState.update;
   }
 
-  final sdk = ignoreSdkMismatch ? null : _parseSemVer(manifest.sdkApi);
+  final sdk = ignoreSdkMismatch ? null : parseApi(manifest.sdkApi);
   if (sdk != null && targetSdk != null) {
     final (major, minor) = targetSdk;
     if (sdk.$1 != major || minor < sdk.$2) {
@@ -29,13 +30,4 @@ CatalogAppState catalogAppState({
   }
 
   return CatalogAppState.open;
-}
-
-(int, int)? _parseSemVer(String raw) {
-  if (raw.isEmpty) return null;
-  final parts = raw.split('.');
-  final major = int.tryParse(parts[0]);
-  if (major == null) return null;
-  final minor = parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0;
-  return (major, minor);
 }

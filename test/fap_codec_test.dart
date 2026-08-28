@@ -146,7 +146,6 @@ void main() {
       path: '/ext/apps/Tools/test_app.fap',
       folder: 'Tools',
       size: 512,
-      md5: '',
       fap: fap,
       fapChecked: checked,
     );

@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../components/codec/fap/api_version.dart';
+import '../../../components/path.dart';
 import '../../../services/assembler/controller.dart';
 import '../../../services/logging.dart';
 import 'catalog_api.dart';
@@ -17,6 +18,18 @@ const Duration kTaskCooldown = Duration(seconds: 1);
 
 /// How long the catalog has to answer before the apps manager takes over.
 const Duration kCatalogTimeout = Duration(seconds: 15);
+
+/// `/ext/apps/Tools/foo.fap` -> `foo`.
+String aliasFromFapPath(String path) {
+  final base = basename(path);
+  return base.endsWith('.fap') ? base.substring(0, base.length - 4) : base;
+}
+
+/// The link is up and speaks RPC — the precondition for every device call the
+/// apps module makes.
+extension FlipperRpcReady on FlipperClient {
+  bool get isRpcReady => isConnected && mode == FlipperMode.rpc;
+}
 
 /// Which catalog the device may talk to: the firmware API/target read from the
 /// Flipper, the SDKs the server offers and the compatibility mode resolved from
@@ -36,7 +49,7 @@ class CatalogContext {
   /// mode resolution finishes.
   final String? Function() currentDeviceId;
 
-  bool get isReady => client.isConnected && client.mode == FlipperMode.rpc;
+  bool get isReady => client.isRpcReady;
 
   final ValueNotifier<CatalogMode> mode = ValueNotifier(CatalogMode.resolving);
 
@@ -51,9 +64,6 @@ class CatalogContext {
 
   String? _compatApi;
   String? get compatApi => _compatApi;
-
-  ApiVerdict? _incompatibility;
-  ApiVerdict? get incompatibility => _incompatibility;
 
   bool _catalogOffline = false;
 
@@ -127,7 +137,7 @@ class CatalogContext {
       serverLatestSdk = latestSdk(targetSdks);
 
       if (offline) {
-        _useManagerOnly(null);
+        _useManagerOnly();
         return;
       }
 
@@ -159,9 +169,7 @@ class CatalogContext {
         case CatalogMode.sourceBuild:
           _useSourceBuild();
         case CatalogMode.managerOnly:
-          _useManagerOnly(
-            res.verdict == ApiVerdict.normal ? null : res.verdict,
-          );
+          _useManagerOnly();
         case CatalogMode.resolving:
           break;
       }
@@ -183,7 +191,6 @@ class CatalogContext {
     api.target = _deviceTarget;
     api.unfiltered = false;
     _compatApi = null;
-    _incompatibility = null;
     mode.value = CatalogMode.normal;
   }
 
@@ -192,13 +199,11 @@ class CatalogContext {
     api.target = null;
     api.unfiltered = true;
     _compatApi = null;
-    _incompatibility = null;
     mode.value = CatalogMode.sourceBuild;
   }
 
   void _useNearestApi(String? nearestApi) {
     _compatApi = nearestApi;
-    _incompatibility = null;
     if (nearestApi == null || _deviceTarget == null) {
       api.api = null;
       api.target = null;
@@ -211,12 +216,11 @@ class CatalogContext {
     mode.value = CatalogMode.nearestApi;
   }
 
-  void _useManagerOnly(ApiVerdict? verdict) {
+  void _useManagerOnly() {
     api.api = _deviceApi;
     api.target = _deviceTarget;
     api.unfiltered = false;
     _compatApi = null;
-    _incompatibility = verdict;
     mode.value = CatalogMode.managerOnly;
   }
 
@@ -227,7 +231,6 @@ class CatalogContext {
     _deviceApi = null;
     _deviceTarget = null;
     _compatApi = null;
-    _incompatibility = null;
     _catalogOffline = false;
   }
 
