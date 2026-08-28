@@ -15,6 +15,46 @@ Color parseHexColor(String hex, {Color fallback = const Color(0xFFEBEBEB)}) {
   return Color(v);
 }
 
+/// The category's own icon — a bundled asset when there is one, the catalog's
+/// SVG otherwise, nothing at all when the category has neither.
+class CategoryIcon extends StatelessWidget {
+  const CategoryIcon({
+    super.key,
+    required this.category,
+    required this.color,
+    required this.size,
+    required this.gap,
+  });
+
+  final AppCategory category;
+  final Color color;
+  final double size;
+  final double gap;
+
+  @override
+  Widget build(BuildContext context) {
+    final asset = category.iconAsset;
+    final uri = category.iconUri;
+    final Widget icon;
+    if (asset != null) {
+      icon = QIcon(asset: asset, color: color, size: size);
+    } else if (uri != null && uri.isNotEmpty) {
+      icon = SafeNetworkSvg(
+        url: uri,
+        width: size,
+        height: size,
+        colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
+      );
+    } else {
+      return const SizedBox.shrink();
+    }
+    return Padding(
+      padding: EdgeInsets.only(right: gap),
+      child: icon,
+    );
+  }
+}
+
 class CategoryChip extends StatelessWidget {
   const CategoryChip({
     super.key,
@@ -47,19 +87,12 @@ class CategoryChip extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (category.iconAsset != null) ...[
-                QIcon(asset: category.iconAsset!, color: textColor, size: 14),
-                const SizedBox(width: 6),
-              ] else if (category.iconUri != null &&
-                  category.iconUri!.isNotEmpty) ...[
-                SafeNetworkSvg(
-                  url: category.iconUri!,
-                  width: 14,
-                  height: 14,
-                  colorFilter: ColorFilter.mode(textColor, BlendMode.srcIn),
-                ),
-                const SizedBox(width: 6),
-              ],
+              CategoryIcon(
+                category: category,
+                color: textColor,
+                size: 14,
+                gap: 6,
+              ),
               Text(
                 category.name,
                 style: TextStyle(

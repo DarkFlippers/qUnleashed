@@ -5,6 +5,7 @@ import '../../../../theme/theme.dart';
 import '../../data/models/card.dart';
 import '../../data/models/category.dart';
 import '../../../../components/remote_image.dart';
+import 'category_chip.dart';
 import 'screenshot_frame.dart';
 
 class AppCardView extends StatefulWidget {
@@ -77,16 +78,7 @@ class _AppCardViewState extends State<AppCardView> {
                     action: widget.action,
                   ),
                   const SizedBox(height: 8),
-                  Text(
-                    widget.app.shortDescription,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12,
-                      height: 1.3,
-                      color: colors.textSecondary,
-                    ),
-                  ),
+                  _Description(text: widget.app.shortDescription),
                   if (shots.isNotEmpty) ...[
                     const SizedBox(height: 10),
                     _ScreenshotsStrip(screenshots: shots),
@@ -96,6 +88,45 @@ class _AppCardViewState extends State<AppCardView> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Always two lines tall, so the screenshots below it land on the same spot on
+/// every card; anything longer is cut with an ellipsis on the second line.
+class _Description extends StatelessWidget {
+  const _Description({required this.text});
+
+  final String text;
+
+  static const double _fontSize = 12;
+  static const double _lineHeight = 1.3;
+  static const int _lines = 2;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final style = TextStyle(
+      fontSize: _fontSize,
+      height: _lineHeight,
+      color: colors.textSecondary,
+    );
+    final probe = TextPainter(
+      text: TextSpan(text: '\n', style: style),
+      maxLines: _lines,
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout();
+    final height = probe.size.height;
+    probe.dispose();
+    return SizedBox(
+      height: height,
+      child: Text(
+        text,
+        maxLines: _lines,
+        overflow: TextOverflow.ellipsis,
+        style: style,
       ),
     );
   }
@@ -202,21 +233,12 @@ class _CategoryInline extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (cat.iconAsset != null) ...[
-          QIcon(asset: cat.iconAsset!, color: colors.textSecondary, size: 12),
-          const SizedBox(width: 4),
-        ] else if (cat.iconUri != null && cat.iconUri!.isNotEmpty) ...[
-          SafeNetworkSvg(
-            url: cat.iconUri!,
-            width: 12,
-            height: 12,
-            colorFilter: ColorFilter.mode(
-              colors.textSecondary,
-              BlendMode.srcIn,
-            ),
-          ),
-          const SizedBox(width: 4),
-        ],
+        CategoryIcon(
+          category: cat,
+          color: colors.textSecondary,
+          size: 12,
+          gap: 4,
+        ),
         Flexible(
           child: Text(
             cat.name,
