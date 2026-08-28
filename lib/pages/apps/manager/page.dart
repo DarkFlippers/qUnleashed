@@ -3,17 +3,14 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'widgets/app_action.dart';
+import 'widgets/apps_table.dart';
 import '../../../components/dialogs/confirm.dart';
-import '../../../components/format.dart';
-import '../../../components/icon.dart';
-import '../../../components/navigation.dart';
-import '../../../theme/theme.dart';
-import '../../../components/notification.dart';
 import '../../../components/filelist/columns.dart';
-import '../../../components/filelist/table.dart';
-import '../../../components/filelist/toolbar.dart';
 import '../../../components/filelist/empty_view.dart';
-import '../../../components/filelist/progress_fill.dart';
+import '../../../components/filelist/toolbar.dart';
+import '../../../components/notification.dart';
+import '../../../theme/theme.dart';
+import '../actions.dart';
 import '../data/apps_backend.dart';
 import '../data/device_source.dart';
 import '../data/install_engine.dart';
@@ -36,13 +33,10 @@ class AppsManagerPage extends StatefulWidget {
 class _AppsManagerPageState extends State<AppsManagerPage> {
   final AppsBackend _backend = AppsBackend.instance;
   final TextEditingController _searchCtrl = TextEditingController();
+  final AppsSortState _sort = AppsSortState();
 
   String _query = '';
   String? _folderFilter;
-  String _sortKey = 'name';
-  bool _sortAsc = true;
-
-  final Map<String, String> _categoryNames = {};
 
   DeviceSource get _device => _backend.device;
   InstallEngine get _engine => _backend.engine;
@@ -60,20 +54,6 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
     unawaited(_backend.ensureIndex());
     await _device.prime();
     await _updates.ensureFresh();
-    await _loadCategoryNames();
-  }
-
-  Future<void> _loadCategoryNames() async {
-    if (_categoryNames.isNotEmpty) return;
-    try {
-      final cats = await _backend.api.fetchCategories();
-      if (!mounted) return;
-      setState(() {
-        for (final c in cats) {
-          if (c.id.isNotEmpty) _categoryNames[c.id] = c.name;
-        }
-      });
-    } catch (_) {}
   }
 
   Future<void> _update(InstalledApp app) async {
@@ -93,78 +73,40 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
     super.dispose();
   }
 
-  List<InstalledApp> _visible() {
-    var out = _device.apps;
-    if (_folderFilter != null) {
-      out = out.where((a) => a.folder == _folderFilter).toList();
-    }
-    if (_query.isNotEmpty) {
-      final q = _query.toLowerCase();
-      out = out
-          .where(
-            (a) =>
-                a.name.toLowerCase().contains(q) ||
-                a.alias.toLowerCase().contains(q) ||
-                a.folder.toLowerCase().contains(q),
-          )
-          .toList();
-    } else {
-      out = out.toList();
-    }
+  bool get _filtering => _query.isNotEmpty || _folderFilter != null;
+
+  List<InstalledApp> _visible(List<InstalledApp> all) {
+    final query = _query.toLowerCase();
+    final out = [
+      for (final app in all)
+        if (_folderFilter == null || app.folder == _folderFilter)
+          if (query.isEmpty ||
+              app.name.toLowerCase().contains(query) ||
+              app.alias.toLowerCase().contains(query) ||
+              app.folder.toLowerCase().contains(query))
+            app,
+    ];
     final updatable = _updates.updatableAliases;
     out.sort((a, b) {
       final au = updatable.contains(a.alias);
       final bu = updatable.contains(b.alias);
       if (au != bu) return au ? -1 : 1;
-      final int cmp;
-      switch (_sortKey) {
-        case 'folder':
-          final f = a.folder.toLowerCase().compareTo(b.folder.toLowerCase());
-          cmp = f != 0
-              ? f
-              : a.name.toLowerCase().compareTo(b.name.toLowerCase());
-        case 'size':
-          cmp = a.size.compareTo(b.size);
-        case 'version':
-          cmp = (a.fap?.manifest?.version ?? '').compareTo(
-            b.fap?.manifest?.version ?? '',
-          );
-        default:
-          cmp = a.name.toLowerCase().compareTo(b.name.toLowerCase());
-      }
-      return _sortAsc ? cmp : -cmp;
+      return _sort.compare(_facts(a), _facts(b));
     });
     return out;
   }
 
-  void _onSort(String key) {
-    setState(() {
-      if (_sortKey == key) {
-        _sortAsc = !_sortAsc;
-      } else {
-        _sortKey = key;
-        _sortAsc = true;
-      }
-    });
-  }
+  AppsRowFacts _facts(InstalledApp app) => (
+    name: app.name,
+    folder: app.folder,
+    size: app.size,
+    version: app.fap?.manifest?.version ?? '',
+  );
 
-  void _onLaunched() {
-    openRoute(context, AppRoute.remoteControl);
-  }
+  void _onSort(String key) => setState(() => _sort.select(key));
 
-  Future<void> _launch(InstalledApp app) async {
-    try {
-      await _device.launch(app);
-      _onLaunched();
-    } catch (e) {
-      if (mounted) {
-        context.showNotification(
-          'Open failed: $e',
-          type: QNotificationType.error,
-        );
-      }
-    }
-  }
+  Future<void> _launch(InstalledApp app) =>
+      launchApp(context, () => _device.launch(app));
 
   Future<bool> _confirm(String title, String body) {
     return QConfirmDialog.show(context, title: title, message: body);
@@ -197,7 +139,7 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
     );
   }
 
-  void _showActions(InstalledApp app, Color header) {
+  void _showActions(InstalledApp app) {
     final colors = context.appColors;
     final card = _updates.cardForUid(app.uid);
     final updatable = _updates.updatableAliases.contains(app.alias);
@@ -279,13 +221,14 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
       animation: Listenable.merge([_device, _engine, _updates]),
       builder: (context, _) {
         final all = _device.apps;
-        final folders = _device.groups;
+        final folders = <String>{for (final app in all) app.folder}.toList()
+          ..sort();
         if (_folderFilter != null && !folders.contains(_folderFilter)) {
           WidgetsBinding.instance.addPostFrameCallback(
             (_) => setState(() => _folderFilter = null),
           );
         }
-        final visible = _visible();
+        final visible = _visible(all);
 
         return Scaffold(
           backgroundColor: colors.background,
@@ -348,17 +291,15 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
                 query: _query,
                 filterVal: _folderFilter,
                 filterOpts: folders,
-                starredOnly: false,
                 catColor: header,
                 colors: colors,
                 showStar: false,
                 onQueryChanged: (v) => setState(() => _query = v),
                 onFilterChanged: (v) => setState(() => _folderFilter = v),
-                onStarredToggle: () {},
               ),
             ),
           ),
-          body: _buildBody(context, visible, header),
+          body: _buildBody(context, all, visible, header),
         );
       },
     );
@@ -366,11 +307,12 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
 
   Widget _buildBody(
     BuildContext context,
+    List<InstalledApp> all,
     List<InstalledApp> visible,
     Color header,
   ) {
     final colors = context.appColors;
-    if (!_backend.isReady && _device.apps.isEmpty) {
+    if (!_backend.isReady && all.isEmpty) {
       return const ArchiveEmptyView(
         icon: Icons.usb_off,
         title: 'Connect a device',
@@ -388,125 +330,66 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
             color: header,
             colors: colors,
           ),
-        Expanded(
-          child: visible.isEmpty
-              ? (_device.scanning
-                    ? const SizedBox.shrink()
-                    : RefreshIndicator(
-                        color: header,
-                        displacement: 15,
-                        onRefresh: () async => unawaited(_device.prime()),
-                        child: ListView(
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          children: [
-                            SizedBox(
-                              height: MediaQuery.of(context).size.height * 0.5,
-                              child: ArchiveEmptyView(
-                                icon: Icons.apps,
-                                title:
-                                    _query.isNotEmpty || _folderFilter != null
-                                    ? 'Nothing matches'
-                                    : 'No apps yet',
-                                subtitle:
-                                    _query.isNotEmpty || _folderFilter != null
-                                    ? null
-                                    : 'Tap sync to load apps from the Flipper',
-                              ),
-                            ),
-                          ],
-                        ),
-                      ))
-              : LayoutBuilder(
-                  builder: (ctx, constraints) {
-                    final cols = _columns(constraints.maxWidth);
-                    final updatable = _updates.updatableAliases;
-                    return Column(
-                      children: [
-                        ArchiveColumnHeader(
-                          cols: cols,
-                          sortKey: _sortKey,
-                          sortAsc: _sortAsc,
-                          onSort: _onSort,
-                          colors: colors,
-                        ),
-                        Expanded(
-                          child: RefreshIndicator(
-                            color: header,
-                            displacement: 15,
-                            onRefresh: () async => unawaited(_device.prime()),
-                            child: ListView.builder(
-                              physics: const AlwaysScrollableScrollPhysics(
-                                parent: ClampingScrollPhysics(),
-                              ),
-                              itemCount: visible.length,
-                              itemBuilder: (_, i) {
-                                final app = visible[i];
-                                return _AppRow(
-                                  key: ValueKey(app.path),
-                                  app: app,
-                                  cols: cols,
-                                  colors: colors,
-                                  header: header,
-                                  updatable: updatable.contains(app.alias),
-                                  compat: app.fapChecked
-                                      ? evaluateFap(
-                                          app.fap,
-                                          deviceApi: _backend.deviceApi,
-                                          deviceTarget: _backend.deviceTarget,
-                                        )
-                                      : null,
-                                  action: _engine.actions[app.alias],
-                                  onTap: () => _showActions(app, header),
-                                );
-                              },
-                            ),
-                          ),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-        ),
+        Expanded(child: _buildList(context, visible, header)),
       ],
     );
   }
 
-  List<SizedColumn> _columns(double avail) {
-    const sizeW = 64.0;
-    const versionW = 74.0;
-    const folderW = 118.0;
-    final showFolder = avail > 460;
-    final showVersion = avail > 360;
-    final fixed =
-        sizeW + (showFolder ? folderW : 0) + (showVersion ? versionW : 0);
-    final nameW = (avail - fixed - 24)
-        .clamp(kNameMinWidth, double.infinity)
-        .toDouble();
-    return [
-      (
-        col: const ArchiveCol('Name / Folder', 0, sortKey: 'name'),
-        width: nameW,
+  Widget _buildList(
+    BuildContext context,
+    List<InstalledApp> visible,
+    Color header,
+  ) {
+    if (visible.isEmpty) return _buildEmpty(context, header);
+
+    final updatable = _updates.updatableAliases;
+    return AppsTable<InstalledApp>(
+      items: visible,
+      sort: _sort,
+      onSort: _onSort,
+      header: header,
+      onRefresh: () async => unawaited(_device.prime()),
+      rowBuilder: (app, cols) => _AppRow(
+        key: ValueKey(app.path),
+        app: app,
+        cols: cols,
+        header: header,
+        updatable: updatable.contains(app.alias),
+        compat: app.fapChecked
+            ? evaluateFap(
+                app.fap,
+                deviceApi: _backend.deviceApi,
+                deviceTarget: _backend.deviceTarget,
+              )
+            : null,
+        action: _engine.actions[app.alias],
+        onTap: () => _showActions(app),
       ),
-      if (showFolder)
-        (
-          col: const ArchiveCol('Folder', folderW, sortKey: 'folder'),
-          width: folderW,
-        ),
-      if (showVersion)
-        (
-          col: const ArchiveCol(
-            'Version',
-            versionW,
-            sortKey: 'version',
-            right: true,
+    );
+  }
+
+  Widget _buildEmpty(BuildContext context, Color header) {
+    if (_device.scanning) return const SizedBox.shrink();
+    return RefreshIndicator(
+      color: header,
+      displacement: 15,
+      onRefresh: () async => unawaited(_device.prime()),
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: [
+          SizedBox(
+            height: MediaQuery.of(context).size.height * 0.5,
+            child: ArchiveEmptyView(
+              icon: Icons.apps,
+              title: _filtering ? 'Nothing matches' : 'No apps yet',
+              subtitle: _filtering
+                  ? null
+                  : 'Tap sync to load apps from the Flipper',
+            ),
           ),
-          width: versionW,
-        ),
-      (
-        col: const ArchiveCol('Size', sizeW, sortKey: 'size', right: true),
-        width: sizeW,
+        ],
       ),
-    ];
+    );
   }
 }
 
@@ -515,7 +398,6 @@ class _AppRow extends StatelessWidget {
     super.key,
     required this.app,
     required this.cols,
-    required this.colors,
     required this.header,
     required this.updatable,
     required this.compat,
@@ -525,7 +407,6 @@ class _AppRow extends StatelessWidget {
 
   final InstalledApp app;
   final List<SizedColumn> cols;
-  final QAppColors colors;
   final Color header;
   final bool updatable;
   final FapCompat? compat;
@@ -534,65 +415,22 @@ class _AppRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: colors.card,
-      child: Stack(
-        children: [
-          ProgressFill(progress: action?.progress),
-          InkWell(
-            onTap: onTap,
-            splashColor: header.withValues(alpha: 0.06),
-            highlightColor: header.withValues(alpha: 0.04),
-            child: Container(
-              height: kRowHeight,
-              decoration: BoxDecoration(
-                border: Border(
-                  bottom: BorderSide(
-                    color: colors.divider.withValues(alpha: 0.6),
-                  ),
-                ),
-              ),
-              child: Row(
-                children: [
-                  const SizedBox(width: 8),
-                  for (final e in cols)
-                    SizedBox(
-                      width: e.width,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        child: _cell(e.col),
-                      ),
-                    ),
-                  const SizedBox(width: 8),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
+    return AppsTableRow(
+      cols: cols,
+      header: header,
+      progress: action?.progress,
+      onTap: onTap,
+      cell: _cell,
     );
   }
 
-  Widget _cell(ArchiveCol col) {
+  Widget _cell(BuildContext context, ArchiveCol col) {
+    final colors = context.appColors;
     switch (col.sortKey) {
       case 'size':
-        return Align(
-          alignment: Alignment.centerRight,
-          child: Text(
-            app.size > 0 ? _fmtSize(app.size) : '—',
-            style: TextStyle(color: colors.textMuted, fontSize: 12),
-          ),
-        );
+        return AppsSizeCell(bytes: app.size);
       case 'folder':
-        return Align(
-          alignment: Alignment.centerLeft,
-          child: Text(
-            app.folder,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(color: colors.textSecondary, fontSize: 12),
-          ),
-        );
+        return AppsFolderCell(folder: app.folder);
       case 'version':
         final manifest = app.fap?.manifest;
         final blocking = compat?.isBlocking ?? false;
@@ -623,73 +461,18 @@ class _AppRow extends StatelessWidget {
           ],
         );
       default:
-        return Row(
-          children: [
-            _Badge(app: app, color: header, size: 28, iconSize: 16),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    app.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: colors.textPrimary,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  Text(
-                    app.hasManifest ? app.folder : '${app.folder} · sideloaded',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: colors.textMuted, fontSize: 10),
-                  ),
-                ],
-              ),
-            ),
-          ],
+        return AppsNameCell(
+          header: header,
+          icon: (foreground) => AppIcon(
+            alias: app.alias,
+            size: 16,
+            color: foreground,
+            manifest: app.manifest,
+          ),
+          title: app.name,
+          subtitle: app.hasManifest ? app.folder : '${app.folder} · sideloaded',
         );
     }
-  }
-
-  String _fmtSize(int bytes) => formatBytesScaled(bytes, maxUnit: 2);
-}
-
-class _Badge extends StatelessWidget {
-  const _Badge({
-    required this.app,
-    required this.color,
-    required this.size,
-    required this.iconSize,
-  });
-
-  final InstalledApp app;
-  final Color color;
-  final double size;
-  final double iconSize;
-
-  @override
-  Widget build(BuildContext context) {
-    final style = QIconBadgeStyle.of(context, color, darkOpacity: 0.14);
-    return Container(
-      width: size,
-      height: size,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: style.background,
-        borderRadius: BorderRadius.circular(7),
-      ),
-      child: AppIcon(
-        alias: app.alias,
-        size: iconSize,
-        color: style.foreground,
-        manifest: app.manifest,
-      ),
-    );
   }
 }
 

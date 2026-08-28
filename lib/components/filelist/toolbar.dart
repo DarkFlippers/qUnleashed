@@ -182,12 +182,12 @@ class CategoryToolbar extends StatelessWidget {
     required this.query,
     required this.filterVal,
     required this.filterOpts,
-    required this.starredOnly,
     required this.catColor,
     required this.colors,
     required this.onQueryChanged,
     required this.onFilterChanged,
-    required this.onStarredToggle,
+    this.starredOnly = false,
+    this.onStarredToggle,
     this.showStar = true,
   });
 
@@ -200,7 +200,7 @@ class CategoryToolbar extends StatelessWidget {
   final QAppColors colors;
   final ValueChanged<String> onQueryChanged;
   final ValueChanged<String?> onFilterChanged;
-  final VoidCallback onStarredToggle;
+  final VoidCallback? onStarredToggle;
 
   /// Whether to show the "starred only" toggle. Off in the deleted table, where
   /// favouriting does not apply.
@@ -284,9 +284,9 @@ class CategoryToolbar extends StatelessWidget {
                 onChanged: onFilterChanged,
               ),
             ],
-            if (showStar) ...[
+            if (showStar && onStarredToggle != null) ...[
               const SizedBox(width: 4),
-              _StarBtn(active: starredOnly, onToggle: onStarredToggle),
+              _StarBtn(active: starredOnly, onToggle: onStarredToggle!),
             ],
           ],
         ),

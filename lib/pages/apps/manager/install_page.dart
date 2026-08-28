@@ -6,17 +6,13 @@ import '../../../components/codec/fap/api_version.dart';
 import '../../../components/codec/fap/icon.dart';
 import '../../../components/filelist/columns.dart';
 import '../../../components/filelist/empty_view.dart';
-import '../../../components/filelist/progress_fill.dart';
 import '../../../components/filelist/sync_progress_bar.dart';
-import '../../../components/filelist/table.dart';
 import '../../../components/filelist/toolbar.dart';
 import '../../../components/codec/fap/info.dart';
 import '../../../components/fap_facts.dart';
-import '../../../components/format.dart';
 import '../../../components/icon.dart';
-import '../../../components/navigation.dart';
-import '../../../components/notification.dart';
 import '../../../theme/theme.dart';
+import '../actions.dart';
 import '../data/apps_backend.dart';
 import '../data/atp/atp_index.dart';
 import '../data/atp/atp_source.dart';
@@ -24,6 +20,7 @@ import '../data/catalog_state.dart';
 import '../data/install_engine.dart';
 import '../data/models/card.dart';
 import 'widgets/app_action.dart';
+import 'widgets/apps_table.dart';
 
 enum PackAction { install, update, downgrade, none }
 
@@ -40,11 +37,10 @@ class AtpInstallPage extends StatefulWidget {
 class _AtpInstallPageState extends State<AtpInstallPage> {
   final AppsBackend _backend = AppsBackend.instance;
   final TextEditingController _searchCtrl = TextEditingController();
+  final AppsSortState _sort = AppsSortState();
 
   String _query = '';
   String? _categoryFilter;
-  String _sortKey = 'name';
-  bool _sortAsc = true;
 
   AtpSource get _atp => _backend.atp;
   InstallEngine get _engine => _backend.engine;
@@ -102,78 +98,18 @@ class _AtpInstallPageState extends State<AtpInstallPage> {
               entry.folder.toLowerCase().contains(query))
             entry,
     ];
-    out.sort((a, b) {
-      final int cmp;
-      switch (_sortKey) {
-        case 'folder':
-          final f = a.folder.toLowerCase().compareTo(b.folder.toLowerCase());
-          cmp = f != 0
-              ? f
-              : a.displayName.toLowerCase().compareTo(
-                  b.displayName.toLowerCase(),
-                );
-        case 'size':
-          cmp = a.size.compareTo(b.size);
-        case 'version':
-          cmp = a.version.compareTo(b.version);
-        default:
-          cmp = a.displayName.toLowerCase().compareTo(
-            b.displayName.toLowerCase(),
-          );
-      }
-      return _sortAsc ? cmp : -cmp;
-    });
+    out.sort((a, b) => _sort.compare(_facts(a), _facts(b)));
     return out;
   }
 
-  void _onSort(String key) {
-    setState(() {
-      if (_sortKey == key) {
-        _sortAsc = !_sortAsc;
-      } else {
-        _sortKey = key;
-        _sortAsc = true;
-      }
-    });
-  }
+  AppsRowFacts _facts(AtpEntry entry) => (
+    name: entry.displayName,
+    folder: entry.folder,
+    size: entry.size,
+    version: entry.version,
+  );
 
-  List<SizedColumn> _columns(double avail) {
-    const versionW = 70.0;
-    const sizeW = 64.0;
-    const folderW = 118.0;
-    final showFolder = avail > 460;
-    final showVersion = avail > 360;
-    final fixed =
-        sizeW + (showFolder ? folderW : 0) + (showVersion ? versionW : 0);
-    final nameW = (avail - fixed - 24)
-        .clamp(kNameMinWidth, double.infinity)
-        .toDouble();
-    return [
-      (
-        col: const ArchiveCol('Name / Folder', 0, sortKey: 'name'),
-        width: nameW,
-      ),
-      if (showFolder)
-        (
-          col: const ArchiveCol('Folder', folderW, sortKey: 'folder'),
-          width: folderW,
-        ),
-      if (showVersion)
-        (
-          col: const ArchiveCol(
-            'Version',
-            versionW,
-            sortKey: 'version',
-            right: true,
-          ),
-          width: versionW,
-        ),
-      (
-        col: const ArchiveCol('Size', sizeW, sortKey: 'size', right: true),
-        width: sizeW,
-      ),
-    ];
-  }
+  void _onSort(String key) => setState(() => _sort.select(key));
 
   CatalogAppState _stateFor(AppCard card) => catalogAppState(
     card: card,
@@ -290,20 +226,10 @@ class _AtpInstallPageState extends State<AtpInstallPage> {
     );
   }
 
-  Future<void> _launch(AtpEntry entry) async {
+  Future<void> _launch(AtpEntry entry) {
     final path =
         _backend.manifests.byAlias(entry.appId)?.path ?? entry.installPath;
-    try {
-      await _engine.launchPath(path);
-      if (mounted) openRoute(context, AppRoute.remoteControl);
-    } catch (e) {
-      if (mounted) {
-        context.showNotification(
-          'Open failed: $e',
-          type: QNotificationType.error,
-        );
-      }
-    }
+    return launchApp(context, () => _engine.launchPath(path));
   }
 
   @override
@@ -387,13 +313,11 @@ class _AtpInstallPageState extends State<AtpInstallPage> {
                 query: _query,
                 filterVal: _categoryFilter,
                 filterOpts: _folders,
-                starredOnly: false,
                 catColor: header,
                 colors: colors,
                 showStar: false,
                 onQueryChanged: (v) => setState(() => _query = v),
                 onFilterChanged: (v) => setState(() => _categoryFilter = v),
-                onStarredToggle: () {},
               ),
             ),
           ),
@@ -406,7 +330,7 @@ class _AtpInstallPageState extends State<AtpInstallPage> {
                   progress: 0,
                   color: header,
                 ),
-              Expanded(child: _buildBody(context, visible, header)),
+              Expanded(child: _buildBody(visible, header)),
             ],
           ),
         );
@@ -414,12 +338,7 @@ class _AtpInstallPageState extends State<AtpInstallPage> {
     );
   }
 
-  Widget _buildBody(
-    BuildContext context,
-    List<AtpEntry> visible,
-    Color header,
-  ) {
-    final colors = context.appColors;
+  Widget _buildBody(List<AtpEntry> visible, Color header) {
     if (_atp.entries.isEmpty) {
       return ArchiveEmptyView(
         icon: Icons.extension_off,
@@ -434,47 +353,21 @@ class _AtpInstallPageState extends State<AtpInstallPage> {
       );
     }
 
-    return LayoutBuilder(
-      builder: (ctx, constraints) {
-        final cols = _columns(constraints.maxWidth);
-        return Column(
-          children: [
-            ArchiveColumnHeader(
-              cols: cols,
-              sortKey: _sortKey,
-              sortAsc: _sortAsc,
-              onSort: _onSort,
-              colors: colors,
-            ),
-            Expanded(
-              child: RefreshIndicator(
-                color: header,
-                displacement: 15,
-                onRefresh: () async => unawaited(_refresh()),
-                child: ListView.builder(
-                  physics: const AlwaysScrollableScrollPhysics(
-                    parent: ClampingScrollPhysics(),
-                  ),
-                  itemCount: visible.length,
-                  itemBuilder: (_, i) {
-                    final entry = visible[i];
-                    return _EntryRow(
-                      key: ValueKey(entry.appId),
-                      entry: entry,
-                      cols: cols,
-                      colors: colors,
-                      header: header,
-                      packAction: _actionFor(entry),
-                      action: _engine.actions[entry.appId],
-                      onTap: () => unawaited(_showActions(entry)),
-                    );
-                  },
-                ),
-              ),
-            ),
-          ],
-        );
-      },
+    return AppsTable<AtpEntry>(
+      items: visible,
+      sort: _sort,
+      onSort: _onSort,
+      header: header,
+      onRefresh: () async => unawaited(_refresh()),
+      rowBuilder: (entry, cols) => _EntryRow(
+        key: ValueKey(entry.appId),
+        entry: entry,
+        cols: cols,
+        header: header,
+        packAction: _actionFor(entry),
+        action: _engine.actions[entry.appId],
+        onTap: () => unawaited(_showActions(entry)),
+      ),
     );
   }
 }
@@ -512,7 +405,6 @@ class _EntryRow extends StatelessWidget {
     super.key,
     required this.entry,
     required this.cols,
-    required this.colors,
     required this.header,
     required this.packAction,
     required this.action,
@@ -521,7 +413,6 @@ class _EntryRow extends StatelessWidget {
 
   final AtpEntry entry;
   final List<SizedColumn> cols;
-  final QAppColors colors;
   final Color header;
   final PackAction packAction;
   final AppAction? action;
@@ -529,55 +420,20 @@ class _EntryRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: colors.card,
-      child: Stack(
-        children: [
-          ProgressFill(progress: action?.progress),
-          InkWell(
-            onTap: onTap,
-            splashColor: header.withValues(alpha: 0.06),
-            highlightColor: header.withValues(alpha: 0.04),
-            child: Container(
-              height: kRowHeight,
-              decoration: BoxDecoration(
-                border: Border(
-                  bottom: BorderSide(
-                    color: colors.divider.withValues(alpha: 0.6),
-                  ),
-                ),
-              ),
-              child: Row(
-                children: [
-                  const SizedBox(width: 8),
-                  for (final e in cols)
-                    SizedBox(
-                      width: e.width,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        child: _cell(context, e.col),
-                      ),
-                    ),
-                  const SizedBox(width: 8),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
+    return AppsTableRow(
+      cols: cols,
+      header: header,
+      progress: action?.progress,
+      onTap: onTap,
+      cell: _cell,
     );
   }
 
   Widget _cell(BuildContext context, ArchiveCol col) {
+    final colors = context.appColors;
     switch (col.sortKey) {
       case 'size':
-        return Align(
-          alignment: Alignment.centerRight,
-          child: Text(
-            formatBytesScaled(entry.size, maxUnit: 2),
-            style: TextStyle(color: colors.textMuted, fontSize: 12),
-          ),
-        );
+        return AppsSizeCell(bytes: entry.size);
       case 'version':
         return Align(
           alignment: Alignment.centerRight,
@@ -601,62 +457,16 @@ class _EntryRow extends StatelessWidget {
           ),
         );
       case 'folder':
-        return Align(
-          alignment: Alignment.centerLeft,
-          child: Text(
-            entry.folder,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(color: colors.textSecondary, fontSize: 12),
-          ),
-        );
+        return AppsFolderCell(folder: entry.folder);
       default:
-        final style = QIconBadgeStyle.of(context, header, darkOpacity: 0.14);
-        return Row(
-          children: [
-            Container(
-              width: 28,
-              height: 28,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: style.background,
-                borderRadius: BorderRadius.circular(7),
-              ),
-              child: _EntryIcon(
-                appId: entry.appId,
-                size: 16,
-                color: style.foreground,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    entry.displayName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: colors.textPrimary,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  Text(
-                    packAction == PackAction.install
-                        ? entry.appId
-                        : '${entry.appId} · installed',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: colors.textMuted, fontSize: 10),
-                  ),
-                ],
-              ),
-            ),
-
-          ],
+        return AppsNameCell(
+          header: header,
+          icon: (foreground) =>
+              _EntryIcon(appId: entry.appId, size: 16, color: foreground),
+          title: entry.displayName,
+          subtitle: packAction == PackAction.install
+              ? entry.appId
+              : '${entry.appId} · installed',
         );
     }
   }

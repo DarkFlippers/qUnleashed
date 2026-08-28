@@ -90,11 +90,6 @@ class DeviceSource extends ChangeNotifier {
 
   double? get fileProgress => _downloading ? _fileProgress : null;
 
-  List<String> get groups {
-    final set = <String>{for (final a in apps) a.folder};
-    return set.toList()..sort();
-  }
-
   String _folderFromPath(String path) {
     final parts = path.split('/')..removeWhere((e) => e.isEmpty);
     final idx = parts.indexOf('apps');
