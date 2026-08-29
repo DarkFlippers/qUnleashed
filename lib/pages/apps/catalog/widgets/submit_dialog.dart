@@ -39,71 +39,78 @@ class SubmitAppDialog extends StatelessWidget {
           maxWidth: 460,
           maxHeight: media.height * 0.85,
         ),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Submit your app',
-                      style: TextStyle(
-                        color: colors.dialogText,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        height: 1.15,
+        child: ScrollConfiguration(
+          behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Submit your app',
+                        style: TextStyle(
+                          color: colors.dialogText,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          height: 1.15,
+                        ),
                       ),
                     ),
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.close, color: colors.textMuted, size: 20),
-                    onPressed: () => Navigator.of(context).pop(),
-                  ),
-                ],
-              ),
-              Text(
-                'There are two ways to ship a Flipper app, and they are not '
-                'mutually exclusive — an app can live in both places.',
-                style: TextStyle(
-                  color: colors.textMuted,
-                  fontSize: 12,
-                  height: 1.3,
+                    IconButton(
+                      icon: Icon(
+                        Icons.close,
+                        color: colors.textMuted,
+                        size: 20,
+                      ),
+                      onPressed: () => Navigator.of(context).pop(),
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 16),
-              _SubmitOption(
-                icon: Icons.storefront_outlined,
-                color: _firmwareColor('ofw'),
-                title: 'Official catalog',
-                subtitle: 'flipper-application-catalog',
-                text:
-                    'Published on lab.flipper.net and listed in this catalog. '
-                    'The repo holds only a manifest.yml pointing at your public '
-                    'GitHub sources — the app has to be open source and build '
-                    'with uFBT against the latest Release or Release Candidate.',
-                actionLabel: 'Contributing guide',
-                actionIcon: Icons.menu_book_outlined,
-                onAction: () => openUrl(context, kOfwContributingUrl),
-              ),
-              const SizedBox(height: 12),
-              _SubmitOption(
-                icon: Icons.extension,
-                color: _firmwareColor('unlshd'),
-                title: 'Built-in Unleashed plugins',
-                subtitle: 'all-the-plugins',
-                text:
-                    'The pack maintained by xMasterX and shipped with Unleashed '
-                    'builds. Apps are kept building against the current UFW API. '
-                    'The pack is redistributed under GPLv3, so the source has to '
-                    'allow that.',
-                actionLabel: 'Request adding an app',
-                actionIcon: Icons.add_circle_outline,
-                onAction: () => openUrl(context, kAtpNewAppUrl),
-              ),
-            ],
+                Text(
+                  'There are two ways to ship a Flipper app, and they are not '
+                  'mutually exclusive — an app can live in both places.',
+                  style: TextStyle(
+                    color: colors.textMuted,
+                    fontSize: 12,
+                    height: 1.3,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _SubmitOption(
+                  icon: Icons.storefront_outlined,
+                  color: _firmwareColor('ofw'),
+                  title: 'Official catalog',
+                  subtitle: 'flipper-application-catalog',
+                  text:
+                      'Published on lab.flipper.net and listed in this catalog. '
+                      'The repo holds only a manifest.yml pointing at your public '
+                      'GitHub sources — the app has to be open source and build '
+                      'with uFBT against the latest Release or Release Candidate.',
+                  actionLabel: 'Contributing guide',
+                  actionIcon: Icons.menu_book_outlined,
+                  onAction: () => openUrl(context, kOfwContributingUrl),
+                ),
+                const SizedBox(height: 12),
+                _SubmitOption(
+                  icon: Icons.extension,
+                  color: _firmwareColor('unlshd'),
+                  title: 'Built-in Unleashed plugins',
+                  subtitle: 'all-the-plugins',
+                  text:
+                      'The pack maintained by xMasterX and shipped with Unleashed '
+                      'builds. Apps are kept building against the current UFW API. '
+                      'The pack is redistributed under GPLv3, so the source has to '
+                      'allow that.',
+                  actionLabel: 'Request adding an app',
+                  actionIcon: Icons.add_circle_outline,
+                  onAction: () => openUrl(context, kAtpNewAppUrl),
+                ),
+              ],
+            ),
           ),
         ),
       ),
