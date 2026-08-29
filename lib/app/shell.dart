@@ -194,7 +194,7 @@ class _AppShellState extends State<AppShell> {
           slot,
           _slotFavorites,
           const Color(0xFFFFC107),
-          icon: (color) => Icon(Icons.star_rounded, size: 22, color: color),
+          asset: 'assets/ic/fileformat/favorites.svg',
         ),
       ],
       [
@@ -221,15 +221,12 @@ class _AppShellState extends State<AppShell> {
     int slot,
     int target,
     Color color, {
-    String? asset,
-    Widget Function(Color color)? icon,
+    required String asset,
   }) {
     final selected = slot == target;
     final tint = selected ? color : colors.textMuted;
     return FlipperRailItem(
-      icon: icon != null
-          ? icon(tint)
-          : FlipperRailIcon(asset: asset!, color: tint),
+      icon: FlipperRailIcon(asset: asset, color: tint),
       color: color,
       selected: selected,
       onTap: () => _select(target),
