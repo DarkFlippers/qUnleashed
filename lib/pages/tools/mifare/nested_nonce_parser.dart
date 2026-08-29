@@ -1,5 +1,10 @@
 import 'nested_models.dart';
 
+/// A parsed `.nested.log`: the usable nonces, and how many non-blank lines had
+/// to be dropped as corrupt. The caller surfaces the drops rather than quietly
+/// attacking a subset of the card.
+typedef NestedLog = ({List<NestedNonce> nonces, int droppedLines});
+
 /// Parser for the Flipper `.nested.log` format. Each record is a single line;
 /// two-sample (weak-nested) lines just carry more fields:
 ///
@@ -12,30 +17,39 @@ import 'nested_models.dart';
 class NestedNonceParser {
   const NestedNonceParser._();
 
-  static List<NestedNonce> parse(String text) {
-    return text
+  static NestedLog parse(String text) {
+    final lines = text
         .split('\n')
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .toList(growable: false);
+    final nonces = lines
         .map(_parseLine)
         .whereType<NestedNonce>()
         .toList(growable: false);
+    return (nonces: nonces, droppedLines: lines.length - nonces.length);
   }
 
   static final RegExp _whitespace = RegExp(r'\s+');
 
-  static NestedNonce? _parseLine(String line) {
-    final trimmed = line.trim();
-    if (trimmed.isEmpty) return null;
+  /// int.tryParse(radix: 2) would also accept `+101` and a leading minus.
+  static final RegExp _parityDigits = RegExp(r'^[01]{4}$');
 
-    final tokens = trimmed.split(_whitespace);
+  static NestedNonce? _parseLine(String line) {
+    final tokens = line.split(_whitespace);
     final fields = <String, String>{};
     for (var i = 0; i + 1 < tokens.length; i += 2) {
       fields[tokens[i].toLowerCase()] = tokens[i + 1];
     }
 
+    // No card has a sector past 39, so such a line is corrupt on its face —
+    // and a candidate filed under an index the device never reaches is lost
+    // with nothing to show for it.
     final sector = int.tryParse(fields['sec'] ?? '');
     final keyType = _parseKeyType(fields['key']);
-    final cuid = _parseHex(fields['cuid']);
-    if (sector == null || keyType == null || cuid == null) return null;
+    final cuid = _parseWord32(fields['cuid']);
+    if (sector == null || !isMifareSector(sector)) return null;
+    if (keyType == null || cuid == null) return null;
 
     final samples = <NestedSample>[];
     for (var index = 0; index < 2; index++) {
@@ -53,27 +67,26 @@ class NestedNonceParser {
     }
     if (samples.isEmpty) return null;
 
-    return NestedNonce(
+    final nonce = NestedNonce(
       sector: sector,
       keyType: keyType,
       cuid: cuid,
       samples: samples,
       dist: int.tryParse(fields['dist'] ?? ''),
     );
+    // Parity is only read by the single-sample attacks, so a lone sample
+    // without it cannot be attacked — but a weak-nested pair recovers from
+    // nt/ks alone, and dropping one over a malformed `par` would throw away a
+    // key that was still recoverable.
+    if (!nonce.hasPair && nonce.par == null) return null;
+    return nonce;
   }
 
   static NestedSample? _parseSample(Map<String, String> fields, int index) {
-    final nt = _parseHex(fields['nt$index']);
-    final ks = _parseHex(fields['ks$index']);
+    final nt = _parseWord32(fields['nt$index']);
+    final ks = _parseWord32(fields['ks$index']);
     if (nt == null || ks == null) return null;
-    // int.tryParse(radix: 16) wraps a 16-hex-digit value to a negative int, so
-    // guard both ends to keep nt/ks within an unsigned 32-bit word.
-    if (nt < 0 || nt > 0xFFFFFFFF || ks < 0 || ks > 0xFFFFFFFF) return null;
-    return NestedSample(
-      nt: nt,
-      ks: ks,
-      par: _parseBinary(fields['par$index']) & 0xF,
-    );
+    return NestedSample(nt: nt, ks: ks, par: _parseParity(fields['par$index']));
   }
 
   static NestedKeyType? _parseKeyType(String? value) {
@@ -87,9 +100,22 @@ class NestedNonceParser {
     }
   }
 
-  static int? _parseHex(String? value) =>
-      value == null ? null : int.tryParse(value, radix: 16);
+  /// Parses a hex field, rejecting anything outside an unsigned 32-bit word.
+  static int? _parseWord32(String? value) {
+    final parsed = value == null ? null : int.tryParse(value, radix: 16);
+    return parsed != null && isWord32(parsed) ? parsed : null;
+  }
 
-  static int _parseBinary(String? value) =>
-      value == null ? 0 : (int.tryParse(value, radix: 2) ?? 0);
+  /// Parses the four parity bits, which the firmware always writes as exactly
+  /// four binary digits (`mf_classic_poller.c:1910-1912`).
+  ///
+  /// Absent or malformed yields null rather than a zero. Substituting one
+  /// would be worse than having none: the static-encrypted filter keeps only
+  /// candidates matching the low bit (`nested_bridge.c:92,109`), so a guessed
+  /// value has an even chance of excluding the real key from everything we
+  /// generate, and hardnested consumes the whole nibble.
+  static int? _parseParity(String? value) {
+    if (value == null || !_parityDigits.hasMatch(value)) return null;
+    return int.parse(value, radix: 2);
+  }
 }

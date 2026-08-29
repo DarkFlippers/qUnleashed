@@ -9,7 +9,7 @@ void main() {
           'Sec 10 key A cuid 7c30d979 nt0 214904f0 ks0 c03823d1 par0 0000 '
           'nt1 f69baa3a ks1 8a2107ad par1 1010 dist 0';
 
-      final nonces = NestedNonceParser.parse(line);
+      final nonces = NestedNonceParser.parse(line).nonces;
       expect(nonces, hasLength(1));
 
       final nonce = nonces.single;
@@ -32,7 +32,7 @@ void main() {
       const line =
           'Sec 0 key B cuid 5bcbb2e4 nt0 940c4716 ks0 bd42bb91 par0 1111 dist 0';
 
-      final nonce = NestedNonceParser.parse(line).single;
+      final nonce = NestedNonceParser.parse(line).nonces.single;
       expect(nonce.sector, 0);
       expect(nonce.keyType, NestedKeyType.b);
       expect(nonce.cuid, 0x5bcbb2e4);
@@ -52,8 +52,12 @@ Sec 0 key A cuid 5bcbb2e4 nt0 a0bbe1ef ks0 c70d97e3 par0 1110 dist 0
 Sec 1 key B cuid 5bcbb2e4 nt0 d7707ed1 ks0 65bc542b par0 0110 dist 0
 ''';
 
-      final nonces = NestedNonceParser.parse(file);
+      final log = NestedNonceParser.parse(file);
+      final nonces = log.nonces;
       expect(nonces, hasLength(3));
+      // A clean log must report no drops: _reportDroppedNonces fires on > 0 and
+      // would turn every successful run into a partial-failure headline.
+      expect(log.droppedLines, 0);
       expect(nonces.where((n) => n.hasPair), hasLength(1));
       expect(
         nonces.where((n) => n.kind == NestedAttackKind.staticEncrypted),
@@ -63,7 +67,7 @@ Sec 1 key B cuid 5bcbb2e4 nt0 d7707ed1 ks0 65bc542b par0 0110 dist 0
 
     test('ignores malformed lines', () {
       const line = 'Sec 3 key A cuid 5bcbb2e4 nt0 garbage';
-      expect(NestedNonceParser.parse(line), isEmpty);
+      expect(NestedNonceParser.parse(line).nonces, isEmpty);
     });
 
     test('treats two identical nonces as static-encrypted (not a pair)', () {
@@ -73,7 +77,7 @@ Sec 1 key B cuid 5bcbb2e4 nt0 d7707ed1 ks0 65bc542b par0 0110 dist 0
           'Sec 5 key A cuid 5bcbb2e4 nt0 a0bbe1ef ks0 c70d97e3 par0 1110 '
           'nt1 a0bbe1ef ks1 c70d97e3 par1 1110 dist 0';
 
-      final nonce = NestedNonceParser.parse(line).single;
+      final nonce = NestedNonceParser.parse(line).nonces.single;
       expect(nonce.samples, hasLength(2));
       expect(nonce.hasPair, isFalse);
       expect(nonce.kind, NestedAttackKind.staticEncrypted);
@@ -85,13 +89,13 @@ Sec 1 key B cuid 5bcbb2e4 nt0 d7707ed1 ks0 65bc542b par0 0110 dist 0
       const line =
           'Sec 6 key A cuid 5bcbb2e4 nt0 a0bbe1ef ks0 c70d97e3 par0 1110 '
           'nt1 zzzzzzzz ks1 8a2107ad par1 1010 dist 0';
-      expect(NestedNonceParser.parse(line), isEmpty);
+      expect(NestedNonceParser.parse(line).nonces, isEmpty);
     });
 
     test('drops a sample with an out-of-range (non 32-bit) value', () {
       const line =
           'Sec 6 key A cuid 5bcbb2e4 nt0 1a0bbe1ef ks0 c70d97e3 par0 1110';
-      expect(NestedNonceParser.parse(line), isEmpty);
+      expect(NestedNonceParser.parse(line).nonces, isEmpty);
     });
 
     test('rejects structurally invalid lines but keeps valid neighbours', () {
@@ -101,10 +105,81 @@ Sec 0 key Z cuid 5bcbb2e4 nt0 a0bbe1ef ks0 c70d97e3 par0 1110
 Sec 0 key A nt0 a0bbe1ef ks0 c70d97e3 par0 1110
 Sec 1 key B cuid 5bcbb2e4 nt0 d7707ed1 ks0 65bc542b par0 0110 dist 0
 ''';
-      final nonces = NestedNonceParser.parse(file);
+      final nonces = NestedNonceParser.parse(file).nonces;
       expect(nonces, hasLength(1));
       expect(nonces.single.sector, 1);
       expect(nonces.single.keyType, NestedKeyType.b);
+    });
+
+    test('drops a line whose sector is outside MIFARE Classic 4K', () {
+      // No card has a sector past 39, and out-of-range values also break the
+      // candidate dictionary's fixed entry width - see `writeCuidDictEntry`.
+      const file = '''
+Sec 40 key A cuid 5bcbb2e4 nt0 a0bbe1ef ks0 c70d97e3 par0 1110 dist 0
+Sec 128 key B cuid 5bcbb2e4 nt0 a0bbe1ef ks0 c70d97e3 par0 1110 dist 0
+Sec -1 key A cuid 5bcbb2e4 nt0 a0bbe1ef ks0 c70d97e3 par0 1110 dist 0
+Sec 39 key B cuid 5bcbb2e4 nt0 d7707ed1 ks0 65bc542b par0 0110 dist 0
+''';
+      final nonces = NestedNonceParser.parse(file).nonces;
+      expect(nonces, hasLength(1));
+      expect(nonces.single.sector, 39);
+    });
+
+    test('drops a line whose cuid is not a 32-bit word', () {
+      // The cuid names the on-device dictionary file, and a 16-hex-digit value
+      // wraps negative - a path the firmware never opens.
+      const file = '''
+Sec 0 key A cuid 15bcbb2e4 nt0 a0bbe1ef ks0 c70d97e3 par0 1110 dist 0
+Sec 1 key B cuid 5bcbb2e4 nt0 d7707ed1 ks0 65bc542b par0 0110 dist 0
+''';
+      final nonces = NestedNonceParser.parse(file).nonces;
+      expect(nonces, hasLength(1));
+      expect(nonces.single.sector, 1);
+    });
+
+    test('drops a lone sample whose parity is missing or malformed', () {
+      // par is what the static-encrypted filter halves the candidate set with,
+      // so substituting a zero has an even chance of excluding the real key
+      // from everything generated - a dictionary that cannot work.
+      const file = '''
+Sec 0 key A cuid 5bcbb2e4 nt0 a0bbe1ef ks0 c70d97e3 dist 0
+Sec 1 key A cuid 5bcbb2e4 nt0 a0bbe1ef ks0 c70d97e3 par0 12x0 dist 0
+Sec 2 key A cuid 5bcbb2e4 nt0 a0bbe1ef ks0 c70d97e3 par0 110 dist 0
+Sec 4 key A cuid 5bcbb2e4 nt0 a0bbe1ef ks0 c70d97e3 par0 +101 dist 0
+Sec 3 key B cuid 5bcbb2e4 nt0 d7707ed1 ks0 65bc542b par0 0110 dist 0
+''';
+      final log = NestedNonceParser.parse(file);
+      expect(log.nonces, hasLength(1));
+      expect(log.nonces.single.sector, 3);
+      expect(log.droppedLines, 4);
+    });
+
+    test('keeps a weak-nested pair whose parity is malformed', () {
+      // A pair recovers from nt/ks alone and verifies itself against its second
+      // sample; nothing on that path reads par. Dropping the line would throw
+      // away a key that was still recoverable.
+      const line =
+          'Sec 10 key A cuid 7c30d979 nt0 214904f0 ks0 c03823d1 par0 zzzz '
+          'nt1 f69baa3a ks1 8a2107ad par1 1010 dist 5';
+
+      final log = NestedNonceParser.parse(line);
+      expect(log.droppedLines, 0);
+      final nonce = log.nonces.single;
+      expect(nonce.hasPair, isTrue);
+      expect(nonce.samples[0].par, isNull);
+      expect(nonce.samples[1].par, 10);
+    });
+
+    test('reports dropped lines and ignores blank ones', () {
+      // The caller surfaces droppedLines, so blank lines must not inflate it.
+      const file = '''
+Sec 0 key A cuid 5bcbb2e4 nt0 a0bbe1ef ks0 c70d97e3 par0 1110 dist 0
+
+not a nonce line at all
+''';
+      final log = NestedNonceParser.parse(file);
+      expect(log.nonces, hasLength(1));
+      expect(log.droppedLines, 1);
     });
 
     test('parses dist as null when absent and as its value when present', () {
@@ -112,8 +187,8 @@ Sec 1 key B cuid 5bcbb2e4 nt0 d7707ed1 ks0 65bc542b par0 0110 dist 0
           'Sec 0 key A cuid 5bcbb2e4 nt0 a0bbe1ef ks0 c70d97e3 par0 1110';
       const withDist =
           'Sec 0 key A cuid 5bcbb2e4 nt0 a0bbe1ef ks0 c70d97e3 par0 1110 dist 5';
-      expect(NestedNonceParser.parse(withoutDist).single.dist, isNull);
-      expect(NestedNonceParser.parse(withDist).single.dist, 5);
+      expect(NestedNonceParser.parse(withoutDist).nonces.single.dist, isNull);
+      expect(NestedNonceParser.parse(withDist).nonces.single.dist, 5);
     });
   });
 }

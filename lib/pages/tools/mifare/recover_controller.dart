@@ -6,12 +6,14 @@ import 'package:flutter/foundation.dart';
 
 import '../../../services/logging.dart';
 import '../../../services/progress_throttle.dart';
+import 'cuid_dict_format.dart';
 import 'existed_keys_storage.dart';
 import 'hardnested_recoverer.dart';
 import 'key_nonce_parser.dart';
 import 'mfkey32_api.dart';
 import 'mfkey32_models.dart';
 import 'mfkey32_recoverer.dart';
+import 'mifare_native.dart';
 import 'nested_api.dart';
 import 'nested_models.dart';
 import 'nested_nonce_parser.dart';
@@ -195,9 +197,9 @@ class RecoverController extends ChangeNotifier {
     final readerNonces = readerText == null
         ? const <MfKey32Nonce>[]
         : dedupeReaderNonces(KeyNonceParser.parse(readerText));
-    final tagNonces = tagText == null
-        ? const <NestedNonce>[]
-        : NestedNonceParser.parse(tagText);
+    final tagLog = NestedNonceParser.parse(tagText ?? '');
+    final tagNonces = tagLog.nonces;
+    if (tagLog.droppedLines > 0) _reportDroppedNonces(tagLog);
     final weak = dedupeWeakNonces(tagNonces.where((n) => n.hasPair));
     final (staticSingles, hardGroups) = splitSingles(
       tagNonces.where((n) => !n.hasPair),
@@ -289,7 +291,9 @@ class RecoverController extends ChangeNotifier {
     final ntEnc = group
         .map((n) => n.samples[0].nt ^ n.samples[0].ks)
         .toList(growable: false);
-    final parEnc = group.map((n) => n.samples[0].par).toList(growable: false);
+    // Non-null for every single-sample nonce: the parser drops a lone sample
+    // that has no usable parity, and this group came out of splitSingles.
+    final parEnc = group.map((n) => n.par!).toList(growable: false);
     BigInt? key;
     String? note;
     try {
@@ -312,7 +316,11 @@ class RecoverController extends ChangeNotifier {
       // and carry on to the user-dict upload.
       LogService.error('[Recover] hardnested engine failed: $e\n$st');
       _hadFailure = true;
-      note = 'Hardnested recovery is unavailable on this build.';
+      // Only a load failure means the build is at fault; anything else is this
+      // group failing, and saying otherwise sends the user after the wrong fix.
+      note = e is NativeEngineUnavailable
+          ? 'Hardnested recovery is unavailable on this build.'
+          : 'Hardnested recovery failed for this sector key.';
     }
     _recordKey(
       source: RecoverSource.tag,
@@ -325,7 +333,43 @@ class RecoverController extends ChangeNotifier {
     );
   }
 
+  /// Surfaces unparseable `.nested.log` lines. A corrupt line is dropped rather
+  /// than guessed at — a wrong parity generates the wrong half of the candidate
+  /// space, and a wrong sector files correct candidates under an index the
+  /// device never tries them against — but dropping one silently would leave
+  /// those sector keys unattacked with nothing on screen to say so, and a log
+  /// the app cannot read at all would finish as "no new keys".
+  void _reportDroppedNonces(NestedLog log) {
+    final dropped = log.droppedLines;
+    LogService.error('[Recover] dropped $dropped corrupt .nested.log line(s)');
+    _hadFailure = true;
+    _entries.add(
+      RecoverEntry(
+        source: RecoverSource.tag,
+        kind: RecoverKind.corruptLog,
+        note: log.nonces.isEmpty
+            ? 'None of the $dropped line(s) in the tag log could be read. '
+                  'Collect the nonces again on the device.'
+            : '$dropped line(s) in the tag log could not be read and were '
+                  'skipped, so those sector keys were not attacked.',
+      ),
+    );
+  }
+
   // ---- tag: static-encrypted candidate dictionaries ----
+
+  /// Every static-encrypted row shares its source and kind; only the cuid, the
+  /// count and the note vary, so those are what a reader should see.
+  void _addStaticEntry({int? cuid, int? candidateCount, String? note}) =>
+      _entries.add(
+        RecoverEntry(
+          source: RecoverSource.tag,
+          kind: RecoverKind.staticEncrypted,
+          cuid: cuid,
+          candidateCount: candidateCount,
+          note: note,
+        ),
+      );
 
   Future<void> _recoverStatic(List<NestedNonce> singles) async {
     final List<StaticCandidateDict> dicts;
@@ -334,55 +378,99 @@ class RecoverController extends ChangeNotifier {
     } catch (e, st) {
       LogService.error('[Recover] static candidate gen failed: $e\n$st');
       _hadFailure = true;
-      _entries.add(
-        RecoverEntry(
-          source: RecoverSource.tag,
-          kind: RecoverKind.staticEncrypted,
-          cuid: singles.first.cuid,
-          note: 'Candidate generation failed.',
-        ),
-      );
+      // Run-level, with no cuid: the throw comes from setting up the engine,
+      // not from any one card, and every card in the batch lost its dictionary.
+      // Naming the first one would blame a card that was probably fine.
+      _addStaticEntry(note: _staticFailureNote(e));
       _tick();
       return;
     }
 
     for (final dict in dicts) {
       if (_disposed) return;
-      if (dict.count == 0) {
-        // Generation produced nothing (e.g. an allocation failure) and no file
-        // was written - report it as a failure, not a 0-candidate "result".
+      final body = dict.body;
+      if (body == null) {
+        // This one card failed; the rest of the batch still has dictionaries.
         _hadFailure = true;
-        _entries.add(
-          RecoverEntry(
-            source: RecoverSource.tag,
-            kind: RecoverKind.staticEncrypted,
-            cuid: dict.cuid,
-            note: 'No candidate keys could be generated for this card.',
-          ),
+        _addStaticEntry(cuid: dict.cuid, note: _staticFailureNote(dict.error!));
+        continue;
+      }
+      if (body.isEmpty) {
+        // Every sector key came back with nothing, so there is no file to
+        // write - report which ones rather than a bare "nothing generated".
+        _hadFailure = true;
+        _addStaticEntry(
+          cuid: dict.cuid,
+          note:
+              'No candidate keys could be generated for '
+              '${_nameKeys(body.skippedKeys)}, so nothing was written for this '
+              'card. Re-collect those nonces on the device.',
         );
         continue;
       }
-      String? note;
       try {
-        await _client.storageWriteChunked(cuidDictPath(dict.cuid), dict.body);
+        await _client.storageWriteChunked(cuidDictPath(dict.cuid), body.bytes);
         _wroteCandidates = true;
       } catch (e, st) {
         LogService.error('[Recover] static dict write failed: $e\n$st');
         _hadFailure = true;
-        note = 'Could not write the candidate dictionary to the device.';
-      }
-      _entries.add(
-        RecoverEntry(
-          source: RecoverSource.tag,
-          kind: RecoverKind.staticEncrypted,
+        // No candidateCount: that row reads "N candidate keys -> <file>", and
+        // there is no file on the device to point at.
+        _addStaticEntry(
           cuid: dict.cuid,
-          candidateCount: dict.count,
-          note: note,
-        ),
+          note:
+              'Generated ${body.entries} candidates but could not write them '
+              'to the device - check free space and the connection.',
+        );
+        continue;
+      }
+      if (!body.isComplete) _hadFailure = true;
+      _addStaticEntry(
+        cuid: dict.cuid,
+        candidateCount: body.entries,
+        note: _dictGapNote(body),
       );
     }
     _tick();
   }
+
+  /// Names the sector keys the written dictionary cannot recover, so a card
+  /// that comes back partly unread is explained here rather than looking like
+  /// an attack that simply failed on the device.
+  static String? _dictGapNote(CuidDictBody body) {
+    final parts = <String>[
+      if (body.skippedKeys.isNotEmpty)
+        'no candidates for ${_nameKeys(body.skippedKeys)} - the device will '
+            'skip ${body.skippedKeys.length == 1 ? 'it' : 'them'}',
+      if (body.cappedKeys.isNotEmpty)
+        'the candidate list for ${_nameKeys(body.cappedKeys)} hit its limit '
+            'and may not hold the real key',
+    ];
+    if (parts.isEmpty) return null;
+    return '${parts.join('; ')}. Re-collect those nonces on the device.';
+  }
+
+  /// Names the affected sector keys, summarising a long list so one bad card
+  /// cannot turn the note into a wall of text.
+  static String _nameKeys(List<String> keys) {
+    const limit = 6;
+    if (keys.length <= limit) return keys.join(', ');
+    return '${keys.take(limit).join(', ')} and ${keys.length - limit} more';
+  }
+
+  /// Separates the failures worth acting on differently. Everything else stays
+  /// deliberately vague: the exception and its stack are already logged, and
+  /// `ArgumentError` in particular is shared by the FFI allocator, a missing
+  /// symbol and a refused dictionary entry, so it cannot name a cause on its
+  /// own — which is why the engine lookup raises [NativeEngineUnavailable].
+  static String _staticFailureNote(Object error) => switch (error) {
+    NativeEngineUnavailable() =>
+      'Candidate generation is unavailable on this build.',
+    OutOfMemoryError() =>
+      'Not enough memory to build the candidate list for this card - '
+          'collect fewer sectors at a time.',
+    _ => 'Candidate generation failed for this card; nothing was written.',
+  };
 
   // ---- helpers ----
 

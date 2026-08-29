@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../components/dialogs/confirm.dart';
 import '../../../components/progress_button.dart';
 import '../../../theme/theme.dart';
-import 'existed_keys_storage.dart';
+import 'cuid_dict_format.dart';
 import 'recover_controller.dart';
 import 'recover_models.dart';
 
@@ -81,10 +81,10 @@ List<Widget> _buildGroups(RecoverController controller) {
   final entries = controller.entries;
   if (entries.isEmpty) return const [];
 
-  final bySource = <RecoverSource, Map<int, List<RecoverEntry>>>{};
+  final bySource = <RecoverSource, Map<int?, List<RecoverEntry>>>{};
   for (final entry in entries) {
     bySource
-        .putIfAbsent(entry.source, () => <int, List<RecoverEntry>>{})
+        .putIfAbsent(entry.source, () => <int?, List<RecoverEntry>>{})
         .putIfAbsent(entry.cuid, () => <RecoverEntry>[])
         .add(entry);
   }
@@ -154,7 +154,9 @@ class _SourceHeader extends StatelessWidget {
 class _CardBlock extends StatelessWidget {
   const _CardBlock({required this.cuidHex, required this.entries});
 
-  final String cuidHex;
+  /// Null for entries no card can be attributed to; the block then renders
+  /// its rows without a card heading.
+  final String? cuidHex;
   final List<RecoverEntry> entries;
 
   @override
@@ -165,16 +167,18 @@ class _CardBlock extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Card $cuidHex',
-            style: TextStyle(
-              color: colors.textPrimary,
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              fontFamily: 'monospace',
+          if (cuidHex != null) ...[
+            Text(
+              'Card $cuidHex',
+              style: TextStyle(
+                color: colors.textPrimary,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                fontFamily: 'monospace',
+              ),
             ),
-          ),
-          const SizedBox(height: 4),
+            const SizedBox(height: 4),
+          ],
           for (final entry in entries)
             Padding(
               padding: const EdgeInsets.only(left: 8, top: 3, bottom: 3),
@@ -197,6 +201,7 @@ class _EntryRow extends StatelessWidget {
     RecoverKind.staticNonce => 'static nonce',
     RecoverKind.staticEncrypted => 'static-encrypted',
     RecoverKind.hardnested => 'hardnested',
+    RecoverKind.corruptLog => 'unreadable log lines',
   };
 
   @override
@@ -213,11 +218,11 @@ class _EntryRow extends StatelessWidget {
       // isNew is decided at recovery time, so this tag is already correct while
       // the run is still in progress - not only in the final summary.
       final tag = entry.isNew == false ? 'already in dict' : 'new';
+      line = '${where ?? ''} — ${entry.key}  [${_kindLabel(entry.kind)}, $tag]';
+    } else if (entry.candidateCount != null && entry.cuid != null) {
       line =
-          '${where ?? ''} — ${entry.key}  [${_kindLabel(entry.kind)}, $tag]';
-    } else if (entry.candidateCount != null) {
-      line =
-          '${entry.candidateCount} candidate keys → ${cuidDictFileName(entry.cuid)}';
+          '${entry.candidateCount} candidate keys → '
+          '${cuidDictFileName(entry.cuid!)}';
       explainer =
           'Possible keys for this card — the correct ones are among them.';
       color = colors.textMuted;

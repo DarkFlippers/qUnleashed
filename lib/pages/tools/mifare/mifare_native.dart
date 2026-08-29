@@ -3,22 +3,32 @@ import 'dart:io';
 
 /// Opens a bundled qUnleashed native FFI library by its base name (without the
 /// `lib` prefix / platform extension).
+///
+/// Raises [NativeEngineUnavailable] when the library is missing or the platform
+/// has no build of it, so that a packaging fault can be told apart from an
+/// attack that ran and failed.
 DynamicLibrary openNativeLibrary(String base) {
-  if (Platform.isAndroid || Platform.isLinux) {
-    return DynamicLibrary.open('lib$base.so');
-  }
-  if (Platform.isWindows) {
-    final executableDir = File(Platform.resolvedExecutable).parent.path;
-    final bundledPath = '$executableDir${Platform.pathSeparator}$base.dll';
-    if (File(bundledPath).existsSync()) {
-      return DynamicLibrary.open(bundledPath);
+  try {
+    if (Platform.isAndroid || Platform.isLinux) {
+      return DynamicLibrary.open('lib$base.so');
     }
-    return DynamicLibrary.open('$base.dll');
+    if (Platform.isWindows) {
+      final executableDir = File(Platform.resolvedExecutable).parent.path;
+      final bundledPath = '$executableDir${Platform.pathSeparator}$base.dll';
+      if (File(bundledPath).existsSync()) {
+        return DynamicLibrary.open(bundledPath);
+      }
+      return DynamicLibrary.open('$base.dll');
+    }
+    if (Platform.isMacOS || Platform.isIOS) {
+      return DynamicLibrary.process();
+    }
+  } catch (e) {
+    throw NativeEngineUnavailable(e);
   }
-  if (Platform.isMacOS || Platform.isIOS) {
-    return DynamicLibrary.process();
-  }
-  throw UnsupportedError('Unsupported platform for the MIFARE native library');
+  throw NativeEngineUnavailable(
+    UnsupportedError('no $base build for this platform'),
+  );
 }
 
 /// The `qunleashed_mfkey32` library: mfkey32 + nested/static recovery entry
@@ -30,3 +40,16 @@ DynamicLibrary openMifareNativeLibrary() =>
 /// (see `lib/modules/cpp/hardnested`).
 DynamicLibrary openHardnestedNativeLibrary() =>
     openNativeLibrary('qunleashed_hardnested');
+
+/// A bundled native library, or a symbol in it, could not be loaded.
+///
+/// Distinct from a failure while running an attack: this one means the build
+/// is missing a component, and nothing the user does with the card will help.
+class NativeEngineUnavailable implements Exception {
+  const NativeEngineUnavailable(this.cause);
+
+  final Object cause;
+
+  @override
+  String toString() => 'NativeEngineUnavailable: $cause';
+}

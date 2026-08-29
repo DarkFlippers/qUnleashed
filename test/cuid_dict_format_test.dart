@@ -1,0 +1,214 @@
+import 'dart:typed_data';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:qunleashed/pages/tools/mifare/cuid_dict_format.dart';
+
+Uint64List _keys(List<int> values) => Uint64List.fromList(values);
+
+List<String> _lines(Uint8List bytes) =>
+    String.fromCharCodes(bytes).trimRight().split('\n');
+
+void main() {
+  group('formatCuidDictEntry', () {
+    // The on-device reader cuts a line to 14 characters before checking it is
+    // 14, so a 12-digit key is dropped and the dictionary reads as empty,
+    // while an over-wide line is truncated onto an unrelated key index.
+    // These pin the 14-digit layout.
+    test('is a 2-digit key index followed by the 12-digit key', () {
+      final entry = formatCuidDictEntry(
+        sector: 0,
+        isKeyA: true,
+        key: 0xA0A1A2A3A4A5,
+      );
+      expect(entry, '00A0A1A2A3A4A5');
+      expect(entry, hasLength(14));
+    });
+
+    test('key B of a sector sits one index above key A', () {
+      expect(
+        formatCuidDictEntry(sector: 3, isKeyA: true, key: 0x112233445566),
+        startsWith('06'),
+      );
+      expect(
+        formatCuidDictEntry(sector: 3, isKeyA: false, key: 0x112233445566),
+        startsWith('07'),
+      );
+    });
+
+    test('the highest MIFARE Classic 4K index still fits one byte', () {
+      // Sector 39 key B - the last index a 4K card's dictionary walk reaches.
+      expect(
+        formatCuidDictEntry(sector: 39, isKeyA: false, key: 0xFFFFFFFFFFFF),
+        '4FFFFFFFFFFFFF',
+      );
+    });
+
+    test('a sector past the card is still a valid entry (parser rule)', () {
+      // Only the width is this function's to guard. That no card has a sector
+      // 40 is the parser's rule — here it renders fine, under index 0x50.
+      expect(
+        formatCuidDictEntry(sector: 40, isKeyA: true, key: 0x1),
+        '50000000000001',
+      );
+    });
+
+    test('an index or key too wide for the entry is refused', () {
+      // Throws in release builds too: a bad entry is worse than none.
+      expect(
+        () => formatCuidDictEntry(sector: 128, isKeyA: true, key: 0x1),
+        throwsArgumentError,
+      );
+      expect(
+        () => formatCuidDictEntry(sector: -1, isKeyA: true, key: 0x1),
+        throwsArgumentError,
+      );
+      expect(
+        () =>
+            formatCuidDictEntry(sector: 0, isKeyA: true, key: 0x1FFFFFFFFFFFF),
+        throwsArgumentError,
+      );
+    });
+
+    test('pads a short key to the full width', () {
+      expect(
+        formatCuidDictEntry(sector: 10, isKeyA: true, key: 0x1),
+        '14000000000001',
+      );
+    });
+  });
+
+  group('writeCuidDictEntry', () {
+    test('writes 15 bytes at an offset: the entry plus its newline', () {
+      // How the isolate uses it - entries packed back to back into one chunk.
+      final out = Uint8List(2 * cuidDictEntryBytes);
+      writeCuidDictEntry(out, 0, sector: 0, isKeyA: true, key: 0xA0A1A2A3A4A5);
+      writeCuidDictEntry(
+        out,
+        cuidDictEntryBytes,
+        sector: 3,
+        isKeyA: false,
+        key: 0x112233445566,
+      );
+      expect(String.fromCharCodes(out, 0, 14), '00A0A1A2A3A4A5');
+      expect(out[14], 0x0A);
+      expect(String.fromCharCodes(out, 15, 29), '07112233445566');
+      expect(out[29], 0x0A);
+    });
+  });
+
+  group('CuidDictBuilder', () {
+    // Each candidate must stay filed under the key index of the sector key it
+    // was recovered for - see writeCuidDictEntry for why the device needs that.
+    test('files each batch under its own sector key, in the order added', () {
+      final builder = CuidDictBuilder()
+        ..add(
+          sector: 3,
+          isKeyA: true,
+          keys: _keys([0x111111111111, 0x222222222222]),
+        )
+        ..add(sector: 3, isKeyA: false, keys: _keys([0x333333333333]))
+        ..add(sector: 7, isKeyA: false, keys: _keys([0x444444444444]));
+      final body = builder.build();
+
+      expect(body.entries, 4);
+      expect(body.bytes, hasLength(4 * cuidDictEntryBytes));
+      // Key A of sector 3 is index 06, key B is 07, key B of sector 7 is 0F.
+      expect(_lines(body.bytes), [
+        '06111111111111',
+        '06222222222222',
+        '07333333333333',
+        '0F444444444444',
+      ]);
+      expect(body.isComplete, isTrue);
+      expect(body.isEmpty, isFalse);
+    });
+
+    test('the same key recovered for two sector keys is filed twice', () {
+      // main merged a card's candidates into one Set, which erased the sector
+      // key each belonged to, so deduping across indices lost both.
+      final builder = CuidDictBuilder()
+        ..add(sector: 3, isKeyA: true, keys: _keys([0xA0A1A2A3A4A5]))
+        ..add(sector: 3, isKeyA: false, keys: _keys([0xA0A1A2A3A4A5]));
+      final body = builder.build();
+
+      expect(body.entries, 2);
+      expect(_lines(body.bytes), ['06A0A1A2A3A4A5', '07A0A1A2A3A4A5']);
+    });
+
+    test('refuses reuse after build (it would report phantom entries)', () {
+      final builder = CuidDictBuilder()
+        ..add(sector: 0, isKeyA: true, keys: _keys([0x1]));
+      builder.build();
+
+      expect(builder.build, throwsStateError);
+      expect(
+        () => builder.add(sector: 0, isKeyA: false, keys: Uint64List(0)),
+        throwsStateError,
+      );
+    });
+
+    test('records a sector key that yielded no candidates', () {
+      // The device indexes by key index and skips an index with no entries, so
+      // an empty batch means that sector key is never attacked at all.
+      final builder = CuidDictBuilder()
+        ..add(sector: 1, isKeyA: true, keys: Uint64List(0))
+        ..add(sector: 1, isKeyA: false, keys: _keys([0x555555555555]));
+      final body = builder.build();
+
+      expect(body.entries, 1);
+      expect(body.skippedKeys, ['1A']);
+      expect(body.isComplete, isFalse);
+      expect(body.isEmpty, isFalse);
+    });
+
+    test('records a batch that was cut short at the generator cap', () {
+      // isKeyA false so a swapped bool argument cannot slip through unnoticed.
+      final builder = CuidDictBuilder()
+        ..add(
+          sector: 2,
+          isKeyA: false,
+          keys: _keys([0x666666666666]),
+          atCapacity: true,
+        );
+      final body = builder.build();
+
+      expect(body.cappedKeys, ['2B']);
+      expect(body.isComplete, isFalse);
+    });
+
+    test('a builder with nothing added is empty, not complete-with-zero', () {
+      final body = CuidDictBuilder().build();
+      expect(body.isEmpty, isTrue);
+      expect(body.bytes, isEmpty);
+    });
+
+    test('consumes each batch before returning (reused-buffer safety)', () {
+      // The isolate passes a view over a native buffer that the next call
+      // overwrites, so add() must read it eagerly. Reusing one list models it.
+      final reused = _keys([0x777777777777]);
+      final builder = CuidDictBuilder()
+        ..add(sector: 0, isKeyA: true, keys: reused);
+      reused[0] = 0x888888888888;
+      builder.add(sector: 0, isKeyA: false, keys: reused);
+
+      expect(_lines(builder.build().bytes), [
+        '00777777777777',
+        '01888888888888',
+      ]);
+    });
+  });
+
+  group('cuidDictPath', () {
+    test('is the lowercase, zero-padded name the firmware opens', () {
+      // The firmware builds its path with %08lx, so an uppercase or unpadded
+      // cuid names a file it never looks for - and the write would still
+      // succeed, leaving the run reporting a dictionary nothing reads.
+      expect(cuidDictFileName(0x5bcbb2e4), 'mf_classic_dict_5bcbb2e4.nfc');
+      expect(cuidDictFileName(0x00abcdef), 'mf_classic_dict_00abcdef.nfc');
+      expect(
+        cuidDictPath(0x5bcbb2e4),
+        '/ext/nfc/assets/mf_classic_dict_5bcbb2e4.nfc',
+      );
+    });
+  });
+}

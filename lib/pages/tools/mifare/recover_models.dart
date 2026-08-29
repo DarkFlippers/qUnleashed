@@ -18,6 +18,12 @@ enum RecoverKind {
   staticNonce,
   staticEncrypted,
   hardnested,
+
+  /// Not an attack: lines of the tag log that could not be read at all. A
+  /// corrupt nonce is dropped rather than guessed at, and this is how the run
+  /// says so — otherwise those sector keys go unattacked with nothing on
+  /// screen to explain it.
+  corruptLog,
 }
 
 /// One row of the grouped recovery summary (grouped in the UI by
@@ -26,7 +32,7 @@ class RecoverEntry {
   const RecoverEntry({
     required this.source,
     required this.kind,
-    required this.cuid,
+    this.cuid,
     this.sectorName,
     this.keyName,
     this.key,
@@ -37,10 +43,14 @@ class RecoverEntry {
 
   final RecoverSource source;
   final RecoverKind kind;
-  final int cuid;
+
+  /// The card this entry is about, or null for a run-level entry that no card
+  /// can be attributed to (a tag log that would not parse).
+  final int? cuid;
 
   /// Sector / key labels for a concrete key result. Null for a per-card
-  /// static-encrypted candidate summary.
+  /// static-encrypted candidate summary and for a [RecoverKind.corruptLog]
+  /// run-level entry.
   final String? sectorName;
   final String? keyName;
 
@@ -54,13 +64,18 @@ class RecoverEntry {
   /// the final summary.
   final bool? isNew;
 
-  /// Static-encrypted: number of candidate keys written to `mf_classic_dict_<cuid>.nfc`.
+  /// Static-encrypted: the entry count of the dictionary written for this card
+  /// — see `CuidDictBody.entries`. Only ever set together with [cuid], since
+  /// the row it produces names the file the entries were written to.
   final int? candidateCount;
 
   /// Extra context (e.g. "too few nonces — collect more", or a write failure).
   final String? note;
 
-  String get cuidHex => formatCuid(cuid).toUpperCase();
+  String? get cuidHex {
+    final value = cuid;
+    return value == null ? null : formatCuid(value).toUpperCase();
+  }
 }
 
 /// State machine for the "Recover MIFARE Keys" flow (drives the status header).

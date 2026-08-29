@@ -199,6 +199,12 @@ static int seednt_bitmap_get(const uint8_t* bitmap, uint16_t seed) {
 // caller-allocated (>= the raw candidate count, e.g. 1<<18). On allocation
 // failure the cross-filter is skipped (parity-filtered lists are returned
 // unreduced) so the true key is never dropped.
+//
+// `truncated` (optional) reports whether either enumeration hit its capacity.
+// The counts written back are post-filter, so the caller cannot infer this from
+// them - and it matters for both keys, not just the capped one: a partial list
+// yields a partial seed bitmap, so filtering the other list against it can drop
+// the true key there too.
 QUNLEASHED_EXPORT void qunleashed_rf08s_reduce_pair(
     uint32_t uid,
     uint32_t nt_a,
@@ -212,11 +218,16 @@ QUNLEASHED_EXPORT void qunleashed_rf08s_reduce_pair(
     uint32_t* count_a,
     uint64_t* out_b,
     uint32_t cap_b,
-    uint32_t* count_b) {
+    uint32_t* count_b,
+    uint32_t* truncated) {
   init_lfsr16();
 
   uint32_t na = gen_static_candidates(uid, nt_a, ks_a, (uint8_t)(par_a & 0x0F), out_a, cap_a);
   uint32_t nb = gen_static_candidates(uid, nt_b, ks_b, (uint8_t)(par_b & 0x0F), out_b, cap_b);
+
+  if (truncated != NULL) {
+    *truncated = (na >= cap_a || nb >= cap_b) ? 1 : 0;
+  }
 
   uint8_t* seen_a = calloc(1 << 13, 1);
   uint8_t* seen_b = calloc(1 << 13, 1);
