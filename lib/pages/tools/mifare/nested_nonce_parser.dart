@@ -1,5 +1,10 @@
 import 'nested_models.dart';
 
+/// A parsed `.nested.log`: the usable nonces, and how many non-blank lines had
+/// to be dropped as corrupt. The caller surfaces the drops rather than quietly
+/// attacking a subset of the card.
+typedef NestedLog = ({List<NestedNonce> nonces, int droppedLines});
+
 /// Parser for the Flipper `.nested.log` format. Each record is a single line;
 /// two-sample (weak-nested) lines just carry more fields:
 ///
@@ -12,21 +17,22 @@ import 'nested_models.dart';
 class NestedNonceParser {
   const NestedNonceParser._();
 
-  static List<NestedNonce> parse(String text) {
-    return text
+  static NestedLog parse(String text) {
+    final lines = text
         .split('\n')
+        .where((line) => line.trim().isNotEmpty)
+        .toList(growable: false);
+    final nonces = lines
         .map(_parseLine)
         .whereType<NestedNonce>()
         .toList(growable: false);
+    return (nonces: nonces, droppedLines: lines.length - nonces.length);
   }
 
   static final RegExp _whitespace = RegExp(r'\s+');
 
   static NestedNonce? _parseLine(String line) {
-    final trimmed = line.trim();
-    if (trimmed.isEmpty) return null;
-
-    final tokens = trimmed.split(_whitespace);
+    final tokens = line.trim().split(_whitespace);
     final fields = <String, String>{};
     for (var i = 0; i + 1 < tokens.length; i += 2) {
       fields[tokens[i].toLowerCase()] = tokens[i + 1];
@@ -70,12 +76,9 @@ class NestedNonceParser {
   static NestedSample? _parseSample(Map<String, String> fields, int index) {
     final nt = _parseWord32(fields['nt$index']);
     final ks = _parseWord32(fields['ks$index']);
-    if (nt == null || ks == null) return null;
-    return NestedSample(
-      nt: nt,
-      ks: ks,
-      par: _parseBinary(fields['par$index']) & 0xF,
-    );
+    final par = _parseParity(fields['par$index']);
+    if (nt == null || ks == null || par == null) return null;
+    return NestedSample(nt: nt, ks: ks, par: par);
   }
 
   static NestedKeyType? _parseKeyType(String? value) {
@@ -98,6 +101,14 @@ class NestedNonceParser {
     return parsed;
   }
 
-  static int _parseBinary(String? value) =>
-      value == null ? 0 : (int.tryParse(value, radix: 2) ?? 0);
+  /// Parses the four parity bits the firmware always writes as four binary
+  /// digits. Absent or malformed is a corrupt line, never a zero: parity drives
+  /// the candidate filter, so a wrong value keeps the wrong half of the
+  /// candidate space and the real key can never be among what we generate.
+  static int? _parseParity(String? value) {
+    if (value == null || value.length != 4) return null;
+    final parsed = int.tryParse(value, radix: 2);
+    if (parsed == null || parsed < 0 || parsed > 0xF) return null;
+    return parsed;
+  }
 }

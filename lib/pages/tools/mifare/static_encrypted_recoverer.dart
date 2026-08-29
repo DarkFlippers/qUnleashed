@@ -13,25 +13,14 @@ import 'nested_models.dart';
 /// path. A single nonce under-constrains the key (tens of thousands of
 /// candidates), so these must be verified against the tag on the device.
 ///
-/// The keys are serialized to [body] (`writeCuidDictEntry` lines, ready to
-/// write to `mf_classic_dict_<cuid>.nfc`) inside the worker isolate, so that
-/// formatting millions of entries never runs on the UI isolate.
-///
-/// [count] is the number of entries in [body], not of distinct keys: one key
-/// value recovered for two different sector keys is two entries, since the
-/// device only tries a candidate against the key index it is filed under. It is
-/// 0 only when no sector yielded a candidate (e.g. an allocation failure), in
-/// which case [body] is empty and nothing should be written.
+/// [body] is assembled inside the worker isolate so that formatting millions of
+/// entries never runs on the UI isolate, and it carries the gaps that would
+/// leave part of the card unattacked — see [CuidDictBody].
 class StaticCandidateDict {
-  const StaticCandidateDict({
-    required this.cuid,
-    required this.count,
-    required this.body,
-  });
+  const StaticCandidateDict({required this.cuid, required this.body});
 
   final int cuid;
-  final int count;
-  final Uint8List body;
+  final CuidDictBody body;
 }
 
 abstract class StaticEncryptedRecoverer {
@@ -137,28 +126,17 @@ class NativeStaticEncryptedRecoverer implements StaticEncryptedRecoverer {
 
       final results = <StaticCandidateDict>[];
       grouped.forEach((cuid, sectors) {
-        // Entries go straight to bytes: at millions of candidates a String
-        // body would cost an extra copy plus the encoder's 3x scratch buffer,
-        // which is enough to exhaust a mobile isolate's heap on a full 4K card.
-        final body = BytesBuilder(copy: false);
-        var count = 0;
-        // `keys` is a view over the native output buffer, not a copy, and the
-        // next sector's call overwrites it — so each batch has to be drained
-        // here, before the loop comes round again.
-        void emit(_NoncePayload nonce, Uint64List keys) {
-          final chunk = Uint8List(keys.length * cuidDictEntryBytes);
-          for (var i = 0; i < keys.length; i++) {
-            writeCuidDictEntry(
-              chunk,
-              i * cuidDictEntryBytes,
-              sector: nonce.sector,
-              isKeyA: nonce.isKeyA,
-              key: keys[i],
-            );
-          }
-          body.add(chunk);
-          count += keys.length;
-        }
+        final builder = CuidDictBuilder();
+        // The native call writes into a buffer it reuses on the next sector, so
+        // `asTypedList` hands back a view that only stays valid until then --
+        // and `add` is documented to consume it before returning. A count that
+        // reached the cap means the enumeration was cut short.
+        void emit(_NoncePayload nonce, Uint64List keys) => builder.add(
+          sector: nonce.sector,
+          isKeyA: nonce.isKeyA,
+          keys: keys,
+          atCapacity: keys.length == _capacity,
+        );
 
         for (final pair in sectors.values) {
           final a = pair[true];
@@ -187,9 +165,7 @@ class NativeStaticEncryptedRecoverer implements StaticEncryptedRecoverer {
             emit(one, outA.asTypedList(n));
           }
         }
-        results.add(
-          StaticCandidateDict(cuid: cuid, count: count, body: body.takeBytes()),
-        );
+        results.add(StaticCandidateDict(cuid: cuid, body: builder.build()));
       });
       return results;
     } finally {

@@ -196,9 +196,11 @@ class RecoverController extends ChangeNotifier {
     final readerNonces = readerText == null
         ? const <MfKey32Nonce>[]
         : dedupeReaderNonces(KeyNonceParser.parse(readerText));
-    final tagNonces = tagText == null
-        ? const <NestedNonce>[]
+    final tagLog = tagText == null
+        ? (nonces: const <NestedNonce>[], droppedLines: 0)
         : NestedNonceParser.parse(tagText);
+    final tagNonces = tagLog.nonces;
+    if (tagLog.droppedLines > 0) _reportDroppedNonces(tagLog);
     final weak = dedupeWeakNonces(tagNonces.where((n) => n.hasPair));
     final (staticSingles, hardGroups) = splitSingles(
       tagNonces.where((n) => !n.hasPair),
@@ -326,6 +328,28 @@ class RecoverController extends ChangeNotifier {
     );
   }
 
+  /// Surfaces unparseable `.nested.log` lines. A corrupt line is dropped rather
+  /// than guessed at — a nonce with a wrong parity or sector would only produce
+  /// a dictionary that cannot contain the real key — but dropping it silently
+  /// would leave those sector keys unattacked with nothing on screen to say so,
+  /// and a log the app cannot read at all would read as "no new keys".
+  void _reportDroppedNonces(NestedLog log) {
+    final dropped = log.droppedLines;
+    LogService.error('[Recover] dropped $dropped corrupt .nested.log line(s)');
+    _hadFailure = true;
+    _entries.add(
+      RecoverEntry(
+        source: RecoverSource.tag,
+        kind: RecoverKind.corruptLog,
+        note: log.nonces.isEmpty
+            ? 'None of the $dropped line(s) in the tag log could be read. '
+                  'Collect the nonces again on the device.'
+            : '$dropped line(s) in the tag log could not be read and were '
+                  'skipped, so those sector keys were not attacked.',
+      ),
+    );
+  }
+
   // ---- tag: static-encrypted candidate dictionaries ----
 
   Future<void> _recoverStatic(List<NestedNonce> singles) async {
@@ -340,7 +364,7 @@ class RecoverController extends ChangeNotifier {
           source: RecoverSource.tag,
           kind: RecoverKind.staticEncrypted,
           cuid: singles.first.cuid,
-          note: 'Candidate generation failed.',
+          note: _staticFailureNote(e),
         ),
       );
       _tick();
@@ -349,7 +373,8 @@ class RecoverController extends ChangeNotifier {
 
     for (final dict in dicts) {
       if (_disposed) return;
-      if (dict.count == 0) {
+      final body = dict.body;
+      if (body.isEmpty) {
         // Generation produced nothing (e.g. an allocation failure) and no file
         // was written - report it as a failure, not a 0-candidate "result".
         _hadFailure = true;
@@ -363,26 +388,75 @@ class RecoverController extends ChangeNotifier {
         );
         continue;
       }
-      String? note;
       try {
-        await _client.storageWriteChunked(cuidDictPath(dict.cuid), dict.body);
+        await _client.storageWriteChunked(cuidDictPath(dict.cuid), body.bytes);
         _wroteCandidates = true;
       } catch (e, st) {
         LogService.error('[Recover] static dict write failed: $e\n$st');
         _hadFailure = true;
-        note = 'Could not write the candidate dictionary to the device.';
+        // No candidateCount: that row reads "N candidate keys -> <file>", and
+        // there is no file on the device to point at.
+        _entries.add(
+          RecoverEntry(
+            source: RecoverSource.tag,
+            kind: RecoverKind.staticEncrypted,
+            cuid: dict.cuid,
+            note:
+                'Generated ${body.entries} candidates but could not write them '
+                'to the device - check free space and the connection.',
+          ),
+        );
+        continue;
       }
+      if (!body.isComplete) _hadFailure = true;
       _entries.add(
         RecoverEntry(
           source: RecoverSource.tag,
           kind: RecoverKind.staticEncrypted,
           cuid: dict.cuid,
-          candidateCount: dict.count,
-          note: note,
+          candidateCount: body.entries,
+          note: _dictGapNote(body),
         ),
       );
     }
     _tick();
+  }
+
+  /// Names the sector keys the written dictionary cannot recover, so a card
+  /// that comes back partly unread is explained here rather than looking like
+  /// an attack that simply failed on the device.
+  static String? _dictGapNote(CuidDictBody body) {
+    final parts = <String>[
+      if (body.skippedKeys.isNotEmpty)
+        'no candidates for ${_nameKeys(body.skippedKeys)} - the device will '
+            'skip ${body.skippedKeys.length == 1 ? 'it' : 'them'}',
+      if (body.cappedKeys.isNotEmpty)
+        'the candidate list for ${_nameKeys(body.cappedKeys)} hit its limit '
+            'and may not hold the real key',
+    ];
+    if (parts.isEmpty) return null;
+    return '${parts.join('; ')}. Re-collect those nonces on the device.';
+  }
+
+  /// Names the affected sector keys, summarising a long list so one bad card
+  /// cannot turn the note into a wall of text.
+  static String _nameKeys(List<String> keys) {
+    const limit = 6;
+    if (keys.length <= limit) return keys.join(', ');
+    return '${keys.take(limit).join(', ')} and ${keys.length - limit} more';
+  }
+
+  /// Separates the failures worth acting on differently: a build without the
+  /// native engine, and a card too large to hold in memory.
+  static String _staticFailureNote(Object error) {
+    if (error is ArgumentError) {
+      return 'Candidate generation is unavailable on this build.';
+    }
+    if (error is OutOfMemoryError) {
+      return 'Too many candidates to build on this device - collect fewer '
+          'sectors at a time.';
+    }
+    return 'Candidate generation failed.';
   }
 
   // ---- helpers ----
