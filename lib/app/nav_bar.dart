@@ -98,21 +98,13 @@ class FlipperRootScaffold extends StatelessWidget {
                   onTap: () => onTabSelected(FlipperRootTab.archive),
                 ),
                 _BottomTab(
-                  icon: _NavIcon(
-                    asset: currentTab == FlipperRootTab.apps
-                        ? 'assets/ic/nav/apps-filled.svg'
-                        : 'assets/ic/nav/apps.svg',
-                  ),
+                  icon: const _NavIcon(asset: 'assets/ic/app/apps.svg'),
                   label: 'Apps',
                   selected: currentTab == FlipperRootTab.apps,
                   onTap: () => onTabSelected(FlipperRootTab.apps),
                 ),
                 _BottomTab(
-                  icon: _NavIcon(
-                    asset: currentTab == FlipperRootTab.tools
-                        ? 'assets/ic/nav/tools-filled.svg'
-                        : 'assets/ic/nav/tools.svg',
-                  ),
+                  icon: const _NavIcon(asset: 'assets/ic/appcat/tools.svg'),
                   label: 'Tools',
                   selected: currentTab == FlipperRootTab.tools,
                   onTap: () => onTabSelected(FlipperRootTab.tools),
@@ -142,24 +134,29 @@ class _SideRail extends StatelessWidget {
       ),
       child: SafeArea(
         right: false,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 8),
-              for (var g = 0; g < groups.length; g++) ...[
-                if (g > 0)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 6,
+        // Scrolls when the destinations outgrow a short window, but the bar is
+        // too narrow to give a scrollbar its own lane.
+        child: ScrollConfiguration(
+          behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(height: 8),
+                for (var g = 0; g < groups.length; g++) ...[
+                  if (g > 0)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 6,
+                      ),
+                      child: Divider(height: 1, color: colors.divider),
                     ),
-                    child: Divider(height: 1, color: colors.divider),
-                  ),
-                for (final item in groups[g]) _RailButton(item: item),
+                  for (final item in groups[g]) _RailButton(item: item),
+                ],
+                const SizedBox(height: 8),
               ],
-              const SizedBox(height: 8),
-            ],
+            ),
           ),
         ),
       ),

@@ -216,18 +216,14 @@ class _AppShellState extends State<AppShell> {
           slot,
           _slotApps,
           colors.accent,
-          asset: slot == _slotApps
-              ? 'assets/ic/nav/apps-filled.svg'
-              : 'assets/ic/nav/apps.svg',
+          asset: 'assets/ic/app/apps.svg',
         ),
         _railItem(
           colors,
           slot,
           _slotTools,
           colors.accent,
-          asset: slot == _slotTools
-              ? 'assets/ic/nav/tools-filled.svg'
-              : 'assets/ic/nav/tools.svg',
+          asset: 'assets/ic/appcat/tools.svg',
         ),
       ],
     ];
