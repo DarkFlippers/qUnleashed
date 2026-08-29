@@ -22,12 +22,6 @@ class NestedNonceParser {
 
   static final RegExp _whitespace = RegExp(r'\s+');
 
-  /// MIFARE Classic tops out at 40 sectors (4K), so a line claiming more is
-  /// corrupt on its face. The bound also keeps a per-card dictionary's one-byte
-  /// key index in range: the device truncates an over-wide entry instead of
-  /// rejecting it, so a bad sector would be read back as an unrelated one.
-  static const _maxSectors = 40;
-
   static NestedNonce? _parseLine(String line) {
     final trimmed = line.trim();
     if (trimmed.isEmpty) return null;
@@ -38,15 +32,15 @@ class NestedNonceParser {
       fields[tokens[i].toLowerCase()] = tokens[i + 1];
     }
 
+    // A sector no card has is corrupt on its face, and it also breaks the
+    // per-card dictionary's fixed entry width - see `writeCuidDictEntry`.
     final sector = int.tryParse(fields['sec'] ?? '');
     final keyType = _parseKeyType(fields['key']);
-    final cuid = _parseHex(fields['cuid']);
-    if (sector == null || sector < 0 || sector >= _maxSectors) return null;
-    if (keyType == null) return null;
-    // The cuid names the on-device `mf_classic_dict_<cuid>.nfc`. A value that
-    // wrapped past 32 bits would be written to a path the firmware never looks
-    // for, and would reach the native side truncated to a different card.
-    if (cuid == null || cuid < 0 || cuid > 0xFFFFFFFF) return null;
+    final cuid = _parseWord32(fields['cuid']);
+    if (sector == null || sector < 0 || sector >= mifareClassicMaxSectors) {
+      return null;
+    }
+    if (keyType == null || cuid == null) return null;
 
     final samples = <NestedSample>[];
     for (var index = 0; index < 2; index++) {
@@ -74,12 +68,9 @@ class NestedNonceParser {
   }
 
   static NestedSample? _parseSample(Map<String, String> fields, int index) {
-    final nt = _parseHex(fields['nt$index']);
-    final ks = _parseHex(fields['ks$index']);
+    final nt = _parseWord32(fields['nt$index']);
+    final ks = _parseWord32(fields['ks$index']);
     if (nt == null || ks == null) return null;
-    // int.tryParse(radix: 16) wraps a 16-hex-digit value to a negative int, so
-    // guard both ends to keep nt/ks within an unsigned 32-bit word.
-    if (nt < 0 || nt > 0xFFFFFFFF || ks < 0 || ks > 0xFFFFFFFF) return null;
     return NestedSample(
       nt: nt,
       ks: ks,
@@ -98,8 +89,14 @@ class NestedNonceParser {
     }
   }
 
-  static int? _parseHex(String? value) =>
-      value == null ? null : int.tryParse(value, radix: 16);
+  /// Parses a hex field, rejecting anything outside an unsigned 32-bit word:
+  /// `int.tryParse(radix: 16)` accepts a leading `-` and wraps a 16-digit value
+  /// to a negative int, so both ends have to be bounded.
+  static int? _parseWord32(String? value) {
+    final parsed = value == null ? null : int.tryParse(value, radix: 16);
+    if (parsed == null || parsed < 0 || parsed > 0xFFFFFFFF) return null;
+    return parsed;
+  }
 
   static int _parseBinary(String? value) =>
       value == null ? 0 : (int.tryParse(value, radix: 2) ?? 0);

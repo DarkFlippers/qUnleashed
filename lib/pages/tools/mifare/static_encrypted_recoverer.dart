@@ -1,11 +1,11 @@
-import 'dart:convert';
+import 'dart:collection';
 import 'dart:ffi';
 import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
-import 'mfkey32_models.dart';
+import 'cuid_dict_format.dart';
 import 'mifare_native.dart';
 import 'nested_models.dart';
 
@@ -13,10 +13,9 @@ import 'nested_models.dart';
 /// path. A single nonce under-constrains the key (tens of thousands of
 /// candidates), so these must be verified against the tag on the device.
 ///
-/// The keys are serialized to [body] (newline-joined `formatCuidDictEntry`
-/// lines, ready to write to `mf_classic_dict_<cuid>.nfc`) inside the worker
-/// isolate — returning the raw strings would copy every entry across the
-/// isolate boundary for data that is only ever written and discarded.
+/// The keys are serialized to [body] (`writeCuidDictEntry` lines, ready to
+/// write to `mf_classic_dict_<cuid>.nfc`) inside the worker isolate, so that
+/// formatting millions of entries never runs on the UI isolate.
 ///
 /// [count] is the number of entries in [body], not of distinct keys: one key
 /// value recovered for two different sector keys is two entries, since the
@@ -123,44 +122,47 @@ class NativeStaticEncryptedRecoverer implements StaticEncryptedRecoverer {
     final countA = calloc<Uint32>();
     final countB = calloc<Uint32>();
     try {
-      // cuid -> sector -> {isKeyA -> payload}
-      final grouped = <int, Map<int, Map<bool, _NoncePayload>>>{};
+      // cuid -> sector -> {isKeyA -> payload}. Sectors are held in ascending
+      // order so the file reads the way the firmware walks its key indices
+      // (`current_key_idx++`, sector = index / 2). It rewinds and filters on
+      // the index at every step, so that buys a deterministic file, not
+      // correctness.
+      final grouped = <int, SplayTreeMap<int, Map<bool, _NoncePayload>>>{};
       for (final s in singles) {
         grouped
-                .putIfAbsent(s.cuid, () => {})
+                .putIfAbsent(s.cuid, SplayTreeMap.new)
                 .putIfAbsent(s.sector, () => {})[s.isKeyA] =
             s;
       }
 
       final results = <StaticCandidateDict>[];
       grouped.forEach((cuid, sectors) {
-        final entries = StringBuffer();
+        // Entries go straight to bytes: at millions of candidates a String
+        // body would cost an extra copy plus the encoder's 3x scratch buffer,
+        // which is enough to exhaust a mobile isolate's heap on a full 4K card.
+        final body = BytesBuilder(copy: false);
         var count = 0;
         // `keys` is a view over the native output buffer, not a copy, and the
         // next sector's call overwrites it — so each batch has to be drained
         // here, before the loop comes round again.
         void emit(_NoncePayload nonce, Uint64List keys) {
-          for (final key in keys) {
-            entries.writeln(
-              formatCuidDictEntry(
-                sector: nonce.sector,
-                isKeyA: nonce.isKeyA,
-                key: key,
-              ),
+          final chunk = Uint8List(keys.length * cuidDictEntryBytes);
+          for (var i = 0; i < keys.length; i++) {
+            writeCuidDictEntry(
+              chunk,
+              i * cuidDictEntryBytes,
+              sector: nonce.sector,
+              isKeyA: nonce.isKeyA,
+              key: keys[i],
             );
           }
+          body.add(chunk);
           count += keys.length;
         }
 
-        // Sorted so the file reads in the order the firmware walks its key
-        // indices (`current_key_idx++`, sector = index / 2). It rewinds and
-        // filters on the index at every step, so this buys a deterministic
-        // file, not correctness.
-        final orderedSectors = sectors.keys.toList()..sort();
-        for (final sector in orderedSectors) {
-          final keys = sectors[sector]!;
-          final a = keys[true];
-          final b = keys[false];
+        for (final pair in sectors.values) {
+          final a = pair[true];
+          final b = pair[false];
           if (a != null && b != null) {
             reduceFn(
               cuid,
@@ -186,11 +188,7 @@ class NativeStaticEncryptedRecoverer implements StaticEncryptedRecoverer {
           }
         }
         results.add(
-          StaticCandidateDict(
-            cuid: cuid,
-            count: count,
-            body: utf8.encode(entries.toString()),
-          ),
+          StaticCandidateDict(cuid: cuid, count: count, body: body.takeBytes()),
         );
       });
       return results;

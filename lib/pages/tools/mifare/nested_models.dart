@@ -11,6 +11,10 @@
 ///     tag on the device (handled by a later step).
 library;
 
+/// MIFARE Classic tops out at 40 sectors (4K) - the firmware's
+/// `MF_CLASSIC_TOTAL_SECTORS_MAX`.
+const mifareClassicMaxSectors = 40;
+
 enum NestedKeyType { a, b }
 
 enum NestedAttackKind {
@@ -48,6 +52,11 @@ class NestedNonce {
          samples.isNotEmpty && samples.length <= 2,
          'a nested line carries one or two samples',
        ),
+       assert(
+         sector >= 0 && sector < mifareClassicMaxSectors,
+         'sector is a MIFARE Classic sector',
+       ),
+       assert(cuid >= 0 && cuid <= 0xFFFFFFFF, 'cuid is a 32-bit word'),
        samples = List.unmodifiable(samples);
 
   final int sector;

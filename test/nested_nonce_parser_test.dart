@@ -108,12 +108,8 @@ Sec 1 key B cuid 5bcbb2e4 nt0 d7707ed1 ks0 65bc542b par0 0110 dist 0
     });
 
     test('drops a line whose sector is outside MIFARE Classic 4K', () {
-      // No card has a sector past 39, so such a line is corrupt on its face.
-      // It is also the input that breaks the candidate dictionary's fixed
-      // width: 40-127 render a well-formed entry under a key index the device
-      // never reaches, 128 and up render a 15-char line the device truncates
-      // onto an unrelated index, and a negative sector renders a non-hex index
-      // byte the on-device parser does not validate.
+      // No card has a sector past 39, and out-of-range values also break the
+      // candidate dictionary's fixed entry width - see `writeCuidDictEntry`.
       const file = '''
 Sec 40 key A cuid 5bcbb2e4 nt0 a0bbe1ef ks0 c70d97e3 par0 1110 dist 0
 Sec 128 key B cuid 5bcbb2e4 nt0 a0bbe1ef ks0 c70d97e3 par0 1110 dist 0
@@ -126,9 +122,8 @@ Sec 39 key B cuid 5bcbb2e4 nt0 d7707ed1 ks0 65bc542b par0 0110 dist 0
     });
 
     test('drops a line whose cuid is not a 32-bit word', () {
-      // The cuid names the on-device dictionary file, and int.tryParse would
-      // happily take a 16-hex-digit value (wrapping it negative) - which would
-      // be written to a path the firmware never opens.
+      // The cuid names the on-device dictionary file, and a 16-hex-digit value
+      // wraps negative - a path the firmware never opens.
       const file = '''
 Sec 0 key A cuid 15bcbb2e4 nt0 a0bbe1ef ks0 c70d97e3 par0 1110 dist 0
 Sec 1 key B cuid 5bcbb2e4 nt0 d7707ed1 ks0 65bc542b par0 0110 dist 0

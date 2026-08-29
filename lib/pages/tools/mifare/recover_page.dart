@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../components/dialogs/confirm.dart';
 import '../../../components/progress_button.dart';
 import '../../../theme/theme.dart';
-import 'existed_keys_storage.dart';
+import 'cuid_dict_format.dart';
 import 'recover_controller.dart';
 import 'recover_models.dart';
 
@@ -213,8 +213,7 @@ class _EntryRow extends StatelessWidget {
       // isNew is decided at recovery time, so this tag is already correct while
       // the run is still in progress - not only in the final summary.
       final tag = entry.isNew == false ? 'already in dict' : 'new';
-      line =
-          '${where ?? ''} — ${entry.key}  [${_kindLabel(entry.kind)}, $tag]';
+      line = '${where ?? ''} — ${entry.key}  [${_kindLabel(entry.kind)}, $tag]';
     } else if (entry.candidateCount != null) {
       line =
           '${entry.candidateCount} candidate keys → ${cuidDictFileName(entry.cuid)}';

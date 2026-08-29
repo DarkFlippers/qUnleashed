@@ -1,5 +1,7 @@
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
-import 'package:qunleashed/pages/tools/mifare/mfkey32_models.dart';
+import 'package:qunleashed/pages/tools/mifare/cuid_dict_format.dart';
 
 void main() {
   group('formatCuidDictEntry', () {
@@ -35,13 +37,17 @@ void main() {
       );
     });
 
-    test('an out-of-range sector or key asserts (a caller bug, not data)', () {
-      // padLeft pads but never truncates, so either would widen the line past
-      // 14 - and the on-device reader truncates an over-wide line onto an
-      // unrelated key index instead of dropping it. The parser bounds both;
-      // these pin the contract at the point that depends on it.
+    test('an index or key too wide for the entry asserts (a caller bug)', () {
+      // Either would widen the line past 14, and the on-device reader truncates
+      // an over-wide line onto an unrelated key index instead of dropping it.
+      // Only the width is this function's to guard - that a card has no sector
+      // 40 is the parser's rule, and sector 40 still renders a valid entry.
       expect(
-        () => formatCuidDictEntry(sector: 40, isKeyA: true, key: 0x1),
+        formatCuidDictEntry(sector: 40, isKeyA: true, key: 0x1),
+        '50000000000001',
+      );
+      expect(
+        () => formatCuidDictEntry(sector: 128, isKeyA: true, key: 0x1),
         throwsA(isA<AssertionError>()),
       );
       expect(
@@ -49,7 +55,8 @@ void main() {
         throwsA(isA<AssertionError>()),
       );
       expect(
-        () => formatCuidDictEntry(sector: 0, isKeyA: true, key: 0x1FFFFFFFFFFFF),
+        () =>
+            formatCuidDictEntry(sector: 0, isKeyA: true, key: 0x1FFFFFFFFFFFF),
         throwsA(isA<AssertionError>()),
       );
     });
@@ -59,6 +66,25 @@ void main() {
         formatCuidDictEntry(sector: 10, isKeyA: true, key: 0x1),
         '14000000000001',
       );
+    });
+  });
+
+  group('writeCuidDictEntry', () {
+    test('writes 15 bytes at an offset: the entry plus its newline', () {
+      // How the isolate uses it - entries packed back to back into one chunk.
+      final out = Uint8List(2 * cuidDictEntryBytes);
+      writeCuidDictEntry(out, 0, sector: 0, isKeyA: true, key: 0xA0A1A2A3A4A5);
+      writeCuidDictEntry(
+        out,
+        cuidDictEntryBytes,
+        sector: 3,
+        isKeyA: false,
+        key: 0x112233445566,
+      );
+      expect(String.fromCharCodes(out, 0, 14), '00A0A1A2A3A4A5');
+      expect(out[14], 0x0A);
+      expect(String.fromCharCodes(out, 15, 29), '07112233445566');
+      expect(out[29], 0x0A);
     });
   });
 }
