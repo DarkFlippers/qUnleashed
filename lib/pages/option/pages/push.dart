@@ -123,7 +123,8 @@ class _NotificationsSettingsPageState extends State<NotificationsSettingsPage> {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final supported = PushService.isSupported;
+    final unavailable = PushService.isUnavailable;
+    final supported = PushService.isSupported && !unavailable;
     return Scaffold(
       backgroundColor: colors.background,
       appBar: AppBar(
@@ -138,7 +139,10 @@ class _NotificationsSettingsPageState extends State<NotificationsSettingsPage> {
             Padding(
               padding: const EdgeInsets.fromLTRB(26, 0, 26, 8),
               child: Text(
-                'Push notifications are not available on this platform.',
+                unavailable
+                    ? 'This build is not signed for push notifications, '
+                          'nothing will arrive.'
+                    : 'Push notifications are not available on this platform.',
                 style: TextStyle(fontSize: 12.5, color: colors.textMuted),
               ),
             ),

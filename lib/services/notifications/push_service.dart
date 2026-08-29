@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../logging.dart';
 import 'firebase_options.dart';
 import 'notification_center.dart';
 
@@ -34,31 +35,40 @@ class PushService {
   static const _androidChannelId = 'firmware_updates';
 
   bool _started = false;
+  static bool _unavailable = false;
 
   static bool get isSupported =>
       !kIsWeb && (Platform.isAndroid || Platform.isIOS || Platform.isMacOS);
+
+  static bool get isUnavailable => _unavailable;
 
   Future<void> start() async {
     if (_started || !isSupported) return;
     _started = true;
 
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
+    try {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
 
-    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+      FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
-    await NotificationCenter.instance.initialize();
-    await _ensureAndroidChannel();
+      await NotificationCenter.instance.initialize();
+      await _ensureAndroidChannel();
 
-    final messaging = FirebaseMessaging.instance;
-    await messaging.requestPermission(alert: true, badge: false, sound: true);
+      final messaging = FirebaseMessaging.instance;
+      await messaging.requestPermission(alert: true, badge: false, sound: true);
 
-    await messaging.setForegroundNotificationPresentationOptions(
-      alert: true,
-      badge: false,
-      sound: true,
-    );
+      await messaging.setForegroundNotificationPresentationOptions(
+        alert: true,
+        badge: false,
+        sound: true,
+      );
+    } catch (error) {
+      _unavailable = true;
+      LogService.log('Push notifications unavailable in this build: $error');
+      return;
+    }
 
     await _applySubscriptions();
 
@@ -73,7 +83,7 @@ class PushService {
   Future<void> setAppReleasesEnabled(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_prefAppReleases, enabled);
-    if (isSupported) await _applySubscriptions();
+    if (isSupported && !_unavailable) await _applySubscriptions();
   }
 
   Future<bool> isAppDevEnabled() async {
@@ -84,7 +94,7 @@ class PushService {
   Future<void> setAppDevEnabled(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_prefAppDev, enabled);
-    if (isSupported) await _applySubscriptions();
+    if (isSupported && !_unavailable) await _applySubscriptions();
   }
 
   Future<bool> isFirmwareReleasesEnabled() async {
@@ -95,7 +105,7 @@ class PushService {
   Future<void> setFirmwareReleasesEnabled(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_prefEnabled, enabled);
-    if (isSupported) await _applySubscriptions();
+    if (isSupported && !_unavailable) await _applySubscriptions();
   }
 
   Future<bool> isFirmwareDevEnabled() async {
@@ -106,7 +116,7 @@ class PushService {
   Future<void> setFirmwareDevEnabled(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_prefDevUpdates, enabled);
-    if (isSupported) await _applySubscriptions();
+    if (isSupported && !_unavailable) await _applySubscriptions();
   }
 
   Future<void> _applySubscriptions() async {
