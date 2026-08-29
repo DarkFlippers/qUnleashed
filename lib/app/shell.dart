@@ -78,14 +78,11 @@ class _AppShellState extends State<AppShell> {
       child: ListenableBuilder(
         listenable: _ctrl,
         builder: (context, _) {
-          final iconAsset = _deviceIconAsset();
           return FlipperRootScaffold(
             currentTab: _tabOf(slot),
             onTabSelected: (tab) => _select(_slotOfTab(tab)),
-            deviceIconAsset: iconAsset,
             deviceLabel: _deviceLabel(),
-            deviceSyncing: iconAsset == _syncIcon,
-            railGroups: _railGroups(colors, slot, iconAsset),
+            railGroups: _railGroups(colors, slot),
             child: IndexedStack(
               index: slot,
               children: [for (var i = 0; i < _slotCount; i++) _page(i, wide)],
@@ -158,25 +155,15 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
-  List<List<FlipperRailItem>> _railGroups(
-    QAppColors colors,
-    int slot,
-    String deviceIcon,
-  ) {
+  List<List<FlipperRailItem>> _railGroups(QAppColors colors, int slot) {
     return [
       [
-        FlipperRailItem(
-          icon: SizedBox(
-            width: 42,
-            height: 24,
-            child: DeviceStatusIcon(
-              asset: deviceIcon,
-              syncing: deviceIcon == _syncIcon,
-            ),
-          ),
-          color: colors.accent,
-          selected: slot == _slotDevice,
-          onTap: () => _select(_slotDevice),
+        _railItem(
+          colors,
+          slot,
+          _slotDevice,
+          colors.accent,
+          asset: 'assets/ic/device/flipper.svg',
         ),
       ],
       [
@@ -248,38 +235,6 @@ class _AppShellState extends State<AppShell> {
       onTap: () => _select(target),
     );
   }
-
-  static const _syncIcon = 'assets/ic/connect/sync.svg';
-
-  String _deviceIconAsset() {
-    switch (_ctrl.connectionState) {
-      case DeviceConnectionState.disconnected:
-        return _ctrl.device != null
-            ? 'assets/ic/connect/disconnected.svg'
-            : 'assets/ic/connect/missing.svg';
-      case DeviceConnectionState.connecting:
-      case DeviceConnectionState.recovering:
-        return _syncIcon;
-      case DeviceConnectionState.dfu:
-        return 'assets/ic/connect/disconnected.svg';
-      case DeviceConnectionState.connected:
-        if (_ctrl.deviceLoading) return _syncIcon;
-        switch (_syncStatus) {
-          case ArchiveSyncStatus.syncing:
-            return _syncIcon;
-          case ArchiveSyncStatus.synced:
-            return _ctrl.deviceInfoConnected
-                ? _transportIcon()
-                : 'assets/ic/connect/synced.svg';
-          case ArchiveSyncStatus.idle:
-            return _transportIcon();
-        }
-    }
-  }
-
-  String _transportIcon() => _ctrl.device?.isBle == true
-      ? 'assets/ic/connect/ble.svg'
-      : 'assets/ic/connect/usb.svg';
 
   String _deviceLabel() {
     switch (_ctrl.connectionState) {

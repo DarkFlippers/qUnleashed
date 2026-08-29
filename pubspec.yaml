@@ -75,7 +75,6 @@ flutter:
     - assets/ic/action/
     - assets/ic/appcat/
     - assets/ic/app/
-    - assets/ic/connect/
     - assets/ic/control/
     - assets/ic/control/hint/
     - assets/ic/device/
