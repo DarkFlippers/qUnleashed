@@ -15,9 +15,13 @@ import 'nested_models.dart';
 ///
 /// The keys are serialized to [body] (newline-joined `formatCuidDictEntry`
 /// lines, ready to write to `mf_classic_dict_<cuid>.nfc`) inside the worker
-/// isolate — returning the raw strings would copy up to ~1M entries across the
-/// isolate boundary for data that is only ever written and discarded. [count]
-/// is 0 when generation produced no candidates (e.g. an allocation failure), in
+/// isolate — returning the raw strings would copy every entry across the
+/// isolate boundary for data that is only ever written and discarded.
+///
+/// [count] is the number of entries in [body], not of distinct keys: one key
+/// value recovered for two different sector keys is two entries, since the
+/// device only tries a candidate against the key index it is filed under. It is
+/// 0 only when no sector yielded a candidate (e.g. an allocation failure), in
 /// which case [body] is empty and nothing should be written.
 class StaticCandidateDict {
   const StaticCandidateDict({
@@ -130,11 +134,11 @@ class NativeStaticEncryptedRecoverer implements StaticEncryptedRecoverer {
 
       final results = <StaticCandidateDict>[];
       grouped.forEach((cuid, sectors) {
-        // Serialized as it is generated: only a flat byte buffer then crosses
-        // the isolate boundary, and each batch of candidates is consumed before
-        // the next sector overwrites the shared native buffer behind it.
         final entries = StringBuffer();
         var count = 0;
+        // `keys` is a view over the native output buffer, not a copy, and the
+        // next sector's call overwrites it — so each batch has to be drained
+        // here, before the loop comes round again.
         void emit(_NoncePayload nonce, Uint64List keys) {
           for (final key in keys) {
             entries.writeln(
@@ -148,8 +152,10 @@ class NativeStaticEncryptedRecoverer implements StaticEncryptedRecoverer {
           count += keys.length;
         }
 
-        // Ascending sector, key A before key B — the order the firmware walks
-        // its key indices in.
+        // Sorted so the file reads in the order the firmware walks its key
+        // indices (`current_key_idx++`, sector = index / 2). It rewinds and
+        // filters on the index at every step, so this buys a deterministic
+        // file, not correctness.
         final orderedSectors = sectors.keys.toList()..sort();
         for (final sector in orderedSectors) {
           final keys = sectors[sector]!;

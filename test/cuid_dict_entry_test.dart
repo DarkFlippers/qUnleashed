@@ -28,10 +28,29 @@ void main() {
     });
 
     test('the highest MIFARE Classic 4K index still fits one byte', () {
-      // Sector 39 key B - the last index the firmware can address.
+      // Sector 39 key B - the last index a 4K card's dictionary walk reaches.
       expect(
         formatCuidDictEntry(sector: 39, isKeyA: false, key: 0xFFFFFFFFFFFF),
         '4FFFFFFFFFFFFF',
+      );
+    });
+
+    test('an out-of-range sector or key asserts (a caller bug, not data)', () {
+      // padLeft pads but never truncates, so either would widen the line past
+      // 14 - and the on-device reader truncates an over-wide line onto an
+      // unrelated key index instead of dropping it. The parser bounds both;
+      // these pin the contract at the point that depends on it.
+      expect(
+        () => formatCuidDictEntry(sector: 40, isKeyA: true, key: 0x1),
+        throwsA(isA<AssertionError>()),
+      );
+      expect(
+        () => formatCuidDictEntry(sector: -1, isKeyA: true, key: 0x1),
+        throwsA(isA<AssertionError>()),
+      );
+      expect(
+        () => formatCuidDictEntry(sector: 0, isKeyA: true, key: 0x1FFFFFFFFFFFF),
+        throwsA(isA<AssertionError>()),
       );
     });
 

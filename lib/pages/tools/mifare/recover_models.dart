@@ -54,7 +54,9 @@ class RecoverEntry {
   /// the final summary.
   final bool? isNew;
 
-  /// Static-encrypted: number of candidate keys written to `mf_classic_dict_<cuid>.nfc`.
+  /// Static-encrypted: number of candidate entries written to
+  /// `mf_classic_dict_<cuid>.nfc`. One entry per (sector key, candidate), so a
+  /// key value recovered for two sector keys is counted twice.
   final int? candidateCount;
 
   /// Extra context (e.g. "too few nonces — collect more", or a write failure).

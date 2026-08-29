@@ -22,9 +22,10 @@ class NestedNonceParser {
 
   static final RegExp _whitespace = RegExp(r'\s+');
 
-  /// MIFARE Classic tops out at 40 sectors (4K). The firmware also files a
-  /// candidate under a one-byte key index derived from the sector, so a line
-  /// claiming a larger sector is corrupt and would alias onto a real one.
+  /// MIFARE Classic tops out at 40 sectors (4K), so a line claiming more is
+  /// corrupt on its face. The bound also keeps a per-card dictionary's one-byte
+  /// key index in range: the device truncates an over-wide entry instead of
+  /// rejecting it, so a bad sector would be read back as an unrelated one.
   static const _maxSectors = 40;
 
   static NestedNonce? _parseLine(String line) {
@@ -41,7 +42,11 @@ class NestedNonceParser {
     final keyType = _parseKeyType(fields['key']);
     final cuid = _parseHex(fields['cuid']);
     if (sector == null || sector < 0 || sector >= _maxSectors) return null;
-    if (keyType == null || cuid == null) return null;
+    if (keyType == null) return null;
+    // The cuid names the on-device `mf_classic_dict_<cuid>.nfc`. A value that
+    // wrapped past 32 bits would be written to a path the firmware never looks
+    // for, and would reach the native side truncated to a different card.
+    if (cuid == null || cuid < 0 || cuid > 0xFFFFFFFF) return null;
 
     final samples = <NestedSample>[];
     for (var index = 0; index < 2; index++) {

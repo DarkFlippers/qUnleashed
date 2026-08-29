@@ -38,14 +38,21 @@ String formatCuid(int cuid) => cuid.toRadixString(16).padLeft(8, '0');
 /// one-byte key index ahead of the 6-byte [key]. The index is `sector * 2` for
 /// key A and one more for key B, and a candidate is only ever tried against the
 /// one (sector, key type) it names — so which key the candidate belongs to has
-/// to travel with it. Lines that aren't exactly 14 digits are skipped by the
-/// on-device reader, which leaves a dictionary of bare 12-digit keys looking
-/// empty.
+/// to travel with it.
+///
+/// The width is not self-policing. `keys_dict_read_key_line` cuts every line
+/// down to 14 characters *before* checking that it is 14, so a short line is
+/// dropped — which is why a dictionary of bare 12-digit keys reads as empty --
+/// but an over-wide one is accepted with its tail cut off and lands on an
+/// unrelated key index. The asserts hold both operands to the widths that make
+/// this exactly 14.
 String formatCuidDictEntry({
   required int sector,
   required bool isKeyA,
   required int key,
 }) {
+  assert(sector >= 0 && sector < 40, 'sector is a MIFARE Classic sector');
+  assert(key >= 0 && key <= 0xFFFFFFFFFFFF, 'key is a 48-bit value');
   final keyIndex = sector * 2 + (isKeyA ? 0 : 1);
   return '${keyIndex.toRadixString(16).padLeft(2, '0').toUpperCase()}'
       '${formatMifareKey(key)}';
