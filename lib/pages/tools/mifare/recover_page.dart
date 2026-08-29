@@ -219,7 +219,7 @@ class _EntryRow extends StatelessWidget {
       // the run is still in progress - not only in the final summary.
       final tag = entry.isNew == false ? 'already in dict' : 'new';
       line = '${where ?? ''} — ${entry.key}  [${_kindLabel(entry.kind)}, $tag]';
-    } else if (entry.candidateCount != null) {
+    } else if (entry.candidateCount != null && entry.cuid != null) {
       line =
           '${entry.candidateCount} candidate keys → '
           '${cuidDictFileName(entry.cuid!)}';

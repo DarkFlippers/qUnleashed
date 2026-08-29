@@ -98,9 +98,8 @@ class CuidDictBody {
   final List<String> cappedKeys;
 
   /// Number of entries in [bytes], not of distinct keys: one key value
-  /// recovered for two different sector keys is two entries, because the device
-  /// only tries a candidate against the key index it is filed under. Derived,
-  /// so it cannot drift from what was actually written.
+  /// recovered for two different sector keys is two entries — see
+  /// [writeCuidDictEntry]. Derived, so it cannot drift from what was written.
   int get entries => bytes.length ~/ cuidDictEntryBytes;
 
   bool get isEmpty => bytes.isEmpty;
@@ -158,6 +157,10 @@ class CuidDictBuilder {
   /// Takes the finished body. Terminal: [BytesBuilder.takeBytes] empties the
   /// buffer, so a second call would hand back a body that reports gaps it no
   /// longer contains the entries for.
+  ///
+  /// Costs a transient second copy of the body while the per-batch chunks are
+  /// joined, which is harmless: a card big enough for that to matter produces
+  /// more entries than the device could be sent in a usable time anyway.
   CuidDictBody build() {
     if (_built) throw StateError('CuidDictBuilder was already built');
     _built = true;

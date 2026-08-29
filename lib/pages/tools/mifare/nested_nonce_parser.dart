@@ -5,9 +5,6 @@ import 'nested_models.dart';
 /// attacking a subset of the card.
 typedef NestedLog = ({List<NestedNonce> nonces, int droppedLines});
 
-/// The result of parsing nothing at all.
-const NestedLog emptyNestedLog = (nonces: <NestedNonce>[], droppedLines: 0);
-
 /// Parser for the Flipper `.nested.log` format. Each record is a single line;
 /// two-sample (weak-nested) lines just carry more fields:
 ///
@@ -23,7 +20,8 @@ class NestedNonceParser {
   static NestedLog parse(String text) {
     final lines = text
         .split('\n')
-        .where((line) => line.trim().isNotEmpty)
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
         .toList(growable: false);
     final nonces = lines
         .map(_parseLine)
@@ -34,8 +32,11 @@ class NestedNonceParser {
 
   static final RegExp _whitespace = RegExp(r'\s+');
 
+  /// int.tryParse(radix: 2) would also accept `+101` and a leading minus.
+  static final RegExp _parityDigits = RegExp(r'^[01]{4}$');
+
   static NestedNonce? _parseLine(String line) {
-    final tokens = line.trim().split(_whitespace);
+    final tokens = line.split(_whitespace);
     final fields = <String, String>{};
     for (var i = 0; i + 1 < tokens.length; i += 2) {
       fields[tokens[i].toLowerCase()] = tokens[i + 1];
@@ -99,13 +100,10 @@ class NestedNonceParser {
     }
   }
 
-  /// Parses a hex field, rejecting anything outside an unsigned 32-bit word:
-  /// `int.tryParse(radix: 16)` accepts a leading `-` and wraps a 16-digit value
-  /// to a negative int, so both ends have to be bounded.
+  /// Parses a hex field, rejecting anything outside an unsigned 32-bit word.
   static int? _parseWord32(String? value) {
     final parsed = value == null ? null : int.tryParse(value, radix: 16);
-    if (parsed == null || parsed < 0 || parsed > 0xFFFFFFFF) return null;
-    return parsed;
+    return parsed != null && isWord32(parsed) ? parsed : null;
   }
 
   /// Parses the four parity bits, which the firmware always writes as exactly
@@ -120,7 +118,4 @@ class NestedNonceParser {
     if (value == null || !_parityDigits.hasMatch(value)) return null;
     return int.parse(value, radix: 2);
   }
-
-  /// int.tryParse(radix: 2) would also accept `+101` and a leading minus.
-  static final RegExp _parityDigits = RegExp(r'^[01]{4}$');
 }

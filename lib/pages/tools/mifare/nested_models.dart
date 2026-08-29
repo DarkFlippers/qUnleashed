@@ -15,6 +15,11 @@ library;
 /// `MF_CLASSIC_TOTAL_SECTORS_MAX` (`mf_classic.h:27`).
 const mifareClassicMaxSectors = 40;
 
+/// Whether [value] fits an unsigned 32-bit word. `int.tryParse(radix: 16)`
+/// accepts a leading `-` and wraps a 16-digit value negative, so every field
+/// read out of a device log has to be bounded at both ends.
+bool isWord32(int value) => value >= 0 && value <= 0xFFFFFFFF;
+
 /// Whether [sector] is one a MIFARE Classic card can actually have. One
 /// spelling of the bound, so the parser and the model cannot drift apart.
 bool isMifareSector(int sector) =>
@@ -32,6 +37,8 @@ enum NestedAttackKind {
 
 class NestedSample {
   const NestedSample({required this.nt, required this.ks, required this.par})
+    // Spelled out rather than via isWord32: a const constructor's asserts have
+    // to be const-evaluable, so they cannot call it.
     : assert(nt >= 0 && nt <= 0xFFFFFFFF, 'nt is a 32-bit word'),
       assert(ks >= 0 && ks <= 0xFFFFFFFF, 'ks is a 32-bit word'),
       assert(par == null || (par >= 0 && par <= 0xF), 'par is four bits');
@@ -48,8 +55,7 @@ class NestedSample {
   /// Only the single-sample attacks read it: static-encrypted uses the low bit
   /// to halve the candidate set, and hardnested consumes the whole nibble. A
   /// weak-nested pair recovers from `nt`/`ks` alone and verifies itself against
-  /// its second sample, so it does not need parity at all — which is why the
-  /// parser keeps such a line and drops a lone sample without one.
+  /// its second sample, so it does not need parity at all.
   final int? par;
 }
 
@@ -65,7 +71,7 @@ class NestedNonce {
          'a nested line carries one or two samples',
        ),
        assert(isMifareSector(sector), 'sector is a MIFARE Classic sector'),
-       assert(cuid >= 0 && cuid <= 0xFFFFFFFF, 'cuid is a 32-bit word'),
+       assert(isWord32(cuid), 'cuid is a 32-bit word'),
        samples = List.unmodifiable(samples);
 
   final int sector;

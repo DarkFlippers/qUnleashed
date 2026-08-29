@@ -20,11 +20,10 @@ import 'nested_models.dart';
 /// one card failed, in which case [error] says why; the other cards in the same
 /// run still get their dictionaries.
 class StaticCandidateDict {
-  const StaticCandidateDict({required this.cuid, this.body, this.error})
-    : assert(
-        (body == null) != (error == null),
-        'a card has either a dictionary or a reason it has none',
-      );
+  const StaticCandidateDict.built(this.cuid, CuidDictBody this.body)
+    : error = null;
+
+  const StaticCandidateDict.failed(this.cuid, Object this.error) : body = null;
 
   final int cuid;
   final CuidDictBody? body;
@@ -100,33 +99,33 @@ List<StaticCandidateDict> buildStaticDicts(
   final results = <StaticCandidateDict>[];
   grouped.forEach((cuid, sectors) {
     final builder = CuidDictBuilder();
-    void emit(StaticNonce nonce, Uint64List keys, {required bool capped}) =>
+    void emit(StaticNonce nonce, Uint64List keys, {required bool atCapacity}) =>
         builder.add(
           sector: nonce.sector,
           isKeyA: nonce.isKeyA,
           keys: keys,
-          atCapacity: capped,
+          atCapacity: atCapacity,
         );
 
     try {
-      for (final pair in sectors.values) {
-        final a = pair[true];
-        final b = pair[false];
+      for (final bySide in sectors.values) {
+        final a = bySide[true];
+        final b = bySide[false];
         if (a != null && b != null) {
           final solved = solvePair(cuid, a, b);
           // A truncated enumeration on either key poisons the other's
           // cross-filter, so the flag applies to both.
-          emit(a, solved.keyA, capped: solved.atCapacity);
-          emit(b, solved.keyB, capped: solved.atCapacity);
+          emit(a, solved.keyA, atCapacity: solved.atCapacity);
+          emit(b, solved.keyB, atCapacity: solved.atCapacity);
         } else {
           final one = a ?? b!;
           final solved = solveOne(cuid, one);
-          emit(one, solved.keys, capped: solved.atCapacity);
+          emit(one, solved.keys, atCapacity: solved.atCapacity);
         }
       }
-      results.add(StaticCandidateDict(cuid: cuid, body: builder.build()));
+      results.add(StaticCandidateDict.built(cuid, builder.build()));
     } catch (e) {
-      results.add(StaticCandidateDict(cuid: cuid, error: e));
+      results.add(StaticCandidateDict.failed(cuid, e));
     }
   });
   return results;
@@ -198,14 +197,19 @@ class NativeStaticEncryptedRecoverer implements StaticEncryptedRecoverer {
         )
         .toList(growable: false);
     if (singles.isEmpty) return Future.value(const []);
+    // Isolate.run hands the result back by ownership transfer rather than
+    // copying it, so the assembled bodies cross the boundary for free — a
+    // plain SendPort would deep-copy every byte of them.
     return Isolate.run(() => _buildInIsolate(singles));
   }
 
   static List<StaticCandidateDict> _buildInIsolate(List<StaticNonce> singles) {
+    // openMifareNativeLibrary already reports a missing library as one of
+    // these; a library built without the symbol is just as unusable.
+    final library = openMifareNativeLibrary();
     final _StaticDart staticFn;
     final _ReduceDart reduceFn;
     try {
-      final library = openMifareNativeLibrary();
       staticFn = library.lookupFunction<_StaticNative, _StaticDart>(
         'qunleashed_static_candidates',
       );
@@ -213,24 +217,19 @@ class NativeStaticEncryptedRecoverer implements StaticEncryptedRecoverer {
         'qunleashed_rf08s_reduce_pair',
       );
     } catch (e) {
-      // A missing library or symbol is a packaging fault, not a data one, and
-      // must not reach the user as "this card could not be cracked".
       throw NativeEngineUnavailable(e);
     }
 
-    // Allocated inside the try so a failure part-way through still frees what
-    // was taken: native memory is process-scoped and outlives the isolate.
-    Pointer<Uint64>? outA;
-    Pointer<Uint64>? outB;
-    Pointer<Uint32>? countA;
-    Pointer<Uint32>? countB;
-    Pointer<Uint32>? truncated;
-    try {
-      final bufA = outA = calloc<Uint64>(_capacity);
-      final bufB = outB = calloc<Uint64>(_capacity);
-      final cntA = countA = calloc<Uint32>();
-      final cntB = countB = calloc<Uint32>();
-      final trunc = truncated = calloc<Uint32>();
+    // The arena frees whatever was taken even if allocation fails part-way
+    // through, and native memory is process-scoped: it outlives the isolate,
+    // so leaking it here would survive the run. It allocates through calloc,
+    // so the buffers stay zero-initialised.
+    return using((arena) {
+      final bufA = arena<Uint64>(_capacity);
+      final bufB = arena<Uint64>(_capacity);
+      final cntA = arena<Uint32>();
+      final cntB = arena<Uint32>();
+      final trunc = arena<Uint32>();
       return buildStaticDicts(
         singles,
         solvePair: (cuid, a, b) {
@@ -263,12 +262,6 @@ class NativeStaticEncryptedRecoverer implements StaticEncryptedRecoverer {
           return (keys: bufA.asTypedList(n), atCapacity: n >= _capacity);
         },
       );
-    } finally {
-      if (outA != null) calloc.free(outA);
-      if (outB != null) calloc.free(outB);
-      if (countA != null) calloc.free(countA);
-      if (countB != null) calloc.free(countB);
-      if (truncated != null) calloc.free(truncated);
-    }
+    });
   }
 }

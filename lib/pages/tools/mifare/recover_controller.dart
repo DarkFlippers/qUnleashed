@@ -197,9 +197,7 @@ class RecoverController extends ChangeNotifier {
     final readerNonces = readerText == null
         ? const <MfKey32Nonce>[]
         : dedupeReaderNonces(KeyNonceParser.parse(readerText));
-    final tagLog = tagText == null
-        ? emptyNestedLog
-        : NestedNonceParser.parse(tagText);
+    final tagLog = NestedNonceParser.parse(tagText ?? '');
     final tagNonces = tagLog.nonces;
     if (tagLog.droppedLines > 0) _reportDroppedNonces(tagLog);
     final weak = dedupeWeakNonces(tagNonces.where((n) => n.hasPair));
@@ -318,7 +316,11 @@ class RecoverController extends ChangeNotifier {
       // and carry on to the user-dict upload.
       LogService.error('[Recover] hardnested engine failed: $e\n$st');
       _hadFailure = true;
-      note = 'Hardnested recovery is unavailable on this build.';
+      // Only a load failure means the build is at fault; anything else is this
+      // group failing, and saying otherwise sends the user after the wrong fix.
+      note = e is NativeEngineUnavailable
+          ? 'Hardnested recovery is unavailable on this build.'
+          : 'Hardnested recovery failed for this sector key.';
     }
     _recordKey(
       source: RecoverSource.tag,
@@ -356,6 +358,19 @@ class RecoverController extends ChangeNotifier {
 
   // ---- tag: static-encrypted candidate dictionaries ----
 
+  /// Every static-encrypted row shares its source and kind; only the cuid, the
+  /// count and the note vary, so those are what a reader should see.
+  void _addStaticEntry({int? cuid, int? candidateCount, String? note}) =>
+      _entries.add(
+        RecoverEntry(
+          source: RecoverSource.tag,
+          kind: RecoverKind.staticEncrypted,
+          cuid: cuid,
+          candidateCount: candidateCount,
+          note: note,
+        ),
+      );
+
   Future<void> _recoverStatic(List<NestedNonce> singles) async {
     final List<StaticCandidateDict> dicts;
     try {
@@ -366,13 +381,7 @@ class RecoverController extends ChangeNotifier {
       // Run-level, with no cuid: the throw comes from setting up the engine,
       // not from any one card, and every card in the batch lost its dictionary.
       // Naming the first one would blame a card that was probably fine.
-      _entries.add(
-        RecoverEntry(
-          source: RecoverSource.tag,
-          kind: RecoverKind.staticEncrypted,
-          note: _staticFailureNote(e),
-        ),
-      );
+      _addStaticEntry(note: _staticFailureNote(e));
       _tick();
       return;
     }
@@ -383,29 +392,19 @@ class RecoverController extends ChangeNotifier {
       if (body == null) {
         // This one card failed; the rest of the batch still has dictionaries.
         _hadFailure = true;
-        _entries.add(
-          RecoverEntry(
-            source: RecoverSource.tag,
-            kind: RecoverKind.staticEncrypted,
-            cuid: dict.cuid,
-            note: _staticFailureNote(dict.error!),
-          ),
-        );
+        _addStaticEntry(cuid: dict.cuid, note: _staticFailureNote(dict.error!));
         continue;
       }
       if (body.isEmpty) {
         // Every sector key came back with nothing, so there is no file to
         // write - report which ones rather than a bare "nothing generated".
         _hadFailure = true;
-        _entries.add(
-          RecoverEntry(
-            source: RecoverSource.tag,
-            kind: RecoverKind.staticEncrypted,
-            cuid: dict.cuid,
-            note:
-                'No candidate keys could be generated for '
-                '${_nameKeys(body.skippedKeys)}.',
-          ),
+        _addStaticEntry(
+          cuid: dict.cuid,
+          note:
+              'No candidate keys could be generated for '
+              '${_nameKeys(body.skippedKeys)}, so nothing was written for this '
+              'card. Re-collect those nonces on the device.',
         );
         continue;
       }
@@ -417,27 +416,19 @@ class RecoverController extends ChangeNotifier {
         _hadFailure = true;
         // No candidateCount: that row reads "N candidate keys -> <file>", and
         // there is no file on the device to point at.
-        _entries.add(
-          RecoverEntry(
-            source: RecoverSource.tag,
-            kind: RecoverKind.staticEncrypted,
-            cuid: dict.cuid,
-            note:
-                'Generated ${body.entries} candidates but could not write them '
-                'to the device - check free space and the connection.',
-          ),
+        _addStaticEntry(
+          cuid: dict.cuid,
+          note:
+              'Generated ${body.entries} candidates but could not write them '
+              'to the device - check free space and the connection.',
         );
         continue;
       }
       if (!body.isComplete) _hadFailure = true;
-      _entries.add(
-        RecoverEntry(
-          source: RecoverSource.tag,
-          kind: RecoverKind.staticEncrypted,
-          cuid: dict.cuid,
-          candidateCount: body.entries,
-          note: _dictGapNote(body),
-        ),
+      _addStaticEntry(
+        cuid: dict.cuid,
+        candidateCount: body.entries,
+        note: _dictGapNote(body),
       );
     }
     _tick();
@@ -472,16 +463,14 @@ class RecoverController extends ChangeNotifier {
   /// `ArgumentError` in particular is shared by the FFI allocator, a missing
   /// symbol and a refused dictionary entry, so it cannot name a cause on its
   /// own — which is why the engine lookup raises [NativeEngineUnavailable].
-  static String _staticFailureNote(Object error) {
-    if (error is NativeEngineUnavailable) {
-      return 'Candidate generation is unavailable on this build.';
-    }
-    if (error is OutOfMemoryError) {
-      return 'Not enough memory to build the candidate list for this card - '
-          'collect fewer sectors at a time.';
-    }
-    return 'Candidate generation failed for this card; nothing was written.';
-  }
+  static String _staticFailureNote(Object error) => switch (error) {
+    NativeEngineUnavailable() =>
+      'Candidate generation is unavailable on this build.',
+    OutOfMemoryError() =>
+      'Not enough memory to build the candidate list for this card - '
+          'collect fewer sectors at a time.',
+    _ => 'Candidate generation failed for this card; nothing was written.',
+  };
 
   // ---- helpers ----
 
