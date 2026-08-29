@@ -977,7 +977,9 @@ class _FileManagerPageState extends State<FileManagerPage> {
 
   Future<void> _handleBackButton() async {
     final shouldPop = await _handleBack();
-    if (shouldPop && mounted) Navigator.of(context).pop();
+    if (!shouldPop || !mounted) return;
+    final nav = Navigator.of(context);
+    if (nav.canPop()) nav.pop();
   }
 
   List<Widget> _buildSelectionActions(QAppColors colors) {

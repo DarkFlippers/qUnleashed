@@ -515,6 +515,12 @@ class ArchiveController extends ChangeNotifier {
     await _parseMeta((k) => k.isDeleted);
   }
 
+  /// Parses metadata for every starred key, whatever its category. Backs the
+  /// unified favorites table, built the same way as the deleted one.
+  Future<void> loadMetaForFavorites() async {
+    await _parseMeta((k) => k.favorite);
+  }
+
   Future<void> _parseMetaForCategory(ArchiveCategory cat) =>
       _parseMeta((k) => k.category == cat);
 

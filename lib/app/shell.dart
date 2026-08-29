@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 
 import 'nav_bar.dart';
+import '../components/archive/category.dart';
 import '../pages/apps/catalog/page.dart';
+import '../pages/archive/browser/page.dart';
+import '../pages/archive/overview/category/category_page.dart';
+import '../pages/archive/overview/category/deleted_page.dart';
+import '../pages/archive/overview/category/favorites_page.dart';
 import '../pages/archive/overview/controller.dart';
 import '../pages/archive/overview/page.dart';
 import '../pages/tools/overview/page.dart';
@@ -9,6 +14,7 @@ import '../pages/devices/controllers/device.dart';
 import '../pages/devices/device_scope.dart';
 import '../pages/devices/models/connection_state.dart';
 import '../pages/devices/page.dart';
+import '../theme/theme.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
@@ -18,11 +24,27 @@ class AppShell extends StatefulWidget {
 }
 
 class _AppShellState extends State<AppShell> {
+  // Slots of the shared page stack. The mobile bottom bar reaches device,
+  // archive overview, apps and tools; the desktop rail reaches every slot but
+  // the overview, whose content lives there as separate rail destinations.
+  static const int _slotDevice = 0;
+  static const int _slotArchive = 1;
+  static const int _slotFavorites = 2;
+  static const int _slotFiles = 3;
+  static const int _slotCategory = 4;
+  static final int _slotDeleted = _slotCategory + ArchiveCategory.values.length;
+  static final int _slotApps = _slotDeleted + 1;
+  static final int _slotTools = _slotApps + 1;
+  static final int _slotCount = _slotTools + 1;
+
   final DeviceController _ctrl = DeviceController();
   final ArchiveController _archiveController = ArchiveController();
 
-  FlipperRootTab _tab = FlipperRootTab.device;
-  bool _appsMounted = false;
+  int _slot = _slotDevice;
+
+  /// Slots built so far. Everything the mobile layout used to build eagerly
+  /// stays eager; the rail-only pages mount on first visit.
+  final Set<int> _mounted = <int>{_slotDevice, _slotArchive, _slotTools};
 
   @override
   void initState() {
@@ -46,6 +68,11 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final wide = FlipperRootScaffold.isWide(context);
+    final slot = _visibleSlot(wide);
+    _mounted.add(slot);
+
     return DeviceScope(
       notifier: _ctrl,
       child: ListenableBuilder(
@@ -53,21 +80,15 @@ class _AppShellState extends State<AppShell> {
         builder: (context, _) {
           final iconAsset = _deviceIconAsset();
           return FlipperRootScaffold(
-            currentTab: _tab,
-            onTabSelected: _selectTab,
+            currentTab: _tabOf(slot),
+            onTabSelected: (tab) => _select(_slotOfTab(tab)),
             deviceIconAsset: iconAsset,
             deviceLabel: _deviceLabel(),
             deviceSyncing: iconAsset == _syncIcon,
+            railGroups: _railGroups(colors, slot, iconAsset),
             child: IndexedStack(
-              index: _tab.index,
-              children: [
-                const DeviceTab(),
-                ArchivePage(controller: _archiveController),
-                _appsMounted
-                    ? const AppsCatalogPage()
-                    : const SizedBox.shrink(),
-                const ToolsPage(),
-              ],
+              index: slot,
+              children: [for (var i = 0; i < _slotCount; i++) _page(i, wide)],
             ),
           );
         },
@@ -75,11 +96,161 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
-  void _selectTab(FlipperRootTab tab) {
+  /// Slot actually shown for the current layout. The overview screen is mobile
+  /// only, and the rail-only archive pages have no mobile tab of their own, so
+  /// each layout falls back to its own archive entry point while [_slot] keeps
+  /// the other layout's choice for when the window flips back.
+  int _visibleSlot(bool wide) {
+    if (wide) return _slot == _slotArchive ? _slotFavorites : _slot;
+    return _isArchiveDetail(_slot) ? _slotArchive : _slot;
+  }
+
+  bool _isArchiveDetail(int slot) =>
+      slot >= _slotFavorites && slot <= _slotDeleted;
+
+  void _select(int slot) {
     setState(() {
-      if (tab == FlipperRootTab.apps) _appsMounted = true;
-      _tab = tab;
+      _mounted.add(slot);
+      _slot = slot;
     });
+  }
+
+  FlipperRootTab _tabOf(int slot) {
+    if (slot == _slotDevice) return FlipperRootTab.device;
+    if (slot == _slotApps) return FlipperRootTab.apps;
+    if (slot == _slotTools) return FlipperRootTab.tools;
+    return FlipperRootTab.archive;
+  }
+
+  int _slotOfTab(FlipperRootTab tab) {
+    switch (tab) {
+      case FlipperRootTab.device:
+        return _slotDevice;
+      case FlipperRootTab.archive:
+        return _slotArchive;
+      case FlipperRootTab.apps:
+        return _slotApps;
+      case FlipperRootTab.tools:
+        return _slotTools;
+    }
+  }
+
+  /// Builds one slot. A page belonging to the other layout is left out of the
+  /// stack entirely: the overview screen is mobile only, the rail pages desktop
+  /// only, and an off-layout page would still register its [PopScope] on the
+  /// route and swallow the system back gesture.
+  Widget _page(int slot, bool wide) {
+    if (!_mounted.contains(slot)) return const SizedBox.shrink();
+    if (wide && slot == _slotArchive) return const SizedBox.shrink();
+    if (!wide && _isArchiveDetail(slot)) return const SizedBox.shrink();
+    if (slot == _slotDevice) return const DeviceTab();
+    if (slot == _slotArchive) return ArchivePage(controller: _archiveController);
+    if (slot == _slotFavorites) {
+      return FavoritesPage(controller: _archiveController);
+    }
+    if (slot == _slotFiles) return const FileManagerPage(initialPath: '/ext');
+    if (slot == _slotDeleted) return DeletedPage(controller: _archiveController);
+    if (slot == _slotApps) return const AppsCatalogPage();
+    if (slot == _slotTools) return const ToolsPage();
+    return CategoryPage(
+      controller: _archiveController,
+      category: ArchiveCategory.values[slot - _slotCategory],
+    );
+  }
+
+  List<List<FlipperRailItem>> _railGroups(
+    QAppColors colors,
+    int slot,
+    String deviceIcon,
+  ) {
+    return [
+      [
+        FlipperRailItem(
+          icon: SizedBox(
+            width: 42,
+            height: 24,
+            child: DeviceStatusIcon(
+              asset: deviceIcon,
+              syncing: deviceIcon == _syncIcon,
+            ),
+          ),
+          color: colors.accent,
+          selected: slot == _slotDevice,
+          onTap: () => _select(_slotDevice),
+        ),
+      ],
+      [
+        _railItem(
+          colors,
+          slot,
+          _slotFiles,
+          const Color(0xFF8BC34A),
+          asset: 'assets/ic/app/files.svg',
+        ),
+        for (final cat in ArchiveCategory.values)
+          _railItem(
+            colors,
+            slot,
+            _slotCategory + cat.index,
+            cat.color,
+            asset: cat.asset,
+          ),
+        _railItem(
+          colors,
+          slot,
+          _slotDeleted,
+          const Color(0xFF8D8D8D),
+          asset: 'assets/ic/action/trash.svg',
+        ),
+        _railItem(
+          colors,
+          slot,
+          _slotFavorites,
+          const Color(0xFFFFC107),
+          icon: (color) => Icon(Icons.star_rounded, size: 22, color: color),
+        ),
+      ],
+      [
+        _railItem(
+          colors,
+          slot,
+          _slotApps,
+          colors.accent,
+          asset: slot == _slotApps
+              ? 'assets/ic/nav/apps-filled.svg'
+              : 'assets/ic/nav/apps.svg',
+        ),
+        _railItem(
+          colors,
+          slot,
+          _slotTools,
+          colors.accent,
+          asset: slot == _slotTools
+              ? 'assets/ic/nav/tools-filled.svg'
+              : 'assets/ic/nav/tools.svg',
+        ),
+      ],
+    ];
+  }
+
+  FlipperRailItem _railItem(
+    QAppColors colors,
+    int slot,
+    int target,
+    Color color, {
+    String? asset,
+    Widget Function(Color color)? icon,
+  }) {
+    final selected = slot == target;
+    final tint = selected ? color : colors.textMuted;
+    return FlipperRailItem(
+      icon: icon != null
+          ? icon(tint)
+          : FlipperRailIcon(asset: asset!, color: tint),
+      color: color,
+      selected: selected,
+      onTap: () => _select(target),
+    );
   }
 
   static const _syncIcon = 'assets/ic/connect/sync.svg';

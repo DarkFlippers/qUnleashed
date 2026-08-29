@@ -265,7 +265,7 @@ class _CategoryPageState extends State<CategoryPage> {
               elevation: 0,
               scrolledUnderElevation: 0,
               surfaceTintColor: Colors.transparent,
-              titleSpacing: 0,
+              titleSpacing: categoryTitleSpacing(context),
               title: CategoryAppBarTitle(cat: _cat),
               actions: [
                 CategorySyncButton(

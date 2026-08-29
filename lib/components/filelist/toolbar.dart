@@ -4,6 +4,13 @@ import '../icon.dart';
 import '../../theme/theme.dart';
 import '../archive/category.dart';
 
+/// Title inset for the category-style app bars. A pushed page has a back
+/// button separating the title from the edge, so it keeps zero; a page hosted
+/// as a root by the desktop rail has no leading widget and needs the standard
+/// spacing instead.
+double categoryTitleSpacing(BuildContext context) =>
+    Navigator.of(context).canPop() ? 0 : NavigationToolbar.kMiddleSpacing;
+
 class CategoryAppBarTitle extends StatelessWidget {
   const CategoryAppBarTitle({super.key, required this.cat});
 
