@@ -88,11 +88,7 @@ class FlipperRootScaffold extends StatelessWidget {
                   onTap: () => onTabSelected(FlipperRootTab.device),
                 ),
                 _BottomTab(
-                  icon: _NavIcon(
-                    asset: currentTab == FlipperRootTab.archive
-                        ? 'assets/ic/nav/archive-filled.svg'
-                        : 'assets/ic/nav/archive.svg',
-                  ),
+                  icon: const _NavIcon(asset: 'assets/ic/app/files.svg'),
                   label: 'Archive',
                   selected: currentTab == FlipperRootTab.archive,
                   onTap: () => onTabSelected(FlipperRootTab.archive),
