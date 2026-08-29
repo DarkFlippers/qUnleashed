@@ -180,7 +180,7 @@ class _DeletedPageState extends State<DeletedPage> {
   }
 
   String _keyId(ArchiveKey k) =>
-      '${k.category.flipperDir}/${k.subFolder.isEmpty ? '' : '${k.subFolder}/'}${k.name}.${k.extension}';
+      '${k.flipperDir}/${k.subFolder.isEmpty ? '' : '${k.subFolder}/'}${k.name}.${k.extension}';
 
   @override
   Widget build(BuildContext context) {

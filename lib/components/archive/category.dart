@@ -8,7 +8,7 @@ export 'launch.dart';
 enum ArchiveCategory {
   nfc(
     title: 'NFC',
-    flipperDir: 'nfc',
+    flipperDirs: ['nfc'],
     extensions: ['nfc'],
     categoryColor: ArchiveCategoryColor.nfc,
     asset: 'assets/ic/fileformat/nfc.svg',
@@ -19,7 +19,7 @@ enum ArchiveCategory {
   ),
   rfid(
     title: 'RFID 125',
-    flipperDir: 'lfrfid',
+    flipperDirs: ['lfrfid'],
     extensions: ['rfid'],
     categoryColor: ArchiveCategoryColor.rfid,
     asset: 'assets/ic/fileformat/rfid.svg',
@@ -30,7 +30,7 @@ enum ArchiveCategory {
   ),
   ibutton(
     title: 'iButton',
-    flipperDir: 'ibutton',
+    flipperDirs: ['ibutton'],
     extensions: ['ibtn'],
     categoryColor: ArchiveCategoryColor.ibutton,
     asset: 'assets/ic/fileformat/ibutton.svg',
@@ -41,7 +41,7 @@ enum ArchiveCategory {
   ),
   infrared(
     title: 'Infrared',
-    flipperDir: 'infrared',
+    flipperDirs: ['infrared'],
     extensions: ['ir'],
     categoryColor: ArchiveCategoryColor.infrared,
     asset: 'assets/ic/fileformat/ir.svg',
@@ -52,7 +52,7 @@ enum ArchiveCategory {
   ),
   subghz(
     title: 'Sub-GHz',
-    flipperDir: 'subghz',
+    flipperDirs: ['subghz'],
     extensions: ['sub'],
     categoryColor: ArchiveCategoryColor.subghz,
     asset: 'assets/ic/fileformat/sub.svg',
@@ -72,7 +72,7 @@ enum ArchiveCategory {
   ),
   wardriving(
     title: 'Wardriving',
-    flipperDir: 'subghz/wardriving',
+    flipperDirs: ['subghz/wardriving'],
     extensions: ['sub'],
     categoryColor: ArchiveCategoryColor.wardriving,
     asset: 'assets/ic/fileformat/sub.svg',
@@ -84,7 +84,7 @@ enum ArchiveCategory {
   ),
   badusb(
     title: 'Bad USB',
-    flipperDir: 'badusb',
+    flipperDirs: ['badusb', 'badkb'],
     extensions: ['txt'],
     categoryColor: ArchiveCategoryColor.badusb,
     asset: 'assets/ic/fileformat/badusb.svg',
@@ -95,7 +95,7 @@ enum ArchiveCategory {
   ),
   javascript(
     title: 'JavaScript',
-    flipperDir: 'apps/Scripts',
+    flipperDirs: ['apps/Scripts'],
     extensions: ['js'],
     categoryColor: ArchiveCategoryColor.javascript,
     asset: 'assets/ic/fileformat/js.svg',
@@ -106,7 +106,7 @@ enum ArchiveCategory {
 
   const ArchiveCategory({
     required this.title,
-    required this.flipperDir,
+    required this.flipperDirs,
     required this.extensions,
     required this.categoryColor,
     required this.asset,
@@ -121,7 +121,7 @@ enum ArchiveCategory {
   });
 
   final String title;
-  final String flipperDir;
+  final List<String> flipperDirs;
   final List<String> extensions;
   final ArchiveCategoryColor categoryColor;
   final String asset;
@@ -153,7 +153,14 @@ enum ArchiveCategory {
   bool get emulatable => flipperAppName != null && launch.canLaunch;
   bool get holdToSend => launch.holdToSend;
   String get extension => extensions.first;
-  String get remoteDir => '/ext/$flipperDir';
+
+  /// Primary directory: where new files are written, and what call sites that
+  /// deal with a single directory keep using. Scans walk every [flipperDirs].
+  String get flipperDir => flipperDirs.first;
+  String get remoteDir => remoteDirOf(flipperDir);
+  List<String> get remoteDirs => [for (final d in flipperDirs) remoteDirOf(d)];
+
+  static String remoteDirOf(String flipperDir) => '/ext/$flipperDir';
 
   bool isIgnoredSubDir(String name) {
     if (name == 'assets' || name.startsWith('_') || name.startsWith('.')) {

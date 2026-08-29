@@ -120,8 +120,9 @@ class MapToolController extends ChangeNotifier {
 
   String _remotePathFor(LocalKeyEntry entry) {
     final fileName = '${entry.name}.${entry.extension}';
-    if (entry.subFolder.isEmpty) return '${entry.category.remoteDir}/$fileName';
-    return '${entry.category.remoteDir}/${entry.subFolder}/$fileName';
+    final dir = ArchiveCategory.remoteDirOf(entry.flipperDir);
+    if (entry.subFolder.isEmpty) return '$dir/$fileName';
+    return '$dir/${entry.subFolder}/$fileName';
   }
 
   Future<MapPin?> _parseFile(LocalKeyEntry entry) async {

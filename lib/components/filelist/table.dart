@@ -240,7 +240,10 @@ class ArchiveTableRow extends StatelessWidget {
   }
 
   Widget _nameCell(ArchiveKey k) {
-    final relDir = k.subFolder.isEmpty ? '/' : '/${k.subFolder}/';
+    final sub = k.subFolder.isEmpty ? '' : '${k.subFolder}/';
+    final relDir = k.category.flipperDirs.length > 1
+        ? '/${k.flipperDir}/$sub'
+        : '/$sub';
     final labels = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisAlignment: MainAxisAlignment.center,

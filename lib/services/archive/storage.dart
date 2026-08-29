@@ -10,6 +10,7 @@ class LocalKeyEntry {
     required this.name,
     required this.category,
     required this.extension,
+    required this.flipperDir,
     required this.subFolder,
     required this.path,
     required this.size,
@@ -19,6 +20,9 @@ class LocalKeyEntry {
   final String name;
   final ArchiveCategory category;
   final String extension;
+
+  /// Which of [ArchiveCategory.flipperDirs] this file was found in.
+  final String flipperDir;
   final String subFolder;
   final String path;
   final int size;
@@ -114,11 +118,12 @@ class ArchiveStorage {
   io.Directory categoryDir(
     String deviceName,
     ArchiveCategory cat, {
+    String? flipperDir,
     String subFolder = '',
   }) {
     final sep = io.Platform.pathSeparator;
     final base = deviceDir(deviceName).path;
-    final dir = cat.flipperDir.replaceAll('/', sep);
+    final dir = (flipperDir ?? cat.flipperDir).replaceAll('/', sep);
     final sub = subFolder.isEmpty
         ? ''
         : '$sep${subFolder.replaceAll('/', sep)}';
@@ -183,13 +188,20 @@ class ArchiveStorage {
   Future<void> ensureLayout(String deviceName) async {
     await resolveRootDir();
     for (final cat in ArchiveCategory.values) {
-      await categoryDir(deviceName, cat).create(recursive: true);
-      for (final sub in cat.subDirs) {
+      for (final dir in cat.flipperDirs) {
         await categoryDir(
           deviceName,
           cat,
-          subFolder: sub,
+          flipperDir: dir,
         ).create(recursive: true);
+        for (final sub in cat.subDirs) {
+          await categoryDir(
+            deviceName,
+            cat,
+            flipperDir: dir,
+            subFolder: sub,
+          ).create(recursive: true);
+        }
       }
     }
   }
@@ -319,13 +331,41 @@ class ArchiveStorage {
     ArchiveCategory cat,
   ) async {
     await resolveRootDir();
+    final out = <LocalKeyEntry>[];
+    for (final dir in cat.flipperDirs) {
+      out.addAll(await _listDir(deviceName, cat, dir));
+    }
+    return out;
+  }
+
+  /// Lists one of the category's [ArchiveCategory.flipperDirs], honouring the
+  /// category's recursive/sub-folder scan mode.
+  Future<List<LocalKeyEntry>> _listDir(
+    String deviceName,
+    ArchiveCategory cat,
+    String flipperDir,
+  ) async {
     if (cat.recursiveSearch) {
-      return _listCategoryRecursive(deviceName, cat);
+      return _listCategoryRecursive(deviceName, cat, flipperDir);
     }
     final out = <LocalKeyEntry>[];
-    out.addAll(await _listCategory(deviceName, cat, subFolder: ''));
+    out.addAll(
+      await _listCategory(
+        deviceName,
+        cat,
+        flipperDir: flipperDir,
+        subFolder: '',
+      ),
+    );
     for (final sub in cat.subDirs) {
-      out.addAll(await _listCategory(deviceName, cat, subFolder: sub));
+      out.addAll(
+        await _listCategory(
+          deviceName,
+          cat,
+          flipperDir: flipperDir,
+          subFolder: sub,
+        ),
+      );
     }
     return out;
   }
@@ -334,13 +374,8 @@ class ArchiveStorage {
     await resolveRootDir();
     final out = <LocalKeyEntry>[];
     for (final cat in ArchiveCategory.values) {
-      if (cat.recursiveSearch) {
-        out.addAll(await _listCategoryRecursive(deviceName, cat));
-      } else {
-        out.addAll(await _listCategory(deviceName, cat, subFolder: ''));
-        for (final sub in cat.subDirs) {
-          out.addAll(await _listCategory(deviceName, cat, subFolder: sub));
-        }
+      for (final dir in cat.flipperDirs) {
+        out.addAll(await _listDir(deviceName, cat, dir));
       }
     }
     return out;
@@ -349,17 +384,19 @@ class ArchiveStorage {
   Future<List<LocalKeyEntry>> _listCategoryRecursive(
     String deviceName,
     ArchiveCategory cat,
+    String flipperDir,
   ) async {
-    final root = categoryDir(deviceName, cat);
+    final root = categoryDir(deviceName, cat, flipperDir: flipperDir);
     if (!await root.exists()) return const [];
     final out = <LocalKeyEntry>[];
-    await _walkDir(root, cat, out, relPath: '');
+    await _walkDir(root, cat, flipperDir, out, relPath: '');
     return out;
   }
 
   Future<void> _walkDir(
     io.Directory dir,
     ArchiveCategory cat,
+    String flipperDir,
     List<LocalKeyEntry> out, {
     required String relPath,
   }) async {
@@ -368,7 +405,7 @@ class ArchiveStorage {
       if (entity is io.Directory) {
         if (cat.isIgnoredSubDir(name)) continue;
         final childRelPath = relPath.isEmpty ? name : '$relPath/$name';
-        await _walkDir(entity, cat, out, relPath: childRelPath);
+        await _walkDir(entity, cat, flipperDir, out, relPath: childRelPath);
       } else if (entity is io.File) {
         final ext = cat.matchExtension(name);
         if (ext == null) continue;
@@ -380,6 +417,7 @@ class ArchiveStorage {
             name: baseName,
             category: cat,
             extension: ext,
+            flipperDir: flipperDir,
             subFolder: relPath,
             path: entity.path,
             size: stat.size,
@@ -393,9 +431,15 @@ class ArchiveStorage {
   Future<List<LocalKeyEntry>> _listCategory(
     String deviceName,
     ArchiveCategory cat, {
+    required String flipperDir,
     required String subFolder,
   }) async {
-    final dir = categoryDir(deviceName, cat, subFolder: subFolder);
+    final dir = categoryDir(
+      deviceName,
+      cat,
+      flipperDir: flipperDir,
+      subFolder: subFolder,
+    );
     if (!await dir.exists()) return const [];
     final out = <LocalKeyEntry>[];
     await for (final entity in dir.list(followLinks: false)) {
@@ -411,6 +455,7 @@ class ArchiveStorage {
           name: name,
           category: cat,
           extension: ext,
+          flipperDir: flipperDir,
           subFolder: subFolder,
           path: entity.path,
           size: stat.size,
@@ -426,10 +471,16 @@ class ArchiveStorage {
     ArchiveCategory cat,
     String fileName,
     List<int> bytes, {
+    String? flipperDir,
     String subFolder = '',
   }) async {
     await resolveRootDir();
-    final dir = categoryDir(deviceName, cat, subFolder: subFolder);
+    final dir = categoryDir(
+      deviceName,
+      cat,
+      flipperDir: flipperDir,
+      subFolder: subFolder,
+    );
     await dir.create(recursive: true);
     final sep = io.Platform.pathSeparator;
     final file = io.File('${dir.path}$sep$fileName');
@@ -441,11 +492,17 @@ class ArchiveStorage {
     String deviceName,
     ArchiveCategory cat,
     String fileName, {
+    String? flipperDir,
     String subFolder = '',
   }) async {
     await resolveRootDir();
     final sep = io.Platform.pathSeparator;
-    final dir = categoryDir(deviceName, cat, subFolder: subFolder);
+    final dir = categoryDir(
+      deviceName,
+      cat,
+      flipperDir: flipperDir,
+      subFolder: subFolder,
+    );
     final file = io.File('${dir.path}$sep$fileName');
     if (!await file.exists()) return null;
     return file.readAsBytes();
@@ -455,12 +512,14 @@ class ArchiveStorage {
     String deviceName,
     ArchiveCategory cat,
     String fileName, {
+    String? flipperDir,
     String subFolder = '',
   }) async {
     await resolveRootDir();
     final sep = io.Platform.pathSeparator;
     final file = io.File(
-      '${categoryDir(deviceName, cat, subFolder: subFolder).path}$sep$fileName',
+      '${categoryDir(deviceName, cat, flipperDir: flipperDir, subFolder: subFolder).path}'
+      '$sep$fileName',
     );
     if (await file.exists()) await file.delete();
   }

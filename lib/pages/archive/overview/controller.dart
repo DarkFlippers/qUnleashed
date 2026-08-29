@@ -45,12 +45,14 @@ enum ArchiveSyncStatus { idle, syncing, synced }
 class _RemoteFile {
   _RemoteFile({
     required this.category,
+    required this.flipperDir,
     required this.subFolder,
     required this.name,
     required this.extension,
     required this.size,
   });
   final ArchiveCategory category;
+  final String flipperDir;
   final String subFolder;
   final String name;
   final String extension;
@@ -286,12 +288,7 @@ class ArchiveController extends ChangeNotifier {
   }
 
   Future<void> toggleFavorite(ArchiveKey key) async {
-    final keyId = _localKey(
-      key.category,
-      key.name,
-      key.extension,
-      key.subFolder,
-    );
+    final keyId = _keyIdOf(key);
     if (_favorites.contains(keyId)) {
       _favorites.remove(keyId);
     } else {
@@ -308,12 +305,7 @@ class ArchiveController extends ChangeNotifier {
   Future<void> setKeysFavorite(Iterable<ArchiveKey> keys, bool favorite) async {
     var changed = false;
     for (final key in keys) {
-      final keyId = _localKey(
-        key.category,
-        key.name,
-        key.extension,
-        key.subFolder,
-      );
+      final keyId = _keyIdOf(key);
       final has = _favorites.contains(keyId);
       if (favorite && !has) {
         _favorites.add(keyId);
@@ -549,12 +541,7 @@ class ArchiveController extends ChangeNotifier {
 
   Future<void> renameKey(ArchiveKey key, String newName) async {
     if (newName.trim().isEmpty || newName == key.name) return;
-    final keyId = _localKey(
-      key.category,
-      key.name,
-      key.extension,
-      key.subFolder,
-    );
+    final keyId = _keyIdOf(key);
     final newFileName = '${newName.trim()}.${key.extension}';
     try {
       if (key.localPath != null) {
@@ -577,7 +564,7 @@ class ArchiveController extends ChangeNotifier {
           }
         }
         final newKeyId = _localKey(
-          key.category,
+          key.flipperDir,
           newName.trim(),
           key.extension,
           key.subFolder,
@@ -602,6 +589,7 @@ class ArchiveController extends ChangeNotifier {
           extra: key.extra,
           mtime: key.mtime,
           meta: key.meta,
+          flipperDir: key.flipperDir,
         );
       }
     } catch (e) {
@@ -616,7 +604,10 @@ class ArchiveController extends ChangeNotifier {
     try {
       final existingNames = _keys.values
           .where(
-            (k) => k.category == key.category && k.subFolder == key.subFolder,
+            (k) =>
+                k.category == key.category &&
+                k.flipperDir == key.flipperDir &&
+                k.subFolder == key.subFolder,
           )
           .map((k) => k.fileName)
           .toSet();
@@ -643,7 +634,7 @@ class ArchiveController extends ChangeNotifier {
       }
       final stat = await io.File(newLocalPath).stat();
       final newKeyId = _localKey(
-        key.category,
+        key.flipperDir,
         baseName,
         key.extension,
         key.subFolder,
@@ -662,6 +653,7 @@ class ArchiveController extends ChangeNotifier {
         extra: key.extra,
         mtime: stat.modified,
         meta: key.meta,
+        flipperDir: key.flipperDir,
       );
     } catch (e) {
       _lastError = '$e';
@@ -711,14 +703,7 @@ class ArchiveController extends ChangeNotifier {
       notifyListeners();
       if (!connected) return;
       for (final cat in ArchiveCategory.values) {
-        if (cat.recursiveSearch) {
-          await _verifyCategoryRecursive(cat);
-        } else {
-          await _verifyScope(cat, '');
-          for (final sub in cat.subDirs) {
-            await _verifyScope(cat, sub);
-          }
-        }
+        await _verifyCategory(cat);
         notifyListeners();
       }
       _applyFavorites();
@@ -751,14 +736,7 @@ class ArchiveController extends ChangeNotifier {
       _keys.removeWhere((id, v) => v.category == cat && !seen.contains(id));
       notifyListeners();
       if (!_client.isConnected) return;
-      if (cat.recursiveSearch) {
-        await _verifyCategoryRecursive(cat);
-      } else {
-        await _verifyScope(cat, '');
-        for (final sub in cat.subDirs) {
-          await _verifyScope(cat, sub);
-        }
-      }
+      await _verifyCategory(cat);
       notifyListeners();
       _applyFavorites();
       await _parseMetaForCategory(cat);
@@ -807,10 +785,27 @@ class ArchiveController extends ChangeNotifier {
     }
   }
 
-  Future<void> _verifyScope(ArchiveCategory cat, String subFolder) async {
-    final path = subFolder.isEmpty
-        ? cat.remoteDir
-        : '${cat.remoteDir}/$subFolder';
+  /// Verifies every directory the category spans, honouring its scan mode.
+  Future<void> _verifyCategory(ArchiveCategory cat) async {
+    for (final dir in cat.flipperDirs) {
+      if (cat.recursiveSearch) {
+        await _verifyCategoryRecursive(cat, dir);
+      } else {
+        await _verifyScope(cat, dir, '');
+        for (final sub in cat.subDirs) {
+          await _verifyScope(cat, dir, sub);
+        }
+      }
+    }
+  }
+
+  Future<void> _verifyScope(
+    ArchiveCategory cat,
+    String flipperDir,
+    String subFolder,
+  ) async {
+    final remoteDir = ArchiveCategory.remoteDirOf(flipperDir);
+    final path = subFolder.isEmpty ? remoteDir : '$remoteDir/$subFolder';
     final remoteFiles = <_RemoteFile>[];
     bool ok = false;
     try {
@@ -829,6 +824,7 @@ class ArchiveController extends ChangeNotifier {
           remoteFiles.add(
             _RemoteFile(
               category: cat,
+              flipperDir: flipperDir,
               subFolder: subFolder,
               name: name,
               extension: ext,
@@ -844,14 +840,29 @@ class ArchiveController extends ChangeNotifier {
     if (!ok) return;
     _reconcileRemote(
       remoteFiles,
-      (k) => k.category == cat && k.subFolder == subFolder,
+      (k) =>
+          k.category == cat &&
+          k.flipperDir == flipperDir &&
+          k.subFolder == subFolder,
     );
   }
 
-  Future<void> _verifyCategoryRecursive(ArchiveCategory cat) async {
+  Future<void> _verifyCategoryRecursive(
+    ArchiveCategory cat,
+    String flipperDir,
+  ) async {
     final remoteFiles = <_RemoteFile>[];
-    await _collectRemoteFiles(cat, cat.remoteDir, '', remoteFiles);
-    _reconcileRemote(remoteFiles, (k) => k.category == cat);
+    await _collectRemoteFiles(
+      cat,
+      flipperDir,
+      ArchiveCategory.remoteDirOf(flipperDir),
+      '',
+      remoteFiles,
+    );
+    _reconcileRemote(
+      remoteFiles,
+      (k) => k.category == cat && k.flipperDir == flipperDir,
+    );
   }
 
   /// Merges a freshly-listed set of [remoteFiles] into [_keys]: refreshes remote
@@ -863,7 +874,12 @@ class ArchiveController extends ChangeNotifier {
   ) {
     final seen = <String>{};
     for (final rf in remoteFiles) {
-      final keyId = _localKey(rf.category, rf.name, rf.extension, rf.subFolder);
+      final keyId = _localKey(
+        rf.flipperDir,
+        rf.name,
+        rf.extension,
+        rf.subFolder,
+      );
       seen.add(keyId);
       final existing = _keys[keyId];
       if (existing != null) {
@@ -878,6 +894,7 @@ class ArchiveController extends ChangeNotifier {
           name: rf.name,
           category: rf.category,
           extension: rf.extension,
+          flipperDir: rf.flipperDir,
           subFolder: rf.subFolder,
           state: ArchiveKeyState.local,
           remoteSize: rf.size,
@@ -899,6 +916,7 @@ class ArchiveController extends ChangeNotifier {
 
   Future<void> _collectRemoteFiles(
     ArchiveCategory cat,
+    String flipperDir,
     String remotePath,
     String relPath,
     List<_RemoteFile> out,
@@ -916,6 +934,7 @@ class ArchiveController extends ChangeNotifier {
             final childRelPath = relPath.isEmpty ? name : '$relPath/$name';
             await _collectRemoteFiles(
               cat,
+              flipperDir,
               '$remotePath/$name',
               childRelPath,
               out,
@@ -928,6 +947,7 @@ class ArchiveController extends ChangeNotifier {
             out.add(
               _RemoteFile(
                 category: cat,
+                flipperDir: flipperDir,
                 subFolder: relPath,
                 name: baseName,
                 extension: ext,
@@ -1091,6 +1111,7 @@ class ArchiveController extends ChangeNotifier {
             _deviceName,
             key.category,
             key.fileName,
+            flipperDir: key.flipperDir,
             subFolder: key.subFolder,
           );
         }
@@ -1114,6 +1135,7 @@ class ArchiveController extends ChangeNotifier {
         _deviceName,
         key.category,
         key.fileName,
+        flipperDir: key.flipperDir,
         subFolder: key.subFolder,
       );
       if (bytes == null) return;
@@ -1141,16 +1163,12 @@ class ArchiveController extends ChangeNotifier {
           _deviceName,
           key.category,
           key.fileName,
+          flipperDir: key.flipperDir,
           subFolder: key.subFolder,
         );
         if (bytes == null) continue;
         await _client.storageWriteChunked(key.remotePath, bytes);
-        final keyId = _localKey(
-          key.category,
-          key.name,
-          key.extension,
-          key.subFolder,
-        );
+        final keyId = _keyIdOf(key);
         final existing = _keys[keyId];
         if (existing != null) {
           _keys[keyId] = existing.copyWith(
@@ -1185,6 +1203,7 @@ class ArchiveController extends ChangeNotifier {
           _deviceName,
           key.category,
           key.fileName,
+          flipperDir: key.flipperDir,
           subFolder: key.subFolder,
         );
       }
@@ -1193,6 +1212,7 @@ class ArchiveController extends ChangeNotifier {
         key.category,
         key.fileName,
         bytes,
+        flipperDir: key.flipperDir,
         subFolder: key.subFolder,
       );
       final size = await file.length();
@@ -1305,7 +1325,7 @@ class ArchiveController extends ChangeNotifier {
   /// Inserts or replaces a key from a locally-stored file entry.
   String _ingestLocal(LocalKeyEntry entry) {
     final keyId = _localKey(
-      entry.category,
+      entry.flipperDir,
       entry.name,
       entry.extension,
       entry.subFolder,
@@ -1315,6 +1335,7 @@ class ArchiveController extends ChangeNotifier {
       name: entry.name,
       category: entry.category,
       extension: entry.extension,
+      flipperDir: entry.flipperDir,
       subFolder: entry.subFolder,
       state: ArchiveKeyState.local,
       localSize: entry.size,
@@ -1329,10 +1350,12 @@ class ArchiveController extends ChangeNotifier {
   }
 
   String _localKey(
-    ArchiveCategory cat,
+    String flipperDir,
     String name,
     String extension,
     String subFolder,
-  ) =>
-      '${cat.flipperDir}/${subFolder.isEmpty ? '' : '$subFolder/'}$name.$extension';
+  ) => '$flipperDir/${subFolder.isEmpty ? '' : '$subFolder/'}$name.$extension';
+
+  String _keyIdOf(ArchiveKey key) =>
+      _localKey(key.flipperDir, key.name, key.extension, key.subFolder);
 }

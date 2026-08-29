@@ -17,8 +17,10 @@ class ArchiveKey {
     this.extra,
     this.mtime,
     this.meta,
+    String? flipperDir,
     String? remotePath,
   }) : extension = extension ?? category.extension,
+       _flipperDir = flipperDir,
        _remotePathOverride = remotePath;
 
   final String name;
@@ -35,10 +37,16 @@ class ArchiveKey {
   final DateTime? mtime;
   final Map<String, String>? meta;
 
+  /// Which of the category's [ArchiveCategory.flipperDirs] this file lives in.
+  /// Null means the primary one.
+  final String? _flipperDir;
+
   /// When set, [remotePath] returns this verbatim instead of deriving the path
   /// from the category dir. Lets the file manager wrap an arbitrary on-device
   /// file (anywhere on the Flipper) in an [ArchiveKey] for emulation.
   final String? _remotePathOverride;
+
+  String get flipperDir => _flipperDir ?? category.flipperDir;
 
   static const Object _unset = Object();
 
@@ -47,8 +55,9 @@ class ArchiveKey {
   String get remotePath {
     final override = _remotePathOverride;
     if (override != null) return override;
-    if (subFolder.isEmpty) return '${category.remoteDir}/$fileName';
-    return '${category.remoteDir}/$subFolder/$fileName';
+    final dir = ArchiveCategory.remoteDirOf(flipperDir);
+    if (subFolder.isEmpty) return '$dir/$fileName';
+    return '$dir/$subFolder/$fileName';
   }
 
   /// How this file is launched on the Flipper, resolved from the category's
@@ -89,6 +98,7 @@ class ArchiveKey {
       meta: identical(meta, _unset)
           ? this.meta
           : (meta as Map<String, String>?),
+      flipperDir: _flipperDir,
       remotePath: _remotePathOverride,
     );
   }
