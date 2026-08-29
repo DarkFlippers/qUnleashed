@@ -30,3 +30,16 @@ DynamicLibrary openMifareNativeLibrary() =>
 /// (see `lib/modules/cpp/hardnested`).
 DynamicLibrary openHardnestedNativeLibrary() =>
     openNativeLibrary('qunleashed_hardnested');
+
+/// A bundled native library, or a symbol in it, could not be loaded.
+///
+/// Distinct from a failure while running an attack: this one means the build
+/// is missing a component, and nothing the user does with the card will help.
+class NativeEngineUnavailable implements Exception {
+  const NativeEngineUnavailable(this.cause);
+
+  final Object cause;
+
+  @override
+  String toString() => 'NativeEngineUnavailable: $cause';
+}

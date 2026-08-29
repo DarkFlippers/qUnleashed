@@ -52,8 +52,12 @@ Sec 0 key A cuid 5bcbb2e4 nt0 a0bbe1ef ks0 c70d97e3 par0 1110 dist 0
 Sec 1 key B cuid 5bcbb2e4 nt0 d7707ed1 ks0 65bc542b par0 0110 dist 0
 ''';
 
-      final nonces = NestedNonceParser.parse(file).nonces;
+      final log = NestedNonceParser.parse(file);
+      final nonces = log.nonces;
       expect(nonces, hasLength(3));
+      // A clean log must report no drops: _reportDroppedNonces fires on > 0 and
+      // would turn every successful run into a partial-failure headline.
+      expect(log.droppedLines, 0);
       expect(nonces.where((n) => n.hasPair), hasLength(1));
       expect(
         nonces.where((n) => n.kind == NestedAttackKind.staticEncrypted),
@@ -133,20 +137,37 @@ Sec 1 key B cuid 5bcbb2e4 nt0 d7707ed1 ks0 65bc542b par0 0110 dist 0
       expect(nonces.single.sector, 1);
     });
 
-    test('drops a line whose parity is missing or malformed', () {
-      // par drives the candidate parity filter, so substituting 0 would keep
-      // the wrong half of the candidate space and the real key could never be
-      // among the candidates generated - a dictionary that cannot ever work.
+    test('drops a lone sample whose parity is missing or malformed', () {
+      // par is what the static-encrypted filter halves the candidate set with,
+      // so substituting a zero has an even chance of excluding the real key
+      // from everything generated - a dictionary that cannot work.
       const file = '''
 Sec 0 key A cuid 5bcbb2e4 nt0 a0bbe1ef ks0 c70d97e3 dist 0
 Sec 1 key A cuid 5bcbb2e4 nt0 a0bbe1ef ks0 c70d97e3 par0 12x0 dist 0
 Sec 2 key A cuid 5bcbb2e4 nt0 a0bbe1ef ks0 c70d97e3 par0 110 dist 0
+Sec 4 key A cuid 5bcbb2e4 nt0 a0bbe1ef ks0 c70d97e3 par0 +101 dist 0
 Sec 3 key B cuid 5bcbb2e4 nt0 d7707ed1 ks0 65bc542b par0 0110 dist 0
 ''';
       final log = NestedNonceParser.parse(file);
       expect(log.nonces, hasLength(1));
       expect(log.nonces.single.sector, 3);
-      expect(log.droppedLines, 3);
+      expect(log.droppedLines, 4);
+    });
+
+    test('keeps a weak-nested pair whose parity is malformed', () {
+      // A pair recovers from nt/ks alone and verifies itself against its second
+      // sample; nothing on that path reads par. Dropping the line would throw
+      // away a key that was still recoverable.
+      const line =
+          'Sec 10 key A cuid 7c30d979 nt0 214904f0 ks0 c03823d1 par0 zzzz '
+          'nt1 f69baa3a ks1 8a2107ad par1 1010 dist 5';
+
+      final log = NestedNonceParser.parse(line);
+      expect(log.droppedLines, 0);
+      final nonce = log.nonces.single;
+      expect(nonce.hasPair, isTrue);
+      expect(nonce.samples[0].par, isNull);
+      expect(nonce.samples[1].par, 10);
     });
 
     test('reports dropped lines and ignores blank ones', () {

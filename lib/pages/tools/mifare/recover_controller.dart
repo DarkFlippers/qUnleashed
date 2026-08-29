@@ -13,6 +13,7 @@ import 'key_nonce_parser.dart';
 import 'mfkey32_api.dart';
 import 'mfkey32_models.dart';
 import 'mfkey32_recoverer.dart';
+import 'mifare_native.dart';
 import 'nested_api.dart';
 import 'nested_models.dart';
 import 'nested_nonce_parser.dart';
@@ -197,7 +198,7 @@ class RecoverController extends ChangeNotifier {
         ? const <MfKey32Nonce>[]
         : dedupeReaderNonces(KeyNonceParser.parse(readerText));
     final tagLog = tagText == null
-        ? (nonces: const <NestedNonce>[], droppedLines: 0)
+        ? emptyNestedLog
         : NestedNonceParser.parse(tagText);
     final tagNonces = tagLog.nonces;
     if (tagLog.droppedLines > 0) _reportDroppedNonces(tagLog);
@@ -292,7 +293,9 @@ class RecoverController extends ChangeNotifier {
     final ntEnc = group
         .map((n) => n.samples[0].nt ^ n.samples[0].ks)
         .toList(growable: false);
-    final parEnc = group.map((n) => n.samples[0].par).toList(growable: false);
+    // Non-null for every single-sample nonce: the parser drops a lone sample
+    // that has no usable parity, and this group came out of splitSingles.
+    final parEnc = group.map((n) => n.par!).toList(growable: false);
     BigInt? key;
     String? note;
     try {
@@ -329,10 +332,11 @@ class RecoverController extends ChangeNotifier {
   }
 
   /// Surfaces unparseable `.nested.log` lines. A corrupt line is dropped rather
-  /// than guessed at — a nonce with a wrong parity or sector would only produce
-  /// a dictionary that cannot contain the real key — but dropping it silently
-  /// would leave those sector keys unattacked with nothing on screen to say so,
-  /// and a log the app cannot read at all would read as "no new keys".
+  /// than guessed at — a wrong parity generates the wrong half of the candidate
+  /// space, and a wrong sector files correct candidates under an index the
+  /// device never tries them against — but dropping one silently would leave
+  /// those sector keys unattacked with nothing on screen to say so, and a log
+  /// the app cannot read at all would finish as "no new keys".
   void _reportDroppedNonces(NestedLog log) {
     final dropped = log.droppedLines;
     LogService.error('[Recover] dropped $dropped corrupt .nested.log line(s)');
@@ -359,11 +363,13 @@ class RecoverController extends ChangeNotifier {
     } catch (e, st) {
       LogService.error('[Recover] static candidate gen failed: $e\n$st');
       _hadFailure = true;
+      // Run-level, with no cuid: the throw comes from setting up the engine,
+      // not from any one card, and every card in the batch lost its dictionary.
+      // Naming the first one would blame a card that was probably fine.
       _entries.add(
         RecoverEntry(
           source: RecoverSource.tag,
           kind: RecoverKind.staticEncrypted,
-          cuid: singles.first.cuid,
           note: _staticFailureNote(e),
         ),
       );
@@ -374,16 +380,31 @@ class RecoverController extends ChangeNotifier {
     for (final dict in dicts) {
       if (_disposed) return;
       final body = dict.body;
-      if (body.isEmpty) {
-        // Generation produced nothing (e.g. an allocation failure) and no file
-        // was written - report it as a failure, not a 0-candidate "result".
+      if (body == null) {
+        // This one card failed; the rest of the batch still has dictionaries.
         _hadFailure = true;
         _entries.add(
           RecoverEntry(
             source: RecoverSource.tag,
             kind: RecoverKind.staticEncrypted,
             cuid: dict.cuid,
-            note: 'No candidate keys could be generated for this card.',
+            note: _staticFailureNote(dict.error!),
+          ),
+        );
+        continue;
+      }
+      if (body.isEmpty) {
+        // Every sector key came back with nothing, so there is no file to
+        // write - report which ones rather than a bare "nothing generated".
+        _hadFailure = true;
+        _entries.add(
+          RecoverEntry(
+            source: RecoverSource.tag,
+            kind: RecoverKind.staticEncrypted,
+            cuid: dict.cuid,
+            note:
+                'No candidate keys could be generated for '
+                '${_nameKeys(body.skippedKeys)}.',
           ),
         );
         continue;
@@ -446,17 +467,20 @@ class RecoverController extends ChangeNotifier {
     return '${keys.take(limit).join(', ')} and ${keys.length - limit} more';
   }
 
-  /// Separates the failures worth acting on differently: a build without the
-  /// native engine, and a card too large to hold in memory.
+  /// Separates the failures worth acting on differently. Everything else stays
+  /// deliberately vague: the exception and its stack are already logged, and
+  /// `ArgumentError` in particular is shared by the FFI allocator, a missing
+  /// symbol and a refused dictionary entry, so it cannot name a cause on its
+  /// own — which is why the engine lookup raises [NativeEngineUnavailable].
   static String _staticFailureNote(Object error) {
-    if (error is ArgumentError) {
+    if (error is NativeEngineUnavailable) {
       return 'Candidate generation is unavailable on this build.';
     }
     if (error is OutOfMemoryError) {
-      return 'Too many candidates to build on this device - collect fewer '
-          'sectors at a time.';
+      return 'Not enough memory to build the candidate list for this card - '
+          'collect fewer sectors at a time.';
     }
-    return 'Candidate generation failed.';
+    return 'Candidate generation failed for this card; nothing was written.';
   }
 
   // ---- helpers ----

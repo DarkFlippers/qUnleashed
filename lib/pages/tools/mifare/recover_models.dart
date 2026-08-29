@@ -49,7 +49,8 @@ class RecoverEntry {
   final int? cuid;
 
   /// Sector / key labels for a concrete key result. Null for a per-card
-  /// static-encrypted candidate summary.
+  /// static-encrypted candidate summary and for a [RecoverKind.corruptLog]
+  /// run-level entry.
   final String? sectorName;
   final String? keyName;
 
@@ -64,7 +65,8 @@ class RecoverEntry {
   final bool? isNew;
 
   /// Static-encrypted: the entry count of the dictionary written for this card
-  /// - see `StaticCandidateDict.count`.
+  /// — see `CuidDictBody.entries`. Only ever set together with [cuid], since
+  /// the row it produces names the file the entries were written to.
   final int? candidateCount;
 
   /// Extra context (e.g. "too few nonces — collect more", or a write failure).

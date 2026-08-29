@@ -5,6 +5,9 @@ import 'nested_models.dart';
 /// attacking a subset of the card.
 typedef NestedLog = ({List<NestedNonce> nonces, int droppedLines});
 
+/// The result of parsing nothing at all.
+const NestedLog emptyNestedLog = (nonces: <NestedNonce>[], droppedLines: 0);
+
 /// Parser for the Flipper `.nested.log` format. Each record is a single line;
 /// two-sample (weak-nested) lines just carry more fields:
 ///
@@ -38,14 +41,13 @@ class NestedNonceParser {
       fields[tokens[i].toLowerCase()] = tokens[i + 1];
     }
 
-    // A sector no card has is corrupt on its face, and it also breaks the
-    // per-card dictionary's fixed entry width - see `writeCuidDictEntry`.
+    // No card has a sector past 39, so such a line is corrupt on its face —
+    // and a candidate filed under an index the device never reaches is lost
+    // with nothing to show for it.
     final sector = int.tryParse(fields['sec'] ?? '');
     final keyType = _parseKeyType(fields['key']);
     final cuid = _parseWord32(fields['cuid']);
-    if (sector == null || sector < 0 || sector >= mifareClassicMaxSectors) {
-      return null;
-    }
+    if (sector == null || !isMifareSector(sector)) return null;
     if (keyType == null || cuid == null) return null;
 
     final samples = <NestedSample>[];
@@ -64,21 +66,26 @@ class NestedNonceParser {
     }
     if (samples.isEmpty) return null;
 
-    return NestedNonce(
+    final nonce = NestedNonce(
       sector: sector,
       keyType: keyType,
       cuid: cuid,
       samples: samples,
       dist: int.tryParse(fields['dist'] ?? ''),
     );
+    // Parity is only read by the single-sample attacks, so a lone sample
+    // without it cannot be attacked — but a weak-nested pair recovers from
+    // nt/ks alone, and dropping one over a malformed `par` would throw away a
+    // key that was still recoverable.
+    if (!nonce.hasPair && nonce.par == null) return null;
+    return nonce;
   }
 
   static NestedSample? _parseSample(Map<String, String> fields, int index) {
     final nt = _parseWord32(fields['nt$index']);
     final ks = _parseWord32(fields['ks$index']);
-    final par = _parseParity(fields['par$index']);
-    if (nt == null || ks == null || par == null) return null;
-    return NestedSample(nt: nt, ks: ks, par: par);
+    if (nt == null || ks == null) return null;
+    return NestedSample(nt: nt, ks: ks, par: _parseParity(fields['par$index']));
   }
 
   static NestedKeyType? _parseKeyType(String? value) {
@@ -101,14 +108,19 @@ class NestedNonceParser {
     return parsed;
   }
 
-  /// Parses the four parity bits the firmware always writes as four binary
-  /// digits. Absent or malformed is a corrupt line, never a zero: parity drives
-  /// the candidate filter, so a wrong value keeps the wrong half of the
-  /// candidate space and the real key can never be among what we generate.
+  /// Parses the four parity bits, which the firmware always writes as exactly
+  /// four binary digits (`mf_classic_poller.c:1910-1912`).
+  ///
+  /// Absent or malformed yields null rather than a zero. Substituting one
+  /// would be worse than having none: the static-encrypted filter keeps only
+  /// candidates matching the low bit (`nested_bridge.c:92,109`), so a guessed
+  /// value has an even chance of excluding the real key from everything we
+  /// generate, and hardnested consumes the whole nibble.
   static int? _parseParity(String? value) {
-    if (value == null || value.length != 4) return null;
-    final parsed = int.tryParse(value, radix: 2);
-    if (parsed == null || parsed < 0 || parsed > 0xF) return null;
-    return parsed;
+    if (value == null || !_parityDigits.hasMatch(value)) return null;
+    return int.parse(value, radix: 2);
   }
+
+  /// int.tryParse(radix: 2) would also accept `+101` and a leading minus.
+  static final RegExp _parityDigits = RegExp(r'^[01]{4}$');
 }

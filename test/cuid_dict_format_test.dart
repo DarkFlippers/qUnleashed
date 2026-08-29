@@ -5,9 +5,10 @@ import 'package:qunleashed/pages/tools/mifare/cuid_dict_format.dart';
 
 void main() {
   group('formatCuidDictEntry', () {
-    // The on-device reader sizes a CUID entry at sizeof(MfClassicKey) + 1 and
-    // drops every line that is not exactly that wide, so a 12-digit key makes
-    // the whole dictionary read as empty. These pin the 14-digit layout.
+    // The on-device reader cuts a line to 14 characters before checking it is
+    // 14, so a 12-digit key is dropped and the dictionary reads as empty,
+    // while an over-wide line is truncated onto an unrelated key index.
+    // These pin the 14-digit layout.
     test('is a 2-digit key index followed by the 12-digit key', () {
       final entry = formatCuidDictEntry(
         sector: 0,
@@ -37,16 +38,19 @@ void main() {
       );
     });
 
-    test('an index or key too wide for the entry is refused', () {
-      // Either would widen the line past 14, and the on-device reader truncates
-      // an over-wide line onto an unrelated key index instead of dropping it -
-      // so this throws in release builds too rather than writing a bad entry.
-      // Only the width is this function's to guard: that a card has no sector
-      // 40 is the parser's rule, and sector 40 still renders a valid entry.
+    test('a sector past the card is still a valid entry (parser rule)', () {
+      // Only the width is this function's to guard. That no card has a sector
+      // 40 is the parser's rule — here it renders fine, under index 0x50.
       expect(
         formatCuidDictEntry(sector: 40, isKeyA: true, key: 0x1),
         '50000000000001',
       );
+    });
+
+    test('an index or key too wide for the entry is refused', () {
+      // Either would widen the line past 14, and the on-device reader truncates
+      // an over-wide line onto an unrelated key index instead of dropping it -
+      // so this throws in release builds too rather than writing a bad entry.
       expect(
         () => formatCuidDictEntry(sector: 128, isKeyA: true, key: 0x1),
         throwsArgumentError,
@@ -130,6 +134,43 @@ void main() {
       expect(body.isEmpty, isFalse);
     });
 
+    test('the same key recovered for two sector keys is filed twice', () {
+      // main merged a card's candidates into one Set, which erased the sector
+      // key each belonged to. The device only tries a candidate against the
+      // index it is filed under, so deduping across indices loses both.
+      final body =
+          (CuidDictBuilder()
+                ..add(
+                  sector: 3,
+                  isKeyA: true,
+                  keys: Uint64List.fromList([0xA0A1A2A3A4A5]),
+                )
+                ..add(
+                  sector: 3,
+                  isKeyA: false,
+                  keys: Uint64List.fromList([0xA0A1A2A3A4A5]),
+                ))
+              .build();
+
+      expect(body.entries, 2);
+      expect(String.fromCharCodes(body.bytes).trimRight().split('\n'), [
+        '06A0A1A2A3A4A5',
+        '07A0A1A2A3A4A5',
+      ]);
+    });
+
+    test('refuses reuse after build (it would report phantom entries)', () {
+      final builder = CuidDictBuilder()
+        ..add(sector: 0, isKeyA: true, keys: Uint64List.fromList([0x1]));
+      builder.build();
+
+      expect(builder.build, throwsStateError);
+      expect(
+        () => builder.add(sector: 0, isKeyA: false, keys: Uint64List(0)),
+        throwsStateError,
+      );
+    });
+
     test('records a sector key that yielded no candidates', () {
       // The device indexes by key index and skips an index with no entries, so
       // an empty batch means that sector key is never attacked at all.
@@ -150,16 +191,17 @@ void main() {
     });
 
     test('records a batch that was cut short at the generator cap', () {
+      // isKeyA false so a swapped bool argument cannot slip through unnoticed.
       final body =
           (CuidDictBuilder()..add(
                 sector: 2,
-                isKeyA: true,
+                isKeyA: false,
                 keys: Uint64List.fromList([0x666666666666]),
                 atCapacity: true,
               ))
               .build();
 
-      expect(body.cappedKeys, ['2A']);
+      expect(body.cappedKeys, ['2B']);
       expect(body.isComplete, isFalse);
     });
 
@@ -181,6 +223,20 @@ void main() {
       expect(
         String.fromCharCodes(builder.build().bytes).trimRight().split('\n'),
         ['00777777777777', '01888888888888'],
+      );
+    });
+  });
+
+  group('cuidDictPath', () {
+    test('is the lowercase, zero-padded name the firmware opens', () {
+      // The firmware builds its path with %08lx, so an uppercase or unpadded
+      // cuid names a file it never looks for - and the write would still
+      // succeed, leaving the run reporting a dictionary nothing reads.
+      expect(cuidDictFileName(0x5bcbb2e4), 'mf_classic_dict_5bcbb2e4.nfc');
+      expect(cuidDictFileName(0x00abcdef), 'mf_classic_dict_00abcdef.nfc');
+      expect(
+        cuidDictPath(0x5bcbb2e4),
+        '/ext/nfc/assets/mf_classic_dict_5bcbb2e4.nfc',
       );
     });
   });

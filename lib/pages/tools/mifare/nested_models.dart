@@ -12,8 +12,13 @@
 library;
 
 /// MIFARE Classic tops out at 40 sectors (4K) - the firmware's
-/// `MF_CLASSIC_TOTAL_SECTORS_MAX`.
+/// `MF_CLASSIC_TOTAL_SECTORS_MAX` (`mf_classic.h:27`).
 const mifareClassicMaxSectors = 40;
+
+/// Whether [sector] is one a MIFARE Classic card can actually have. One
+/// spelling of the bound, so the parser and the model cannot drift apart.
+bool isMifareSector(int sector) =>
+    sector >= 0 && sector < mifareClassicMaxSectors;
 
 enum NestedKeyType { a, b }
 
@@ -29,7 +34,7 @@ class NestedSample {
   const NestedSample({required this.nt, required this.ks, required this.par})
     : assert(nt >= 0 && nt <= 0xFFFFFFFF, 'nt is a 32-bit word'),
       assert(ks >= 0 && ks <= 0xFFFFFFFF, 'ks is a 32-bit word'),
-      assert(par >= 0 && par <= 0xF, 'par is four bits');
+      assert(par == null || (par >= 0 && par <= 0xF), 'par is four bits');
 
   /// Plaintext tag nonce, resolved on-device by the firmware.
   final int nt;
@@ -37,8 +42,15 @@ class NestedSample {
   /// First keystream word, `nt_enc ^ nt`.
   final int ks;
 
-  /// Four parity bits, most-significant first in bits 3..0.
-  final int par;
+  /// Four parity bits, most-significant first in bits 3..0, or null when the
+  /// line did not carry a usable `par` field.
+  ///
+  /// Only the single-sample attacks read it: static-encrypted uses the low bit
+  /// to halve the candidate set, and hardnested consumes the whole nibble. A
+  /// weak-nested pair recovers from `nt`/`ks` alone and verifies itself against
+  /// its second sample, so it does not need parity at all — which is why the
+  /// parser keeps such a line and drops a lone sample without one.
+  final int? par;
 }
 
 class NestedNonce {
@@ -52,10 +64,7 @@ class NestedNonce {
          samples.isNotEmpty && samples.length <= 2,
          'a nested line carries one or two samples',
        ),
-       assert(
-         sector >= 0 && sector < mifareClassicMaxSectors,
-         'sector is a MIFARE Classic sector',
-       ),
+       assert(isMifareSector(sector), 'sector is a MIFARE Classic sector'),
        assert(cuid >= 0 && cuid <= 0xFFFFFFFF, 'cuid is a 32-bit word'),
        samples = List.unmodifiable(samples);
 
@@ -76,6 +85,10 @@ class NestedNonce {
   /// weak-nested key is uniquely recoverable from. Two identical nonces add no
   /// extra constraint, so such a line is treated as static-encrypted instead.
   bool get hasPair => samples.length >= 2 && samples[0].nt != samples[1].nt;
+
+  /// Parity of the first sample, which the single-sample attacks need. The
+  /// parser guarantees it is non-null whenever [hasPair] is false.
+  int? get par => samples[0].par;
 
   NestedAttackKind get kind =>
       hasPair ? NestedAttackKind.weakNested : NestedAttackKind.staticEncrypted;
