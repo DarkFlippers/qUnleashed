@@ -56,8 +56,3 @@ const Map<String, TextStyle> dartEditorTheme = {
   'emphasis': TextStyle(fontStyle: FontStyle.italic),
   'strong': TextStyle(fontWeight: FontWeight.w700),
 };
-
-const dartFunctionStyle = TextStyle(
-  color: Color(0xff82aaff),
-  fontWeight: FontWeight.w700,
-);

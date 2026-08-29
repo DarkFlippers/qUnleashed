@@ -3,16 +3,18 @@ import 'dart:io' as io;
 
 import 'package:flutter/material.dart';
 import 'package:qunleashed/components/appbar.dart';
+import 'package:re_editor/re_editor.dart';
 
 import '../../../components/notification.dart';
 import '../../../components/path.dart';
 import '../../../services/logging.dart';
-import '../../../theme/colors/editor.dart';
 import '../../../theme/theme.dart';
 import 'document.dart';
-import 'highlighter.dart';
+import 'find_panel.dart';
+import 'line_numbers.dart';
 import 'style.dart';
-import 'widgets/line_row.dart';
+import 'syntax.dart';
+import 'toolbar.dart';
 
 class TextEditorPage extends StatefulWidget {
   const TextEditorPage({
@@ -33,22 +35,14 @@ class TextEditorPage extends StatefulWidget {
 }
 
 class _TextEditorPageState extends State<TextEditorPage> {
-  static const String _zwsp = '\u200b';
-
-  final ScrollController _scroll = ScrollController();
-  final TextEditingController _field = TextEditingController();
-  final FocusNode _focus = FocusNode();
-  final GlobalKey _fieldKey = GlobalKey();
+  final CodeLineEditingController _controller = CodeLineEditingController();
+  late final CodeFindController _find = CodeFindController(_controller);
 
   late final String _name;
-  late final LineHighlighter _highlighter;
+  late final CodeHighlightTheme _highlightTheme;
 
   EditorDocument? _doc;
-  int? _editing;
-  bool _editingModified = false;
-  bool _retargeting = false;
-  String _fieldText = '';
-
+  TextLineBreak _lineBreak = TextLineBreak.lf;
   bool _loading = true;
   bool _saving = false;
   String? _error;
@@ -57,17 +51,17 @@ class _TextEditorPageState extends State<TextEditorPage> {
   void initState() {
     super.initState();
     _name = widget.title ?? basename(widget.localPath.replaceAll('\\', '/'));
-    _highlighter = LineHighlighter.forFileName(_name);
-    _focus.addListener(_onFocusChanged);
+    _highlightTheme = editorHighlightTheme(_name);
+    _controller.addListener(_onCodeChanged);
     _load();
   }
 
   @override
   void dispose() {
-    _focus.removeListener(_onFocusChanged);
-    _focus.dispose();
-    _field.dispose();
-    _scroll.dispose();
+    _controller.removeListener(_onCodeChanged);
+    _find.dispose();
+    _controller.dispose();
+    _doc?.dispose();
     super.dispose();
   }
 
@@ -91,110 +85,28 @@ class _TextEditorPageState extends State<TextEditorPage> {
       if (text == null) {
         _error = 'Failed to read file';
       } else {
+        _lineBreak = _lineBreakOf(text);
         _doc = EditorDocument.fromText(text);
+        _controller.text = text;
       }
     });
   }
 
-  void _onFocusChanged() {
-    if (_focus.hasFocus || _editing == null) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || _retargeting || _focus.hasFocus || _editing == null) {
-        return;
-      }
-      setState(() => _editing = null);
-    });
+  void _onCodeChanged() => _doc?.update(_controller.codeLines);
+
+  /// The editor keeps LF internally, so the file is written back with the
+  /// line break it came with.
+  static TextLineBreak _lineBreakOf(String text) {
+    if (text.contains('\r\n')) return TextLineBreak.crlf;
+    if (text.contains('\r')) return TextLineBreak.cr;
+    return TextLineBreak.lf;
   }
 
-  void _startEditing(int index, int offset) {
-    final doc = _doc;
-    if (doc == null) return;
-    setState(() {
-      _editing = index;
-      _editingModified = doc.isModified(index);
-    });
-    _setField(doc.lineAt(index), offset);
-    _focus.requestFocus();
-  }
-
-  void _setField(String line, int caret) {
-    _fieldText = '$_zwsp$line';
-    _field.value = TextEditingValue(
-      text: _fieldText,
-      selection: TextSelection.collapsed(
-        offset: caret.clamp(0, line.length) + 1,
-      ),
-    );
-  }
-
-  void _moveEditing(EditorDocument doc, int index, int caret) {
-    _retargeting = true;
-    setState(() {
-      _editing = index;
-      _editingModified = doc.isModified(index);
-    });
-    _setField(doc.lineAt(index), caret);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      if (_editing != null && !_focus.hasFocus) _focus.requestFocus();
-      WidgetsBinding.instance.addPostFrameCallback((_) => _retargeting = false);
-    });
-  }
-
-  int _contentOffset(String value, int fieldOffset) => value
-      .substring(0, fieldOffset.clamp(0, value.length))
-      .replaceAll(_zwsp, '')
-      .length;
-
-  void _onFieldChanged(String value) {
-    final doc = _doc;
-    final index = _editing;
-    if (doc == null || index == null) return;
-
-    final previous = _fieldText;
-    final selection = _field.selection;
-    _fieldText = value;
-
-    final backspacedIntoPreviousLine =
-        index > 0 &&
-        previous.startsWith(_zwsp) &&
-        value == previous.substring(1) &&
-        selection.isCollapsed &&
-        selection.baseOffset == 0;
-    if (backspacedIntoPreviousLine) {
-      final caret = doc.mergeWithPrevious(index);
-      _moveEditing(doc, index - 1, caret);
-      return;
-    }
-
-    final content = value.replaceAll(_zwsp, '');
-    final caret = _contentOffset(value, selection.baseOffset);
-
-    if (content.contains('\n')) {
-      final parts = content.split('\n');
-      doc.replaceWithLines(index, parts);
-      var target = index;
-      var offset = 0;
-      var consumed = 0;
-      for (var i = 0; i < parts.length; i++) {
-        final end = consumed + parts[i].length;
-        if (caret <= end) {
-          target = index + i;
-          offset = caret - consumed;
-          break;
-        }
-        consumed = end + 1;
-      }
-      _moveEditing(doc, target, offset);
-      return;
-    }
-
-    doc.replace(index, content);
-    if (value != '$_zwsp$content') _setField(content, caret);
-
-    final modified = doc.isModified(index);
-    if (modified != _editingModified) {
-      setState(() => _editingModified = modified);
+  void _toggleFind() {
+    if (_find.value == null) {
+      _find.findMode();
+    } else {
+      _find.close();
     }
   }
 
@@ -202,7 +114,7 @@ class _TextEditorPageState extends State<TextEditorPage> {
     final doc = _doc;
     if (doc == null) return;
     setState(() => _saving = true);
-    final bytes = utf8.encode(doc.text);
+    final bytes = utf8.encode(_controller.codeLines.asString(_lineBreak));
     var ok = true;
     try {
       await Future(
@@ -217,7 +129,7 @@ class _TextEditorPageState extends State<TextEditorPage> {
     if (!mounted) return;
     setState(() {
       _saving = false;
-      if (ok) doc.markSaved();
+      if (ok) doc.markSaved(_controller.codeLines);
     });
     context.showNotification(
       ok ? 'Saved' : 'Save failed',
@@ -242,6 +154,11 @@ class _TextEditorPageState extends State<TextEditorPage> {
               onPressed: _loading ? null : widget.onRun,
               icon: const Icon(Icons.play_arrow),
             ),
+          QPageAppBarAction(
+            tooltip: 'Find',
+            onPressed: (_loading || _doc == null) ? null : _toggleFind,
+            icon: const Icon(Icons.search),
+          ),
           QPageAppBarAction(
             tooltip: 'Save',
             onPressed: (_saving || _loading || _doc == null) ? null : _save,
@@ -273,80 +190,38 @@ class _TextEditorPageState extends State<TextEditorPage> {
       );
     }
     final doc = _doc!;
-    final gutterWidth = editorGutterWidth(doc.length);
-
-    return MediaQuery.withNoTextScaling(
-      child: ColoredBox(
-        color:
-            dartEditorTheme['root']?.backgroundColor ??
-            colors.terminalBackground,
-        child: Stack(
-          children: [
-            Positioned(
-              left: 0,
-              top: 0,
-              bottom: 0,
-              width: gutterWidth,
-              child: const ColoredBox(color: kEditorGutterBackground),
-            ),
-            Scrollbar(
-              controller: _scroll,
-              child: ListView.builder(
-                controller: _scroll,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                itemCount: doc.length,
-                addAutomaticKeepAlives: false,
-                addSemanticIndexes: false,
-                itemBuilder: (context, index) =>
-                    _buildLine(doc, index, gutterWidth, colors),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLine(
-    EditorDocument doc,
-    int index,
-    double gutterWidth,
-    QAppColors colors,
-  ) {
-    if (index != _editing) {
-      return EditorLineView(
-        span: _highlighter.spanFor(doc.lineAt(index)),
-        number: index + 1,
-        modified: doc.isModified(index),
-        gutterWidth: gutterWidth,
-        onTapAtOffset: (offset) => _startEditing(index, offset),
-      );
-    }
-    return EditorLineField(
-      number: index + 1,
-      modified: _editingModified,
-      gutterWidth: gutterWidth,
-      child: TextField(
-        key: _fieldKey,
-        controller: _field,
-        focusNode: _focus,
-        maxLines: null,
-        style: kEditorTextStyle,
-        strutStyle: kEditorStrutStyle,
+    final root = _highlightTheme.theme['root'];
+    return CodeEditor(
+      controller: _controller,
+      findController: _find,
+      autofocus: false,
+      chunkAnalyzer: const NonCodeChunkAnalyzer(),
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      style: CodeEditorStyle(
+        fontSize: kEditorFontSize,
+        fontHeight: kEditorLineHeight,
+        fontFamily: kEditorFontFamily,
+        textColor: root?.color,
+        backgroundColor: root?.backgroundColor ?? colors.terminalBackground,
         cursorColor: colors.accent,
-        keyboardType: TextInputType.multiline,
-        textInputAction: TextInputAction.newline,
-        decoration: const InputDecoration(
-          border: InputBorder.none,
-          focusedBorder: InputBorder.none,
-          enabledBorder: InputBorder.none,
-          errorBorder: InputBorder.none,
-          disabledBorder: InputBorder.none,
-          isCollapsed: true,
-          contentPadding: EdgeInsets.zero,
-        ),
-        onChanged: _onFieldChanged,
+        selectionColor: colors.accent.withValues(alpha: 0.35),
+        highlightColor: colors.accent.withValues(alpha: 0.55),
+        codeTheme: _highlightTheme,
       ),
+      indicatorBuilder: (context, editingController, chunkController, notifier) {
+        return EditorLineNumbers(
+          controller: editingController,
+          notifier: notifier,
+          document: doc,
+        );
+      },
+      findBuilder: (context, controller, readOnly) => EditorFindPanel(
+        controller: controller,
+        readOnly: readOnly,
+        background: colors.accent,
+        foreground: colors.onAccent,
+      ),
+      toolbarController: editorSelectionToolbar,
     );
   }
 }

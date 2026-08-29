@@ -1,53 +1,85 @@
-class EditorDocument {
-  EditorDocument._(this._lines, this._saved, this._origin);
+import 'dart:math';
 
-  factory EditorDocument.fromText(String text) {
-    final lines = text.split('\n');
-    return EditorDocument._(
-      List<String>.of(lines),
-      List<String>.of(lines),
-      List<int>.generate(lines.length, (i) => i),
-    );
-  }
+import 'package:diffutil_dart/diffutil.dart';
+import 'package:flutter/foundation.dart';
+import 'package:re_editor/re_editor.dart';
 
-  final List<String> _lines;
-  final List<int> _origin;
+/// Keeps the last saved snapshot of the file and tells which lines differ from
+/// it, so the gutter can mark them.
+///
+/// The lines are diffed against the snapshot, so only the lines that were
+/// really edited, added or split are marked, whatever the edit was.
+class EditorDocument extends ChangeNotifier {
+  EditorDocument.fromText(String text) : _saved = text.textLines;
+
   List<String> _saved;
+  CodeLines? _lines;
+  List<bool> _marks = const [];
 
-  int get length => _lines.length;
+  bool get isModified => _marks.contains(true);
 
-  String lineAt(int index) => _lines[index];
+  bool isLineModified(int index) =>
+      index >= 0 && index < _marks.length && _marks[index];
 
-  String get text => _lines.join('\n');
-
-  bool isModified(int index) {
-    final origin = _origin[index];
-    if (origin < 0 || origin >= _saved.length) return true;
-    return _lines[index] != _saved[origin];
+  void update(CodeLines lines) {
+    if (identical(_lines, lines)) return;
+    _lines = lines;
+    _marks = _diff(_saved, _linesOf(lines));
+    notifyListeners();
   }
 
-  void replace(int index, String value) => _lines[index] = value;
-
-  void replaceWithLines(int index, List<String> parts) {
-    _lines[index] = parts.first;
-    if (parts.length == 1) return;
-    final rest = parts.sublist(1);
-    _lines.insertAll(index + 1, rest);
-    _origin.insertAll(index + 1, List<int>.filled(rest.length, -1));
+  void markSaved(CodeLines lines) {
+    _saved = _linesOf(lines);
+    _lines = lines;
+    if (_marks.isEmpty) return;
+    _marks = const [];
+    notifyListeners();
   }
 
-  int mergeWithPrevious(int index) {
-    final caret = _lines[index - 1].length;
-    _lines[index - 1] = _lines[index - 1] + _lines[index];
-    _lines.removeAt(index);
-    _origin.removeAt(index);
-    return caret;
-  }
+  static List<String> _linesOf(CodeLines lines) => [
+    for (final segment in lines.segments)
+      for (final line in segment) line.text,
+  ];
 
-  void markSaved() {
-    _saved = List<String>.of(_lines);
-    for (var i = 0; i < _origin.length; i++) {
-      _origin[i] = i;
+  /// Replays the edit operations on a list of marks, so every line of [current]
+  /// ends up marked only if it is not carried over from [saved].
+  ///
+  /// The lines shared at both ends are cut off first: they can never be part of
+  /// an edit, and diffing only the window between them keeps a keystroke in a
+  /// long file cheap.
+  static List<bool> _diff(List<String> saved, List<String> current) {
+    final common = min(saved.length, current.length);
+    var head = 0;
+    while (head < common && saved[head] == current[head]) {
+      head++;
     }
+    var tail = 0;
+    while (tail < common - head &&
+        saved[saved.length - 1 - tail] == current[current.length - 1 - tail]) {
+      tail++;
+    }
+
+    final savedWindow = saved.sublist(head, saved.length - tail);
+    final marks = List<bool>.filled(savedWindow.length, false, growable: true);
+    final updates = calculateListDiff<String>(
+      savedWindow,
+      current.sublist(head, current.length - tail),
+      detectMoves: false,
+    ).getUpdates();
+    for (final update in updates) {
+      update.when(
+        insert: (position, count) =>
+            marks.insertAll(position, List<bool>.filled(count, true)),
+        remove: (position, count) =>
+            marks.removeRange(position, position + count),
+        change: (position, _) => marks[position] = true,
+        move: (from, to) => marks.insert(to, marks.removeAt(from)),
+      );
+    }
+    return [
+      ...List<bool>.filled(head, false),
+      ...marks,
+      ...List<bool>.filled(tail, false),
+    ];
   }
 }
