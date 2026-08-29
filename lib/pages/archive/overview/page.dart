@@ -75,7 +75,7 @@ class _ArchivePageState extends State<ArchivePage> {
         ),
       _CategoryEntry(
         title: 'Deleted',
-        asset: 'assets/ic/action/trash.svg',
+        asset: 'assets/ic/fileformat/deleted.svg',
         color: const Color(0xFF8D8D8D),
         count: _ctrl.deletedCount,
         onTap: _openDeleted,

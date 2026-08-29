@@ -187,7 +187,7 @@ class _AppShellState extends State<AppShell> {
           slot,
           _slotDeleted,
           const Color(0xFF8D8D8D),
-          asset: 'assets/ic/action/trash.svg',
+          asset: 'assets/ic/fileformat/deleted.svg',
         ),
         _railItem(
           colors,
