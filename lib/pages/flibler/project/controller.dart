@@ -19,7 +19,7 @@ const String kFliblerAppsRoot = '/ext/apps';
 const String kFliblerFallbackCategory = 'Tools';
 const String kFliblerRecentPrefsKey = 'flibler_recent_sources';
 const String kFliblerLastFolderPrefsKey = 'flibler_last_folder';
-const int kFliblerRecentLimit = 5;
+const int kFliblerRecentLimit = 50;
 
 class FliblerRecentSource {
   const FliblerRecentSource({

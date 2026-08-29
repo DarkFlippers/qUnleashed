@@ -11,6 +11,7 @@ import 'notification_center.dart';
 
 class PushTopics {
   static const appRelease = 'app_release';
+  static const appDev = 'app_dev';
   static const unlRelease = 'unl_release';
   static const ofwRelease = 'ofw_release';
   static const unlDev = 'unl_dev';
@@ -19,7 +20,7 @@ class PushTopics {
   static const app = [appRelease];
   static const release = [unlRelease, ofwRelease];
   static const dev = [unlDev, ofwDev];
-  static const all = [...app, ...release, ...dev];
+  static const all = [...app, appDev, ...release, ...dev];
 }
 
 class PushService {
@@ -27,6 +28,7 @@ class PushService {
   static final PushService instance = PushService._();
 
   static const _prefAppReleases = 'push.app_releases_enabled';
+  static const _prefAppDev = 'push.app_dev_enabled';
   static const _prefEnabled = 'push.notifications_enabled';
   static const _prefDevUpdates = 'push.dev_updates_enabled';
   static const _androidChannelId = 'firmware_updates';
@@ -74,6 +76,17 @@ class PushService {
     if (isSupported) await _applySubscriptions();
   }
 
+  Future<bool> isAppDevEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_prefAppDev) ?? false;
+  }
+
+  Future<void> setAppDevEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_prefAppDev, enabled);
+    if (isSupported) await _applySubscriptions();
+  }
+
   Future<bool> isFirmwareReleasesEnabled() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(_prefEnabled) ?? true;
@@ -99,11 +112,15 @@ class PushService {
   Future<void> _applySubscriptions() async {
     final messaging = FirebaseMessaging.instance;
     final appEnabled = await isAppReleasesEnabled();
+    final appDevEnabled = await isAppDevEnabled();
     final enabled = await isFirmwareReleasesEnabled();
     final devEnabled = await isFirmwareDevEnabled();
 
     final active = <String>{};
-    if (appEnabled) active.addAll(PushTopics.app);
+    if (appEnabled) {
+      active.addAll(PushTopics.app);
+      if (appDevEnabled) active.add(PushTopics.appDev);
+    }
     if (enabled) {
       active.addAll(PushTopics.release);
       if (devEnabled) active.addAll(PushTopics.dev);

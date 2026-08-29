@@ -28,6 +28,7 @@ class NotificationsSettingsPage extends StatefulWidget {
 
 class _NotificationsSettingsPageState extends State<NotificationsSettingsPage> {
   bool _appReleases = true;
+  bool _appDev = false;
   bool _firmwareReleases = true;
   bool _firmwareDev = false;
 
@@ -39,12 +40,14 @@ class _NotificationsSettingsPageState extends State<NotificationsSettingsPage> {
 
   Future<void> _load() async {
     final appReleases = await PushService.instance.isAppReleasesEnabled();
+    final appDev = await PushService.instance.isAppDevEnabled();
     final firmwareReleases =
         await PushService.instance.isFirmwareReleasesEnabled();
     final firmwareDev = await PushService.instance.isFirmwareDevEnabled();
     if (mounted) {
       setState(() {
         _appReleases = appReleases;
+        _appDev = appDev;
         _firmwareReleases = firmwareReleases;
         _firmwareDev = firmwareDev;
       });
@@ -54,6 +57,11 @@ class _NotificationsSettingsPageState extends State<NotificationsSettingsPage> {
   void _setAppReleases(bool value) {
     setState(() => _appReleases = value);
     PushService.instance.setAppReleasesEnabled(value);
+  }
+
+  void _setAppDev(bool value) {
+    setState(() => _appDev = value);
+    PushService.instance.setAppDevEnabled(value);
   }
 
   void _setFirmwareReleases(bool value) {
@@ -142,6 +150,12 @@ class _NotificationsSettingsPageState extends State<NotificationsSettingsPage> {
                 subtitle: 'New qUnleashed app versions.',
                 value: _appReleases,
                 onChanged: supported ? _setAppReleases : null,
+              ),
+              _Toggle(
+                title: 'Dev channel',
+                subtitle: 'Also get notified about new dev app builds.',
+                value: _appDev,
+                onChanged: (supported && _appReleases) ? _setAppDev : null,
               ),
             ],
             onTap: (t) =>
