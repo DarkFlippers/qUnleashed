@@ -107,6 +107,20 @@ Sec 1 key B cuid 5bcbb2e4 nt0 d7707ed1 ks0 65bc542b par0 0110 dist 0
       expect(nonces.single.keyType, NestedKeyType.b);
     });
 
+    test('drops a line whose sector is outside MIFARE Classic 4K', () {
+      // A sector above 39 has no key index the firmware can address: it packs
+      // `sector * 2 (+1 for key B)` into one byte, so sector 128 would alias
+      // onto sector 0 in a candidate dictionary.
+      const file = '''
+Sec 40 key A cuid 5bcbb2e4 nt0 a0bbe1ef ks0 c70d97e3 par0 1110 dist 0
+Sec 128 key B cuid 5bcbb2e4 nt0 a0bbe1ef ks0 c70d97e3 par0 1110 dist 0
+Sec 39 key B cuid 5bcbb2e4 nt0 d7707ed1 ks0 65bc542b par0 0110 dist 0
+''';
+      final nonces = NestedNonceParser.parse(file);
+      expect(nonces, hasLength(1));
+      expect(nonces.single.sector, 39);
+    });
+
     test('parses dist as null when absent and as its value when present', () {
       const withoutDist =
           'Sec 0 key A cuid 5bcbb2e4 nt0 a0bbe1ef ks0 c70d97e3 par0 1110';

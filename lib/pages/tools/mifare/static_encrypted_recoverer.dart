@@ -13,12 +13,12 @@ import 'nested_models.dart';
 /// path. A single nonce under-constrains the key (tens of thousands of
 /// candidates), so these must be verified against the tag on the device.
 ///
-/// The keys are serialized to [body] (newline-joined 12-hex uppercase, ready to
-/// write to `mf_classic_dict_<cuid>.nfc`) inside the worker isolate — returning
-/// the raw strings would copy up to ~1M entries across the isolate boundary for
-/// data that is only ever written and discarded. [count] is 0 when generation
-/// produced no candidates (e.g. an allocation failure), in which case [body] is
-/// empty and nothing should be written.
+/// The keys are serialized to [body] (newline-joined `formatCuidDictEntry`
+/// lines, ready to write to `mf_classic_dict_<cuid>.nfc`) inside the worker
+/// isolate — returning the raw strings would copy up to ~1M entries across the
+/// isolate boundary for data that is only ever written and discarded. [count]
+/// is 0 when generation produced no candidates (e.g. an allocation failure), in
+/// which case [body] is empty and nothing should be written.
 class StaticCandidateDict {
   const StaticCandidateDict({
     required this.cuid,
@@ -130,8 +130,29 @@ class NativeStaticEncryptedRecoverer implements StaticEncryptedRecoverer {
 
       final results = <StaticCandidateDict>[];
       grouped.forEach((cuid, sectors) {
-        final candidates = <int>{};
-        for (final keys in sectors.values) {
+        // Serialized as it is generated: only a flat byte buffer then crosses
+        // the isolate boundary, and each batch of candidates is consumed before
+        // the next sector overwrites the shared native buffer behind it.
+        final entries = StringBuffer();
+        var count = 0;
+        void emit(_NoncePayload nonce, Uint64List keys) {
+          for (final key in keys) {
+            entries.writeln(
+              formatCuidDictEntry(
+                sector: nonce.sector,
+                isKeyA: nonce.isKeyA,
+                key: key,
+              ),
+            );
+          }
+          count += keys.length;
+        }
+
+        // Ascending sector, key A before key B — the order the firmware walks
+        // its key indices in.
+        final orderedSectors = sectors.keys.toList()..sort();
+        for (final sector in orderedSectors) {
+          final keys = sectors[sector]!;
           final a = keys[true];
           final b = keys[false];
           if (a != null && b != null) {
@@ -150,20 +171,20 @@ class NativeStaticEncryptedRecoverer implements StaticEncryptedRecoverer {
               _capacity,
               countB,
             );
-            candidates.addAll(outA.asTypedList(countA.value));
-            candidates.addAll(outB.asTypedList(countB.value));
+            emit(a, outA.asTypedList(countA.value));
+            emit(b, outB.asTypedList(countB.value));
           } else {
             final one = a ?? b!;
             final n = staticFn(cuid, one.nt, one.ks, one.par, outA, _capacity);
-            candidates.addAll(outA.asTypedList(n));
+            emit(one, outA.asTypedList(n));
           }
         }
-        // Serialize here so only a flat byte buffer crosses the isolate boundary.
-        final body = candidates.isEmpty
-            ? Uint8List(0)
-            : utf8.encode('${candidates.map(formatMifareKey).join('\n')}\n');
         results.add(
-          StaticCandidateDict(cuid: cuid, count: candidates.length, body: body),
+          StaticCandidateDict(
+            cuid: cuid,
+            count: count,
+            body: utf8.encode(entries.toString()),
+          ),
         );
       });
       return results;

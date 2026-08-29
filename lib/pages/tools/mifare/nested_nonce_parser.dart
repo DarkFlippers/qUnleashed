@@ -22,6 +22,11 @@ class NestedNonceParser {
 
   static final RegExp _whitespace = RegExp(r'\s+');
 
+  /// MIFARE Classic tops out at 40 sectors (4K). The firmware also files a
+  /// candidate under a one-byte key index derived from the sector, so a line
+  /// claiming a larger sector is corrupt and would alias onto a real one.
+  static const _maxSectors = 40;
+
   static NestedNonce? _parseLine(String line) {
     final trimmed = line.trim();
     if (trimmed.isEmpty) return null;
@@ -35,7 +40,8 @@ class NestedNonceParser {
     final sector = int.tryParse(fields['sec'] ?? '');
     final keyType = _parseKeyType(fields['key']);
     final cuid = _parseHex(fields['cuid']);
-    if (sector == null || keyType == null || cuid == null) return null;
+    if (sector == null || sector < 0 || sector >= _maxSectors) return null;
+    if (keyType == null || cuid == null) return null;
 
     final samples = <NestedSample>[];
     for (var index = 0; index < 2; index++) {
