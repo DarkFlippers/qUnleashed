@@ -21,6 +21,7 @@ class RemoteScreenGeometry {
   static const double strip = queueHeight + queueSpacing;
   static const double bezel = 38;
   static const double fixedHeight = strip + bezel;
+  static const double maxHeight = 420;
 
   static double aspect(bool streamVertical) => streamVertical ? 0.5 : 2.0;
 
@@ -116,6 +117,7 @@ class RemoteLayout {
     required this.controlsSize,
     required this.actionsSize,
     required this.padding,
+    this.panelSize = Size.zero,
   });
 
   static const double gap = 12;
@@ -137,6 +139,7 @@ class RemoteLayout {
   final Size controlsSize;
   final Size actionsSize;
   final EdgeInsets padding;
+  final Size panelSize;
 
   static bool isWide(Size window) => window.width > window.height;
 
@@ -144,16 +147,11 @@ class RemoteLayout {
     Size available,
     bool streamVertical, {
     required bool wide,
-    int actionCells = RemoteActionBarGeometry.cells,
   }) => wide
-      ? _wide(available, streamVertical, actionCells)
+      ? _wide(available, streamVertical)
       : _narrow(available, streamVertical);
 
-  static RemoteLayout _wide(
-    Size available,
-    bool streamVertical,
-    int actionCells,
-  ) {
+  static RemoteLayout _wide(Size available, bool streamVertical) {
     final inset = panelMargin.horizontal + panelPadding.horizontal;
     final insetV = panelMargin.vertical + panelPadding.vertical;
     final width = math.max(0.0, available.width - inset);
@@ -169,8 +167,11 @@ class RemoteLayout {
     double solve(double barHeight) => math.max(
       0.0,
       math.min(
-        height - barHeight - actionsSpacing,
-        (width - gap - screen.intercept) / denominator,
+        RemoteScreenGeometry.maxHeight,
+        math.min(
+          height - barHeight - actionsSpacing,
+          (width - gap - screen.intercept) / denominator,
+        ),
       ),
     );
 
@@ -179,24 +180,29 @@ class RemoteLayout {
     for (var i = 0; i < 4; i++) {
       barHeight = RemoteActionBarGeometry.heightFor(
         _screenWidth(band, streamVertical),
-        actionCells,
+        RemoteActionBarGeometry.cells,
       );
       band = solve(barHeight);
     }
 
     final screenSize = Size(_screenWidth(band, streamVertical), band);
     final controlsHeight = band * share;
+    final controlsSize = Size(
+      controls.widthForHeight(controlsHeight),
+      controlsHeight,
+    );
 
     return RemoteLayout(
       wide: true,
       controlsArrangement: arrangement,
       screenSize: screenSize,
-      controlsSize: Size(
-        controls.widthForHeight(controlsHeight),
-        controlsHeight,
-      ),
+      controlsSize: controlsSize,
       actionsSize: Size(screenSize.width, barHeight),
       padding: panelMargin,
+      panelSize: Size(
+        screenSize.width + gap + controlsSize.width + panelPadding.horizontal,
+        band + actionsSpacing + barHeight + panelPadding.vertical,
+      ),
     );
   }
 

@@ -14,9 +14,6 @@ class RemoteActionBar extends StatelessWidget {
   const RemoteActionBar({
     super.key,
     required this.size,
-    required this.showSession,
-    required this.sessionBusy,
-    required this.onRequestSession,
     required this.gifState,
     required this.gifElapsedMs,
     required this.justUnlocked,
@@ -32,9 +29,6 @@ class RemoteActionBar extends StatelessWidget {
   });
 
   final Size size;
-  final bool showSession;
-  final bool sessionBusy;
-  final VoidCallback onRequestSession;
   final GifRecordingState gifState;
   final int gifElapsedMs;
   final bool justUnlocked;
@@ -64,10 +58,9 @@ class RemoteActionBar extends StatelessWidget {
       onCancelGif: onCancelGif,
     );
 
-    final cells = specs.length + (showSession ? 1 : 0);
     final scale = math.min(
       size.height / RemoteActionBarGeometry.pillHeight,
-      size.width / RemoteActionBarGeometry.designFor(cells).width,
+      size.width / RemoteActionBarGeometry.designFor(specs.length).width,
     );
 
     return SizedBox.fromSize(
@@ -89,14 +82,6 @@ class RemoteActionBar extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (showSession) ...[
-                  _SessionPill(
-                    scale: scale,
-                    busy: sessionBusy,
-                    onTap: onRequestSession,
-                  ),
-                  SizedBox(width: RemoteActionBarGeometry.pillGap * scale),
-                ],
                 for (var i = 0; i < specs.length; i++) ...[
                   if (i > 0)
                     SizedBox(width: RemoteActionBarGeometry.pillGap * scale),
@@ -281,103 +266,4 @@ String _fmt(int ms) {
   final s = (ms ~/ 1000).clamp(0, 99);
   final tenths = (ms % 1000) ~/ 100;
   return '${s.toString().padLeft(2, '0')}.${tenths}s';
-}
-
-class _SessionPill extends StatelessWidget {
-  const _SessionPill({
-    required this.scale,
-    required this.busy,
-    required this.onTap,
-  });
-
-  final double scale;
-  final bool busy;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final badge = QIconBadgeStyle.of(context, context.appColors.accent);
-
-    return GestureDetector(
-      onTap: busy ? null : onTap,
-      child: _Shell(
-        width: RemoteActionBarGeometry.pillWidth,
-        scale: scale,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _SpinningIcon(spinning: busy, color: badge.foreground),
-            const SizedBox(width: 8),
-            Flexible(
-              child: Text(
-                'Session',
-                maxLines: 1,
-                softWrap: false,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 15,
-                  height: 1,
-                  fontWeight: FontWeight.w600,
-                  color: badge.foreground,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SpinningIcon extends StatefulWidget {
-  const _SpinningIcon({required this.spinning, required this.color});
-
-  final bool spinning;
-  final Color color;
-
-  @override
-  State<_SpinningIcon> createState() => _SpinningIconState();
-}
-
-class _SpinningIconState extends State<_SpinningIcon>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 900),
-  );
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.spinning) {
-      _ctrl.repeat();
-    } else {
-      _ctrl.forward(from: 0);
-    }
-  }
-
-  @override
-  void didUpdateWidget(covariant _SpinningIcon old) {
-    super.didUpdateWidget(old);
-    if (old.spinning == widget.spinning) return;
-    if (widget.spinning) {
-      _ctrl.repeat();
-    } else {
-      _ctrl.forward();
-    }
-  }
-
-  @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return RotationTransition(
-      turns: _ctrl,
-      child: Icon(Icons.sync_rounded, size: 22, color: widget.color),
-    );
-  }
 }

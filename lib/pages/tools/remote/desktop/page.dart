@@ -276,9 +276,6 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
       queue: _session.queue,
       orientation: _session.orientation,
       connected: !_session.isDisconnected,
-      showSession: _session.isDisconnected,
-      sessionBusy: _session.sessionBusy,
-      onRequestSession: () => unawaited(_session.requestSession()),
       gifState: _gifRecorder.state,
       gifElapsedMs: _gifRecorder.elapsedMs,
       justUnlocked: _session.justUnlocked,
@@ -337,9 +334,6 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
                   constraints.biggest,
                   _streamVertical,
                   wide: wide,
-                  actionCells:
-                      RemoteActionBarGeometry.cells +
-                      (_session.isDisconnected ? 1 : 0),
                 );
                 return layout.wide
                     ? _wideBody(layout)

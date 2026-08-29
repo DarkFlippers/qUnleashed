@@ -49,7 +49,7 @@ class RemoteSession extends ChangeNotifier {
   bool _justUnlocked = false;
   Timer? _unlockedFlashTimer;
   bool _isDisconnected = false;
-  bool _sessionBusy = false;
+  bool _starting = false;
   bool _disposed = false;
   bool _stopped = false;
 
@@ -64,7 +64,6 @@ class RemoteSession extends ChangeNotifier {
   StreamOrientation get orientation => _orientation;
   bool get justUnlocked => _justUnlocked;
   bool get isDisconnected => _isDisconnected;
-  bool get sessionBusy => _sessionBusy;
   List<QueuedButton> get queue => _queue;
   int? get lastBgColor => _lastBgColor;
   int? get lastFgColor => _lastFgColor;
@@ -84,6 +83,8 @@ class RemoteSession extends ChangeNotifier {
   /// Asks for the stream straight away — a stale "not connected" flag must not
   /// keep the page from trying, so the verdict comes from the call itself.
   Future<void> _start() async {
+    if (_starting) return;
+    _starting = true;
     try {
       await _client.guiStartScreenStream(
         priority: FlipperRequestPriority.rightNow,
@@ -99,21 +100,8 @@ class RemoteSession extends ChangeNotifier {
         _isDisconnected = true;
         _safeNotify();
       }
-    }
-  }
-
-  /// Re-opens the screen stream on the current link without leaving the page.
-  Future<void> requestSession() async {
-    if (_disposed || _sessionBusy) return;
-    _sessionBusy = true;
-    _safeNotify();
-    try {
-      await _start();
     } finally {
-      if (!_disposed) {
-        _sessionBusy = false;
-        _safeNotify();
-      }
+      _starting = false;
     }
   }
 
@@ -162,14 +150,18 @@ class RemoteSession extends ChangeNotifier {
   void _onConnectionState(FlipperConnectionState state) {
     if (_disposed) return;
 
-    if (!state.connected && !_isDisconnected) {
+    if (!state.connected) {
+      if (_isDisconnected) return;
       _isDisconnected = true;
       final prev = _frameImage;
       _frameImage = null;
       _frameNotifier.value = null;
       _safeNotify();
       prev?.dispose();
+      return;
     }
+
+    unawaited(_start());
   }
 
   void _applyStatus(Status status) {

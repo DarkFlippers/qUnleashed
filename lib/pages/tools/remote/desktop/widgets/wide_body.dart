@@ -21,9 +21,6 @@ class RemoteWideBody extends StatelessWidget {
     required this.queue,
     required this.orientation,
     required this.connected,
-    required this.showSession,
-    required this.sessionBusy,
-    required this.onRequestSession,
     required this.gifState,
     required this.gifElapsedMs,
     required this.justUnlocked,
@@ -45,9 +42,6 @@ class RemoteWideBody extends StatelessWidget {
   final List<QueuedButton> queue;
   final StreamOrientation orientation;
   final bool connected;
-  final bool showSession;
-  final bool sessionBusy;
-  final VoidCallback onRequestSession;
   final GifRecordingState gifState;
   final int gifElapsedMs;
   final bool justUnlocked;
@@ -88,69 +82,71 @@ class RemoteWideBody extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: RemoteLayout.panelMargin,
-      child: Container(
-        decoration: BoxDecoration(
-          color: context.appColors.card,
-          borderRadius: BorderRadius.circular(RemoteLayout.panelRadius),
-        ),
-        padding: RemoteLayout.panelPadding,
-        child: Stack(
-          children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: Center(
+        child: SizedBox.fromSize(
+          size: layout.panelSize,
+          child: Container(
+            decoration: BoxDecoration(
+              color: context.appColors.card,
+              borderRadius: BorderRadius.circular(RemoteLayout.panelRadius),
+            ),
+            padding: RemoteLayout.panelPadding,
+            child: Stack(
               children: [
-                Stack(
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    Stack(
                       children: [
-                        RemoteScreen(
-                          size: layout.screenSize,
-                          queueAtBottom: true,
-                          frameListenable: frameListenable,
-                          queue: queue,
-                          orientation: orientation,
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            RemoteScreen(
+                              size: layout.screenSize,
+                              queueAtBottom: true,
+                              frameListenable: frameListenable,
+                              queue: queue,
+                              orientation: orientation,
+                            ),
+                            RemoteControls(
+                              size: layout.controlsSize,
+                              arrangement: layout.controlsArrangement,
+                              onHoldBegin: onHoldBegin,
+                              onHoldEnd: onHoldEnd,
+                            ),
+                          ],
                         ),
-                        RemoteControls(
-                          size: layout.controlsSize,
-                          arrangement: layout.controlsArrangement,
-                          onHoldBegin: onHoldBegin,
-                          onHoldEnd: onHoldEnd,
-                        ),
+                        _ledSlot(layout, connected),
                       ],
                     ),
-                    _ledSlot(layout, connected),
+                    const Spacer(),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: RemoteActionBar(
+                        size: layout.actionsSize,
+                        gifState: gifState,
+                        gifElapsedMs: gifElapsedMs,
+                        justUnlocked: justUnlocked,
+                        savingScreenshot: savingScreenshot,
+                        onBack: onBack,
+                        onCopy: onCopy,
+                        onSave: onSave,
+                        onUnlock: onUnlock,
+                        onStartGif: onStartGif,
+                        onPauseResumeGif: onPauseResumeGif,
+                        onStopGif: onStopGif,
+                        onCancelGif: onCancelGif,
+                      ),
+                    ),
                   ],
                 ),
-                const Spacer(),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: RemoteActionBar(
-                    size: layout.actionsSize,
-                    showSession: showSession,
-                    sessionBusy: sessionBusy,
-                    onRequestSession: onRequestSession,
-                    gifState: gifState,
-                    gifElapsedMs: gifElapsedMs,
-                    justUnlocked: justUnlocked,
-                    savingScreenshot: savingScreenshot,
-                    onBack: onBack,
-                    onCopy: onCopy,
-                    onSave: onSave,
-                    onUnlock: onUnlock,
-                    onStartGif: onStartGif,
-                    onPauseResumeGif: onPauseResumeGif,
-                    onStopGif: onStopGif,
-                    onCancelGif: onCancelGif,
-                  ),
+                const Align(
+                  alignment: Alignment.bottomRight,
+                  child: RemoteInfoHint(),
                 ),
               ],
             ),
-            const Align(
-              alignment: Alignment.bottomRight,
-              child: RemoteInfoHint(),
-            ),
-          ],
+          ),
         ),
       ),
     );
