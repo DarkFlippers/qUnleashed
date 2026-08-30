@@ -12,6 +12,11 @@ on:
     # Pull finished translations once a day, at 04:00 UTC.
     - cron: "0 4 * * *"
   workflow_dispatch:
+    inputs:
+      seed_translations:
+        description: "Upload translations already in the repo (first run only)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -34,7 +39,7 @@ jobs:
         with:
           config: crowdin.yml
           upload_sources: true
-          upload_translations: false
+          upload_translations: ${{ inputs.seed_translations || false }}
           # A push only ships new source strings; translations come back on the
           # schedule and on manual runs, so day-to-day pushes stay PR-free.
           download_translations: ${{ github.event_name != 'push' }}
