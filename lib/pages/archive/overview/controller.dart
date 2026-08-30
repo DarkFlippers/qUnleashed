@@ -105,6 +105,7 @@ class ArchiveController extends ChangeNotifier {
   int get lastDownloadedTotal => _lastDownloadedTotal;
   String get deviceName => _deviceName;
   bool get isConnected => _client.isConnected;
+  FlipperClient get client => _client;
   ArchiveStorage get storage => _storage;
 
   /// Favorited apps (`.fap`) imported from the device, shown in the favorites

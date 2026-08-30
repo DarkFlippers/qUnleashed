@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import '../../../../components/icon.dart';
 import '../../../../theme/theme.dart';
 import '../../../../components/notification.dart';
+import '../../../../components/dialogs/connection.dart';
 import '../controller.dart';
 import '../../../../components/archive/category.dart';
 import '../../../../components/archive/models/key.dart';
@@ -221,6 +222,8 @@ class _CategoryPageState extends State<CategoryPage> {
     }
   }
 
+  bool get _hasFilter => _starredOnly || _filterVal != null || _query.isNotEmpty;
+
   String _emptyTitle() {
     final noun = _cat.itemNounPlural;
     if (_starredOnly) return l10n.archiveEmptyStarred(_cat.title, noun);
@@ -230,6 +233,39 @@ class _CategoryPageState extends State<CategoryPage> {
       return l10n.archiveEmptyConnect(_cat.title, noun);
     }
     return l10n.archiveEmptySync(_cat.title, noun);
+  }
+
+  IconData _emptyIcon() {
+    if (_hasFilter) return Icons.search_off;
+    if (!_ctrl.isConnected) return Icons.link_off;
+    return Icons.folder_open;
+  }
+
+  String _emptyActionLabel() {
+    if (_hasFilter) return context.l10n.commonClear;
+    if (!_ctrl.isConnected) return context.l10n.commonConnect;
+    return context.l10n.commonSync;
+  }
+
+  void _onEmptyAction() {
+    if (_hasFilter) {
+      _clearFilters();
+      return;
+    }
+    if (!_ctrl.isConnected) {
+      unawaited(promptConnectDevice(context, _ctrl.client));
+      return;
+    }
+    unawaited(_ctrl.syncCategory(_cat));
+  }
+
+  void _clearFilters() {
+    _searchCtrl.clear();
+    setState(() {
+      _query = '';
+      _filterVal = null;
+      _starredOnly = false;
+    });
   }
 
   @override
@@ -355,9 +391,11 @@ class _CategoryPageState extends State<CategoryPage> {
                   child: SizedBox(
                     height: constraints.maxHeight,
                     child: ArchiveEmptyView(
-                      icon: Icons.folder_open,
+                      icon: _emptyIcon(),
                       title: _emptyTitle(),
                       subtitle: _ctrl.lastError,
+                      actionLabel: _emptyActionLabel(),
+                      onAction: _onEmptyAction,
                     ),
                   ),
                 )

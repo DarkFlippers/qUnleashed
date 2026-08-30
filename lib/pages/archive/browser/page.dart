@@ -20,6 +20,8 @@ import '../editor/open.dart';
 import 'share_remote_file.dart';
 import 'controller.dart';
 import 'widgets/file_row.dart';
+import '../../../components/filelist/empty_view.dart';
+import '../../../components/dialogs/connection.dart';
 
 class _ClipEntry {
   _ClipEntry({
@@ -174,6 +176,12 @@ class _FileManagerPageState extends State<FileManagerPage> {
     _searchCtrl.clear();
     _ctrl.setSearch('');
     setState(() => _searching = false);
+  }
+
+  Future<void> _connect() async {
+    await promptConnectDevice(context, _ctrl.client);
+    if (!mounted || !_ctrl.client.isConnected) return;
+    await _ctrl.refresh();
   }
 
   Future<void> _launchFap(String remotePath) async {
@@ -1229,33 +1237,26 @@ class _FileManagerPageState extends State<FileManagerPage> {
     if (_ctrl.loading && _ctrl.entries.isEmpty) {
       return Center(child: CircularProgressIndicator(color: colors.accent));
     }
+    if (!_ctrl.client.isConnected) {
+      return ArchiveEmptyView(
+        icon: Icons.link_off,
+        title: context.l10n.fmNotConnected,
+        subtitle: context.l10n.fmNotConnectedHint,
+        actionLabel: context.l10n.commonConnect,
+        onAction: _connect,
+      );
+    }
     if (_ctrl.error != null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.error_outline, size: 48, color: colors.danger),
-              const SizedBox(height: 12),
-              Text(
-                _ctrl.error!,
-                textAlign: TextAlign.center,
-                style: TextStyle(color: colors.textSecondary),
-              ),
-              const SizedBox(height: 12),
-              FilledButton.tonal(
-                onPressed: _ctrl.refresh,
-                child: Text(context.l10n.commonRetry),
-              ),
-            ],
-          ),
-        ),
+      return ArchiveEmptyView(
+        icon: Icons.error_outline,
+        title: _ctrl.error!,
+        actionLabel: context.l10n.commonRetry,
+        onAction: _ctrl.refresh,
       );
     }
 
     if (_ctrl.isEmptyAfterFilter) {
-      return _buildEmptyState(colors);
+      return _buildEmptyState();
     }
 
     final grid = _ctrl.viewMode == FileViewMode.grid;
@@ -1277,40 +1278,23 @@ class _FileManagerPageState extends State<FileManagerPage> {
     );
   }
 
-  Widget _buildEmptyState(QAppColors colors) {
+  Widget _buildEmptyState() {
     final searching = _ctrl.isSearching;
     return LayoutBuilder(
       builder: (context, constraints) => SingleChildScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         child: ConstrainedBox(
           constraints: BoxConstraints(minHeight: constraints.maxHeight),
-          child: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  searching ? Icons.search_off : Icons.folder_open_outlined,
-                  size: 56,
-                  color: colors.textMuted,
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  searching ? context.l10n.fmNoMatches : context.l10n.fmEmptyFolder,
-                  style: TextStyle(
-                    color: colors.textSecondary,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                if (!searching) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    context.l10n.fmEmptyHint,
-                    style: TextStyle(color: colors.textMuted, fontSize: 13),
-                  ),
-                ],
-              ],
-            ),
+          child: ArchiveEmptyView(
+            icon: searching ? Icons.search_off : Icons.folder_open,
+            title: searching
+                ? context.l10n.fmNoMatches
+                : context.l10n.fmEmptyFolder,
+            subtitle: searching ? null : context.l10n.fmEmptyHint,
+            actionLabel: searching
+                ? context.l10n.commonClear
+                : context.l10n.fmRefresh,
+            onAction: searching ? _stopSearch : _ctrl.refresh,
           ),
         ),
       ),

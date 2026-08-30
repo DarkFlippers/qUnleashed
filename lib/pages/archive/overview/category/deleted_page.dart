@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../../theme/theme.dart';
+import '../../../../components/dialogs/connection.dart';
 import '../controller.dart';
 import '../../../../components/archive/models/key.dart';
 import '../../widgets/actions_sheet.dart';
@@ -183,6 +184,40 @@ class _DeletedPageState extends State<DeletedPage> {
   String _keyId(ArchiveKey k) =>
       '${k.flipperDir}/${k.subFolder.isEmpty ? '' : '${k.subFolder}/'}${k.name}.${k.extension}';
 
+  bool get _hasFilter => _filterVal != null || _query.isNotEmpty;
+
+  IconData _emptyIcon() {
+    if (_hasFilter) return Icons.search_off;
+    if (!_ctrl.isConnected) return Icons.link_off;
+    return Icons.delete_outline;
+  }
+
+  String _emptyActionLabel() {
+    if (_hasFilter) return context.l10n.commonClear;
+    if (!_ctrl.isConnected) return context.l10n.commonConnect;
+    return context.l10n.commonSync;
+  }
+
+  void _onEmptyAction() {
+    if (_hasFilter) {
+      _clearFilters();
+      return;
+    }
+    if (!_ctrl.isConnected) {
+      unawaited(promptConnectDevice(context, _ctrl.client));
+      return;
+    }
+    unawaited(_ctrl.refresh());
+  }
+
+  void _clearFilters() {
+    _searchCtrl.clear();
+    setState(() {
+      _query = '';
+      _filterVal = null;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
@@ -270,16 +305,17 @@ class _DeletedPageState extends State<DeletedPage> {
                           child: SizedBox(
                             height: constraints.maxHeight,
                             child: ArchiveEmptyView(
-                              icon: Icons.delete_outline,
+                              icon: _emptyIcon(),
                               title: _query.isNotEmpty
                                   ? context.l10n.archiveEmptyQuery(_query)
                                   : _filterVal != null
                                   ? context.l10n.archiveNoFilesFilter
                                   : context.l10n.archiveNothingHere,
-                              subtitle:
-                                  (_query.isNotEmpty || _filterVal != null)
+                              subtitle: _hasFilter
                                   ? null
                                   : context.l10n.archiveDeletedHint,
+                              actionLabel: _emptyActionLabel(),
+                              onAction: _onEmptyAction,
                             ),
                           ),
                         )

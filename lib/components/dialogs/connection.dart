@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../../theme/theme.dart';
 import '../../services/logging.dart';
+import 'connection_error.dart';
 
 Future<FlipperDevice?> showConnectionDialog(
   BuildContext context, {
@@ -17,6 +18,22 @@ Future<FlipperDevice?> showConnectionDialog(
     barrierColor: FlipperOriginalColors.barrier,
     builder: (_) => ConnectionDialog(usbOnly: usbOnly, skipRpc: skipRpc),
   );
+}
+
+/// Picks a device with [showConnectionDialog] and links [client] to it,
+/// reporting a failed attempt with the shared error dialog.
+Future<void> promptConnectDevice(
+  BuildContext context,
+  FlipperClient client,
+) async {
+  final selected = await showConnectionDialog(context);
+  if (selected == null || !context.mounted) return;
+  try {
+    await client.connect(selected);
+  } catch (e) {
+    if (!context.mounted) return;
+    await showConnectionFailedDialog(context, e, isBle: selected.isBle);
+  }
 }
 
 class ConnectionDialog extends StatefulWidget {
