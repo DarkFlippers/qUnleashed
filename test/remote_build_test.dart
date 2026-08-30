@@ -176,7 +176,7 @@ void main() {
         isA<RemoteBuildException>().having(
           (e) => e.message,
           'message',
-          contains('QU_BUILD_SERVER_KEY'),
+          contains('unavailable'),
         ),
       ),
     );

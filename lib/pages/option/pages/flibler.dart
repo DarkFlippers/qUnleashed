@@ -581,9 +581,7 @@ class _AssemblerSettingsPageState extends State<AssemblerSettingsPage> {
                       : context.l10n.fliblerCheckServer,
                   caption:
                       _serverError ??
-                      (_remote.canBuild
-                          ? context.l10n.fliblerRemoteOnly
-                          : context.l10n.fliblerNeedsSigningKey),
+                      (_remote.canBuild ? context.l10n.fliblerRemoteOnly : ''),
                   primary: false,
                   onPressed: _serverLoading ? null : _loadServerStatus,
                 ),

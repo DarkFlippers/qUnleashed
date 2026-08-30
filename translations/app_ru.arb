@@ -765,7 +765,7 @@
   "@fliblerStatusSigningKey": {
     "description": "Status row: whether this build carries the credential needed to reach the build server."
   },
-  "fliblerKeyMissing": "Отсутствует в этой сборке",
+  "fliblerKeyMissing": "Недоступен в этой версии",
   "@fliblerKeyMissing": {
     "description": "Status value when the build lacks the server signing key."
   },
@@ -838,10 +838,6 @@
   "fliblerRemoteOnly": "Приложения собираются удалённо, здесь нечего загружать",
   "@fliblerRemoteOnly": {
     "description": "Caption under the Check server button on platforms that cannot build locally."
-  },
-  "fliblerNeedsSigningKey": "Для сборки нужен ключ подписи: пересоберите приложение с --dart-define=QU_BUILD_SERVER_KEY",
-  "@fliblerNeedsSigningKey": {
-    "description": "Caption under the Check server button when the build lacks server credentials. The flag is a literal command line argument."
   },
   "fliblerChannelRc": "Релиз-кандидат",
   "@fliblerChannelRc": {
@@ -974,9 +970,9 @@
   "@remoteNotConfigured": {
     "description": "Error shown when no build server address is set."
   },
-  "remoteNoSigningKey": "В этой сборке нет ключа подписи сервера, пересоберите её с --dart-define=QU_BUILD_SERVER_KEY",
+  "remoteNoSigningKey": "Сборка на сервере недоступна в этой версии приложения",
   "@remoteNoSigningKey": {
-    "description": "Error shown when the app cannot authenticate to the build server. The flag is a literal command line argument."
+    "description": "Error shown when the app cannot authenticate to the build server."
   },
   "remoteBusyWithApp": "Сервер собирает \"{alias}\", дождитесь окончания",
   "@remoteBusyWithApp": {
@@ -1569,7 +1565,7 @@
   "@categoryIbutton": {
     "description": "Archive category for iButton contact keys. Product name, usually left as is."
   },
-  "categoryInfrared": "Инфракрасные",
+  "categoryInfrared": "Infrared",
   "@categoryInfrared": {
     "description": "Archive category for infrared remotes."
   },
@@ -1577,7 +1573,7 @@
   "@categorySubghz": {
     "description": "Archive category for sub-gigahertz radio captures. Technical term, usually left as is."
   },
-  "categoryWardriving": "Вардрайвинг",
+  "categoryWardriving": "Wardriving",
   "@categoryWardriving": {
     "description": "Archive category for radio captures recorded while driving around."
   },

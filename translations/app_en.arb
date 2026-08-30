@@ -937,7 +937,7 @@
     "description": "Status row: whether this build carries the credential needed to reach the build server."
   },
 
-  "fliblerKeyMissing": "Missing in this build",
+  "fliblerKeyMissing": "Unavailable in this version",
   "@fliblerKeyMissing": {
     "description": "Status value when the build lacks the server signing key."
   },
@@ -1027,10 +1027,6 @@
     "description": "Caption under the Check server button on platforms that cannot build locally."
   },
 
-  "fliblerNeedsSigningKey": "Builds need a signing key: rebuild the app with --dart-define=QU_BUILD_SERVER_KEY",
-  "@fliblerNeedsSigningKey": {
-    "description": "Caption under the Check server button when the build lacks server credentials. The flag is a literal command line argument."
-  },
 
   "fliblerChannelRc": "Release candidate",
   "@fliblerChannelRc": {
@@ -1190,9 +1186,9 @@
     "description": "Error shown when no build server address is set."
   },
 
-  "remoteNoSigningKey": "This build has no server signing key, rebuild it with --dart-define=QU_BUILD_SERVER_KEY",
+  "remoteNoSigningKey": "Server builds are unavailable in this version of the app",
   "@remoteNoSigningKey": {
-    "description": "Error shown when the app cannot authenticate to the build server. The flag is a literal command line argument."
+    "description": "Error shown when the app cannot authenticate to the build server."
   },
 
   "remoteBusyWithApp": "Server is building \"{alias}\", wait for it to finish",
@@ -2540,6 +2536,16 @@
   "commonRetry": "Retry",
   "@commonRetry": {
     "description": "Button that tries a failed operation again."
+  },
+
+  "commonConnect": "Connect",
+  "@commonConnect": {
+    "description": "Button that opens the device picker to connect a Flipper."
+  },
+
+  "commonSync": "Sync",
+  "@commonSync": {
+    "description": "Button that pulls fresh data from the connected Flipper."
   },
 
   "commonOpen": "Open",
@@ -5758,6 +5764,16 @@
   "fmEmptyHint": "Use + to add files or folders",
   "@fmEmptyHint": {
     "description": "Hint under the empty folder message."
+  },
+
+  "fmNotConnected": "Device is not connected",
+  "@fmNotConnected": {
+    "description": "Empty state shown in the file browser while no Flipper is linked."
+  },
+
+  "fmNotConnectedHint": "Connect a Flipper to browse its storage",
+  "@fmNotConnectedHint": {
+    "description": "Hint under the file browser empty state when no device is linked."
   },
 
   "fmSectionCount": "{label} · {count}",
