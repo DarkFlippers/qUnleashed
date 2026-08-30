@@ -12,6 +12,7 @@ enum AppRoute {
   archiveMap,
   fliblerProject,
   appSettings,
+  mapSettings,
   about,
   assemblerConsole,
   assemblerSettings,

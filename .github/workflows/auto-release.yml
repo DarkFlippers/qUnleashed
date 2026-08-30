@@ -70,6 +70,7 @@ jobs:
         env:
           QU_BUILD_SERVER_URL: ${{ secrets.QU_BUILD_SERVER_URL }}
           QU_BUILD_SERVER_KEY: ${{ secrets.QU_BUILD_SERVER_KEY }}
+          QU_CARTO_KEY: ${{ secrets.QU_CARTO_KEY }}
         run: |
           tag="${GITHUB_REF_NAME}"
           if [[ ! "$tag" =~ ([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
@@ -94,6 +95,9 @@ jobs:
             build_args="--build-name=$version_name --build-number=$version_code --dart-define=QUNLEASHED_RELEASE_TAG=$tag"
             if [ -n "$QU_BUILD_SERVER_URL" ] && [ -n "$QU_BUILD_SERVER_KEY" ]; then
               build_args="$build_args --dart-define=QU_BUILD_SERVER_URL=$QU_BUILD_SERVER_URL --dart-define=QU_BUILD_SERVER_KEY=$QU_BUILD_SERVER_KEY"
+            fi
+            if [ -n "$QU_CARTO_KEY" ]; then
+              build_args="$build_args --dart-define=QU_CARTO_KEY=$QU_CARTO_KEY"
             fi
             echo "QUNLEASHED_FLUTTER_BUILD_ARGS=$build_args"
           } >> "$GITHUB_ENV"
@@ -175,6 +179,7 @@ jobs:
         env:
           QU_BUILD_SERVER_URL: ${{ secrets.QU_BUILD_SERVER_URL }}
           QU_BUILD_SERVER_KEY: ${{ secrets.QU_BUILD_SERVER_KEY }}
+          QU_CARTO_KEY: ${{ secrets.QU_CARTO_KEY }}
         run: |
           tag="${GITHUB_REF_NAME}"
           if [[ ! "$tag" =~ ([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
@@ -199,6 +204,9 @@ jobs:
             build_args="--build-name=$version_name --build-number=$version_code --dart-define=QUNLEASHED_RELEASE_TAG=$tag"
             if [ -n "$QU_BUILD_SERVER_URL" ] && [ -n "$QU_BUILD_SERVER_KEY" ]; then
               build_args="$build_args --dart-define=QU_BUILD_SERVER_URL=$QU_BUILD_SERVER_URL --dart-define=QU_BUILD_SERVER_KEY=$QU_BUILD_SERVER_KEY"
+            fi
+            if [ -n "$QU_CARTO_KEY" ]; then
+              build_args="$build_args --dart-define=QU_CARTO_KEY=$QU_CARTO_KEY"
             fi
             echo "QUNLEASHED_FLUTTER_BUILD_ARGS=$build_args"
           } >> "$GITHUB_ENV"
@@ -272,6 +280,7 @@ jobs:
         env:
           QU_BUILD_SERVER_URL: ${{ secrets.QU_BUILD_SERVER_URL }}
           QU_BUILD_SERVER_KEY: ${{ secrets.QU_BUILD_SERVER_KEY }}
+          QU_CARTO_KEY: ${{ secrets.QU_CARTO_KEY }}
         run: |
           tag="${GITHUB_REF_NAME}"
           if [[ ! "$tag" =~ ([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
@@ -296,6 +305,9 @@ jobs:
             build_args="--build-name=$version_name --build-number=$version_code --dart-define=QUNLEASHED_RELEASE_TAG=$tag"
             if [ -n "$QU_BUILD_SERVER_URL" ] && [ -n "$QU_BUILD_SERVER_KEY" ]; then
               build_args="$build_args --dart-define=QU_BUILD_SERVER_URL=$QU_BUILD_SERVER_URL --dart-define=QU_BUILD_SERVER_KEY=$QU_BUILD_SERVER_KEY"
+            fi
+            if [ -n "$QU_CARTO_KEY" ]; then
+              build_args="$build_args --dart-define=QU_CARTO_KEY=$QU_CARTO_KEY"
             fi
             echo "QUNLEASHED_FLUTTER_BUILD_ARGS=$build_args"
           } >> "$GITHUB_ENV"

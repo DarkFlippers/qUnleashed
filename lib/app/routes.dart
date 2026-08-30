@@ -4,6 +4,7 @@ import '../pages/archive/map/page.dart';
 import '../pages/flibler/page.dart';
 import '../pages/flibler/project/page.dart';
 import '../pages/option/pages/flibler.dart';
+import '../pages/option/pages/map.dart';
 import '../pages/option/page.dart';
 import '../pages/tools/paint/editor/page.dart';
 import '../pages/tools/plotter/page.dart';
@@ -24,6 +25,7 @@ void registerAppRoutes() {
   registerRoute(AppRoute.archiveMap, (_, _) => const FlipperMapPage());
   registerRoute(AppRoute.fliblerProject, (_, _) => const FliblerProjectPage());
   registerRoute(AppRoute.appSettings, (_, _) => const SettingsPage());
+  registerRoute(AppRoute.mapSettings, (_, _) => const MapSettingsPage());
   registerRoute(AppRoute.about, (_, _) => const AboutPage());
   registerRoute(
     AppRoute.assemblerConsole,

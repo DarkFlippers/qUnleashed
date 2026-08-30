@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -10,10 +11,12 @@ import '../../../theme/theme.dart';
 import 'package:qunleashed/components/appbar.dart';
 import '../../../components/notification.dart';
 import 'controller.dart';
+import 'data/settings.dart';
+import '../../../components/navigation.dart';
 import '../../../components/archive/models/pin.dart';
 
 part 'widgets/circle_button.dart';
-part 'widgets/map_settings_panel.dart';
+part 'widgets/map_options_panel.dart';
 part 'widgets/pin_card.dart';
 part 'widgets/sidebar.dart';
 
@@ -31,26 +34,26 @@ enum _MapMode { browse, pick }
 
 class _FlipperMapPageState extends State<FlipperMapPage> {
   late final MapToolController _controller;
+  final MapSettings _settings = MapSettings.instance;
   final MapController _mapController = MapController();
   MapPin? _selectedPin;
   bool _initialCentered = false;
   bool _initialPinSelected = false;
   bool _mapReady = false;
   bool _saving = false;
+  bool _optionsOpen = false;
+  String? _failedTemplate;
 
   _MapMode _mode = _MapMode.browse;
   MapPickTarget? _pickTarget;
   late final bool _openedInPickMode;
 
-  bool? _mapDarkOverride;
-  bool _autoCenter = false;
-  bool _followDevice = false;
-  bool _settingsOpen = false;
-
   @override
   void initState() {
     super.initState();
     _controller = MapToolController()..addListener(_onChanged);
+    _settings.addListener(_onChanged);
+    unawaited(_settings.load());
     _openedInPickMode = widget.pickLocationFor != null;
     if (_openedInPickMode) {
       _mode = _MapMode.pick;
@@ -61,6 +64,7 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
 
   @override
   void dispose() {
+    _settings.removeListener(_onChanged);
     _controller.removeListener(_onChanged);
     _controller.dispose();
     super.dispose();
@@ -68,9 +72,6 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
 
   void _onChanged() {
     if (!mounted) return;
-    if (_followDevice && _controller.devicePosition == null) {
-      _followDevice = false;
-    }
     _maybeSelectInitialPin();
     setState(() {});
     _maybeAutoCenter();
@@ -113,7 +114,7 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
   }
 
   void _maybeFollowUser() {
-    if (!_autoCenter ||
+    if (!_settings.autoCenter ||
         !_mapReady ||
         _mode != _MapMode.browse ||
         !_initialCentered) {
@@ -125,10 +126,9 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
   }
 
   LatLng? _activeTarget() {
-    if (_followDevice) {
+    if (_settings.trackDevice) {
       final d = _controller.devicePosition;
       if (d != null && d.hasFix) return LatLng(d.latitude, d.longitude);
-      return null;
     }
     final p = _controller.userPosition;
     if (p == null) return null;
@@ -150,7 +150,7 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
   void _centerOnTarget() {
     final target = _activeTarget();
     if (target == null) {
-      if (!_followDevice) _controller.requestLocation();
+      _controller.requestLocation();
       return;
     }
     if (_mapReady) _mapController.move(target, 17);
@@ -160,7 +160,7 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
     if (_mode == _MapMode.pick) return;
     setState(() {
       _selectedPin = pin;
-      _settingsOpen = false;
+      _optionsOpen = false;
     });
     if (_mapReady) _mapController.move(LatLng(pin.latitude, pin.longitude), 17);
   }
@@ -168,6 +168,7 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
   void _enterEditModeFor(MapPin pin) {
     setState(() {
       _mode = _MapMode.pick;
+      _optionsOpen = false;
       _pickTarget = MapPickTarget(
         localPath: pin.path,
         remotePath: pin.remotePath,
@@ -176,7 +177,6 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
         initialLongitude: pin.longitude,
       );
       _selectedPin = null;
-      _settingsOpen = false;
     });
     if (_mapReady) {
       _mapController.move(LatLng(pin.latitude, pin.longitude), 17);
@@ -236,7 +236,7 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
   @override
   Widget build(BuildContext context) {
     final firmwareColors = context.appColors;
-    final effectiveDark = _mapDarkOverride ?? firmwareColors.isDark;
+    final effectiveDark = _settings.darkFor(firmwareColors.isDark);
     final mapColors = _resolveMapColors(firmwareColors, effectiveDark);
 
     final colorScheme =
@@ -339,13 +339,11 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
           icon: const Icon(Icons.refresh),
         ),
         QPageAppBarAction(
-          tooltip: 'Map settings',
-          onPressed: () => setState(() => _settingsOpen = !_settingsOpen),
+          tooltip: 'Map options',
+          onPressed: () => setState(() => _optionsOpen = !_optionsOpen),
           icon: Icon(
             Icons.settings,
-            color: _settingsOpen
-                ? colors.onAccent.withValues(alpha: 0.6)
-                : null,
+            color: _optionsOpen ? colors.onAccent.withValues(alpha: 0.6) : null,
           ),
         ),
         const SizedBox(width: 4),
@@ -471,6 +469,10 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
   // Shared map Stack used by both mobile and desktop layouts
   Widget _buildMapStack(QAppColors colors, {required bool desktopMode}) {
     final picking = _mode == _MapMode.pick;
+    final tiles = _settings.resolve(dark: colors.isDark);
+    if (_failedTemplate != null && _failedTemplate != tiles.urlTemplate) {
+      _failedTemplate = null;
+    }
     return Stack(
       children: [
         FlutterMap(
@@ -478,9 +480,9 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
           options: MapOptions(
             initialCenter: _initialCenter(),
             initialZoom: _initialZoom(),
-            maxZoom: 19,
+            maxZoom: tiles.maxZoom,
             minZoom: 2,
-            backgroundColor: (_mapDarkOverride ?? colors.isDark)
+            backgroundColor: colors.isDark
                 ? const Color(0xFF1A1A1A)
                 : const Color(0xFFFFFFFF),
             onMapReady: () {
@@ -491,18 +493,21 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
                 ? null
                 : (_, _) => setState(() {
                     _selectedPin = null;
-                    _settingsOpen = false;
+                    _optionsOpen = false;
                   }),
           ),
           children: [
             TileLayer(
-              urlTemplate: colors.isDark
-                  ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-                  : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-              subdomains: const ['a', 'b', 'c', 'd'],
+              key: ValueKey(tiles.urlTemplate),
+              urlTemplate: tiles.urlTemplate,
+              errorTileCallback: (_, _, _) => _reportTileFailure(tiles),
+              subdomains: tiles.subdomains,
               userAgentPackageName: 'qunleashed',
-              maxZoom: 19,
-              retinaMode: RetinaMode.isHighDensity(context),
+              maxZoom: tiles.maxZoom,
+              retinaMode:
+                  tiles.retina &&
+                  _settings.retina &&
+                  RetinaMode.isHighDensity(context),
             ),
             MarkerLayer(
               markers: _buildMarkers(
@@ -514,37 +519,116 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
         ),
         if (picking) Positioned.fill(child: _buildPickOverlay(colors)),
 
+        if (tiles.attribution.isNotEmpty)
+          Positioned(
+            left: 6,
+            bottom: 4,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: colors.card.withValues(alpha: 0.72),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                child: Text(
+                  tiles.attribution,
+                  style: TextStyle(color: colors.textMuted, fontSize: 9.5),
+                ),
+              ),
+            ),
+          ),
+
+        if (!picking && tiles.missingKey)
+          Positioned(
+            left: 12,
+            right: 12,
+            top: 12,
+            child: _tileNotice(
+              colors,
+              'This tile source needs a key. Tap to add one.',
+            ),
+          )
+        else if (!picking && _failedTemplate == tiles.urlTemplate)
+          Positioned(
+            left: 12,
+            right: 12,
+            top: 12,
+            child: _tileNotice(
+              colors,
+              '${tiles.label} is not answering. Tap to pick another source.',
+            ),
+          ),
+
+        if (_optionsOpen && _mode == _MapMode.browse)
+          Positioned(
+            top: 8,
+            right: 8,
+            child: _MapOptionsPanel(
+              colors: colors,
+              settings: _settings,
+              deviceAvailable: _controller.devicePosition != null,
+              onAutoCenterChanged: (value) {
+                _settings.setAutoCenter(value);
+                _maybeFollowUser();
+              },
+              onTrackDeviceChanged: (value) {
+                _settings.setTrackDevice(value);
+                _centerOnTarget();
+              },
+              onOpenSettings: () {
+                setState(() => _optionsOpen = false);
+                openRoute(context, AppRoute.mapSettings);
+              },
+              onClose: () => setState(() => _optionsOpen = false),
+            ),
+          ),
+
         // Location button — on mobile moves up when card visible
         Positioned(
           right: 12,
           bottom: (!desktopMode && !picking && _selectedPin != null) ? 218 : 12,
           child: _CircleButton(
             colors: colors,
-            icon: _followDevice ? Icons.gps_fixed : Icons.my_location,
+            icon: _settings.trackDevice ? Icons.gps_fixed : Icons.my_location,
             onTap: _centerOnTarget,
           ),
         ),
-
-        // Settings floating panel
-        if (_settingsOpen && _mode == _MapMode.browse)
-          Positioned(
-            top: 8,
-            right: 8,
-            child: _MapSettingsPanel(
-              mapDark: colors.isDark,
-              autoCenter: _autoCenter,
-              followDevice: _followDevice,
-              deviceAvailable: _controller.devicePosition != null,
-              onMapDarkChanged: (v) => setState(() => _mapDarkOverride = v),
-              onAutoCenterChanged: (v) => setState(() => _autoCenter = v),
-              onFollowDeviceChanged: (v) {
-                setState(() => _followDevice = v);
-                _centerOnTarget();
-              },
-              onClose: () => setState(() => _settingsOpen = false),
-            ),
-          ),
       ],
+    );
+  }
+
+  void _reportTileFailure(MapTileConfig tiles) {
+    if (_failedTemplate == tiles.urlTemplate) return;
+    _failedTemplate = tiles.urlTemplate;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  Widget _tileNotice(QAppColors colors, String message) {
+    return Material(
+      color: colors.card,
+      borderRadius: BorderRadius.circular(10),
+      elevation: 3,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: () => openRoute(context, AppRoute.mapSettings),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, size: 18, color: colors.danger),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  message,
+                  style: TextStyle(color: colors.textPrimary, fontSize: 13),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

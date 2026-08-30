@@ -1,29 +1,26 @@
 part of '../page.dart';
 
-class _MapSettingsPanel extends StatelessWidget {
-  const _MapSettingsPanel({
-    required this.mapDark,
-    required this.autoCenter,
-    required this.followDevice,
+class _MapOptionsPanel extends StatelessWidget {
+  const _MapOptionsPanel({
+    required this.colors,
+    required this.settings,
     required this.deviceAvailable,
-    required this.onMapDarkChanged,
     required this.onAutoCenterChanged,
-    required this.onFollowDeviceChanged,
+    required this.onTrackDeviceChanged,
+    required this.onOpenSettings,
     required this.onClose,
   });
 
-  final bool mapDark;
-  final bool autoCenter;
-  final bool followDevice;
+  final QAppColors colors;
+  final MapSettings settings;
   final bool deviceAvailable;
-  final ValueChanged<bool> onMapDarkChanged;
   final ValueChanged<bool> onAutoCenterChanged;
-  final ValueChanged<bool> onFollowDeviceChanged;
+  final ValueChanged<bool> onTrackDeviceChanged;
+  final VoidCallback onOpenSettings;
   final VoidCallback onClose;
 
   @override
   Widget build(BuildContext context) {
-    final colors = context.appColors;
     return Material(
       color: colors.card,
       borderRadius: BorderRadius.circular(12),
@@ -39,7 +36,7 @@ class _MapSettingsPanel extends StatelessWidget {
               child: Row(
                 children: [
                   Text(
-                    'Map settings',
+                    'Map options',
                     style: TextStyle(
                       color: colors.textPrimary,
                       fontWeight: FontWeight.w700,
@@ -57,37 +54,69 @@ class _MapSettingsPanel extends StatelessWidget {
               ),
             ),
             Divider(height: 1, color: colors.textMuted.withValues(alpha: 0.15)),
-            _SettingsRow(
-              colors: colors,
-              icon: Icons.dark_mode_outlined,
-              label: 'Dark map tiles',
-              subtitle: 'Switch between dark and light tiles',
-              value: mapDark,
-              onChanged: onMapDarkChanged,
-            ),
-            Divider(height: 1, color: colors.textMuted.withValues(alpha: 0.1)),
-            _SettingsRow(
+            _OptionRow(
               colors: colors,
               icon: Icons.my_location,
               label: 'Auto-center',
-              subtitle: followDevice
+              subtitle: settings.trackDevice
                   ? 'Follow Flipper location'
                   : 'Follow my location',
-              value: autoCenter,
+              value: settings.autoCenter,
               onChanged: onAutoCenterChanged,
             ),
             Divider(height: 1, color: colors.textMuted.withValues(alpha: 0.1)),
-            _SettingsRow(
+            _OptionRow(
               colors: colors,
               icon: Icons.gps_fixed,
               label: 'Track Flipper',
               subtitle: deviceAvailable
                   ? 'Center and follow the device'
                   : 'No device location yet',
-              value: followDevice,
-              onChanged: deviceAvailable ? onFollowDeviceChanged : null,
+              value: settings.trackDevice,
+              onChanged: deviceAvailable ? onTrackDeviceChanged : null,
             ),
-            const SizedBox(height: 4),
+            Divider(height: 1, color: colors.textMuted.withValues(alpha: 0.15)),
+            InkWell(
+              onTap: onOpenSettings,
+              borderRadius: const BorderRadius.vertical(
+                bottom: Radius.circular(12),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 10, 12, 12),
+                child: Row(
+                  children: [
+                    Icon(Icons.tune, size: 18, color: colors.accent),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Map settings',
+                            style: TextStyle(
+                              color: colors.textPrimary,
+                              fontSize: 14,
+                            ),
+                          ),
+                          Text(
+                            'Tile source, design, keys',
+                            style: TextStyle(
+                              color: colors.textMuted,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(
+                      Icons.chevron_right,
+                      size: 18,
+                      color: colors.textMuted,
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -95,8 +124,8 @@ class _MapSettingsPanel extends StatelessWidget {
   }
 }
 
-class _SettingsRow extends StatelessWidget {
-  const _SettingsRow({
+class _OptionRow extends StatelessWidget {
+  const _OptionRow({
     required this.colors,
     required this.icon,
     required this.label,

@@ -6,6 +6,7 @@ import '../../components/navigation.dart';
 import '../../theme/theme.dart';
 import 'pages/apps.dart';
 import 'pages/flibler.dart';
+import 'pages/map.dart';
 import 'pages/push.dart';
 import 'pages/storage.dart';
 import 'pages/theme.dart';
@@ -131,6 +132,13 @@ class SettingsPage extends StatelessWidget {
                 asset: 'assets/ic/app/paint.svg',
                 color: const Color(0xFFB388FF),
                 page: (_) => const ThemeSettingsPage(),
+              ),
+              _Category(
+                title: 'Map',
+                subtitle: 'Tile source, design, own keys',
+                asset: 'assets/ic/fileformat/sub.svg',
+                color: const Color(0xFF4FC3F7),
+                page: (_) => const MapSettingsPage(),
               ),
             ],
             onTap: (c) => _open(context, c),
