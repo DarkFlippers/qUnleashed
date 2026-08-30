@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../services/localization/l10n.dart';
 import '../theme/theme.dart';
 
 enum FlipperRootTab { device, archive, apps, tools }
@@ -82,19 +83,19 @@ class FlipperRootScaffold extends StatelessWidget {
                 ),
                 _BottomTab(
                   icon: const _NavIcon(asset: 'assets/ic/app/files.svg'),
-                  label: 'Archive',
+                  label: context.l10n.navArchive,
                   selected: currentTab == FlipperRootTab.archive,
                   onTap: () => onTabSelected(FlipperRootTab.archive),
                 ),
                 _BottomTab(
                   icon: const _NavIcon(asset: 'assets/ic/app/apps.svg'),
-                  label: 'Apps',
+                  label: context.l10n.navApps,
                   selected: currentTab == FlipperRootTab.apps,
                   onTap: () => onTabSelected(FlipperRootTab.apps),
                 ),
                 _BottomTab(
                   icon: const _NavIcon(asset: 'assets/ic/appcat/tools.svg'),
-                  label: 'Tools',
+                  label: context.l10n.navTools,
                   selected: currentTab == FlipperRootTab.tools,
                   onTap: () => onTabSelected(FlipperRootTab.tools),
                 ),

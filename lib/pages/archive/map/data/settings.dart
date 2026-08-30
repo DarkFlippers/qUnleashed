@@ -1,3 +1,4 @@
+import '../../../../services/localization/l10n.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -9,14 +10,21 @@ import 'providers.dart';
 export 'providers.dart';
 
 enum MapAppearance {
-  auto('Match the app', 'Light or dark, following the app theme'),
-  light('Always light', 'Light tiles whatever the app theme is'),
-  dark('Always dark', 'Dark tiles whatever the app theme is');
+  auto,
+  light,
+  dark;
 
-  const MapAppearance(this.label, this.description);
+  String get label => switch (this) {
+    MapAppearance.auto => l10n.mapAppearanceSystem,
+    MapAppearance.light => l10n.mapAppearanceLight,
+    MapAppearance.dark => l10n.mapAppearanceDark,
+  };
 
-  final String label;
-  final String description;
+  String get description => switch (this) {
+    MapAppearance.auto => l10n.mapAppearanceSystemDesc,
+    MapAppearance.light => l10n.mapAppearanceLightDesc,
+    MapAppearance.dark => l10n.mapAppearanceDarkDesc,
+  };
 
   static MapAppearance parse(String? raw) => MapAppearance.values.firstWhere(
     (value) => value.name == raw,
@@ -70,7 +78,7 @@ class MapSettings extends ChangeNotifier {
   bool _loaded = false;
   Future<void>? _loading;
 
-  MapTileProvider _provider = kCartoProvider;
+  late MapTileProvider _provider = cartoProvider(l10n);
   MapAppearance _appearance = MapAppearance.auto;
   final Map<String, String> _designs = <String, String>{};
   final Map<String, String> _keys = <String, String>{};
@@ -97,7 +105,7 @@ class MapSettings extends ChangeNotifier {
 
   bool hasKey(MapTileProvider provider) {
     if (keyOf(provider).isNotEmpty) return true;
-    return provider.id == kCartoProvider.id && hasEmbeddedKey;
+    return provider.id == kCartoProviderId && hasEmbeddedKey;
   }
 
   MapTileDesign designOf(MapTileProvider provider, {required bool dark}) {
@@ -124,7 +132,7 @@ class MapSettings extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     _provider = mapProviderById(prefs.getString(_prefProvider));
     _appearance = MapAppearance.parse(prefs.getString(_prefAppearance));
-    for (final provider in kMapTileProviders) {
+    for (final provider in mapTileProviders(l10n)) {
       for (final dark in const [false, true]) {
         final pref = _designPref(provider.id, dark);
         final stored = prefs.getString(pref);
@@ -249,7 +257,7 @@ class MapSettings extends ChangeNotifier {
     var template = design.template ?? provider.template!;
     template = template.replaceAll('{design}', design.id);
     final own = keyOf(provider);
-    final embedded = own.isEmpty && provider.id == kCartoProvider.id
+    final embedded = own.isEmpty && provider.id == kCartoProviderId
         ? EmbeddedTileKey.resolveFor(kCartoTileHost)
         : null;
     final key = own.isNotEmpty ? own : (embedded ?? '');
@@ -261,7 +269,7 @@ class MapSettings extends ChangeNotifier {
       subdomains: design.subdomains ?? provider.subdomains,
       maxZoom: design.maxZoom ?? provider.maxZoom,
       retina: design.retina ?? provider.retina,
-      label: '${provider.label} · ${design.label}',
+      label: l10n.mapProviderDesign(provider.label, design.label),
       attribution: provider.attribution,
       usesEmbeddedKey: embedded != null,
       missingKey: provider.needsKey && key.isEmpty,
@@ -271,9 +279,10 @@ class MapSettings extends ChangeNotifier {
   MapTileConfig _customConfig() {
     var template = _customUrl.trim();
     if (template.isEmpty) {
-      return configFor(kOsmProvider, kOsmProvider.designs.first);
+      final osm = osmProvider(l10n);
+      return configFor(osm, osm.designs.first);
     }
-    final key = keyOf(kCustomProvider);
+    final key = keyOf(customProvider(l10n));
     if (template.contains('{key}')) {
       template = template.replaceAll('{key}', Uri.encodeQueryComponent(key));
     } else if (key.isNotEmpty) {
@@ -291,7 +300,7 @@ class MapSettings extends ChangeNotifier {
       subdomains: subdomains,
       maxZoom: _customMaxZoom,
       retina: template.contains('{r}'),
-      label: Uri.tryParse(template)?.host ?? 'Custom',
+      label: Uri.tryParse(template)?.host ?? l10n.mapProviderCustom,
       attribution: '',
       usesEmbeddedKey: false,
       missingKey: false,

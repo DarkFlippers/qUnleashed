@@ -1,10 +1,10 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import '../../../services/localization/l10n.dart';
 import 'models.dart';
 
-const String _wrongFileMessage =
-    'Wrong file type. Only SubGhz RAW, RFID RAW and Infrared signals files are accepted.';
+String get _wrongFileMessage => l10n.plotWrongFileType;
 
 PlotterParseResult parsePlotterFile(Uint8List buffer) {
   final text = _decode(buffer).split(RegExp(r'\r?\n'));

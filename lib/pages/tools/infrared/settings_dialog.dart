@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../services/localization/l10n.dart';
 import '../../../theme/theme.dart';
 import '../../../components/notification.dart';
 import '../../../components/progress_button.dart';
@@ -64,7 +65,7 @@ class _IrLibSettingsDialogState extends State<IrLibSettingsDialog> {
   Future<bool> _persistFields() async {
     final ref = _parsedRef();
     if (ref == null) {
-      setState(() => _urlError = 'Enter a valid GitHub URL');
+      setState(() => _urlError = context.l10n.irEnterValidUrl);
       return false;
     }
     setState(() => _urlError = null);
@@ -93,12 +94,12 @@ class _IrLibSettingsDialogState extends State<IrLibSettingsDialog> {
       if (!mounted) return;
       if (ok) {
         context.showNotification(
-          'Local IRDB deleted',
+          context.l10n.irLocalDeleted,
           type: QNotificationType.good,
         );
       } else {
         context.showNotification(
-          widget.controller.error ?? 'Failed to delete',
+          widget.controller.error ?? context.l10n.irDeleteFailed,
           type: QNotificationType.error,
         );
       }
@@ -108,10 +109,10 @@ class _IrLibSettingsDialogState extends State<IrLibSettingsDialog> {
     final ok = await widget.controller.downloadLocalRepo();
     if (!mounted) return;
     if (ok) {
-      context.showNotification('IRDB downloaded', type: QNotificationType.good);
+      context.showNotification(context.l10n.irDownloaded, type: QNotificationType.good);
     } else {
       context.showNotification(
-        widget.controller.error ?? 'Download failed',
+        widget.controller.error ?? context.l10n.irDownloadFailedShort,
         type: QNotificationType.error,
       );
     }
@@ -143,7 +144,7 @@ class _IrLibSettingsDialogState extends State<IrLibSettingsDialog> {
             children: [
               _field(
                 controller: _urlCtrl,
-                label: 'Repository URL',
+                label: context.l10n.irRepositoryUrl,
                 colors: colors,
                 errorText: _urlError,
                 enabled: !downloading,
@@ -151,7 +152,7 @@ class _IrLibSettingsDialogState extends State<IrLibSettingsDialog> {
               const SizedBox(height: 8),
               _field(
                 controller: _tokenCtrl,
-                label: 'GitHub token (optional)',
+                label: context.l10n.irGithubToken,
                 colors: colors,
                 obscure: !_showToken,
                 enabled: !downloading,
@@ -181,7 +182,7 @@ class _IrLibSettingsDialogState extends State<IrLibSettingsDialog> {
           onPressed: (_saving || downloading)
               ? null
               : () => Navigator.of(context).pop(),
-          child: Text('Cancel', style: TextStyle(color: colors.textMuted)),
+          child: Text(context.l10n.commonCancel, style: TextStyle(color: colors.textMuted)),
         ),
         FilledButton(
           style: FilledButton.styleFrom(backgroundColor: colors.accent),
@@ -192,7 +193,7 @@ class _IrLibSettingsDialogState extends State<IrLibSettingsDialog> {
                   height: 18,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Text('Save'),
+              : Text(context.l10n.commonSave),
         ),
       ],
     );
@@ -271,12 +272,14 @@ class _PrimaryActionButton extends StatelessWidget {
 
     if (downloading) {
       final p = progress;
-      final unpacking = p?.stage == 'Unpacking' || (p?.isExtracting ?? false);
+      final unpacking = p?.stage == context.l10n.irUnpacking || (p?.isExtracting ?? false);
       final hasPercent =
           p != null &&
           ((unpacking && p.totalFiles > 0) ||
               (!unpacking && (p.total > 0 || p.received > 0)));
-      label = unpacking ? 'UNPACKING' : 'DOWNLOADING';
+      label = unpacking
+          ? context.l10n.irUnpackingCaps
+          : context.l10n.irDownloadingCaps;
       if (hasPercent) {
         value = p.fraction;
         showPercent = true;
@@ -284,10 +287,10 @@ class _PrimaryActionButton extends StatelessWidget {
         indeterminate = true;
       }
     } else if (localAvailable) {
-      label = 'DELETE';
+      label = context.l10n.irDeleteCaps;
       action = onPressed;
     } else {
-      label = 'DOWNLOAD';
+      label = context.l10n.irDownloadCaps;
       action = onPressed;
     }
 

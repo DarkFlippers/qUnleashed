@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../services/localization/l10n.dart';
 import '../../../components/icon.dart';
 import 'widgets/mode_badge.dart';
 import 'widgets/states.dart';
@@ -172,7 +173,7 @@ class _CatalogViewState extends State<CatalogView> {
               ? FloatingActionButton(
                   backgroundColor: colors.accent,
                   foregroundColor: colors.onAccent,
-                  tooltip: 'Assembler',
+                  tooltip: context.l10n.catalogAssemblerTooltip,
                   onPressed: _openAssembler,
                   child: QIcon(
                     asset: 'assets/ic/fileformat/settings.svg',
@@ -254,7 +255,7 @@ class _CatalogViewState extends State<CatalogView> {
           Row(
             children: [
               Text(
-                'Apps catalog',
+                context.l10n.catalogTitle,
                 style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.w800,
@@ -270,12 +271,12 @@ class _CatalogViewState extends State<CatalogView> {
               const Spacer(),
               IconButton(
                 icon: Icon(Icons.manage_search, color: colors.textPrimary),
-                tooltip: 'Manage apps on device',
+                tooltip: context.l10n.catalogManageTooltip,
                 onPressed: widget.onOpenManager,
               ),
               IconButton(
                 icon: Icon(Icons.add_circle_outline, color: colors.textPrimary),
-                tooltip: 'How to submit your app',
+                tooltip: context.l10n.catalogSubmitTooltip,
                 onPressed: () => SubmitAppDialog.show(context),
               ),
               IconButton(
@@ -302,7 +303,7 @@ class _CatalogViewState extends State<CatalogView> {
               autofocus: true,
               onChanged: _ctrl.setQuery,
               decoration: InputDecoration(
-                hintText: 'Search apps',
+                hintText: context.l10n.catalogSearchHint,
                 prefixIcon: Icon(Icons.search, color: colors.textMuted),
                 filled: true,
                 fillColor: colors.card,
@@ -398,7 +399,7 @@ class _CatalogViewState extends State<CatalogView> {
         padding: const EdgeInsets.symmetric(vertical: 18),
         child: Center(
           child: Text(
-            '— End of catalog —',
+            context.l10n.catalogEnd,
             style: TextStyle(color: colors.textMuted, fontSize: 12),
           ),
         ),

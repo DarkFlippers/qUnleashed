@@ -1,3 +1,4 @@
+import '../../../services/localization/l10n.dart';
 import 'dart:collection';
 import 'dart:convert';
 
@@ -306,9 +307,8 @@ class RecoverController extends ChangeNotifier {
       // too small to attack (< 2 nonces) is a "collect more" situation.
       if (key == null) {
         note = group.length < 2
-            ? 'Not recovered — only ${group.length} nonce collected; '
-                  'collect more on the device and retry.'
-            : 'Not recovered from ${group.length} nonces — no key found.';
+            ? l10n.mfNotRecoveredFewNonces(group.length)
+            : l10n.mfNotRecoveredNoKey(group.length);
       }
     } catch (e, st) {
       // A missing/broken native engine must not abort the whole run and discard
@@ -319,8 +319,8 @@ class RecoverController extends ChangeNotifier {
       // Only a load failure means the build is at fault; anything else is this
       // group failing, and saying otherwise sends the user after the wrong fix.
       note = e is NativeEngineUnavailable
-          ? 'Hardnested recovery is unavailable on this build.'
-          : 'Hardnested recovery failed for this sector key.';
+          ? l10n.mfHardnestedUnavailable
+          : l10n.mfHardnestedFailed;
     }
     _recordKey(
       source: RecoverSource.tag,
@@ -348,10 +348,8 @@ class RecoverController extends ChangeNotifier {
         source: RecoverSource.tag,
         kind: RecoverKind.corruptLog,
         note: log.nonces.isEmpty
-            ? 'None of the $dropped line(s) in the tag log could be read. '
-                  'Collect the nonces again on the device.'
-            : '$dropped line(s) in the tag log could not be read and were '
-                  'skipped, so those sector keys were not attacked.',
+            ? l10n.mfLogAllDropped(dropped)
+            : l10n.mfLogPartlyDropped(dropped),
       ),
     );
   }
@@ -401,10 +399,7 @@ class RecoverController extends ChangeNotifier {
         _hadFailure = true;
         _addStaticEntry(
           cuid: dict.cuid,
-          note:
-              'No candidate keys could be generated for '
-              '${_nameKeys(body.skippedKeys)}, so nothing was written for this '
-              'card. Re-collect those nonces on the device.',
+          note: l10n.mfNoCandidates(_nameKeys(body.skippedKeys)),
         );
         continue;
       }
@@ -418,9 +413,7 @@ class RecoverController extends ChangeNotifier {
         // there is no file on the device to point at.
         _addStaticEntry(
           cuid: dict.cuid,
-          note:
-              'Generated ${body.entries} candidates but could not write them '
-              'to the device - check free space and the connection.',
+          note: l10n.mfWriteFailed(body.entries),
         );
         continue;
       }
@@ -440,14 +433,12 @@ class RecoverController extends ChangeNotifier {
   static String? _dictGapNote(CuidDictBody body) {
     final parts = <String>[
       if (body.skippedKeys.isNotEmpty)
-        'no candidates for ${_nameKeys(body.skippedKeys)} - the device will '
-            'skip ${body.skippedKeys.length == 1 ? 'it' : 'them'}',
+        l10n.mfGapSkipped(_nameKeys(body.skippedKeys)),
       if (body.cappedKeys.isNotEmpty)
-        'the candidate list for ${_nameKeys(body.cappedKeys)} hit its limit '
-            'and may not hold the real key',
+        l10n.mfGapCapped(_nameKeys(body.cappedKeys)),
     ];
     if (parts.isEmpty) return null;
-    return '${parts.join('; ')}. Re-collect those nonces on the device.';
+    return l10n.mfGapSuffix(parts.join('; '));
   }
 
   /// Names the affected sector keys, summarising a long list so one bad card
@@ -455,7 +446,7 @@ class RecoverController extends ChangeNotifier {
   static String _nameKeys(List<String> keys) {
     const limit = 6;
     if (keys.length <= limit) return keys.join(', ');
-    return '${keys.take(limit).join(', ')} and ${keys.length - limit} more';
+    return l10n.mfKeysAndMore(keys.take(limit).join(', '), keys.length - limit);
   }
 
   /// Separates the failures worth acting on differently. Everything else stays
@@ -464,12 +455,9 @@ class RecoverController extends ChangeNotifier {
   /// symbol and a refused dictionary entry, so it cannot name a cause on its
   /// own — which is why the engine lookup raises [NativeEngineUnavailable].
   static String _staticFailureNote(Object error) => switch (error) {
-    NativeEngineUnavailable() =>
-      'Candidate generation is unavailable on this build.',
-    OutOfMemoryError() =>
-      'Not enough memory to build the candidate list for this card - '
-          'collect fewer sectors at a time.',
-    _ => 'Candidate generation failed for this card; nothing was written.',
+    NativeEngineUnavailable() => l10n.mfCandidatesUnavailable,
+    OutOfMemoryError() => l10n.mfOutOfMemory,
+    _ => l10n.mfCandidatesFailed,
   };
 
   // ---- helpers ----

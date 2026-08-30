@@ -1,3 +1,4 @@
+import '../../../services/localization/l10n.dart';
 import 'api_version.dart';
 import 'info.dart';
 
@@ -27,22 +28,21 @@ class FapCompat {
   String get badge => switch (verdict) {
     FapVerdict.ok => '',
     FapVerdict.unknown => '',
-    FapVerdict.unreadable => 'BROKEN',
-    FapVerdict.invalidManifest => 'BROKEN',
-    FapVerdict.targetMismatch => 'HW',
-    FapVerdict.apiTooOld => 'OLD API',
-    FapVerdict.apiTooNew => 'NEW API',
+    FapVerdict.unreadable => l10n.fapBadgeBroken,
+    FapVerdict.invalidManifest => l10n.fapBadgeBroken,
+    FapVerdict.targetMismatch => l10n.fapBadgeHardware,
+    FapVerdict.apiTooOld => l10n.fapBadgeOldApi,
+    FapVerdict.apiTooNew => l10n.fapBadgeNewApi,
   };
 
   String get message => switch (verdict) {
-    FapVerdict.ok => 'Runs on this firmware',
-    FapVerdict.unknown => 'Compatibility unknown',
-    FapVerdict.unreadable => 'Not a valid application file',
-    FapVerdict.invalidManifest => 'Damaged or unsupported manifest',
-    FapVerdict.targetMismatch => 'Built for another hardware target',
-    FapVerdict.apiTooOld => 'Built for API $appApi, firmware is $deviceApi',
-    FapVerdict.apiTooNew =>
-      'Built for API $appApi, firmware is $deviceApi — update the firmware',
+    FapVerdict.ok => l10n.fapCompatOk,
+    FapVerdict.unknown => l10n.fapCompatUnknown,
+    FapVerdict.unreadable => l10n.fapCompatUnreadable,
+    FapVerdict.invalidManifest => l10n.fapCompatInvalidManifest,
+    FapVerdict.targetMismatch => l10n.fapCompatTargetMismatch,
+    FapVerdict.apiTooOld => l10n.fapCompatApiTooOld('$appApi', '$deviceApi'),
+    FapVerdict.apiTooNew => l10n.fapCompatApiTooNew('$appApi', '$deviceApi'),
   };
 }
 

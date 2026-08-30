@@ -1,3 +1,4 @@
+import '../../services/localization/l10n.dart';
 import '../format.dart';
 import '../archive/category.dart';
 import '../archive/models/key.dart';
@@ -27,70 +28,114 @@ const double kHeaderHeight = 34;
 /// Single column set for the unified "Deleted" table, which mixes files from
 /// every category. Keeps only fields common to all of them: name/folder (with a
 /// per-row category icon), the parsed protocol/type, size and modified time.
-const List<ArchiveCol> _deletedColumns = [
-  ArchiveCol('Name / Folder', 0, sortKey: 'name'),
-  ArchiveCol('Protocol', 150, sortKey: 'protocol', hideLevel: 3),
-  ArchiveCol('Size', 68, sortKey: 'size', right: true, hideLevel: 1),
-  ArchiveCol('Modified', 88, sortKey: 'mtime', right: true, hideLevel: 2),
-];
-
-List<ArchiveCol> deletedColumns() => _deletedColumns;
+List<ArchiveCol> deletedColumns() {
+  final s = l10n;
+  return [
+    ArchiveCol(s.colNameFolder, 0, sortKey: 'name'),
+    ArchiveCol(s.colProtocol, 150, sortKey: 'protocol', hideLevel: 3),
+    ArchiveCol(s.colSize, 68, sortKey: 'size', right: true, hideLevel: 1),
+    ArchiveCol(s.colModified, 88, sortKey: 'mtime', right: true, hideLevel: 2),
+  ];
+}
 
 List<ArchiveCol> columnsFor(ArchiveCategory cat) {
+  final s = l10n;
   switch (cat) {
     case ArchiveCategory.nfc:
-      return const [
-        ArchiveCol('Name / Folder', 0, sortKey: 'name'),
-        ArchiveCol('Type', 140, sortKey: 'type'),
+      return [
+        ArchiveCol(s.colNameFolder, 0, sortKey: 'name'),
+        ArchiveCol(s.colType, 140, sortKey: 'type'),
         ArchiveCol('UID', 190, sortKey: 'uid', hideLevel: 2),
-        ArchiveCol('Size', 68, sortKey: 'size', right: true, hideLevel: 1),
-        ArchiveCol('Modified', 88, sortKey: 'mtime', right: true, hideLevel: 3),
+        ArchiveCol(s.colSize, 68, sortKey: 'size', right: true, hideLevel: 1),
+        ArchiveCol(
+          s.colModified,
+          88,
+          sortKey: 'mtime',
+          right: true,
+          hideLevel: 3,
+        ),
       ];
     case ArchiveCategory.rfid:
-      return const [
-        ArchiveCol('Key / Folder', 0, sortKey: 'name'),
-        ArchiveCol('Type', 120, sortKey: 'type'),
-        ArchiveCol('Data', 190, sortKey: 'data', hideLevel: 2),
-        ArchiveCol('Size', 68, sortKey: 'size', right: true, hideLevel: 1),
-        ArchiveCol('Modified', 88, sortKey: 'mtime', right: true, hideLevel: 3),
+      return [
+        ArchiveCol(s.colKeyFolder, 0, sortKey: 'name'),
+        ArchiveCol(s.colType, 120, sortKey: 'type'),
+        ArchiveCol(s.colData, 190, sortKey: 'data', hideLevel: 2),
+        ArchiveCol(s.colSize, 68, sortKey: 'size', right: true, hideLevel: 1),
+        ArchiveCol(
+          s.colModified,
+          88,
+          sortKey: 'mtime',
+          right: true,
+          hideLevel: 3,
+        ),
       ];
     case ArchiveCategory.infrared:
-      return const [
-        ArchiveCol('Remote / Folder', 0, sortKey: 'name'),
-        ArchiveCol('Signals', 72, sortKey: 'signals', right: true),
-        ArchiveCol('Protocols', 170, sortKey: 'protocols', hideLevel: 2),
-        ArchiveCol('Modified', 88, sortKey: 'mtime', right: true, hideLevel: 3),
+      return [
+        ArchiveCol(s.colRemoteFolder, 0, sortKey: 'name'),
+        ArchiveCol(s.colSignals, 72, sortKey: 'signals', right: true),
+        ArchiveCol(s.colProtocols, 170, sortKey: 'protocols', hideLevel: 2),
+        ArchiveCol(
+          s.colModified,
+          88,
+          sortKey: 'mtime',
+          right: true,
+          hideLevel: 3,
+        ),
       ];
     case ArchiveCategory.subghz:
     case ArchiveCategory.wardriving:
-      return const [
-        ArchiveCol('Name / Folder', 0, sortKey: 'name'),
-        ArchiveCol('Frequency', 104, sortKey: 'frequency', right: true),
-        ArchiveCol('Protocol', 120, sortKey: 'protocol'),
-        ArchiveCol('Preset', 100, hideLevel: 2),
-        ArchiveCol('Mod', 56, sortKey: 'modulation', hideLevel: 1),
-        ArchiveCol('Modified', 88, sortKey: 'mtime', right: true, hideLevel: 3),
+      return [
+        ArchiveCol(s.colNameFolder, 0, sortKey: 'name'),
+        ArchiveCol(s.colFrequency, 104, sortKey: 'frequency', right: true),
+        ArchiveCol(s.colProtocol, 120, sortKey: 'protocol'),
+        ArchiveCol(s.colPreset, 100, hideLevel: 2),
+        ArchiveCol(s.colModulation, 56, sortKey: 'modulation', hideLevel: 1),
+        ArchiveCol(
+          s.colModified,
+          88,
+          sortKey: 'mtime',
+          right: true,
+          hideLevel: 3,
+        ),
       ];
     case ArchiveCategory.ibutton:
-      return const [
-        ArchiveCol('Key / Folder', 0, sortKey: 'name'),
-        ArchiveCol('Type', 120, sortKey: 'type'),
-        ArchiveCol('Size', 68, sortKey: 'size', right: true, hideLevel: 1),
-        ArchiveCol('Modified', 88, sortKey: 'mtime', right: true, hideLevel: 3),
+      return [
+        ArchiveCol(s.colKeyFolder, 0, sortKey: 'name'),
+        ArchiveCol(s.colType, 120, sortKey: 'type'),
+        ArchiveCol(s.colSize, 68, sortKey: 'size', right: true, hideLevel: 1),
+        ArchiveCol(
+          s.colModified,
+          88,
+          sortKey: 'mtime',
+          right: true,
+          hideLevel: 3,
+        ),
       ];
     case ArchiveCategory.badusb:
-      return const [
-        ArchiveCol('Script / Folder', 0, sortKey: 'name'),
-        ArchiveCol('Kind', 76, sortKey: 'kind'),
-        ArchiveCol('Lines', 60, sortKey: 'lines', right: true, hideLevel: 2),
-        ArchiveCol('Size', 68, sortKey: 'size', right: true, hideLevel: 1),
-        ArchiveCol('Modified', 88, sortKey: 'mtime', right: true, hideLevel: 3),
+      return [
+        ArchiveCol(s.colScriptFolder, 0, sortKey: 'name'),
+        ArchiveCol(s.colKind, 76, sortKey: 'kind'),
+        ArchiveCol(s.colLines, 60, sortKey: 'lines', right: true, hideLevel: 2),
+        ArchiveCol(s.colSize, 68, sortKey: 'size', right: true, hideLevel: 1),
+        ArchiveCol(
+          s.colModified,
+          88,
+          sortKey: 'mtime',
+          right: true,
+          hideLevel: 3,
+        ),
       ];
     case ArchiveCategory.javascript:
-      return const [
-        ArchiveCol('Script / Folder', 0, sortKey: 'name'),
-        ArchiveCol('Size', 68, sortKey: 'size', right: true, hideLevel: 1),
-        ArchiveCol('Modified', 88, sortKey: 'mtime', right: true, hideLevel: 3),
+      return [
+        ArchiveCol(s.colScriptFolder, 0, sortKey: 'name'),
+        ArchiveCol(s.colSize, 68, sortKey: 'size', right: true, hideLevel: 1),
+        ArchiveCol(
+          s.colModified,
+          88,
+          sortKey: 'mtime',
+          right: true,
+          hideLevel: 3,
+        ),
       ];
   }
 }

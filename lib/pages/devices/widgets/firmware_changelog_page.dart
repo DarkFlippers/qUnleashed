@@ -2,6 +2,7 @@ import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../../services/localization/l10n.dart';
 import '../../../components/config.dart';
 import '../../../theme/theme.dart';
 import '../firmware/directory.dart';
@@ -47,7 +48,7 @@ class _FirmwareChangelogPageState extends State<FirmwareChangelogPage> {
     super.initState();
     _preparedHtml = compute(
       buildChangelogHtml,
-      widget.changelog.trim().isEmpty ? 'Empty changelog' : widget.changelog,
+      widget.changelog.trim().isEmpty ? context.l10n.firmwareEmptyChangelog : widget.changelog,
     );
   }
 
@@ -57,7 +58,7 @@ class _FirmwareChangelogPageState extends State<FirmwareChangelogPage> {
     return Scaffold(
       backgroundColor: colors.background,
       appBar: QPageAppBar(
-        title: 'What\'s New · ${widget.version.version}',
+        title: context.l10n.firmwareWhatsNewVersion(widget.version.version),
         backgroundColor: colors.card,
         foregroundColor: colors.textPrimary,
       ),

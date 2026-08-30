@@ -1,3 +1,4 @@
+import '../../../services/localization/l10n.dart';
 import 'dart:async';
 
 import 'package:flipperlib/flipperlib.dart' hide File;
@@ -268,10 +269,7 @@ class CatalogContext {
       LogService.log('[AppsBackend] deviceInfo failed: $e');
     }
     if (required && (_deviceTarget == null || _deviceApi == null)) {
-      throw StateError(
-        'Could not read the firmware target/API from the device; '
-        'reconnect the Flipper and try again',
-      );
+      throw StateError(l10n.appsErrorNoDeviceApi);
     }
   }
 

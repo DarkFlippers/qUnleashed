@@ -1,3 +1,4 @@
+import '../../../services/localization/l10n.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -165,12 +166,12 @@ class _AtpInstallPageState extends State<AtpInstallPage> {
         info: fap,
         checked: fap != null,
         showVerdict: false,
-        pendingNote: 'Install the app to read its manifest',
+        pendingNote: context.l10n.appInstallToReadManifest,
       ),
       actions: (ctx) => [
         if (busy)
           AppActionEntry(
-            label: 'Cancel',
+            label: ctx.l10n.commonCancel,
             icon: Icons.close,
             color: colors.danger,
             filled: true,
@@ -178,7 +179,7 @@ class _AtpInstallPageState extends State<AtpInstallPage> {
           )
         else if (action == PackAction.install)
           AppActionEntry(
-            label: 'Install',
+            label: ctx.l10n.commonInstall,
             icon: Icons.download,
             color: colors.accent,
             filled: true,
@@ -187,7 +188,7 @@ class _AtpInstallPageState extends State<AtpInstallPage> {
         else ...[
           if (action == PackAction.update)
             AppActionEntry(
-              label: 'Update',
+              label: ctx.l10n.commonUpdate,
               icon: Icons.arrow_upward,
               color: colors.success,
               filled: true,
@@ -195,14 +196,14 @@ class _AtpInstallPageState extends State<AtpInstallPage> {
             )
           else if (action == PackAction.downgrade)
             AppActionEntry(
-              label: 'Downgrade',
+              label: ctx.l10n.appActionDowngrade,
               icon: Icons.arrow_downward,
               color: colors.danger,
               filled: true,
               onTap: () => _engine.installOrUpdate(card),
             ),
           AppActionEntry(
-            label: 'Open',
+            label: ctx.l10n.commonOpen,
             icon: Icons.play_arrow_rounded,
             color: colors.accent,
             filled: action == PackAction.none,
@@ -210,7 +211,7 @@ class _AtpInstallPageState extends State<AtpInstallPage> {
             onTap: () => unawaited(_launch(entry)),
           ),
           AppActionEntry(
-            label: 'Uninstall',
+            label: ctx.l10n.appActionUninstall,
             icon: Icons.delete_outline,
             color: colors.danger,
             half: true,
@@ -266,8 +267,11 @@ class _AtpInstallPageState extends State<AtpInstallPage> {
                 Flexible(
                   child: Text(
                     _packUnusable
-                        ? '${_atp.tag} · API ${_atp.block?.api} '
-                              'vs ${_backend.deviceApi}'
+                        ? context.l10n.atpApiMismatch(
+                            _atp.tag,
+                            '${_atp.block?.api}',
+                            '${_backend.deviceApi}',
+                          )
                         : _atp.tag,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -284,7 +288,7 @@ class _AtpInstallPageState extends State<AtpInstallPage> {
             actions: [
               IconButton(
                 icon: const Icon(Icons.manage_search, color: Colors.white),
-                tooltip: 'Manage apps on device',
+                tooltip: context.l10n.catalogManageTooltip,
                 onPressed: widget.onOpenManager,
               ),
               IconButton(
@@ -292,7 +296,7 @@ class _AtpInstallPageState extends State<AtpInstallPage> {
                   Icons.storefront_outlined,
                   color: Colors.white,
                 ),
-                tooltip: 'Catalog',
+                tooltip: context.l10n.atpCatalogTooltip,
                 onPressed: widget.onOpenCatalog,
               ),
               CategorySyncButton(
@@ -326,7 +330,7 @@ class _AtpInstallPageState extends State<AtpInstallPage> {
               if (_atp.loading)
                 SyncProgressBar(
                   icon: Icons.sync_rounded,
-                  label: 'Syncing the release index…',
+                  label: context.l10n.atpSyncingIndex,
                   progress: 0,
                   color: header,
                 ),
@@ -342,14 +346,16 @@ class _AtpInstallPageState extends State<AtpInstallPage> {
     if (_atp.entries.isEmpty) {
       return ArchiveEmptyView(
         icon: Icons.extension_off,
-        title: _atp.loading ? 'Reading the release…' : 'No apps in the release',
-        subtitle: _atp.loading ? null : 'Sync to fetch the latest pack',
+        title: _atp.loading
+            ? context.l10n.atpReadingRelease
+            : context.l10n.atpNoApps,
+        subtitle: _atp.loading ? null : context.l10n.atpSyncToFetch,
       );
     }
     if (visible.isEmpty) {
-      return const ArchiveEmptyView(
+      return ArchiveEmptyView(
         icon: Icons.search_off,
-        title: 'Nothing matches',
+        title: context.l10n.appsNothingMatches,
       );
     }
 
@@ -466,7 +472,7 @@ class _EntryRow extends StatelessWidget {
           title: entry.displayName,
           subtitle: packAction == PackAction.install
               ? entry.appId
-              : '${entry.appId} · installed',
+              : context.l10n.appIdInstalled(entry.appId),
         );
     }
   }

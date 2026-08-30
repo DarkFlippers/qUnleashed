@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../services/localization/l10n.dart';
 import '../../../../components/format.dart';
 import '../../../../services/rpc/network/network_traffic.dart';
 import '../../../../theme/theme.dart';
@@ -16,7 +17,7 @@ class NetworkSummaryCard extends StatelessWidget {
       builder: (context, traffic, _) {
         final host = traffic.host;
         return DashboardCard(
-          title: 'Network',
+          title: context.l10n.cardNetwork,
           icon: Icons.public,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -61,7 +62,7 @@ class NetworkSummaryCard extends StatelessWidget {
                 children: [
                   Expanded(
                     child: _Field(
-                      label: 'Domain',
+                      label: context.l10n.cardNetworkDomain,
                       value: host == null || host.isEmpty ? '—' : host,
                       muted: host == null || host.isEmpty,
                       align: CrossAxisAlignment.start,
@@ -69,7 +70,7 @@ class NetworkSummaryCard extends StatelessWidget {
                   ),
                   const SizedBox(width: 12),
                   _Field(
-                    label: 'Total',
+                    label: context.l10n.cardNetworkTotal,
                     value: _bytes(traffic.txBytes + traffic.rxBytes),
                     align: CrossAxisAlignment.end,
                   ),

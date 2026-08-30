@@ -1,5 +1,6 @@
 ﻿import 'package:flutter/material.dart';
 
+import '../../../../services/localization/l10n.dart';
 import '../../../../theme/theme.dart';
 import '../../data/catalog_api.dart';
 
@@ -9,12 +10,12 @@ class SortDropdown extends StatelessWidget {
   final AppsSort value;
   final ValueChanged<AppsSort> onChanged;
 
-  static const Map<AppsSort, String> _labels = {
-    AppsSort.newUpdates: 'New Updates',
-    AppsSort.newReleases: 'New Releases',
-    AppsSort.oldUpdates: 'Old Updates',
-    AppsSort.oldReleases: 'Old Releases',
-    AppsSort.alphabetical: 'Name A–Z',
+  static String _label(L10n s, AppsSort sort) => switch (sort) {
+    AppsSort.newUpdates => s.sortNewUpdates,
+    AppsSort.newReleases => s.sortNewReleases,
+    AppsSort.oldUpdates => s.sortOldUpdates,
+    AppsSort.oldReleases => s.sortOldReleases,
+    AppsSort.alphabetical => s.sortAlphabetical,
   };
 
   @override
@@ -31,14 +32,14 @@ class SortDropdown extends StatelessWidget {
         color: colors.card,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         itemBuilder: (context) => [
-          for (final entry in _labels.entries)
+          for (final sort in AppsSort.values)
             PopupMenuItem<AppsSort>(
-              value: entry.key,
+              value: sort,
               child: Text(
-                entry.value,
+                _label(context.l10n, sort),
                 style: TextStyle(
                   color: colors.textPrimary,
-                  fontWeight: entry.key == value ? FontWeight.w700 : FontWeight.w500,
+                  fontWeight: sort == value ? FontWeight.w700 : FontWeight.w500,
                 ),
               ),
             ),
@@ -49,7 +50,7 @@ class SortDropdown extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                _labels[value]!,
+                _label(context.l10n, value),
                 style: TextStyle(
                   color: colors.onAccent,
                   fontSize: 14,

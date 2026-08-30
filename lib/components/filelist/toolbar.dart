@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../services/localization/l10n.dart';
 import '../icon.dart';
 import '../../theme/theme.dart';
 import '../archive/category.dart';
@@ -235,7 +236,7 @@ class CategoryToolbar extends StatelessWidget {
                 onChanged: onQueryChanged,
                 style: const TextStyle(color: Colors.white, fontSize: 13),
                 decoration: InputDecoration(
-                  hintText: 'Search…',
+                  hintText: context.l10n.searchHint,
                   hintStyle: TextStyle(
                     color: Colors.white.withValues(alpha: 0.6),
                   ),
@@ -347,7 +348,7 @@ class CategorySelectionToolbar extends StatelessWidget {
             ),
             const SizedBox(width: 2),
             Text(
-              '$count selected',
+              context.l10n.selectedCount(count),
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 14,
@@ -370,7 +371,9 @@ class CategorySelectionToolbar extends StatelessWidget {
                   ),
                   const SizedBox(width: 5),
                   Text(
-                    allSelected ? 'None' : 'All',
+                    allSelected
+                        ? context.l10n.selectNone
+                        : context.l10n.selectAll,
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 13,
@@ -498,7 +501,7 @@ class _FilterBtn extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
               child: Text(
-                'Filter',
+                context.l10n.filterTitle,
                 style: TextStyle(
                   color: colors.textPrimary,
                   fontSize: 15,
@@ -514,7 +517,7 @@ class _FilterBtn extends StatelessWidget {
                 children: [
                   ListTile(
                     title: Text(
-                      'All',
+                      context.l10n.filterAll,
                       style: TextStyle(color: colors.textPrimary),
                     ),
                     trailing: selected == null

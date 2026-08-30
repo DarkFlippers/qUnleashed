@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../services/localization/l10n.dart';
 import '../../../components/notification.dart';
 import '../../../components/path.dart';
 import 'page.dart';
@@ -34,7 +35,7 @@ Future<bool> openRemoteFileInEditor(
   final localPath = await download();
   if (!context.mounted) return false;
   if (localPath == null) {
-    context.showNotification('Download failed', type: QNotificationType.error);
+    context.showNotification(l10n.fmDownloadFailed, type: QNotificationType.error);
     return false;
   }
   return openLocalFileInEditor(

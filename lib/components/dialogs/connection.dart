@@ -1,3 +1,4 @@
+import '../../services/localization/l10n.dart';
 import 'dart:async';
 
 import 'package:flipperlib/flipperlib.dart';
@@ -237,7 +238,9 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
         children: [
           Expanded(
             child: Text(
-              widget.usbOnly ? 'Select USB device' : 'Select device',
+              widget.usbOnly
+                  ? context.l10n.pickerSelectUsbDevice
+                  : context.l10n.pickerSelectDevice,
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -279,10 +282,10 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
         padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
         child: Text(
           _scanning
-              ? 'Searching for devices…'
+              ? context.l10n.pickerSearching
               : (widget.usbOnly
-                    ? 'Waiting for USB connection…'
-                    : 'No devices found.'),
+                    ? context.l10n.pickerWaitingUsb
+                    : context.l10n.pickerNoDevices),
           textAlign: TextAlign.center,
           style: TextStyle(color: colors.dialogMuted, fontSize: 14),
         ),
@@ -323,12 +326,12 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
           ? TextButton(
               onPressed: _removeFilter,
               style: TextButton.styleFrom(foregroundColor: colors.dialogMuted),
-              child: const Text("Can't find my device"),
+              child: Text(context.l10n.pickerCantFindDevice),
             )
           : TextButton(
               onPressed: _restoreFilter,
               style: TextButton.styleFrom(foregroundColor: colors.dialogMuted),
-              child: const Text('Show only devices'),
+              child: Text(context.l10n.pickerShowOnlyDevices),
             ),
     );
   }
@@ -367,7 +370,7 @@ class _DeviceListItem extends StatelessWidget {
         ),
       );
     }
-    final label = connecting ? 'Cancel' : 'Disconnect';
+    final label = connecting ? l10n.commonCancel : l10n.pickerDisconnect;
     final action = Tooltip(
       message: label,
       child: InkResponse(
@@ -407,7 +410,7 @@ class _DeviceListItem extends StatelessWidget {
 
     final displayName = device.name;
     final subtitle = connecting
-        ? 'Connecting…'
+        ? context.l10n.pickerConnecting
         : (isBle ? device.id : (device.serialNumber ?? device.id));
 
     return InkWell(

@@ -3,6 +3,7 @@ import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../services/localization/l10n.dart';
 import '../../../components/appbar.dart';
 import '../../../components/cardlist.dart';
 import '../../../components/dialogs/action.dart';
@@ -46,7 +47,7 @@ class _FliblerProjectPageState extends State<FliblerProjectPage> {
   Future<void> _pickFolder() async {
     final lastFolder = _ctrl.lastFolder;
     final path = await FilePicker.platform.getDirectoryPath(
-      dialogTitle: 'Pick a project folder',
+      dialogTitle: context.l10n.fliblerPickFolder,
       initialDirectory: lastFolder.isEmpty ? null : lastFolder,
     );
     if (path == null) return;
@@ -61,7 +62,7 @@ class _FliblerProjectPageState extends State<FliblerProjectPage> {
     if (text.isEmpty) {
       if (mounted) {
         context.showNotification(
-          'Clipboard is empty',
+          context.l10n.fliblerClipboardEmpty,
           type: QNotificationType.warning,
         );
       }
@@ -111,7 +112,7 @@ class _FliblerProjectPageState extends State<FliblerProjectPage> {
     } catch (e) {
       if (!mounted) return;
       context.showNotification(
-        'Open failed: $e',
+        context.l10n.appOpenFailed('$e'),
         type: QNotificationType.error,
       );
     }
@@ -150,7 +151,7 @@ class _FliblerProjectPageState extends State<FliblerProjectPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             IconButton(
-              tooltip: 'Paste and load',
+              tooltip: context.l10n.fliblerPasteAndLoad,
               icon: Icon(
                 Icons.content_paste_go,
                 size: 20,
@@ -159,7 +160,7 @@ class _FliblerProjectPageState extends State<FliblerProjectPage> {
               onPressed: _ctrl.busy ? null : _pasteLink,
             ),
             IconButton(
-              tooltip: 'Choose folder',
+              tooltip: context.l10n.fliblerChooseFolder,
               icon: Icon(
                 Icons.folder_open,
                 size: 20,
@@ -254,11 +255,14 @@ class _FliblerProjectPageState extends State<FliblerProjectPage> {
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   if (version.isNotEmpty)
-                    _Meta(label: 'Version', value: version),
+                    _Meta(label: context.l10n.appMetaVersion, value: version),
                   if (app.fapAuthor.isNotEmpty)
-                    _Meta(label: 'By', value: app.fapAuthor),
+                    _Meta(label: context.l10n.appMetaBy, value: app.fapAuthor),
                   if (app.fapCategory.isNotEmpty)
-                    _Meta(label: 'Category', value: app.fapCategory),
+                    _Meta(
+                      label: context.l10n.fliblerMetaCategory,
+                      value: app.fapCategory,
+                    ),
                 ],
               ),
               const SizedBox(height: 8),
@@ -307,13 +311,17 @@ class _FliblerProjectPageState extends State<FliblerProjectPage> {
     final colors = context.appColors;
     if (_ctrl.uploading) {
       return _bigProgress(
-        'UPLOAD',
+        context.l10n.fliblerUploadAction,
         colors.accent,
         progress: _ctrl.uploadProgress,
       );
     }
-    if (_ctrl.loading) return _bigProgress('LOAD', colors.accent);
-    if (_ctrl.assembler.busy) return _bigProgress('BUILD', colors.accent);
+    if (_ctrl.loading) {
+      return _bigProgress(context.l10n.fliblerLoadAction, colors.accent);
+    }
+    if (_ctrl.assembler.busy) {
+      return _bigProgress(context.l10n.fliblerBuildAction, colors.accent);
+    }
 
     final built = _ctrl.fap != null;
     final sent = _ctrl.installedPath != null;
@@ -321,15 +329,25 @@ class _FliblerProjectPageState extends State<FliblerProjectPage> {
     if (built && sent) {
       return Row(
         children: [
-          Expanded(child: _bigButton('OPEN', colors.accent, _openOnDevice)),
+          Expanded(
+            child: _bigButton(
+              context.l10n.fliblerOpenAction,
+              colors.accent,
+              _openOnDevice,
+            ),
+          ),
           const SizedBox(width: 12),
           _SquareAction(
             icon: Icons.upload,
-            tooltip: 'Send again',
+            tooltip: context.l10n.fliblerSendAgain,
             onTap: () => _ctrl.sendToDevice(),
           ),
           const SizedBox(width: 8),
-          _SquareAction(icon: Icons.refresh, tooltip: 'Rebuild', onTap: _build),
+          _SquareAction(
+            icon: Icons.refresh,
+            tooltip: context.l10n.fliblerRebuild,
+            onTap: _build,
+          ),
         ],
       );
     }
@@ -337,19 +355,23 @@ class _FliblerProjectPageState extends State<FliblerProjectPage> {
       return Row(
         children: [
           Expanded(
-            child: _bigButton('SEND', colors.success, () {
+            child: _bigButton(context.l10n.fliblerSendAction, colors.success, () {
               _ctrl.sendToDevice();
             }),
           ),
           const SizedBox(width: 12),
-          _SquareAction(icon: Icons.refresh, tooltip: 'Rebuild', onTap: _build),
+          _SquareAction(
+            icon: Icons.refresh,
+            tooltip: context.l10n.fliblerRebuild,
+            onTap: _build,
+          ),
         ],
       );
     }
-    return _bigButton('BUILD', colors.accent, () {
+    return _bigButton(context.l10n.fliblerBuildAction, colors.accent, () {
       if (!_ctrl.canBuild && !_ctrl.canLoad) {
         context.showNotification(
-          'Paste a repository link or pick a project folder',
+          context.l10n.fliblerHint,
           type: QNotificationType.warning,
         );
         return;
@@ -366,10 +388,12 @@ class _FliblerProjectPageState extends State<FliblerProjectPage> {
     final text =
         error ??
         (installed != null
-            ? 'Sent to $installed'
+            ? context.l10n.fliblerSentTo(installed)
             : app != null
-            ? 'Built ${app.name.isEmpty ? app.appid : app.name} '
-                  '(${_ctrl.fap?.lengthSync() ?? 0} bytes)'
+            ? context.l10n.fliblerBuilt(
+                app.name.isEmpty ? app.appid : app.name,
+                _ctrl.fap?.lengthSync() ?? 0,
+              )
             : null);
     if (text == null) return const SizedBox.shrink();
     return Padding(
@@ -429,7 +453,7 @@ class _FliblerProjectPageState extends State<FliblerProjectPage> {
         ),
         const SizedBox(width: 8),
         IconButton(
-          tooltip: 'Remove from recent',
+          tooltip: context.l10n.fliblerRemoveRecent,
           icon: Icon(Icons.close, size: 16, color: colors.textMuted),
           onPressed: () => _ctrl.removeRecent(entry),
         ),
@@ -452,12 +476,12 @@ class _FliblerProjectPageState extends State<FliblerProjectPage> {
             foregroundColor: colors.onAccent,
             actions: [
               QPageAppBarAction(
-                tooltip: 'Console',
+                tooltip: context.l10n.fliblerConsoleTab,
                 icon: const Icon(Icons.terminal),
                 onPressed: _openConsole,
               ),
               QPageAppBarAction(
-                tooltip: 'Assembler settings',
+                tooltip: context.l10n.fliblerTitle,
                 icon: const Icon(Icons.settings_outlined),
                 onPressed: _openSettings,
               ),
@@ -483,7 +507,7 @@ class _FliblerProjectPageState extends State<FliblerProjectPage> {
                 if (_ctrl.builtInfo != null) ...[
                   const SizedBox(height: 18),
                   GroupedCardList<int>(
-                    title: 'Application',
+                    title: context.l10n.fliblerSectionApplication,
                     items: const [0],
                     cardPadding: const EdgeInsets.all(12),
                     itemBuilder: (context, _) => FapFactsPanel(
@@ -496,7 +520,7 @@ class _FliblerProjectPageState extends State<FliblerProjectPage> {
                 if (_ctrl.recent.isNotEmpty) ...[
                   const SizedBox(height: 18),
                   GroupedCardList<FliblerRecentSource>(
-                    title: 'Recent projects',
+                    title: context.l10n.fliblerSectionRecent,
                     items: _ctrl.recent,
                     onTap: (entry) =>
                         _ctrl.busy ? null : () => _useRecent(entry),

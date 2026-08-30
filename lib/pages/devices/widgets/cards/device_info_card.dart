@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../services/localization/l10n.dart';
 import '../../../../theme/theme.dart';
 import '../action_row.dart';
 import '../info_line.dart';
@@ -22,7 +23,7 @@ class DeviceInfoCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.appColors;
     return DashboardCard(
-      title: 'Device Info',
+      title: context.l10n.deviceInfoTitle,
       icon: Icons.info_outline,
       trailing: InkWell(
         onTap: onOpenFullInfo,
@@ -44,7 +45,7 @@ class DeviceInfoCard extends StatelessWidget {
           Divider(height: 1, color: colors.divider),
           FlipperActionRow(
             iconAsset: 'assets/ic/nav/navigate.svg',
-            label: 'Full Info',
+            label: context.l10n.deviceFullInfo,
             color: colors.accent,
             onTap: onOpenFullInfo,
           ),
@@ -63,7 +64,7 @@ class DeviceInfoCard extends StatelessWidget {
                     ),
                     Expanded(
                       child: Text(
-                        'Export',
+                        context.l10n.deviceExport,
                         style: TextStyle(
                           color: colors.accent,
                           fontSize: 14,

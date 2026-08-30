@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../services/localization/l10n.dart';
 import '../../../components/icon.dart';
 import '../../../components/navigation.dart';
 import '../../../theme/theme.dart';
@@ -81,7 +82,7 @@ class _EmulatePageState extends State<EmulatePage> {
   }
 
   void _openRemoteControlBusy() {
-    context.showNotification('Device is busy', type: QNotificationType.error);
+    context.showNotification(context.l10n.fmDeviceBusy, type: QNotificationType.error);
     openRoute(context, AppRoute.remoteControl, replace: true);
   }
 
@@ -119,15 +120,15 @@ class _EmulatePageState extends State<EmulatePage> {
   String _errorMessage(EmulateError? e) {
     switch (e) {
       case EmulateError.notConnected:
-        return 'Device is not connected';
+        return context.l10n.emuNotConnected;
       case EmulateError.notEmulatable:
-        return 'This file type cannot be opened on the device';
+        return context.l10n.emuUnsupportedType;
       case EmulateError.appStartFailed:
-        return 'Could not open the app on the device';
+        return context.l10n.emuAppOpenFailed;
       case EmulateError.loadFileFailed:
-        return 'Could not load the file into the app';
+        return context.l10n.emuLoadFailed;
       case EmulateError.busy:
-        return 'Device is busy';
+        return context.l10n.fmDeviceBusy;
       case null:
         return '';
     }
@@ -147,7 +148,7 @@ class _EmulatePageState extends State<EmulatePage> {
       child: Scaffold(
         backgroundColor: colors.background,
         appBar: QPageAppBar(
-          title: 'Open on device · ${k.category.title}',
+          title: l10n.emuOpenOnDevice(k.category.title),
           backgroundColor: colors.accent,
           foregroundColor: colors.onAccent,
         ),
@@ -215,7 +216,7 @@ class _EmulatePageState extends State<EmulatePage> {
                             ? Icons.wifi_tethering
                             : Icons.wifi_tethering_off,
                       ),
-                      label: Text(_sending ? 'Sending…' : 'Hold to Send'),
+                      label: Text(_sending ? context.l10n.emuSending : context.l10n.emuHoldToSend),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: _sending ? colors.accent : colors.card,
                         foregroundColor: _sending
@@ -234,7 +235,7 @@ class _EmulatePageState extends State<EmulatePage> {
                   ElevatedButton.icon(
                     onPressed: _stopAndClose,
                     icon: const Icon(Icons.stop),
-                    label: const Text('Stop'),
+                    label: Text(context.l10n.emuStop),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: colors.danger,
                       foregroundColor: colors.onAccent,
@@ -255,7 +256,7 @@ class _EmulatePageState extends State<EmulatePage> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    child: const Text('Close'),
+                    child: Text(context.l10n.commonClose),
                   ),
               ],
             ),
@@ -275,7 +276,7 @@ class _EmulatePageState extends State<EmulatePage> {
             CircularProgressIndicator(color: colors.accent),
             const SizedBox(height: 16),
             Text(
-              'Opening app on the device...',
+              context.l10n.emuOpening,
               style: TextStyle(color: colors.textSecondary),
             ),
           ],
@@ -305,7 +306,7 @@ class _EmulatePageState extends State<EmulatePage> {
           Icon(Icons.contactless, size: 64, color: colors.accent),
           const SizedBox(height: 16),
           Text(
-            'File loaded on the device',
+            context.l10n.emuLoaded,
             textAlign: TextAlign.center,
             style: TextStyle(
               color: colors.textPrimary,
@@ -316,8 +317,8 @@ class _EmulatePageState extends State<EmulatePage> {
           const SizedBox(height: 8),
           Text(
             widget.flipperKey.category.holdToSend
-                ? 'Hold “Send” to transmit.\nStop will close the app.'
-                : 'Use the device buttons to run it.\nStop will close the app.',
+                ? context.l10n.emuHintHold
+                : context.l10n.emuHintButtons,
             textAlign: TextAlign.center,
             style: TextStyle(
               color: colors.textMuted,

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:re_editor/re_editor.dart';
 
+import '../../../services/localization/l10n.dart';
+
 /// Search and replace bar shown under the app bar while the find mode is on.
 class EditorFindPanel extends StatelessWidget implements PreferredSizeWidget {
   const EditorFindPanel({
@@ -56,32 +58,32 @@ class EditorFindPanel extends StatelessWidget implements PreferredSizeWidget {
           icon: value.replaceMode
               ? Icons.keyboard_arrow_down_rounded
               : Icons.keyboard_arrow_right_rounded,
-          tooltip: 'Replace',
+          tooltip: l10n.findReplace,
           onPressed: readOnly ? null : controller.toggleMode,
         ),
         Expanded(
           child: _input(
             controller: controller.findInputController,
             focusNode: controller.findInputFocusNode,
-            hint: 'Find',
+            hint: l10n.findFind,
           ),
         ),
         _toggle(
           label: 'Aa',
-          tooltip: 'Match case',
+          tooltip: l10n.findMatchCase,
           selected: value.option.caseSensitive,
           onPressed: controller.toggleCaseSensitive,
         ),
         _toggle(
           label: '.*',
-          tooltip: 'Regex',
+          tooltip: l10n.findRegex,
           selected: value.option.regex,
           onPressed: controller.toggleRegex,
         ),
         SizedBox(
           width: 62,
           child: Text(
-            matches == 0 ? 'no results' : '${result!.index + 1}/$matches',
+            matches == 0 ? l10n.findNoResults : '${result!.index + 1}/$matches',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: foreground.withValues(alpha: 0.75),
@@ -91,17 +93,17 @@ class EditorFindPanel extends StatelessWidget implements PreferredSizeWidget {
         ),
         _button(
           icon: Icons.keyboard_arrow_up_rounded,
-          tooltip: 'Previous',
+          tooltip: l10n.findPrevious,
           onPressed: matches == 0 ? null : controller.previousMatch,
         ),
         _button(
           icon: Icons.keyboard_arrow_down_rounded,
-          tooltip: 'Next',
+          tooltip: l10n.findNext,
           onPressed: matches == 0 ? null : controller.nextMatch,
         ),
         _button(
           icon: Icons.close_rounded,
-          tooltip: 'Close',
+          tooltip: l10n.commonClose,
           onPressed: controller.close,
         ),
       ],
@@ -117,17 +119,17 @@ class EditorFindPanel extends StatelessWidget implements PreferredSizeWidget {
           child: _input(
             controller: controller.replaceInputController,
             focusNode: controller.replaceInputFocusNode,
-            hint: 'Replace with',
+            hint: l10n.findReplaceWith,
           ),
         ),
         _button(
           icon: Icons.find_replace_rounded,
-          tooltip: 'Replace',
+          tooltip: l10n.findReplace,
           onPressed: matches == 0 ? null : controller.replaceMatch,
         ),
         _button(
           icon: Icons.change_circle_outlined,
-          tooltip: 'Replace all',
+          tooltip: l10n.findReplaceAll,
           onPressed: matches == 0 ? null : controller.replaceAllMatches,
         ),
         const SizedBox(width: 32),

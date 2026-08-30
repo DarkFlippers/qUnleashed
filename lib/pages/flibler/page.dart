@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../services/localization/l10n.dart';
 import '../../theme/theme.dart';
 import '../../components/navigation.dart';
 import '../../components/notification.dart';
@@ -18,12 +19,12 @@ class AssemblerConsolePage extends StatelessWidget {
     return Scaffold(
       backgroundColor: colors.background,
       appBar: AppBar(
-        title: const Text('Assembler'),
+        title: Text(context.l10n.fliblerConsoleTitle),
         backgroundColor: colors.background,
         surfaceTintColor: colors.transparent,
         actions: [
           IconButton(
-            tooltip: 'Assembler settings',
+            tooltip: context.l10n.fliblerTitle,
             icon: Icon(Icons.settings_outlined, color: colors.textPrimary),
             onPressed: () =>
                 openRoute(context, AppRoute.assemblerSettings, args: true),
@@ -31,7 +32,7 @@ class AssemblerConsolePage extends StatelessWidget {
           AnimatedBuilder(
             animation: controller,
             builder: (context, _) => IconButton(
-              tooltip: 'Verbose output',
+              tooltip: context.l10n.fliblerVerbose,
               icon: Icon(
                 Icons.bug_report_outlined,
                 color: controller.verbose ? colors.accent : colors.textMuted,
@@ -40,19 +41,22 @@ class AssemblerConsolePage extends StatelessWidget {
             ),
           ),
           IconButton(
-            tooltip: 'Copy log',
+            tooltip: context.l10n.fliblerCopyLog,
             icon: Icon(Icons.copy_all_outlined, color: colors.textPrimary),
             onPressed: () async {
               await Clipboard.setData(
                 ClipboardData(text: controller.logAsText()),
               );
               if (context.mounted) {
-                QNotification.show(context, message: 'Log copied');
+                QNotification.show(
+                  context,
+                  message: context.l10n.fliblerLogCopied,
+                );
               }
             },
           ),
           IconButton(
-            tooltip: 'Clear log',
+            tooltip: context.l10n.fliblerClearLog,
             icon: Icon(Icons.delete_outline, color: colors.textPrimary),
             onPressed: controller.clearLog,
           ),

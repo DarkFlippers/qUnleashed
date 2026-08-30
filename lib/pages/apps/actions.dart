@@ -1,6 +1,7 @@
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
+import '../../services/localization/l10n.dart';
 import '../../components/dialogs/action.dart';
 import '../../components/dialogs/confirm.dart';
 import '../../components/navigation.dart';
@@ -39,7 +40,10 @@ Future<void> launchApp(
       );
       return;
     }
-    context.showNotification('Open failed: $e', type: QNotificationType.error);
+    context.showNotification(
+      context.l10n.appOpenFailed('$e'),
+      type: QNotificationType.error,
+    );
   }
 }
 
@@ -51,9 +55,9 @@ Future<void> confirmDeleteApp(
 }) async {
   final ok = await QConfirmDialog.show(
     context,
-    title: 'Delete app?',
-    message: 'Remove "${app.name}" from your device?',
-    confirmLabel: 'Delete',
+    title: context.l10n.appDeleteTitle,
+    message: context.l10n.appDeleteMessage(app.name),
+    confirmLabel: context.l10n.commonDelete,
   );
   if (ok) await engine.uninstall(app, category: category);
 }

@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../localization/l10n.dart';
 import '../logging.dart';
 import 'firebase_options.dart';
 import 'notification_center.dart';
@@ -152,10 +153,10 @@ class PushService {
           AndroidFlutterLocalNotificationsPlugin
         >()
         ?.createNotificationChannel(
-          const AndroidNotificationChannel(
+          AndroidNotificationChannel(
             _androidChannelId,
-            'Firmware updates',
-            description: 'New Flipper firmware releases and dev builds',
+            l10n.notificationChannelFirmwareUpdates,
+            description: l10n.notificationChannelFirmwareUpdatesDescription,
             importance: Importance.high,
           ),
         );
@@ -163,18 +164,19 @@ class PushService {
 
   Future<void> _showForeground(RemoteMessage message) async {
     final notification = message.notification;
-    final title = notification?.title ?? 'Update';
+    final title = notification?.title ?? l10n.notificationUpdateFallbackTitle;
     final body = notification?.body ?? '';
 
     await NotificationCenter.instance.plugin.show(
       id: message.hashCode,
       title: title,
       body: body,
-      notificationDetails: const NotificationDetails(
+      notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
           _androidChannelId,
-          'Firmware updates',
-          channelDescription: 'New Flipper firmware releases and dev builds',
+          l10n.notificationChannelFirmwareUpdates,
+          channelDescription:
+              l10n.notificationChannelFirmwareUpdatesDescription,
           importance: Importance.high,
           priority: Priority.high,
         ),

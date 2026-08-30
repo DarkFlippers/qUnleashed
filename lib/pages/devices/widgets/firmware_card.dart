@@ -1,6 +1,7 @@
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
+import '../../../services/localization/l10n.dart';
 import '../../../components/config.dart';
 import '../../../theme/theme.dart';
 import 'page_card.dart';
@@ -129,7 +130,7 @@ class _FirmwareCardState extends State<FirmwareCard> {
     final hasChangelog = latestFirmware?.changelog.trim().isNotEmpty ?? false;
 
     return FlipperPageCard(
-      title: 'Firmware Update',
+      title: context.l10n.firmwareUpdateTitle,
       trailing: hasChangelog
           ? _WhatsNewButton(
               onTap: () {
@@ -258,7 +259,9 @@ class _FirmwareSlide extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  fetchLoading ? 'Checking…' : (latestVersion ?? '—'),
+                  fetchLoading
+                      ? context.l10n.firmwareChecking
+                      : (latestVersion ?? '—'),
                   style: TextStyle(fontSize: 12, color: colors.textMuted),
                 ),
               ],
@@ -270,9 +273,9 @@ class _FirmwareSlide extends StatelessWidget {
   }
 
   static String _variantLabel(UnleashedVariant v) => switch (v) {
-    UnleashedVariant.base => 'Default',
-    UnleashedVariant.compact => 'Compact',
-    UnleashedVariant.extraPacks => 'Extra',
+    UnleashedVariant.base => l10n.firmwareVariantDefault,
+    UnleashedVariant.compact => l10n.firmwareVariantCompact,
+    UnleashedVariant.extraPacks => l10n.firmwareVariantExtra,
   };
 }
 
@@ -312,29 +315,34 @@ class _FirmwareControls extends StatelessWidget {
       child: Column(
         children: [
           _SettingsDropdown<FirmwareDirectoryChannel>(
-            title: 'Update Channel',
+            title: context.l10n.firmwareUpdateChannel,
             value: selectedChannel,
             items: channels,
             labelOf: (channel) => channel.title,
             descriptionOf: (channel) => channel.description,
             accent: accent,
-            placeholder: fetchLoading ? 'Loading…' : 'Unavailable',
+            placeholder: fetchLoading
+                ? context.l10n.firmwareLoading
+                : context.l10n.firmwareUnavailable,
             onChanged: (channel) => onChannelChanged(channel.id),
           ),
           if (showVariant) ...[
             const SizedBox(height: 8),
             _SettingsDropdown<UnleashedVariant>(
-              title: 'Build Variant',
+              title: context.l10n.firmwareBuildVariant,
               value: variant,
               items: UnleashedVariant.values,
               labelOf: _FirmwareSlide._variantLabel,
               descriptionOf: (variant) => switch (variant) {
-                UnleashedVariant.base => 'Only base apps',
-                UnleashedVariant.compact => 'Firmware only, no apps',
-                UnleashedVariant.extraPacks => 'Extended pack with many apps',
+                UnleashedVariant.base =>
+                  context.l10n.firmwareVariantDefaultDescription,
+                UnleashedVariant.compact =>
+                  context.l10n.firmwareVariantCompactDescription,
+                UnleashedVariant.extraPacks =>
+                  context.l10n.firmwareVariantExtraDescription,
               },
               accent: accent,
-              placeholder: 'Unavailable',
+              placeholder: context.l10n.firmwareUnavailable,
               onChanged: onVariantChanged,
             ),
           ],
@@ -550,7 +558,7 @@ class _WhatsNewButton extends StatelessWidget {
               Icon(Icons.error_outline, size: 13, color: colors.textSecondary),
               const SizedBox(width: 4),
               Text(
-                'What\'s New',
+                context.l10n.firmwareWhatsNew,
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,

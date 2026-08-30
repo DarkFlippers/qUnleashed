@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../services/localization/l10n.dart';
 import '../../../../theme/theme.dart';
 import '../../models/device_info.dart';
 import 'summary_card.dart';
@@ -36,15 +37,15 @@ class BatterySummaryCard extends StatelessWidget {
     final charging = current != null && current > 5;
 
     return SummaryCard(
-      title: 'Battery',
+      title: context.l10n.cardBattery,
       icon: charging ? Icons.battery_charging_full : Icons.battery_full,
       mainValue: charge,
       barValue: charge != null ? charge / 100 : null,
       barColor: charge == null ? null : colors.accent,
       metrics: [
-        ('Voltage', '${((voltage ?? 0) * 0.001).toStringAsFixed(3)} V'),
-        ('Current', '${(current ?? 0).round()} mA'),
-        ('Temp', '${(temp ?? 0).toStringAsFixed(1)} C'),
+        (context.l10n.cardBatteryVoltage, '${((voltage ?? 0) * 0.001).toStringAsFixed(3)} V'),
+        (context.l10n.cardBatteryCurrent, '${(current ?? 0).round()} mA'),
+        (context.l10n.cardBatteryTemp, '${(temp ?? 0).toStringAsFixed(1)} C'),
       ],
     );
   }

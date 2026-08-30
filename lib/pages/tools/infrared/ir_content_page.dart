@@ -1,3 +1,4 @@
+import '../../../services/localization/l10n.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -28,7 +29,7 @@ class IrContentPage extends StatefulWidget {
 class _IrContentPageState extends State<IrContentPage> {
   final ArchiveStorage _storage = ArchiveStorage();
   final FlipperClient _client = FlipperOneClient().get();
-  String _deviceName = 'Library';
+  late String _deviceName = l10n.irLibraryTab;
 
   @override
   void initState() {
@@ -67,7 +68,7 @@ class _IrContentPageState extends State<IrContentPage> {
           late final StreamSubscription<FlipperConnectionState> sub;
           sub = _client.connectionStream.listen((state) {
             if (!state.connected && !disconnected.isCompleted) {
-              disconnected.completeError(StateError('Disconnected'));
+              disconnected.completeError(StateError(l10n.irDisconnected));
             }
           });
           await Future.any<void>([

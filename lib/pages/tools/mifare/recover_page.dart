@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../services/localization/l10n.dart';
 import '../../../components/dialogs/confirm.dart';
 import '../../../components/progress_button.dart';
 import '../../../theme/theme.dart';
@@ -37,10 +38,10 @@ class _RecoverPageState extends State<RecoverPage> {
 
   Future<bool> _confirmAbort() => QConfirmDialog.show(
     context,
-    title: 'Stop Key Recovery?',
-    message: 'You can restart it later',
-    confirmLabel: 'Stop',
-    cancelLabel: 'Continue',
+    title: context.l10n.mfStopTitle,
+    message: context.l10n.mfStopMessage,
+    confirmLabel: context.l10n.mfStopConfirm,
+    cancelLabel: context.l10n.mfStopCancel,
   );
 
   @override
@@ -58,7 +59,7 @@ class _RecoverPageState extends State<RecoverPage> {
         appBar: AppBar(
           backgroundColor: colors.accent,
           foregroundColor: colors.onAccent,
-          title: const Text('Recover MIFARE Keys'),
+          title: Text(context.l10n.toolMifare),
         ),
         body: ListView(
           padding: const EdgeInsets.all(16),
@@ -116,12 +117,12 @@ class _SourceHeader extends StatelessWidget {
     final colors = context.appColors;
     final (label, hint) = switch (source) {
       RecoverSource.reader => (
-        'Reader',
-        'Keys a reader used against your emulated card · .mfkey32.log',
+        context.l10n.mfSourceReader,
+        context.l10n.mfSourceReaderHint,
       ),
       RecoverSource.tag => (
-        'Card',
-        'Keys recovered from a card you scanned · .nested.log',
+        context.l10n.mfSourceCard,
+        context.l10n.mfSourceCardHint,
       ),
     };
     return Padding(
@@ -169,7 +170,7 @@ class _CardBlock extends StatelessWidget {
         children: [
           if (cuidHex != null) ...[
             Text(
-              'Card $cuidHex',
+              l10n.mfCardTitle(cuidHex!),
               style: TextStyle(
                 color: colors.textPrimary,
                 fontSize: 14,
@@ -197,18 +198,18 @@ class _EntryRow extends StatelessWidget {
 
   static String _kindLabel(RecoverKind kind) => switch (kind) {
     RecoverKind.mfkey32 => 'mfkey32',
-    RecoverKind.weakNested => 'weak nested',
-    RecoverKind.staticNonce => 'static nonce',
+    RecoverKind.weakNested => l10n.mfKindWeakNested,
+    RecoverKind.staticNonce => l10n.mfKindStaticNonce,
     RecoverKind.staticEncrypted => 'static-encrypted',
     RecoverKind.hardnested => 'hardnested',
-    RecoverKind.corruptLog => 'unreadable log lines',
+    RecoverKind.corruptLog => l10n.mfKindCorruptLog,
   };
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final where = (entry.sectorName != null && entry.keyName != null)
-        ? 'Sector ${entry.sectorName} · Key ${entry.keyName}'
+        ? l10n.mfSectorKey('${entry.sectorName}', '${entry.keyName}')
         : null;
 
     final String line;
@@ -217,14 +218,16 @@ class _EntryRow extends StatelessWidget {
     if (entry.key != null) {
       // isNew is decided at recovery time, so this tag is already correct while
       // the run is still in progress - not only in the final summary.
-      final tag = entry.isNew == false ? 'already in dict' : 'new';
+      final tag = entry.isNew == false
+          ? l10n.mfTagAlreadyInDict
+          : l10n.mfTagNew;
       line = '${where ?? ''} — ${entry.key}  [${_kindLabel(entry.kind)}, $tag]';
     } else if (entry.candidateCount != null && entry.cuid != null) {
-      line =
-          '${entry.candidateCount} candidate keys → '
-          '${cuidDictFileName(entry.cuid!)}';
-      explainer =
-          'Possible keys for this card — the correct ones are among them.';
+      line = l10n.mfCandidateKeys(
+        entry.candidateCount!,
+        cuidDictFileName(entry.cuid!),
+      );
+      explainer = l10n.mfCandidateExplainer;
       color = colors.textMuted;
     } else {
       line = '${where != null ? '$where — ' : ''}${_kindLabel(entry.kind)}';
@@ -272,18 +275,18 @@ class _StatusBlock extends StatelessWidget {
     // animates (liveness) and, when there is more than one unit, shows how many
     // are done. A null barText hides the bar (the terminal Saved / Error states).
     final (String title, String? barText, double? progress) = switch (state) {
-      RecoverWaitingForDevice() => ('Connecting device…', '…', null),
+      RecoverWaitingForDevice() => (l10n.mfConnecting, '…', null),
       RecoverDownloading(:final progress) => (
-        'Downloading nonces…',
+        l10n.mfDownloading,
         progress == null ? '…' : '${(progress * 100).round()}%',
         progress,
       ),
       RecoverCalculating() => (
-        'Recovering keys…',
+        l10n.mfRecovering,
         totalUnits > 1 ? '$doneUnits / $totalUnits' : '…',
         null,
       ),
-      RecoverUploading() => ('Syncing with the device…', '…', null),
+      RecoverUploading() => (l10n.mfSyncing, '…', null),
       RecoverSaved(:final keys, :final hasCandidates, :final hasFailures) => (
         _savedTitle(keys.length, hasCandidates, hasFailures),
         null,
@@ -324,28 +327,21 @@ class _StatusBlock extends StatelessWidget {
   static String _savedTitle(int newKeys, bool hasCandidates, bool hadFailure) {
     final String base;
     if (newKeys > 0) {
-      base = '$newKeys new ${newKeys == 1 ? 'key' : 'keys'} added';
+      base = l10n.mfKeysAdded(newKeys);
     } else if (hasCandidates) {
-      base = 'Candidate keys saved';
+      base = l10n.mfCandidatesSaved;
     } else if (hadFailure) {
-      return 'Recovery finished with errors';
+      return l10n.mfFinishedWithErrors;
     } else {
-      return 'No new keys added';
+      return l10n.mfNoNewKeys;
     }
-    return hadFailure ? '$base — some steps failed' : base;
+    return hadFailure ? l10n.mfSomeStepsFailed(base) : base;
   }
 
   static String _errorText(RecoverErrorType type) => switch (type) {
-    RecoverErrorType.notFoundFile =>
-      'No .mfkey32.log or .nested.log found. Collect nonces on the device '
-          '(emulate a card against a reader, or read a card with a known key), '
-          'then sync and retry.',
-    RecoverErrorType.readWrite =>
-      'Couldn\'t read or write device storage — it may be full, disconnected, '
-          'or busy.',
-    RecoverErrorType.flipperConnection => 'Device not connected',
-    RecoverErrorType.recoveryFailed =>
-      'Key recovery failed unexpectedly. Reconnect the device and retry; if it '
-          'persists, update the app.',
+    RecoverErrorType.notFoundFile => l10n.mfErrorNoLogs,
+    RecoverErrorType.readWrite => l10n.mfErrorStorage,
+    RecoverErrorType.flipperConnection => l10n.mfErrorNotConnected,
+    RecoverErrorType.recoveryFailed => l10n.mfErrorUnexpected,
   };
 }

@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:qunleashed/theme/colors/category.dart';
 
+import '../../services/localization/l10n.dart';
 import 'launch.dart';
 
 export 'launch.dart';
 
 enum ArchiveCategory {
   nfc(
-    title: 'NFC',
     flipperDirs: ['nfc'],
     extensions: ['nfc'],
     categoryColor: ArchiveCategoryColor.nfc,
@@ -18,7 +18,6 @@ enum ArchiveCategory {
     locationSupport: true,
   ),
   rfid(
-    title: 'RFID 125',
     flipperDirs: ['lfrfid'],
     extensions: ['rfid'],
     categoryColor: ArchiveCategoryColor.rfid,
@@ -29,7 +28,6 @@ enum ArchiveCategory {
     locationSupport: true,
   ),
   ibutton(
-    title: 'iButton',
     flipperDirs: ['ibutton'],
     extensions: ['ibtn'],
     categoryColor: ArchiveCategoryColor.ibutton,
@@ -40,7 +38,6 @@ enum ArchiveCategory {
     locationSupport: true,
   ),
   infrared(
-    title: 'Infrared',
     flipperDirs: ['infrared'],
     extensions: ['ir'],
     categoryColor: ArchiveCategoryColor.infrared,
@@ -51,7 +48,6 @@ enum ArchiveCategory {
     plottable: true,
   ),
   subghz(
-    title: 'Sub-GHz',
     flipperDirs: ['subghz'],
     extensions: ['sub'],
     categoryColor: ArchiveCategoryColor.subghz,
@@ -71,7 +67,6 @@ enum ArchiveCategory {
     plottable: true,
   ),
   wardriving(
-    title: 'Wardriving',
     flipperDirs: ['subghz/wardriving'],
     extensions: ['sub'],
     categoryColor: ArchiveCategoryColor.wardriving,
@@ -83,7 +78,6 @@ enum ArchiveCategory {
     plottable: true,
   ),
   badusb(
-    title: 'Bad USB',
     flipperDirs: ['badusb', 'badkb'],
     extensions: ['txt'],
     categoryColor: ArchiveCategoryColor.badusb,
@@ -94,7 +88,6 @@ enum ArchiveCategory {
     ignoredFilePrefixes: ['demo_', 'install_qflipper_'],
   ),
   javascript(
-    title: 'JavaScript',
     flipperDirs: ['apps/Scripts'],
     extensions: ['js'],
     categoryColor: ArchiveCategoryColor.javascript,
@@ -105,7 +98,6 @@ enum ArchiveCategory {
   );
 
   const ArchiveCategory({
-    required this.title,
     required this.flipperDirs,
     required this.extensions,
     required this.categoryColor,
@@ -120,7 +112,6 @@ enum ArchiveCategory {
     this.plottable = false,
   });
 
-  final String title;
   final List<String> flipperDirs;
   final List<String> extensions;
   final ArchiveCategoryColor categoryColor;
@@ -134,21 +125,30 @@ enum ArchiveCategory {
   final bool locationSupport;
   final bool plottable;
 
+  String get title => switch (this) {
+    ArchiveCategory.nfc => l10n.categoryNfc,
+    ArchiveCategory.rfid => l10n.categoryRfid,
+    ArchiveCategory.ibutton => l10n.categoryIbutton,
+    ArchiveCategory.infrared => l10n.categoryInfrared,
+    ArchiveCategory.subghz => l10n.categorySubghz,
+    ArchiveCategory.wardriving => l10n.categoryWardriving,
+    ArchiveCategory.badusb => l10n.categoryBadusb,
+    ArchiveCategory.javascript => l10n.categoryJavascript,
+  };
+
   Color get color => categoryColor.color;
 
-  String get itemNoun {
+  String get itemNounPlural {
     switch (this) {
       case ArchiveCategory.infrared:
-        return 'remote';
+        return l10n.nounRemotes;
       case ArchiveCategory.badusb:
       case ArchiveCategory.javascript:
-        return 'script';
+        return l10n.nounScripts;
       default:
-        return 'key';
+        return l10n.nounKeys;
     }
   }
-
-  String get itemNounPlural => '${itemNoun}s';
 
   bool get emulatable => flipperAppName != null && launch.canLaunch;
   bool get holdToSend => launch.holdToSend;

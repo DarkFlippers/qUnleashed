@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../services/localization/l10n.dart';
 import '../../../../theme/theme.dart';
 
 class CatalogEmptyView extends StatelessWidget {
@@ -17,7 +18,7 @@ class CatalogEmptyView extends StatelessWidget {
           Icon(Icons.apps, size: 48, color: colors.textMuted),
           const SizedBox(height: 8),
           Text(
-            failed ? 'Failed to load apps' : 'No apps found',
+            failed ? context.l10n.appsLoadFailed : context.l10n.appsNoneFound,
             style: TextStyle(color: colors.textMuted, fontSize: 14),
           ),
         ],
@@ -41,11 +42,11 @@ class AppDetailErrorView extends StatelessWidget {
           Icon(Icons.error_outline, color: colors.danger, size: 48),
           const SizedBox(height: 8),
           Text(
-            'Failed to load app',
+            context.l10n.appLoadFailed,
             style: TextStyle(color: colors.textPrimary),
           ),
           const SizedBox(height: 12),
-          TextButton(onPressed: onRetry, child: const Text('Retry')),
+          TextButton(onPressed: onRetry, child: Text(context.l10n.commonRetry)),
         ],
       ),
     );

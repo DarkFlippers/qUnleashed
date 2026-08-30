@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../components/cardlist.dart';
+import '../../../services/localization/l10n.dart';
 import '../../../theme/theme.dart';
 import '../../archive/map/data/settings.dart';
 
@@ -199,13 +200,14 @@ class _MapSettingsPageState extends State<MapSettingsPage> {
   Widget _livePreview(BuildContext context) {
     final colors = context.appColors;
     final config = _settings.resolve(dark: _mapDark);
+    final strings = context.l10n;
     final status = config.missingKey
-        ? 'Needs a key'
+        ? strings.mapKeyNeeded
         : config.usesEmbeddedKey
-        ? 'Built-in key'
+        ? strings.mapKeyBuiltIn
         : _provider.needsKey
-        ? 'Your key'
-        : 'No key needed';
+        ? strings.mapKeyYours
+        : strings.mapKeyNotNeeded;
     return Padding(
       padding: const EdgeInsets.symmetric(
         horizontal: kGroupedHorizontalPadding,
@@ -232,8 +234,8 @@ class _MapSettingsPageState extends State<MapSettingsPage> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '${_mapDark ? 'Dark tiles' : 'Light tiles'} · '
-                    'max zoom ${config.maxZoom.round()}',
+                    '${_mapDark ? strings.mapTilesDark : strings.mapTilesLight}'
+                    ' · ${strings.mapMaxZoomOf(config.maxZoom.round())}',
                     style: TextStyle(color: colors.textMuted, fontSize: 12),
                   ),
                   const SizedBox(height: 4),
@@ -336,16 +338,16 @@ class _MapSettingsPageState extends State<MapSettingsPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(c),
-            child: const Text('Cancel'),
+            child: Text(c.l10n.commonCancel),
           ),
           if (allowClear)
             TextButton(
               onPressed: () => Navigator.pop(c, ''),
-              child: const Text('Clear'),
+              child: Text(c.l10n.commonClear),
             ),
           TextButton(
             onPressed: () => Navigator.pop(c, _field.text.trim()),
-            child: const Text('Save'),
+            child: Text(c.l10n.commonSave),
           ),
         ],
       ),
@@ -367,8 +369,8 @@ class _MapSettingsPageState extends State<MapSettingsPage> {
   Future<void> _editKey(MapTileProvider provider) async {
     final current = _settings.keyOf(provider);
     final value = await _prompt(
-      title: '${provider.label} key',
-      hint: provider.keyHint ?? 'API key',
+      title: l10n.mapProviderKeyTitle(provider.label),
+      hint: provider.keyHint ?? l10n.mapApiKeyHint,
       initial: current,
       allowClear: current.isNotEmpty,
     );
@@ -377,7 +379,7 @@ class _MapSettingsPageState extends State<MapSettingsPage> {
 
   Future<void> _editCustomUrl() async {
     final value = await _prompt(
-      title: 'Tile URL template',
+      title: l10n.mapTileUrlTemplate,
       hint: 'https://{s}.tiles.example/{z}/{x}/{y}.png',
       initial: _settings.customUrl,
       keyboard: TextInputType.url,
@@ -388,8 +390,8 @@ class _MapSettingsPageState extends State<MapSettingsPage> {
 
   Future<void> _editCustomSubdomains() async {
     final value = await _prompt(
-      title: 'Subdomains',
-      hint: 'a, b, c',
+      title: l10n.mapSubdomains,
+      hint: l10n.mapSubdomainsHint,
       initial: _settings.customSubdomains,
       allowClear: _settings.customSubdomains.isNotEmpty,
     );
@@ -398,7 +400,7 @@ class _MapSettingsPageState extends State<MapSettingsPage> {
 
   Future<void> _editCustomMaxZoom() async {
     final value = await _prompt(
-      title: 'Max zoom',
+      title: l10n.mapMaxZoom,
       hint: '19',
       initial: '${_settings.customMaxZoom.round()}',
       keyboard: TextInputType.number,
@@ -416,7 +418,7 @@ class _MapSettingsPageState extends State<MapSettingsPage> {
     final colors = context.appColors;
     final provider = _provider;
     final own = _settings.keyOf(provider);
-    final builtIn = provider.id == kCartoProvider.id;
+    final builtIn = provider.id == kCartoProviderId;
     return [
       if (builtIn)
         _ActionTile(
@@ -425,10 +427,10 @@ class _MapSettingsPageState extends State<MapSettingsPage> {
               Expanded(
                 child: _titleColumn(
                   context,
-                  title: 'Built-in CARTO key',
+                  title: context.l10n.mapBuiltInCartoKey,
                   subtitle: _settings.hasEmbeddedKey
-                      ? 'Shipped with the app, works with CARTO tiles only'
-                      : 'Missing in this build',
+                      ? context.l10n.mapBuiltInCartoKeyPresent
+                      : context.l10n.mapBuiltInKeyMissing,
                 ),
               ),
               const SizedBox(width: 8),
@@ -450,12 +452,12 @@ class _MapSettingsPageState extends State<MapSettingsPage> {
       _ActionTile(
         _valueTile(
           context,
-          title: 'Your ${provider.label} key',
+          title: context.l10n.mapYourProviderKey(provider.label),
           subtitle: own.isNotEmpty
               ? _mask(own)
               : builtIn
-              ? 'Not set, the built-in key is used'
-              : provider.keyHint ?? 'Not set',
+              ? context.l10n.mapKeyNotSetBuiltInUsed
+              : provider.keyHint ?? context.l10n.mapKeyNotSet,
         ),
         () => _editKey(provider),
       ),
@@ -463,7 +465,7 @@ class _MapSettingsPageState extends State<MapSettingsPage> {
         _ActionTile(
           _valueTile(
             context,
-            title: 'Get a key',
+            title: context.l10n.mapGetKey,
             subtitle: Uri.parse(provider.signupUrl!).host,
             icon: Icons.open_in_new,
           ),
@@ -476,9 +478,9 @@ class _MapSettingsPageState extends State<MapSettingsPage> {
     _ActionTile(
       _valueTile(
         context,
-        title: 'Tile URL template',
+        title: context.l10n.mapTileUrlTemplate,
         subtitle: _settings.customUrl.isEmpty
-            ? '{z}/{x}/{y}, plus {s}, {r} and {key}'
+            ? context.l10n.mapCustomUrlHint
             : _settings.customUrl,
       ),
       _editCustomUrl,
@@ -486,9 +488,9 @@ class _MapSettingsPageState extends State<MapSettingsPage> {
     _ActionTile(
       _valueTile(
         context,
-        title: 'Subdomains',
+        title: context.l10n.mapSubdomains,
         subtitle: _settings.customSubdomains.isEmpty
-            ? 'None, {s} stays empty'
+            ? context.l10n.mapSubdomainsEmpty
             : _settings.customSubdomains,
       ),
       _editCustomSubdomains,
@@ -496,7 +498,7 @@ class _MapSettingsPageState extends State<MapSettingsPage> {
     _ActionTile(
       _valueTile(
         context,
-        title: 'Max zoom',
+        title: context.l10n.mapMaxZoom,
         subtitle: '${_settings.customMaxZoom.round()}',
       ),
       _editCustomMaxZoom,
@@ -515,7 +517,7 @@ class _MapSettingsPageState extends State<MapSettingsPage> {
         return Scaffold(
           backgroundColor: colors.background,
           appBar: AppBar(
-            title: const Text('Map'),
+            title: Text(context.l10n.settingsMapTitle),
             backgroundColor: colors.background,
             surfaceTintColor: colors.transparent,
           ),
@@ -525,7 +527,7 @@ class _MapSettingsPageState extends State<MapSettingsPage> {
               _livePreview(context),
               const SizedBox(height: 14),
               GroupedCardList<MapAppearance>(
-                title: 'Map colors',
+                title: context.l10n.mapGroupColors,
                 items: MapAppearance.values,
                 onTap: (value) =>
                     () => _settings.setAppearance(value),
@@ -538,8 +540,8 @@ class _MapSettingsPageState extends State<MapSettingsPage> {
               ),
               const SizedBox(height: 14),
               GroupedCardList<MapTileProvider>(
-                title: 'Tile source',
-                items: kMapTileProviders,
+                title: context.l10n.mapGroupTileSource,
+                items: mapTileProviders(context.l10n),
                 onTap: (value) =>
                     () => _selectProvider(value),
                 itemBuilder: _providerTile,
@@ -547,7 +549,7 @@ class _MapSettingsPageState extends State<MapSettingsPage> {
               if (light.isNotEmpty) ...[
                 const SizedBox(height: 14),
                 GroupedCardList<MapTileDesign>(
-                  title: '${provider.label} design, light',
+                  title: context.l10n.mapGroupDesignLight(provider.label),
                   items: light,
                   onTap: (design) =>
                       () => _settings.setDesign(provider, design),
@@ -557,7 +559,7 @@ class _MapSettingsPageState extends State<MapSettingsPage> {
               if (dark.isNotEmpty) ...[
                 const SizedBox(height: 14),
                 GroupedCardList<MapTileDesign>(
-                  title: '${provider.label} design, dark',
+                  title: context.l10n.mapGroupDesignDark(provider.label),
                   items: dark,
                   onTap: (design) =>
                       () => _settings.setDesign(provider, design),
@@ -567,18 +569,18 @@ class _MapSettingsPageState extends State<MapSettingsPage> {
               if (provider.isCustom) ...[
                 const SizedBox(height: 14),
                 GroupedCardList<_ActionTile>(
-                  title: 'Custom source',
+                  title: context.l10n.mapGroupCustomSource,
                   items: _customTiles(context),
                   onTap: (tile) => tile.onTap,
                   itemBuilder: (context, tile) => tile.child,
                 ),
               ],
               if (provider.needsKey ||
-                  provider.id == kCartoProvider.id ||
+                  provider.id == kCartoProviderId ||
                   provider.isCustom) ...[
                 const SizedBox(height: 14),
                 GroupedCardList<_ActionTile>(
-                  title: 'Keys',
+                  title: context.l10n.mapGroupKeys,
                   items: _keyTiles(context),
                   onTap: (tile) => tile.onTap,
                   itemBuilder: (context, tile) => tile.child,
@@ -588,13 +590,13 @@ class _MapSettingsPageState extends State<MapSettingsPage> {
                   provider.retina) ...[
                 const SizedBox(height: 14),
                 GroupedCardList<_ActionTile>(
-                  title: 'Tile detail',
+                  title: context.l10n.mapGroupTileDetail,
                   items: [
                     _ActionTile(
                       _switchTile(
                         context,
-                        title: 'Retina tiles',
-                        subtitle: 'Ask for @2x tiles on high density screens',
+                        title: context.l10n.mapRetinaTiles,
+                        subtitle: context.l10n.mapRetinaTilesSubtitle,
                         value: _settings.retina,
                         onChanged: _settings.setRetina,
                       ),

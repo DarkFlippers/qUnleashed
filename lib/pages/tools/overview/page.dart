@@ -1,3 +1,4 @@
+import '../../../services/localization/l10n.dart';
 import 'dart:io';
 
 import 'package:flipperlib/flipperlib.dart';
@@ -27,91 +28,91 @@ class ToolsPage extends StatelessWidget {
   /// [localBuilds] is on only while builds run on this computer: without a
   /// deployed SDK and toolchain, or with the build server in charge, the tool
   /// has nothing to compile a folder or a repo with.
-  static List<ToolGroup> _toolGroups(bool localBuilds) => [
+  static List<ToolGroup> _toolGroups(L10n s, bool localBuilds) => [
     ToolGroup(
-      header: const ToolCardHeader(
+      header: ToolCardHeader(
         iconAsset: 'assets/ic/device/flipper.svg',
-        iconColor: Color(0xFF589DFF),
-        title: 'Device control',
+        iconColor: const Color(0xFF589DFF),
+        title: s.toolsGroupDeviceControl,
       ),
       items: [
         ToolItemModel(
           iconAsset: 'assets/ic/app/controller.svg',
           iconColor: const Color(0xFFFFFFFF),
-          title: 'Remote desktop',
-          description: 'View, control, and record the device screen',
+          title: s.toolRemoteDesktop,
+          description: s.toolRemoteDesktopSubtitle,
           routeBuilder: _buildRemoteControlPage,
         ),
         if (!Platform.isIOS)
           ToolItemModel(
             iconAsset: 'assets/ic/app/cli.svg',
             iconColor: const Color(0xFFFF9B34),
-            title: 'Command line',
-            description: 'Open a terminal session on your device',
+            title: s.toolCommandLine,
+            description: s.toolCommandLineSubtitle,
             onTap: _openCliPage,
           ),
         ToolItemModel(
           iconAsset: 'assets/ic/app/paint-large.svg',
           iconColor: const Color(0xFFE85858),
-          title: 'Pixel Draw',
-          description: 'Draw, manage projects and import dolphin animations',
+          title: s.toolPixelDraw,
+          description: s.toolPixelDrawSubtitle,
           routeBuilder: _buildPaintPage,
         ),
       ],
     ),
     if (localBuilds)
       ToolGroup(
-        header: const ToolCardHeader(
+        header: ToolCardHeader(
           iconAsset: 'assets/ic/app/apps.svg',
-          iconColor: Color(0xFF4DB6AC),
-          title: 'Apps',
+          iconColor: const Color(0xFF4DB6AC),
+          title: s.toolsGroupApps,
         ),
         items: [
           ToolItemModel(
             iconAsset: 'assets/ic/fileformat/plugins.svg',
             iconColor: const Color(0xFF4DB6AC),
             title: 'Flibler',
-            description: 'Build an app from a folder or repo',
+            description: s.toolFliblerSubtitle,
             onTap: _openFliblerPage,
-            badge: 'Beta',
+            badge: s.toolBadgeBeta,
           ),
         ],
       ),
     ToolGroup(
-      header: const ToolCardHeader(
+      header: ToolCardHeader(
         iconAsset: 'assets/ic/app/files.svg',
-        iconColor: Color(0xFF8BC34A),
-        title: 'File utils',
+        iconColor: const Color(0xFF8BC34A),
+        title: s.toolsGroupFileUtils,
       ),
       items: [
         ToolItemModel(
           iconAsset: 'assets/ic/fileformat/nfc.svg',
           iconColor: const Color(0xFF34C7A4),
-          title: 'Recover MIFARE Keys',
-          description: 'Recover keys from .mfkey32.log + .nested.log',
+          title: s.toolMifare,
+          description: s.toolMifareSubtitle,
           routeBuilder: _buildRecoverPage,
-          badge: 'Beta',
+          badge: s.toolBadgeBeta,
         ),
         ToolItemModel(
           iconAsset: 'assets/ic/fileformat/ir.svg',
           iconColor: const Color(0xFFAF52DE),
-          title: 'Remotes Library',
-          description: 'Find and save remotes for your devices',
+          title: s.toolRemotesLibrary,
+          description: s.toolRemotesLibrarySubtitle,
           routeBuilder: _buildIrLibPage,
         ),
         ToolItemModel(
           iconAsset: 'assets/ic/app/sub-tools.svg',
           iconColor: const Color(0xFFFF9B34),
-          title: 'Pulse Plotter',
-          description: 'Visualize raw Sub-GHz/Infrared/RFID pulse captures',
+          title: s.toolPulsePlotter,
+          description: s.toolPulsePlotterSubtitle,
           routeBuilder: _buildPlotterPage,
-          badge: 'Beta',
+          badge: s.toolBadgeBeta,
         ),
         ToolItemModel(
           iconAsset: 'assets/ic/fileformat/sub.svg',
           iconColor: const Color(0xFF8BC34A),
-          title: 'Saved Locations',
-          description: 'View saved files by recording location',
+          title: s.toolSavedLocations,
+          description: s.toolSavedLocationsSubtitle,
           onTap: _openFlipperMapPage,
         ),
       ],
@@ -121,8 +122,8 @@ class ToolsPage extends StatelessWidget {
         ToolItemModel(
           iconAsset: 'assets/ic/fileformat/settings.svg',
           iconColor: const Color(0xFF9E9E9E),
-          title: 'Settings',
-          description: 'Notifications and app preferences',
+          title: s.settingsTitle,
+          description: s.toolSettingsSubtitle,
           onTap: _openSettingsPage,
         ),
       ],
@@ -132,8 +133,8 @@ class ToolsPage extends StatelessWidget {
         ToolItemModel(
           iconAsset: 'assets/ic/info/lg.svg',
           iconColor: const Color(0xFF589DFF),
-          title: 'About',
-          description: 'Links, community and license',
+          title: s.aboutTitle,
+          description: s.toolAboutSubtitle,
           onTap: _openAboutPage,
         ),
       ],
@@ -214,6 +215,7 @@ class ToolsPage extends StatelessWidget {
             builder: (context, _) => Column(
               children: [
                 for (final group in _toolGroups(
+                  context.l10n,
                   AssemblerController.instance.backendChoice.isLocal,
                 ))
                   if (group.items.isNotEmpty)

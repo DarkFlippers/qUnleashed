@@ -1,3 +1,4 @@
+import '../../../../services/localization/l10n.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -186,7 +187,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
     final actions = <ActionItem>[
       ActionItem(
         icon: Icons.star_outline_rounded,
-        label: 'Unstar',
+        label: context.l10n.archiveUnstar,
         onTap: _bulkUnstar,
       ),
       ...KeyActionsSheet.deleteActions(
@@ -209,8 +210,8 @@ class _FavoritesPageState extends State<FavoritesPage> {
         ),
         child: const Icon(Icons.star_rounded, color: _starColor, size: 22),
       ),
-      title: '${keys.length} ${keys.length == 1 ? 'file' : 'files'} selected',
-      subtitle: 'Favorites',
+      title: context.l10n.archiveFilesSelected(keys.length),
+      subtitle: context.l10n.archiveFavorites,
       actions: actions,
     );
   }
@@ -218,7 +219,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
   Future<void> _launchFap(FapFavorite fav) async {
     if (!_ctrl.isConnected) {
       context.showNotification(
-        'Connect a device to launch apps',
+        context.l10n.archiveConnectToLaunch,
         type: QNotificationType.warning,
       );
       return;
@@ -229,7 +230,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
       openRoute(context, AppRoute.remoteControl);
     } else {
       context.showNotification(
-        'Failed to launch ${fav.name}',
+        context.l10n.archiveLaunchFailed(fav.name),
         type: QNotificationType.error,
       );
     }
@@ -259,12 +260,12 @@ class _FavoritesPageState extends State<FavoritesPage> {
       actions: [
         ActionItem(
           icon: Icons.play_arrow_rounded,
-          label: 'Launch',
+          label: context.l10n.archiveLaunch,
           onTap: () => _launchFap(fav),
         ),
         ActionItem(
           icon: Icons.star_outline_rounded,
-          label: 'Unstar',
+          label: context.l10n.archiveUnstar,
           onTap: () => _ctrl.removeFapFavorite(fav),
         ),
       ],
@@ -363,17 +364,16 @@ class _FavoritesPageState extends State<FavoritesPage> {
                             child: ArchiveEmptyView(
                               icon: Icons.star_outline_rounded,
                               title: _query.isNotEmpty
-                                  ? 'No results for "$_query"'
+                                  ? context.l10n.archiveEmptyQuery(_query)
                                   : _filterVal != null
-                                  ? 'No files matching filter'
+                                  ? context.l10n.archiveNoFilesFilter
                                   : _ctrl.loading
-                                  ? 'Loading…'
-                                  : 'No starred keys yet',
+                                  ? context.l10n.archiveLoading
+                                  : context.l10n.archiveNoStarred,
                               subtitle:
                                   (_query.isNotEmpty || _filterVal != null)
                                   ? null
-                                  : 'Open a category and star files to see '
-                                        'them here',
+                                  : context.l10n.archiveStarHint,
                             ),
                           ),
                         )
@@ -575,12 +575,12 @@ class _FavoritesAppBarTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Row(
+    return Row(
       children: [
-        Icon(Icons.star_rounded, color: Colors.white, size: 18),
-        SizedBox(width: 8),
+        const Icon(Icons.star_rounded, color: Colors.white, size: 18),
+        const SizedBox(width: 8),
         Text(
-          'Favorites',
+          context.l10n.archiveFavorites,
           style: TextStyle(
             color: Colors.white,
             fontSize: 17,

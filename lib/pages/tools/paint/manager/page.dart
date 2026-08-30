@@ -1,3 +1,4 @@
+import '../../../../services/localization/l10n.dart';
 import 'dart:async';
 import 'dart:ui' as ui;
 
@@ -52,7 +53,7 @@ class _ProjectManagerPageState extends State<ProjectManagerPage> {
   Future<void> _import() async {
     if (!_ctrl.isConnected) {
       context.showNotification(
-        'Connect a device to import animations',
+        context.l10n.paintConnectToImport,
         type: QNotificationType.error,
       );
       return;
@@ -93,24 +94,24 @@ class _ProjectManagerPageState extends State<ProjectManagerPage> {
         backgroundColor: colors.dialogBackground,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         title: Text(
-          'Delete project',
+          context.l10n.paintDeleteProject,
           style: TextStyle(color: colors.dialogText),
         ),
         content: Text(
-          'Delete "${project.name}"? This cannot be undone.',
+          context.l10n.paintDeleteProjectMessage(project.name),
           style: TextStyle(color: colors.dialogMuted),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: Text(
-              'Cancel',
+              context.l10n.commonCancel,
               style: TextStyle(color: colors.textSecondary),
             ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Delete', style: TextStyle(color: colors.danger)),
+            child: Text(context.l10n.commonDelete, style: TextStyle(color: colors.danger)),
           ),
         ],
       ),
@@ -124,24 +125,24 @@ class _ProjectManagerPageState extends State<ProjectManagerPage> {
     return Scaffold(
       backgroundColor: colors.background,
       appBar: QPageAppBar(
-        title: 'Pixel Draw',
+        title: context.l10n.paintTitle,
         actions: [
           QPageAppBarAction(
             onPressed: _ctrl.importing ? null : () => _openEditor(null),
             icon: const Icon(Icons.add),
-            tooltip: 'New project',
+            tooltip: context.l10n.paintNewProject,
           ),
           QPageAppBarAction(
             onPressed: (_ctrl.isConnected && !_ctrl.importing) ? _import : null,
             icon: const Icon(Icons.download_outlined),
             tooltip: _ctrl.isConnected
-                ? 'Import from device'
-                : 'Connect a device to import',
+                ? context.l10n.paintImportFromDevice
+                : context.l10n.paintConnectToImportShort,
           ),
           QPageAppBarAction(
             onPressed: _ctrl.importing ? null : _openSync,
             icon: const Icon(Icons.upload_outlined),
-            tooltip: 'Send pack to device',
+            tooltip: context.l10n.paintSendPack,
           ),
         ],
       ),
@@ -162,7 +163,7 @@ class _ProjectManagerPageState extends State<ProjectManagerPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            _ctrl.importStatus ?? 'Importing…',
+            _ctrl.importStatus ?? context.l10n.paintImporting,
             style: TextStyle(color: colors.textSecondary, fontSize: 12),
           ),
           const SizedBox(height: 6),
@@ -230,7 +231,7 @@ class _ProjectManagerPageState extends State<ProjectManagerPage> {
             Icon(Icons.palette_outlined, size: 56, color: colors.textMuted),
             const SizedBox(height: 16),
             Text(
-              'No projects yet',
+              context.l10n.paintNoProjects,
               style: TextStyle(
                 color: colors.textPrimary,
                 fontSize: 16,
@@ -239,8 +240,7 @@ class _ProjectManagerPageState extends State<ProjectManagerPage> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Create a new animation or import dolphin animations from a '
-              'connected device.',
+              context.l10n.paintNoProjectsHint,
               textAlign: TextAlign.center,
               style: TextStyle(color: colors.textSecondary, fontSize: 13),
             ),
@@ -248,7 +248,7 @@ class _ProjectManagerPageState extends State<ProjectManagerPage> {
             FilledButton.icon(
               onPressed: () => _openEditor(null),
               icon: const Icon(Icons.add),
-              label: const Text('New project'),
+              label: Text(context.l10n.paintNewProject),
               style: FilledButton.styleFrom(
                 backgroundColor: colors.accent,
                 foregroundColor: colors.onAccent,
@@ -354,13 +354,16 @@ class _ProjectRow extends StatelessWidget {
             TextButton.icon(
               onPressed: onDelete,
               icon: Icon(Icons.delete_outline, size: 18, color: colors.danger),
-              label: Text('Delete', style: TextStyle(color: colors.danger)),
+              label: Text(
+                l10n.commonDelete,
+                style: TextStyle(color: colors.danger),
+              ),
             ),
             const Spacer(),
             FilledButton.icon(
               onPressed: onOpen,
               icon: const Icon(Icons.edit_outlined, size: 18),
-              label: const Text('Open'),
+              label: Text(l10n.commonOpen),
               style: FilledButton.styleFrom(
                 backgroundColor: colors.accent,
                 foregroundColor: colors.onAccent,
@@ -376,17 +379,17 @@ class _ProjectRow extends StatelessWidget {
   Widget _buildDetails() {
     final d = project.dolphin;
     final rows = <(String, String)>[
-      ('Frame files', '${project.frameCount}'),
-      ('Passive frames', '${d.passiveFrames}'),
-      ('Active frames', '${d.activeFrames}'),
-      ('Order', '${d.fullOrder.length} steps'),
-      ('Frame rate', '${d.frameRate} fps'),
-      ('Duration', '${d.duration}'),
-      ('Size', '${d.width}×${d.height}'),
-      ('Active cycles', '${d.activeCycles}'),
-      ('Active cooldown', '${d.activeCooldown}'),
-      ('Modified', _formatDate(project.modified)),
-      ('Path', project.path),
+      (l10n.paintDetailFrameFiles, '${project.frameCount}'),
+      (l10n.paintDetailPassiveFrames, '${d.passiveFrames}'),
+      (l10n.paintDetailActiveFrames, '${d.activeFrames}'),
+      (l10n.paintDetailOrder, l10n.paintDetailSteps(d.fullOrder.length)),
+      (l10n.paintFrameRate, l10n.paintFps(d.frameRate)),
+      (l10n.paintDuration, '${d.duration}'),
+      (l10n.colSize, '${d.width}×${d.height}'),
+      (l10n.paintActiveCycles, '${d.activeCycles}'),
+      (l10n.paintActiveCooldown, '${d.activeCooldown}'),
+      (l10n.colModified, _formatDate(project.modified)),
+      (l10n.paintDetailPath, project.path),
     ];
     return Table(
       columnWidths: const {0: IntrinsicColumnWidth(), 1: FlexColumnWidth()},
@@ -417,7 +420,7 @@ class _ProjectRow extends StatelessWidget {
 
   Widget _buildInfo() {
     final detail = project.frameCount > 1
-        ? '${project.frameCount} frames'
+        ? l10n.paintFrameCount(project.frameCount)
         : '1 frame';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

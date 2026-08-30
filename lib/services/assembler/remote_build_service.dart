@@ -7,6 +7,7 @@ import 'package:crypto/crypto.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../http/app_http.dart';
+import '../localization/l10n.dart';
 
 /// The builder address is public; only the signing key is a secret, so the
 /// server-build UI is always available and a build without a key fails loudly
@@ -35,7 +36,7 @@ class RemoteBuildCancelledException implements Exception {
   const RemoteBuildCancelledException();
 
   @override
-  String toString() => 'Build cancelled';
+  String toString() => l10n.remoteBuildCancelled;
 }
 
 enum RemoteBuildPhase { queued, building, download }
@@ -108,7 +109,7 @@ class RemoteBuildService {
   /// show whether the builder is alive before any app is installed.
   Future<RemoteServerStatus> serverStatus() async {
     if (serverUrl.isEmpty) {
-      throw RemoteBuildException('Build server is not configured');
+      throw RemoteBuildException(l10n.remoteNotConfigured);
     }
     final response = await AppHttp.get(
       _endpoint('/api/v1/status'),
@@ -148,16 +149,11 @@ class RemoteBuildService {
     bool Function()? isCancelled,
   }) async {
     if (!canBuild) {
-      throw RemoteBuildException(
-        'This build has no server signing key, rebuild it with '
-        '--dart-define=QU_BUILD_SERVER_KEY',
-      );
+      throw RemoteBuildException(l10n.remoteNoSigningKey);
     }
     final active = _activeAlias;
     if (active != null) {
-      throw RemoteBuildException(
-        'Server is building "$active", wait for it to finish',
-      );
+      throw RemoteBuildException(l10n.remoteBusyWithApp(active));
     }
     _activeAlias = alias;
     try {
@@ -175,7 +171,7 @@ class RemoteBuildService {
       });
       final id = status['id'] as String? ?? '';
       if (id.isEmpty) {
-        throw RemoteBuildException('Build server returned no job id');
+        throw RemoteBuildException(l10n.remoteNoJobId);
       }
       final deadline = DateTime.now().add(timeout);
       while (true) {
@@ -189,8 +185,8 @@ class RemoteBuildService {
           case 'failed':
             throw RemoteBuildException(
               (status['error'] as String?)?.trim().isNotEmpty == true
-                  ? 'Server build failed: ${status['error']}'
-                  : 'Server build failed',
+                  ? l10n.remoteBuildFailedWith('${status['error']}')
+                  : l10n.remoteBuildFailed,
             );
           case 'queued':
             onPhase?.call(RemoteBuildPhase.queued, 0);
@@ -198,11 +194,11 @@ class RemoteBuildService {
             onPhase?.call(RemoteBuildPhase.building, 0);
           default:
             throw RemoteBuildException(
-              'Unknown build status: ${status['status']}',
+              l10n.remoteUnknownStatus('${status['status']}'),
             );
         }
         if (DateTime.now().isAfter(deadline)) {
-          throw RemoteBuildException('Server build timed out');
+          throw RemoteBuildException(l10n.remoteTimedOut);
         }
         await Future<void>.delayed(pollInterval);
         status = await _getJson('/api/v1/builds/$id', clientId);
@@ -235,7 +231,7 @@ class RemoteBuildService {
       );
     }
     if (bytes.isEmpty) {
-      throw RemoteBuildException('Build server returned an empty artifact');
+      throw RemoteBuildException(l10n.remoteEmptyArtifact);
     }
     return bytes;
   }
@@ -296,7 +292,7 @@ class RemoteBuildService {
       final decoded = jsonDecode(text);
       if (decoded is Map<String, dynamic>) return decoded;
     } catch (_) {}
-    throw RemoteBuildException('Unexpected build server response');
+    throw RemoteBuildException(l10n.remoteUnexpectedResponse);
   }
 
   String _serverError(int statusCode, String body, _RemoteCall call) {
@@ -310,28 +306,21 @@ class RemoteBuildService {
     return switch (statusCode) {
       400 =>
         detail.isNotEmpty
-            ? 'Build server rejected the request: $detail'
-            : 'Build server rejected the request',
-      401 || 403 =>
-        'Build server rejected the request signature, '
-            'check the signing key and the device clock',
-      404 when call == _RemoteCall.submit =>
-        'App bundle was not found at its link, '
-            'the catalog entry may be outdated',
-      404 => 'Build was not found on the server, start it again',
-      409 when call == _RemoteCall.artifact =>
-        'Build is not ready on the server or has failed',
-      409 =>
-        'Server is already building another app for this device, '
-            'wait for it to finish',
-      410 => 'Build artifact has expired on the server, start the build again',
-      429 => 'Build queue is full, try again later',
-      502 => 'App bundle host is unavailable, try again later',
-      504 => 'App bundle host timed out, try again later',
+            ? l10n.remoteRejectedWith(detail)
+            : l10n.remoteRejected,
+      401 || 403 => l10n.remoteBadSignature,
+      404 when call == _RemoteCall.submit => l10n.remoteBundleNotFound,
+      404 => l10n.remoteJobNotFound,
+      409 when call == _RemoteCall.artifact => l10n.remoteArtifactNotReady,
+      409 => l10n.remoteBusyOther,
+      410 => l10n.remoteArtifactExpired,
+      429 => l10n.remoteQueueFull,
+      502 => l10n.remoteBundleHostUnavailable,
+      504 => l10n.remoteBundleHostTimeout,
       _ =>
         detail.isNotEmpty
-            ? 'Build server error: $detail'
-            : 'Build server error: HTTP $statusCode',
+            ? l10n.remoteServerErrorWith(detail)
+            : l10n.remoteServerErrorCode(statusCode),
     };
   }
 

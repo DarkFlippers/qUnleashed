@@ -36,7 +36,7 @@ class _MapOptionsPanel extends StatelessWidget {
               child: Row(
                 children: [
                   Text(
-                    'Map options',
+                    context.l10n.mapOptions,
                     style: TextStyle(
                       color: colors.textPrimary,
                       fontWeight: FontWeight.w700,
@@ -57,10 +57,10 @@ class _MapOptionsPanel extends StatelessWidget {
             _OptionRow(
               colors: colors,
               icon: Icons.my_location,
-              label: 'Auto-center',
+              label: context.l10n.mapAutoCenter,
               subtitle: settings.trackDevice
-                  ? 'Follow Flipper location'
-                  : 'Follow my location',
+                  ? context.l10n.mapFollowFlipper
+                  : context.l10n.mapFollowMe,
               value: settings.autoCenter,
               onChanged: onAutoCenterChanged,
             ),
@@ -68,10 +68,10 @@ class _MapOptionsPanel extends StatelessWidget {
             _OptionRow(
               colors: colors,
               icon: Icons.gps_fixed,
-              label: 'Track Flipper',
+              label: context.l10n.mapTrackFlipper,
               subtitle: deviceAvailable
-                  ? 'Center and follow the device'
-                  : 'No device location yet',
+                  ? context.l10n.mapTrackFlipperDesc
+                  : context.l10n.mapNoDeviceLocation,
               value: settings.trackDevice,
               onChanged: deviceAvailable ? onTrackDeviceChanged : null,
             ),
@@ -92,14 +92,14 @@ class _MapOptionsPanel extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'Map settings',
+                            context.l10n.mapSettingsEntry,
                             style: TextStyle(
                               color: colors.textPrimary,
                               fontSize: 14,
                             ),
                           ),
                           Text(
-                            'Tile source, design, keys',
+                            context.l10n.mapSettingsEntryDesc,
                             style: TextStyle(
                               color: colors.textMuted,
                               fontSize: 11,

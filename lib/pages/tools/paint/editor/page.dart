@@ -1,3 +1,4 @@
+import '../../../../services/localization/l10n.dart';
 import 'dart:async';
 import 'dart:io' as io;
 import 'dart:typed_data';
@@ -104,7 +105,7 @@ class _PaintPageState extends State<PaintPage> {
     } catch (e) {
       if (!mounted) return;
       context.showNotification(
-        'Open failed: $e',
+        context.l10n.appOpenFailed('$e'),
         type: QNotificationType.error,
       );
     }
@@ -115,7 +116,7 @@ class _PaintPageState extends State<PaintPage> {
       final bytes = await (widget.client ?? FlipperOneClient().get())
           .storageReadChunked(path, timeout: const Duration(minutes: 5));
       if (bytes.isEmpty) {
-        throw StateError('File is empty');
+        throw StateError(l10n.paintFileEmpty);
       }
 
       final data = Uint8List.fromList(bytes);
@@ -128,12 +129,12 @@ class _PaintPageState extends State<PaintPage> {
         case 'bm':
           await _importBmSingle(data);
         default:
-          throw UnsupportedError('Only .png, .gif and .bm files are supported');
+          throw UnsupportedError(context.l10n.paintUnsupportedFile);
       }
     } catch (e) {
       if (!mounted) return;
       context.showNotification(
-        'Open failed: $e',
+        context.l10n.appOpenFailed('$e'),
         type: QNotificationType.error,
       );
     }
@@ -207,11 +208,11 @@ class _PaintPageState extends State<PaintPage> {
       _baselineVersion = _ctrl.pixelVersion;
 
       if (!mounted) return;
-      context.showNotification('Saved "$name"', type: QNotificationType.good);
+      context.showNotification(context.l10n.paintSaved(name), type: QNotificationType.good);
     } catch (e) {
       if (!mounted) return;
       context.showNotification(
-        'Save failed: $e',
+        context.l10n.paintSaveFailed('$e'),
         type: QNotificationType.error,
       );
     }
@@ -230,13 +231,13 @@ class _PaintPageState extends State<PaintPage> {
       await _writeDolphinTo(animDir);
       if (!mounted) return;
       context.showNotification(
-        'Dolphin exported: ${animDir.path}',
+        context.l10n.paintDolphinExported(animDir.path),
         type: QNotificationType.good,
       );
     } catch (e) {
       if (!mounted) return;
       context.showNotification(
-        'Export Dolphin failed: $e',
+        context.l10n.paintExportDolphinFailed('$e'),
         type: QNotificationType.error,
       );
     }
@@ -261,13 +262,13 @@ class _PaintPageState extends State<PaintPage> {
       await file.writeAsBytes(gif, flush: true);
       if (!mounted) return;
       context.showNotification(
-        'Saved: ${file.path}',
+        context.l10n.paintSavedTo(file.path),
         type: QNotificationType.good,
       );
     } catch (e) {
       if (!mounted) return;
       context.showNotification(
-        'Export GIF failed: $e',
+        context.l10n.paintExportGifFailed('$e'),
         type: QNotificationType.error,
       );
     }
@@ -284,13 +285,13 @@ class _PaintPageState extends State<PaintPage> {
       await file.writeAsBytes(png, flush: true);
       if (!mounted) return;
       context.showNotification(
-        'Saved: ${file.path}',
+        context.l10n.paintSavedTo(file.path),
         type: QNotificationType.good,
       );
     } catch (e) {
       if (!mounted) return;
       context.showNotification(
-        'Export PNG failed: $e',
+        context.l10n.paintExportPngFailed('$e'),
         type: QNotificationType.error,
       );
     }
@@ -319,7 +320,7 @@ class _PaintPageState extends State<PaintPage> {
   /// Opens the system folder picker; returns null when cancelled.
   Future<String?> _pickDestination() {
     return FilePicker.platform.getDirectoryPath(
-      dialogTitle: 'Choose export location',
+      dialogTitle: context.l10n.paintChooseExportLocation,
     );
   }
 
@@ -358,13 +359,13 @@ class _PaintPageState extends State<PaintPage> {
       builder: (ctx) => AlertDialog(
         backgroundColor: colors.dialogBackground,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        title: Text('Project name', style: TextStyle(color: colors.dialogText)),
+        title: Text(context.l10n.paintProjectName, style: TextStyle(color: colors.dialogText)),
         content: TextField(
           controller: ctrl,
           autofocus: true,
           style: TextStyle(color: colors.dialogText),
           decoration: InputDecoration(
-            hintText: 'My animation',
+            hintText: context.l10n.paintProjectNameHint,
             hintStyle: TextStyle(color: colors.dialogMuted),
           ),
           onSubmitted: (v) => Navigator.pop(ctx, v),
@@ -373,13 +374,13 @@ class _PaintPageState extends State<PaintPage> {
           TextButton(
             onPressed: () => Navigator.pop(ctx),
             child: Text(
-              'Cancel',
+              context.l10n.commonCancel,
               style: TextStyle(color: colors.textSecondary),
             ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, ctrl.text),
-            child: Text('Save', style: TextStyle(color: colors.accent)),
+            child: Text(context.l10n.commonSave, style: TextStyle(color: colors.accent)),
           ),
         ],
       ),
@@ -408,7 +409,7 @@ class _PaintPageState extends State<PaintPage> {
         backgroundColor: colors.card,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         title: Text(
-          'Export',
+          context.l10n.paintExport,
           style: TextStyle(
             color: colors.textPrimary,
             fontWeight: FontWeight.w700,
@@ -420,8 +421,8 @@ class _PaintPageState extends State<PaintPage> {
           children: [
             AlertTile(
               icon: Icons.folder_zip_outlined,
-              title: 'Dolphin Animation',
-              subtitle: '$n frame${n == 1 ? '' : 's'} · meta.txt + .bm files',
+              title: context.l10n.paintExportDolphinTitle,
+              subtitle: context.l10n.paintDolphinFrames(n),
               colors: colors,
               onTap: () {
                 Navigator.pop(ctx);
@@ -431,8 +432,8 @@ class _PaintPageState extends State<PaintPage> {
             if (n > 1)
               AlertTile(
                 icon: Icons.gif_box_outlined,
-                title: 'GIF Animation',
-                subtitle: '$n frames',
+                title: context.l10n.paintExportGifTitle,
+                subtitle: context.l10n.paintGifFrames(n),
                 colors: colors,
                 onTap: () {
                   Navigator.pop(ctx);
@@ -441,8 +442,8 @@ class _PaintPageState extends State<PaintPage> {
               ),
             AlertTile(
               icon: Icons.image_outlined,
-              title: 'PNG Image',
-              subtitle: 'Current frame only',
+              title: context.l10n.paintExportPngTitle,
+              subtitle: context.l10n.paintExportPngSubtitle,
               colors: colors,
               onTap: () {
                 Navigator.pop(ctx);
@@ -455,7 +456,7 @@ class _PaintPageState extends State<PaintPage> {
           TextButton(
             onPressed: () => Navigator.pop(ctx),
             child: Text(
-              'Cancel',
+              context.l10n.commonCancel,
               style: TextStyle(color: colors.textSecondary),
             ),
           ),
@@ -484,7 +485,7 @@ class _PaintPageState extends State<PaintPage> {
         } else {
           if (!mounted) return;
           context.showNotification(
-            'File path unavailable',
+            context.l10n.paintNoFilePath,
             type: QNotificationType.error,
           );
         }
@@ -507,14 +508,14 @@ class _PaintPageState extends State<PaintPage> {
       } else {
         if (!mounted) return;
         context.showNotification(
-          'Unsupported file type',
+          context.l10n.paintUnsupportedType,
           type: QNotificationType.error,
         );
       }
     } catch (e) {
       if (!mounted) return;
       context.showNotification(
-        'Import failed: $e',
+        context.l10n.paintImportFailed('$e'),
         type: QNotificationType.error,
       );
     }
@@ -537,7 +538,7 @@ class _PaintPageState extends State<PaintPage> {
     _ctrl.importSinglePixelFrame(pix);
 
     if (!mounted) return;
-    context.showNotification('PNG imported', type: QNotificationType.good);
+    context.showNotification(context.l10n.paintPngImported, type: QNotificationType.good);
   }
 
   Future<void> _importGif(Uint8List bytes) async {
@@ -565,7 +566,7 @@ class _PaintPageState extends State<PaintPage> {
     _ctrl.importFramesFromPixels(newFrames);
     if (!mounted) return;
     context.showNotification(
-      'GIF imported: ${newFrames.length} frame(s)',
+      context.l10n.paintGifImported(newFrames.length),
       type: QNotificationType.good,
     );
   }
@@ -619,7 +620,7 @@ class _PaintPageState extends State<PaintPage> {
       if (newFrames.isEmpty) {
         if (!mounted) return;
         context.showNotification(
-          'No valid frames found',
+          context.l10n.paintNoValidFrames,
           type: QNotificationType.error,
         );
         return;
@@ -636,13 +637,13 @@ class _PaintPageState extends State<PaintPage> {
 
       if (!mounted) return;
       context.showNotification(
-        'Dolphin: ${newFrames.length} frames imported',
+        context.l10n.paintDolphinImported(newFrames.length),
         type: QNotificationType.good,
       );
     } catch (e) {
       if (!mounted) return;
       context.showNotification(
-        'Import Dolphin failed: $e',
+        context.l10n.paintImportDolphinFailed('$e'),
         type: QNotificationType.error,
       );
     }
@@ -656,7 +657,7 @@ class _PaintPageState extends State<PaintPage> {
     if (xbm == null || xbm.length < rowBytes || xbm.length % rowBytes != 0) {
       if (!mounted) return;
       context.showNotification(
-        'Invalid .bm file',
+        context.l10n.paintInvalidBm,
         type: QNotificationType.error,
       );
       return;
@@ -667,7 +668,7 @@ class _PaintPageState extends State<PaintPage> {
     );
     if (!mounted) return;
     context.showNotification(
-      '.bm imported as frame ${_ctrl.currentFrame + 1}',
+      context.l10n.paintBmImported(_ctrl.currentFrame + 1),
       type: QNotificationType.good,
     );
   }

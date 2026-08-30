@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../../../../services/localization/l10n.dart';
 import '../../../../../components/icon.dart';
 import '../../../../../theme/theme.dart';
 import '../gif_recorder.dart';
@@ -55,23 +56,23 @@ List<RemoteActionSpec> buildRemoteActionSpecs({
     final paused = gifState == GifRecordingState.paused;
     return [
       RemoteActionSpec(
-        label: 'Recording',
+        label: l10n.remoteRecording,
         timerElapsedMs: gifElapsedMs,
         paused: paused,
       ),
       RemoteActionSpec(
         icon: paused ? Icons.play_arrow_rounded : Icons.pause_rounded,
-        label: paused ? 'Resume' : 'Pause',
+        label: paused ? l10n.remoteResume : l10n.remotePause,
         onTap: onPauseResumeGif,
       ),
       RemoteActionSpec(
         icon: Icons.stop_rounded,
-        label: 'Save',
+        label: l10n.commonSave,
         onTap: onStopGif,
       ),
       RemoteActionSpec(
         icon: Icons.close_rounded,
-        label: 'Cancel',
+        label: l10n.commonCancel,
         onTap: onCancelGif,
       ),
     ];
@@ -81,24 +82,24 @@ List<RemoteActionSpec> buildRemoteActionSpecs({
   return [
     RemoteActionSpec(
       icon: Icons.copy_rounded,
-      label: savingScreenshot ? 'Saving' : 'Copy',
+      label: savingScreenshot ? l10n.remoteSaving : l10n.remoteCopy,
       onTap: onCopy,
     ),
     RemoteActionSpec(
       icon: Icons.download_rounded,
-      label: savingScreenshot ? 'Saving' : 'Save',
+      label: savingScreenshot ? l10n.remoteSaving : l10n.commonSave,
       onTap: onSave,
     ),
     RemoteActionSpec(
       asset: justUnlocked
           ? 'assets/ic/action/unlock.svg'
           : 'assets/ic/action/lock.svg',
-      label: justUnlocked ? 'Unlocked' : 'Unlock',
+      label: justUnlocked ? l10n.remoteUnlocked : l10n.remoteUnlock,
       onTap: onUnlock,
     ),
     RemoteActionSpec(
       icon: busy ? Icons.hourglass_empty_rounded : Icons.gif_box_outlined,
-      label: busy ? 'Saving…' : 'GIF',
+      label: busy ? l10n.remoteSavingEllipsis : 'GIF',
       onTap: busy ? null : onStartGif,
     ),
   ];

@@ -1,3 +1,4 @@
+import '../../../services/localization/l10n.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -42,7 +43,7 @@ class _IrLibFilePageState extends State<IrLibFilePage> {
     if (bytes == null) {
       setState(() {
         _loading = false;
-        _error = 'Failed to download file';
+        _error = l10n.irDownloadFailed;
       });
       return;
     }

@@ -1,3 +1,4 @@
+import '../../../services/localization/l10n.dart';
 import 'dart:async';
 import 'dart:io' as io;
 
@@ -90,7 +91,7 @@ class IrLibController extends ChangeNotifier {
   Future<bool> downloadLocalRepo() async {
     if (_downloading) return false;
     _downloading = true;
-    _downloadProgress = IrLibDownloadProgress(stage: 'Downloading');
+    _downloadProgress = IrLibDownloadProgress(stage: l10n.irDownloading);
     _error = null;
     notifyListeners();
     try {
@@ -278,7 +279,7 @@ class IrLibController extends ChangeNotifier {
       late final StreamSubscription<FlipperConnectionState> sub;
       sub = _client.connectionStream.listen((state) {
         if (!state.connected && !disconnected.isCompleted) {
-          disconnected.completeError(StateError('Disconnected'));
+          disconnected.completeError(StateError(l10n.irDisconnected));
         }
       });
       await Future.any<void>([

@@ -73,7 +73,7 @@ class _PinCard extends StatelessWidget {
                   ),
                 ),
                 IconButton(
-                  tooltip: 'Edit location',
+                  tooltip: context.l10n.mapEditLocation,
                   onPressed: onEdit,
                   icon: Icon(
                     Icons.edit_location_alt_outlined,
@@ -81,7 +81,7 @@ class _PinCard extends StatelessWidget {
                   ),
                 ),
                 IconButton(
-                  tooltip: 'Close',
+                  tooltip: context.l10n.commonClose,
                   onPressed: onClose,
                   icon: Icon(Icons.close, color: colors.textMuted),
                 ),
@@ -128,7 +128,7 @@ class _PinCard extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(bottom: 6),
                 child: Text(
-                  'Locating…',
+                  context.l10n.mapLocating,
                   style: TextStyle(color: colors.textMuted, fontSize: 12),
                 ),
               )
@@ -144,24 +144,24 @@ class _PinCard extends StatelessWidget {
                   ),
                   onPressed: controller.requestLocation,
                   icon: const Icon(Icons.location_on_outlined, size: 16),
-                  label: const Text('Enable location to see distance'),
+                  label: Text(context.l10n.mapEnableLocationDistance),
                 ),
               ),
             _coordsRow(colors, pin, onCopyCoords),
             if (pin.frequency != null)
-              _kv(colors, 'Frequency', _formatFrequency(pin.frequency!)),
+              _kv(colors, context.l10n.mapPinFrequency, _formatFrequency(pin.frequency!)),
             if (pin.protocol != null)
               _kv(
                 colors,
-                'Protocol',
+                context.l10n.mapPinProtocol,
                 pin.bit != null
-                    ? '${pin.protocol} (${pin.bit} bit)'
+                    ? context.l10n.mapPinProtocolBits('${pin.protocol}', '${pin.bit}')
                     : pin.protocol!,
               ),
             if (pin.uid != null) _kv(colors, 'UID', pin.uid!),
-            if (pin.key != null) _kv(colors, 'Key', pin.key!),
-            if (pin.keyType != null) _kv(colors, 'Key type', pin.keyType!),
-            _kv(colors, 'Path', pin.path),
+            if (pin.key != null) _kv(colors, context.l10n.mapPinKey, pin.key!),
+            if (pin.keyType != null) _kv(colors, context.l10n.mapPinKeyType, pin.keyType!),
+            _kv(colors, context.l10n.mapPinPath, pin.path),
           ],
         ),
       ),
@@ -177,7 +177,7 @@ class _PinCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Text(
-            'Coordinates: ',
+            l10n.mapCoordinates,
             style: TextStyle(color: colors.textMuted, fontSize: 12),
           ),
           Expanded(

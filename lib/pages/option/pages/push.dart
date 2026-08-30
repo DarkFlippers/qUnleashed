@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../components/cardlist.dart';
+import '../../../services/localization/l10n.dart';
 import '../../../services/notifications/push_service.dart';
 import '../../../theme/theme.dart';
 
@@ -128,7 +129,7 @@ class _NotificationsSettingsPageState extends State<NotificationsSettingsPage> {
     return Scaffold(
       backgroundColor: colors.background,
       appBar: AppBar(
-        title: const Text('Notifications'),
+        title: Text(context.l10n.settingsNotificationsTitle),
         backgroundColor: colors.background,
         surfaceTintColor: colors.transparent,
       ),
@@ -140,24 +141,23 @@ class _NotificationsSettingsPageState extends State<NotificationsSettingsPage> {
               padding: const EdgeInsets.fromLTRB(26, 0, 26, 8),
               child: Text(
                 unavailable
-                    ? 'This build is not signed for push notifications, '
-                          'nothing will arrive.'
-                    : 'Push notifications are not available on this platform.',
+                    ? context.l10n.pushUnsignedBuild
+                    : context.l10n.pushUnsupportedPlatform,
                 style: TextStyle(fontSize: 12.5, color: colors.textMuted),
               ),
             ),
           GroupedCardList<_Toggle>(
-            title: 'Application',
+            title: context.l10n.pushGroupApplication,
             items: [
               _Toggle(
-                title: 'App releases',
-                subtitle: 'New qUnleashed app versions.',
+                title: context.l10n.pushAppReleases,
+                subtitle: context.l10n.pushAppReleasesSubtitle,
                 value: _appReleases,
                 onChanged: supported ? _setAppReleases : null,
               ),
               _Toggle(
-                title: 'Dev channel',
-                subtitle: 'Also get notified about new dev app builds.',
+                title: context.l10n.pushDevChannel,
+                subtitle: context.l10n.pushAppDevSubtitle,
                 value: _appDev,
                 onChanged: (supported && _appReleases) ? _setAppDev : null,
               ),
@@ -168,17 +168,17 @@ class _NotificationsSettingsPageState extends State<NotificationsSettingsPage> {
           ),
           const SizedBox(height: 10),
           GroupedCardList<_Toggle>(
-            title: 'Firmware',
+            title: context.l10n.pushGroupFirmware,
             items: [
               _Toggle(
-                title: 'Firmware releases',
-                subtitle: 'Unleashed and official firmware releases.',
+                title: context.l10n.pushFirmwareReleases,
+                subtitle: context.l10n.pushFirmwareReleasesSubtitle,
                 value: _firmwareReleases,
                 onChanged: supported ? _setFirmwareReleases : null,
               ),
               _Toggle(
-                title: 'Dev channel',
-                subtitle: 'Also get notified about new dev channel builds.',
+                title: context.l10n.pushDevChannel,
+                subtitle: context.l10n.pushFirmwareDevSubtitle,
                 value: _firmwareDev,
                 onChanged:
                     (supported && _firmwareReleases) ? _setFirmwareDev : null,

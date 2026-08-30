@@ -1,3 +1,4 @@
+import '../../../services/localization/l10n.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -114,8 +115,8 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
 
   Future<void> _deleteLocal(InstalledApp app) async {
     if (await _confirm(
-      'Delete local copy?',
-      'Remove the downloaded "${app.name}.fap" from this computer? The app stays on the Flipper.',
+      context.l10n.appDeleteLocalTitle,
+      context.l10n.appDeleteLocalMessage(app.name),
     )) {
       await _device.deleteLocal(app);
     }
@@ -123,8 +124,8 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
 
   Future<void> _uninstall(InstalledApp app) async {
     if (await _confirm(
-      'Uninstall from device?',
-      'Delete "${app.name}" from the Flipper (the local backup is removed too).',
+      context.l10n.appUninstallTitle,
+      context.l10n.appUninstallMessage(app.name),
     )) {
       await _device.uninstallFromDevice(app);
     }
@@ -134,7 +135,7 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
     final ok = await _device.restore(app);
     if (!mounted) return;
     context.showNotification(
-      ok ? 'Restoring "${app.name}" to the Flipper' : 'No local backup found',
+      ok ? context.l10n.appRestoring(app.name) : context.l10n.appNoBackup,
       type: ok ? QNotificationType.good : QNotificationType.warning,
     );
   }
@@ -164,7 +165,7 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
       actions: (ctx) => [
         if (busy)
           AppActionEntry(
-            label: 'Cancel',
+            label: ctx.l10n.commonCancel,
             icon: Icons.close,
             color: colors.danger,
             filled: true,
@@ -172,14 +173,14 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
           )
         else if (updatable)
           AppActionEntry(
-            label: 'Update',
+            label: ctx.l10n.commonUpdate,
             icon: Icons.system_update_alt,
             color: colors.success,
             filled: true,
             onTap: () => unawaited(_update(app)),
           ),
         AppActionEntry(
-          label: 'Open',
+          label: ctx.l10n.commonOpen,
           icon: Icons.play_arrow_rounded,
           color: colors.accent,
           filled: !updatable,
@@ -187,21 +188,21 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
           onTap: () => unawaited(_launch(app)),
         ),
         AppActionEntry(
-          label: 'Restore',
+          label: ctx.l10n.appActionRestore,
           icon: Icons.restore,
           color: colors.accent,
           half: true,
           onTap: () => unawaited(_restore(app)),
         ),
         AppActionEntry(
-          label: 'Delete copy',
+          label: ctx.l10n.appActionDeleteCopy,
           icon: Icons.sd_card_outlined,
           color: colors.danger,
           half: true,
           onTap: () => unawaited(_deleteLocal(app)),
         ),
         AppActionEntry(
-          label: 'Uninstall',
+          label: ctx.l10n.appActionUninstall,
           icon: Icons.delete_outline,
           color: colors.danger,
           filled: true,
@@ -239,12 +240,12 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
             scrolledUnderElevation: 0,
             surfaceTintColor: Colors.transparent,
             titleSpacing: 16,
-            title: const Row(
+            title: Row(
               children: [
-                Icon(Icons.manage_search, color: Colors.white, size: 18),
-                SizedBox(width: 8),
+                const Icon(Icons.manage_search, color: Colors.white, size: 18),
+                const SizedBox(width: 8),
                 Text(
-                  'Apps manager',
+                  context.l10n.managerTitle,
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 17,
@@ -260,12 +261,12 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
                     label: Text('${_updates.count}'),
                     child: const Icon(Icons.update, color: Colors.white),
                   ),
-                  tooltip: 'Update all',
+                  tooltip: context.l10n.managerUpdateAll,
                   onPressed: _updateAll,
                 ),
               IconButton(
                 icon: const Icon(Icons.extension, color: Colors.white),
-                tooltip: 'All-the-plugins',
+                tooltip: context.l10n.managerPluginsTooltip,
                 onPressed: widget.onOpenPlugins,
               ),
               IconButton(
@@ -273,7 +274,7 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
                   Icons.storefront_outlined,
                   color: Colors.white,
                 ),
-                tooltip: 'Catalog',
+                tooltip: context.l10n.atpCatalogTooltip,
                 onPressed: widget.onOpenCatalog,
               ),
               CategorySyncButton(
@@ -313,10 +314,10 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
   ) {
     final colors = context.appColors;
     if (!_backend.isReady && all.isEmpty) {
-      return const ArchiveEmptyView(
+      return ArchiveEmptyView(
         icon: Icons.usb_off,
-        title: 'Connect a device',
-        subtitle: 'Apps installed on the Flipper show up here',
+        title: context.l10n.managerConnectDevice,
+        subtitle: context.l10n.managerConnectHint,
       );
     }
 
@@ -381,10 +382,10 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
             height: MediaQuery.of(context).size.height * 0.5,
             child: ArchiveEmptyView(
               icon: Icons.apps,
-              title: _filtering ? 'Nothing matches' : 'No apps yet',
-              subtitle: _filtering
-                  ? null
-                  : 'Tap sync to load apps from the Flipper',
+              title: _filtering
+                  ? context.l10n.appsNothingMatches
+                  : context.l10n.managerNoApps,
+              subtitle: _filtering ? null : context.l10n.managerSyncHint,
             ),
           ),
         ],
@@ -470,7 +471,9 @@ class _AppRow extends StatelessWidget {
             manifest: app.manifest,
           ),
           title: app.name,
-          subtitle: app.hasManifest ? app.folder : '${app.folder} · sideloaded',
+          subtitle: app.hasManifest
+              ? app.folder
+              : context.l10n.appSideloaded(app.folder),
         );
     }
   }
@@ -493,6 +496,7 @@ class _ScanProgress extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scanned = folder;
     return Column(
       children: [
         LinearProgressIndicator(
@@ -509,7 +513,9 @@ class _ScanProgress extends StatelessWidget {
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  folder == null ? 'Scanning device…' : 'Scanning $folder…',
+                  scanned == null
+                      ? context.l10n.managerScanning
+                      : context.l10n.managerScanningFolder(scanned),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(color: colors.textMuted, fontSize: 11),

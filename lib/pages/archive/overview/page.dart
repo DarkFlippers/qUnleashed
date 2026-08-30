@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../services/localization/l10n.dart';
 import '../../../components/cardlist.dart';
 import '../../../components/icon.dart';
 import '../../../components/navigation.dart';
@@ -74,7 +75,7 @@ class _ArchivePageState extends State<ArchivePage> {
           onTap: () => _openCategory(cat),
         ),
       _CategoryEntry(
-        title: 'Deleted',
+        title: context.l10n.archiveDeleted,
         asset: 'assets/ic/fileformat/deleted.svg',
         color: const Color(0xFF8D8D8D),
         count: _ctrl.deletedCount,
@@ -128,7 +129,7 @@ class _ArchivePageState extends State<ArchivePage> {
   Future<void> _launchFap(FapFavorite fav) async {
     if (!_ctrl.isConnected) {
       context.showNotification(
-        'Connect a device to launch apps',
+        context.l10n.archiveConnectToLaunch,
         type: QNotificationType.warning,
       );
       return;
@@ -139,7 +140,7 @@ class _ArchivePageState extends State<ArchivePage> {
       openRoute(context, AppRoute.remoteControl);
     } else {
       context.showNotification(
-        'Failed to launch ${fav.name}',
+        context.l10n.archiveLaunchFailed(fav.name),
         type: QNotificationType.error,
       );
     }
@@ -152,21 +153,21 @@ class _ArchivePageState extends State<ArchivePage> {
       builder: (ctx) => AlertDialog(
         backgroundColor: colors.dialogBackground,
         title: Text(
-          'Sync archive?',
+          context.l10n.archiveSyncTitle,
           style: TextStyle(color: colors.dialogText),
         ),
         content: Text(
-          'Sync all archive categories and import favorites from device?',
+          context.l10n.archiveSyncMessage,
           style: TextStyle(color: colors.dialogMuted, height: 1.4),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+            child: Text(context.l10n.commonCancel),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Sync all'),
+            child: Text(context.l10n.archiveSyncAll),
           ),
         ],
       ),
@@ -202,13 +203,13 @@ class _ArchivePageState extends State<ArchivePage> {
       context: context,
       builder: (c) => AlertDialog(
         backgroundColor: colors.dialogBackground,
-        title: Text('Rename', style: TextStyle(color: colors.dialogText)),
+        title: Text(context.l10n.fmRename, style: TextStyle(color: colors.dialogText)),
         content: TextField(
           controller: ctrl,
           autofocus: true,
           style: TextStyle(color: colors.dialogText),
           decoration: InputDecoration(
-            hintText: 'File name',
+            hintText: context.l10n.archiveFileName,
             hintStyle: TextStyle(color: colors.textMuted),
           ),
           onSubmitted: (v) => Navigator.pop(c, v.trim()),
@@ -216,11 +217,11 @@ class _ArchivePageState extends State<ArchivePage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(c),
-            child: const Text('Cancel'),
+            child: Text(context.l10n.commonCancel),
           ),
           TextButton(
             onPressed: () => Navigator.pop(c, ctrl.text.trim()),
-            child: const Text('Rename'),
+            child: Text(context.l10n.fmRename),
           ),
         ],
       ),
@@ -289,8 +290,8 @@ class _ArchivePageState extends State<ArchivePage> {
           hasScrollBody: false,
           child: ArchiveEmptyView(
             icon: Icons.star_outline_rounded,
-            title: _ctrl.loading ? 'Loading…' : 'No starred keys yet',
-            subtitle: 'Open a category and star files to see them here',
+            title: _ctrl.loading ? context.l10n.archiveLoading : context.l10n.archiveNoStarred,
+            subtitle: context.l10n.archiveStarHint,
           ),
         ),
       ];
@@ -305,7 +306,7 @@ class _ArchivePageState extends State<ArchivePage> {
         child: Padding(
           padding: const EdgeInsets.only(top: 8),
           child: GroupedCardList<_FavEntry>(
-            title: 'Favorites',
+            title: context.l10n.archiveFavorites,
             items: entries,
             cardPadding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
             onTap: (e) => switch (e) {
@@ -459,7 +460,7 @@ class _FapFavTile extends StatelessWidget {
               ),
               const SizedBox(height: 2),
               Text(
-                favorite.subFolder.isEmpty ? 'Apps' : favorite.subFolder,
+                favorite.subFolder.isEmpty ? context.l10n.navApps : favorite.subFolder,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(color: colors.textMuted, fontSize: 12),

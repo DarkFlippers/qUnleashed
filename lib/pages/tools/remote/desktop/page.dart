@@ -1,3 +1,4 @@
+import '../../../../services/localization/l10n.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -155,12 +156,12 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
 
     if (saveError != null) {
       context.showNotification(
-        'GIF save failed: $saveError',
+        context.l10n.remoteGifSaveFailed('$saveError'),
         type: QNotificationType.error,
       );
     } else if (savedPath != null) {
       context.showNotification(
-        'GIF saved: $savedPath',
+        context.l10n.remoteGifSaved(savedPath),
         type: QNotificationType.good,
       );
     }
@@ -190,13 +191,13 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
       await copyScreenshotToClipboard(png);
       if (!mounted) return;
       context.showNotification(
-        'Screenshot copied to clipboard',
+        context.l10n.remoteScreenshotCopied,
         type: QNotificationType.good,
       );
     } catch (e) {
       if (!mounted) return;
       context.showNotification(
-        'Copy failed: $e',
+        context.l10n.remoteCopyFailed('$e'),
         type: QNotificationType.error,
       );
     } finally {
@@ -213,13 +214,13 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
       final path = await saveScreenshotToAppStorage(png);
       if (!mounted) return;
       context.showNotification(
-        'Screenshot saved: $path',
+        context.l10n.remoteScreenshotSaved(path),
         type: QNotificationType.good,
       );
     } catch (e) {
       if (!mounted) return;
       context.showNotification(
-        'Save failed: $e',
+        context.l10n.remoteSaveFailed('$e'),
         type: QNotificationType.error,
       );
     } finally {
@@ -321,7 +322,7 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
           appBar: wide
               ? null
               : QPageAppBar(
-                  title: 'Remote Control',
+                  title: context.l10n.remoteControlTitle,
                   leading: IconButton(
                     onPressed: _close,
                     icon: const Icon(Icons.arrow_back),

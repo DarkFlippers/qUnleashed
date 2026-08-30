@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../services/localization/l10n.dart';
 import '../../../../theme/theme.dart';
 import '../../models/device_info.dart';
 import 'summary_card.dart';
@@ -32,14 +33,14 @@ class StorageSummaryCard extends StatelessWidget {
           ]);
 
     return SummaryCard(
-      title: 'Storage',
+      title: context.l10n.cardStorage,
       icon: Icons.storage,
       mainValue: percent,
       barValue: percent != null ? percent / 100 : null,
       barColor: percent != null && percent > 90 ? colors.danger : colors.accent,
       metrics: [
-        ('Used', used ?? '0 B'),
-        ('Free', free ?? '0 B'),
+        (context.l10n.cardStorageUsed, used ?? '0 B'),
+        (context.l10n.cardStorageFree, free ?? '0 B'),
         ('/int', internal ?? '0 B'),
       ],
     );

@@ -1,3 +1,4 @@
+import '../../../services/localization/l10n.dart';
 import 'dart:io' as io;
 
 import 'package:flipperlib/flipperlib.dart';
@@ -236,7 +237,7 @@ class FileManagerController extends ChangeNotifier {
   }
 
   Future<bool> writeBytes(String remotePath, List<int> data) async {
-    _transferLabel = 'Uploading ${basename(remotePath)}';
+    _transferLabel = l10n.fmUploading(basename(remotePath));
     _transferProgress = 0;
     _notify();
     final throttle = ProgressThrottle();
@@ -497,7 +498,7 @@ class FileManagerController extends ChangeNotifier {
     try {
       for (final (remote, local, size) in plan) {
         _transferLabel =
-            'Downloading ${basename(remote)}  (${doneFiles + 1}/$totalFiles)';
+            l10n.fmDownloadingOf(basename(remote), doneFiles + 1, totalFiles);
         _notify();
         final base = doneBytes;
         final bytes = await _readForDownload(remote, size, (p) {
@@ -586,7 +587,7 @@ class FileManagerController extends ChangeNotifier {
   Future<bool> uploadFromLocal(String localPath, {String? targetName}) async {
     final file = io.File(localPath);
     if (!await file.exists()) {
-      _error = 'Local file not found: $localPath';
+      _error = l10n.fmLocalNotFound(localPath);
       _notify();
       return false;
     }

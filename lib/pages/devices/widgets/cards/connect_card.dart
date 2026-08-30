@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../services/localization/l10n.dart';
 import '../../../../components/dialogs/connection.dart';
 import '../../../../components/dialogs/connection_error.dart';
 import '../../../../services/connection/known_devices.dart';
@@ -112,7 +113,7 @@ class _ConnectActionRow extends StatelessWidget {
             ),
             Expanded(
               child: Text(
-                'Search',
+                context.l10n.connectSearch,
                 style: TextStyle(
                   color: color,
                   fontSize: 14,
@@ -156,11 +157,11 @@ class _DeviceRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final subtitle = busy
-        ? 'Connecting…'
+        ? context.l10n.pickerConnecting
         : active
-        ? 'Active'
+        ? context.l10n.connectActive
         : sessionConnected
-        ? 'Connected — tap to switch'
+        ? context.l10n.connectTapToSwitch
         : (idLabel ?? '');
 
     return Material(
@@ -221,7 +222,7 @@ class _DeviceRow extends StatelessWidget {
                 )
               else if (active || sessionConnected)
                 Tooltip(
-                  message: 'Disconnect',
+                  message: context.l10n.pickerDisconnect,
                   child: InkResponse(
                     onTap: onDisconnect,
                     radius: 18,
@@ -230,7 +231,7 @@ class _DeviceRow extends StatelessWidget {
                 )
               else if (onForget != null)
                 Tooltip(
-                  message: 'Forget',
+                  message: context.l10n.connectForget,
                   child: InkResponse(
                     onTap: onForget,
                     radius: 18,

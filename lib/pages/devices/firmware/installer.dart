@@ -1,3 +1,4 @@
+import '../../../services/localization/l10n.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io' as io;
@@ -36,7 +37,7 @@ class FirmwareInstaller {
 
       final extracted = await _extractFlat(archivePath);
       if (extracted.dirName == null || extracted.files.isEmpty) {
-        onState(const UpdateError('Update archive is empty or malformed'));
+        onState(UpdateError(l10n.firmwareErrorEmptyArchive));
         return;
       }
 
@@ -83,7 +84,7 @@ class FirmwareInstaller {
       }
 
       if (manifestPath == null) {
-        onState(const UpdateError('No update.fuf manifest in archive'));
+        onState(UpdateError(l10n.firmwareErrorNoManifest));
         return;
       }
 
@@ -113,11 +114,11 @@ class FirmwareInstaller {
     final firmwareName = fuf?.firmware ?? 'firmware.dfu';
     final firmware = byName[firmwareName];
     if (firmware == null) {
-      onState(UpdateError('No $firmwareName in update bundle'));
+      onState(UpdateError(l10n.firmwareErrorNoBinary(firmwareName)));
       return;
     }
     if (fuf == null) {
-      onState(const UpdateError('No valid update.fuf in update bundle'));
+      onState(UpdateError(l10n.firmwareErrorBadManifest));
       return;
     }
     final obError = fuf.optionBytesError;
@@ -330,13 +331,13 @@ class _Fuf {
   String? get optionBytesError {
     const size = OptionBytes.sizeBytes;
     if (obReference?.length != size) {
-      return 'Invalid or missing OB reference in update.fuf';
+      return l10n.firmwareErrorObReference;
     }
     if (obCompareMask?.length != size) {
-      return 'Invalid or missing OB mask in update.fuf';
+      return l10n.firmwareErrorObMask;
     }
     if (obWriteMask?.length != size) {
-      return 'Invalid or missing OB write mask in update.fuf';
+      return l10n.firmwareErrorObWriteMask;
     }
     return null;
   }

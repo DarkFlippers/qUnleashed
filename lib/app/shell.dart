@@ -14,6 +14,7 @@ import '../pages/devices/controllers/device.dart';
 import '../pages/devices/device_scope.dart';
 import '../pages/devices/models/connection_state.dart';
 import '../pages/devices/page.dart';
+import '../services/localization/l10n.dart';
 import '../theme/theme.dart';
 
 class AppShell extends StatefulWidget {
@@ -234,24 +235,29 @@ class _AppShellState extends State<AppShell> {
   }
 
   String _deviceLabel() {
+    final strings = l10n;
     switch (_ctrl.connectionState) {
       case DeviceConnectionState.disconnected:
-        return _ctrl.device != null ? 'Disconnected' : 'No device';
+        return _ctrl.device != null
+            ? strings.deviceStateDisconnected
+            : strings.deviceStateNoDevice;
       case DeviceConnectionState.connecting:
-        return 'Connecting';
+        return strings.deviceStateConnecting;
       case DeviceConnectionState.dfu:
-        return 'DFU';
+        return strings.deviceStateDfu;
       case DeviceConnectionState.recovering:
-        return 'Recovering';
+        return strings.deviceStateRecovering;
       case DeviceConnectionState.connected:
-        if (_ctrl.deviceLoading) return 'Syncing';
+        if (_ctrl.deviceLoading) return strings.deviceStateSyncing;
         switch (_syncStatus) {
           case ArchiveSyncStatus.syncing:
-            return 'Syncing';
+            return strings.deviceStateSyncing;
           case ArchiveSyncStatus.synced:
-            return _ctrl.deviceInfoConnected ? 'Connected' : 'Synced';
+            return _ctrl.deviceInfoConnected
+                ? strings.deviceStateConnected
+                : strings.deviceStateSynced;
           case ArchiveSyncStatus.idle:
-            return 'Connected';
+            return strings.deviceStateConnected;
         }
     }
   }

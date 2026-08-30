@@ -1,3 +1,4 @@
+import '../../../services/localization/l10n.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -209,7 +210,7 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
     setState(() => _saving = false);
     if (!ok) {
       context.showNotification(
-        'Failed to save location',
+        context.l10n.mapSaveLocationFailed,
         type: QNotificationType.error,
       );
       return;
@@ -230,7 +231,7 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
         break;
       }
     }
-    context.showNotification('Location saved', type: QNotificationType.good);
+    context.showNotification(context.l10n.mapLocationSaved, type: QNotificationType.good);
   }
 
   @override
@@ -282,18 +283,18 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
       final target = _pickTarget;
       return QPageAppBar(
         title: target == null
-            ? 'Set location'
-            : 'Set location: ${target.displayName}',
+            ? context.l10n.mapSetLocation
+            : context.l10n.mapSetLocationFor(target.displayName),
         backgroundColor: colors.accent,
         foregroundColor: colors.onAccent,
         leading: IconButton(
           icon: const Icon(Icons.close),
-          tooltip: 'Cancel',
+          tooltip: context.l10n.commonCancel,
           onPressed: _saving ? null : _exitPickMode,
         ),
         actions: [
           QPageAppBarAction(
-            tooltip: 'Save location',
+            tooltip: context.l10n.mapSaveLocation,
             onPressed: _saving ? null : _savePickedLocation,
             icon: _saving
                 ? SizedBox(
@@ -310,7 +311,7 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
       );
     }
     return QPageAppBar(
-      title: 'Signal Map',
+      title: context.l10n.mapTitle,
       backgroundColor: colors.accent,
       foregroundColor: colors.onAccent,
       actions: [
@@ -334,12 +335,12 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
           ),
         ),
         QPageAppBarAction(
-          tooltip: 'Reload files',
+          tooltip: context.l10n.mapReloadFiles,
           onPressed: _controller.loading ? null : _controller.loadFiles,
           icon: const Icon(Icons.refresh),
         ),
         QPageAppBarAction(
-          tooltip: 'Map options',
+          tooltip: context.l10n.mapOptions,
           onPressed: () => setState(() => _optionsOpen = !_optionsOpen),
           icon: Icon(
             Icons.settings,
@@ -370,7 +371,7 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
               Icon(Icons.map_outlined, size: 64, color: colors.textMuted),
               const SizedBox(height: 16),
               Text(
-                'No pins to show',
+                context.l10n.mapNoPins,
                 style: TextStyle(
                   color: colors.textPrimary,
                   fontSize: 18,
@@ -390,7 +391,7 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
                   foregroundColor: colors.onAccent,
                 ),
                 onPressed: _controller.loadFiles,
-                child: const Text('Try Again'),
+                child: Text(context.l10n.mapTryAgain),
               ),
             ],
           ),
@@ -428,7 +429,7 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
                 ? () => _enterEditModeFor(_selectedPin!)
                 : null,
             onCopyCoords: () => context.showNotification(
-              'Coordinates copied',
+              context.l10n.mapCoordinatesCopied,
               type: QNotificationType.good,
             ),
           ),
@@ -457,7 +458,7 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
               onClose: () => setState(() => _selectedPin = null),
               onEdit: () => _enterEditModeFor(_selectedPin!),
               onCopyCoords: () => context.showNotification(
-                'Coordinates copied',
+                context.l10n.mapCoordinatesCopied,
                 type: QNotificationType.good,
               ),
             ),
@@ -545,7 +546,7 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
             top: 12,
             child: _tileNotice(
               colors,
-              'This tile source needs a key. Tap to add one.',
+              context.l10n.mapNeedsKeyTap,
             ),
           )
         else if (!picking && _failedTemplate == tiles.urlTemplate)
@@ -555,7 +556,7 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
             top: 12,
             child: _tileNotice(
               colors,
-              '${tiles.label} is not answering. Tap to pick another source.',
+              context.l10n.mapSourceNotAnswering(tiles.label),
             ),
           ),
 
@@ -661,7 +662,7 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Drag the map to position the pin, then tap the check to save.',
+                        context.l10n.mapDragHint,
                         style: TextStyle(
                           color: colors.textPrimary,
                           fontSize: 13,

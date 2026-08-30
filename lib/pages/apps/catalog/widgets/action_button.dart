@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../services/localization/l10n.dart';
 import '../../../../theme/theme.dart';
 import '../../../../components/notification.dart';
 import '../../../../components/progress_button.dart';
@@ -49,7 +50,7 @@ class AppActionButton extends StatelessWidget {
       return _ActionRow(
         size: size,
         primary: _buildButton(
-          label: 'INSTALL',
+          label: l10n.appActionInstall,
           color: colors.accent,
           onTap: () => _connectHint(context),
         ),
@@ -61,7 +62,7 @@ class AppActionButton extends StatelessWidget {
         return _ActionRow(
           size: size,
           primary: _buildButton(
-            label: 'INSTALL',
+            label: l10n.appActionInstall,
             color: colors.accent,
             onTap: _install,
           ),
@@ -70,7 +71,7 @@ class AppActionButton extends StatelessWidget {
         return _ActionRow(
           size: size,
           primary: _buildButton(
-            label: 'UPDATE',
+            label: l10n.appActionUpdate,
             color: colors.success,
             onTap: _install,
           ),
@@ -83,7 +84,7 @@ class AppActionButton extends StatelessWidget {
         return _ActionRow(
           size: size,
           primary: _buildButton(
-            label: 'OPEN',
+            label: l10n.appActionOpen,
             color: colors.accent,
             onTap: () => _launchApp(context),
           ),
@@ -146,7 +147,7 @@ class AppActionButton extends StatelessWidget {
 
   void _connectHint(BuildContext context) {
     context.showNotification(
-      'Connect a device to install apps',
+      context.l10n.catalogConnectToInstall,
       type: QNotificationType.warning,
     );
   }
@@ -245,22 +246,22 @@ class _ProgressState {
       AppActionType.install => FlipperOriginalColors.accent,
     };
     if (cancelling) {
-      return _ProgressState(label: 'CANCEL', color: color);
+      return _ProgressState(label: l10n.appActionCancel, color: color);
     }
     if (stage == AppActionStage.queued) {
-      return _ProgressState(label: 'QUEUED', color: color);
+      return _ProgressState(label: l10n.appActionQueued, color: color);
     }
     if (stage == AppActionStage.check) {
-      return _ProgressState(label: 'CHECK', color: color);
+      return _ProgressState(label: l10n.appActionCheck, color: color);
     }
     if (stage == AppActionStage.build) {
-      return _ProgressState(label: 'BUILD', color: color);
+      return _ProgressState(label: l10n.appActionBuild, color: color);
     }
     if (type == AppActionType.delete) {
-      return _ProgressState(label: 'DELETE', color: color);
+      return _ProgressState(label: l10n.appActionDelete, color: color);
     }
     return _ProgressState(
-      label: stage == AppActionStage.upload ? 'UPLOAD' : 'DOWNLOAD',
+      label: stage == AppActionStage.upload ? l10n.appActionUpload : l10n.appActionDownload,
       color: color,
     );
   }

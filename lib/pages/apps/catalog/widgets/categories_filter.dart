@@ -1,5 +1,6 @@
 ﻿import 'package:flutter/material.dart';
 
+import '../../../../services/localization/l10n.dart';
 import '../../data/models/category.dart';
 import 'category_chip.dart';
 
@@ -9,19 +10,16 @@ class CategoriesFilter extends StatelessWidget {
     required this.categories,
     required this.current,
     required this.onSelect,
-    this.allLabel = 'All apps',
+    this.allLabel,
   });
 
   final List<AppCategory> categories;
   final AppCategory? current;
   final ValueChanged<AppCategory?> onSelect;
-  final String allLabel;
+  final String? allLabel;
 
-  static const _allCategory = AppCategory(
-    id: '-1',
-    name: 'All apps',
-    color: 'EBEBEB',
-  );
+  static AppCategory _allCategory(String name) =>
+      AppCategory(id: '-1', name: name, color: 'EBEBEB');
 
   @override
   Widget build(BuildContext context) {
@@ -33,7 +31,7 @@ class CategoriesFilter extends StatelessWidget {
       runSpacing: 8,
       children: [
         CategoryChip(
-          category: _allCategory,
+          category: _allCategory(allLabel ?? context.l10n.appsAllApps),
           selected: allSelected,
           onTap: () => onSelect(null),
         ),

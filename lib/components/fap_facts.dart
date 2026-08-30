@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../services/localization/l10n.dart';
 import 'format.dart';
 import '../theme/theme.dart';
 import 'codec/fap/details.dart';
@@ -13,7 +14,7 @@ class FapFactsPanel extends StatelessWidget {
     required this.info,
     this.checked = true,
     this.showVerdict = true,
-    this.pendingNote = 'Sync the manager to read this app from the device',
+    this.pendingNote,
     this.author,
     this.deviceApi,
     this.deviceTarget,
@@ -22,7 +23,7 @@ class FapFactsPanel extends StatelessWidget {
   final FapInfo? info;
   final bool checked;
   final bool showVerdict;
-  final String pendingNote;
+  final String? pendingNote;
   final String? author;
   final String? deviceApi;
   final String? deviceTarget;
@@ -30,11 +31,12 @@ class FapFactsPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
+    final strings = context.l10n;
 
     if (!checked) {
       return _Note(
         icon: Icons.sync,
-        text: pendingNote,
+        text: pendingNote ?? strings.fapPendingNote,
         color: colors.textMuted,
         colors: colors,
       );
@@ -69,31 +71,38 @@ class FapFactsPanel extends StatelessWidget {
         _Facts(
           colors: colors,
           rows: [
-            if (author != null && author!.isNotEmpty) ('Author', author!),
+            if (author != null && author!.isNotEmpty)
+              (strings.factAuthor, author!),
             if (manifest != null) ...[
-              ('Version', manifest.version),
+              (strings.factVersion, manifest.version),
               ('API', manifest.api),
-              ('Target', manifest.target),
+              (strings.factTarget, manifest.target),
               if (!manifest.isPlugin)
-                ('Stack', _fmtSize(manifest.stackSize))
+                (strings.factStack, _fmtSize(manifest.stackSize))
               else
-                ('Type', 'Plugin'),
+                (strings.factType, strings.factTypePlugin),
             ],
-            ('RAM to load', _fmtSize(info.ramTotal)),
-            ('Largest block', _fmtSize(info.ramLargestBlock)),
-            ('Code', _fmtSize(info.codeSize)),
-            ('Const', _fmtSize(info.readOnlyDataSize)),
-            ('Data', _fmtSize(info.dataSize)),
+            (strings.factRamToLoad, _fmtSize(info.ramTotal)),
+            (strings.factLargestBlock, _fmtSize(info.ramLargestBlock)),
+            (strings.factCode, _fmtSize(info.codeSize)),
+            (strings.factConst, _fmtSize(info.readOnlyDataSize)),
+            (strings.factData, _fmtSize(info.dataSize)),
             ('BSS', _fmtSize(info.bssSize)),
-            ('API imports', '${info.imports.length}'),
-            if (assets != null) ('Assets', '${assets.files.length} files'),
+            (strings.factApiImports, '${info.imports.length}'),
+            if (assets != null)
+              (strings.factAssets, strings.factAssetsFiles(assets.files.length)),
             if (assets != null && assets.plugins.isNotEmpty)
-              ('Plugins', '${assets.plugins.length} embedded'),
+              (
+                strings.factPlugins,
+                strings.factPluginsEmbedded(assets.plugins.length),
+              ),
             (
-              'Relocations',
-              info.hasFastRelocations ? 'fast (fastfap)' : 'standard',
+              strings.factRelocations,
+              info.hasFastRelocations
+                  ? strings.factRelocationsFast
+                  : strings.factRelocationsStandard,
             ),
-            ('File', _fmtSize(info.fileSize)),
+            (strings.factFile, _fmtSize(info.fileSize)),
           ],
         ),
       ],

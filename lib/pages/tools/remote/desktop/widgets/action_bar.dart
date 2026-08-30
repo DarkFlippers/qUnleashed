@@ -1,3 +1,4 @@
+import '../../../../../services/localization/l10n.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -73,7 +74,7 @@ class RemoteActionBar extends StatelessWidget {
               scale: scale,
               width: RemoteActionBarGeometry.backWidth,
               icon: Icons.chevron_left_rounded,
-              label: 'Back',
+              label: context.l10n.remoteBack,
               onTap: onBack,
             ),
           ),

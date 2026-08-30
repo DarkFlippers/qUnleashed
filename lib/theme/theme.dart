@@ -2,16 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../components/config.dart';
+import '../services/localization/l10n.dart';
 
 enum QThemeMode {
-  firmware('Match firmware'),
-  system('Match system'),
-  dark('Always dark'),
-  light('Always light');
+  firmware,
+  system,
+  dark,
+  light;
 
-  const QThemeMode(this.label);
-
-  final String label;
+  String get label => switch (this) {
+    QThemeMode.firmware => l10n.themeModeFirmware,
+    QThemeMode.system => l10n.themeModeSystem,
+    QThemeMode.dark => l10n.themeModeDark,
+    QThemeMode.light => l10n.themeModeLight,
+  };
 }
 
 class QAppThemeController extends ChangeNotifier with WidgetsBindingObserver {

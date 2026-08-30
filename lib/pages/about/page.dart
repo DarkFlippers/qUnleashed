@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../components/navigation.dart';
 import '../../components/open_url.dart';
+import '../../services/localization/l10n.dart';
 import 'widgets/pixel_button.dart';
 import 'license_page.dart';
 
@@ -49,8 +50,8 @@ class _AboutPageState extends State<AboutPage>
         foregroundColor: Colors.white,
         elevation: 0,
         scrolledUnderElevation: 0,
-        title: const Text(
-          'About',
+        title: Text(
+          context.l10n.aboutTitle,
           style: TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.w700,
@@ -60,7 +61,7 @@ class _AboutPageState extends State<AboutPage>
         actions: [
           IconButton(
             icon: const Icon(Icons.settings_outlined),
-            tooltip: 'Settings',
+            tooltip: context.l10n.settingsTitle,
             onPressed: () => openRoute(context, AppRoute.appSettings),
           ),
         ],
@@ -100,11 +101,11 @@ class _AboutPageState extends State<AboutPage>
                       onTap: () => openUrl(context, _navBtns[2].url),
                     ),
                     PixelButton.nav(
-                      label: 'Shop (EU)',
+                      label: context.l10n.aboutShopEu,
                       onTap: () => openUrl(context, _navBtns[3].url),
                     ),
                     PixelButton.nav(
-                      label: 'Shop (RU)',
+                      label: context.l10n.aboutShopRu,
                       onTap: () => openUrl(context, _navBtns[4].url),
                     ),
                   ],
@@ -181,7 +182,7 @@ class _AboutPageState extends State<AboutPage>
               runSpacing: 10,
               alignment: WrapAlignment.spaceBetween,
               children: [
-                for (final b in _extraBtns)
+                for (final b in _extraButtons(context.l10n))
                   PixelButton.nav(
                     label: b.label,
                     onTap: () => b.url.isEmpty
@@ -215,19 +216,19 @@ const _navBtns = <_Btn>[
   _Btn('Shop (RU)', 'https://flipper.market'),
 ];
 
-const _extraBtns = <_Btn>[
-  _Btn('App GitHub', 'https://github.com/apfxtech/qUnleashed'),
+List<_Btn> _extraButtons(L10n s) => <_Btn>[
+  _Btn(s.aboutAppGithub, 'https://github.com/apfxtech/qUnleashed'),
   _Btn(
-    'Donate Firmware',
+    s.aboutDonateFirmware,
     'https://github.com/DarkFlippers/unleashed-firmware/blob/dev/ReadMe.md#%EF%B8%8F-please-support-development-of-the-project',
   ),
-  _Btn('Donate App', 'https://boosty.to/apfxtech/donate'),
+  _Btn(s.aboutDonateApp, 'https://boosty.to/apfxtech/donate'),
   _Btn('Telegram RU', 'https://t.me/flipperzero_unofficial_ru'),
   _Btn('Telegram EN', 'https://t.me/flipperzero_unofficial'),
-  _Btn('Unleashed Web', 'https://flipperunleashed.com/'),
-  _Btn('ApertureFox Web', 'https://aperturefox.ru/'),
-  _Btn('Dev Builds', 'https://dev.unleashedflip.com'),
-  _Btn('Web Updater', 'https://web.unleashedflip.com/'),
+  _Btn(s.aboutUnleashedWeb, 'https://flipperunleashed.com/'),
+  _Btn(s.aboutApertureFoxWeb, 'https://aperturefox.ru/'),
+  _Btn(s.aboutDevBuilds, 'https://dev.unleashedflip.com'),
+  _Btn(s.aboutWebUpdater, 'https://web.unleashedflip.com/'),
   _Btn('Flipper Lab', 'https://lab.flipper.net/'),
-  _Btn('License', ''),
+  _Btn(s.aboutLicense, ''),
 ];

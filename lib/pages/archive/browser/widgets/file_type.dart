@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../services/localization/l10n.dart';
 import '../../../../theme/theme.dart';
 import '../controller.dart';
 
@@ -128,28 +129,28 @@ String _ext(String name) {
 
 /// Short human-readable type label (e.g. "Sub-GHz", "NFC", "Folder").
 String fileTypeLabel(RemoteEntry e) {
-  if (e.isDir) return 'Folder';
+  if (e.isDir) return l10n.typeFolder;
   switch (_ext(e.name)) {
     case 'sub':
-      return 'Sub-GHz';
+      return l10n.typeSubghz;
     case 'nfc':
       return 'NFC';
     case 'ir':
-      return 'Infrared';
+      return l10n.typeInfrared;
     case 'rfid':
-      return 'RFID 125kHz';
+      return l10n.typeRfid;
     case 'ibtn':
       return 'iButton';
     case 'bad':
     case 'badusb':
-      return 'BadUSB';
+      return l10n.typeBadusb;
     case 'u2f':
-      return 'U2F';
+      return l10n.typeU2f;
     case 'fap':
-      return 'Application';
+      return l10n.typeApplication;
     case '':
-      return 'File';
+      return l10n.typeFile;
     default:
-      return '${_ext(e.name).toUpperCase()} file';
+      return l10n.typeExtFile(_ext(e.name).toUpperCase());
   }
 }

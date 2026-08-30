@@ -1,3 +1,4 @@
+import '../../../../services/localization/l10n.dart';
 import 'dart:async';
 
 import 'package:flipperlib/flipperlib.dart';
@@ -94,7 +95,7 @@ class _StorageUsageCardsState extends State<StorageUsageCards> {
 
     final entries = [
       _StorageEntry(
-        title: 'Internal',
+        title: l10n.storageInternal,
         icon: Icons.smartphone,
         onTap: widget.onOpenInternal,
         // `/int` capacity isn't exposed, so no fill bar — just used size.
@@ -102,7 +103,7 @@ class _StorageUsageCardsState extends State<StorageUsageCards> {
         usageText: intUsed,
       ),
       _StorageEntry(
-        title: 'External',
+        title: l10n.storageExternal,
         icon: Icons.sd_card,
         onTap: widget.onOpenExternal,
         percent: extPercent,

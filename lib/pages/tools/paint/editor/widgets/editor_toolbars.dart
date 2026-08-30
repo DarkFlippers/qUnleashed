@@ -1,3 +1,4 @@
+import '../../../../../services/localization/l10n.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -27,7 +28,7 @@ class EditorAppBar extends StatelessWidget implements PreferredSizeWidget {
   @override
   Widget build(BuildContext context) {
     return QPageAppBar(
-      title: 'Pixel Draw',
+      title: context.l10n.paintTitle,
       leading: IconButton(
         onPressed: onClose,
         icon: const Icon(Icons.arrow_back),
@@ -36,17 +37,17 @@ class EditorAppBar extends StatelessWidget implements PreferredSizeWidget {
         QPageAppBarAction(
           onPressed: ctrl.canUndo ? ctrl.undo : null,
           icon: const Icon(Icons.undo),
-          tooltip: 'Undo',
+          tooltip: context.l10n.paintUndo,
         ),
         QPageAppBarAction(
           onPressed: ctrl.canRedo ? ctrl.redo : null,
           icon: const Icon(Icons.redo),
-          tooltip: 'Redo',
+          tooltip: context.l10n.paintRedo,
         ),
         QPageAppBarAction(
           onPressed: onExport,
           icon: const Icon(Icons.save_outlined),
-          tooltip: 'Save',
+          tooltip: context.l10n.commonSave,
         ),
       ],
     );
@@ -83,7 +84,7 @@ class ColorAndZoomRow extends StatelessWidget {
             active: ctrl.showGrid,
             colors: colors,
             onTap: () => ctrl.setShowGrid(!ctrl.showGrid),
-            tooltip: 'Toggle grid',
+            tooltip: context.l10n.paintToggleGrid,
           ),
           const SizedBox(width: 4),
           IconToolButton(
@@ -91,7 +92,7 @@ class ColorAndZoomRow extends StatelessWidget {
             active: false,
             colors: colors,
             onTap: ctrl.zoomOut,
-            tooltip: 'Zoom out',
+            tooltip: context.l10n.paintZoomOut,
           ),
           const SizedBox(width: 4),
           GestureDetector(
@@ -118,7 +119,7 @@ class ColorAndZoomRow extends StatelessWidget {
             active: false,
             colors: colors,
             onTap: ctrl.zoomIn,
-            tooltip: 'Zoom in',
+            tooltip: context.l10n.paintZoomIn,
           ),
         ],
       ),
@@ -135,11 +136,11 @@ class ToolRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final drawTools = [
-      (DrawTool.pencil, Icons.edit_outlined, 'Pencil', null as Matrix4?),
-      (DrawTool.fill, Icons.format_color_fill, 'Fill', null),
-      (DrawTool.line, Icons.remove, 'Line', Matrix4.rotationZ(-math.pi / 4)),
-      (DrawTool.rect, Icons.crop_square, 'Rectangle', null),
-      (DrawTool.ellipse, Icons.radio_button_unchecked, 'Ellipse', null),
+      (DrawTool.pencil, Icons.edit_outlined, context.l10n.paintToolPencil, null as Matrix4?),
+      (DrawTool.fill, Icons.format_color_fill, context.l10n.paintToolFill, null),
+      (DrawTool.line, Icons.remove, context.l10n.paintToolLine, Matrix4.rotationZ(-math.pi / 4)),
+      (DrawTool.rect, Icons.crop_square, context.l10n.paintToolRectangle, null),
+      (DrawTool.ellipse, Icons.radio_button_unchecked, context.l10n.paintToolEllipse, null),
     ];
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -165,7 +166,7 @@ class ToolRow extends StatelessWidget {
               active: ctrl.showOnionSkin,
               colors: colors,
               onTap: () => ctrl.setShowOnionSkin(!ctrl.showOnionSkin),
-              tooltip: 'Onion skin',
+              tooltip: context.l10n.paintOnionSkin,
             ),
           ),
         ],
@@ -191,7 +192,7 @@ class OpsRow extends StatelessWidget {
               icon: Icons.flip,
               colors: colors,
               onTap: ctrl.flipH,
-              tooltip: 'Flip horizontal',
+              tooltip: context.l10n.paintFlipHorizontal,
             ),
           ),
           const SizedBox(width: 6),
@@ -201,7 +202,7 @@ class OpsRow extends StatelessWidget {
               iconTransform: Matrix4.rotationZ(math.pi / 2),
               colors: colors,
               onTap: ctrl.flipV,
-              tooltip: 'Flip vertical',
+              tooltip: context.l10n.paintFlipVertical,
             ),
           ),
           const SizedBox(width: 6),
@@ -210,7 +211,7 @@ class OpsRow extends StatelessWidget {
               icon: Icons.contrast,
               colors: colors,
               onTap: ctrl.invert,
-              tooltip: 'Invert',
+              tooltip: context.l10n.paintInvert,
             ),
           ),
           const SizedBox(width: 6),
@@ -219,7 +220,7 @@ class OpsRow extends StatelessWidget {
               icon: Icons.delete_outline,
               colors: colors,
               onTap: ctrl.clearFrame,
-              tooltip: 'Clear',
+              tooltip: context.l10n.commonClear,
             ),
           ),
         ],
@@ -249,7 +250,7 @@ class ExportRow extends StatelessWidget {
           Expanded(
             child: ExportButton(
               icon: Icons.upload_outlined,
-              label: 'Export',
+              label: context.l10n.paintExport,
               colors: colors,
               onTap: onExport,
             ),
@@ -258,7 +259,7 @@ class ExportRow extends StatelessWidget {
           Expanded(
             child: ExportButton(
               icon: Icons.download_outlined,
-              label: 'Import',
+              label: context.l10n.paintImport,
               colors: colors,
               onTap: onImport,
             ),

@@ -1,3 +1,4 @@
+import '../../../services/localization/l10n.dart';
 import 'dart:async';
 
 import 'package:flipperlib/flipperlib.dart';
@@ -139,7 +140,7 @@ class DeviceController extends ChangeNotifier {
       }
       final device = await _resolveKnown(known);
       if (device == null) {
-        throw StateError('Device not found: ${known.name}');
+        throw StateError(l10n.deviceErrorNotFound(known.name));
       }
       await connect(device);
     } finally {

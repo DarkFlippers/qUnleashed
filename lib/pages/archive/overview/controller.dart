@@ -1,3 +1,4 @@
+import '../../../services/localization/l10n.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io' as io;
@@ -233,7 +234,7 @@ class ArchiveController extends ChangeNotifier {
     }
     final name = _client.getName();
     if (name == null || name.isEmpty) {
-      _lastError = 'Device metadata does not contain hardware name';
+      _lastError = l10n.archiveNoHardwareName;
       LogService.log('[Archive] device metadata has no hardware name');
       notifyListeners();
       return false;
@@ -1088,7 +1089,7 @@ class ArchiveController extends ChangeNotifier {
     if (failed > 0) {
       final ok = pendingIds.length - failed;
       _lastError =
-          'Downloaded $ok/${pendingIds.length}; $failed failed'
+          '${l10n.archiveDownloadedSummary(ok, pendingIds.length, failed)}'
           '${_lastReadError == null ? '' : ': $_lastReadError'}';
       LogService.log('[Archive] $_lastError');
     }
@@ -1132,7 +1133,7 @@ class ArchiveController extends ChangeNotifier {
   Future<void> restoreKey(ArchiveKey key) async {
     if (!key.isDeleted) return;
     if (!_client.isConnected) {
-      _lastError = 'Connect a device to restore';
+      _lastError = l10n.archiveConnectToRestore;
       notifyListeners();
       return;
     }
@@ -1158,7 +1159,7 @@ class ArchiveController extends ChangeNotifier {
   /// succeeds, so the list empties one file at a time rather than all at once.
   Future<void> restoreKeys(Iterable<ArchiveKey> keys) async {
     if (!_client.isConnected) {
-      _lastError = 'Connect a device to restore';
+      _lastError = l10n.archiveConnectToRestore;
       notifyListeners();
       return;
     }
@@ -1232,7 +1233,7 @@ class ArchiveController extends ChangeNotifier {
       );
       return true;
     } catch (e) {
-      _lastReadError = 'save ${key.fileName} failed: $e';
+      _lastReadError = l10n.archiveSaveFailed(key.fileName, '$e');
       LogService.log('[Archive] ${_lastReadError!}');
       return false;
     }
@@ -1263,7 +1264,7 @@ class ArchiveController extends ChangeNotifier {
 
   Future<bool> writeKeyBytes(ArchiveKey k, List<int> bytes) async {
     if (!_client.isConnected) {
-      _lastError = 'Connect a device to save';
+      _lastError = l10n.archiveConnectToSave;
       notifyListeners();
       return false;
     }
@@ -1320,7 +1321,7 @@ class ArchiveController extends ChangeNotifier {
         timeout: const Duration(minutes: 5),
       );
     } catch (e) {
-      _lastReadError = 'read $path failed: $e';
+      _lastReadError = l10n.archiveReadFailed(path, '$e');
       if (logErrors) {
         LogService.log('[Archive] ${_lastReadError!}');
       }

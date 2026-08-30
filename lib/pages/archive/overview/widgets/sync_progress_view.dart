@@ -1,5 +1,6 @@
 ﻿import 'package:flutter/material.dart';
 
+import '../../../../services/localization/l10n.dart';
 import '../../../../theme/theme.dart';
 import '../controller.dart';
 
@@ -35,10 +36,14 @@ class SyncProgressView extends StatelessWidget {
               Expanded(
                 child: Text(
                   p == null
-                      ? 'Syncing...'
+                      ? context.l10n.archiveSyncing
                       : p.phase == SyncPhase.checking
-                      ? 'Syncing ${p.current}/${p.total}  ${p.fileName}'
-                      : 'Download ${p.current}/${p.total}  ${p.fileName}'
+                      ? context.l10n.archiveSyncingProgress(
+                          p.current,
+                          p.total,
+                          p.fileName,
+                        )
+                      : '${context.l10n.archiveDownloadProgress(p.current, p.total, p.fileName)}'
                             '${filePercent == null ? '' : '  $filePercent%'}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,

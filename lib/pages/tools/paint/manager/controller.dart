@@ -1,3 +1,4 @@
+import '../../../../services/localization/l10n.dart';
 import 'dart:async';
 import 'dart:io' as io;
 
@@ -109,7 +110,7 @@ class ProjectManagerController extends ChangeNotifier {
         VirtualDisplaySession.instance.clearPreview();
       }
     } catch (e) {
-      _error = 'Delete failed: $e';
+      _error = l10n.paintDeleteFailed('$e');
       LogService.log('[ProjectManager] delete failed: $e');
     }
     await loadAll(silent: true);
@@ -120,13 +121,13 @@ class ProjectManagerController extends ChangeNotifier {
   Future<void> importFromDevice() async {
     if (_importing) return;
     if (!_client.isConnected) {
-      _error = 'No device connected';
+      _error = l10n.paintNoDevice;
       _notify();
       return;
     }
     _importing = true;
     _importProgress = null;
-    _importStatus = 'Listing /ext/dolphin…';
+    _importStatus = l10n.paintDeviceListing;
     _error = null;
     _notify();
 
@@ -137,7 +138,7 @@ class ProjectManagerController extends ChangeNotifier {
       await _collectRemoteFiles(kDeviceDolphinPath, '', files);
 
       if (files.isEmpty) {
-        _error = 'No animations found on device';
+        _error = l10n.paintNoAnimationsOnDevice;
         return;
       }
 
@@ -164,7 +165,7 @@ class ProjectManagerController extends ChangeNotifier {
         for (final f in groups[key]!) {
           fileIndex++;
           _importStatus =
-              'Downloading ${f.relPath} ($fileIndex/${files.length})';
+              l10n.paintDownloadingFile(f.relPath, fileIndex, files.length);
           _notify();
 
           final bytes = await _client.storageReadChunked(
@@ -197,7 +198,7 @@ class ProjectManagerController extends ChangeNotifier {
         if (key.isNotEmpty) await loadAll(silent: true);
       }
     } catch (e) {
-      _error = 'Import failed: $e';
+      _error = l10n.paintImportFailed('$e');
       LogService.log('[ProjectManager] import failed: $e');
     } finally {
       _importing = false;

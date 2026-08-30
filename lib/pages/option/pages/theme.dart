@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
 
 import '../../../components/cardlist.dart';
+import '../../../services/localization/l10n.dart';
 import '../../../theme/theme.dart';
 
 class ThemeSettingsPage extends StatelessWidget {
   const ThemeSettingsPage({super.key});
 
-  static const Map<QThemeMode, String> _subtitles = {
-    QThemeMode.firmware: 'Follow the connected firmware.',
-    QThemeMode.system: 'Follow the device light/dark setting.',
-    QThemeMode.dark: 'Always use the dark theme.',
-    QThemeMode.light: 'Always use the light theme.',
+  static String _subtitle(L10n s, QThemeMode mode) => switch (mode) {
+    QThemeMode.firmware => s.themeModeFirmwareSubtitle,
+    QThemeMode.system => s.themeModeSystemSubtitle,
+    QThemeMode.dark => s.themeModeDarkSubtitle,
+    QThemeMode.light => s.themeModeLightSubtitle,
   };
 
   Widget _tile(BuildContext context, QThemeMode mode, bool selected) {
@@ -33,7 +34,7 @@ class ThemeSettingsPage extends StatelessWidget {
               ),
               const SizedBox(height: 2),
               Text(
-                _subtitles[mode]!,
+                _subtitle(context.l10n, mode),
                 style: TextStyle(
                   color: colors.textMuted,
                   fontSize: 12,
@@ -66,7 +67,7 @@ class ThemeSettingsPage extends StatelessWidget {
         return Scaffold(
           backgroundColor: colors.background,
           appBar: AppBar(
-            title: const Text('Theme'),
+            title: Text(context.l10n.settingsThemeTitle),
             backgroundColor: colors.background,
             surfaceTintColor: colors.transparent,
           ),

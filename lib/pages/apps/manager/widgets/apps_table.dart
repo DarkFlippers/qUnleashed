@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../services/localization/l10n.dart';
 import '../../../../components/filelist/columns.dart';
 import '../../../../components/filelist/progress_fill.dart';
 import '../../../../components/filelist/table.dart';
@@ -53,16 +54,16 @@ List<SizedColumn> appsTableColumns(double avail) {
       .clamp(kNameMinWidth, double.infinity)
       .toDouble();
   return [
-    (col: const ArchiveCol('Name / Folder', 0, sortKey: 'name'), width: nameW),
+    (col: ArchiveCol(l10n.colNameFolder, 0, sortKey: 'name'), width: nameW),
     if (showFolder)
       (
-        col: const ArchiveCol('Folder', folderW, sortKey: 'folder'),
+        col: ArchiveCol(l10n.colFolder, folderW, sortKey: 'folder'),
         width: folderW,
       ),
     if (showVersion)
       (
-        col: const ArchiveCol(
-          'Version',
+        col: ArchiveCol(
+          l10n.colVersion,
           versionW,
           sortKey: 'version',
           right: true,
@@ -70,7 +71,7 @@ List<SizedColumn> appsTableColumns(double avail) {
         width: versionW,
       ),
     (
-      col: const ArchiveCol('Size', sizeW, sortKey: 'size', right: true),
+      col: ArchiveCol(l10n.colSize, sizeW, sortKey: 'size', right: true),
       width: sizeW,
     ),
   ];

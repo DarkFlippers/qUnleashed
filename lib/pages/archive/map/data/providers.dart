@@ -1,3 +1,7 @@
+import '../../../../services/localization/l10n.dart';
+
+const String kCartoProviderId = 'carto';
+
 class MapTileDesign {
   const MapTileDesign({
     required this.id,
@@ -72,81 +76,81 @@ class MapTileProvider {
   }
 }
 
-const MapTileProvider kCartoProvider = MapTileProvider(
+MapTileProvider cartoProvider(L10n s) => MapTileProvider(
   id: 'carto',
   label: 'CARTO',
-  description: 'Voyager, Positron and Dark Matter basemaps',
+  description: s.mapProviderCartoDesc,
   attribution: '© OpenStreetMap contributors, © CARTO',
   template:
       'https://{s}.basemaps.cartocdn.com/{design}/{z}/{x}/{y}{r}.png'
       '?api_key={key}',
   subdomains: <String>['a', 'b', 'c', 'd'],
   retina: true,
-  keyHint: 'The app ships a key for these tiles',
+  keyHint: s.mapKeyHintCarto,
   signupUrl: 'https://carto.com/basemaps',
   designs: <MapTileDesign>[
     MapTileDesign(
       id: 'rastertiles/voyager',
       label: 'Voyager',
-      description: 'Colored streets, labels on top',
+      description: s.mapDesignVoyagerDesc,
       dark: false,
     ),
     MapTileDesign(
       id: 'rastertiles/voyager_labels_under',
       label: 'Voyager, labels under',
-      description: 'Same palette, roads drawn over the labels',
+      description: s.mapDesignVoyagerLabelsUnderDesc,
       dark: false,
     ),
     MapTileDesign(
       id: 'rastertiles/voyager_nolabels',
       label: 'Voyager, no labels',
-      description: 'Colored streets, nothing written on them',
+      description: s.mapDesignVoyagerNoLabelsDesc,
       dark: false,
     ),
     MapTileDesign(
       id: 'light_all',
       label: 'Positron',
-      description: 'Pale grey basemap, pins stand out',
+      description: s.mapDesignPositronDesc,
       dark: false,
     ),
     MapTileDesign(
       id: 'light_nolabels',
       label: 'Positron, no labels',
-      description: 'Pale grey basemap without names',
+      description: s.mapDesignPositronNoLabelsDesc,
       dark: false,
     ),
     MapTileDesign(
       id: 'dark_all',
       label: 'Dark Matter',
-      description: 'Black basemap with light labels',
+      description: s.mapDesignDarkMatterDesc,
       dark: true,
     ),
     MapTileDesign(
       id: 'dark_nolabels',
       label: 'Dark Matter, no labels',
-      description: 'Black basemap without names',
+      description: s.mapDesignDarkMatterNoLabelsDesc,
       dark: true,
     ),
   ],
 );
 
-const MapTileProvider kOsmProvider = MapTileProvider(
+MapTileProvider osmProvider(L10n s) => MapTileProvider(
   id: 'osm',
   label: 'OpenStreetMap',
-  description: 'Community tiles, no key needed',
+  description: s.mapProviderOsmDesc,
   attribution: '© OpenStreetMap contributors',
   designs: <MapTileDesign>[
     MapTileDesign(
       id: 'standard',
       label: 'Standard',
-      description: 'The classic osm.org rendering',
+      description: s.mapDesignOsmStandardDesc,
       dark: false,
       template: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
     ),
     MapTileDesign(
       id: 'de',
       label: 'German style',
-      description: 'Softer colors, German label rendering',
+      description: s.mapDesignOsmGermanDesc,
       dark: false,
       template: 'https://tile.openstreetmap.de/{z}/{x}/{y}.png',
       maxZoom: 18,
@@ -154,7 +158,7 @@ const MapTileProvider kOsmProvider = MapTileProvider(
     MapTileDesign(
       id: 'hot',
       label: 'Humanitarian',
-      description: 'High contrast, built for field mapping',
+      description: s.mapDesignOsmHotDesc,
       dark: false,
       template: 'https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png',
       subdomains: <String>['a', 'b'],
@@ -163,7 +167,7 @@ const MapTileProvider kOsmProvider = MapTileProvider(
     MapTileDesign(
       id: 'cyclosm',
       label: 'CyclOSM',
-      description: 'Cycling infrastructure and terrain',
+      description: s.mapDesignCyclOsmDesc,
       dark: false,
       template:
           'https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png',
@@ -173,10 +177,10 @@ const MapTileProvider kOsmProvider = MapTileProvider(
   ],
 );
 
-const MapTileProvider kOpenTopoProvider = MapTileProvider(
+MapTileProvider openTopoProvider(L10n s) => MapTileProvider(
   id: 'opentopo',
   label: 'OpenTopoMap',
-  description: 'Topographic relief with contour lines, no key',
+  description: s.mapProviderOpenTopoDesc,
   attribution: '© OpenStreetMap contributors, SRTM · © OpenTopoMap (CC-BY-SA)',
   subdomains: <String>['a', 'b', 'c'],
   maxZoom: 17,
@@ -184,7 +188,7 @@ const MapTileProvider kOpenTopoProvider = MapTileProvider(
     MapTileDesign(
       id: 'topo',
       label: 'Topographic',
-      description: 'Contours, hillshade and trails',
+      description: s.mapDesignTopographicDesc,
       dark: false,
       template: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
       subdomains: <String>['a', 'b', 'c'],
@@ -193,10 +197,10 @@ const MapTileProvider kOpenTopoProvider = MapTileProvider(
   ],
 );
 
-const MapTileProvider kEsriProvider = MapTileProvider(
+MapTileProvider esriProvider(L10n s) => MapTileProvider(
   id: 'esri',
   label: 'Esri',
-  description: 'Satellite, topo and canvas basemaps, no key',
+  description: s.mapProviderEsriDesc,
   attribution: 'Tiles © Esri and the GIS user community',
   template:
       'https://server.arcgisonline.com/ArcGIS/rest/services/{design}'
@@ -205,42 +209,42 @@ const MapTileProvider kEsriProvider = MapTileProvider(
     MapTileDesign(
       id: 'World_Imagery',
       label: 'World Imagery',
-      description: 'Satellite and aerial photography',
+      description: s.mapDesignEsriImageryDesc,
       dark: true,
     ),
     MapTileDesign(
       id: 'World_Street_Map',
       label: 'World Street Map',
-      description: 'General purpose street map',
+      description: s.mapDesignEsriStreetsDesc,
       dark: false,
     ),
     MapTileDesign(
       id: 'World_Topo_Map',
       label: 'World Topo Map',
-      description: 'Terrain with roads and place names',
+      description: s.mapDesignEsriTopoDesc,
       dark: false,
     ),
     MapTileDesign(
       id: 'Canvas/World_Light_Gray_Base',
       label: 'Light Gray Canvas',
-      description: 'Muted backdrop for data on top, up to zoom 16',
+      description: s.mapDesignEsriLightCanvasDesc,
       dark: false,
       maxZoom: 16,
     ),
     MapTileDesign(
       id: 'Canvas/World_Dark_Gray_Base',
       label: 'Dark Gray Canvas',
-      description: 'Dark muted backdrop for data on top, up to zoom 16',
+      description: s.mapDesignEsriDarkCanvasDesc,
       dark: true,
       maxZoom: 16,
     ),
   ],
 );
 
-const MapTileProvider kStadiaProvider = MapTileProvider(
+MapTileProvider stadiaProvider(L10n s) => MapTileProvider(
   id: 'stadia',
   label: 'Stadia Maps',
-  description: 'Alidade, Outdoors and the Stamen styles',
+  description: s.mapProviderStadiaDesc,
   attribution: '© Stadia Maps, © Stamen Design, © OpenMapTiles, © OSM',
   template:
       'https://tiles.stadiamaps.com/tiles/{design}/{z}/{x}/{y}{r}.png'
@@ -248,43 +252,43 @@ const MapTileProvider kStadiaProvider = MapTileProvider(
   retina: true,
   maxZoom: 20,
   needsKey: true,
-  keyHint: 'Free tier after signing up at stadiamaps.com',
+  keyHint: s.mapKeyHintStadia,
   signupUrl: 'https://client.stadiamaps.com/signup/',
   designs: <MapTileDesign>[
     MapTileDesign(
       id: 'alidade_smooth',
       label: 'Alidade Smooth',
-      description: 'Clean light basemap',
+      description: s.mapDesignAlidadeSmoothDesc,
       dark: false,
     ),
     MapTileDesign(
       id: 'outdoors',
       label: 'Outdoors',
-      description: 'Trails, terrain and parks',
+      description: s.mapDesignStadiaOutdoorsDesc,
       dark: false,
     ),
     MapTileDesign(
       id: 'osm_bright',
       label: 'OSM Bright',
-      description: 'Bright general purpose rendering',
+      description: s.mapDesignOsmBrightDesc,
       dark: false,
     ),
     MapTileDesign(
       id: 'stamen_toner_lite',
       label: 'Stamen Toner Lite',
-      description: 'Light high contrast black and white',
+      description: s.mapDesignStamenTonerLiteDesc,
       dark: false,
     ),
     MapTileDesign(
       id: 'stamen_terrain',
       label: 'Stamen Terrain',
-      description: 'Hill shading with soft colors',
+      description: s.mapDesignStamenTerrainDesc,
       dark: false,
     ),
     MapTileDesign(
       id: 'stamen_watercolor',
       label: 'Stamen Watercolor',
-      description: 'Painted look, labels not included',
+      description: s.mapDesignStamenWatercolorDesc,
       dark: false,
       template:
           'https://tiles.stadiamaps.com/tiles/stamen_watercolor'
@@ -295,19 +299,19 @@ const MapTileProvider kStadiaProvider = MapTileProvider(
     MapTileDesign(
       id: 'alidade_smooth_dark',
       label: 'Alidade Smooth Dark',
-      description: 'Clean dark basemap',
+      description: s.mapDesignAlidadeSmoothDarkDesc,
       dark: true,
     ),
     MapTileDesign(
       id: 'stamen_toner',
       label: 'Stamen Toner',
-      description: 'Stark black and white',
+      description: s.mapDesignStamenTonerDesc,
       dark: true,
     ),
     MapTileDesign(
       id: 'alidade_satellite',
       label: 'Alidade Satellite',
-      description: 'Satellite imagery',
+      description: s.mapDesignAlidadeSatelliteDesc,
       dark: true,
       template:
           'https://tiles.stadiamaps.com/tiles/alidade_satellite'
@@ -316,10 +320,10 @@ const MapTileProvider kStadiaProvider = MapTileProvider(
   ],
 );
 
-const MapTileProvider kThunderforestProvider = MapTileProvider(
+MapTileProvider thunderforestProvider(L10n s) => MapTileProvider(
   id: 'thunderforest',
   label: 'Thunderforest',
-  description: 'OpenCycleMap, Transport, Landscape and friends',
+  description: s.mapProviderThunderforestDesc,
   attribution: 'Maps © Thunderforest, data © OpenStreetMap contributors',
   template:
       'https://{s}.tile.thunderforest.com/{design}/{z}/{x}/{y}.png'
@@ -327,76 +331,76 @@ const MapTileProvider kThunderforestProvider = MapTileProvider(
   subdomains: <String>['a', 'b', 'c'],
   maxZoom: 22,
   needsKey: true,
-  keyHint: 'Free hobby plan at thunderforest.com',
+  keyHint: s.mapKeyHintThunderforest,
   signupUrl: 'https://www.thunderforest.com/pricing/',
   designs: <MapTileDesign>[
     MapTileDesign(
       id: 'cycle',
       label: 'OpenCycleMap',
-      description: 'Cycle routes and contours',
+      description: s.mapDesignOpenCycleMapDesc,
       dark: false,
     ),
     MapTileDesign(
       id: 'transport',
       label: 'Transport',
-      description: 'Public transport lines and stops',
+      description: s.mapDesignTransportDesc,
       dark: false,
     ),
     MapTileDesign(
       id: 'landscape',
       label: 'Landscape',
-      description: 'Terrain, forests and land use',
+      description: s.mapDesignLandscapeDesc,
       dark: false,
     ),
     MapTileDesign(
       id: 'outdoors',
       label: 'Outdoors',
-      description: 'Hiking and outdoor detail',
+      description: s.mapDesignThunderforestOutdoorsDesc,
       dark: false,
     ),
     MapTileDesign(
       id: 'pioneer',
       label: 'Pioneer',
-      description: 'Vintage tinted cartography',
+      description: s.mapDesignPioneerDesc,
       dark: false,
     ),
     MapTileDesign(
       id: 'neighbourhood',
       label: 'Neighbourhood',
-      description: 'Local amenities in pastel colors',
+      description: s.mapDesignNeighbourhoodDesc,
       dark: false,
     ),
     MapTileDesign(
       id: 'atlas',
       label: 'Atlas',
-      description: 'Muted reference style',
+      description: s.mapDesignAtlasDesc,
       dark: false,
     ),
     MapTileDesign(
       id: 'transport-dark',
       label: 'Transport Dark',
-      description: 'Dark transport network',
+      description: s.mapDesignTransportDarkDesc,
       dark: true,
     ),
     MapTileDesign(
       id: 'spinal-map',
       label: 'Spinal Map',
-      description: 'Black and red, turned up to eleven',
+      description: s.mapDesignSpinalMapDesc,
       dark: true,
     ),
     MapTileDesign(
       id: 'mobile-atlas',
       label: 'Mobile Atlas',
-      description: 'Dark reference style for small screens',
+      description: s.mapDesignMobileAtlasDesc,
       dark: true,
     ),
   ],
 );
 
-const MapTileProvider kMapTilerProvider = MapTileProvider(
+MapTileProvider mapTilerProvider(L10n s) => MapTileProvider(
   id: 'maptiler',
   label: 'MapTiler',
-  description: 'Streets, Topo, Satellite and Dataviz',
+  description: s.mapProviderMapTilerDesc,
   attribution: '© MapTiler, © OpenStreetMap contributors',
   template:
       'https://api.maptiler.com/maps/{design}/{z}/{x}/{y}{r}.png'
@@ -404,55 +408,55 @@ const MapTileProvider kMapTilerProvider = MapTileProvider(
   retina: true,
   maxZoom: 22,
   needsKey: true,
-  keyHint: 'Free tier key from maptiler.com',
+  keyHint: s.mapKeyHintMapTiler,
   signupUrl: 'https://cloud.maptiler.com/account/keys/',
   designs: <MapTileDesign>[
     MapTileDesign(
       id: 'streets-v2',
       label: 'Streets',
-      description: 'Detailed street cartography',
+      description: s.mapDesignMapTilerStreetsDesc,
       dark: false,
     ),
     MapTileDesign(
       id: 'basic-v2',
       label: 'Basic',
-      description: 'Simplified base for data on top',
+      description: s.mapDesignMapTilerBasicDesc,
       dark: false,
     ),
     MapTileDesign(
       id: 'bright-v2',
       label: 'Bright',
-      description: 'High contrast colorful streets',
+      description: s.mapDesignMapTilerBrightDesc,
       dark: false,
     ),
     MapTileDesign(
       id: 'outdoor-v2',
       label: 'Outdoor',
-      description: 'Trails, contours and terrain',
+      description: s.mapDesignMapTilerOutdoorDesc,
       dark: false,
     ),
     MapTileDesign(
       id: 'topo-v2',
       label: 'Topo',
-      description: 'Topographic with relief shading',
+      description: s.mapDesignMapTilerTopoDesc,
       dark: false,
     ),
     MapTileDesign(
       id: 'winter-v2',
       label: 'Winter',
-      description: 'Snow-toned outdoor style',
+      description: s.mapDesignMapTilerWinterDesc,
       dark: false,
     ),
     MapTileDesign(
       id: 'dataviz',
       label: 'Dataviz',
-      description: 'Neutral light backdrop',
+      description: s.mapDesignMapTilerDatavizDesc,
       dark: false,
     ),
     MapTileDesign(
       id: 'satellite',
       label: 'Satellite',
-      description: 'Aerial imagery',
+      description: s.mapDesignMapTilerSatelliteDesc,
       dark: true,
       template:
           'https://api.maptiler.com/maps/satellite/{z}/{x}/{y}.jpg'
@@ -463,22 +467,22 @@ const MapTileProvider kMapTilerProvider = MapTileProvider(
     MapTileDesign(
       id: 'dataviz-dark',
       label: 'Dataviz Dark',
-      description: 'Neutral dark backdrop',
+      description: s.mapDesignMapTilerDatavizDarkDesc,
       dark: true,
     ),
     MapTileDesign(
       id: 'toner-v2',
       label: 'Toner',
-      description: 'Stark black and white',
+      description: s.mapDesignMapTilerTonerDesc,
       dark: true,
     ),
   ],
 );
 
-const MapTileProvider kMapboxProvider = MapTileProvider(
+MapTileProvider mapboxProvider(L10n s) => MapTileProvider(
   id: 'mapbox',
   label: 'Mapbox',
-  description: 'Streets, Outdoors, Satellite and the day/night pair',
+  description: s.mapProviderMapboxDesc,
   attribution: '© Mapbox, © OpenStreetMap contributors',
   template:
       'https://api.mapbox.com/styles/v1/mapbox/{design}/tiles/256'
@@ -486,84 +490,85 @@ const MapTileProvider kMapboxProvider = MapTileProvider(
   retina: true,
   maxZoom: 22,
   needsKey: true,
-  keyHint: 'Public access token from your Mapbox account',
+  keyHint: s.mapKeyHintMapbox,
   signupUrl: 'https://account.mapbox.com/access-tokens/',
   designs: <MapTileDesign>[
     MapTileDesign(
       id: 'streets-v12',
       label: 'Streets',
-      description: 'The default Mapbox street style',
+      description: s.mapDesignMapboxStreetsDesc,
       dark: false,
     ),
     MapTileDesign(
       id: 'outdoors-v12',
       label: 'Outdoors',
-      description: 'Terrain, trails and contours',
+      description: s.mapDesignMapboxOutdoorsDesc,
       dark: false,
     ),
     MapTileDesign(
       id: 'light-v11',
       label: 'Light',
-      description: 'Muted light backdrop',
+      description: s.mapDesignMapboxLightDesc,
       dark: false,
     ),
     MapTileDesign(
       id: 'navigation-day-v1',
       label: 'Navigation Day',
-      description: 'Driving style, daylight palette',
+      description: s.mapDesignMapboxNavigationDayDesc,
       dark: false,
     ),
     MapTileDesign(
       id: 'dark-v11',
       label: 'Dark',
-      description: 'Muted dark backdrop',
+      description: s.mapDesignMapboxDarkDesc,
       dark: true,
     ),
     MapTileDesign(
       id: 'navigation-night-v1',
       label: 'Navigation Night',
-      description: 'Driving style, night palette',
+      description: s.mapDesignMapboxNavigationNightDesc,
       dark: true,
     ),
     MapTileDesign(
       id: 'satellite-v9',
       label: 'Satellite',
-      description: 'Imagery without labels',
+      description: s.mapDesignMapboxSatelliteDesc,
       dark: true,
     ),
     MapTileDesign(
       id: 'satellite-streets-v12',
       label: 'Satellite Streets',
-      description: 'Imagery with roads and labels',
+      description: s.mapDesignMapboxSatelliteStreetsDesc,
       dark: true,
     ),
   ],
 );
 
-const MapTileProvider kCustomProvider = MapTileProvider(
+MapTileProvider customProvider(L10n s) => MapTileProvider(
   id: 'custom',
-  label: 'Custom',
-  description: 'Your own tile server',
+  label: s.mapProviderCustom,
+  description: s.mapProviderCustomDesc,
   attribution: '',
   needsKey: false,
   designs: <MapTileDesign>[],
 );
 
-const List<MapTileProvider> kMapTileProviders = <MapTileProvider>[
-  kCartoProvider,
-  kOsmProvider,
-  kOpenTopoProvider,
-  kEsriProvider,
-  kStadiaProvider,
-  kThunderforestProvider,
-  kMapTilerProvider,
-  kMapboxProvider,
-  kCustomProvider,
+List<MapTileProvider> mapTileProviders(L10n s) => <MapTileProvider>[
+  cartoProvider(s),
+  osmProvider(s),
+  openTopoProvider(s),
+  esriProvider(s),
+  stadiaProvider(s),
+  thunderforestProvider(s),
+  mapTilerProvider(s),
+  mapboxProvider(s),
+  customProvider(s),
 ];
 
 MapTileProvider mapProviderById(String? id) {
-  for (final provider in kMapTileProviders) {
+  final s = l10n;
+  for (final provider in mapTileProviders(s)) {
     if (provider.id == id) return provider;
   }
-  return kCartoProvider;
+  return cartoProvider(s);
 }

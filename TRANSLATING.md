@@ -31,6 +31,20 @@ translation by hand — Crowdin overwrites them.
 }
 ```
 
+Placeholders are ICU: `{name}` is substituted, and a count that changes the
+wording needs a `plural` block so every language can pick its own forms.
+
+```json
+"filesSelected": "{count, plural, one{1 file selected} other{{count} files selected}}",
+"@filesSelected": {
+  "description": "Counts the selected files.",
+  "placeholders": { "count": { "type": "int" } }
+}
+```
+
+Because ICU reads `{` and `'` as syntax, a literal brace is wrapped in single
+quotes (`'{z}'/'{x}'`) and a literal apostrophe is doubled (`don''t`).
+
 ### Using a string
 
 Widgets read strings from the `BuildContext`:
@@ -42,7 +56,9 @@ Text(context.l10n.deviceDisconnected)
 ```
 
 Services, controllers and enum labels have no context and use the global
-accessor, which resolves against the same locale as the widget tree:
+accessor, which resolves against the same locale as the widget tree. It is also
+what `context.l10n` falls back to where no `Localizations` scope carries `L10n`,
+so a widget test that builds a bare `MaterialApp` keeps working:
 
 ```dart
 import '../services/localization/l10n.dart';
@@ -66,6 +82,20 @@ the picker as soon as Crowdin delivers its `app_<code>.arb`.
 `.arb` files in `translations/` and is not committed. Builds regenerate it automatically (`generate: true` in
 `pubspec.yaml`); run `flutter gen-l10n` by hand after editing an `.arb` if the
 IDE has not caught up.
+
+### What is not translated
+
+Some strings look like prose but are data, and translating them breaks the app:
+
+- Keys of the Flipper file formats (`Filetype:`, `Frequency`, `Lat:`, `Passive
+  frames`, the `update.fuf` fields) — they are parsed, not read.
+- Folder and app names used to build paths on the device (`Misc`, `Tools`, the
+  `flipperAppName` of each archive category).
+- `FirmwareEntry.name` in `lib/components/config.dart`, which is matched against
+  what the device reports to recognise the firmware.
+- Attribution lines of the map tile providers, which are legal notices.
+- Brand and format names: CARTO, Voyager, DuckyScript, PCM, RfRaw, KB/MB/GB.
+- Log lines and build-console output, which stay English like compiler output.
 
 ### Sync
 

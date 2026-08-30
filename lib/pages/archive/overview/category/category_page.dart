@@ -1,3 +1,4 @@
+import '../../../../services/localization/l10n.dart';
 import 'dart:async';
 import 'dart:io' as io;
 
@@ -191,13 +192,13 @@ class _CategoryPageState extends State<CategoryPage> {
       context: context,
       builder: (c) => AlertDialog(
         backgroundColor: colors.dialogBackground,
-        title: Text('Rename', style: TextStyle(color: colors.dialogText)),
+        title: Text(context.l10n.fmRename, style: TextStyle(color: colors.dialogText)),
         content: TextField(
           controller: ctrl,
           autofocus: true,
           style: TextStyle(color: colors.dialogText),
           decoration: InputDecoration(
-            hintText: 'File name',
+            hintText: context.l10n.archiveFileName,
             hintStyle: TextStyle(color: colors.textMuted),
           ),
           onSubmitted: (v) => Navigator.pop(c, v.trim()),
@@ -205,11 +206,11 @@ class _CategoryPageState extends State<CategoryPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(c),
-            child: const Text('Cancel'),
+            child: Text(context.l10n.commonCancel),
           ),
           TextButton(
             onPressed: () => Navigator.pop(c, ctrl.text.trim()),
-            child: const Text('Rename'),
+            child: Text(context.l10n.fmRename),
           ),
         ],
       ),
@@ -222,13 +223,13 @@ class _CategoryPageState extends State<CategoryPage> {
 
   String _emptyTitle() {
     final noun = _cat.itemNounPlural;
-    if (_starredOnly) return 'No starred ${_cat.title} $noun';
-    if (_filterVal != null) return 'No $noun matching filter';
-    if (_query.isNotEmpty) return 'No results for "$_query"';
+    if (_starredOnly) return l10n.archiveEmptyStarred(_cat.title, noun);
+    if (_filterVal != null) return l10n.archiveEmptyFilter(noun);
+    if (_query.isNotEmpty) return l10n.archiveEmptyQuery(_query);
     if (!_ctrl.isConnected) {
-      return 'No ${_cat.title} $noun\nConnect a device to sync';
+      return l10n.archiveEmptyConnect(_cat.title, noun);
     }
-    return 'No ${_cat.title} $noun\nPull down to sync';
+    return l10n.archiveEmptySync(_cat.title, noun);
   }
 
   @override
@@ -321,9 +322,9 @@ class _CategoryPageState extends State<CategoryPage> {
     return SyncProgressBar(
       icon: checking ? Icons.sync_rounded : Icons.download_rounded,
       label: p == null
-          ? 'Syncing…'
-          : '${checking ? 'Syncing' : 'Downloading'} '
-                '${p.current}/${p.total} · ${p.fileName}',
+          ? context.l10n.archiveSyncing
+          : '${checking ? context.l10n.archiveSyncingLabel : context.l10n.archiveDownloading}'
+                ' ${p.current}/${p.total} · ${p.fileName}',
       progress: (p == null || p.total == 0) ? 0 : p.current / p.total,
       fileProgress: p?.fileProgress,
       color: catColor,
@@ -415,13 +416,15 @@ class _CategoryPageState extends State<CategoryPage> {
     final actions = <ActionItem>[
       ActionItem(
         icon: anyUnstarred ? Icons.star_rounded : Icons.star_outline_rounded,
-        label: anyUnstarred ? 'Star' : 'Unstar',
+        label: anyUnstarred
+            ? context.l10n.archiveStar
+            : context.l10n.archiveUnstar,
         onTap: () => _bulkSetFavorite(anyUnstarred),
       ),
       if (anyLocal)
         ActionItem(
           icon: Icons.download_outlined,
-          label: 'Download',
+          label: context.l10n.fmDownload,
           onTap: () => _bulkDownload(context),
         ),
       ...KeyActionsSheet.deleteActions(
@@ -435,7 +438,7 @@ class _CategoryPageState extends State<CategoryPage> {
     await ActionsSheet.show(
       context,
       leading: QIconBadge(asset: _cat.asset, color: _cat.color, iconSize: 22),
-      title: '${keys.length} ${keys.length == 1 ? 'file' : 'files'} selected',
+      title: context.l10n.archiveFilesSelected(keys.length),
       subtitle: _cat.remoteDir,
       actions: actions,
     );
@@ -447,14 +450,14 @@ class _CategoryPageState extends State<CategoryPage> {
         .toList();
     if (keys.isEmpty) {
       context.showNotification(
-        'No local files to download',
+        context.l10n.archiveNoLocalFiles,
         type: QNotificationType.warning,
       );
       return;
     }
 
     final dir = await FilePicker.platform.getDirectoryPath(
-      dialogTitle: 'Save ${keys.length} ${keys.length == 1 ? 'file' : 'files'}',
+      dialogTitle: context.l10n.archiveSaveFiles(keys.length),
     );
     if (dir == null) return;
 
@@ -473,8 +476,8 @@ class _CategoryPageState extends State<CategoryPage> {
     if (!context.mounted) return;
     context.showNotification(
       saved == keys.length
-          ? 'Saved $saved ${saved == 1 ? 'file' : 'files'}'
-          : 'Saved $saved of ${keys.length}',
+          ? context.l10n.archiveSavedFiles(saved)
+          : context.l10n.archiveSavedPartial(saved, keys.length),
       type: saved == keys.length
           ? QNotificationType.good
           : QNotificationType.warning,

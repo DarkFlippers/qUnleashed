@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../../components/cardlist.dart';
 import '../../../components/navigation.dart';
+import '../../../services/localization/l10n.dart';
 import '../../../theme/theme.dart';
 import '../../../services/assembler/controller.dart';
 import '../../../services/assembler/remote_build_service.dart';
@@ -30,31 +31,39 @@ class AssemblerSettingsPage extends StatefulWidget {
 class _AssemblerSettingsPageState extends State<AssemblerSettingsPage> {
   final AssemblerController _ctrl = AssemblerController.instance;
 
-  static const Map<UfbtUpdateChannel, String> _channelTitles = {
-    UfbtUpdateChannel.release: 'Release',
-    UfbtUpdateChannel.dev: 'Development',
-  };
+  static String _channelTitle(L10n s, UfbtUpdateChannel channel) =>
+      switch (channel) {
+        UfbtUpdateChannel.release => s.fliblerChannelRelease,
+        UfbtUpdateChannel.rc => s.fliblerChannelRc,
+        UfbtUpdateChannel.dev => s.fliblerChannelDev,
+      };
 
-  static const Map<UfbtUpdateChannel, String> _channelSubtitles = {
-    UfbtUpdateChannel.release: 'Stable SDK, matches released firmware.',
-    UfbtUpdateChannel.dev: 'Latest builds, may be unstable.',
-  };
+  static String _channelSubtitle(L10n s, UfbtUpdateChannel channel) =>
+      switch (channel) {
+        UfbtUpdateChannel.release => s.fliblerChannelReleaseSubtitle,
+        UfbtUpdateChannel.rc => s.fliblerChannelRcSubtitle,
+        UfbtUpdateChannel.dev => s.fliblerChannelDevSubtitle,
+      };
 
-  static const Map<AssemblerSdkSource, String> _sourceTitles = {
-    AssemblerSdkSource.unleashed: 'Unleashed',
-    AssemblerSdkSource.official: 'Official',
-    AssemblerSdkSource.custom: 'Custom',
-  };
+  static String _sourceTitle(L10n s, AssemblerSdkSource source) =>
+      switch (source) {
+        AssemblerSdkSource.unleashed => 'Unleashed',
+        AssemblerSdkSource.official => 'Official',
+        AssemblerSdkSource.custom => s.fliblerSourceCustom,
+      };
 
-  static const Map<AssemblerBackendPreference, String> _backendTitles = {
-    AssemblerBackendPreference.auto: 'Automatic',
-    AssemblerBackendPreference.server: 'Build server',
-  };
+  static String _backendTitle(L10n s, AssemblerBackendPreference preference) =>
+      switch (preference) {
+        AssemblerBackendPreference.auto => s.fliblerBackendAuto,
+        AssemblerBackendPreference.server => s.fliblerBackendServer,
+      };
 
-  static const Map<AssemblerBackendPreference, String> _backendSubtitles = {
-    AssemblerBackendPreference.auto:
-        'This computer when its SDK and toolchain are ready, else the server',
-    AssemblerBackendPreference.server: 'Always waits in the server queue',
+  static String _backendSubtitle(
+    L10n s,
+    AssemblerBackendPreference preference,
+  ) => switch (preference) {
+    AssemblerBackendPreference.auto => s.fliblerBackendAutoSubtitle,
+    AssemblerBackendPreference.server => s.fliblerBackendServerSubtitle,
   };
 
   RemoteBuildService get _remote =>
@@ -106,8 +115,8 @@ class _AssemblerSettingsPageState extends State<AssemblerSettingsPage> {
   ) {
     return _radioTile(
       context,
-      title: _backendTitles[preference]!,
-      subtitle: _backendSubtitles[preference]!,
+      title: _backendTitle(context.l10n, preference),
+      subtitle: _backendSubtitle(context.l10n, preference),
       selected: _ctrl.preference == preference,
     );
   }
@@ -183,8 +192,9 @@ class _AssemblerSettingsPageState extends State<AssemblerSettingsPage> {
         0,
       ),
       child: Text(
-        'Now: ${choice.isLocal ? 'this computer' : 'build server'} '
-        '— ${choice.reason.label}',
+        choice.isLocal
+            ? context.l10n.fliblerNowLocal(choice.reason.label)
+            : context.l10n.fliblerNowServer(choice.reason.label),
         style: TextStyle(
           color: context.appColors.textMuted,
           fontSize: 12,
@@ -197,8 +207,8 @@ class _AssemblerSettingsPageState extends State<AssemblerSettingsPage> {
   Widget _channelTile(BuildContext context, UfbtUpdateChannel channel) {
     return _radioTile(
       context,
-      title: _channelTitles[channel]!,
-      subtitle: _channelSubtitles[channel]!,
+      title: _channelTitle(context.l10n, channel),
+      subtitle: _channelSubtitle(context.l10n, channel),
       selected: _ctrl.channel == channel,
     );
   }
@@ -207,10 +217,10 @@ class _AssemblerSettingsPageState extends State<AssemblerSettingsPage> {
     final custom = source == AssemblerSdkSource.custom;
     return _radioTile(
       context,
-      title: _sourceTitles[source]!,
+      title: _sourceTitle(context.l10n, source),
       subtitle: custom
           ? (_ctrl.customIndexUrl.isEmpty
-                ? 'Tap to set a directory.json URL'
+                ? context.l10n.fliblerSetIndexUrl
                 : _ctrl.customIndexUrl)
           : source.url!,
       selected: _ctrl.sdkSource == source,
@@ -232,7 +242,7 @@ class _AssemblerSettingsPageState extends State<AssemblerSettingsPage> {
       builder: (c) => AlertDialog(
         backgroundColor: colors.dialogBackground,
         title: Text(
-          'Custom SDK index',
+          context.l10n.fliblerCustomIndexTitle,
           style: TextStyle(color: colors.dialogText),
         ),
         content: TextField(
@@ -249,11 +259,11 @@ class _AssemblerSettingsPageState extends State<AssemblerSettingsPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(c),
-            child: const Text('Cancel'),
+            child: Text(c.l10n.commonCancel),
           ),
           TextButton(
             onPressed: () => Navigator.pop(c, field.text.trim()),
-            child: const Text('Save'),
+            child: Text(c.l10n.commonSave),
           ),
         ],
       ),
@@ -316,17 +326,18 @@ class _AssemblerSettingsPageState extends State<AssemblerSettingsPage> {
     final status = _ctrl.status;
     final deployed = status?.sdkDeployed ?? false;
     final running = _ctrl.job == AssemblerJob.sdk;
-    final channel = _channelTitles[_ctrl.channel]!.toLowerCase();
+    final strings = context.l10n;
+    final channel = _channelTitle(strings, _ctrl.channel).toLowerCase();
     return _action(
       context,
       label: running
-          ? 'Downloading SDK…'
+          ? strings.fliblerDownloadingSdk
           : deployed
-          ? 'Update SDK'
-          : 'Download SDK',
+          ? strings.fliblerUpdateSdk
+          : strings.fliblerDownloadSdk,
       caption: deployed
-          ? 'Have ${status?.version ?? '—'}, looks up the $channel channel'
-          : 'SDK zip of the $channel channel, ~22 MB',
+          ? strings.fliblerSdkHave(status?.version ?? '—', channel)
+          : strings.fliblerSdkSize(channel),
       primary: !deployed,
       onPressed: () async {
         _showConsole();
@@ -340,22 +351,24 @@ class _AssemblerSettingsPageState extends State<AssemblerSettingsPage> {
     final running = _ctrl.job == AssemblerJob.toolchain;
     final deployed = toolchain?.isDeployed ?? false;
     final upToDate = toolchain?.isUpToDate ?? false;
+    final strings = context.l10n;
     return _action(
       context,
       label: running
-          ? 'Downloading toolchain…'
+          ? strings.fliblerDownloadingToolchain
           : upToDate
-          ? 'Reinstall toolchain'
+          ? strings.fliblerReinstallToolchain
           : deployed
-          ? 'Update toolchain'
-          : 'Download toolchain',
+          ? strings.fliblerUpdateToolchain
+          : strings.fliblerDownloadToolchain,
       caption: upToDate
-          ? 'Have v${toolchain?.installedVersion}, downloads and unpacks it '
-                'again, ~340 MB'
+          ? strings.fliblerToolchainReinstall('${toolchain?.installedVersion}')
           : deployed
-          ? 'Have v${toolchain?.installedVersion}, replaces with '
-                'v${toolchain?.version}, ~340 MB'
-          : 'ARM toolchain v${toolchain?.version ?? '?'}, ~340 MB',
+          ? strings.fliblerToolchainUpdate(
+              '${toolchain?.installedVersion}',
+              '${toolchain?.version}',
+            )
+          : strings.fliblerToolchainDownload(toolchain?.version ?? '?'),
       primary: !upToDate,
       onPressed: () async {
         _showConsole();
@@ -404,7 +417,13 @@ class _AssemblerSettingsPageState extends State<AssemblerSettingsPage> {
   List<Widget> _localStatusTiles(BuildContext context) {
     final status = _ctrl.status;
     if (status == null) {
-      return [_statusRow(context, 'State', 'Not checked yet')];
+      return [
+        _statusRow(
+          context,
+          context.l10n.fliblerStatusState,
+          context.l10n.fliblerNotCheckedYet,
+        ),
+      ];
     }
     final toolchain = status.toolchain;
     return [
@@ -413,55 +432,65 @@ class _AssemblerSettingsPageState extends State<AssemblerSettingsPage> {
         'SDK',
         status.sdkDeployed
             ? '${status.version ?? '—'} · ${status.target ?? '—'}'
-            : 'Not installed',
+            : context.l10n.fliblerNotInstalled,
         ok: status.sdkDeployed,
       ),
       _statusRow(
         context,
-        'Toolchain',
+        context.l10n.fliblerStatusToolchain,
         toolchain.isUpToDate
             ? 'v${toolchain.installedVersion}'
             : toolchain.isDeployed
             ? 'v${toolchain.installedVersion} → v${toolchain.version}'
-            : 'Not installed',
+            : context.l10n.fliblerNotInstalled,
         ok: toolchain.isUpToDate,
       ),
-      _statusRow(context, 'State dir', status.stateDir),
+      _statusRow(context, context.l10n.fliblerStatusStateDir, status.stateDir),
     ];
   }
 
   List<Widget> _remoteStatusTiles(BuildContext context) {
     final status = _serverStatus;
     return [
-      _statusRow(context, 'Address', Uri.parse(_remote.serverUrl).host),
-      if (!_remote.canBuild)
-        _statusRow(context, 'Signing key', 'Missing in this build'),
       _statusRow(
         context,
-        'Server',
+        context.l10n.fliblerStatusAddress,
+        Uri.parse(_remote.serverUrl).host,
+      ),
+      if (!_remote.canBuild)
+        _statusRow(
+          context,
+          context.l10n.fliblerStatusSigningKey,
+          context.l10n.fliblerKeyMissing,
+        ),
+      _statusRow(
+        context,
+        context.l10n.fliblerStatusServer,
         _serverLoading
-            ? 'Checking…'
+            ? context.l10n.fliblerChecking
             : _serverError != null
-            ? 'Unreachable'
+            ? context.l10n.fliblerUnreachable
             : status != null
-            ? 'Online · v${status.version}'
-            : 'Not checked yet',
+            ? context.l10n.fliblerOnlineVersion(status.version)
+            : context.l10n.fliblerNotCheckedYet,
         ok: _serverError == null && status != null,
       ),
       _statusRow(
         context,
-        'Deployed SDK',
+        context.l10n.fliblerStatusDeployedSdk,
         status == null
             ? '—'
             : status.sdkVersions.isEmpty
-            ? 'Deploys on first build'
+            ? context.l10n.fliblerDeploysOnFirstBuild
             : status.sdkVersions.join(', '),
         ok: status != null && status.sdkVersions.isNotEmpty,
       ),
       _statusRow(
         context,
-        'Queue',
-        status == null ? '—' : '${status.queueLength} in line',
+        context.l10n.fliblerStatusQueue,
+        status == null
+            ? '—'
+            : context.l10n.fliblerQueueLength(status.queueLength),
       ),
     ];
   }
@@ -477,7 +506,7 @@ class _AssemblerSettingsPageState extends State<AssemblerSettingsPage> {
         return Scaffold(
           backgroundColor: colors.background,
           appBar: AppBar(
-            title: const Text('Assembler settings'),
+            title: Text(context.l10n.fliblerTitle),
             backgroundColor: colors.background,
             surfaceTintColor: colors.transparent,
           ),
@@ -485,7 +514,7 @@ class _AssemblerSettingsPageState extends State<AssemblerSettingsPage> {
             padding: const EdgeInsets.symmetric(vertical: 10),
             children: [
               GroupedCardList<AssemblerBackendPreference>(
-                title: 'Build with',
+                title: context.l10n.fliblerGroupBuildWith,
                 items: AssemblerBackendPreference.values,
                 onTap: (preference) =>
                     busy ? null : () => _selectBackend(preference),
@@ -498,7 +527,7 @@ class _AssemblerSettingsPageState extends State<AssemblerSettingsPage> {
               // and until it is, builds keep going to the server.
               if (supported) ...[
                 GroupedCardList<UfbtUpdateChannel>(
-                  title: 'SDK channel',
+                  title: context.l10n.fliblerGroupSdkChannel,
                   items: const [
                     UfbtUpdateChannel.release,
                     UfbtUpdateChannel.dev,
@@ -509,14 +538,14 @@ class _AssemblerSettingsPageState extends State<AssemblerSettingsPage> {
                 ),
                 const SizedBox(height: 14),
                 GroupedCardList<AssemblerSdkSource>(
-                  title: 'SDK index',
+                  title: context.l10n.fliblerGroupSdkIndex,
                   items: AssemblerSdkSource.values,
                   onTap: (source) => busy ? null : () => _selectSource(source),
                   itemBuilder: _sourceTile,
                 ),
                 const SizedBox(height: 14),
                 GroupedCardList<Widget>(
-                  title: 'This computer',
+                  title: context.l10n.fliblerGroupThisComputer,
                   items: _localStatusTiles(context),
                   itemBuilder: (context, tile) => tile,
                 ),
@@ -536,7 +565,7 @@ class _AssemblerSettingsPageState extends State<AssemblerSettingsPage> {
                 const SizedBox(height: 14),
               ],
               GroupedCardList<Widget>(
-                title: 'Server',
+                title: context.l10n.fliblerStatusServer,
                 items: _remoteStatusTiles(context),
                 itemBuilder: (context, tile) => tile,
               ),
@@ -547,14 +576,14 @@ class _AssemblerSettingsPageState extends State<AssemblerSettingsPage> {
                 ),
                 child: _action(
                   context,
-                  label: _serverLoading ? 'Checking…' : 'Check server',
+                  label: _serverLoading
+                      ? context.l10n.fliblerChecking
+                      : context.l10n.fliblerCheckServer,
                   caption:
                       _serverError ??
                       (_remote.canBuild
-                          ? 'Apps are compiled remotely, nothing to '
-                                'download here'
-                          : 'Builds need a signing key: rebuild the app '
-                                'with --dart-define=QU_BUILD_SERVER_KEY'),
+                          ? context.l10n.fliblerRemoteOnly
+                          : context.l10n.fliblerNeedsSigningKey),
                   primary: false,
                   onPressed: _serverLoading ? null : _loadServerStatus,
                 ),

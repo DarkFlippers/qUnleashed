@@ -1,3 +1,4 @@
+import '../../../services/localization/l10n.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io' as io;
@@ -99,7 +100,7 @@ class MapToolController extends ChangeNotifier {
       if (deviceName == null || deviceName.isEmpty) {
         _pins = const [];
         _loadError =
-            'No synced Flipper found. Connect and sync first in Archive.';
+            l10n.mapNoSyncedFlipper;
         return;
       }
       final entries = await _storage.listAll(deviceName);
@@ -250,7 +251,7 @@ class MapToolController extends ChangeNotifier {
       final serviceOn = await Geolocator.isLocationServiceEnabled();
       if (!serviceOn) {
         _locationStatus = MapLocationStatus.serviceDisabled;
-        _locationError = 'Location services are disabled';
+        _locationError = l10n.mapLocationDisabled;
         notifyListeners();
         return;
       }
@@ -261,7 +262,7 @@ class MapToolController extends ChangeNotifier {
       if (permission == LocationPermission.denied ||
           permission == LocationPermission.deniedForever) {
         _locationStatus = MapLocationStatus.denied;
-        _locationError = 'Location permission denied';
+        _locationError = l10n.mapLocationDenied;
         notifyListeners();
         return;
       }
@@ -358,17 +359,19 @@ class MapToolController extends ChangeNotifier {
   static double _rad(double deg) => deg * math.pi / 180.0;
 
   static String formatDistance(double meters) {
-    if (meters < 1000) return '${meters.round()} m';
-    return '${(meters / 1000).toStringAsFixed(meters < 10000 ? 2 : 1)} km';
+    if (meters < 1000) return l10n.mapMeters(meters.round());
+    return l10n.mapKilometers(
+      (meters / 1000).toStringAsFixed(meters < 10000 ? 2 : 1),
+    );
   }
 
   static String formatWalkTime(double meters) {
     final seconds = meters / 1.4;
-    if (seconds < 60) return '${seconds.round()} sec walk';
+    if (seconds < 60) return l10n.mapWalkSeconds(seconds.round());
     final minutes = seconds / 60;
-    if (minutes < 60) return '${minutes.round()} min walk';
+    if (minutes < 60) return l10n.mapWalkMinutes(minutes.round());
     final hours = minutes / 60;
-    return '${hours.toStringAsFixed(1)} h walk';
+    return l10n.mapWalkHours(hours.toStringAsFixed(1));
   }
 
   @override

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../components/cardlist.dart';
+import '../../../services/localization/l10n.dart';
 import '../../../theme/theme.dart';
 import '../../apps/data/apps_backend.dart';
 import '../../apps/data/catalog_mode.dart';
@@ -15,19 +16,20 @@ class AppsSettingsPage extends StatefulWidget {
 }
 
 class _AppsSettingsPageState extends State<AppsSettingsPage> {
-  static const Map<CatalogModePreference, String> _titles = {
-    CatalogModePreference.auto: 'Automatic',
-    CatalogModePreference.catalog: 'Catalog only',
-    CatalogModePreference.sourceBuild: 'Build from source',
-    CatalogModePreference.manager: 'Apps manager only',
+  static String _title(L10n s, CatalogModePreference value) => switch (value) {
+    CatalogModePreference.auto => s.appsModeAuto,
+    CatalogModePreference.catalog => s.appsModeCatalog,
+    CatalogModePreference.sourceBuild => s.appsModeSourceBuild,
+    CatalogModePreference.manager => s.appsModeManager,
   };
 
-  static const Map<CatalogModePreference, String> _subtitles = {
-    CatalogModePreference.auto: 'Picks the mode for this firmware',
-    CatalogModePreference.catalog: 'Never builds, nearest API instead',
-    CatalogModePreference.sourceBuild: 'Always compile apps for this firmware',
-    CatalogModePreference.manager: 'Catalog stays closed',
-  };
+  static String _subtitle(L10n s, CatalogModePreference value) =>
+      switch (value) {
+        CatalogModePreference.auto => s.appsModeAutoSubtitle,
+        CatalogModePreference.catalog => s.appsModeCatalogSubtitle,
+        CatalogModePreference.sourceBuild => s.appsModeSourceBuildSubtitle,
+        CatalogModePreference.manager => s.appsModeManagerSubtitle,
+      };
 
   final AppsBackend _backend = AppsBackend.instance;
 
@@ -64,7 +66,7 @@ class _AppsSettingsPageState extends State<AppsSettingsPage> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(
-                _titles[value]!,
+                _title(context.l10n, value),
                 style: TextStyle(
                   color: colors.textPrimary,
                   fontSize: 14,
@@ -74,7 +76,7 @@ class _AppsSettingsPageState extends State<AppsSettingsPage> {
               ),
               const SizedBox(height: 2),
               Text(
-                _subtitles[value]!,
+                _subtitle(context.l10n, value),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -143,7 +145,9 @@ class _AppsSettingsPageState extends State<AppsSettingsPage> {
       return SizedBox(
         width: double.infinity,
         child: Text(
-          _backend.catalogOffline ? 'No answer' : 'None',
+          _backend.catalogOffline
+              ? context.l10n.appsStatusNoAnswer
+              : context.l10n.appsStatusNone,
           style: TextStyle(color: colors.textMuted, fontSize: 12.5),
         ),
       );
@@ -184,7 +188,7 @@ class _AppsSettingsPageState extends State<AppsSettingsPage> {
         return Scaffold(
           backgroundColor: colors.background,
           appBar: AppBar(
-            title: const Text('Apps'),
+            title: Text(context.l10n.settingsAppsTitle),
             backgroundColor: colors.background,
             surfaceTintColor: colors.transparent,
           ),
@@ -192,34 +196,34 @@ class _AppsSettingsPageState extends State<AppsSettingsPage> {
             padding: const EdgeInsets.symmetric(vertical: 10),
             children: [
               GroupedCardList<CatalogModePreference>(
-                title: 'Catalog mode',
+                title: context.l10n.appsGroupCatalogMode,
                 items: CatalogModePreference.values,
                 onTap: (value) => () => unawaited(_select(value)),
                 itemBuilder: _modeTile,
               ),
               const SizedBox(height: 14),
               GroupedCardList<Widget>(
-                title: 'Status',
+                title: context.l10n.appsGroupStatus,
                 items: [
                   _statusRow(
                     context,
-                    'Mode',
+                    context.l10n.appsStatusMode,
                     _backend.mode.value.label,
                     ok: _backend.mode.value == CatalogMode.normal,
                   ),
                   _statusRow(
                     context,
-                    'Firmware',
+                    context.l10n.appsStatusFirmware,
                     _backend.deviceApi == null
-                        ? 'Not connected'
+                        ? context.l10n.appsStatusNotConnected
                         : '${_backend.deviceApi} · ${_backend.deviceTarget}',
                     ok: _backend.deviceApi != null,
                   ),
                   _statusRow(
                     context,
-                    'Catalog',
+                    context.l10n.appsStatusCatalog,
                     _backend.catalogOffline
-                        ? 'No answer'
+                        ? context.l10n.appsStatusNoAnswer
                         : _backend.serverApi ?? '—',
                     ok: !_backend.catalogOffline,
                   ),
@@ -237,7 +241,7 @@ class _AppsSettingsPageState extends State<AppsSettingsPage> {
                     Padding(
                       padding: kGroupedTitlePadding,
                       child: Text(
-                        'Catalog APIs',
+                        context.l10n.appsCatalogApis,
                         style: TextStyle(
                           fontSize: kGroupedTitleSize,
                           fontWeight: kGroupedTitleWeight,
@@ -264,7 +268,9 @@ class _AppsSettingsPageState extends State<AppsSettingsPage> {
                       padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
                     child: Text(
-                      resolving ? 'Checking…' : 'Re-check',
+                      resolving
+                          ? context.l10n.appsChecking
+                          : context.l10n.appsRecheck,
                       style: const TextStyle(fontSize: 13),
                     ),
                   ),

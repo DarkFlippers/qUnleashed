@@ -1,5 +1,7 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
+import '../localization/l10n.dart';
+
 class NotificationCenter {
   NotificationCenter._();
   static final NotificationCenter instance = NotificationCenter._();
@@ -33,7 +35,9 @@ class NotificationCenter {
         requestBadgePermission: false,
         requestSoundPermission: false,
       ),
-      linux: const LinuxInitializationSettings(defaultActionName: 'Open'),
+      linux: LinuxInitializationSettings(
+        defaultActionName: l10n.notificationOpenAction,
+      ),
       windows: const WindowsInitializationSettings(
         appName: _windowsAppName,
         appUserModelId: _windowsAppUserModelId,

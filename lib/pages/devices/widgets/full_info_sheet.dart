@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../services/localization/l10n.dart';
 import '../../../theme/theme.dart';
 import 'info_line.dart';
 import 'page_card.dart';
@@ -72,12 +73,12 @@ class RawInfoCard extends StatelessWidget {
     final sorted = entries.entries.toList()
       ..sort((a, b) => a.key.compareTo(b.key));
     return FlipperPageCard(
-      title: 'Raw Data',
+      title: context.l10n.deviceRawData,
       child: sorted.isEmpty
           ? Padding(
               padding: const EdgeInsets.all(12),
               child: Text(
-                'No data received.',
+                context.l10n.deviceNoData,
                 style: TextStyle(fontSize: 14, color: colors.textMuted),
               ),
             )

@@ -1,3 +1,4 @@
+import '../../../services/localization/l10n.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -233,7 +234,7 @@ class FliblerProjectController extends ChangeNotifier {
       final root = await _resolveSource();
       final appDir = AssemblerBuildService.findAppDir(root);
       if (appDir == null) {
-        throw GitSourceException('No application.fam found in ${root.path}');
+        throw GitSourceException(l10n.fliblerErrorNoManifest(root.path));
       }
       _appDir = appDir;
       final apps = FlipperApplication.loadManifest(appDir);
@@ -300,7 +301,7 @@ class FliblerProjectController extends ChangeNotifier {
     if (_kind == FliblerSourceKind.folder) {
       final dir = Directory(_folderPath);
       if (!dir.existsSync()) {
-        throw GitSourceException('Folder not found: $_folderPath');
+        throw GitSourceException(l10n.fliblerErrorNoFolder(_folderPath));
       }
       return dir;
     }
@@ -333,8 +334,8 @@ class FliblerProjectController extends ChangeNotifier {
 
   Future<void> launchOnDevice() async {
     final path = targetPath;
-    if (path.isEmpty) throw StateError('Nothing built yet');
-    if (!deviceReady) throw StateError('Connect the device first');
+    if (path.isEmpty) throw StateError(l10n.fliblerErrorNothingBuilt);
+    if (!deviceReady) throw StateError(l10n.fliblerErrorConnectDevice);
     await _client.appStart(
       StartRequest(name: path, args: ''),
       timeout: const Duration(seconds: 15),

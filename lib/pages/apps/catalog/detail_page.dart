@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../services/localization/l10n.dart';
 import '../../../components/format.dart';
 import '../actions.dart';
 import 'widgets/states.dart';
@@ -74,14 +75,14 @@ class _AppDetailPageState extends State<AppDetailPage> {
       builder: (context, _) => Scaffold(
         backgroundColor: colors.background,
         appBar: QPageAppBar(
-          title: _detail?.card.name ?? 'App',
+          title: _detail?.card.name ?? context.l10n.appDetailFallbackTitle,
           backgroundColor: colors.accent,
           foregroundColor: colors.onAccent,
           actions: [
             if (_detail != null) ...[
               if (_ctrl.engine.isInstalled(_detail!.card))
                 QPageAppBarAction(
-                  tooltip: 'Delete app',
+                  tooltip: context.l10n.appDeleteTooltip,
                   icon: const Icon(Icons.delete_outline),
                   onPressed: () => confirmDeleteApp(
                     context,
@@ -91,7 +92,7 @@ class _AppDetailPageState extends State<AppDetailPage> {
                   ),
                 ),
               QPageAppBarAction(
-                tooltip: 'Open app page',
+                tooltip: context.l10n.appOpenPageTooltip,
                 icon: const Icon(Icons.open_in_new),
                 onPressed: () {
                   final url = _detail!.links?.manifestUri ?? '';
@@ -135,7 +136,7 @@ class _AppDetailPageState extends State<AppDetailPage> {
           const SizedBox(height: 18),
         ],
         if (cv != null && cv.shortDescription.isNotEmpty) ...[
-          _SectionTitle(title: 'Description'),
+          _SectionTitle(title: context.l10n.appSectionDescription),
           const SizedBox(height: 6),
           ChangelogRenderer(
             html: buildChangelogHtml(cv.shortDescription),
@@ -152,7 +153,7 @@ class _AppDetailPageState extends State<AppDetailPage> {
           const SizedBox(height: 12),
         ],
         if (detail.changelog.isNotEmpty) ...[
-          _SectionTitle(title: 'Changelog'),
+          _SectionTitle(title: context.l10n.appSectionChangelog),
           const SizedBox(height: 6),
           ChangelogRenderer(
             html: buildChangelogHtml(detail.changelog),
@@ -161,7 +162,7 @@ class _AppDetailPageState extends State<AppDetailPage> {
           ),
           const SizedBox(height: 12),
         ],
-        _SectionTitle(title: 'Developer'),
+        _SectionTitle(title: context.l10n.appSectionDeveloper),
         const SizedBox(height: 6),
         _DeveloperLinks(detail: detail),
       ],
@@ -218,13 +219,19 @@ class _Header extends StatelessWidget {
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
                       CategoryChip(category: cat, selected: true),
-                      _Meta(label: 'Version', value: cv?.version ?? '—'),
                       _Meta(
-                        label: 'Size',
+                        label: context.l10n.appMetaVersion,
+                        value: cv?.version ?? '—',
+                      ),
+                      _Meta(
+                        label: context.l10n.appMetaSize,
                         value: _formatBytes(detail.buildMetadata?.length),
                       ),
                       if (card.author.isNotEmpty)
-                        _Meta(label: 'By', value: card.author),
+                        _Meta(
+                          label: context.l10n.appMetaBy,
+                          value: card.author,
+                        ),
                     ],
                   ),
                 ],
@@ -340,16 +347,16 @@ class _DeveloperLinks extends StatelessWidget {
     final links = detail.links;
     final entries = <_LinkEntry>[
       if (links?.manifestUri != null && links!.manifestUri!.isNotEmpty)
-        _LinkEntry('Manifest', links.manifestUri!),
+        _LinkEntry(context.l10n.appLinkManifest, links.manifestUri!),
       if (links?.sourceCode != null && links!.sourceCode!.uri.isNotEmpty)
-        _LinkEntry('Source code', links.sourceCode!.uri),
+        _LinkEntry(context.l10n.appLinkSource, links.sourceCode!.uri),
       if (links?.bundleUri != null && links!.bundleUri!.isNotEmpty)
-        _LinkEntry('Bundle', links.bundleUri!),
+        _LinkEntry(context.l10n.appLinkBundle, links.bundleUri!),
     ];
 
     if (entries.isEmpty) {
       return Text(
-        'No developer links provided',
+        context.l10n.appNoDeveloperLinks,
         style: TextStyle(color: colors.textMuted, fontSize: 13),
       );
     }

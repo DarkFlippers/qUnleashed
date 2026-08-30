@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../../services/localization/l10n.dart';
 import '../../../components/flipper_screen_animation.dart';
 import '../../../theme/theme.dart';
 import '../models/device_info.dart';
@@ -100,14 +101,14 @@ class FlipperMockupHero extends StatelessWidget {
           'firmware.version',
           'software_revision',
         ]) ??
-        _entryValue(infoEntries, 'Firmware Version');
+        _entryValue(infoEntries, context.l10n.infoFirmwareVersion);
     final buildDate =
         DeviceInfoReader.str(deviceInfo, const [
           'firmware_build_date',
           'firmware.build.date',
           'build_date',
         ]) ??
-        _entryValue(infoEntries, 'Build Date');
+        _entryValue(infoEntries, context.l10n.infoBuildDate);
     final uid = DeviceInfoReader.str(deviceInfo, const [
       'hardware_uid',
       'hardware.uid',
@@ -152,14 +153,15 @@ class FlipperMockupHero extends StatelessWidget {
                 runSpacing: 2,
                 children: [
                   if (firmwareVersion != null)
-                    _HeroMetaText('fw $firmwareVersion'),
-                  if (buildDate != null) _HeroMetaText('built $buildDate'),
+                    _HeroMetaText(context.l10n.deviceHeroFirmware(firmwareVersion)),
+                  if (buildDate != null)
+                    _HeroMetaText(context.l10n.deviceHeroBuilt(buildDate)),
                 ],
               ),
               if (uid != null) ...[
                 const SizedBox(height: 6),
                 Text(
-                  'UID $uid',
+                  context.l10n.deviceHeroUid(uid),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(

@@ -1,3 +1,4 @@
+import '../../../../../services/localization/l10n.dart';
 import 'dart:typed_data';
 
 import 'package:flutter/gestures.dart';
@@ -67,7 +68,7 @@ class FramesSection extends StatelessWidget {
       child: Row(
         children: [
           Text(
-            'FRAMES · ${ctrl.frames.length}',
+            l10n.paintFramesHeader(ctrl.frames.length),
             style: TextStyle(
               color: colors.textMuted,
               fontSize: 12,
@@ -84,7 +85,7 @@ class FramesSection extends StatelessWidget {
               color: canPlay ? colors.accent : colors.textMuted,
             ),
             label: Text(
-              ctrl.isPlaying ? 'Stop' : 'Play',
+              ctrl.isPlaying ? l10n.paintStop : l10n.paintPlay,
               style: TextStyle(
                 color: canPlay ? colors.accent : colors.textMuted,
                 fontSize: 13,
@@ -111,7 +112,7 @@ class FramesSection extends StatelessWidget {
           Expanded(
             child: FrameActionButton(
               icon: Icons.copy_outlined,
-              label: 'Duplicate',
+              label: l10n.paintDuplicate,
               colors: colors,
               onTap: ctrl.duplicateFrame,
             ),
@@ -120,7 +121,7 @@ class FramesSection extends StatelessWidget {
           Expanded(
             child: FrameActionButton(
               icon: Icons.delete_outline,
-              label: 'Delete',
+              label: l10n.commonDelete,
               colors: colors,
               onTap: ctrl.deleteFrame,
             ),

@@ -1,3 +1,4 @@
+import '../../../services/localization/l10n.dart';
 import 'dart:io' as io;
 
 import 'package:flutter/material.dart';
@@ -35,7 +36,7 @@ class ShareRemoteFileTile extends StatelessWidget {
         color: colors.textPrimary,
       ),
       title: Text(
-        isShareSupported ? 'Share' : 'Copy to clipboard',
+        isShareSupported ? l10n.shareShare : l10n.shareCopyToClipboard,
         style: TextStyle(color: colors.textPrimary),
       ),
       onTap: () {
@@ -72,7 +73,7 @@ class ShareLocalFileTile extends StatelessWidget {
         color: colors.textPrimary,
       ),
       title: Text(
-        isShareSupported ? 'Share' : 'Copy to clipboard',
+        isShareSupported ? l10n.shareShare : l10n.shareCopyToClipboard,
         style: TextStyle(color: colors.textPrimary),
       ),
       onTap: () {
@@ -97,7 +98,7 @@ Future<void> shareRemoteFile(
   if (!context.mounted) return;
   if (localPath == null) {
     context.showNotification(
-      'Download failed${controller.error != null ? ': ${controller.error}' : ''}',
+      l10n.shareDownloadFailed(controller.error != null ? ': ${controller.error}' : ''),
       type: QNotificationType.error,
     );
     return;
@@ -119,7 +120,7 @@ Future<void> shareLocalFile(
   if (!await file.exists()) {
     if (context.mounted) {
       context.showNotification(
-        'File not found: $localPath',
+        l10n.shareFileNotFound(localPath),
         type: QNotificationType.error,
       );
     }
@@ -132,7 +133,7 @@ Future<void> shareLocalFile(
 
   if (!isShareSupported) {
     context.showNotification(
-      clipboardOk ? 'Copied to clipboard' : 'Clipboard unavailable',
+      clipboardOk ? l10n.shareCopied : l10n.shareClipboardUnavailable,
       type: clipboardOk ? QNotificationType.good : QNotificationType.error,
     );
     return;
@@ -152,8 +153,8 @@ Future<void> shareLocalFile(
     if (context.mounted) {
       context.showNotification(
         clipboardOk
-            ? 'Copied to clipboard (share failed: $e)'
-            : 'Share failed: $e',
+            ? l10n.shareCopiedShareFailed('$e')
+            : l10n.shareFailed('$e'),
         type: clipboardOk ? QNotificationType.warning : QNotificationType.error,
       );
     }
@@ -163,8 +164,8 @@ Future<void> shareLocalFile(
   if (!context.mounted) return;
   context.showNotification(
     clipboardOk
-        ? 'Shared and copied to clipboard'
-        : 'Shared (clipboard unavailable)',
+        ? l10n.shareSharedAndCopied
+        : l10n.shareSharedNoClipboard,
     type: QNotificationType.good,
   );
 }

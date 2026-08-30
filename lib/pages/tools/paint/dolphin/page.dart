@@ -1,3 +1,4 @@
+import '../../../../services/localization/l10n.dart';
 import 'dart:async';
 import 'dart:ui' as ui;
 
@@ -51,7 +52,7 @@ class _ManifestSyncPageState extends State<ManifestSyncPage> {
   Future<void> _confirmSend() async {
     if (!_ctrl.isConnected) {
       context.showNotification(
-        'Connect a device to send animations',
+        context.l10n.paintConnectToImport,
         type: QNotificationType.error,
       );
       return;
@@ -65,25 +66,27 @@ class _ManifestSyncPageState extends State<ManifestSyncPage> {
         backgroundColor: colors.dialogBackground,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         title: Text(
-          'Send to device',
+          context.l10n.paintSendToDevice,
           style: TextStyle(color: colors.dialogText),
         ),
         content: Text(
-          'Upload $count animation${count == 1 ? '' : 's'} and rewrite '
-          '/ext/dolphin/manifest.txt on the device?',
+          context.l10n.paintUploadConfirm(count),
           style: TextStyle(color: colors.dialogMuted),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: Text(
-              'Cancel',
+              context.l10n.commonCancel,
               style: TextStyle(color: colors.textSecondary),
             ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Send', style: TextStyle(color: colors.accent)),
+            child: Text(
+              context.l10n.paintSendAction,
+              style: TextStyle(color: colors.accent),
+            ),
           ),
         ],
       ),
@@ -97,17 +100,17 @@ class _ManifestSyncPageState extends State<ManifestSyncPage> {
     return Scaffold(
       backgroundColor: colors.background,
       appBar: QPageAppBar(
-        title: 'Send to device',
+        title: context.l10n.paintSendToDevice,
         actions: [
           QPageAppBarAction(
             onPressed: _ctrl.sending ? null : _ctrl.selectAll,
             icon: const Icon(Icons.select_all),
-            tooltip: 'Select all',
+            tooltip: context.l10n.paintSelectAll,
           ),
           QPageAppBarAction(
             onPressed: _ctrl.sending ? null : _ctrl.deselectAll,
             icon: const Icon(Icons.deselect),
-            tooltip: 'Deselect all',
+            tooltip: context.l10n.paintDeselectAll,
           ),
         ],
       ),
@@ -133,7 +136,7 @@ class _ManifestSyncPageState extends State<ManifestSyncPage> {
           ? colors.textMuted
           : colors.onAccent,
       icon: const Icon(Icons.publish),
-      label: Text('Send ($count)'),
+      label: Text(context.l10n.paintSendCount(count)),
     );
   }
 
@@ -143,9 +146,9 @@ class _ManifestSyncPageState extends State<ManifestSyncPage> {
     return SyncProgressBar(
       icon: checking ? Icons.sync_rounded : Icons.upload_rounded,
       label: p == null
-          ? 'Preparing…'
-          : '${checking ? 'Checking' : 'Sending'} '
-                '${p.current}/${p.total} · ${p.fileName}',
+          ? context.l10n.paintPreparing
+          : '${checking ? context.l10n.paintChecking : context.l10n.paintSending}'
+                ' ${p.current}/${p.total} · ${p.fileName}',
       progress: p?.ratio ?? 0,
       fileProgress: p?.fileProgress,
       color: colors.accent,
@@ -161,8 +164,7 @@ class _ManifestSyncPageState extends State<ManifestSyncPage> {
         child: Padding(
           padding: const EdgeInsets.all(32),
           child: Text(
-            'No projects to send. Create a drawing or animation, or import '
-            'dolphin animations from a device first.',
+context.l10n.paintNothingToSend,
             textAlign: TextAlign.center,
             style: TextStyle(color: colors.textSecondary, fontSize: 13),
           ),
@@ -270,7 +272,7 @@ class _SyncCardState extends State<_SyncCard> {
     final colors = widget.colors;
     final project = widget.item.project;
     final detail = project.frameCount > 1
-        ? '${project.frameCount} frames'
+        ? l10n.paintFrameCount(project.frameCount)
         : '1 frame';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -287,7 +289,7 @@ class _SyncCardState extends State<_SyncCard> {
         ),
         const SizedBox(height: 3),
         Text(
-          widget.mirroring ? '$detail · on screen' : detail,
+          widget.mirroring ? l10n.paintOnScreen(detail) : detail,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
@@ -316,7 +318,7 @@ class _SyncCardState extends State<_SyncCard> {
               visualDensity: VisualDensity.compact,
             ),
             Text(
-              'Use this animation',
+              context.l10n.paintUseAnimation,
               style: TextStyle(color: colors.textSecondary, fontSize: 13),
             ),
           ],
@@ -328,7 +330,7 @@ class _SyncCardState extends State<_SyncCard> {
   Widget _buildWeight() {
     final entry = widget.item.entry;
     return _slider(
-      label: 'Weight',
+      label: context.l10n.paintWeight,
       value: entry.weight,
       min: 0,
       max: 14,
@@ -348,7 +350,7 @@ class _SyncCardState extends State<_SyncCard> {
           color: colors.textSecondary,
         ),
         label: Text(
-          _more ? 'Less' : 'More',
+          _more ? context.l10n.paintWeightLess : context.l10n.paintWeightMore,
           style: TextStyle(color: colors.textSecondary),
         ),
       ),
@@ -360,28 +362,28 @@ class _SyncCardState extends State<_SyncCard> {
     return Column(
       children: [
         _slider(
-          label: 'Min level',
+          label: context.l10n.paintMinLevel,
           value: entry.minLevel,
           min: 0,
           max: entry.maxLevel,
           onChanged: (v) => widget.onLevels(min: v),
         ),
         _slider(
-          label: 'Max level',
+          label: context.l10n.paintMaxLevel,
           value: entry.maxLevel,
           min: entry.minLevel,
           max: 30,
           onChanged: (v) => widget.onLevels(max: v),
         ),
         _slider(
-          label: 'Min butthurt',
+          label: context.l10n.paintMinButthurt,
           value: entry.minButthurt,
           min: 0,
           max: entry.maxButthurt,
           onChanged: (v) => widget.onButthurt(min: v),
         ),
         _slider(
-          label: 'Max butthurt',
+          label: context.l10n.paintMaxButthurt,
           value: entry.maxButthurt,
           min: entry.minButthurt,
           max: 14,

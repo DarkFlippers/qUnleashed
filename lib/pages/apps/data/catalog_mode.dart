@@ -1,3 +1,4 @@
+import '../../../services/localization/l10n.dart';
 import '../../../components/codec/fap/api_version.dart';
 import 'models/card.dart';
 
@@ -12,11 +13,11 @@ enum CatalogMode {
   managerOnly;
 
   String get label => switch (this) {
-    CatalogMode.resolving => 'Checking…',
-    CatalogMode.normal => 'Catalog',
-    CatalogMode.sourceBuild => 'Built from source',
-    CatalogMode.nearestApi => 'Nearest API',
-    CatalogMode.managerOnly => 'Manager only',
+    CatalogMode.resolving => l10n.catalogModeResolving,
+    CatalogMode.normal => l10n.catalogModeNormal,
+    CatalogMode.sourceBuild => l10n.catalogModeSourceBuild,
+    CatalogMode.nearestApi => l10n.catalogModeNearestApi,
+    CatalogMode.managerOnly => l10n.catalogModeManagerOnly,
   };
 }
 

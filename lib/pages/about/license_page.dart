@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
+import '../../services/localization/l10n.dart';
 import '../../theme/theme.dart';
 import 'package:qunleashed/components/appbar.dart';
 
@@ -45,7 +46,7 @@ class _AppLicensePageState extends State<AppLicensePage> {
     return Scaffold(
       backgroundColor: colors.background,
       appBar: QPageAppBar(
-        title: 'GPL v3 License',
+        title: context.l10n.licenseTitle,
         backgroundColor: colors.accent,
         foregroundColor: colors.onAccent,
       ),

@@ -1,3 +1,4 @@
+import '../../../services/localization/l10n.dart';
 import 'device_info_fields.dart';
 
 abstract final class DeviceInfoReader {
@@ -20,14 +21,14 @@ abstract final class DeviceInfoReader {
   static String deviceName(Map<String, String> info) {
     final v = info['hardware_name'];
     if (v != null && v.trim().isNotEmpty) return v;
-    return 'No device';
+    return l10n.deviceStateNoDevice;
   }
 
   static List<MapEntry<String, String>> infoEntries(Map<String, String> info) =>
       [
-        MapEntry('Firmware Version', firmwareVersion(info)),
-        MapEntry('Build Date', buildDate(info)),
-        MapEntry('SD Card (Used/Total)', sdCard(info)),
+        MapEntry(l10n.infoFirmwareVersion, firmwareVersion(info)),
+        MapEntry(l10n.infoBuildDate, buildDate(info)),
+        MapEntry(l10n.infoSdCard, sdCard(info)),
       ];
 
   static String? _first(Map<String, String> info, List<String> keys) {

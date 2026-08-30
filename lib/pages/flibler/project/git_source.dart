@@ -1,3 +1,4 @@
+import '../../../services/localization/l10n.dart';
 import 'dart:io';
 
 import 'package:dartufbt/dartufbt.dart';
@@ -40,7 +41,7 @@ class GitSource {
   /// `.../src/<ref>/<dir>` on Bitbucket.
   static GitTarget parse(String input) {
     final url = input.trim().replaceAll(RegExp(r'/+$'), '');
-    if (url.isEmpty) throw const GitSourceException('Repository link is empty');
+    if (url.isEmpty) throw GitSourceException(l10n.fliblerErrorEmptyLink);
 
     final web = RegExp(
       r'^(https?://[^/]+/[^/]+/[^/]+?)(?:\.git)?'
@@ -55,7 +56,7 @@ class GitSource {
     }
 
     if (!url.contains('://') && !url.contains('@')) {
-      throw GitSourceException('Not a repository link: $url');
+      throw GitSourceException(l10n.fliblerErrorNotRepo(url));
     }
     return GitTarget(remote: url);
   }
@@ -68,9 +69,7 @@ class GitSource {
     required UfbtLogger logger,
   }) async {
     if (!await _hasGit()) {
-      throw const GitSourceException(
-        'git was not found in PATH, install it to build from a repository',
-      );
+      throw GitSourceException(l10n.fliblerErrorNoGit);
     }
 
     parent.createSync(recursive: true);
@@ -131,9 +130,7 @@ class GitSource {
     if (File(path).existsSync()) return File(path).parent;
     final dir = Directory(path);
     if (!dir.existsSync()) {
-      throw GitSourceException(
-        'No "${target.subdir}" folder in the repository',
-      );
+      throw GitSourceException(l10n.fliblerErrorNoSubdir(target.subdir));
     }
     return dir;
   }

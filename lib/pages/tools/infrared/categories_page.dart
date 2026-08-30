@@ -1,3 +1,4 @@
+import '../../../services/localization/l10n.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -76,7 +77,7 @@ class _IrCategoriesPageState extends State<IrCategoriesPage> {
     return Scaffold(
       backgroundColor: colors.background,
       appBar: QPageAppBar(
-        title: 'Remote Library',
+        title: context.l10n.irLibraryTitle,
         backgroundColor: colors.accent,
         foregroundColor: colors.onAccent,
       ),
@@ -182,7 +183,7 @@ class _IrdbButton extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'Browse the community Flipper-IRDB repository',
+                        context.l10n.irBrowseIrdb,
                         style: TextStyle(color: colors.textMuted, fontSize: 12),
                       ),
                     ],
@@ -295,7 +296,7 @@ class _ErrorView extends StatelessWidget {
               style: TextStyle(color: colors.textPrimary),
             ),
             const SizedBox(height: 14),
-            FilledButton(onPressed: onRetry, child: const Text('Retry')),
+            FilledButton(onPressed: onRetry, child: Text(context.l10n.commonRetry)),
           ],
         ),
       ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../../services/localization/l10n.dart';
 import '../../../theme/theme.dart';
 import 'package:qunleashed/components/appbar.dart';
 import 'package:qunleashed/components/icon.dart';
@@ -78,7 +79,7 @@ class _IrInfraredsPageState extends State<IrInfraredsPage> {
         MaterialPageRoute(
           builder: (_) => IrContentPage(
             fileName: f.fileName,
-            subtitle: '${widget.category.displayName} В· ${widget.brand.name}',
+            subtitle: context.l10n.irBreadcrumb(widget.category.displayName, widget.brand.name),
             content: content,
           ),
         ),
@@ -86,7 +87,7 @@ class _IrInfraredsPageState extends State<IrInfraredsPage> {
     } catch (e) {
       if (!mounted) return;
       context.showNotification(
-        'Failed to load: $e',
+        context.l10n.irLoadFailed('$e'),
         type: QNotificationType.error,
       );
     } finally {
@@ -121,7 +122,7 @@ class _IrInfraredsPageState extends State<IrInfraredsPage> {
     if (_files.isEmpty) {
       return Center(
         child: Text(
-          'No remotes available',
+          context.l10n.irNoRemotes,
           style: TextStyle(color: colors.textMuted),
         ),
       );
@@ -236,7 +237,7 @@ class _ErrorView extends StatelessWidget {
               style: TextStyle(color: colors.textPrimary),
             ),
             const SizedBox(height: 14),
-            FilledButton(onPressed: onRetry, child: const Text('Retry')),
+            FilledButton(onPressed: onRetry, child: Text(context.l10n.commonRetry)),
           ],
         ),
       ),

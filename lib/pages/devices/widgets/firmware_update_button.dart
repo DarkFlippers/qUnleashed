@@ -2,6 +2,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
+import '../../../services/localization/l10n.dart';
 import '../../../components/config.dart';
 import '../../../theme/theme.dart';
 import '../../../components/notification.dart';
@@ -124,7 +125,7 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
     if (_inProgress) return;
 
     if (!widget.client.isConnected && !_dfuPresent) {
-      setState(() => _inlineMessage = 'Connect a device first');
+      setState(() => _inlineMessage = l10n.fwuConnectFirst);
       return;
     }
 
@@ -134,7 +135,7 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
     final FirmwareSource source;
     if (_isCustom) {
       final result = await FilePicker.platform.pickFiles(
-        dialogTitle: 'Select firmware archive',
+        dialogTitle: l10n.fwuPickArchiveTitle,
         type: FileType.custom,
         allowedExtensions: const ['tgz', 'gz', 'tar'],
       );
@@ -176,7 +177,7 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
       });
       QNotification.show(
         context,
-        message: 'Firmware update aborted: $e',
+        message: l10n.fwuAborted('$e'),
         type: QNotificationType.error,
         duration: const Duration(seconds: 6),
       );
@@ -209,7 +210,7 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
     if (!mounted) return;
     setState(() {
       _updateState = null;
-      _inlineMessage = 'Device recovered and connected successfully';
+      _inlineMessage = l10n.fwuRecovered;
     });
   }
 
@@ -222,7 +223,7 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
     if (state is UpdateError) {
       QNotification.show(
         context,
-        message: 'Firmware update failed: ${state.message}',
+        message: l10n.fwuFailed(state.message),
         type: QNotificationType.error,
         duration: const Duration(seconds: 6),
       );
@@ -242,22 +243,20 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
 
     if (!widget.client.isConnected && !_dfuPresent) {
       return _ResolvedButtonState(
-        label: 'NO CONNECTION',
+        label: l10n.fwuLabelNoConnection,
         color: _inactiveColor,
-        description: description ?? 'Connect a device to install firmware',
+        description: description ?? l10n.fwuDescConnect,
         enabled: false,
       );
     }
 
     if (_isCustom) {
       return _ResolvedButtonState(
-        label: 'INSTALL',
+        label: l10n.fwuLabelInstall,
         color: _activeColor,
         description:
             description ??
-            (_dfuOnly
-                ? 'Pick a local update .tgz to recover the device over DFU'
-                : 'Pick a local update .tgz archive to install'),
+            (_dfuOnly ? l10n.fwuDescPickDfu : l10n.fwuDescPickInstall),
         enabled: true,
       );
     }
@@ -265,63 +264,55 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
     if (_dfuOnly) {
       if (widget.latestVersion == null) {
         return _ResolvedButtonState(
-          label: 'NO FIRMWARE',
+          label: l10n.fwuLabelNoFirmware,
           color: _inactiveColor,
-          description: 'Can\'t connect to update server',
+          description: l10n.fwuDescNoServer,
           enabled: false,
         );
       }
       return _ResolvedButtonState(
-        label: 'REPAIR',
+        label: l10n.fwuLabelRepair,
         color: _activeColor,
-        description:
-            description ??
-            'Device is in DFU mode. Reinstall the selected firmware over USB.',
+        description: description ?? l10n.fwuDescDfuMode,
         enabled: true,
       );
     }
 
     if (widget.fetchLoading || widget.deviceVersion == '-') {
       return _ResolvedButtonState(
-        label: 'CHECKING',
+        label: l10n.fwuLabelChecking,
         color: _inactiveColor,
-        description: 'Checking firmware status…',
+        description: l10n.fwuDescChecking,
         enabled: false,
       );
     }
 
     if (widget.latestVersion == null) {
       return _ResolvedButtonState(
-        label: 'NO UPDATE',
+        label: l10n.fwuLabelNoUpdate,
         color: _inactiveColor,
-        description: 'Can\'t connect to update server',
+        description: l10n.fwuDescNoServer,
         enabled: false,
       );
     }
 
     return switch (_installAction()) {
       InstallAction.noUpdate => _ResolvedButtonState(
-        label: 'NO UPDATE',
+        label: l10n.fwuLabelNoUpdate,
         color: _inactiveColor,
-        description:
-            description ??
-            'Installed firmware already matches the selected build',
+        description: description ?? l10n.fwuDescUpToDate,
         enabled: false,
       ),
       InstallAction.update => _ResolvedButtonState(
-        label: 'UPDATE',
+        label: l10n.fwuLabelUpdate,
         color: _activeColor,
-        description:
-            description ??
-            'A newer version is available in the selected channel',
+        description: description ?? l10n.fwuDescNewer,
         enabled: true,
       ),
       InstallAction.install => _ResolvedButtonState(
-        label: 'INSTALL',
+        label: l10n.fwuLabelInstall,
         color: _activeColor,
-        description:
-            description ??
-            'Selected firmware differs by type, channel, or build',
+        description: description ?? l10n.fwuDescDiffers,
         enabled: true,
       ),
     };
@@ -330,39 +321,39 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
   _ResolvedButtonState _resolveUpdateState(UpdateState state) {
     return switch (state) {
       UpdateFetching() => _ResolvedButtonState(
-        label: 'DOWNLOAD',
+        label: l10n.fwuLabelDownload,
         color: _activeColor,
-        description: 'Preparing firmware package…',
+        description: l10n.fwuDescPreparing,
         enabled: false,
       ),
       UpdateDownloading() => _ResolvedButtonState(
-        label: 'DOWNLOAD',
+        label: l10n.fwuLabelDownload,
         color: _activeColor,
-        description: 'Downloading firmware…',
+        description: l10n.fwuDescDownloading,
         enabled: false,
       ),
       UpdateVerifying(:final fileIndex, :final fileCount) =>
         _ResolvedButtonState(
-          label: 'CHECKING',
+          label: l10n.fwuLabelChecking,
           color: _activeColor,
           description: fileCount == 0
-              ? 'Checking files on the device…'
-              : 'Checking files… $fileIndex/$fileCount files',
+              ? l10n.fwuDescCheckingFiles
+              : l10n.fwuDescCheckingFilesCount(fileIndex, fileCount),
           enabled: false,
         ),
       UpdateUploading(:final fileIndex, :final fileCount) =>
         _ResolvedButtonState(
-          label: 'INSTALLING',
+          label: l10n.fwuLabelInstalling,
           color: _activeColor,
           description: fileCount == 0
-              ? 'Installing firmware on the device…'
-              : 'Installing firmware… $fileIndex/$fileCount files',
+              ? l10n.fwuDescInstalling
+              : l10n.fwuDescInstallingCount(fileIndex, fileCount),
           enabled: false,
         ),
       UpdateStarting() => _ResolvedButtonState(
-        label: 'RUN INSTALLER',
+        label: l10n.fwuLabelRunInstaller,
         color: _activeColor,
-        description: 'Starting updater on the device…',
+        description: l10n.fwuDescStartingUpdater,
         enabled: false,
       ),
       UpdateRecovering(:final step, :final progress) => _ResolvedButtonState(
@@ -372,19 +363,21 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
         enabled: false,
       ),
       UpdateWaitingForReconnect() => _ResolvedButtonState(
-        label: 'RESTARTING',
+        label: l10n.fwuLabelRestarting,
         color: _activeColor,
-        description: 'Waiting for the device to reconnect…',
+        description: l10n.fwuDescWaitingReconnect,
         enabled: false,
       ),
       UpdateDone() => _ResolvedButtonState(
-        label: 'RUN INSTALLER',
+        label: l10n.fwuLabelRunInstaller,
         color: _activeColor,
-        description: 'The device will reboot and apply the update.',
+        description: l10n.fwuDescWillReboot,
         enabled: false,
       ),
       UpdateError(:final message) => _ResolvedButtonState(
-        label: _installAction() == InstallAction.update ? 'UPDATE' : 'INSTALL',
+        label: _installAction() == InstallAction.update
+            ? l10n.fwuLabelUpdate
+            : l10n.fwuLabelInstall,
         color: _activeColor,
         description: message,
         enabled: true,
@@ -427,21 +420,21 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
   }
 
   static String _recoveryLabel(RecoveryStep step) => switch (step) {
-    RecoveryStep.settingBootMode => 'PREPARING',
-    RecoveryStep.flashingRadio => 'RADIO',
-    RecoveryStep.flashingFirmware => 'FIRMWARE',
-    RecoveryStep.correctingOptionBytes => 'FINALIZING',
-    RecoveryStep.restarting => 'RESTARTING',
+    RecoveryStep.settingBootMode => l10n.fwuLabelPreparing,
+    RecoveryStep.flashingRadio => l10n.fwuLabelRadio,
+    RecoveryStep.flashingFirmware => l10n.fwuLabelFirmware,
+    RecoveryStep.correctingOptionBytes => l10n.fwuLabelFinalizing,
+    RecoveryStep.restarting => l10n.fwuLabelRestarting,
   };
 
   static String _recoveryDescription(RecoveryStep step, double progress) {
     final percent = (progress * 100).round();
     return switch (step) {
-      RecoveryStep.settingBootMode => 'Preparing device for recovery…',
-      RecoveryStep.flashingRadio => 'Flashing radio stack… $percent%',
-      RecoveryStep.flashingFirmware => 'Flashing firmware… $percent%',
-      RecoveryStep.correctingOptionBytes => 'Restoring option bytes…',
-      RecoveryStep.restarting => 'Restarting the device…',
+      RecoveryStep.settingBootMode => l10n.fwuDescRecoveryPrepare,
+      RecoveryStep.flashingRadio => l10n.fwuDescFlashingRadio(percent),
+      RecoveryStep.flashingFirmware => l10n.fwuDescFlashingFirmware(percent),
+      RecoveryStep.correctingOptionBytes => l10n.fwuDescRestoringOptionBytes,
+      RecoveryStep.restarting => l10n.fwuDescRestarting,
     };
   }
 }

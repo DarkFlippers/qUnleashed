@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../services/localization/l10n.dart';
 import '../../../../theme/theme.dart';
 
 class IrSearchField extends StatelessWidget {
@@ -48,7 +49,7 @@ class IrSearchField extends StatelessWidget {
             builder: (context, value, _) {
               if (value.text.isEmpty) return const SizedBox.shrink();
               return IconButton(
-                tooltip: 'Clear',
+                tooltip: context.l10n.commonClear,
                 icon: Icon(Icons.close, color: colors.textMuted, size: 18),
                 onPressed: () {
                   controller.clear();

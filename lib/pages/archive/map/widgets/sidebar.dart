@@ -38,7 +38,7 @@ class _MapSidebar extends StatelessWidget {
           child: pins.isEmpty
               ? Center(
                   child: Text(
-                    'No pins with location data',
+                    context.l10n.mapNoPinsWithLocation,
                     style: TextStyle(color: colors.textMuted, fontSize: 13),
                     textAlign: TextAlign.center,
                   ),
@@ -86,7 +86,7 @@ class _SidebarInfoPanel extends StatelessWidget {
             Icon(Icons.location_on_outlined, size: 20, color: colors.textMuted),
             const SizedBox(width: 10),
             Text(
-              'Select a pin from the list',
+              context.l10n.mapSelectPin,
               style: TextStyle(color: colors.textMuted, fontSize: 13),
             ),
           ],
@@ -145,14 +145,14 @@ class _SidebarInfoPanel extends StatelessWidget {
                     color: colors.accent,
                   ),
                   onPressed: onEdit,
-                  tooltip: 'Edit location',
+                  tooltip: context.l10n.mapEditLocation,
                   padding: const EdgeInsets.all(4),
                   constraints: const BoxConstraints(),
                 ),
               IconButton(
                 icon: Icon(Icons.close, size: 18, color: colors.textMuted),
                 onPressed: onClose,
-                tooltip: 'Deselect',
+                tooltip: context.l10n.mapDeselect,
                 padding: const EdgeInsets.all(4),
                 constraints: const BoxConstraints(),
               ),
@@ -188,7 +188,7 @@ class _SidebarInfoPanel extends StatelessWidget {
             )
           else if (controller.locationStatus == MapLocationStatus.granted)
             Text(
-              'Locating…',
+              context.l10n.mapLocating,
               style: TextStyle(color: colors.textMuted, fontSize: 12),
             )
           else
@@ -201,8 +201,8 @@ class _SidebarInfoPanel extends StatelessWidget {
               ),
               onPressed: controller.requestLocation,
               icon: const Icon(Icons.location_on_outlined, size: 14),
-              label: const Text(
-                'Enable location',
+              label: Text(
+                context.l10n.mapEnableLocation,
                 style: TextStyle(fontSize: 12),
               ),
             ),

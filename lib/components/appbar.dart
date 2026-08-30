@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
+import '../services/localization/l10n.dart';
 import '../theme/theme.dart';
 
 class QPageAppBar extends StatelessWidget implements PreferredSizeWidget {
@@ -169,7 +170,7 @@ class _PageTitleState extends State<_PageTitle> {
 
   String _displayDeviceName(String? rawName) {
     final name = rawName?.trim() ?? '';
-    if (name.isEmpty) return 'No device';
+    if (name.isEmpty) return l10n.deviceStateNoDevice;
 
     final withoutPrefix = name.replaceFirst(
       RegExp(r'^Flipper(?:\s+Zero)?[\s_-]+', caseSensitive: false),

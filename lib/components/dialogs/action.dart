@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../services/localization/l10n.dart';
 import '../../theme/colors/display.dart';
 import '../../theme/theme.dart';
 
@@ -12,16 +13,14 @@ const double _kScreenWidth = _kDialogWidth - (_kOuterPadding * 2);
 const double _kImageWidth = _kScreenWidth - (_kScreenPadding * 2);
 const double _kImageHeight = _kImageWidth / _kAssetAspectRatio;
 
-const String kFlipperBusyTitle = 'Device is Busy';
-const String kFlipperBusyMessage =
-    'Exit the current app on the device to use this feature';
-const String kFlipperBusyAction = 'Remoute control';
+String get kFlipperBusyTitle => l10n.deviceBusyTitle;
+String get kFlipperBusyMessage => l10n.deviceBusyMessage;
+String get kFlipperBusyAction => l10n.deviceBusyAction;
 const String kFlipperBusyAssetPath = 'assets/pic/status/busy.svg';
 
-const String kCliBluetoothUnavailableTitle = 'Terminal Unavailable';
-const String kCliBluetoothUnavailableMessage =
-    'Terminal session is not available over Bluetooth.';
-const String kCliBluetoothUnavailableAction = 'Disconnect and continue';
+String get kCliBluetoothUnavailableTitle => l10n.terminalUnavailableTitle;
+String get kCliBluetoothUnavailableMessage => l10n.terminalUnavailableMessage;
+String get kCliBluetoothUnavailableAction => l10n.terminalUnavailableAction;
 const String kCliBluetoothUnavailableAssetPath = 'assets/pic/status/busy.svg';
 
 class FlipperActionDialog extends StatelessWidget {

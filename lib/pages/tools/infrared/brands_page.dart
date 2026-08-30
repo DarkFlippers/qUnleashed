@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../services/localization/l10n.dart';
 import '../../../theme/theme.dart';
 import 'package:qunleashed/components/appbar.dart';
 import 'backend/infrared_backend_api.dart';
@@ -91,7 +92,7 @@ class _IrBrandsPageState extends State<IrBrandsPage> {
           children: [
             IrSearchField(
               controller: _searchCtrl,
-              hintText: 'Search brand…',
+              hintText: context.l10n.irSearchBrand,
               padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
               onChanged: (v) => setState(() => _query = v),
             ),
@@ -114,7 +115,7 @@ class _IrBrandsPageState extends State<IrBrandsPage> {
     if (list.isEmpty) {
       return Center(
         child: Text(
-          _query.isEmpty ? 'No brands available' : 'No matches',
+          _query.isEmpty ? context.l10n.irNoBrands : context.l10n.irNoMatches,
           style: TextStyle(color: colors.textMuted),
         ),
       );
@@ -185,7 +186,10 @@ class _ErrorView extends StatelessWidget {
               style: TextStyle(color: colors.textPrimary),
             ),
             const SizedBox(height: 14),
-            FilledButton(onPressed: onRetry, child: const Text('Retry')),
+            FilledButton(
+              onPressed: onRetry,
+              child: Text(context.l10n.commonRetry),
+            ),
           ],
         ),
       ),

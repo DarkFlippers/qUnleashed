@@ -1,3 +1,5 @@
+import '../localization/l10n.dart';
+
 /// Where a source build actually runs.
 enum AssemblerBackend { local, server }
 
@@ -18,15 +20,19 @@ enum AssemblerBackendPreference {
 /// Why the backend below is the one in use, so the settings can say it in
 /// words instead of leaving the user guessing.
 enum AssemblerBackendReason {
-  ready('builds run on this computer'),
-  chosen('picked in the settings'),
-  unsupported('local builds need a desktop'),
-  notInstalled('SDK or toolchain is not installed'),
-  faulted('local toolchain failed, using the server');
+  ready,
+  chosen,
+  unsupported,
+  notInstalled,
+  faulted;
 
-  const AssemblerBackendReason(this.label);
-
-  final String label;
+  String get label => switch (this) {
+    AssemblerBackendReason.ready => l10n.backendReasonReady,
+    AssemblerBackendReason.chosen => l10n.backendReasonChosen,
+    AssemblerBackendReason.unsupported => l10n.backendReasonUnsupported,
+    AssemblerBackendReason.notInstalled => l10n.backendReasonNotInstalled,
+    AssemblerBackendReason.faulted => l10n.backendReasonFaulted,
+  };
 }
 
 class AssemblerBackendChoice {

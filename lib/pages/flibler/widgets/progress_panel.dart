@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../services/localization/l10n.dart';
 import '../../../components/cardlist.dart';
 import '../../../components/format.dart';
 import '../../../theme/theme.dart';
@@ -9,17 +10,17 @@ class AssemblerProgressPanel extends StatelessWidget {
   const AssemblerProgressPanel({
     super.key,
     required this.controller,
-    this.idleLabel = 'Idle',
+    this.idleLabel,
   });
 
   final AssemblerController controller;
-  final String idleLabel;
+  final String? idleLabel;
 
   static String jobLabel(AssemblerJob job) => switch (job) {
     AssemblerJob.none => '',
-    AssemblerJob.sdk => 'Downloading SDK',
-    AssemblerJob.toolchain => 'Downloading toolchain',
-    AssemblerJob.build => 'Building from source',
+    AssemblerJob.sdk => l10n.fliblerJobSdk,
+    AssemblerJob.toolchain => l10n.fliblerJobToolchain,
+    AssemblerJob.build => l10n.fliblerJobBuild,
   };
 
   @override
@@ -33,7 +34,9 @@ class AssemblerProgressPanel extends StatelessWidget {
         final fraction = progress?.fraction;
         final title = progress?.title.isNotEmpty == true
             ? progress!.title
-            : (busy ? jobLabel(controller.job) : idleLabel);
+            : (busy
+                  ? jobLabel(controller.job)
+                  : (idleLabel ?? l10n.fliblerJobIdle));
 
         return Container(
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),

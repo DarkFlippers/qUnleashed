@@ -1,3 +1,4 @@
+import '../../../../../services/localization/l10n.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -32,7 +33,7 @@ class AnimationPanel extends StatelessWidget {
             Row(
               children: [
                 Text(
-                  'ANIMATION',
+                  context.l10n.paintAnimationSection,
                   style: TextStyle(
                     color: colors.textMuted,
                     fontSize: 11,
@@ -58,7 +59,7 @@ class AnimationPanel extends StatelessWidget {
                       ),
                     ),
                     child: Text(
-                      ctrl.compressBm ? 'Compress ✓' : 'Compress',
+                      ctrl.compressBm ? context.l10n.paintCompressOn : context.l10n.paintCompress,
                       style: TextStyle(
                         color: ctrl.compressBm
                             ? colors.accent
@@ -73,7 +74,7 @@ class AnimationPanel extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'Frame rate',
+              context.l10n.paintFrameRate,
               style: TextStyle(color: colors.textSecondary, fontSize: 12),
             ),
             Row(
@@ -97,7 +98,7 @@ class AnimationPanel extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  '${ctrl.frameRate} fps',
+                  context.l10n.paintFps(ctrl.frameRate),
                   style: TextStyle(
                     color: colors.textPrimary,
                     fontSize: 13,
@@ -110,12 +111,12 @@ class AnimationPanel extends StatelessWidget {
             Row(
               children: [
                 Text(
-                  'Passive  $passiveN',
+                  context.l10n.paintPassiveCount(passiveN),
                   style: TextStyle(color: colors.textSecondary, fontSize: 12),
                 ),
                 const Spacer(),
                 Text(
-                  'Active  $activeN',
+                  context.l10n.paintActiveCount(activeN),
                   style: TextStyle(color: colors.textMuted, fontSize: 12),
                 ),
               ],
@@ -140,7 +141,7 @@ class AnimationPanel extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             AnimRow(
-              label: 'Duration',
+              label: context.l10n.paintDuration,
               unit: 's',
               colors: colors,
               trailing: NumberStepper(
@@ -158,7 +159,7 @@ class AnimationPanel extends StatelessWidget {
                 child: Column(
                   children: [
                     AnimRow(
-                      label: 'Active cycles',
+                      label: context.l10n.paintActiveCycles,
                       colors: colors,
                       trailing: NumberStepper(
                         value: ctrl.activeCycles,
@@ -169,7 +170,7 @@ class AnimationPanel extends StatelessWidget {
                       ),
                     ),
                     AnimRow(
-                      label: 'Active cooldown',
+                      label: context.l10n.paintActiveCooldown,
                       unit: 's',
                       colors: colors,
                       trailing: NumberStepper(
@@ -202,7 +203,7 @@ class AnimationPanel extends StatelessWidget {
                             ),
                             const SizedBox(width: 6),
                             Text(
-                              'Trigger Active',
+                              context.l10n.paintTriggerActive,
                               style: TextStyle(
                                 color: colors.accent,
                                 fontSize: 12,

@@ -1,3 +1,4 @@
+import '../../../../services/localization/l10n.dart';
 import 'dart:async';
 
 import 'package:crypto/crypto.dart';
@@ -186,13 +187,13 @@ class ManifestSyncController extends ChangeNotifier {
   Future<void> send() async {
     if (_sending) return;
     if (!_client.isConnected) {
-      _error = 'No device connected';
+      _error = l10n.paintNoDevice;
       _notify();
       return;
     }
     final selected = _items.where((i) => i.entry.selected).toList();
     if (selected.isEmpty) {
-      _error = 'Select at least one animation';
+      _error = l10n.paintSelectAnimation;
       _notify();
       return;
     }
@@ -208,7 +209,7 @@ class ManifestSyncController extends ChangeNotifier {
     try {
       await _writePending(await _planUpload(selected));
     } catch (e) {
-      _error = 'Send failed: $e';
+      _error = l10n.paintSendFailed('$e');
       LogService.log('[ManifestSync] send failed: $e');
     } finally {
       _sending = false;

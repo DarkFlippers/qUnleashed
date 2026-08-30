@@ -1,3 +1,4 @@
+import '../../../../services/localization/l10n.dart';
 import 'dart:io' as io;
 import 'dart:typed_data';
 
@@ -74,14 +75,14 @@ class KeyActionsSheet {
 
     if (onRename != null) {
       actions.add(
-        ActionItem(icon: Icons.edit_outlined, label: 'Rename', onTap: onRename),
+        ActionItem(icon: Icons.edit_outlined, label: context.l10n.fmRename, onTap: onRename),
       );
     }
     if (onDuplicate != null) {
       actions.add(
         ActionItem(
           icon: Icons.copy_outlined,
-          label: 'Duplicate',
+          label: context.l10n.archiveDuplicate,
           onTap: onDuplicate,
         ),
       );
@@ -91,7 +92,7 @@ class KeyActionsSheet {
       actions.add(
         ActionItem(
           icon: isFav ? Icons.star_rounded : Icons.star_outline_rounded,
-          label: isFav ? 'Unstar' : 'Star',
+          label: isFav ? context.l10n.archiveUnstar : context.l10n.archiveStar,
           onTap: onToggleFavorite,
         ),
       );
@@ -101,11 +102,11 @@ class KeyActionsSheet {
       actions.add(
         ActionItem(
           icon: Icons.restore,
-          label: 'Restore',
+          label: context.l10n.archiveRestore,
           onTap: () async {
             if (!connected) {
               context.showNotification(
-                'Connect a device to restore',
+                context.l10n.archiveConnectToRestore,
                 type: QNotificationType.warning,
               );
               return;
@@ -119,7 +120,7 @@ class KeyActionsSheet {
       actions.add(
         ActionItem(
           icon: Icons.play_arrow,
-          label: 'Emulate',
+          label: context.l10n.fileEmulate,
           onTap: () => emulateOnFlipper(context, k),
         ),
       );
@@ -128,7 +129,7 @@ class KeyActionsSheet {
       actions.add(
         ActionItem(
           icon: Icons.show_chart,
-          label: 'Plotter',
+          label: context.l10n.archivePlotter,
           onTap: () => _openInPlotter(context, controller, k),
         ),
       );
@@ -137,7 +138,7 @@ class KeyActionsSheet {
       actions.add(
         ActionItem(
           icon: Icons.map_outlined,
-          label: 'Map',
+          label: context.l10n.settingsMapTitle,
           onTap: () => _openOnMap(context, k),
         ),
       );
@@ -145,7 +146,7 @@ class KeyActionsSheet {
       actions.add(
         ActionItem(
           icon: Icons.add_location_alt_outlined,
-          label: 'Map',
+          label: context.l10n.settingsMapTitle,
           onTap: () => _pickLocation(context, k),
         ),
       );
@@ -160,7 +161,7 @@ class KeyActionsSheet {
       actions.add(
         ActionItem(
           icon: Icons.folder_open,
-          label: 'Reveal',
+          label: context.l10n.archiveReveal,
           onTap: () => _openInFileManager(context, k),
         ),
       );
@@ -169,18 +170,18 @@ class KeyActionsSheet {
       actions.add(
         ActionItem(
           icon: Icons.edit_note,
-          label: 'Edit',
+          label: context.l10n.fileEdit,
           onTap: () => _openInEditor(context, controller, k),
         ),
       );
     }
     final shareIcon = isShareSupported ? Icons.ios_share : Icons.content_copy;
-    final shareLabel = isShareSupported ? 'Share' : 'Copy';
+    final shareLabel = isShareSupported ? context.l10n.shareShare : context.l10n.fmCopy;
     if (hasLocal || (k.onDevice && connected)) {
       actions.add(
         ActionItem(
           icon: Icons.download_outlined,
-          label: 'Download',
+          label: context.l10n.fmDownload,
           onTap: () => _download(context, controller, k),
         ),
       );
@@ -223,7 +224,7 @@ class KeyActionsSheet {
       return [
         ActionItem(
           icon: Icons.delete_forever,
-          label: 'Delete',
+          label: context.l10n.commonDelete,
           destructive: true,
           onTap: () => confirmAndDelete(
             context,
@@ -244,7 +245,7 @@ class KeyActionsSheet {
       if (canDeleteLocal)
         ActionItem(
           icon: Icons.phonelink_erase_outlined,
-          label: 'Delete local',
+          label: context.l10n.archiveDeleteLocal,
           destructive: true,
           onTap: () => confirmAndDelete(
             context,
@@ -258,7 +259,7 @@ class KeyActionsSheet {
       if (canDeleteRemote)
         ActionItem(
           icon: Icons.delete_forever,
-          label: 'Delete remote',
+          label: context.l10n.archiveDeleteRemote,
           destructive: true,
           onTap: () => confirmAndDelete(
             context,
@@ -297,7 +298,7 @@ class KeyActionsSheet {
     if (!context.mounted) return;
     if (bytes == null) {
       context.showNotification(
-        'Could not read ${k.fileName}',
+        context.l10n.archiveCouldNotRead(k.fileName),
         type: QNotificationType.error,
       );
       return;
@@ -352,7 +353,7 @@ class KeyActionsSheet {
     if (!context.mounted) return;
     if (path == null) {
       context.showNotification(
-        'Download failed',
+        context.l10n.fmDownloadFailed,
         type: QNotificationType.error,
       );
       return;
@@ -377,7 +378,7 @@ class KeyActionsSheet {
     if (!context.mounted) return;
     if (bytes == null) {
       context.showNotification(
-        'Download failed',
+        context.l10n.fmDownloadFailed,
         type: QNotificationType.error,
       );
       return;
@@ -386,14 +387,14 @@ class KeyActionsSheet {
     String? savedPath;
     try {
       savedPath = await FilePicker.platform.saveFile(
-        dialogTitle: 'Save ${k.fileName}',
+        dialogTitle: context.l10n.archiveSaveOne(k.fileName),
         fileName: k.fileName,
         bytes: Uint8List.fromList(bytes),
       );
     } catch (e) {
       if (context.mounted) {
         context.showNotification(
-          'Saving is not supported on this platform',
+          context.l10n.archiveSaveUnsupported,
           type: QNotificationType.error,
         );
       }
@@ -455,13 +456,13 @@ class KeyActionsSheet {
   }) async {
     if (keys.isEmpty) return;
     final colors = context.appColors;
-    final where = local ? 'this phone' : 'the device';
+    final where = local ? context.l10n.archiveWhereThisPhone : context.l10n.archiveWhereDevice;
     final title = keys.length == 1
-        ? 'Delete ${keys.first.name} from $where?'
-        : 'Delete ${keys.length} files from $where?';
+        ? context.l10n.archiveDeleteOneFrom(keys.first.name, where)
+        : context.l10n.archiveDeleteManyFrom(keys.length, where);
     final message = local
-        ? 'Permanently deleted from this phone. Copies on the device are kept.'
-        : 'Permanently deleted from the device. Local copies on this phone are kept.';
+        ? context.l10n.archiveDeleteLocalBody
+        : context.l10n.archiveDeleteRemoteBody;
 
     final ok = await showDialog<bool>(
       context: context,
@@ -475,11 +476,11 @@ class KeyActionsSheet {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+            child: Text(context.l10n.commonCancel),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Delete', style: TextStyle(color: colors.danger)),
+            child: Text(context.l10n.commonDelete, style: TextStyle(color: colors.danger)),
           ),
         ],
       ),

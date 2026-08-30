@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../localization/l10n.dart';
 import '../notifications/notification_center.dart';
 
 class ConnectionNotificationService with WidgetsBindingObserver, WindowListener {
@@ -17,11 +18,11 @@ class ConnectionNotificationService with WidgetsBindingObserver, WindowListener 
   static const _channelId = 'connection_errors';
   static const _debounce = Duration(seconds: 2);
 
-  static const _details = NotificationDetails(
+  static NotificationDetails get _details => NotificationDetails(
     android: AndroidNotificationDetails(
       _channelId,
-      'Connection errors',
-      channelDescription: 'Notifications about connection issues',
+      l10n.notificationChannelConnectionErrors,
+      channelDescription: l10n.notificationChannelConnectionErrorsDescription,
       importance: Importance.high,
       priority: Priority.high,
     ),
@@ -132,8 +133,8 @@ class ConnectionNotificationService with WidgetsBindingObserver, WindowListener 
     if (!NotificationCenter.instance.isReady) return;
     await _plugin.show(
       id: _notificationId,
-      title: 'Connection Lost',
-      body: 'Lost connection to $deviceName',
+      title: l10n.notificationConnectionLostTitle,
+      body: l10n.notificationConnectionLostBody(deviceName),
       notificationDetails: _details,
     );
   }

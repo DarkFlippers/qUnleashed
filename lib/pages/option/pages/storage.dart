@@ -7,6 +7,7 @@ import '../../../components/cardlist.dart';
 import '../../../components/format.dart';
 import '../../../components/icon.dart';
 import '../../../services/http/app_http.dart';
+import '../../../services/localization/l10n.dart';
 import '../../../services/storage/paths.dart';
 import '../../../services/storage/fap_icons.dart';
 import '../../../theme/theme.dart';
@@ -32,8 +33,6 @@ class _StorageArea {
   final Future<void> Function()? clear;
 }
 
-const _groupAppFolders = 'App folders';
-const _groupInternal = 'Internal';
 const _groupFlibler = 'Flibler (ufbt)';
 
 Future<void> _clearUfbtSdk() async {
@@ -46,82 +45,82 @@ Future<void> _clearUfbtToolchain() async {
   AssemblerController.instance.refreshStatus();
 }
 
-final List<_StorageArea> _areas = [
+List<_StorageArea> _buildAreas(L10n s) => [
   _StorageArea(
-    group: _groupAppFolders,
-    title: 'Device data',
-    subtitle: 'Synced archive and app catalogs per device',
+    group: s.storageGroupAppFolders,
+    title: s.storageDeviceData,
+    subtitle: s.storageDeviceDataSubtitle,
     resolve: appDevicesDirectory,
   ),
   _StorageArea(
-    group: _groupAppFolders,
-    title: 'Screenshots',
-    subtitle: 'Saved device screen captures',
+    group: s.storageGroupAppFolders,
+    title: s.storageScreenshots,
+    subtitle: s.storageScreenshotsSubtitle,
     resolve: appScreenshotsDirectory,
   ),
   _StorageArea(
-    group: _groupAppFolders,
-    title: 'Recordings',
-    subtitle: 'Saved device screen recordings',
+    group: s.storageGroupAppFolders,
+    title: s.storageRecordings,
+    subtitle: s.storageRecordingsSubtitle,
     resolve: appRecordingsDirectory,
   ),
   _StorageArea(
-    group: _groupAppFolders,
-    title: 'Animations',
-    subtitle: 'Pixel Draw projects and dolphin animations',
+    group: s.storageGroupAppFolders,
+    title: s.storageAnimations,
+    subtitle: s.storageAnimationsSubtitle,
     resolve: appAnimationsDirectory,
   ),
   _StorageArea(
-    group: _groupAppFolders,
-    title: 'IR library',
-    subtitle: 'Downloaded infrared remotes repository',
+    group: s.storageGroupAppFolders,
+    title: s.storageIrLibrary,
+    subtitle: s.storageIrLibrarySubtitle,
     resolve: irLibRepositoryDirectory,
   ),
   _StorageArea(
-    group: _groupAppFolders,
+    group: s.storageGroupAppFolders,
     title: 'All-the-plugins',
-    subtitle: 'Downloaded apps index and release binaries',
+    subtitle: s.storageAllThePluginsSubtitle,
     resolve: atpRepositoryDirectory,
   ),
   _StorageArea(
-    group: _groupInternal,
-    title: 'App icon cache',
-    subtitle: 'Cached application icons',
+    group: s.storageGroupInternal,
+    title: s.storageAppIconCache,
+    subtitle: s.storageAppIconCacheSubtitle,
     resolve: fapIconRepoDirectory,
   ),
   _StorageArea(
-    group: _groupInternal,
-    title: 'Network cache',
-    subtitle: 'Cached app catalog responses',
+    group: s.storageGroupInternal,
+    title: s.storageNetworkCache,
+    subtitle: s.storageNetworkCacheSubtitle,
     resolve: AppHttp.httpCacheDirectory,
   ),
   _StorageArea(
-    group: _groupInternal,
-    title: 'Share cache',
-    subtitle: 'Temporary files created for sharing',
+    group: s.storageGroupInternal,
+    title: s.storageShareCache,
+    subtitle: s.storageShareCacheSubtitle,
     resolve: shareCacheDirectory,
   ),
   if (AssemblerController.isSupported) ...[
     _StorageArea(
       group: _groupFlibler,
-      title: 'Firmware SDK',
-      subtitle: 'Deployed SDK used for builds',
+      title: s.storageFirmwareSdk,
+      subtitle: s.storageFirmwareSdkSubtitle,
       resolve: () async => UfbtPaths.resolve().currentSdkDir,
       clear: _clearUfbtSdk,
     ),
     _StorageArea(
       group: _groupFlibler,
-      title: 'ARM toolchain',
-      subtitle: 'GCC toolchain for compiling',
+      title: s.storageArmToolchain,
+      subtitle: s.storageArmToolchainSubtitle,
       resolve: () async => UfbtPaths.resolve().toolchainDir,
       clear: _clearUfbtToolchain,
     ),
   ],
 ];
 
-final List<String> _groups = [
-  _groupAppFolders,
-  _groupInternal,
+List<String> _buildGroups(L10n s) => [
+  s.storageGroupAppFolders,
+  s.storageGroupInternal,
   if (AssemblerController.isSupported) _groupFlibler,
 ];
 
@@ -135,6 +134,8 @@ class StorageSettingsPage extends StatefulWidget {
 class _StorageSettingsPageState extends State<StorageSettingsPage> {
   final Map<int, int?> _sizes = {};
   final Set<int> _clearing = {};
+
+  List<_StorageArea> get _areas => _buildAreas(l10n);
 
   @override
   void initState() {
@@ -157,19 +158,19 @@ class _StorageSettingsPageState extends State<StorageSettingsPage> {
           context: context,
           barrierColor: context.appColors.dialogBarrier,
           builder: (ctx) => AlertDialog(
-            title: Text('Clear ${area.title.toLowerCase()}?'),
-            content: Text(
-              'This permanently deletes everything inside this folder.',
+            title: Text(
+              ctx.l10n.storageClearTitle(area.title.toLowerCase()),
             ),
+            content: Text(ctx.l10n.storageClearBody),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Cancel'),
+                child: Text(ctx.l10n.commonCancel),
               ),
               TextButton(
                 onPressed: () => Navigator.pop(ctx, true),
                 child: Text(
-                  'Clear',
+                  ctx.l10n.commonClear,
                   style: TextStyle(color: ctx.appColors.danger),
                 ),
               ),
@@ -189,14 +190,14 @@ class _StorageSettingsPageState extends State<StorageSettingsPage> {
       }
       if (mounted) {
         context.showNotification(
-          '${area.title} cleared',
+          context.l10n.storageCleared(area.title),
           type: QNotificationType.good,
         );
       }
     } catch (e) {
       if (mounted) {
         context.showNotification(
-          'Failed to clear: $e',
+          context.l10n.storageClearFailed('$e'),
           type: QNotificationType.error,
         );
       }
@@ -274,14 +275,14 @@ class _StorageSettingsPageState extends State<StorageSettingsPage> {
     return Scaffold(
       backgroundColor: colors.background,
       appBar: AppBar(
-        title: const Text('Storage'),
+        title: Text(context.l10n.settingsStorageTitle),
         backgroundColor: colors.background,
         surfaceTintColor: colors.transparent,
       ),
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: 10),
         children: [
-          for (final group in _groups) ...[
+          for (final group in _buildGroups(context.l10n)) ...[
             GroupedCardList<int>(
               title: group,
               items: [
@@ -290,7 +291,8 @@ class _StorageSettingsPageState extends State<StorageSettingsPage> {
               ],
               itemBuilder: _tile,
             ),
-            if (group != _groups.last) const SizedBox(height: 10),
+            if (group != _buildGroups(context.l10n).last)
+              const SizedBox(height: 10),
           ],
         ],
       ),

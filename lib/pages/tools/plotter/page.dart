@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'package:qunleashed/components/appbar.dart';
+import '../../../services/localization/l10n.dart';
 import '../../../theme/theme.dart';
 import '../../../components/notification.dart';
 import 'models.dart';
@@ -69,7 +70,7 @@ class _PulsePlotterPageState extends State<PulsePlotterPage> {
       setState(() => _loading = false);
       final message = e is PlotterParseException
           ? e.message
-          : 'Could not parse this file';
+          : l10n.plotParseFailed;
       context.showNotification(message, type: QNotificationType.error);
     }
   }
@@ -89,7 +90,7 @@ class _PulsePlotterPageState extends State<PulsePlotterPage> {
     if (bytes == null) {
       if (mounted) {
         context.showNotification(
-          'Could not read the selected file',
+          l10n.plotReadFailed,
           type: QNotificationType.error,
         );
       }
@@ -119,12 +120,12 @@ class _PulsePlotterPageState extends State<PulsePlotterPage> {
     return Scaffold(
       backgroundColor: colors.background,
       appBar: QPageAppBar(
-        title: 'Pulse Plotter',
+        title: context.l10n.toolPulsePlotter,
         subtitle: _fileName,
         showDeviceStatus: false,
         actions: [
           QPageAppBarAction(
-            tooltip: 'Open signal file',
+            tooltip: context.l10n.plotOpenFile,
             icon: const Icon(Icons.folder_open_outlined),
             onPressed: _loading ? null : _pickFile,
           ),
@@ -202,7 +203,7 @@ class _PulsePlotterPageState extends State<PulsePlotterPage> {
                 ),
                 const SizedBox(height: 18),
                 Text(
-                  _loading ? 'Parsing signal…' : 'No signal loaded',
+                  _loading ? context.l10n.plotParsing : context.l10n.plotNoSignal,
                   style: TextStyle(
                     color: colors.textPrimary,
                     fontSize: 17,
@@ -211,7 +212,7 @@ class _PulsePlotterPageState extends State<PulsePlotterPage> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Pick a Sub-GHz, RFID or Infrared capture to\nvisualize and analyze its pulses.',
+                  context.l10n.plotEmptyHint,
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: colors.textSecondary,
@@ -225,7 +226,7 @@ class _PulsePlotterPageState extends State<PulsePlotterPage> {
                   child: FilledButton.icon(
                     onPressed: _loading ? null : _pickFile,
                     icon: const Icon(Icons.file_upload_outlined, size: 20),
-                    label: const Text('Select file'),
+                    label: Text(context.l10n.plotSelectFile),
                     style: FilledButton.styleFrom(
                       backgroundColor: colors.accent,
                       foregroundColor: colors.onAccent,
@@ -256,7 +257,7 @@ class _NoPlotNotice extends StatelessWidget {
     return PlotterCard(
       padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
       child: Text(
-        'This signal has no plottable raw data.',
+        context.l10n.plotNoRawData,
         textAlign: TextAlign.center,
         style: TextStyle(color: colors.textSecondary, fontSize: 13),
       ),
@@ -281,13 +282,13 @@ class _SignalSelector extends StatelessWidget {
     return DropdownButtonFormField<IrSignal>(
       initialValue: current,
       isExpanded: true,
-      decoration: plotterFieldDecoration(context, label: 'Signal'),
+      decoration: plotterFieldDecoration(context, label: context.l10n.plotSignal),
       dropdownColor: colors.card,
       borderRadius: BorderRadius.circular(12),
       style: TextStyle(color: colors.textPrimary, fontSize: 14),
       items: [
         for (final (i, s) in signals.indexed)
-          DropdownMenuItem(value: s, child: Text(s.name ?? 'Signal ${i + 1}')),
+          DropdownMenuItem(value: s, child: Text(s.name ?? context.l10n.plotSignalNumber(i + 1))),
       ],
       onChanged: onChanged,
     );
@@ -309,7 +310,7 @@ class _AboutSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'About Pulse plotter',
+          context.l10n.plotAboutTitle,
           style: TextStyle(
             color: colors.textPrimary,
             fontSize: 15,
@@ -318,21 +319,18 @@ class _AboutSection extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         Text(
-          'Sub-GHz/RFID/Infrared signal plotter is a tool to visualize raw '
-          'signals (aka pulses) from various sources. Aside from visualizing '
-          'saved signals, it can also help analyze raw captures.',
+          context.l10n.plotAboutIntro,
           style: body,
         ),
         const SizedBox(height: 10),
-        Text('Accepted file formats:', style: body),
-        Text('  • Sub-GHz RAW captures (.sub)', style: body),
-        Text('  • RFID RAW captures (.raw)', style: body),
-        Text('  • Infrared signal/remote files (.ir)', style: body),
-        Text('  • other Flipper File Format RAW-compatible files', style: body),
+        Text(context.l10n.plotAboutFormats, style: body),
+        Text(context.l10n.plotAboutFormatSub, style: body),
+        Text(context.l10n.plotAboutFormatRaw, style: body),
+        Text(context.l10n.plotAboutFormatIr, style: body),
+        Text(context.l10n.plotAboutFormatOther, style: body),
         const SizedBox(height: 10),
         Text(
-          'After parsing the file, the plotter will try to guess the signal '
-          'modulation. You can also use the slicer to figure it out manually.',
+          context.l10n.plotAboutOutro,
           style: body,
         ),
       ],

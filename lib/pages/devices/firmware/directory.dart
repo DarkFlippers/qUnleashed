@@ -1,3 +1,4 @@
+import '../../../services/localization/l10n.dart';
 import '../../../components/config.dart';
 import '../../../services/http/app_http.dart';
 
@@ -35,11 +36,11 @@ enum FirmwareChannel {
 
 const kCustomFirmwareChannelId = 'custom';
 
-FirmwareDirectoryChannel buildCustomChannel() => const FirmwareDirectoryChannel(
+FirmwareDirectoryChannel buildCustomChannel() => FirmwareDirectoryChannel(
   id: kCustomFirmwareChannelId,
-  title: 'Custom',
-  description: 'Install firmware from a local .tgz archive',
-  versions: [],
+  title: l10n.firmwareChannelCustom,
+  description: l10n.firmwareChannelCustomDescription,
+  versions: const [],
 );
 
 enum UnleashedVariant { base, extraPacks, compact }

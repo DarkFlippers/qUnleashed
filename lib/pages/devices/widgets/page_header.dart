@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../services/localization/l10n.dart';
 import '../../../theme/theme.dart';
 import 'flipper_mockup.dart';
 
@@ -70,7 +71,7 @@ class DevicePageHeader extends StatelessWidget {
                       child: TextButton.icon(
                         onPressed: onOpenFullInfo,
                         icon: const Icon(Icons.info_outline, size: 16),
-                        label: const Text('Full Info'),
+                        label: Text(context.l10n.deviceFullInfo),
                         style: TextButton.styleFrom(
                           foregroundColor: colors.onAccent,
                           fixedSize: const Size.fromHeight(36),

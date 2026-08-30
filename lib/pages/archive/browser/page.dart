@@ -1,3 +1,4 @@
+import '../../../services/localization/l10n.dart';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
@@ -39,7 +40,7 @@ class _Clipboard {
   final bool isCut;
 
   String get label =>
-      items.length == 1 ? items.first.name : '${items.length} items';
+      items.length == 1 ? items.first.name : l10n.fmItemCount(items.length);
 }
 
 class FileManagerPage extends StatefulWidget {
@@ -189,7 +190,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
     if (!mounted) return;
     if (!ok) {
       context.showNotification(
-        'Failed to launch app',
+        context.l10n.fmLaunchFailed,
         type: QNotificationType.error,
       );
       return;
@@ -198,7 +199,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
   }
 
   void _openRemoteControlBusy() {
-    context.showNotification('Device is busy', type: QNotificationType.error);
+    context.showNotification(context.l10n.fmDeviceBusy, type: QNotificationType.error);
     openRoute(context, AppRoute.remoteControl);
   }
 
@@ -256,12 +257,12 @@ class _FileManagerPageState extends State<FileManagerPage> {
   Future<String?> _pickDestinationDir() async {
     try {
       return await FilePicker.platform.getDirectoryPath(
-        dialogTitle: 'Choose download location',
+        dialogTitle: context.l10n.fmChooseDownloadLocation,
       );
     } catch (e) {
       if (mounted) {
         context.showNotification(
-          'Choosing a folder is not supported on this platform',
+          context.l10n.fmFolderPickUnsupported,
           type: QNotificationType.error,
         );
       }
@@ -274,7 +275,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
   Future<void> _downloadEntries(List<RemoteEntry> entries) async {
     if (entries.isEmpty) {
       context.showNotification(
-        'Nothing to download',
+        context.l10n.fmNothingToDownload,
         type: QNotificationType.warning,
       );
       return;
@@ -287,7 +288,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
       final ok = await _ctrl.downloadEntryTo(entries.single, destDir: destDir);
       if (!mounted || ok) return;
       context.showNotification(
-        'Download failed',
+        context.l10n.fmDownloadFailed,
         type: QNotificationType.error,
       );
       return;
@@ -296,7 +297,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
     final failures = await _ctrl.downloadEntriesTo(entries, destDir: destDir);
     if (!mounted || failures == 0) return;
     context.showNotification(
-      'Failed to download $failures file(s)',
+      context.l10n.fmDownloadFailedCount(failures),
       type: QNotificationType.error,
     );
   }
@@ -307,13 +308,13 @@ class _FileManagerPageState extends State<FileManagerPage> {
         ? e.name.substring(0, e.name.length - 4)
         : e.name;
 
-    if (!silent) context.showNotification('Indexing icon for ${e.name}…');
+    if (!silent) context.showNotification(context.l10n.fmIndexingIcon(e.name));
     final bytes = await _ctrl.readBytes(remotePath);
     if (!mounted) return false;
     if (bytes == null) {
       if (!silent) {
         context.showNotification(
-          'Failed to download ${e.name}',
+          context.l10n.fmDownloadFailedFor(e.name),
           type: QNotificationType.error,
         );
       }
@@ -325,7 +326,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
     if (icon == null) {
       if (!silent) {
         context.showNotification(
-          'No icon found in ${e.name}',
+          context.l10n.fmNoIconIn(e.name),
           type: QNotificationType.warning,
         );
       }
@@ -337,7 +338,9 @@ class _FileManagerPageState extends State<FileManagerPage> {
     await icon_repo.writeFapIcon(appId, icon);
     if (!mounted || silent) return true;
     context.showNotification(
-      'Icon indexed for ${extracted?.name.isNotEmpty == true ? extracted!.name : appId}',
+      context.l10n.fmIconIndexed(
+        extracted?.name.isNotEmpty == true ? extracted!.name : appId,
+      ),
       type: QNotificationType.good,
     );
     return true;
@@ -353,7 +356,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
     final items = _selectedEntries;
     if (items.isEmpty) return;
     context.showNotification(
-      'Indexing ${items.length} icon${items.length == 1 ? '' : 's'}…',
+      context.l10n.fmIndexingIcons(items.length),
     );
     var indexed = 0;
     for (final e in items) {
@@ -363,8 +366,8 @@ class _FileManagerPageState extends State<FileManagerPage> {
     _exitSelection();
     context.showNotification(
       indexed == items.length
-          ? 'Indexed $indexed icon${indexed == 1 ? '' : 's'}'
-          : 'Indexed $indexed of ${items.length} icons',
+          ? context.l10n.fmIndexedIcons(indexed)
+          : context.l10n.fmIndexedPartial(indexed, items.length),
       type: indexed == items.length
           ? QNotificationType.good
           : QNotificationType.warning,
@@ -372,14 +375,14 @@ class _FileManagerPageState extends State<FileManagerPage> {
   }
 
   Future<void> _deleteEntry(RemoteEntry e, {bool recursive = false}) async {
-    final ok = await _confirm('Delete “${e.name}”?');
+    final ok = await _confirm(context.l10n.fmDeleteOne(e.name));
     if (!ok) return;
     final remotePath = _ctrl.childPath(e.name);
     final success = await _ctrl.delete(remotePath, recursive: recursive);
     if (success) await _ctrl.refresh();
     if (!mounted) return;
     if (!success) {
-      context.showNotification('Delete failed', type: QNotificationType.error);
+      context.showNotification(context.l10n.fmDeleteFailed, type: QNotificationType.error);
     }
   }
 
@@ -387,7 +390,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
     final items = _selectedEntries;
     if (items.isEmpty) return;
     final ok = await _confirm(
-      'Delete ${items.length} item${items.length == 1 ? '' : 's'}?',
+      context.l10n.fmDeleteMany(items.length),
     );
     if (!ok) return;
     var failures = 0;
@@ -403,8 +406,8 @@ class _FileManagerPageState extends State<FileManagerPage> {
     if (!mounted) return;
     context.showNotification(
       failures == 0
-          ? 'Deleted ${items.length} item${items.length == 1 ? '' : 's'}'
-          : 'Failed to delete $failures item(s)',
+          ? context.l10n.fmDeletedMany(items.length)
+          : context.l10n.fmDeleteFailedCount(failures),
       type: failures == 0 ? QNotificationType.good : QNotificationType.error,
     );
   }
@@ -436,7 +439,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
     }
     if (!mounted) return;
     if (!ok) {
-      context.showNotification('Rename failed', type: QNotificationType.error);
+      context.showNotification(context.l10n.fmRenameFailed, type: QNotificationType.error);
     }
   }
 
@@ -461,7 +464,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
     if (!mounted) return;
     if (!ok) {
       context.showNotification(
-        'Create file failed',
+        context.l10n.fmCreateFileFailed,
         type: QNotificationType.error,
       );
       return;
@@ -527,29 +530,32 @@ class _FileManagerPageState extends State<FileManagerPage> {
     setState(() => _clipboard = null);
     await _ctrl.refresh();
     if (!mounted) return;
-    final verb = cb.isCut ? 'move' : 'copy';
     if (failures == 0) {
       context.showNotification(
-        '${cb.isCut ? 'Moved' : 'Copied'} ${cb.items.length} item${cb.items.length == 1 ? '' : 's'}',
+        cb.isCut
+            ? context.l10n.fmMovedMany(cb.items.length)
+            : context.l10n.fmCopiedMany(cb.items.length),
         type: QNotificationType.good,
       );
     } else {
       context.showNotification(
-        'Failed to $verb $failures item(s)',
+        cb.isCut
+            ? context.l10n.fmMoveFailedCount(failures)
+            : context.l10n.fmCopyFailedCount(failures),
         type: QNotificationType.error,
       );
     }
   }
 
   Future<void> _createFolder() async {
-    final name = await _promptText('New folder', hintText: 'Folder name');
+    final name = await _promptText(context.l10n.fmNewFolder, hintText: context.l10n.fmFolderName);
     if (name == null || name.trim().isEmpty) return;
     final ok = await _ctrl.mkdir(name.trim());
     if (ok) await _ctrl.refresh();
     if (!mounted) return;
     if (!ok) {
       context.showNotification(
-        'Create folder failed',
+        context.l10n.fmCreateFolderFailed,
         type: QNotificationType.error,
       );
     }
@@ -577,12 +583,12 @@ class _FileManagerPageState extends State<FileManagerPage> {
     if (!mounted) return;
     if (failures > 0) {
       context.showNotification(
-        'Upload failed for $failures file(s): ${_ctrl.error ?? ''}',
+        context.l10n.fmUploadFailedCount(failures, _ctrl.error ?? ''),
         type: QNotificationType.error,
       );
     } else {
       context.showNotification(
-        'Uploaded ${result.files.length} file(s)',
+        context.l10n.fmUploaded(result.files.length),
         type: QNotificationType.good,
       );
     }
@@ -600,11 +606,11 @@ class _FileManagerPageState extends State<FileManagerPage> {
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Cancel'),
+                child: Text(context.l10n.commonCancel),
               ),
               TextButton(
                 onPressed: () => Navigator.pop(ctx, true),
-                child: Text('Delete', style: TextStyle(color: colors.danger)),
+                child: Text(context.l10n.commonDelete, style: TextStyle(color: colors.danger)),
               ),
             ],
           ),
@@ -637,11 +643,11 @@ class _FileManagerPageState extends State<FileManagerPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
+            child: Text(context.l10n.commonCancel),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, controller.text),
-            child: const Text('Create'),
+            child: Text(context.l10n.fmCreate),
           ),
         ],
       ),
@@ -692,7 +698,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
-                    'Sort by',
+                    context.l10n.fmSortBy,
                     style: TextStyle(
                       color: colors.textMuted,
                       fontSize: 12,
@@ -702,9 +708,9 @@ class _FileManagerPageState extends State<FileManagerPage> {
                   ),
                 ),
               ),
-              tile('Name', FileSortMode.name),
-              tile('Size', FileSortMode.size),
-              tile('Type', FileSortMode.type),
+              tile(context.l10n.fmSortName, FileSortMode.name),
+              tile(context.l10n.fmSortSize, FileSortMode.size),
+              tile(context.l10n.fmSortType, FileSortMode.type),
               const SizedBox(height: 8),
             ],
           ),
@@ -738,7 +744,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
             ListTile(
               leading: Icon(Icons.note_add_outlined, color: colors.textPrimary),
               title: Text(
-                'New file',
+                context.l10n.fmNewFile,
                 style: TextStyle(color: colors.textPrimary),
               ),
               onTap: () {
@@ -757,7 +763,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
                 ),
               ),
               title: Text(
-                'New folder',
+                context.l10n.fmNewFolder,
                 style: TextStyle(color: colors.textPrimary),
               ),
               onTap: () {
@@ -776,7 +782,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
                 ),
               ),
               title: Text(
-                'Upload files',
+                context.l10n.fmUploadFiles,
                 style: TextStyle(color: colors.textPrimary),
               ),
               onTap: () {
@@ -834,7 +840,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
   PreferredSizeWidget _buildAppBar(QAppColors colors) {
     if (_selectionMode) {
       return QPageAppBar(
-        title: '${_selected.length} selected',
+        title: context.l10n.selectedCount(_selected.length),
         backgroundColor: colors.accent,
         foregroundColor: colors.onAccent,
         leading: IconButton(
@@ -860,7 +866,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
           style: TextStyle(color: colors.onAccent, fontSize: 16),
           cursorColor: colors.onAccent,
           decoration: InputDecoration(
-            hintText: 'Search in this folder',
+            hintText: context.l10n.fmSearchInFolder,
             border: InputBorder.none,
             hintStyle: TextStyle(color: colors.onAccent.withValues(alpha: 0.7)),
           ),
@@ -890,19 +896,19 @@ class _FileManagerPageState extends State<FileManagerPage> {
       leading: BackButton(onPressed: () => _handleBackButton()),
       actions: [
         QPageAppBarAction(
-          tooltip: 'Search',
+          tooltip: context.l10n.fmSearch,
           icon: const Icon(Icons.search),
           onPressed: _startSearch,
         ),
         QPageAppBarAction(
-          tooltip: 'Sort',
+          tooltip: context.l10n.fmSort,
           icon: const Icon(Icons.sort),
           onPressed: _showSortSheet,
         ),
         QPageAppBarAction(
           tooltip: _ctrl.viewMode == FileViewMode.list
-              ? 'Grid view'
-              : 'List view',
+              ? context.l10n.fmGridView
+              : context.l10n.fmListView,
           icon: Icon(
             _ctrl.viewMode == FileViewMode.list
                 ? Icons.grid_view
@@ -911,7 +917,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
           onPressed: _ctrl.toggleViewMode,
         ),
         QPageAppBarTooltip(
-          message: 'More actions',
+          message: context.l10n.fmMoreActions,
           child: PopupMenuButton<String>(
             tooltip: '',
             icon: const Icon(Icons.more_vert),
@@ -940,7 +946,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
                       color: colors.textSecondary,
                     ),
                     const SizedBox(width: 12),
-                    Text(_ctrl.showHidden ? 'Hide hidden' : 'Show hidden'),
+                    Text(_ctrl.showHidden ? context.l10n.fmHideHidden : context.l10n.fmShowHidden),
                   ],
                 ),
               ),
@@ -954,7 +960,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
                       color: colors.textSecondary,
                     ),
                     const SizedBox(width: 12),
-                    const Text('Select'),
+                    Text(context.l10n.fmSelect),
                   ],
                 ),
               ),
@@ -964,7 +970,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
                   children: [
                     Icon(Icons.refresh, size: 20, color: colors.textSecondary),
                     const SizedBox(width: 12),
-                    const Text('Refresh'),
+                    Text(context.l10n.fmRefresh),
                   ],
                 ),
               ),
@@ -987,27 +993,27 @@ class _FileManagerPageState extends State<FileManagerPage> {
     final empty = _selected.isEmpty;
     return [
       QPageAppBarAction(
-        tooltip: 'Download',
+        tooltip: context.l10n.fmDownload,
         icon: const Icon(Icons.download_outlined),
         onPressed: empty ? null : _downloadSelected,
       ),
       QPageAppBarAction(
-        tooltip: 'Copy',
+        tooltip: context.l10n.fmCopy,
         icon: const Icon(Icons.copy_outlined),
         onPressed: empty ? null : _copySelected,
       ),
       QPageAppBarAction(
-        tooltip: 'Move',
+        tooltip: context.l10n.fmMove,
         icon: const Icon(Icons.drive_file_move_outlined),
         onPressed: empty ? null : _moveSelected,
       ),
       QPageAppBarAction(
-        tooltip: 'Delete',
+        tooltip: context.l10n.commonDelete,
         icon: const Icon(Icons.delete_outline),
         onPressed: empty ? null : _deleteSelected,
       ),
       QPageAppBarTooltip(
-        message: 'More actions',
+        message: context.l10n.fmMoreActions,
         child: PopupMenuButton<String>(
           tooltip: '',
           icon: const Icon(Icons.more_vert),
@@ -1033,7 +1039,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
                       color: colors.textSecondary,
                     ),
                     const SizedBox(width: 12),
-                    const Text('Rename'),
+                    Text(context.l10n.fmRename),
                   ],
                 ),
               ),
@@ -1048,7 +1054,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
                       color: colors.textSecondary,
                     ),
                     const SizedBox(width: 12),
-                    Text(_selected.length == 1 ? 'Index icon' : 'Index icons'),
+                    Text(_selected.length == 1 ? context.l10n.fmIndexIcon : context.l10n.fmIndexIcons),
                   ],
                 ),
               ),
@@ -1062,7 +1068,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
                     color: colors.textSecondary,
                   ),
                   const SizedBox(width: 12),
-                  Text(_selected.length == all ? 'Deselect all' : 'Select all'),
+                  Text(_selected.length == all ? context.l10n.fmDeselectAll : context.l10n.fmSelectAll),
                 ],
               ),
             ),
@@ -1190,7 +1196,8 @@ class _FileManagerPageState extends State<FileManagerPage> {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              '${cb.isCut ? 'Moving' : 'Copying'} ${cb.label}',
+              '${cb.isCut ? context.l10n.fmMoving : context.l10n.fmCopying}'
+              ' ${cb.label}',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(color: colors.textPrimary, fontSize: 13),
@@ -1199,7 +1206,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
           TextButton(
             onPressed: _paste,
             child: Text(
-              'Paste here',
+              context.l10n.fmPasteHere,
               style: TextStyle(
                 color: colors.accent,
                 fontWeight: FontWeight.w700,
@@ -1239,7 +1246,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
               const SizedBox(height: 12),
               FilledButton.tonal(
                 onPressed: _ctrl.refresh,
-                child: const Text('Retry'),
+                child: Text(context.l10n.commonRetry),
               ),
             ],
           ),
@@ -1257,9 +1264,9 @@ class _FileManagerPageState extends State<FileManagerPage> {
       onRefresh: _ctrl.refresh,
       child: CustomScrollView(
         slivers: [
-          ..._buildSection('Folders', _ctrl.folders, grid, isFirst: true),
+          ..._buildSection(context.l10n.fmFolders, _ctrl.folders, grid, isFirst: true),
           ..._buildSection(
-            'Files',
+            context.l10n.fmFiles,
             _ctrl.files,
             grid,
             isFirst: _ctrl.folders.isEmpty,
@@ -1288,7 +1295,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
                 ),
                 const SizedBox(height: 14),
                 Text(
-                  searching ? 'No matches' : 'This folder is empty',
+                  searching ? context.l10n.fmNoMatches : context.l10n.fmEmptyFolder,
                   style: TextStyle(
                     color: colors.textSecondary,
                     fontSize: 15,
@@ -1298,7 +1305,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
                 if (!searching) ...[
                   const SizedBox(height: 6),
                   Text(
-                    'Use + to add files or folders',
+                    context.l10n.fmEmptyHint,
                     style: TextStyle(color: colors.textMuted, fontSize: 13),
                   ),
                 ],
@@ -1353,7 +1360,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
       );
     }
 
-    final title = '$label · ${items.length}';
+    final title = context.l10n.fmSectionCount(label, items.length);
     final Widget group = grid
         ? GroupedCardGrid<RemoteEntry>(
             title: title,

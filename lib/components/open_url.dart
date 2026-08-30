@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../services/localization/l10n.dart';
 import '../theme/theme.dart';
 
 Future<void> openUrl(
@@ -83,7 +84,7 @@ class _OpenUrlMenu extends StatelessWidget {
           ListTile(
             leading: Icon(Icons.open_in_new, color: colors.textPrimary),
             title: Text(
-              'Open in app',
+              context.l10n.openInApp,
               style: TextStyle(color: colors.textPrimary),
             ),
             onTap: () {
@@ -94,7 +95,7 @@ class _OpenUrlMenu extends StatelessWidget {
           ListTile(
             leading: Icon(Icons.public, color: colors.textPrimary),
             title: Text(
-              'Open in browser',
+              context.l10n.openInBrowser,
               style: TextStyle(color: colors.textPrimary),
             ),
             onTap: () {

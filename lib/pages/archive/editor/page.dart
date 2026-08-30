@@ -1,3 +1,4 @@
+import '../../../services/localization/l10n.dart';
 import 'dart:convert';
 import 'dart:io' as io;
 
@@ -83,7 +84,7 @@ class _TextEditorPageState extends State<TextEditorPage> {
     setState(() {
       _loading = false;
       if (text == null) {
-        _error = 'Failed to read file';
+        _error = context.l10n.editorReadFailed;
       } else {
         _lineBreak = _lineBreakOf(text);
         _doc = EditorDocument.fromText(text);
@@ -132,7 +133,7 @@ class _TextEditorPageState extends State<TextEditorPage> {
       if (ok) doc.markSaved(_controller.codeLines);
     });
     context.showNotification(
-      ok ? 'Saved' : 'Save failed',
+      ok ? context.l10n.editorSaved : context.l10n.editorSaveFailed,
       type: ok ? QNotificationType.good : QNotificationType.error,
     );
     if (ok) Navigator.of(context).pop(true);
@@ -150,17 +151,17 @@ class _TextEditorPageState extends State<TextEditorPage> {
         actions: [
           if (widget.onRun != null)
             QPageAppBarAction(
-              tooltip: 'Run',
+              tooltip: context.l10n.editorRun,
               onPressed: _loading ? null : widget.onRun,
               icon: const Icon(Icons.play_arrow),
             ),
           QPageAppBarAction(
-            tooltip: 'Find',
+            tooltip: context.l10n.findFind,
             onPressed: (_loading || _doc == null) ? null : _toggleFind,
             icon: const Icon(Icons.search),
           ),
           QPageAppBarAction(
-            tooltip: 'Save',
+            tooltip: context.l10n.commonSave,
             onPressed: (_saving || _loading || _doc == null) ? null : _save,
             icon: _saving
                 ? SizedBox(

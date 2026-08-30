@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:dartufbt/dartufbt.dart';
 
+import '../../../services/localization/l10n.dart';
 import '../../../components/cardlist.dart';
 import '../../../theme/theme.dart';
 import '../../../services/assembler/controller.dart';
@@ -98,7 +99,7 @@ class _AssemblerLogViewState extends State<AssemblerLogView> {
                 child: lines.isEmpty
                     ? Center(
                         child: Text(
-                          'No output yet',
+                          context.l10n.fliblerNoOutput,
                           style: TextStyle(
                             color: colors.textMuted,
                             fontSize: 12,

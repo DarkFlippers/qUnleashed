@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../services/logging.dart';
 import '../theme/colors/status.dart';
+import '../services/localization/l10n.dart';
 import '../theme/theme.dart';
 
 enum QNotificationType { error, info, warning, good }
@@ -245,7 +246,7 @@ class _QNotificationCard extends StatelessWidget {
                 ),
               ),
               IconButton(
-                tooltip: 'Close',
+                tooltip: l10n.commonClose,
                 onPressed: onClose,
                 style: IconButton.styleFrom(
                   minimumSize: const Size.square(34),
@@ -269,26 +270,26 @@ class _QNotificationCard extends StatelessWidget {
   _QNotificationVisual get _visual {
     switch (type) {
       case QNotificationType.error:
-        return const _QNotificationVisual(
-          title: 'Error',
+        return _QNotificationVisual(
+          title: l10n.noticeError,
           icon: Icons.error_outline_rounded,
           statusColor: StatusColor.error,
         );
       case QNotificationType.info:
-        return const _QNotificationVisual(
-          title: 'Information',
+        return _QNotificationVisual(
+          title: l10n.noticeInformation,
           icon: Icons.info_outline_rounded,
           statusColor: StatusColor.info,
         );
       case QNotificationType.warning:
-        return const _QNotificationVisual(
-          title: 'Warning',
+        return _QNotificationVisual(
+          title: l10n.noticeWarning,
           icon: Icons.warning_amber_rounded,
           statusColor: StatusColor.warning,
         );
       case QNotificationType.good:
-        return const _QNotificationVisual(
-          title: 'Done',
+        return _QNotificationVisual(
+          title: l10n.noticeDone,
           icon: Icons.check_circle_outline_rounded,
           statusColor: StatusColor.good,
         );

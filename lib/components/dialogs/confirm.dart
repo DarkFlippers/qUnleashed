@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../services/localization/l10n.dart';
 import '../../theme/theme.dart';
 
 class QConfirmDialog extends StatelessWidget {
@@ -7,23 +8,23 @@ class QConfirmDialog extends StatelessWidget {
     super.key,
     required this.title,
     required this.message,
-    this.confirmLabel = 'OK',
-    this.cancelLabel = 'Cancel',
+    this.confirmLabel,
+    this.cancelLabel,
     this.destructive = true,
   });
 
   final String title;
   final String message;
-  final String confirmLabel;
-  final String cancelLabel;
+  final String? confirmLabel;
+  final String? cancelLabel;
   final bool destructive;
 
   static Future<bool> show(
     BuildContext context, {
     required String title,
     required String message,
-    String confirmLabel = 'OK',
-    String cancelLabel = 'Cancel',
+    String? confirmLabel,
+    String? cancelLabel,
     bool destructive = true,
   }) async {
     final ok = await showDialog<bool>(
@@ -49,12 +50,15 @@ class QConfirmDialog extends StatelessWidget {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(false),
-          child: Text(cancelLabel, style: TextStyle(color: colors.dialogMuted)),
+          child: Text(
+            cancelLabel ?? context.l10n.commonCancel,
+            style: TextStyle(color: colors.dialogMuted),
+          ),
         ),
         TextButton(
           onPressed: () => Navigator.of(context).pop(true),
           child: Text(
-            confirmLabel,
+            confirmLabel ?? context.l10n.commonOk,
             style: TextStyle(
               color: destructive ? colors.danger : colors.accent,
             ),

@@ -1,3 +1,4 @@
+import '../../../services/localization/l10n.dart';
 import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
@@ -544,7 +545,7 @@ class _ViewControls extends StatelessWidget {
                 children: [
                   _RoundIconButton(
                     icon: Icons.zoom_out,
-                    tooltip: 'Zoom out',
+                    tooltip: l10n.plotZoomOut,
                     onPressed: () => controller.zoomBy(1 / 1.6),
                   ),
                   Expanded(
@@ -558,12 +559,12 @@ class _ViewControls extends StatelessWidget {
                   ),
                   _RoundIconButton(
                     icon: Icons.zoom_in,
-                    tooltip: 'Zoom in',
+                    tooltip: l10n.plotZoomIn,
                     onPressed: () => controller.zoomBy(1.6),
                   ),
                   _RoundIconButton(
                     icon: Icons.center_focus_strong_outlined,
-                    tooltip: 'Reset view',
+                    tooltip: l10n.plotResetView,
                     onPressed: canPan ? controller.reset : null,
                   ),
                 ],
@@ -659,7 +660,7 @@ class _SlicerControls extends StatelessWidget {
     final dropdown = DropdownButtonFormField<String>(
       initialValue: selected,
       isExpanded: true,
-      decoration: plotterFieldDecoration(context, label: 'Slicer'),
+      decoration: plotterFieldDecoration(context, label: l10n.plotSlicer),
       dropdownColor: colors.card,
       borderRadius: BorderRadius.circular(12),
       style: TextStyle(color: colors.textPrimary, fontSize: 14),
@@ -673,7 +674,7 @@ class _SlicerControls extends StatelessWidget {
     final sliceButton = FilledButton.icon(
       onPressed: onSlice,
       icon: const Icon(Icons.content_cut, size: 18),
-      label: const Text('Slice'),
+      label: Text(l10n.plotSlice),
       style: FilledButton.styleFrom(
         backgroundColor: colors.accent,
         foregroundColor: colors.onAccent,
@@ -687,7 +688,7 @@ class _SlicerControls extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _SectionTitle('Slicer', icon: Icons.tune),
+          _SectionTitle(l10n.plotSlicer, icon: Icons.tune),
           const SizedBox(height: 12),
           LayoutBuilder(
             builder: (context, constraints) {
@@ -701,14 +702,14 @@ class _SlicerControls extends StatelessWidget {
                       children: [
                         Expanded(
                           child: _NumberField(
-                            label: 'Short',
+                            label: l10n.plotShort,
                             controller: shortCtrl,
                           ),
                         ),
                         const SizedBox(width: 10),
                         Expanded(
                           child: _NumberField(
-                            label: 'Long',
+                            label: l10n.plotLong,
                             controller: longCtrl,
                           ),
                         ),
@@ -719,14 +720,14 @@ class _SlicerControls extends StatelessWidget {
                       children: [
                         Expanded(
                           child: _NumberField(
-                            label: 'Sync',
+                            label: l10n.plotSync,
                             controller: syncCtrl,
                           ),
                         ),
                         const SizedBox(width: 10),
                         Expanded(
                           child: _NumberField(
-                            label: 'Gap',
+                            label: l10n.plotGap,
                             controller: gapCtrl,
                           ),
                         ),
@@ -745,21 +746,21 @@ class _SlicerControls extends StatelessWidget {
                     const SizedBox(width: 10),
                     Expanded(
                       child: _NumberField(
-                        label: 'Short',
+                        label: l10n.plotShort,
                         controller: shortCtrl,
                       ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
-                      child: _NumberField(label: 'Long', controller: longCtrl),
+                      child: _NumberField(label: l10n.plotLong, controller: longCtrl),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
-                      child: _NumberField(label: 'Sync', controller: syncCtrl),
+                      child: _NumberField(label: l10n.plotSync, controller: syncCtrl),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
-                      child: _NumberField(label: 'Gap', controller: gapCtrl),
+                      child: _NumberField(label: l10n.plotGap, controller: gapCtrl),
                     ),
                     const SizedBox(width: 10),
                     sliceButton,
@@ -808,7 +809,10 @@ class _ModulationCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _SectionTitle('Detected modulation', icon: Icons.auto_awesome),
+          _SectionTitle(
+            l10n.plotDetectedModulation,
+            icon: Icons.auto_awesome,
+          ),
           const SizedBox(height: 8),
           Text(
             report.modulationName,
@@ -830,7 +834,7 @@ class _ModulationCard extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Text(
-            'DC bias (pulse/gap skew): ${report.dcBiasPercent.toStringAsFixed(1)}%',
+            l10n.plotDcBias(report.dcBiasPercent.toStringAsFixed(1)),
             style: TextStyle(color: colors.textMuted, fontSize: 12),
           ),
         ],
@@ -891,7 +895,7 @@ class _HistogramTable extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _SectionTitle('Timing histogram', icon: Icons.bar_chart),
+          _SectionTitle(l10n.plotHistogram, icon: Icons.bar_chart),
           const SizedBox(height: 8),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
@@ -978,15 +982,15 @@ class _BitsCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Expanded(
-                child: _SectionTitle('Decoded bits', icon: Icons.tag),
+              Expanded(
+                child: _SectionTitle(l10n.plotDecodedBits, icon: Icons.tag),
               ),
               if (bits.isNotEmpty) _CopyButton(value: bits, label: 'bits'),
             ],
           ),
           const SizedBox(height: 10),
           _MonoBlock(
-            text: bits.isEmpty ? 'No bits decoded' : bits,
+            text: bits.isEmpty ? l10n.plotNoBits : bits,
             muted: bits.isEmpty,
           ),
           if (rfRawRx != null || rfRawTx != null) ...[
@@ -1083,12 +1087,12 @@ class _CopyButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.appColors;
     return IconButton(
-      tooltip: 'Copy $label',
+      tooltip: l10n.plotCopyLabel(label),
       visualDensity: VisualDensity.compact,
       onPressed: () async {
         await Clipboard.setData(ClipboardData(text: value));
         if (context.mounted) {
-          context.showNotification('Copied $label to clipboard');
+          context.showNotification(l10n.plotCopiedLabel(label));
         }
       },
       icon: Icon(Icons.copy_rounded, size: 18, color: colors.textSecondary),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:pasteboard/pasteboard.dart';
 
+import '../../services/localization/l10n.dart';
 import '../../components/navigation.dart';
 import '../../theme/theme.dart';
 import 'widgets/info_line.dart';
@@ -120,10 +121,10 @@ class DeviceTab extends StatelessWidget {
     final ctrl = DeviceScope.of(context);
     showDeviceFullInfoSheet(
       context,
-      title: 'Full Info',
+      title: context.l10n.deviceFullInfo,
       cards: [
         FlipperPageCard(
-          title: 'Firmware',
+          title: context.l10n.deviceFirmwareTab,
           child: Column(
             children: [
               for (var i = 0; i < ctrl.deviceInfoEntries.length; i++) ...[
@@ -203,7 +204,7 @@ class _ConnectedContent extends StatelessWidget {
     final success = await ctrl.playAlert();
     if (!context.mounted) return;
     context.showNotification(
-      success ? 'Alert sent to the device' : 'Failed to play alert',
+      success ? context.l10n.deviceAlertSent : context.l10n.deviceAlertFailed,
       type: success ? QNotificationType.good : QNotificationType.error,
     );
   }
@@ -213,7 +214,7 @@ class _ConnectedContent extends StatelessWidget {
     Pasteboard.writeText(ctrl.buildExportDump());
     if (!context.mounted) return;
     context.showNotification(
-      'Device info copied to clipboard',
+      context.l10n.deviceInfoCopied,
       type: QNotificationType.good,
     );
   }

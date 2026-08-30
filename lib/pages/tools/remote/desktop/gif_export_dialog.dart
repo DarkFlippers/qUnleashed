@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../services/localization/l10n.dart';
 import '../../../../theme/theme.dart';
 
 class GifExportOptions {
@@ -65,26 +66,26 @@ Future<GifExportOptions?> showGifExportDialog(BuildContext context) {
           }
 
           return AlertDialog(
-            title: const Text('Export GIF'),
+            title: Text(context.l10n.remoteExportGif),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                section('Scale', selectedScale, (v) => selectedScale = v),
+                section(context.l10n.remoteScale, selectedScale, (v) => selectedScale = v),
                 const SizedBox(height: 18),
-                section('Speed', selectedSpeed, (v) => selectedSpeed = v),
+                section(context.l10n.remoteSpeed, selectedSpeed, (v) => selectedSpeed = v),
               ],
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.of(dialogContext).pop(),
-                child: const Text('Cancel'),
+                child: Text(context.l10n.commonCancel),
               ),
               FilledButton(
                 onPressed: () => Navigator.of(dialogContext).pop(
                   GifExportOptions(scale: selectedScale, speed: selectedSpeed),
                 ),
-                child: const Text('Save'),
+                child: Text(context.l10n.commonSave),
               ),
             ],
           );

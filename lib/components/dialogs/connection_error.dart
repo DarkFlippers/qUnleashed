@@ -1,6 +1,7 @@
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
+import '../../services/localization/l10n.dart';
 import '../../theme/theme.dart';
 import 'action.dart';
 
@@ -31,58 +32,38 @@ Future<void> showConnectionFailedDialog(
   FlipperConnectErrorKind kind, {
   required bool isBle,
 }) {
+  final strings = l10n;
   switch (kind) {
     case FlipperConnectErrorKind.stalePairing:
-      return (
-        'Pairing is out of date',
-        'This device is no longer paired correctly. Forget it in your system '
-            'Bluetooth settings AND on the device (Settings → Bluetooth → '
-            'Forget all paired devices), then connect again.',
-      );
+      return (strings.connectStalePairingTitle, strings.connectStalePairingBody);
     case FlipperConnectErrorKind.pairingIncomplete:
       return (
-        'Pairing not completed',
-        'Confirm the pairing request on the device screen and enter the PIN it '
-            'shows. If no request appeared, forget this device in your system '
-            'Bluetooth settings and try again.',
+        strings.connectPairingIncompleteTitle,
+        strings.connectPairingIncompleteBody,
       );
     case FlipperConnectErrorKind.bluetoothUnavailable:
       return (
-        'Bluetooth unavailable',
-        'Turn Bluetooth on and allow this app to use it in your system '
-            'settings, then connect again.',
+        strings.connectBluetoothUnavailableTitle,
+        strings.connectBluetoothUnavailableBody,
       );
     case FlipperConnectErrorKind.tooManyDevices:
       return (
-        'Too many paired devices',
-        'Your system has reached its limit of paired Bluetooth devices. Forget '
-            'a few unused devices in your Bluetooth settings, then connect '
-            'again.',
+        strings.connectTooManyDevicesTitle,
+        strings.connectTooManyDevicesBody,
       );
     case FlipperConnectErrorKind.busy:
-      return (
-        'Connection in progress',
-        'A connection is already being established. Wait a moment, or turn '
-            'Bluetooth off and on, then try again.',
-      );
+      return (strings.connectBusyTitle, strings.connectBusyBody);
     case FlipperConnectErrorKind.deviceUnreachable:
       return (
-        'Device not reachable',
+        strings.connectUnreachableTitle,
         isBle
-            ? 'The device is out of range or its Bluetooth is off. Move it '
-                  'closer and enable Bluetooth in the device system menu, then '
-                  'connect again.'
-            : 'The device did not respond. Unplug it and plug it back in, then '
-                  'connect again.',
+            ? strings.connectUnreachableBleBody
+            : strings.connectUnreachableUsbBody,
       );
     case FlipperConnectErrorKind.unknown:
       return (
-        'Connection failed',
-        isBle
-            ? 'Turn Bluetooth off and on in the device system menu, then '
-                  'connect again. Restart the app only if that does not help.'
-            : 'Unplug the device and plug it back in, then connect again. '
-                  'Restart the app only if that does not help.',
+        strings.connectFailedTitle,
+        isBle ? strings.connectFailedBleBody : strings.connectFailedUsbBody,
       );
   }
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../../../services/localization/l10n.dart';
 import '../../../../theme/theme.dart';
 
 class DeviceActionsRow extends StatelessWidget {
@@ -38,7 +39,7 @@ class DeviceActionsRow extends StatelessWidget {
                 height: buttonHeight,
                 child: _DeviceActionButton(
                   iconAsset: 'assets/ic/app/controller.svg',
-                  label: 'Remote',
+                  label: context.l10n.deviceActionRemote,
                   iconColor: colors.accent,
                   textColor: colors.textPrimary,
                   horizontal: horizontal,
@@ -52,7 +53,7 @@ class DeviceActionsRow extends StatelessWidget {
                 height: buttonHeight,
                 child: _DeviceActionButton(
                   iconAsset: 'assets/ic/device/ring.svg',
-                  label: 'Play Alert',
+                  label: context.l10n.deviceActionPlayAlert,
                   iconColor: onPlayAlert == null
                       ? colors.textMuted
                       : colors.accent,
@@ -70,7 +71,7 @@ class DeviceActionsRow extends StatelessWidget {
                 height: buttonHeight,
                 child: _DeviceActionButton(
                   iconAsset: 'assets/ic/device/syncing.svg',
-                  label: 'Reboot',
+                  label: context.l10n.deviceActionReboot,
                   iconColor: colors.accent,
                   textColor: colors.textPrimary,
                   horizontal: horizontal,

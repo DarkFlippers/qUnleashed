@@ -1,3 +1,4 @@
+import '../../../../services/localization/l10n.dart';
 import 'dart:async';
 
 import 'package:flipperlib/flipperlib.dart';
@@ -96,7 +97,7 @@ class _IrFileViewerState extends State<IrFileViewer> {
     if (bytes == null) return;
     if (!_connected) {
       context.showNotification(
-        'Connect a device first',
+        context.l10n.irConnectFirst,
         type: QNotificationType.warning,
       );
       return;
@@ -120,7 +121,7 @@ class _IrFileViewerState extends State<IrFileViewer> {
     }
     if (!mounted) return;
     context.showNotification(
-      ok ? 'Sent to the device' : 'Failed to send to the device',
+      ok ? context.l10n.irSentToDevice : context.l10n.irSendFailed,
       type: ok ? QNotificationType.good : QNotificationType.error,
     );
   }
@@ -212,7 +213,7 @@ class _IrFileViewerState extends State<IrFileViewer> {
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 6, 14, 10),
           child: ProgressButton(
-            text: 'SEND TO DEVICE',
+            text: context.l10n.irSendToDevice,
             color: colors.accent,
             progress: _sending ? _sendProgress : null,
             showPercent: _sending,

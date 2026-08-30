@@ -1,3 +1,4 @@
+import '../../../../services/localization/l10n.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -152,7 +153,7 @@ class _DeletedPageState extends State<DeletedPage> {
 
     final actions = <ActionItem>[
       if (_ctrl.isConnected)
-        ActionItem(icon: Icons.restore, label: 'Restore', onTap: _bulkRestore),
+        ActionItem(icon: Icons.restore, label: context.l10n.archiveRestore, onTap: _bulkRestore),
       ...KeyActionsSheet.deleteActions(
         context,
         _ctrl,
@@ -173,8 +174,8 @@ class _DeletedPageState extends State<DeletedPage> {
         ),
         child: Icon(Icons.delete_outline, color: colors.accent, size: 22),
       ),
-      title: '${keys.length} ${keys.length == 1 ? 'file' : 'files'} selected',
-      subtitle: 'Deleted',
+      title: context.l10n.archiveFilesSelected(keys.length),
+      subtitle: context.l10n.archiveDeleted,
       actions: actions,
     );
   }
@@ -271,15 +272,14 @@ class _DeletedPageState extends State<DeletedPage> {
                             child: ArchiveEmptyView(
                               icon: Icons.delete_outline,
                               title: _query.isNotEmpty
-                                  ? 'No results for "$_query"'
+                                  ? context.l10n.archiveEmptyQuery(_query)
                                   : _filterVal != null
-                                  ? 'No files matching filter'
-                                  : 'Nothing here',
+                                  ? context.l10n.archiveNoFilesFilter
+                                  : context.l10n.archiveNothingHere,
                               subtitle:
                                   (_query.isNotEmpty || _filterVal != null)
                                   ? null
-                                  : 'Deleted keys are kept on this device '
-                                        'until purged',
+                                  : context.l10n.archiveDeletedHint,
                             ),
                           ),
                         )
@@ -342,12 +342,12 @@ class _DeletedAppBarTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Row(
+    return Row(
       children: [
-        Icon(Icons.delete_outline, color: Colors.white, size: 18),
-        SizedBox(width: 8),
+        const Icon(Icons.delete_outline, color: Colors.white, size: 18),
+        const SizedBox(width: 8),
         Text(
-          'Deleted',
+          context.l10n.archiveDeleted,
           style: TextStyle(
             color: Colors.white,
             fontSize: 17,

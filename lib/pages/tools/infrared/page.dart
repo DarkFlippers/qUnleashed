@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../../services/localization/l10n.dart';
 import '../../../theme/theme.dart';
 import 'package:qunleashed/components/appbar.dart';
 import 'package:qunleashed/components/format.dart';
@@ -59,7 +60,7 @@ class _IrLibPageState extends State<IrLibPage> {
     }
     if (!entry.isIrFile) {
       context.showNotification(
-        'Unsupported file: ${entry.name}',
+        context.l10n.irUnsupportedFile(entry.name),
         type: QNotificationType.warning,
       );
       return;
@@ -97,12 +98,12 @@ class _IrLibPageState extends State<IrLibPage> {
                   : null,
               actions: [
                 IconButton(
-                  tooltip: 'Refresh',
+                  tooltip: context.l10n.irRefresh,
                   icon: const Icon(Icons.refresh),
                   onPressed: _ctrl.loading ? null : _ctrl.refresh,
                 ),
                 IconButton(
-                  tooltip: 'Source settings',
+                  tooltip: context.l10n.irSourceSettings,
                   icon: const Icon(Icons.settings_outlined),
                   onPressed: () => IrLibSettingsDialog.show(context, _ctrl),
                 ),
@@ -114,7 +115,7 @@ class _IrLibPageState extends State<IrLibPage> {
                 children: [
                   IrSearchField(
                     controller: _searchCtrl,
-                    hintText: 'Search whole IRDB',
+                    hintText: context.l10n.irSearchWhole,
                     padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
                     onSubmitted: (q) => _ctrl.startSearch(q),
                     onClear: _ctrl.clearSearch,
@@ -141,7 +142,7 @@ class _IrLibPageState extends State<IrLibPage> {
               CircularProgressIndicator(color: colors.accent),
               const SizedBox(height: 14),
               Text(
-                'Searching IRDB',
+                context.l10n.irSearching,
                 style: TextStyle(color: colors.textPrimary),
               ),
               const SizedBox(height: 4),
@@ -170,8 +171,8 @@ class _IrLibPageState extends State<IrLibPage> {
     if (list.isEmpty) {
       return _EmptyView(
         title: isSearch
-            ? 'No matches for "${_ctrl.searchQuery}"'
-            : 'Empty folder',
+            ? context.l10n.irNoMatchesFor(_ctrl.searchQuery)
+            : context.l10n.irEmptyFolder,
       );
     }
 
@@ -192,7 +193,7 @@ class _IrLibPageState extends State<IrLibPage> {
             return Padding(
               padding: const EdgeInsets.fromLTRB(6, 6, 6, 8),
               child: Text(
-                '${list.length} result${list.length == 1 ? '' : 's'} for "${_ctrl.searchQuery}"',
+                context.l10n.irResultCount(list.length, _ctrl.searchQuery),
                 style: TextStyle(color: colors.textMuted, fontSize: 12),
               ),
             );
@@ -273,8 +274,10 @@ class _IrEntryCard extends StatelessWidget {
                       const SizedBox(height: 2),
                       Text(
                         entry.isDir
-                            ? 'Folder'
-                            : 'Infrared В· ${_formatSize(entry.size)}',
+                            ? context.l10n.irFolder
+                            : context.l10n.irFileSubtitle(
+                                _formatSize(entry.size),
+                              ),
                         style: TextStyle(color: colors.textMuted, fontSize: 12),
                       ),
                     ],

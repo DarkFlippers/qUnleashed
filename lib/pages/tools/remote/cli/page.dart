@@ -1,3 +1,4 @@
+import '../../../../services/localization/l10n.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show Platform;
@@ -220,12 +221,12 @@ class _CliPageState extends State<CliPage> {
         foregroundColor: Colors.white,
         actions: [
           QPageAppBarAction(
-            tooltip: 'Send Ctrl+C',
+            tooltip: context.l10n.cliSendCtrlC,
             onPressed: _ready ? _sendCtrlC : null,
             icon: const Icon(Icons.stop_circle_outlined),
           ),
           QPageAppBarAction(
-            tooltip: 'Clear',
+            tooltip: context.l10n.commonClear,
             onPressed: _clearOutput,
             icon: const Icon(Icons.delete_outline),
           ),

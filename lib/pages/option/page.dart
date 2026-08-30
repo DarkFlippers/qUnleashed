@@ -98,7 +98,7 @@ class SettingsPage extends StatelessWidget {
     return Scaffold(
       backgroundColor: colors.background,
       appBar: AppBar(
-        title: const Text('Settings'),
+        title: Text(context.l10n.settingsTitle),
         backgroundColor: colors.background,
         surfaceTintColor: colors.transparent,
       ),
@@ -108,8 +108,8 @@ class SettingsPage extends StatelessWidget {
           GroupedCardList<_Category>(
             items: [
               _Category(
-                title: 'Notifications',
-                subtitle: 'App and firmware releases',
+                title: context.l10n.settingsNotificationsTitle,
+                subtitle: context.l10n.settingsNotificationsSubtitle,
                 asset: 'assets/ic/app/bell.svg',
                 color: const Color(0xFFE85858),
                 page: (_) => const NotificationsSettingsPage(),
@@ -129,22 +129,22 @@ class SettingsPage extends StatelessWidget {
           GroupedCardList<_Category>(
             items: [
               _Category(
-                title: 'Storage',
-                subtitle: 'SD card, internal storage',
+                title: context.l10n.settingsStorageTitle,
+                subtitle: context.l10n.settingsStorageSubtitle,
                 asset: 'assets/ic/storage/sd.svg',
                 color: const Color(0xFF8BC34A),
                 page: (_) => const StorageSettingsPage(),
               ),
               _Category(
-                title: 'Theme',
-                subtitle: 'Firmware, system, dark or light',
+                title: context.l10n.settingsThemeTitle,
+                subtitle: context.l10n.settingsThemeSubtitle,
                 asset: 'assets/ic/app/paint.svg',
                 color: const Color(0xFFB388FF),
                 page: (_) => const ThemeSettingsPage(),
               ),
               _Category(
-                title: 'Map',
-                subtitle: 'Tile source, design, own keys',
+                title: context.l10n.settingsMapTitle,
+                subtitle: context.l10n.settingsMapSubtitle,
                 asset: 'assets/ic/fileformat/sub.svg',
                 color: const Color(0xFF4FC3F7),
                 page: (_) => const MapSettingsPage(),
@@ -157,15 +157,15 @@ class SettingsPage extends StatelessWidget {
           GroupedCardList<_Category>(
             items: [
               _Category(
-                title: 'Apps',
-                subtitle: 'Catalog mode, firmware API compatibility',
+                title: context.l10n.settingsAppsTitle,
+                subtitle: context.l10n.settingsAppsSubtitle,
                 asset: 'assets/ic/app/apps.svg',
                 color: const Color(0xFF5C9BE8),
                 page: (_) => const AppsSettingsPage(),
               ),
               _Category(
                 title: 'Flibler',
-                subtitle: 'Flipper Assembler Tool, builds apps from source',
+                subtitle: context.l10n.settingsFliblerSubtitle,
                 asset: 'assets/ic/fileformat/settings.svg',
                 color: const Color(0xFF4DB6AC),
                 page: (_) => const AssemblerSettingsPage(),

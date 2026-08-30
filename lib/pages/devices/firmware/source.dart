@@ -1,3 +1,4 @@
+import '../../../services/localization/l10n.dart';
 import 'dart:io' as io;
 
 import 'package:crypto/crypto.dart';
@@ -42,16 +43,14 @@ class RemoteFirmwareSource implements FirmwareSource {
 
     final version = parser.getLatestVersionById(channelId);
     if (version == null) {
-      throw const FirmwareSourceException(
-        'No version found for selected channel',
-      );
+      throw FirmwareSourceException(l10n.firmwareErrorNoVersion);
     }
 
     final FirmwareFile? tgzFile = parser is UnleashedParser
         ? parser.getUpdatePackage(channelId, target: target, variant: variant)
         : version.updatePackageFor(target);
     if (tgzFile == null) {
-      throw FirmwareSourceException('No update_tgz for target=$target');
+      throw FirmwareSourceException(l10n.firmwareErrorNoPackage(target));
     }
 
     final tgzPath = '$tmpDir/update.tgz';
@@ -68,10 +67,7 @@ class RemoteFirmwareSource implements FirmwareSource {
     if (want.isEmpty) return;
     final got = await compute(_fileSha256, path);
     if (got != want) {
-      throw FirmwareSourceException(
-        'Firmware archive checksum mismatch (expected $want, got $got); '
-        'the download is corrupted — try again',
-      );
+      throw FirmwareSourceException(l10n.firmwareErrorChecksum);
     }
   }
 
@@ -108,7 +104,7 @@ class LocalFirmwareSource implements FirmwareSource {
     void Function(double progress) onProgress,
   ) async {
     if (!io.File(path).existsSync()) {
-      throw FirmwareSourceException('File not found: $path');
+      throw FirmwareSourceException(l10n.firmwareErrorFileNotFound(path));
     }
     return path;
   }

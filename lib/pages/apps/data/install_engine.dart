@@ -1,3 +1,4 @@
+import '../../../services/localization/l10n.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -228,7 +229,7 @@ class InstallEngine extends ChangeNotifier {
           cv = fetched.card.currentVersion;
         }
         if (cv == null || cv.id.isEmpty || cv.currentBuild == null) {
-          throw StateError('No installable version available');
+          throw StateError(l10n.appsErrorNoVersion);
         }
 
         final existingManifest = manifests.byAlias(app.alias);
@@ -424,7 +425,7 @@ class InstallEngine extends ChangeNotifier {
   }
 
   Future<void> launchPath(String path) async {
-    if (!isReady) throw StateError('Device is not connected');
+    if (!isReady) throw StateError(l10n.appsErrorNotConnected);
     await client.appStart(
       StartRequest(name: path, args: ''),
       timeout: const Duration(seconds: 15),

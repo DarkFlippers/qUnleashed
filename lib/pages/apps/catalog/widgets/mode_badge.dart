@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../services/localization/l10n.dart';
 import '../../../../theme/theme.dart';
 import '../../data/catalog_mode.dart';
 
@@ -31,19 +32,14 @@ class CatalogModeBadge extends StatelessWidget {
 
   String _message() {
     final device = deviceApi;
-    if (device == null) {
-      return 'Catalog: showing every app, connect a Flipper to filter it by '
-          'the firmware API';
-    }
+    if (device == null) return l10n.catalogBadgeNoDevice;
     switch (mode) {
       case CatalogMode.sourceBuild:
-        return 'Source builds: the catalog has no builds for firmware API '
-            '$device, so apps are compiled from source for it';
+        return l10n.catalogBadgeSourceBuild(device);
       case CatalogMode.nearestApi:
-        return 'Nearest API: the catalog has no builds for firmware API '
-            '$device, installing builds made for API ${catalogApi ?? '?'}';
+        return l10n.catalogBadgeNearestApi(device, catalogApi ?? '?');
       default:
-        return 'Catalog: firmware API $device is served by the catalog';
+        return l10n.catalogBadgeNormal(device);
     }
   }
 

@@ -1,3 +1,4 @@
+import '../../../../services/localization/l10n.dart';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -32,7 +33,7 @@ class AppVersionLabel extends StatelessWidget {
   static String _versionText(String version) {
     final type = _releaseType;
     final suffix = type == null ? '' : ' ($type)';
-    return 'qUnleashed for $_platformName v$version$suffix';
+    return l10n.appVersionLine(_platformName, version, suffix);
   }
 
   @override

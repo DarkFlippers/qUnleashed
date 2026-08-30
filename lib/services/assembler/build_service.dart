@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:archive/archive_io.dart';
 import 'package:dartufbt/dartufbt.dart';
 
+import '../localization/l10n.dart';
 import 'controller.dart';
 
 /// The local toolchain cannot run: it is missing, incomplete or unusable on
@@ -46,21 +47,15 @@ class AssemblerBuildService {
   static void ensureReady() {
     final controller = AssemblerController.instance;
     if (!AssemblerController.isSupported) {
-      throw const AssemblerNotReadyException(
-        'Local builds are available on desktop only',
-      );
+      throw AssemblerNotReadyException(l10n.buildErrorDesktopOnly);
     }
 
     final status = controller.installer.status();
     if (!status.sdkDeployed) {
-      throw const AssemblerNotReadyException(
-        'SDK is not installed, open the assembler and download it',
-      );
+      throw AssemblerNotReadyException(l10n.buildErrorNoSdk);
     }
     if (!status.toolchain.isUpToDate) {
-      throw const AssemblerNotReadyException(
-        'Toolchain is not installed, open the assembler and download it',
-      );
+      throw AssemblerNotReadyException(l10n.buildErrorNoToolchain);
     }
   }
 
@@ -75,7 +70,7 @@ class AssemblerBuildService {
     final appDir = findAppDir(root);
     if (appDir == null) {
       throw AssemblerBuildFailedException(
-        'No $manifestName found in ${root.path}',
+        l10n.buildErrorNoManifestIn(manifestName, root.path),
       );
     }
     return controller.runBuild(alias ?? _name(appDir.path), () async {
@@ -90,7 +85,7 @@ class AssemblerBuildService {
       for (final result in results) {
         if (!result.success || result.fap == null) {
           throw AssemblerBuildFailedException(
-            result.error ?? 'Build failed, see the build console',
+            result.error ?? l10n.buildErrorFailed,
           );
         }
         controller.logger.info('Built ${result.fap!.path}');
@@ -140,7 +135,7 @@ class AssemblerBuildService {
       final appDir = findAppDir(root);
       if (appDir == null) {
         throw AssemblerBuildFailedException(
-          'No $manifestName found in the source bundle',
+          l10n.buildErrorNoManifestInBundle(manifestName),
         );
       }
 
@@ -151,7 +146,7 @@ class AssemblerBuildService {
       );
       if (!result.success || result.fap == null) {
         throw AssemblerBuildFailedException(
-          result.error ?? 'Build failed, see the build console',
+          result.error ?? l10n.buildErrorFailed,
         );
       }
       controller.logger.info('Built ${result.fap!.path}');

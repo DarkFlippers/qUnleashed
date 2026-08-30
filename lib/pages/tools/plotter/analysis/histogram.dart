@@ -1,3 +1,4 @@
+import '../../../../services/localization/l10n.dart';
 import 'dart:math' as math;
 
 import 'hexbuffer.dart';
@@ -247,13 +248,13 @@ class Analyzer {
 
     if (this.pulses.length == 1) {
       return Guess(
-        'Single pulse detected. Probably Frequency Shift Keying or just noise...',
+        l10n.plotGuessSinglePulse,
       );
     } else if (pulses.length == 1 && gaps.length == 1) {
-      return Guess('Un-modulated signal. Maybe a preamble...');
+      return Guess(l10n.plotGuessUnmodulated);
     } else if (pulses.length == 1 && gaps.length > 1) {
       return Guess(
-        'Pulse Position Modulation with fixed pulse width',
+        l10n.plotGuessPpm,
         modulation: 'PPM',
         short: gaps.bins[0].mean,
         long: gaps.bins[1].mean,
@@ -264,7 +265,7 @@ class Analyzer {
       final short = pulses.bins[0].mean!;
       final long = pulses.bins[1].mean!;
       return Guess(
-        'Pulse Width Modulation with fixed gap',
+        l10n.plotGuessPwmFixedGap,
         modulation: 'PWM',
         short: short,
         long: long,
@@ -275,7 +276,7 @@ class Analyzer {
       final short = pulses.bins[0].mean!;
       final long = pulses.bins[1].mean!;
       return Guess(
-        'Pulse Width Modulation with fixed period',
+        l10n.plotGuessPwmFixedPeriod,
         modulation: 'PWM',
         short: short,
         long: long,
@@ -285,7 +286,7 @@ class Analyzer {
     } else if (pulses.length == 2 && gaps.length == 2 && periods.length == 3) {
       final short = pulses.bins[0].mean!;
       return Guess(
-        'Manchester coding (PCM)',
+        l10n.plotGuessManchester,
         modulation: 'MC',
         short: short,
         long: short,
@@ -295,7 +296,7 @@ class Analyzer {
       final short = pulses.bins[0].mean!;
       final long = pulses.bins[1].mean!;
       return Guess(
-        'Pulse Width Modulation with multiple packets',
+        l10n.plotGuessPwmMultiPacket,
         modulation: 'PWM',
         short: short,
         long: long,
@@ -316,7 +317,7 @@ class Analyzer {
         (gaps.bins[2].mean! - 3 * pulses.bins[0].mean!).abs() <=
             pulses.bins[0].mean! / 8) {
       return Guess(
-        'Pulse Code Modulation (Not Return to Zero)',
+        l10n.plotGuessPcmNrz,
         modulation: 'PCM',
         short: pulses.bins[0].mean,
         long: pulses.bins[0].mean,
@@ -329,7 +330,7 @@ class Analyzer {
       final short = p1 < p2 ? p1 : p2;
       final long = p1 < p2 ? p2 : p1;
       return Guess(
-        'Pulse Width Modulation with sync/delimiter',
+        l10n.plotGuessPwmSync,
         modulation: 'PWM',
         short: short,
         long: long,
@@ -337,7 +338,7 @@ class Analyzer {
         reset: gaps.bins[gaps.length - 1].max! * 1.2,
       );
     } else {
-      return Guess('No clue...');
+      return Guess(l10n.plotGuessNone);
     }
   }
 

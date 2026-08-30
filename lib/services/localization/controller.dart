@@ -9,7 +9,11 @@ const Map<String, String> _localeNames = {'en': 'English', 'ru': 'Русский
 
 class QLocaleController extends ChangeNotifier with WidgetsBindingObserver {
   QLocaleController._() {
-    WidgetsBinding.instance.addObserver(this);
+    // Plain unit tests never initialize a binding, and a service that only
+    // wants a string must not force one into existence.
+    try {
+      WidgetsBinding.instance.addObserver(this);
+    } catch (_) {}
   }
 
   static const String _prefLocale = 'locale.code';
@@ -27,12 +31,18 @@ class QLocaleController extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Locale the app actually renders in, with the device language mapped onto
   /// a supported one.
-  Locale get resolved =>
-      _locale ??
-      basicLocaleListResolution(
+  Locale get resolved {
+    final chosen = _locale;
+    if (chosen != null) return chosen;
+    try {
+      return basicLocaleListResolution(
         WidgetsBinding.instance.platformDispatcher.locales,
         L10n.supportedLocales,
       );
+    } catch (_) {
+      return L10n.supportedLocales.first;
+    }
+  }
 
   static String nameOf(Locale locale) =>
       _localeNames[locale.languageCode] ?? locale.toLanguageTag();

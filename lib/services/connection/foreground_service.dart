@@ -5,6 +5,7 @@ import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:geolocator/geolocator.dart';
+import '../localization/l10n.dart';
 import '../logging.dart';
 
 /// Keeps the BLE link alive on Android while the screen is off or the app is
@@ -129,9 +130,8 @@ class BleForegroundService with WidgetsBindingObserver {
     FlutterForegroundTask.init(
       androidNotificationOptions: AndroidNotificationOptions(
         channelId: _channelId,
-        channelName: 'Flipper connection',
-        channelDescription:
-            'Keeps the Flipper Zero connection alive in the background',
+        channelName: l10n.notificationChannelBackgroundLink,
+        channelDescription: l10n.notificationChannelBackgroundLinkDescription,
         // LOW keeps the notification quiet (no sound/vibration/heads-up) while
         // still being a valid foreground-service notification.
         channelImportance: NotificationChannelImportance.LOW,
@@ -184,8 +184,8 @@ class BleForegroundService with WidgetsBindingObserver {
     final result = await FlutterForegroundTask.startService(
       serviceId: _serviceId,
       serviceTypes: serviceTypes,
-      notificationTitle: 'Connected to $_deviceName',
-      notificationText: 'Holding the BLE link in the background',
+      notificationTitle: l10n.notificationBackgroundLinkTitle(_deviceName),
+      notificationText: l10n.notificationBackgroundLinkBody,
     );
     if (result is ServiceRequestSuccess) {
       _serviceRunning = true;
@@ -209,8 +209,8 @@ class BleForegroundService with WidgetsBindingObserver {
     if (!_serviceRunning) return;
     try {
       await FlutterForegroundTask.updateService(
-        notificationTitle: 'Connected to $_deviceName',
-        notificationText: 'Holding the BLE link in the background',
+        notificationTitle: l10n.notificationBackgroundLinkTitle(_deviceName),
+        notificationText: l10n.notificationBackgroundLinkBody,
       );
     } catch (e) {
       LogService.log('[ForegroundService] update failed: $e');

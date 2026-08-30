@@ -1,3 +1,4 @@
+import '../../../services/localization/l10n.dart';
 import 'analysis/histogram.dart';
 import 'analysis/slicer.dart';
 import 'models.dart';
@@ -105,21 +106,21 @@ class PlotterEngine {
 
     return PlotterReport(
       histograms: [
-        HistogramRow(label: 'Pulses', cells: _cells(analyzer.histPulses)),
-        HistogramRow(label: 'Gaps', cells: _cells(analyzer.histGaps)),
-        HistogramRow(label: 'Periods', cells: _cells(analyzer.histPeriods)),
-        HistogramRow(label: 'Timings', cells: _cells(analyzer.histTimings)),
+        HistogramRow(label: l10n.plotSeriesPulses, cells: _cells(analyzer.histPulses)),
+        HistogramRow(label: l10n.plotSeriesGaps, cells: _cells(analyzer.histGaps)),
+        HistogramRow(label: l10n.plotSeriesPeriods, cells: _cells(analyzer.histPeriods)),
+        HistogramRow(label: l10n.plotSeriesTimings, cells: _cells(analyzer.histTimings)),
       ],
       hasModulation: g.modulation != null,
       modulationName: g.name,
       dcBiasPercent: analyzer.pulseGapSkew * 100,
       params: [
-        GuessParam('Modulation', g.modulation ?? 'unknown'),
-        GuessParam('Short', fmt(g.short)),
-        GuessParam('Long', fmt(g.long)),
-        GuessParam('Sync', fmt(g.sync)),
-        GuessParam('Gap', fmt(g.gap)),
-        GuessParam('Reset', fmt(g.reset)),
+        GuessParam(l10n.plotModulation, g.modulation ?? 'unknown'),
+        GuessParam(l10n.plotShort, fmt(g.short)),
+        GuessParam(l10n.plotLong, fmt(g.long)),
+        GuessParam(l10n.plotSync, fmt(g.sync)),
+        GuessParam(l10n.plotGap, fmt(g.gap)),
+        GuessParam(l10n.plotReset, fmt(g.reset)),
       ],
       rfRawRx: analyzer.rfrawB1,
       rfRawTx: analyzer.rfrawB0,

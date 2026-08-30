@@ -1,3 +1,4 @@
+import '../../../services/localization/l10n.dart';
 import 'dart:async';
 import 'dart:io' as io;
 import 'dart:isolate';
@@ -96,7 +97,7 @@ class IrLibLocalRepo {
     }
     await root.create(recursive: true);
 
-    onProgress?.call(IrLibDownloadProgress(stage: 'Downloading'));
+    onProgress?.call(IrLibDownloadProgress(stage: l10n.irDownloading));
 
     final url = Uri.parse(
       'https://codeload.github.com/$owner/$repo/zip/refs/heads/$branch',
@@ -121,7 +122,7 @@ class IrLibLocalRepo {
         total = totalBytes ?? 0;
         onProgress?.call(
           IrLibDownloadProgress(
-            stage: 'Downloading',
+            stage: l10n.irDownloading,
             received: received,
             total: total,
           ),
@@ -131,7 +132,7 @@ class IrLibLocalRepo {
 
     onProgress?.call(
       IrLibDownloadProgress(
-        stage: 'Unpacking',
+        stage: l10n.irUnpacking,
         received: received,
         total: total,
       ),
@@ -145,7 +146,7 @@ class IrLibLocalRepo {
         onProgress: (extracted, totalFiles, done) {
           onProgress?.call(
             IrLibDownloadProgress(
-              stage: done ? 'Done' : 'Unpacking',
+              stage: done ? l10n.irDone : l10n.irUnpacking,
               received: received,
               total: total,
               extracted: extracted,
@@ -187,7 +188,7 @@ class IrLibLocalRepo {
     errorPort.listen((msg) {
       if (done.isCompleted) return;
       final error = (msg is List && msg.isNotEmpty) ? msg.first : msg;
-      done.completeError(StateError('IR unpack failed: $error'));
+      done.completeError(StateError(l10n.irUnpackFailed('$error')));
     });
 
     final isolate = await Isolate.spawn(

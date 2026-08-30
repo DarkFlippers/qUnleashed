@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../services/localization/l10n.dart';
 import '../../../../components/config.dart';
 import '../../../../components/open_url.dart';
 import '../../../../theme/theme.dart';
@@ -51,7 +52,7 @@ class SubmitAppDialog extends StatelessWidget {
                   children: [
                     Expanded(
                       child: Text(
-                        'Submit your app',
+                        context.l10n.submitTitle,
                         style: TextStyle(
                           color: colors.dialogText,
                           fontSize: 18,
@@ -71,8 +72,7 @@ class SubmitAppDialog extends StatelessWidget {
                   ],
                 ),
                 Text(
-                  'There are two ways to ship a Flipper app, and they are not '
-                  'mutually exclusive — an app can live in both places.',
+                  context.l10n.submitIntro,
                   style: TextStyle(
                     color: colors.textMuted,
                     fontSize: 12,
@@ -83,14 +83,10 @@ class SubmitAppDialog extends StatelessWidget {
                 _SubmitOption(
                   icon: Icons.storefront_outlined,
                   color: _firmwareColor('ofw'),
-                  title: 'Official catalog',
+                  title: context.l10n.submitOfficialTitle,
                   subtitle: 'flipper-application-catalog',
-                  text:
-                      'Published on lab.flipper.net and listed in this catalog. '
-                      'The repo holds only a manifest.yml pointing at your public '
-                      'GitHub sources — the app has to be open source and build '
-                      'with uFBT against the latest Release or Release Candidate.',
-                  actionLabel: 'Contributing guide',
+                  text: context.l10n.submitOfficialText,
+                  actionLabel: context.l10n.submitOfficialAction,
                   actionIcon: Icons.menu_book_outlined,
                   onAction: () => openUrl(context, kOfwContributingUrl),
                 ),
@@ -98,14 +94,10 @@ class SubmitAppDialog extends StatelessWidget {
                 _SubmitOption(
                   icon: Icons.extension,
                   color: _firmwareColor('unlshd'),
-                  title: 'Built-in Unleashed plugins',
+                  title: context.l10n.submitUnleashedTitle,
                   subtitle: 'all-the-plugins',
-                  text:
-                      'The pack maintained by xMasterX and shipped with Unleashed '
-                      'builds. Apps are kept building against the current UFW API. '
-                      'The pack is redistributed under GPLv3, so the source has to '
-                      'allow that.',
-                  actionLabel: 'Request adding an app',
+                  text: context.l10n.submitUnleashedText,
+                  actionLabel: context.l10n.submitUnleashedAction,
                   actionIcon: Icons.add_circle_outline,
                   onAction: () => openUrl(context, kAtpNewAppUrl),
                 ),

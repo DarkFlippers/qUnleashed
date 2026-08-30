@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../../../services/localization/l10n.dart';
 import '../../../../components/cardlist.dart';
 import '../../../../components/format.dart';
 import '../../../../components/icon.dart';
@@ -570,24 +571,24 @@ class FileActionsSheet {
         (actions.onRename != null
             ? () => actions.onRename!.call(entry.name)
             : null);
-    add(Icons.drive_file_rename_outline, 'Rename', renameTap);
-    add(Icons.copy_outlined, 'Copy', actions.onCopy);
-    add(Icons.drive_file_move_outlined, 'Move', actions.onCut);
-    add(Icons.download_outlined, 'Download', actions.onDownload);
-    add(Icons.image_outlined, 'Index icon', actions.onIndexIcon);
-    add(Icons.play_arrow, 'Emulate', actions.onEmulate);
-    add(Icons.edit_note, 'Edit', actions.onEdit);
+    add(Icons.drive_file_rename_outline, l10n.fmRename, renameTap);
+    add(Icons.copy_outlined, l10n.fmCopy, actions.onCopy);
+    add(Icons.drive_file_move_outlined, l10n.fmMove, actions.onCut);
+    add(Icons.download_outlined, l10n.fmDownload, actions.onDownload);
+    add(Icons.image_outlined, l10n.fmIndexIcon, actions.onIndexIcon);
+    add(Icons.play_arrow, l10n.fileEmulate, actions.onEmulate);
+    add(Icons.edit_note, l10n.fileEdit, actions.onEdit);
     if (!isDir) {
       add(
         isShareSupported ? Icons.ios_share : Icons.content_copy,
-        isShareSupported ? 'Share' : 'Clipboard',
+        isShareSupported ? l10n.shareShare : l10n.fileClipboard,
         actions.onShare,
       );
     }
-    add(Icons.delete_outline, 'Delete', actions.onDelete, destructive: true);
+    add(Icons.delete_outline, l10n.commonDelete, actions.onDelete, destructive: true);
 
     final subtitle = isDir
-        ? 'Folder'
+        ? l10n.typeFolder
         : '${fileTypeLabel(entry)} · ${formatBytes(entry.size)}';
 
     return ActionsSheet.show(

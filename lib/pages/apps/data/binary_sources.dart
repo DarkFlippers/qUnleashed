@@ -1,3 +1,4 @@
+import '../../../services/localization/l10n.dart';
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
@@ -93,9 +94,8 @@ class CatalogBinarySource implements AppBinarySource {
       }
       throw StateError(
         canFallback
-            ? 'App is built for API $appApi, firmware has ${api.api ?? '?'}; '
-                  'switch the catalog mode in the apps settings to install it'
-            : 'No compatible build for this firmware (API ${api.api ?? '?'})',
+            ? l10n.appsErrorApiMismatch(appApi, api.api ?? '?')
+            : l10n.appsErrorNoBuild(api.api ?? '?'),
       );
     }
   }
@@ -134,14 +134,11 @@ class AtpBinarySource implements AppBinarySource {
   }) async {
     final entry = source.entryFor(card.alias);
     if (entry == null) {
-      throw StateError(
-        'The all-the-plugins release has no build of "${card.alias}" for this '
-        'firmware',
-      );
+      throw StateError(l10n.appsErrorNotInPack(card.alias));
     }
     final url = source.block?.urlFor(entry);
     if (url == null || url.isEmpty) {
-      throw StateError('No release archive for pack "${entry.pack}"');
+      throw StateError(l10n.appsErrorNoPackArchive(entry.pack));
     }
     final bytes = await AtpArchive.instance.fetchFap(
       entry,
