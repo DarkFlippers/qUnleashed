@@ -2085,6 +2085,14 @@
   "@commonRetry": {
     "description": "Button that tries a failed operation again."
   },
+  "commonConnect": "Подключить",
+  "@commonConnect": {
+    "description": "Button that opens the device picker to connect a Flipper."
+  },
+  "commonSync": "Синхронизировать",
+  "@commonSync": {
+    "description": "Button that pulls fresh data from the connected Flipper."
+  },
   "commonOpen": "Открыть",
   "@commonOpen": {
     "description": "Button that opens an app or a file."
@@ -4768,6 +4776,14 @@
   "fmEmptyHint": "Нажмите +, чтобы добавить файлы или папки",
   "@fmEmptyHint": {
     "description": "Hint under the empty folder message."
+  },
+  "fmNotConnected": "Устройство не подключено",
+  "@fmNotConnected": {
+    "description": "Empty state shown in the file browser while no Flipper is linked."
+  },
+  "fmNotConnectedHint": "Подключите Flipper, чтобы открыть его хранилище",
+  "@fmNotConnectedHint": {
+    "description": "Hint under the file browser empty state when no device is linked."
   },
   "fmSectionCount": "{label} · {count}",
   "@fmSectionCount": {
