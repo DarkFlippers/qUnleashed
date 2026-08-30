@@ -16,6 +16,8 @@ languages_mapping:
     es-ES: es
     es-MX: es_MX
     fr-CA: fr_CA
+    sr-CS: sr
+    sr-Latn: sr_Latn
 
 files:
   # App strings. English is the source; every other language comes back from
