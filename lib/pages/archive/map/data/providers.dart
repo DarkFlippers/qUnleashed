@@ -83,7 +83,7 @@ MapTileProvider cartoProvider(L10n s) => MapTileProvider(
   attribution: '© OpenStreetMap contributors, © CARTO',
   template:
       'https://{s}.basemaps.cartocdn.com/{design}/{z}/{x}/{y}{r}.png'
-      '?api_key={key}',
+      '?key={key}',
   subdomains: <String>['a', 'b', 'c', 'd'],
   retina: true,
   keyHint: s.mapKeyHintCarto,
