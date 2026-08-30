@@ -2,6 +2,21 @@
 "api_token_env": "CROWDIN_PERSONAL_TOKEN"
 "preserve_hierarchy": true
 
+# gen-l10n refuses a country-coded ARB unless the base file for that language
+# sits next to it, so the main variant of every family keeps the bare code and
+# only the second one carries a country. Adding zh-TW therefore also needs
+# zh-CN, which becomes app_zh.arb.
+languages_mapping:
+  two_letters_code:
+    zh-CN: zh
+    zh-TW: zh_TW
+    zh-HK: zh_HK
+    pt-PT: pt
+    pt-BR: pt_BR
+    es-ES: es
+    es-MX: es_MX
+    fr-CA: fr_CA
+
 files:
   # App strings. English is the source; every other language comes back from
   # Crowdin as app_<code>.arb and is compiled by flutter gen-l10n at build time.

@@ -1,22 +1,10 @@
-name: Crowdin
+name: Crowdin RX
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - "translations/app_en.arb"
-      - "fastlane/metadata/android/en-US/**"
-      - "crowdin.yml"
   schedule:
     # Pull finished translations once a day, at 04:00 UTC.
     - cron: "0 4 * * *"
   workflow_dispatch:
-    inputs:
-      seed_translations:
-        description: "Upload translations already in the repo (first run only)"
-        type: boolean
-        default: false
 
 permissions:
   contents: write
@@ -27,22 +15,20 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  synchronize:
-    name: Sync sources and translations
+  download:
+    name: Bring translations back from Crowdin
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Crowdin sync
+      - name: Download translations
         uses: crowdin/github-action@v2
         with:
           config: crowdin.yml
-          upload_sources: true
-          upload_translations: ${{ inputs.seed_translations || false }}
-          # A push only ships new source strings; translations come back on the
-          # schedule and on manual runs, so day-to-day pushes stay PR-free.
-          download_translations: ${{ github.event_name != 'push' }}
+          upload_sources: false
+          upload_translations: false
+          download_translations: true
           localization_branch_name: l10n/crowdin
           create_pull_request: true
           pull_request_title: "New translations from Crowdin"
@@ -52,6 +38,22 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CROWDIN_PROJECT_ID: ${{ secrets.CROWDIN_PROJECT_ID }}
           CROWDIN_PERSONAL_TOKEN: ${{ secrets.CROWDIN_PERSONAL_TOKEN }}
+
+      - name: Refresh the pull request
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CROWDIN_PROJECT_ID: ${{ secrets.CROWDIN_PROJECT_ID }}
+          CROWDIN_PERSONAL_TOKEN: ${{ secrets.CROWDIN_PERSONAL_TOKEN }}
+        run: |
+          number=$(gh pr list --head l10n/crowdin --state open --json number --jq '.[0].number')
+          if [ -z "$number" ]; then
+            echo "No open translation pull request to refresh."
+            exit 0
+          fi
+          python3 .github/scripts/crowdin_summary.py > "${RUNNER_TEMP}/pr-body.md"
+          gh pr edit "$number" --body-file "${RUNNER_TEMP}/pr-body.md"
+          echo "Refreshed pull request #${number}."
 
       - name: Report translation status
         if: always()

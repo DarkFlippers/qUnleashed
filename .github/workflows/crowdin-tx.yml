@@ -1,0 +1,50 @@
+name: Crowdin TX
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "translations/app_en.arb"
+      - "fastlane/metadata/android/en-US/**"
+      - "crowdin.yml"
+  workflow_dispatch:
+    inputs:
+      seed_translations:
+        description: "Upload translations already in the repo (first run only)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: crowdin
+  cancel-in-progress: false
+
+jobs:
+  upload:
+    name: Send English strings to Crowdin
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Upload sources
+        uses: crowdin/github-action@v2
+        with:
+          config: crowdin.yml
+          upload_sources: true
+          upload_translations: ${{ inputs.seed_translations || false }}
+          download_translations: false
+          create_pull_request: false
+        env:
+          CROWDIN_PROJECT_ID: ${{ secrets.CROWDIN_PROJECT_ID }}
+          CROWDIN_PERSONAL_TOKEN: ${{ secrets.CROWDIN_PERSONAL_TOKEN }}
+
+      - name: Report translation status
+        if: always()
+        env:
+          CROWDIN_PROJECT_ID: ${{ secrets.CROWDIN_PROJECT_ID }}
+          CROWDIN_PERSONAL_TOKEN: ${{ secrets.CROWDIN_PERSONAL_TOKEN }}
+        run: python3 .github/scripts/crowdin_summary.py >> "$GITHUB_STEP_SUMMARY"
