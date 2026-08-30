@@ -1,0 +1,9 @@
+{
+  "@@locale": "ru",
+
+  "appTitle": "qUnleashed",
+  "settingsLanguageTitle": "Язык",
+  "settingsLanguageSubtitle": "Язык приложения, системный по умолчанию",
+  "languageSystemDefault": "Системный",
+  "languageSystemDefaultSubtitle": "Использовать язык устройства."
+}

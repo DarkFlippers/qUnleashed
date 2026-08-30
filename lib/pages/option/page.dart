@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import '../../components/cardlist.dart';
 import '../../components/icon.dart';
 import '../../components/navigation.dart';
+import '../../services/localization/l10n.dart';
 import '../../theme/theme.dart';
 import 'pages/apps.dart';
 import 'pages/flibler.dart';
+import 'pages/language.dart';
 import 'pages/map.dart';
 import 'pages/push.dart';
 import 'pages/storage.dart';
@@ -111,6 +113,13 @@ class SettingsPage extends StatelessWidget {
                 asset: 'assets/ic/app/bell.svg',
                 color: const Color(0xFFE85858),
                 page: (_) => const NotificationsSettingsPage(),
+              ),
+              _Category(
+                title: context.l10n.settingsLanguageTitle,
+                subtitle: context.l10n.settingsLanguageSubtitle,
+                asset: 'assets/ic/app/language.svg',
+                color: const Color(0xFFFFB74D),
+                page: (_) => const LanguageSettingsPage(),
               ),
             ],
             onTap: (c) => _open(context, c),

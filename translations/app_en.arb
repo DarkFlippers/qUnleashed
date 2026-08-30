@@ -1,0 +1,28 @@
+{
+  "@@locale": "en",
+
+  "appTitle": "qUnleashed",
+  "@appTitle": {
+    "description": "Application name shown in the OS task switcher. Product name, keep untranslated."
+  },
+
+  "settingsLanguageTitle": "Language",
+  "@settingsLanguageTitle": {
+    "description": "Title of the language settings screen and of its tile on the Settings screen."
+  },
+
+  "settingsLanguageSubtitle": "App language, system default",
+  "@settingsLanguageSubtitle": {
+    "description": "Subtitle under the Language tile on the Settings screen."
+  },
+
+  "languageSystemDefault": "System default",
+  "@languageSystemDefault": {
+    "description": "First entry of the language list: use the language the device is set to."
+  },
+
+  "languageSystemDefaultSubtitle": "Follow the device language.",
+  "@languageSystemDefaultSubtitle": {
+    "description": "Explanation under the System default entry of the language list."
+  }
+}

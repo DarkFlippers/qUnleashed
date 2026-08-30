@@ -1,0 +1,24 @@
+"project_id_env": "CROWDIN_PROJECT_ID"
+"api_token_env": "CROWDIN_PERSONAL_TOKEN"
+"preserve_hierarchy": true
+
+files:
+  # App strings. English is the source; every other language comes back from
+  # Crowdin as app_<code>.arb and is compiled by flutter gen-l10n at build time.
+  - source: "/translations/app_en.arb"
+    translation: "/translations/app_%two_letters_code%.arb"
+    update_option: "update_as_unapproved"
+
+  # Google Play store listing. title.txt and video.txt stay untranslated:
+  # one is the product name, the other a URL.
+  - source: "/fastlane/metadata/android/en-US/short_description.txt"
+    translation: "/fastlane/metadata/android/%locale%/short_description.txt"
+    update_option: "update_as_unapproved"
+
+  - source: "/fastlane/metadata/android/en-US/full_description.txt"
+    translation: "/fastlane/metadata/android/%locale%/full_description.txt"
+    update_option: "update_as_unapproved"
+
+  - source: "/fastlane/metadata/android/en-US/changelogs/*.txt"
+    translation: "/fastlane/metadata/android/%locale%/changelogs/%original_file_name%"
+    update_option: "update_as_unapproved"
