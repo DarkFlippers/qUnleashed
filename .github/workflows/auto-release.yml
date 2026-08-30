@@ -364,7 +364,7 @@ jobs:
               echo "prerelease=true"
               echo "make_latest=false"
               echo "topic=app_dev"
-              echo "title=New qUnleashed dev build"
+              echo "title=New qUnleashed app dev build"
               echo "body=version: $tag | commit: ${GITHUB_SHA:0:7}"
             } >> "$GITHUB_OUTPUT"
           else
