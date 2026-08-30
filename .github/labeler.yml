@@ -1,0 +1,96 @@
+# Auto-applies area/* labels to PRs based on the paths they touch.
+# Used by .github/workflows/labeler.yml (actions/labeler@v5).
+# sync-labels is off, so these only ADD labels — manual labels are never stripped.
+
+"area/localization":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "translations/**"
+          - "lib/services/localization/**"
+          - "fastlane/metadata/**"
+          - "crowdin.yml"
+          - "l10n.yaml"
+          - "TRANSLATING.md"
+
+"area/archive":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "lib/pages/archive/**"
+          - "lib/components/archive/**"
+          - "lib/services/archive/**"
+
+"area/map":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "lib/pages/archive/map/**"
+          - "lib/pages/option/pages/map.dart"
+
+"area/apps":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "lib/pages/apps/**"
+
+"area/flibler":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "lib/pages/flibler/**"
+          - "lib/services/assembler/**"
+          - "lib/modules/dartufbt/**"
+          - "lib/pages/option/pages/flibler.dart"
+
+"area/tools":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "lib/pages/tools/**"
+
+"area/device":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "lib/pages/devices/**"
+          - "lib/services/connection/**"
+          - "lib/services/rpc/**"
+          - "lib/modules/flipperlib/**"
+
+"area/emulator":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "lib/modules/flipengine/**"
+          - "lib/modules/cpp/**"
+
+"area/settings":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "lib/pages/option/**"
+
+"area/ui":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "lib/app/**"
+          - "lib/components/**"
+          - "lib/theme/**"
+          - "assets/**"
+
+"area/platform":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "android/**"
+          - "ios/**"
+          - "linux/**"
+          - "macos/**"
+          - "windows/**"
+          - "web/**"
+
+"area/ci-build":
+  - changed-files:
+      - any-glob-to-any-file:
+          - ".github/**"
+          - "pubspec.yaml"
+          - "analysis_options.yaml"
+
+"area/docs":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "README.md"
+          - "CHANGELOG.md"
+          - "LICENSE"
+          - "screenshots/**"
