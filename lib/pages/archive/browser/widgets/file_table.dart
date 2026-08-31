@@ -331,57 +331,57 @@ class _FileTableRowState extends State<FileTableRow> {
 
   Widget _trailing(QAppColors colors) {
     if (_renaming) {
-      return SizedBox(
-        width: kFileTrailingWidth,
-        child: Center(
-          child: SizedBox(
-            width: 14,
-            height: 14,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              color: colors.accent,
-            ),
+      return _slot(
+        SizedBox(
+          width: 14,
+          height: 14,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: colors.accent,
           ),
         ),
       );
     }
     if (_editing) {
-      return SizedBox(
-        width: kFileTrailingWidth,
-        child: _iconBtn(Icons.check, colors.accent, _commitEdit),
-      );
+      return _iconBtn(Icons.check_rounded, colors.accent, _commitEdit);
     }
     if (widget.selectionMode) {
       return const SizedBox(width: kFileTrailingWidth);
     }
-    if (_isDesktop && _hovered) {
-      return SizedBox(
-        width: kFileTrailingWidth,
-        child: _iconBtn(Icons.more_horiz, colors.accent, _showActionsSheet),
+    if (widget.entry.isDir && !(_isDesktop && _hovered)) {
+      return _slot(
+        Icon(Icons.chevron_right_rounded, size: 18, color: colors.textMuted),
       );
     }
-    if (widget.entry.isDir) {
-      return SizedBox(
-        width: kFileTrailingWidth,
-        child: Icon(Icons.chevron_right, size: 17, color: colors.textMuted),
-      );
-    }
-    return SizedBox(
-      width: kFileTrailingWidth,
-      child: _iconBtn(Icons.more_horiz, colors.textMuted, _showActionsSheet),
+    return _iconBtn(
+      Icons.more_vert_rounded,
+      (_isDesktop && _hovered) ? colors.accent : colors.textSecondary,
+      _showActionsSheet,
     );
   }
 
+  Widget _slot(Widget child) => SizedBox(
+    width: kFileTrailingWidth,
+    height: kFileRowHeight,
+    child: Center(child: child),
+  );
+
   Widget _iconBtn(IconData icon, Color color, VoidCallback? onPressed) {
-    return IconButton(
-      icon: Icon(icon, size: 17),
-      color: color,
-      padding: EdgeInsets.zero,
-      constraints: const BoxConstraints(
-        minWidth: kFileTrailingWidth,
-        minHeight: kFileRowHeight,
+    return _slot(
+      Material(
+        color: Colors.transparent,
+        shape: const CircleBorder(),
+        clipBehavior: Clip.antiAlias,
+        child: InkResponse(
+          onTap: onPressed,
+          radius: 16,
+          child: SizedBox(
+            width: 32,
+            height: 32,
+            child: Center(child: Icon(icon, size: 18, color: color)),
+          ),
+        ),
       ),
-      onPressed: onPressed,
     );
   }
 }
