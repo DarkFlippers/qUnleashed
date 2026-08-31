@@ -8,7 +8,6 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../../../components/navigation.dart';
 import '../../../theme/theme.dart';
 import 'package:qunleashed/components/appbar.dart';
-import 'package:qunleashed/components/cardlist.dart';
 import 'package:flipperlib/flipperlib.dart';
 import '../../../services/storage/fap_icons.dart' as icon_repo;
 import '../../../components/notification.dart';
@@ -19,7 +18,11 @@ import '../../../components/archive/models/key.dart';
 import '../editor/open.dart';
 import 'share_remote_file.dart';
 import 'controller.dart';
+import 'columns.dart';
 import 'widgets/file_row.dart';
+import 'widgets/file_table.dart';
+import '../widgets/actions_sheet.dart';
+import '../../../components/filelist/sync_progress_bar.dart';
 import '../../../components/filelist/empty_view.dart';
 import '../../../components/dialogs/connection.dart';
 
@@ -58,7 +61,6 @@ class _FileManagerPageState extends State<FileManagerPage> {
   late final FileManagerController _ctrl;
   _Clipboard? _clipboard;
 
-  bool _searching = false;
   final TextEditingController _searchCtrl = TextEditingController();
   final FocusNode _searchFocus = FocusNode();
 
@@ -115,7 +117,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
       _exitSelection();
       return false;
     }
-    if (_searching) {
+    if (_ctrl.isSearching) {
       _stopSearch();
       return false;
     }
@@ -167,15 +169,10 @@ class _FileManagerPageState extends State<FileManagerPage> {
   List<RemoteEntry> get _selectedEntries =>
       _ctrl.entries.where((e) => _selected.contains(e.name)).toList();
 
-  void _startSearch() {
-    setState(() => _searching = true);
-    _searchFocus.requestFocus();
-  }
-
   void _stopSearch() {
     _searchCtrl.clear();
-    _ctrl.setSearch('');
-    setState(() => _searching = false);
+    _searchFocus.unfocus();
+    setState(() => _ctrl.setSearch(''));
   }
 
   Future<void> _connect() async {
@@ -207,7 +204,10 @@ class _FileManagerPageState extends State<FileManagerPage> {
   }
 
   void _openRemoteControlBusy() {
-    context.showNotification(context.l10n.fmDeviceBusy, type: QNotificationType.error);
+    context.showNotification(
+      context.l10n.fmDeviceBusy,
+      type: QNotificationType.error,
+    );
     openRoute(context, AppRoute.remoteControl);
   }
 
@@ -363,9 +363,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
   Future<void> _indexFapIconsSelected() async {
     final items = _selectedEntries;
     if (items.isEmpty) return;
-    context.showNotification(
-      context.l10n.fmIndexingIcons(items.length),
-    );
+    context.showNotification(context.l10n.fmIndexingIcons(items.length));
     var indexed = 0;
     for (final e in items) {
       if (await _indexFapIcon(e, silent: true)) indexed++;
@@ -390,16 +388,17 @@ class _FileManagerPageState extends State<FileManagerPage> {
     if (success) await _ctrl.refresh();
     if (!mounted) return;
     if (!success) {
-      context.showNotification(context.l10n.fmDeleteFailed, type: QNotificationType.error);
+      context.showNotification(
+        context.l10n.fmDeleteFailed,
+        type: QNotificationType.error,
+      );
     }
   }
 
   Future<void> _deleteSelected() async {
     final items = _selectedEntries;
     if (items.isEmpty) return;
-    final ok = await _confirm(
-      context.l10n.fmDeleteMany(items.length),
-    );
+    final ok = await _confirm(context.l10n.fmDeleteMany(items.length));
     if (!ok) return;
     var failures = 0;
     for (final e in items) {
@@ -447,7 +446,10 @@ class _FileManagerPageState extends State<FileManagerPage> {
     }
     if (!mounted) return;
     if (!ok) {
-      context.showNotification(context.l10n.fmRenameFailed, type: QNotificationType.error);
+      context.showNotification(
+        context.l10n.fmRenameFailed,
+        type: QNotificationType.error,
+      );
     }
   }
 
@@ -556,7 +558,10 @@ class _FileManagerPageState extends State<FileManagerPage> {
   }
 
   Future<void> _createFolder() async {
-    final name = await _promptText(context.l10n.fmNewFolder, hintText: context.l10n.fmFolderName);
+    final name = await _promptText(
+      context.l10n.fmNewFolder,
+      hintText: context.l10n.fmFolderName,
+    );
     if (name == null || name.trim().isEmpty) return;
     final ok = await _ctrl.mkdir(name.trim());
     if (ok) await _ctrl.refresh();
@@ -618,7 +623,10 @@ class _FileManagerPageState extends State<FileManagerPage> {
               ),
               TextButton(
                 onPressed: () => Navigator.pop(ctx, true),
-                child: Text(context.l10n.commonDelete, style: TextStyle(color: colors.danger)),
+                child: Text(
+                  context.l10n.commonDelete,
+                  style: TextStyle(color: colors.danger),
+                ),
               ),
             ],
           ),
@@ -807,9 +815,24 @@ class _FileManagerPageState extends State<FileManagerPage> {
 
   // ─── Build ───────────────────────────────────────────────────────────────────
 
+  String get _sortKey => switch (_ctrl.sortMode) {
+    FileSortMode.name => 'name',
+    FileSortMode.type => 'type',
+    FileSortMode.size => 'size',
+  };
+
+  void _onSort(String key) {
+    _ctrl.setSortMode(switch (key) {
+      'type' => FileSortMode.type,
+      'size' => FileSortMode.size,
+      _ => FileSortMode.name,
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
+    final accent = colors.accent;
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) async {
@@ -820,21 +843,112 @@ class _FileManagerPageState extends State<FileManagerPage> {
       child: AnimatedBuilder(
         animation: _ctrl,
         builder: (context, _) {
+          final entries = _ctrl.entries;
+          final allSelected =
+              entries.isNotEmpty &&
+              entries.every((e) => _selected.contains(e.name));
+          final canDismiss =
+              ModalRoute.of(context)?.impliesAppBarDismissal ?? false;
+          final portrait =
+              MediaQuery.orientationOf(context) == Orientation.portrait;
+          final showLeading =
+              _selectionMode ||
+              _ctrl.isSearching ||
+              _ctrl.canGoUp ||
+              canDismiss;
           return Scaffold(
             backgroundColor: colors.background,
-            appBar: _buildAppBar(colors),
+            appBar: AppBar(
+              backgroundColor: accent,
+              foregroundColor: colors.onAccent,
+              elevation: 0,
+              scrolledUnderElevation: 0,
+              surfaceTintColor: Colors.transparent,
+              titleSpacing: showLeading ? 0 : NavigationToolbar.kMiddleSpacing,
+              automaticallyImplyLeading: false,
+              leading: !showLeading
+                  ? null
+                  : _selectionMode
+                  ? IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: _exitSelection,
+                    )
+                  : BackButton(onPressed: _handleBackButton),
+              title: _selectionMode
+                  ? Text(
+                      context.l10n.selectedCount(_selected.length),
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    )
+                  : _buildSearchField(colors),
+              actions: _selectionMode
+                  ? [
+                      _BarButton(
+                        icon: allSelected
+                            ? Icons.deselect_rounded
+                            : Icons.select_all_rounded,
+                        label: allSelected
+                            ? context.l10n.selectNone
+                            : context.l10n.selectAll,
+                        onTap: _selectAll,
+                      ),
+                      _BarButton(
+                        icon: Icons.more_horiz_rounded,
+                        tooltip: context.l10n.fmMoreActions,
+                        onTap: _selected.isEmpty ? null : _showSelectionActions,
+                      ),
+                      const SizedBox(width: 8),
+                    ]
+                  : [
+                      if (_ctrl.viewMode == FileViewMode.grid)
+                        _BarButton(
+                          icon: Icons.swap_vert_rounded,
+                          tooltip: context.l10n.fmSortBy,
+                          onTap: _showSortSheet,
+                        ),
+                      _BarButton(
+                        icon: _ctrl.viewMode == FileViewMode.list
+                            ? Icons.grid_view_rounded
+                            : Icons.view_list_rounded,
+                        tooltip: _ctrl.viewMode == FileViewMode.list
+                            ? context.l10n.fmGridView
+                            : context.l10n.fmListView,
+                        onTap: _ctrl.toggleViewMode,
+                      ),
+                      _BarButton(
+                        icon: _ctrl.showHidden
+                            ? Icons.visibility_rounded
+                            : Icons.visibility_off_rounded,
+                        tooltip: _ctrl.showHidden
+                            ? context.l10n.fmHideHidden
+                            : context.l10n.fmShowHidden,
+                        active: _ctrl.showHidden,
+                        onTap: _ctrl.toggleHidden,
+                      ),
+                      if (!portrait)
+                        _BarButton(
+                          icon: Icons.refresh_rounded,
+                          tooltip: context.l10n.fmRefresh,
+                          onTap: _ctrl.loading ? null : _ctrl.refresh,
+                        ),
+                      _BarButton(label: '${entries.length}'),
+                      const SizedBox(width: 8),
+                    ],
+            ),
             body: Column(
               children: [
                 _buildBreadcrumbs(colors),
                 if (_clipboard != null) _buildClipboardBanner(colors),
                 if (_ctrl.transferLabel != null) _buildTransferBar(colors),
-                Expanded(child: _buildBody(context)),
+                Expanded(child: _buildBody(context, entries)),
               ],
             ),
             floatingActionButton: _selectionMode
                 ? null
-                : FloatingActionButton(
-                    backgroundColor: colors.accent,
+                : FloatingActionButton.small(
+                    backgroundColor: accent,
                     foregroundColor: colors.onAccent,
                     onPressed: _showFabMenu,
                     child: const Icon(Icons.add),
@@ -845,147 +959,118 @@ class _FileManagerPageState extends State<FileManagerPage> {
     );
   }
 
-  PreferredSizeWidget _buildAppBar(QAppColors colors) {
-    if (_selectionMode) {
-      return QPageAppBar(
-        title: context.l10n.selectedCount(_selected.length),
-        backgroundColor: colors.accent,
-        foregroundColor: colors.onAccent,
-        leading: IconButton(
-          icon: const Icon(Icons.close),
-          onPressed: _exitSelection,
-        ),
-        actions: _buildSelectionActions(colors),
-      );
-    }
-
-    if (_searching) {
-      return AppBar(
-        backgroundColor: colors.accent,
-        foregroundColor: colors.onAccent,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: _stopSearch,
-        ),
-        title: TextField(
+  Widget _buildSearchField(QAppColors colors) {
+    final on = colors.onAccent;
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: SizedBox(
+        height: 36,
+        child: TextField(
           controller: _searchCtrl,
           focusNode: _searchFocus,
-          autofocus: true,
-          style: TextStyle(color: colors.onAccent, fontSize: 16),
-          cursorColor: colors.onAccent,
+          onChanged: (v) => setState(() => _ctrl.setSearch(v)),
+          textInputAction: TextInputAction.search,
+          style: TextStyle(color: on, fontSize: 13),
+          cursorColor: on,
           decoration: InputDecoration(
             hintText: context.l10n.fmSearchInFolder,
-            border: InputBorder.none,
-            hintStyle: TextStyle(color: colors.onAccent.withValues(alpha: 0.7)),
-          ),
-          onChanged: _ctrl.setSearch,
-        ),
-        actions: [
-          if (_searchCtrl.text.isNotEmpty)
-            IconButton(
-              icon: const Icon(Icons.close),
-              onPressed: () {
-                _searchCtrl.clear();
-                _ctrl.setSearch('');
-                setState(() {});
-              },
+            hintStyle: TextStyle(color: on.withValues(alpha: 0.6)),
+            prefixIcon: Icon(
+              Icons.search_rounded,
+              color: on.withValues(alpha: 0.75),
+              size: 17,
             ),
-        ],
-      );
-    }
+            suffixIcon: _searchCtrl.text.isEmpty
+                ? null
+                : IconButton(
+                    tooltip: context.l10n.commonClear,
+                    icon: Icon(
+                      Icons.close_rounded,
+                      color: on.withValues(alpha: 0.75),
+                      size: 15,
+                    ),
+                    onPressed: () {
+                      _searchCtrl.clear();
+                      setState(() => _ctrl.setSearch(''));
+                      _searchFocus.requestFocus();
+                    },
+                  ),
+            filled: true,
+            fillColor: Colors.white.withValues(alpha: 0.16),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 10,
+              vertical: 9,
+            ),
+            isDense: true,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(9),
+              borderSide: BorderSide.none,
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(9),
+              borderSide: BorderSide(
+                color: Colors.white.withValues(alpha: 0.28),
+              ),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(9),
+              borderSide: BorderSide(
+                color: Colors.white.withValues(alpha: 0.55),
+                width: 1.4,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
-    final title = _ctrl.canGoUp
-        ? _ctrl.path.substring(_ctrl.path.lastIndexOf('/') + 1)
-        : _ctrl.path;
-    return QPageAppBar(
-      title: title.isEmpty ? '/' : title,
-      backgroundColor: colors.accent,
-      foregroundColor: colors.onAccent,
-      leading: BackButton(onPressed: () => _handleBackButton()),
-      actions: [
-        QPageAppBarAction(
-          tooltip: context.l10n.fmSearch,
-          icon: const Icon(Icons.search),
-          onPressed: _startSearch,
+  Future<void> _showSelectionActions() async {
+    final items = _selectedEntries;
+    if (items.isEmpty) return;
+    final actions = <ActionItem>[
+      if (items.length == 1 && _ctrl.viewMode == FileViewMode.list)
+        ActionItem(
+          icon: Icons.drive_file_rename_outline,
+          label: context.l10n.fmRename,
+          onTap: _renameSelected,
         ),
-        QPageAppBarAction(
-          tooltip: context.l10n.fmSort,
-          icon: const Icon(Icons.sort),
-          onPressed: _showSortSheet,
+      ActionItem(
+        icon: Icons.download_outlined,
+        label: context.l10n.fmDownload,
+        onTap: _downloadSelected,
+      ),
+      ActionItem(
+        icon: Icons.copy_outlined,
+        label: context.l10n.fmCopy,
+        onTap: _copySelected,
+      ),
+      ActionItem(
+        icon: Icons.drive_file_move_outlined,
+        label: context.l10n.fmMove,
+        onTap: _moveSelected,
+      ),
+      if (_selectionAllFap)
+        ActionItem(
+          icon: Icons.image_outlined,
+          label: items.length == 1
+              ? context.l10n.fmIndexIcon
+              : context.l10n.fmIndexIcons,
+          onTap: _indexFapIconsSelected,
         ),
-        QPageAppBarAction(
-          tooltip: _ctrl.viewMode == FileViewMode.list
-              ? context.l10n.fmGridView
-              : context.l10n.fmListView,
-          icon: Icon(
-            _ctrl.viewMode == FileViewMode.list
-                ? Icons.grid_view
-                : Icons.view_list,
-          ),
-          onPressed: _ctrl.toggleViewMode,
-        ),
-        QPageAppBarTooltip(
-          message: context.l10n.fmMoreActions,
-          child: PopupMenuButton<String>(
-            tooltip: '',
-            icon: const Icon(Icons.more_vert),
-            onSelected: (v) {
-              switch (v) {
-                case 'hidden':
-                  _ctrl.toggleHidden();
-                case 'select':
-                  if (_ctrl.entries.isNotEmpty) {
-                    setState(() => _selectionMode = true);
-                  }
-                case 'refresh':
-                  if (!_ctrl.loading) _ctrl.refresh();
-              }
-            },
-            itemBuilder: (_) => [
-              PopupMenuItem(
-                value: 'hidden',
-                child: Row(
-                  children: [
-                    Icon(
-                      _ctrl.showHidden
-                          ? Icons.visibility_off
-                          : Icons.visibility,
-                      size: 20,
-                      color: colors.textSecondary,
-                    ),
-                    const SizedBox(width: 12),
-                    Text(_ctrl.showHidden ? context.l10n.fmHideHidden : context.l10n.fmShowHidden),
-                  ],
-                ),
-              ),
-              PopupMenuItem(
-                value: 'select',
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.check_circle_outline,
-                      size: 20,
-                      color: colors.textSecondary,
-                    ),
-                    const SizedBox(width: 12),
-                    Text(context.l10n.fmSelect),
-                  ],
-                ),
-              ),
-              PopupMenuItem(
-                value: 'refresh',
-                child: Row(
-                  children: [
-                    Icon(Icons.refresh, size: 20, color: colors.textSecondary),
-                    const SizedBox(width: 12),
-                    Text(context.l10n.fmRefresh),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
+      ActionItem(
+        icon: Icons.delete_outline,
+        label: context.l10n.commonDelete,
+        destructive: true,
+        onTap: _deleteSelected,
+      ),
+    ];
+    await ActionsSheet.show(
+      context,
+      leading: FileIconBadge(entry: items.first, size: 40),
+      title: context.l10n.selectedCount(items.length),
+      subtitle: _ctrl.path,
+      actions: actions,
     );
   }
 
@@ -994,96 +1079,6 @@ class _FileManagerPageState extends State<FileManagerPage> {
     if (!shouldPop || !mounted) return;
     final nav = Navigator.of(context);
     if (nav.canPop()) nav.pop();
-  }
-
-  List<Widget> _buildSelectionActions(QAppColors colors) {
-    final all = _ctrl.entries.length;
-    final empty = _selected.isEmpty;
-    return [
-      QPageAppBarAction(
-        tooltip: context.l10n.fmDownload,
-        icon: const Icon(Icons.download_outlined),
-        onPressed: empty ? null : _downloadSelected,
-      ),
-      QPageAppBarAction(
-        tooltip: context.l10n.fmCopy,
-        icon: const Icon(Icons.copy_outlined),
-        onPressed: empty ? null : _copySelected,
-      ),
-      QPageAppBarAction(
-        tooltip: context.l10n.fmMove,
-        icon: const Icon(Icons.drive_file_move_outlined),
-        onPressed: empty ? null : _moveSelected,
-      ),
-      QPageAppBarAction(
-        tooltip: context.l10n.commonDelete,
-        icon: const Icon(Icons.delete_outline),
-        onPressed: empty ? null : _deleteSelected,
-      ),
-      QPageAppBarTooltip(
-        message: context.l10n.fmMoreActions,
-        child: PopupMenuButton<String>(
-          tooltip: '',
-          icon: const Icon(Icons.more_vert),
-          onSelected: (v) {
-            switch (v) {
-              case 'rename':
-                _renameSelected();
-              case 'index':
-                _indexFapIconsSelected();
-              case 'all':
-                _selectAll();
-            }
-          },
-          itemBuilder: (_) => [
-            if (_selected.length == 1 && _ctrl.viewMode == FileViewMode.list)
-              PopupMenuItem(
-                value: 'rename',
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.drive_file_rename_outline,
-                      size: 20,
-                      color: colors.textSecondary,
-                    ),
-                    const SizedBox(width: 12),
-                    Text(context.l10n.fmRename),
-                  ],
-                ),
-              ),
-            if (_selectionAllFap)
-              PopupMenuItem(
-                value: 'index',
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.image_outlined,
-                      size: 20,
-                      color: colors.textSecondary,
-                    ),
-                    const SizedBox(width: 12),
-                    Text(_selected.length == 1 ? context.l10n.fmIndexIcon : context.l10n.fmIndexIcons),
-                  ],
-                ),
-              ),
-            PopupMenuItem(
-              value: 'all',
-              child: Row(
-                children: [
-                  Icon(
-                    _selected.length == all ? Icons.deselect : Icons.select_all,
-                    size: 20,
-                    color: colors.textSecondary,
-                  ),
-                  const SizedBox(width: 12),
-                  Text(_selected.length == all ? context.l10n.fmDeselectAll : context.l10n.fmSelectAll),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    ];
   }
 
   Widget _buildBreadcrumbs(QAppColors colors) {
@@ -1137,6 +1132,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
     return Container(
       height: 40,
       width: double.infinity,
+      color: fileBarColor(colors),
       alignment: Alignment.centerLeft,
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
@@ -1149,92 +1145,67 @@ class _FileManagerPageState extends State<FileManagerPage> {
 
   Widget _buildTransferBar(QAppColors colors) {
     final progress = _ctrl.transferProgress;
-    // While progress is still zero (planning, or first chunk not yet sent) show
-    // an indeterminate animation instead of an empty 0% bar.
-    final indeterminate = progress <= 0;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  _ctrl.transferLabel!,
-                  style: TextStyle(color: colors.textSecondary, fontSize: 12),
-                ),
-              ),
-              Text(
-                indeterminate ? '…' : '${(progress * 100).toStringAsFixed(1)}%',
-                style: TextStyle(color: colors.textSecondary, fontSize: 12),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              value: indeterminate ? null : progress,
-              minHeight: 4,
-              color: colors.accent,
-              backgroundColor: colors.divider,
-            ),
-          ),
-        ],
-      ),
+    return SyncProgressBar(
+      icon: Icons.download_rounded,
+      label: _ctrl.transferLabel!,
+      progress: progress,
+      color: colors.accent,
     );
   }
 
   Widget _buildClipboardBanner(QAppColors colors) {
     final cb = _clipboard!;
     return Container(
-      margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
-      padding: const EdgeInsets.fromLTRB(14, 8, 6, 8),
-      decoration: BoxDecoration(
-        color: colors.accent.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(12),
-      ),
+      height: 32,
+      color: colors.accent.withValues(alpha: 0.12),
+      padding: const EdgeInsets.fromLTRB(12, 0, 4, 0),
       child: Row(
         children: [
           Icon(
             cb.isCut ? Icons.content_cut : Icons.content_copy,
-            size: 18,
+            size: 14,
             color: colors.accent,
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 8),
           Expanded(
             child: Text(
               '${cb.isCut ? context.l10n.fmMoving : context.l10n.fmCopying}'
               ' ${cb.label}',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: colors.textPrimary, fontSize: 13),
+              style: TextStyle(color: colors.textPrimary, fontSize: 12),
             ),
           ),
           TextButton(
             onPressed: _paste,
+            style: TextButton.styleFrom(
+              minimumSize: const Size(0, 28),
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
             child: Text(
               context.l10n.fmPasteHere,
               style: TextStyle(
                 color: colors.accent,
+                fontSize: 12,
                 fontWeight: FontWeight.w700,
               ),
             ),
           ),
           IconButton(
-            icon: Icon(Icons.close, size: 18, color: colors.textMuted),
+            icon: Icon(Icons.close, size: 15, color: colors.textMuted),
             onPressed: () => setState(() => _clipboard = null),
             padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
+            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildBody(BuildContext context) {
+  Widget _buildBody(BuildContext context, List<RemoteEntry> entries) {
     final colors = context.appColors;
-    if (_ctrl.loading && _ctrl.entries.isEmpty) {
+    if (_ctrl.loading && entries.isEmpty) {
       return Center(child: CircularProgressIndicator(color: colors.accent));
     }
     if (!_ctrl.client.isConnected) {
@@ -1246,7 +1217,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
         onAction: _connect,
       );
     }
-    if (_ctrl.error != null) {
+    if (_ctrl.error != null && entries.isEmpty) {
       return ArchiveEmptyView(
         icon: Icons.error_outline,
         title: _ctrl.error!,
@@ -1255,135 +1226,225 @@ class _FileManagerPageState extends State<FileManagerPage> {
       );
     }
 
-    if (_ctrl.isEmptyAfterFilter) {
-      return _buildEmptyState();
-    }
+    return LayoutBuilder(
+      builder: (ctx, constraints) {
+        return RefreshIndicator(
+          color: colors.accent,
+          displacement: 15,
+          onRefresh: _ctrl.refresh,
+          child: entries.isEmpty
+              ? SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  child: SizedBox(
+                    height: constraints.maxHeight,
+                    child: _buildEmptyState(),
+                  ),
+                )
+              : _ctrl.viewMode == FileViewMode.grid
+              ? _buildGrid(entries)
+              : _buildTable(entries, constraints),
+        );
+      },
+    );
+  }
 
-    final grid = _ctrl.viewMode == FileViewMode.grid;
-    return RefreshIndicator(
-      color: colors.accent,
-      onRefresh: _ctrl.refresh,
-      child: CustomScrollView(
-        slivers: [
-          ..._buildSection(context.l10n.fmFolders, _ctrl.folders, grid, isFirst: true),
-          ..._buildSection(
-            context.l10n.fmFiles,
-            _ctrl.files,
-            grid,
-            isFirst: _ctrl.folders.isEmpty,
+  Widget _buildTable(List<RemoteEntry> entries, BoxConstraints constraints) {
+    final cols = layoutFileColumns(
+      fileColumns(),
+      constraints.maxWidth -
+          kFileTrailingWidth -
+          (_selectionMode ? kFileSelectionWidth : 0),
+      entries,
+    );
+    return Column(
+      children: [
+        FileColumnHeader(
+          cols: cols,
+          sortKey: _sortKey,
+          sortAsc: _ctrl.sortAscending,
+          onSort: _onSort,
+          selectionMode: _selectionMode,
+        ),
+        Expanded(
+          child: ListView.builder(
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: ClampingScrollPhysics(),
+            ),
+            padding: const EdgeInsets.only(bottom: 80),
+            itemCount: entries.length,
+            itemBuilder: (_, i) {
+              final e = entries[i];
+              return FileTableRow(
+                key: ValueKey('${e.isDir}:${e.name}'),
+                entry: e,
+                cols: cols,
+                actions: _actionsFor(e),
+                selectionMode: _selectionMode,
+                selected: _selected.contains(e.name),
+                progress: _ctrl.entryProgress(e.name),
+                autoEdit: e.name == _pendingRenameName,
+                onTap: () => _onEntryTap(e),
+                onLongPress: () => _enterSelection(e),
+              );
+            },
           ),
-          const SliverToBoxAdapter(child: SizedBox(height: 96)),
-        ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildGrid(List<RemoteEntry> entries) {
+    return GridView.builder(
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: ClampingScrollPhysics(),
       ),
+      padding: const EdgeInsets.fromLTRB(10, 10, 10, 80),
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: 104,
+        mainAxisExtent: 104,
+        mainAxisSpacing: 6,
+        crossAxisSpacing: 6,
+      ),
+      itemCount: entries.length,
+      itemBuilder: (_, i) {
+        final e = entries[i];
+        return FileGridTile(
+          key: ValueKey('${e.isDir}:${e.name}'),
+          entry: e,
+          actions: _actionsFor(e),
+          selectionMode: _selectionMode,
+          selected: _selected.contains(e.name),
+          progress: _ctrl.entryProgress(e.name),
+          onTap: () => _onEntryTap(e),
+          onLongPress: () => _enterSelection(e),
+        );
+      },
     );
   }
 
   Widget _buildEmptyState() {
     final searching = _ctrl.isSearching;
-    return LayoutBuilder(
-      builder: (context, constraints) => SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(minHeight: constraints.maxHeight),
-          child: ArchiveEmptyView(
-            icon: searching ? Icons.search_off : Icons.folder_open,
-            title: searching
-                ? context.l10n.fmNoMatches
-                : context.l10n.fmEmptyFolder,
-            subtitle: searching ? null : context.l10n.fmEmptyHint,
-            actionLabel: searching
-                ? context.l10n.commonClear
-                : context.l10n.fmRefresh,
-            onAction: searching ? _stopSearch : _ctrl.refresh,
+    return ArchiveEmptyView(
+      icon: searching ? Icons.search_off : Icons.folder_open,
+      title: searching ? context.l10n.fmNoMatches : context.l10n.fmEmptyFolder,
+      subtitle: searching ? null : context.l10n.fmEmptyHint,
+      actionLabel: searching
+          ? context.l10n.commonClear
+          : context.l10n.fmRefresh,
+      onAction: searching ? _stopSearch : _ctrl.refresh,
+    );
+  }
+
+  FileEntryActions _actionsFor(RemoteEntry e) {
+    final cat = e.isDir ? null : ArchiveCategory.fromExtension(e.extension);
+    return FileEntryActions(
+      onRename: (n) => _renameEntry(e, n),
+      onDelete: () => _deleteEntry(e, recursive: e.isDir),
+      onShare: e.isDir
+          ? null
+          : () => shareRemoteFile(
+              context,
+              _ctrl,
+              _ctrl.childPath(e.name),
+              displayName: e.name,
+              expectedSize: e.size,
+            ),
+      onCopy: () => _copyEntry(e),
+      onCut: () => _cutEntry(e),
+      onDownload: () => _downloadEntries([e]),
+      onIndexIcon: (!e.isDir && e.extension == 'fap')
+          ? () => _indexFapIcon(e)
+          : null,
+      onEmulate: (cat != null && cat.emulatable)
+          ? () => _emulateEntry(e, cat)
+          : null,
+      onEdit: _isEditable(e)
+          ? () {
+              if (_isPaintFile(e)) {
+                _openPaintEditor(_ctrl.childPath(e.name));
+              } else {
+                _openTextEditor(e);
+              }
+            }
+          : null,
+    );
+  }
+}
+
+class _BarButton extends StatelessWidget {
+  const _BarButton({
+    this.icon,
+    this.label,
+    this.tooltip,
+    this.onTap,
+    this.active = false,
+  });
+
+  static const double size = 36;
+
+  final IconData? icon;
+  final String? label;
+  final String? tooltip;
+  final VoidCallback? onTap;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final text = label;
+    final glyph = icon;
+    final foreground = active ? colors.accent : colors.onAccent;
+    final dimmed = onTap == null && tooltip != null;
+
+    Widget control = Padding(
+      padding: const EdgeInsets.only(left: 4),
+      child: Center(
+        child: Opacity(
+          opacity: dimmed ? 0.45 : 1,
+          child: GestureDetector(
+            onTap: onTap,
+            child: Container(
+              height: size,
+              width: (glyph != null && text == null) ? size : null,
+              alignment: Alignment.center,
+              padding: EdgeInsets.symmetric(
+                horizontal: (glyph != null && text == null) ? 0 : 10,
+              ),
+              decoration: BoxDecoration(
+                color: active
+                    ? Colors.white.withValues(alpha: 0.88)
+                    : Colors.white.withValues(alpha: 0.18),
+                borderRadius: BorderRadius.circular(9),
+                border: active
+                    ? null
+                    : Border.all(color: Colors.white.withValues(alpha: 0.26)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (glyph != null) Icon(glyph, size: 17, color: foreground),
+                  if (glyph != null && text != null) const SizedBox(width: 5),
+                  if (text != null)
+                    Text(
+                      text,
+                      style: TextStyle(
+                        color: foreground,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
     );
-  }
 
-  List<Widget> _buildSection(
-    String label,
-    List<RemoteEntry> items,
-    bool grid, {
-    bool isFirst = false,
-  }) {
-    if (items.isEmpty) return const [];
-
-    FileEntryActions makeActions(RemoteEntry e) {
-      final cat = e.isDir ? null : ArchiveCategory.fromExtension(e.extension);
-      return FileEntryActions(
-        onRename: (n) => _renameEntry(e, n),
-        onDelete: () => _deleteEntry(e, recursive: e.isDir),
-        onShare: e.isDir
-            ? null
-            : () => shareRemoteFile(
-                context,
-                _ctrl,
-                _ctrl.childPath(e.name),
-                displayName: e.name,
-                expectedSize: e.size,
-              ),
-        onCopy: () => _copyEntry(e),
-        onCut: () => _cutEntry(e),
-        onDownload: () => _downloadEntries([e]),
-        onIndexIcon: (!e.isDir && e.extension == 'fap')
-            ? () => _indexFapIcon(e)
-            : null,
-        onEmulate: (cat != null && cat.emulatable)
-            ? () => _emulateEntry(e, cat)
-            : null,
-        onEdit: _isEditable(e)
-            ? () {
-                if (_isPaintFile(e)) {
-                  _openPaintEditor(_ctrl.childPath(e.name));
-                } else {
-                  _openTextEditor(e);
-                }
-              }
-            : null,
-      );
+    final message = tooltip;
+    if (message != null) {
+      control = QPageAppBarTooltip(message: message, child: control);
     }
-
-    final title = context.l10n.fmSectionCount(label, items.length);
-    final Widget group = grid
-        ? GroupedCardGrid<RemoteEntry>(
-            title: title,
-            items: items,
-            wrapItems: false,
-            itemBuilder: (context, e) => FileGridTile(
-              entry: e,
-              actions: makeActions(e),
-              selectionMode: _selectionMode,
-              selected: _selected.contains(e.name),
-              progress: _ctrl.entryProgress(e.name),
-              onTap: () => _onEntryTap(e),
-              onLongPress: () => _enterSelection(e),
-            ),
-          )
-        : GroupedCardList<RemoteEntry>(
-            title: title,
-            items: items,
-            wrapItems: false,
-            itemBuilder: (context, e) => FileRow(
-              key: ValueKey('${e.isDir}:${e.name}'),
-              entry: e,
-              actions: makeActions(e),
-              selectionMode: _selectionMode,
-              selected: _selected.contains(e.name),
-              progress: _ctrl.entryProgress(e.name),
-              autoEdit: e.name == _pendingRenameName,
-              onTap: () => _onEntryTap(e),
-              onLongPress: () => _enterSelection(e),
-            ),
-          );
-
-    return [
-      SliverToBoxAdapter(
-        child: Padding(
-          padding: EdgeInsets.only(top: isFirst ? 4 : 12),
-          child: group,
-        ),
-      ),
-    ];
+    return control;
   }
 }
