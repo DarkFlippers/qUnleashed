@@ -86,6 +86,7 @@ MapTileProvider cartoProvider(L10n s) => MapTileProvider(
       '?key={key}',
   subdomains: <String>['a', 'b', 'c', 'd'],
   retina: true,
+  needsKey: true,
   keyHint: s.mapKeyHintCarto,
   signupUrl: 'https://carto.com/basemaps',
   designs: <MapTileDesign>[

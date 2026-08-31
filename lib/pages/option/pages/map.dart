@@ -205,7 +205,7 @@ class _MapSettingsPageState extends State<MapSettingsPage> {
         ? strings.mapKeyNeeded
         : config.usesEmbeddedKey
         ? strings.mapKeyBuiltIn
-        : _provider.needsKey
+        : _settings.keyOf(_provider).isNotEmpty
         ? strings.mapKeyYours
         : strings.mapKeyNotNeeded;
     return Padding(
