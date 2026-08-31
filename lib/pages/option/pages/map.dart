@@ -153,17 +153,18 @@ class _MapSettingsPageState extends State<MapSettingsPage> {
     bool selected = false,
   }) {
     final colors = context.appColors;
+    const radius = BorderRadius.all(Radius.circular(8));
     return Container(
       width: size,
       height: size,
       clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: colors.background,
+      decoration: BoxDecoration(color: colors.background, borderRadius: radius),
+      foregroundDecoration: BoxDecoration(
         border: Border.all(
           color: selected ? colors.accent : colors.divider,
           width: selected ? 2 : 1,
         ),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: radius,
       ),
       child: config.missingKey
           ? Icon(
