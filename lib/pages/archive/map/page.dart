@@ -1,15 +1,17 @@
 import '../../../services/localization/l10n.dart';
 import 'dart:async';
+import 'dart:io' show HttpClient;
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:http/io_client.dart';
+import 'package:http/retry.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../../theme/theme.dart';
-import 'package:qunleashed/components/appbar.dart';
 import '../../../components/notification.dart';
 import 'controller.dart';
 import 'data/settings.dart';
@@ -39,10 +41,24 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
   final MapController _mapController = MapController();
   MapPin? _selectedPin;
   bool _initialCentered = false;
+  bool _centeredOnPinsOnly = false;
+  bool _userMovedMap = false;
   bool _initialPinSelected = false;
   bool _mapReady = false;
   bool _saving = false;
   String? _failedTemplate;
+  Timer? _tileQuietTimer;
+  int _tileFailures = 0;
+
+  bool _panelOpen = true;
+
+  // TileLayer builds a NetworkTileProvider — and with it a fresh HTTP client
+  // and connection pool — inside its constructor. This page rebuilds on every
+  // position fix, so a per-build provider meant no keep-alive at all and a new
+  // TLS handshake per tile. One provider per tile source instead; the outgoing
+  // TileLayer state disposes it when the source (and so the layer key) changes.
+  String? _tileSource;
+  NetworkTileProvider? _tileProvider;
 
   _MapMode _mode = _MapMode.browse;
   MapPickTarget? _pickTarget;
@@ -64,6 +80,7 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
 
   @override
   void dispose() {
+    _tileQuietTimer?.cancel();
     _settings.removeListener(_onChanged);
     _controller.removeListener(_onChanged);
     _controller.dispose();
@@ -79,8 +96,9 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
   }
 
   void _maybeAutoCenter() {
-    if (!_mapReady || _initialCentered) return;
+    if (!_mapReady) return;
     if (_mode == _MapMode.pick) {
+      if (_initialCentered) return;
       final target = _pickTarget;
       if (target?.initialLatitude != null && target?.initialLongitude != null) {
         _initialCentered = true;
@@ -90,24 +108,41 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
         );
         return;
       }
-      if (_controller.userPosition != null) {
-        final p = _controller.userPosition!;
+      final p = _controller.userPosition;
+      if (p != null) {
         _initialCentered = true;
         _mapController.move(LatLng(p.latitude, p.longitude), 17);
-        return;
       }
       return;
     }
+
     final selected = _selectedPin;
     if (selected != null) {
+      if (_initialCentered) return;
       _initialCentered = true;
+      _centeredOnPinsOnly = false;
       _mapController.move(LatLng(selected.latitude, selected.longitude), 17);
-    } else if (_controller.userPosition != null) {
-      final p = _controller.userPosition!;
+      return;
+    }
+
+    final p = _controller.userPosition;
+    if (p != null) {
+      // Pins are read from disk long before the first fix arrives, so the
+      // fallback below normally claims the initial centring and the map never
+      // moves to the user on its own. Treat that framing as provisional and
+      // upgrade to the real position once it lands — unless the map has been
+      // panned by hand in the meantime.
+      if (_initialCentered && !(_centeredOnPinsOnly && !_userMovedMap)) return;
       _initialCentered = true;
+      _centeredOnPinsOnly = false;
       _mapController.move(LatLng(p.latitude, p.longitude), 16);
-    } else if (_controller.pins.isNotEmpty) {
+      return;
+    }
+
+    if (_initialCentered) return;
+    if (_controller.pins.isNotEmpty) {
       _initialCentered = true;
+      _centeredOnPinsOnly = true;
       final first = _controller.pins.first;
       _mapController.move(LatLng(first.latitude, first.longitude), 14);
     }
@@ -298,8 +333,6 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
               final wide = constraints.maxWidth >= 720;
               return Scaffold(
                 backgroundColor: colors.background,
-                extendBodyBehindAppBar: !wide,
-                appBar: wide ? _buildAppBar(colors) : null,
                 body: wide
                     ? _buildDesktopLayout(colors)
                     : _buildMobileLayout(colors),
@@ -316,101 +349,6 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
     return QAppColors.build(
       dark ? Brightness.dark : Brightness.light,
       current.accent,
-    );
-  }
-
-  PreferredSizeWidget _buildAppBar(QAppColors colors) {
-    if (_mode == _MapMode.pick) {
-      final target = _pickTarget;
-      return QPageAppBar(
-        title: target == null
-            ? context.l10n.mapSetLocation
-            : context.l10n.mapSetLocationFor(target.displayName),
-        backgroundColor: colors.accent,
-        foregroundColor: colors.onAccent,
-        leading: IconButton(
-          icon: const Icon(Icons.close),
-          tooltip: context.l10n.commonCancel,
-          onPressed: _saving ? null : _exitPickMode,
-        ),
-        actions: [
-          QPageAppBarAction(
-            tooltip: context.l10n.mapSaveLocation,
-            onPressed: _saving ? null : _savePickedLocation,
-            icon: _saving
-                ? SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: colors.onAccent,
-                    ),
-                  )
-                : const Icon(Icons.check),
-          ),
-        ],
-      );
-    }
-    return QPageAppBar(
-      title: context.l10n.mapTitle,
-      backgroundColor: colors.accent,
-      foregroundColor: colors.onAccent,
-      actions: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: Center(
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.place, size: 20),
-                const SizedBox(width: 4),
-                Text(
-                  '${_controller.pins.length}',
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        QPageAppBarAction(
-          tooltip: context.l10n.mapAutoCenter,
-          onPressed: _toggleAutoCenter,
-          icon: Icon(
-            Icons.my_location,
-            color: _followingMe
-                ? colors.onAccent
-                : colors.onAccent.withValues(alpha: 0.5),
-          ),
-        ),
-        QPageAppBarAction(
-          tooltip: _controller.devicePosition != null
-              ? context.l10n.mapTrackFlipper
-              : context.l10n.mapNoDeviceLocation,
-          onPressed: _controller.devicePosition == null
-              ? null
-              : _toggleTrackDevice,
-          icon: Icon(
-            Icons.gps_fixed,
-            color: _followingDevice
-                ? colors.onAccent
-                : colors.onAccent.withValues(alpha: 0.5),
-          ),
-        ),
-        QPageAppBarAction(
-          tooltip: context.l10n.mapReloadFiles,
-          onPressed: _controller.loading ? null : _controller.loadFiles,
-          icon: const Icon(Icons.refresh),
-        ),
-        QPageAppBarAction(
-          tooltip: context.l10n.mapSettingsEntry,
-          onPressed: () => openRoute(context, AppRoute.mapSettings),
-          icon: const Icon(Icons.settings),
-        ),
-        const SizedBox(width: 4),
-      ],
     );
   }
 
@@ -436,31 +374,91 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
   Widget _buildDesktopLayout(QAppColors colors) {
     final guard = _buildBrowseGuard(colors);
     if (guard != null) return guard;
-    return Row(
+    final picking = _mode == _MapMode.pick;
+    final showPanel = _panelOpen && !picking;
+    final inset = showPanel ? kMapPanelWidth + 24 : 0.0;
+
+    return Stack(
       children: [
-        Container(
-          width: 300,
-          decoration: BoxDecoration(
-            border: Border(right: BorderSide(color: colors.divider)),
-            color: colors.card,
-          ),
-          child: _MapPanel(
-            pins: _sortedPins(),
-            selected: _selectedPin,
-            controller: _controller,
-            colors: colors,
-            onSelect: _selectPin,
-            onClose: () => setState(() => _selectedPin = null),
-            onEdit: _selectedPin != null
-                ? () => _enterEditModeFor(_selectedPin!)
-                : null,
-            onCopyCoords: () => context.showNotification(
-              context.l10n.mapCoordinatesCopied,
-              type: QNotificationType.good,
+        _buildMapStack(colors, desktopMode: true, leftInset: inset),
+        if (showPanel)
+          Positioned(
+            left: 12,
+            top: 12,
+            bottom: 12,
+            width: kMapPanelWidth,
+            child: Material(
+              color: colors.card,
+              elevation: 6,
+              shadowColor: Colors.black38,
+              borderRadius: BorderRadius.circular(14),
+              clipBehavior: Clip.antiAlias,
+              child: _MapPanel(
+                pins: _sortedPins(),
+                selected: _selectedPin,
+                controller: _controller,
+                colors: colors,
+                onSelect: _selectPin,
+                onClose: () => setState(() => _selectedPin = null),
+                onEdit: _selectedPin != null
+                    ? () => _enterEditModeFor(_selectedPin!)
+                    : null,
+                onCopyCoords: () => context.showNotification(
+                  context.l10n.mapCoordinatesCopied,
+                  type: QNotificationType.good,
+                ),
+              ),
             ),
           ),
-        ),
-        Expanded(child: _buildMapStack(colors, desktopMode: true)),
+        if (picking)
+          Positioned(
+            left: 12,
+            right: 12,
+            top: 12,
+            child: _buildPickControls(colors),
+          )
+        else ...[
+          // Rides the panel's edge: parked beside it while it is open, sliding
+          // out to the window edge once it is folded away.
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 240),
+            curve: Curves.easeOutCubic,
+            left: showPanel ? kMapPanelWidth + 24 : 12,
+            top: 12,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (ModalRoute.of(context)?.impliesAppBarDismissal ??
+                    false) ...[
+                  _MapControl(
+                    colors: colors,
+                    icon: Icons.arrow_back,
+                    tooltip: context.l10n.commonClose,
+                    onTap: () => Navigator.of(context).maybePop(),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                _MapControl(
+                  colors: colors,
+                  icon: _panelOpen
+                      ? Icons.menu_open_rounded
+                      : Icons.format_list_bulleted_rounded,
+                  tooltip: context.l10n.mapTitle,
+                  active: _panelOpen,
+                  onTap: () => setState(() => _panelOpen = !_panelOpen),
+                ),
+              ],
+            ),
+          ),
+          Positioned(
+            right: 12,
+            top: 12,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: _mapControls(colors),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -523,39 +521,54 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
             onTap: () => Navigator.of(context).maybePop(),
           ),
         const Spacer(),
-        _MapControl(
-          colors: colors,
-          icon: Icons.my_location,
-          tooltip: context.l10n.mapAutoCenter,
-          active: _followingMe,
-          onTap: _toggleAutoCenter,
-        ),
-        const SizedBox(width: 8),
-        _MapControl(
-          colors: colors,
-          icon: Icons.settings_remote,
-          tooltip: _controller.devicePosition != null
-              ? context.l10n.mapTrackFlipper
-              : context.l10n.mapNoDeviceLocation,
-          active: _followingDevice,
-          onTap: _controller.devicePosition == null ? null : _toggleTrackDevice,
-        ),
-        const SizedBox(width: 8),
-        _MapControl(
-          colors: colors,
-          icon: Icons.refresh,
-          tooltip: context.l10n.mapReloadFiles,
-          onTap: _controller.loading ? null : _controller.loadFiles,
-        ),
-        const SizedBox(width: 8),
-        _MapControl(
-          colors: colors,
-          icon: Icons.settings,
-          tooltip: context.l10n.mapSettingsEntry,
-          onTap: () => openRoute(context, AppRoute.mapSettings),
-        ),
+        ..._mapControls(colors),
       ],
     );
+  }
+
+  /// The control group both hosts share, so a button never means one thing on
+  /// the phone and another on the desktop.
+  List<Widget> _mapControls(QAppColors colors) {
+    return [
+      _MapControl(
+        colors: colors,
+        icon: Icons.place,
+        label: '${_controller.pins.length}',
+        onTap: null,
+      ),
+      const SizedBox(width: 8),
+      _MapControl(
+        colors: colors,
+        icon: Icons.my_location,
+        tooltip: context.l10n.mapAutoCenter,
+        active: _followingMe,
+        onTap: _toggleAutoCenter,
+      ),
+      const SizedBox(width: 8),
+      _MapControl(
+        colors: colors,
+        icon: Icons.settings_remote,
+        tooltip: _controller.devicePosition != null
+            ? context.l10n.mapTrackFlipper
+            : context.l10n.mapNoDeviceLocation,
+        active: _followingDevice,
+        onTap: _controller.devicePosition == null ? null : _toggleTrackDevice,
+      ),
+      const SizedBox(width: 8),
+      _MapControl(
+        colors: colors,
+        icon: Icons.refresh,
+        tooltip: context.l10n.mapReloadFiles,
+        onTap: _controller.loading ? null : _controller.loadFiles,
+      ),
+      const SizedBox(width: 8),
+      _MapControl(
+        colors: colors,
+        icon: Icons.settings,
+        tooltip: context.l10n.mapSettingsEntry,
+        onTap: () => openRoute(context, AppRoute.mapSettings),
+      ),
+    ];
   }
 
   Widget _buildPickControls(QAppColors colors) {
@@ -580,13 +593,16 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
   }
 
   // Shared map Stack used by both mobile and desktop layouts
-  Widget _buildMapStack(QAppColors colors, {required bool desktopMode}) {
+  Widget _buildMapStack(
+    QAppColors colors, {
+    required bool desktopMode,
+    double leftInset = 0,
+  }) {
     final picking = _mode == _MapMode.pick;
-    // Without an app bar the floating controls own the top strip and the sheet
-    // owns the bottom one, so everything else is inset past them.
-    final overlay = desktopMode
-        ? 12.0
-        : MediaQuery.paddingOf(context).top + 8 + kMapControl + 8;
+    // There is no app bar on either host: the floating controls own the top
+    // strip, the sheet or the side panel owns the rest, and everything else is
+    // inset past them.
+    final overlay = MediaQuery.paddingOf(context).top + 8 + kMapControl + 8;
     final sheet = (desktopMode || picking)
         ? 0.0
         : (_selectedPin != null ? kMapPanelPeek : kMapSheetThin);
@@ -612,6 +628,7 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
             },
             onPositionChanged: (_, hasGesture) {
               if (!hasGesture) return;
+              _userMovedMap = true;
               if (!_settings.autoCenter && !_settings.trackDevice) return;
               _stopFollowing();
             },
@@ -622,6 +639,7 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
           children: [
             TileLayer(
               key: ValueKey(tiles.urlTemplate),
+              tileProvider: _providerFor(tiles.urlTemplate),
               urlTemplate: tiles.urlTemplate,
               errorTileCallback: (_, _, _) => _reportTileFailure(tiles),
               subdomains: tiles.subdomains,
@@ -640,11 +658,12 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
             ),
           ],
         ),
-        if (picking) Positioned.fill(child: _buildPickOverlay(colors, overlay)),
+        if (picking)
+          Positioned.fill(child: _buildPickOverlay(colors, overlay, leftInset)),
 
         if (tiles.attribution.isNotEmpty)
           Positioned(
-            left: 6,
+            left: leftInset + 6,
             bottom: sheet + 4,
             child: DecoratedBox(
               decoration: BoxDecoration(
@@ -663,14 +682,14 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
 
         if (!picking && tiles.missingKey)
           Positioned(
-            left: 12,
+            left: leftInset + 12,
             right: 12,
             top: overlay,
             child: _tileNotice(colors, context.l10n.mapNeedsKeyTap),
           )
         else if (!picking && _failedTemplate == tiles.urlTemplate)
           Positioned(
-            left: 12,
+            left: leftInset + 12,
             right: 12,
             top: overlay,
             child: _tileNotice(
@@ -682,8 +701,42 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
     );
   }
 
+  NetworkTileProvider _providerFor(String template) {
+    if (_tileSource != template || _tileProvider == null) {
+      _tileSource = template;
+      // Dart's HttpClient leaves maxConnectionsPerHost unbounded, so one pan
+      // fires a hundred simultaneous TLS handshakes and the tile CDN drops the
+      // overflow mid-handshake. Measured against this network: ~33 parallel
+      // connections get through, the rest time out. Six per host, reused.
+      _tileProvider = NetworkTileProvider(
+        httpClient: RetryClient(
+          IOClient(
+            HttpClient()
+              ..maxConnectionsPerHost = 6
+              ..idleTimeout = const Duration(seconds: 30)
+              ..connectionTimeout = const Duration(seconds: 15),
+          ),
+        ),
+      );
+    }
+    return _tileProvider!;
+  }
+
+  /// A single dropped tile means nothing — one stalled connection out of a
+  /// screenful. The notice is for a source that has actually stopped answering,
+  /// so it needs a run of failures to appear and clears itself once tiles start
+  /// arriving again (a quiet spell with no new errors).
   void _reportTileFailure(MapTileConfig tiles) {
-    if (_failedTemplate == tiles.urlTemplate) return;
+    _tileFailures++;
+    _tileQuietTimer?.cancel();
+    _tileQuietTimer = Timer(const Duration(seconds: 5), () {
+      if (!mounted) return;
+      _tileFailures = 0;
+      if (_failedTemplate == null) return;
+      setState(() => _failedTemplate = null);
+    });
+
+    if (_tileFailures < 8 || _failedTemplate == tiles.urlTemplate) return;
     _failedTemplate = tiles.urlTemplate;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) setState(() {});
@@ -723,12 +776,12 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
     return sorted;
   }
 
-  Widget _buildPickOverlay(QAppColors colors, double top) {
+  Widget _buildPickOverlay(QAppColors colors, double top, double leftInset) {
     return IgnorePointer(
       child: Stack(
         children: [
           Positioned(
-            left: 12,
+            left: leftInset + 12,
             right: 12,
             top: top,
             child: Material(

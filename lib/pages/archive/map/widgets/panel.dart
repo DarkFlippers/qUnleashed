@@ -7,6 +7,9 @@ const double kMapPanelPeek = kMapPanelHandle + kMapPanelHeader;
 /// Height of the sheet with nothing selected: the grab bar and nothing else.
 const double kMapSheetThin = 22;
 
+/// Width of the floating panel on the desktop layout.
+const double kMapPanelWidth = 320;
+
 class _MapPanel extends StatelessWidget {
   const _MapPanel({
     required this.pins,
