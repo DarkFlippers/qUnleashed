@@ -7,7 +7,6 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../components/navigation.dart';
 import '../../../theme/theme.dart';
-import 'package:qunleashed/components/appbar.dart';
 import 'package:flipperlib/flipperlib.dart';
 import '../../../services/storage/fap_icons.dart' as icon_repo;
 import '../../../components/notification.dart';
@@ -1443,7 +1442,7 @@ class _BarButton extends StatelessWidget {
 
     final message = tooltip;
     if (message != null) {
-      control = QPageAppBarTooltip(message: message, child: control);
+      control = Tooltip(message: message, child: control);
     }
     return control;
   }

@@ -1,10 +1,10 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../services/logging.dart';
 import '../theme/colors/status.dart';
-import '../services/localization/l10n.dart';
 import '../theme/theme.dart';
 
 enum QNotificationType { error, info, warning, good }
@@ -15,19 +15,20 @@ class QNotification {
   static const Duration defaultDuration = Duration(seconds: 2);
   static const double edgePadding = 14;
 
-  static _QNotificationOverlay? _current;
+  static QNotificationHandle? _current;
 
-  static void show(
+  static QNotificationHandle show(
     BuildContext context, {
     required String message,
     QNotificationType type = QNotificationType.info,
     Duration duration = defaultDuration,
+    VoidCallback? onTap,
   }) {
     _debugLog(message: message, type: type);
     _current?.close();
 
     final overlay = Overlay.of(context, rootOverlay: true);
-    final notification = _QNotificationOverlay();
+    final notification = QNotificationHandle._();
     late final OverlayEntry entry;
 
     entry = OverlayEntry(
@@ -40,6 +41,7 @@ class QNotification {
             message: message,
             type: type,
             duration: duration,
+            onTap: onTap,
             onClosed: () {
               if (entry.mounted) entry.remove();
               if (identical(_current, notification)) _current = null;
@@ -52,6 +54,7 @@ class QNotification {
     notification._entry = entry;
     _current = notification;
     overlay.insert(entry);
+    return notification;
   }
 
   static void _debugLog({
@@ -65,16 +68,25 @@ class QNotification {
 }
 
 extension QNotificationContext on BuildContext {
-  void showNotification(
+  QNotificationHandle showNotification(
     String message, {
     QNotificationType type = QNotificationType.info,
     Duration duration = QNotification.defaultDuration,
+    VoidCallback? onTap,
   }) {
-    QNotification.show(this, message: message, type: type, duration: duration);
+    return QNotification.show(
+      this,
+      message: message,
+      type: type,
+      duration: duration,
+      onTap: onTap,
+    );
   }
 }
 
-class _QNotificationOverlay {
+class QNotificationHandle {
+  QNotificationHandle._();
+
   OverlayEntry? _entry;
 
   void close() {
@@ -91,12 +103,14 @@ class _QNotificationHost extends StatefulWidget {
     required this.message,
     required this.type,
     required this.duration,
+    required this.onTap,
     required this.onClosed,
   });
 
   final String message;
   final QNotificationType type;
   final Duration duration;
+  final VoidCallback? onTap;
   final VoidCallback onClosed;
 
   @override
@@ -166,6 +180,7 @@ class _QNotificationHostState extends State<_QNotificationHost>
                   child: _QNotificationCard(
                     message: widget.message,
                     type: widget.type,
+                    onTap: widget.onTap,
                     onClose: _close,
                   ),
                 ),
@@ -182,11 +197,13 @@ class _QNotificationCard extends StatelessWidget {
   const _QNotificationCard({
     required this.message,
     required this.type,
+    required this.onTap,
     required this.onClose,
   });
 
   final String message;
   final QNotificationType type;
+  final VoidCallback? onTap;
   final VoidCallback onClose;
 
   @override
@@ -197,70 +214,34 @@ class _QNotificationCard extends StatelessWidget {
     return Material(
       color: colors.card,
       borderRadius: BorderRadius.circular(10),
-      clipBehavior: Clip.antiAlias,
+      elevation: 3,
       child: Semantics(
         liveRegion: true,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(10, 8, 4, 8),
-          child: Row(
-            children: [
-              Container(
-                width: 34,
-                height: 34,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: visual.color.withValues(
-                    alpha: colors.isDark ? 0.2 : 0.14,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: () {
+            final action = onTap;
+            if (action == null) {
+              Clipboard.setData(ClipboardData(text: message));
+            } else {
+              action();
+            }
+            onClose();
+          },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              children: [
+                Icon(visual.icon, size: 18, color: visual.color),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    message,
+                    style: TextStyle(color: colors.textPrimary, fontSize: 13),
                   ),
-                  borderRadius: BorderRadius.circular(8),
                 ),
-                child: Icon(visual.icon, color: visual.color, size: 20),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      visual.title,
-                      style: TextStyle(
-                        color: colors.textPrimary,
-                        fontSize: 13,
-                        height: 1.15,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 1),
-                    Text(
-                      message,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: colors.textSecondary,
-                        fontSize: 11,
-                        height: 1.2,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              IconButton(
-                tooltip: l10n.commonClose,
-                onPressed: onClose,
-                style: IconButton.styleFrom(
-                  minimumSize: const Size.square(34),
-                  maximumSize: const Size.square(34),
-                  padding: EdgeInsets.zero,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                icon: Icon(
-                  Icons.close_rounded,
-                  color: colors.textMuted,
-                  size: 18,
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -270,26 +251,22 @@ class _QNotificationCard extends StatelessWidget {
   _QNotificationVisual get _visual {
     switch (type) {
       case QNotificationType.error:
-        return _QNotificationVisual(
-          title: l10n.noticeError,
+        return const _QNotificationVisual(
           icon: Icons.error_outline_rounded,
           statusColor: StatusColor.error,
         );
       case QNotificationType.info:
-        return _QNotificationVisual(
-          title: l10n.noticeInformation,
+        return const _QNotificationVisual(
           icon: Icons.info_outline_rounded,
           statusColor: StatusColor.info,
         );
       case QNotificationType.warning:
-        return _QNotificationVisual(
-          title: l10n.noticeWarning,
+        return const _QNotificationVisual(
           icon: Icons.warning_amber_rounded,
           statusColor: StatusColor.warning,
         );
       case QNotificationType.good:
-        return _QNotificationVisual(
-          title: l10n.noticeDone,
+        return const _QNotificationVisual(
           icon: Icons.check_circle_outline_rounded,
           statusColor: StatusColor.good,
         );
@@ -298,13 +275,8 @@ class _QNotificationCard extends StatelessWidget {
 }
 
 class _QNotificationVisual {
-  const _QNotificationVisual({
-    required this.title,
-    required this.icon,
-    required this.statusColor,
-  });
+  const _QNotificationVisual({required this.icon, required this.statusColor});
 
-  final String title;
   final IconData icon;
   final StatusColor statusColor;
 

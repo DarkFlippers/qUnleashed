@@ -1336,25 +1336,9 @@
     "description": "Tooltip of the button that dismisses a toast or panel."
   },
 
-  "noticeError": "Error",
-  "@noticeError": {
-    "description": "Heading of a toast reporting a failure."
-  },
 
-  "noticeInformation": "Information",
-  "@noticeInformation": {
-    "description": "Heading of a neutral, informational toast."
-  },
 
-  "noticeWarning": "Warning",
-  "@noticeWarning": {
-    "description": "Heading of a toast warning about something."
-  },
 
-  "noticeDone": "Done",
-  "@noticeDone": {
-    "description": "Heading of a toast reporting success."
-  },
 
   "openInApp": "Open in app",
   "@openInApp": {

@@ -125,7 +125,11 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
     if (_inProgress) return;
 
     if (!widget.client.isConnected && !_dfuPresent) {
-      setState(() => _inlineMessage = l10n.fwuConnectFirst);
+      QNotification.show(
+        context,
+        message: l10n.fwuConnectFirst,
+        type: QNotificationType.warning,
+      );
       return;
     }
 
@@ -171,10 +175,7 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
           recovering && _updateState is UpdateWaitingForReconnect;
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _updateState = null;
-        _inlineMessage = e.toString();
-      });
+      setState(() => _updateState = null);
       QNotification.show(
         context,
         message: l10n.fwuAborted('$e'),
@@ -218,7 +219,7 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
     if (!mounted) return;
     setState(() {
       _updateState = state;
-      if (state is! UpdateError) _inlineMessage = null;
+      _inlineMessage = null;
     });
     if (state is UpdateError) {
       QNotification.show(
@@ -374,12 +375,12 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
         description: l10n.fwuDescWillReboot,
         enabled: false,
       ),
-      UpdateError(:final message) => _ResolvedButtonState(
+      UpdateError() => _ResolvedButtonState(
         label: _installAction() == InstallAction.update
             ? l10n.fwuLabelUpdate
             : l10n.fwuLabelInstall,
         color: _activeColor,
-        description: message,
+        description: _baseState().description,
         enabled: true,
       ),
       UpdateIdle() => _baseState(),

@@ -49,6 +49,8 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
   String? _failedTemplate;
   Timer? _tileQuietTimer;
   int _tileFailures = 0;
+  String? _noticeKey;
+  QNotificationHandle? _notice;
 
   bool _panelOpen = true;
 
@@ -80,6 +82,7 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
 
   @override
   void dispose() {
+    _notice?.close();
     _tileQuietTimer?.cancel();
     _settings.removeListener(_onChanged);
     _controller.removeListener(_onChanged);
@@ -602,7 +605,6 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
     // There is no app bar on either host: the floating controls own the top
     // strip, the sheet or the side panel owns the rest, and everything else is
     // inset past them.
-    final overlay = MediaQuery.paddingOf(context).top + 8 + kMapControl + 8;
     final sheet = (desktopMode || picking)
         ? 0.0
         : (_selectedPin != null ? kMapPanelPeek : kMapSheetThin);
@@ -610,6 +612,7 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
     if (_failedTemplate != null && _failedTemplate != tiles.urlTemplate) {
       _failedTemplate = null;
     }
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncNotice(tiles));
     return Stack(
       children: [
         FlutterMap(
@@ -659,7 +662,7 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
           ],
         ),
         if (picking)
-          Positioned.fill(child: _buildPickOverlay(colors, overlay, leftInset)),
+          Positioned.fill(child: _buildPickOverlay(colors)),
 
         if (tiles.attribution.isNotEmpty)
           Positioned(
@@ -679,25 +682,48 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
               ),
             ),
           ),
-
-        if (!picking && tiles.missingKey)
-          Positioned(
-            left: leftInset + 12,
-            right: 12,
-            top: overlay,
-            child: _tileNotice(colors, context.l10n.mapNeedsKeyTap),
-          )
-        else if (!picking && _failedTemplate == tiles.urlTemplate)
-          Positioned(
-            left: leftInset + 12,
-            right: 12,
-            top: overlay,
-            child: _tileNotice(
-              colors,
-              context.l10n.mapSourceNotAnswering(tiles.label),
-            ),
-          ),
       ],
+    );
+  }
+
+  /// Everything the map has to say goes through the one app-wide notification:
+  /// the missing-key and dead-source notices, and the pick-mode hint. Keyed so
+  /// a rebuild does not re-raise a notice that is already up.
+  void _syncNotice(MapTileConfig tiles) {
+    if (!mounted) return;
+
+    final String? key;
+    String message = '';
+    var type = QNotificationType.warning;
+    VoidCallback? onTap;
+
+    if (_mode == _MapMode.pick) {
+      key = 'pick';
+      message = context.l10n.mapDragHint;
+      type = QNotificationType.info;
+    } else if (tiles.missingKey) {
+      key = 'key';
+      message = context.l10n.mapNeedsKeyTap;
+      onTap = () => openRoute(context, AppRoute.mapSettings);
+    } else if (_failedTemplate == tiles.urlTemplate) {
+      key = 'dead:${tiles.urlTemplate}';
+      message = context.l10n.mapSourceNotAnswering(tiles.label);
+      onTap = () => openRoute(context, AppRoute.mapSettings);
+    } else {
+      key = null;
+    }
+
+    if (key == _noticeKey) return;
+    _noticeKey = key;
+    _notice?.close();
+    _notice = null;
+    if (key == null) return;
+
+    _notice = context.showNotification(
+      message,
+      type: type,
+      duration: Duration.zero,
+      onTap: onTap,
     );
   }
 
@@ -743,74 +769,16 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
     });
   }
 
-  Widget _tileNotice(QAppColors colors, String message) {
-    return Material(
-      color: colors.card,
-      borderRadius: BorderRadius.circular(10),
-      elevation: 3,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(10),
-        onTap: () => openRoute(context, AppRoute.mapSettings),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          child: Row(
-            children: [
-              Icon(Icons.warning_amber_rounded, size: 18, color: colors.danger),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  message,
-                  style: TextStyle(color: colors.textPrimary, fontSize: 13),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   List<MapPin> _sortedPins() {
     final sorted = [..._controller.pins];
     sorted.sort((a, b) => a.category.index.compareTo(b.category.index));
     return sorted;
   }
 
-  Widget _buildPickOverlay(QAppColors colors, double top, double leftInset) {
+  Widget _buildPickOverlay(QAppColors colors) {
     return IgnorePointer(
       child: Stack(
         children: [
-          Positioned(
-            left: leftInset + 12,
-            right: 12,
-            top: top,
-            child: Material(
-              color: colors.card.withValues(alpha: 0.92),
-              borderRadius: BorderRadius.circular(10),
-              elevation: 3,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 10,
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.info_outline, size: 18, color: colors.accent),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        context.l10n.mapDragHint,
-                        style: TextStyle(
-                          color: colors.textPrimary,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
           Center(
             child: Padding(
               padding: const EdgeInsets.only(bottom: 36),
