@@ -5,7 +5,8 @@ import 'dart:io' as io;
 import 'dart:math' as math;
 
 import 'package:flipperlib/flipperlib.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show MissingPluginException;
+import 'package:flutter/widgets.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../../../services/rpc/gps/gps_responder.dart';
@@ -20,10 +21,11 @@ enum MapLocationStatus {
   granted,
   denied,
   serviceDisabled,
+  notSupported,
   error,
 }
 
-class MapToolController extends ChangeNotifier {
+class MapToolController extends ChangeNotifier with WidgetsBindingObserver {
   MapToolController({ArchiveStorage? storage, FlipperClient? client})
     : _storage = storage ?? ArchiveStorage(),
       _client = client ?? FlipperOneClient().get();
@@ -36,6 +38,7 @@ class MapToolController extends ChangeNotifier {
   List<MapPin> _pins = const [];
   MapLocationStatus _locationStatus = MapLocationStatus.idle;
   String? _locationError;
+  bool _permanentlyDenied = false;
   Position? _userPosition;
   Position? _previousUserPosition;
   double? _userBearingDegrees;
@@ -50,17 +53,38 @@ class MapToolController extends ChangeNotifier {
   List<MapPin> get pins => _pins;
   MapLocationStatus get locationStatus => _locationStatus;
   String? get locationError => _locationError;
+  bool get permanentlyDenied => _permanentlyDenied;
   Position? get userPosition => _userPosition;
   double? get userBearingDegrees => _userBearingDegrees;
   GpsFix? get devicePosition => _devicePosition;
   bool get isFlipperConnected => _client.isConnected;
 
   Future<void> initialize() async {
+    WidgetsBinding.instance.addObserver(this);
     _connSub ??= _client.connectionStream.listen(_onConnectionChange);
     _deviceInfoSub ??= _client.deviceInfoUpdates.listen(_onDeviceInfo);
     _deviceLocSub ??= _client.flipperLocationStream().listen(_onDeviceLocation);
     await loadFiles();
     await requestLocation();
+  }
+
+  /// Retries the location handshake when the app comes back to the foreground:
+  /// the user may have just granted the permission or switched GPS on in the
+  /// system settings, and nothing else would tell us about it.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    switch (_locationStatus) {
+      case MapLocationStatus.denied:
+      case MapLocationStatus.serviceDisabled:
+      case MapLocationStatus.error:
+        requestLocation();
+      case MapLocationStatus.idle:
+      case MapLocationStatus.requesting:
+      case MapLocationStatus.granted:
+      case MapLocationStatus.notSupported:
+        break;
+    }
   }
 
   void _onDeviceLocation(GpsFix fix) {
@@ -99,8 +123,7 @@ class MapToolController extends ChangeNotifier {
       final deviceName = await _resolveDeviceName();
       if (deviceName == null || deviceName.isEmpty) {
         _pins = const [];
-        _loadError =
-            l10n.mapNoSyncedFlipper;
+        _loadError = l10n.mapNoSyncedFlipper;
         return;
       }
       final entries = await _storage.listAll(deviceName);
@@ -244,36 +267,61 @@ class MapToolController extends ChangeNotifier {
   }
 
   Future<void> requestLocation() async {
+    if (_locationStatus == MapLocationStatus.requesting) return;
     _locationStatus = MapLocationStatus.requesting;
     _locationError = null;
     notifyListeners();
     try {
-      final serviceOn = await Geolocator.isLocationServiceEnabled();
-      if (!serviceOn) {
-        _locationStatus = MapLocationStatus.serviceDisabled;
-        _locationError = l10n.mapLocationDisabled;
-        notifyListeners();
-        return;
-      }
+      // Permission first, service second. Probing the service up front meant a
+      // phone with GPS switched off — and a desktop build that had never been
+      // authorised — bailed out before the system prompt was ever raised.
       var permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
+        // A prompt that never reaches the screen would otherwise wedge the
+        // controller in `requesting` and make every later retry a no-op.
+        permission = await Geolocator.requestPermission().timeout(
+          const Duration(seconds: 90),
+          onTimeout: () => LocationPermission.denied,
+        );
       }
       if (permission == LocationPermission.denied ||
           permission == LocationPermission.deniedForever) {
+        _permanentlyDenied = permission == LocationPermission.deniedForever;
         _locationStatus = MapLocationStatus.denied;
         _locationError = l10n.mapLocationDenied;
         notifyListeners();
         return;
       }
-      final pos = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-        ),
-      );
-      _setUserPosition(pos);
+      _permanentlyDenied = false;
+
+      // A cached fix lets the map centre and distances appear immediately,
+      // before the first GNSS lock lands.
+      final cached = await Geolocator.getLastKnownPosition();
+      if (cached != null) _setUserPosition(cached);
+
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        _locationStatus = MapLocationStatus.serviceDisabled;
+        _locationError = l10n.mapLocationDisabled;
+        notifyListeners();
+        return;
+      }
+
       _locationStatus = MapLocationStatus.granted;
       notifyListeners();
+
+      try {
+        final pos = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            timeLimit: Duration(seconds: 12),
+          ),
+        );
+        _setUserPosition(pos);
+        notifyListeners();
+      } catch (_) {
+        // No fresh fix yet; the stream below keeps trying.
+      }
+
       _posSub?.cancel();
       _posSub =
           Geolocator.getPositionStream(
@@ -281,15 +329,50 @@ class MapToolController extends ChangeNotifier {
               accuracy: LocationAccuracy.high,
               distanceFilter: 5,
             ),
-          ).listen((position) {
-            _setUserPosition(position);
-            notifyListeners();
-          });
+          ).listen(
+            (position) {
+              _setUserPosition(position);
+              notifyListeners();
+            },
+            onError: (Object e) {
+              _locationError = '$e';
+              notifyListeners();
+            },
+          );
+    } on MissingPluginException {
+      _locationStatus = MapLocationStatus.notSupported;
+      notifyListeners();
+    } on UnimplementedError {
+      _locationStatus = MapLocationStatus.notSupported;
+      notifyListeners();
     } catch (e) {
       _locationStatus = MapLocationStatus.error;
       _locationError = '$e';
       notifyListeners();
     }
+  }
+
+  /// Asks for location and, when asking cannot help — a permanent denial or a
+  /// switched-off service, where the OS raises no prompt at all — hands the
+  /// user over to the system page that can.
+  Future<void> ensureLocation() async {
+    await requestLocation();
+    if (_locationStatus == MapLocationStatus.granted ||
+        _locationStatus == MapLocationStatus.notSupported) {
+      return;
+    }
+    if (_permanentlyDenied ||
+        _locationStatus == MapLocationStatus.serviceDisabled) {
+      await openLocationSettings();
+    }
+  }
+
+  /// Opens the system page where the user can undo a permanent denial or switch
+  /// the location service back on.
+  Future<void> openLocationSettings() {
+    return _permanentlyDenied
+        ? Geolocator.openAppSettings()
+        : Geolocator.openLocationSettings();
   }
 
   double? distanceMetersTo(MapPin pin) {
@@ -376,6 +459,7 @@ class MapToolController extends ChangeNotifier {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _posSub?.cancel();
     _connSub?.cancel();
     _deviceInfoSub?.cancel();
