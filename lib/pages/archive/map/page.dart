@@ -15,11 +15,11 @@ import 'controller.dart';
 import 'data/settings.dart';
 import '../../../components/navigation.dart';
 import '../../../components/archive/models/pin.dart';
+import '../../../components/filelist/empty_view.dart';
 
 part 'widgets/circle_button.dart';
-part 'widgets/map_options_panel.dart';
-part 'widgets/pin_card.dart';
-part 'widgets/sidebar.dart';
+part 'widgets/panel.dart';
+part 'widgets/sheet.dart';
 
 class FlipperMapPage extends StatefulWidget {
   const FlipperMapPage({super.key, this.focusPinPath, this.pickLocationFor});
@@ -42,7 +42,6 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
   bool _initialPinSelected = false;
   bool _mapReady = false;
   bool _saving = false;
-  bool _optionsOpen = false;
   String? _failedTemplate;
 
   _MapMode _mode = _MapMode.browse;
@@ -148,6 +147,39 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
     }
   }
 
+  /// Following is one mode with two targets, not two switches: [MapSettings]
+  /// stores "follow" in `autoCenter` and "the target is the Flipper" in
+  /// `trackDevice`. So exactly one of the two buttons can read as active, and
+  /// tapping the active one stops following altogether.
+  bool get _followingMe => _settings.autoCenter && !_settings.trackDevice;
+
+  bool get _followingDevice => _settings.autoCenter && _settings.trackDevice;
+
+  void _stopFollowing() {
+    _settings.setAutoCenter(false);
+    _settings.setTrackDevice(false);
+  }
+
+  void _toggleAutoCenter() {
+    if (_followingMe) {
+      _stopFollowing();
+      return;
+    }
+    _settings.setTrackDevice(false);
+    _settings.setAutoCenter(true);
+    _centerOnTarget();
+  }
+
+  void _toggleTrackDevice() {
+    if (_followingDevice) {
+      _stopFollowing();
+      return;
+    }
+    _settings.setTrackDevice(true);
+    _settings.setAutoCenter(true);
+    _centerOnTarget();
+  }
+
   void _centerOnTarget() {
     final target = _activeTarget();
     if (target == null) {
@@ -161,7 +193,6 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
     if (_mode == _MapMode.pick) return;
     setState(() {
       _selectedPin = pin;
-      _optionsOpen = false;
     });
     if (_mapReady) _mapController.move(LatLng(pin.latitude, pin.longitude), 17);
   }
@@ -169,7 +200,6 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
   void _enterEditModeFor(MapPin pin) {
     setState(() {
       _mode = _MapMode.pick;
-      _optionsOpen = false;
       _pickTarget = MapPickTarget(
         localPath: pin.path,
         remotePath: pin.remotePath,
@@ -231,7 +261,10 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
         break;
       }
     }
-    context.showNotification(context.l10n.mapLocationSaved, type: QNotificationType.good);
+    context.showNotification(
+      context.l10n.mapLocationSaved,
+      type: QNotificationType.good,
+    );
   }
 
   @override
@@ -260,10 +293,18 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
       child: Builder(
         builder: (ctx) {
           final colors = ctx.appColors;
-          return Scaffold(
-            backgroundColor: colors.background,
-            appBar: _buildAppBar(colors),
-            body: _buildBody(colors),
+          return LayoutBuilder(
+            builder: (_, constraints) {
+              final wide = constraints.maxWidth >= 720;
+              return Scaffold(
+                backgroundColor: colors.background,
+                extendBodyBehindAppBar: !wide,
+                appBar: wide ? _buildAppBar(colors) : null,
+                body: wide
+                    ? _buildDesktopLayout(colors)
+                    : _buildMobileLayout(colors),
+              );
+            },
           );
         },
       ),
@@ -335,81 +376,66 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
           ),
         ),
         QPageAppBarAction(
+          tooltip: context.l10n.mapAutoCenter,
+          onPressed: _toggleAutoCenter,
+          icon: Icon(
+            Icons.my_location,
+            color: _followingMe
+                ? colors.onAccent
+                : colors.onAccent.withValues(alpha: 0.5),
+          ),
+        ),
+        QPageAppBarAction(
+          tooltip: _controller.devicePosition != null
+              ? context.l10n.mapTrackFlipper
+              : context.l10n.mapNoDeviceLocation,
+          onPressed: _controller.devicePosition == null
+              ? null
+              : _toggleTrackDevice,
+          icon: Icon(
+            Icons.gps_fixed,
+            color: _followingDevice
+                ? colors.onAccent
+                : colors.onAccent.withValues(alpha: 0.5),
+          ),
+        ),
+        QPageAppBarAction(
           tooltip: context.l10n.mapReloadFiles,
           onPressed: _controller.loading ? null : _controller.loadFiles,
           icon: const Icon(Icons.refresh),
         ),
         QPageAppBarAction(
-          tooltip: context.l10n.mapOptions,
-          onPressed: () => setState(() => _optionsOpen = !_optionsOpen),
-          icon: Icon(
-            Icons.settings,
-            color: _optionsOpen ? colors.onAccent.withValues(alpha: 0.6) : null,
-          ),
+          tooltip: context.l10n.mapSettingsEntry,
+          onPressed: () => openRoute(context, AppRoute.mapSettings),
+          icon: const Icon(Icons.settings),
         ),
         const SizedBox(width: 4),
       ],
     );
   }
 
-  Widget _buildBody(QAppColors colors) {
-    if (_mode == _MapMode.browse &&
-        _controller.loading &&
-        _controller.pins.isEmpty) {
+  /// True while the browse mode has nothing to draw but a status screen.
+  Widget? _buildBrowseGuard(QAppColors colors) {
+    if (_mode != _MapMode.browse) return null;
+    if (_controller.loading && _controller.pins.isEmpty) {
       return Center(child: CircularProgressIndicator(color: colors.accent));
     }
     final loadError = _controller.loadError;
-    if (_mode == _MapMode.browse &&
-        loadError != null &&
-        _controller.pins.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.map_outlined, size: 64, color: colors.textMuted),
-              const SizedBox(height: 16),
-              Text(
-                context.l10n.mapNoPins,
-                style: TextStyle(
-                  color: colors.textPrimary,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                loadError,
-                textAlign: TextAlign.center,
-                style: TextStyle(color: colors.textMuted),
-              ),
-              const SizedBox(height: 16),
-              FilledButton(
-                style: FilledButton.styleFrom(
-                  backgroundColor: colors.accent,
-                  foregroundColor: colors.onAccent,
-                ),
-                onPressed: _controller.loadFiles,
-                child: Text(context.l10n.mapTryAgain),
-              ),
-            ],
-          ),
-        ),
+    if (loadError != null && _controller.pins.isEmpty) {
+      return ArchiveEmptyView(
+        icon: Icons.map_outlined,
+        title: context.l10n.mapNoPins,
+        subtitle: loadError,
+        actionLabel: context.l10n.mapTryAgain,
+        onAction: _controller.loadFiles,
       );
     }
-
-    return LayoutBuilder(
-      builder: (_, constraints) {
-        if (constraints.maxWidth >= 720) {
-          return _buildDesktopLayout(colors);
-        }
-        return _buildMobileLayout(colors);
-      },
-    );
+    return null;
   }
 
   Widget _buildDesktopLayout(QAppColors colors) {
+    final guard = _buildBrowseGuard(colors);
+    if (guard != null) return guard;
     return Row(
       children: [
         Container(
@@ -418,7 +444,7 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
             border: Border(right: BorderSide(color: colors.divider)),
             color: colors.card,
           ),
-          child: _MapSidebar(
+          child: _MapPanel(
             pins: _sortedPins(),
             selected: _selectedPin,
             controller: _controller,
@@ -440,23 +466,41 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
   }
 
   Widget _buildMobileLayout(QAppColors colors) {
+    final guard = _buildBrowseGuard(colors);
+    if (guard != null) {
+      return Padding(
+        padding: EdgeInsets.only(top: MediaQuery.paddingOf(context).top),
+        child: guard,
+      );
+    }
     final picking = _mode == _MapMode.pick;
     return Stack(
       children: [
         _buildMapStack(colors, desktopMode: false),
-
-        // Pin info card
-        if (!picking && _selectedPin != null)
-          Positioned(
-            left: 12,
-            right: 12,
-            bottom: 12,
-            child: _PinCard(
-              pin: _selectedPin!,
+        SafeArea(
+          bottom: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 0),
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: picking
+                  ? _buildPickControls(colors)
+                  : _buildBrowseControls(colors),
+            ),
+          ),
+        ),
+        if (!picking)
+          Positioned.fill(
+            child: _MapSheet(
+              pins: _sortedPins(),
+              selected: _selectedPin,
               controller: _controller,
               colors: colors,
+              onSelect: _selectPin,
               onClose: () => setState(() => _selectedPin = null),
-              onEdit: () => _enterEditModeFor(_selectedPin!),
+              onEdit: _selectedPin != null
+                  ? () => _enterEditModeFor(_selectedPin!)
+                  : null,
               onCopyCoords: () => context.showNotification(
                 context.l10n.mapCoordinatesCopied,
                 type: QNotificationType.good,
@@ -467,9 +511,85 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
     );
   }
 
+  Widget _buildBrowseControls(QAppColors colors) {
+    final canDismiss = ModalRoute.of(context)?.impliesAppBarDismissal ?? false;
+    return Row(
+      children: [
+        if (canDismiss)
+          _MapControl(
+            colors: colors,
+            icon: Icons.arrow_back,
+            tooltip: context.l10n.commonClose,
+            onTap: () => Navigator.of(context).maybePop(),
+          ),
+        const Spacer(),
+        _MapControl(
+          colors: colors,
+          icon: Icons.my_location,
+          tooltip: context.l10n.mapAutoCenter,
+          active: _followingMe,
+          onTap: _toggleAutoCenter,
+        ),
+        const SizedBox(width: 8),
+        _MapControl(
+          colors: colors,
+          icon: Icons.settings_remote,
+          tooltip: _controller.devicePosition != null
+              ? context.l10n.mapTrackFlipper
+              : context.l10n.mapNoDeviceLocation,
+          active: _followingDevice,
+          onTap: _controller.devicePosition == null ? null : _toggleTrackDevice,
+        ),
+        const SizedBox(width: 8),
+        _MapControl(
+          colors: colors,
+          icon: Icons.refresh,
+          tooltip: context.l10n.mapReloadFiles,
+          onTap: _controller.loading ? null : _controller.loadFiles,
+        ),
+        const SizedBox(width: 8),
+        _MapControl(
+          colors: colors,
+          icon: Icons.settings,
+          tooltip: context.l10n.mapSettingsEntry,
+          onTap: () => openRoute(context, AppRoute.mapSettings),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPickControls(QAppColors colors) {
+    return Row(
+      children: [
+        _MapControl(
+          colors: colors,
+          icon: Icons.close,
+          tooltip: context.l10n.commonCancel,
+          onTap: _saving ? null : _exitPickMode,
+        ),
+        const Spacer(),
+        _MapControl(
+          colors: colors,
+          icon: Icons.check,
+          label: context.l10n.mapSaveLocation,
+          active: true,
+          onTap: _saving ? null : _savePickedLocation,
+        ),
+      ],
+    );
+  }
+
   // Shared map Stack used by both mobile and desktop layouts
   Widget _buildMapStack(QAppColors colors, {required bool desktopMode}) {
     final picking = _mode == _MapMode.pick;
+    // Without an app bar the floating controls own the top strip and the sheet
+    // owns the bottom one, so everything else is inset past them.
+    final overlay = desktopMode
+        ? 12.0
+        : MediaQuery.paddingOf(context).top + 8 + kMapControl + 8;
+    final sheet = (desktopMode || picking)
+        ? 0.0
+        : (_selectedPin != null ? kMapPanelPeek : kMapSheetThin);
     final tiles = _settings.resolve(dark: colors.isDark);
     if (_failedTemplate != null && _failedTemplate != tiles.urlTemplate) {
       _failedTemplate = null;
@@ -490,12 +610,14 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
               _mapReady = true;
               _maybeAutoCenter();
             },
+            onPositionChanged: (_, hasGesture) {
+              if (!hasGesture) return;
+              if (!_settings.autoCenter && !_settings.trackDevice) return;
+              _stopFollowing();
+            },
             onTap: picking
                 ? null
-                : (_, _) => setState(() {
-                    _selectedPin = null;
-                    _optionsOpen = false;
-                  }),
+                : (_, _) => setState(() => _selectedPin = null),
           ),
           children: [
             TileLayer(
@@ -518,12 +640,12 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
             ),
           ],
         ),
-        if (picking) Positioned.fill(child: _buildPickOverlay(colors)),
+        if (picking) Positioned.fill(child: _buildPickOverlay(colors, overlay)),
 
         if (tiles.attribution.isNotEmpty)
           Positioned(
             left: 6,
-            bottom: 4,
+            bottom: sheet + 4,
             child: DecoratedBox(
               decoration: BoxDecoration(
                 color: colors.card.withValues(alpha: 0.72),
@@ -543,57 +665,19 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
           Positioned(
             left: 12,
             right: 12,
-            top: 12,
-            child: _tileNotice(
-              colors,
-              context.l10n.mapNeedsKeyTap,
-            ),
+            top: overlay,
+            child: _tileNotice(colors, context.l10n.mapNeedsKeyTap),
           )
         else if (!picking && _failedTemplate == tiles.urlTemplate)
           Positioned(
             left: 12,
             right: 12,
-            top: 12,
+            top: overlay,
             child: _tileNotice(
               colors,
               context.l10n.mapSourceNotAnswering(tiles.label),
             ),
           ),
-
-        if (_optionsOpen && _mode == _MapMode.browse)
-          Positioned(
-            top: 8,
-            right: 8,
-            child: _MapOptionsPanel(
-              colors: colors,
-              settings: _settings,
-              deviceAvailable: _controller.devicePosition != null,
-              onAutoCenterChanged: (value) {
-                _settings.setAutoCenter(value);
-                _maybeFollowUser();
-              },
-              onTrackDeviceChanged: (value) {
-                _settings.setTrackDevice(value);
-                _centerOnTarget();
-              },
-              onOpenSettings: () {
-                setState(() => _optionsOpen = false);
-                openRoute(context, AppRoute.mapSettings);
-              },
-              onClose: () => setState(() => _optionsOpen = false),
-            ),
-          ),
-
-        // Location button — on mobile moves up when card visible
-        Positioned(
-          right: 12,
-          bottom: (!desktopMode && !picking && _selectedPin != null) ? 218 : 12,
-          child: _CircleButton(
-            colors: colors,
-            icon: _settings.trackDevice ? Icons.gps_fixed : Icons.my_location,
-            onTap: _centerOnTarget,
-          ),
-        ),
       ],
     );
   }
@@ -639,14 +723,14 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
     return sorted;
   }
 
-  Widget _buildPickOverlay(QAppColors colors) {
+  Widget _buildPickOverlay(QAppColors colors, double top) {
     return IgnorePointer(
       child: Stack(
         children: [
           Positioned(
             left: 12,
             right: 12,
-            top: 12,
+            top: top,
             child: Material(
               color: colors.card.withValues(alpha: 0.92),
               borderRadius: BorderRadius.circular(10),
