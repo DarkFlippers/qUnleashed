@@ -8,8 +8,14 @@ import '../../../../../theme/colors/display.dart';
 import '../../../../../theme/theme.dart';
 import '../controller.dart';
 import '../painters.dart';
-import 'editor_widgets.dart';
+import 'editor_toolbars.dart';
 
+/// Thumbnail (and side button) height; the strip is exactly this tall.
+const double _thumbHeight = 54;
+
+/// The frame timeline: play/stop, the reorderable strip itself, and the button
+/// that appends a frame. Per-frame actions live in the menu a second tap on the
+/// selected frame opens, so the strip stays one line tall.
 class FramesSection extends StatelessWidget {
   const FramesSection({super.key, required this.ctrl, required this.colors});
 
@@ -18,129 +24,203 @@ class FramesSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      child: Container(
-        decoration: BoxDecoration(
-          color: colors.card,
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _header(),
-            SizedBox(
-              height: 60,
-              child: Row(
-                children: [
-                  Expanded(child: FramesStrip(ctrl: ctrl, colors: colors)),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(0, 0, 14, 6),
-                    child: GestureDetector(
-                      onTap: ctrl.addFrame,
-                      child: Container(
-                        width: 40,
-                        height: 54,
-                        decoration: BoxDecoration(
-                          color: colors.background,
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: colors.divider, width: 1.5),
-                        ),
-                        child: Icon(Icons.add, color: colors.textMuted, size: 20),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 6),
-            _actions(),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _header() {
     final canPlay = ctrl.frames.length > 1;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 10, 10, 6),
+    // Everything on this row is exactly _thumbHeight tall and centred, so the
+    // buttons and the thumbnails sit on one line.
+    return SizedBox(
+      height: _thumbHeight + 12,
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Text(
-            l10n.paintFramesHeader(ctrl.frames.length),
-            style: TextStyle(
-              color: colors.textMuted,
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.5,
-            ),
+          const SizedBox(width: 12),
+          _SideButton(
+            icon: ctrl.isPlaying ? Icons.stop : Icons.play_arrow,
+            colors: colors,
+            enabled: canPlay,
+            onTap: ctrl.togglePlay,
+            tooltip: ctrl.isPlaying
+                ? context.l10n.paintStop
+                : context.l10n.paintPlay,
           ),
-          const Spacer(),
-          TextButton.icon(
-            onPressed: canPlay ? ctrl.togglePlay : null,
-            icon: Icon(
-              ctrl.isPlaying ? Icons.stop : Icons.play_arrow,
-              size: 16,
-              color: canPlay ? colors.accent : colors.textMuted,
-            ),
-            label: Text(
-              ctrl.isPlaying ? l10n.paintStop : l10n.paintPlay,
-              style: TextStyle(
-                color: canPlay ? colors.accent : colors.textMuted,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
+          Expanded(
+            child: SizedBox(
+              height: _thumbHeight,
+              child: _FadedEdges(
+                child: FramesStrip(ctrl: ctrl, colors: colors),
               ),
             ),
-            style: TextButton.styleFrom(
-              minimumSize: Size.zero,
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
           ),
+          _SideButton(
+            icon: Icons.add,
+            colors: colors,
+            onTap: ctrl.addFrame,
+            tooltip: null,
+          ),
+          const SizedBox(width: 12),
         ],
       ),
     );
   }
+}
 
-  Widget _actions() {
-    final canTrigger = ctrl.effectivePassiveCount < ctrl.frames.length;
+/// Both ends of the timeline carry the same button, so the strip reads as
+/// one row instead of two mismatched controls squeezing the thumbnails.
+class _SideButton extends StatelessWidget {
+  const _SideButton({
+    required this.icon,
+    required this.colors,
+    required this.onTap,
+    required this.tooltip,
+    this.enabled = true,
+  });
+
+  final IconData icon;
+  final QAppColors colors;
+  final VoidCallback onTap;
+  final String? tooltip;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final button = GestureDetector(
+      onTap: enabled ? onTap : null,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        width: 40,
+        height: _thumbHeight,
+        decoration: BoxDecoration(
+          color: colors.card,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: colors.divider),
+        ),
+        child: Icon(
+          icon,
+          size: 20,
+          color: enabled
+              ? colors.textSecondary
+              : colors.textMuted.withAlpha(110),
+        ),
+      ),
+    );
+    return tooltip == null ? button : Tooltip(message: tooltip!, child: button);
+  }
+}
+
+/// Fades the thumbnails out at both ends instead of slicing one in half at the
+/// edge of the viewport.
+class _FadedEdges extends StatelessWidget {
+  const _FadedEdges({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return ShaderMask(
+      blendMode: BlendMode.dstIn,
+      shaderCallback: (rect) {
+        final fade = (14 / rect.width).clamp(0.0, 0.4);
+        return LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: const [
+            Colors.transparent,
+            Colors.black,
+            Colors.black,
+            Colors.transparent,
+          ],
+          stops: [0, fade, 1 - fade, 1],
+        ).createShader(rect);
+      },
+      child: child,
+    );
+  }
+}
+
+/// Frame actions for the desktop settings column, where there is room to show
+/// them outright instead of behind the timeline's tap-again menu.
+class FrameActions extends StatelessWidget {
+  const FrameActions({super.key, required this.ctrl, required this.colors});
+
+  final PaintController ctrl;
+  final QAppColors colors;
+
+  @override
+  Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
       child: Row(
         children: [
           Expanded(
-            child: FrameActionButton(
+            child: _ActionButton(
               icon: Icons.copy_outlined,
-              label: l10n.paintDuplicate,
+              label: context.l10n.paintDuplicate,
               colors: colors,
               onTap: ctrl.duplicateFrame,
             ),
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: FrameActionButton(
+            child: _ActionButton(
               icon: Icons.delete_outline,
-              label: l10n.commonDelete,
+              label: context.l10n.commonDelete,
               colors: colors,
+              color: colors.danger,
               onTap: ctrl.deleteFrame,
             ),
           ),
-          const SizedBox(width: 8),
-          Opacity(
-            opacity: canTrigger ? 1.0 : 0.38,
-            child: IgnorePointer(
-              ignoring: !canTrigger,
-              child: FrameActionButton(
-                icon: Icons.touch_app_outlined,
-                label: '',
-                colors: colors,
-                onTap: ctrl.triggerActive,
-                accent: true,
+        ],
+      ),
+    );
+  }
+}
+
+class _ActionButton extends StatelessWidget {
+  const _ActionButton({
+    required this.icon,
+    required this.label,
+    required this.colors,
+    required this.onTap,
+    this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final QAppColors colors;
+  final VoidCallback onTap;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = color ?? colors.textSecondary;
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        height: 34,
+        decoration: BoxDecoration(
+          color: colors.card,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: colors.divider),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 16, color: fg),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: fg,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -155,6 +235,7 @@ class FramesSection extends StatelessWidget {
 ///  * Dragging a grabbed frame toward either **edge auto-scrolls** the history
 ///    so you can reorder past the visible range (handled by the underlying
 ///    [ReorderableListView]'s edge auto-scroller).
+///  * Tapping the **already selected** frame opens its actions.
 class FramesStrip extends StatefulWidget {
   const FramesStrip({super.key, required this.ctrl, required this.colors});
 
@@ -210,6 +291,36 @@ class _FramesStripState extends State<FramesStrip> {
     });
   }
 
+  Future<void> _onTap(int index, Offset globalPosition) async {
+    if (index != _ctrl.currentFrame) {
+      _ctrl.selectFrame(index);
+      return;
+    }
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final choice = await showMenu<int>(
+      context: context,
+      position: RelativeRect.fromRect(
+        globalPosition & Size.zero,
+        Offset.zero & overlay.size,
+      ),
+      items: [
+        PopupMenuItem(
+          value: 0,
+          child: MenuLine(
+            icon: Icons.copy_outlined,
+            label: l10n.paintDuplicate,
+          ),
+        ),
+        PopupMenuItem(
+          value: 1,
+          child: MenuLine(icon: Icons.delete_outline, label: l10n.commonDelete),
+        ),
+      ],
+    );
+    if (choice == 0) _ctrl.duplicateFrame();
+    if (choice == 1) _ctrl.deleteFrame();
+  }
+
   @override
   Widget build(BuildContext context) {
     _ensureSelectedVisible();
@@ -223,7 +334,7 @@ class _FramesStripState extends State<FramesStrip> {
       child: ReorderableListView.builder(
         scrollController: _scroll,
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.fromLTRB(14, 0, 8, 6),
+        padding: const EdgeInsets.symmetric(horizontal: 8),
         buildDefaultDragHandles: false,
         itemExtent: _itemExtent,
         itemCount: _ctrl.frames.length,
@@ -252,7 +363,7 @@ class _FramesStripState extends State<FramesStrip> {
                 isActive: i >= _ctrl.effectivePassiveCount,
                 version: _ctrl.pixelVersion,
                 colors: colors,
-                onTap: () => _ctrl.selectFrame(i),
+                onTapAt: (pos) => _onTap(i, pos),
               ),
             ),
           );
@@ -269,13 +380,13 @@ class _DragScrollBehavior extends MaterialScrollBehavior {
 
   @override
   Set<PointerDeviceKind> get dragDevices => const {
-        PointerDeviceKind.touch,
-        PointerDeviceKind.mouse,
-        PointerDeviceKind.trackpad,
-        PointerDeviceKind.stylus,
-        PointerDeviceKind.invertedStylus,
-        PointerDeviceKind.unknown,
-      };
+    PointerDeviceKind.touch,
+    PointerDeviceKind.mouse,
+    PointerDeviceKind.trackpad,
+    PointerDeviceKind.stylus,
+    PointerDeviceKind.invertedStylus,
+    PointerDeviceKind.unknown,
+  };
 }
 
 class _FrameThumbnail extends StatelessWidget {
@@ -285,7 +396,7 @@ class _FrameThumbnail extends StatelessWidget {
     required this.isActive,
     required this.version,
     required this.colors,
-    required this.onTap,
+    required this.onTapAt,
   });
 
   final Uint8List pixels;
@@ -293,7 +404,7 @@ class _FrameThumbnail extends StatelessWidget {
   final bool isActive;
   final int version;
   final QAppColors colors;
-  final VoidCallback onTap;
+  final ValueChanged<Offset> onTapAt;
 
   @override
   Widget build(BuildContext context) {
@@ -301,19 +412,22 @@ class _FrameThumbnail extends StatelessWidget {
     final borderColor = selected
         ? colors.accent
         : isActive
-            ? colors.accent.withAlpha(80)
-            : colors.divider;
+        ? colors.accent.withAlpha(80)
+        : colors.divider;
     return GestureDetector(
-      onTap: onTap,
+      onTapUp: (d) => onTapAt(d.globalPosition),
       child: Stack(
         children: [
           Container(
             width: 96,
-            height: 54,
+            height: _thumbHeight,
             decoration: BoxDecoration(
               color: display.background,
               borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: borderColor, width: selected ? 2.0 : 1.0),
+              border: Border.all(
+                color: borderColor,
+                width: selected ? 2.0 : 1.0,
+              ),
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(5),

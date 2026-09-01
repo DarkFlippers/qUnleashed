@@ -684,92 +684,65 @@ class _PaintPageState extends State<PaintPage> {
         appBar: EditorAppBar(
           ctrl: _ctrl,
           onClose: _close,
-          onExport: _saveProject,
+          onSave: _saveProject,
+          onExport: _showExportDialog,
+          onImport: _onImport,
         ),
-        body: Column(
-          children: [
-            Expanded(
-              child: LayoutBuilder(
-                builder: (_, constraints) {
-                  final isWide = constraints.maxWidth > constraints.maxHeight;
-                  return isWide
-                      ? _buildWideLayout(colors)
-                      : _buildNarrowLayout(colors);
-                },
-              ),
-            ),
-          ],
+        body: LayoutBuilder(
+          builder: (_, constraints) {
+            // The rail + settings column need room of their own; below that the
+            // phone stack reads better than three squeezed columns.
+            final isWide =
+                constraints.maxWidth > constraints.maxHeight &&
+                constraints.maxWidth >= 640;
+            return isWide
+                ? _buildWideLayout(colors)
+                : _buildNarrowLayout(colors);
+          },
         ),
       ),
     );
   }
 
+  /// Phone layout: the canvas takes every pixel the dock, the timeline and the
+  /// animation settings leave it, so nothing scrolls out from under the finger.
   Widget _buildNarrowLayout(QAppColors colors) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Column(
-        children: [
-          const SizedBox(height: 10),
-          CanvasView(ctrl: _ctrl),
-          const SizedBox(height: 8),
-          ColorAndZoomRow(ctrl: _ctrl, colors: colors),
-          const SizedBox(height: 6),
-          ToolRow(ctrl: _ctrl, colors: colors),
-          const SizedBox(height: 6),
-          OpsRow(ctrl: _ctrl, colors: colors),
-          const SizedBox(height: 8),
-          FramesSection(ctrl: _ctrl, colors: colors),
-          const SizedBox(height: 8),
-          AnimationPanel(ctrl: _ctrl, colors: colors),
-          const SizedBox(height: 8),
-          ExportRow(
-            colors: colors,
-            onExport: _showExportDialog,
-            onImport: _onImport,
-          ),
-        ],
-      ),
+    return Column(
+      children: [
+        Expanded(child: CanvasView(ctrl: _ctrl)),
+        ToolDock(ctrl: _ctrl, colors: colors),
+        const SizedBox(height: 6),
+        FramesSection(ctrl: _ctrl, colors: colors),
+        AnimationPanel(ctrl: _ctrl, colors: colors),
+      ],
     );
   }
 
+  /// Desktop: tools down the left edge, the canvas taking the whole middle
+  /// with its timeline beneath it, animation settings in a column on the right.
   Widget _buildWideLayout(QAppColors colors) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        ToolRail(ctrl: _ctrl, colors: colors),
+        VerticalDivider(width: 1, thickness: 1, color: colors.divider),
         Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.only(bottom: 16),
-            child: Column(
-              children: [
-                const SizedBox(height: 10),
-                CanvasView(ctrl: _ctrl),
-                const SizedBox(height: 8),
-                ColorAndZoomRow(ctrl: _ctrl, colors: colors),
-                const SizedBox(height: 6),
-                ToolRow(ctrl: _ctrl, colors: colors),
-                const SizedBox(height: 6),
-                OpsRow(ctrl: _ctrl, colors: colors),
-                const SizedBox(height: 10),
-              ],
-            ),
+          child: Column(
+            children: [
+              Expanded(child: CanvasView(ctrl: _ctrl)),
+              Divider(height: 1, thickness: 1, color: colors.divider),
+              FramesSection(ctrl: _ctrl, colors: colors),
+            ],
           ),
         ),
         VerticalDivider(width: 1, thickness: 1, color: colors.divider),
-        Expanded(
+        SizedBox(
+          width: 300,
           child: SingleChildScrollView(
-            padding: const EdgeInsets.only(bottom: 16),
             child: Column(
               children: [
-                const SizedBox(height: 10),
-                FramesSection(ctrl: _ctrl, colors: colors),
-                const SizedBox(height: 8),
                 AnimationPanel(ctrl: _ctrl, colors: colors),
-                const SizedBox(height: 8),
-                ExportRow(
-                  colors: colors,
-                  onExport: _showExportDialog,
-                  onImport: _onImport,
-                ),
+                FrameActions(ctrl: _ctrl, colors: colors),
               ],
             ),
           ),

@@ -197,8 +197,19 @@ class _CanvasViewState extends State<CanvasView> {
     return LayoutBuilder(
       builder: (context, constraints) {
         const hPad = 14.0;
-        final containerW = constraints.maxWidth - hPad * 2;
-        final basePs = (containerW - kPassivePad * 2) / kCanvasWidth;
+        const vPad = 8.0;
+        // The canvas keeps its 2:1 shape and takes the largest size that fits
+        // the box it was given — the editor hands it whatever is left above the
+        // dock, so the height is the binding constraint on short screens.
+        final availW = constraints.maxWidth - hPad * 2;
+        var basePs = (availW - kPassivePad * 2) / kCanvasWidth;
+        if (constraints.hasBoundedHeight) {
+          final availH = constraints.maxHeight - vPad * 2;
+          final byHeight = (availH - kPassivePad * 2) / kCanvasHeight;
+          if (byHeight < basePs) basePs = byHeight;
+        }
+        basePs = basePs.clamp(0.05, double.infinity);
+        final containerW = kCanvasWidth * basePs + kPassivePad * 2;
         final containerH = kCanvasHeight * basePs + kPassivePad * 2;
         _canvasContainerSize = Size(containerW, containerH);
         final ps = _ctrl.effectivePixelSize(containerW);
@@ -217,8 +228,7 @@ class _CanvasViewState extends State<CanvasView> {
         _cTop = cTop;
         _pixelSize = ps;
 
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: hPad),
+        return Center(
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             // Claim scale/pan gestures so parent ScrollView never wins the arena.
