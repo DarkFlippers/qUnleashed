@@ -9,6 +9,7 @@ import 'package:flutter/services.dart' show MissingPluginException;
 import 'package:flutter/widgets.dart';
 import 'package:geolocator/geolocator.dart';
 
+import '../../../services/logging.dart';
 import '../../../services/rpc/gps/gps_responder.dart';
 import '../../../components/archive/parser.dart';
 import '../../../services/archive/storage.dart';
@@ -32,6 +33,8 @@ class MapToolController extends ChangeNotifier with WidgetsBindingObserver {
 
   final ArchiveStorage _storage;
   final FlipperClient _client;
+
+  bool _disposed = false;
 
   bool _loading = false;
   String? _loadError;
@@ -59,6 +62,13 @@ class MapToolController extends ChangeNotifier with WidgetsBindingObserver {
   GpsFix? get devicePosition => _devicePosition;
   bool get isFlipperConnected => _client.isConnected;
 
+  /// Every state change funnels through here: the async paths below outlive the
+  /// page whenever it is closed mid-request, and a bare notifyListeners() on a
+  /// disposed ChangeNotifier throws.
+  void _notify() {
+    if (!_disposed) notifyListeners();
+  }
+
   Future<void> initialize() async {
     WidgetsBinding.instance.addObserver(this);
     _connSub ??= _client.connectionStream.listen(_onConnectionChange);
@@ -73,7 +83,7 @@ class MapToolController extends ChangeNotifier with WidgetsBindingObserver {
   /// system settings, and nothing else would tell us about it.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.resumed) return;
+    if (_disposed || state != AppLifecycleState.resumed) return;
     switch (_locationStatus) {
       case MapLocationStatus.denied:
       case MapLocationStatus.serviceDisabled:
@@ -88,21 +98,23 @@ class MapToolController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   void _onDeviceLocation(GpsFix fix) {
-    if (!fix.hasFix) return;
+    if (_disposed || !fix.hasFix) return;
     _devicePosition = fix;
-    notifyListeners();
+    _notify();
   }
 
   void _onConnectionChange(FlipperConnectionState s) {
+    if (_disposed) return;
     if (s.connected && s.device != null) {
       loadFiles();
     } else if (!s.connected && _devicePosition != null) {
       _devicePosition = null;
-      notifyListeners();
+      _notify();
     }
   }
 
   void _onDeviceInfo(Map<String, String> patch) {
+    if (_disposed) return;
     final name = patch['hardware_name'] ?? patch['device_name'];
     if (name != null && name.isNotEmpty) {
       loadFiles();
@@ -116,17 +128,20 @@ class MapToolController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<void> loadFiles() async {
+    if (_disposed) return;
     _loading = true;
     _loadError = null;
-    notifyListeners();
+    _notify();
     try {
       final deviceName = await _resolveDeviceName();
+      if (_disposed) return;
       if (deviceName == null || deviceName.isEmpty) {
         _pins = const [];
         _loadError = l10n.mapNoSyncedFlipper;
         return;
       }
       final entries = await _storage.listAll(deviceName);
+      if (_disposed) return;
       final out = <MapPin>[];
       for (final entry in entries) {
         if (!entry.category.locationSupport) continue;
@@ -138,7 +153,7 @@ class MapToolController extends ChangeNotifier with WidgetsBindingObserver {
       _loadError = '$e';
     } finally {
       _loading = false;
-      notifyListeners();
+      _notify();
     }
   }
 
@@ -267,15 +282,16 @@ class MapToolController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<void> requestLocation() async {
-    if (_locationStatus == MapLocationStatus.requesting) return;
+    if (_disposed || _locationStatus == MapLocationStatus.requesting) return;
     _locationStatus = MapLocationStatus.requesting;
     _locationError = null;
-    notifyListeners();
+    _notify();
     try {
       // Permission first, service second. Probing the service up front meant a
       // phone with GPS switched off — and a desktop build that had never been
       // authorised — bailed out before the system prompt was ever raised.
       var permission = await Geolocator.checkPermission();
+      if (_disposed) return;
       if (permission == LocationPermission.denied) {
         // A prompt that never reaches the screen would otherwise wedge the
         // controller in `requesting` and make every later retry a no-op.
@@ -284,12 +300,13 @@ class MapToolController extends ChangeNotifier with WidgetsBindingObserver {
           onTimeout: () => LocationPermission.denied,
         );
       }
+      if (_disposed) return;
       if (permission == LocationPermission.denied ||
           permission == LocationPermission.deniedForever) {
         _permanentlyDenied = permission == LocationPermission.deniedForever;
         _locationStatus = MapLocationStatus.denied;
         _locationError = l10n.mapLocationDenied;
-        notifyListeners();
+        _notify();
         return;
       }
       _permanentlyDenied = false;
@@ -297,17 +314,20 @@ class MapToolController extends ChangeNotifier with WidgetsBindingObserver {
       // A cached fix lets the map centre and distances appear immediately,
       // before the first GNSS lock lands.
       final cached = await Geolocator.getLastKnownPosition();
+      if (_disposed) return;
       if (cached != null) _setUserPosition(cached);
 
-      if (!await Geolocator.isLocationServiceEnabled()) {
+      final serviceOn = await Geolocator.isLocationServiceEnabled();
+      if (_disposed) return;
+      if (!serviceOn) {
         _locationStatus = MapLocationStatus.serviceDisabled;
         _locationError = l10n.mapLocationDisabled;
-        notifyListeners();
+        _notify();
         return;
       }
 
       _locationStatus = MapLocationStatus.granted;
-      notifyListeners();
+      _notify();
 
       try {
         final pos = await Geolocator.getCurrentPosition(
@@ -316,12 +336,14 @@ class MapToolController extends ChangeNotifier with WidgetsBindingObserver {
             timeLimit: Duration(seconds: 12),
           ),
         );
+        if (_disposed) return;
         _setUserPosition(pos);
-        notifyListeners();
+        _notify();
       } catch (_) {
         // No fresh fix yet; the stream below keeps trying.
       }
 
+      if (_disposed) return;
       _posSub?.cancel();
       _posSub =
           Geolocator.getPositionStream(
@@ -331,24 +353,24 @@ class MapToolController extends ChangeNotifier with WidgetsBindingObserver {
             ),
           ).listen(
             (position) {
+              if (_disposed) return;
               _setUserPosition(position);
-              notifyListeners();
+              _notify();
             },
-            onError: (Object e) {
-              _locationError = '$e';
-              notifyListeners();
-            },
+            // kCLErrorLocationUnknown and friends are transient: Core Location
+            // keeps trying, so this is a log line, not a user-facing failure.
+            onError: (Object e) => LogService.log('[Map] location stream: $e'),
           );
     } on MissingPluginException {
       _locationStatus = MapLocationStatus.notSupported;
-      notifyListeners();
+      _notify();
     } on UnimplementedError {
       _locationStatus = MapLocationStatus.notSupported;
-      notifyListeners();
+      _notify();
     } catch (e) {
       _locationStatus = MapLocationStatus.error;
       _locationError = '$e';
-      notifyListeners();
+      _notify();
     }
   }
 
@@ -459,6 +481,7 @@ class MapToolController extends ChangeNotifier with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _disposed = true;
     WidgetsBinding.instance.removeObserver(this);
     _posSub?.cancel();
     _connSub?.cancel();
