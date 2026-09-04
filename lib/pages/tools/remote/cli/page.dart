@@ -130,7 +130,7 @@ class _CliPageState extends State<CliPage> {
       return;
     }
     try {
-      await _client.connect(selected);
+      await _client.connect(selected, autoRpc: false);
     } catch (e) {
       LogService.log('[CLI] connect failed: $e');
       await _showConnectionFailedDialog(selected, e);
@@ -145,7 +145,7 @@ class _CliPageState extends State<CliPage> {
   Future<void> _resetUsbCliSession(FlipperDevice device) async {
     try {
       await _client.disconnect();
-      await _client.connect(device);
+      await _client.connect(device, autoRpc: false);
     } catch (e) {
       LogService.log('[CLI] reconnect failed: $e');
       await _showConnectionFailedDialog(device, e);
