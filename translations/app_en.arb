@@ -3493,15 +3493,6 @@
     "description": "Button that loads a picture into the editor."
   },
 
-  "paintFramesHeader": "FRAMES · {count}",
-  "@paintFramesHeader": {
-    "description": "Header of the frame strip, counting the frames. Shown in capitals.",
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
-  },
 
   "paintPlay": "Play",
   "@paintPlay": {
@@ -3818,10 +3809,6 @@
     "description": "Tooltip of the import button while nothing is connected."
   },
 
-  "paintSendPack": "Send pack to device",
-  "@paintSendPack": {
-    "description": "Button that uploads the selected animations to the Flipper."
-  },
 
   "paintImporting": "Importing…",
   "@paintImporting": {
@@ -3868,10 +3855,6 @@
     }
   },
 
-  "paintDetailPath": "Path",
-  "@paintDetailPath": {
-    "description": "Project detail: where the project is stored."
-  },
 
   "paintDeviceListing": "Listing /ext/dolphin…",
   "@paintDeviceListing": {
@@ -3969,10 +3952,6 @@
     "description": "Progress line while files already on the Flipper are compared."
   },
 
-  "paintNothingToSend": "No projects to send. Create a drawing or animation, or import dolphin animations from a device first.",
-  "@paintNothingToSend": {
-    "description": "Shown when the send sheet is opened with no projects."
-  },
 
   "paintOnScreen": "{detail} · on screen",
   "@paintOnScreen": {
@@ -3984,25 +3963,13 @@
     }
   },
 
-  "paintUseAnimation": "Use this animation",
-  "@paintUseAnimation": {
-    "description": "Toggle that includes the animation in the pack sent to the Flipper."
-  },
 
   "paintWeight": "Weight",
   "@paintWeight": {
     "description": "Animation setting: how often this animation is picked relative to the others."
   },
 
-  "paintWeightLess": "Less",
-  "@paintWeightLess": {
-    "description": "Left end of the weight slider."
-  },
 
-  "paintWeightMore": "More",
-  "@paintWeightMore": {
-    "description": "Right end of the weight slider."
-  },
 
   "paintMinLevel": "Min level",
   "@paintMinLevel": {
@@ -6852,10 +6819,6 @@
     "description": "Wide catalog button label while the app is downloaded. Shown in capitals."
   },
 
-  "paintAnimationSection": "ANIMATION",
-  "@paintAnimationSection": {
-    "description": "Heading of the animation settings panel in the editor. Shown in capitals."
-  },
 
   "irUnpackingCaps": "UNPACKING",
   "@irUnpackingCaps": {
@@ -6890,5 +6853,46 @@
   "archiveSyncingLabel": "Syncing",
   "@archiveSyncingLabel": {
     "description": "Progress label while files are compared with the Flipper. No ellipsis, a counter follows it."
+  },
+  "paintEditManifest": "Edit manifest",
+  "@paintEditManifest": {
+    "description": "Opens the dolphin animation manifest in the text editor."
+  },
+  "paintManifestApplied": "Manifest applied",
+  "@paintManifestApplied": {
+    "description": "Shown after hand-edited manifest text is parsed back into the animation list."
+  },
+  "paintManifestInvalid": "No animations found in the manifest",
+  "@paintManifestInvalid": {
+    "description": "Shown when hand-edited manifest text holds no animation block."
+  },
+  "paintAnimationSettings": "Animation settings",
+  "@paintAnimationSettings": {
+    "description": "Title of the sheet holding one animation's level and butthurt ranges."
+  },
+  "paintManifestSummary": "Weight {weight} · Level {minLevel}–{maxLevel} · Butthurt {minBh}–{maxBh}",
+  "@paintManifestSummary": {
+    "description": "One-line manifest summary shown on the resting details sheet.",
+    "placeholders": {
+      "weight": {
+        "type": "int"
+      },
+      "minLevel": {
+        "type": "int"
+      },
+      "maxLevel": {
+        "type": "int"
+      },
+      "minBh": {
+        "type": "int"
+      },
+      "maxBh": {
+        "type": "int"
+      }
+    }
+  },
+  "paintImportUpToDate": "Animations already match the device",
+  "@paintImportUpToDate": {
+    "description": "Shown after an import that transferred nothing because every file matched by md5."
   }
 }

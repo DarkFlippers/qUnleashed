@@ -5,8 +5,11 @@ import 'dart:io' as io;
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/foundation.dart';
 
-import '../../../../services/progress_throttle.dart';
 import '../../../../services/storage/paths.dart';
+import '../dolphin/dolphin_pack.dart';
+import '../dolphin/importer.dart';
+import '../dolphin/manifest.dart';
+import '../dolphin/sender.dart';
 import '../project.dart';
 import '../virtual_display_session.dart';
 import '../../../../services/logging.dart';
@@ -14,9 +17,19 @@ import '../../../../services/logging.dart';
 /// Remote dolphin directory on the Flipper SD card.
 const String kDeviceDolphinPath = '/ext/dolphin';
 
-/// Backs the Pixel Draw project manager: lists all local projects (drawings,
-/// GIFs, dolphin animations and drafts) and can import the device's dolphin
-/// animations into the local library.
+/// One animation in the library: the local project plus its manifest entry
+/// (pack membership, weight, level and butthurt ranges).
+class PaintItem {
+  PaintItem(this.project, this.entry);
+  final PaintProject project;
+  final ManifestEntry entry;
+
+  String get id => project.id;
+}
+
+/// Backs the whole Pixel Draw library screen: lists local projects (drawings,
+/// GIFs, dolphin animations and drafts) with their manifest settings, imports
+/// the device's animations, and sends the selected pack back to it.
 class ProjectManagerController extends ChangeNotifier {
   ProjectManagerController({FlipperClient? client})
     : _client = client ?? FlipperOneClient().get() {
@@ -28,23 +41,36 @@ class ProjectManagerController extends ChangeNotifier {
   StreamSubscription<FlipperConnectionState>? _connSub;
   bool _disposed = false;
 
-  List<PaintProject> _projects = const [];
+  List<PaintItem> _items = const [];
   bool _loading = false;
   bool _importing = false;
-  double? _importProgress;
-  String? _importStatus;
+  bool _sending = false;
+  ImportProgress? _importProgress;
+  SendProgress? _sendProgress;
   String? _selectedId;
   String? _error;
 
-  List<PaintProject> get projects => _projects;
+  List<PaintItem> get items => _items;
   bool get loading => _loading;
   bool get importing => _importing;
-  double? get importProgress => _importProgress;
-  String? get importStatus => _importStatus;
+  bool get sending => _sending;
+  bool get busy => _importing || _sending;
+  ImportProgress? get importProgress => _importProgress;
+  SendProgress? get sendProgress => _sendProgress;
   String? get error => _error;
   bool get isConnected => _client.isConnected;
   String? get selectedId => _selectedId;
+  int get packCount => _items.where((i) => i.entry.selected).length;
 
+  PaintItem? get selected {
+    for (final i in _items) {
+      if (i.id == _selectedId) return i;
+    }
+    return null;
+  }
+
+  /// Selects an animation: it becomes the one the details pane describes and
+  /// the one mirrored on the device's external display.
   void select(String? id) {
     _selectedId = (_selectedId == id) ? null : id;
     _notify();
@@ -55,18 +81,7 @@ class ProjectManagerController extends ChangeNotifier {
 
   Future<void> _updateDevicePreview() async {
     final token = ++_previewToken;
-    final id = _selectedId;
-    if (id == null) {
-      VirtualDisplaySession.instance.clearPreview();
-      return;
-    }
-    PaintProject? project;
-    for (final p in _projects) {
-      if (p.id == id) {
-        project = p;
-        break;
-      }
-    }
+    final project = selected?.project;
     if (project == null) {
       VirtualDisplaySession.instance.clearPreview();
       return;
@@ -81,21 +96,42 @@ class ProjectManagerController extends ChangeNotifier {
     } catch (_) {}
   }
 
-  /// Scans the local library into [projects]. When [silent] is true the loading
-  /// spinner is suppressed (used to reconcile mid-import without flicker).
+  /// Scans the local library, seeding each animation's manifest entry from the
+  /// mirrored `manifest.txt` — or from the entry already on screen, so a reload
+  /// never discards edits that have not been sent yet. When [silent] is true
+  /// the loading spinner is suppressed.
   Future<void> loadAll({bool silent = false}) async {
     if (!silent) _loading = true;
     _error = null;
     _notify();
     try {
-      _projects = await PaintProject.scanAll();
+      final projects = await PaintProject.scanAll();
+      final stored = await DolphinManifest.loadLocal();
+      final current = {for (final i in _items) i.entry.name: i.entry};
+      _items = [
+        for (final p in projects) PaintItem(p, _entryFor(p, current, stored)),
+      ];
     } catch (e) {
       _error = '$e';
-      LogService.log('[ProjectManager] loadAll failed: $e');
+      LogService.log('[PixelDraw] loadAll failed: $e');
     } finally {
       _loading = false;
       _notify();
     }
+  }
+
+  ManifestEntry _entryFor(
+    PaintProject p,
+    Map<String, ManifestEntry> current,
+    Map<String, ManifestEntry> stored,
+  ) {
+    final name = DolphinPack.deviceName(p);
+    final existing = current[name] ?? stored[name];
+    if (existing != null) {
+      existing.name = name;
+      return existing;
+    }
+    return ManifestEntry(name: name);
   }
 
   /// Permanently deletes a project's folder, then reloads.
@@ -111,132 +147,173 @@ class ProjectManagerController extends ChangeNotifier {
       }
     } catch (e) {
       _error = l10n.paintDeleteFailed('$e');
-      LogService.log('[ProjectManager] delete failed: $e');
+      LogService.log('[PixelDraw] delete failed: $e');
     }
     await loadAll(silent: true);
   }
 
-  /// Downloads the entire `/ext/dolphin` tree from the connected device into the
-  /// local library, surfacing each animation as soon as its folder lands.
-  Future<void> importFromDevice() async {
-    if (_importing) return;
+  // ---------------------------------------------------------------- manifest
+
+  void toggleInPack(PaintItem item) {
+    item.entry.selected = !item.entry.selected;
+    _notify();
+  }
+
+  void selectAll() {
+    for (final i in _items) {
+      i.entry.selected = true;
+    }
+    _notify();
+  }
+
+  void deselectAll() {
+    for (final i in _items) {
+      i.entry.selected = false;
+    }
+    _notify();
+  }
+
+  void setWeight(PaintItem item, int value) {
+    item.entry.weight = value;
+    _notify();
+  }
+
+  /// Updates an entry's level/butthurt range, keeping min ≤ max.
+  void setLevels(PaintItem item, {int? min, int? max}) {
+    final e = item.entry;
+    if (min != null) e.minLevel = min.clamp(0, e.maxLevel);
+    if (max != null) e.maxLevel = max < e.minLevel ? e.minLevel : max;
+    _notify();
+  }
+
+  void setButthurt(PaintItem item, {int? min, int? max}) {
+    final e = item.entry;
+    if (min != null) e.minButthurt = min.clamp(0, e.maxButthurt);
+    if (max != null) e.maxButthurt = max < e.minButthurt ? e.minButthurt : max;
+    _notify();
+  }
+
+  /// The manifest text as it would be uploaded right now.
+  String manifestText() => DolphinManifest.build(
+    _items.where((i) => i.entry.selected).map((i) => i.entry),
+  );
+
+  /// Applies hand-edited manifest text: every animation listed there joins the
+  /// pack with the settings from the text, everything else leaves it. Returns
+  /// how many of the listed animations exist locally.
+  int applyManifest(String text) {
+    final parsed = DolphinManifest.parse(text);
+    if (parsed.isEmpty) return 0;
+    var applied = 0;
+    for (final item in _items) {
+      final edited = parsed[item.entry.name];
+      if (edited == null) {
+        item.entry.selected = false;
+        continue;
+      }
+      item.entry
+        ..selected = true
+        ..minButthurt = edited.minButthurt
+        ..maxButthurt = edited.maxButthurt
+        ..minLevel = edited.minLevel
+        ..maxLevel = edited.maxLevel
+        ..weight = edited.weight;
+      applied++;
+    }
+    _notify();
+    return applied;
+  }
+
+  // ------------------------------------------------------------------ upload
+
+  /// Uploads the pack and, finally, the combined manifest. The virtual display
+  /// is suspended first so the RPC link is free for the transfer.
+  Future<void> send() async {
+    if (_sending) return;
     if (!_client.isConnected) {
       _error = l10n.paintNoDevice;
       _notify();
       return;
     }
+    final selected = [
+      for (final i in _items)
+        if (i.entry.selected) (i.project, i.entry),
+    ];
+    if (selected.isEmpty) {
+      _error = l10n.paintSelectAnimation;
+      _notify();
+      return;
+    }
+
+    _sending = true;
+    _error = null;
+    _sendProgress = null;
+    _selectedId = null;
+    _notify();
+
+    await VirtualDisplaySession.instance.suspend();
+
+    try {
+      await DolphinSender.send(
+        client: _client,
+        selected: selected,
+        onProgress: (p) {
+          _sendProgress = p;
+          _notify();
+        },
+      );
+    } catch (e) {
+      _error = l10n.paintSendFailed('$e');
+      LogService.log('[PixelDraw] send failed: $e');
+    } finally {
+      _sending = false;
+      _sendProgress = null;
+      VirtualDisplaySession.instance.resume();
+      _notify();
+    }
+  }
+
+  // ------------------------------------------------------------------ import
+
+  /// Mirrors the device's `/ext/dolphin` into the local library. Returns how
+  /// many files were actually transferred — zero when everything already
+  /// matched by md5. The work itself lives in [DolphinImporter]; the controller
+  /// only owns the state it publishes.
+  Future<int> importFromDevice() async {
+    if (_importing) return 0;
+    if (!_client.isConnected) {
+      _error = l10n.paintNoDevice;
+      _notify();
+      return 0;
+    }
     _importing = true;
     _importProgress = null;
-    _importStatus = l10n.paintDeviceListing;
     _error = null;
     _notify();
 
+    var written = 0;
     try {
       final localRoot = await appDolphinAnimationsDirectory();
-
-      final files = <_RemoteFile>[];
-      await _collectRemoteFiles(kDeviceDolphinPath, '', files);
-
-      if (files.isEmpty) {
-        _error = l10n.paintNoAnimationsOnDevice;
-        return;
-      }
-
-      final totalBytes = files.fold<int>(0, (s, f) => s + f.size);
-      var doneBytes = 0;
-      final sep = io.Platform.pathSeparator;
-
-      // Group by top-level folder so each animation appears as it completes.
-      final order = <String>[];
-      final groups = <String, List<_RemoteFile>>{};
-      for (final f in files) {
-        final slash = f.relPath.indexOf('/');
-        final key = slash < 0 ? '' : f.relPath.substring(0, slash);
-        if (!groups.containsKey(key)) {
-          groups[key] = [];
-          order.add(key);
-        }
-        groups[key]!.add(f);
-      }
-
-      var fileIndex = 0;
-      final throttle = ProgressThrottle();
-      for (final key in order) {
-        for (final f in groups[key]!) {
-          fileIndex++;
-          _importStatus =
-              l10n.paintDownloadingFile(f.relPath, fileIndex, files.length);
+      written = await DolphinImporter.run(
+        client: _client,
+        localRoot: localRoot.path,
+        onProgress: (p) {
+          _importProgress = p;
           _notify();
-
-          final bytes = await _client.storageReadChunked(
-            f.remotePath,
-            expectedSize: f.size,
-            onProgress: (p) {
-              if (totalBytes <= 0) return;
-              _importProgress = ((doneBytes + p * f.size) / totalBytes).clamp(
-                0.0,
-                1.0,
-              );
-              if (throttle.shouldEmit(_importProgress!)) _notify();
-            },
-          );
-
-          final localPath =
-              '${localRoot.path}$sep${f.relPath.replaceAll('/', sep)}';
-          final localFile = io.File(localPath);
-          await localFile.parent.create(recursive: true);
-          await localFile.writeAsBytes(bytes, flush: true);
-
-          doneBytes += f.size;
-          _importProgress = totalBytes > 0
-              ? (doneBytes / totalBytes).clamp(0.0, 1.0)
-              : null;
-          _notify();
-        }
-
-        // Folder fully downloaded → reflect it in the list immediately.
-        if (key.isNotEmpty) await loadAll(silent: true);
-      }
+        },
+        onFolder: () => loadAll(silent: true),
+      );
     } catch (e) {
       _error = l10n.paintImportFailed('$e');
-      LogService.log('[ProjectManager] import failed: $e');
+      LogService.log('[PixelDraw] import failed: $e');
     } finally {
       _importing = false;
       _importProgress = null;
-      _importStatus = null;
       _notify();
     }
 
     await loadAll(silent: true);
-  }
-
-  Future<void> _collectRemoteFiles(
-    String remotePath,
-    String relPath,
-    List<_RemoteFile> out,
-  ) async {
-    final batch = await _client.storageList(
-      ListRequest(path: remotePath),
-      timeout: const Duration(seconds: 30),
-    );
-    for (final r in batch.items) {
-      for (final f in r.file) {
-        final name = f.name;
-        if (name.isEmpty) continue;
-        final childRel = relPath.isEmpty ? name : '$relPath/$name';
-        if (f.type == File_FileType.DIR) {
-          await _collectRemoteFiles('$remotePath/$name', childRel, out);
-        } else {
-          out.add(
-            _RemoteFile(
-              remotePath: '$remotePath/$name',
-              relPath: childRel,
-              size: f.size,
-            ),
-          );
-        }
-      }
-    }
+    return written;
   }
 
   void _notify() {
@@ -247,19 +324,8 @@ class ProjectManagerController extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _connSub?.cancel();
+    VirtualDisplaySession.instance.clearPreview();
     VirtualDisplaySession.instance.leave();
     super.dispose();
   }
-}
-
-class _RemoteFile {
-  _RemoteFile({
-    required this.remotePath,
-    required this.relPath,
-    required this.size,
-  });
-
-  final String remotePath;
-  final String relPath;
-  final int size;
 }
