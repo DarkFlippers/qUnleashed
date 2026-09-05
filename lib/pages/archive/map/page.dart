@@ -722,7 +722,7 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
     _notice = context.showNotification(
       message,
       type: type,
-      duration: Duration.zero,
+      duration: const Duration(seconds: 3),
       onTap: onTap,
     );
   }
