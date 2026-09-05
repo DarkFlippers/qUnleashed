@@ -54,22 +54,25 @@ class _MapPanel extends StatelessWidget {
               extent: headerExtent,
               background: colors.card,
               divider: pin != null ? colors.divider : null,
-              child: Column(
-                children: [
-                  if (showHandle)
-                    _MapPanelHandle(colors: colors, onTap: onHandleTap),
-                  if (pin != null)
-                    Expanded(
-                      child: _MapPanelHeader(
-                        pin: pin,
-                        controller: controller,
-                        colors: colors,
-                        onClose: onClose,
-                        onEdit: onEdit,
-                        onCopyCoords: onCopyCoords,
+              child: GestureDetector(
+                onTap: onHandleTap,
+                behavior: HitTestBehavior.opaque,
+                child: Column(
+                  children: [
+                    if (showHandle) _MapPanelHandle(colors: colors),
+                    if (pin != null)
+                      Expanded(
+                        child: _MapPanelHeader(
+                          pin: pin,
+                          controller: controller,
+                          colors: colors,
+                          onClose: onClose,
+                          onEdit: onEdit,
+                          onCopyCoords: onCopyCoords,
+                        ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -107,26 +110,21 @@ class _MapPanel extends StatelessWidget {
 }
 
 class _MapPanelHandle extends StatelessWidget {
-  const _MapPanelHandle({required this.colors, this.onTap});
+  const _MapPanelHandle({required this.colors});
 
   final QAppColors colors;
-  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: SizedBox(
-        height: kMapPanelHandle,
-        child: Center(
-          child: Container(
-            width: 34,
-            height: 4,
-            decoration: BoxDecoration(
-              color: colors.textMuted.withValues(alpha: 0.5),
-              borderRadius: BorderRadius.circular(2),
-            ),
+    return SizedBox(
+      height: kMapPanelHandle,
+      child: Center(
+        child: Container(
+          width: 34,
+          height: 4,
+          decoration: BoxDecoration(
+            color: colors.textMuted.withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(2),
           ),
         ),
       ),
