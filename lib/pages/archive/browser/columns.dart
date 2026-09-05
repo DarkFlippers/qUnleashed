@@ -27,8 +27,8 @@ typedef SizedFileCol = ({FileCol col, double width});
 Color fileBarColor(QAppColors colors) => colors.card.withValues(alpha: 0.7);
 
 const double kFileNameMinWidth = 130;
-const double kFileRowHeight = 44;
-const double kFileHeaderHeight = 30;
+const double kFileRowHeight = 48;
+const double kFileHeaderHeight = 34;
 const double kFileSelectionWidth = 26;
 const double kFileTrailingWidth = 36;
 
