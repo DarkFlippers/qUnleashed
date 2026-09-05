@@ -79,7 +79,7 @@ class _MapSheetState extends State<_MapSheet> {
     if (_snaps.length == next.length) {
       var same = true;
       for (var i = 0; i < next.length; i++) {
-        if ((_snaps[i] - next[i]).abs() > 0.0005) {
+        if (_snaps[i] != next[i]) {
           same = false;
           break;
         }
