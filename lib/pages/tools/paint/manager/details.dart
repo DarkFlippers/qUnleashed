@@ -189,11 +189,12 @@ class _PaintDetailsSheetState extends State<PaintDetailsSheet> {
   @override
   Widget build(BuildContext context) {
     final colors = widget.colors;
+    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
     return LayoutBuilder(
       builder: (context, constraints) {
         final height = constraints.maxHeight;
         if (height > 0) {
-          _peek = (kSheetPeek / height).clamp(0.05, 0.6);
+          _peek = ((kSheetPeek + bottomInset) / height).clamp(0.05, 0.6);
         }
         const max = 0.9;
         _syncSnaps(_midSize, max);
@@ -219,14 +220,17 @@ class _PaintDetailsSheetState extends State<PaintDetailsSheet> {
               borderRadius: const BorderRadius.vertical(
                 top: Radius.circular(14),
               ),
-              child: _SheetBody(
-                item: widget.item,
-                colors: colors,
-                ctrl: widget.ctrl,
-                scrollController: scrollController,
-                onHandleTap: _toggle,
-                onClose: widget.onClose,
-                onOpen: widget.onOpen,
+              child: Padding(
+                padding: EdgeInsets.only(bottom: bottomInset),
+                child: _SheetBody(
+                  item: widget.item,
+                  colors: colors,
+                  ctrl: widget.ctrl,
+                  scrollController: scrollController,
+                  onHandleTap: _toggle,
+                  onClose: widget.onClose,
+                  onOpen: widget.onOpen,
+                ),
               ),
             ),
           ),

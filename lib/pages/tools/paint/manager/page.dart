@@ -264,11 +264,14 @@ class _ProjectManagerPageState extends State<ProjectManagerPage> {
         // in the expanded class, and the decision comes from the actual box we
         // were given, never from device orientation.
         final expanded = constraints.maxWidth >= 840;
+        final safeBottom = MediaQuery.viewPaddingOf(context).bottom;
         if (expanded) {
           return Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Expanded(child: _buildGallery(colors, bottomInset: 16)),
+              Expanded(
+                child: _buildGallery(colors, bottomInset: 16 + safeBottom),
+              ),
               VerticalDivider(width: 1, thickness: 1, color: colors.divider),
               SizedBox(
                 width: kDetailsPaneWidth,
@@ -293,7 +296,8 @@ class _ProjectManagerPageState extends State<ProjectManagerPage> {
           children: [
             _buildGallery(
               colors,
-              bottomInset: selected == null ? 16 : kSheetPeek + 10,
+              bottomInset:
+                  (selected == null ? 16 : kSheetPeek + 10) + safeBottom,
             ),
             if (selected != null)
               Positioned.fill(
