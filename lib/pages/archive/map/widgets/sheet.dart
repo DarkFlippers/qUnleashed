@@ -92,12 +92,13 @@ class _MapSheetState extends State<_MapSheet> {
   @override
   Widget build(BuildContext context) {
     final colors = widget.colors;
+    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
     return LayoutBuilder(
       builder: (context, constraints) {
         final height = constraints.maxHeight;
         if (height > 0) {
-          _thin = (kMapSheetThin / height).clamp(0.02, 0.4);
-          _peek = (kMapPanelPeek / height).clamp(_thin, 0.6);
+          _thin = ((kMapSheetThin + bottomInset) / height).clamp(0.02, 0.4);
+          _peek = ((kMapPanelPeek + bottomInset) / height).clamp(_thin, 0.6);
         }
         const max = 0.92;
         _syncSnaps(_thin, _peek, _midSize, max);
@@ -125,23 +126,26 @@ class _MapSheetState extends State<_MapSheet> {
               borderRadius: const BorderRadius.vertical(
                 top: Radius.circular(14),
               ),
-              child: _MapPanel(
-                pins: widget.pins,
-                selected: widget.selected,
-                controller: widget.controller,
-                colors: colors,
-                scrollController: scrollController,
-                showHandle: true,
-                onHandleTap: _toggle,
-                onSelect: (pin) {
-                  widget.onSelect(pin);
-                  WidgetsBinding.instance.addPostFrameCallback(
-                    (_) => _animate(_peek),
-                  );
-                },
-                onClose: widget.onClose,
-                onEdit: widget.onEdit,
-                onCopyCoords: widget.onCopyCoords,
+              child: Padding(
+                padding: EdgeInsets.only(bottom: bottomInset),
+                child: _MapPanel(
+                  pins: widget.pins,
+                  selected: widget.selected,
+                  controller: widget.controller,
+                  colors: colors,
+                  scrollController: scrollController,
+                  showHandle: true,
+                  onHandleTap: _toggle,
+                  onSelect: (pin) {
+                    widget.onSelect(pin);
+                    WidgetsBinding.instance.addPostFrameCallback(
+                      (_) => _animate(_peek),
+                    );
+                  },
+                  onClose: widget.onClose,
+                  onEdit: widget.onEdit,
+                  onCopyCoords: widget.onCopyCoords,
+                ),
               ),
             ),
           ),
