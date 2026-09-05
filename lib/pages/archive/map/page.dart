@@ -607,7 +607,7 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
     // inset past them.
     final sheet = (desktopMode || picking)
         ? 0.0
-        : (_selectedPin != null ? kMapPanelPeek : kMapSheetThin);
+        : kMapSheetThin + MediaQuery.viewPaddingOf(context).bottom;
     final tiles = _settings.resolve(dark: colors.isDark);
     if (_failedTemplate != null && _failedTemplate != tiles.urlTemplate) {
       _failedTemplate = null;
