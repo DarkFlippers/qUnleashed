@@ -1908,6 +1908,18 @@
   "@firmwareErrorObWriteMask": {
     "description": "Error about a broken option-bytes field of the firmware manifest. Keep the field name as is."
   },
+  "firmwareErrorDfuDriverMissing": "У DFU-загрузчика нет драйвера WinUSB. Обычно Windows Update сам ставит драйвер «STM32 Bootloader»; иначе установите его через STM32CubeProgrammer или Zadig и повторите",
+  "@firmwareErrorDfuDriverMissing": {
+    "description": "Windows-only recovery error: libusb cannot open the STM32 bootloader because no WinUSB-class driver is bound to it. Keep the product names as is."
+  },
+  "firmwareErrorDfuAccessDenied": "Доступ к DFU-устройству запрещён — закройте другие программы, которые им пользуются (qFlipper, STM32CubeProgrammer), и повторите",
+  "@firmwareErrorDfuAccessDenied": {
+    "description": "Recovery error: the OS refused to open the STM32 bootloader, usually because another program holds it."
+  },
+  "firmwareErrorDfuPermissionDenied": "Разрешение USB для DFU-устройства отклонено. Разрешите доступ по запросу (отметьте «использовать по умолчанию», чтобы не подтверждать при каждой перезагрузке) и повторите",
+  "@firmwareErrorDfuPermissionDenied": {
+    "description": "Android-only recovery error: the user declined the system USB permission dialog. The device reboots several times during recovery, so the dialog can appear again unless the default is remembered."
+  },
   "deviceErrorNotFound": "Устройство не найдено: {name}",
   "@deviceErrorNotFound": {
     "description": "Error shown when a remembered device could not be located to reconnect.",

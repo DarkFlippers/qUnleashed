@@ -184,7 +184,7 @@ SPEC CHECKSUMS:
   FirebaseCoreInternal: 6ab6a02c94446c026d2cf35cf5383842ebaa4992
   FirebaseInstallations: eb29ccbf64eaedf86fd5b2ccc7fabde567660b52
   FirebaseMessaging: 40017d7bc8457ee295b0f41d480a80fdabc9994e
-  flipperlib: ad63f30813f99a1a806a55afb982ffe44db11a24
+  flipperlib: 1566652ffd65181f030fec0ac7d98483c5856f02
   flutter_libserialport: 2c523cb8d8203fc6d1b0da88190da31ac970eb93
   flutter_local_notifications: 1fc7ffb10a83d6a2eeeeddb152d43f1944b0aad0
   FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1

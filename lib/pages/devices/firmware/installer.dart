@@ -157,8 +157,8 @@ class FirmwareInstaller {
             _log('DFU: $message');
           case RecoveryDone():
             if (!done.isCompleted) done.complete();
-          case RecoveryFailed(:final error):
-            failure = error;
+          case RecoveryFailed(:final error, failure: final reason):
+            failure = _dfuFailureMessage(reason, error);
             if (!done.isCompleted) done.complete();
         }
       },
@@ -175,6 +175,15 @@ class FirmwareInstaller {
     } else {
       onState(const UpdateWaitingForReconnect());
     }
+  }
+
+  static String _dfuFailureMessage(DfuHostFailure failure, String error) {
+    return switch (failure) {
+      DfuHostFailure.driverMissing => l10n.firmwareErrorDfuDriverMissing,
+      DfuHostFailure.accessDenied => l10n.firmwareErrorDfuAccessDenied,
+      DfuHostFailure.permissionDenied => l10n.firmwareErrorDfuPermissionDenied,
+      DfuHostFailure.other => error,
+    };
   }
 
   static UpdateState _dfuProgressState(RecoveryStep step, double percent) {
