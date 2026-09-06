@@ -63,6 +63,7 @@ class HomeWidgetService {
 
   bool _busy = false;
   int? _servingId;
+  int? _cancelledId;
   int? _activeId;
   EmulateService? _active;
   StreamSubscription<AppStateResponse>? _closedSub;
@@ -119,6 +120,17 @@ class HomeWidgetService {
     }
   }
 
+  /// Sends the app to the background, back to whatever the widget was
+  /// tapped from.
+  Future<void> dismiss() async {
+    if (!supported) return;
+    try {
+      await _channel.invokeMethod<void>('dismiss');
+    } on PlatformException catch (e) {
+      LogService.log('[HomeWidget] dismiss failed: ${e.message}');
+    }
+  }
+
   Future<void> configure(int widgetId, WidgetKey key) async {
     if (!supported) return;
     try {
@@ -147,12 +159,27 @@ class HomeWidgetService {
         }
         unawaited(_onTap(id, key));
         return null;
+      case 'cancel':
+        final args = call.arguments as Map<Object?, Object?>;
+        unawaited(_onCancel(args['widgetId'] as int));
+        return null;
       case 'pick':
         final args = call.arguments as Map<Object?, Object?>;
         pickRequests.value = args['widgetId'] as int;
         return null;
     }
     throw MissingPluginException('${call.method} is not implemented');
+  }
+
+  /// Drops what a widget is doing: the emulation it holds, or the send still
+  /// on its way up. Sent when the taps turn out to be a request for a
+  /// different key.
+  Future<void> _onCancel(int id) async {
+    if (_activeId == id && _active != null) {
+      await _stopActive();
+      return;
+    }
+    if (_servingId == id) _cancelledId = id;
   }
 
   // A tap while another is being served is dropped, not queued: the user is
@@ -181,6 +208,7 @@ class HomeWidgetService {
     } finally {
       _busy = false;
       _servingId = null;
+      _cancelledId = null;
     }
   }
 
@@ -191,12 +219,18 @@ class HomeWidgetService {
       await _flash(id, WidgetState.errorNoDevice);
       return;
     }
+    if (_cancelledId == id) return;
 
     final service = EmulateService(client: client);
     final result = await service.start(key.toArchiveKey());
     if (!result.isOk) {
       LogService.log('[HomeWidget] start failed: ${result.error}');
       await _flash(id, _errorState(result.error));
+      return;
+    }
+    if (_cancelledId == id) {
+      await service.stop();
+      await _setState(id, WidgetState.idle);
       return;
     }
 

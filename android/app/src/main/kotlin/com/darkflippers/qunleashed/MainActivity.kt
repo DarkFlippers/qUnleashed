@@ -30,6 +30,7 @@ class MainActivity : FlutterActivity() {
         // The engine may have been started cold by a widget tap: bring it up
         // to the full app now that there is a screen.
         HomeWidgetChannel.attach(this, flutterEngine)
+        HomeWidgetChannel.activity = this
         HomeWidgetChannel.promote(flutterEngine)
         handleWidgetIntent(intent)
         val channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, gnssChannel)
@@ -69,6 +70,7 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
+        if (HomeWidgetChannel.activity === this) HomeWidgetChannel.activity = null
         gnssMethodChannel?.setMethodCallHandler(null)
         gnssMethodChannel = null
         super.cleanUpFlutterEngine(flutterEngine)

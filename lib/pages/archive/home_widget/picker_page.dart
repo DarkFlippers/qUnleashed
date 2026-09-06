@@ -59,11 +59,12 @@ class _HomeWidgetPickerPageState extends State<HomeWidgetPickerPage> {
   ];
 
   Future<void> _pick(ArchiveKey key) async {
-    await HomeWidgetService.instance.configure(
-      widget.widgetId,
-      WidgetKey.fromArchiveKey(key),
-    );
+    final service = HomeWidgetService.instance;
+    await service.configure(widget.widgetId, WidgetKey.fromArchiveKey(key));
+    // The picker was opened by a tap on the home screen, so that is where
+    // picking ends: the page is left behind and the app steps aside.
     if (mounted) Navigator.of(context).pop();
+    await service.dismiss();
   }
 
   Widget _tile(BuildContext context, ArchiveKey k) {

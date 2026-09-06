@@ -1,5 +1,6 @@
 package com.darkflippers.qunleashed.widget
 
+import android.app.Activity
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.content.ComponentName
@@ -9,14 +10,17 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 /**
- * Bridge between the widgets and Dart. Dart serves taps (`send`, `pick`),
- * turns a cold isolate into the app (`promote`) and reports the caption
- * state; the native side stores, pins and draws the widgets.
+ * Bridge between the widgets and Dart. Dart serves taps (`send`, `cancel`,
+ * `pick`), turns a cold isolate into the app (`promote`) and reports the
+ * caption state; the native side stores, pins and draws the widgets.
  */
 object HomeWidgetChannel {
     private const val NAME = "qunleashed/home_widget"
 
     private val channels = HashMap<FlutterEngine, MethodChannel>()
+
+    /** The activity while there is one, for `dismiss`. */
+    var activity: Activity? = null
 
     fun attach(context: Context, engine: FlutterEngine) {
         if (channels.containsKey(engine)) return
@@ -53,6 +57,12 @@ object HomeWidgetChannel {
                     result.success(null)
                 }
                 "palette" -> result.success(MaterialPalette.of(appContext)?.toMap())
+                // Back to wherever the widget was tapped from, with the app
+                // left running behind the launcher.
+                "dismiss" -> {
+                    activity?.moveTaskToBack(true)
+                    result.success(null)
+                }
                 else -> result.notImplemented()
             }
         }
@@ -63,6 +73,10 @@ object HomeWidgetChannel {
         val args = HashMap<String, Any>(key.toMap())
         args["widgetId"] = widgetId
         channels[engine]?.invokeMethod("send", args)
+    }
+
+    fun cancel(engine: FlutterEngine, widgetId: Int) {
+        channels[engine]?.invokeMethod("cancel", mapOf("widgetId" to widgetId))
     }
 
     fun pick(engine: FlutterEngine, widgetId: Int) {
