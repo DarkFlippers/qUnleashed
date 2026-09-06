@@ -2,7 +2,7 @@ name: qunleashed
 description: "Flipper Zero BLE/USB companion app."
 homepage: https://aperturefox.ru
 publish_to: 'none'
-version: 0.11.2+11002
+version: 0.12.1+12001
 
 environment:
   sdk: ^3.11.1
