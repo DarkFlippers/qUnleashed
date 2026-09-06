@@ -78,6 +78,22 @@
                 android:name="android.hardware.usb.action.USB_DEVICE_ATTACHED"
                 android:resource="@xml/device_filter" />
         </activity>
+        <!-- Home-screen key widgets: the provider draws them, the receiver
+             serves taps on the shared Flutter engine. -->
+        <receiver
+            android:name=".widget.KeyWidgetProvider"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/key_widget_info" />
+        </receiver>
+        <receiver
+            android:name=".widget.KeyWidgetReceiver"
+            android:exported="false" />
+
         <!-- flutter_foreground_task: the plugin does NOT declare its service, the
              app must. connectedDevice type keeps the BLE link serviced in the
              background on Android 14+. Do not change the service name. -->

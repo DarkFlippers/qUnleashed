@@ -4,6 +4,7 @@ import 'nav_bar.dart';
 import '../components/archive/category.dart';
 import '../pages/apps/catalog/page.dart';
 import '../pages/archive/browser/page.dart';
+import '../pages/archive/home_widget/picker_page.dart';
 import '../pages/archive/overview/category/category_page.dart';
 import '../pages/archive/overview/category/deleted_page.dart';
 import '../pages/archive/overview/category/favorites_page.dart';
@@ -14,6 +15,7 @@ import '../pages/devices/controllers/device.dart';
 import '../pages/devices/device_scope.dart';
 import '../pages/devices/models/connection_state.dart';
 import '../pages/devices/page.dart';
+import '../services/home_widget/service.dart';
 import '../services/localization/l10n.dart';
 import '../theme/theme.dart';
 
@@ -52,15 +54,35 @@ class _AppShellState extends State<AppShell> {
     super.initState();
     _archiveController.addListener(_onArchiveChanged);
     _archiveController.initialize();
+    HomeWidgetService.instance.pickRequests.addListener(_onWidgetPickRequest);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _onWidgetPickRequest());
   }
 
   @override
   void dispose() {
+    HomeWidgetService.instance.pickRequests.removeListener(
+      _onWidgetPickRequest,
+    );
     _ctrl.dispose();
     _archiveController.removeListener(_onArchiveChanged);
     _archiveController.dispose();
     _ctrl.client.disconnectAll();
     super.dispose();
+  }
+
+  void _onWidgetPickRequest() {
+    final requests = HomeWidgetService.instance.pickRequests;
+    final widgetId = requests.value;
+    if (widgetId == null || !mounted) return;
+    requests.value = null;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => HomeWidgetPickerPage(
+          widgetId: widgetId,
+          controller: _archiveController,
+        ),
+      ),
+    );
   }
 
   void _onArchiveChanged() {

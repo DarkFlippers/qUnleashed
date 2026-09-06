@@ -1,4 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">qUnleashed</string>
+    <string name="widget_description">Send an archive key to the Flipper with one tap</string>
+    <string name="widget_choose_key">Choose a key</string>
+    <string name="widget_state_connecting">Connecting…</string>
+    <string name="widget_state_emulating">Emulating</string>
+    <string name="widget_state_sending">Sending…</string>
+    <string name="widget_state_sent">Sent</string>
+    <string name="widget_error_no_device">Flipper not found</string>
+    <string name="widget_error_busy">Flipper is busy</string>
+    <string name="widget_error_file">File not found</string>
+    <string name="widget_error_failed">Failed</string>
 </resources>

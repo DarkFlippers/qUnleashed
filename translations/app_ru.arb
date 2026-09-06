@@ -6044,5 +6044,45 @@
   "archiveSyncingLabel": "Синхронизация",
   "@archiveSyncingLabel": {
     "description": "Progress label while files are compared with the Flipper. No ellipsis, a counter follows it."
+  },
+  "homeWidgetPin": "На рабочий стол",
+  "@homeWidgetPin": {
+    "description": "Action in the key menu that pins a home-screen widget for this file (Android)."
+  },
+  "homeWidgetPinUnsupported": "Этот лаунчер не умеет закреплять виджеты",
+  "@homeWidgetPinUnsupported": {
+    "description": "Error shown when the Android launcher refuses to pin a widget from the app."
+  },
+  "homeWidgetPickTitle": "Ключ для виджета",
+  "@homeWidgetPickTitle": {
+    "description": "Title of the screen where the user picks the file a home-screen widget will send."
+  },
+  "homeWidgetPickEmpty": "Пока нет ключей, которые виджет может отправить. Сначала синхронизируйте архив.",
+  "@homeWidgetPickEmpty": {
+    "description": "Empty state of the widget key picker: the archive holds no file that can be sent over RPC."
+  },
+  "settingsWidgetsTitle": "Виджеты",
+  "@settingsWidgetsTitle": {
+    "description": "Title of the home-screen widget look settings and of its tile on the Settings screen (Android only)."
+  },
+  "settingsWidgetsSubtitle": "Тема, иконка, рамка",
+  "@settingsWidgetsSubtitle": {
+    "description": "Subtitle under the Widgets tile on the Settings screen."
+  },
+  "widgetGroupTheme": "Тема",
+  "@widgetGroupTheme": {
+    "description": "Header of the widget theme choice: system, light, dark, Material You."
+  },
+  "widgetGroupIcon": "Иконка",
+  "@widgetGroupIcon": {
+    "description": "Header of the widget icon style choice."
+  },
+  "widgetGroupBorder": "Рамка",
+  "@widgetGroupBorder": {
+    "description": "Header of the widget border choice."
+  },
+  "widgetGroupCaption": "Подпись",
+  "@widgetGroupCaption": {
+    "description": "Header of the widget caption switch and size choice."
   }
 }

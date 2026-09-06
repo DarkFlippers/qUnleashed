@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Same values as QAppColors (light) in lib/theme/theme.dart -->
+    <color name="widget_text_primary">#FF000000</color>
+    <color name="widget_text_secondary">#FF616161</color>
+    <color name="widget_ripple">#33000000</color>
+    <color name="widget_preview_surface">#FFFFFFFF</color>
+</resources>

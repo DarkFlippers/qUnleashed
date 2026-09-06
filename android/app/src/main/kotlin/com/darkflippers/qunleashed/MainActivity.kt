@@ -1,20 +1,19 @@
 package com.darkflippers.qunleashed
 
+import android.appwidget.AppWidgetManager
 import android.content.Context
+import android.content.Intent
 import android.location.GnssStatus
 import android.location.LocationManager
 import android.os.Build
+import com.darkflippers.qunleashed.widget.FlutterEngineHolder
+import com.darkflippers.qunleashed.widget.HomeWidgetChannel
+import com.darkflippers.qunleashed.widget.KeyWidgetReceiver
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
-import io.flutter.embedding.engine.FlutterEngineCache
-import io.flutter.embedding.engine.dart.DartExecutor
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
-    companion object {
-        private const val ENGINE_ID = "qunleashed_main"
-    }
-
     private val gnssChannel = "qunleashed/gnss"
     private var gnssMethodChannel: MethodChannel? = null
     private var locationManager: LocationManager? = null
@@ -22,18 +21,17 @@ class MainActivity : FlutterActivity() {
     private var satellitesInUse: Int = -1
 
     override fun getCachedEngineId(): String {
-        if (FlutterEngineCache.getInstance().get(ENGINE_ID) == null) {
-            val engine = FlutterEngine(applicationContext)
-            engine.dartExecutor.executeDartEntrypoint(
-                DartExecutor.DartEntrypoint.createDefault(),
-            )
-            FlutterEngineCache.getInstance().put(ENGINE_ID, engine)
-        }
-        return ENGINE_ID
+        FlutterEngineHolder.getOrCreate(this, FlutterEngineHolder.ENTRYPOINT_MAIN)
+        return FlutterEngineHolder.ENGINE_ID
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        // The engine may have been started cold by a widget tap: bring it up
+        // to the full app now that there is a screen.
+        HomeWidgetChannel.attach(this, flutterEngine)
+        HomeWidgetChannel.promote(flutterEngine)
+        handleWidgetIntent(intent)
         val channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, gnssChannel)
         gnssMethodChannel = channel
         channel.setMethodCallHandler { call, result ->
@@ -52,6 +50,22 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleWidgetIntent(intent)
+    }
+
+    private fun handleWidgetIntent(intent: Intent?) {
+        if (intent == null) return
+        val widgetId = intent.getIntExtra(
+            KeyWidgetReceiver.EXTRA_PICK_WIDGET,
+            AppWidgetManager.INVALID_APPWIDGET_ID,
+        )
+        if (widgetId == AppWidgetManager.INVALID_APPWIDGET_ID) return
+        intent.removeExtra(KeyWidgetReceiver.EXTRA_PICK_WIDGET)
+        FlutterEngineHolder.existing()?.let { HomeWidgetChannel.pick(it, widgetId) }
     }
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {

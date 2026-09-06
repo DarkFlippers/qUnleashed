@@ -7223,6 +7223,45 @@
         "type": "String"
       }
     }
+  },
+  "homeWidgetPin": "Home screen",
+  "@homeWidgetPin": {
+    "description": "Action in the key menu that pins a home-screen widget for this file (Android)."
+  },
+  "homeWidgetPinUnsupported": "This launcher cannot pin widgets",
+  "@homeWidgetPinUnsupported": {
+    "description": "Error shown when the Android launcher refuses to pin a widget from the app."
+  },
+  "homeWidgetPickTitle": "Widget key",
+  "@homeWidgetPickTitle": {
+    "description": "Title of the screen where the user picks the file a home-screen widget will send."
+  },
+  "homeWidgetPickEmpty": "No keys the widget can send yet. Sync the archive first.",
+  "@homeWidgetPickEmpty": {
+    "description": "Empty state of the widget key picker: the archive holds no file that can be sent over RPC."
+  },
+  "settingsWidgetsTitle": "Widgets",
+  "@settingsWidgetsTitle": {
+    "description": "Title of the home-screen widget look settings and of its tile on the Settings screen (Android only)."
+  },
+  "settingsWidgetsSubtitle": "Theme, icon, border",
+  "@settingsWidgetsSubtitle": {
+    "description": "Subtitle under the Widgets tile on the Settings screen."
+  },
+  "widgetGroupTheme": "Theme",
+  "@widgetGroupTheme": {
+    "description": "Header of the widget theme choice: system, light, dark, Material You."
+  },
+  "widgetGroupIcon": "Icon",
+  "@widgetGroupIcon": {
+    "description": "Header of the widget icon style choice."
+  },
+  "widgetGroupBorder": "Border",
+  "@widgetGroupBorder": {
+    "description": "Header of the widget border choice."
+  },
+  "widgetGroupCaption": "Caption",
+  "@widgetGroupCaption": {
+    "description": "Header of the widget caption switch and size choice."
   }
-
 }

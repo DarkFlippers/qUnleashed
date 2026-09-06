@@ -16,7 +16,9 @@ import '../controller.dart';
 import '../../emulate/page.dart';
 import '../../browser/page.dart';
 import '../../browser/share_remote_file.dart';
+import '../../../../components/archive/category.dart';
 import '../../../../components/archive/models/key.dart';
+import '../../../../services/home_widget/service.dart';
 import '../../widgets/actions_sheet.dart';
 
 /// Builds the archive-specific action set for an [ArchiveKey] and presents it
@@ -122,6 +124,17 @@ class KeyActionsSheet {
           icon: Icons.play_arrow,
           label: context.l10n.fileEmulate,
           onTap: () => emulateOnFlipper(context, k),
+        ),
+      );
+    }
+    if (!k.isDeleted &&
+        HomeWidgetService.instance.supported &&
+        k.launchMethod == LaunchMethod.rpc) {
+      actions.add(
+        ActionItem(
+          icon: Icons.add_to_home_screen,
+          label: context.l10n.homeWidgetPin,
+          onTap: () => _pinToHomeScreen(context, k),
         ),
       );
     }
@@ -279,6 +292,20 @@ class KeyActionsSheet {
     Navigator.of(
       context,
     ).push(MaterialPageRoute(builder: (_) => EmulatePage(flipperKey: k)));
+  }
+
+  static Future<void> _pinToHomeScreen(
+    BuildContext context,
+    ArchiveKey k,
+  ) async {
+    final shown = await HomeWidgetService.instance.pin(
+      WidgetKey.fromArchiveKey(k),
+    );
+    if (shown || !context.mounted) return;
+    context.showNotification(
+      context.l10n.homeWidgetPinUnsupported,
+      type: QNotificationType.error,
+    );
   }
 
   static Future<void> _openInPlotter(

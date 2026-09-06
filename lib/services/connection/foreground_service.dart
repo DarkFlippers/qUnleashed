@@ -161,19 +161,25 @@ class BleForegroundService with WidgetsBindingObserver {
     _ensureInitialized();
 
     // Android 13+ needs runtime notification permission for the foreground
-    // notification. Request once; ignore the outcome.
-    final perm = await FlutterForegroundTask.checkNotificationPermission();
-    if (perm != NotificationPermission.granted) {
-      await FlutterForegroundTask.requestNotificationPermission();
-    }
-
-    // Battery optimization exemption keeps the service alive through long
-    // background. Ask once; the user may decline.
-    if (!_askedBatteryExemption) {
-      _askedBatteryExemption = true;
-      if (!await FlutterForegroundTask.isIgnoringBatteryOptimizations) {
-        await FlutterForegroundTask.requestIgnoreBatteryOptimization();
+    // notification. Request once; ignore the outcome. Both prompts need an
+    // activity — an engine a home-screen widget started has none, and the
+    // service must still come up there.
+    try {
+      final perm = await FlutterForegroundTask.checkNotificationPermission();
+      if (perm != NotificationPermission.granted) {
+        await FlutterForegroundTask.requestNotificationPermission();
       }
+
+      // Battery optimization exemption keeps the service alive through long
+      // background. Ask once; the user may decline.
+      if (!_askedBatteryExemption) {
+        _askedBatteryExemption = true;
+        if (!await FlutterForegroundTask.isIgnoringBatteryOptimizations) {
+          await FlutterForegroundTask.requestIgnoreBatteryOptimization();
+        }
+      }
+    } catch (e) {
+      LogService.log('[ForegroundService] permission prompt skipped: $e');
     }
 
     final serviceTypes = <ForegroundServiceTypes>[

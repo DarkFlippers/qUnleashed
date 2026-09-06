@@ -25,6 +25,9 @@ class DeviceController extends ChangeNotifier {
     _settings.addListener(_scheduleAutoConnect);
     _settings.load();
     _knownDevices.load().whenComplete(_scheduleAutoConnect);
+    // A session a home-screen widget brought up cold has no device data yet;
+    // collect it now that the full app is here.
+    if (_device != null) _ensureDataLoading();
   }
 
   static const Duration _autoConnectDebounce = Duration(milliseconds: 250);

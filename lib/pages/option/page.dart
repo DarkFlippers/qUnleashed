@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../components/cardlist.dart';
 import '../../components/icon.dart';
 import '../../components/navigation.dart';
+import '../../services/home_widget/service.dart';
 import '../../services/localization/l10n.dart';
 import '../../theme/theme.dart';
 import 'pages/apps.dart';
@@ -13,6 +14,7 @@ import 'pages/map.dart';
 import 'pages/push.dart';
 import 'pages/storage.dart';
 import 'pages/theme.dart';
+import 'pages/widgets.dart';
 
 class _Category {
   const _Category({
@@ -157,6 +159,14 @@ class SettingsPage extends StatelessWidget {
                 color: const Color(0xFF4FC3F7),
                 page: (_) => const MapSettingsPage(),
               ),
+              if (HomeWidgetService.instance.supported)
+                _Category(
+                  title: context.l10n.settingsWidgetsTitle,
+                  subtitle: context.l10n.settingsWidgetsSubtitle,
+                  asset: 'assets/ic/fileformat/favorites.svg',
+                  color: const Color(0xFF34C7A4),
+                  page: (_) => const WidgetSettingsPage(),
+                ),
             ],
             onTap: (c) => _open(context, c),
             itemBuilder: _tile,

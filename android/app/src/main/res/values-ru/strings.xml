@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_description">Отправка ключа из архива на Флиппер одним нажатием</string>
+    <string name="widget_choose_key">Выбрать ключ</string>
+    <string name="widget_state_connecting">Подключение…</string>
+    <string name="widget_state_emulating">Эмуляция</string>
+    <string name="widget_state_sending">Отправка…</string>
+    <string name="widget_state_sent">Отправлено</string>
+    <string name="widget_error_no_device">Флиппер не найден</string>
+    <string name="widget_error_busy">Флиппер занят</string>
+    <string name="widget_error_file">Файл не найден</string>
+    <string name="widget_error_failed">Не удалось</string>
+</resources>
