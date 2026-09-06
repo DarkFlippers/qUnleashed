@@ -1,9 +1,14 @@
 import 'dart:async';
+// The protobuf bindings export their own DateTime, so the core one is reached
+// through a prefix; the plain import keeps the rest of dart:core unprefixed.
+import 'dart:core';
+import 'dart:core' as core;
 
 import 'package:flipperlib/flipperlib.dart';
 
 import '../../components/format.dart';
 import '../logging.dart';
+import 'device_settings.dart';
 
 /// Background device-info collection cycle: an initial burst of info requests
 /// followed by periodic battery polling and reactive storage refresh.
@@ -161,6 +166,38 @@ class DeviceInfoWatchService {
         LogService.log('[watchInfo] storage /int: $e');
       }
     }());
+
+    // The last of the startup commands: the phone's clock goes to the device,
+    // so a Flipper that lost its time comes back right after connecting.
+    await DeviceSettings.instance.load();
+    if (!alive()) return;
+    if (DeviceSettings.instance.syncTimeOnStart) {
+      final now = core.DateTime.now();
+      try {
+        await client.setDateTime(
+          SetDateTimeRequest(
+            datetime: DateTime(
+              hour: now.hour,
+              minute: now.minute,
+              second: now.second,
+              day: now.day,
+              month: now.month,
+              year: now.year,
+              weekday: now.weekday,
+            ),
+          ),
+          timeout: const Duration(seconds: 15),
+        );
+        emit({
+          'datetime':
+              '${now.year}-${_pad(now.month)}-${_pad(now.day)} '
+              '${_pad(now.hour)}:${_pad(now.minute)}:${_pad(now.second)}',
+        });
+      } catch (e) {
+        LogService.log('[watchInfo] set datetime: $e');
+      }
+      if (!alive()) return;
+    }
 
     // Phase 2: periodic battery poll + reactive storage refresh.
     //

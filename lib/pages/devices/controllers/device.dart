@@ -5,6 +5,7 @@ import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../../services/connection/device_info_watch.dart';
+import '../../../services/connection/device_settings.dart';
 import '../../../services/connection/known_devices.dart';
 import '../../../services/logging.dart';
 import '../../../theme/theme.dart';
@@ -21,6 +22,8 @@ class DeviceController extends ChangeNotifier {
     _sessionsSub = _client.sessionsStream.listen((_) => _notify());
     _dfuDetector.start();
     _knownDevices.addListener(_notify);
+    _settings.addListener(_scheduleAutoConnect);
+    _settings.load();
     _knownDevices.load().whenComplete(_scheduleAutoConnect);
   }
 
@@ -29,6 +32,7 @@ class DeviceController extends ChangeNotifier {
   final FlipperClient _client = FlipperOneClient().get();
   final DfuDetector _dfuDetector = DfuDetector();
   final KnownDevicesStore _knownDevices = KnownDevicesStore.instance;
+  final DeviceSettings _settings = DeviceSettings.instance;
 
   FlipperDevice? _device;
   bool _deviceDisconnected = false;
@@ -237,7 +241,9 @@ class DeviceController extends ChangeNotifier {
     if (_disposed || _recovering) return;
     if (isConnected || _client.isConnecting) return;
 
-    final last = _knownDevices.lastDevice;
+    await _settings.load();
+    if (_disposed) return;
+    final last = _settings.autoConnectBle ? _knownDevices.lastDevice : null;
     try {
       await _client.refreshUsbOnly();
       if (last != null) {
@@ -274,7 +280,8 @@ class DeviceController extends ChangeNotifier {
 
   // A plugged-in USB Flipper always wins: the cable is an explicit user
   // action. With no USB present, the last remembered BLE device connects;
-  // an unknown BLE device never does.
+  // an unknown BLE device never does. Both transports only reconnect on
+  // their own while their toggle in the device settings is on.
   FlipperDevice? _autoConnectCandidate(
     List<FlipperDevice> present,
     KnownDevice? last,
@@ -282,8 +289,10 @@ class DeviceController extends ChangeNotifier {
     bool eligible(FlipperDevice d) =>
         d.id != _userDisconnectedId && !_autoConnectAttemptedIds.contains(d.id);
 
-    for (final d in present) {
-      if (d.isUsb && eligible(d) && _client.isFlipperDevice(d)) return d;
+    if (_settings.autoConnectUsb) {
+      for (final d in present) {
+        if (d.isUsb && eligible(d) && _client.isFlipperDevice(d)) return d;
+      }
     }
     if (last != null) {
       for (final d in present) {
@@ -316,6 +325,7 @@ class DeviceController extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _knownDevices.removeListener(_notify);
+    _settings.removeListener(_scheduleAutoConnect);
     _autoConnectTimer?.cancel();
     _cancelDataStreams();
     _connectionSub?.cancel();

@@ -132,6 +132,46 @@
   "@licenseTitle": {
     "description": "Title of the screen showing the full app license."
   },
+  "settingsDeviceTitle": "Устройство",
+  "@settingsDeviceTitle": {
+    "description": "Title of the device settings screen, and of its tile on the Settings screen."
+  },
+  "settingsDeviceSubtitle": "Автоподключение, синхронизация времени",
+  "@settingsDeviceSubtitle": {
+    "description": "Subtitle under the Device tile on the Settings screen."
+  },
+  "deviceGroupAutoConnect": "Автоподключение",
+  "@deviceGroupAutoConnect": {
+    "description": "Heading of the group of auto-connect toggles on the device settings screen."
+  },
+  "deviceAutoConnectUsb": "Автоподключение USB",
+  "@deviceAutoConnectUsb": {
+    "description": "Toggle: connect on its own to a Flipper plugged in over USB."
+  },
+  "deviceAutoConnectUsbSubtitle": "Подключаться к Флипперу сразу после того, как его подключили кабелем.",
+  "@deviceAutoConnectUsbSubtitle": {
+    "description": "Explanation under the USB auto-connect toggle."
+  },
+  "deviceAutoConnectBle": "Автоподключение Bluetooth",
+  "@deviceAutoConnectBle": {
+    "description": "Toggle: connect on its own to the last remembered Bluetooth device."
+  },
+  "deviceAutoConnectBleSubtitle": "Подключаться к последнему запомненному устройству, когда оно рядом.",
+  "@deviceAutoConnectBleSubtitle": {
+    "description": "Explanation under the Bluetooth auto-connect toggle."
+  },
+  "deviceGroupSync": "Синхронизация",
+  "@deviceGroupSync": {
+    "description": "Heading of the group of synchronization toggles on the device settings screen."
+  },
+  "deviceSyncTime": "Синхронизировать время при старте",
+  "@deviceSyncTime": {
+    "description": "Toggle: send the phone clock to the device after connecting."
+  },
+  "deviceSyncTimeSubtitle": "Отправлять время телефона на устройство после подключения.",
+  "@deviceSyncTimeSubtitle": {
+    "description": "Explanation under the Sync time on start toggle."
+  },
   "settingsNotificationsTitle": "Уведомления",
   "@settingsNotificationsTitle": {
     "description": "Title of the notification settings screen, and of its tile on the Settings screen."

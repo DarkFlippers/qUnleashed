@@ -166,6 +166,56 @@
     "description": "Title of the screen showing the full app license."
   },
 
+  "settingsDeviceTitle": "Device",
+  "@settingsDeviceTitle": {
+    "description": "Title of the device settings screen, and of its tile on the Settings screen."
+  },
+
+  "settingsDeviceSubtitle": "Auto-connect, clock sync",
+  "@settingsDeviceSubtitle": {
+    "description": "Subtitle under the Device tile on the Settings screen."
+  },
+
+  "deviceGroupAutoConnect": "Auto-connect",
+  "@deviceGroupAutoConnect": {
+    "description": "Heading of the group of auto-connect toggles on the device settings screen."
+  },
+
+  "deviceAutoConnectUsb": "USB auto-connect",
+  "@deviceAutoConnectUsb": {
+    "description": "Toggle: connect on its own to a Flipper plugged in over USB."
+  },
+
+  "deviceAutoConnectUsbSubtitle": "Connect to a Flipper as soon as it is plugged in with a cable.",
+  "@deviceAutoConnectUsbSubtitle": {
+    "description": "Explanation under the USB auto-connect toggle."
+  },
+
+  "deviceAutoConnectBle": "Bluetooth auto-connect",
+  "@deviceAutoConnectBle": {
+    "description": "Toggle: connect on its own to the last remembered Bluetooth device."
+  },
+
+  "deviceAutoConnectBleSubtitle": "Connect to the last remembered device when it is in range.",
+  "@deviceAutoConnectBleSubtitle": {
+    "description": "Explanation under the Bluetooth auto-connect toggle."
+  },
+
+  "deviceGroupSync": "Synchronization",
+  "@deviceGroupSync": {
+    "description": "Heading of the group of synchronization toggles on the device settings screen."
+  },
+
+  "deviceSyncTime": "Sync time on start",
+  "@deviceSyncTime": {
+    "description": "Toggle: send the phone clock to the device after connecting."
+  },
+
+  "deviceSyncTimeSubtitle": "Send the phone clock to the device once it is connected.",
+  "@deviceSyncTimeSubtitle": {
+    "description": "Explanation under the Sync time on start toggle."
+  },
+
   "settingsNotificationsTitle": "Notifications",
   "@settingsNotificationsTitle": {
     "description": "Title of the notification settings screen, and of its tile on the Settings screen."

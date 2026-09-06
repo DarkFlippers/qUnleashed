@@ -6,6 +6,7 @@ import '../../components/navigation.dart';
 import '../../services/localization/l10n.dart';
 import '../../theme/theme.dart';
 import 'pages/apps.dart';
+import 'pages/device.dart';
 import 'pages/flibler.dart';
 import 'pages/language.dart';
 import 'pages/map.dart';
@@ -107,6 +108,13 @@ class SettingsPage extends StatelessWidget {
         children: [
           GroupedCardList<_Category>(
             items: [
+              _Category(
+                title: context.l10n.settingsDeviceTitle,
+                subtitle: context.l10n.settingsDeviceSubtitle,
+                asset: 'assets/ic/device/flipper.svg',
+                color: const Color(0xFFFF8A65),
+                page: (_) => const DeviceSettingsPage(),
+              ),
               _Category(
                 title: context.l10n.settingsNotificationsTitle,
                 subtitle: context.l10n.settingsNotificationsSubtitle,
