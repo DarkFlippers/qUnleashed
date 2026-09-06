@@ -3,9 +3,9 @@ import 'dart:convert';
 
 import 'package:flipperlib/flipperlib.dart';
 
-import '../../../components/archive/models/key.dart';
-import '../../../components/archive/parser.dart';
-import '../../../services/logging.dart';
+import '../../components/archive/models/key.dart';
+import '../../components/archive/parser.dart';
+import '../logging.dart';
 
 enum EmulateError {
   notConnected,

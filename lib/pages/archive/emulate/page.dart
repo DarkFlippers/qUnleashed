@@ -8,7 +8,7 @@ import 'package:qunleashed/components/appbar.dart';
 import '../../../components/notification.dart';
 import '../../../components/archive/category.dart';
 import '../../../components/archive/models/key.dart';
-import 'service.dart';
+import '../../../services/emulate/service.dart';
 
 class EmulatePage extends StatefulWidget {
   const EmulatePage({super.key, required this.flipperKey});
