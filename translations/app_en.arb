@@ -6001,6 +6001,311 @@
     "description": "Button that runs the edited script on the Flipper."
   },
 
+  "hexShowAsHex": "Hex mode",
+  "@hexShowAsHex": {
+    "description": "Button that switches the editor to the hex table."
+  },
+
+  "hexShowAsText": "Text mode",
+  "@hexShowAsText": {
+    "description": "Button that switches the editor back to text."
+  },
+
+  "hexBinaryOpened": "Binary file, opened in hex",
+  "@hexBinaryOpened": {
+    "description": "Toast shown when a file could not be read as text."
+  },
+
+  "hexNotTextTitle": "Not text",
+  "@hexNotTextTitle": {
+    "description": "Title of the dialog shown when hex bytes cannot be decoded as text."
+  },
+
+  "hexNotTextMessage": "These bytes are not valid UTF-8. Opening them as text drops everything that cannot be decoded, and saving would write the damaged content back.",
+  "@hexNotTextMessage": {
+    "description": "Body of the dialog shown when hex bytes cannot be decoded as text."
+  },
+
+  "hexOpenAsText": "Open anyway",
+  "@hexOpenAsText": {
+    "description": "Button that opens undecodable bytes in the text editor."
+  },
+
+  "hexInspector": "Inspector",
+  "@hexInspector": {
+    "description": "Title of the panel that reads the bytes at the cursor."
+  },
+
+  "hexEmptyFile": "Empty file",
+  "@hexEmptyFile": {
+    "description": "Inspector line shown for a file without bytes."
+  },
+
+  "hexOffset": "Offset",
+  "@hexOffset": {
+    "description": "Inspector line with the cursor offset."
+  },
+
+  "hexBits": "Bits",
+  "@hexBits": {
+    "description": "Inspector line with the bits of the byte at the cursor."
+  },
+
+  "hexChar": "Char",
+  "@hexChar": {
+    "description": "Inspector line with the character of the byte at the cursor."
+  },
+
+  "hexSelection": "Selection",
+  "@hexSelection": {
+    "description": "Inspector section about the selected bytes."
+  },
+
+  "hexNoSelection": "Nothing selected",
+  "@hexNoSelection": {
+    "description": "Inspector line shown when there is no selection."
+  },
+
+  "hexRange": "Range",
+  "@hexRange": {
+    "description": "Inspector line with the first and last offset of the selection."
+  },
+
+  "hexLength": "Length",
+  "@hexLength": {
+    "description": "Inspector line with the number of selected bytes."
+  },
+
+  "hexTextPreview": "Text",
+  "@hexTextPreview": {
+    "description": "Inspector line with the selection decoded as text."
+  },
+
+  "hexCopied": "Copied",
+  "@hexCopied": {
+    "description": "Toast shown after bytes were copied."
+  },
+
+  "hexPatternHint": "DE AD ?? EF",
+  "@hexPatternHint": {
+    "description": "Hint of the hex search field."
+  },
+
+  "hexSearchHex": "Hex pattern, ? matches any nibble",
+  "@hexSearchHex": {
+    "description": "Tooltip of the hex search mode button."
+  },
+
+  "hexSearchText": "Text",
+  "@hexSearchText": {
+    "description": "Tooltip of the text search mode button."
+  },
+
+  "hexInvalidPattern": "bad pattern",
+  "@hexInvalidPattern": {
+    "description": "Shown instead of the match counter when the pattern cannot be parsed."
+  },
+
+  "hexReplaceHexHint": "Replace with bytes",
+  "@hexReplaceHexHint": {
+    "description": "Hint of the hex replace field."
+  },
+
+  "hexUndo": "Undo",
+  "@hexUndo": {
+    "description": "Button that undoes the last byte edit."
+  },
+
+  "hexRedo": "Redo",
+  "@hexRedo": {
+    "description": "Button that redoes the last undone byte edit."
+  },
+
+  "hexInsertMode": "Insert mode",
+  "@hexInsertMode": {
+    "description": "Button state where typing inserts bytes."
+  },
+
+  "hexOverwriteMode": "Overwrite mode",
+  "@hexOverwriteMode": {
+    "description": "Button state where typing replaces bytes."
+  },
+
+  "hexGoTo": "Go to offset",
+  "@hexGoTo": {
+    "description": "Button that jumps the cursor to an offset."
+  },
+
+  "hexGoToHint": "0x1F or 31d",
+  "@hexGoToHint": {
+    "description": "Hint of the go to offset field."
+  },
+
+  "hexCopyAs": "Copy as",
+  "@hexCopyAs": {
+    "description": "Menu that copies the selected bytes in a chosen format."
+  },
+
+  "hexCopyHex": "Hex string",
+  "@hexCopyHex": {
+    "description": "Copies the bytes as DE AD BE EF."
+  },
+
+  "hexCopyCArray": "C array",
+  "@hexCopyCArray": {
+    "description": "Copies the bytes as 0xDE, 0xAD."
+  },
+
+  "hexCopyBase64": "Base64",
+  "@hexCopyBase64": {
+    "description": "Copies the bytes encoded in base64."
+  },
+
+  "hexCopyText": "Text",
+  "@hexCopyText": {
+    "description": "Copies the bytes decoded as text."
+  },
+
+  "hexPaste": "Paste",
+  "@hexPaste": {
+    "description": "Button that writes the clipboard at the cursor."
+  },
+
+  "hexClipboardEmpty": "Clipboard is empty",
+  "@hexClipboardEmpty": {
+    "description": "Toast shown when there is nothing to paste."
+  },
+
+  "hexPastedBytes": "{count} bytes pasted",
+  "@hexPastedBytes": {
+    "description": "Toast shown after the clipboard was written into the file.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+
+  "hexFill": "Fill selection",
+  "@hexFill": {
+    "description": "Button that writes one value over the selected bytes."
+  },
+
+  "hexByteValueHint": "Byte value, FF",
+  "@hexByteValueHint": {
+    "description": "Hint of the fill value field."
+  },
+
+  "hexInsertBytes": "Insert bytes",
+  "@hexInsertBytes": {
+    "description": "Button that inserts a run of bytes at the cursor."
+  },
+
+  "hexInsertHint": "Count and value, 16 00",
+  "@hexInsertHint": {
+    "description": "Hint of the insert bytes field."
+  },
+
+  "hexInsertText": "Insert text",
+  "@hexInsertText": {
+    "description": "Button that writes typed text at the cursor."
+  },
+
+  "hexInsertTextHint": "Text to write at the cursor",
+  "@hexInsertTextHint": {
+    "description": "Hint of the insert text field."
+  },
+
+  "hexDeleteSelection": "Delete selection",
+  "@hexDeleteSelection": {
+    "description": "Button that removes the selected bytes."
+  },
+
+  "hexInvalidValue": "Invalid value",
+  "@hexInvalidValue": {
+    "description": "Toast shown when a typed value cannot be used."
+  },
+
+  "hexOffsetOutOfRange": "Offset is outside the file",
+  "@hexOffsetOutOfRange": {
+    "description": "Toast shown when the requested offset does not exist."
+  },
+
+  "hexBytesPerRow": "Bytes per row",
+  "@hexBytesPerRow": {
+    "description": "Menu that sets how many bytes a row shows."
+  },
+
+  "hexAuto": "Auto",
+  "@hexAuto": {
+    "description": "Bytes per row option that fits the window."
+  },
+
+  "hexKeypad": "Hex keypad",
+  "@hexKeypad": {
+    "description": "Button that shows the on-screen hex pad."
+  },
+
+  "hexMoveLeft": "Left",
+  "@hexMoveLeft": {
+    "description": "Keypad button that moves the cursor left."
+  },
+
+  "hexMoveRight": "Right",
+  "@hexMoveRight": {
+    "description": "Keypad button that moves the cursor right."
+  },
+
+  "hexMoveUp": "Up",
+  "@hexMoveUp": {
+    "description": "Keypad button that moves the cursor up."
+  },
+
+  "hexMoveDown": "Down",
+  "@hexMoveDown": {
+    "description": "Keypad button that moves the cursor down."
+  },
+
+  "hexBackspace": "Delete byte before",
+  "@hexBackspace": {
+    "description": "Keypad button that removes the byte before the cursor."
+  },
+
+  "hexDeleteByte": "Delete byte",
+  "@hexDeleteByte": {
+    "description": "Keypad button that removes the byte at the cursor."
+  },
+
+  "hexStatusOffset": "off",
+  "@hexStatusOffset": {
+    "description": "Status bar label of the cursor offset."
+  },
+
+  "hexStatusByte": "byte",
+  "@hexStatusByte": {
+    "description": "Status bar label of the byte at the cursor."
+  },
+
+  "hexStatusSelection": "sel",
+  "@hexStatusSelection": {
+    "description": "Status bar label of the selection."
+  },
+
+  "hexStatusSize": "size",
+  "@hexStatusSize": {
+    "description": "Status bar label of the file size."
+  },
+
+  "hexStatusModified": "mod",
+  "@hexStatusModified": {
+    "description": "Status bar label of the number of changed bytes."
+  },
+
+  "hexStatusMode": "mode",
+  "@hexStatusMode": {
+    "description": "Status bar label of the insert or overwrite mode."
+  },
+
   "emuNotConnected": "Device is not connected",
   "@emuNotConnected": {
     "description": "Error shown when emulation needs a connected Flipper."

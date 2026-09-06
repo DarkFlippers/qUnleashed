@@ -5063,6 +5063,251 @@
   "@editorRun": {
     "description": "Button that runs the edited script on the Flipper."
   },
+  "hexShowAsHex": "Hex-режим",
+  "@hexShowAsHex": {
+    "description": "Button that switches the editor to the hex table."
+  },
+  "hexShowAsText": "Текстовый режим",
+  "@hexShowAsText": {
+    "description": "Button that switches the editor back to text."
+  },
+  "hexBinaryOpened": "Двоичный файл, открыт в hex",
+  "@hexBinaryOpened": {
+    "description": "Toast shown when a file could not be read as text."
+  },
+  "hexNotTextTitle": "Это не текст",
+  "@hexNotTextTitle": {
+    "description": "Title of the dialog shown when hex bytes cannot be decoded as text."
+  },
+  "hexNotTextMessage": "Байты не являются корректным UTF-8. При открытии как текст всё, что не декодируется, будет потеряно, а сохранение запишет испорченное содержимое.",
+  "@hexNotTextMessage": {
+    "description": "Body of the dialog shown when hex bytes cannot be decoded as text."
+  },
+  "hexOpenAsText": "Всё равно открыть",
+  "@hexOpenAsText": {
+    "description": "Button that opens undecodable bytes in the text editor."
+  },
+  "hexInspector": "Инспектор",
+  "@hexInspector": {
+    "description": "Title of the panel that reads the bytes at the cursor."
+  },
+  "hexEmptyFile": "Пустой файл",
+  "@hexEmptyFile": {
+    "description": "Inspector line shown for a file without bytes."
+  },
+  "hexOffset": "Смещение",
+  "@hexOffset": {
+    "description": "Inspector line with the cursor offset."
+  },
+  "hexBits": "Биты",
+  "@hexBits": {
+    "description": "Inspector line with the bits of the byte at the cursor."
+  },
+  "hexChar": "Символ",
+  "@hexChar": {
+    "description": "Inspector line with the character of the byte at the cursor."
+  },
+  "hexSelection": "Выделение",
+  "@hexSelection": {
+    "description": "Inspector section about the selected bytes."
+  },
+  "hexNoSelection": "Ничего не выделено",
+  "@hexNoSelection": {
+    "description": "Inspector line shown when there is no selection."
+  },
+  "hexRange": "Диапазон",
+  "@hexRange": {
+    "description": "Inspector line with the first and last offset of the selection."
+  },
+  "hexLength": "Длина",
+  "@hexLength": {
+    "description": "Inspector line with the number of selected bytes."
+  },
+  "hexTextPreview": "Текст",
+  "@hexTextPreview": {
+    "description": "Inspector line with the selection decoded as text."
+  },
+  "hexCopied": "Скопировано",
+  "@hexCopied": {
+    "description": "Toast shown after bytes were copied."
+  },
+  "hexPatternHint": "DE AD ?? EF",
+  "@hexPatternHint": {
+    "description": "Hint of the hex search field."
+  },
+  "hexSearchHex": "Шестнадцатеричный шаблон, ? — любой полубайт",
+  "@hexSearchHex": {
+    "description": "Tooltip of the hex search mode button."
+  },
+  "hexSearchText": "Текст",
+  "@hexSearchText": {
+    "description": "Tooltip of the text search mode button."
+  },
+  "hexInvalidPattern": "ошибка",
+  "@hexInvalidPattern": {
+    "description": "Shown instead of the match counter when the pattern cannot be parsed."
+  },
+  "hexReplaceHexHint": "Заменить на байты",
+  "@hexReplaceHexHint": {
+    "description": "Hint of the hex replace field."
+  },
+  "hexUndo": "Отменить",
+  "@hexUndo": {
+    "description": "Button that undoes the last byte edit."
+  },
+  "hexRedo": "Повторить",
+  "@hexRedo": {
+    "description": "Button that redoes the last undone byte edit."
+  },
+  "hexInsertMode": "Режим вставки",
+  "@hexInsertMode": {
+    "description": "Button state where typing inserts bytes."
+  },
+  "hexOverwriteMode": "Режим замены",
+  "@hexOverwriteMode": {
+    "description": "Button state where typing replaces bytes."
+  },
+  "hexGoTo": "Перейти к смещению",
+  "@hexGoTo": {
+    "description": "Button that jumps the cursor to an offset."
+  },
+  "hexGoToHint": "0x1F или 31d",
+  "@hexGoToHint": {
+    "description": "Hint of the go to offset field."
+  },
+  "hexCopyAs": "Скопировать как",
+  "@hexCopyAs": {
+    "description": "Menu that copies the selected bytes in a chosen format."
+  },
+  "hexCopyHex": "Строка байтов",
+  "@hexCopyHex": {
+    "description": "Copies the bytes as DE AD BE EF."
+  },
+  "hexCopyCArray": "Массив C",
+  "@hexCopyCArray": {
+    "description": "Copies the bytes as 0xDE, 0xAD."
+  },
+  "hexCopyBase64": "Base64",
+  "@hexCopyBase64": {
+    "description": "Copies the bytes encoded in base64."
+  },
+  "hexCopyText": "Текст",
+  "@hexCopyText": {
+    "description": "Copies the bytes decoded as text."
+  },
+  "hexPaste": "Вставить",
+  "@hexPaste": {
+    "description": "Button that writes the clipboard at the cursor."
+  },
+  "hexClipboardEmpty": "Буфер обмена пуст",
+  "@hexClipboardEmpty": {
+    "description": "Toast shown when there is nothing to paste."
+  },
+  "hexPastedBytes": "Вставлено байт: {count}",
+  "@hexPastedBytes": {
+    "description": "Toast shown after the clipboard was written into the file.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "hexFill": "Заполнить выделение",
+  "@hexFill": {
+    "description": "Button that writes one value over the selected bytes."
+  },
+  "hexByteValueHint": "Значение байта, FF",
+  "@hexByteValueHint": {
+    "description": "Hint of the fill value field."
+  },
+  "hexInsertBytes": "Вставить байты",
+  "@hexInsertBytes": {
+    "description": "Button that inserts a run of bytes at the cursor."
+  },
+  "hexInsertHint": "Количество и значение, 16 00",
+  "@hexInsertHint": {
+    "description": "Hint of the insert bytes field."
+  },
+  "hexInsertText": "Вставить текст",
+  "@hexInsertText": {
+    "description": "Button that writes typed text at the cursor."
+  },
+  "hexInsertTextHint": "Текст под курсор",
+  "@hexInsertTextHint": {
+    "description": "Hint of the insert text field."
+  },
+  "hexDeleteSelection": "Удалить выделение",
+  "@hexDeleteSelection": {
+    "description": "Button that removes the selected bytes."
+  },
+  "hexInvalidValue": "Неверное значение",
+  "@hexInvalidValue": {
+    "description": "Toast shown when a typed value cannot be used."
+  },
+  "hexOffsetOutOfRange": "Смещение за пределами файла",
+  "@hexOffsetOutOfRange": {
+    "description": "Toast shown when the requested offset does not exist."
+  },
+  "hexBytesPerRow": "Байт в строке",
+  "@hexBytesPerRow": {
+    "description": "Menu that sets how many bytes a row shows."
+  },
+  "hexAuto": "Авто",
+  "@hexAuto": {
+    "description": "Bytes per row option that fits the window."
+  },
+  "hexKeypad": "Hex-клавиатура",
+  "@hexKeypad": {
+    "description": "Button that shows the on-screen hex pad."
+  },
+  "hexMoveLeft": "Влево",
+  "@hexMoveLeft": {
+    "description": "Keypad button that moves the cursor left."
+  },
+  "hexMoveRight": "Вправо",
+  "@hexMoveRight": {
+    "description": "Keypad button that moves the cursor right."
+  },
+  "hexMoveUp": "Вверх",
+  "@hexMoveUp": {
+    "description": "Keypad button that moves the cursor up."
+  },
+  "hexMoveDown": "Вниз",
+  "@hexMoveDown": {
+    "description": "Keypad button that moves the cursor down."
+  },
+  "hexBackspace": "Удалить байт слева",
+  "@hexBackspace": {
+    "description": "Keypad button that removes the byte before the cursor."
+  },
+  "hexDeleteByte": "Удалить байт",
+  "@hexDeleteByte": {
+    "description": "Keypad button that removes the byte at the cursor."
+  },
+  "hexStatusOffset": "смещ",
+  "@hexStatusOffset": {
+    "description": "Status bar label of the cursor offset."
+  },
+  "hexStatusByte": "байт",
+  "@hexStatusByte": {
+    "description": "Status bar label of the byte at the cursor."
+  },
+  "hexStatusSelection": "выдел",
+  "@hexStatusSelection": {
+    "description": "Status bar label of the selection."
+  },
+  "hexStatusSize": "размер",
+  "@hexStatusSize": {
+    "description": "Status bar label of the file size."
+  },
+  "hexStatusModified": "изм",
+  "@hexStatusModified": {
+    "description": "Status bar label of the number of changed bytes."
+  },
+  "hexStatusMode": "режим",
+  "@hexStatusMode": {
+    "description": "Status bar label of the insert or overwrite mode."
+  },
   "emuNotConnected": "Устройство не подключено",
   "@emuNotConnected": {
     "description": "Error shown when emulation needs a connected Flipper."

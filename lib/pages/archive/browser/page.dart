@@ -94,7 +94,6 @@ class _FileManagerPageState extends State<FileManagerPage> {
       return;
     }
     final ext = e.extension;
-    if (const {'bin', 'elf', 'fuf'}.contains(ext)) return;
     if (ext == 'fap') {
       _launchFap(_ctrl.childPath(e.name));
       return;
@@ -235,11 +234,6 @@ class _FileManagerPageState extends State<FileManagerPage> {
 
   bool _isPaintFile(RemoteEntry e) =>
       !e.isDir && const {'png', 'gif', 'bm'}.contains(e.extension);
-
-  /// Files we can open in the text editor (everything except binary blobs and
-  /// apps, mirroring [_onEntryTap]).
-  bool _isEditable(RemoteEntry e) =>
-      !e.isDir && !const {'bin', 'elf', 'fuf', 'fap'}.contains(e.extension);
 
   /// Wraps an on-device file in an [ArchiveKey] (path preserved verbatim) and
   /// opens the shared archive emulation flow.
@@ -1357,15 +1351,15 @@ class _FileManagerPageState extends State<FileManagerPage> {
       onEmulate: (cat != null && cat.emulatable)
           ? () => _emulateEntry(e, cat)
           : null,
-      onEdit: _isEditable(e)
-          ? () {
+      onEdit: e.isDir
+          ? null
+          : () {
               if (_isPaintFile(e)) {
                 _openPaintEditor(_ctrl.childPath(e.name));
               } else {
                 _openTextEditor(e);
               }
-            }
-          : null,
+            },
     );
   }
 }
