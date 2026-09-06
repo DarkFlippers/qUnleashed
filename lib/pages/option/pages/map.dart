@@ -8,13 +8,6 @@ import '../../../services/localization/l10n.dart';
 import '../../../theme/theme.dart';
 import '../../archive/map/data/settings.dart';
 
-class _ActionTile {
-  const _ActionTile(this.child, [this.onTap]);
-
-  final Widget child;
-  final VoidCallback? onTap;
-}
-
 class MapSettingsPage extends StatefulWidget {
   const MapSettingsPage({super.key});
 
@@ -38,275 +31,11 @@ class _MapSettingsPageState extends State<MapSettingsPage> {
     super.dispose();
   }
 
-  bool get _mapDark => _settings.darkFor(context.appColors.isDark);
-
   MapTileProvider get _provider => _settings.provider;
 
-  Widget _titleColumn(
-    BuildContext context, {
-    required String title,
-    required String subtitle,
-    int subtitleLines = 2,
-  }) {
-    final colors = context.appColors;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Text(
-          title,
-          style: TextStyle(
-            color: colors.textPrimary,
-            fontSize: 14,
-            height: 1.2,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          subtitle,
-          maxLines: subtitleLines,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(color: colors.textMuted, fontSize: 12, height: 1.2),
-        ),
-      ],
-    );
-  }
+  bool get _mapDark => _settings.darkFor(context.appColors.isDark);
 
-  Widget _radioTile(
-    BuildContext context, {
-    required String title,
-    required String subtitle,
-    required bool selected,
-    Widget? leading,
-    Widget? badge,
-  }) {
-    final colors = context.appColors;
-    return Row(
-      children: [
-        if (leading != null) ...[leading, const SizedBox(width: 10)],
-        Expanded(
-          child: _titleColumn(context, title: title, subtitle: subtitle),
-        ),
-        if (badge != null) ...[const SizedBox(width: 8), badge],
-        const SizedBox(width: 8),
-        Padding(
-          padding: const EdgeInsets.only(right: 4),
-          child: Icon(
-            selected ? Icons.check_circle : Icons.circle_outlined,
-            size: 22,
-            color: selected ? colors.accent : colors.textMuted,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _valueTile(
-    BuildContext context, {
-    required String title,
-    required String subtitle,
-    IconData icon = Icons.chevron_right,
-  }) {
-    final colors = context.appColors;
-    return Row(
-      children: [
-        Expanded(
-          child: _titleColumn(context, title: title, subtitle: subtitle),
-        ),
-        const SizedBox(width: 8),
-        Padding(
-          padding: const EdgeInsets.only(right: 4),
-          child: Icon(icon, size: 20, color: colors.textMuted),
-        ),
-      ],
-    );
-  }
-
-  Widget _switchTile(
-    BuildContext context, {
-    required String title,
-    required String subtitle,
-    required bool value,
-    required ValueChanged<bool> onChanged,
-  }) {
-    final colors = context.appColors;
-    return Row(
-      children: [
-        Expanded(
-          child: _titleColumn(context, title: title, subtitle: subtitle),
-        ),
-        Switch(
-          value: value,
-          onChanged: onChanged,
-          activeTrackColor: colors.accent,
-          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        ),
-      ],
-    );
-  }
-
-  Widget _tilePreview(
-    BuildContext context,
-    MapTileConfig config, {
-    double size = 56,
-    bool selected = false,
-  }) {
-    final colors = context.appColors;
-    const radius = BorderRadius.all(Radius.circular(8));
-    return Container(
-      width: size,
-      height: size,
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(color: colors.background, borderRadius: radius),
-      foregroundDecoration: BoxDecoration(
-        border: Border.all(
-          color: selected ? colors.accent : colors.divider,
-          width: selected ? 2 : 1,
-        ),
-        borderRadius: radius,
-      ),
-      child: config.missingKey
-          ? Icon(
-              Icons.key_off_outlined,
-              size: size * 0.4,
-              color: colors.textMuted,
-            )
-          : Image.network(
-              _settings.previewUrl(config),
-              key: ValueKey(_settings.previewUrl(config)),
-              fit: BoxFit.cover,
-              gaplessPlayback: true,
-              errorBuilder: (_, _, _) => Icon(
-                Icons.broken_image_outlined,
-                size: size * 0.4,
-                color: colors.textMuted,
-              ),
-              loadingBuilder: (context, child, progress) => progress == null
-                  ? child
-                  : Center(
-                      child: SizedBox(
-                        width: size * 0.3,
-                        height: size * 0.3,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: colors.textMuted,
-                        ),
-                      ),
-                    ),
-            ),
-    );
-  }
-
-  Widget _livePreview(BuildContext context) {
-    final colors = context.appColors;
-    final config = _settings.resolve(dark: _mapDark);
-    final strings = context.l10n;
-    final status = config.missingKey
-        ? strings.mapKeyNeeded
-        : config.usesEmbeddedKey
-        ? strings.mapKeyBuiltIn
-        : _settings.keyOf(_provider).isNotEmpty
-        ? strings.mapKeyYours
-        : strings.mapKeyNotNeeded;
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: kGroupedHorizontalPadding,
-      ),
-      child: GroupedCard(
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          children: [
-            _tilePreview(context, config, size: 84),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    config.label,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: colors.textPrimary,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${_mapDark ? strings.mapTilesDark : strings.mapTilesLight}'
-                    ' · ${strings.mapMaxZoomOf(config.maxZoom.round())}',
-                    style: TextStyle(color: colors.textMuted, fontSize: 12),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    status,
-                    style: TextStyle(
-                      color: config.missingKey
-                          ? colors.danger
-                          : config.usesEmbeddedKey
-                          ? colors.success
-                          : colors.textMuted,
-                      fontSize: 12,
-                    ),
-                  ),
-                  if (config.attribution.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      config.attribution,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: colors.textMuted, fontSize: 10.5),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _providerTile(BuildContext context, MapTileProvider provider) {
-    final colors = context.appColors;
-    final needsKey = provider.needsKey && !_settings.hasKey(provider);
-    return _radioTile(
-      context,
-      title: provider.label,
-      subtitle: provider.isCustom && _settings.customUrl.isNotEmpty
-          ? _settings.customUrl
-          : provider.description,
-      selected: _provider.id == provider.id,
-      badge: needsKey
-          ? Icon(Icons.key_outlined, size: 18, color: colors.textMuted)
-          : null,
-    );
-  }
-
-  Widget _designTile(BuildContext context, MapTileDesign design) {
-    final selected =
-        _settings.designOf(_provider, dark: design.dark).id == design.id;
-    return _radioTile(
-      context,
-      title: design.label,
-      subtitle: design.description,
-      selected: selected,
-      leading: _tilePreview(
-        context,
-        _settings.configFor(_provider, design),
-        selected: selected,
-      ),
-    );
-  }
-
-  static String _mask(String value) {
-    if (value.isEmpty) return '';
-    if (value.length <= 8) return '•' * value.length;
-    return '${value.substring(0, 4)}${'•' * 6}'
-        '${value.substring(value.length - 4)}';
-  }
+  // ------------------------------------------------------------------ editing
 
   Future<String?> _prompt({
     required String title,
@@ -411,100 +140,251 @@ class _MapSettingsPageState extends State<MapSettingsPage> {
     if (zoom != null) await _settings.setCustomMaxZoom(zoom);
   }
 
-  Future<void> _openSignup(String url) async {
-    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+  static String _mask(String value) {
+    if (value.isEmpty) return '';
+    if (value.length <= 8) return '•' * value.length;
+    return '${value.substring(0, 4)}${'•' * 6}'
+        '${value.substring(value.length - 4)}';
   }
 
-  List<_ActionTile> _keyTiles(BuildContext context) {
+  Widget _appearanceGroup(QAppColors colors) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: kGroupedHorizontalPadding,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _GroupTitle(context.l10n.mapGroupColors),
+          GroupedCard(
+            padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
+            child: Row(
+              children: [
+                for (final value in MapAppearance.values) ...[
+                  Expanded(
+                    child: _ChoiceTile(
+                      icon: switch (value) {
+                        MapAppearance.auto => Icons.brightness_auto_outlined,
+                        MapAppearance.light => Icons.light_mode_outlined,
+                        MapAppearance.dark => Icons.dark_mode_outlined,
+                      },
+                      label: value.label,
+                      selected: _settings.appearance == value,
+                      colors: colors,
+                      onTap: () => _settings.setAppearance(value),
+                    ),
+                  ),
+                  if (value != MapAppearance.values.last)
+                    const SizedBox(width: 10),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _providerRow(BuildContext context, MapTileProvider provider) {
     final colors = context.appColors;
-    final provider = _provider;
-    final own = _settings.keyOf(provider);
-    final builtIn = provider.id == kCartoProviderId;
-    return [
-      if (builtIn)
-        _ActionTile(
-          Row(
+    final selected = _provider.id == provider.id;
+    final needsKey = provider.needsKey && !_settings.hasKey(provider);
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Expanded(
-                child: _titleColumn(
-                  context,
-                  title: context.l10n.mapBuiltInCartoKey,
-                  subtitle: _settings.hasEmbeddedKey
-                      ? context.l10n.mapBuiltInCartoKeyPresent
-                      : context.l10n.mapBuiltInKeyMissing,
+              Text(
+                provider.label,
+                style: TextStyle(
+                  color: colors.textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
-              const SizedBox(width: 8),
-              Padding(
-                padding: const EdgeInsets.only(right: 4),
-                child: Icon(
-                  _settings.hasEmbeddedKey
-                      ? Icons.lock_outline
-                      : Icons.lock_open,
-                  size: 20,
-                  color: _settings.hasEmbeddedKey
-                      ? colors.success
-                      : colors.textMuted,
-                ),
+              const SizedBox(height: 2),
+              Text(
+                provider.isCustom && _settings.customUrl.isNotEmpty
+                    ? _settings.customUrl
+                    : provider.description,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: colors.textMuted, fontSize: 12),
               ),
             ],
           ),
         ),
-      _ActionTile(
-        _valueTile(
+        if (needsKey)
+          Padding(
+            padding: const EdgeInsets.only(left: 8),
+            child: Icon(Icons.key_outlined, size: 18, color: colors.textMuted),
+          ),
+        const SizedBox(width: 8),
+        Icon(
+          selected ? Icons.check_circle : Icons.circle_outlined,
+          size: 22,
+          color: selected ? colors.accent : colors.textMuted,
+        ),
+      ],
+    );
+  }
+
+  Widget _styleStrip(
+    QAppColors colors, {
+    required String title,
+    required List<MapTileDesign> designs,
+  }) {
+    if (designs.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: kGroupedHorizontalPadding,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _GroupTitle(title),
+          GroupedCard(
+            padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
+            child: SizedBox(
+              height: 104,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: designs.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 10),
+                itemBuilder: (_, i) {
+                  final design = designs[i];
+                  final selected =
+                      _settings.designOf(_provider, dark: design.dark).id ==
+                      design.id;
+                  return _StyleTile(
+                    label: design.label,
+                    url: _settings.previewUrl(
+                      _settings.configFor(_provider, design),
+                    ),
+                    missingKey: _settings
+                        .configFor(_provider, design)
+                        .missingKey,
+                    selected: selected,
+                    colors: colors,
+                    onTap: () => _settings.setDesign(_provider, design),
+                  );
+                },
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _valueRow(
+    BuildContext context, {
+    required String title,
+    required String value,
+    IconData icon = Icons.chevron_right,
+  }) {
+    final colors = context.appColors;
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  color: colors.textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: colors.textMuted, fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        Icon(icon, size: 20, color: colors.textMuted),
+      ],
+    );
+  }
+
+  List<_Row> _keyRows(BuildContext context) {
+    final provider = _provider;
+    final own = _settings.keyOf(provider);
+    final builtIn =
+        provider.id == kCartoProviderId &&
+        own.isEmpty &&
+        _settings.hasEmbeddedKey;
+    return [
+      _Row(
+        _valueRow(
           context,
           title: context.l10n.mapYourProviderKey(provider.label),
-          subtitle: own.isNotEmpty
+          value: own.isNotEmpty
               ? _mask(own)
               : builtIn
-              ? context.l10n.mapKeyNotSetBuiltInUsed
+              ? context.l10n.mapKeyBuiltIn
               : provider.keyHint ?? context.l10n.mapKeyNotSet,
         ),
         () => _editKey(provider),
       ),
       if (provider.signupUrl != null)
-        _ActionTile(
-          _valueTile(
+        _Row(
+          _valueRow(
             context,
             title: context.l10n.mapGetKey,
-            subtitle: Uri.parse(provider.signupUrl!).host,
+            value: Uri.parse(provider.signupUrl!).host,
             icon: Icons.open_in_new,
           ),
-          () => _openSignup(provider.signupUrl!),
+          () => launchUrl(
+            Uri.parse(provider.signupUrl!),
+            mode: LaunchMode.externalApplication,
+          ),
         ),
     ];
   }
 
-  List<_ActionTile> _customTiles(BuildContext context) => [
-    _ActionTile(
-      _valueTile(
+  List<_Row> _customRows(BuildContext context) => [
+    _Row(
+      _valueRow(
         context,
         title: context.l10n.mapTileUrlTemplate,
-        subtitle: _settings.customUrl.isEmpty
+        value: _settings.customUrl.isEmpty
             ? context.l10n.mapCustomUrlHint
             : _settings.customUrl,
       ),
       _editCustomUrl,
     ),
-    _ActionTile(
-      _valueTile(
+    _Row(
+      _valueRow(
         context,
         title: context.l10n.mapSubdomains,
-        subtitle: _settings.customSubdomains.isEmpty
+        value: _settings.customSubdomains.isEmpty
             ? context.l10n.mapSubdomainsEmpty
             : _settings.customSubdomains,
       ),
       _editCustomSubdomains,
     ),
-    _ActionTile(
-      _valueTile(
+    _Row(
+      _valueRow(
         context,
         title: context.l10n.mapMaxZoom,
-        subtitle: '${_settings.customMaxZoom.round()}',
+        value: '${_settings.customMaxZoom.round()}',
       ),
       _editCustomMaxZoom,
     ),
   ];
+
+  // -------------------------------------------------------------------- build
 
   @override
   Widget build(BuildContext context) {
@@ -513,8 +393,9 @@ class _MapSettingsPageState extends State<MapSettingsPage> {
       builder: (context, _) {
         final colors = context.appColors;
         final provider = _provider;
-        final light = provider.lightDesigns;
-        final dark = provider.darkDesigns;
+        final auto = _settings.appearance == MapAppearance.auto;
+        final config = _settings.resolve(dark: _mapDark);
+
         return Scaffold(
           backgroundColor: colors.background,
           appBar: AppBar(
@@ -525,92 +406,328 @@ class _MapSettingsPageState extends State<MapSettingsPage> {
           body: ListView(
             padding: const EdgeInsets.symmetric(vertical: 10),
             children: [
-              _livePreview(context),
-              const SizedBox(height: 14),
-              GroupedCardList<MapAppearance>(
-                title: context.l10n.mapGroupColors,
-                items: MapAppearance.values,
-                onTap: (value) =>
-                    () => _settings.setAppearance(value),
-                itemBuilder: (context, value) => _radioTile(
-                  context,
-                  title: value.label,
-                  subtitle: value.description,
-                  selected: _settings.appearance == value,
-                ),
-              ),
+              _appearanceGroup(colors),
               const SizedBox(height: 14),
               GroupedCardList<MapTileProvider>(
                 title: context.l10n.mapGroupTileSource,
                 items: mapTileProviders(context.l10n),
                 onTap: (value) =>
                     () => _selectProvider(value),
-                itemBuilder: _providerTile,
+                itemBuilder: _providerRow,
               ),
-              if (light.isNotEmpty) ...[
-                const SizedBox(height: 14),
-                GroupedCardList<MapTileDesign>(
-                  title: context.l10n.mapGroupDesignLight(provider.label),
-                  items: light,
-                  onTap: (design) =>
-                      () => _settings.setDesign(provider, design),
-                  itemBuilder: _designTile,
-                ),
-              ],
-              if (dark.isNotEmpty) ...[
-                const SizedBox(height: 14),
-                GroupedCardList<MapTileDesign>(
-                  title: context.l10n.mapGroupDesignDark(provider.label),
-                  items: dark,
-                  onTap: (design) =>
-                      () => _settings.setDesign(provider, design),
-                  itemBuilder: _designTile,
-                ),
+              // Styles for the mode the map is actually in; in auto both sets
+              // matter, because the map follows the app theme.
+              if (!provider.isCustom) ...[
+                if (auto || !_mapDark) ...[
+                  const SizedBox(height: 14),
+                  _styleStrip(
+                    colors,
+                    title: auto
+                        ? context.l10n.mapGroupDesignLight(provider.label)
+                        : context.l10n.mapGroupStyle(provider.label),
+                    designs: provider.lightDesigns,
+                  ),
+                ],
+                if (auto || _mapDark) ...[
+                  const SizedBox(height: 14),
+                  _styleStrip(
+                    colors,
+                    title: auto
+                        ? context.l10n.mapGroupDesignDark(provider.label)
+                        : context.l10n.mapGroupStyle(provider.label),
+                    designs: provider.darkDesigns,
+                  ),
+                ],
               ],
               if (provider.isCustom) ...[
                 const SizedBox(height: 14),
-                GroupedCardList<_ActionTile>(
+                GroupedCardList<_Row>(
                   title: context.l10n.mapGroupCustomSource,
-                  items: _customTiles(context),
-                  onTap: (tile) => tile.onTap,
-                  itemBuilder: (context, tile) => tile.child,
+                  items: _customRows(context),
+                  onTap: (row) => row.onTap,
+                  itemBuilder: (context, row) => row.child,
                 ),
               ],
               if (provider.needsKey ||
-                  provider.id == kCartoProviderId ||
-                  provider.isCustom) ...[
+                  provider.isCustom ||
+                  provider.id == kCartoProviderId) ...[
                 const SizedBox(height: 14),
-                GroupedCardList<_ActionTile>(
+                GroupedCardList<_Row>(
                   title: context.l10n.mapGroupKeys,
-                  items: _keyTiles(context),
-                  onTap: (tile) => tile.onTap,
-                  itemBuilder: (context, tile) => tile.child,
+                  items: _keyRows(context),
+                  onTap: (row) => row.onTap,
+                  itemBuilder: (context, row) => row.child,
                 ),
               ],
-              if (_settings.resolve(dark: _mapDark).retina ||
-                  provider.retina) ...[
+              if (config.retina || provider.retina) ...[
                 const SizedBox(height: 14),
-                GroupedCardList<_ActionTile>(
+                GroupedCardList<_Row>(
                   title: context.l10n.mapGroupTileDetail,
                   items: [
-                    _ActionTile(
-                      _switchTile(
-                        context,
-                        title: context.l10n.mapRetinaTiles,
-                        subtitle: context.l10n.mapRetinaTilesSubtitle,
-                        value: _settings.retina,
-                        onChanged: _settings.setRetina,
+                    _Row(
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              context.l10n.mapRetinaTiles,
+                              style: TextStyle(
+                                color: colors.textPrimary,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                          Switch(
+                            value: _settings.retina,
+                            onChanged: _settings.setRetina,
+                            activeTrackColor: colors.accent,
+                            materialTapTargetSize:
+                                MaterialTapTargetSize.shrinkWrap,
+                          ),
+                        ],
                       ),
                     ),
                   ],
-                  itemBuilder: (context, tile) => tile.child,
+                  itemBuilder: (context, row) => row.child,
                 ),
               ],
+              const SizedBox(height: 14),
+              GroupedCardList<_Row>(
+                title: context.l10n.mapGroupPinScan,
+                items: [
+                  _Row(
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            context.l10n.mapScanSubfolders,
+                            style: TextStyle(
+                              color: colors.textPrimary,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                        Switch(
+                          value: _settings.scanSubfolders,
+                          onChanged: _settings.setScanSubfolders,
+                          activeTrackColor: colors.accent,
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                itemBuilder: (context, row) => row.child,
+              ),
               const SizedBox(height: 20),
             ],
           ),
         );
       },
+    );
+  }
+}
+
+class _Row {
+  const _Row(this.child, [this.onTap]);
+
+  final Widget child;
+  final VoidCallback? onTap;
+}
+
+class _GroupTitle extends StatelessWidget {
+  const _GroupTitle(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 0, 4, 6),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: colors.textMuted,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
+/// An icon choice drawn like a style tile, so both pickers read the same way.
+class _ChoiceTile extends StatelessWidget {
+  const _ChoiceTile({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.colors,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final QAppColors colors;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            height: 52,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: selected ? colors.accent.withAlpha(24) : colors.background,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: selected ? colors.accent : colors.divider,
+                width: selected ? 2 : 1,
+              ),
+            ),
+            child: Icon(
+              icon,
+              size: 22,
+              color: selected ? colors.accent : colors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: selected ? colors.accent : colors.textSecondary,
+              fontSize: 11,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One base-map style: its own tile as the thumbnail, name underneath.
+class _StyleTile extends StatelessWidget {
+  const _StyleTile({
+    required this.label,
+    required this.url,
+    required this.missingKey,
+    required this.selected,
+    required this.colors,
+    required this.onTap,
+  });
+
+  final String label;
+  final String url;
+  final bool missingKey;
+  final bool selected;
+  final QAppColors colors;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    const size = 72.0;
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: SizedBox(
+        width: size,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Stack(
+              children: [
+                Container(
+                  width: size,
+                  height: size,
+                  clipBehavior: Clip.antiAlias,
+                  decoration: BoxDecoration(
+                    color: colors.background,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  foregroundDecoration: BoxDecoration(
+                    border: Border.all(
+                      color: selected ? colors.accent : colors.divider,
+                      width: selected ? 2 : 1,
+                    ),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: missingKey
+                      ? Icon(
+                          Icons.key_off_outlined,
+                          size: 24,
+                          color: colors.textMuted,
+                        )
+                      : Image.network(
+                          url,
+                          key: ValueKey(url),
+                          fit: BoxFit.cover,
+                          gaplessPlayback: true,
+                          errorBuilder: (_, _, _) => Icon(
+                            Icons.broken_image_outlined,
+                            size: 22,
+                            color: colors.textMuted,
+                          ),
+                          loadingBuilder: (context, child, progress) =>
+                              progress == null
+                              ? child
+                              : Center(
+                                  child: SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: colors.textMuted,
+                                    ),
+                                  ),
+                                ),
+                        ),
+                ),
+                if (selected)
+                  Positioned(
+                    right: 4,
+                    top: 4,
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: BoxDecoration(
+                        color: colors.accent,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.check,
+                        size: 12,
+                        color: colors.onAccent,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: selected ? colors.accent : colors.textSecondary,
+                fontSize: 11,
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

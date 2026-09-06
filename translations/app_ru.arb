@@ -592,6 +592,14 @@
   "@mapRetinaTiles": {
     "description": "Toggle: request double resolution tiles."
   },
+  "mapGroupPinScan": "Файлы на карте",
+  "@mapGroupPinScan": {
+    "description": "Heading of the group controlling which archive files the map reads."
+  },
+  "mapScanSubfolders": "Подпапки",
+  "@mapScanSubfolders": {
+    "description": "Toggle: read nested archive folders when collecting map pins."
+  },
   "mapRetinaTilesSubtitle": "Запрашивать тайлы @2x на экранах высокой плотности",
   "@mapRetinaTilesSubtitle": {
     "description": "Explanation under the Retina tiles toggle."

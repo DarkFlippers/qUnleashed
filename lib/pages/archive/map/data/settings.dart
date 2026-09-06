@@ -67,6 +67,7 @@ class MapSettings extends ChangeNotifier {
   static const String _prefCustomMaxZoom = 'map.tiles.custom.max_zoom';
   static const String _prefAutoCenter = 'map.follow.auto_center';
   static const String _prefTrackDevice = 'map.follow.track_device';
+  static const String _prefScanSubfolders = 'map.scan.subfolders';
 
   static String _designPref(String provider, bool dark) =>
       'map.tiles.design.$provider.${dark ? 'dark' : 'light'}';
@@ -88,6 +89,7 @@ class MapSettings extends ChangeNotifier {
   bool _retina = true;
   bool _autoCenter = false;
   bool _trackDevice = false;
+  bool _scanSubfolders = true;
 
   bool get loaded => _loaded;
   MapTileProvider get provider => _provider;
@@ -98,6 +100,7 @@ class MapSettings extends ChangeNotifier {
   bool get retina => _retina;
   bool get autoCenter => _autoCenter;
   bool get trackDevice => _trackDevice;
+  bool get scanSubfolders => _scanSubfolders;
 
   bool get hasEmbeddedKey => EmbeddedTileKey.available;
 
@@ -147,6 +150,7 @@ class MapSettings extends ChangeNotifier {
     _retina = prefs.getBool(_prefRetina) ?? true;
     _autoCenter = prefs.getBool(_prefAutoCenter) ?? false;
     _trackDevice = prefs.getBool(_prefTrackDevice) ?? false;
+    _scanSubfolders = prefs.getBool(_prefScanSubfolders) ?? true;
     _loaded = true;
     _loading = null;
     notifyListeners();
@@ -245,6 +249,14 @@ class MapSettings extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_prefTrackDevice, value);
+  }
+
+  Future<void> setScanSubfolders(bool value) async {
+    if (_scanSubfolders == value) return;
+    _scanSubfolders = value;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_prefScanSubfolders, value);
   }
 
   MapTileConfig resolve({required bool dark}) {

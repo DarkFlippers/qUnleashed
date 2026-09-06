@@ -15,6 +15,7 @@ import '../../../components/archive/parser.dart';
 import '../../../services/archive/storage.dart';
 import '../../../components/archive/category.dart';
 import '../../../components/archive/models/pin.dart';
+import 'data/settings.dart';
 
 enum MapLocationStatus {
   idle,
@@ -33,6 +34,8 @@ class MapToolController extends ChangeNotifier with WidgetsBindingObserver {
 
   final ArchiveStorage _storage;
   final FlipperClient _client;
+  final MapSettings _settings = MapSettings.instance;
+  bool _scanSubfolders = MapSettings.instance.scanSubfolders;
 
   bool _disposed = false;
 
@@ -74,6 +77,9 @@ class MapToolController extends ChangeNotifier with WidgetsBindingObserver {
     _connSub ??= _client.connectionStream.listen(_onConnectionChange);
     _deviceInfoSub ??= _client.deviceInfoUpdates.listen(_onDeviceInfo);
     _deviceLocSub ??= _client.flipperLocationStream().listen(_onDeviceLocation);
+    await _settings.load();
+    _scanSubfolders = _settings.scanSubfolders;
+    _settings.addListener(_onSettingsChanged);
     await loadFiles();
     await requestLocation();
   }
@@ -95,6 +101,14 @@ class MapToolController extends ChangeNotifier with WidgetsBindingObserver {
       case MapLocationStatus.notSupported:
         break;
     }
+  }
+
+  /// Only the scan mode matters here: everything else the settings hold is
+  /// about tiles, and rereading the archive for a style change would be waste.
+  void _onSettingsChanged() {
+    if (_disposed || _settings.scanSubfolders == _scanSubfolders) return;
+    _scanSubfolders = _settings.scanSubfolders;
+    loadFiles();
   }
 
   void _onDeviceLocation(GpsFix fix) {
@@ -140,7 +154,10 @@ class MapToolController extends ChangeNotifier with WidgetsBindingObserver {
         _loadError = l10n.mapNoSyncedFlipper;
         return;
       }
-      final entries = await _storage.listAll(deviceName);
+      final entries = await _storage.listAll(
+        deviceName,
+        includeSubfolders: _scanSubfolders,
+      );
       if (_disposed) return;
       final out = <MapPin>[];
       for (final entry in entries) {
@@ -483,6 +500,7 @@ class MapToolController extends ChangeNotifier with WidgetsBindingObserver {
   void dispose() {
     _disposed = true;
     WidgetsBinding.instance.removeObserver(this);
+    _settings.removeListener(_onSettingsChanged);
     _posSub?.cancel();
     _connSub?.cancel();
     _deviceInfoSub?.cancel();

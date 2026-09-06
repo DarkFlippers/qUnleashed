@@ -338,14 +338,13 @@ class ArchiveStorage {
     return out;
   }
 
-  /// Lists one of the category's [ArchiveCategory.flipperDirs], honouring the
-  /// category's recursive/sub-folder scan mode.
   Future<List<LocalKeyEntry>> _listDir(
     String deviceName,
     ArchiveCategory cat,
-    String flipperDir,
-  ) async {
-    if (cat.recursiveSearch) {
+    String flipperDir, {
+    bool? includeSubfolders,
+  }) async {
+    if (includeSubfolders ?? cat.recursiveSearch) {
       return _listCategoryRecursive(deviceName, cat, flipperDir);
     }
     final out = <LocalKeyEntry>[];
@@ -357,6 +356,7 @@ class ArchiveStorage {
         subFolder: '',
       ),
     );
+    if (includeSubfolders == false) return out;
     for (final sub in cat.subDirs) {
       out.addAll(
         await _listCategory(
@@ -370,12 +370,22 @@ class ArchiveStorage {
     return out;
   }
 
-  Future<List<LocalKeyEntry>> listAll(String deviceName) async {
+  Future<List<LocalKeyEntry>> listAll(
+    String deviceName, {
+    bool? includeSubfolders,
+  }) async {
     await resolveRootDir();
     final out = <LocalKeyEntry>[];
     for (final cat in ArchiveCategory.values) {
       for (final dir in cat.flipperDirs) {
-        out.addAll(await _listDir(deviceName, cat, dir));
+        out.addAll(
+          await _listDir(
+            deviceName,
+            cat,
+            dir,
+            includeSubfolders: includeSubfolders,
+          ),
+        );
       }
     }
     return out;

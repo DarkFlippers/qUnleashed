@@ -556,44 +556,9 @@
     "description": "Button that stores what was entered in a dialog."
   },
 
-  "mapKeyNeeded": "Needs a key",
-  "@mapKeyNeeded": {
-    "description": "Preview status: the chosen tile source requires an API key that is not set."
-  },
-
   "mapKeyBuiltIn": "Built-in key",
   "@mapKeyBuiltIn": {
     "description": "Preview status: tiles are fetched with the key shipped inside the app."
-  },
-
-  "mapKeyYours": "Your key",
-  "@mapKeyYours": {
-    "description": "Preview status: tiles are fetched with the key the user entered."
-  },
-
-  "mapKeyNotNeeded": "No key needed",
-  "@mapKeyNotNeeded": {
-    "description": "Preview status: the chosen tile source is free to use."
-  },
-
-  "mapTilesDark": "Dark tiles",
-  "@mapTilesDark": {
-    "description": "Preview line: the map is drawn with the dark tile design."
-  },
-
-  "mapTilesLight": "Light tiles",
-  "@mapTilesLight": {
-    "description": "Preview line: the map is drawn with the light tile design."
-  },
-
-  "mapMaxZoomOf": "max zoom {zoom}",
-  "@mapMaxZoomOf": {
-    "description": "Preview line: the deepest zoom level this tile source serves.",
-    "placeholders": {
-      "zoom": {
-        "type": "int"
-      }
-    }
   },
 
   "mapProviderKeyTitle": "{provider} key",
@@ -631,21 +596,6 @@
     "description": "Setting: the deepest zoom level to request from a custom tile source."
   },
 
-  "mapBuiltInCartoKey": "Built-in CARTO key",
-  "@mapBuiltInCartoKey": {
-    "description": "Row showing whether the app ships with a CARTO key. CARTO is a map provider name."
-  },
-
-  "mapBuiltInCartoKeyPresent": "Shipped with the app, works with CARTO tiles only",
-  "@mapBuiltInCartoKeyPresent": {
-    "description": "Explanation when the built-in CARTO key is present."
-  },
-
-  "mapBuiltInKeyMissing": "Missing in this build",
-  "@mapBuiltInKeyMissing": {
-    "description": "Explanation when the build carries no built-in key."
-  },
-
   "mapYourProviderKey": "Your {provider} key",
   "@mapYourProviderKey": {
     "description": "Row that opens the dialog for entering your own provider key.",
@@ -654,11 +604,6 @@
         "type": "String"
       }
     }
-  },
-
-  "mapKeyNotSetBuiltInUsed": "Not set, the built-in key is used",
-  "@mapKeyNotSetBuiltInUsed": {
-    "description": "Explanation when no personal key is set but a built-in one exists."
   },
 
   "mapKeyNotSet": "Not set",
@@ -731,9 +676,14 @@
     "description": "Toggle: request double resolution tiles."
   },
 
-  "mapRetinaTilesSubtitle": "Ask for @2x tiles on high density screens",
-  "@mapRetinaTilesSubtitle": {
-    "description": "Explanation under the Retina tiles toggle."
+  "mapGroupPinScan": "Files on the map",
+  "@mapGroupPinScan": {
+    "description": "Heading of the group controlling which archive files the map reads."
+  },
+
+  "mapScanSubfolders": "Subfolders",
+  "@mapScanSubfolders": {
+    "description": "Toggle: read nested archive folders when collecting map pins."
   },
 
   "fliblerChannelRelease": "Release",
@@ -2249,6 +2199,21 @@
   "firmwareErrorObWriteMask": "Invalid or missing OB write mask in update.fuf",
   "@firmwareErrorObWriteMask": {
     "description": "Error about a broken option-bytes field of the firmware manifest. Keep the field name as is."
+  },
+
+  "firmwareErrorDfuDriverMissing": "The DFU bootloader has no WinUSB driver. Windows Update usually installs the “STM32 Bootloader” driver on its own; otherwise install it with STM32CubeProgrammer or Zadig, then retry",
+  "@firmwareErrorDfuDriverMissing": {
+    "description": "Windows-only recovery error: libusb cannot open the STM32 bootloader because no WinUSB-class driver is bound to it. Keep the product names as is."
+  },
+
+  "firmwareErrorDfuAccessDenied": "Access to the DFU device was denied — close other programs that use it (qFlipper, STM32CubeProgrammer) and retry",
+  "@firmwareErrorDfuAccessDenied": {
+    "description": "Recovery error: the OS refused to open the STM32 bootloader, usually because another program holds it."
+  },
+
+  "firmwareErrorDfuPermissionDenied": "USB permission for the DFU device was declined. Allow access when asked (tick “use by default” so it is not asked again on every reboot) and retry",
+  "@firmwareErrorDfuPermissionDenied": {
+    "description": "Android-only recovery error: the user declined the system USB permission dialog. The device reboots several times during recovery, so the dialog can appear again unless the default is remembered."
   },
 
   "deviceErrorNotFound": "Device not found: {name}",
@@ -6894,5 +6859,15 @@
   "paintImportUpToDate": "Animations already match the device",
   "@paintImportUpToDate": {
     "description": "Shown after an import that transferred nothing because every file matched by md5."
+  },
+  "mapGroupStyle": "{provider} style",
+  "@mapGroupStyle": {
+    "description": "Header of the base-map style strip when only one theme applies.",
+    "placeholders": {
+      "provider": {
+        "type": "String"
+      }
+    }
   }
+
 }
