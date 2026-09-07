@@ -13,13 +13,9 @@ inputs:
     default: "3.47.1"
   swift-package-manager:
     description: >
-      Set to "false" on any job that builds for macOS or iOS. Firebase pulls grpc
-      as an SPM binary target (grpc.zip from dl.google.com), which flakes with
-      "network connection was lost" on macOS runners. Both ios/ and macos/ have
-      CocoaPods set up, so those builds go through pods instead. It is settled
-      here because this action runs `pub get` itself, which leaves a caller no
-      seam between install and fetch. Any value other than true or false is an
-      error rather than a silent skip.
+      Set to "false" on any job that builds for macOS or iOS. pubspec.yaml now
+      carries the same setting for the project, so this is belt and braces at
+      the runner level until one macOS release confirms the project key holds.
     required: false
     default: "true"
 
@@ -49,7 +45,6 @@ runs:
             exit 1
             ;;
         esac
-        flutter config --list | grep -i "swift-package-manager" || true
 
     - name: Install Flutter dependencies
       shell: bash

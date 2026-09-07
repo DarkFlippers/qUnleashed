@@ -1,34 +1,25 @@
 #!/usr/bin/env bash
-# Derives the app version from the release tag, so the build jobs and the
-# pubspec sync job cannot disagree about what a tag means.
+# Derives the app version from the release tag, so no two jobs can disagree
+# about what a tag means.
 #
-#   derive_version.sh                 # append the values to $GITHUB_ENV
+#   derive_version.sh                 # write to $GITHUB_ENV and $GITHUB_OUTPUT
 #   derive_version.sh --print         # write "<name> <code>" to stdout instead
-#   derive_version.sh --print 0.13.0  # ... for an explicit tag, for tests
+#   derive_version.sh --print <tag>   # ... for an explicit tag
 #
-# Without an explicit tag the value comes from $GITHUB_REF_NAME.
-#
-# --print is a production contract, not a test affordance: the pubspec sync job
-# reads its stdout with `read`, which cannot tell a diagnostic line from the
-# answer. Everything except the single result line must go to stderr.
-#
-# Caveat on provenance: the sync job checks out the default branch, so it runs
-# main's copy of this script while the build jobs run the tag's. They agree as
-# long as this file has not changed between the tagged commit and the release.
+# Without an explicit tag the value comes from $GITHUB_REF_NAME. --print exists
+# for the tests; jobs consume the values through the environment or through the
+# step output, so nothing in the workflow depends on this script's stdout.
 #
 # QU_BUILD_SERVER_URL and QU_BUILD_SERVER_KEY are folded into the Flutter build
-# arguments only when *both* are set, since a URL without a key authenticates
-# nothing. QU_CARTO_KEY is independent. Leaving QU_CARTO_KEY unset ships a build
-# whose basemap falls back to the key the user supplies; leaving the build-server
-# pair unset does not disable that feature, because the app carries a default
-# address (see remote_build_service.dart) - it only makes server builds fail.
+# arguments only when both are set, since a URL without a key authenticates
+# nothing. QU_CARTO_KEY is independent.
 set -Eeuo pipefail
 
 print_only=0
-if [[ "${1:-}" == "--print" ]]; then
-  print_only=1
-  shift
-fi
+case "${1:-}" in
+  --print) print_only=1; shift ;;
+  --*) echo "Usage: $0 [--print] [tag]" >&2; exit 2 ;;
+esac
 
 tag="${1:-${GITHUB_REF_NAME:-}}"
 if [[ -z "$tag" ]]; then
@@ -68,30 +59,40 @@ fi
 
 # The build scripts re-split QUNLEASHED_FLUTTER_BUILD_ARGS on whitespace, so a
 # secret carrying a newline or a space would silently drop every argument after
-# it - or add one. Fail here instead of shipping a release missing a key.
+# it - or add one. Failing here beats shipping a release missing a key. This
+# guards one producer of a string transport that cannot carry whitespace at all;
+# see the issue on replacing that transport.
 for name in QU_BUILD_SERVER_URL QU_BUILD_SERVER_KEY QU_CARTO_KEY; do
-  value="${!name:-}"
-  if [[ -n "$value" && "$value" =~ [[:space:]] ]]; then
+  if [[ "${!name:-}" =~ [[:space:]] ]]; then
     echo "::error::$name contains whitespace, which would corrupt the build arguments." >&2
     exit 1
   fi
 done
 
-build_args="--build-name=$version_name --build-number=$version_code"
-build_args="$build_args --dart-define=QUNLEASHED_RELEASE_TAG=$tag"
+args=(--build-name="$version_name" --build-number="$version_code")
+args+=(--dart-define=QUNLEASHED_RELEASE_TAG="$tag")
 if [[ -n "${QU_BUILD_SERVER_URL:-}" && -n "${QU_BUILD_SERVER_KEY:-}" ]]; then
-  build_args="$build_args --dart-define=QU_BUILD_SERVER_URL=$QU_BUILD_SERVER_URL"
-  build_args="$build_args --dart-define=QU_BUILD_SERVER_KEY=$QU_BUILD_SERVER_KEY"
+  args+=(--dart-define=QU_BUILD_SERVER_URL="$QU_BUILD_SERVER_URL")
+  args+=(--dart-define=QU_BUILD_SERVER_KEY="$QU_BUILD_SERVER_KEY")
 fi
 if [[ -n "${QU_CARTO_KEY:-}" ]]; then
-  build_args="$build_args --dart-define=QU_CARTO_KEY=$QU_CARTO_KEY"
+  args+=(--dart-define=QU_CARTO_KEY="$QU_CARTO_KEY")
 fi
 
 {
   echo "QUNLEASHED_VERSION_NAME=$version_name"
   echo "QUNLEASHED_VERSION_CODE=$version_code"
-  echo "QUNLEASHED_FLUTTER_BUILD_ARGS=$build_args"
+  echo "QUNLEASHED_FLUTTER_BUILD_ARGS=${args[*]}"
 } >> "$GITHUB_ENV"
+
+# Also published as a step output so a later job can reuse the version without
+# re-deriving it from its own checkout of this script.
+if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
+  {
+    echo "version_name=$version_name"
+    echo "version_code=$version_code"
+  } >> "$GITHUB_OUTPUT"
+fi
 
 echo "Version name: $version_name" >&2
 echo "Version code: $version_code" >&2
