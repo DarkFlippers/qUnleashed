@@ -218,9 +218,6 @@ void main() {
                 layout.wide
                     ? RemoteActionBar(
                         size: layout.actionsSize,
-                        showSession: false,
-                        sessionBusy: false,
-                        onRequestSession: () {},
                         gifState: state,
                         gifElapsedMs: 12300,
                         justUnlocked: false,

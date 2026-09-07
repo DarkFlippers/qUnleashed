@@ -25,7 +25,7 @@ Future<bool> hasFapIcon(String appId) async {
   if (id.isEmpty) return false;
   try {
     final dir = await fapIconRepoDirectory();
-    return _fapIconRepoFile(dir, id).exists();
+    return await _fapIconRepoFile(dir, id).exists();
   } catch (_) {
     return false;
   }
@@ -38,7 +38,7 @@ Future<Uint8List?> readFapIcon(String appId) async {
     final dir = await fapIconRepoDirectory();
     final file = _fapIconRepoFile(dir, id);
     if (!await file.exists()) return null;
-    return file.readAsBytes();
+    return await file.readAsBytes();
   } catch (_) {
     return null;
   }

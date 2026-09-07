@@ -236,9 +236,11 @@ class AtpArchive {
         final start = parts.indexWhere((e) => e.startsWith('artifacts-'));
         final relative = parts.sublist(start >= 0 ? start + 1 : 0);
         if (relative.isEmpty) continue;
-        final out = io.File(
-          pathJoin([dir.path, ...relative.map(sanitizePathSegment)]),
-        );
+        // The pack is a third-party download, so an entry that points out of
+        // the pack directory is dropped rather than written.
+        final outPath = resolveArchivePath(dir.path, relative.join('/'));
+        if (outPath == null) continue;
+        final out = io.File(outPath);
         await out.parent.create(recursive: true);
         await out.writeAsBytes(file.readBytes() ?? const [], flush: true);
         written++;

@@ -83,33 +83,4 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 50));
     expect(client.startStreamCalls, 1, reason: 'nothing automatic behind it');
   });
-
-  test('requestSession re-opens the stream and reports its progress', () async {
-    final client = _FakeClient()..failCalls = true;
-    final session = RemoteSession(client: client);
-    addTearDown(session.dispose);
-
-    await Future<void>.delayed(Duration.zero);
-    expect(session.sessionBusy, isFalse);
-
-    final future = session.requestSession();
-    expect(session.sessionBusy, isTrue, reason: 'drives the spinner');
-    await future;
-
-    expect(session.sessionBusy, isFalse);
-    expect(client.startStreamCalls, 2, reason: 'asked again on demand');
-  });
-
-  test('a concurrent request is ignored while one is in flight', () async {
-    final client = _FakeClient();
-    final session = RemoteSession(client: client);
-    addTearDown(session.dispose);
-
-    await Future<void>.delayed(Duration.zero);
-    final first = session.requestSession();
-    final second = session.requestSession();
-    await Future.wait([first, second]);
-
-    expect(client.startStreamCalls, 2, reason: 'the open plus one request');
-  });
 }

@@ -6,6 +6,7 @@ import 'dart:isolate';
 import 'package:archive/archive_io.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../../../components/path.dart';
 import '../../../services/http/app_http.dart';
 import '../../../services/storage/paths.dart';
 
@@ -221,10 +222,18 @@ class IrLibLocalRepo {
         var name = entry.name.replaceAll('\\', '/');
         final slash = name.indexOf('/');
         if (slash < 0) continue;
+        // The GitHub zipball wraps everything in one <repo>-<branch> folder,
+        // which is not part of the library layout.
         name = name.substring(slash + 1);
         if (name.isEmpty) continue;
-        final outPath =
-            '${args.rootPath}${args.sep}${name.replaceAll('/', args.sep)}';
+        // The archive is a third-party download, so an entry that points out
+        // of the library root is dropped rather than written.
+        final outPath = resolveArchivePath(
+          args.rootPath,
+          name,
+          separator: args.sep,
+        );
+        if (outPath == null) continue;
         if (entry.isFile) {
           final file = io.File(outPath);
           file.parent.createSync(recursive: true);

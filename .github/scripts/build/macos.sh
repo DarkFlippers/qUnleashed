@@ -109,12 +109,18 @@ cat > "$STAGING_DIR/readme.txt" <<'INSTRUCTIONS'
 qUnleashed for macOS
 ====================
 
-qUnleashed uses Apple's official application signing and notarization process.
-Temporary certification or notarization issues may occasionally cause macOS to
-place the application in quarantine or report that it is damaged.
+This build is NOT signed with an Apple Developer ID and is NOT notarized by
+Apple. macOS quarantines it on download and will refuse to open it, usually
+reporting that the application is damaged. That message is expected here and
+does not mean the download failed.
+
+Clearing the quarantine flag is therefore required to run this build. Do it
+only for a DMG you downloaded yourself from the official releases page:
+
+  https://github.com/DarkFlippers/qUnleashed/releases
 
 1. Drag qUnleashed.app to the Applications folder.
-2. If macOS prevents the application from opening, open Terminal and run:
+2. Open Terminal and run:
 
    sudo xattr -dr com.apple.quarantine "/Applications/qUnleashed.app"
    open "/Applications/qUnleashed.app"
@@ -143,13 +149,18 @@ does not disable Gatekeeper or other macOS security protections system-wide.
 qUnleashed для macOS
 ====================
 
-qUnleashed использует официальный процесс подписи и нотаризации приложений
-Apple. Иногда временные сложности с сертификацией или нотаризацией могут
-привести к тому, что macOS поместит приложение в карантин или сообщит, что оно
-повреждено.
+Эта сборка НЕ подписана Apple Developer ID и НЕ прошла нотаризацию Apple.
+macOS помещает её в карантин при загрузке и откажется открывать приложение,
+обычно с сообщением о том, что оно повреждено. Здесь это ожидаемое поведение,
+а не признак сбоя загрузки.
+
+Поэтому для запуска этой сборки необходимо снять атрибут карантина. Делайте
+это только для DMG, который вы сами скачали со страницы официальных релизов:
+
+  https://github.com/DarkFlippers/qUnleashed/releases
 
 1. Перетащите qUnleashed.app в папку Applications.
-2. Если macOS не позволяет открыть приложение, запустите Terminal и выполните:
+2. Запустите Terminal и выполните:
 
    sudo xattr -dr com.apple.quarantine "/Applications/qUnleashed.app"
    open "/Applications/qUnleashed.app"

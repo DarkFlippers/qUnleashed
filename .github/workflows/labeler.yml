@@ -1,5 +1,14 @@
 name: Labeler
 
+# pull_request_target runs against the base repository, so this workflow can
+# label pull requests opened from forks. It also means the job runs with a
+# write-scoped token in the context of the target repo.
+#
+# Do NOT add actions/checkout, and do NOT run anything from the pull request
+# (scripts, build steps, dependency installs) in this workflow. Only the
+# labeler, which reads changed paths through the API, may run here. Anything
+# that needs the contributor's code belongs in ci.yml, which is triggered by
+# pull_request and has no write permissions.
 on:
   pull_request_target:
     types: [opened, synchronize, reopened]
@@ -18,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Apply labels
-        uses: actions/labeler@v5
+        uses: actions/labeler@8558fd74291d67161a8a78ce36a881fa63b766a9 # v5
         with:
           configuration-path: .github/labeler.yml
           sync-labels: false

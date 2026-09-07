@@ -131,7 +131,7 @@ class AppHttp {
       if (res.statusCode == io.HttpStatus.notModified && cached != null) {
         await res.drain<void>();
         if (file != null) await cached.refresh(file);
-        return _decodeCachedBody(cached.body);
+        return await _decodeCachedBody(cached.body);
       }
       final text = await res.transform(utf8.decoder).join();
       if (res.statusCode < 200 || res.statusCode >= 300) {
@@ -147,7 +147,7 @@ class AppHttp {
           await entry.write(file);
         } catch (_) {}
       }
-      return _decodeCachedBody(text);
+      return await _decodeCachedBody(text);
     } catch (_) {
       if (cached != null) return _decodeCachedBody(cached.body);
       rethrow;

@@ -299,7 +299,7 @@ class ArchiveStorage {
       await resolveRootDir();
       final file = _fapIconFile(deviceName, remotePath);
       if (!await file.exists()) return null;
-      return file.readAsBytes();
+      return await file.readAsBytes();
     } catch (_) {
       return null;
     }
