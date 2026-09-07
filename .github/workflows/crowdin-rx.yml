@@ -22,6 +22,15 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
 
+      # A pull request opened with GITHUB_TOKEN starts no workflow runs, so a
+      # translation would reach main with no analyze or test behind it - and a
+      # malformed .arb breaks gen-l10n for every later build. L10N_PR_TOKEN is
+      # a token belonging to an account, which does trigger them.
+      - name: Check the pull request token
+        if: ${{ !secrets.L10N_PR_TOKEN }}
+        run: |
+          echo "::warning::L10N_PR_TOKEN is not set, so this pull request will run no checks. See issue #40."
+
       - name: Download translations
         uses: crowdin/github-action@v2
         with:
@@ -35,7 +44,7 @@ jobs:
           pull_request_base_branch_name: main
           commit_message: "Update translations from Crowdin"
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.L10N_PR_TOKEN || secrets.GITHUB_TOKEN }}
           CROWDIN_PROJECT_ID: ${{ secrets.CROWDIN_PROJECT_ID }}
           CROWDIN_PERSONAL_TOKEN: ${{ secrets.CROWDIN_PERSONAL_TOKEN }}
 
