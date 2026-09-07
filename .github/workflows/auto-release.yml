@@ -4,12 +4,27 @@ on:
   push:
     tags:
       - "*"
+  # Builds every platform without publishing anything, so a change to the build
+  # path can be tried without cutting a release. It does NOT exercise publishing:
+  # artifact merging, SHA256SUMS, the release globs and the push notification all
+  # live in `publish`, which a dispatch never reaches.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Version tag to build as, e.g. beta-0.13.0. Nothing is published."
+        required: true
+        type: string
 
+# Read by default: the build jobs never write anything outside the run. The two
+# jobs that do are granted it individually, so a dispatch is structurally unable
+# to publish rather than merely gated off it.
 permissions:
-  contents: write
+  contents: read
 
+# A dispatch can be started from a tag ref, which would otherwise share a group
+# with that tag's release push and cancel it.
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -17,6 +32,9 @@ jobs:
     name: Check GitHub server
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
       - name: Cancel outside github.com
         if: ${{ github.server_url != 'https://github.com' }}
         run: |
@@ -26,6 +44,10 @@ jobs:
       - name: Confirm github.com
         if: ${{ github.server_url == 'https://github.com' }}
         run: echo "Running on ${{ github.server_url }}"
+
+      - name: Validate the dispatched tag
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        run: .github/scripts/derive_version.sh --print -- "${{ inputs.tag }}"
 
   build-android-linux:
     name: Build Android and Linux releases
@@ -69,7 +91,7 @@ jobs:
           QU_BUILD_SERVER_URL: ${{ secrets.QU_BUILD_SERVER_URL }}
           QU_BUILD_SERVER_KEY: ${{ secrets.QU_BUILD_SERVER_KEY }}
           QU_CARTO_KEY: ${{ secrets.QU_CARTO_KEY }}
-        run: .github/scripts/derive_version.sh
+        run: .github/scripts/derive_version.sh -- "${{ inputs.tag }}"
 
       - name: Configure Android signing
         env:
@@ -95,6 +117,19 @@ jobs:
       - name: Build Android release APKs
         run: .github/scripts/build/android.sh
 
+      - name: Note what a dispatch does not exercise
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          {
+            echo "## Dispatch build - nothing was published"
+            echo "Built as \`${{ inputs.tag }}\`. This run did NOT exercise:"
+            echo "- artifact merging, SHA256SUMS, or the GitHub release"
+            echo "- release notes and the asset globs"
+            echo "- the push notification, or the pubspec bump on the default branch"
+            echo ""
+            echo "Artifacts carry release filenames and the release key. Do not promote them."
+          } >> "$GITHUB_STEP_SUMMARY"
+
       # Existence was the only thing checked before this. An APK with no
       # libapp.so builds green, installs, and dies at launch.
       - name: Verify Android APKs
@@ -116,6 +151,9 @@ jobs:
             dist/qunleashed_*_android_*.apk
             dist/qunleashed_*_linux_x64
           if-no-files-found: error
+          # A dispatch build carries release filenames and the release key.
+          # Keep it briefly so it cannot be mistaken for a published asset.
+          retention-days: ${{ github.event_name == 'workflow_dispatch' && 1 || 90 }}
 
   build-windows:
     name: Build Windows release
@@ -145,7 +183,7 @@ jobs:
           QU_BUILD_SERVER_URL: ${{ secrets.QU_BUILD_SERVER_URL }}
           QU_BUILD_SERVER_KEY: ${{ secrets.QU_BUILD_SERVER_KEY }}
           QU_CARTO_KEY: ${{ secrets.QU_CARTO_KEY }}
-        run: .github/scripts/derive_version.sh
+        run: .github/scripts/derive_version.sh -- "${{ inputs.tag }}"
 
       - name: Build Windows raw ZIP and packaged EXE
         shell: pwsh
@@ -164,6 +202,9 @@ jobs:
             dist/qunleashed_*_windows_x64_raw.zip
             dist/qunleashed_*_windows_x64.exe
           if-no-files-found: error
+          # A dispatch build carries release filenames and the release key.
+          # Keep it briefly so it cannot be mistaken for a published asset.
+          retention-days: ${{ github.event_name == 'workflow_dispatch' && 1 || 90 }}
 
   build-macos:
     name: Build macOS and iOS releases
@@ -204,7 +245,7 @@ jobs:
           QU_BUILD_SERVER_URL: ${{ secrets.QU_BUILD_SERVER_URL }}
           QU_BUILD_SERVER_KEY: ${{ secrets.QU_BUILD_SERVER_KEY }}
           QU_CARTO_KEY: ${{ secrets.QU_CARTO_KEY }}
-        run: .github/scripts/derive_version.sh
+        run: .github/scripts/derive_version.sh -- "${{ inputs.tag }}"
 
       - name: Install macOS build dependencies
         run: brew install automake libtool
@@ -223,6 +264,9 @@ jobs:
             dist/qunleashed_*_macos_*.dmg
             dist/qunleashed_*_ios_*.ipa
           if-no-files-found: error
+          # A dispatch build carries release filenames and the release key.
+          # Keep it briefly so it cannot be mistaken for a published asset.
+          retention-days: ${{ github.event_name == 'workflow_dispatch' && 1 || 90 }}
 
   publish:
     name: Publish GitHub release
@@ -230,7 +274,10 @@ jobs:
       - build-android-linux
       - build-macos
       - build-windows
-    if: ${{ github.server_url == 'https://github.com' }}
+    # Creates the GitHub release, so only ever for a tag.
+    if: ${{ startsWith(github.ref, 'refs/tags/') }}
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -314,10 +361,28 @@ jobs:
           fi
           python .github/scripts/notify_push.py "$PUSH_TOPIC" "$PUSH_TITLE" "$PUSH_BODY"
 
+  assert-published:
+    name: Assert the release published
+    needs: publish
+    # `if:` skips do not fail a run, so a tag push that quietly produced no
+    # release would otherwise be green - the worst outcome available here.
+    if: ${{ always() && startsWith(github.ref, 'refs/tags/') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fail if publish did not run
+        if: ${{ needs.publish.result != 'success' }}
+        run: |
+          echo "::error::Tag push finished without publishing (publish: ${{ needs.publish.result }})."
+          exit 1
+
   sync-version:
     name: Sync pubspec version with tag
     needs: [publish, build-android-linux]
-    if: ${{ github.server_url == 'https://github.com' }}
+    # Pushes to the default branch, so only ever for a tag.
+    if: ${{ startsWith(github.ref, 'refs/tags/') }}
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     timeout-minutes: 10
 

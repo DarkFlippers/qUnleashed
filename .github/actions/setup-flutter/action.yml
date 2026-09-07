@@ -31,7 +31,7 @@ runs:
 
     # Always runs and always reports, so a mistyped input cannot leave a macOS
     # build silently on SPM - the failure it would cause surfaces far from here,
-    # in a release pipeline that cannot be dry-run.
+    # in a release pipeline whose publish path only runs on a tag.
     - name: Configure Swift Package Manager
       shell: bash
       env:

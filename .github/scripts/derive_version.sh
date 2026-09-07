@@ -2,13 +2,19 @@
 # Derives the app version from the release tag, so no two jobs can disagree
 # about what a tag means.
 #
-#   derive_version.sh                 # write to $GITHUB_ENV and $GITHUB_OUTPUT
-#   derive_version.sh --print         # write "<name> <code>" to stdout instead
-#   derive_version.sh --print <tag>   # ... for an explicit tag
+#   derive_version.sh                    # write to $GITHUB_ENV and $GITHUB_OUTPUT
+#   derive_version.sh -- <tag>           # ... for an explicit tag
+#   derive_version.sh --print [--] <tag> # write "<name> <code>" to stdout instead
 #
-# Without an explicit tag the value comes from $GITHUB_REF_NAME. --print exists
-# for the tests; jobs consume the values through the environment or through the
-# step output, so nothing in the workflow depends on this script's stdout.
+# Pass a caller-supplied tag after `--`. The release workflow does, because on a
+# tag push `${{ inputs.tag }}` expands to an empty argument and on a dispatch it
+# is whatever an operator typed - without the separator, a tag of `--print`
+# would take the print arm, write nothing to $GITHUB_ENV and exit 0, and the
+# build would silently fall back to the pubspec version with no dart-defines.
+#
+# An empty or absent tag falls back to $GITHUB_REF_NAME. --print exists for the
+# tests; jobs consume the values through the environment or the step output, so
+# nothing in the workflow depends on this script's stdout.
 #
 # QU_BUILD_SERVER_URL and QU_BUILD_SERVER_KEY are folded into the Flutter build
 # arguments only when both are set, since a URL without a key authenticates
@@ -18,8 +24,10 @@ set -Eeuo pipefail
 print_only=0
 case "${1:-}" in
   --print) print_only=1; shift ;;
-  --*) echo "Usage: $0 [--print] [tag]" >&2; exit 2 ;;
+  --) shift ;;
+  --*) echo "Usage: $0 [--print] [--] [tag]" >&2; exit 2 ;;
 esac
+if [[ "${1:-}" == "--" ]]; then shift; fi
 
 tag="${1:-${GITHUB_REF_NAME:-}}"
 if [[ -z "$tag" ]]; then

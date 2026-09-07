@@ -70,6 +70,12 @@ got="$(run GITHUB_REF_NAME=beta-0.11.2 bash "$DERIVE" --print || true)"
 [[ "$got" == "0.11.2 11002" ]] && pass "--print reads GITHUB_REF_NAME" \
   || fail "--print GITHUB_REF_NAME fallback -> '$got'"
 
+# On a tag push the workflow passes "${{ inputs.tag }}", which expands to an
+# empty argument - it must fall back rather than be read as a tag.
+got="$(run GITHUB_REF_NAME=beta-0.11.2 bash "$DERIVE" --print "" || true)"
+[[ "$got" == "0.11.2 11002" ]] && pass "an empty tag argument falls back" \
+  || fail "empty tag argument -> '$got'"
+
 # --- $GITHUB_ENV / $GITHUB_OUTPUT mode --------------------------------------
 
 echo "derive_version.sh (workflow mode)"
@@ -112,6 +118,24 @@ fi
 refutes "a secret with a newline" run_env GITHUB_REF_NAME=beta-0.11.2 QU_CARTO_KEY="$(printf 'a\nb')"
 refutes "a secret with a space"   run_env GITHUB_REF_NAME=beta-0.11.2 QU_CARTO_KEY="a b"
 refutes "a missing GITHUB_ENV"    run GITHUB_REF_NAME=beta-0.11.2 bash "$DERIVE"
+
+# A dispatch passes an explicit tag while GITHUB_REF_NAME is a branch that the
+# version regex would reject. The argument has to win, and it has to reach
+# $GITHUB_ENV - the push path only ever exercises the fallback.
+out="$TMP/env"; step="$TMP/out"; : > "$out"; : > "$step"
+if run GITHUB_ENV="$out" GITHUB_OUTPUT="$step" GITHUB_REF_NAME=main \
+     bash "$DERIVE" -- beta-0.13.0 >/dev/null; then
+  body="$(cat "$out" "$step")"
+  has "an explicit tag beats the branch ref" "QUNLEASHED_VERSION_NAME=0.13.0"
+  has "and reaches the step output"          "version_code=13000"
+else
+  fail "an explicit tag in workflow mode exited non-zero"
+fi
+
+# The tag is passed after `--` so operator text cannot land in the option slot.
+refutes "a tag of --print is not read as a flag" \
+        run GITHUB_ENV="$TMP/env2" GITHUB_REF_NAME=beta-0.13.0 \
+        bash "$DERIVE" -- --print
 
 if (( failures )); then
   echo "$failures failure(s)" >&2
