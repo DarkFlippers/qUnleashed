@@ -279,6 +279,9 @@ jobs:
           prerelease: ${{ steps.channel.outputs.prerelease }}
           make_latest: ${{ steps.channel.outputs.make_latest }}
           generate_release_notes: true
+          # Defaults to false, which would publish a release quietly missing an
+          # asset - including SHA256SUMS itself.
+          fail_on_unmatched_files: true
           overwrite_files: true
           files: |
             dist/qunleashed_*_android_*.apk

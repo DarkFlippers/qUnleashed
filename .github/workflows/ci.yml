@@ -25,9 +25,9 @@ jobs:
         with:
           submodules: recursive
 
-      # Pure bash, and needs neither Flutter nor the Firebase stub. It runs first
-      # so a broken setup cannot mask a regression in the release version maths,
-      # which auto-release.yml can only exercise on a real tag push.
+      # Both are pure bash and need neither Flutter nor the Firebase stub. They
+      # run first so a broken setup cannot mask a regression in release logic
+      # that auto-release.yml can only exercise on a real tag push.
       - name: Test the release version derivation
         run: .github/scripts/derive_version_test.sh
 
