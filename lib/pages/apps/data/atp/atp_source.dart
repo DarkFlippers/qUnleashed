@@ -175,6 +175,9 @@ class AtpArchive {
     void Function(int received, int? total)? onProgress,
   }) async {
     final file = await fapFile(entry, tag);
+    if (file == null) {
+      throw StateError('"${entry.archivePath}" is not a path the pack can hold');
+    }
     if (!await file.exists()) {
       final key = '$tag/${entry.pack}';
       await (_unpacking[key] ??= _unpack(entry.pack, url, tag, onProgress)
@@ -199,18 +202,13 @@ class AtpArchive {
     );
   }
 
-  Future<io.File> fapFile(AtpEntry entry, String tag) async {
+  /// Where [_unpack] would have written this entry, resolved the same way, so
+  /// the reader never looks somewhere the writer could not put a file.
+  /// `null` when the entry names no path the unpacker would accept.
+  Future<io.File?> fapFile(AtpEntry entry, String tag) async {
     final dir = await _packDirectory(entry.pack, tag);
-    return io.File(
-      pathJoin([
-        dir.path,
-        ...entry.folder
-            .split('/')
-            .where((e) => e.isNotEmpty)
-            .map(sanitizePathSegment),
-        '${entry.appId}.fap',
-      ]),
-    );
+    final path = resolveArchivePath(dir.path, entry.archivePath);
+    return path == null ? null : io.File(path);
   }
 
   Future<void> _unpack(
@@ -232,13 +230,14 @@ class AtpArchive {
       var written = 0;
       for (final file in archive.files) {
         if (!file.isFile || !file.name.endsWith('.fap')) continue;
-        final parts = file.name.split('/').where((e) => e.isNotEmpty).toList();
+        final parts = file.name.split('/');
         final start = parts.indexWhere((e) => e.startsWith('artifacts-'));
-        final relative = parts.sublist(start >= 0 ? start + 1 : 0);
-        if (relative.isEmpty) continue;
         // The pack is a third-party download, so an entry that points out of
         // the pack directory is dropped rather than written.
-        final outPath = resolveArchivePath(dir.path, relative.join('/'));
+        final outPath = resolveArchivePath(
+          dir.path,
+          parts.sublist(start >= 0 ? start + 1 : 0).join('/'),
+        );
         if (outPath == null) continue;
         final out = io.File(outPath);
         await out.parent.create(recursive: true);

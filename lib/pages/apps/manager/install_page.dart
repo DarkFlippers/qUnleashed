@@ -143,7 +143,7 @@ class _AtpInstallPageState extends State<AtpInstallPage> {
   Future<FapInfo?> _readFap(AtpEntry entry) async {
     try {
       final file = await AtpArchive.instance.fapFile(entry, _atp.tag);
-      if (!await file.exists()) return null;
+      if (file == null || !await file.exists()) return null;
       return FapInfo.parse(await file.readAsBytes());
     } catch (_) {
       return null;

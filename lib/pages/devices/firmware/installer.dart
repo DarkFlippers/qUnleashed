@@ -270,6 +270,9 @@ class FirmwareInstaller {
       if (!f.isFile) continue;
       final parts = f.name.split('/').where((p) => p.isNotEmpty).toList();
       if (parts.length < 2) continue;
+      // The archive root is later joined onto `/ext/update` as a directory on
+      // the device, so a relative segment here would walk out of it.
+      if (parts.first == '.' || parts.first == '..') continue;
       dirName ??= parts.first;
       if (parts.first != dirName) continue;
       final basename = parts.last;

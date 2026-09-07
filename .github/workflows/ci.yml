@@ -11,7 +11,7 @@ permissions:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   analyze:
@@ -36,15 +36,10 @@ jobs:
         run: flutter pub get
 
       # firebase_options.dart is generated, gitignored and restored from a
-      # secret only for releases. A placeholder keeps analysis and tests
-      # working on forks, where no secret is available.
+      # secret only for releases. CI never restores the real config, so the
+      # placeholder is always written, fork or not.
       - name: Stub the Firebase configuration
         run: .github/scripts/stub_firebase_config.sh
-
-      # lib/services/localization/gen/ is gitignored, so the localization
-      # classes have to be generated before anything references them.
-      - name: Generate localizations
-        run: flutter gen-l10n
 
       - name: Analyze
         run: flutter analyze

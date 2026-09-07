@@ -219,18 +219,9 @@ class IrLibLocalRepo {
       send.send(_UnpackProgress(extracted, totalFiles, false));
 
       for (final entry in archive.files) {
-        var name = entry.name.replaceAll('\\', '/');
-        final slash = name.indexOf('/');
-        if (slash < 0) continue;
-        // The GitHub zipball wraps everything in one <repo>-<branch> folder,
-        // which is not part of the library layout.
-        name = name.substring(slash + 1);
-        if (name.isEmpty) continue;
-        // The archive is a third-party download, so an entry that points out
-        // of the library root is dropped rather than written.
-        final outPath = resolveArchivePath(
+        final outPath = resolveWrappedArchivePath(
           args.rootPath,
-          name,
+          entry.name,
           separator: args.sep,
         );
         if (outPath == null) continue;

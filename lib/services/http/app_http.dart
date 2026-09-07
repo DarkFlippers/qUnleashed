@@ -121,6 +121,10 @@ class AppHttp {
       return _decodeCachedBody(cached.body);
     }
 
+    // Only the fetch is guarded, and the body is decoded after it: falling back
+    // to a stale copy is the answer to a network failure, not to a response
+    // that arrived and will not parse.
+    final String body;
     try {
       final etag = cached?.etag ?? '';
       final res = await get(uri, headers: {
@@ -131,27 +135,29 @@ class AppHttp {
       if (res.statusCode == io.HttpStatus.notModified && cached != null) {
         await res.drain<void>();
         if (file != null) await cached.refresh(file);
-        return await _decodeCachedBody(cached.body);
+        body = cached.body;
+      } else {
+        final text = await res.transform(utf8.decoder).join();
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          throw AppHttpException(res.statusCode, uri.toString(), text);
+        }
+        if (file != null) {
+          final entry = _JsonCacheEntry(
+            etag: res.headers.value(io.HttpHeaders.etagHeader) ?? '',
+            fetchedAt: DateTime.now(),
+            body: text,
+          );
+          try {
+            await entry.write(file);
+          } catch (_) {}
+        }
+        body = text;
       }
-      final text = await res.transform(utf8.decoder).join();
-      if (res.statusCode < 200 || res.statusCode >= 300) {
-        throw AppHttpException(res.statusCode, uri.toString(), text);
-      }
-      if (file != null) {
-        final entry = _JsonCacheEntry(
-          etag: res.headers.value(io.HttpHeaders.etagHeader) ?? '',
-          fetchedAt: DateTime.now(),
-          body: text,
-        );
-        try {
-          await entry.write(file);
-        } catch (_) {}
-      }
-      return await _decodeCachedBody(text);
     } catch (_) {
       if (cached != null) return _decodeCachedBody(cached.body);
       rethrow;
     }
+    return _decodeCachedBody(body);
   }
 
   static Future<dynamic> _decodeCachedBody(String text) {
