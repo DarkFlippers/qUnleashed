@@ -132,43 +132,43 @@
   "@licenseTitle": {
     "description": "Title of the screen showing the full app license."
   },
-  "settingsDeviceTitle": "Устройство",
+  "settingsDeviceTitle": "Device",
   "@settingsDeviceTitle": {
     "description": "Title of the device settings screen, and of its tile on the Settings screen."
   },
-  "settingsDeviceSubtitle": "Автоподключение, синхронизация времени",
+  "settingsDeviceSubtitle": "Auto-connect, clock sync",
   "@settingsDeviceSubtitle": {
     "description": "Subtitle under the Device tile on the Settings screen."
   },
-  "deviceGroupAutoConnect": "Автоподключение",
+  "deviceGroupAutoConnect": "Auto-connect",
   "@deviceGroupAutoConnect": {
     "description": "Heading of the group of auto-connect toggles on the device settings screen."
   },
-  "deviceAutoConnectUsb": "Автоподключение USB",
+  "deviceAutoConnectUsb": "USB auto-connect",
   "@deviceAutoConnectUsb": {
     "description": "Toggle: connect on its own to a Flipper plugged in over USB."
   },
-  "deviceAutoConnectUsbSubtitle": "Подключаться к Флипперу сразу после того, как его подключили кабелем.",
+  "deviceAutoConnectUsbSubtitle": "Connect to a Flipper as soon as it is plugged in with a cable.",
   "@deviceAutoConnectUsbSubtitle": {
     "description": "Explanation under the USB auto-connect toggle."
   },
-  "deviceAutoConnectBle": "Автоподключение Bluetooth",
+  "deviceAutoConnectBle": "Bluetooth auto-connect",
   "@deviceAutoConnectBle": {
     "description": "Toggle: connect on its own to the last remembered Bluetooth device."
   },
-  "deviceAutoConnectBleSubtitle": "Подключаться к последнему запомненному устройству, когда оно рядом.",
+  "deviceAutoConnectBleSubtitle": "Connect to the last remembered device when it is in range.",
   "@deviceAutoConnectBleSubtitle": {
     "description": "Explanation under the Bluetooth auto-connect toggle."
   },
-  "deviceGroupSync": "Синхронизация",
+  "deviceGroupSync": "Synchronization",
   "@deviceGroupSync": {
     "description": "Heading of the group of synchronization toggles on the device settings screen."
   },
-  "deviceSyncTime": "Синхронизировать время при старте",
+  "deviceSyncTime": "Sync time on start",
   "@deviceSyncTime": {
     "description": "Toggle: send the phone clock to the device after connecting."
   },
-  "deviceSyncTimeSubtitle": "Отправлять время телефона на устройство после подключения.",
+  "deviceSyncTimeSubtitle": "Send the phone clock to the device once it is connected.",
   "@deviceSyncTimeSubtitle": {
     "description": "Explanation under the Sync time on start toggle."
   },
@@ -487,38 +487,9 @@
   "@commonSave": {
     "description": "Button that stores what was entered in a dialog."
   },
-  "mapKeyNeeded": "Нужен ключ",
-  "@mapKeyNeeded": {
-    "description": "Preview status: the chosen tile source requires an API key that is not set."
-  },
   "mapKeyBuiltIn": "Встроенный ключ",
   "@mapKeyBuiltIn": {
     "description": "Preview status: tiles are fetched with the key shipped inside the app."
-  },
-  "mapKeyYours": "Ваш ключ",
-  "@mapKeyYours": {
-    "description": "Preview status: tiles are fetched with the key the user entered."
-  },
-  "mapKeyNotNeeded": "Ключ не нужен",
-  "@mapKeyNotNeeded": {
-    "description": "Preview status: the chosen tile source is free to use."
-  },
-  "mapTilesDark": "Тёмные тайлы",
-  "@mapTilesDark": {
-    "description": "Preview line: the map is drawn with the dark tile design."
-  },
-  "mapTilesLight": "Светлые тайлы",
-  "@mapTilesLight": {
-    "description": "Preview line: the map is drawn with the light tile design."
-  },
-  "mapMaxZoomOf": "макс. зум {zoom}",
-  "@mapMaxZoomOf": {
-    "description": "Preview line: the deepest zoom level this tile source serves.",
-    "placeholders": {
-      "zoom": {
-        "type": "int"
-      }
-    }
   },
   "mapProviderKeyTitle": "Ключ {provider}",
   "@mapProviderKeyTitle": {
@@ -549,18 +520,6 @@
   "@mapMaxZoom": {
     "description": "Setting: the deepest zoom level to request from a custom tile source."
   },
-  "mapBuiltInCartoKey": "Встроенный ключ CARTO",
-  "@mapBuiltInCartoKey": {
-    "description": "Row showing whether the app ships with a CARTO key. CARTO is a map provider name."
-  },
-  "mapBuiltInCartoKeyPresent": "Поставляется с приложением, работает только с тайлами CARTO",
-  "@mapBuiltInCartoKeyPresent": {
-    "description": "Explanation when the built-in CARTO key is present."
-  },
-  "mapBuiltInKeyMissing": "Отсутствует в этой сборке",
-  "@mapBuiltInKeyMissing": {
-    "description": "Explanation when the build carries no built-in key."
-  },
   "mapYourProviderKey": "Ваш ключ {provider}",
   "@mapYourProviderKey": {
     "description": "Row that opens the dialog for entering your own provider key.",
@@ -569,10 +528,6 @@
         "type": "String"
       }
     }
-  },
-  "mapKeyNotSetBuiltInUsed": "Не задан, используется встроенный ключ",
-  "@mapKeyNotSetBuiltInUsed": {
-    "description": "Explanation when no personal key is set but a built-in one exists."
   },
   "mapKeyNotSet": "Не задан",
   "@mapKeyNotSet": {
@@ -632,17 +587,13 @@
   "@mapRetinaTiles": {
     "description": "Toggle: request double resolution tiles."
   },
-  "mapGroupPinScan": "Файлы на карте",
+  "mapGroupPinScan": "Files on the map",
   "@mapGroupPinScan": {
     "description": "Heading of the group controlling which archive files the map reads."
   },
-  "mapScanSubfolders": "Подпапки",
+  "mapScanSubfolders": "Subfolders",
   "@mapScanSubfolders": {
     "description": "Toggle: read nested archive folders when collecting map pins."
-  },
-  "mapRetinaTilesSubtitle": "Запрашивать тайлы @2x на экранах высокой плотности",
-  "@mapRetinaTilesSubtitle": {
-    "description": "Explanation under the Retina tiles toggle."
   },
   "fliblerChannelRelease": "Релизный",
   "@fliblerChannelRelease": {
@@ -1143,22 +1094,6 @@
   "commonClose": "Закрыть",
   "@commonClose": {
     "description": "Tooltip of the button that dismisses a toast or panel."
-  },
-  "noticeError": "Ошибка",
-  "@noticeError": {
-    "description": "Heading of a toast reporting a failure."
-  },
-  "noticeInformation": "Информация",
-  "@noticeInformation": {
-    "description": "Heading of a neutral, informational toast."
-  },
-  "noticeWarning": "Предупреждение",
-  "@noticeWarning": {
-    "description": "Heading of a toast warning about something."
-  },
-  "noticeDone": "Готово",
-  "@noticeDone": {
-    "description": "Heading of a toast reporting success."
   },
   "openInApp": "Открыть в приложении",
   "@openInApp": {
@@ -1908,15 +1843,15 @@
   "@firmwareErrorObWriteMask": {
     "description": "Error about a broken option-bytes field of the firmware manifest. Keep the field name as is."
   },
-  "firmwareErrorDfuDriverMissing": "У DFU-загрузчика нет драйвера WinUSB. Обычно Windows Update сам ставит драйвер «STM32 Bootloader»; иначе установите его через STM32CubeProgrammer или Zadig и повторите",
+  "firmwareErrorDfuDriverMissing": "The DFU bootloader has no WinUSB driver. Windows Update usually installs the “STM32 Bootloader” driver on its own; otherwise install it with STM32CubeProgrammer or Zadig, then retry",
   "@firmwareErrorDfuDriverMissing": {
     "description": "Windows-only recovery error: libusb cannot open the STM32 bootloader because no WinUSB-class driver is bound to it. Keep the product names as is."
   },
-  "firmwareErrorDfuAccessDenied": "Доступ к DFU-устройству запрещён — закройте другие программы, которые им пользуются (qFlipper, STM32CubeProgrammer), и повторите",
+  "firmwareErrorDfuAccessDenied": "Access to the DFU device was denied — close other programs that use it (qFlipper, STM32CubeProgrammer) and retry",
   "@firmwareErrorDfuAccessDenied": {
     "description": "Recovery error: the OS refused to open the STM32 bootloader, usually because another program holds it."
   },
-  "firmwareErrorDfuPermissionDenied": "Разрешение USB для DFU-устройства отклонено. Разрешите доступ по запросу (отметьте «использовать по умолчанию», чтобы не подтверждать при каждой перезагрузке) и повторите",
+  "firmwareErrorDfuPermissionDenied": "USB permission for the DFU device was declined. Allow access when asked (tick “use by default” so it is not asked again on every reboot) and retry",
   "@firmwareErrorDfuPermissionDenied": {
     "description": "Android-only recovery error: the user declined the system USB permission dialog. The device reboots several times during recovery, so the dialog can appear again unless the default is remembered."
   },
@@ -2949,15 +2884,6 @@
   "@paintImport": {
     "description": "Button that loads a picture into the editor."
   },
-  "paintFramesHeader": "КАДРЫ · {count}",
-  "@paintFramesHeader": {
-    "description": "Header of the frame strip, counting the frames. Shown in capitals.",
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
-  },
   "paintPlay": "Воспроизвести",
   "@paintPlay": {
     "description": "Button that starts the animation preview."
@@ -3227,10 +3153,6 @@
   "@paintConnectToImportShort": {
     "description": "Tooltip of the import button while nothing is connected."
   },
-  "paintSendPack": "Отправить набор на устройство",
-  "@paintSendPack": {
-    "description": "Button that uploads the selected animations to the Flipper."
-  },
   "paintImporting": "Импорт…",
   "@paintImporting": {
     "description": "Progress line while animations are read from the Flipper."
@@ -3267,10 +3189,6 @@
         "type": "int"
       }
     }
-  },
-  "paintDetailPath": "Путь",
-  "@paintDetailPath": {
-    "description": "Project detail: where the project is stored."
   },
   "paintDeviceListing": "Чтение /ext/dolphin…",
   "@paintDeviceListing": {
@@ -3354,10 +3272,6 @@
   "@paintChecking": {
     "description": "Progress line while files already on the Flipper are compared."
   },
-  "paintNothingToSend": "Нечего отправлять. Сначала создайте рисунок или анимацию либо импортируйте анимации дельфина с устройства.",
-  "@paintNothingToSend": {
-    "description": "Shown when the send sheet is opened with no projects."
-  },
   "paintOnScreen": "{detail} · на экране",
   "@paintOnScreen": {
     "description": "Subtitle marking the animation currently shown on the Flipper.",
@@ -3367,21 +3281,9 @@
       }
     }
   },
-  "paintUseAnimation": "Использовать эту анимацию",
-  "@paintUseAnimation": {
-    "description": "Toggle that includes the animation in the pack sent to the Flipper."
-  },
   "paintWeight": "Вес",
   "@paintWeight": {
     "description": "Animation setting: how often this animation is picked relative to the others."
-  },
-  "paintWeightLess": "Реже",
-  "@paintWeightLess": {
-    "description": "Left end of the weight slider."
-  },
-  "paintWeightMore": "Чаще",
-  "@paintWeightMore": {
-    "description": "Right end of the weight slider."
   },
   "paintMinLevel": "Мин. уровень",
   "@paintMinLevel": {
@@ -5063,71 +4965,71 @@
   "@editorRun": {
     "description": "Button that runs the edited script on the Flipper."
   },
-  "hexShowAsHex": "Hex-режим",
+  "hexShowAsHex": "Hex mode",
   "@hexShowAsHex": {
     "description": "Button that switches the editor to the hex table."
   },
-  "hexShowAsText": "Текстовый режим",
+  "hexShowAsText": "Text mode",
   "@hexShowAsText": {
     "description": "Button that switches the editor back to text."
   },
-  "hexBinaryOpened": "Двоичный файл, открыт в hex",
+  "hexBinaryOpened": "Binary file, opened in hex",
   "@hexBinaryOpened": {
     "description": "Toast shown when a file could not be read as text."
   },
-  "hexNotTextTitle": "Это не текст",
+  "hexNotTextTitle": "Not text",
   "@hexNotTextTitle": {
     "description": "Title of the dialog shown when hex bytes cannot be decoded as text."
   },
-  "hexNotTextMessage": "Байты не являются корректным UTF-8. При открытии как текст всё, что не декодируется, будет потеряно, а сохранение запишет испорченное содержимое.",
+  "hexNotTextMessage": "These bytes are not valid UTF-8. Opening them as text drops everything that cannot be decoded, and saving would write the damaged content back.",
   "@hexNotTextMessage": {
     "description": "Body of the dialog shown when hex bytes cannot be decoded as text."
   },
-  "hexOpenAsText": "Всё равно открыть",
+  "hexOpenAsText": "Open anyway",
   "@hexOpenAsText": {
     "description": "Button that opens undecodable bytes in the text editor."
   },
-  "hexInspector": "Инспектор",
+  "hexInspector": "Inspector",
   "@hexInspector": {
     "description": "Title of the panel that reads the bytes at the cursor."
   },
-  "hexEmptyFile": "Пустой файл",
+  "hexEmptyFile": "Empty file",
   "@hexEmptyFile": {
     "description": "Inspector line shown for a file without bytes."
   },
-  "hexOffset": "Смещение",
+  "hexOffset": "Offset",
   "@hexOffset": {
     "description": "Inspector line with the cursor offset."
   },
-  "hexBits": "Биты",
+  "hexBits": "Bits",
   "@hexBits": {
     "description": "Inspector line with the bits of the byte at the cursor."
   },
-  "hexChar": "Символ",
+  "hexChar": "Char",
   "@hexChar": {
     "description": "Inspector line with the character of the byte at the cursor."
   },
-  "hexSelection": "Выделение",
+  "hexSelection": "Selection",
   "@hexSelection": {
     "description": "Inspector section about the selected bytes."
   },
-  "hexNoSelection": "Ничего не выделено",
+  "hexNoSelection": "Nothing selected",
   "@hexNoSelection": {
     "description": "Inspector line shown when there is no selection."
   },
-  "hexRange": "Диапазон",
+  "hexRange": "Range",
   "@hexRange": {
     "description": "Inspector line with the first and last offset of the selection."
   },
-  "hexLength": "Длина",
+  "hexLength": "Length",
   "@hexLength": {
     "description": "Inspector line with the number of selected bytes."
   },
-  "hexTextPreview": "Текст",
+  "hexTextPreview": "Text",
   "@hexTextPreview": {
     "description": "Inspector line with the selection decoded as text."
   },
-  "hexCopied": "Скопировано",
+  "hexCopied": "Copied",
   "@hexCopied": {
     "description": "Toast shown after bytes were copied."
   },
@@ -5135,55 +5037,55 @@
   "@hexPatternHint": {
     "description": "Hint of the hex search field."
   },
-  "hexSearchHex": "Шестнадцатеричный шаблон, ? — любой полубайт",
+  "hexSearchHex": "Hex pattern, ? matches any nibble",
   "@hexSearchHex": {
     "description": "Tooltip of the hex search mode button."
   },
-  "hexSearchText": "Текст",
+  "hexSearchText": "Text",
   "@hexSearchText": {
     "description": "Tooltip of the text search mode button."
   },
-  "hexInvalidPattern": "ошибка",
+  "hexInvalidPattern": "bad pattern",
   "@hexInvalidPattern": {
     "description": "Shown instead of the match counter when the pattern cannot be parsed."
   },
-  "hexReplaceHexHint": "Заменить на байты",
+  "hexReplaceHexHint": "Replace with bytes",
   "@hexReplaceHexHint": {
     "description": "Hint of the hex replace field."
   },
-  "hexUndo": "Отменить",
+  "hexUndo": "Undo",
   "@hexUndo": {
     "description": "Button that undoes the last byte edit."
   },
-  "hexRedo": "Повторить",
+  "hexRedo": "Redo",
   "@hexRedo": {
     "description": "Button that redoes the last undone byte edit."
   },
-  "hexInsertMode": "Режим вставки",
+  "hexInsertMode": "Insert mode",
   "@hexInsertMode": {
     "description": "Button state where typing inserts bytes."
   },
-  "hexOverwriteMode": "Режим замены",
+  "hexOverwriteMode": "Overwrite mode",
   "@hexOverwriteMode": {
     "description": "Button state where typing replaces bytes."
   },
-  "hexGoTo": "Перейти к смещению",
+  "hexGoTo": "Go to offset",
   "@hexGoTo": {
     "description": "Button that jumps the cursor to an offset."
   },
-  "hexGoToHint": "0x1F или 31d",
+  "hexGoToHint": "0x1F or 31d",
   "@hexGoToHint": {
     "description": "Hint of the go to offset field."
   },
-  "hexCopyAs": "Скопировать как",
+  "hexCopyAs": "Copy as",
   "@hexCopyAs": {
     "description": "Menu that copies the selected bytes in a chosen format."
   },
-  "hexCopyHex": "Строка байтов",
+  "hexCopyHex": "Hex string",
   "@hexCopyHex": {
     "description": "Copies the bytes as DE AD BE EF."
   },
-  "hexCopyCArray": "Массив C",
+  "hexCopyCArray": "C array",
   "@hexCopyCArray": {
     "description": "Copies the bytes as 0xDE, 0xAD."
   },
@@ -5191,19 +5093,19 @@
   "@hexCopyBase64": {
     "description": "Copies the bytes encoded in base64."
   },
-  "hexCopyText": "Текст",
+  "hexCopyText": "Text",
   "@hexCopyText": {
     "description": "Copies the bytes decoded as text."
   },
-  "hexPaste": "Вставить",
+  "hexPaste": "Paste",
   "@hexPaste": {
     "description": "Button that writes the clipboard at the cursor."
   },
-  "hexClipboardEmpty": "Буфер обмена пуст",
+  "hexClipboardEmpty": "Clipboard is empty",
   "@hexClipboardEmpty": {
     "description": "Toast shown when there is nothing to paste."
   },
-  "hexPastedBytes": "Вставлено байт: {count}",
+  "hexPastedBytes": "{count} bytes pasted",
   "@hexPastedBytes": {
     "description": "Toast shown after the clipboard was written into the file.",
     "placeholders": {
@@ -5212,99 +5114,99 @@
       }
     }
   },
-  "hexFill": "Заполнить выделение",
+  "hexFill": "Fill selection",
   "@hexFill": {
     "description": "Button that writes one value over the selected bytes."
   },
-  "hexByteValueHint": "Значение байта, FF",
+  "hexByteValueHint": "Byte value, FF",
   "@hexByteValueHint": {
     "description": "Hint of the fill value field."
   },
-  "hexInsertBytes": "Вставить байты",
+  "hexInsertBytes": "Insert bytes",
   "@hexInsertBytes": {
     "description": "Button that inserts a run of bytes at the cursor."
   },
-  "hexInsertHint": "Количество и значение, 16 00",
+  "hexInsertHint": "Count and value, 16 00",
   "@hexInsertHint": {
     "description": "Hint of the insert bytes field."
   },
-  "hexInsertText": "Вставить текст",
+  "hexInsertText": "Insert text",
   "@hexInsertText": {
     "description": "Button that writes typed text at the cursor."
   },
-  "hexInsertTextHint": "Текст под курсор",
+  "hexInsertTextHint": "Text to write at the cursor",
   "@hexInsertTextHint": {
     "description": "Hint of the insert text field."
   },
-  "hexDeleteSelection": "Удалить выделение",
+  "hexDeleteSelection": "Delete selection",
   "@hexDeleteSelection": {
     "description": "Button that removes the selected bytes."
   },
-  "hexInvalidValue": "Неверное значение",
+  "hexInvalidValue": "Invalid value",
   "@hexInvalidValue": {
     "description": "Toast shown when a typed value cannot be used."
   },
-  "hexOffsetOutOfRange": "Смещение за пределами файла",
+  "hexOffsetOutOfRange": "Offset is outside the file",
   "@hexOffsetOutOfRange": {
     "description": "Toast shown when the requested offset does not exist."
   },
-  "hexBytesPerRow": "Байт в строке",
+  "hexBytesPerRow": "Bytes per row",
   "@hexBytesPerRow": {
     "description": "Menu that sets how many bytes a row shows."
   },
-  "hexAuto": "Авто",
+  "hexAuto": "Auto",
   "@hexAuto": {
     "description": "Bytes per row option that fits the window."
   },
-  "hexKeypad": "Hex-клавиатура",
+  "hexKeypad": "Hex keypad",
   "@hexKeypad": {
     "description": "Button that shows the on-screen hex pad."
   },
-  "hexMoveLeft": "Влево",
+  "hexMoveLeft": "Left",
   "@hexMoveLeft": {
     "description": "Keypad button that moves the cursor left."
   },
-  "hexMoveRight": "Вправо",
+  "hexMoveRight": "Right",
   "@hexMoveRight": {
     "description": "Keypad button that moves the cursor right."
   },
-  "hexMoveUp": "Вверх",
+  "hexMoveUp": "Up",
   "@hexMoveUp": {
     "description": "Keypad button that moves the cursor up."
   },
-  "hexMoveDown": "Вниз",
+  "hexMoveDown": "Down",
   "@hexMoveDown": {
     "description": "Keypad button that moves the cursor down."
   },
-  "hexBackspace": "Удалить байт слева",
+  "hexBackspace": "Delete byte before",
   "@hexBackspace": {
     "description": "Keypad button that removes the byte before the cursor."
   },
-  "hexDeleteByte": "Удалить байт",
+  "hexDeleteByte": "Delete byte",
   "@hexDeleteByte": {
     "description": "Keypad button that removes the byte at the cursor."
   },
-  "hexStatusOffset": "смещ",
+  "hexStatusOffset": "off",
   "@hexStatusOffset": {
     "description": "Status bar label of the cursor offset."
   },
-  "hexStatusByte": "байт",
+  "hexStatusByte": "byte",
   "@hexStatusByte": {
     "description": "Status bar label of the byte at the cursor."
   },
-  "hexStatusSelection": "выдел",
+  "hexStatusSelection": "sel",
   "@hexStatusSelection": {
     "description": "Status bar label of the selection."
   },
-  "hexStatusSize": "размер",
+  "hexStatusSize": "size",
   "@hexStatusSize": {
     "description": "Status bar label of the file size."
   },
-  "hexStatusModified": "изм",
+  "hexStatusModified": "mod",
   "@hexStatusModified": {
     "description": "Status bar label of the number of changed bytes."
   },
-  "hexStatusMode": "режим",
+  "hexStatusMode": "mode",
   "@hexStatusMode": {
     "description": "Status bar label of the insert or overwrite mode."
   },
@@ -6013,10 +5915,6 @@
   "@appActionDownload": {
     "description": "Wide catalog button label while the app is downloaded. Shown in capitals."
   },
-  "paintAnimationSection": "АНИМАЦИЯ",
-  "@paintAnimationSection": {
-    "description": "Heading of the animation settings panel in the editor. Shown in capitals."
-  },
   "irUnpackingCaps": "РАСПАКОВКА",
   "@irUnpackingCaps": {
     "description": "Button label while the remote database is extracted. Shown in capitals."
@@ -6045,43 +5943,93 @@
   "@archiveSyncingLabel": {
     "description": "Progress label while files are compared with the Flipper. No ellipsis, a counter follows it."
   },
-  "homeWidgetPin": "На рабочий стол",
+  "paintEditManifest": "Edit manifest",
+  "@paintEditManifest": {
+    "description": "Opens the dolphin animation manifest in the text editor."
+  },
+  "paintManifestApplied": "Manifest applied",
+  "@paintManifestApplied": {
+    "description": "Shown after hand-edited manifest text is parsed back into the animation list."
+  },
+  "paintManifestInvalid": "No animations found in the manifest",
+  "@paintManifestInvalid": {
+    "description": "Shown when hand-edited manifest text holds no animation block."
+  },
+  "paintAnimationSettings": "Animation settings",
+  "@paintAnimationSettings": {
+    "description": "Title of the sheet holding one animation's level and butthurt ranges."
+  },
+  "paintManifestSummary": "Weight {weight} · Level {minLevel}–{maxLevel} · Butthurt {minBh}–{maxBh}",
+  "@paintManifestSummary": {
+    "description": "One-line manifest summary shown on the resting details sheet.",
+    "placeholders": {
+      "weight": {
+        "type": "int"
+      },
+      "minLevel": {
+        "type": "int"
+      },
+      "maxLevel": {
+        "type": "int"
+      },
+      "minBh": {
+        "type": "int"
+      },
+      "maxBh": {
+        "type": "int"
+      }
+    }
+  },
+  "paintImportUpToDate": "Animations already match the device",
+  "@paintImportUpToDate": {
+    "description": "Shown after an import that transferred nothing because every file matched by md5."
+  },
+  "mapGroupStyle": "{provider} style",
+  "@mapGroupStyle": {
+    "description": "Header of the base-map style strip when only one theme applies.",
+    "placeholders": {
+      "provider": {
+        "type": "String"
+      }
+    }
+  },
+  "homeWidgetPin": "Home screen",
   "@homeWidgetPin": {
     "description": "Action in the key menu that pins a home-screen widget for this file (Android)."
   },
-  "homeWidgetPinUnsupported": "Этот лаунчер не умеет закреплять виджеты",
+  "homeWidgetPinUnsupported": "This launcher cannot pin widgets",
   "@homeWidgetPinUnsupported": {
     "description": "Error shown when the Android launcher refuses to pin a widget from the app."
   },
-  "homeWidgetPickTitle": "Ключ для виджета",
+  "homeWidgetPickTitle": "Widget key",
   "@homeWidgetPickTitle": {
     "description": "Title of the screen where the user picks the file a home-screen widget will send."
   },
-  "homeWidgetPickEmpty": "Пока нет ключей, которые виджет может отправить. Сначала синхронизируйте архив.",
+  "homeWidgetPickEmpty": "No keys the widget can send yet. Sync the archive first.",
   "@homeWidgetPickEmpty": {
     "description": "Empty state of the widget key picker: the archive holds no file that can be sent over RPC."
   },
-  "settingsWidgetsTitle": "Виджеты",
+  "settingsWidgetsTitle": "Widgets",
   "@settingsWidgetsTitle": {
     "description": "Title of the home-screen widget look settings and of its tile on the Settings screen (Android only)."
   },
-  "settingsWidgetsSubtitle": "Тема, иконка, рамка",
+  "settingsWidgetsSubtitle": "Theme, icon, border",
   "@settingsWidgetsSubtitle": {
     "description": "Subtitle under the Widgets tile on the Settings screen."
   },
-  "widgetGroupTheme": "Тема",
+  "widgetGroupTheme": "Theme",
   "@widgetGroupTheme": {
     "description": "Header of the widget theme choice: system, light, dark, Material You."
   },
-  "widgetGroupIcon": "Иконка",
+  "widgetGroupIcon": "Icon",
   "@widgetGroupIcon": {
     "description": "Header of the widget icon style choice."
   },
-  "widgetGroupBorder": "Рамка",
+  "widgetGroupBorder": "Border",
   "@widgetGroupBorder": {
     "description": "Header of the widget border choice."
   },
-  "widgetGroupCaption": "Подпись",
+  "widgetGroupCaption": "Caption",
   "@widgetGroupCaption": {
     "description": "Header of the widget caption switch and size choice."
   }
