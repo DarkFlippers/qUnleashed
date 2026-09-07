@@ -1,0 +1,39 @@
+name: Set up Flutter
+description: >
+  Installs the pinned Flutter SDK and fetches dependencies. Run it after
+  actions/checkout: a local composite action lives in the repository, so the
+  repository has to be on disk before this can be resolved.
+
+inputs:
+  flutter-version:
+    description: Flutter SDK version to install. Pinned so a build is reproducible between two tags of the same source.
+    required: false
+    default: "3.47.1"
+  swift-package-manager:
+    description: >
+      Set to "false" on macOS and iOS jobs. Firebase pulls grpc as an SPM binary
+      target (grpc.zip from dl.google.com), which flakes with "network connection
+      was lost" on macOS runners. Both ios/ and macos/ have CocoaPods set up, so
+      those builds go through pods instead. Must be applied before `pub get`,
+      which is why it lives here rather than in the calling job.
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Install Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: ${{ inputs.flutter-version }}
+        channel: stable
+        cache: true
+
+    - name: Disable Swift Package Manager
+      if: inputs.swift-package-manager == 'false'
+      shell: bash
+      run: flutter config --no-enable-swift-package-manager
+
+    - name: Install Flutter dependencies
+      shell: bash
+      run: flutter pub get
