@@ -119,6 +119,14 @@ only for a DMG you downloaded yourself from the official releases page:
 
   https://github.com/DarkFlippers/qUnleashed/releases
 
+Every release also publishes a SHA256SUMS file. To check this DMG against it,
+put both in the same folder and run:
+
+  shasum -a 256 --ignore-missing -c SHA256SUMS
+
+That confirms the download arrived intact. It is not a signature, so it says
+nothing about the release itself.
+
 1. Drag qUnleashed.app to the Applications folder.
 2. Open Terminal and run:
 
@@ -158,6 +166,14 @@ macOS помещает её в карантин при загрузке и от�
 это только для DMG, который вы сами скачали со страницы официальных релизов:
 
   https://github.com/DarkFlippers/qUnleashed/releases
+
+К каждому релизу также публикуется файл SHA256SUMS. Чтобы сверить с ним этот
+DMG, поместите оба файла в одну папку и выполните:
+
+  shasum -a 256 --ignore-missing -c SHA256SUMS
+
+Это подтверждает, что файл скачался без повреждений. Это не подпись, поэтому
+о самом релизе она ничего не говорит.
 
 1. Перетащите qUnleashed.app в папку Applications.
 2. Запустите Terminal и выполните:

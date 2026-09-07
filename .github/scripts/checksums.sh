@@ -1,30 +1,35 @@
 #!/usr/bin/env bash
 # Writes SHA256SUMS over the files in a directory, so a downloaded asset can be
 # checked against the digest the release was built with. That catches a
-# corrupted, truncated or mirrored download. The file is not signed and is
-# served from the same release, so it is not evidence about the release itself.
+# corrupted, truncated or mirrored download. The file is unsigned and is served
+# from the same release as the assets, so it is not evidence about the release
+# itself - see the signing issue for what would be.
 #
 #   checksums.sh [directory]   # default: dist
 #
-# Names are stored bare rather than as paths, so verification runs from whatever
-# directory somebody downloaded into. Nobody downloads every asset, so the
-# command has to tolerate the ones they skipped:
+# Names are stored bare, so verification runs from wherever somebody downloaded
+# to. Nobody fetches every asset, so the command has to tolerate the rest:
 #
-#   sha256sum --ignore-missing -c SHA256SUMS   # Linux
-#   shasum -a 256 --ignore-missing -c SHA256SUMS   # macOS, which has no sha256sum
+#   sha256sum --ignore-missing -c SHA256SUMS        # Linux
+#   shasum -a 256 --ignore-missing -c SHA256SUMS    # macOS, which has no sha256sum
+#   Get-FileHash <file> -Algorithm SHA256           # Windows, compared by eye
 #
-# An empty directory is an error. Every build job uploads with
-# if-no-files-found: error and publish needs all three, so a failed build skips
-# this job outright - an empty dist means the download step matched no
-# artifacts, which is a wiring bug rather than a build failure.
-#
-# Progress goes to stdout; only diagnostics go to stderr, so a healthy run does
-# not render entirely in red.
+# This hashes whatever is in the directory and asserts only that it is not
+# empty. It does not know the expected asset set, so it cannot notice a release
+# that is short a platform - see #45.
 set -Eeuo pipefail
 
 # Byte-wise collation, which is what orders the glob below. Without it the file
 # would differ between runners with different locales.
 export LC_ALL=C
+
+case "${1:-}" in
+  --*) echo "Usage: $0 [directory]" >&2; exit 2 ;;
+esac
+if (( $# > 1 )); then
+  echo "Usage: $0 [directory]" >&2
+  exit 2
+fi
 
 dir="${1:-dist}"
 out="SHA256SUMS"
@@ -36,16 +41,17 @@ fi
 
 cd "$dir"
 
-# Dotfiles are deliberately out of scope: no release glob publishes one, so
-# listing it here would vouch for a file nobody can download.
+# Dotfiles are out of scope: no release glob publishes one, so listing it would
+# vouch for a file nobody can download.
 shopt -s nullglob
 files=()
 for entry in *; do
-  [[ -f "$entry" && "$entry" != "$out" ]] && files+=("$entry")
+  [[ -f "$entry" && "$entry" != "$out" ]] || continue
+  files+=("$entry")
 done
 
 # The guard sits immediately before the use: sha256sum with no operands reads
-# stdin instead of failing, so an empty list here would hash nothing, write the
+# stdin instead of failing, so an empty list would hash nothing, write the
 # digest of empty input and exit 0 - a manifest that verifies and means nothing.
 if (( ${#files[@]} == 0 )); then
   echo "::error::No files to checksum in $dir." >&2
@@ -53,16 +59,9 @@ if (( ${#files[@]} == 0 )); then
 fi
 
 # Binary mode explicitly. Left to the default, coreutils picks text on Linux and
-# binary under Git Bash, and the mode marker is part of the line ("  name" vs
-# " *name"), so the published file would differ by where it was generated. The
-# digest itself is identical either way.
-#
-# Written through a temp file so no failure can leave a partial manifest sitting
-# in the asset directory for a later step to publish.
-tmp="$(mktemp)"
-trap 'rm -f -- "$tmp"' EXIT
-sha256sum -b -- "${files[@]}" > "$tmp"
-mv -- "$tmp" "$out"
+# binary under Git Bash, and the marker is part of the line ("  name" vs
+# " *name"), so the file would differ by where it was generated.
+sha256sum -b -- "${files[@]}" > "$out"
 
 echo "Wrote $out covering ${#files[@]} file(s)."
 cat "$out"
