@@ -1,21 +1,25 @@
 name: Set up Flutter
 description: >
-  Installs the pinned Flutter SDK and fetches dependencies. Run it after
-  actions/checkout: a local composite action lives in the repository, so the
-  repository has to be on disk before this can be resolved.
+  Installs the pinned Flutter SDK, settles the Swift Package Manager setting and
+  fetches dependencies. Run it after actions/checkout: a local composite action
+  lives in the repository, so the repository has to be on disk before this can be
+  resolved. Note that the SPM setting is written to the runner's global Flutter
+  config and persists for the rest of the job.
 
 inputs:
   flutter-version:
-    description: Flutter SDK version to install. Pinned so a build is reproducible between two tags of the same source.
+    description: Flutter SDK version to install. Every job in this repository builds on the same default; override only to trial a different SDK.
     required: false
     default: "3.47.1"
   swift-package-manager:
     description: >
-      Set to "false" on macOS and iOS jobs. Firebase pulls grpc as an SPM binary
-      target (grpc.zip from dl.google.com), which flakes with "network connection
-      was lost" on macOS runners. Both ios/ and macos/ have CocoaPods set up, so
-      those builds go through pods instead. Must be applied before `pub get`,
-      which is why it lives here rather than in the calling job.
+      Set to "false" on any job that builds for macOS or iOS. Firebase pulls grpc
+      as an SPM binary target (grpc.zip from dl.google.com), which flakes with
+      "network connection was lost" on macOS runners. Both ios/ and macos/ have
+      CocoaPods set up, so those builds go through pods instead. It is settled
+      here because this action runs `pub get` itself, which leaves a caller no
+      seam between install and fetch. Any value other than true or false is an
+      error rather than a silent skip.
     required: false
     default: "true"
 
@@ -29,10 +33,23 @@ runs:
         channel: stable
         cache: true
 
-    - name: Disable Swift Package Manager
-      if: inputs.swift-package-manager == 'false'
+    # Always runs and always reports, so a mistyped input cannot leave a macOS
+    # build silently on SPM - the failure it would cause surfaces far from here,
+    # in a release pipeline that cannot be dry-run.
+    - name: Configure Swift Package Manager
       shell: bash
-      run: flutter config --no-enable-swift-package-manager
+      env:
+        SPM: ${{ inputs.swift-package-manager }}
+      run: |
+        case "$SPM" in
+          true)  flutter config --enable-swift-package-manager ;;
+          false) flutter config --no-enable-swift-package-manager ;;
+          *)
+            echo "::error::swift-package-manager must be 'true' or 'false', got '$SPM'."
+            exit 1
+            ;;
+        esac
+        flutter config --list | grep -i "swift-package-manager" || true
 
     - name: Install Flutter dependencies
       shell: bash

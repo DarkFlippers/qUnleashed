@@ -314,7 +314,19 @@ jobs:
       - name: Update pubspec.yaml version from tag
         shell: bash
         run: |
-          read -r version_name version_code < <(.github/scripts/derive_version.sh --print)
+          # `read` returns 0 as soon as it gets a line, so on its own it cannot
+          # tell the answer from a stray diagnostic - and this job commits to
+          # the default branch. Take the exit status, then assert the shape.
+          if ! derived="$(.github/scripts/derive_version.sh --print)"; then
+            echo "::error::Version derivation failed; refusing to rewrite pubspec.yaml."
+            exit 1
+          fi
+          read -r version_name version_code extra <<< "$derived"
+          if [[ ! "$version_name" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ||
+                ! "$version_code" =~ ^[0-9]+$ || -n "$extra" ]]; then
+            echo "::error::Unusable version derivation output: '$derived'"
+            exit 1
+          fi
           target="${version_name}+${version_code}"
 
           current="$(sed -nE 's/^version:[[:space:]]*(.+)[[:space:]]*$/\1/p' pubspec.yaml | head -n 1)"
