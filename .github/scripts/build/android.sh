@@ -3,6 +3,9 @@ set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 APP_NAME="qunleashed"
+
+# shellcheck source=../android_abis.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/android_abis.sh"
 DIST_DIR="$ROOT_DIR/dist"
 VERSION_NAME="${QUNLEASHED_VERSION_NAME:-}"
 
@@ -44,12 +47,6 @@ cp "$UNIVERSAL_APK" "$DIST_DIR/${APP_NAME}_${VERSION_NAME}_android_universal.apk
 
 echo "Building Android ABI APKs..."
 (cd "$ROOT_DIR" && "$FLUTTER_BIN" build apk --release --split-per-abi "${FLUTTER_BUILD_ARGS[@]}")
-
-ANDROID_ABIS=(
-  "armeabi-v7a"
-  "arm64-v8a"
-  "x86_64"
-)
 
 for abi in "${ANDROID_ABIS[@]}"; do
   apk="$ROOT_DIR/build/app/outputs/flutter-apk/app-${abi}-release.apk"

@@ -31,6 +31,9 @@ jobs:
       - name: Test the release version derivation
         run: .github/scripts/derive_version_test.sh
 
+      - name: Test the Android artifact verification
+        run: .github/scripts/verify_apks_test.sh
+
       - name: Set up Flutter
         uses: ./.github/actions/setup-flutter
 

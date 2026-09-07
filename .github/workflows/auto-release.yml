@@ -95,6 +95,11 @@ jobs:
       - name: Build Android release APKs
         run: .github/scripts/build/android.sh
 
+      # Existence was the only thing checked before this. An APK with no
+      # libapp.so builds green, installs, and dies at launch.
+      - name: Verify Android APKs
+        run: .github/scripts/verify_apks.sh dist
+
       - name: Install Linux build dependencies
         run: |
           sudo apt-get update
