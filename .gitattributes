@@ -1,0 +1,42 @@
+# Line endings are normalized to LF in the repository and checked out as LF
+# everywhere, including Windows.
+#
+# Without this the repository held a mix: 84 of 774 tracked files carried CRLF
+# while the rest carried LF, so any tool that rewrote a file whole - a formatter,
+# sed, a generator - turned a one-line edit into a whole-file diff. Checking out
+# as LF rather than native also stops `core.autocrlf` on a Windows clone from
+# reintroducing the mix.
+#
+# The one thing that must not be LF is a shell script destined for a Linux
+# runner, and `eol=lf` is exactly what guarantees that: .github/scripts/*.sh is
+# invoked directly by CI, and a CR would make it fail with a bad interpreter.
+* text=auto eol=lf
+
+# Windows shells are the exception: cmd.exe is not reliable with LF-only batch
+# files, and PowerShell scripts are conventionally CRLF.
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf
+
+# Declared rather than left to detection, so a stray byte pattern can never make
+# git treat one of these as text and rewrite it.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.ttf  binary
+*.otf  binary
+*.woff  binary
+*.woff2 binary
+*.bm   binary
+*.jks  binary
+*.keystore binary
+*.zip  binary
+*.gz   binary
+*.apk  binary
+*.ipa  binary
+*.dmg  binary
+*.so   binary
+*.dll  binary
+*.dylib binary
