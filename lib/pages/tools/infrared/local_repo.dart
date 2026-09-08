@@ -277,6 +277,9 @@ class IrLibLocalRepo {
   /// device name like `CON` on Windows, a full disk, or a collision with
   /// something the archive itself already wrote there. Any one of those used to
   /// abort the import of the whole library.
+  ///
+  /// Consumes [archive]: each entry's decompressed bytes are released once
+  /// written, so the entries are empty when this returns.
   static UnpackTally unpackWrappedArchiveTo(
     Archive archive,
     String rootPath, {
@@ -346,6 +349,13 @@ class IrLibLocalRepo {
         // and an interrupted unpack already leaves a partial tree that the
         // next run deletes outright.
         file.writeAsBytesSync(entry.readBytes()!);
+        // readBytes caches the inflated bytes on the entry and nothing frees
+        // them, so without this the whole decompressed library is live at once
+        // - measured at ~37MB of RSS for a 30MB library, in a spawned isolate,
+        // for nothing. clear() only drops the two content references;
+        // closeSync() would close the zip's single shared handle and make
+        // every later entry read zeros.
+        entry.clear();
         extracted += 1;
         wrote = true;
       } on io.FileSystemException catch (e) {
