@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../../../components/path.dart';
 import '../../../services/http/app_http.dart';
+import '../../../services/logging.dart';
 import '../../../services/storage/paths.dart';
 
 class IrLibDownloadProgress {
@@ -183,7 +184,14 @@ class IrLibLocalRepo {
     receivePort.listen((msg) {
       if (msg is _UnpackProgress) {
         onProgress(msg.extracted, msg.totalFiles, msg.done);
-        if (msg.done && !done.isCompleted) done.complete();
+        if (!msg.done) return;
+        if (msg.skipped > 0) {
+          LogService.log(
+            '[IrLib] unpacked ${msg.extracted}, skipped ${msg.skipped} '
+            '(first: ${msg.firstError})',
+          );
+        }
+        if (!done.isCompleted) done.complete();
       }
     });
     errorPort.listen((msg) {
@@ -209,36 +217,110 @@ class IrLibLocalRepo {
     }
   }
 
+  /// Writes every entry of [archive] under [rootPath], skipping the ones the
+  /// filesystem refuses instead of abandoning the whole library.
+  ///
+  /// Entries whose name does not resolve inside the root are dropped silently -
+  /// that is [resolveWrappedArchivePath] refusing a traversal, not a failure -
+  /// so they count as neither extracted nor skipped.
+  ///
+  /// A single entry can fail for reasons no name check can predict: a reserved
+  /// device name like `CON` on Windows, a component the OS rejects, a full
+  /// disk, or a name colliding with a file already on disk. Any one of those
+  /// used to abort the import of all ~15,000 entries.
+  static ({int extracted, int skipped, String? firstError}) unpackArchiveTo(
+    Archive archive,
+    String rootPath, {
+    required String separator,
+    void Function(int extracted)? onProgress,
+  }) {
+    // createSync(recursive: true) is not free when the directory is already
+    // there, and the library holds ~15,000 files across far fewer folders, so
+    // calling it per file re-created directories ~11,500 times for nothing:
+    // ~0.2s of the unpack, measured. Only successful calls are recorded, so a
+    // failure that later clears is retried rather than remembered as done.
+    final createdDirs = <String>{};
+    void ensureDir(io.Directory dir) {
+      if (createdDirs.contains(dir.path)) return;
+      dir.createSync(recursive: true);
+      createdDirs.add(dir.path);
+    }
+
+    var extracted = 0;
+    var skipped = 0;
+    String? firstError;
+
+    for (final entry in archive.files) {
+      final outPath = resolveWrappedArchivePath(
+        rootPath,
+        entry.name,
+        separator: separator,
+      );
+      if (outPath == null) continue;
+      try {
+        if (entry.isFile) {
+          final file = io.File(outPath);
+          ensureDir(file.parent);
+          // Deliberately unflushed. An fsync per file dominated this loop:
+          // 2.10ms per entry against 0.33ms without one, measured on Windows
+          // over 2,000 files. It bought nothing - the zip is re-downloadable,
+          // and an interrupted unpack already leaves a partial tree that the
+          // next run overwrites.
+          file.writeAsBytesSync(entry.readBytes()!);
+          extracted += 1;
+          onProgress?.call(extracted);
+        } else {
+          ensureDir(io.Directory(outPath));
+        }
+      } catch (e) {
+        skipped += 1;
+        firstError ??= '${entry.name}: $e';
+      }
+    }
+
+    return (extracted: extracted, skipped: skipped, firstError: firstError);
+  }
+
   static void _unpackIsolateEntry(_UnpackArgs args) {
     final send = args.sendPort;
     final input = InputFileStream(args.zipPath);
     try {
       final archive = ZipDecoder().decodeStream(input);
       final totalFiles = archive.files.where((f) => f.isFile).length;
-      var extracted = 0;
-      send.send(_UnpackProgress(extracted, totalFiles, false));
+      send.send(_UnpackProgress(0, totalFiles, false));
 
-      for (final entry in archive.files) {
-        final outPath = resolveWrappedArchivePath(
-          args.rootPath,
-          entry.name,
-          separator: args.sep,
-        );
-        if (outPath == null) continue;
-        if (entry.isFile) {
-          final file = io.File(outPath);
-          file.parent.createSync(recursive: true);
-          file.writeAsBytesSync(entry.readBytes()!, flush: true);
-          extracted += 1;
-          if (extracted % 25 == 0 || extracted == totalFiles) {
+      final tally = unpackArchiveTo(
+        archive,
+        args.rootPath,
+        separator: args.sep,
+        onProgress: (extracted) {
+          if (extracted % 25 == 0) {
             send.send(_UnpackProgress(extracted, totalFiles, false));
           }
-        } else {
-          io.Directory(outPath).createSync(recursive: true);
-        }
+        },
+      );
+
+      // Tolerating failed entries must not extend to tolerating all of them:
+      // reporting done with nothing on disk would leave the user an empty
+      // library and no error at all. An archive carrying no files is the same
+      // outcome by a different route, so it fails the same way.
+      if (tally.extracted == 0) {
+        throw StateError(
+          totalFiles == 0
+              ? 'the archive contained no files'
+              : 'all $totalFiles entries failed, first: ${tally.firstError}',
+        );
       }
 
-      send.send(_UnpackProgress(extracted, totalFiles, true));
+      send.send(
+        _UnpackProgress(
+          tally.extracted,
+          totalFiles,
+          true,
+          skipped: tally.skipped,
+          firstError: tally.firstError,
+        ),
+      );
     } finally {
       input.close();
     }
@@ -254,8 +336,20 @@ class _UnpackArgs {
 }
 
 class _UnpackProgress {
-  _UnpackProgress(this.extracted, this.totalFiles, this.done);
+  _UnpackProgress(
+    this.extracted,
+    this.totalFiles,
+    this.done, {
+    this.skipped = 0,
+    this.firstError,
+  });
   final int extracted;
   final int totalFiles;
   final bool done;
+
+  /// Entries the filesystem refused. Carried back over the port rather than
+  /// logged where they happen, since the isolate's static state - LogService
+  /// included - is its own and never reaches the app's log.
+  final int skipped;
+  final String? firstError;
 }
