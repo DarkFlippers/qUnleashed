@@ -84,10 +84,9 @@ class _AppsCatalogPageState extends State<AppsCatalogPage>
             ),
             IgnorePointer(
               child: FadeTransition(
-                opacity: Tween<double>(
-                  begin: 1,
-                  end: 0,
-                ).animate(CurvedAnimation(parent: _fade, curve: Curves.easeOut)),
+                opacity: Tween<double>(begin: 1, end: 0).animate(
+                  CurvedAnimation(parent: _fade, curve: Curves.easeOut),
+                ),
                 child: ColoredBox(
                   color: context.appColors.background,
                   child: const SizedBox.expand(),
@@ -187,7 +186,8 @@ class _CatalogViewState extends State<CatalogView> {
     );
   }
 
-  bool get _showsCatalog => AppsCatalogController.showsCatalog(_ctrl.mode.value);
+  bool get _showsCatalog =>
+      AppsCatalogController.showsCatalog(_ctrl.mode.value);
 
   /// The assembler console only has something to show while the catalog builds
   /// apps from source, so the button follows the mode, not the platform alone.

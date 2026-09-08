@@ -43,7 +43,10 @@ class BatterySummaryCard extends StatelessWidget {
       barValue: charge != null ? charge / 100 : null,
       barColor: charge == null ? null : colors.accent,
       metrics: [
-        (context.l10n.cardBatteryVoltage, '${((voltage ?? 0) * 0.001).toStringAsFixed(3)} V'),
+        (
+          context.l10n.cardBatteryVoltage,
+          '${((voltage ?? 0) * 0.001).toStringAsFixed(3)} V',
+        ),
         (context.l10n.cardBatteryCurrent, '${(current ?? 0).round()} mA'),
         (context.l10n.cardBatteryTemp, '${(temp ?? 0).toStringAsFixed(1)} C'),
       ],

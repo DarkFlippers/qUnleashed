@@ -9,7 +9,8 @@ import 'package:window_manager/window_manager.dart';
 import '../localization/l10n.dart';
 import '../notifications/notification_center.dart';
 
-class ConnectionNotificationService with WidgetsBindingObserver, WindowListener {
+class ConnectionNotificationService
+    with WidgetsBindingObserver, WindowListener {
   static final ConnectionNotificationService instance =
       ConnectionNotificationService._();
   ConnectionNotificationService._();

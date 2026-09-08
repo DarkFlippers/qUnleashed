@@ -153,7 +153,9 @@ class FlipperMockupHero extends StatelessWidget {
                 runSpacing: 2,
                 children: [
                   if (firmwareVersion != null)
-                    _HeroMetaText(context.l10n.deviceHeroFirmware(firmwareVersion)),
+                    _HeroMetaText(
+                      context.l10n.deviceHeroFirmware(firmwareVersion),
+                    ),
                   if (buildDate != null)
                     _HeroMetaText(context.l10n.deviceHeroBuilt(buildDate)),
                 ],

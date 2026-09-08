@@ -114,7 +114,8 @@ class _DeviceSettingsPageState extends State<DeviceSettingsPage> {
                     onChanged: _settings.setAutoConnectBle,
                   ),
                 ],
-                onTap: (t) => () => t.onChanged(!t.value),
+                onTap: (t) =>
+                    () => t.onChanged(!t.value),
                 itemBuilder: _tile,
               ),
               const SizedBox(height: 10),
@@ -128,7 +129,8 @@ class _DeviceSettingsPageState extends State<DeviceSettingsPage> {
                     onChanged: _settings.setSyncTimeOnStart,
                   ),
                 ],
-                onTap: (t) => () => t.onChanged(!t.value),
+                onTap: (t) =>
+                    () => t.onChanged(!t.value),
                 itemBuilder: _tile,
               ),
             ],

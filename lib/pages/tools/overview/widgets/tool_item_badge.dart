@@ -3,10 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../theme/theme.dart';
 
 class ToolItemBadge extends StatelessWidget {
-  const ToolItemBadge({
-    super.key,
-    required this.label,
-  });
+  const ToolItemBadge({super.key, required this.label});
 
   final String label;
 
@@ -23,11 +20,7 @@ class ToolItemBadge extends StatelessWidget {
         ),
         child: Text(
           label,
-          style: TextStyle(
-            color: colors.accent,
-            fontSize: 12,
-            height: 1,
-          ),
+          style: TextStyle(color: colors.accent, fontSize: 12, height: 1),
         ),
       ),
     );

@@ -208,7 +208,10 @@ class _PaintPageState extends State<PaintPage> {
       _baselineVersion = _ctrl.pixelVersion;
 
       if (!mounted) return;
-      context.showNotification(context.l10n.paintSaved(name), type: QNotificationType.good);
+      context.showNotification(
+        context.l10n.paintSaved(name),
+        type: QNotificationType.good,
+      );
     } catch (e) {
       if (!mounted) return;
       context.showNotification(
@@ -359,7 +362,10 @@ class _PaintPageState extends State<PaintPage> {
       builder: (ctx) => AlertDialog(
         backgroundColor: colors.dialogBackground,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        title: Text(context.l10n.paintProjectName, style: TextStyle(color: colors.dialogText)),
+        title: Text(
+          context.l10n.paintProjectName,
+          style: TextStyle(color: colors.dialogText),
+        ),
         content: TextField(
           controller: ctrl,
           autofocus: true,
@@ -380,7 +386,10 @@ class _PaintPageState extends State<PaintPage> {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, ctrl.text),
-            child: Text(context.l10n.commonSave, style: TextStyle(color: colors.accent)),
+            child: Text(
+              context.l10n.commonSave,
+              style: TextStyle(color: colors.accent),
+            ),
           ),
         ],
       ),
@@ -538,7 +547,10 @@ class _PaintPageState extends State<PaintPage> {
     _ctrl.importSinglePixelFrame(pix);
 
     if (!mounted) return;
-    context.showNotification(context.l10n.paintPngImported, type: QNotificationType.good);
+    context.showNotification(
+      context.l10n.paintPngImported,
+      type: QNotificationType.good,
+    );
   }
 
   Future<void> _importGif(Uint8List bytes) async {

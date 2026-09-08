@@ -106,10 +106,22 @@ class PlotterEngine {
 
     return PlotterReport(
       histograms: [
-        HistogramRow(label: l10n.plotSeriesPulses, cells: _cells(analyzer.histPulses)),
-        HistogramRow(label: l10n.plotSeriesGaps, cells: _cells(analyzer.histGaps)),
-        HistogramRow(label: l10n.plotSeriesPeriods, cells: _cells(analyzer.histPeriods)),
-        HistogramRow(label: l10n.plotSeriesTimings, cells: _cells(analyzer.histTimings)),
+        HistogramRow(
+          label: l10n.plotSeriesPulses,
+          cells: _cells(analyzer.histPulses),
+        ),
+        HistogramRow(
+          label: l10n.plotSeriesGaps,
+          cells: _cells(analyzer.histGaps),
+        ),
+        HistogramRow(
+          label: l10n.plotSeriesPeriods,
+          cells: _cells(analyzer.histPeriods),
+        ),
+        HistogramRow(
+          label: l10n.plotSeriesTimings,
+          cells: _cells(analyzer.histTimings),
+        ),
       ],
       hasModulation: g.modulation != null,
       modulationName: g.name,
@@ -129,7 +141,7 @@ class PlotterEngine {
   }
 
   List<HistogramCell> _cells(Histogram h) => [
-        for (final b in h.bins)
-          HistogramCell(count: b.count, mean: b.mean ?? 0, devi: b.devi),
-      ];
+    for (final b in h.bins)
+      HistogramCell(count: b.count, mean: b.mean ?? 0, devi: b.devi),
+  ];
 }

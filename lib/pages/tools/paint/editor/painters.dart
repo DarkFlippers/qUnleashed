@@ -57,7 +57,9 @@ class CanvasPainter extends CustomPainter {
     final fgPaint = Paint()
       ..color = fgColor
       ..isAntiAlias = false;
-    final previewSet = previewPixels != null ? Set<int>.from(previewPixels!) : const <int>{};
+    final previewSet = previewPixels != null
+        ? Set<int>.from(previewPixels!)
+        : const <int>{};
 
     for (int y = 0; y < kCanvasHeight; y++) {
       for (int x = 0; x < kCanvasWidth; x++) {
@@ -72,7 +74,10 @@ class CanvasPainter extends CustomPainter {
         ..color = previewColor.withAlpha(180)
         ..isAntiAlias = false;
       for (final idx in previewPixels!) {
-        canvas.drawRect(_pixelRect(idx % kCanvasWidth, idx ~/ kCanvasWidth), paint);
+        canvas.drawRect(
+          _pixelRect(idx % kCanvasWidth, idx ~/ kCanvasWidth),
+          paint,
+        );
       }
     }
 

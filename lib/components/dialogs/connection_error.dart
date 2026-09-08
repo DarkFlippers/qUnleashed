@@ -35,7 +35,10 @@ Future<void> showConnectionFailedDialog(
   final strings = l10n;
   switch (kind) {
     case FlipperConnectErrorKind.stalePairing:
-      return (strings.connectStalePairingTitle, strings.connectStalePairingBody);
+      return (
+        strings.connectStalePairingTitle,
+        strings.connectStalePairingBody,
+      );
     case FlipperConnectErrorKind.pairingIncomplete:
       return (
         strings.connectPairingIncompleteTitle,

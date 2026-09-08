@@ -1,4 +1,4 @@
-﻿import 'dart:io' as io;
+import 'dart:io' as io;
 import 'dart:math' as math;
 
 import '../../../services/http/app_http.dart';
@@ -46,8 +46,7 @@ class AppsCatalogException implements Exception {
 }
 
 class AppsCatalogApi {
-  static const String defaultBaseUrl =
-      'https://catalog.flipperzero.one/api/v0';
+  static const String defaultBaseUrl = 'https://catalog.flipperzero.one/api/v0';
 
   final String baseUrl;
   final String userAgent;
@@ -102,10 +101,7 @@ class AppsCatalogApi {
 
   Future<List<AppCategory>> fetchCategories({int limit = 500}) {
     return _withApiFallback(() async {
-      final uri = _uri('/category', {
-        'limit': '$limit',
-        ..._apiParams(),
-      });
+      final uri = _uri('/category', {'limit': '$limit', ..._apiParams()});
       final body = await _getJson(uri, ttl: const Duration(hours: 1));
       if (body is! List) {
         throw AppsCatalogException(0, uri.toString(), 'expected list');
@@ -168,7 +164,10 @@ class AppsCatalogApi {
       if (clean.isEmpty) return const <AppCard>[];
       final out = <AppCard>[];
       for (var i = 0; i < clean.length; i += _maxUidBatch) {
-        final chunk = clean.sublist(i, math.min(i + _maxUidBatch, clean.length));
+        final chunk = clean.sublist(
+          i,
+          math.min(i + _maxUidBatch, clean.length),
+        );
         final uri = _uri('/1/application', const {});
         final body = await AppHttp.postJson(
           uri,
@@ -193,10 +192,7 @@ class AppsCatalogApi {
     });
   }
 
-  Future<AppDetail> fetchApp(
-    String idOrAlias, {
-    bool? isLatestReleaseVersion,
-  }) {
+  Future<AppDetail> fetchApp(String idOrAlias, {bool? isLatestReleaseVersion}) {
     return _withApiFallback(() async {
       final uri = _uri('/application/$idOrAlias', {
         if (isLatestReleaseVersion != null)
@@ -220,12 +216,13 @@ class AppsCatalogApi {
     final a = apiOverride ?? api;
     if (t == null || a == null) {
       throw StateError(
-          'AppsCatalogApi.target / .api must be set before fetching builds');
+        'AppsCatalogApi.target / .api must be set before fetching builds',
+      );
     }
-    final uri = _uri(
-      '/application/version/$versionId/build/compatible',
-      {'target': t, 'api': a},
-    );
+    final uri = _uri('/application/version/$versionId/build/compatible', {
+      'target': t,
+      'api': a,
+    });
     return AppHttp.getBytes(
       uri,
       headers: {io.HttpHeaders.userAgentHeader: userAgent},

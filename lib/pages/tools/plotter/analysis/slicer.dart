@@ -22,18 +22,18 @@ class SlicerParams {
     double? long,
     double? sync,
     double? gap,
-  })  : short = short ?? double.nan,
-        long = long ?? double.nan,
-        sync = sync ?? double.nan,
-        gap = gap ?? double.nan;
+  }) : short = short ?? double.nan,
+       long = long ?? double.nan,
+       sync = sync ?? double.nan,
+       gap = gap ?? double.nan;
 
   factory SlicerParams.fromGuess(Guess guess) => SlicerParams(
-        modulation: guess.modulation ?? '',
-        short: guess.short,
-        long: guess.long,
-        sync: guess.sync,
-        gap: guess.gap,
-      );
+    modulation: guess.modulation ?? '',
+    short: guess.short,
+    long: guess.long,
+    sync: guess.sync,
+    gap: guess.gap,
+  );
 
   String modulation;
   double short;

@@ -307,12 +307,11 @@ class QIconBadgeStyle {
     BuildContext context,
     Color color, {
     double darkOpacity = 0.18,
-  }) =>
-      QIconBadgeStyle.forColors(
-        context.appColors,
-        color,
-        darkOpacity: darkOpacity,
-      );
+  }) => QIconBadgeStyle.forColors(
+    context.appColors,
+    color,
+    darkOpacity: darkOpacity,
+  );
 
   factory QIconBadgeStyle.forColors(
     QAppColors colors,

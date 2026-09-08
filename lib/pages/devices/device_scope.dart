@@ -3,15 +3,9 @@ import 'package:flutter/widgets.dart';
 import 'controllers/device.dart';
 
 class DeviceScope extends InheritedNotifier<DeviceController> {
-  const DeviceScope({
-    super.key,
-    required super.notifier,
-    required super.child,
-  });
+  const DeviceScope({super.key, required super.notifier, required super.child});
 
   static DeviceController of(BuildContext context) {
-    return context
-        .dependOnInheritedWidgetOfExactType<DeviceScope>()!
-        .notifier!;
+    return context.dependOnInheritedWidgetOfExactType<DeviceScope>()!.notifier!;
   }
 }

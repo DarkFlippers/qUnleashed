@@ -79,7 +79,10 @@ class _IrInfraredsPageState extends State<IrInfraredsPage> {
         MaterialPageRoute(
           builder: (_) => IrContentPage(
             fileName: f.fileName,
-            subtitle: context.l10n.irBreadcrumb(widget.category.displayName, widget.brand.name),
+            subtitle: context.l10n.irBreadcrumb(
+              widget.category.displayName,
+              widget.brand.name,
+            ),
             content: content,
           ),
         ),
@@ -237,7 +240,10 @@ class _ErrorView extends StatelessWidget {
               style: TextStyle(color: colors.textPrimary),
             ),
             const SizedBox(height: 14),
-            FilledButton(onPressed: onRetry, child: Text(context.l10n.commonRetry)),
+            FilledButton(
+              onPressed: onRetry,
+              child: Text(context.l10n.commonRetry),
+            ),
           ],
         ),
       ),

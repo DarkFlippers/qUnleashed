@@ -497,8 +497,11 @@ class FileManagerController extends ChangeNotifier {
     var failures = 0;
     try {
       for (final (remote, local, size) in plan) {
-        _transferLabel =
-            l10n.fmDownloadingOf(basename(remote), doneFiles + 1, totalFiles);
+        _transferLabel = l10n.fmDownloadingOf(
+          basename(remote),
+          doneFiles + 1,
+          totalFiles,
+        );
         _notify();
         final base = doneBytes;
         final bytes = await _readForDownload(remote, size, (p) {

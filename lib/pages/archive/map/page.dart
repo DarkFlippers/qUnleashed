@@ -661,8 +661,7 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
             ),
           ],
         ),
-        if (picking)
-          Positioned.fill(child: _buildPickOverlay(colors)),
+        if (picking) Positioned.fill(child: _buildPickOverlay(colors)),
 
         if (tiles.attribution.isNotEmpty)
           Positioned(

@@ -28,7 +28,8 @@ class AtpEntry {
 
   String get installPath => '$installDir/$appId.fap';
 
-  String get archivePath => folder.isEmpty ? '$appId.fap' : '$folder/$appId.fap';
+  String get archivePath =>
+      folder.isEmpty ? '$appId.fap' : '$folder/$appId.fap';
 
   static AtpEntry? tryParse(String line) {
     final parts = line.split(':');

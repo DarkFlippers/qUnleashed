@@ -203,7 +203,9 @@ class _PulsePlotterPageState extends State<PulsePlotterPage> {
                 ),
                 const SizedBox(height: 18),
                 Text(
-                  _loading ? context.l10n.plotParsing : context.l10n.plotNoSignal,
+                  _loading
+                      ? context.l10n.plotParsing
+                      : context.l10n.plotNoSignal,
                   style: TextStyle(
                     color: colors.textPrimary,
                     fontSize: 17,
@@ -282,13 +284,19 @@ class _SignalSelector extends StatelessWidget {
     return DropdownButtonFormField<IrSignal>(
       initialValue: current,
       isExpanded: true,
-      decoration: plotterFieldDecoration(context, label: context.l10n.plotSignal),
+      decoration: plotterFieldDecoration(
+        context,
+        label: context.l10n.plotSignal,
+      ),
       dropdownColor: colors.card,
       borderRadius: BorderRadius.circular(12),
       style: TextStyle(color: colors.textPrimary, fontSize: 14),
       items: [
         for (final (i, s) in signals.indexed)
-          DropdownMenuItem(value: s, child: Text(s.name ?? context.l10n.plotSignalNumber(i + 1))),
+          DropdownMenuItem(
+            value: s,
+            child: Text(s.name ?? context.l10n.plotSignalNumber(i + 1)),
+          ),
       ],
       onChanged: onChanged,
     );
@@ -318,10 +326,7 @@ class _AboutSection extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 8),
-        Text(
-          context.l10n.plotAboutIntro,
-          style: body,
-        ),
+        Text(context.l10n.plotAboutIntro, style: body),
         const SizedBox(height: 10),
         Text(context.l10n.plotAboutFormats, style: body),
         Text(context.l10n.plotAboutFormatSub, style: body),
@@ -329,10 +334,7 @@ class _AboutSection extends StatelessWidget {
         Text(context.l10n.plotAboutFormatIr, style: body),
         Text(context.l10n.plotAboutFormatOther, style: body),
         const SizedBox(height: 10),
-        Text(
-          context.l10n.plotAboutOutro,
-          style: body,
-        ),
+        Text(context.l10n.plotAboutOutro, style: body),
       ],
     );
   }

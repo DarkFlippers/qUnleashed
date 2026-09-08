@@ -39,7 +39,9 @@ class _HomeWidgetPickerPageState extends State<HomeWidgetPickerPage> {
     // Sub-GHz keys qualify by the protocol inside the file; they join the
     // list as their metadata gets parsed.
     for (final cat in ArchiveCategory.values) {
-      if (cat.launch.hasProtocolRules) unawaited(_ctrl.loadMetaForCategory(cat));
+      if (cat.launch.hasProtocolRules) {
+        unawaited(_ctrl.loadMetaForCategory(cat));
+      }
     }
   }
 
@@ -129,7 +131,8 @@ class _HomeWidgetPickerPageState extends State<HomeWidgetPickerPage> {
                   GroupedCardList<ArchiveKey>(
                     title: groups[i].cat.title,
                     items: groups[i].keys,
-                    onTap: (k) => () => _pick(k),
+                    onTap: (k) =>
+                        () => _pick(k),
                     itemBuilder: _tile,
                   ),
                 ],

@@ -136,11 +136,10 @@ class _AppsSettingsPageState extends State<AppsSettingsPage> {
   Widget _apiChips(BuildContext context) {
     final colors = context.appColors;
     final target = _backend.deviceTarget;
-    final apis =
-        {
-          for (final sdk in _backend.serverSdks)
-            if (target == null || sdk.target == target) sdk.api,
-        }.toList()..sort((a, b) => b.compareTo(a));
+    final apis = {
+      for (final sdk in _backend.serverSdks)
+        if (target == null || sdk.target == target) sdk.api,
+    }.toList()..sort((a, b) => b.compareTo(a));
     if (apis.isEmpty) {
       return SizedBox(
         width: double.infinity,
@@ -198,7 +197,8 @@ class _AppsSettingsPageState extends State<AppsSettingsPage> {
               GroupedCardList<CatalogModePreference>(
                 title: context.l10n.appsGroupCatalogMode,
                 items: CatalogModePreference.values,
-                onTap: (value) => () => unawaited(_select(value)),
+                onTap: (value) =>
+                    () => unawaited(_select(value)),
                 itemBuilder: _modeTile,
               ),
               const SizedBox(height: 14),

@@ -121,9 +121,8 @@ class _FavoritesPageState extends State<FavoritesPage> {
         return false;
       }).toList();
     }
-    out = [...out]..sort(
-      (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
-    );
+    out = [...out]
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     if (_sortKey == 'name' && !_sortAsc) return out.reversed.toList();
     return out;
   }
@@ -485,7 +484,8 @@ class _FapTableRow extends StatelessWidget {
           child: Row(
             children: [
               const SizedBox(width: 8),
-              if (selectionMode) const SizedBox(width: kSelectionIndicatorWidth),
+              if (selectionMode)
+                const SizedBox(width: kSelectionIndicatorWidth),
               for (final e in cols)
                 SizedBox(
                   width: e.width,
@@ -562,10 +562,7 @@ class _FapTableRow extends StatelessWidget {
   Widget _emptyCell({required bool right}) {
     return Align(
       alignment: right ? Alignment.centerRight : Alignment.centerLeft,
-      child: Text(
-        '—',
-        style: TextStyle(color: colors.textMuted, fontSize: 12),
-      ),
+      child: Text('—', style: TextStyle(color: colors.textMuted, fontSize: 12)),
     );
   }
 }

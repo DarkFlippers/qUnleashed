@@ -35,13 +35,15 @@ Future<GifExportOptions?> showGifExportDialog(BuildContext context) {
                 color: active ? colors.accent : colors.textPrimary,
                 fontWeight: active ? FontWeight.w700 : FontWeight.w500,
               ),
-              side: BorderSide(
-                color: active ? colors.accent : colors.divider,
-              ),
+              side: BorderSide(color: active ? colors.accent : colors.divider),
             );
           }
 
-          Widget section(String title, int selected, ValueChanged<int> onSelected) {
+          Widget section(
+            String title,
+            int selected,
+            ValueChanged<int> onSelected,
+          ) {
             return Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -58,7 +60,11 @@ Future<GifExportOptions?> showGifExportDialog(BuildContext context) {
                   spacing: 8,
                   children: [
                     for (final v in const [1, 2, 4])
-                      chip(value: v, selected: selected, onSelected: onSelected),
+                      chip(
+                        value: v,
+                        selected: selected,
+                        onSelected: onSelected,
+                      ),
                   ],
                 ),
               ],
@@ -71,9 +77,17 @@ Future<GifExportOptions?> showGifExportDialog(BuildContext context) {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                section(context.l10n.remoteScale, selectedScale, (v) => selectedScale = v),
+                section(
+                  context.l10n.remoteScale,
+                  selectedScale,
+                  (v) => selectedScale = v,
+                ),
                 const SizedBox(height: 18),
-                section(context.l10n.remoteSpeed, selectedSpeed, (v) => selectedSpeed = v),
+                section(
+                  context.l10n.remoteSpeed,
+                  selectedSpeed,
+                  (v) => selectedSpeed = v,
+                ),
               ],
             ),
             actions: [

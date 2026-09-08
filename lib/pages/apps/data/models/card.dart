@@ -64,9 +64,10 @@ class AppCurrentVersion {
   });
 
   factory AppCurrentVersion.fromJson(Map<String, dynamic> json) {
-    final shots = (json['screenshots'] as List?)
-            ?.whereType<String>()
-            .toList(growable: false) ??
+    final shots =
+        (json['screenshots'] as List?)?.whereType<String>().toList(
+          growable: false,
+        ) ??
         const <String>[];
     return AppCurrentVersion(
       id: (json['id'] ?? json['_id'] ?? '') as String,
@@ -145,7 +146,8 @@ class AppCard {
       updatedAt: (json['updated_at'] as num?)?.toInt() ?? 0,
       currentVersion: json['current_version'] is Map<String, dynamic>
           ? AppCurrentVersion.fromJson(
-              json['current_version'] as Map<String, dynamic>)
+              json['current_version'] as Map<String, dynamic>,
+            )
           : null,
     );
   }

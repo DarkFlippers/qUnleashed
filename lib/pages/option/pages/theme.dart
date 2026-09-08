@@ -76,7 +76,8 @@ class ThemeSettingsPage extends StatelessWidget {
             children: [
               GroupedCardList<QThemeMode>(
                 items: QThemeMode.values,
-                onTap: (mode) => () => controller.setThemeMode(mode),
+                onTap: (mode) =>
+                    () => controller.setThemeMode(mode),
                 itemBuilder: (context, mode) =>
                     _tile(context, mode, controller.themeMode == mode),
               ),

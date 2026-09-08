@@ -56,8 +56,9 @@ void main() {
       () async {
         final storage = ExistedKeysStorage.withSeams(
           reader: (path) async {
-            if (path == flipperDictUserPath)
+            if (path == flipperDictUserPath) {
               return utf8.encode('A0A1A2A3A4A5\n');
+            }
             if (path == flipperDictPath) return utf8.encode('FFFFFFFFFFFF\n');
             return const <int>[];
           },

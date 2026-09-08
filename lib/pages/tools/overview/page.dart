@@ -242,7 +242,6 @@ class ToolsPage extends StatelessWidget {
 
 Widget _buildRecoverPage(BuildContext context) => const RecoverPage();
 
-
 Widget _buildPlotterPage(BuildContext context) => const PulsePlotterPage();
 
 Future<void> _openFlipperMapPage(BuildContext context) async {

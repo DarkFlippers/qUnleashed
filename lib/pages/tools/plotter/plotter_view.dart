@@ -752,15 +752,24 @@ class _SlicerControls extends StatelessWidget {
                     ),
                     const SizedBox(width: 10),
                     Expanded(
-                      child: _NumberField(label: l10n.plotLong, controller: longCtrl),
+                      child: _NumberField(
+                        label: l10n.plotLong,
+                        controller: longCtrl,
+                      ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
-                      child: _NumberField(label: l10n.plotSync, controller: syncCtrl),
+                      child: _NumberField(
+                        label: l10n.plotSync,
+                        controller: syncCtrl,
+                      ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
-                      child: _NumberField(label: l10n.plotGap, controller: gapCtrl),
+                      child: _NumberField(
+                        label: l10n.plotGap,
+                        controller: gapCtrl,
+                      ),
                     ),
                     const SizedBox(width: 10),
                     sliceButton,
@@ -809,10 +818,7 @@ class _ModulationCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _SectionTitle(
-            l10n.plotDetectedModulation,
-            icon: Icons.auto_awesome,
-          ),
+          _SectionTitle(l10n.plotDetectedModulation, icon: Icons.auto_awesome),
           const SizedBox(height: 8),
           Text(
             report.modulationName,

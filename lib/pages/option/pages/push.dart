@@ -42,8 +42,8 @@ class _NotificationsSettingsPageState extends State<NotificationsSettingsPage> {
   Future<void> _load() async {
     final appReleases = await PushService.instance.isAppReleasesEnabled();
     final appDev = await PushService.instance.isAppDevEnabled();
-    final firmwareReleases =
-        await PushService.instance.isFirmwareReleasesEnabled();
+    final firmwareReleases = await PushService.instance
+        .isFirmwareReleasesEnabled();
     final firmwareDev = await PushService.instance.isFirmwareDevEnabled();
     if (mounted) {
       setState(() {
@@ -180,8 +180,9 @@ class _NotificationsSettingsPageState extends State<NotificationsSettingsPage> {
                 title: context.l10n.pushDevChannel,
                 subtitle: context.l10n.pushFirmwareDevSubtitle,
                 value: _firmwareDev,
-                onChanged:
-                    (supported && _firmwareReleases) ? _setFirmwareDev : null,
+                onChanged: (supported && _firmwareReleases)
+                    ? _setFirmwareDev
+                    : null,
               ),
             ],
             onTap: (t) =>

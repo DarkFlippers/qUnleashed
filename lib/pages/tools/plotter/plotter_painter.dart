@@ -45,8 +45,7 @@ class PlotterPalette {
 
   factory PlotterPalette.fromColors(QAppColors colors) {
     final dark = colors.isDark;
-    final space =
-        dark ? const Color(0xFF101216) : const Color(0xFFFAFAFA);
+    final space = dark ? const Color(0xFF101216) : const Color(0xFFFAFAFA);
     final hi = colors.success;
     final lo = colors.danger;
     final hint = colors.info;
@@ -56,10 +55,7 @@ class PlotterPalette {
         hint.withValues(alpha: dark ? 0.20 : 0.12),
         space,
       ),
-      hiFill: Color.alphaBlend(
-        hi.withValues(alpha: dark ? 0.24 : 0.18),
-        space,
-      ),
+      hiFill: Color.alphaBlend(hi.withValues(alpha: dark ? 0.24 : 0.18), space),
       hiStroke: hi,
       loStroke: lo,
       hintStroke: hint.withValues(alpha: dark ? 0.85 : 0.65),
@@ -84,16 +80,16 @@ class PlotterPalette {
 
   @override
   int get hashCode => Object.hash(
-        spaceFill,
-        combiningFill,
-        hiFill,
-        hiStroke,
-        loStroke,
-        hintStroke,
-        hintAltStroke,
-        fontColor,
-        axisColor,
-      );
+    spaceFill,
+    combiningFill,
+    hiFill,
+    hiStroke,
+    loStroke,
+    hintStroke,
+    hintAltStroke,
+    fontColor,
+    axisColor,
+  );
 }
 
 class PulsePlotterPainter extends CustomPainter {
@@ -127,8 +123,14 @@ class PulsePlotterPainter extends CustomPainter {
     final tx = -left * width * k;
     final sf = k / maxZoom;
 
-    _fill(canvas, 0, -1, width, barHeight + _marginTop + _marginBottom,
-        palette.spaceFill);
+    _fill(
+      canvas,
+      0,
+      -1,
+      width,
+      barHeight + _marginTop + _marginBottom,
+      palette.spaceFill,
+    );
 
     final maxRightSide = width * k;
     final pulseInOneX = dataWidth / maxRightSide;
@@ -147,8 +149,14 @@ class PulsePlotterPainter extends CustomPainter {
     } else {
       visible = pulses;
     }
-    final filtered =
-        _filterPulses(visible, sum, prevX, skipPulse, leftPulse, rightPulse);
+    final filtered = _filterPulses(
+      visible,
+      sum,
+      prevX,
+      skipPulse,
+      leftPulse,
+      rightPulse,
+    );
     visible = filtered.pulses;
     sum = filtered.sum;
     prevX = filtered.prevX;
@@ -169,12 +177,26 @@ class PulsePlotterPainter extends CustomPainter {
           k < _breakpointZoom ? palette.combiningFill : palette.hiFill,
         );
         final y = height - barHeight - _marginTop + _hiLine / 2;
-        _line(canvas, prevX * sf + tx, y, (prevX + x) * sf + tx, y, _hiLine,
-            palette.hiStroke);
+        _line(
+          canvas,
+          prevX * sf + tx,
+          y,
+          (prevX + x) * sf + tx,
+          y,
+          _hiLine,
+          palette.hiStroke,
+        );
       } else {
         final y = height - _marginTop - _loLine / 2;
-        _line(canvas, prevX * sf + tx, y, (prevX + x) * sf + tx, y, _loLine,
-            palette.loStroke);
+        _line(
+          canvas,
+          prevX * sf + tx,
+          y,
+          (prevX + x) * sf + tx,
+          y,
+          _loLine,
+          palette.loStroke,
+        );
       }
 
       final w = x * ((width * k) / dataWidth);
@@ -215,8 +237,14 @@ class PulsePlotterPainter extends CustomPainter {
     _drawAxis(canvas, width, sf, tx, k);
   }
 
-  void _drawAllHints(Canvas canvas, double sf, double tx, double height,
-      double leftPulse, double rightPulse) {
+  void _drawAllHints(
+    Canvas canvas,
+    double sf,
+    double tx,
+    double height,
+    double leftPulse,
+    double rightPulse,
+  ) {
     bool inRange(Hint d) {
       if (d.x0 >= leftPulse && d.x0 <= rightPulse) return true;
       if (d.x1 >= leftPulse && d.x1 <= rightPulse) return true;
@@ -228,11 +256,21 @@ class PulsePlotterPainter extends CustomPainter {
     for (final hint in hs) {
       if (prevHint != hint.x0 && hint.x0 >= 0 && hint.x0 < dataWidth) {
         _hintLineAt(
-            canvas, hint.x0 * sf + tx, height, _hintLine, palette.hintStroke);
+          canvas,
+          hint.x0 * sf + tx,
+          height,
+          _hintLine,
+          palette.hintStroke,
+        );
       }
       if (hint.x1 >= 0 && hint.x1 < dataWidth) {
         _hintLineAt(
-            canvas, hint.x1 * sf + tx, height, _hintLine, palette.hintStroke);
+          canvas,
+          hint.x1 * sf + tx,
+          height,
+          _hintLine,
+          palette.hintStroke,
+        );
       }
       prevHint = hint.x1;
     }
@@ -241,19 +279,28 @@ class PulsePlotterPainter extends CustomPainter {
     prevHint = null;
     for (final hint in alt) {
       if (prevHint != hint.x0 && hint.x0 >= 0 && hint.x0 < dataWidth) {
-        _hintLineAt(canvas, hint.x0 * sf + tx, height, _hintAltLine,
-            palette.hintAltStroke);
+        _hintLineAt(
+          canvas,
+          hint.x0 * sf + tx,
+          height,
+          _hintAltLine,
+          palette.hintAltStroke,
+        );
       }
       if (hint.x1 >= 0 && hint.x1 < dataWidth) {
-        _hintLineAt(canvas, hint.x1 * sf + tx, height, _hintAltLine,
-            palette.hintAltStroke);
+        _hintLineAt(
+          canvas,
+          hint.x1 * sf + tx,
+          height,
+          _hintAltLine,
+          palette.hintAltStroke,
+        );
       }
       prevHint = hint.x1;
     }
   }
 
-  void _drawAxis(
-      Canvas canvas, double width, double sf, double tx, double k) {
+  void _drawAxis(Canvas canvas, double width, double sf, double tx, double k) {
     if (sf <= 0) return;
     final d0 = (0 - tx) / sf;
     final d1 = (width - tx) / sf;
@@ -315,17 +362,27 @@ class PulsePlotterPainter extends CustomPainter {
     return nice * magnitude;
   }
 
-  void _fill(Canvas canvas, double x, double y, double w, double h,
-      Color color) {
+  void _fill(
+    Canvas canvas,
+    double x,
+    double y,
+    double w,
+    double h,
+    Color color,
+  ) {
     if (!x.isFinite || !y.isFinite || !w.isFinite || !h.isFinite) return;
-    canvas.drawRect(
-      Rect.fromLTWH(x, y, w, h),
-      Paint()..color = color,
-    );
+    canvas.drawRect(Rect.fromLTWH(x, y, w, h), Paint()..color = color);
   }
 
-  void _line(Canvas canvas, double x0, double y0, double x1, double y1,
-      double lineWidth, Color color) {
+  void _line(
+    Canvas canvas,
+    double x0,
+    double y0,
+    double x1,
+    double y1,
+    double lineWidth,
+    Color color,
+  ) {
     if (!x0.isFinite || !y0.isFinite || !x1.isFinite || !y1.isFinite) return;
     canvas.drawLine(
       Offset(x0, y0),
@@ -336,8 +393,13 @@ class PulsePlotterPainter extends CustomPainter {
     );
   }
 
-  void _hintLineAt(Canvas canvas, double x, double height, double lineWidth,
-      Color color) {
+  void _hintLineAt(
+    Canvas canvas,
+    double x,
+    double height,
+    double lineWidth,
+    Color color,
+  ) {
     if (!x.isFinite) return;
     final paint = Paint()
       ..color = color
@@ -377,7 +439,10 @@ class PulsePlotterPainter extends CustomPainter {
         ),
         textDirection: TextDirection.ltr,
       )..layout();
-      tp.paint(canvas, Offset(cx - tp.width / 2, y + (lineStep - tp.height) / 2));
+      tp.paint(
+        canvas,
+        Offset(cx - tp.width / 2, y + (lineStep - tp.height) / 2),
+      );
       y += lineStep;
     }
   }
@@ -385,8 +450,7 @@ class PulsePlotterPainter extends CustomPainter {
   String _label(double v) =>
       v == v.roundToDouble() ? v.toInt().toString() : v.toString();
 
-  static List<double> _combiningPulses(
-      List<double> data, double pulseInOneX) {
+  static List<double> _combiningPulses(List<double> data, double pulseInOneX) {
     final pulses = <double>[];
     var prevX = 0.0;
     for (var i = 0; i < data.length; i++) {
@@ -407,8 +471,14 @@ class PulsePlotterPainter extends CustomPainter {
   }
 
   static ({List<double> pulses, double sum, double prevX, int skipPulse})
-      _filterPulses(List<double> data, double sum, double prevX, int skipPulse,
-          double leftPulse, double rightPulse) {
+  _filterPulses(
+    List<double> data,
+    double sum,
+    double prevX,
+    int skipPulse,
+    double leftPulse,
+    double rightPulse,
+  ) {
     final pulses = <double>[];
     for (final d in data) {
       final minX = sum;

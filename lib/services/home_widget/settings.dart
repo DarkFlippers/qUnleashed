@@ -87,16 +87,23 @@ class HomeWidgetSettings extends ChangeNotifier {
     await HomeWidgetService.instance.pushSettings(toMap());
   }
 
-  Future<void> setTheme(WidgetTheme v) => _set(v != _theme, () => _theme = v, 'theme', v.name);
+  Future<void> setTheme(WidgetTheme v) =>
+      _set(v != _theme, () => _theme = v, 'theme', v.name);
   Future<void> setIconStyle(WidgetIconStyle v) =>
       _set(v != _iconStyle, () => _iconStyle = v, 'icon_style', v.name);
-  Future<void> setBorder(WidgetBorder v) => _set(v != _border, () => _border = v, 'border', v.name);
+  Future<void> setBorder(WidgetBorder v) =>
+      _set(v != _border, () => _border = v, 'border', v.name);
   Future<void> setCaptionShown(bool v) =>
       _set(v != _captionShown, () => _captionShown = v, 'caption', v);
   Future<void> setCaptionSize(WidgetCaptionSize v) =>
       _set(v != _captionSize, () => _captionSize = v, 'caption_size', v.name);
 
-  Future<void> _set(bool changed, void Function() apply, String key, Object value) async {
+  Future<void> _set(
+    bool changed,
+    void Function() apply,
+    String key,
+    Object value,
+  ) async {
     if (!changed) return;
     apply();
     notifyListeners();

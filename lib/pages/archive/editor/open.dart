@@ -35,7 +35,10 @@ Future<bool> openRemoteFileInEditor(
   final localPath = await download();
   if (!context.mounted) return false;
   if (localPath == null) {
-    context.showNotification(l10n.fmDownloadFailed, type: QNotificationType.error);
+    context.showNotification(
+      l10n.fmDownloadFailed,
+      type: QNotificationType.error,
+    );
     return false;
   }
   return openLocalFileInEditor(

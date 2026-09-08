@@ -164,12 +164,16 @@ class _AppShellState extends State<AppShell> {
     if (wide && slot == _slotArchive) return const SizedBox.shrink();
     if (!wide && _isArchiveDetail(slot)) return const SizedBox.shrink();
     if (slot == _slotDevice) return const DeviceTab();
-    if (slot == _slotArchive) return ArchivePage(controller: _archiveController);
+    if (slot == _slotArchive) {
+      return ArchivePage(controller: _archiveController);
+    }
     if (slot == _slotFavorites) {
       return FavoritesPage(controller: _archiveController);
     }
     if (slot == _slotFiles) return const FileManagerPage(initialPath: '/ext');
-    if (slot == _slotDeleted) return DeletedPage(controller: _archiveController);
+    if (slot == _slotDeleted) {
+      return DeletedPage(controller: _archiveController);
+    }
     if (slot == _slotApps) return const AppsCatalogPage();
     if (slot == _slotTools) return const ToolsPage();
     return CategoryPage(

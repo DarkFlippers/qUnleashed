@@ -170,8 +170,10 @@ class Histogram {
   String stringPrint([String separator = ', ']) {
     final ret = <String>[];
     for (final b in bins) {
-      ret.add('${b.count}× ${b.mean!.toStringAsFixed(1)} '
-          '±${b.devi.toStringAsFixed(1)} µs');
+      ret.add(
+        '${b.count}× ${b.mean!.toStringAsFixed(1)} '
+        '±${b.devi.toStringAsFixed(1)} µs',
+      );
     }
     return ret.join(separator);
   }
@@ -247,9 +249,7 @@ class Analyzer {
     }
 
     if (this.pulses.length == 1) {
-      return Guess(
-        l10n.plotGuessSinglePulse,
-      );
+      return Guess(l10n.plotGuessSinglePulse);
     } else if (pulses.length == 1 && gaps.length == 1) {
       return Guess(l10n.plotGuessUnmodulated);
     } else if (pulses.length == 1 && gaps.length > 1) {

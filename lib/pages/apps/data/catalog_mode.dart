@@ -64,7 +64,9 @@ CatalogMode resolveCatalogMode({
       if (builderAvailable) return CatalogMode.sourceBuild;
       return hasNearestApi ? CatalogMode.nearestApi : CatalogMode.managerOnly;
     case ApiVerdict.tooNew:
-      return builderAvailable ? CatalogMode.sourceBuild : CatalogMode.managerOnly;
+      return builderAvailable
+          ? CatalogMode.sourceBuild
+          : CatalogMode.managerOnly;
     case ApiVerdict.tooOld:
       return CatalogMode.managerOnly;
   }
@@ -108,7 +110,9 @@ ApiResolution resolveCatalogApi(List<AppSdk> sdks, String? deviceApi) {
     return ApiResolution(ApiVerdict.mismatch, latestSdk(sdks)?.api);
   }
   if (sameBelow != null) return ApiResolution(ApiVerdict.normal, sameBelow.$2);
-  if (sameAbove != null) return ApiResolution(ApiVerdict.mismatch, sameAbove.$2);
+  if (sameAbove != null) {
+    return ApiResolution(ApiVerdict.mismatch, sameAbove.$2);
+  }
   if (adjacentBelow != null) {
     return ApiResolution(ApiVerdict.mismatch, adjacentBelow.$2);
   }

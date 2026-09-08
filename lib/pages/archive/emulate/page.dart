@@ -82,7 +82,10 @@ class _EmulatePageState extends State<EmulatePage> {
   }
 
   void _openRemoteControlBusy() {
-    context.showNotification(context.l10n.fmDeviceBusy, type: QNotificationType.error);
+    context.showNotification(
+      context.l10n.fmDeviceBusy,
+      type: QNotificationType.error,
+    );
     openRoute(context, AppRoute.remoteControl, replace: true);
   }
 
@@ -216,7 +219,11 @@ class _EmulatePageState extends State<EmulatePage> {
                             ? Icons.wifi_tethering
                             : Icons.wifi_tethering_off,
                       ),
-                      label: Text(_sending ? context.l10n.emuSending : context.l10n.emuHoldToSend),
+                      label: Text(
+                        _sending
+                            ? context.l10n.emuSending
+                            : context.l10n.emuHoldToSend,
+                      ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: _sending ? colors.accent : colors.card,
                         foregroundColor: _sending

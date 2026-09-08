@@ -39,14 +39,17 @@ class _WidgetSettingsPageState extends State<WidgetSettingsPage> {
   bool get _systemDark =>
       MediaQuery.platformBrightnessOf(context) == Brightness.dark;
 
-  _Look _look({WidgetTheme? theme, WidgetIconStyle? iconStyle, WidgetBorder? border}) =>
-      _Look.build(
-        theme: theme ?? _settings.theme,
-        iconStyle: iconStyle ?? _settings.iconStyle,
-        border: border ?? _settings.border,
-        dark: _systemDark,
-        palette: _palette,
-      );
+  _Look _look({
+    WidgetTheme? theme,
+    WidgetIconStyle? iconStyle,
+    WidgetBorder? border,
+  }) => _Look.build(
+    theme: theme ?? _settings.theme,
+    iconStyle: iconStyle ?? _settings.iconStyle,
+    border: border ?? _settings.border,
+    dark: _systemDark,
+    palette: _palette,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -166,12 +169,13 @@ class _WidgetSettingsPageState extends State<WidgetSettingsPage> {
     ],
   );
 
-  Widget _group({String? title, required Widget child}) => GroupedCardList<Widget>(
-    title: title,
-    items: [child],
-    cardPadding: const EdgeInsets.all(12),
-    itemBuilder: (_, w) => w,
-  );
+  Widget _group({String? title, required Widget child}) =>
+      GroupedCardList<Widget>(
+        title: title,
+        items: [child],
+        cardPadding: const EdgeInsets.all(12),
+        itemBuilder: (_, w) => w,
+      );
 }
 
 /// Resolved colors of one widget — the same rules as `Look` in the native
@@ -212,8 +216,12 @@ class _Look {
     if (theme == WidgetTheme.material && palette != null) {
       // One more themed icon on the home screen: the launcher's icon
       // background and icon color, the solid plate inverted.
-      final background = Color(dark ? palette.backgroundDark : palette.backgroundLight);
-      final foreground = Color(dark ? palette.foregroundDark : palette.foregroundLight);
+      final background = Color(
+        dark ? palette.backgroundDark : palette.backgroundLight,
+      );
+      final foreground = Color(
+        dark ? palette.foregroundDark : palette.foregroundLight,
+      );
       return _Look(
         dark: dark,
         background: background,
@@ -268,12 +276,15 @@ class _Look {
 
   /// What the launcher shows behind the widget; the preview sits on it so
   /// the widget reads the way it will on the home screen.
-  Color get wallpaper => dark ? const Color(0xFF2B2F36) : const Color(0xFFD9DEE6);
+  Color get wallpaper =>
+      dark ? const Color(0xFF2B2F36) : const Color(0xFFD9DEE6);
 
   BoxDecoration box(double radius) => BoxDecoration(
     color: background,
     borderRadius: BorderRadius.circular(radius),
-    border: border == null ? null : Border.all(color: border!, width: borderWidth),
+    border: border == null
+        ? null
+        : Border.all(color: border!, width: borderWidth),
   );
 }
 

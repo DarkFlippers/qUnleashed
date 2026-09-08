@@ -201,7 +201,6 @@ class ElfImage {
   }
 }
 
-
 int? _checkedInt(int value) {
   if (value < 0 || value > 0x7fffffffffffffff) return null;
   return value;

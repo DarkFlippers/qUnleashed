@@ -1,11 +1,6 @@
 import 'dart:typed_data';
 
-enum StreamOrientation {
-  horizontal,
-  horizontalFlip,
-  vertical,
-  verticalFlip,
-}
+enum StreamOrientation { horizontal, horizontalFlip, vertical, verticalFlip }
 
 /// Synchronously decoded Flipper screen frame.
 /// Contains raw pixel data without any GPU resources — safe across async boundaries.

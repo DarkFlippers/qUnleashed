@@ -206,8 +206,7 @@ class RenderEditorLineNumbers extends RenderBox {
       markNeedsPaint();
       return;
     }
-    final relayout =
-        count.toString().length != _lineCount.toString().length;
+    final relayout = count.toString().length != _lineCount.toString().length;
     _lineCount = count;
     if (relayout) {
       markNeedsLayout();

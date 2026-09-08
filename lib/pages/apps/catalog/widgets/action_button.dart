@@ -261,7 +261,9 @@ class _ProgressState {
       return _ProgressState(label: l10n.appActionDelete, color: color);
     }
     return _ProgressState(
-      label: stage == AppActionStage.upload ? l10n.appActionUpload : l10n.appActionDownload,
+      label: stage == AppActionStage.upload
+          ? l10n.appActionUpload
+          : l10n.appActionDownload,
       color: color,
     );
   }

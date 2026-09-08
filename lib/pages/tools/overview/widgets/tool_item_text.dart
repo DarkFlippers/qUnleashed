@@ -35,11 +35,7 @@ class ToolItemText extends StatelessWidget {
           description,
           maxLines: 3,
           overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            color: colors.textMuted,
-            fontSize: 12,
-            height: 1.2,
-          ),
+          style: TextStyle(color: colors.textMuted, fontSize: 12, height: 1.2),
         ),
       ],
     );

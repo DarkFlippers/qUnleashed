@@ -119,9 +119,7 @@ abstract final class DolphinSender {
         await _mkdirIgnoreExisting(client, f.dir);
       }
       throttle.reset();
-      onProgress(
-        _sending(i, pending.length, f, doneBytes, totalBytes, 0),
-      );
+      onProgress(_sending(i, pending.length, f, doneBytes, totalBytes, 0));
 
       await client.storageWriteChunked(
         '${f.dir}/${f.name}',

@@ -203,7 +203,10 @@ class _ArchivePageState extends State<ArchivePage> {
       context: context,
       builder: (c) => AlertDialog(
         backgroundColor: colors.dialogBackground,
-        title: Text(context.l10n.fmRename, style: TextStyle(color: colors.dialogText)),
+        title: Text(
+          context.l10n.fmRename,
+          style: TextStyle(color: colors.dialogText),
+        ),
         content: TextField(
           controller: ctrl,
           autofocus: true,
@@ -290,7 +293,9 @@ class _ArchivePageState extends State<ArchivePage> {
           hasScrollBody: false,
           child: ArchiveEmptyView(
             icon: Icons.star_outline_rounded,
-            title: _ctrl.loading ? context.l10n.archiveLoading : context.l10n.archiveNoStarred,
+            title: _ctrl.loading
+                ? context.l10n.archiveLoading
+                : context.l10n.archiveNoStarred,
             subtitle: context.l10n.archiveStarHint,
           ),
         ),
@@ -460,7 +465,9 @@ class _FapFavTile extends StatelessWidget {
               ),
               const SizedBox(height: 2),
               Text(
-                favorite.subFolder.isEmpty ? context.l10n.navApps : favorite.subFolder,
+                favorite.subFolder.isEmpty
+                    ? context.l10n.navApps
+                    : favorite.subFolder,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(color: colors.textMuted, fontSize: 12),

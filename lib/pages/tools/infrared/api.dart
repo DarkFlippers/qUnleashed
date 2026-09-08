@@ -62,8 +62,9 @@ class IrLibApi {
     final normalized = _normalizePath(path);
     final cached = _listCache[normalized];
     if (cached != null) return cached;
-    final out =
-        useLocal ? await _listLocal(normalized) : await _listRemote(normalized);
+    final out = useLocal
+        ? await _listLocal(normalized)
+        : await _listRemote(normalized);
     out.sort((a, b) {
       if (a.isDir != b.isDir) return a.isDir ? -1 : 1;
       return a.name.toLowerCase().compareTo(b.name.toLowerCase());
@@ -79,20 +80,21 @@ class IrLibApi {
     }
     final out = <IrEntry>[];
     await for (final entity in dir.list(followLinks: false)) {
-      final name =
-          entity.uri.pathSegments.where((s) => s.isNotEmpty).last;
+      final name = entity.uri.pathSegments.where((s) => s.isNotEmpty).last;
       if (name.startsWith('.')) continue;
       final relPath = normalized.isEmpty ? name : '$normalized/$name';
       if (entity is io.Directory) {
         out.add(IrEntry(name: name, path: relPath, type: IrEntryType.dir));
       } else if (entity is io.File) {
         final stat = await entity.stat();
-        out.add(IrEntry(
-          name: name,
-          path: relPath,
-          type: IrEntryType.file,
-          size: stat.size,
-        ));
+        out.add(
+          IrEntry(
+            name: name,
+            path: relPath,
+            type: IrEntryType.file,
+            size: stat.size,
+          ),
+        );
       }
     }
     return out;
@@ -120,13 +122,15 @@ class IrLibApi {
       if (type == 'dir') {
         out.add(IrEntry(name: name, path: p, type: IrEntryType.dir));
       } else if (type == 'file') {
-        out.add(IrEntry(
-          name: name,
-          path: p,
-          type: IrEntryType.file,
-          size: size,
-          downloadUrl: dl is String ? dl : null,
-        ));
+        out.add(
+          IrEntry(
+            name: name,
+            path: p,
+            type: IrEntryType.file,
+            size: size,
+            downloadUrl: dl is String ? dl : null,
+          ),
+        );
       }
     }
     return out;
@@ -222,11 +226,14 @@ class IrLibApi {
 
   Future<io.HttpClientResponse> _send(Uri uri) async {
     if (_closed) throw StateError('IrLibApi has been closed');
-    return AppHttp.get(uri, headers: {
-      io.HttpHeaders.userAgentHeader: userAgent,
-      io.HttpHeaders.acceptHeader: 'application/vnd.github+json',
-      if (token.trim().isNotEmpty)
-        io.HttpHeaders.authorizationHeader: 'Bearer ${token.trim()}',
-    });
+    return AppHttp.get(
+      uri,
+      headers: {
+        io.HttpHeaders.userAgentHeader: userAgent,
+        io.HttpHeaders.acceptHeader: 'application/vnd.github+json',
+        if (token.trim().isNotEmpty)
+          io.HttpHeaders.authorizationHeader: 'Bearer ${token.trim()}',
+      },
+    );
   }
 }

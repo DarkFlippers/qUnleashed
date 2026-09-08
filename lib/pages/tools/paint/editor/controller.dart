@@ -156,10 +156,7 @@ class PaintController extends ChangeNotifier {
       for (final d in const [(1, 0), (-1, 0), (0, 1), (0, -1)]) {
         final nx = px + d.$1;
         final ny = py + d.$2;
-        if (nx < 0 ||
-            nx >= kCanvasWidth ||
-            ny < 0 ||
-            ny >= kCanvasHeight) {
+        if (nx < 0 || nx >= kCanvasWidth || ny < 0 || ny >= kCanvasHeight) {
           continue;
         }
         final ni = ny * kCanvasWidth + nx;

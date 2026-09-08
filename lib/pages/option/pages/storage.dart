@@ -158,9 +158,7 @@ class _StorageSettingsPageState extends State<StorageSettingsPage> {
           context: context,
           barrierColor: context.appColors.dialogBarrier,
           builder: (ctx) => AlertDialog(
-            title: Text(
-              ctx.l10n.storageClearTitle(area.title.toLowerCase()),
-            ),
+            title: Text(ctx.l10n.storageClearTitle(area.title.toLowerCase())),
             content: Text(ctx.l10n.storageClearBody),
             actions: [
               TextButton(

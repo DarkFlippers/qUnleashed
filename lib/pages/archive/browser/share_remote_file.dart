@@ -98,7 +98,9 @@ Future<void> shareRemoteFile(
   if (!context.mounted) return;
   if (localPath == null) {
     context.showNotification(
-      l10n.shareDownloadFailed(controller.error != null ? ': ${controller.error}' : ''),
+      l10n.shareDownloadFailed(
+        controller.error != null ? ': ${controller.error}' : '',
+      ),
       type: QNotificationType.error,
     );
     return;
@@ -163,9 +165,7 @@ Future<void> shareLocalFile(
 
   if (!context.mounted) return;
   context.showNotification(
-    clipboardOk
-        ? l10n.shareSharedAndCopied
-        : l10n.shareSharedNoClipboard,
+    clipboardOk ? l10n.shareSharedAndCopied : l10n.shareSharedNoClipboard,
     type: QNotificationType.good,
   );
 }

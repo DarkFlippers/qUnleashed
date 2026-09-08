@@ -90,7 +90,10 @@ class FapFactsPanel extends StatelessWidget {
             ('BSS', _fmtSize(info.bssSize)),
             (strings.factApiImports, '${info.imports.length}'),
             if (assets != null)
-              (strings.factAssets, strings.factAssetsFiles(assets.files.length)),
+              (
+                strings.factAssets,
+                strings.factAssetsFiles(assets.files.length),
+              ),
             if (assets != null && assets.plugins.isNotEmpty)
               (
                 strings.factPlugins,

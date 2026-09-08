@@ -125,7 +125,9 @@ class AtpSource extends ChangeNotifier {
     _block = picked;
     _byAppId
       ..clear()
-      ..addEntries(picked?.entries.map((e) => MapEntry(e.appId, e)) ?? const []);
+      ..addEntries(
+        picked?.entries.map((e) => MapEntry(e.appId, e)) ?? const [],
+      );
     _icons.clear();
     if (picked != null) {
       LogService.log(
@@ -176,7 +178,9 @@ class AtpArchive {
   }) async {
     final file = await fapFile(entry, tag);
     if (file == null) {
-      throw StateError('"${entry.archivePath}" is not a path the pack can hold');
+      throw StateError(
+        '"${entry.archivePath}" is not a path the pack can hold',
+      );
     }
     if (!await file.exists()) {
       final key = '$tag/${entry.pack}';
@@ -184,7 +188,9 @@ class AtpArchive {
         ..whenComplete(() => _unpacking.remove(key)));
     }
     if (!await file.exists()) {
-      throw StateError('"${entry.archivePath}" is not in the ${entry.pack} pack');
+      throw StateError(
+        '"${entry.archivePath}" is not in the ${entry.pack} pack',
+      );
     }
     final bytes = await file.readAsBytes();
     onProgress?.call(bytes.length, bytes.length);

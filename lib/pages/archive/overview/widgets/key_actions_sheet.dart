@@ -77,7 +77,11 @@ class KeyActionsSheet {
 
     if (onRename != null) {
       actions.add(
-        ActionItem(icon: Icons.edit_outlined, label: context.l10n.fmRename, onTap: onRename),
+        ActionItem(
+          icon: Icons.edit_outlined,
+          label: context.l10n.fmRename,
+          onTap: onRename,
+        ),
       );
     }
     if (onDuplicate != null) {
@@ -189,7 +193,9 @@ class KeyActionsSheet {
       );
     }
     final shareIcon = isShareSupported ? Icons.ios_share : Icons.content_copy;
-    final shareLabel = isShareSupported ? context.l10n.shareShare : context.l10n.fmCopy;
+    final shareLabel = isShareSupported
+        ? context.l10n.shareShare
+        : context.l10n.fmCopy;
     if (hasLocal || (k.onDevice && connected)) {
       actions.add(
         ActionItem(
@@ -483,7 +489,9 @@ class KeyActionsSheet {
   }) async {
     if (keys.isEmpty) return;
     final colors = context.appColors;
-    final where = local ? context.l10n.archiveWhereThisPhone : context.l10n.archiveWhereDevice;
+    final where = local
+        ? context.l10n.archiveWhereThisPhone
+        : context.l10n.archiveWhereDevice;
     final title = keys.length == 1
         ? context.l10n.archiveDeleteOneFrom(keys.first.name, where)
         : context.l10n.archiveDeleteManyFrom(keys.length, where);
@@ -507,7 +515,10 @@ class KeyActionsSheet {
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(context.l10n.commonDelete, style: TextStyle(color: colors.danger)),
+            child: Text(
+              context.l10n.commonDelete,
+              style: TextStyle(color: colors.danger),
+            ),
           ),
         ],
       ),

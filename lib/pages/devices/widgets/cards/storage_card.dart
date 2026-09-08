@@ -21,8 +21,12 @@ class StorageSummaryCard extends StatelessWidget {
       'storage.sdcard.total_bytes',
       'storage.sdcard.total',
     ]);
-    final free = DeviceInfoReader.str(deviceInfo, const ['storage.sdcard.free']);
-    final used = DeviceInfoReader.str(deviceInfo, const ['storage.sdcard.used']);
+    final free = DeviceInfoReader.str(deviceInfo, const [
+      'storage.sdcard.free',
+    ]);
+    final used = DeviceInfoReader.str(deviceInfo, const [
+      'storage.sdcard.used',
+    ]);
     final internal = DeviceInfoReader.str(deviceInfo, const [
       'storage.internal.used',
     ]);

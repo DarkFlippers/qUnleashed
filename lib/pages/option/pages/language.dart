@@ -77,7 +77,8 @@ class LanguageSettingsPage extends StatelessWidget {
             children: [
               GroupedCardList<Locale?>(
                 items: entries,
-                onTap: (locale) => () => controller.setLocale(locale),
+                onTap: (locale) =>
+                    () => controller.setLocale(locale),
                 itemBuilder: (context, locale) => _tile(
                   context,
                   locale == null

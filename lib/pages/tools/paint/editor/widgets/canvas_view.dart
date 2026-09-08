@@ -57,8 +57,14 @@ class _CanvasViewState extends State<CanvasView> {
 
   ({double x, double y}) _maxPan(Size cs) {
     final ps = _ctrl.effectivePixelSize(cs.width);
-    final maxX = ((kCanvasWidth * ps - cs.width) / 2).clamp(0.0, double.infinity);
-    final maxY = ((kCanvasHeight * ps - cs.height) / 2).clamp(0.0, double.infinity);
+    final maxX = ((kCanvasWidth * ps - cs.width) / 2).clamp(
+      0.0,
+      double.infinity,
+    );
+    final maxY = ((kCanvasHeight * ps - cs.height) / 2).clamp(
+      0.0,
+      double.infinity,
+    );
     return (x: maxX, y: maxY);
   }
 
@@ -94,7 +100,11 @@ class _CanvasViewState extends State<CanvasView> {
         if (!_isTwoFingerPanning) {
           for (final en in _touchPointers.entries) {
             if (en.key != e.pointer) {
-              _ctrl.onPointerUp(_toCanvasX(en.value.dx), _toCanvasY(en.value.dy), en.key);
+              _ctrl.onPointerUp(
+                _toCanvasX(en.value.dx),
+                _toCanvasY(en.value.dy),
+                en.key,
+              );
             }
           }
           _isTwoFingerPanning = true;
@@ -105,7 +115,11 @@ class _CanvasViewState extends State<CanvasView> {
       }
     }
     if (_isInsideCanvas(e.localPosition)) {
-      _ctrl.onPointerDown(_toCanvasX(e.localPosition.dx), _toCanvasY(e.localPosition.dy), e.pointer);
+      _ctrl.onPointerDown(
+        _toCanvasX(e.localPosition.dx),
+        _toCanvasY(e.localPosition.dy),
+        e.pointer,
+      );
     }
   }
 
@@ -117,8 +131,14 @@ class _CanvasViewState extends State<CanvasView> {
       final m = _maxPan(cs);
       setState(() {
         _panOffset = Offset(
-          (_panStartOffset.dx + e.localPosition.dx - _panStartLocal.dx).clamp(-m.x, m.x),
-          (_panStartOffset.dy + e.localPosition.dy - _panStartLocal.dy).clamp(-m.y, m.y),
+          (_panStartOffset.dx + e.localPosition.dx - _panStartLocal.dx).clamp(
+            -m.x,
+            m.x,
+          ),
+          (_panStartOffset.dy + e.localPosition.dy - _panStartLocal.dy).clamp(
+            -m.y,
+            m.y,
+          ),
         );
       });
       return;
@@ -133,16 +153,30 @@ class _CanvasViewState extends State<CanvasView> {
         final centroid = _touchCentroid();
         setState(() {
           _panOffset = Offset(
-            (_twoFingerStartPanOffset.dx + centroid.dx - _twoFingerStartCentroid.dx).clamp(-m.x, m.x),
-            (_twoFingerStartPanOffset.dy + centroid.dy - _twoFingerStartCentroid.dy).clamp(-m.y, m.y),
+            (_twoFingerStartPanOffset.dx +
+                    centroid.dx -
+                    _twoFingerStartCentroid.dx)
+                .clamp(-m.x, m.x),
+            (_twoFingerStartPanOffset.dy +
+                    centroid.dy -
+                    _twoFingerStartCentroid.dy)
+                .clamp(-m.y, m.y),
           );
         });
         return;
       }
-      _ctrl.onPointerMove(_toCanvasX(e.localPosition.dx), _toCanvasY(e.localPosition.dy), e.pointer);
+      _ctrl.onPointerMove(
+        _toCanvasX(e.localPosition.dx),
+        _toCanvasY(e.localPosition.dy),
+        e.pointer,
+      );
       return;
     }
-    _ctrl.onPointerMove(_toCanvasX(e.localPosition.dx), _toCanvasY(e.localPosition.dy), e.pointer);
+    _ctrl.onPointerMove(
+      _toCanvasX(e.localPosition.dx),
+      _toCanvasY(e.localPosition.dy),
+      e.pointer,
+    );
   }
 
   void _onPanUp(PointerUpEvent e) {
@@ -157,7 +191,11 @@ class _CanvasViewState extends State<CanvasView> {
         }
         return;
       }
-      _ctrl.onPointerUp(_toCanvasX(e.localPosition.dx), _toCanvasY(e.localPosition.dy), e.pointer);
+      _ctrl.onPointerUp(
+        _toCanvasX(e.localPosition.dx),
+        _toCanvasY(e.localPosition.dy),
+        e.pointer,
+      );
       return;
     }
     if (e.pointer == _panPointer) {
@@ -165,12 +203,18 @@ class _CanvasViewState extends State<CanvasView> {
       _panPointer = null;
       return;
     }
-    _ctrl.onPointerUp(_toCanvasX(e.localPosition.dx), _toCanvasY(e.localPosition.dy), e.pointer);
+    _ctrl.onPointerUp(
+      _toCanvasX(e.localPosition.dx),
+      _toCanvasY(e.localPosition.dy),
+      e.pointer,
+    );
   }
 
   void _onPanCancel(PointerCancelEvent e) {
     _touchPointers.remove(e.pointer);
-    if (_isTwoFingerPanning && _touchPointers.isEmpty) _isTwoFingerPanning = false;
+    if (_isTwoFingerPanning && _touchPointers.isEmpty) {
+      _isTwoFingerPanning = false;
+    }
     if (e.pointer == _panPointer) {
       _isPanning = false;
       _panPointer = null;
@@ -215,8 +259,14 @@ class _CanvasViewState extends State<CanvasView> {
         final ps = _ctrl.effectivePixelSize(containerW);
         final canvasW = kCanvasWidth * ps;
         final canvasH = kCanvasHeight * ps;
-        final maxPanX = ((canvasW - containerW) / 2).clamp(0.0, double.infinity);
-        final maxPanY = ((canvasH - containerH) / 2).clamp(0.0, double.infinity);
+        final maxPanX = ((canvasW - containerW) / 2).clamp(
+          0.0,
+          double.infinity,
+        );
+        final maxPanY = ((canvasH - containerH) / 2).clamp(
+          0.0,
+          double.infinity,
+        );
         final panX = _panOffset.dx.clamp(-maxPanX, maxPanX);
         final panY = _panOffset.dy.clamp(-maxPanY, maxPanY);
         // Keep the stored offset clamped so a zoom-out (or zoom reset) recenters
@@ -274,7 +324,8 @@ class _CanvasViewState extends State<CanvasView> {
                           bgColor: display.background,
                           previewColor: colors.accent,
                           version: _ctrl.pixelVersion,
-                          onionPixels: _ctrl.showOnionSkin && _ctrl.currentFrame > 0
+                          onionPixels:
+                              _ctrl.showOnionSkin && _ctrl.currentFrame > 0
                               ? _ctrl.frames[_ctrl.currentFrame - 1]
                               : null,
                         ),

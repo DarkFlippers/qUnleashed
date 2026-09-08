@@ -68,7 +68,8 @@ List<(int, int)> ellipsePoints(int cx, int cy, int rx, int ry) {
     }
   }
 
-  p = ry2 * (x + 1) * (x + 1) ~/ 1 +
+  p =
+      ry2 * (x + 1) * (x + 1) ~/ 1 +
       rx2 * (y - 1) * (y - 1) -
       rx2 * ry2 +
       ry2 * (2 * x + 3) ~/ 2 -

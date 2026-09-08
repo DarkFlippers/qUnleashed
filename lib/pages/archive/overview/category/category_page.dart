@@ -193,7 +193,10 @@ class _CategoryPageState extends State<CategoryPage> {
       context: context,
       builder: (c) => AlertDialog(
         backgroundColor: colors.dialogBackground,
-        title: Text(context.l10n.fmRename, style: TextStyle(color: colors.dialogText)),
+        title: Text(
+          context.l10n.fmRename,
+          style: TextStyle(color: colors.dialogText),
+        ),
         content: TextField(
           controller: ctrl,
           autofocus: true,
@@ -222,7 +225,8 @@ class _CategoryPageState extends State<CategoryPage> {
     }
   }
 
-  bool get _hasFilter => _starredOnly || _filterVal != null || _query.isNotEmpty;
+  bool get _hasFilter =>
+      _starredOnly || _filterVal != null || _query.isNotEmpty;
 
   String _emptyTitle() {
     final noun = _cat.itemNounPlural;

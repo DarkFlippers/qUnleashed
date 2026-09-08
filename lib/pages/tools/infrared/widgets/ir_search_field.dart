@@ -41,8 +41,10 @@ class IrSearchField extends StatelessWidget {
           filled: true,
           fillColor: colors.card,
           isDense: true,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 10,
+          ),
           prefixIcon: Icon(Icons.search, color: colors.textMuted),
           suffixIcon: ValueListenableBuilder<TextEditingValue>(
             valueListenable: controller,

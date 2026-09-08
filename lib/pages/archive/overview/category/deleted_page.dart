@@ -154,7 +154,11 @@ class _DeletedPageState extends State<DeletedPage> {
 
     final actions = <ActionItem>[
       if (_ctrl.isConnected)
-        ActionItem(icon: Icons.restore, label: context.l10n.archiveRestore, onTap: _bulkRestore),
+        ActionItem(
+          icon: Icons.restore,
+          label: context.l10n.archiveRestore,
+          onTap: _bulkRestore,
+        ),
       ...KeyActionsSheet.deleteActions(
         context,
         _ctrl,

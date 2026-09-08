@@ -47,10 +47,10 @@ class AppHttp {
     Uri uri, {
     Map<String, String> headers = const {},
   }) async {
-    final res = await get(uri, headers: {
-      io.HttpHeaders.acceptHeader: 'application/json',
-      ...headers,
-    });
+    final res = await get(
+      uri,
+      headers: {io.HttpHeaders.acceptHeader: 'application/json', ...headers},
+    );
     final text = await res.transform(utf8.decoder).join();
     if (res.statusCode < 200 || res.statusCode >= 300) {
       throw AppHttpException(res.statusCode, uri.toString(), text);
@@ -116,8 +116,7 @@ class AppHttp {
       cached = await _JsonCacheEntry.read(file);
     } catch (_) {}
 
-    if (cached != null &&
-        DateTime.now().difference(cached.fetchedAt) < ttl) {
+    if (cached != null && DateTime.now().difference(cached.fetchedAt) < ttl) {
       return _decodeCachedBody(cached.body);
     }
 
@@ -127,11 +126,14 @@ class AppHttp {
     final String body;
     try {
       final etag = cached?.etag ?? '';
-      final res = await get(uri, headers: {
-        io.HttpHeaders.acceptHeader: 'application/json',
-        if (etag.isNotEmpty) io.HttpHeaders.ifNoneMatchHeader: etag,
-        ...headers,
-      });
+      final res = await get(
+        uri,
+        headers: {
+          io.HttpHeaders.acceptHeader: 'application/json',
+          if (etag.isNotEmpty) io.HttpHeaders.ifNoneMatchHeader: etag,
+          ...headers,
+        },
+      );
       if (res.statusCode == io.HttpStatus.notModified && cached != null) {
         await res.drain<void>();
         if (file != null) await cached.refresh(file);

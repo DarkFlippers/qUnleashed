@@ -109,7 +109,10 @@ class _IrLibSettingsDialogState extends State<IrLibSettingsDialog> {
     final ok = await widget.controller.downloadLocalRepo();
     if (!mounted) return;
     if (ok) {
-      context.showNotification(context.l10n.irDownloaded, type: QNotificationType.good);
+      context.showNotification(
+        context.l10n.irDownloaded,
+        type: QNotificationType.good,
+      );
     } else {
       context.showNotification(
         widget.controller.error ?? context.l10n.irDownloadFailedShort,
@@ -182,7 +185,10 @@ class _IrLibSettingsDialogState extends State<IrLibSettingsDialog> {
           onPressed: (_saving || downloading)
               ? null
               : () => Navigator.of(context).pop(),
-          child: Text(context.l10n.commonCancel, style: TextStyle(color: colors.textMuted)),
+          child: Text(
+            context.l10n.commonCancel,
+            style: TextStyle(color: colors.textMuted),
+          ),
         ),
         FilledButton(
           style: FilledButton.styleFrom(backgroundColor: colors.accent),
@@ -272,7 +278,8 @@ class _PrimaryActionButton extends StatelessWidget {
 
     if (downloading) {
       final p = progress;
-      final unpacking = p?.stage == context.l10n.irUnpacking || (p?.isExtracting ?? false);
+      final unpacking =
+          p?.stage == context.l10n.irUnpacking || (p?.isExtracting ?? false);
       final hasPercent =
           p != null &&
           ((unpacking && p.totalFiles > 0) ||

@@ -355,9 +355,13 @@ class _FliblerProjectPageState extends State<FliblerProjectPage> {
       return Row(
         children: [
           Expanded(
-            child: _bigButton(context.l10n.fliblerSendAction, colors.success, () {
-              _ctrl.sendToDevice();
-            }),
+            child: _bigButton(
+              context.l10n.fliblerSendAction,
+              colors.success,
+              () {
+                _ctrl.sendToDevice();
+              },
+            ),
           ),
           const SizedBox(width: 12),
           _SquareAction(

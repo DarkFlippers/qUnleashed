@@ -36,8 +36,7 @@ PlotData _processSubGhz(List<String> text) {
       frequency = int.tryParse(line.split(' ')[1]);
     } else if (line.startsWith('RAW_Data')) {
       var raw = line.replaceAll('RAW_Data: ', ' ');
-      final deviations =
-          RegExp(r'(\s\d+\s\d+)|(\s-\d+\s-\d+)').allMatches(raw);
+      final deviations = RegExp(r'(\s\d+\s\d+)|(\s-\d+\s-\d+)').allMatches(raw);
       for (final match in deviations) {
         final m = match.group(0)!;
         final s = m.trim().split(' ');
@@ -57,11 +56,7 @@ PlotData _processSubGhz(List<String> text) {
   if (rawData.startsWith('-')) {
     rawData = '0 $rawData';
   }
-  final pulses = rawData
-      .replaceAll('-', '')
-      .split(' ')
-      .map(_toNumber)
-      .toList();
+  final pulses = rawData.replaceAll('-', '').split(' ').map(_toNumber).toList();
 
   if (frequency == null || pulses.length < 2) {
     throw PlotterParseException(_wrongFileMessage);
@@ -169,8 +164,7 @@ PlotData _processRfid(Uint8List rawData) {
     final buffer = Uint8List.sublistView(rawData, dataOffset, end);
     var bufferOffset = 4;
     while (bufferOffset < buffer.length) {
-      final varint =
-          _readVarInt(Uint8List.sublistView(buffer, bufferOffset));
+      final varint = _readVarInt(Uint8List.sublistView(buffer, bufferOffset));
       if (varint.length == 0) break;
       bufferOffset += varint.length;
       varints.add(varint.value.toDouble());
@@ -183,8 +177,5 @@ PlotData _processRfid(Uint8List rawData) {
     throw PlotterParseException(_wrongFileMessage);
   }
 
-  return PlotData(
-    centerFreqHz: header.frequency.round(),
-    pulses: varints,
-  );
+  return PlotData(centerFreqHz: header.frequency.round(), pulses: varints);
 }

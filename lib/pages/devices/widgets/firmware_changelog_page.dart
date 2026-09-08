@@ -48,7 +48,9 @@ class _FirmwareChangelogPageState extends State<FirmwareChangelogPage> {
     super.initState();
     _preparedHtml = compute(
       buildChangelogHtml,
-      widget.changelog.trim().isEmpty ? context.l10n.firmwareEmptyChangelog : widget.changelog,
+      widget.changelog.trim().isEmpty
+          ? context.l10n.firmwareEmptyChangelog
+          : widget.changelog,
     );
   }
 
