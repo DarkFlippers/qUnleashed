@@ -52,6 +52,9 @@ jobs:
       - name: Stub the Firebase configuration
         run: .github/scripts/stub_firebase_config.sh
 
+      - name: Check formatting
+        run: .github/scripts/check_format.sh
+
       - name: Analyze
         run: flutter analyze
 
