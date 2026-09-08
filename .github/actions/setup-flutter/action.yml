@@ -8,7 +8,13 @@ description: >
 
 inputs:
   flutter-version:
-    description: Flutter SDK version to install. Every job in this repository builds on the same default; override only to trial a different SDK.
+    description: >
+      Flutter SDK version to install. Every job in this repository builds on the
+      same default. Bumping it means regenerating pubspec.lock in the same
+      commit: flutter_test pins matcher, test_api, vector_math and meta to exact
+      versions that move with the SDK, and --enforce-lockfile below turns any
+      mismatch into a red build on every job at once. For the same reason an
+      override to trial a different SDK fails here rather than building.
     required: false
     default: "3.47.1"
   swift-package-manager:
@@ -46,10 +52,22 @@ runs:
             ;;
         esac
 
-    # --enforce-lockfile installs exactly what pubspec.lock records instead of
-    # re-resolving. Without it CI tested, and a release shipped, a dependency
-    # set nobody had committed - and the pub cache, keyed on the lockfile hash,
-    # missed on every run that resolved something newer.
+    # --enforce-lockfile installs exactly the hosted versions pubspec.lock
+    # records instead of re-resolving. Without it CI tested, and a release
+    # shipped, a dependency set nobody had committed: main's lockfile was
+    # resolved against Flutter 3.44.0 while this action pins 3.47.1, so every
+    # run silently re-resolved five packages. It also stopped the pub cache
+    # persisting them - the key is the committed lockfile, so it hit, and a hit
+    # suppresses the post-job save.
+    #
+    # It does not cover the two path dependencies: lib/modules/flipperlib and
+    # lib/modules/dartufbt record a version string and no hash, so a submodule
+    # whose code moved still satisfies the lockfile. What pins those is the
+    # gitlink plus `submodules: recursive` on every checkout.
     - name: Install Flutter dependencies
       shell: bash
-      run: flutter pub get --enforce-lockfile
+      run: |
+        if ! flutter pub get --enforce-lockfile; then
+          echo "::error::pubspec.lock does not match pubspec.yaml or the pinned Flutter SDK. Run 'flutter pub get' locally and commit the regenerated pubspec.lock. Do not drop --enforce-lockfile - that is what keeps CI and releases on the committed dependency set."
+          exit 1
+        fi
