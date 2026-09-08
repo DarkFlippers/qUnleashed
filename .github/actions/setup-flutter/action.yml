@@ -46,6 +46,10 @@ runs:
             ;;
         esac
 
+    # --enforce-lockfile installs exactly what pubspec.lock records instead of
+    # re-resolving. Without it CI tested, and a release shipped, a dependency
+    # set nobody had committed - and the pub cache, keyed on the lockfile hash,
+    # missed on every run that resolved something newer.
     - name: Install Flutter dependencies
       shell: bash
-      run: flutter pub get
+      run: flutter pub get --enforce-lockfile
