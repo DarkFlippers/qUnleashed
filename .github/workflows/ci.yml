@@ -38,6 +38,11 @@ jobs:
       - name: Test the Android artifact verification
         run: .github/scripts/verify_apks_test.sh
 
+      # Catches what only running a workflow would otherwise catch, and the
+      # release workflow only publishes on a tag.
+      - name: Lint the workflows
+        run: .github/scripts/lint_workflows.sh
+
       - name: Set up Flutter
         uses: ./.github/actions/setup-flutter
 
