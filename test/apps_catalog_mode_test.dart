@@ -56,11 +56,7 @@ void main() {
 
   test('a stored preference wins over the automatic decision', () {
     expect(
-      _modeFor(
-        catalog,
-        '87.1',
-        preference: CatalogModePreference.manager,
-      ),
+      _modeFor(catalog, '87.1', preference: CatalogModePreference.manager),
       CatalogMode.managerOnly,
     );
     expect(

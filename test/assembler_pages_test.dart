@@ -79,7 +79,9 @@ void main() {
     SharedPreferences.setMockInitialValues(const {});
     final controller = AssemblerController.instance;
     await controller.loadSettings();
-    addTearDown(() => controller.setPreference(AssemblerBackendPreference.auto));
+    addTearDown(
+      () => controller.setPreference(AssemblerBackendPreference.auto),
+    );
     await tester.binding.setSurfaceSize(const Size(900, 1600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -114,7 +116,9 @@ void main() {
     });
     final controller = AssemblerController.instance;
     await controller.loadSettings();
-    addTearDown(() => controller.setPreference(AssemblerBackendPreference.auto));
+    addTearDown(
+      () => controller.setPreference(AssemblerBackendPreference.auto),
+    );
     await tester.binding.setSurfaceSize(const Size(900, 1600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
@@ -139,7 +143,9 @@ void main() {
     SharedPreferences.setMockInitialValues(const {});
     final controller = AssemblerController.instance;
     await controller.loadSettings();
-    addTearDown(() => controller.setPreference(AssemblerBackendPreference.auto));
+    addTearDown(
+      () => controller.setPreference(AssemblerBackendPreference.auto),
+    );
     await tester.binding.setSurfaceSize(const Size(900, 1600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 

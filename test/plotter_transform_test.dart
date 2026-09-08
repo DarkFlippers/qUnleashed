@@ -46,8 +46,16 @@ void main() {
         left: c.left,
       );
 
-      expect(xStart, closeTo(0, 1e-6), reason: 'start off-screen at z=${c.zoom}');
-      expect(xEnd, closeTo(width, 1e-6), reason: 'end off-screen at z=${c.zoom}');
+      expect(
+        xStart,
+        closeTo(0, 1e-6),
+        reason: 'start off-screen at z=${c.zoom}',
+      );
+      expect(
+        xEnd,
+        closeTo(width, 1e-6),
+        reason: 'end off-screen at z=${c.zoom}',
+      );
     }
   });
 

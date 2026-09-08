@@ -21,9 +21,7 @@ void main() {
 
     // The catalog is unreachable from a test, so the resolution has to run
     // outside the fake async zone to reach its manager-only verdict.
-    await tester.runAsync(
-      () => AppsBackend.instance.resolveMode(force: true),
-    );
+    await tester.runAsync(() => AppsBackend.instance.resolveMode(force: true));
 
     await tester.pumpWidget(_wrap(const AppsSettingsPage()));
     await tester.pumpAndSettle();

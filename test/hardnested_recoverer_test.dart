@@ -12,17 +12,20 @@ void main() {
       );
     });
 
-    test('mismatched nt/par lengths assert (a caller bug, not a data case)', () {
-      final recoverer = NativeHardnestedRecoverer();
-      expect(
-        () => recoverer.recoverKey(
-          cuid: 0x11223344,
-          ntEnc: [1, 2, 3],
-          parEnc: [0, 1],
-        ),
-        throwsA(isA<AssertionError>()),
-      );
-    });
+    test(
+      'mismatched nt/par lengths assert (a caller bug, not a data case)',
+      () {
+        final recoverer = NativeHardnestedRecoverer();
+        expect(
+          () => recoverer.recoverKey(
+            cuid: 0x11223344,
+            ntEnc: [1, 2, 3],
+            parEnc: [0, 1],
+          ),
+          throwsA(isA<AssertionError>()),
+        );
+      },
+    );
 
     test('a single nonce returns null (the engine needs a pair)', () async {
       final recoverer = NativeHardnestedRecoverer();
