@@ -7,9 +7,13 @@
 # as LF rather than native also stops `core.autocrlf` on a Windows clone from
 # reintroducing the mix.
 #
-# The one thing that must not be LF is a shell script destined for a Linux
-# runner, and `eol=lf` is exactly what guarantees that: .github/scripts/*.sh is
-# invoked directly by CI, and a CR would make it fail with a bad interpreter.
+# A shell script destined for a Linux runner must not carry CRLF, and `eol=lf`
+# is exactly what guarantees that: .github/scripts/*.sh is invoked directly by
+# CI, and a trailing CR on the shebang line makes it fail with a bad
+# interpreter.
+#
+# A file that genuinely needs its CRLF preserved - a fixture for the line-ending
+# classifier in lib/pages/archive/editor/page.dart, say - opts out with `-text`.
 * text=auto eol=lf
 
 # Windows shells are the exception: cmd.exe is not reliable with LF-only batch
