@@ -47,7 +47,9 @@ jobs:
 
       - name: Validate the dispatched tag
         if: ${{ github.event_name == 'workflow_dispatch' }}
-        run: .github/scripts/derive_version.sh --print -- "${{ inputs.tag }}"
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: .github/scripts/derive_version.sh --print -- "$RELEASE_TAG"
 
   build-android-linux:
     name: Build Android and Linux releases
@@ -91,7 +93,8 @@ jobs:
           QU_BUILD_SERVER_URL: ${{ secrets.QU_BUILD_SERVER_URL }}
           QU_BUILD_SERVER_KEY: ${{ secrets.QU_BUILD_SERVER_KEY }}
           QU_CARTO_KEY: ${{ secrets.QU_CARTO_KEY }}
-        run: .github/scripts/derive_version.sh -- "${{ inputs.tag }}"
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: .github/scripts/derive_version.sh -- "$RELEASE_TAG"
 
       - name: Configure Android signing
         env:
@@ -183,7 +186,8 @@ jobs:
           QU_BUILD_SERVER_URL: ${{ secrets.QU_BUILD_SERVER_URL }}
           QU_BUILD_SERVER_KEY: ${{ secrets.QU_BUILD_SERVER_KEY }}
           QU_CARTO_KEY: ${{ secrets.QU_CARTO_KEY }}
-        run: .github/scripts/derive_version.sh -- "${{ inputs.tag }}"
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: .github/scripts/derive_version.sh -- "$RELEASE_TAG"
 
       - name: Build Windows raw ZIP and packaged EXE
         shell: pwsh
@@ -245,7 +249,8 @@ jobs:
           QU_BUILD_SERVER_URL: ${{ secrets.QU_BUILD_SERVER_URL }}
           QU_BUILD_SERVER_KEY: ${{ secrets.QU_BUILD_SERVER_KEY }}
           QU_CARTO_KEY: ${{ secrets.QU_CARTO_KEY }}
-        run: .github/scripts/derive_version.sh -- "${{ inputs.tag }}"
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: .github/scripts/derive_version.sh -- "$RELEASE_TAG"
 
       - name: Install macOS build dependencies
         run: brew install automake libtool
@@ -274,8 +279,12 @@ jobs:
       - build-android-linux
       - build-macos
       - build-windows
-    # Creates the GitHub release, so only ever for a tag.
-    if: ${{ startsWith(github.ref, 'refs/tags/') }}
+    # Creates the GitHub release, so only ever for a pushed tag. A dispatch can
+    # be started from a tag ref, so the ref alone does not distinguish them -
+    # event_name is what does.
+    if: ${{ github.server_url == 'https://github.com'
+      && github.event_name == 'push'
+      && startsWith(github.ref, 'refs/tags/') }}
     permissions:
       contents: write
     runs-on: ubuntu-latest
@@ -366,7 +375,8 @@ jobs:
     needs: publish
     # `if:` skips do not fail a run, so a tag push that quietly produced no
     # release would otherwise be green - the worst outcome available here.
-    if: ${{ always() && startsWith(github.ref, 'refs/tags/') }}
+    if: ${{ always() && github.event_name == 'push'
+      && startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -379,8 +389,10 @@ jobs:
   sync-version:
     name: Sync pubspec version with tag
     needs: [publish, build-android-linux]
-    # Pushes to the default branch, so only ever for a tag.
-    if: ${{ startsWith(github.ref, 'refs/tags/') }}
+    # Pushes to the default branch, so only ever for a pushed tag.
+    if: ${{ github.server_url == 'https://github.com'
+      && github.event_name == 'push'
+      && startsWith(github.ref, 'refs/tags/') }}
     permissions:
       contents: write
     runs-on: ubuntu-latest

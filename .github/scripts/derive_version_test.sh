@@ -63,6 +63,21 @@ refutes "no-version-here" run bash "$DERIVE" --print "no-version-here"
 refutes "1.2"             run bash "$DERIVE" --print "1.2"
 refutes "0.0.0"           run bash "$DERIVE" --print "0.0.0"
 refutes "an unknown flag" run bash "$DERIVE" --bogus
+
+# The workflow passes the tag after `--` in all four call sites, so the arm
+# that consumes it is load-bearing.
+ok_sep() {
+  local want="$2" got
+  if ! got="$(run bash "$DERIVE" --print -- "$1")"; then got="<rejected>"; fi
+  [[ "$got" == "$want" ]] && pass "-- $1 -> $got" || fail "-- $1 -> $got (want $want)"
+}
+ok_sep "beta-0.11.2" "0.11.2 11002"
+ok_sep "--print"     "<rejected>"
+
+# `-- ""` is the tag-push shape: an empty argument after the separator.
+got="$(run GITHUB_REF_NAME=beta-0.11.2 bash "$DERIVE" --print -- "" || true)"
+[[ "$got" == "0.11.2 11002" ]] && pass "-- with an empty tag falls back" \
+  || fail "-- empty tag -> '$got'"
 refutes "a missing tag"   run bash "$DERIVE" --print
 
 # The tag falls back to GITHUB_REF_NAME when no argument is given.
