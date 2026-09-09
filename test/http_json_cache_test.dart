@@ -21,6 +21,7 @@ class FakeCatalog {
     _server.listen((req) async {
       requests += 1;
       ifNoneMatch.add(req.headers.value(HttpHeaders.ifNoneMatchHeader));
+      userAgents.add(req.headers.value(HttpHeaders.userAgentHeader));
       if (status != 200) {
         req.response.statusCode = status;
         req.response.write('upstream said no');
@@ -29,11 +30,15 @@ class FakeCatalog {
       }
       if (req.headers.value(HttpHeaders.ifNoneMatchHeader) == etag) {
         req.response.statusCode = HttpStatus.notModified;
+        final rotated = etagOn304;
+        if (rotated != null) {
+          req.response.headers.set(HttpHeaders.etagHeader, rotated);
+        }
         await req.response.close();
         return;
       }
-      req.response.headers.set(HttpHeaders.etagHeader, etag);
-      req.response.write(jsonEncode(body));
+      if (sendEtag) req.response.headers.set(HttpHeaders.etagHeader, etag);
+      req.response.write(rawBody ?? jsonEncode(body));
       await req.response.close();
     });
   }
@@ -50,8 +55,17 @@ class FakeCatalog {
   int requests = 0;
   int status = 200;
   String etag = 'W/"v1"';
+  bool sendEtag = true;
   Object? body = payload;
+
+  /// Sent verbatim instead of [body] - a captive portal's HTML, say.
+  String? rawBody;
+
+  /// A validator handed back on a 304, as servers do when they rotate a weak
+  /// one without the body changing.
+  String? etagOn304;
   final List<String?> ifNoneMatch = [];
+  final List<String?> userAgents = [];
 
   Future<void> stop() async {
     if (_stopped) return;
@@ -71,9 +85,12 @@ void main() {
   });
 
   tearDown(() async {
-    await server.stop();
+    // Reset before stopping: `server` is late, so if setUp failed at start()
+    // this would otherwise throw a LateInitializationError that masks the real
+    // failure and skips the cleanup below.
     AppHttp.jsonCacheDirectory = null;
     if (cacheDir.existsSync()) cacheDir.deleteSync(recursive: true);
+    await server.stop();
   });
 
   String keyFor(Uri uri) =>
@@ -182,7 +199,13 @@ void main() {
       final uri = server.uri;
       await server.stop();
 
-      expect(() => AppHttp.getJsonCached(uri), throwsA(isA<Exception>()));
+      // The exact type varies - a dead pooled socket and a refused connect
+      // differ - but it must not be a parse error, which is the bug class
+      // where the fallback's own failure stands in for the network's.
+      await expectLater(
+        AppHttp.getJsonCached(uri),
+        throwsA(allOf(isA<Exception>(), isNot(isA<FormatException>()))),
+      );
     });
 
     test('throws on a non-2xx response and caches nothing', () async {
@@ -229,6 +252,169 @@ void main() {
       expect((got as Map)['total'], 40);
       expect(server.requests, 2);
     });
+
+    // A captive portal answers 200 with an HTML login page. Storing that would
+    // overwrite a good entry with something that can never be served.
+    test('a 200 that is not JSON leaves the previous entry intact', () async {
+      await AppHttp.getJsonCached(server.uri);
+      // A new etag too, or the server answers 304 and the portal's page never
+      // reaches the client at all.
+      server
+        ..etag = 'W/"v2"'
+        ..rawBody = '<html>captive portal</html>';
+
+      await expectLater(
+        AppHttp.getJsonCached(server.uri, ttl: Duration.zero),
+        throwsA(isA<FormatException>()),
+      );
+
+      await server.stop();
+      final offline = await AppHttp.getJsonCached(
+        server.uri,
+        ttl: Duration.zero,
+      );
+      expect((offline as Map)['total'], 40, reason: 'the good copy survived');
+    });
+
+    test('a corrupt body offline surfaces the network error', () async {
+      await AppHttp.getJsonCached(server.uri);
+      cacheFile(server.uri, 'body').writeAsStringSync('{"data": [trunca');
+      await server.stop();
+
+      await expectLater(
+        AppHttp.getJsonCached(server.uri, ttl: Duration.zero),
+        throwsA(isNot(isA<FormatException>())),
+      );
+    });
+
+    // Every entry on disk at upgrade time is older than its TTL, so a fresh
+    // fixture would never reach the revalidation this has to get right.
+    test('a stale pre-split entry keeps its timestamp and its etag', () async {
+      cacheFile(server.uri, 'json').writeAsStringSync(
+        jsonEncode({
+          'etag': 'W/"v1"',
+          'fetched_at': DateTime.now()
+              .subtract(const Duration(days: 3))
+              .millisecondsSinceEpoch,
+          'body': jsonEncode(payload),
+        }),
+      );
+
+      final got = await AppHttp.getJsonCached(server.uri);
+
+      expect(server.requests, 1, reason: 'the migrated entry was still stale');
+      expect(server.ifNoneMatch.last, 'W/"v1"', reason: 'etag carried over');
+      expect((got as Map)['total'], 40);
+    });
+
+    // _migrate returns an entry built from its own locals, so the call that
+    // performs the migration cannot show what was persisted - only the
+    // metadata it left behind can. A 30-day window keeps the migrated entry
+    // fresh so nothing revalidates and re-stamps it first.
+    test(
+      'migration carries the timestamp and validator into the new format',
+      () async {
+        final threeDaysAgo = DateTime.now().subtract(const Duration(days: 3));
+        cacheFile(server.uri, 'json').writeAsStringSync(
+          jsonEncode({
+            'etag': 'W/"v1"',
+            'fetched_at': threeDaysAgo.millisecondsSinceEpoch,
+            'body': jsonEncode(payload),
+          }),
+        );
+
+        await AppHttp.getJsonCached(server.uri, ttl: const Duration(days: 30));
+
+        final meta =
+            jsonDecode(cacheFile(server.uri, 'meta').readAsStringSync())
+                as Map<String, dynamic>;
+        expect(meta['etag'], 'W/"v1"');
+        expect(meta['fetched_at'], threeDaysAgo.millisecondsSinceEpoch);
+        expect(server.requests, 0, reason: 'served from the migrated entry');
+      },
+    );
+
+    test('adopts a validator the server rotates on a 304', () async {
+      await AppHttp.getJsonCached(server.uri);
+      server.etagOn304 = 'W/"v2"';
+
+      await AppHttp.getJsonCached(server.uri, ttl: Duration.zero);
+      await AppHttp.getJsonCached(server.uri, ttl: Duration.zero);
+
+      expect(server.ifNoneMatch.last, 'W/"v2"', reason: 'the rotated one');
+    });
+
+    test('forwards caller headers', () async {
+      await AppHttp.getJsonCached(
+        server.uri,
+        headers: {HttpHeaders.userAgentHeader: 'qunleashed-test/9'},
+      );
+
+      expect(server.userAgents.last, 'qunleashed-test/9');
+    });
+
+    test('revalidates without If-None-Match when there was no etag', () async {
+      server.sendEtag = false;
+      await AppHttp.getJsonCached(server.uri);
+
+      await AppHttp.getJsonCached(server.uri, ttl: Duration.zero);
+
+      expect(server.requests, 2);
+      expect(server.ifNoneMatch.last, isNull);
+    });
+
+    test('does not cache an empty response', () async {
+      server.rawBody = '';
+
+      expect(await AppHttp.getJsonCached(server.uri), isNull);
+      expect(cacheFile(server.uri, 'body').existsSync(), isFalse);
+    });
+
+    test('round-trips non-ASCII through the cache', () async {
+      server.body = {'name': 'Устройство 🐬', 'total': 1};
+      await AppHttp.getJsonCached(server.uri);
+
+      final again = await AppHttp.getJsonCached(server.uri);
+
+      expect((again as Map)['name'], 'Устройство 🐬');
+      expect(server.requests, 1, reason: 'read back from disk');
+    });
+
+    test(
+      'treats a zero-length body as damage, not an empty document',
+      () async {
+        await AppHttp.getJsonCached(server.uri);
+        cacheFile(server.uri, 'body').writeAsStringSync('');
+
+        final got = await AppHttp.getJsonCached(server.uri);
+
+        expect((got as Map)['total'], 40);
+        expect(server.requests, 2, reason: 'an empty cache file is a miss');
+      },
+    );
+
+    // The migration deletes the only readable copy, so it must not run on a
+    // half-completed write - a metadata write that failed silently would take
+    // an offline user's cache with it, permanently.
+    test(
+      'keeps the pre-split entry when the new one cannot be written',
+      () async {
+        final uri = server.uri;
+        cacheFile(uri, 'json').writeAsStringSync(
+          jsonEncode({
+            'etag': 'W/"old"',
+            'fetched_at': DateTime.now().millisecondsSinceEpoch,
+            'body': jsonEncode(payload),
+          }),
+        );
+        // A directory exactly where the metadata file has to go.
+        Directory(cacheFile(uri, 'meta').path).createSync();
+
+        await AppHttp.getJsonCached(uri);
+
+        expect(cacheFile(uri, 'json').existsSync(), isTrue);
+      },
+    );
 
     test('ignores metadata whose body file is gone', () async {
       await AppHttp.getJsonCached(server.uri);
