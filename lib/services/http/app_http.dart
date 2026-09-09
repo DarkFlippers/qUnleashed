@@ -126,7 +126,15 @@ class AppHttp {
     } catch (_) {}
 
     if (cached != null && DateTime.now().difference(cached.fetchedAt) < ttl) {
-      return _decodeBodyFile(cached.bodyFile);
+      try {
+        return await _decodeBodyFile(cached.bodyFile);
+      } catch (_) {
+        // A body that will not parse - truncated by a crash mid-write, or
+        // half-written by a concurrent call - is a miss, not an error. The
+        // await is load-bearing: without it the failure escapes to the caller
+        // instead of falling through to the fetch below.
+        cached = null;
+      }
     }
 
     // Only the fetch is guarded, and the body is decoded after it: falling back

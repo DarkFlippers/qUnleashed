@@ -217,6 +217,19 @@ void main() {
       });
     });
 
+    // The old format failed closed here: a body it could not parse came back
+    // as null from read() and became a miss. Decoding outside that guard must
+    // not turn it into an error the caller sees.
+    test('treats an unparseable body as a miss and refetches', () async {
+      await AppHttp.getJsonCached(server.uri);
+      cacheFile(server.uri, 'body').writeAsStringSync('{"data": [trunca');
+
+      final got = await AppHttp.getJsonCached(server.uri);
+
+      expect((got as Map)['total'], 40);
+      expect(server.requests, 2);
+    });
+
     test('ignores metadata whose body file is gone', () async {
       await AppHttp.getJsonCached(server.uri);
       cacheFile(server.uri, 'body').deleteSync();
