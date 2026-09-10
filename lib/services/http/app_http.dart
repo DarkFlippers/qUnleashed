@@ -55,8 +55,7 @@ class AppHttp {
     if (res.statusCode < 200 || res.statusCode >= 300) {
       throw AppHttpException(res.statusCode, uri.toString(), text);
     }
-    if (text.isEmpty) return null;
-    return compute(jsonDecode, text);
+    return _decodeText(text);
   }
 
   static Future<dynamic> postJson(
@@ -77,8 +76,7 @@ class AppHttp {
     if (res.statusCode < 200 || res.statusCode >= 300) {
       throw AppHttpException(res.statusCode, uri.toString(), text);
     }
-    if (text.isEmpty) return null;
-    return compute(jsonDecode, text);
+    return _decodeText(text);
   }
 
   static io.Directory? _jsonCacheDir;
@@ -86,6 +84,15 @@ class AppHttp {
   /// The on-disk JSON HTTP cache directory (inside the app support container).
   /// Exposed so the Storage settings can report its size and clear it.
   static Future<io.Directory> httpCacheDirectory() => _ensureJsonCacheDir();
+
+  /// Points the cache at a directory of the caller's choosing.
+  ///
+  /// For tests only: the real path comes from the platform's app-support
+  /// container, which a unit test has no plugin to resolve, and without this
+  /// none of the caching behaviour - the TTL, revalidation, the stale copy
+  /// that makes screens work offline - can be exercised at all.
+  @visibleForTesting
+  static set jsonCacheDirectory(io.Directory? dir) => _jsonCacheDir = dir;
 
   static Future<io.Directory> _ensureJsonCacheDir() async {
     final existing = _jsonCacheDir;
@@ -107,23 +114,33 @@ class AppHttp {
     Duration ttl = const Duration(minutes: 5),
     Map<String, String> headers = const {},
   }) async {
-    io.File? file;
+    _CachePaths? paths;
     _JsonCacheEntry? cached;
     try {
       final dir = await _ensureJsonCacheDir();
       final key = sha256.convert(utf8.encode(uri.toString())).toString();
-      file = io.File('${dir.path}${io.Platform.pathSeparator}$key.json');
-      cached = await _JsonCacheEntry.read(file);
+      paths = _CachePaths(dir, key);
+      cached = await _JsonCacheEntry.read(paths);
     } catch (_) {}
 
     if (cached != null && DateTime.now().difference(cached.fetchedAt) < ttl) {
-      return _decodeCachedBody(cached.body);
+      final hit = await _tryDecodeBodyFile(cached.bodyFile);
+      if (hit.ok) return hit.value;
+      // Unusable, so fall through to the fetch below rather than serve it.
+      cached = null;
     }
 
     // Only the fetch is guarded, and the body is decoded after it: falling back
     // to a stale copy is the answer to a network failure, not to a response
-    // that arrived and will not parse.
-    final String body;
+    // that arrived and will not parse. Returning a decode from inside the try
+    // would put it back under the catch, which answers failure with the same
+    // stale copy - spawning a second isolate to redo the work that just failed.
+    //
+    // Exactly one of these is set below: a 304 leaves the body already on disk
+    // current, anything else produces a fresh one.
+    String? fresh;
+    String? freshEtag;
+    io.File? unchanged;
     try {
       final etag = cached?.etag ?? '';
       final res = await get(
@@ -136,35 +153,102 @@ class AppHttp {
       );
       if (res.statusCode == io.HttpStatus.notModified && cached != null) {
         await res.drain<void>();
-        if (file != null) await cached.refresh(file);
-        body = cached.body;
+        // Only the timestamp moves, and it now lives in its own file - a 304
+        // used to rewrite the entire body to disk to re-stamp the TTL.
+        // A 304 should carry an ETag and servers do rotate weak validators, so
+        // re-stamping with the old one would keep revalidating against a
+        // validator the server has already moved past.
+        final rotated = res.headers.value(io.HttpHeaders.etagHeader);
+        if (paths != null) {
+          await _JsonCacheEntry.stamp(paths, rotated ?? cached.etag);
+        }
+        unchanged = cached.bodyFile;
       } else {
         final text = await res.transform(utf8.decoder).join();
         if (res.statusCode < 200 || res.statusCode >= 300) {
           throw AppHttpException(res.statusCode, uri.toString(), text);
         }
-        if (file != null) {
-          final entry = _JsonCacheEntry(
-            etag: res.headers.value(io.HttpHeaders.etagHeader) ?? '',
-            fetchedAt: DateTime.now(),
-            body: text,
-          );
-          try {
-            await entry.write(file);
-          } catch (_) {}
-        }
-        body = text;
+        fresh = text;
+        freshEtag = res.headers.value(io.HttpHeaders.etagHeader) ?? '';
       }
     } catch (_) {
-      if (cached != null) return _decodeCachedBody(cached.body);
+      // The stale copy is the answer to a network failure - but only if it
+      // reads. If it does not, the caller needs the network error that sent us
+      // here, not a parse error about the fallback.
+      if (cached != null) {
+        final stale = await _tryDecodeBodyFile(cached.bodyFile);
+        if (stale.ok) return stale.value;
+      }
       rethrow;
     }
-    return _decodeCachedBody(body);
+    // Freshly fetched, so the text is already in this isolate: hand it over
+    // rather than making the isolate read back what we just wrote.
+    final body = fresh;
+    if (body != null) {
+      // Decoded before it is stored, and outside the try so a parse failure is
+      // not answered with the stale copy. A captive portal replies 200 with an
+      // HTML login page; caching that would overwrite a good entry with
+      // something that can never be served, taking the offline copy with it.
+      final decoded = await _decodeText(body);
+      // An empty response is not cached either: a zero-length body on disk is
+      // exactly what damage looks like, and it must stay unambiguous.
+      if (paths != null && body.isNotEmpty) {
+        try {
+          await _JsonCacheEntry.store(paths, etag: freshEtag ?? '', body: body);
+        } catch (_) {}
+      }
+      return decoded;
+    }
+    final file = unchanged;
+    if (file != null) {
+      final revalidated = await _tryDecodeBodyFile(file);
+      if (revalidated.ok) return revalidated.value;
+      // The server says our copy is current and it will not parse. There is
+      // nothing to serve now; the next open reads the same file, treats it as
+      // a miss and refetches, so this heals itself rather than sticking.
+      throw const FormatException('cached body unreadable after revalidation');
+    }
+    throw StateError('revalidation produced neither a body nor a cache hit');
   }
 
-  static Future<dynamic> _decodeCachedBody(String text) {
+  /// Parses a body that is already in this isolate, off the calling isolate.
+  ///
+  /// An empty *response* decodes to null, which is a legitimate answer from a
+  /// server. That is the opposite of [_readAndDecodeJson], where an empty
+  /// *file* is damage - and the difference is why an empty response is never
+  /// written to the cache in the first place.
+  static Future<dynamic> _decodeText(String text) {
     if (text.isEmpty) return Future.value();
     return compute(jsonDecode, text);
+  }
+
+  /// Parses a cached body without touching it on the calling isolate: the
+  /// isolate is given the path and does the read, the UTF-8 decode and the
+  /// parse. This is the whole point of splitting the body out of the entry.
+  static Future<dynamic> _decodeBodyFile(io.File file) =>
+      compute(_readAndDecodeJson, file.path);
+
+  /// Decodes a cached body, reporting a bad file rather than throwing.
+  ///
+  /// Every caller answers an unusable cache entry the same way - treat it as
+  /// absent - and two of them must not let a parse error stand in for the
+  /// reason they were reached: the offline path would report a truncated file
+  /// instead of the connection failure that sent it there.
+  ///
+  /// Only these two exceptions mean the file itself is unusable. Anything else
+  /// - an isolate that will not spawn under memory pressure, most of all - is
+  /// not a cache fault and must propagate, or every open silently refetches
+  /// with no way to tell the two apart.
+  static Future<({bool ok, dynamic value})> _tryDecodeBodyFile(
+    io.File file,
+  ) async {
+    try {
+      return (ok: true, value: await _decodeBodyFile(file));
+    } on FormatException {
+      return (ok: false, value: null);
+    } on io.FileSystemException {
+      return (ok: false, value: null);
+    }
   }
 
   static Future<Uint8List> getBytes(
@@ -214,52 +298,162 @@ class AppHttp {
   }
 }
 
+/// Reads and parses a JSON file. Runs inside a [compute] isolate, so it must
+/// stay top-level and take nothing but the path.
+Future<dynamic> _readAndDecodeJson(String path) async {
+  final text = await io.File(path).readAsString();
+  // An empty cache file is damage, never a value: an empty response is not
+  // stored in the first place. Throwing is what lets the callers treat it as a
+  // miss - returning null here made a destroyed entry look like a successful
+  // hit that decoded to nothing, and no guard could tell the difference.
+  if (text.isEmpty) throw const FormatException('empty cache body');
+  return jsonDecode(text);
+}
+
+/// The three files one cache key can occupy: the metadata, the raw body, and
+/// the single pre-split file an older build may have left behind.
+class _CachePaths {
+  _CachePaths(io.Directory dir, String key)
+    : meta = io.File('${dir.path}${io.Platform.pathSeparator}$key.meta'),
+      body = io.File('${dir.path}${io.Platform.pathSeparator}$key.body'),
+      legacy = io.File('${dir.path}${io.Platform.pathSeparator}$key.json');
+
+  final io.File meta;
+  final io.File body;
+  final io.File legacy;
+}
+
+/// A cache entry's metadata, plus where its body is. The body deliberately is
+/// not a field: holding it here is what forced the whole payload through the
+/// calling isolate, since reading the entry meant unescaping the body out of
+/// the same JSON object.
 class _JsonCacheEntry {
   _JsonCacheEntry({
     required this.etag,
     required this.fetchedAt,
-    required this.body,
+    required this.bodyFile,
   });
 
   final String etag;
   final DateTime fetchedAt;
-  final String body;
+  final io.File bodyFile;
 
-  static Future<_JsonCacheEntry?> read(io.File file) async {
-    if (!await file.exists()) return null;
+  static Future<_JsonCacheEntry?> read(_CachePaths paths) async {
     try {
-      final data = jsonDecode(await file.readAsString());
-      if (data is! Map<String, dynamic>) return null;
+      if (await paths.meta.exists() && await paths.body.exists()) {
+        // Tens of bytes, so decoding it here costs nothing measurable.
+        final data = jsonDecode(await paths.meta.readAsString());
+        if (data is! Map<String, dynamic>) return null;
+        final fetchedAtMs = (data['fetched_at'] as num?)?.toInt();
+        if (fetchedAtMs == null) return null;
+        return _JsonCacheEntry(
+          etag: (data['etag'] as String?) ?? '',
+          fetchedAt: DateTime.fromMillisecondsSinceEpoch(fetchedAtMs),
+          bodyFile: paths.body,
+        );
+      }
+    } catch (_) {
+      return null;
+    }
+    return _migrate(paths);
+  }
+
+  /// Splits a pre-split-format entry into the pair and returns it.
+  ///
+  /// Here only so an upgrade does not throw away a cache an offline user is
+  /// relying on - the stale copy is what makes cached screens work with no
+  /// network. The decode runs in an isolate because it is exactly the
+  /// whole-body unescape the new format exists to keep off the UI isolate, and
+  /// the old file is deleted once split, so this runs at most once per entry.
+  static Future<_JsonCacheEntry?> _migrate(_CachePaths paths) async {
+    try {
+      if (!await paths.legacy.exists()) return null;
+      final data = await compute(_readAndDecodeJson, paths.legacy.path);
+      if (data is! Map) return null;
       final fetchedAtMs = (data['fetched_at'] as num?)?.toInt();
       final body = data['body'] as String?;
       if (fetchedAtMs == null || body == null) return null;
+      final etag = (data['etag'] as String?) ?? '';
+      // store throws if either half failed, so reaching the delete means the
+      // new pair is on disk. The legacy file is the only copy until then, and
+      // removing it on a half-completed write is how an offline user loses
+      // their cache for good.
+      await store(paths, etag: etag, body: body, fetchedAtMs: fetchedAtMs);
+      // Cleanup, so its failure - including losing the race with a concurrent
+      // call that already deleted it - must not discard the migrated entry.
+      try {
+        await paths.legacy.delete();
+      } catch (_) {}
       return _JsonCacheEntry(
-        etag: (data['etag'] as String?) ?? '',
+        etag: etag,
         fetchedAt: DateTime.fromMillisecondsSinceEpoch(fetchedAtMs),
-        body: body,
+        bodyFile: paths.body,
       );
     } catch (_) {
       return null;
     }
   }
 
-  Future<void> write(io.File file) => file.writeAsString(
+  /// Writes the body beside its target and renames it into place, then the
+  /// metadata.
+  ///
+  /// The rename is what makes an overwrite safe. Writing in place truncates
+  /// first, so a crash or a full disk mid-write used to leave a zero-length
+  /// body next to metadata that was still intact and still inside its TTL -
+  /// a cache hit that decoded to null, healed its own timestamp on the next
+  /// 304, and never refetched. A rename is atomic, so a reader sees either the
+  /// previous complete body or the new one.
+  ///
+  /// Metadata goes last. On a first write a crash between the two leaves no
+  /// metadata, which reads as a miss. On an overwrite it leaves the previous
+  /// metadata against the new body: an older timestamp and a stale validator,
+  /// so the next read revalidates and corrects itself.
+  ///
+  /// Throws if either write fails. Callers that delete another copy of the
+  /// body depend on hearing about it.
+  static Future<void> store(
+    _CachePaths paths, {
+    required String etag,
+    required String body,
+    int? fetchedAtMs,
+  }) async {
+    final tmp = io.File('${paths.body.path}.tmp');
+    try {
+      await tmp.writeAsString(body, flush: true);
+      await tmp.rename(paths.body.path);
+    } catch (_) {
+      try {
+        if (await tmp.exists()) await tmp.delete();
+      } catch (_) {}
+      rethrow;
+    }
+    await _writeMeta(paths, etag, fetchedAtMs);
+  }
+
+  /// Not flushed, deliberately. The body above is fsynced before its rename
+  /// because that is what makes the swap atomic; this is ~46 bytes whose loss
+  /// costs one revalidation round trip, and fsyncing it measured 1.8ms - most
+  /// of the cost of a 304, which is the most frequent write there is. The
+  /// ordering [store] documents comes from the await and the rename, not from
+  /// this flush: a crash preserves page-cache order, and a power loss leaves
+  /// no metadata, which reads as a miss.
+  static Future<void> _writeMeta(
+    _CachePaths paths,
+    String etag,
+    int? fetchedAtMs,
+  ) => paths.meta.writeAsString(
     jsonEncode({
       'etag': etag,
-      'fetched_at': fetchedAt.millisecondsSinceEpoch,
-      'body': body,
+      'fetched_at': fetchedAtMs ?? DateTime.now().millisecondsSinceEpoch,
     }),
-    flush: true,
   );
 
-  /// Re-stamps the entry after a 304 so the TTL window restarts.
-  Future<void> refresh(io.File file) async {
+  /// Re-stamps the metadata after a 304, best-effort on purpose: the body on
+  /// disk is valid either way, so failing here costs one revalidation round
+  /// trip rather than correctness.
+  static Future<void> stamp(_CachePaths paths, String etag) async {
     try {
-      await _JsonCacheEntry(
-        etag: etag,
-        fetchedAt: DateTime.now(),
-        body: body,
-      ).write(file);
+      await _writeMeta(paths, etag, null);
     } catch (_) {}
   }
 }
