@@ -46,6 +46,13 @@ class FlipperGifEncoder {
   }) {
     assert(frames.length == delaysMs.length);
     assert(scale >= 1);
+    // A short frame writes a truncated image that still opens in some viewers
+    // and is silently wrong in others; a long one is silently cropped. Neither
+    // is worth guessing at, and neither caller can produce one.
+    assert(
+      frames.every((f) => f.length == width * height),
+      'each frame must hold exactly width * height indices',
+    );
     final buf = BytesBuilder();
     final outputWidth = width * scale;
     final outputHeight = height * scale;
