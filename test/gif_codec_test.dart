@@ -99,6 +99,7 @@ Uint8List _lzwDecode(Uint8List data, int minCodeSize, int expected) {
   final out = <int>[];
   var bitPos = 0;
   var readAny = false;
+  var sawEnd = false;
   List<int>? prev;
 
   int? readCode() {
@@ -114,7 +115,11 @@ Uint8List _lzwDecode(Uint8List data, int minCodeSize, int expected) {
 
   while (true) {
     final code = readCode();
-    if (code == null || code == eoi) break;
+    if (code == null) break;
+    if (code == eoi) {
+      sawEnd = true;
+      break;
+    }
     if (!readAny) {
       // The spec has the stream open with a clear code, and decoders rely on
       // it to size their table before the first data code arrives.
@@ -150,6 +155,15 @@ Uint8List _lzwDecode(Uint8List data, int minCodeSize, int expected) {
     prev = entry;
   }
 
+  // Running out of bits is not the same as being told the stream ended, and
+  // conflating them is how a terminator written at the wrong width goes
+  // unnoticed: the pixels still decode, so only this notices.
+  expect(sawEnd, isTrue, reason: 'stream must end with an end-of-input code');
+  expect(
+    data.length * 8 - bitPos,
+    lessThan(8),
+    reason: 'only padding may follow the terminator',
+  );
   expect(out.length, expected, reason: 'decoded pixel count');
   return Uint8List.fromList(out);
 }
@@ -242,6 +256,29 @@ void main() {
     test('a single pixel', () {
       final decoded = decodeGif(encode([solid(1, 1)], width: 1, height: 1));
       expect(decoded.single.pixels, Uint8List.fromList([1]));
+    });
+
+    // Three data codes is where the decoder widens immediately before reading
+    // the terminator, and the stream happens to be byte-aligned - so there is
+    // no spare padding bit to disguise a terminator written too narrow.
+    test('a frame whose last code lands on a width boundary', () {
+      final decoded = decodeGif(encode([solid(64, 0)], width: 8, height: 8));
+
+      expect(decoded.single.pixels, solid(64, 0));
+    });
+
+    // An index outside the two-colour palette is a caller bug, but it must not
+    // become a structural break: index 4 is the clear code and 5 is
+    // end-of-input, either of which derails a decoder mid-frame.
+    test('folds a stray index into the two-colour palette', () {
+      final input = Uint8List.fromList([0, 1, 2, 3, 4, 5, 6, 7, 8, 255, 1, 0]);
+
+      final decoded = decodeGif(encode([input], width: 4, height: 3));
+
+      expect(
+        decoded.single.pixels,
+        Uint8List.fromList([for (final v in input) v & 1]),
+      );
     });
 
     test('a size that leaves a partial byte in the bit stream', () {

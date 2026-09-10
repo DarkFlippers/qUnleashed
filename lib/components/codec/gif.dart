@@ -15,7 +15,14 @@ class FlipperGifEncoder {
   static const int _firstFreeCode = _eoiCode + 1;
 
   /// Codes are at most 12 bits, so this is one past the last usable one.
-  static const int _maxCode = 1 << 12;
+  static const int _maxCodeSize = 12;
+  static const int _maxCode = 1 << _maxCodeSize;
+
+  /// The palette has two entries. Masking to it keeps a caller's stray index
+  /// out of the code stream, where it would not be a wrong colour but a
+  /// structural break: index 4 is the clear code and index 5 is end-of-input,
+  /// either of which derails the decoder mid-frame.
+  static const int _paletteMask = 1;
 
   /// One slot per (prefix, pixel) pair. Keying on the palette width rather
   /// than on a whole byte keeps the table at 64KB instead of 4MB, which is the
@@ -196,9 +203,9 @@ class FlipperGifEncoder {
     writer.write(_clearCode, codeSize);
 
     if (indices.isNotEmpty) {
-      var prefix = indices[0] & (_clearCode - 1);
+      var prefix = indices[0] & _paletteMask;
       for (var i = 1; i < indices.length; i++) {
-        final pixel = indices[i] & (_clearCode - 1);
+        final pixel = indices[i] & _paletteMask;
         final key = (prefix << _minCodeSize) | pixel;
         final known = table[key];
         if (known != 0) {
@@ -218,7 +225,9 @@ class FlipperGifEncoder {
           if (nextCode == (1 << codeSize) + 1) codeSize++;
         } else {
           // Table full. Both sides start over rather than let codes outgrow
-          // the 12 bits GIF allows.
+          // the 12 bits GIF allows. Like the final data code below, this one
+          // is emitted without assigning an entry - it is safe only because
+          // the decoder cannot widen past 12 either.
           writer.write(_clearCode, codeSize);
           table.fillRange(0, table.length, 0);
           codeSize = _minCodeSize + 1;
@@ -227,6 +236,14 @@ class FlipperGifEncoder {
         prefix = pixel;
       }
       writer.write(prefix, codeSize);
+      // The final data code is the only one emitted without assigning a table
+      // entry, so it never reaches the widen check above - but the decoder
+      // adds an entry for it like any other, and can cross a power of two and
+      // widen before it reads the terminator. Without this the end-of-input
+      // code is written narrower than the decoder is listening for, and the
+      // stream ends with no readable terminator. Pixels still decode, which is
+      // why a lenient viewer hides it.
+      if (nextCode >= (1 << codeSize) && codeSize < _maxCodeSize) codeSize++;
     }
 
     writer.write(_eoiCode, codeSize);
