@@ -1,18 +1,23 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../../../components/config.dart';
 import '../../../theme/theme.dart';
 import '../firmware/directory.dart';
 import '../firmware/repository.dart';
+import '../firmware/update_settings.dart';
 
 class FirmwareController extends ChangeNotifier {
   FirmwareController() {
     _repo.addListener(_onRepoChanged);
+    unawaited(_restore());
     _repo.prefetchAll();
   }
 
   final FirmwareConfig config = QAppThemeController.instance.config;
   final FirmwareRepository _repo = FirmwareRepository.instance;
+  final UpdateSettingsStore _settings = UpdateSettingsStore.instance;
 
   final Map<String, _Selection> _selections = {};
 
@@ -62,11 +67,56 @@ class FirmwareController extends ChangeNotifier {
     if (!_supportsVariantSelection(entry, channelId)) {
       selection.variant = UnleashedVariant.extraPacks;
     }
+    _remember(entry);
     notifyListeners();
   }
 
   void setVariant(FirmwareEntry entry, UnleashedVariant variant) {
     _selectionFor(entry.shortName).variant = variant;
+    _remember(entry);
+    notifyListeners();
+  }
+
+  /// Records the choice for next time. [UpdateSettingsStore.remember] handles
+  /// its own failures, so there is nothing here for a caller to answer.
+  void _remember(FirmwareEntry entry) {
+    final selection = _selectionFor(entry.shortName);
+    unawaited(
+      _settings.remember(
+        entry.shortName,
+        channelId: selection.channelId,
+        variant: selection.variant,
+      ),
+    );
+  }
+
+  /// Applies the stored choices, then lets the fallback run for anything they
+  /// did not cover.
+  ///
+  /// [UpdateSettingsStore.load] handles its own failures, so a read that did
+  /// not work leaves every selection unset and the fallback below fills them
+  /// in - which is the same place a first run starts from.
+  Future<void> _restore() async {
+    await _settings.load();
+    for (final entry in config.firmwares) {
+      final saved = _settings.selectionFor(entry.shortName);
+      if (saved == null) continue;
+      final selection = _selectionFor(entry.shortName);
+      // A tap that landed while this was reading wins: the user is looking at
+      // what they just chose, and replacing it under them would be worse than
+      // forgetting it.
+      if (selection.userPicked) continue;
+      if (saved.channelId != null) {
+        selection.channelId = saved.channelId;
+        // A stored choice is a user choice, so the fallback must not treat it
+        // as an unpicked default and quietly move off the custom channel.
+        selection.userPicked = true;
+      }
+      if (saved.variant != null) selection.variant = saved.variant;
+    }
+    for (final entry in config.firmwares) {
+      _applyChannelFallback(entry);
+    }
     notifyListeners();
   }
 

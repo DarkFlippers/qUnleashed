@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import '../../../services/localization/l10n.dart';
 import '../../../components/config.dart';
 import '../../../services/http/app_http.dart';
@@ -169,6 +171,25 @@ abstract class FirmwareParser {
 
   FirmwareDirectory? get cached => _cache;
   bool get hasCached => _cache != null;
+
+  /// Installs a directory as though it had just been fetched.
+  ///
+  /// For tests. The real one comes from the network, and without it the
+  /// channel list is empty - so the controller's fallback, which is what
+  /// decides whether a remembered channel survives, cannot be exercised at
+  /// all. Marked fresh so a prefetch does not immediately replace it.
+  @visibleForTesting
+  void seedCache(FirmwareDirectory directory) {
+    _cache = directory;
+    _fetchedAt = DateTime.now();
+  }
+
+  /// Drops the cache so one test cannot inherit another's directory.
+  @visibleForTesting
+  void clearCache() {
+    _cache = null;
+    _fetchedAt = null;
+  }
 
   bool get isFresh =>
       _cache != null &&
