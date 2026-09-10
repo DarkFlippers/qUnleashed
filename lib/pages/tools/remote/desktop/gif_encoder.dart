@@ -105,7 +105,7 @@ class FlipperGifEncoder {
     // Image Data
     const minCodeSize = 2; // GIF spec minimum; matches 2-color palette
     buf.addByte(minCodeSize);
-    final compressed = _lzwLiteralCompress(indices, minCodeSize);
+    final compressed = _lzwCompress(indices, minCodeSize);
 
     // Pack into sub-blocks of at most 255 bytes each
     var offset = 0;
@@ -147,24 +147,76 @@ class FlipperGifEncoder {
   // GIF LZW compression
   // ---------------------------------------------------------------------------
 
-  static Uint8List _lzwLiteralCompress(Uint8List indices, int minCodeSize) {
-    final clearCode = 1 << minCodeSize; // 4 for minCodeSize=2
-    final eoiCode = clearCode + 1; // 5
+  /// GIF codes are at most 12 bits wide, so 4096 is one past the last code.
+  /// The two are the same fact, so they are derived from one another rather
+  /// than written out twice and left to drift.
+  static const int _maxCodeSize = 12;
+  static const int _maxCode = 1 << _maxCodeSize;
+
+  /// GIF LZW compression.
+  ///
+  /// What was here before did not compress at all. It emitted a clear code
+  /// before every *pair* of pixels, so two one-bit pixels cost three 3-bit
+  /// codes - 4.5 bits per pixel of 1-bit data, a four-and-a-half-fold
+  /// expansion of the thing it was meant to shrink. The stated reason was to
+  /// avoid a desynchronised LZW table showing as a blank frame; the way to
+  /// avoid that is to widen the code at exactly the point the decoder does,
+  /// which is what this does and what the round-trip tests pin.
+  static Uint8List _lzwCompress(Uint8List indices, int minCodeSize) {
+    final clearCode = 1 << minCodeSize;
+    final eoiCode = clearCode + 1;
     final writer = _LsbBitWriter();
 
-    // The Flipper screen is only 128x64 and 2-color, so a deliberately simple
-    // literal stream is preferable to a fragile table compressor here. We emit
-    // a clear code before each pair of pixels, which keeps the decoder's code
-    // size at 3 bits for the entire frame and avoids GIF viewers receiving a
-    // desynchronized LZW table as a blank/white frame.
-    final codeSize = minCodeSize + 1;
-    for (var i = 0; i < indices.length; i += 2) {
-      writer.write(clearCode, codeSize);
-      writer.write(indices[i] & 0x01, codeSize);
-      if (i + 1 < indices.length) {
-        writer.write(indices[i + 1] & 0x01, codeSize);
-      }
+    var codeSize = minCodeSize + 1;
+    var nextCode = eoiCode + 1;
+    // Keyed on (prefix << 8) | pixel: a pixel is a palette index under 256 and
+    // a prefix code never exceeds 4095, so the pair fits one int.
+    var table = <int, int>{};
+
+    writer.write(clearCode, codeSize);
+    if (indices.isEmpty) {
+      writer.write(eoiCode, codeSize);
+      writer.flush();
+      return writer.bytes();
     }
+
+    var prefix = indices[0] & 0xFF;
+    for (var i = 1; i < indices.length; i++) {
+      final pixel = indices[i] & 0xFF;
+      final known = table[(prefix << 8) | pixel];
+      if (known != null) {
+        prefix = known;
+        continue;
+      }
+      writer.write(prefix, codeSize);
+      if (nextCode < _maxCode) {
+        table[(prefix << 8) | pixel] = nextCode;
+        nextCode++;
+        // Widen one code later than the table filling up, because the
+        // decoder's table always lags this one by a single entry: it adds an
+        // entry only once it has read the *following* code, and the code after
+        // a clear adds nothing at all. Widening when this table fills - the
+        // obvious rule - makes every decoder read the stream one code out of
+        // step, which is exactly the garbled output the old literal stream was
+        // written to avoid.
+        // The width cap cannot actually be reached, because the reset below
+        // fires first; it is here so the two limits stay consistent if
+        // _maxCode ever moves.
+        if (nextCode == (1 << codeSize) + 1 && codeSize < _maxCodeSize) {
+          codeSize++;
+        }
+      } else {
+        // Table full. Both sides start over rather than let codes outgrow the
+        // 12 bits GIF allows.
+        writer.write(clearCode, codeSize);
+        table = <int, int>{};
+        codeSize = minCodeSize + 1;
+        nextCode = eoiCode + 1;
+      }
+      prefix = pixel;
+    }
+
+    writer.write(prefix, codeSize);
     writer.write(eoiCode, codeSize);
     writer.flush();
     return writer.bytes();
