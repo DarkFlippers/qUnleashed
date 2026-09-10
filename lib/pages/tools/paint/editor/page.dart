@@ -13,7 +13,7 @@ import '../../../../services/logging.dart';
 import '../../../../services/storage/paths.dart';
 import '../../../../theme/theme.dart';
 import '../../../../components/notification.dart';
-import '../../remote/desktop/gif_encoder.dart';
+import '../../../../components/codec/gif.dart';
 import '../../../../components/codec/bm.dart';
 import '../constants.dart';
 import '../dolphin_animation.dart';
