@@ -379,15 +379,18 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
     if (guard != null) return guard;
     final picking = _mode == _MapMode.pick;
     final showPanel = _panelOpen && !picking;
-    final inset = showPanel ? kMapPanelWidth + 24 : 0.0;
 
     return Stack(
       children: [
-        _buildMapStack(colors, desktopMode: true, leftInset: inset),
+        _buildMapStack(
+          colors,
+          desktopMode: true,
+          leftInset: showPanel ? kMapPanelWidth + 24 : 0,
+        ),
         if (showPanel)
           Positioned(
             left: 12,
-            top: 12,
+            top: kMapControl + 24,
             bottom: 12,
             width: kMapPanelWidth,
             child: Material(
@@ -413,55 +416,14 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
               ),
             ),
           ),
-        if (picking)
-          Positioned(
-            left: 12,
-            right: 12,
-            top: 12,
-            child: _buildPickControls(colors),
-          )
-        else ...[
-          // Rides the panel's edge: parked beside it while it is open, sliding
-          // out to the window edge once it is folded away.
-          AnimatedPositioned(
-            duration: const Duration(milliseconds: 240),
-            curve: Curves.easeOutCubic,
-            left: showPanel ? kMapPanelWidth + 24 : 12,
-            top: 12,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (ModalRoute.of(context)?.impliesAppBarDismissal ??
-                    false) ...[
-                  _MapControl(
-                    colors: colors,
-                    icon: Icons.arrow_back,
-                    tooltip: context.l10n.commonClose,
-                    onTap: () => Navigator.of(context).maybePop(),
-                  ),
-                  const SizedBox(width: 8),
-                ],
-                _MapControl(
-                  colors: colors,
-                  icon: _panelOpen
-                      ? Icons.menu_open_rounded
-                      : Icons.format_list_bulleted_rounded,
-                  tooltip: context.l10n.mapTitle,
-                  active: _panelOpen,
-                  onTap: () => setState(() => _panelOpen = !_panelOpen),
-                ),
-              ],
-            ),
-          ),
-          Positioned(
-            right: 12,
-            top: 12,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: _mapControls(colors),
-            ),
-          ),
-        ],
+        Positioned(
+          left: 12,
+          right: 12,
+          top: 12,
+          child: picking
+              ? _buildPickControls(colors)
+              : _buildBrowseControls(colors, withPanelToggle: true),
+        ),
       ],
     );
   }
@@ -512,16 +474,31 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
     );
   }
 
-  Widget _buildBrowseControls(QAppColors colors) {
+  Widget _buildBrowseControls(
+    QAppColors colors, {
+    bool withPanelToggle = false,
+  }) {
     final canDismiss = ModalRoute.of(context)?.impliesAppBarDismissal ?? false;
     return Row(
       children: [
-        if (canDismiss)
+        if (canDismiss) ...[
           _MapControl(
             colors: colors,
             icon: Icons.arrow_back,
             tooltip: context.l10n.commonClose,
             onTap: () => Navigator.of(context).maybePop(),
+          ),
+          if (withPanelToggle) const SizedBox(width: 8),
+        ],
+        if (withPanelToggle)
+          _MapControl(
+            colors: colors,
+            icon: _panelOpen
+                ? Icons.menu_open_rounded
+                : Icons.format_list_bulleted_rounded,
+            tooltip: context.l10n.mapTitle,
+            active: _panelOpen,
+            onTap: () => setState(() => _panelOpen = !_panelOpen),
           ),
         const Spacer(),
         ..._mapControls(colors),
