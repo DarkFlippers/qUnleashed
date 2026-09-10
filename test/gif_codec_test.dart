@@ -2,7 +2,7 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:qunleashed/pages/tools/remote/desktop/gif_encoder.dart';
+import 'package:qunleashed/components/codec/gif.dart';
 
 /// One decoded frame: palette indices at the GIF's own resolution.
 typedef DecodedFrame = ({int width, int height, int delayCs, Uint8List pixels});

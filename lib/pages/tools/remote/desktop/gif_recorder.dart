@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-import 'gif_encoder.dart';
+import '../../../../components/codec/gif.dart';
 import 'models/models.dart';
 
 enum GifRecordingState { idle, recording, paused, encoding }
