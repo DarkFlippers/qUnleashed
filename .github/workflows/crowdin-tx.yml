@@ -30,12 +30,27 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
 
+      # The two import options below only do anything when upload_translations
+      # is on, which is only ever the seed. They are set here rather than
+      # remembered on the day because getting either wrong is expensive to
+      # undo once 1,236 strings exist in the translation memory.
       - name: Upload sources
         uses: crowdin/github-action@v2
         with:
           config: crowdin.yml
           upload_sources: true
           upload_translations: ${{ inputs.seed_translations || false }}
+          # crowdin.yml sets update_as_unapproved, which is right for a string
+          # changed later but wrong for the seed: it would land a translation
+          # this repository has been shipping for months as something nobody
+          # has looked at, and export_only_approved would then omit all of it.
+          auto_approve_imported: true
+          # Crowdin drops a translation identical to its source unless told
+          # otherwise. Twenty-four messages here are the same in both
+          # languages on purpose - qUnleashed, NFC, Sub-GHz, iButton, OK,
+          # "{provider} · {design}" - and without this they arrive as
+          # untranslated, ready for a translator to helpfully render NFC.
+          import_eq_suggestions: true
           download_translations: false
           create_pull_request: false
         env:
