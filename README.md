@@ -67,6 +67,24 @@ qUnleashed keeps the familiar companion-app workflows from the original Flipper 
 - **Pulse Plotter.** Visualize raw Sub-GHz/Infrared/RFID pulse captures with zooming, histograms and slicing helpers — open captures right from the archive.
 - **Saved Locations.** Parses synced archive files for latitude/longitude metadata, shows them as pins on an interactive map with the current phone position, distance, bearing and walking time, and links each pin back to the saved Flipper file.
 
+## Translations
+
+The app is translated on Crowdin. **Do not edit `translations/app_*.arb` by hand** — English is the only exception, because it is the source every other language is translated from.
+
+Crowdin exports each language file whole, so an edit made here is not merged with the next sync, it is reverted by it. That has already cost one manual repair of the Russian translation.
+
+- **To correct or add a translation**, work in Crowdin. It reaches this repository automatically, in a pull request opened by the sync.
+- **To add or change an English string**, edit `translations/app_en.arb`. It is uploaded to Crowdin when the change lands on `main`, and translators see it from there.
+- **To have a new language enabled**, open an issue asking for it. Enabling a language is done in Crowdin; once it has translations, the sync adds `translations/app_<code>.arb` on its own and the app picks the locale up with no code change.
+
+A CI check enforces this, so a pull request that edits a translated file fails rather than being merged and quietly undone.
+
+### Writing strings
+
+- Keep product names untranslated: **qUnleashed**, **Flipper**, **Flipper Zero**, and protocol names such as Sub-GHz, NFC, RFID, iButton.
+- Give every new key an `@key` description saying where it appears and, for a bare word, whether it is a verb or a noun. Translators see only the string and that description.
+- Name placeholders for what they hold (`{fileName}`, not `{arg0}`); the name is shown to translators.
+
 ## Support ApertureFox projects
 <p align="left">
   <a href="https://boosty.to/apfxtech/donate">

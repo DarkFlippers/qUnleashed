@@ -18,6 +18,11 @@ jobs:
     name: Analyze and test
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Reading the pull request's file list needs more than the workflow's
+    # default contents-only grant.
+    permissions:
+      contents: read
+      pull-requests: read
 
     steps:
       - name: Checkout
@@ -37,6 +42,29 @@ jobs:
 
       - name: Test the Android artifact verification
         run: .github/scripts/verify_apks_test.sh
+
+      - name: Test the translation source guard
+        run: .github/scripts/check_translation_sources_test.sh
+
+      # English is the only localization source in this repository; every other
+      # language is written in Crowdin and arrives through its pull request.
+      # Crowdin exports each file whole, so a hand edit here is reverted by the
+      # next sync rather than merged - which has already cost one manual repair.
+      # Asked of the API rather than worked out from the checkout: the clone is
+      # shallow, so the merge base needed for a three-dot diff is not
+      # necessarily present, and a two-dot one would flag any branch that has
+      # simply not been rebased since the last sync. Paginated, because a guard
+      # that silently stops looking after the first hundred files is a guard
+      # that a large enough pull request walks straight through.
+      - name: Check nothing edits a translation by hand
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --paginate \
+            "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" \
+            --jq '.[].filename' \
+            | .github/scripts/check_translation_sources.sh
 
       # Catches what only running a workflow would otherwise catch, and the
       # release workflow only publishes on a tag.
