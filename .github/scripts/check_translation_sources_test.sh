@@ -161,6 +161,21 @@ else
   fail "crowdin.yml patterns were readable (found none)"
 fi
 
+# The sync's branch name is written in crowdin-rx.yml and again as this
+# script's default, with nothing linking the two. Rename it there and the guard
+# starts blocking the sync itself, which stops every translation from ever
+# landing - a failure that looks like Crowdin having gone quiet. run() clears
+# the environment, so this exercises the default rather than any local value.
+sync_branch="$(sed -nE \
+  's/^[[:space:]]*localization_branch_name:[[:space:]]*([^[:space:]]+).*/\1/p' \
+  "$HERE/../workflows/crowdin-rx.yml")"
+if [[ -n "$sync_branch" ]]; then
+  allows "the branch crowdin-rx.yml really syncs from ($sync_branch)" \
+    "$sync_branch" translations/app_ru.arb
+else
+  fail "crowdin-rx.yml names a localization branch"
+fi
+
 if ((failures)); then
   echo "$failures failure(s)" >&2
   exit 1

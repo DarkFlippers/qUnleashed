@@ -4,9 +4,19 @@
 # English is the only source: every other language is written in Crowdin and
 # reaches this repository through the Crowdin RX pull request. Editing one by
 # hand creates a second writer, and the two do not merge - Crowdin exports the
-# whole file, so the next sync silently reverts whatever was written here. That
-# is not hypothetical: it is how e0aed07 came to exist, and why the Russian
-# translation has had to be restored by hand once already.
+# whole file, so the next sync silently reverts whatever was written here.
+#
+# e0aed07 is what that looks like. It put 83 Russian strings back by hand, and
+# its own message states the consequence plainly: "Seeding Crowdin with these
+# translations has to follow, or the next download will overwrite them again."
+# This guard would have blocked that commit - correctly. The repair belonged in
+# Crowdin, which is the only place it would have survived.
+#
+# What this does not do is stop the sync from overwriting a good translation in
+# the first place, which is what damaged those 83 strings and is tracked in #49.
+# That one is Crowdin-side: the project has never held this repository's
+# translations, so it exports English for them. Seeding it is that fix, and it
+# is a different fix from this one.
 #
 # Reads the changed paths on stdin, one per line, so the caller decides how to
 # work out the diff and this stays testable without a repository.
@@ -22,6 +32,12 @@
 # branch that deliberately turns the check off, which is the point: this
 # catches the mistake of not knowing the rule, and someone who does know it
 # has a legitimate reason now and then.
+#
+# The branch, not the author, though the sync's pull requests do currently
+# arrive as github-actions[bot] and that looks like the sturdier signal. It is
+# not: #40 is open to reopen those pull requests under a PAT or app token,
+# precisely so they trigger CI, and that changes the author while leaving the
+# branch name alone. A test keeps this default and crowdin-rx.yml in step.
 set -Eeuo pipefail
 
 crowdin_branch="${CROWDIN_BRANCH:-l10n/crowdin}"
