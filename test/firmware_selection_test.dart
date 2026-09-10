@@ -47,19 +47,29 @@ void main() {
     }
   });
 
-  void giveChannels(List<String> ids) {
-    parserForEntry(unleashed).seedCache(
-      FirmwareDirectory(channels: [for (final id in ids) channel(id)]),
-    );
+  /// Seeds a directory for [entry], defaulting to Unleashed.
+  ///
+  /// Every firmware gets one by default. Leaving any unseeded means the
+  /// controller goes to the network for it - a dozen live requests per run -
+  /// and the resulting notify runs a fallback pass *before* the stored
+  /// settings are read, which quietly pre-satisfies assertions that the
+  /// default channel is release.
+  void giveChannels(List<String> ids, {FirmwareEntry? entry}) {
+    for (final f in entry == null ? QAppConfig.firmware.firmwares : [entry]) {
+      parserForEntry(f).seedCache(
+        FirmwareDirectory(channels: [for (final id in ids) channel(id)]),
+      );
+    }
   }
 
   /// Leaves a choice on disk as a previous run would have, then drops what the
   /// store read so the next controller has to go and fetch it.
   Future<void> alreadyChose({
+    String shortName = 'unlshd',
     String? channel,
     UnleashedVariant? variant,
   }) async {
-    await settings.remember('unlshd', channelId: channel, variant: variant);
+    await settings.remember(shortName, channelId: channel, variant: variant);
     settings.reset();
   }
 
@@ -68,7 +78,15 @@ void main() {
       giveChannels(['release', 'development']);
 
       await withController((fw) async {
-        expect(fw.selectedChannelId(unleashed), 'release');
+        // Every firmware, not just the first: the fallback loops them all, and
+        // asserting only on the first would let it be narrowed unnoticed.
+        for (final entry in QAppConfig.firmware.firmwares) {
+          expect(
+            fw.selectedChannelId(entry),
+            'release',
+            reason: entry.shortName,
+          );
+        }
       });
     });
 
@@ -121,13 +139,81 @@ void main() {
       await alreadyChose(channel: 'development');
 
       final fw = FirmwareController();
+      addTearDown(fw.dispose);
       await pumpEventQueue();
       giveChannels(['release', 'development']);
-      await FirmwareRepository.instance.refresh();
+      FirmwareRepository.instance.directoryChanged();
       await pumpEventQueue();
 
       expect(fw.selectedChannelId(unleashed), 'development');
-      fw.dispose();
+    });
+
+    test('the seeded directory is what the controller offers', () async {
+      giveChannels(['release', 'development']);
+
+      await withController((fw) async {
+        expect(fw.channelsFor(unleashed).map((c) => c.id), [
+          'release',
+          'development',
+          kCustomFirmwareChannelId,
+        ]);
+      });
+    });
+
+    // Both the restore and the fallback loop every firmware, and every other
+    // assertion here is on the first one - so narrowing either loop to `.first`
+    // would go unnoticed.
+    test('every firmware is restored, not just the first', () async {
+      final other = QAppConfig.firmware.firmwares.firstWhere(
+        (f) => f.shortName != 'unlshd',
+      );
+      giveChannels(['release', 'development']);
+      await alreadyChose(shortName: other.shortName, channel: 'development');
+
+      await withController((fw) async {
+        expect(fw.selectedChannelId(other), 'development');
+        expect(fw.selectedChannelId(unleashed), 'release');
+      });
+    });
+
+    // The directory matches channel ids through their aliases, so a feed that
+    // renames one must not silently discard what the user picked.
+    test('a channel the feed now spells differently is kept', () async {
+      giveChannels(['release', 'development']);
+      await alreadyChose(channel: 'dev');
+
+      await withController((fw) async {
+        expect(fw.selectedChannelId(unleashed), 'development');
+      });
+    });
+
+    // selectedVariant already reports the packaged variant for a channel that
+    // has no variants, so moving through one must not discard the choice -
+    // which is what made the screen and the next launch disagree.
+    test('a variant survives a channel that has none', () async {
+      giveChannels(['release', 'release-candidate']);
+      await alreadyChose(channel: 'release', variant: UnleashedVariant.compact);
+
+      await withController((fw) async {
+        fw.setChannel(unleashed, 'release-candidate');
+        expect(fw.selectedVariant(unleashed), UnleashedVariant.extraPacks);
+
+        fw.setChannel(unleashed, 'release');
+        expect(fw.selectedVariant(unleashed), UnleashedVariant.compact);
+      });
+    });
+
+    test('a stored variant is not offered on a channel without them', () async {
+      giveChannels(['release-candidate', 'release']);
+      await alreadyChose(
+        channel: 'release-candidate',
+        variant: UnleashedVariant.compact,
+      );
+
+      await withController((fw) async {
+        expect(fw.hasVariants(unleashed), isFalse);
+        expect(fw.selectedVariant(unleashed), UnleashedVariant.extraPacks);
+      });
     });
 
     test('choosing a channel records it', () async {
@@ -187,11 +273,11 @@ void main() {
       await alreadyChose(channel: 'release');
 
       final fw = FirmwareController();
+      addTearDown(fw.dispose);
       fw.setChannel(unleashed, 'development');
       await pumpEventQueue();
 
       expect(fw.selectedChannelId(unleashed), 'development');
-      fw.dispose();
     });
 
     // Tracked per field: a channel tap says nothing about the variant, so a
@@ -201,11 +287,11 @@ void main() {
       await alreadyChose(channel: 'release', variant: UnleashedVariant.base);
 
       final fw = FirmwareController();
+      addTearDown(fw.dispose);
       fw.setVariant(unleashed, UnleashedVariant.compact);
       await pumpEventQueue();
 
       expect(fw.selectedVariant(unleashed), UnleashedVariant.compact);
-      fw.dispose();
     });
 
     // The read is started in the constructor and cannot be cancelled, so

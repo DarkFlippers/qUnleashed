@@ -70,9 +70,11 @@ class FirmwareController extends ChangeNotifier {
     final selection = _selectionFor(entry.shortName);
     selection.channelId = channelId;
     selection.channelPicked = true;
-    if (!_supportsVariantSelection(entry, channelId)) {
-      selection.variant = UnleashedVariant.extraPacks;
-    }
+    // The variant is deliberately left alone. selectedVariant already reports
+    // the packaged one for a channel that has no variants, so overwriting it
+    // here changed nothing on screen and only discarded what the user had
+    // chosen - which then came back on the next launch, because the store
+    // still held it.
     // Only the channel: the variant sitting in the selection may be a default
     // nobody chose, and writing it would make it look like one they did.
     unawaited(_settings.remember(entry.shortName, channelId: channelId));
@@ -141,14 +143,20 @@ class FirmwareController extends ChangeNotifier {
     if (directory == null && selection.channelId != null) return;
     final channels = _channelsForDirectory(directory);
     final selected = selection.channelId;
+    final match = _matchChannel(channels, selected);
     final hasReal = channels.any((c) => c.id != kCustomFirmwareChannelId);
     final needsFallback =
-        selected == null ||
-        !channels.any((channel) => channel.id == selected) ||
+        match == null ||
         (!selection.channelPicked &&
             hasReal &&
             selected == kCustomFirmwareChannelId);
-    if (!needsFallback) return;
+    if (!needsFallback) {
+      // The feed renamed the channel the user picked. Keeping the choice under
+      // the id the directory now uses means every later lookup finds it,
+      // rather than the choice being quietly discarded on a rename.
+      if (match.id != selected) selection.channelId = match.id;
+      return;
+    }
 
     final fallback = channels.firstWhere(
       (channel) => channel.id == 'release',
@@ -158,6 +166,24 @@ class FirmwareController extends ChangeNotifier {
       ),
     );
     selection.channelId = fallback.id;
+  }
+
+  /// Finds [id] among [channels] the way the directory itself does - by the
+  /// channel's aliases, not by an exact string match.
+  static FirmwareDirectoryChannel? _matchChannel(
+    List<FirmwareDirectoryChannel> channels,
+    String? id,
+  ) {
+    if (id == null) return null;
+    final normalized = FirmwareChannel.fromId(id);
+    for (final channel in channels) {
+      if (channel.id == id) return channel;
+      if (normalized != null &&
+          FirmwareChannel.fromId(channel.id) == normalized) {
+        return channel;
+      }
+    }
+    return null;
   }
 
   List<FirmwareDirectoryChannel> _channelsForDirectory(FirmwareDirectory? dir) {

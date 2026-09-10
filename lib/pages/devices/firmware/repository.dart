@@ -22,6 +22,15 @@ class FirmwareRepository extends ChangeNotifier {
   Future<void> prefetchAll() =>
       Future.wait(QAppConfig.firmware.firmwares.map(ensure));
 
+  /// Announces a directory change without fetching one.
+  ///
+  /// For tests. The alternative is [refresh], which goes to the network - and
+  /// on a machine with egress it succeeds and replaces whatever a test had
+  /// seeded, making the assertion depend on what the upstream feed happens to
+  /// serve that day.
+  @visibleForTesting
+  void directoryChanged() => notifyListeners();
+
   Future<void> refresh() =>
       Future.wait(QAppConfig.firmware.firmwares.map(_fetch));
 
