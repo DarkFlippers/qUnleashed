@@ -3006,6 +3006,16 @@
     }
   },
 
+  "appNotOnDevice": "{folder} · not on device",
+  "@appNotOnDevice": {
+    "description": "Subtitle of an app that still has a local backup copy but is no longer installed on the Flipper, because its .fap was deleted outside this app - through the file manager, qFlipper, or the card in a reader.",
+    "placeholders": {
+      "folder": {
+        "type": "String"
+      }
+    }
+  },
+
   "managerScanning": "Scanning device…",
   "@managerScanning": {
     "description": "Progress line while the Flipper file system is being read."

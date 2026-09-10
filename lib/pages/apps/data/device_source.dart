@@ -17,6 +17,15 @@ import 'manifest_registry.dart';
 import 'models/installed_app.dart';
 import '../../../services/logging.dart';
 
+/// One `.fap` as the device reports it.
+typedef _DeviceFap = ({
+  String alias,
+  String folder,
+  String devicePath,
+  String md5,
+  int size,
+});
+
 class DeviceSource extends ChangeNotifier {
   DeviceSource({
     required this.client,
@@ -34,8 +43,30 @@ class DeviceSource extends ChangeNotifier {
 
   bool get isReady => client.isRpcReady;
 
+  /// Overrides where mirrored copies of installed apps live.
+  ///
+  /// Tests only. The real path is derived from the user's documents directory
+  /// through platform environment variables, which a test process cannot
+  /// change - so without this a test either reads and writes the developer's
+  /// real Devices folder, or, where no device has ever been remembered, skips
+  /// the mirroring half of a scan entirely. Both make what is covered depend
+  /// on the machine.
+  @visibleForTesting
+  static Future<io.Directory> Function(String deviceName)? backupDirectory;
+
+  Future<io.Directory> _backupDir(String deviceName) =>
+      (backupDirectory ?? appsBackupDirectory)(deviceName);
+
   final Map<String, ({int size, String folder, String path, int stamp})>
   _local = {};
+
+  /// Aliases whose `.fap` the last complete device walk found.
+  ///
+  /// Null until one completes. That distinction is the whole point: a device
+  /// nobody has scanned, or one that disconnected mid-walk, must not read as a
+  /// device with nothing installed - only a finished walk can prove an app is
+  /// gone.
+  Set<String>? _deviceAliases;
 
   final Map<String, FapInfo?> _parsed = {};
   final Map<String, int> _parsedStamp = {};
@@ -53,6 +84,7 @@ class DeviceSource extends ChangeNotifier {
       if (alias.isEmpty) continue;
       final m = manifests.byAlias(alias);
       final local = _local[alias];
+      final onDevice = _deviceAliases?.contains(alias);
       final folder =
           local?.folder ??
           (m != null && m.path.isNotEmpty ? _folderFromPath(m.path) : '');
@@ -68,6 +100,7 @@ class DeviceSource extends ChangeNotifier {
           manifest: m,
           fap: _parsed[alias],
           fapChecked: _parsed.containsKey(alias),
+          onDevice: onDevice,
         ),
       );
     }
@@ -94,6 +127,10 @@ class DeviceSource extends ChangeNotifier {
     final parts = path.split('/')..removeWhere((e) => e.isEmpty);
     final idx = parts.indexOf('apps');
     if (idx >= 0 && parts.length > idx + 2) return parts[idx + 1];
+    // Directly inside the apps root: no folder, rather than the root's own
+    // name. The mirror stores such a copy at its own root, so answering
+    // "apps" here would send restore and delete to a path that never exists.
+    if (idx >= 0 && parts.length == idx + 2) return '';
     return parts.length >= 2 ? parts[parts.length - 2] : '';
   }
 
@@ -111,7 +148,7 @@ class DeviceSource extends ChangeNotifier {
     try {
       final name = await _deviceName();
       if (name != null) {
-        final dir = await appsBackupDirectory(name);
+        final dir = await _backupDir(name);
         if (await dir.exists()) {
           final sep = io.Platform.pathSeparator;
           await for (final e in dir.list(recursive: true, followLinks: false)) {
@@ -121,7 +158,13 @@ class DeviceSource extends ChangeNotifier {
             final alias = base.substring(0, base.length - 4);
             if (alias.isEmpty) continue;
             final parent = e.parent.path;
-            final folder = parent.substring(parent.lastIndexOf(sep) + 1);
+            // A copy of an app that lives in the apps root sits in the mirror
+            // root, where the parent directory is the mirror itself - reading
+            // its name as the folder would send restore and delete looking in
+            // a directory that does not exist.
+            final folder = parent == dir.path
+                ? ''
+                : parent.substring(parent.lastIndexOf(sep) + 1);
             int size = 0;
             int stamp = 0;
             try {
@@ -183,13 +226,20 @@ class DeviceSource extends ChangeNotifier {
     notifyListeners();
     try {
       await manifests.refresh();
-      final deviceApps = await _walkDevice();
+      final walk = await _walkDevice();
+      final deviceApps = walk.apps;
+      // Only a complete walk proves absence. A partial one - a disconnect
+      // mid-scan - must leave the previous answer alone rather than report an
+      // empty device.
+      if (walk.complete) {
+        _deviceAliases = {for (final d in deviceApps) d.alias};
+      }
       _syncTotal = deviceApps.length;
       notifyListeners();
 
       final name = await _deviceName();
       if (name == null) return;
-      final dir = await appsBackupDirectory(name);
+      final dir = await _backupDir(name);
 
       for (final d in deviceApps) {
         if (!isReady) break;
@@ -245,56 +295,62 @@ class DeviceSource extends ChangeNotifier {
     }
   }
 
-  Future<
-    List<
-      ({String alias, String folder, String devicePath, String md5, int size})
-    >
-  >
-  _walkDevice() async {
-    final root = await client.storageList(
-      ListRequest(path: kAppsRoot),
-      timeout: const Duration(seconds: 20),
-    );
-    final folders = <String>[
-      for (final item in root.items)
-        for (final f in item.file)
-          if (f.type == File_FileType.DIR && f.name.isNotEmpty) f.name,
-    ];
-    final out =
-        <
-          ({
-            String alias,
-            String folder,
-            String devicePath,
-            String md5,
-            int size,
-          })
-        >[];
-    for (final folder in folders) {
-      if (!isReady) break;
-      _syncingItem = folder;
-      notifyListeners();
-      final list = await client.storageList(
-        ListRequest(path: '$kAppsRoot/$folder'),
-        timeout: const Duration(seconds: 20),
-      );
-      for (final item in list.items) {
+  Future<({List<_DeviceFap> apps, bool complete})> _walkDevice() async {
+    final out = <_DeviceFap>[];
+    var complete = true;
+
+    void collect(FlipperRpcBatch<ListResponse> listing, String folder) {
+      final dir = folder.isEmpty ? kAppsRoot : '$kAppsRoot/$folder';
+      for (final item in listing.items) {
         for (final f in item.file) {
           if (f.type != File_FileType.FILE) continue;
           if (!f.name.endsWith('.fap')) continue;
-          final alias = f.name.substring(0, f.name.length - 4);
+          final alias = aliasFromFapPath(f.name);
           if (alias.isEmpty) continue;
           out.add((
             alias: alias,
             folder: folder,
-            devicePath: '$kAppsRoot/$folder/${f.name}',
+            devicePath: '$dir/${f.name}',
             md5: f.md5sum,
             size: f.size,
           ));
         }
       }
     }
-    return out;
+
+    final root = await client.storageList(
+      ListRequest(path: kAppsRoot),
+      timeout: const Duration(seconds: 20),
+    );
+    // Apps normally live one folder deep, but a .fap sitting directly in the
+    // apps root is installed too, and overlooking it would let the
+    // completeness check call it absent.
+    collect(root, '');
+
+    final folders = <String>[
+      for (final item in root.items)
+        for (final f in item.file)
+          if (f.type == File_FileType.DIR && f.name.isNotEmpty) f.name,
+    ];
+    // One level only, which is the layout the firmware's app loader expects.
+    for (final folder in folders) {
+      if (!isReady) {
+        // Disconnected part-way: what was collected is still worth syncing,
+        // but it is no longer evidence that anything is absent.
+        complete = false;
+        break;
+      }
+      _syncingItem = folder;
+      notifyListeners();
+      collect(
+        await client.storageList(
+          ListRequest(path: '$kAppsRoot/$folder'),
+          timeout: const Duration(seconds: 20),
+        ),
+        folder,
+      );
+    }
+    return (apps: out, complete: complete);
   }
 
   Future<bool> _localMatchesRemote(
@@ -329,18 +385,25 @@ class DeviceSource extends ChangeNotifier {
   Future<bool> restore(InstalledApp app) async {
     final name = await _deviceName();
     if (name == null) return false;
-    final dir = await appsBackupDirectory(name);
+    final dir = await _backupDir(name);
     final file = io.File(
       pathJoin([dir.path, sanitizePathSegment(app.folder), '${app.alias}.fap']),
     );
     if (!await file.exists()) return false;
     final bytes = await file.readAsBytes();
-    return engine.restore(
+    final ok = await engine.restore(
       alias: app.alias,
       fapPath: app.path,
       fapBytes: bytes,
       manifest: app.manifest,
     );
+    // Otherwise the app the user just put back keeps rendering as missing,
+    // with no way out of that state but another full scan.
+    if (ok) {
+      _deviceAliases?.add(app.alias);
+      notifyListeners();
+    }
+    return ok;
   }
 
   Future<void> adoptInstalled({
@@ -354,7 +417,7 @@ class DeviceSource extends ChangeNotifier {
     try {
       final name = await _deviceName();
       if (name != null) {
-        final dir = await appsBackupDirectory(name);
+        final dir = await _backupDir(name);
         final file = io.File(
           pathJoin([dir.path, sanitizePathSegment(folder), '$alias.fap']),
         );
@@ -373,6 +436,10 @@ class DeviceSource extends ChangeNotifier {
     );
     _parsed[alias] = FapInfo.parse(Uint8List.fromList(fapBytes));
     _parsedStamp.remove(alias);
+    // The app is on the device now. Without this the set still describes the
+    // walk that ran before the install, so an app the user has just installed
+    // renders as one that is missing from the device.
+    _deviceAliases?.add(alias);
     notifyListeners();
   }
 
@@ -380,7 +447,7 @@ class DeviceSource extends ChangeNotifier {
     try {
       final name = await _deviceName();
       if (name == null) return;
-      final dir = await appsBackupDirectory(name);
+      final dir = await _backupDir(name);
       final file = io.File(
         pathJoin([
           dir.path,
@@ -397,6 +464,7 @@ class DeviceSource extends ChangeNotifier {
 
   Future<void> uninstallFromDevice(InstalledApp app) async {
     await engine.deleteInstalled(alias: app.alias, fapPath: app.path);
+    _deviceAliases?.remove(app.alias);
     await deleteLocal(app);
   }
 
@@ -422,12 +490,20 @@ class DeviceSource extends ChangeNotifier {
 
   void handleDisconnect() => notifyListeners();
 
-  void handleConnect() => notifyListeners();
+  void handleConnect() {
+    // Apps can be added or removed while disconnected - through a card reader,
+    // or the Flipper itself - so what the last walk saw is no longer evidence.
+    _deviceAliases = null;
+    notifyListeners();
+  }
 
   void handleDeviceChange() {
     _local.clear();
     _parsed.clear();
     _parsedStamp.clear();
+    // Device-scoped like the three above: this set describes one device's
+    // storage, and this is a different device.
+    _deviceAliases = null;
     _syncDone = 0;
     _syncTotal = 0;
     notifyListeners();

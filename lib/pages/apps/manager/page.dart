@@ -171,44 +171,78 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
             filled: true,
             onTap: () => _engine.cancel(app.alias),
           )
-        else if (updatable)
+        // A complete walk proved the .fap is gone, so Open would launch a path
+        // that is not there and Update would reinstall behind the user's back.
+        // Putting the backup copy back is the action that helps - and is why
+        // the copy is kept rather than quietly pruned when an app leaves the
+        // device.
+        //
+        // Uninstall stays, because it is what clears the row: the .fap is gone
+        // but its manifest is not, and the manifest is why the app is still
+        // listed at all. deleteInstalled removes the .fim first and tolerates
+        // the absent .fap, so without this the entry can never be dismissed.
+        else if (app.isMissingFromDevice) ...[
           AppActionEntry(
-            label: ctx.l10n.commonUpdate,
-            icon: Icons.system_update_alt,
-            color: colors.success,
+            label: ctx.l10n.appActionRestore,
+            icon: Icons.restore,
+            color: colors.accent,
             filled: true,
-            onTap: () => unawaited(_update(app)),
+            onTap: () => unawaited(_restore(app)),
           ),
-        AppActionEntry(
-          label: ctx.l10n.commonOpen,
-          icon: Icons.play_arrow_rounded,
-          color: colors.accent,
-          filled: !updatable,
-          half: true,
-          onTap: () => unawaited(_launch(app)),
-        ),
-        AppActionEntry(
-          label: ctx.l10n.appActionRestore,
-          icon: Icons.restore,
-          color: colors.accent,
-          half: true,
-          onTap: () => unawaited(_restore(app)),
-        ),
-        AppActionEntry(
-          label: ctx.l10n.appActionDeleteCopy,
-          icon: Icons.sd_card_outlined,
-          color: colors.danger,
-          half: true,
-          onTap: () => unawaited(_deleteLocal(app)),
-        ),
-        AppActionEntry(
-          label: ctx.l10n.appActionUninstall,
-          icon: Icons.delete_outline,
-          color: colors.danger,
-          filled: true,
-          half: true,
-          onTap: () => unawaited(_uninstall(app)),
-        ),
+          AppActionEntry(
+            label: ctx.l10n.appActionDeleteCopy,
+            icon: Icons.sd_card_outlined,
+            color: colors.danger,
+            half: true,
+            onTap: () => unawaited(_deleteLocal(app)),
+          ),
+          AppActionEntry(
+            label: ctx.l10n.appActionUninstall,
+            icon: Icons.delete_outline,
+            color: colors.danger,
+            half: true,
+            onTap: () => unawaited(_uninstall(app)),
+          ),
+        ] else ...[
+          if (updatable)
+            AppActionEntry(
+              label: ctx.l10n.commonUpdate,
+              icon: Icons.system_update_alt,
+              color: colors.success,
+              filled: true,
+              onTap: () => unawaited(_update(app)),
+            ),
+          AppActionEntry(
+            label: ctx.l10n.commonOpen,
+            icon: Icons.play_arrow_rounded,
+            color: colors.accent,
+            filled: !updatable,
+            half: true,
+            onTap: () => unawaited(_launch(app)),
+          ),
+          AppActionEntry(
+            label: ctx.l10n.appActionRestore,
+            icon: Icons.restore,
+            color: colors.accent,
+            half: true,
+            onTap: () => unawaited(_restore(app)),
+          ),
+          AppActionEntry(
+            label: ctx.l10n.appActionDeleteCopy,
+            icon: Icons.sd_card_outlined,
+            color: colors.danger,
+            half: true,
+            onTap: () => unawaited(_deleteLocal(app)),
+          ),
+          AppActionEntry(
+            label: ctx.l10n.appActionUninstall,
+            icon: Icons.delete_outline,
+            color: colors.danger,
+            filled: true,
+            half: true,
+            onTap: () => unawaited(_uninstall(app)),
+          ),
+        ],
       ],
     );
   }
@@ -471,7 +505,9 @@ class _AppRow extends StatelessWidget {
             manifest: app.manifest,
           ),
           title: app.name,
-          subtitle: app.hasManifest
+          subtitle: app.isMissingFromDevice
+              ? context.l10n.appNotOnDevice(app.folder)
+              : app.hasManifest
               ? app.folder
               : context.l10n.appSideloaded(app.folder),
         );
