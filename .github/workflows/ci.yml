@@ -55,15 +55,24 @@ jobs:
       # necessarily present, and a two-dot one would flag any branch that has
       # simply not been rebased since the last sync. Paginated, because a guard
       # that silently stops looking after the first hundred files is a guard
-      # that a large enough pull request walks straight through.
+      # that a large enough pull request walks straight through - and asked for
+      # previous_filename too, because a rename reports only where the file
+      # landed, and moving one out of Crowdin's pattern breaks the sync just as
+      # thoroughly as editing it.
+      #
+      # shell: bash for the pipefail that a bare run block does not get. Left
+      # off, a failure to reach the API would empty the pipeline, the guard
+      # would find nothing to object to, and the check would pass green having
+      # examined no files at all.
       - name: Check nothing edits a translation by hand
         if: github.event_name == 'pull_request'
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh api --paginate \
             "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" \
-            --jq '.[].filename' \
+            --jq '.[] | .filename, (.previous_filename // empty)' \
             | .github/scripts/check_translation_sources.sh
 
       # Catches what only running a workflow would otherwise catch, and the

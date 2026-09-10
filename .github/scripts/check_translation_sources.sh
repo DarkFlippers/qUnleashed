@@ -13,8 +13,15 @@
 #
 #   git diff --name-only "origin/$BASE"...HEAD | check_translation_sources.sh
 #
+# Give it the old path of a rename as well as the new one. A file moved out of
+# the pattern stops being Crowdin's export target without anything about the
+# change looking like an edit to it.
+#
 # Set CROWDIN_BRANCH to the branch the sync opens its pull request from; a
-# change on that branch is the sync doing its job and is allowed.
+# change on that branch is the sync doing its job and is allowed. Naming a
+# branch that deliberately turns the check off, which is the point: this
+# catches the mistake of not knowing the rule, and someone who does know it
+# has a legitimate reason now and then.
 set -Eeuo pipefail
 
 crowdin_branch="${CROWDIN_BRANCH:-l10n/crowdin}"
@@ -26,14 +33,19 @@ if [[ "$branch" == "$crowdin_branch" ]]; then
 fi
 
 offenders=()
-while IFS= read -r path; do
+# The `|| [[ -n "$path" ]]` keeps the last line when the producer sends no
+# trailing newline; without it the guard skips whichever file happens to be
+# last, and says nothing about having done so.
+while IFS= read -r path || [[ -n "$path" ]]; do
   [[ -z "$path" ]] && continue
   case "$path" in
     # The source of every string. Editing this is how strings are added.
     translations/app_en.arb) ;;
     fastlane/metadata/android/en-US/*) ;;
-    # Every other app-strings file belongs to Crowdin.
-    translations/app_*.arb) offenders+=("$path") ;;
+    # Everything else under translations/ is Crowdin's, at whatever depth. A
+    # narrower pattern would miss app_de.arb moved one directory down, which
+    # is just as broken and much harder to see.
+    translations/*) offenders+=("$path") ;;
     # Of the store listing, Crowdin holds only the three texts crowdin.yml
     # names. The screenshots, the icon, the title and the video URL are kept
     # here for every locale, so they have to stay editable here.
@@ -60,5 +72,9 @@ is reverted by the next sync rather than merged with it.
 
 To correct a translation, change it in Crowdin; it reaches this repository on
 the next sync. To add a language, ask for it to be enabled in Crowdin.
+
+Of the store listing Crowdin holds only short_description.txt,
+full_description.txt and the changelogs. Screenshots, the icon, title.txt and
+video.txt are kept here and can be changed in any locale.
 MESSAGE
 exit 1
