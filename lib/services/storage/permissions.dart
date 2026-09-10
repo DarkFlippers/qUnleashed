@@ -12,20 +12,44 @@ import 'package:permission_handler/permission_handler.dart';
 /// manifest with maxSdkVersion="29"). Requesting the other one is always
 /// denied, since the platform drops out-of-range permissions from the package.
 ///
-/// Requested once per process: MANAGE_EXTERNAL_STORAGE sends the user to a
-/// system settings screen, so it must not be re-asked per file operation.
-Future<bool> ensureAndroidStoragePermission() {
-  return _androidStoragePermission ??= _requestAndroidStoragePermission();
+/// The status is re-read on every call: it needs no activity, shows nothing and
+/// costs a context lookup, so a grant made later - from the system settings, or
+/// after the app was reinstalled and the permission came back revoked - is seen
+/// at once. Only the prompt is fired once per process: MANAGE_EXTERNAL_STORAGE
+/// sends the user to a system settings screen, so it must not be re-asked per
+/// file operation. A prompt that never reached the user (the plugin refuses a
+/// request while another one is running, and the app fires several at startup)
+/// does not count as asked, or the ask would be lost for the whole run.
+Future<bool> ensureAndroidStoragePermission() async {
+  if (!io.Platform.isAndroid) return true;
+  final permission = await (_storagePermission ??= _resolvePermission());
+  if (await _isGranted(permission)) return true;
+  return _prompt ??= _requestOnce(permission);
 }
 
-Future<bool>? _androidStoragePermission;
+Future<Permission>? _storagePermission;
+Future<bool>? _prompt;
 
-Future<bool> _requestAndroidStoragePermission() async {
-  if (!io.Platform.isAndroid) return true;
-
+Future<Permission> _resolvePermission() async {
   final android = await DeviceInfoPlugin().androidInfo;
-  final permission = android.version.sdkInt >= 30
+  return android.version.sdkInt >= 30
       ? Permission.manageExternalStorage
       : Permission.storage;
-  return (await permission.request()).isGranted;
+}
+
+Future<bool> _isGranted(Permission permission) async {
+  try {
+    return (await permission.status).isGranted;
+  } catch (_) {
+    return false;
+  }
+}
+
+Future<bool> _requestOnce(Permission permission) async {
+  try {
+    return (await permission.request()).isGranted;
+  } catch (_) {
+    _prompt = null;
+    return false;
+  }
 }

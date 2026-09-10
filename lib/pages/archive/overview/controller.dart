@@ -2,10 +2,11 @@ import '../../../services/localization/l10n.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io' as io;
+import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:flipperlib/flipperlib.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 
 import '../../../components/codec/fap/icon.dart';
 import '../../../components/archive/parser.dart';
@@ -60,7 +61,7 @@ class _RemoteFile {
   final int size;
 }
 
-class ArchiveController extends ChangeNotifier {
+class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
   ArchiveController({FlipperClient? client, ArchiveStorage? storage})
     : _client = client ?? FlipperOneClient().get(),
       _storage = storage ?? ArchiveStorage();
@@ -161,16 +162,36 @@ class ArchiveController extends ChangeNotifier {
   }
 
   Future<void> initialize() async {
+    WidgetsBinding.instance.addObserver(this);
     _connSub ??= _client.connectionStream.listen(_onConnectionChange);
     _deviceInfoSub ??= _client.deviceInfoUpdates.listen(_onDeviceInfo);
     _deviceName = _client.getName() ?? '';
-    if (_deviceName.isEmpty) {
-      final last = await _storage.readLastDeviceName();
-      if (last != null && last.isNotEmpty) {
-        _deviceName = last;
-      }
-    }
+    if (_deviceName.isEmpty) await _adoptLastDeviceName();
     await refresh();
+  }
+
+  /// Falls back to the name of the last connected device, so the archive of a
+  /// Flipper that is not around stays readable. Tells whether one was found.
+  Future<bool> _adoptLastDeviceName() async {
+    final last = await _storage.readLastDeviceName();
+    if (last == null || last.isEmpty) return false;
+    _deviceName = last;
+    return true;
+  }
+
+  /// Rereads `.last_device` when the app comes back to the foreground without a
+  /// device name: on a fresh install the first read races the storage
+  /// permission the user may have just granted on the settings screen, and
+  /// nothing else would tell us the archive became readable.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    unawaited(_retryLastDeviceName());
+  }
+
+  Future<void> _retryLastDeviceName() async {
+    if (_deviceName.isNotEmpty || _loading) return;
+    if (await _adoptLastDeviceName()) await refresh();
   }
 
   void _onDeviceInfo(Map<String, String> patch) {
@@ -253,6 +274,7 @@ class ArchiveController extends ChangeNotifier {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _connSub?.cancel();
     _deviceInfoSub?.cancel();
     super.dispose();
