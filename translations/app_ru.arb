@@ -148,7 +148,7 @@
   "@deviceAutoConnectUsb": {
     "description": "Toggle: connect on its own to a Flipper plugged in over USB."
   },
-  "deviceAutoConnectUsbSubtitle": "Подключаться к Флипперу сразу после того, как его подключили кабелем.",
+  "deviceAutoConnectUsbSubtitle": "Подключаться к Flipper сразу после того, как его подключили кабелем.",
   "@deviceAutoConnectUsbSubtitle": {
     "description": "Explanation under the USB auto-connect toggle."
   },
@@ -312,11 +312,11 @@
   "@storageIrLibrary": {
     "description": "Storage area: the downloaded infrared remote database."
   },
-  "storageIrLibrarySubtitle": "Загруженный репозиторий ИК-пультов",
+  "storageIrLibrarySubtitle": "Скачанный репозиторий ИК-пультов",
   "@storageIrLibrarySubtitle": {
     "description": "Explanation of the IR library storage area."
   },
-  "storageAllThePluginsSubtitle": "Загруженный индекс приложений и бинарники релизов",
+  "storageAllThePluginsSubtitle": "Скачанный индекс приложений и бинарники релизов",
   "@storageAllThePluginsSubtitle": {
     "description": "Explanation of the All-the-plugins storage area. All-the-plugins is a repository name."
   },
@@ -657,7 +657,7 @@
   "@fliblerCustomIndexTitle": {
     "description": "Title of the dialog asking for a custom SDK index URL."
   },
-  "fliblerDownloadingSdk": "Загрузка SDK…",
+  "fliblerDownloadingSdk": "Скачивание SDK…",
   "@fliblerDownloadingSdk": {
     "description": "Button label while the firmware SDK is downloading."
   },
@@ -665,7 +665,7 @@
   "@fliblerUpdateSdk": {
     "description": "Button that fetches a newer firmware SDK."
   },
-  "fliblerDownloadSdk": "Загрузить SDK",
+  "fliblerDownloadSdk": "Скачать SDK",
   "@fliblerDownloadSdk": {
     "description": "Button that fetches the firmware SDK for the first time."
   },
@@ -690,7 +690,7 @@
       }
     }
   },
-  "fliblerDownloadingToolchain": "Загрузка тулчейна…",
+  "fliblerDownloadingToolchain": "Скачивание тулчейна…",
   "@fliblerDownloadingToolchain": {
     "description": "Button label while the ARM toolchain is downloading."
   },
@@ -702,11 +702,11 @@
   "@fliblerUpdateToolchain": {
     "description": "Button that replaces the toolchain with a newer version."
   },
-  "fliblerDownloadToolchain": "Загрузить тулчейн",
+  "fliblerDownloadToolchain": "Скачать тулчейн",
   "@fliblerDownloadToolchain": {
     "description": "Button that fetches the ARM toolchain for the first time."
   },
-  "fliblerToolchainReinstall": "Установлен v{version}, загрузит и распакует заново, ~340 МБ",
+  "fliblerToolchainReinstall": "Установлен v{version}, скачается и распакуется заново, ~340 МБ",
   "@fliblerToolchainReinstall": {
     "description": "Caption under the toolchain button when it is already up to date.",
     "placeholders": {
@@ -744,7 +744,7 @@
   "@fliblerNotCheckedYet": {
     "description": "Status value before the first check has run."
   },
-  "fliblerNotInstalled": "Не установлено",
+  "fliblerNotInstalled": "Не установлен",
   "@fliblerNotInstalled": {
     "description": "Status value when the SDK or toolchain is absent."
   },
@@ -752,7 +752,7 @@
   "@fliblerStatusToolchain": {
     "description": "Status row: the installed ARM compiler version."
   },
-  "fliblerStatusStateDir": "Каталог состояния",
+  "fliblerStatusStateDir": "Папка состояния",
   "@fliblerStatusStateDir": {
     "description": "Status row: the folder ufbt keeps its state in."
   },
@@ -834,7 +834,7 @@
   "@fliblerCheckServer": {
     "description": "Button that contacts the build server and refreshes its status."
   },
-  "fliblerRemoteOnly": "Приложения собираются удалённо, здесь нечего загружать",
+  "fliblerRemoteOnly": "Приложения собираются удалённо, здесь нечего скачивать",
   "@fliblerRemoteOnly": {
     "description": "Caption under the Check server button on platforms that cannot build locally."
   },
@@ -928,11 +928,11 @@
   "@buildErrorDesktopOnly": {
     "description": "Error shown when a build is started on a phone, which cannot compile."
   },
-  "buildErrorNoSdk": "SDK не установлен, откройте сборщик и загрузите его",
+  "buildErrorNoSdk": "SDK не установлен, откройте сборщик и скачайте его",
   "@buildErrorNoSdk": {
     "description": "Error shown when a local build is started without the firmware SDK."
   },
-  "buildErrorNoToolchain": "Тулчейн не установлен, откройте сборщик и загрузите его",
+  "buildErrorNoToolchain": "Тулчейн не установлен, откройте сборщик и скачайте его",
   "@buildErrorNoToolchain": {
     "description": "Error shown when a local build is started without the ARM toolchain."
   },
@@ -973,7 +973,7 @@
   "@remoteNoSigningKey": {
     "description": "Error shown when the app cannot authenticate to the build server."
   },
-  "remoteBusyWithApp": "Сервер собирает \"{alias}\", дождитесь окончания",
+  "remoteBusyWithApp": "Сервер собирает «{alias}», дождитесь окончания",
   "@remoteBusyWithApp": {
     "description": "Error shown when a second build is started while one is already running. {alias} is the app name.",
     "placeholders": {
@@ -1129,7 +1129,7 @@
       }
     }
   },
-  "timeDaysAgo": "{count} дн назад",
+  "timeDaysAgo": "{count} дн. назад",
   "@timeDaysAgo": {
     "description": "Relative time in days. Kept short, it is shown in a narrow column.",
     "placeholders": {
@@ -1138,7 +1138,7 @@
       }
     }
   },
-  "timeWeeksAgo": "{count} нед назад",
+  "timeWeeksAgo": "{count} нед. назад",
   "@timeWeeksAgo": {
     "description": "Relative time in weeks. Kept short, it is shown in a narrow column.",
     "placeholders": {
@@ -1147,7 +1147,7 @@
       }
     }
   },
-  "timeMonthsAgo": "{count} мес назад",
+  "timeMonthsAgo": "{count} мес. назад",
   "@timeMonthsAgo": {
     "description": "Relative time in months. Kept short, it is shown in a narrow column.",
     "placeholders": {
@@ -1156,7 +1156,7 @@
       }
     }
   },
-  "timeYearsAgo": "{count} г назад",
+  "timeYearsAgo": "{count} г. назад",
   "@timeYearsAgo": {
     "description": "Relative time in years. Kept short, it is shown in a narrow column.",
     "placeholders": {
@@ -1401,7 +1401,7 @@
   "@colPreset": {
     "description": "Table column holding the radio preset name. Kept short."
   },
-  "colModulation": "Мод",
+  "colModulation": "Мод.",
   "@colModulation": {
     "description": "Table column holding the radio modulation, abbreviated. Must stay very short, the column is 56 pixels wide."
   },
@@ -1540,7 +1540,7 @@
   "@categoryNfc": {
     "description": "Archive category for contactless cards and tags. NFC is a standard abbreviation, usually left as is."
   },
-  "categoryRfid": "RFID 125",
+  "categoryRfid": "RFID 125 кГц",
   "@categoryRfid": {
     "description": "Archive category for 125 kHz proximity cards."
   },
@@ -1548,7 +1548,7 @@
   "@categoryIbutton": {
     "description": "Archive category for iButton contact keys. Product name, usually left as is."
   },
-  "categoryInfrared": "Infrared",
+  "categoryInfrared": "ИК",
   "@categoryInfrared": {
     "description": "Archive category for infrared remotes."
   },
@@ -1797,7 +1797,7 @@
       }
     }
   },
-  "firmwareErrorChecksum": "Контрольная сумма архива прошивки не совпала, загрузка повреждена — попробуйте снова",
+  "firmwareErrorChecksum": "Контрольная сумма архива прошивки не совпала, скачанный файл повреждён — попробуйте снова",
   "@firmwareErrorChecksum": {
     "description": "Error shown when the downloaded firmware archive is damaged."
   },
@@ -1922,7 +1922,7 @@
   "@fwuLabelUpdate": {
     "description": "Update button label that installs a newer firmware. Shown in capitals."
   },
-  "fwuLabelDownload": "ЗАГРУЗКА",
+  "fwuLabelDownload": "СКАЧИВАНИЕ",
   "@fwuLabelDownload": {
     "description": "Update button label while the firmware is downloading. Shown in capitals."
   },
@@ -1994,7 +1994,7 @@
   "@fwuDescPreparing": {
     "description": "Explanation while the firmware archive is being resolved."
   },
-  "fwuDescDownloading": "Загрузка прошивки…",
+  "fwuDescDownloading": "Скачивание прошивки…",
   "@fwuDescDownloading": {
     "description": "Explanation while the firmware is downloading."
   },
@@ -2113,7 +2113,7 @@
   "@appDeleteTitle": {
     "description": "Title of the dialog confirming an app removal."
   },
-  "appDeleteMessage": "Удалить \"{name}\" с устройства?",
+  "appDeleteMessage": "Удалить «{name}» с устройства?",
   "@appDeleteMessage": {
     "description": "Body of the dialog confirming an app removal. {name} is the app name.",
     "placeholders": {
@@ -2388,7 +2388,7 @@
   "@appDeleteLocalTitle": {
     "description": "Title of the dialog confirming removal of the downloaded app file."
   },
-  "appDeleteLocalMessage": "Удалить загруженный \"{name}.fap\" с этого компьютера? Приложение останется на Flipper.",
+  "appDeleteLocalMessage": "Удалить скачанный «{name}.fap» с этого компьютера? Приложение останется на Flipper.",
   "@appDeleteLocalMessage": {
     "description": "Body of the dialog confirming removal of the downloaded app file.",
     "placeholders": {
@@ -2401,7 +2401,7 @@
   "@appUninstallTitle": {
     "description": "Title of the dialog confirming removal of the app from the Flipper."
   },
-  "appUninstallMessage": "Удалить \"{name}\" с Flipper (локальная копия тоже будет удалена).",
+  "appUninstallMessage": "Удалить «{name}» с Flipper (локальная копия тоже будет удалена).",
   "@appUninstallMessage": {
     "description": "Body of the dialog confirming removal of the app from the Flipper.",
     "placeholders": {
@@ -2410,7 +2410,7 @@
       }
     }
   },
-  "appRestoring": "Восстановление \"{name}\" на Flipper",
+  "appRestoring": "Восстановление «{name}» на Flipper",
   "@appRestoring": {
     "description": "Toast shown while a locally backed up app is written back to the Flipper.",
     "placeholders": {
@@ -2455,13 +2455,22 @@
   "@managerNoApps": {
     "description": "Shown when the Flipper has been read and carries no apps."
   },
-  "managerSyncHint": "Нажмите синхронизацию, чтобы загрузить приложения с Flipper",
+  "managerSyncHint": "Нажмите синхронизацию, чтобы получить список приложений с Flipper",
   "@managerSyncHint": {
     "description": "Hint under the empty apps list."
   },
   "appSideloaded": "{folder} · вручную",
   "@appSideloaded": {
     "description": "Subtitle of an app that was copied to the Flipper outside this app, so it has no manifest.",
+    "placeholders": {
+      "folder": {
+        "type": "String"
+      }
+    }
+  },
+  "appNotOnDevice": "{folder} · нет на устройстве",
+  "@appNotOnDevice": {
+    "description": "Subtitle of an app that still has a local backup copy but is no longer installed on the Flipper, because its .fap was deleted outside this app - through the file manager, qFlipper, or the card in a reader.",
     "placeholders": {
       "folder": {
         "type": "String"
@@ -2510,7 +2519,7 @@
       }
     }
   },
-  "appsErrorNotInPack": "В релизе all-the-plugins нет сборки \"{alias}\" для этой прошивки",
+  "appsErrorNotInPack": "В релизе all-the-plugins нет сборки «{alias}» для этой прошивки",
   "@appsErrorNotInPack": {
     "description": "Error shown when the plugin pack lacks the requested app.",
     "placeholders": {
@@ -2519,7 +2528,7 @@
       }
     }
   },
-  "appsErrorNoPackArchive": "Нет архива релиза для набора \"{pack}\"",
+  "appsErrorNoPackArchive": "Нет архива релиза для набора «{pack}»",
   "@appsErrorNoPackArchive": {
     "description": "Error shown when the plugin pack release has no downloadable archive.",
     "placeholders": {
@@ -2564,11 +2573,11 @@
   "@fliblerJobIdle": {
     "description": "Progress panel label when no build job is running."
   },
-  "fliblerJobSdk": "Загрузка SDK",
+  "fliblerJobSdk": "Скачивание SDK",
   "@fliblerJobSdk": {
     "description": "Progress panel label while the firmware SDK downloads."
   },
-  "fliblerJobToolchain": "Загрузка тулчейна",
+  "fliblerJobToolchain": "Скачивание тулчейна",
   "@fliblerJobToolchain": {
     "description": "Progress panel label while the ARM toolchain downloads."
   },
@@ -2623,7 +2632,7 @@
   "@fliblerErrorNoGit": {
     "description": "Error shown when the git command line tool is missing. PATH and git are technical names."
   },
-  "fliblerErrorNoSubdir": "В репозитории нет папки \"{subdir}\"",
+  "fliblerErrorNoSubdir": "В репозитории нет папки «{subdir}»",
   "@fliblerErrorNoSubdir": {
     "description": "Error shown when the link points at a folder the repository does not have.",
     "placeholders": {
@@ -2824,11 +2833,11 @@
   "@paintUndo": {
     "description": "Tooltip of the undo button."
   },
-  "paintRedo": "Вернуть",
+  "paintRedo": "Повторить",
   "@paintRedo": {
     "description": "Tooltip of the redo button."
   },
-  "paintToggleGrid": "Показать сетку",
+  "paintToggleGrid": "Показать или скрыть сетку",
   "@paintToggleGrid": {
     "description": "Tooltip of the button that shows or hides the pixel grid."
   },
@@ -2947,7 +2956,7 @@
   "@paintActiveCooldown": {
     "description": "Animation setting: how long before the active part may play again."
   },
-  "paintTriggerActive": "Запустить активную",
+  "paintTriggerActive": "Запустить активную часть",
   "@paintTriggerActive": {
     "description": "Button that plays the active part of the animation right away."
   },
@@ -2959,7 +2968,7 @@
   "@paintUnsupportedFile": {
     "description": "Toast shown when an unsupported file was opened. The extensions are literal."
   },
-  "paintSaved": "Сохранено \"{name}\"",
+  "paintSaved": "Сохранено «{name}»",
   "@paintSaved": {
     "description": "Toast shown after a project was saved.",
     "placeholders": {
@@ -3080,7 +3089,7 @@
   "@paintPngImported": {
     "description": "Toast shown after a picture was imported into the current frame."
   },
-  "paintGifImported": "GIF импортирован: кадров {count}",
+  "paintGifImported": "GIF импортирован, кадров: {count}",
   "@paintGifImported": {
     "description": "Toast shown after an animated GIF was imported.",
     "placeholders": {
@@ -3093,7 +3102,7 @@
   "@paintNoValidFrames": {
     "description": "Toast shown when an imported animation held nothing usable."
   },
-  "paintDolphinImported": "Анимация дельфина: импортировано кадров {count}",
+  "paintDolphinImported": "Анимация дельфина, импортировано кадров: {count}",
   "@paintDolphinImported": {
     "description": "Toast shown after a dolphin animation was imported.",
     "placeholders": {
@@ -3132,7 +3141,7 @@
   "@paintDeleteProject": {
     "description": "Title of the dialog confirming a project removal."
   },
-  "paintDeleteProjectMessage": "Удалить \"{name}\"? Это действие необратимо.",
+  "paintDeleteProjectMessage": "Удалить «{name}»? Это действие необратимо.",
   "@paintDeleteProjectMessage": {
     "description": "Body of the dialog confirming a project removal.",
     "placeholders": {
@@ -3198,7 +3207,7 @@
   "@paintNoAnimationsOnDevice": {
     "description": "Shown when the Flipper carries no dolphin animations."
   },
-  "paintDownloadingFile": "Загрузка {name} ({index}/{total})",
+  "paintDownloadingFile": "Скачивание {name} ({index}/{total})",
   "@paintDownloadingFile": {
     "description": "Progress line while one animation file is downloaded.",
     "placeholders": {
@@ -3301,7 +3310,7 @@
   "@paintMaxButthurt": {
     "description": "Animation setting: the highest dolphin mood value that may show it. \"Butthurt\" is the firmware term for the dolphin mood."
   },
-  "paintUploadConfirm": "{count, plural, one{Загрузить {count} анимацию и перезаписать /ext/dolphin/manifest.txt на устройстве?} few{Загрузить {count} анимации и перезаписать /ext/dolphin/manifest.txt на устройстве?} other{Загрузить {count} анимаций и перезаписать /ext/dolphin/manifest.txt на устройстве?}}",
+  "paintUploadConfirm": "{count, plural, one{Отправить {count} анимацию и перезаписать /ext/dolphin/manifest.txt на устройстве?} few{Отправить {count} анимации и перезаписать /ext/dolphin/manifest.txt на устройстве?} many{Отправить {count} анимаций и перезаписать /ext/dolphin/manifest.txt на устройстве?} other{Отправить {count} анимаций и перезаписать /ext/dolphin/manifest.txt на устройстве?}}",
   "@paintUploadConfirm": {
     "description": "Body of the dialog confirming an animation upload. The file path is literal.",
     "placeholders": {
@@ -3310,7 +3319,7 @@
       }
     }
   },
-  "paintDolphinFrames": "{count, plural, one{{count} кадр · meta.txt + файлы .bm} few{{count} кадра · meta.txt + файлы .bm} other{{count} кадров · meta.txt + файлы .bm}}",
+  "paintDolphinFrames": "{count, plural, one{{count} кадр · meta.txt + файлы .bm} few{{count} кадра · meta.txt + файлы .bm} many{{count} кадров · meta.txt + файлы .bm} other{{count} кадров · meta.txt + файлы .bm}}",
   "@paintDolphinFrames": {
     "description": "Subtitle of the dolphin export option, counting frames. The file names are literal.",
     "placeholders": {
@@ -3319,7 +3328,7 @@
       }
     }
   },
-  "paintGifFrames": "{count, plural, one{{count} кадр} few{{count} кадра} other{{count} кадров}}",
+  "paintGifFrames": "{count, plural, one{{count} кадр} few{{count} кадра} many{{count} кадров} other{{count} кадров}}",
   "@paintGifFrames": {
     "description": "Subtitle of the GIF export option, counting frames.",
     "placeholders": {
@@ -3332,7 +3341,7 @@
   "@paintSendAction": {
     "description": "Button that confirms uploading the animations to the Flipper."
   },
-  "mfNotRecoveredFewNonces": "{count, plural, one{Не восстановлено — собрана всего {count} нонса; соберите больше на устройстве и повторите.} few{Не восстановлено — собрано всего {count} нонсы; соберите больше на устройстве и повторите.} other{Не восстановлено — собрано всего {count} нонсов; соберите больше на устройстве и повторите.}}",
+  "mfNotRecoveredFewNonces": "{count, plural, one{Не восстановлено — собран всего {count} нонс; соберите больше на устройстве и повторите.} few{Не восстановлено — собрано всего {count} нонса; соберите больше на устройстве и повторите.} many{Не восстановлено — собрано всего {count} нонсов; соберите больше на устройстве и повторите.} other{Не восстановлено — собрано всего {count} нонсов; соберите больше на устройстве и повторите.}}",
   "@mfNotRecoveredFewNonces": {
     "description": "Note when too few nonces were collected to attack a sector key. A \"nonce\" is a captured authentication number.",
     "placeholders": {
@@ -3490,7 +3499,7 @@
   "@mfKindWeakNested": {
     "description": "Attack kind label. Lowercase, it appears inside a bracketed tag."
   },
-  "mfKindStaticNonce": "статичный нонс",
+  "mfKindStaticNonce": "статический нонс",
   "@mfKindStaticNonce": {
     "description": "Attack kind label. Lowercase, it appears inside a bracketed tag."
   },
@@ -3538,7 +3547,7 @@
   "@mfConnecting": {
     "description": "Progress title while waiting for the Flipper."
   },
-  "mfDownloading": "Загрузка нонсов…",
+  "mfDownloading": "Скачивание нонсов…",
   "@mfDownloading": {
     "description": "Progress title while the log files are downloaded."
   },
@@ -3550,7 +3559,7 @@
   "@mfSyncing": {
     "description": "Progress title while results are written back to the Flipper."
   },
-  "mfKeysAdded": "{count, plural, one{Добавлен {count} новый ключ} few{Добавлено {count} новых ключа} other{Добавлено {count} новых ключей}}",
+  "mfKeysAdded": "{count, plural, one{Добавлен {count} новый ключ} few{Добавлено {count} новых ключа} many{Добавлено {count} новых ключей} other{Добавлено {count} новых ключей}}",
   "@mfKeysAdded": {
     "description": "Result title counting the keys that were added to the dictionary.",
     "placeholders": {
@@ -3624,7 +3633,7 @@
   "@plotLong": {
     "description": "Slicer band for the longest timing group."
   },
-  "plotSync": "Синхро",
+  "plotSync": "Синхр.",
   "@plotSync": {
     "description": "Slicer band for the synchronisation pulse. Kept short."
   },
@@ -3753,7 +3762,7 @@
   "@plotAboutOutro": {
     "description": "Last paragraph of the plotter help sheet."
   },
-  "plotWrongFileType": "Неподходящий тип файла. Принимаются только SubGhz RAW, RFID RAW и файлы ИК-сигналов.",
+  "plotWrongFileType": "Неподходящий тип файла. Принимаются только файлы Sub-GHz RAW, RFID RAW и ИК-сигналов.",
   "@plotWrongFileType": {
     "description": "Error shown when the picked file is not a supported capture."
   },
@@ -3836,11 +3845,11 @@
   "@irLibraryTitle": {
     "description": "Title of the infrared remote library screen."
   },
-  "irBrowseIrdb": "Просмотр общественного репозитория Flipper-IRDB",
+  "irBrowseIrdb": "Просмотр репозитория сообщества Flipper-IRDB",
   "@irBrowseIrdb": {
     "description": "Explanation under the remote library entry. Flipper-IRDB is a repository name."
   },
-  "irDownloading": "Загрузка",
+  "irDownloading": "Скачивание",
   "@irDownloading": {
     "description": "Progress stage while the remote database is downloaded."
   },
@@ -3852,11 +3861,11 @@
   "@irDone": {
     "description": "Progress stage when the database is ready."
   },
-  "irDisconnected": "Отключено",
+  "irDisconnected": "Устройство отключено",
   "@irDisconnected": {
     "description": "Toast shown when sending a remote fails because the Flipper is gone."
   },
-  "irDownloadFailed": "Не удалось загрузить файл",
+  "irDownloadFailed": "Не удалось скачать файл",
   "@irDownloadFailed": {
     "description": "Toast shown when a remote file could not be fetched."
   },
@@ -3911,7 +3920,7 @@
   "@irSearching": {
     "description": "Shown while a library search is running."
   },
-  "irNoMatchesFor": "Нет совпадений для \"{query}\"",
+  "irNoMatchesFor": "Нет совпадений для «{query}»",
   "@irNoMatchesFor": {
     "description": "Shown when a library search found nothing.",
     "placeholders": {
@@ -3924,7 +3933,7 @@
   "@irEmptyFolder": {
     "description": "Shown when a library folder holds nothing."
   },
-  "irResultCount": "{count, plural, one{{count} результат для \"{query}\"} few{{count} результата для \"{query}\"} other{{count} результатов для \"{query}\"}}",
+  "irResultCount": "{count, plural, one{{count} результат для «{query}»} few{{count} результата для «{query}»} many{{count} результатов для «{query}»} other{{count} результатов для «{query}»}}",
   "@irResultCount": {
     "description": "Counts the search results of the remote library.",
     "placeholders": {
@@ -3952,11 +3961,11 @@
   "@irDeleteFailed": {
     "description": "Toast shown when the downloaded remote database could not be removed."
   },
-  "irDownloaded": "IRDB загружена",
+  "irDownloaded": "IRDB скачана",
   "@irDownloaded": {
     "description": "Toast shown after the remote database was downloaded."
   },
-  "irDownloadFailedShort": "Не удалось загрузить",
+  "irDownloadFailedShort": "Не удалось скачать",
   "@irDownloadFailedShort": {
     "description": "Toast shown when the remote database download failed."
   },
@@ -4114,7 +4123,7 @@
   "@mapProviderCartoDesc": {
     "description": "Description of the CARTO tile provider. The style names are brand names."
   },
-  "mapProviderOsmDesc": "Общественные тайлы, ключ не нужен",
+  "mapProviderOsmDesc": "Тайлы сообщества, ключ не нужен",
   "@mapProviderOsmDesc": {
     "description": "Description of the OpenStreetMap tile provider."
   },
@@ -4399,7 +4408,7 @@
   "@fmDeviceBusy": {
     "description": "Toast shown when the Flipper is running something else."
   },
-  "fmChooseDownloadLocation": "Выберите папку для загрузки",
+  "fmChooseDownloadLocation": "Выберите папку для скачивания",
   "@fmChooseDownloadLocation": {
     "description": "Title of the folder picker used when downloading files."
   },
@@ -4407,15 +4416,15 @@
   "@fmFolderPickUnsupported": {
     "description": "Toast shown when the platform has no folder picker."
   },
-  "fmNothingToDownload": "Нечего загружать",
+  "fmNothingToDownload": "Нечего скачивать",
   "@fmNothingToDownload": {
     "description": "Toast shown when download was pressed with nothing selected."
   },
-  "fmDownloadFailed": "Не удалось загрузить",
+  "fmDownloadFailed": "Не удалось скачать",
   "@fmDownloadFailed": {
     "description": "Toast shown when a download failed."
   },
-  "fmDownloadFailedCount": "Не удалось загрузить файлов: {count}",
+  "fmDownloadFailedCount": "Не удалось скачать файлов: {count}",
   "@fmDownloadFailedCount": {
     "description": "Toast shown when some downloads failed.",
     "placeholders": {
@@ -4433,7 +4442,7 @@
       }
     }
   },
-  "fmDownloadFailedFor": "Не удалось загрузить {name}",
+  "fmDownloadFailedFor": "Не удалось скачать {name}",
   "@fmDownloadFailedFor": {
     "description": "Toast shown when one file could not be downloaded.",
     "placeholders": {
@@ -4460,7 +4469,7 @@
       }
     }
   },
-  "fmIndexingIcons": "{count, plural, one{Индексация {count} иконки…} few{Индексация {count} иконок…} other{Индексация {count} иконок…}}",
+  "fmIndexingIcons": "{count, plural, one{Индексация {count} иконки…} few{Индексация {count} иконок…} many{Индексация {count} иконок…} other{Индексация {count} иконок…}}",
   "@fmIndexingIcons": {
     "description": "Progress line while several app icons are read.",
     "placeholders": {
@@ -4469,7 +4478,7 @@
       }
     }
   },
-  "fmIndexedIcons": "{count, plural, one{Проиндексирована {count} иконка} few{Проиндексировано {count} иконки} other{Проиндексировано {count} иконок}}",
+  "fmIndexedIcons": "{count, plural, one{Проиндексирована {count} иконка} few{Проиндексировано {count} иконки} many{Проиндексировано {count} иконок} other{Проиндексировано {count} иконок}}",
   "@fmIndexedIcons": {
     "description": "Toast shown after app icons were cached.",
     "placeholders": {
@@ -4503,7 +4512,7 @@
   "@fmDeleteFailed": {
     "description": "Toast shown when a deletion failed."
   },
-  "fmDeleteMany": "{count, plural, one{Удалить {count} объект?} few{Удалить {count} объекта?} other{Удалить {count} объектов?}}",
+  "fmDeleteMany": "{count, plural, one{Удалить {count} объект?} few{Удалить {count} объекта?} many{Удалить {count} объектов?} other{Удалить {count} объектов?}}",
   "@fmDeleteMany": {
     "description": "Title of the dialog confirming several deletions.",
     "placeholders": {
@@ -4512,7 +4521,7 @@
       }
     }
   },
-  "fmDeletedMany": "{count, plural, one{Удалён {count} объект} few{Удалено {count} объекта} other{Удалено {count} объектов}}",
+  "fmDeletedMany": "{count, plural, one{Удалён {count} объект} few{Удалено {count} объекта} many{Удалено {count} объектов} other{Удалено {count} объектов}}",
   "@fmDeletedMany": {
     "description": "Toast shown after several files were deleted.",
     "placeholders": {
@@ -4538,7 +4547,7 @@
   "@fmCreateFileFailed": {
     "description": "Toast shown when creating a file failed."
   },
-  "fmMovedMany": "{count, plural, one{Перемещён {count} объект} few{Перемещено {count} объекта} other{Перемещено {count} объектов}}",
+  "fmMovedMany": "{count, plural, one{Перемещён {count} объект} few{Перемещено {count} объекта} many{Перемещено {count} объектов} other{Перемещено {count} объектов}}",
   "@fmMovedMany": {
     "description": "Toast shown after files were moved.",
     "placeholders": {
@@ -4547,7 +4556,7 @@
       }
     }
   },
-  "fmCopiedMany": "{count, plural, one{Скопирован {count} объект} few{Скопировано {count} объекта} other{Скопировано {count} объектов}}",
+  "fmCopiedMany": "{count, plural, one{Скопирован {count} объект} few{Скопировано {count} объекта} many{Скопировано {count} объектов} other{Скопировано {count} объектов}}",
   "@fmCopiedMany": {
     "description": "Toast shown after files were copied.",
     "placeholders": {
@@ -4586,7 +4595,7 @@
   "@fmCreateFolderFailed": {
     "description": "Toast shown when creating a folder failed."
   },
-  "fmUploadFailedCount": "Не удалось загрузить файлов: {count}: {error}",
+  "fmUploadFailedCount": "Не удалось отправить файлов: {count} — {error}",
   "@fmUploadFailedCount": {
     "description": "Toast shown when some uploads failed.",
     "placeholders": {
@@ -4598,7 +4607,7 @@
       }
     }
   },
-  "fmUploaded": "Загружено файлов: {count}",
+  "fmUploaded": "Отправлено файлов: {count}",
   "@fmUploaded": {
     "description": "Toast shown after files were uploaded to the Flipper.",
     "placeholders": {
@@ -4631,7 +4640,7 @@
   "@fmNewFile": {
     "description": "Menu entry that creates an empty file."
   },
-  "fmUploadFiles": "Загрузить файлы",
+  "fmUploadFiles": "Отправить файлы",
   "@fmUploadFiles": {
     "description": "Menu entry that uploads files from this computer to the Flipper."
   },
@@ -4675,7 +4684,7 @@
   "@fmRefresh": {
     "description": "Tooltip of the button that re-reads the folder."
   },
-  "fmDownload": "Загрузить",
+  "fmDownload": "Скачать",
   "@fmDownload": {
     "description": "Button that copies the selected files to this computer."
   },
@@ -4759,7 +4768,7 @@
       }
     }
   },
-  "fmUploading": "Загрузка {name}",
+  "fmUploading": "Отправка {name}",
   "@fmUploading": {
     "description": "Progress line while a file is written to the Flipper.",
     "placeholders": {
@@ -4768,7 +4777,7 @@
       }
     }
   },
-  "fmDownloadingOf": "Загрузка {name}  ({index}/{total})",
+  "fmDownloadingOf": "Скачивание {name}  ({index}/{total})",
   "@fmDownloadingOf": {
     "description": "Progress line while one of several files is downloaded.",
     "placeholders": {
@@ -4800,7 +4809,7 @@
   "@shareCopyToClipboard": {
     "description": "Menu entry that copies the file to the clipboard."
   },
-  "shareDownloadFailed": "Не удалось загрузить{detail}",
+  "shareDownloadFailed": "Не удалось скачать{detail}",
   "@shareDownloadFailed": {
     "description": "Toast shown when the file could not be fetched before sharing. {detail} may be empty or start with a colon.",
     "placeholders": {
@@ -4872,7 +4881,7 @@
   "@typeSubghz": {
     "description": "File type label for radio captures. Technical term, usually left as is."
   },
-  "typeInfrared": "Инфракрасный",
+  "typeInfrared": "ИК",
   "@typeInfrared": {
     "description": "File type label for infrared files."
   },
@@ -4880,7 +4889,7 @@
   "@typeRfid": {
     "description": "File type label for low frequency card files."
   },
-  "typeBadusb": "BadUSB",
+  "typeBadusb": "Bad USB",
   "@typeBadusb": {
     "description": "File type label for keystroke injection scripts. Feature name, usually left as is."
   },
@@ -4905,7 +4914,7 @@
       }
     }
   },
-  "storageInternal": "Внутренняя",
+  "storageInternal": "Внутренняя память",
   "@storageInternal": {
     "description": "Storage card for the built-in flash of the Flipper."
   },
@@ -5045,7 +5054,7 @@
   "@hexSearchText": {
     "description": "Tooltip of the text search mode button."
   },
-  "hexInvalidPattern": "ошибка",
+  "hexInvalidPattern": "неверный шаблон",
   "@hexInvalidPattern": {
     "description": "Shown instead of the match counter when the pattern cannot be parsed."
   },
@@ -5081,7 +5090,7 @@
   "@hexCopyAs": {
     "description": "Menu that copies the selected bytes in a chosen format."
   },
-  "hexCopyHex": "Строка байтов",
+  "hexCopyHex": "Hex-строка",
   "@hexCopyHex": {
     "description": "Copies the bytes as DE AD BE EF."
   },
@@ -5186,7 +5195,7 @@
   "@hexDeleteByte": {
     "description": "Keypad button that removes the byte at the cursor."
   },
-  "hexStatusOffset": "смещ",
+  "hexStatusOffset": "смещ.",
   "@hexStatusOffset": {
     "description": "Status bar label of the cursor offset."
   },
@@ -5194,7 +5203,7 @@
   "@hexStatusByte": {
     "description": "Status bar label of the byte at the cursor."
   },
-  "hexStatusSelection": "выдел",
+  "hexStatusSelection": "выдел.",
   "@hexStatusSelection": {
     "description": "Status bar label of the selection."
   },
@@ -5202,7 +5211,7 @@
   "@hexStatusSize": {
     "description": "Status bar label of the file size."
   },
-  "hexStatusModified": "изм",
+  "hexStatusModified": "изм.",
   "@hexStatusModified": {
     "description": "Status bar label of the number of changed bytes."
   },
@@ -5251,11 +5260,11 @@
   "@emuOpening": {
     "description": "Status line while the Flipper app is being started."
   },
-  "emuLoaded": "Файл загружен на устройство",
+  "emuLoaded": "Файл загружен в приложение",
   "@emuLoaded": {
     "description": "Status line after the file was handed to the app."
   },
-  "emuHintHold": "Удерживайте «Передать» для отправки.\n«Остановить» закроет приложение.",
+  "emuHintHold": "Удерживайте кнопку передачи, чтобы отправить сигнал.\n«Остановить» закроет приложение.",
   "@emuHintHold": {
     "description": "Hint under the emulation controls for signals that transmit while held. The line break is intentional."
   },
@@ -5592,7 +5601,7 @@
   "@archiveUnstar": {
     "description": "Button that removes files from the favourites."
   },
-  "archiveFilesSelected": "{count, plural, one{Выбран {count} файл} few{Выбрано {count} файла} other{Выбрано {count} файлов}}",
+  "archiveFilesSelected": "{count, plural, one{Выбран {count} файл} few{Выбрано {count} файла} many{Выбрано {count} файлов} other{Выбрано {count} файлов}}",
   "@archiveFilesSelected": {
     "description": "Title of the bulk actions sheet, counting the selected files.",
     "placeholders": {
@@ -5601,11 +5610,11 @@
       }
     }
   },
-  "archiveNoLocalFiles": "Нет локальных файлов для сохранения",
+  "archiveNoLocalFiles": "Нет локальных копий для сохранения",
   "@archiveNoLocalFiles": {
     "description": "Toast shown when the selection holds nothing downloaded."
   },
-  "archiveSaveFiles": "{count, plural, one{Сохранить {count} файл} few{Сохранить {count} файла} other{Сохранить {count} файлов}}",
+  "archiveSaveFiles": "{count, plural, one{Сохранить {count} файл} few{Сохранить {count} файла} many{Сохранить {count} файлов} other{Сохранить {count} файлов}}",
   "@archiveSaveFiles": {
     "description": "Title of the folder picker when saving several files.",
     "placeholders": {
@@ -5614,7 +5623,7 @@
       }
     }
   },
-  "archiveSavedFiles": "{count, plural, one{Сохранён {count} файл} few{Сохранено {count} файла} other{Сохранено {count} файлов}}",
+  "archiveSavedFiles": "{count, plural, one{Сохранён {count} файл} few{Сохранено {count} файла} many{Сохранено {count} файлов} other{Сохранено {count} файлов}}",
   "@archiveSavedFiles": {
     "description": "Toast shown after files were saved to this computer.",
     "placeholders": {
@@ -5639,7 +5648,7 @@
   "@archiveSyncing": {
     "description": "Progress line while a category is synced."
   },
-  "archiveDownloading": "Загрузка",
+  "archiveDownloading": "Скачивание",
   "@archiveDownloading": {
     "description": "Progress line while files are downloaded from the Flipper."
   },
@@ -5716,7 +5725,7 @@
   "@archiveNoHardwareName": {
     "description": "Error shown when the Flipper did not report the name the archive folder is keyed by."
   },
-  "archiveDownloadedSummary": "Загружено {ok}/{total}; не удалось {failed}",
+  "archiveDownloadedSummary": "Скачано {ok}/{total}; ошибок: {failed}",
   "@archiveDownloadedSummary": {
     "description": "Summary shown after a sync with failures.",
     "placeholders": {
@@ -5860,7 +5869,7 @@
       }
     }
   },
-  "archiveDownloadProgress": "Загрузка {current}/{total}  {name}",
+  "archiveDownloadProgress": "Скачивание {current}/{total}  {name}",
   "@archiveDownloadProgress": {
     "description": "Progress line with the file being downloaded.",
     "placeholders": {
@@ -5907,7 +5916,7 @@
   "@appActionDelete": {
     "description": "Wide catalog button label while the app is removed. Shown in capitals."
   },
-  "appActionUpload": "ЗАГРУЗКА",
+  "appActionUpload": "ОТПРАВКА",
   "@appActionUpload": {
     "description": "Wide catalog button label while the app is written to the Flipper. Shown in capitals."
   },
@@ -5919,7 +5928,7 @@
   "@irUnpackingCaps": {
     "description": "Button label while the remote database is extracted. Shown in capitals."
   },
-  "irDownloadingCaps": "ЗАГРУЗКА",
+  "irDownloadingCaps": "СКАЧИВАНИЕ",
   "@irDownloadingCaps": {
     "description": "Button label while the remote database is downloaded. Shown in capitals."
   },
@@ -5927,7 +5936,7 @@
   "@irDeleteCaps": {
     "description": "Button that removes the downloaded remote database. Shown in capitals."
   },
-  "irDownloadCaps": "ЗАГРУЗИТЬ",
+  "irDownloadCaps": "СКАЧАТЬ",
   "@irDownloadCaps": {
     "description": "Button that downloads the remote database. Shown in capitals."
   },
@@ -5943,23 +5952,23 @@
   "@archiveSyncingLabel": {
     "description": "Progress label while files are compared with the Flipper. No ellipsis, a counter follows it."
   },
-  "paintEditManifest": "Edit manifest",
+  "paintEditManifest": "Редактировать манифест",
   "@paintEditManifest": {
     "description": "Opens the dolphin animation manifest in the text editor."
   },
-  "paintManifestApplied": "Manifest applied",
+  "paintManifestApplied": "Манифест применён",
   "@paintManifestApplied": {
     "description": "Shown after hand-edited manifest text is parsed back into the animation list."
   },
-  "paintManifestInvalid": "No animations found in the manifest",
+  "paintManifestInvalid": "В манифесте не найдено анимаций",
   "@paintManifestInvalid": {
     "description": "Shown when hand-edited manifest text holds no animation block."
   },
-  "paintAnimationSettings": "Animation settings",
+  "paintAnimationSettings": "Настройки анимации",
   "@paintAnimationSettings": {
     "description": "Title of the sheet holding one animation's level and butthurt ranges."
   },
-  "paintManifestSummary": "Weight {weight} · Level {minLevel}–{maxLevel} · Butthurt {minBh}–{maxBh}",
+  "paintManifestSummary": "Вес {weight} · Уровень {minLevel}–{maxLevel} · Обида {minBh}–{maxBh}",
   "@paintManifestSummary": {
     "description": "One-line manifest summary shown on the resting details sheet.",
     "placeholders": {
@@ -5980,11 +5989,11 @@
       }
     }
   },
-  "paintImportUpToDate": "Animations already match the device",
+  "paintImportUpToDate": "Анимации уже совпадают с устройством",
   "@paintImportUpToDate": {
     "description": "Shown after an import that transferred nothing because every file matched by md5."
   },
-  "mapGroupStyle": "{provider} style",
+  "mapGroupStyle": "Оформление {provider}",
   "@mapGroupStyle": {
     "description": "Header of the base-map style strip when only one theme applies.",
     "placeholders": {

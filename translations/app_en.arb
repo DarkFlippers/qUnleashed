@@ -1176,7 +1176,7 @@
     "description": "Error shown when compiling an app failed without a more specific reason."
   },
 
-  "remoteBuildCancelled": "Build cancelled",
+  "remoteBuildCancelled": "Build canceled",
   "@remoteBuildCancelled": {
     "description": "Message of the exception raised when the user stops waiting for a server build."
   },
@@ -1881,7 +1881,7 @@
     "description": "Archive category for contactless cards and tags. NFC is a standard abbreviation, usually left as is."
   },
 
-  "categoryRfid": "RFID 125",
+  "categoryRfid": "RFID 125 kHz",
   "@categoryRfid": {
     "description": "Archive category for 125 kHz proximity cards."
   },
@@ -2251,7 +2251,7 @@
     "description": "Error about a broken option-bytes field of the firmware manifest. Keep the field name as is."
   },
 
-  "firmwareErrorDfuDriverMissing": "The DFU bootloader has no WinUSB driver. Windows Update usually installs the “STM32 Bootloader” driver on its own; otherwise install it with STM32CubeProgrammer or Zadig, then retry",
+  "firmwareErrorDfuDriverMissing": "The DFU bootloader has no WinUSB driver. Windows Update usually installs the \"STM32 Bootloader\" driver on its own; otherwise install it with STM32CubeProgrammer or Zadig, then retry",
   "@firmwareErrorDfuDriverMissing": {
     "description": "Windows-only recovery error: libusb cannot open the STM32 bootloader because no WinUSB-class driver is bound to it. Keep the product names as is."
   },
@@ -2261,7 +2261,7 @@
     "description": "Recovery error: the OS refused to open the STM32 bootloader, usually because another program holds it."
   },
 
-  "firmwareErrorDfuPermissionDenied": "USB permission for the DFU device was declined. Allow access when asked (tick “use by default” so it is not asked again on every reboot) and retry",
+  "firmwareErrorDfuPermissionDenied": "USB permission for the DFU device was declined. Allow access when asked (tick \"use by default\" so it is not asked again on every reboot) and retry",
   "@firmwareErrorDfuPermissionDenied": {
     "description": "Android-only recovery error: the user declined the system USB permission dialog. The device reboots several times during recovery, so the dialog can appear again unless the default is remembered."
   },
@@ -4111,7 +4111,7 @@
     }
   },
 
-  "mfWriteFailed": "Generated {count} candidates but could not write them to the device - check free space and the connection.",
+  "mfWriteFailed": "Generated {count} candidates but could not write them to the device — check free space and the connection.",
   "@mfWriteFailed": {
     "description": "Note when the candidate dictionary could not be written to the Flipper.",
     "placeholders": {
@@ -4121,7 +4121,7 @@
     }
   },
 
-  "mfGapSkipped": "no candidates for {keys} - the device will skip them",
+  "mfGapSkipped": "no candidates for {keys} — the device will skip them",
   "@mfGapSkipped": {
     "description": "Part of a note listing sector keys with no candidate keys. Lowercase, it is joined with other parts.",
     "placeholders": {
@@ -4169,7 +4169,7 @@
     "description": "Note when the candidate generator is missing from the build."
   },
 
-  "mfOutOfMemory": "Not enough memory to build the candidate list for this card - collect fewer sectors at a time.",
+  "mfOutOfMemory": "Not enough memory to build the candidate list for this card — collect fewer sectors at a time.",
   "@mfOutOfMemory": {
     "description": "Note when candidate generation ran out of memory."
   },
@@ -4410,12 +4410,12 @@
     "description": "Slicer band for the reset pulse that ends a packet."
   },
 
-  "plotGuessSinglePulse": "Single pulse detected. Probably Frequency Shift Keying or just noise...",
+  "plotGuessSinglePulse": "Single pulse detected. Probably Frequency Shift Keying or just noise…",
   "@plotGuessSinglePulse": {
     "description": "Guess shown when the capture holds one pulse only."
   },
 
-  "plotGuessUnmodulated": "Un-modulated signal. Maybe a preamble...",
+  "plotGuessUnmodulated": "Unmodulated signal. Maybe a preamble…",
   "@plotGuessUnmodulated": {
     "description": "Guess shown when every timing is the same."
   },
@@ -4445,7 +4445,7 @@
     "description": "Guess naming the detected modulation."
   },
 
-  "plotGuessPcmNrz": "Pulse Code Modulation (Not Return to Zero)",
+  "plotGuessPcmNrz": "Pulse Code Modulation (Non-Return-to-Zero)",
   "@plotGuessPcmNrz": {
     "description": "Guess naming the detected modulation."
   },
@@ -4455,7 +4455,7 @@
     "description": "Guess naming the detected modulation."
   },
 
-  "plotGuessNone": "No clue...",
+  "plotGuessNone": "No clue…",
   "@plotGuessNone": {
     "description": "Guess shown when the modulation could not be identified."
   },
@@ -4555,7 +4555,7 @@
     "description": "Last paragraph of the plotter help sheet."
   },
 
-  "plotWrongFileType": "Wrong file type. Only SubGhz RAW, RFID RAW and Infrared signals files are accepted.",
+  "plotWrongFileType": "Wrong file type. Only Sub-GHz RAW, RFID RAW and infrared signal files are accepted.",
   "@plotWrongFileType": {
     "description": "Error shown when the picked file is not a supported capture."
   },
@@ -5066,12 +5066,12 @@
     "description": "Description of one map tile style shown under its name."
   },
 
-  "mapDesignPositronDesc": "Pale grey basemap, pins stand out",
+  "mapDesignPositronDesc": "Pale gray basemap, pins stand out",
   "@mapDesignPositronDesc": {
     "description": "Description of one map tile style shown under its name."
   },
 
-  "mapDesignPositronNoLabelsDesc": "Pale grey basemap without names",
+  "mapDesignPositronNoLabelsDesc": "Pale gray basemap without names",
   "@mapDesignPositronNoLabelsDesc": {
     "description": "Description of one map tile style shown under its name."
   },
@@ -5444,7 +5444,7 @@
     }
   },
 
-  "fmDeleteOne": "Delete “{name}”?",
+  "fmDeleteOne": "Delete \"{name}\"?",
   "@fmDeleteOne": {
     "description": "Title of the dialog confirming one file deletion.",
     "placeholders": {
@@ -5901,12 +5901,12 @@
     "description": "File type label for infrared files."
   },
 
-  "typeRfid": "RFID 125kHz",
+  "typeRfid": "RFID 125 kHz",
   "@typeRfid": {
     "description": "File type label for low frequency card files."
   },
 
-  "typeBadusb": "BadUSB",
+  "typeBadusb": "Bad USB",
   "@typeBadusb": {
     "description": "File type label for keystroke injection scripts. Feature name, usually left as is."
   },
@@ -6361,17 +6361,17 @@
     "description": "Button that closes the app on the Flipper."
   },
 
-  "emuOpening": "Opening app on the device...",
+  "emuOpening": "Opening app on the device…",
   "@emuOpening": {
     "description": "Status line while the Flipper app is being started."
   },
 
-  "emuLoaded": "File loaded on the device",
+  "emuLoaded": "File loaded into the app",
   "@emuLoaded": {
     "description": "Status line after the file was handed to the app."
   },
 
-  "emuHintHold": "Hold “Send” to transmit.\nStop will close the app.",
+  "emuHintHold": "Hold the send button to transmit.\n\"Stop\" closes the app.",
   "@emuHintHold": {
     "description": "Hint under the emulation controls for signals that transmit while held. The line break is intentional."
   },
@@ -6781,9 +6781,9 @@
     }
   },
 
-  "archiveNoLocalFiles": "No local files to download",
+  "archiveNoLocalFiles": "No local copies to save",
   "@archiveNoLocalFiles": {
-    "description": "Toast shown when the selection holds nothing downloaded."
+    "description": "Toast shown when nothing in the selection has a local copy to save."
   },
 
   "archiveSaveFiles": "{count, plural, one{Save 1 file} other{Save {count} files}}",
