@@ -21,13 +21,11 @@ run() {
     bash "$CHECK" 2>&1
 }
 
-# Both helpers assert on the exit code *and* the output. Checking only for a
-# non-zero exit would let a guard that cannot even start report every blocking
-# case as working: 126 and 127 are not 0 either.
-allows() {
-  local what="$1" branch="$2" out status=0
-  shift 2
-  out="$(run "$branch" "$@")" || status=$?
+# Both assertions check the exit code *and* the output. A non-zero exit alone
+# would let a guard that cannot even start report every blocking case as
+# working: 126 and 127 are not 0 either.
+assert_allowed() {
+  local what="$1" out="$2" status="$3"
   if ((status == 0)) && [[ "$out" != *"::error"* ]]; then
     pass "$what"
   else
@@ -35,18 +33,29 @@ allows() {
   fi
 }
 
-# The third argument is the path that must be named in the failure. A guard
-# that blocks the right change while pointing at the wrong file sends the
-# author looking in the wrong place.
-blocks() {
-  local what="$1" branch="$2" offender="$3" out status=0
-  shift 3
-  out="$(run "$branch" "$@")" || status=$?
+# A guard that blocks the right change while naming the wrong file sends the
+# author looking in the wrong place, so the offending path has to appear.
+assert_blocked() {
+  local what="$1" offender="$2" out="$3" status="$4"
   if ((status == 1)) && [[ "$out" == *"::error file=$offender::"* ]]; then
     pass "$what"
   else
     fail "$what (exit $status): $out"
   fi
+}
+
+allows() {
+  local what="$1" branch="$2" out status=0
+  shift 2
+  out="$(run "$branch" "$@")" || status=$?
+  assert_allowed "$what" "$out" "$status"
+}
+
+blocks() {
+  local what="$1" branch="$2" offender="$3" out status=0
+  shift 3
+  out="$(run "$branch" "$@")" || status=$?
+  assert_blocked "$what" "$offender" "$out" "$status"
 }
 
 allows "an ordinary code change" feature/x \
@@ -116,20 +125,44 @@ blocks "a branch that only looks like the sync branch" l10n/crowdin-fix \
 allows "no changed files at all" feature/x ""
 
 # A path list that does not end in a newline must not lose its last entry.
-# Every other case here goes through printf, which always terminates.
-last_line_status=0
-last_line_out="$(printf 'lib/main.dart\ntranslations/app_ru.arb' \
+# This is the one case that cannot go through run(), whose printf always
+# terminates its output - so it builds the input by hand and then makes the
+# same assertion as everything else.
+unterminated_status=0
+unterminated_out="$(printf 'lib/main.dart\ntranslations/app_ru.arb' \
   | env -i PATH="$PATH" GITHUB_HEAD_REF=feature/x bash "$CHECK" 2>&1)" \
-  || last_line_status=$?
-if ((last_line_status == 1)) &&
-  [[ "$last_line_out" == *"::error file=translations/app_ru.arb::"* ]]; then
-  pass "input with no trailing newline"
+  || unterminated_status=$?
+assert_blocked "input with no trailing newline" translations/app_ru.arb \
+  "$unterminated_out" "$unterminated_status"
+
+# crowdin.yml declares what Crowdin owns; the guard restates it in another
+# syntax, and nothing has been keeping the two in step. The direction that
+# fails quietly is the dangerous one: a file added to crowdin.yml and not to
+# the guard is simply allowed through, and the guard goes on passing. So take
+# every translation pattern crowdin.yml defines, make a concrete path of it,
+# and require the guard to block that path.
+owned=0
+while IFS= read -r pattern; do
+  sample="${pattern#/}"
+  sample="${sample//%two_letters_code%/de}"
+  sample="${sample//%locale%/de-DE}"
+  sample="${sample//%original_file_name%/1.txt}"
+  sample="${sample//%file_name%/1}"
+  sample="${sample//%file_extension%/txt}"
+  blocks "crowdin.yml owns $sample" feature/x "$sample" "$sample"
+  owned=$((owned + 1))
+done < <(sed -nE 's/^[[:space:]]*translation:[[:space:]]*"([^"]+)".*/\1/p' \
+  "$HERE/../../crowdin.yml")
+
+# Nothing parsed means the check above silently tested nothing.
+if ((owned > 0)); then
+  pass "crowdin.yml patterns were readable ($owned)"
 else
-  fail "input with no trailing newline (exit $last_line_status): $last_line_out"
+  fail "crowdin.yml patterns were readable (found none)"
 fi
 
 if ((failures)); then
-  printf '\n%d check(s) failed\n' "$failures"
+  echo "$failures failure(s)" >&2
   exit 1
 fi
-printf '\nall passed\n'
+echo "all passed"

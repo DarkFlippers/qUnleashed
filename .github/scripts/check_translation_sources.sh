@@ -49,9 +49,11 @@ while IFS= read -r path || [[ -n "$path" ]]; do
     # Of the store listing, Crowdin holds only the three texts crowdin.yml
     # names. The screenshots, the icon, the title and the video URL are kept
     # here for every locale, so they have to stay editable here.
-    fastlane/metadata/android/*/short_description.txt) offenders+=("$path") ;;
-    fastlane/metadata/android/*/full_description.txt) offenders+=("$path") ;;
-    fastlane/metadata/android/*/changelogs/*.txt) offenders+=("$path") ;;
+    fastlane/metadata/android/*/short_description.txt | \
+      fastlane/metadata/android/*/full_description.txt | \
+      fastlane/metadata/android/*/changelogs/*.txt)
+      offenders+=("$path")
+      ;;
   esac
 done
 

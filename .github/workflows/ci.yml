@@ -46,17 +46,16 @@ jobs:
       - name: Test the translation source guard
         run: .github/scripts/check_translation_sources_test.sh
 
-      # English is the only localization source in this repository; every other
-      # language is written in Crowdin and arrives through its pull request.
-      # Crowdin exports each file whole, so a hand edit here is reverted by the
-      # next sync rather than merged - which has already cost one manual repair.
-      # Asked of the API rather than worked out from the checkout: the clone is
-      # shallow, so the merge base needed for a three-dot diff is not
-      # necessarily present, and a two-dot one would flag any branch that has
-      # simply not been rebased since the last sync. Paginated, because a guard
-      # that silently stops looking after the first hundred files is a guard
-      # that a large enough pull request walks straight through - and asked for
-      # previous_filename too, because a rename reports only where the file
+      # Why any of this exists is in the script's own header. What is specific
+      # to running it here:
+      #
+      # The file list is asked of the API rather than worked out from the
+      # checkout, because the clone is shallow, so the merge base a three-dot
+      # diff needs is not necessarily present, and a two-dot one would flag any
+      # branch that simply has not been rebased since the last sync. Paginated,
+      # because a guard that stops looking after the first hundred files is one
+      # a large enough pull request walks straight through. And previous_filename
+      # as well as filename, because a rename reports only where the file
       # landed, and moving one out of Crowdin's pattern breaks the sync just as
       # thoroughly as editing it.
       #
