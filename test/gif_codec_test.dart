@@ -20,10 +20,15 @@ typedef DecodedFrame = ({
   int clearCodes,
 });
 
-/// A GIF89a reader written from the specification rather than from the
-/// encoder, so a mistake shared by both is not silently agreed upon. The
-/// encoder's output was separately checked against an outside decoder; this is
-/// what keeps that check from having to be repeated by hand on every change.
+/// Reads the subset of GIF89a this encoder emits, plus enough of what it does
+/// *not* emit - interlace, disposal 2 and 3 - that setting either by mistake
+/// shows up in the pixel comparisons rather than passing silently.
+///
+/// Written against the specification rather than from the encoder's source, so
+/// a mistake shared by both is less likely to be agreed upon. But a round trip
+/// only ever constrains the two as a pair: the pinned bytes in 'produces
+/// exactly these codes' are what hold the encoder to what outside decoders
+/// actually accept.
 List<DecodedFrame> decodeGif(Uint8List bytes) {
   var p = 0;
   int u8() => bytes[p++];
@@ -39,8 +44,8 @@ List<DecodedFrame> decodeGif(Uint8List bytes) {
   final screenHeight = u16();
   final screenPacked = u8();
   expect(screenPacked & 0x80, 0x80, reason: 'global colour table present');
-  u8(); // background index
-  u8(); // aspect ratio
+  final backgroundIndex = u8();
+  expect(u8(), 0, reason: 'no pixel aspect ratio given');
   final globalTableBytes = (1 << ((screenPacked & 0x07) + 1)) * 3;
   final globalPalette = Uint8List.fromList(
     bytes.sublist(p, p + globalTableBytes),
@@ -51,6 +56,9 @@ List<DecodedFrame> decodeGif(Uint8List bytes) {
   var pendingDelay = 0;
   var pendingPacked = 0;
   var pendingTransparent = 0;
+  var previousDisposal = 0;
+  ({int left, int top, int width, int height})? previousRect;
+  Uint8List? snapshot;
   // Frames may cover only part of the screen and leave the rest showing what
   // came before, so a frame is only meaningful once composited.
   final canvas = Uint8List(screenWidth * screenHeight);
@@ -102,16 +110,44 @@ List<DecodedFrame> decodeGif(Uint8List bytes) {
     final payload = Uint8List.fromList(data);
     final region = _lzwDecode(payload, minCodeSize, w * h);
 
-    // "Do not dispose" means the previous frame stays as the ground, and a
-    // transparent pixel is one this frame declines to paint over it.
+    // Do what the *previous* frame asked for before drawing this one.
+    // Honouring disposal rather than compositing unconditionally is what lets
+    // the pixel comparisons below carry it: a viewer composites only *because*
+    // the encoder said "do not dispose", and a decoder that assumes it would
+    // agree with an encoder that stopped saying it.
+    final wasRect = previousRect;
+    if (wasRect != null) {
+      if (previousDisposal == 2) {
+        for (var y = 0; y < wasRect.height; y++) {
+          final row = (wasRect.top + y) * screenWidth + wasRect.left;
+          canvas.fillRange(row, row + wasRect.width, backgroundIndex);
+        }
+      } else if (previousDisposal == 3 && snapshot != null) {
+        canvas.setAll(0, snapshot);
+      }
+    }
+    final disposal = (pendingPacked >> 2) & 0x07;
+    if (disposal == 3) snapshot = Uint8List.fromList(canvas);
+
+    // Interlaced rows arrive in four passes. Ignoring the bit would let an
+    // encoder set it and still pass every pixel comparison here, while every
+    // real viewer rendered the frame scrambled.
+    final rows = (packed & 0x40) != 0 ? _interlacedRows(h) : null;
+
+    // A transparent pixel is one this frame declines to paint over what is
+    // already on screen.
     final hasTransparency = (pendingPacked & 0x01) != 0;
     for (var y = 0; y < h; y++) {
+      final destY = rows == null ? y : rows[y];
       for (var x = 0; x < w; x++) {
         final value = region[y * w + x];
         if (hasTransparency && value == pendingTransparent) continue;
-        canvas[(top + y) * screenWidth + left + x] = value;
+        canvas[(top + destY) * screenWidth + left + x] = value;
       }
     }
+
+    previousDisposal = disposal;
+    previousRect = (left: left, top: top, width: w, height: h);
 
     frames.add((
       width: screenWidth,
@@ -211,6 +247,18 @@ Uint8List _lzwDecode(Uint8List data, int minCodeSize, int expected) {
   );
   expect(out.length, expected, reason: 'decoded pixel count');
   return Uint8List.fromList(out);
+}
+
+/// Destination row for each row as it arrives in an interlaced image: four
+/// passes, beginning at rows 0, 4, 2 and 1.
+List<int> _interlacedRows(int height) {
+  final rows = <int>[];
+  for (final pass in const [(0, 8), (4, 8), (2, 4), (1, 2)]) {
+    for (var y = pass.$1; y < height; y += pass.$2) {
+      rows.add(y);
+    }
+  }
+  return rows;
 }
 
 /// How many clear codes the stream carries. One is the mandatory opener, so
@@ -326,8 +374,10 @@ void main() {
     ]);
     roundTrip('a scaled frame', [stripes(128, 64)], scale: 2);
 
-    // Noise at scale 4 is 128k pixels of incompressible data, which is the
-    // only way to fill the 4096-code table and take the reset branch.
+    // Noise at scale 4 is 128k pixels. It compresses - the runs are four long
+    // in both directions - but it produces enough distinct substrings to fill
+    // the 4096-code table and take the reset branch, which nothing smaller
+    // manages.
     roundTrip('enough data to fill and reset the code table', [
       noise(8192, 11),
     ], scale: 4);
@@ -366,18 +416,20 @@ void main() {
       expect(decoded.single.pixels, Uint8List.fromList([1]));
     });
 
-    // Three data codes is where the decoder widens immediately before reading
-    // the terminator, and the stream happens to be byte-aligned - so there is
-    // no spare padding bit to disguise a terminator written too narrow.
+    // Eleven data codes: the decoder's table reaches sixteen entries on the
+    // last of them, so it widens to five bits immediately before reading the
+    // terminator. Written at four, the payload is exactly six whole bytes -
+    // no padding bit left over to disguise it.
     test('a frame whose last code lands on a width boundary', () {
       final decoded = decodeGif(encode([solid(64, 0)], width: 8, height: 8));
 
       expect(decoded.single.pixels, solid(64, 0));
     });
 
-    // An index outside the two-colour palette is a caller bug, but it must not
-    // become a structural break: index 4 is the clear code and 5 is
-    // end-of-input, either of which derails a decoder mid-frame.
+    // An index outside the two-colour palette is a caller bug. It must not
+    // reach the stream as index 2, which is the transparent index: an
+    // untouched pixel would then show the previous frame instead of being
+    // painted.
     test('folds a stray index into the two-colour palette', () {
       final input = Uint8List.fromList([0, 1, 2, 3, 4, 5, 6, 7, 8, 255, 1, 0]);
 
@@ -486,6 +538,15 @@ void main() {
       ]);
     });
 
+    test('clamps a delay too large for the format', () {
+      // Without the clamp this wraps: 700000ms is 70000 centiseconds, which
+      // truncates to 4464 in sixteen bits.
+      expect(
+        decodeGif(encode([solid(8192, 0)], delaysMs: [700000])).single.delayCs,
+        65535,
+      );
+    });
+
     test('ends with the trailer', () {
       expect(encode([stripes(128, 64)]).last, 0x3B);
     });
@@ -566,6 +627,92 @@ void main() {
       expect(decoded[1].pixels, screenWithBlockAt(30));
     });
 
+    // A change at the very last pixel is where an off-by-one in the rectangle
+    // stops being slack - one column too many is invisible because it just
+    // becomes transparent, one column too few loses a pixel, and past the edge
+    // is an image descriptor that overruns the screen.
+    test('a change at the very last pixel stays inside the screen', () {
+      final before = Uint8List(8192);
+      final after = Uint8List(8192)..[8191] = 1;
+
+      final decoded = decodeGif(encode([before, after]));
+
+      expect(decoded[1].rect, (left: 127, top: 63, width: 1, height: 1));
+      expect(decoded[1].pixels, after);
+    });
+
+    test('a change spanning one full row', () {
+      final before = Uint8List(8192);
+      final after = Uint8List(8192);
+      for (var x = 0; x < 128; x++) {
+        after[30 * 128 + x] = 1;
+      }
+
+      final decoded = decodeGif(encode([before, after]));
+
+      expect(decoded[1].rect, (left: 0, top: 30, width: 128, height: 1));
+      expect(decoded[1].pixels, after);
+    });
+
+    test('a change spanning one full column', () {
+      final before = Uint8List(8192);
+      final after = Uint8List(8192);
+      for (var y = 0; y < 64; y++) {
+        after[y * 128 + 77] = 1;
+      }
+
+      final decoded = decodeGif(encode([before, after]));
+
+      expect(decoded[1].rect, (left: 77, top: 0, width: 1, height: 64));
+      expect(decoded[1].pixels, after);
+    });
+
+    // A frame that changes only pixel 0 produces the same rectangle as one
+    // that changed nothing. They are told apart only by whether that pixel is
+    // painted or left transparent, which no other test distinguishes.
+    test('a change at pixel zero is painted, not left transparent', () {
+      final before = Uint8List(8192);
+      final after = Uint8List(8192)..[0] = 1;
+
+      final decoded = decodeGif(encode([before, after]));
+
+      expect(decoded[1].rect, (left: 0, top: 0, width: 1, height: 1));
+      expect(decoded[1].pixels[0], 1, reason: 'painted, not fallen through');
+    });
+
+    test('an unchanged frame is one scaled pixel, not one pixel', () {
+      final still = stripes(128, 64);
+
+      final decoded = decodeGif(encode([still, still], scale: 3));
+
+      expect(decoded[1].rect, (left: 0, top: 0, width: 3, height: 3));
+      expect(decoded[1].pixels, scaledUp(still, 128, 64, 3));
+    });
+
+    test('alternating frames return exactly to the earlier screen', () {
+      final a = stripes(128, 64);
+      final b = Uint8List.fromList(a)..[4000] = a[4000] == 1 ? 0 : 1;
+
+      final decoded = decodeGif(encode([a, b, a, b]));
+
+      expect(decoded[0].pixels, a);
+      expect(decoded[1].pixels, b);
+      expect(decoded[2].pixels, a);
+      expect(decoded[3].pixels, b);
+    });
+
+    // A diffed frame carries three symbols rather than two, so it compresses
+    // worse and fills the table at a scale where a full frame would not.
+    test('a diffed frame can fill and reset the code table', () {
+      final decoded = decodeGif(
+        encode([noise(8192, 1), noise(8192, 2)], scale: 4),
+      );
+
+      expect(decoded[1].transparentIndex, 2, reason: 'and it is diffed');
+      expect(decoded[1].clearCodes, greaterThanOrEqualTo(2));
+      expect(decoded[1].pixels, scaledUp(noise(8192, 2), 128, 64, 4));
+    });
+
     test('a still recording costs little more than its frame headers', () {
       final still = [for (var i = 0; i < 60; i++) screenWithBlockAt(10)];
       final moving = [for (var i = 0; i < 60; i++) screenWithBlockAt(10 + i)];
@@ -575,8 +722,8 @@ void main() {
       expect(stillBytes, lessThan(encode(moving).length));
       // Nothing changes after the first frame, so every later one is a single
       // transparent pixel and the cost is the graphic control block, the image
-      // descriptor and the terminators - about 25 bytes each. That floor is
-      // what the global palette exists to keep low.
+      // descriptor and the terminators. That floor is what the global palette
+      // exists to keep low.
       expect(stillBytes, lessThan(60 * 30));
     });
 
@@ -587,45 +734,82 @@ void main() {
         for (final f in frames) encode([f]).length,
       ].reduce((a, b) => a + b);
 
-      expect(encode(frames).length * 3, lessThan(whole));
+      expect(encode(frames).length * 4, lessThan(whole));
     });
   });
 
   group('rejects input it cannot encode', () {
-    // Each of these used to produce a file: some viewers reject it, others
-    // render it wrong. Asserts would have let all of it through in release.
+    // Matching the name, not just the type: RangeError *is* an ArgumentError
+    // in Dart, so throwsArgumentError is satisfied by the very out-of-bounds
+    // failure these checks exist to prevent. Removing the delay-length check
+    // and the frame-length check both left the loose matcher green.
+    Matcher rejects(String name) =>
+        throwsA(isA<ArgumentError>().having((e) => e.name, 'name', name));
+
     test('no frames', () {
-      expect(() => encode([]), throwsArgumentError);
+      expect(() => encode([]), rejects('frames'));
     });
 
     test('a delay list that does not match the frames', () {
       expect(
         () => encode([solid(8192, 0), solid(8192, 1)], delaysMs: [100]),
-        throwsArgumentError,
+        rejects('delaysMs.length'),
       );
     });
 
     test('a frame shorter than the declared size', () {
       expect(
         () => encode([solid(8191, 0)]),
-        throwsArgumentError,
+        rejects('frames[0].length'),
         reason: 'wrote a truncated image at scale 1 and threw at scale 2',
       );
     });
 
     test('a frame longer than the declared size', () {
-      expect(() => encode([solid(8193, 0)]), throwsArgumentError);
+      expect(() => encode([solid(8193, 0)]), rejects('frames[0].length'));
+    });
+
+    // Every other length case passes a single frame, so a check that only
+    // ever looked at frames[0] would pass them all and still write a
+    // truncated file here.
+    test('a later frame whose length is wrong', () {
+      expect(
+        () => encode([solid(8192, 0), solid(8192, 1), solid(8193, 0)]),
+        rejects('frames[2].length'),
+      );
     });
 
     test('a frame with no area', () {
       expect(
         () => encode([solid(0, 0)], width: 0, height: 0),
-        throwsArgumentError,
+        throwsA(
+          isA<ArgumentError>().having(
+            (e) => '${e.message}',
+            'message',
+            contains('0x0'),
+          ),
+        ),
       );
     });
 
     test('a scale below one', () {
-      expect(() => encode([solid(8192, 0)], scale: 0), throwsArgumentError);
+      expect(() => encode([solid(8192, 0)], scale: 0), rejects('scale'));
+    });
+
+    // Every dimension in the format is 16 bits, so a larger one is truncated
+    // into a file that declares a smaller image than it carries and decodes
+    // without complaint - the quietest failure of the lot.
+    test('a scaled size too large for the format', () {
+      expect(
+        () => encode([solid(8192, 0)], scale: 600),
+        throwsA(
+          isA<ArgumentError>().having(
+            (e) => '${e.message}',
+            'message',
+            contains('16 bits'),
+          ),
+        ),
+      );
     });
   });
 
