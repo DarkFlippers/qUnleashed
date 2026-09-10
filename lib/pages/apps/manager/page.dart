@@ -172,10 +172,15 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
             onTap: () => _engine.cancel(app.alias),
           )
         // A complete walk proved the .fap is gone, so Open would launch a path
-        // that is not there, Update would reinstall behind the user's back and
-        // Uninstall would delete nothing. Putting the backup copy back is the
-        // one action that helps - and is why the copy is kept rather than
-        // quietly pruned when an app leaves the device.
+        // that is not there and Update would reinstall behind the user's back.
+        // Putting the backup copy back is the action that helps - and is why
+        // the copy is kept rather than quietly pruned when an app leaves the
+        // device.
+        //
+        // Uninstall stays, because it is what clears the row: the .fap is gone
+        // but its manifest is not, and the manifest is why the app is still
+        // listed at all. deleteInstalled removes the .fim first and tolerates
+        // the absent .fap, so without this the entry can never be dismissed.
         else if (app.isMissingFromDevice) ...[
           AppActionEntry(
             label: ctx.l10n.appActionRestore,
@@ -188,7 +193,15 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
             label: ctx.l10n.appActionDeleteCopy,
             icon: Icons.sd_card_outlined,
             color: colors.danger,
+            half: true,
             onTap: () => unawaited(_deleteLocal(app)),
+          ),
+          AppActionEntry(
+            label: ctx.l10n.appActionUninstall,
+            icon: Icons.delete_outline,
+            color: colors.danger,
+            half: true,
+            onTap: () => unawaited(_uninstall(app)),
           ),
         ] else ...[
           if (updatable)
