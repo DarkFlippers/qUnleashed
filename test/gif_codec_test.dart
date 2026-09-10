@@ -5,11 +5,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/components/codec/gif.dart';
 
 /// One decoded frame: palette indices at the GIF's own resolution.
+/// [pixels] is the composited screen after this frame is drawn, which is what
+/// a viewer shows; [rect] is the part the frame actually carried.
 typedef DecodedFrame = ({
   int width,
   int height,
   int delayCs,
   int gcePacked,
+  int transparentIndex,
+  ({int left, int top, int width, int height}) rect,
   Uint8List palette,
   Uint8List pixels,
   Uint8List payload,
@@ -31,16 +35,25 @@ List<DecodedFrame> decodeGif(Uint8List bytes) {
 
   expect(String.fromCharCodes(bytes.sublist(0, 6)), 'GIF89a');
   p = 6;
-  u16();
-  u16();
+  final screenWidth = u16();
+  final screenHeight = u16();
   final screenPacked = u8();
-  expect(screenPacked & 0x80, 0, reason: 'no global colour table is written');
-  u8();
-  u8();
+  expect(screenPacked & 0x80, 0x80, reason: 'global colour table present');
+  u8(); // background index
+  u8(); // aspect ratio
+  final globalTableBytes = (1 << ((screenPacked & 0x07) + 1)) * 3;
+  final globalPalette = Uint8List.fromList(
+    bytes.sublist(p, p + globalTableBytes),
+  );
+  p += globalTableBytes;
 
   final frames = <DecodedFrame>[];
   var pendingDelay = 0;
   var pendingPacked = 0;
+  var pendingTransparent = 0;
+  // Frames may cover only part of the screen and leave the rest showing what
+  // came before, so a frame is only meaningful once composited.
+  final canvas = Uint8List(screenWidth * screenHeight);
 
   while (true) {
     final block = u8();
@@ -52,7 +65,7 @@ List<DecodedFrame> decodeGif(Uint8List bytes) {
         expect(u8(), 4, reason: 'graphic control block size');
         pendingPacked = u8();
         pendingDelay = u16();
-        u8();
+        pendingTransparent = u8();
         expect(u8(), 0, reason: 'graphic control terminator');
       } else {
         final size = u8();
@@ -66,17 +79,16 @@ List<DecodedFrame> decodeGif(Uint8List bytes) {
     }
 
     expect(block, 0x2C, reason: 'image separator');
-    u16();
-    u16();
+    final left = u16();
+    final top = u16();
     final w = u16();
     final h = u16();
+    expect(left + w, lessThanOrEqualTo(screenWidth), reason: 'frame fits');
+    expect(top + h, lessThanOrEqualTo(screenHeight), reason: 'frame fits');
     final packed = u8();
-    expect(packed & 0x80, 0x80, reason: 'local colour table present');
-    // Read rather than skipped: a palette written in the wrong order or the
-    // wrong channel order ships a visibly wrong GIF that decodes perfectly.
-    final tableBytes = (1 << ((packed & 0x07) + 1)) * 3;
-    final palette = Uint8List.fromList(bytes.sublist(p, p + tableBytes));
-    p += tableBytes;
+    // No local table: every frame draws from the global one.
+    expect(packed & 0x80, 0, reason: 'no local colour table');
+    final palette = globalPalette;
 
     final minCodeSize = u8();
     final data = <int>[];
@@ -88,16 +100,30 @@ List<DecodedFrame> decodeGif(Uint8List bytes) {
     }
 
     final payload = Uint8List.fromList(data);
-    final clears = _clearCodeCount(payload, minCodeSize);
+    final region = _lzwDecode(payload, minCodeSize, w * h);
+
+    // "Do not dispose" means the previous frame stays as the ground, and a
+    // transparent pixel is one this frame declines to paint over it.
+    final hasTransparency = (pendingPacked & 0x01) != 0;
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        final value = region[y * w + x];
+        if (hasTransparency && value == pendingTransparent) continue;
+        canvas[(top + y) * screenWidth + left + x] = value;
+      }
+    }
+
     frames.add((
-      width: w,
-      height: h,
+      width: screenWidth,
+      height: screenHeight,
       delayCs: pendingDelay,
       gcePacked: pendingPacked,
+      transparentIndex: hasTransparency ? pendingTransparent : -1,
+      rect: (left: left, top: top, width: w, height: h),
       palette: palette,
-      pixels: _lzwDecode(payload, minCodeSize, w * h),
+      pixels: Uint8List.fromList(canvas),
       payload: payload,
-      clearCodes: clears,
+      clearCodes: _clearCodeCount(payload, minCodeSize),
     ));
   }
   return frames;
@@ -386,13 +412,23 @@ void main() {
         ),
       );
 
-      expect(decoded.single.palette, [0x10, 0x20, 0x30, 0x40, 0x50, 0x60]);
+      // Four entries, because the transparent index needs a slot and the
+      // format rounds to a power of two. Only the first two are ever drawn.
+      expect(decoded.single.palette.sublist(0, 6), [
+        0x10, 0x20, 0x30, //
+        0x40, 0x50, 0x60,
+      ]);
+      expect(decoded.single.palette, hasLength(12));
     });
 
-    test('disposes nothing and declares no transparent index', () {
-      // Frames are full-screen and opaque, so every pixel is replaced. If that
-      // ever stops being true, these flags have to move with it.
-      expect(decodeGif(encode([solid(8192, 0)])).single.gcePacked, 0x00);
+    test('keeps each frame on screen as the ground for the next', () {
+      // Disposal 1. Anything else clears the canvas between frames, and a
+      // partial frame then shows as a fragment on an empty screen.
+      final decoded = decodeGif(encode([solid(8192, 0), stripes(128, 64)]));
+
+      expect(decoded[0].gcePacked, 0x04, reason: 'dispose=1, opaque');
+      expect(decoded[1].gcePacked, 0x05, reason: 'dispose=1, transparent');
+      expect(decoded[1].transparentIndex, 2);
     });
 
     test('rounds a delay rather than truncating it', () {
@@ -467,6 +503,129 @@ void main() {
         0,
         0,
       ]);
+    });
+  });
+
+  group('inter-frame', () {
+    /// A screen with a small block drawn at [x].
+    Uint8List screenWithBlockAt(int x) {
+      final px = Uint8List(8192);
+      for (var y = 20; y < 28; y++) {
+        for (var dx = 0; dx < 8; dx++) {
+          px[y * 128 + x + dx] = 1;
+        }
+      }
+      return px;
+    }
+
+    test('the first frame covers the whole screen and is opaque', () {
+      final decoded = decodeGif(encode([stripes(128, 64)]));
+
+      expect(decoded.single.rect, (left: 0, top: 0, width: 128, height: 64));
+      expect(decoded.single.transparentIndex, -1);
+    });
+
+    test('a later frame carries only the rectangle that changed', () {
+      final decoded = decodeGif(
+        encode([screenWithBlockAt(10), screenWithBlockAt(30)]),
+      );
+
+      // Two 8x8 blocks 20 apart: the box spans both and nothing else.
+      expect(decoded[1].rect, (left: 10, top: 20, width: 28, height: 8));
+    });
+
+    test('a frame identical to the one before carries one pixel', () {
+      final still = stripes(128, 64);
+
+      final decoded = decodeGif(encode([still, still, still]));
+
+      expect(decoded[1].rect.width, 1);
+      expect(decoded[1].rect.height, 1);
+      for (final frame in decoded) {
+        expect(frame.pixels, still, reason: 'and still shows the same screen');
+      }
+    });
+
+    test('the changed rectangle scales with the frame', () {
+      final decoded = decodeGif(
+        encode([screenWithBlockAt(10), screenWithBlockAt(30)], scale: 2),
+      );
+
+      expect(decoded[1].rect, (left: 20, top: 40, width: 56, height: 16));
+    });
+
+    test('unchanged pixels inside the rectangle are left transparent', () {
+      // The box spans both blocks, so the gap between them is inside it and
+      // must fall through rather than being repainted.
+      final decoded = decodeGif(
+        encode([screenWithBlockAt(10), screenWithBlockAt(30)]),
+      );
+
+      final region = _lzwDecode(decoded[1].payload, 2, 28 * 8);
+      expect(region, contains(2), reason: 'transparent index present');
+      expect(decoded[1].pixels, screenWithBlockAt(30));
+    });
+
+    test('a still recording costs little more than its frame headers', () {
+      final still = [for (var i = 0; i < 60; i++) screenWithBlockAt(10)];
+      final moving = [for (var i = 0; i < 60; i++) screenWithBlockAt(10 + i)];
+
+      final stillBytes = encode(still).length;
+
+      expect(stillBytes, lessThan(encode(moving).length));
+      // Nothing changes after the first frame, so every later one is a single
+      // transparent pixel and the cost is the graphic control block, the image
+      // descriptor and the terminators - about 25 bytes each. That floor is
+      // what the global palette exists to keep low.
+      expect(stillBytes, lessThan(60 * 30));
+    });
+
+    test('a moving recording still beats writing every frame whole', () {
+      final frames = [for (var i = 0; i < 60; i++) screenWithBlockAt(10 + i)];
+      // What full frames would have cost: each frame as its own first frame.
+      final whole = [
+        for (final f in frames) encode([f]).length,
+      ].reduce((a, b) => a + b);
+
+      expect(encode(frames).length * 3, lessThan(whole));
+    });
+  });
+
+  group('rejects input it cannot encode', () {
+    // Each of these used to produce a file: some viewers reject it, others
+    // render it wrong. Asserts would have let all of it through in release.
+    test('no frames', () {
+      expect(() => encode([]), throwsArgumentError);
+    });
+
+    test('a delay list that does not match the frames', () {
+      expect(
+        () => encode([solid(8192, 0), solid(8192, 1)], delaysMs: [100]),
+        throwsArgumentError,
+      );
+    });
+
+    test('a frame shorter than the declared size', () {
+      expect(
+        () => encode([solid(8191, 0)]),
+        throwsArgumentError,
+        reason: 'wrote a truncated image at scale 1 and threw at scale 2',
+      );
+    });
+
+    test('a frame longer than the declared size', () {
+      expect(() => encode([solid(8193, 0)]), throwsArgumentError);
+    });
+
+    test('a frame with no area', () {
+      expect(
+        () => encode([solid(0, 0)], width: 0, height: 0),
+        throwsArgumentError,
+      );
+    });
+
+    test('a scale below one', () {
+      expect(() => encode([solid(8192, 0)], scale: 0), throwsArgumentError);
     });
   });
 

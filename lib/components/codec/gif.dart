@@ -5,6 +5,11 @@ import 'dart:typed_data';
 ///
 /// Designed for 128×64 Flipper Zero screen recordings.
 /// Uses LZW compression with LSB-first bit packing per the GIF89a spec.
+///
+/// Frames after the first are written as the rectangle that changed, with
+/// pixels that did not change left transparent, so a mostly-static recording
+/// costs only what moved. See [_writeFrame] for what that requires of the
+/// container.
 class FlipperGifEncoder {
   /// A two-colour palette needs a 2-bit minimum code size, which is also the
   /// smallest the format permits. Fixing it here rather than threading it
@@ -18,11 +23,15 @@ class FlipperGifEncoder {
   static const int _maxCodeSize = 12;
   static const int _maxCode = 1 << _maxCodeSize;
 
-  /// The palette has two entries. Masking to it keeps a caller's stray index
-  /// out of the code stream, where it would not be a wrong colour but a
+  /// The two drawable entries. Masking a caller's index to them keeps a stray
+  /// value out of the code stream, where it would not be a wrong colour but a
   /// structural break: index 4 is the clear code and index 5 is end-of-input,
-  /// either of which derails the decoder mid-frame.
+  /// either of which derails a decoder mid-frame.
   static const int _paletteMask = 1;
+
+  /// A third entry, never drawn: it marks the pixels a frame leaves alone.
+  /// A 2-bit code size allows four entries, so this costs no extra width.
+  static const int _transparentIndex = 2;
 
   /// One slot per (prefix, pixel) pair. Keying on the palette width rather
   /// than on a whole byte keeps the table at 64KB instead of 4MB, which is the
@@ -35,6 +44,10 @@ class FlipperGifEncoder {
   /// [delaysMs] — per-frame delay in milliseconds.
   /// [color0]   — background color as 0xAARRGGBB.
   /// [color1]   — foreground color as 0xAARRGGBB.
+  ///
+  /// Throws [ArgumentError] rather than asserting: every one of these produces
+  /// a file that some viewers reject and others render wrong, and an assert
+  /// would let exactly that ship in a release build.
   static Uint8List encode({
     required int width,
     required int height,
@@ -44,15 +57,32 @@ class FlipperGifEncoder {
     required int color1,
     int scale = 1,
   }) {
-    assert(frames.length == delaysMs.length);
-    assert(scale >= 1);
-    // A short frame writes a truncated image that still opens in some viewers
-    // and is silently wrong in others; a long one is silently cropped. Neither
-    // is worth guessing at, and neither caller can produce one.
-    assert(
-      frames.every((f) => f.length == width * height),
-      'each frame must hold exactly width * height indices',
-    );
+    if (width <= 0 || height <= 0) {
+      throw ArgumentError('Frame size must be positive, got ${width}x$height.');
+    }
+    if (scale < 1) {
+      throw ArgumentError.value(scale, 'scale', 'Must be at least 1.');
+    }
+    if (frames.isEmpty) {
+      throw ArgumentError.value(frames, 'frames', 'At least one is required.');
+    }
+    if (delaysMs.length != frames.length) {
+      throw ArgumentError.value(
+        delaysMs.length,
+        'delaysMs.length',
+        'Must match frames.length (${frames.length}).',
+      );
+    }
+    for (var i = 0; i < frames.length; i++) {
+      if (frames[i].length != width * height) {
+        throw ArgumentError.value(
+          frames[i].length,
+          'frames[$i].length',
+          'Must be ${width * height} for a ${width}x$height frame.',
+        );
+      }
+    }
+
     final buf = BytesBuilder();
     final outputWidth = width * scale;
     final outputHeight = height * scale;
@@ -61,9 +91,14 @@ class FlipperGifEncoder {
     buf.add(ascii.encode('GIF89a'));
     _le16(buf, outputWidth);
     _le16(buf, outputHeight);
-    buf.addByte(0x00); // no global color table
+    // A global colour table, because every frame uses the same one: with
+    // per-frame tables the palette was re-stated identically for each, which
+    // on a still recording is a third of what the frame costs.
+    // Packed: table present, size=1 -> 2^(1+1) = 4 entries.
+    buf.addByte(0x81);
     buf.addByte(0x00); // background color index
     buf.addByte(0x00); // pixel aspect ratio
+    _writePalette(buf, color0, color1);
 
     // Netscape Application Extension — infinite loop
     buf.addByte(0x21);
@@ -75,41 +110,144 @@ class FlipperGifEncoder {
     _le16(buf, 0); // loop count 0 = infinite
     buf.addByte(0); // block terminator
 
-    // Allocated once and reused: frames are compressed independently, but
-    // there is no reason to hand the collector a fresh 64KB per frame to do it.
+    // Allocated once and reused. The diff runs at source resolution because a
+    // scaled pixel changes exactly when its source pixel does, so scaling
+    // first would compare up to sixteen times as many bytes for the same
+    // answer.
     final table = Int32List(_tableSlots);
-    final scaled = scale == 1 ? null : Uint8List(outputWidth * outputHeight);
+    final previous = Uint8List(width * height);
+    final current = Uint8List(width * height);
+    final region = Uint8List(outputWidth * outputHeight);
 
     for (var i = 0; i < frames.length; i++) {
-      final indices = scaled == null
-          ? frames[i]
-          : _scaleInto(scaled, frames[i], width, height, scale);
+      final source = frames[i];
+      for (var p = 0; p < current.length; p++) {
+        current[p] = source[p] & _paletteMask;
+      }
+
+      // The first frame has nothing underneath it, so it is written whole and
+      // opaque; every later one is only what moved.
+      final rect = i == 0
+          ? (left: 0, top: 0, width: width, height: height)
+          : _changedRect(current, previous, width, height);
+
       _writeFrame(
         buf,
-        outputWidth,
-        outputHeight,
-        indices,
         delaysMs[i],
-        color0,
-        color1,
-        table,
+        _fillRegion(region, current, previous, rect, width, scale, i != 0),
+        rect.width * scale,
+        rect.height * scale,
+        rect.left * scale,
+        rect.top * scale,
+        transparent: i != 0,
+        table: table,
       );
+
+      previous.setAll(0, current);
     }
 
     buf.addByte(0x3B); // GIF trailer
     return buf.toBytes();
   }
 
-  static void _writeFrame(
-    BytesBuilder buf,
+  /// The smallest rectangle covering every pixel that differs from [previous].
+  ///
+  /// A frame identical to the one before it has no such rectangle; a 1×1 one
+  /// is returned instead, which combined with transparency draws nothing and
+  /// costs a handful of bytes. Returning the whole frame would cost everything.
+  static ({int left, int top, int width, int height}) _changedRect(
+    Uint8List current,
+    Uint8List previous,
     int width,
     int height,
-    Uint8List indices,
-    int delayMs,
-    int color0,
-    int color1,
-    Int32List table,
   ) {
+    var minX = width, minY = height, maxX = -1, maxY = -1;
+    for (var y = 0; y < height; y++) {
+      final row = y * width;
+      for (var x = 0; x < width; x++) {
+        if (current[row + x] == previous[row + x]) continue;
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        maxY = y;
+      }
+    }
+    if (maxY < 0) return (left: 0, top: 0, width: 1, height: 1);
+    return (
+      left: minX,
+      top: minY,
+      width: maxX - minX + 1,
+      height: maxY - minY + 1,
+    );
+  }
+
+  /// Fills [out] with the scaled pixels of [rect], marking anything unchanged
+  /// as transparent when [diff] is set.
+  ///
+  /// Scaling happens here rather than over the whole frame: each source row is
+  /// expanded once and copied down, so an unchanged region is never touched at
+  /// all.
+  static Uint8List _fillRegion(
+    Uint8List out,
+    Uint8List current,
+    Uint8List previous,
+    ({int left, int top, int width, int height}) rect,
+    int sourceWidth,
+    int scale,
+    bool diff,
+  ) {
+    final outWidth = rect.width * scale;
+    for (var ry = 0; ry < rect.height; ry++) {
+      final srcRow = (rect.top + ry) * sourceWidth + rect.left;
+      final rowStart = ry * scale * outWidth;
+      var o = rowStart;
+      for (var rx = 0; rx < rect.width; rx++) {
+        final s = srcRow + rx;
+        final value = diff && current[s] == previous[s]
+            ? _transparentIndex
+            : current[s];
+        final end = o + scale;
+        while (o < end) {
+          out[o++] = value;
+        }
+      }
+      for (var r = 1; r < scale; r++) {
+        final at = rowStart + r * outWidth;
+        out.setRange(at, at + outWidth, out, rowStart);
+      }
+    }
+    return Uint8List.sublistView(out, 0, outWidth * rect.height * scale);
+  }
+
+  /// Writes one image block.
+  ///
+  /// Two container details make the sub-rectangles work. The disposal method
+  /// is "do not dispose", so each frame stays on screen as the ground for the
+  /// next; and the transparent flag lets the untouched pixels inside a
+  /// rectangle fall through to it. Without either, a partial frame would show
+  /// as a fragment on an empty canvas.
+  /// Four entries: the two drawable colours, then padding to the power of two
+  /// the format requires. The spare entries are never referenced except by the
+  /// transparent index, which is never drawn.
+  static void _writePalette(BytesBuilder buf, int color0, int color1) {
+    for (final color in [color0, color1, color0, color0]) {
+      buf.addByte((color >> 16) & 0xFF);
+      buf.addByte((color >> 8) & 0xFF);
+      buf.addByte(color & 0xFF);
+    }
+  }
+
+  static void _writeFrame(
+    BytesBuilder buf,
+    int delayMs,
+    Uint8List indices,
+    int pixelWidth,
+    int pixelHeight,
+    int left,
+    int top, {
+    required bool transparent,
+    required Int32List table,
+  }) {
     // GIF delay is in centiseconds (1/100 s); clamp to valid range.
     final cs = (delayMs / 10).round().clamp(1, 65535);
 
@@ -117,27 +255,20 @@ class FlipperGifEncoder {
     buf.addByte(0x21);
     buf.addByte(0xF9);
     buf.addByte(0x04); // block size
-    buf.addByte(0x00); // packed: no dispose, no user input, no transparent
+    buf.addByte(transparent ? 0x05 : 0x04); // dispose=1, transparent flag
     _le16(buf, cs);
-    buf.addByte(0x00); // transparent color index (unused)
+    buf.addByte(transparent ? _transparentIndex : 0x00);
     buf.addByte(0x00); // block terminator
 
     // Image Descriptor
     buf.addByte(0x2C); // image separator
-    _le16(buf, 0); // left
-    _le16(buf, 0); // top
-    _le16(buf, width);
-    _le16(buf, height);
-    // Packed byte: M=1 (local color table present), I=0, S=0, size=0 → 2^(0+1)=2 colors
-    buf.addByte(0x80);
-
-    // Local Color Table: 2 colors × 3 RGB bytes = 6 bytes
-    buf.addByte((color0 >> 16) & 0xFF);
-    buf.addByte((color0 >> 8) & 0xFF);
-    buf.addByte(color0 & 0xFF);
-    buf.addByte((color1 >> 16) & 0xFF);
-    buf.addByte((color1 >> 8) & 0xFF);
-    buf.addByte(color1 & 0xFF);
+    _le16(buf, left);
+    _le16(buf, top);
+    _le16(buf, pixelWidth);
+    _le16(buf, pixelHeight);
+    // Packed byte: no local colour table, no interlace - the global one above
+    // serves every frame.
+    buf.addByte(0x00);
 
     // Image Data
     buf.addByte(_minCodeSize);
@@ -159,38 +290,6 @@ class FlipperGifEncoder {
     buf.addByte((v >> 8) & 0xFF);
   }
 
-  /// Nearest-neighbour upscale of [source] into [out], which the caller owns.
-  ///
-  /// Each source row is expanded once and then copied down, rather than
-  /// recomputing a source index per output pixel - at scale 4 that replaces
-  /// 128k divisions per frame with a handful of block copies.
-  static Uint8List _scaleInto(
-    Uint8List out,
-    Uint8List source,
-    int width,
-    int height,
-    int scale,
-  ) {
-    final outWidth = width * scale;
-    for (var y = 0; y < height; y++) {
-      final srcRow = y * width;
-      final rowStart = y * scale * outWidth;
-      var o = rowStart;
-      for (var x = 0; x < width; x++) {
-        final value = source[srcRow + x];
-        final end = o + scale;
-        while (o < end) {
-          out[o++] = value;
-        }
-      }
-      for (var r = 1; r < scale; r++) {
-        final at = rowStart + r * outWidth;
-        out.setRange(at, at + outWidth, out, rowStart);
-      }
-    }
-    return out;
-  }
-
   // ---------------------------------------------------------------------------
   // GIF LZW compression
   // ---------------------------------------------------------------------------
@@ -210,9 +309,11 @@ class FlipperGifEncoder {
     writer.write(_clearCode, codeSize);
 
     if (indices.isNotEmpty) {
-      var prefix = indices[0] & _paletteMask;
+      // Masked to the code space, not the palette: the transparent index is a
+      // legitimate value here and must survive.
+      var prefix = indices[0] & (_clearCode - 1);
       for (var i = 1; i < indices.length; i++) {
-        final pixel = indices[i] & _paletteMask;
+        final pixel = indices[i] & (_clearCode - 1);
         final key = (prefix << _minCodeSize) | pixel;
         final known = table[key];
         if (known != 0) {
