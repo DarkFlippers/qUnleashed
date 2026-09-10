@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
@@ -32,7 +33,14 @@ void bootstrapAmbientServices() {
   );
 
   // Answers GPS requests from custom firmware apps with the phone's location.
-  client.attachGpsResponder(GeolocatorGpsProvider());
+  final gps = GeolocatorGpsProvider();
+  client.attachGpsResponder(gps);
+
+  // Desktop raises the prompt at launch instead of mid-request: there the ask
+  // arrives when the map opens or the Flipper is already waiting for a fix.
+  if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
+    unawaited(_guard('location permission', gps.ensureReady));
+  }
 
   // Answers network requests from custom firmware apps with the phone's
   // internet connection.
