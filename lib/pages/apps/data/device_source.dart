@@ -37,6 +37,14 @@ class DeviceSource extends ChangeNotifier {
   final Map<String, ({int size, String folder, String path, int stamp})>
   _local = {};
 
+  /// Aliases whose `.fap` the last complete device walk found.
+  ///
+  /// Null until one completes. That distinction is the whole point: a device
+  /// nobody has scanned, or one that disconnected mid-walk, must not read as a
+  /// device with nothing installed - only a finished walk can prove an app is
+  /// gone.
+  Set<String>? _deviceAliases;
+
   final Map<String, FapInfo?> _parsed = {};
   final Map<String, int> _parsedStamp = {};
 
@@ -53,6 +61,7 @@ class DeviceSource extends ChangeNotifier {
       if (alias.isEmpty) continue;
       final m = manifests.byAlias(alias);
       final local = _local[alias];
+      final onDevice = _deviceAliases?.contains(alias);
       final folder =
           local?.folder ??
           (m != null && m.path.isNotEmpty ? _folderFromPath(m.path) : '');
@@ -68,6 +77,7 @@ class DeviceSource extends ChangeNotifier {
           manifest: m,
           fap: _parsed[alias],
           fapChecked: _parsed.containsKey(alias),
+          onDevice: onDevice,
         ),
       );
     }
@@ -183,7 +193,14 @@ class DeviceSource extends ChangeNotifier {
     notifyListeners();
     try {
       await manifests.refresh();
-      final deviceApps = await _walkDevice();
+      final walk = await _walkDevice();
+      final deviceApps = walk.apps;
+      // Only a complete walk proves absence. A partial one - a disconnect
+      // mid-scan - must leave the previous answer alone rather than report an
+      // empty device.
+      if (walk.complete) {
+        _deviceAliases = {for (final d in deviceApps) d.alias};
+      }
       _syncTotal = deviceApps.length;
       notifyListeners();
 
@@ -246,9 +263,13 @@ class DeviceSource extends ChangeNotifier {
   }
 
   Future<
-    List<
-      ({String alias, String folder, String devicePath, String md5, int size})
-    >
+    ({
+      List<
+        ({String alias, String folder, String devicePath, String md5, int size})
+      >
+      apps,
+      bool complete,
+    })
   >
   _walkDevice() async {
     final root = await client.storageList(
@@ -260,6 +281,7 @@ class DeviceSource extends ChangeNotifier {
         for (final f in item.file)
           if (f.type == File_FileType.DIR && f.name.isNotEmpty) f.name,
     ];
+    var complete = true;
     final out =
         <
           ({
@@ -270,8 +292,32 @@ class DeviceSource extends ChangeNotifier {
             int size,
           })
         >[];
+    // Apps normally live one folder deep, but a .fap sitting directly in the
+    // apps root is still installed. Missing it here would let the completeness
+    // check below call it absent.
+    for (final item in root.items) {
+      for (final f in item.file) {
+        if (f.type != File_FileType.FILE) continue;
+        if (!f.name.endsWith('.fap')) continue;
+        final alias = f.name.substring(0, f.name.length - 4);
+        if (alias.isEmpty) continue;
+        out.add((
+          alias: alias,
+          folder: '',
+          devicePath: '$kAppsRoot/${f.name}',
+          md5: f.md5sum,
+          size: f.size,
+        ));
+      }
+    }
+
     for (final folder in folders) {
-      if (!isReady) break;
+      if (!isReady) {
+        // Disconnected part-way: what was collected is still worth syncing,
+        // but it is no longer evidence that anything is absent.
+        complete = false;
+        break;
+      }
       _syncingItem = folder;
       notifyListeners();
       final list = await client.storageList(
@@ -294,7 +340,7 @@ class DeviceSource extends ChangeNotifier {
         }
       }
     }
-    return out;
+    return (apps: out, complete: complete);
   }
 
   Future<bool> _localMatchesRemote(
@@ -422,7 +468,11 @@ class DeviceSource extends ChangeNotifier {
 
   void handleDisconnect() => notifyListeners();
 
-  void handleConnect() => notifyListeners();
+  void handleConnect() {
+    // The set describes one device's storage, and this may be a different one.
+    _deviceAliases = null;
+    notifyListeners();
+  }
 
   void handleDeviceChange() {
     _local.clear();
