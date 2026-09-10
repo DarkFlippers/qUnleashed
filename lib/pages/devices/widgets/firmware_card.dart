@@ -67,9 +67,7 @@ class _FirmwareCardState extends State<FirmwareCard> {
 
   void _onPushTap() {
     final intent = PushService.instance.taps.value;
-    if (!mounted ||
-        intent == null ||
-        intent.type != PushIntent.typeFirmware) {
+    if (!mounted || intent == null || intent.type != PushIntent.typeFirmware) {
       return;
     }
     final firmwares = _fw.config.firmwares;
