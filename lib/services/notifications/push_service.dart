@@ -10,6 +10,7 @@ import '../localization/l10n.dart';
 import '../logging.dart';
 import 'firebase_options.dart';
 import 'notification_center.dart';
+import 'push_intent.dart';
 
 class PushTopics {
   static const appRelease = 'app_release';
@@ -38,6 +39,8 @@ class PushService {
   bool _started = false;
   static bool _unavailable = false;
 
+  final ValueNotifier<PushIntent?> taps = ValueNotifier<PushIntent?>(null);
+
   static bool get isSupported =>
       !kIsWeb && (Platform.isAndroid || Platform.isIOS || Platform.isMacOS);
 
@@ -54,7 +57,9 @@ class PushService {
 
       FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
-      await NotificationCenter.instance.initialize();
+      await NotificationCenter.instance.initialize(
+        onNotificationTap: (payload) => _dispatch(PushIntent.decode(payload)),
+      );
       await _ensureAndroidChannel();
 
       final messaging = FirebaseMessaging.instance;
@@ -74,6 +79,24 @@ class PushService {
     await _applySubscriptions();
 
     FirebaseMessaging.onMessage.listen(_showForeground);
+    FirebaseMessaging.onMessageOpenedApp.listen(_open);
+    _open(await FirebaseMessaging.instance.getInitialMessage());
+  }
+
+  void _open(RemoteMessage? message) {
+    if (message == null) return;
+    _dispatch(PushIntent.fromData(message.data));
+  }
+
+  void _dispatch(PushIntent? intent) {
+    if (intent != null) taps.value = intent;
+  }
+
+  static int _notificationId(RemoteMessage message, PushIntent? intent) {
+    final seed = intent == null
+        ? message.hashCode
+        : Object.hash(intent.type, intent.entry, intent.version);
+    return seed & 0x7fffffff;
   }
 
   Future<bool> isAppReleasesEnabled() async {
@@ -166,11 +189,13 @@ class PushService {
     final notification = message.notification;
     final title = notification?.title ?? l10n.notificationUpdateFallbackTitle;
     final body = notification?.body ?? '';
+    final intent = PushIntent.fromData(message.data);
 
     await NotificationCenter.instance.plugin.show(
-      id: message.hashCode,
+      id: _notificationId(message, intent),
       title: title,
       body: body,
+      payload: intent?.encode(),
       notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
           _androidChannelId,

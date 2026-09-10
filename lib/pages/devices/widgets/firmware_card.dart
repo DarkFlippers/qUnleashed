@@ -2,6 +2,8 @@ import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
 import '../../../services/localization/l10n.dart';
+import '../../../services/notifications/push_intent.dart';
+import '../../../services/notifications/push_service.dart';
 import '../../../components/config.dart';
 import '../../../theme/theme.dart';
 import 'page_card.dart';
@@ -32,12 +34,15 @@ class _FirmwareCardState extends State<FirmwareCard> {
   late final FirmwareController _fw;
 
   int _page = 0;
+  FirmwareEntry? _pendingChangelog;
 
   @override
   void initState() {
     super.initState();
     _fw = FirmwareController()..addListener(_onChanged);
     _syncPageToTheme();
+    PushService.instance.taps.addListener(_onPushTap);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _onPushTap());
   }
 
   @override
@@ -48,6 +53,7 @@ class _FirmwareCardState extends State<FirmwareCard> {
 
   @override
   void dispose() {
+    PushService.instance.taps.removeListener(_onPushTap);
     _fw.removeListener(_onChanged);
     _fw.dispose();
     _pageController.dispose();
@@ -56,6 +62,41 @@ class _FirmwareCardState extends State<FirmwareCard> {
 
   void _onChanged() {
     if (mounted) setState(() {});
+    _tryOpenPendingChangelog();
+  }
+
+  void _onPushTap() {
+    final intent = PushService.instance.taps.value;
+    if (!mounted ||
+        intent == null ||
+        intent.type != PushIntent.typeFirmware) {
+      return;
+    }
+    final firmwares = _fw.config.firmwares;
+    final index = firmwares.indexWhere((e) => e.shortName == intent.entry);
+    if (index < 0) {
+      PushService.instance.taps.value = null;
+      return;
+    }
+    final entry = firmwares[index];
+    _themeController.setActiveFirmware(entry);
+    _fw.ensureDirectory(entry);
+    final channel = intent.channel;
+    if (channel != null && _fw.selectedChannelId(entry) != channel) {
+      _fw.setChannel(entry, channel);
+    }
+    _pendingChangelog = entry;
+    _tryOpenPendingChangelog();
+  }
+
+  void _tryOpenPendingChangelog() {
+    final entry = _pendingChangelog;
+    if (entry == null || !mounted || _fw.fetchLoadingFor(entry)) return;
+    final version = _fw.latestFirmwareFor(entry);
+    _pendingChangelog = null;
+    PushService.instance.taps.value = null;
+    if (version == null) return;
+    _openChangelog(entry, version);
   }
 
   void _syncPageToTheme() {

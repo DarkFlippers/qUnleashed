@@ -306,6 +306,8 @@ jobs:
         shell: bash
         run: |
           tag="${GITHUB_REF_NAME}"
+          release_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${tag}"
+          data="{\"type\":\"app\",\"url\":\"${release_url}\"}"
           if [[ "$tag" == dev-* ]]; then
             {
               echo "prerelease=true"
@@ -313,6 +315,7 @@ jobs:
               echo "topic=app_dev"
               echo "title=New qUnleashed app dev build"
               echo "body=version: $tag | commit: ${GITHUB_SHA:0:7}"
+              echo "data=$data"
             } >> "$GITHUB_OUTPUT"
           else
             {
@@ -321,6 +324,7 @@ jobs:
               echo "topic=app_release"
               echo "title=New qUnleashed app released"
               echo "body=version: $tag"
+              echo "data=$data"
             } >> "$GITHUB_OUTPUT"
           fi
 
@@ -363,12 +367,13 @@ jobs:
           PUSH_TOPIC: ${{ steps.channel.outputs.topic }}
           PUSH_TITLE: ${{ steps.channel.outputs.title }}
           PUSH_BODY: ${{ steps.channel.outputs.body }}
+          PUSH_DATA: ${{ steps.channel.outputs.data }}
         run: |
           if [ -z "$FCM_SERVICE_ACCOUNT_BASE64" ]; then
             echo "::warning::FCM_SERVICE_ACCOUNT_BASE64 is not configured, skipping the push notification."
             exit 0
           fi
-          python .github/scripts/notify_push.py "$PUSH_TOPIC" "$PUSH_TITLE" "$PUSH_BODY"
+          python .github/scripts/notify_push.py "$PUSH_TOPIC" "$PUSH_TITLE" "$PUSH_BODY" "$PUSH_DATA"
 
   assert-published:
     name: Assert the release published

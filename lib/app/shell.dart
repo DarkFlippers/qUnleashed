@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'nav_bar.dart';
 import '../components/archive/category.dart';
+import '../components/open_url.dart';
 import '../pages/apps/catalog/page.dart';
 import '../pages/archive/browser/page.dart';
 import '../pages/archive/home_widget/picker_page.dart';
@@ -17,6 +18,8 @@ import '../pages/devices/models/connection_state.dart';
 import '../pages/devices/page.dart';
 import '../services/home_widget/service.dart';
 import '../services/localization/l10n.dart';
+import '../services/notifications/push_intent.dart';
+import '../services/notifications/push_service.dart';
 import '../theme/theme.dart';
 
 class AppShell extends StatefulWidget {
@@ -55,7 +58,11 @@ class _AppShellState extends State<AppShell> {
     _archiveController.addListener(_onArchiveChanged);
     _archiveController.initialize();
     HomeWidgetService.instance.pickRequests.addListener(_onWidgetPickRequest);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _onWidgetPickRequest());
+    PushService.instance.taps.addListener(_onPushTap);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _onWidgetPickRequest();
+      _onPushTap();
+    });
   }
 
   @override
@@ -63,6 +70,7 @@ class _AppShellState extends State<AppShell> {
     HomeWidgetService.instance.pickRequests.removeListener(
       _onWidgetPickRequest,
     );
+    PushService.instance.taps.removeListener(_onPushTap);
     _ctrl.dispose();
     _archiveController.removeListener(_onArchiveChanged);
     _archiveController.dispose();
@@ -83,6 +91,19 @@ class _AppShellState extends State<AppShell> {
         ),
       ),
     );
+  }
+
+  Future<void> _onPushTap() async {
+    final intent = PushService.instance.taps.value;
+    if (intent == null || !mounted) return;
+    if (intent.type == PushIntent.typeFirmware) {
+      _select(_slotDevice);
+      return;
+    }
+    PushService.instance.taps.value = null;
+    final url = intent.url;
+    if (intent.type != PushIntent.typeApp || url == null) return;
+    await openUrl(context, url);
   }
 
   void _onArchiveChanged() {
