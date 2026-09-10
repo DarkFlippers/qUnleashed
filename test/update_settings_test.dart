@@ -1,169 +1,179 @@
-import 'dart:convert';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/devices/firmware/directory.dart';
 import 'package:qunleashed/pages/devices/firmware/update_settings.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
-const String key = 'firmware_update_settings_v1';
-
-Future<String?> stored() async =>
-    (await SharedPreferences.getInstance()).getString(key);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   final store = UpdateSettingsStore.instance;
 
-  setUp(() async {
+  setUp(() {
     SharedPreferences.setMockInitialValues(const {});
     // The store is a singleton and outlives any one controller, so a test that
-    // did not clear it would inherit the previous test's choices.
-    await store.clear();
+    // did not reset it would inherit the previous test's choices.
+    store.reset();
   });
+
+  /// Puts raw preferences in place and drops whatever the store had read.
+  void onDisk(Map<String, Object> values) {
+    SharedPreferences.setMockInitialValues(values);
+    store.reset();
+  }
 
   group('remembering a choice', () {
     test('nothing is remembered before anything is chosen', () async {
       await store.load();
 
-      expect(store.selectionFor('unlshd'), isNull);
+      expect(store.channelFor('unlshd'), isNull);
+      expect(store.variantFor('unlshd'), isNull);
     });
 
-    test('a channel and a variant come back', () async {
-      await store.remember(
-        'unlshd',
-        channelId: 'development',
-        variant: UnleashedVariant.compact,
-      );
-      await store.clear();
-      SharedPreferences.setMockInitialValues({
-        key: jsonEncode({
-          'unlshd': {'channel': 'development', 'variant': 'compact'},
-        }),
-      });
+    test('a channel comes back', () async {
+      await store.remember('unlshd', channelId: 'development');
+      store.reset();
       await store.load();
 
-      expect(store.selectionFor('unlshd')?.channelId, 'development');
-      expect(store.selectionFor('unlshd')?.variant, UnleashedVariant.compact);
+      expect(store.channelFor('unlshd'), 'development');
+    });
+
+    test('a variant comes back', () async {
+      await store.remember('unlshd', variant: UnleashedVariant.compact);
+      store.reset();
+      await store.load();
+
+      expect(store.variantFor('unlshd'), UnleashedVariant.compact);
     });
 
     test('choices are kept per firmware', () async {
-      await store.remember('unlshd', channelId: 'release', variant: null);
-      await store.remember('roguemaster', channelId: 'dev', variant: null);
+      await store.remember('unlshd', channelId: 'release');
+      await store.remember('ofw', channelId: 'dev');
+      store.reset();
+      await store.load();
 
-      expect(store.selectionFor('unlshd')?.channelId, 'release');
-      expect(store.selectionFor('roguemaster')?.channelId, 'dev');
+      expect(store.channelFor('unlshd'), 'release');
+      expect(store.channelFor('ofw'), 'dev');
     });
 
     test('a later choice replaces the earlier one', () async {
-      await store.remember(
-        'unlshd',
-        channelId: 'release',
-        variant: UnleashedVariant.base,
-      );
-      await store.remember(
-        'unlshd',
-        channelId: 'development',
-        variant: UnleashedVariant.compact,
-      );
+      await store.remember('unlshd', channelId: 'release');
+      await store.remember('unlshd', channelId: 'development');
+      store.reset();
+      await store.load();
 
-      expect(store.selectionFor('unlshd')?.channelId, 'development');
-      expect(store.selectionFor('unlshd')?.variant, UnleashedVariant.compact);
+      expect(store.channelFor('unlshd'), 'development');
     });
 
-    test('a firmware with nothing chosen is not written out', () async {
-      await store.remember('unlshd', channelId: null, variant: null);
+    // Each field is written on its own, so a tap on one selector cannot
+    // persist whatever happened to be sitting in the other.
+    test('recording a channel leaves the variant alone', () async {
+      await store.remember('unlshd', variant: UnleashedVariant.compact);
+      await store.remember('unlshd', channelId: 'development');
+      store.reset();
+      await store.load();
 
-      expect(await stored(), isNot(contains('unlshd')));
+      expect(store.variantFor('unlshd'), UnleashedVariant.compact);
+      expect(store.channelFor('unlshd'), 'development');
+    });
+
+    test('recording a variant leaves the channel alone', () async {
+      await store.remember('unlshd', channelId: 'development');
+      await store.remember('unlshd', variant: UnleashedVariant.base);
+
+      store.reset();
+      await store.load();
+
+      expect(store.channelFor('unlshd'), 'development');
+      expect(store.variantFor('unlshd'), UnleashedVariant.base);
+    });
+
+    test('recording nothing writes nothing', () async {
+      await store.remember('unlshd');
+      store.reset();
+      await store.load();
+
+      expect(store.channelFor('unlshd'), isNull);
     });
   });
 
   group('reading what is on disk', () {
-    Future<void> onDisk(Object value) async {
-      await store.clear();
-      SharedPreferences.setMockInitialValues({key: jsonEncode(value)});
-      await store.load();
-    }
-
     test('a variant this build no longer has keeps the channel', () async {
-      // Dropping the whole entry would lose a perfectly good channel with it.
-      await onDisk({
-        'unlshd': {'channel': 'release', 'variant': 'quantum'},
+      onDisk({
+        'firmware.update.unlshd.channel': 'release',
+        'firmware.update.unlshd.variant': 'quantum',
       });
-
-      expect(store.selectionFor('unlshd')?.channelId, 'release');
-      expect(store.selectionFor('unlshd')?.variant, isNull);
-    });
-
-    test('an entry with only a channel reads back', () async {
-      await onDisk({
-        'unlshd': {'channel': 'release'},
-      });
-
-      expect(store.selectionFor('unlshd')?.channelId, 'release');
-      expect(store.selectionFor('unlshd')?.variant, isNull);
-    });
-
-    test('an empty channel reads as no choice', () async {
-      await onDisk({
-        'unlshd': {'channel': ''},
-      });
-
-      expect(store.selectionFor('unlshd')?.channelId, isNull);
-    });
-
-    test('a malformed entry is skipped, not fatal', () async {
-      await onDisk({
-        'unlshd': 'not an object',
-        'roguemaster': {'channel': 'dev'},
-      });
-
-      expect(store.selectionFor('unlshd'), isNull);
-      expect(store.selectionFor('roguemaster')?.channelId, 'dev');
-    });
-
-    test('a value that is not JSON is ignored', () async {
-      await store.clear();
-      SharedPreferences.setMockInitialValues({key: 'not json at all'});
 
       await store.load();
 
-      expect(store.selectionFor('unlshd'), isNull);
+      expect(store.channelFor('unlshd'), 'release');
+      expect(store.variantFor('unlshd'), isNull);
     });
 
-    test('a JSON value that is not a map is ignored', () async {
-      await onDisk(['unlshd']);
+    // The reason each field is its own preference: one unreadable value must
+    // cost that value, not everything stored beside it - and certainly not
+    // everything, which is what a single re-written blob would have done.
+    test('a value of the wrong type costs only itself', () async {
+      onDisk({
+        'firmware.update.unlshd.channel': 42,
+        'firmware.update.unlshd.variant': 'compact',
+        'firmware.update.ofw.channel': 'dev',
+      });
 
-      expect(store.selectionFor('unlshd'), isNull);
+      await store.load();
+
+      expect(store.channelFor('unlshd'), isNull);
+      expect(store.variantFor('unlshd'), UnleashedVariant.compact);
+      expect(store.channelFor('ofw'), 'dev');
+    });
+
+    test('an empty value reads as no choice', () async {
+      onDisk({'firmware.update.unlshd.channel': ''});
+
+      await store.load();
+
+      expect(store.channelFor('unlshd'), isNull);
+    });
+
+    test('a key naming a field this build does not know is ignored', () async {
+      onDisk({
+        'firmware.update.unlshd.mystery': 'whatever',
+        'firmware.update.unlshd.channel': 'release',
+      });
+
+      await store.load();
+
+      expect(store.channelFor('unlshd'), 'release');
+    });
+
+    test('other preferences are left alone', () async {
+      onDisk({'theme.mode': 'dark', 'firmware.update.unlshd.channel': 'rel'});
+
+      await store.load();
+
+      expect(store.channelFor('unlshd'), 'rel');
+      expect(store.channelFor('theme'), isNull);
     });
   });
 
   group('loading', () {
     test('reads once and serves later callers from memory', () async {
-      SharedPreferences.setMockInitialValues({
-        key: jsonEncode({
-          'unlshd': {'channel': 'release'},
-        }),
-      });
+      onDisk({'firmware.update.unlshd.channel': 'release'});
       await store.load();
 
       // A second read of the same store must not go back to disk, where the
       // value may since have changed under it.
       SharedPreferences.setMockInitialValues({
-        key: jsonEncode({
-          'unlshd': {'channel': 'development'},
-        }),
+        'firmware.update.unlshd.channel': 'development',
       });
       await store.load();
 
-      expect(store.selectionFor('unlshd')?.channelId, 'release');
+      expect(store.channelFor('unlshd'), 'release');
     });
 
     test('remembering works without an explicit load first', () async {
-      await store.remember('unlshd', channelId: 'release', variant: null);
+      await store.remember('unlshd', channelId: 'release');
 
-      expect(store.selectionFor('unlshd')?.channelId, 'release');
-      expect(await stored(), contains('release'));
+      expect(store.channelFor('unlshd'), 'release');
     });
   });
 }

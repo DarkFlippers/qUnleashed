@@ -45,7 +45,20 @@ FirmwareDirectoryChannel buildCustomChannel() => FirmwareDirectoryChannel(
   versions: const [],
 );
 
-enum UnleashedVariant { base, extraPacks, compact }
+enum UnleashedVariant {
+  base,
+  extraPacks,
+  compact;
+
+  /// The variant stored under [name], or null if this build has no such one.
+  static UnleashedVariant? fromName(String? raw) {
+    if (raw == null || raw.isEmpty) return null;
+    for (final variant in values) {
+      if (variant.name == raw) return variant;
+    }
+    return null;
+  }
+}
 
 class FirmwareFile {
   const FirmwareFile({

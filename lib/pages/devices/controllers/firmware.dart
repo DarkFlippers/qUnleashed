@@ -27,6 +27,12 @@ class FirmwareController extends ChangeNotifier {
   List<FirmwareDirectoryChannel> channelsFor(FirmwareEntry entry) =>
       _channelsForDirectory(_repo.directoryFor(entry));
 
+  /// Set once the controller is gone, so the stored-settings read - which is
+  /// started in the constructor and cannot be cancelled - does not notify a
+  /// disposed notifier. Leaving the devices page inside that window otherwise
+  /// asserts in debug and profile builds.
+  bool _disposed = false;
+
   String selectedChannelId(FirmwareEntry entry) {
     final selected = _selections[entry.shortName]?.channelId;
     if (selected != null && selected.isNotEmpty) return selected;
@@ -63,64 +69,60 @@ class FirmwareController extends ChangeNotifier {
   void setChannel(FirmwareEntry entry, String channelId) {
     final selection = _selectionFor(entry.shortName);
     selection.channelId = channelId;
-    selection.userPicked = true;
+    selection.channelPicked = true;
     if (!_supportsVariantSelection(entry, channelId)) {
       selection.variant = UnleashedVariant.extraPacks;
     }
-    _remember(entry);
+    // Only the channel: the variant sitting in the selection may be a default
+    // nobody chose, and writing it would make it look like one they did.
+    unawaited(_settings.remember(entry.shortName, channelId: channelId));
     notifyListeners();
   }
 
   void setVariant(FirmwareEntry entry, UnleashedVariant variant) {
-    _selectionFor(entry.shortName).variant = variant;
-    _remember(entry);
+    final selection = _selectionFor(entry.shortName);
+    selection.variant = variant;
+    selection.variantPicked = true;
+    unawaited(_settings.remember(entry.shortName, variant: variant));
     notifyListeners();
   }
 
-  /// Records the choice for next time. [UpdateSettingsStore.remember] handles
-  /// its own failures, so there is nothing here for a caller to answer.
-  void _remember(FirmwareEntry entry) {
-    final selection = _selectionFor(entry.shortName);
-    unawaited(
-      _settings.remember(
-        entry.shortName,
-        channelId: selection.channelId,
-        variant: selection.variant,
-      ),
-    );
-  }
-
-  /// Applies the stored choices, then lets the fallback run for anything they
-  /// did not cover.
+  /// Applies the stored choices, then lets the fallback fill in the rest.
   ///
   /// [UpdateSettingsStore.load] handles its own failures, so a read that did
-  /// not work leaves every selection unset and the fallback below fills them
-  /// in - which is the same place a first run starts from.
+  /// not work leaves every selection unset and the fallback fills them in -
+  /// which is where a first run starts from anyway.
   Future<void> _restore() async {
     await _settings.load();
+    if (_disposed) return;
     for (final entry in config.firmwares) {
-      final saved = _settings.selectionFor(entry.shortName);
-      if (saved == null) continue;
       final selection = _selectionFor(entry.shortName);
-      // A tap that landed while this was reading wins: the user is looking at
-      // what they just chose, and replacing it under them would be worse than
-      // forgetting it.
-      if (selection.userPicked) continue;
-      if (saved.channelId != null) {
-        selection.channelId = saved.channelId;
-        // A stored choice is a user choice, so the fallback must not treat it
-        // as an unpicked default and quietly move off the custom channel.
-        selection.userPicked = true;
+      // A tap that landed while this was reading wins, per field: the user is
+      // looking at what they just chose, and replacing it under them would be
+      // worse than forgetting it.
+      if (!selection.channelPicked) {
+        final channelId = _settings.channelFor(entry.shortName);
+        if (channelId != null) {
+          selection.channelId = channelId;
+          // A stored choice is a user choice, so the fallback must not treat
+          // it as an unpicked default and quietly move off the custom channel.
+          selection.channelPicked = true;
+        }
       }
-      if (saved.variant != null) selection.variant = saved.variant;
+      if (!selection.variantPicked) {
+        // Assigned rather than ??=: the variant may already hold a default
+        // that setChannel wrote when moving to a channel without variants, and
+        // a stored choice should win over that.
+        final variant = _settings.variantFor(entry.shortName);
+        if (variant != null) selection.variant = variant;
+      }
     }
-    for (final entry in config.firmwares) {
-      _applyChannelFallback(entry);
-    }
-    notifyListeners();
+    _applyFallbacks();
   }
 
-  void _onRepoChanged() {
+  void _onRepoChanged() => _applyFallbacks();
+
+  void _applyFallbacks() {
     for (final entry in config.firmwares) {
       _applyChannelFallback(entry);
     }
@@ -129,13 +131,21 @@ class FirmwareController extends ChangeNotifier {
 
   void _applyChannelFallback(FirmwareEntry entry) {
     final selection = _selectionFor(entry.shortName);
-    final channels = _channelsForDirectory(_repo.directoryFor(entry));
+    final directory = _repo.directoryFor(entry);
+    // Nothing has been fetched yet, so the only channel on offer is the custom
+    // one. A remembered channel cannot be checked against that, and replacing
+    // it here is a decision the directory's arrival can never undo: the
+    // replacement counts as picked, which is exactly what stops the clause
+    // below from correcting it. The directory cache is in-memory only, so this
+    // is every cold start, not an edge case.
+    if (directory == null && selection.channelId != null) return;
+    final channels = _channelsForDirectory(directory);
     final selected = selection.channelId;
     final hasReal = channels.any((c) => c.id != kCustomFirmwareChannelId);
     final needsFallback =
         selected == null ||
         !channels.any((channel) => channel.id == selected) ||
-        (!selection.userPicked &&
+        (!selection.channelPicked &&
             hasReal &&
             selected == kCustomFirmwareChannelId);
     if (!needsFallback) return;
@@ -169,6 +179,7 @@ class FirmwareController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     _repo.removeListener(_onRepoChanged);
     super.dispose();
   }
@@ -177,5 +188,10 @@ class FirmwareController extends ChangeNotifier {
 class _Selection {
   String? channelId;
   UnleashedVariant? variant;
-  bool userPicked = false;
+
+  /// Tracked per field: a tap on one selector says nothing about the other,
+  /// and treating it as though it did let a variant chosen mid-read be
+  /// reverted on screen while still being written to disk.
+  bool channelPicked = false;
+  bool variantPicked = false;
 }
