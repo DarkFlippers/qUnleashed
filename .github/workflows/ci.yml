@@ -18,6 +18,11 @@ jobs:
     name: Analyze and test
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Reading the pull request's file list needs more than the workflow's
+    # default contents-only grant.
+    permissions:
+      contents: read
+      pull-requests: read
 
     steps:
       - name: Checkout
@@ -37,6 +42,37 @@ jobs:
 
       - name: Test the Android artifact verification
         run: .github/scripts/verify_apks_test.sh
+
+      - name: Test the translation source guard
+        run: .github/scripts/check_translation_sources_test.sh
+
+      # Why any of this exists is in the script's own header. What is specific
+      # to running it here:
+      #
+      # The file list is asked of the API rather than worked out from the
+      # checkout, because the clone is shallow, so the merge base a three-dot
+      # diff needs is not necessarily present, and a two-dot one would flag any
+      # branch that simply has not been rebased since the last sync. Paginated,
+      # because a guard that stops looking after the first hundred files is one
+      # a large enough pull request walks straight through. And previous_filename
+      # as well as filename, because a rename reports only where the file
+      # landed, and moving one out of Crowdin's pattern breaks the sync just as
+      # thoroughly as editing it.
+      #
+      # shell: bash for the pipefail that a bare run block does not get. Left
+      # off, a failure to reach the API would empty the pipeline, the guard
+      # would find nothing to object to, and the check would pass green having
+      # examined no files at all.
+      - name: Check nothing edits a translation by hand
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --paginate \
+            "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" \
+            --jq '.[] | .filename, (.previous_filename // empty)' \
+            | .github/scripts/check_translation_sources.sh
 
       # Catches what only running a workflow would otherwise catch, and the
       # release workflow only publishes on a tag.
