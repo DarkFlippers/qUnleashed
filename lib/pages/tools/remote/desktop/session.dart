@@ -50,6 +50,7 @@ class RemoteSession extends ChangeNotifier {
   Timer? _unlockedFlashTimer;
   bool _isDisconnected = false;
   bool _starting = false;
+  bool _restartWanted = false;
   bool _disposed = false;
   bool _stopped = false;
 
@@ -82,24 +83,45 @@ class RemoteSession extends ChangeNotifier {
 
   /// Asks for the stream straight away — a stale "not connected" flag must not
   /// keep the page from trying, so the verdict comes from the call itself.
+  ///
+  /// The guard keeps two opens from running at once, each costing three RPCs,
+  /// but a request that arrives while one is in flight is not a duplicate of
+  /// it: the running one was issued against a session that has since ended, so
+  /// whether it succeeds says nothing about the link that exists now. Dropping
+  /// it left a reconnect with nothing behind it — no stream was ever asked for
+  /// on the new session, so no frame arrived, and since a frame is what clears
+  /// [_isDisconnected] the page stayed blank for good. So remember the request
+  /// and run once more instead.
   Future<void> _start() async {
-    if (_starting) return;
+    if (_starting) {
+      _restartWanted = true;
+      return;
+    }
     _starting = true;
     try {
-      await _client.guiStartScreenStream(
-        priority: FlipperRequestPriority.rightNow,
-      );
-      await _client.desktopStatusSubscribe();
-      final frames = await _client.desktopIsLocked();
-      for (final f in frames) {
-        if (f.hasDesktopStatus()) _applyStatus(f.desktopStatus);
-      }
-    } catch (_) {
-      if (_disposed) return;
-      if (!_isDisconnected) {
-        _isDisconnected = true;
-        _safeNotify();
-      }
+      do {
+        // Cleared before the attempt, so only a request that arrives while
+        // this one runs asks for another after it.
+        _restartWanted = false;
+        try {
+          await _client.guiStartScreenStream(
+            priority: FlipperRequestPriority.rightNow,
+          );
+          await _client.desktopStatusSubscribe();
+          final frames = await _client.desktopIsLocked();
+          for (final f in frames) {
+            if (f.hasDesktopStatus()) _applyStatus(f.desktopStatus);
+          }
+        } catch (_) {
+          if (_disposed) return;
+          if (!_isDisconnected) {
+            _isDisconnected = true;
+            _safeNotify();
+          }
+        }
+        // Inside the try, so a failed attempt still honours a reconnect that
+        // landed during it - that being the case where retrying matters most.
+      } while (_restartWanted && !_disposed);
     } finally {
       _starting = false;
     }
