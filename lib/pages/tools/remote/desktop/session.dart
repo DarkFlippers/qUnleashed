@@ -50,6 +50,14 @@ class RemoteSession extends ChangeNotifier {
   Timer? _unlockedFlashTimer;
   bool _isDisconnected = false;
   bool _starting = false;
+
+  /// A start asked for while one was already running.
+  ///
+  /// Not a duplicate of it: the running one was issued against a session that
+  /// has since ended, so whether it succeeds says nothing about the link that
+  /// exists now. Cleared before each attempt, so only a request that arrives
+  /// during one asks for another after it — five connection events during a
+  /// single open cost one more open, not five.
   bool _restartWanted = false;
   bool _disposed = false;
   bool _stopped = false;
@@ -84,14 +92,18 @@ class RemoteSession extends ChangeNotifier {
   /// Asks for the stream straight away — a stale "not connected" flag must not
   /// keep the page from trying, so the verdict comes from the call itself.
   ///
-  /// The guard keeps two opens from running at once, each costing three RPCs,
-  /// but a request that arrives while one is in flight is not a duplicate of
-  /// it: the running one was issued against a session that has since ended, so
-  /// whether it succeeds says nothing about the link that exists now. Dropping
-  /// it left a reconnect with nothing behind it — no stream was ever asked for
-  /// on the new session, so no frame arrived, and since a frame is what clears
-  /// [_isDisconnected] the page stayed blank for good. So remember the request
-  /// and run once more instead.
+  /// Exactly one open runs at a time, each costing three RPCs. A request that
+  /// arrives during one is held in [_restartWanted] and run afterwards rather
+  /// than dropped: dropping it left a reconnect with nothing behind it — no
+  /// stream was ever asked for on the new session, so no frame arrived, and
+  /// since a frame is what clears [_isDisconnected] the page stayed blank for
+  /// good.
+  ///
+  /// That opens never overlap is what makes a single flag enough. Were they
+  /// ever made concurrent — to hide the latency of three sequential round
+  /// trips, say — a stale open could finish after a newer one and overwrite
+  /// what it had already applied, and this would need to know which link each
+  /// attempt belonged to rather than merely that one is outstanding.
   Future<void> _start() async {
     if (_starting) {
       _restartWanted = true;

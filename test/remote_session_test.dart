@@ -59,6 +59,13 @@ class _FakeClient implements FlipperClient {
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
+FlipperConnectionState _link({required bool connected}) =>
+    FlipperConnectionState(
+      mode: connected ? FlipperMode.rpc : FlipperMode.disconnected,
+      device: null,
+      connected: connected,
+    );
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -96,13 +103,6 @@ void main() {
     expect(client.startStreamCalls, 1, reason: 'nothing automatic behind it');
   });
 
-  FlipperConnectionState link({required bool connected}) =>
-      FlipperConnectionState(
-        mode: connected ? FlipperMode.rpc : FlipperMode.disconnected,
-        device: null,
-        connected: connected,
-      );
-
   test(
     'a reconnect racing the initial open still restarts the stream',
     () async {
@@ -121,9 +121,9 @@ void main() {
 
       // The link drops and comes back while that open is still between awaits -
       // which is exactly when a reconnect arrives.
-      client.connection.add(link(connected: false));
+      client.connection.add(_link(connected: false));
       await Future<void>.delayed(Duration.zero);
-      client.connection.add(link(connected: true));
+      client.connection.add(_link(connected: true));
       await Future<void>.delayed(Duration.zero);
 
       client.openGate();
@@ -149,9 +149,9 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     expect(client.startStreamCalls, 1);
 
-    client.connection.add(link(connected: false));
+    client.connection.add(_link(connected: false));
     await Future<void>.delayed(Duration.zero);
-    client.connection.add(link(connected: true));
+    client.connection.add(_link(connected: true));
     await Future<void>.delayed(const Duration(milliseconds: 20));
 
     expect(client.startStreamCalls, 2);
@@ -166,9 +166,9 @@ void main() {
     addTearDown(session.dispose);
 
     await Future<void>.delayed(Duration.zero);
-    client.connection.add(link(connected: false));
+    client.connection.add(_link(connected: false));
     await Future<void>.delayed(Duration.zero);
-    client.connection.add(link(connected: true));
+    client.connection.add(_link(connected: true));
     await Future<void>.delayed(Duration.zero);
 
     client.openGate();
@@ -192,7 +192,7 @@ void main() {
 
     await Future<void>.delayed(Duration.zero);
     for (var i = 0; i < 5; i++) {
-      client.connection.add(link(connected: true));
+      client.connection.add(_link(connected: true));
     }
     await Future<void>.delayed(Duration.zero);
     expect(client.startStreamCalls, 1, reason: 'still only the one in flight');
