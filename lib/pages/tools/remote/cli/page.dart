@@ -1,4 +1,3 @@
-import '../../../../services/localization/l10n.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show Platform;
@@ -12,20 +11,27 @@ import 'package:xterm/xterm.dart';
 import 'package:qunleashed/components/appbar.dart';
 import '../../../../components/dialogs/connection_error.dart';
 import '../../../../components/dialogs/connection.dart';
+import '../../../../services/localization/l10n.dart';
 import '../../../../services/logging.dart';
 
 const _kBackgroundColor = Color(0xFF000000);
 const _kForegroundColor = Color(0xFFE0E0E0);
 
 class CliPage extends StatefulWidget {
-  const CliPage({super.key});
+  const CliPage({super.key, this.client});
+
+  /// Supplied by tests only; the app always uses the shared client. The same
+  /// seam [RemoteSession] takes, and for the same reason — the teardown path
+  /// is otherwise unreachable from a test.
+  @visibleForTesting
+  final FlipperClient? client;
 
   @override
   State<CliPage> createState() => _CliPageState();
 }
 
 class _CliPageState extends State<CliPage> {
-  final FlipperClient _client = FlipperOneClient().get();
+  late final FlipperClient _client = widget.client ?? FlipperOneClient().get();
   final FocusNode _terminalFocusNode = FocusNode(debugLabel: 'cli-terminal');
 
   late final Terminal _terminal;
@@ -58,13 +64,38 @@ class _CliPageState extends State<CliPage> {
     _textSub?.cancel();
     _connSub?.cancel();
     if (_awaitingInterrupt) {
+      // Two failures, two paths, and only one was being caught. Resolving the
+      // session goes through _requireActiveSession, which throws synchronously
+      // when there is no transport at all — that is what this catch has always
+      // caught. But the session's own writeCliBytes is async, so a transport
+      // that cannot do CLI, a session already back in RPC mode, or the write
+      // itself failing all reject a future instead, and teardown — with the
+      // link very often already gone — is exactly when those happen.
+      //
+      // _sendCtrlC sends this same byte and handles both. This is the outlier.
       try {
-        _client.writeCliBytes(Uint8List.fromList([0x03]));
-      } catch (_) {}
+        unawaited(
+          _client
+              .writeCliBytes(Uint8List.fromList([0x03]))
+              .catchError(
+                (Object e) =>
+                    LogService.log('[CLI] ctrl-c on dispose failed: $e'),
+              ),
+        );
+      } catch (e) {
+        LogService.log('[CLI] ctrl-c on dispose failed: $e');
+      }
     }
     _client.cliExclusive = false;
     if (_client.connectedDevice?.isBle != true) {
-      unawaited(_client.enterRpcMode());
+      // enterRpcMode deliberately does not throw synchronously — its own
+      // comment says callers fire it unawaited — but the mode switch it
+      // returns can still fail, and that rejection had nothing listening.
+      unawaited(
+        _client.enterRpcMode().catchError(
+          (Object e) => LogService.log('[CLI] leaving cli mode failed: $e'),
+        ),
+      );
     }
     _terminalController.dispose();
     _terminalFocusNode.dispose();
