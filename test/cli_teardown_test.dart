@@ -45,6 +45,11 @@ class _FakeClient implements FlipperClient {
   int writeCalls = 0;
   int enterRpcModeCalls = 0;
 
+  /// What dispose did, in order. cliExclusive has to be cleared before the
+  /// RPC switch — switchToRpcMode refuses outright while it is set — and a
+  /// fake that only counted calls could not tell.
+  final List<String> events = [];
+
   @override
   Stream<String> get textStream => text.stream;
 
@@ -55,11 +60,12 @@ class _FakeClient implements FlipperClient {
   FlipperDevice? get connectedDevice => _device(link);
 
   @override
-  set cliExclusive(bool value) {}
+  set cliExclusive(bool value) => events.add('cliExclusive=$value');
 
   @override
   Future<void> writeCliBytes(Uint8List bytes) {
     writeCalls += 1;
+    events.add('write');
     switch (writeFailure) {
       case _WriteFailure.throwsSynchronously:
         throw StateError('No active transport');
@@ -73,6 +79,7 @@ class _FakeClient implements FlipperClient {
   @override
   Future<void> enterRpcMode() {
     enterRpcModeCalls += 1;
+    events.add('enterRpcMode');
     return enterRpcModeRejects
         ? Future<void>.error(StateError('rpc switch failed'))
         : Future<void>.value();
@@ -94,13 +101,30 @@ Widget _wrap(Widget child) => MaterialApp(
   home: child,
 );
 
+/// Collects what LogService writes, so a test can assert the handler ran
+/// rather than only that nothing blew up. Restored inline rather than through
+/// addTearDown, which flutter_test rejects as changing a debug variable.
+Future<List<String>> recordingLogs(Future<void> Function() body) async {
+  final lines = <String>[];
+  final previous = debugPrint;
+  debugPrint = (String? message, {int? wrapWidth}) {
+    if (message != null) lines.add(message);
+  };
+  try {
+    await body();
+  } finally {
+    debugPrint = previous;
+  }
+  return lines;
+}
+
 void main() {
   /// Opens the page, lets the device say [lastOutput], then disposes it.
   ///
-  /// An unhandled rejection during dispose fails the test, but only while the
-  /// test is still running — after that flutter_test charges it to whatever
-  /// comes next. The trailing pump is what keeps it inside this test, so the
-  /// assertions below deliberately also check the call was made at all.
+  /// An unhandled rejection during dispose fails the test outright, which is
+  /// most of what these assert. That is a side channel though, so the two
+  /// teardown cases also read the log back: an assertion that says what it
+  /// wants cannot quietly become vacuous.
   Future<void> openThenDispose(
     WidgetTester tester,
     _FakeClient client, {
@@ -123,9 +147,14 @@ void main() {
       ..writeFailure = _WriteFailure.throwsSynchronously;
     addTearDown(client.text.close);
 
-    await openThenDispose(tester, client);
+    final logs = await recordingLogs(() => openThenDispose(tester, client));
 
     expect(client.writeCalls, 1);
+    expect(
+      logs.where((l) => l.contains('ctrl-c on dispose failed')),
+      isNotEmpty,
+      reason: 'the handler ran, rather than the failure merely not surfacing',
+    );
   });
 
   // The case the old handler could not see. dispose() is not async, so its
@@ -138,9 +167,13 @@ void main() {
     final client = _FakeClient()..writeFailure = _WriteFailure.rejects;
     addTearDown(client.text.close);
 
-    await openThenDispose(tester, client);
+    final logs = await recordingLogs(() => openThenDispose(tester, client));
 
     expect(client.writeCalls, 1);
+    expect(
+      logs.where((l) => l.contains('ctrl-c on dispose failed')),
+      isNotEmpty,
+    );
   });
 
   testWidgets('no ctrl-c is sent when the prompt is already back', (
@@ -183,5 +216,50 @@ void main() {
     await openThenDispose(tester, client);
 
     expect(client.enterRpcModeCalls, 0);
+  });
+
+  // The ordering dispose() documents as load-bearing: switchToRpcMode returns
+  // an error while cliExclusive is still set, so clearing it has to come
+  // first. Counting calls could not see this; deleting the assignment
+  // altogether left every other test green.
+  testWidgets('cli mode is released before the switch back to RPC', (
+    tester,
+  ) async {
+    final client = _FakeClient(link: FlipperLink.usb);
+    addTearDown(client.text.close);
+
+    await tester.pumpWidget(_wrap(CliPage(client: client)));
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pumpWidget(_wrap(const SizedBox.shrink()));
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(client.events, contains('cliExclusive=false'));
+    expect(
+      client.events.indexOf('cliExclusive=false'),
+      lessThan(client.events.indexOf('enterRpcMode')),
+    );
+  });
+
+  // _sendCtrlC is one of the two sites that carried the mirror-image bug -
+  // a handler for the rejection and nothing for the synchronous throw, which
+  // would leave it escaping the button's callback.
+  testWidgets('the ctrl-c button survives a session that is already gone', (
+    tester,
+  ) async {
+    final client = _FakeClient(link: FlipperLink.usb);
+    addTearDown(client.text.close);
+
+    await tester.pumpWidget(_wrap(CliPage(client: client)));
+    await tester.pump(const Duration(milliseconds: 600));
+
+    client.writeFailure = _WriteFailure.throwsSynchronously;
+    final before = client.writeCalls;
+    final logs = await recordingLogs(() async {
+      await tester.tap(find.byIcon(Icons.stop_circle_outlined));
+      await tester.pump();
+    });
+
+    expect(client.writeCalls, before + 1, reason: 'the button is live');
+    expect(logs.where((l) => l.contains('ctrl-c failed')), isNotEmpty);
   });
 }
