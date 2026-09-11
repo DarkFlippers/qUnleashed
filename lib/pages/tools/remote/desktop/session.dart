@@ -92,12 +92,11 @@ class RemoteSession extends ChangeNotifier {
   /// Asks for the stream straight away — a stale "not connected" flag must not
   /// keep the page from trying, so the verdict comes from the call itself.
   ///
-  /// Exactly one open runs at a time, each costing three RPCs. A request that
-  /// arrives during one is held in [_restartWanted] and run afterwards rather
-  /// than dropped: dropping it left a reconnect with nothing behind it — no
-  /// stream was ever asked for on the new session, so no frame arrived, and
-  /// since a frame is what clears [_isDisconnected] the page stayed blank for
-  /// good.
+  /// Exactly one open runs at a time, nominally three RPCs — fewer if the page
+  /// goes away mid-flight. A request arriving during one is held in
+  /// [_restartWanted] and run afterwards rather than dropped: dropping it left
+  /// a reconnect with nothing behind it, and since a frame is the only thing
+  /// that clears [_isDisconnected], the page stayed blank for good.
   ///
   /// That opens never overlap is what makes a single flag enough. Were they
   /// ever made concurrent — to hide the latency of three sequential round
@@ -116,12 +115,19 @@ class RemoteSession extends ChangeNotifier {
         // this one runs asks for another after it.
         _restartWanted = false;
         try {
-          // All three at rightNow, and checked for teardown between each. The
-          // queue sorts by priority before arrival order, so a subscribe left
-          // at the default would be overtaken by the rightNow unsubscribe that
-          // shutdown sends — the device would then be told to start pushing
-          // desktop status after being told to stop, and _stopRemote latches
-          // itself off, so nothing would ever unsubscribe it again.
+          // Checked for teardown between each, and all three at rightNow.
+          //
+          // For the subscribe that is correctness, not tidiness: the queue
+          // sorts by priority before arrival, so left at foreground it would
+          // be overtaken by the rightNow unsubscribe shutdown sends. The
+          // device would be told to start pushing desktop status after being
+          // told to stop, and _stopRemote latches itself off, so nothing would
+          // ever unsubscribe it again. The same reasoning already applied to
+          // the stream, which guiStopScreenStream undoes at rightNow too.
+          //
+          // desktopIsLocked has nothing that undoes it, so its priority only
+          // buys latency on a path the user is waiting out — but the three
+          // belong to one operation and are easier to reason about together.
           await _client.guiStartScreenStream(
             priority: FlipperRequestPriority.rightNow,
           );

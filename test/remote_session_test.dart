@@ -4,10 +4,35 @@ import 'package:flipperlib/flipperlib.dart' hide DateTime, File;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/tools/remote/desktop/session.dart';
 
+/// One request as it was handed to the client, with what the session's queue
+/// sorts on.
+class _Sent {
+  _Sent(this.request, this.priority, this.seq);
+  final Main request;
+  final FlipperRequestPriority priority;
+  final int seq;
+}
+
 class _FakeClient implements FlipperClient {
   final broadcast = StreamController<Main>.broadcast();
   final connection = StreamController<FlipperConnectionState>.broadcast();
-  final List<Main> requests = [];
+  final List<_Sent> sent = [];
+
+  List<Main> get requests => [for (final s in sent) s.request];
+
+  /// The order these would reach the device. The real queue sorts by priority
+  /// before arrival (`QueuedRequest.compareTo`), so a later `rightNow` request
+  /// overtakes an earlier one at any lower priority. Mirrored here rather than
+  /// exercised through the real queue, which this fake stands in for - enough
+  /// to pin the priorities the session chooses, which is what goes wrong.
+  List<Main> get wireOrder {
+    final ordered = [...sent]
+      ..sort((a, b) {
+        final byPriority = a.priority.index.compareTo(b.priority.index);
+        return byPriority != 0 ? byPriority : a.seq.compareTo(b.seq);
+      });
+    return [for (final s in ordered) s.request];
+  }
 
   bool connected = false;
   bool failCalls = false;
@@ -58,7 +83,7 @@ class _FakeClient implements FlipperClient {
     bool interleavable = false,
     bool pipelined = true,
   }) async {
-    requests.add(request);
+    sent.add(_Sent(request, priority, sent.length));
     final held = gate;
     if (held != null) await held.future;
     if (failCalls) throw StateError('no active session');
@@ -241,36 +266,74 @@ void main() {
       client.openCalls,
       atTeardown,
       reason:
-          'the queued restart must not outlive the page: _stopRemote runs '
-          'once and latches, so a subscribe landing after it would leave the '
-          'device pushing status with nothing listening and no way back',
+          'the queued restart must not outlive the page - teardown has '
+          'already run and _stopRemote latches, so nothing would undo it',
     );
   });
 
-  // What the user actually sees, rather than a count of RPCs: the indicator
-  // goes out when frames start arriving again, which is the only thing that
-  // clears it.
-  test('a frame after a reconnect clears the disconnected flag', () async {
-    final client = _FakeClient()..connected = true;
-    final session = RemoteSession(client: client);
-    addTearDown(session.dispose);
+  // What the user actually sees, rather than a count of RPCs. Note which half
+  // does it: a successful open is not enough, because the indicator tracks
+  // frames arriving rather than RPCs landing - it drives a connection LED, and
+  // lighting it green over a blank screen would say the wrong thing.
+  test(
+    'a frame clears the disconnected flag, a successful open does not',
+    () async {
+      final client = _FakeClient()..connected = true;
+      final session = RemoteSession(client: client);
+      addTearDown(session.dispose);
 
-    await Future<void>.delayed(Duration.zero);
-    client.connection.add(_link(connected: false));
-    await Future<void>.delayed(Duration.zero);
-    expect(session.isDisconnected, isTrue);
+      await Future<void>.delayed(Duration.zero);
+      client.connection.add(_link(connected: false));
+      await Future<void>.delayed(Duration.zero);
+      expect(session.isDisconnected, isTrue);
 
-    client.connection.add(_link(connected: true));
-    await Future<void>.delayed(const Duration(milliseconds: 20));
-    expect(
-      session.isDisconnected,
-      isTrue,
-      reason: 'the open having succeeded is not yet evidence frames flow',
-    );
+      client.connection.add(_link(connected: true));
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(
+        session.isDisconnected,
+        isTrue,
+        reason: 'the open having succeeded is not yet evidence frames flow',
+      );
 
-    client.broadcast.add(Main(guiScreenFrame: ScreenFrame()));
-    await Future<void>.delayed(const Duration(milliseconds: 20));
+      client.broadcast.add(Main(guiScreenFrame: ScreenFrame()));
+      await Future<void>.delayed(const Duration(milliseconds: 20));
 
-    expect(session.isDisconnected, isFalse);
-  });
+      expect(session.isDisconnected, isFalse);
+    },
+  );
+
+  // The priorities are the fix, not decoration. _stopRemote unsubscribes at
+  // rightNow, and the queue sorts by priority before arrival - so a subscribe
+  // left at the default is overtaken by the unsubscribe meant to undo it, and
+  // the device is left pushing status that nothing listens to, with
+  // _stopRemote already latched off.
+  test(
+    'the subscribe cannot be overtaken by the unsubscribe that undoes it',
+    () async {
+      final client = _FakeClient()..connected = true;
+      final session = RemoteSession(client: client);
+
+      await Future<void>.delayed(Duration.zero);
+      session.dispose();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      final order = client.wireOrder;
+      final subscribe = order.indexWhere(
+        (r) => r.hasDesktopStatusSubscribeRequest(),
+      );
+      final unsubscribe = order.indexWhere(
+        (r) => r.hasDesktopStatusUnsubscribeRequest(),
+      );
+
+      expect(subscribe, isNonNegative, reason: 'the open subscribes');
+      expect(unsubscribe, isNonNegative, reason: 'teardown unsubscribes');
+      expect(
+        subscribe,
+        lessThan(unsubscribe),
+        reason:
+            'a subscribe reaching the device after the unsubscribe leaves it '
+            'pushing status for the rest of the connection',
+      );
+    },
+  );
 }
