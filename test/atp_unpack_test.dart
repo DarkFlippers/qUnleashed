@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:archive/archive_io.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -6,26 +8,17 @@ import 'package:qunleashed/components/archive_unpack.dart';
 import 'package:qunleashed/pages/apps/data/atp/atp_source.dart';
 
 /// A pack zip wraps its apps in a per-build folder whose name starts with
-/// `artifacts-`; everything before and including it is stripped.
+/// `artifacts-`; everything up to and including it is stripped.
 const String wrapper = 'artifacts-0.0.1';
 
 final String sep = Platform.pathSeparator;
 
-Archive archiveOf(Map<String, String?> entries) {
-  final archive = Archive();
-  entries.forEach((name, content) {
-    if (name.endsWith('/')) {
-      archive.add(ArchiveFile.directory(name));
-    } else if (content == null) {
-      // What the decoder yields for an entry whose content it cannot read:
-      // named, marked a file, and empty. readBytes() returns null for it.
-      archive.add(ArchiveFile.noData(name));
-    } else {
-      archive.add(ArchiveFile.string(name, content));
-    }
-  });
-  return archive;
-}
+/// Content large enough that the encoder deflates it rather than storing it,
+/// so corrupting the payload actually breaks an inflate.
+final String compressible = List.filled(
+  400,
+  'the quick brown fox jumps over it. ',
+).join();
 
 void main() {
   late Directory base;
@@ -42,8 +35,87 @@ void main() {
     if (base.existsSync()) base.deleteSync(recursive: true);
   });
 
-  Future<UnpackTally> unpack(Map<String, String?> entries) =>
-      AtpArchive.unpackPackTo(archiveOf(entries), root.path, separator: sep);
+  /// Builds a real zip and reads it back through ZipDecoder, which is the only
+  /// way to get the entry shapes production sees. Hand-built `Archive` objects
+  /// can express entries the decoder never produces - `ArchiveFile.noData`
+  /// gives a null `readBytes()`, while a decoded zero-length entry gives an
+  /// empty list - and a test built on one of those proves nothing about the
+  /// code that has to cope with the other.
+  Archive decodedZip(
+    Map<String, String> entries, {
+    String? corruptPayloadOf,
+    String? breakHeaderOf,
+  }) {
+    final source = Archive();
+    entries.forEach((name, content) {
+      source.add(
+        name.endsWith('/')
+            ? ArchiveFile.directory(name)
+            : ArchiveFile.bytes(name, Uint8List.fromList(utf8.encode(content))),
+      );
+    });
+    final bytes = Uint8List.fromList(ZipEncoder().encode(source));
+
+    /// Where an entry's name starts in its local header.
+    int nameAt(String name) {
+      final marker = utf8.encode(name);
+      for (var i = 0; i + marker.length < bytes.length; i++) {
+        var hit = true;
+        for (var j = 0; j < marker.length; j++) {
+          if (bytes[i + j] != marker[j]) {
+            hit = false;
+            break;
+          }
+        }
+        if (hit) return i;
+      }
+      fail('entry "$name" not found in the encoded zip');
+    }
+
+    if (corruptPayloadOf != null) {
+      // The payload follows the name, so writing well past the name lands
+      // inside the deflate stream and leaves the name and every other entry's
+      // header intact - exactly one entry goes bad, and it goes bad on read.
+      final at = nameAt(corruptPayloadOf) + corruptPayloadOf.length;
+      for (var i = at + 40; i < at + 80 && i < bytes.length; i++) {
+        bytes[i] = 0x00;
+      }
+    }
+
+    if (breakHeaderOf != null) {
+      // A local file header is 30 fixed bytes and then the name, so the
+      // signature sits 30 bytes back. Break it and the decoder cannot read the
+      // header at all: it still lists the entry from the central directory,
+      // but with no name - which is the shape that used to slip past the .fap
+      // filter and be counted nowhere.
+      final signature = nameAt(breakHeaderOf) - 30;
+      expect(signature, greaterThanOrEqualTo(0));
+      for (var i = signature; i < signature + 4; i++) {
+        bytes[i] = 0x00;
+      }
+    }
+
+    final path = '${base.path}${sep}source.zip';
+    File(path).writeAsBytesSync(bytes);
+    final input = InputFileStream(path);
+    final archive = ZipDecoder().decodeStream(input);
+    addTearDown(input.close);
+    return archive;
+  }
+
+  Future<UnpackTally> unpack(
+    Map<String, String> entries, {
+    String? corruptPayloadOf,
+    String? breakHeaderOf,
+  }) => AtpArchive.unpackPackTo(
+    decodedZip(
+      entries,
+      corruptPayloadOf: corruptPayloadOf,
+      breakHeaderOf: breakHeaderOf,
+    ),
+    root.path,
+    separator: sep,
+  );
 
   String read(String relative) => File(
     '${root.path}$sep${relative.replaceAll('/', sep)}',
@@ -69,7 +141,6 @@ void main() {
         '$wrapper/hello.fap': 'hello bytes',
         '$wrapper/manifest.txt': 'not an app',
         '$wrapper/build.log': 'noise',
-        '$wrapper/logs/': null,
       });
 
       // Ignored, not dropped: the pack carries these on purpose, and counting
@@ -95,8 +166,8 @@ void main() {
   });
 
   group('entries that cannot be written', () {
-    // The defect this fixes: one bad entry used to abort the whole pack, so
-    // the user got none of the apps rather than all but one.
+    // The defect: one bad entry used to abort the whole pack, so the user got
+    // none of the apps rather than all but one.
     test('a traversal is dropped and the rest still land', () async {
       final tally = await unpack({
         '$wrapper/../escaped.fap': 'nope',
@@ -109,25 +180,40 @@ void main() {
       expect(File('${base.path}${sep}escaped.fap').existsSync(), isFalse);
     });
 
-    // The second defect: `readBytes() ?? const []` wrote a 0-byte .fap and
-    // counted it installed. fetchFap then found a file, so the installer got
-    // an empty app instead of being told the app was not in the pack.
-    test('an unreadable entry is skipped, not written empty', () async {
+    // The likeliest way a single entry goes bad, and the one a
+    // FileSystemException-only handler misses: readBytes throws
+    // FormatException on a stream it cannot inflate.
+    test('a corrupt payload is skipped and the rest still land', () async {
       final tally = await unpack({
-        '$wrapper/broken.fap': null,
+        '$wrapper/rotten.fap': compressible,
+        '$wrapper/hello.fap': 'hello bytes',
+      }, corruptPayloadOf: '$wrapper/rotten.fap');
+
+      expect(tally.extracted, 1);
+      expect(tally.skipped, 1);
+      expect(tally.firstError, contains('rotten.fap'));
+      expect(exists('rotten.fap'), isFalse);
+      expect(read('hello.fap'), 'hello bytes');
+    });
+
+    // The second defect: `readBytes() ?? const []` wrote a 0-byte .fap and
+    // counted it installed. A decoded zero-length entry yields an empty list
+    // rather than null, so emptiness is what has to be checked - and a .fap
+    // is a compiled binary that is never legitimately empty.
+    test('an entry with no content is skipped, not written empty', () async {
+      final tally = await unpack({
+        '$wrapper/empty.fap': '',
         '$wrapper/hello.fap': 'hello bytes',
       });
 
       expect(tally.extracted, 1);
       expect(tally.skipped, 1);
-      expect(exists('broken.fap'), isFalse);
-      expect(tally.firstError, contains('broken.fap'));
+      expect(exists('empty.fap'), isFalse);
+      expect(tally.firstError, contains('empty.fap'));
     });
 
-    // The filesystem refusing one entry is what #22 was filed for on the IR
-    // side, and what aborted the whole pack here. A directory sitting where
-    // the .fap must go is the cheapest way to make a real FileSystemException
-    // rather than a simulated one.
+    // A directory sitting where the .fap must go is the cheapest way to make
+    // a real FileSystemException rather than a simulated one.
     test(
       'a write the filesystem refuses is skipped, the rest still land',
       () async {
@@ -160,21 +246,40 @@ void main() {
       expect(read('hello.fap'), 'hello bytes');
     });
 
+    // An entry whose local header cannot be read comes back with no name at
+    // all. The name is the only thing that says whether it was an app, so it
+    // has to be counted rather than quietly skipped by the .fap filter - a
+    // pack of 40 good apps and 5 of these would otherwise report 40 unpacked
+    // and no sign that anything was lost.
+    test(
+      'an entry with an unreadable header is counted, not ignored',
+      () async {
+        final tally = await unpack({
+          '$wrapper/headerless.fap': compressible,
+          '$wrapper/hello.fap': 'hello bytes',
+        }, breakHeaderOf: '$wrapper/headerless.fap');
+
+        expect(tally.skipped, 1);
+        expect(tally.firstError, contains('unnamed'));
+        expect(read('hello.fap'), 'hello bytes');
+      },
+    );
+
     test('the first failure is the one reported', () async {
       final tally = await unpack({
-        '$wrapper/first.fap': null,
-        '$wrapper/second.fap': null,
+        '$wrapper/aaa.fap': '',
+        '$wrapper/zzz.fap': '',
       });
 
       expect(tally.skipped, 2);
-      expect(tally.firstError, contains('first.fap'));
-      expect(tally.firstError, isNot(contains('second.fap')));
+      expect(tally.firstError, contains('aaa.fap'));
+      expect(tally.firstError, isNot(contains('zzz.fap')));
     });
 
     test('every .fap entry is counted exactly once', () async {
       final tally = await unpack({
         '$wrapper/good.fap': 'bytes',
-        '$wrapper/broken.fap': null,
+        '$wrapper/empty.fap': '',
         '$wrapper/../escaped.fap': 'nope',
         '$wrapper/notes.txt': 'ignored',
       });
