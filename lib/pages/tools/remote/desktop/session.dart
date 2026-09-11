@@ -116,11 +116,24 @@ class RemoteSession extends ChangeNotifier {
         // this one runs asks for another after it.
         _restartWanted = false;
         try {
+          // All three at rightNow, and checked for teardown between each. The
+          // queue sorts by priority before arrival order, so a subscribe left
+          // at the default would be overtaken by the rightNow unsubscribe that
+          // shutdown sends — the device would then be told to start pushing
+          // desktop status after being told to stop, and _stopRemote latches
+          // itself off, so nothing would ever unsubscribe it again.
           await _client.guiStartScreenStream(
             priority: FlipperRequestPriority.rightNow,
           );
-          await _client.desktopStatusSubscribe();
-          final frames = await _client.desktopIsLocked();
+          if (_disposed) return;
+          await _client.desktopStatusSubscribe(
+            priority: FlipperRequestPriority.rightNow,
+          );
+          if (_disposed) return;
+          final frames = await _client.desktopIsLocked(
+            priority: FlipperRequestPriority.rightNow,
+          );
+          if (_disposed) return;
           for (final f in frames) {
             if (f.hasDesktopStatus()) _applyStatus(f.desktopStatus);
           }

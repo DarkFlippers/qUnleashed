@@ -25,6 +25,16 @@ class _FakeClient implements FlipperClient {
   int get startStreamCalls =>
       requests.where((r) => r.hasGuiStartScreenStreamRequest()).length;
 
+  /// Everything an open issues, which is what must stop once the page is gone.
+  int get openCalls => requests
+      .where(
+        (r) =>
+            r.hasGuiStartScreenStreamRequest() ||
+            r.hasDesktopStatusSubscribeRequest() ||
+            r.hasDesktopIsLockedRequest(),
+      )
+      .length;
+
   @override
   bool get isConnected => connected;
 
@@ -207,5 +217,60 @@ void main() {
           'five requests during one open ask for one more, not five - the '
           'guard is what keeps three RPCs per open from piling up',
     );
+  });
+
+  test('teardown stops the loop rather than finishing the open', () async {
+    final client = _FakeClient()
+      ..connected = true
+      ..gate = Completer<void>();
+    final session = RemoteSession(client: client);
+
+    await Future<void>.delayed(Duration.zero);
+    // A restart is queued behind the open that is still in flight.
+    client.connection.add(_link(connected: false));
+    await Future<void>.delayed(Duration.zero);
+    client.connection.add(_link(connected: true));
+    await Future<void>.delayed(Duration.zero);
+
+    session.dispose();
+    final atTeardown = client.openCalls;
+    client.openGate();
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    expect(
+      client.openCalls,
+      atTeardown,
+      reason:
+          'the queued restart must not outlive the page: _stopRemote runs '
+          'once and latches, so a subscribe landing after it would leave the '
+          'device pushing status with nothing listening and no way back',
+    );
+  });
+
+  // What the user actually sees, rather than a count of RPCs: the indicator
+  // goes out when frames start arriving again, which is the only thing that
+  // clears it.
+  test('a frame after a reconnect clears the disconnected flag', () async {
+    final client = _FakeClient()..connected = true;
+    final session = RemoteSession(client: client);
+    addTearDown(session.dispose);
+
+    await Future<void>.delayed(Duration.zero);
+    client.connection.add(_link(connected: false));
+    await Future<void>.delayed(Duration.zero);
+    expect(session.isDisconnected, isTrue);
+
+    client.connection.add(_link(connected: true));
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    expect(
+      session.isDisconnected,
+      isTrue,
+      reason: 'the open having succeeded is not yet evidence frames flow',
+    );
+
+    client.broadcast.add(Main(guiScreenFrame: ScreenFrame()));
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    expect(session.isDisconnected, isFalse);
   });
 }
