@@ -5,6 +5,7 @@ import 'dart:io' as io;
 import 'package:archive/archive_io.dart';
 import 'package:flutter/foundation.dart';
 
+import '../../../../components/archive_unpack.dart';
 import '../../../../components/codec/bm.dart';
 import '../../../../components/codec/fap/icon.dart';
 import '../../../../components/path.dart';
@@ -217,6 +218,114 @@ class AtpArchive {
     return path == null ? null : io.File(path);
   }
 
+  /// Why [tally] should be reported as a failure, or null if the pack is
+  /// usable.
+  ///
+  /// Deliberately laxer than the IR library's equivalent, which fails once a
+  /// small share of entries is lost. A pack holds tens of apps rather than
+  /// thousands of remotes, so any share worth setting is either never reached
+  /// or reached by two bad names; and unlike a remote, a missing app is caught
+  /// precisely where it is used — [fetchFap] finds no file and says which app
+  /// is not in which pack. The case that has to fail here is the one that
+  /// check cannot improve on: nothing was written at all, so every app in the
+  /// pack would report itself missing, one at a time.
+  @visibleForTesting
+  static String? failureFor(UnpackTally tally) {
+    if (tally.extracted > 0) return null;
+    if (tally.skipped == 0 && tally.dropped == 0) {
+      return 'it contained no .fap entries';
+    }
+    if (tally.skipped == 0) {
+      return 'all ${tally.dropped} entries resolved outside the pack directory';
+    }
+    return 'all ${tally.skipped + tally.dropped} entries failed '
+        '(first: ${tally.firstError})';
+  }
+
+  /// Writes every `.fap` entry of [archive] under [rootPath], skipping the ones
+  /// that cannot be written or read instead of abandoning the whole pack.
+  ///
+  /// Only `.fap` entries are considered, so `extracted + skipped + dropped` is
+  /// their number and not the archive's — a pack also carries a manifest and
+  /// build logs, and those are ignored rather than counted as losses.
+  ///
+  /// Consumes [archive]: each entry's decompressed bytes are released once
+  /// written.
+  @visibleForTesting
+  static Future<UnpackTally> unpackPackTo(
+    Archive archive,
+    String rootPath, {
+    String? separator,
+  }) async {
+    // create(recursive: true) is not free when the directory is already there,
+    // and a pack puts many apps under the same few folders.
+    final created = <String>{};
+    Future<void> ensureDir(String path) async {
+      if (!created.add(path)) return;
+      await io.Directory(path).create(recursive: true);
+    }
+
+    var extracted = 0;
+    var skipped = 0;
+    var dropped = 0;
+    String? firstError;
+
+    for (final file in archive.files) {
+      if (!file.isFile || !file.name.endsWith('.fap')) continue;
+
+      final parts = file.name.split('/');
+      final start = parts.indexWhere((e) => e.startsWith('artifacts-'));
+      // The pack is a third-party download, so an entry that points out of
+      // the pack directory is dropped rather than written.
+      final outPath = resolveArchivePath(
+        rootPath,
+        parts.sublist(start >= 0 ? start + 1 : 0).join('/'),
+        separator: separator,
+      );
+      if (outPath == null) {
+        dropped += 1;
+        continue;
+      }
+
+      try {
+        // A null here means the entry has no readable content. Writing an
+        // empty file instead would leave a 0-byte .fap that exists, so
+        // fetchFap hands the installer an empty app rather than saying the
+        // app is not in the pack.
+        final bytes = file.readBytes();
+        if (bytes == null) {
+          skipped += 1;
+          firstError ??= '${file.name}: the archive entry could not be read';
+          continue;
+        }
+        final out = io.File(outPath);
+        await ensureDir(out.parent.path);
+        // Deliberately unflushed: the zip is re-downloadable and an
+        // interrupted unpack already leaves a partial tree, so an fsync per
+        // app buys nothing for what it costs.
+        await out.writeAsBytes(bytes);
+        // readBytes caches the inflated bytes on the entry and nothing frees
+        // them, so without this the whole decompressed pack stays live.
+        file.clear();
+        extracted += 1;
+      } on io.FileSystemException catch (e) {
+        // Narrow on purpose. Every failure this tolerates is a
+        // FileSystemException - a reserved name, a full disk, a collision
+        // with something the archive already wrote there. Catching Object
+        // would fold a decoder bug into "the filesystem refused it".
+        skipped += 1;
+        firstError ??= '${file.name}: $e';
+      }
+    }
+
+    return UnpackTally(
+      extracted: extracted,
+      skipped: skipped,
+      dropped: dropped,
+      firstError: firstError,
+    );
+  }
+
   Future<void> _unpack(
     String pack,
     String url,
@@ -233,24 +342,17 @@ class AtpArchive {
         onProgress: onProgress,
       );
       final archive = ZipDecoder().decodeStream(InputFileStream(zip.path));
-      var written = 0;
-      for (final file in archive.files) {
-        if (!file.isFile || !file.name.endsWith('.fap')) continue;
-        final parts = file.name.split('/');
-        final start = parts.indexWhere((e) => e.startsWith('artifacts-'));
-        // The pack is a third-party download, so an entry that points out of
-        // the pack directory is dropped rather than written.
-        final outPath = resolveArchivePath(
-          dir.path,
-          parts.sublist(start >= 0 ? start + 1 : 0).join('/'),
-        );
-        if (outPath == null) continue;
-        final out = io.File(outPath);
-        await out.parent.create(recursive: true);
-        await out.writeAsBytes(file.readBytes() ?? const [], flush: true);
-        written++;
+      final tally = await unpackPackTo(archive, dir.path);
+      final failure = failureFor(tally);
+      if (failure != null) {
+        throw StateError('the $pack pack could not be unpacked: $failure');
       }
-      LogService.log('[ATP] unpacked $written apps from the $pack pack');
+      LogService.log(
+        '[ATP] unpacked ${tally.extracted} apps from the $pack pack'
+        '${tally.skipped > 0 ? ', skipped ${tally.skipped} '
+                  '(first: ${tally.firstError})' : ''}'
+        '${tally.dropped > 0 ? ', dropped ${tally.dropped}' : ''}',
+      );
     } finally {
       try {
         if (await zip.exists()) await zip.delete();
