@@ -18,14 +18,18 @@ const _kBackgroundColor = Color(0xFF000000);
 const _kForegroundColor = Color(0xFFE0E0E0);
 
 class CliPage extends StatefulWidget {
-  const CliPage({super.key});
+  const CliPage({super.key, this.client});
+
+  /// Supplied by tests only; the app always uses the shared client, which is
+  /// otherwise reached through a singleton no test can replace.
+  final FlipperClient? client;
 
   @override
   State<CliPage> createState() => _CliPageState();
 }
 
 class _CliPageState extends State<CliPage> {
-  final FlipperClient _client = FlipperOneClient().get();
+  late final FlipperClient _client = widget.client ?? FlipperOneClient().get();
   final FocusNode _terminalFocusNode = FocusNode(debugLabel: 'cli-terminal');
 
   late final Terminal _terminal;
@@ -53,18 +57,45 @@ class _CliPageState extends State<CliPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _bootstrap());
   }
 
+  /// Sends something to the device that nobody can be told about — teardown,
+  /// or a keystroke the terminal has already echoed — and records why it did
+  /// not arrive.
+  ///
+  /// [Future.sync] is the point. `FlipperClient.writeCliBytes` is not async,
+  /// so a session that is gone throws before there is a future to attach a
+  /// handler to, while a session whose transport has been torn down, one
+  /// already back in RPC mode, and the write itself all reject instead. Both
+  /// StateErrors read "No active transport", so the difference is easy to
+  /// miss; running the call inside Future.sync puts both in the same place.
+  void _fireAndLog(Future<void> Function() send, String what) {
+    unawaited(
+      Future.sync(send).catchError(
+        (Object e, StackTrace st) =>
+            LogService.error('[CLI] $what failed: $e\n$st'),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _textSub?.cancel();
     _connSub?.cancel();
     if (_awaitingInterrupt) {
-      try {
-        _client.writeCliBytes(Uint8List.fromList([0x03]));
-      } catch (_) {}
+      // dispose() cannot be async, so there is nowhere to await this and no
+      // UI left to report into if it fails. Best effort, logged.
+      _fireAndLog(
+        () => _client.writeCliBytes(Uint8List.fromList([0x03])),
+        'ctrl-c on dispose',
+      );
     }
+    // Stays ahead of enterRpcMode: switchToRpcMode refuses outright while
+    // cliExclusive is set, so reordering these two breaks every USB teardown.
     _client.cliExclusive = false;
     if (_client.connectedDevice?.isBle != true) {
-      unawaited(_client.enterRpcMode());
+      // enterRpcMode returns quietly when the session is already gone, but the
+      // switch it returns can still reject, and unawaited silences the lint
+      // rather than the error.
+      _fireAndLog(_client.enterRpcMode, 'leaving cli mode');
     }
     _terminalController.dispose();
     _terminalFocusNode.dispose();
@@ -84,11 +115,7 @@ class _CliPageState extends State<CliPage> {
   void _onTerminalOutput(String data) {
     if (!_ready) return;
     final bytes = Uint8List.fromList(utf8.encode(data));
-    unawaited(
-      _client.writeCliBytes(bytes).catchError((Object e) {
-        LogService.log('[CLI] write error: $e');
-      }),
-    );
+    _fireAndLog(() => _client.writeCliBytes(bytes), 'write');
   }
 
   Future<void> _bootstrap() async {
@@ -203,10 +230,9 @@ class _CliPageState extends State<CliPage> {
 
   void _sendCtrlC() {
     if (!_ready) return;
-    unawaited(
-      _client
-          .writeCliBytes(Uint8List.fromList([0x03]))
-          .catchError((Object e) => LogService.log('[CLI] ctrl-c failed: $e')),
+    _fireAndLog(
+      () => _client.writeCliBytes(Uint8List.fromList([0x03])),
+      'ctrl-c',
     );
     _terminalFocusNode.requestFocus();
   }
