@@ -8,34 +8,42 @@ import 'package:qunleashed/pages/tools/remote/cli/page.dart';
 import 'package:qunleashed/theme/theme.dart';
 
 class _FakeDiscovered implements DiscoveredDevice {
+  _FakeDiscovered(this.transport);
   @override
   String get id => 'fake';
   @override
   String get name => 'Flipper';
   @override
-  DeviceTransport get transport => DeviceTransport.ble;
+  final DeviceTransport transport;
 }
 
-/// A BLE device, so `_bootstrap` takes its early exit rather than trying to
-/// open a USB session the fake cannot provide.
-final _device = FlipperDevice(
+FlipperDevice _device(FlipperLink link) => FlipperDevice(
   id: 'fake',
   name: 'Flipper',
-  link: FlipperLink.ble,
-  source: _FakeDiscovered(),
+  link: link,
+  source: _FakeDiscovered(
+    link == FlipperLink.ble ? DeviceTransport.ble : DeviceTransport.usb,
+  ),
 );
 
+/// How the CLI write fails. Both are real and they behave differently:
+/// resolving a session that is gone throws before any future exists, while the
+/// session's own write is async and rejects. They are one field rather than
+/// two booleans so "both at once", which cannot happen, cannot be written.
+enum _WriteFailure { none, throwsSynchronously, rejects }
+
 class _FakeClient implements FlipperClient {
+  _FakeClient({this.link = FlipperLink.ble});
+
+  final FlipperLink link;
   final text = StreamController<String>.broadcast();
   final connection = StreamController<FlipperConnectionState>.broadcast();
 
-  /// How the write fails. Both are real: resolving the session throws
-  /// synchronously when there is no transport, while the session's own write
-  /// is async and rejects instead.
-  bool throwsSynchronously = false;
-  bool rejects = false;
+  _WriteFailure writeFailure = _WriteFailure.none;
+  bool enterRpcModeRejects = false;
 
   int writeCalls = 0;
+  int enterRpcModeCalls = 0;
 
   @override
   Stream<String> get textStream => text.stream;
@@ -44,7 +52,7 @@ class _FakeClient implements FlipperClient {
   Stream<FlipperConnectionState> get connectionStream => connection.stream;
 
   @override
-  FlipperDevice? get connectedDevice => _device;
+  FlipperDevice? get connectedDevice => _device(link);
 
   @override
   set cliExclusive(bool value) {}
@@ -52,13 +60,30 @@ class _FakeClient implements FlipperClient {
   @override
   Future<void> writeCliBytes(Uint8List bytes) {
     writeCalls += 1;
-    if (throwsSynchronously) throw StateError('No active transport');
-    if (rejects) return Future<void>.error(StateError('transport is gone'));
-    return Future<void>.value();
+    switch (writeFailure) {
+      case _WriteFailure.throwsSynchronously:
+        throw StateError('No active transport');
+      case _WriteFailure.rejects:
+        return Future<void>.error(StateError('transport is gone'));
+      case _WriteFailure.none:
+        return Future<void>.value();
+    }
   }
 
   @override
-  Future<void> enterRpcMode() => Future<void>.value();
+  Future<void> enterRpcMode() {
+    enterRpcModeCalls += 1;
+    return enterRpcModeRejects
+        ? Future<void>.error(StateError('rpc switch failed'))
+        : Future<void>.value();
+  }
+
+  @override
+  Future<void> disconnect() async {}
+
+  @override
+  Future<FlipperDevice> connect(FlipperDevice device, {bool autoRpc = true}) =>
+      Future<FlipperDevice>.value(device);
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -70,48 +95,50 @@ Widget _wrap(Widget child) => MaterialApp(
 );
 
 void main() {
-  /// Opens the page, leaves it mid-command so teardown sends Ctrl-C, then
-  /// disposes it. A failure that escapes here fails the test on its own —
-  /// flutter_test reports an unhandled async error against whatever is
-  /// running — which is exactly the symptom being fixed.
-  Future<_FakeClient> tearDownMidCommand(
-    WidgetTester tester, {
-    bool throwsSynchronously = false,
-    bool rejects = false,
+  /// Opens the page, lets the device say [lastOutput], then disposes it.
+  ///
+  /// An unhandled rejection during dispose fails the test, but only while the
+  /// test is still running — after that flutter_test charges it to whatever
+  /// comes next. The trailing pump is what keeps it inside this test, so the
+  /// assertions below deliberately also check the call was made at all.
+  Future<void> openThenDispose(
+    WidgetTester tester,
+    _FakeClient client, {
+    String lastOutput = 'doing something long',
   }) async {
-    final client = _FakeClient()
-      ..throwsSynchronously = throwsSynchronously
-      ..rejects = rejects;
-
     await tester.pumpWidget(_wrap(CliPage(client: client)));
     await tester.pump();
 
-    // Output without the prompt means a command is still running, which is
-    // what arms the interrupt on teardown.
-    client.text.add('doing something long');
+    client.text.add(lastOutput);
     await tester.pump();
 
     await tester.pumpWidget(_wrap(const SizedBox.shrink()));
     await tester.pump(const Duration(milliseconds: 50));
-    return client;
   }
 
-  testWidgets('a ctrl-c that is refused outright does not escape teardown', (
+  testWidgets('a ctrl-c refused before it is sent does not escape teardown', (
     tester,
   ) async {
-    final client = await tearDownMidCommand(tester, throwsSynchronously: true);
+    final client = _FakeClient()
+      ..writeFailure = _WriteFailure.throwsSynchronously;
+    addTearDown(client.text.close);
+
+    await openThenDispose(tester, client);
 
     expect(client.writeCalls, 1);
   });
 
-  // The one the old handler could not see: dispose() is not async, so its
-  // catch only ever ran over the synchronous prologue, and a rejected write —
-  // the common case, since the link is usually already gone by teardown — had
-  // nothing listening.
+  // The case the old handler could not see. dispose() is not async, so its
+  // catch only ever covered the synchronous prologue — and this is the failure
+  // teardown actually produces, because the transport is usually torn down
+  // before the page is.
   testWidgets('a ctrl-c the transport rejects does not escape teardown', (
     tester,
   ) async {
-    final client = await tearDownMidCommand(tester, rejects: true);
+    final client = _FakeClient()..writeFailure = _WriteFailure.rejects;
+    addTearDown(client.text.close);
+
+    await openThenDispose(tester, client);
 
     expect(client.writeCalls, 1);
   });
@@ -119,16 +146,42 @@ void main() {
   testWidgets('no ctrl-c is sent when the prompt is already back', (
     tester,
   ) async {
-    final client = _FakeClient()..rejects = true;
+    final client = _FakeClient()..writeFailure = _WriteFailure.rejects;
+    addTearDown(client.text.close);
+
+    await openThenDispose(tester, client, lastOutput: 'done >: ');
+
+    expect(client.writeCalls, 0);
+  });
+
+  // The other half of the fix, which the tests above cannot reach: dispose
+  // only returns to RPC mode for a non-BLE device.
+  testWidgets('a failed return to RPC mode does not escape teardown', (
+    tester,
+  ) async {
+    final client = _FakeClient(link: FlipperLink.usb)
+      ..enterRpcModeRejects = true;
+    addTearDown(client.text.close);
 
     await tester.pumpWidget(_wrap(CliPage(client: client)));
-    await tester.pump();
-    client.text.add('done >: ');
-    await tester.pump();
+    // Long enough for _enterCliReady's own delay to elapse, so no timer is
+    // left pending when the page goes away.
+    await tester.pump(const Duration(milliseconds: 600));
 
     await tester.pumpWidget(_wrap(const SizedBox.shrink()));
     await tester.pump(const Duration(milliseconds: 50));
 
-    expect(client.writeCalls, 0);
+    expect(client.enterRpcModeCalls, 1);
+  });
+
+  testWidgets('a BLE device is left alone rather than pushed back to RPC', (
+    tester,
+  ) async {
+    final client = _FakeClient();
+    addTearDown(client.text.close);
+
+    await openThenDispose(tester, client);
+
+    expect(client.enterRpcModeCalls, 0);
   });
 }
