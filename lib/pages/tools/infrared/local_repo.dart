@@ -1,4 +1,3 @@
-import '../../../services/localization/l10n.dart';
 import 'dart:async';
 import 'dart:io' as io;
 import 'dart:isolate';
@@ -6,8 +5,10 @@ import 'dart:isolate';
 import 'package:archive/archive_io.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../../../components/archive_unpack.dart';
 import '../../../components/path.dart';
 import '../../../services/http/app_http.dart';
+import '../../../services/localization/l10n.dart';
 import '../../../services/logging.dart';
 import '../../../services/storage/paths.dart';
 
@@ -278,6 +279,9 @@ class IrLibLocalRepo {
   /// something the archive itself already wrote there. Any one of those used to
   /// abort the import of the whole library.
   ///
+  /// Every file entry the decoder produced is counted, so
+  /// `extracted + skipped + dropped` is that number exactly.
+  ///
   /// Consumes [archive]: each entry's decompressed bytes are released once
   /// written, so the entries are empty when this returns.
   static UnpackTally unpackWrappedArchiveTo(
@@ -410,34 +414,6 @@ class _UnpackArgs {
   final String rootPath;
   final String sep;
   final SendPort sendPort;
-}
-
-/// What one unpack did with an archive's file entries. Every file entry lands
-/// in exactly one of the three counts, so `extracted + skipped + dropped` is
-/// the number the decoder produced - which is what makes a quietly lost entry
-/// impossible to hide.
-class UnpackTally {
-  const UnpackTally({
-    required this.extracted,
-    required this.skipped,
-    required this.dropped,
-    this.firstError,
-  });
-
-  /// Entries written to disk.
-  final int extracted;
-
-  /// Entries that resolved to a path but could not be written, plus entries the
-  /// decoder could not even name. Every one is a file the user does not get.
-  final int skipped;
-
-  /// Entries the name check declined: the wrapper folder itself, anything
-  /// beside it rather than inside it, and any `..` traversal. Every real
-  /// archive has some, so these are not a loss.
-  final int dropped;
-
-  /// The first failure, entry name included, for the log and the error message.
-  final String? firstError;
 }
 
 /// Progress while the loop runs. Deliberately carries nothing about failures:
