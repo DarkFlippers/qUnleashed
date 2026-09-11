@@ -5612,7 +5612,7 @@
   },
   "archiveNoLocalFiles": "Нет локальных копий для сохранения",
   "@archiveNoLocalFiles": {
-    "description": "Toast shown when the selection holds nothing downloaded."
+    "description": "Toast shown when nothing in the selection has a local copy to save."
   },
   "archiveSaveFiles": "{count, plural, one{Сохранить {count} файл} few{Сохранить {count} файла} many{Сохранить {count} файлов} other{Сохранить {count} файлов}}",
   "@archiveSaveFiles": {
