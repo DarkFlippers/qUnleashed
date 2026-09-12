@@ -1,3 +1,5 @@
+import 'dart:io' as io;
+
 import 'package:flutter/material.dart';
 
 import '../../../services/localization/l10n.dart';
@@ -135,7 +137,6 @@ class _IrLibSettingsDialogState extends State<IrLibSettingsDialog> {
     final colors = context.appColors;
     final downloading = widget.controller.downloading;
     final localAvailable = widget.controller.localAvailable;
-    final stranded = widget.controller.strandedLibraryPath;
     return AlertDialog(
       backgroundColor: colors.card,
       title: Text('IRDB', style: TextStyle(color: colors.textPrimary)),
@@ -169,10 +170,7 @@ class _IrLibSettingsDialogState extends State<IrLibSettingsDialog> {
                   onPressed: () => setState(() => _showToken = !_showToken),
                 ),
               ),
-              if (stranded != null) ...[
-                const SizedBox(height: 14),
-                _StrandedNotice(colors: colors, path: stranded),
-              ],
+              const _StrandedNotice(),
               const SizedBox(height: 14),
               _PrimaryActionButton(
                 colors: colors,
@@ -265,14 +263,27 @@ class _IrLibSettingsDialogState extends State<IrLibSettingsDialog> {
 /// reads that as no library at all, and this dialog is where the user decides
 /// whether to spend the download again — so it is the one place saying so
 /// changes what they do.
+///
+/// Listens rather than reads: a refresh can strand the library while this
+/// dialog is the thing on screen, and recovery notifies no controller.
 class _StrandedNotice extends StatelessWidget {
-  const _StrandedNotice({required this.colors, required this.path});
-
-  final QAppColors colors;
-  final String path;
+  const _StrandedNotice();
 
   @override
   Widget build(BuildContext context) {
+    return ValueListenableBuilder<io.Directory?>(
+      valueListenable: IrLibLocalRepo.strandedLibrary,
+      builder: (context, stranded, _) => stranded == null
+          ? const SizedBox.shrink()
+          : Padding(
+              padding: const EdgeInsets.only(top: 14),
+              child: _body(context, stranded.path),
+            ),
+    );
+  }
+
+  Widget _body(BuildContext context, String path) {
+    final colors = context.appColors;
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(

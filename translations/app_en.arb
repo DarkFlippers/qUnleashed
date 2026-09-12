@@ -4685,9 +4685,9 @@
     "description": "Toast shown when a remote file could not be fetched."
   },
 
-  "irLibraryStranded": "Your library is not lost. An interrupted download left it at {path}, where the app could not move it back. Downloading again is safe and replaces it.",
+  "irLibraryStranded": "Your library is not lost. An interrupted download left it at {path}, and the app could not move it back — it will try again next time it starts.",
   "@irLibraryStranded": {
-    "description": "Shown in the IRDB dialog when recovery could not move the library back to its usual place. Tells the user their copy still exists, and where, before they decide to download several hundred megabytes again.",
+    "description": "Shown in the IRDB dialog when recovery could not move the library back to its usual place. Tells the user their copy still exists, and where, before they decide to download several hundred megabytes again. Deliberately does not promise that downloading again will work: whatever blocks the restore may block the new library from landing too.",
     "placeholders": {
       "path": {
         "type": "String"

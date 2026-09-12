@@ -89,14 +89,28 @@ void main() {
     );
     await tester.pump();
 
-    expect(IrLibLocalRepo.strandedLibrary, isNull);
+    expect(IrLibLocalRepo.strandedLibrary.value, isNull);
     expect(noticeFinder(), findsNothing);
   });
 
-  test('the controller reports the path the recovery recorded', () async {
+  // The notice listens rather than reads: recovery notifies no controller, so
+  // a refresh that strands the library while this dialog is the thing on
+  // screen would otherwise leave it showing nothing.
+  testWidgets('a strand recorded while the dialog is open shows up', (
+    tester,
+  ) async {
     final aside = strandTheLibrary();
-    await IrLibLocalRepo.recoverStranded();
 
-    expect(IrLibController().strandedLibraryPath, aside.path);
+    await tester.pumpWidget(
+      wrap(IrLibSettingsDialog(controller: IrLibController())),
+    );
+    await tester.pump();
+    expect(noticeFinder(), findsNothing);
+
+    await tester.runAsync(IrLibLocalRepo.recoverStranded);
+    await tester.pump();
+
+    expect(noticeFinder(), findsOneWidget);
+    expect(find.textContaining(aside.path, findRichText: true), findsOneWidget);
   });
 }

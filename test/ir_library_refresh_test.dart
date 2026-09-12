@@ -137,6 +137,28 @@ void main() {
     '${root.path}$sep${relative.replaceAll('/', sep)}',
   ).readAsStringSync();
 
+  List<Directory> supersededTrees() => base
+      .listSync()
+      .whereType<Directory>()
+      .where((d) => d.path.startsWith('${root.path}.superseded'))
+      .toList();
+
+  /// The library where a swap that died between its two renames left it.
+  Directory asideLibrary() {
+    final aside = Directory('${root.path}.superseded.1000')
+      ..createSync(recursive: true);
+    Directory('${aside.path}${sep}TVs').createSync(recursive: true);
+    File('${aside.path}${sep}TVs${sep}Old.ir').writeAsStringSync('old remote');
+    return aside;
+  }
+
+  /// Stops the restore the way a stray file at the library path would: the
+  /// rename has nowhere to land, and the tree beside it is the only copy.
+  Directory blockRestore(Directory aside) {
+    File(root.path).writeAsStringSync('in the way');
+    return aside;
+  }
+
   test('a refresh unpacks the library and puts it in place', () async {
     _FakeHttpOverrides.body = irdbZip({'TVs/Sony.ir': 'sony remote'});
 
@@ -200,27 +222,39 @@ void main() {
   // open the IR page. Until it did, the library read as absent to everything
   // else — Settings → Storage reported its size as zero.
   test('startup repairs a swap that was interrupted', () async {
-    final aside = Directory('${root.path}.superseded.1000')
-      ..createSync(recursive: true);
-    Directory('${aside.path}${sep}TVs').createSync(recursive: true);
-    File('${aside.path}${sep}TVs${sep}Old.ir').writeAsStringSync('old remote');
+    asideLibrary();
 
-    final report = await IrLibLocalRepo.recoverStranded();
+    final stranded = await IrLibLocalRepo.recoverStranded();
 
-    expect(report.repaired, isTrue);
-    expect(report.strandedAt, isNull);
+    expect(stranded, isNull);
     expect(read('TVs/Old.ir'), 'old remote');
     expect(await IrLibLocalRepo().exists(), isTrue);
   });
+
+  // The launch call is unawaited and reaches the Android storage permission on
+  // its way to the root, which can sit on a settings page until the user
+  // answers. IrLibController.initialize() awaits this before asking exists(),
+  // and it must join the pass already running rather than start a second one —
+  // two passes at once is how a repaired library gets recorded as stranded.
+  test(
+    'a second caller joins the launch pass rather than starting one',
+    () async {
+      asideLibrary();
+
+      final first = IrLibLocalRepo.recoverStranded();
+      final second = IrLibLocalRepo.recoverStranded();
+
+      expect(identical(first, second), isTrue);
+      await Future.wait([first, second]);
+      expect(read('TVs/Old.ir'), 'old remote', reason: 'and one pass ran');
+    },
+  );
 
   // The point of taking the repair out of exists(): a method that reads as a
   // query was renaming trees and running recursive deletes, so any caller
   // added later that treated it as a cheap check got those side effects.
   test('asking whether the library exists does not move anything', () async {
-    final aside = Directory('${root.path}.superseded.1000')
-      ..createSync(recursive: true);
-    Directory('${aside.path}${sep}TVs').createSync(recursive: true);
-    File('${aside.path}${sep}TVs${sep}Old.ir').writeAsStringSync('old remote');
+    final aside = asideLibrary();
 
     final present = await IrLibLocalRepo().exists();
 
@@ -229,26 +263,12 @@ void main() {
   });
 
   group('when the library cannot be put back', () {
-    /// Blocks the restore the way a stray file at the library path would: the
-    /// rename has nowhere to land, and the tree beside it is the only copy.
-    Directory blockedRestore() {
-      final aside = Directory('${root.path}.superseded.1000')
-        ..createSync(recursive: true);
-      Directory('${aside.path}${sep}TVs').createSync(recursive: true);
-      File(
-        '${aside.path}${sep}TVs${sep}Old.ir',
-      ).writeAsStringSync('old remote');
-      File(root.path).writeAsStringSync('in the way');
-      return aside;
-    }
-
     test('recovery says where it is instead of only logging it', () async {
-      final aside = blockedRestore();
+      final aside = blockRestore(asideLibrary());
 
-      final report = await IrLibLocalRepo.recoverStranded();
+      final stranded = await IrLibLocalRepo.recoverStranded();
 
-      expect(report.strandedAt?.path, aside.path);
-      expect(report.repaired, isFalse);
+      expect(stranded?.path, aside.path);
       expect(
         File('${aside.path}${sep}TVs${sep}Old.ir').readAsStringSync(),
         'old remote',
@@ -261,23 +281,74 @@ void main() {
     // has to survive the pass that found it, or the one moment the app knows
     // the library is one rename away is the moment it says nothing.
     test('the path outlives the pass, for the UI to read', () async {
-      final aside = blockedRestore();
+      final aside = blockRestore(asideLibrary());
 
       await IrLibLocalRepo.recoverStranded();
 
-      expect(IrLibLocalRepo.strandedLibrary?.path, aside.path);
+      expect(IrLibLocalRepo.strandedLibrary.value?.path, aside.path);
     });
 
     test('a later run that succeeds clears it', () async {
-      blockedRestore();
+      blockRestore(asideLibrary());
       await IrLibLocalRepo.recoverStranded();
-      expect(IrLibLocalRepo.strandedLibrary, isNotNull);
+      expect(IrLibLocalRepo.strandedLibrary.value, isNotNull);
 
       File(root.path).deleteSync();
-      final report = await IrLibLocalRepo.recoverStranded();
+      await IrLibLocalRepo.recoverInterrupted(root);
 
-      expect(report.repaired, isTrue);
-      expect(IrLibLocalRepo.strandedLibrary, isNull);
+      expect(IrLibLocalRepo.strandedLibrary.value, isNull);
+      expect(read('TVs/Old.ir'), 'old remote');
+    });
+
+    // The notice's only job is to be trustworthy about where the user's data
+    // is. Saying it is safe at a path the app removed a moment ago is the one
+    // way it can be wrong that costs something.
+    test('deleting the library takes the notice with it', () async {
+      blockRestore(asideLibrary());
+      await IrLibLocalRepo.recoverStranded();
+      expect(IrLibLocalRepo.strandedLibrary.value, isNotNull);
+
+      File(root.path).deleteSync();
+      await IrLibLocalRepo().deleteAll();
+
+      expect(IrLibLocalRepo.strandedLibrary.value, isNull);
+      expect(supersededTrees(), isEmpty);
+    });
+
+    // The recovery inside download() runs before the swap, so it can never see
+    // the state the swap creates. Without the swap clearing it, the notice sat
+    // under a button that now read DELETE, still advising a download.
+    test('a refresh that lands clears the notice', () async {
+      blockRestore(asideLibrary());
+      await IrLibLocalRepo.recoverStranded();
+      expect(IrLibLocalRepo.strandedLibrary.value, isNotNull);
+
+      File(root.path).deleteSync();
+      _FakeHttpOverrides.body = irdbZip({'TVs/Sony.ir': 'sony remote'});
+      await refresh();
+
+      expect(IrLibLocalRepo.strandedLibrary.value, isNull);
+      expect(read('TVs/Sony.ir'), 'sony remote');
+    });
+
+    // Two passes at once, which the startup call made possible against a
+    // download's own. The loser used to record a strand the winner had already
+    // repaired, leaving the notice pointing at a directory that was gone.
+    //
+    // Asserts the invariant, not the mechanism: with the lock taken away this
+    // passes or fails depending on how the two passes interleave, so it will
+    // not reliably catch a regression. The guarantee is that recovery now goes
+    // through the same _exclusive queue as every other operation that moves
+    // these trees; this only checks the outcome that queue is there to give.
+    test('two passes at once do not invent a strand', () async {
+      asideLibrary();
+
+      await Future.wait([
+        IrLibLocalRepo.recoverInterrupted(root),
+        IrLibLocalRepo.recoverInterrupted(root),
+      ]);
+
+      expect(IrLibLocalRepo.strandedLibrary.value, isNull);
       expect(read('TVs/Old.ir'), 'old remote');
     });
   });
