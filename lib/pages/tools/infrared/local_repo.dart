@@ -3,6 +3,7 @@ import 'dart:io' as io;
 import 'dart:isolate';
 
 import 'package:archive/archive_io.dart';
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../../components/archive_unpack.dart';
@@ -49,6 +50,50 @@ class IrLibLocalRepo {
 
   static io.Directory? _cachedRoot;
 
+  /// Serialises everything that moves the library or its staging trees.
+  ///
+  /// A page builds its own controller, so a second page opened during a
+  /// refresh brings a second repo along, and these are process-wide
+  /// directories. Two refreshes at once shared one staging path, so the later
+  /// one deleted the tree the earlier was still unpacking into - and the
+  /// unpack does not notice, because its created-directory cache will not
+  /// re-make a parent it has already seen, so entries land in `skipped` and,
+  /// if few enough clear the tolerance, a truncated library is sworn in as a
+  /// whole one. A delete racing a refresh did the same.
+  ///
+  /// Held across the whole of a refresh or a delete, so they queue rather than
+  /// interleave.
+  static Future<void> _chain = Future<void>.value();
+
+  /// True while [_exclusive] is running something, so recovery can decline
+  /// rather than queue behind a download it would otherwise wait out.
+  static bool _busy = false;
+
+  static Future<T> _exclusive<T>(Future<T> Function() body) {
+    final previous = _chain;
+    final released = Completer<void>();
+    _chain = released.future;
+    return previous
+        .then((_) async {
+          _busy = true;
+          try {
+            return await body();
+          } finally {
+            _busy = false;
+          }
+        })
+        .whenComplete(released.complete);
+  }
+
+  /// Points the library at [dir] for the duration of a test, and clears the
+  /// refresh flag so one test cannot strand the next.
+  @visibleForTesting
+  static void debugUseRoot(io.Directory? dir) {
+    _cachedRoot = dir;
+    _busy = false;
+    _chain = Future<void>.value();
+  }
+
   Future<io.Directory> resolveRoot() async {
     final cached = _cachedRoot;
     if (cached != null) return cached;
@@ -59,6 +104,7 @@ class IrLibLocalRepo {
 
   Future<bool> exists() async {
     final dir = await resolveRoot();
+    await recoverInterrupted(dir);
     if (!await dir.exists()) return false;
     await for (final _ in dir.list(followLinks: false)) {
       return true;
@@ -79,11 +125,28 @@ class IrLibLocalRepo {
 
   Future<void> deleteAll() async {
     final dir = await resolveRoot();
-    if (!await dir.exists()) return;
-    try {
-      await dir.delete(recursive: true);
-    } on io.PathNotFoundException {
-      return;
+    // Under the lock: a delete that ran beside a refresh took the staging tree
+    // out from under its unpack.
+    await _exclusive(() => _deleteAll(dir));
+  }
+
+  static Future<void> _deleteAll(io.Directory dir) async {
+    // Sidecars first, the library last. The other order leaves root missing
+    // while .superseded still stands - the exact signature recoverInterrupted
+    // reads as an interrupted swap - so anything that stopped the delete part
+    // way through would hand the previous library back as though nothing had
+    // been asked for.
+    for (final target in [
+      _sidecar(dir, _kIncomingSuffix),
+      ...await _supersededTrees(dir),
+      dir,
+    ]) {
+      if (!await target.exists()) continue;
+      try {
+        await target.delete(recursive: true);
+      } on io.PathNotFoundException {
+        continue;
+      }
     }
   }
 
@@ -95,78 +158,248 @@ class IrLibLocalRepo {
     void Function(IrLibDownloadProgress)? onProgress,
   }) async {
     final root = await resolveRoot();
-    if (await root.exists()) {
-      await root.delete(recursive: true);
-    }
-    await root.create(recursive: true);
+    await recoverInterrupted(root);
+    return _exclusive(() async {
+      // Built beside the library rather than over it. The old one stays whole
+      // and usable until there is a complete replacement to put in its place -
+      // a refresh that fails for any reason now costs the user nothing, where
+      // before it cost them the library they already had.
+      final incoming = _sidecar(root, _kIncomingSuffix);
+      // Not redundant with the recovery above: that one logs and carries on when
+      // a delete fails, so a tree it could not clear would otherwise be unpacked
+      // straight over.
+      if (await incoming.exists()) await incoming.delete(recursive: true);
+      await incoming.create(recursive: true);
 
-    onProgress?.call(IrLibDownloadProgress(stage: l10n.irDownloading));
+      onProgress?.call(IrLibDownloadProgress(stage: l10n.irDownloading));
 
-    final url = Uri.parse(
-      'https://codeload.github.com/$owner/$repo/zip/refs/heads/$branch',
-    );
-    final tempDir = await getTemporaryDirectory();
-    final sep = io.Platform.pathSeparator;
-    final tempZip = io.File(
-      '${tempDir.path}${sep}irdb-${DateTime.now().millisecondsSinceEpoch}.zip',
-    );
-    var received = 0;
-    var total = 0;
-    await AppHttp.downloadToFile(
-      url,
-      tempZip.path,
-      headers: {
-        io.HttpHeaders.userAgentHeader: 'qunleashed-irlib',
-        if (token.trim().isNotEmpty)
-          io.HttpHeaders.authorizationHeader: 'Bearer ${token.trim()}',
-      },
-      onProgress: (bytes, totalBytes) {
-        received = bytes;
-        total = totalBytes ?? 0;
-        onProgress?.call(
-          IrLibDownloadProgress(
-            stage: l10n.irDownloading,
-            received: received,
-            total: total,
-          ),
-        );
-      },
-    );
-
-    onProgress?.call(
-      IrLibDownloadProgress(
-        stage: l10n.irUnpacking,
-        received: received,
-        total: total,
-      ),
-    );
-
-    try {
-      await _unpackInIsolate(
-        zipPath: tempZip.path,
-        rootPath: root.path,
-        sep: sep,
-        onProgress: (extracted, totalFiles, done) {
+      final url = Uri.parse(
+        'https://codeload.github.com/$owner/$repo/zip/refs/heads/$branch',
+      );
+      final tempDir = await getTemporaryDirectory();
+      final sep = io.Platform.pathSeparator;
+      final tempZip = io.File(
+        '${tempDir.path}${sep}irdb-${DateTime.now().millisecondsSinceEpoch}.zip',
+      );
+      var received = 0;
+      var total = 0;
+      await AppHttp.downloadToFile(
+        url,
+        tempZip.path,
+        headers: {
+          io.HttpHeaders.userAgentHeader: 'qunleashed-irlib',
+          if (token.trim().isNotEmpty)
+            io.HttpHeaders.authorizationHeader: 'Bearer ${token.trim()}',
+        },
+        onProgress: (bytes, totalBytes) {
+          received = bytes;
+          total = totalBytes ?? 0;
           onProgress?.call(
             IrLibDownloadProgress(
-              stage: done ? l10n.irDone : l10n.irUnpacking,
+              stage: l10n.irDownloading,
               received: received,
               total: total,
-              extracted: extracted,
-              totalFiles: totalFiles,
             ),
           );
         },
       );
-    } finally {
-      if (await tempZip.exists()) {
-        try {
-          await tempZip.delete();
-        } catch (_) {}
+
+      onProgress?.call(
+        IrLibDownloadProgress(
+          stage: l10n.irUnpacking,
+          received: received,
+          total: total,
+        ),
+      );
+
+      try {
+        await _unpackInIsolate(
+          zipPath: tempZip.path,
+          rootPath: incoming.path,
+          sep: sep,
+          onProgress: (extracted, totalFiles, done) {
+            onProgress?.call(
+              IrLibDownloadProgress(
+                stage: done ? l10n.irDone : l10n.irUnpacking,
+                received: received,
+                total: total,
+                extracted: extracted,
+                totalFiles: totalFiles,
+              ),
+            );
+          },
+        );
+      } finally {
+        if (await tempZip.exists()) {
+          try {
+            await tempZip.delete();
+          } catch (_) {}
+        }
+      }
+
+      await swapIn(root, incoming);
+      return root;
+    });
+  }
+
+  static const String _kIncomingSuffix = '.incoming';
+  static const String _kSupersededPrefix = '.superseded';
+
+  /// A name no other swap will pick.
+  ///
+  /// One fixed name meant the tree being deleted in the background and the
+  /// destination the next swap renames into were the same path. A delete that
+  /// failed part way - one locked file is enough, and a blocked recursive
+  /// delete removes what it reached before it stopped - then left something
+  /// standing there, and every later refresh died renaming onto it. That is
+  /// not recoverable by retrying: it wedges the library until someone finds a
+  /// hidden directory and removes it by hand. A fresh name each time means a
+  /// leftover can only ever be swept up, never collided with.
+  static io.Directory _freshSuperseded(io.Directory root) => io.Directory(
+    '${root.path}$_kSupersededPrefix.${DateTime.now().microsecondsSinceEpoch}',
+  );
+
+  /// Every superseded tree beside the library, newest first.
+  static Future<List<io.Directory>> _supersededTrees(io.Directory root) async {
+    final parent = root.parent;
+    if (!await parent.exists()) return const [];
+    final prefix = '${basename(root.path)}$_kSupersededPrefix';
+    final found = <io.Directory>[];
+    await for (final entity in parent.list(followLinks: false)) {
+      if (entity is io.Directory && basename(entity.path).startsWith(prefix)) {
+        found.add(entity);
+      }
+    }
+    found.sort((a, b) => b.path.compareTo(a.path));
+    return found;
+  }
+
+  /// Where the staging trees live: beside the library, never inside it.
+  ///
+  /// Beside matters. Staging in the OS temp directory would read as tidier and
+  /// is the natural thing to reach for, but it can land on a different mount —
+  /// plausible on Android — and dart:io's rename does not copy across
+  /// filesystems, it fails EXDEV outright. Staging stays on the volume it is
+  /// going to land on.
+  static io.Directory _sidecar(io.Directory root, String suffix) =>
+      io.Directory('${root.path}$suffix');
+
+  /// Puts the superseded tree back where the library belongs.
+  ///
+  /// Returns whether it landed. Both the rollback inside [swapIn] and the
+  /// repair in [recoverInterrupted] are this same move, and the caller has to
+  /// know whether it worked: at that moment the superseded tree is the only
+  /// copy of the library there is.
+  static Future<bool> _restoreSuperseded(
+    io.Directory root,
+    io.Directory superseded,
+  ) async {
+    try {
+      await superseded.rename(root.path);
+      return true;
+    } catch (e) {
+      LogService.error('[IrLib] could not put the library back: $e');
+      return false;
+    }
+  }
+
+  /// Puts a freshly unpacked tree in place of the library.
+  ///
+  /// Three renames rather than the one this reads like it should need: no
+  /// platform will rename a directory onto a populated one. Windows throws
+  /// PathExistsException — for an empty destination as well — and POSIX
+  /// `rename(2)` replaces only an empty directory and fails ENOTEMPTY
+  /// otherwise, which is exactly the state the old library is in. So the old
+  /// tree is moved aside first, and all three are metadata operations.
+  ///
+  /// Deleting the superseded tree is the expensive part, and it is what used
+  /// to be on the critical path. It runs unawaited afterwards, and a run that
+  /// dies before it finishes leaves a directory [recoverInterrupted] clears
+  /// next time.
+  static Future<void> swapIn(io.Directory root, io.Directory incoming) async {
+    // Named for this swap alone, so it cannot be the tree a previous swap is
+    // still deleting in the background. Nothing has to be cleared first.
+    final superseded = _freshSuperseded(root);
+
+    final hadLibrary = await root.exists();
+    if (hadLibrary) await root.rename(superseded.path);
+    try {
+      await incoming.rename(root.path);
+    } catch (_) {
+      // The only moment there is no library at all. Put the old one back
+      // rather than leave the user with nothing, and let the original failure
+      // be the one that surfaces.
+      if (hadLibrary && !await root.exists()) {
+        await _restoreSuperseded(root, superseded);
+      }
+      rethrow;
+    }
+
+    if (!hadLibrary) return;
+    unawaited(
+      superseded.delete(recursive: true).catchError(
+        (Object e) {
+          // Costs disk, not correctness: the tree is named for this swap, so
+          // a leftover is swept up by the next recovery rather than collided
+          // with. Failing a finished download over it would be worse.
+          LogService.error('[IrLib] could not remove the old library: $e');
+          return superseded;
+        },
+        // Narrow, so a fault in this path is not quietly turned into a no-op
+        // by a handler meant for the filesystem refusing a delete.
+        test: (Object e) => e is io.FileSystemException,
+      ),
+    );
+  }
+
+  /// Repairs whatever a process that died mid-refresh left behind.
+  ///
+  /// The swap is only as atomic as two renames back to back, so there is a
+  /// window — short, but not nothing — where the library has been moved aside
+  /// and its replacement is not yet in place. Dying there is the one case that
+  /// loses data, so it is the one checked first.
+  static Future<void> recoverInterrupted(io.Directory root) async {
+    // Nothing beside the library is leftover while something is using it.
+    if (_busy) return;
+
+    final incoming = _sidecar(root, _kIncomingSuffix);
+    final superseded = await _supersededTrees(root);
+
+    // The newest is the one the interrupted swap set aside; anything older is
+    // a background delete that never finished.
+    var kept = <io.Directory>[];
+    if (!await root.exists() && superseded.isNotEmpty) {
+      final live = superseded.first;
+      if (await _restoreSuperseded(root, live)) {
+        LogService.log(
+          '[IrLib] put the library back after an interrupted swap',
+        );
+      } else {
+        // It is the only copy of the library there is, which is the whole
+        // reason the restore was being attempted. Leaving it costs disk and
+        // the next run tries again; deleting it is the one thing this routine
+        // must never do - and a failed recursive delete is not a no-op either,
+        // since one locked file stops it having already removed what it
+        // reached first.
+        kept = [live];
       }
     }
 
-    return root;
+    final leftovers = [
+      incoming,
+      for (final tree in superseded)
+        if (!kept.contains(tree)) tree,
+    ];
+
+    // A restore consumes the tree it moved, so it is gone by now.
+    for (final leftover in leftovers) {
+      if (!await leftover.exists()) continue;
+      try {
+        await leftover.delete(recursive: true);
+      } catch (e) {
+        LogService.error('[IrLib] could not clear ${leftover.path}: $e');
+      }
+    }
   }
 
   /// Inflates the IR database zip and writes every entry to disk inside a
