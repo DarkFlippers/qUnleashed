@@ -328,9 +328,9 @@ void main() {
     expect(logs.where((l) => l.contains('ctrl-c failed')), isNotEmpty);
   });
   // #80. A keystroke that never reached the device drew nothing at all, and
-  // LogService.enabled is bool.fromEnvironment('QLOG', kDebugMode) - so in a
-  // release build the only evidence was gone too. What the user saw was a
-  // terminal that had stopped echoing, which reads as a Flipper that has hung.
+  // the only other evidence was a log line - since #89 kept in a buffer, but
+  // not something anyone reads while typing. What the user saw was a terminal
+  // that had stopped echoing, which reads as a Flipper that has hung.
   testWidgets('a keystroke that cannot be delivered says so in the terminal', (
     tester,
   ) async {

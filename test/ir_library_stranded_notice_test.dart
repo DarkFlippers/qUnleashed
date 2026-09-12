@@ -54,10 +54,10 @@ void main() {
   }
 
   // The whole point of #85. Recovery keeps the tree because it is the only
-  // copy of the library there is, and in a release build the log line saying
-  // so is compiled out — LogService.enabled is const-folded to false. This
-  // dialog is where the user decides whether to spend the download again, so
-  // it is the one place saying so changes what they do.
+  // copy of the library there is, and a log line is not a surface — since #89
+  // the error is kept, but nobody reads a buffer mid-refresh. This dialog is
+  // where the user decides whether to spend the download again, so it is the
+  // one place saying so changes what they do.
   testWidgets('the IRDB dialog says where a stranded library is', (
     tester,
   ) async {

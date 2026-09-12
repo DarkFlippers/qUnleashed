@@ -158,11 +158,18 @@ class FirmwareInstaller {
           case RecoveryDone():
             if (!done.isCompleted) done.complete();
           case RecoveryFailed(:final error, failure: final reason):
+            // Recorded here because it cannot be recorded where it happened:
+            // recovery runs in a spawned isolate, and flipperlib's log sink is
+            // a static, so none of its own error logging reaches this one.
+            // What crosses the port is the outcome, and without this a failed
+            // flash leaves nothing behind in a build that prints nothing.
+            LogService.error('[DFU] recovery failed ($reason): $error');
             failure = _dfuFailureMessage(reason, error);
             if (!done.isCompleted) done.complete();
         }
       },
-      onError: (Object e) {
+      onError: (Object e, StackTrace st) {
+        LogService.error('[DFU] recovery stream failed: $e\n$st');
         failure = e;
         if (!done.isCompleted) done.complete();
       },

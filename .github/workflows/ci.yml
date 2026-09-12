@@ -96,3 +96,14 @@ jobs:
 
       - name: Test
         run: flutter test
+
+      # The guards are compile-time consts, so the run above is always the
+      # talking build. See the header of the test file. QLOG_EXPECT_QUIET is
+      # what makes this job fail rather than quietly become a copy of that one
+      # if QLOG ever stops reaching the build.
+      - name: Test the build that prints nothing
+        run: >
+          flutter test
+          --dart-define=QLOG=false
+          --dart-define=QLOG_EXPECT_QUIET=true
+          test/logging_history_test.dart

@@ -276,10 +276,10 @@ void main() {
       );
     });
 
-    // LogService.enabled is bool.fromEnvironment('QLOG', kDebugMode), so the
-    // log line this used to be is compiled out of a release build. The path
-    // has to survive the pass that found it, or the one moment the app knows
-    // the library is one rename away is the moment it says nothing.
+    // A log line is not a surface. Since #89 an error is at least kept, but
+    // the buffer is not something a user reads mid-refresh - the path has to
+    // survive the pass that found it, or the one moment the app knows the
+    // library is one rename away is the moment it says nothing.
     test('the path outlives the pass, for the UI to read', () async {
       final aside = blockRestore(asideLibrary());
 
