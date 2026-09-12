@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../../../../services/localization/l10n.dart';
 import '../../../../../theme/theme.dart';
 import '../gif_recorder.dart';
 import '../layout.dart';
@@ -35,6 +36,7 @@ class RemoteWideBody extends StatelessWidget {
     required this.onCancelGif,
     required this.onHoldBegin,
     required this.onHoldEnd,
+    this.onWristRemoteSettings,
   });
 
   final RemoteLayout layout;
@@ -56,6 +58,7 @@ class RemoteWideBody extends StatelessWidget {
   final VoidCallback onCancelGif;
   final void Function(RemoteButton) onHoldBegin;
   final void Function(RemoteButton) onHoldEnd;
+  final VoidCallback? onWristRemoteSettings;
 
   Widget _ledSlot(RemoteLayout layout, bool connected) {
     final radius =
@@ -140,9 +143,30 @@ class RemoteWideBody extends StatelessWidget {
                     ),
                   ],
                 ),
-                const Align(
+                Align(
                   alignment: Alignment.bottomRight,
-                  child: RemoteInfoHint(),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (onWristRemoteSettings != null) ...[
+                        SizedBox(
+                          width: 48,
+                          height: 48,
+                          child: IconButton(
+                            padding: EdgeInsets.zero,
+                            tooltip: context.l10n.wristRemoteMappingTitle,
+                            onPressed: onWristRemoteSettings,
+                            icon: Icon(
+                              Icons.watch_outlined,
+                              color: context.appColors.accent,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                      const RemoteInfoHint(),
+                    ],
+                  ),
                 ),
               ],
             ),

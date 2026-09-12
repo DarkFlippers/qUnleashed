@@ -1,15 +1,18 @@
-import '../../../../services/localization/l10n.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-
-import '../../../../theme/theme.dart';
-import '../../../../components/notification.dart';
 import 'package:qunleashed/components/appbar.dart';
+
+import '../../../../components/notification.dart';
+import '../../../../services/localization/l10n.dart';
+import '../../../../services/logging.dart';
+import '../../../../theme/theme.dart';
 import 'gif_export_dialog.dart';
 import 'gif_recorder.dart';
 import 'input/keyboard_listener.dart';
 import 'layout.dart';
+import 'media_remote.dart';
+import 'media_remote_settings.dart';
 import 'models/models.dart';
 import 'screenshot_saver.dart';
 import 'session.dart';
@@ -25,9 +28,11 @@ class RemoteControlPage extends StatefulWidget {
   State<RemoteControlPage> createState() => _RemoteControlPageState();
 }
 
-class _RemoteControlPageState extends State<RemoteControlPage> {
+class _RemoteControlPageState extends State<RemoteControlPage>
+    with WidgetsBindingObserver {
   late final RemoteSession _session;
   late final GifRecorder _gifRecorder;
+  late final MediaRemoteBridge _mediaRemote;
 
   bool _savingScreenshot = false;
   bool _closing = false;
@@ -37,21 +42,76 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _gifRecorder = GifRecorder();
     _session = RemoteSession()
       ..addListener(_onSessionChanged)
       ..onRawFrame = _onRawFrame;
+    _mediaRemote = MediaRemoteBridge(onButton: _onMediaRemoteButton);
+    unawaited(_mediaRemote.start());
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _recordingTick?.cancel();
+    unawaited(_mediaRemote.stop());
     _session
       ..removeListener(_onSessionChanged)
       ..onRawFrame = null;
     _session.dispose();
     if (_gifRecorder.state != GifRecordingState.idle) _gifRecorder.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_session.resumeVisuals());
+      return;
+    }
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.detached) {
+      unawaited(_session.pauseVisuals());
+    }
+  }
+
+  void _onMediaRemoteButton(RemoteButton button, WristRemoteAction action) {
+    if (!mounted || _closing || !_session.inputAvailable) {
+      LogService.debug(
+        '[WristRemote] dropped ${button.name}: Remote Control unavailable',
+      );
+      return;
+    }
+    _dispatchMediaRemoteButton(button, action);
+  }
+
+  void _dispatchMediaRemoteButton(
+    RemoteButton button,
+    WristRemoteAction action,
+  ) {
+    if (action.isHold) {
+      unawaited(_holdMediaRemoteButton(button, action.duration));
+      return;
+    }
+    unawaited(_session.press(button));
+  }
+
+  Future<void> _holdMediaRemoteButton(
+    RemoteButton button,
+    Duration duration,
+  ) async {
+    LogService.debug(
+      '[WristRemote] holding ${button.name} for '
+      '${duration.inMilliseconds} ms',
+    );
+    await _session.beginHold(button);
+    try {
+      await Future<void>.delayed(duration);
+    } finally {
+      await _session.endHold(button);
+    }
   }
 
   void _syncRecordingFlag() {
@@ -182,6 +242,18 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
     Navigator.of(context).pop();
   }
 
+  Future<void> _openWristRemoteSettings() async {
+    try {
+      await showMediaRemoteSettingsDialog(context, _mediaRemote);
+    } catch (e) {
+      if (!mounted) return;
+      context.showNotification(
+        context.l10n.remoteSaveFailed('$e'),
+        type: QNotificationType.error,
+      );
+    }
+  }
+
   Future<void> _copyScreenshot() async {
     if (_savingScreenshot) return;
     setState(() => _savingScreenshot = true);
@@ -291,6 +363,9 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
       onCancelGif: _cancelGifRecording,
       onHoldBegin: _onHoldBegin,
       onHoldEnd: _onHoldEnd,
+      onWristRemoteSettings: _mediaRemote.supported
+          ? _openWristRemoteSettings
+          : null,
     );
   }
 
@@ -327,6 +402,14 @@ class _RemoteControlPageState extends State<RemoteControlPage> {
                     onPressed: _close,
                     icon: const Icon(Icons.arrow_back),
                   ),
+                  actions: [
+                    if (_mediaRemote.supported)
+                      IconButton(
+                        tooltip: context.l10n.wristRemoteMappingTitle,
+                        onPressed: _openWristRemoteSettings,
+                        icon: const Icon(Icons.watch_outlined),
+                      ),
+                  ],
                 ),
           body: SafeArea(
             child: LayoutBuilder(
