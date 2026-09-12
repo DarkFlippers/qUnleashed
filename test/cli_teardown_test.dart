@@ -31,10 +31,21 @@ FlipperDevice _device(FlipperLink link) => FlipperDevice(
 /// resolving a session that is gone throws before any future exists, while the
 /// session's own write is async and rejects. They are one field rather than
 /// two booleans so "both at once", which cannot happen, cannot be written.
-enum _WriteFailure { none, throwsSynchronously, rejects }
+enum _WriteFailure {
+  none,
+  throwsSynchronously,
+  rejects,
+
+  /// An error whose text carries an escape sequence, as a driver or OS
+  /// message can. Here a clear-screen, so a notice that passed it through
+  /// would visibly wipe the scrollback.
+  escapeInMessage,
+}
 
 class _FakeClient implements FlipperClient {
-  _FakeClient({this.link = FlipperLink.ble});
+  _FakeClient({this.link = FlipperLink.ble}) {
+    _current = _device(link);
+  }
 
   final FlipperLink link;
   final text = StreamController<String>.broadcast();
@@ -56,14 +67,28 @@ class _FakeClient implements FlipperClient {
   /// fake that only counted calls could not tell.
   final List<String> events = [];
 
+  /// Lets a test count what the terminal drew, where `contains` cannot tell
+  /// one notice from fifteen.
+  static int occurrences(String haystack, String needle) =>
+      needle.allMatches(haystack).length;
+
   @override
   Stream<String> get textStream => text.stream;
 
   @override
   Stream<FlipperConnectionState> get connectionStream => connection.stream;
 
+  /// One instance for the life of a session, as the real client does -
+  /// FlipperSession.device is final and connectedDevice returns it, so
+  /// identity is what tells one session from the next.
+  FlipperDevice _current = _device(FlipperLink.usb);
+
   @override
-  FlipperDevice? get connectedDevice => _device(link);
+  FlipperDevice? get connectedDevice => _current;
+
+  /// Stands in for a reconnect: connect() builds a fresh session carrying a
+  /// fresh device.
+  void startNewSession() => _current = _device(link);
 
   @override
   set cliExclusive(bool value) => events.add('cliExclusive=$value');
@@ -79,6 +104,10 @@ class _FakeClient implements FlipperClient {
         throw StateError('No active transport');
       case _WriteFailure.rejects:
         return Future<void>.error(StateError('transport is gone'));
+      case _WriteFailure.escapeInMessage:
+        return Future<void>.error(
+          StateError('write failed [2J[H and then some'),
+        );
       case _WriteFailure.none:
         return Future<void>.value();
     }
@@ -338,17 +367,16 @@ void main() {
     expect(_terminalText(tester), contains('not sent'));
   });
 
-  // Every way writeCliBytes fails means the session is gone, so a terminal
-  // that kept accepting input would draw one more red line per keystroke and
-  // deliver none of them.
-  testWidgets('a failed write stops the page taking more input', (
-    tester,
-  ) async {
+  // A failed write does not mean the session is gone. Android USB fails one
+  // write on a PlatformException without raising a transport fault, so the
+  // transport stays usable - and a page that shut itself down on the first
+  // failure would be dead for good, with nothing on screen saying how to
+  // revive it. A session that has really gone raises a disconnect instead.
+  testWidgets('a failed write leaves a still-live page usable', (tester) async {
     final client = _FakeClient(link: FlipperLink.usb);
     addTearDown(client.text.close);
     await tester.pumpWidget(_wrap(CliPage(client: client)));
     await tester.pump(const Duration(milliseconds: 600));
-    expect(_acceptsInput(tester), isTrue, reason: 'live to begin with');
 
     client.writeFailure = _WriteFailure.rejects;
     await recordingLogs(() async {
@@ -356,7 +384,80 @@ void main() {
       await tester.pump();
     });
 
-    expect(_acceptsInput(tester), isFalse);
+    expect(_acceptsInput(tester), isTrue);
+    client.writeFailure = _WriteFailure.none;
+    final before = client.writeCalls;
+    _terminalOf(tester).textInput('ls');
+    await tester.pump();
+    expect(client.writeCalls, before + 1, reason: 'and still delivering');
+  });
+
+  // Clearing _ready would have stopped new keystrokes but not the writes
+  // already in flight, and on Android a write can sit for ten seconds before
+  // it rejects - so a burst all fails at once, each one drawing a line.
+  testWidgets('a burst of failed writes draws one line, not one each', (
+    tester,
+  ) async {
+    final client = _FakeClient(link: FlipperLink.usb);
+    addTearDown(client.text.close);
+    await tester.pumpWidget(_wrap(CliPage(client: client)));
+    await tester.pump(const Duration(milliseconds: 600));
+
+    client.writeFailure = _WriteFailure.rejects;
+    await recordingLogs(() async {
+      final terminal = _terminalOf(tester);
+      terminal.textInput('l');
+      terminal.textInput('s');
+      terminal.textInput('\r');
+      await tester.pump();
+    });
+
+    expect(_FakeClient.occurrences(_terminalText(tester), 'not sent'), 1);
+  });
+
+  testWidgets('the device answering makes the next failure news again', (
+    tester,
+  ) async {
+    final client = _FakeClient(link: FlipperLink.usb);
+    addTearDown(client.text.close);
+    await tester.pumpWidget(_wrap(CliPage(client: client)));
+    await tester.pump(const Duration(milliseconds: 600));
+
+    await recordingLogs(() async {
+      client.writeFailure = _WriteFailure.rejects;
+      _terminalOf(tester).textInput('ls');
+      await tester.pump();
+
+      client.text.add('the link is fine');
+      await tester.pump();
+
+      _terminalOf(tester).textInput('ls');
+      await tester.pump();
+    });
+
+    expect(_FakeClient.occurrences(_terminalText(tester), 'not sent'), 2);
+  });
+
+  // Exception text carries driver and OS strings. An escape byte in one would
+  // otherwise be handed straight to the emulator - here, a clear-screen that
+  // would wipe the output the notice is meant to sit beside.
+  testWidgets('an error carrying escape codes cannot drive the terminal', (
+    tester,
+  ) async {
+    final client = _FakeClient(link: FlipperLink.usb);
+    addTearDown(client.text.close);
+    await tester.pumpWidget(_wrap(CliPage(client: client)));
+    await tester.pump(const Duration(milliseconds: 600));
+    client.text.add('output worth keeping');
+    await tester.pump();
+
+    client.writeFailure = _WriteFailure.escapeInMessage;
+    await recordingLogs(() async {
+      _terminalOf(tester).textInput('ls');
+      await tester.pump();
+    });
+
+    expect(_terminalText(tester), contains('output worth keeping'));
   });
 
   // _enterCliReady set _ready before sending the nudge, so a nudge that failed
@@ -454,5 +555,58 @@ void main() {
     });
 
     expect(client.enterRpcModeCalls, 1);
+  });
+
+  // The nudge is a second suspension point, and the page can be backed out of
+  // while it is in flight. Without a mounted recheck the setState after it
+  // throws "called after dispose()", which unwinds into _bootstrap's catch and
+  // is reported there as a bootstrap failure - the exact misattribution the
+  // stack trace was added to prevent.
+  testWidgets('backing out while the nudge is in flight is not an error', (
+    tester,
+  ) async {
+    final client = _FakeClient(link: FlipperLink.usb);
+    addTearDown(client.text.close);
+    final held = Completer<void>();
+    client.heldWrite = held;
+
+    final logs = await recordingLogs(() async {
+      await tester.pumpWidget(_wrap(CliPage(client: client)));
+      await tester.pump(const Duration(milliseconds: 600));
+      await tester.pumpWidget(_wrap(const SizedBox.shrink()));
+      await tester.pump();
+
+      held.complete();
+      await tester.pump();
+    });
+
+    expect(logs.where((l) => l.contains('bootstrap failed')), isEmpty);
+    expect(logs.where((l) => l.contains('setState')), isEmpty);
+  });
+
+  // Chaining the switch behind the interrupt put up to two seconds between
+  // dispose and the switch, and cliExclusive is re-read from whatever session
+  // is active - so a CLI page opened in the meantime would be switched to RPC
+  // mode under itself, and its own nudge would then fail.
+  testWidgets('a teardown that outlives its session leaves the next alone', (
+    tester,
+  ) async {
+    final client = _FakeClient(link: FlipperLink.usb);
+    addTearDown(client.text.close);
+    await tester.pumpWidget(_wrap(CliPage(client: client)));
+    await tester.pump(const Duration(milliseconds: 600));
+    client.text.add('doing something long');
+    await tester.pump();
+
+    client.heldWrite = Completer<void>();
+    await recordingLogs(() async {
+      await tester.pumpWidget(_wrap(const SizedBox.shrink()));
+      await tester.pump();
+      // A new page connects while the old interrupt is still outstanding.
+      client.startNewSession();
+      await tester.pump(const Duration(seconds: 3));
+    });
+
+    expect(client.enterRpcModeCalls, 0);
   });
 }

@@ -42,6 +42,24 @@ class _CliPageState extends State<CliPage> {
   bool _busy = false;
   bool _awaitingInterrupt = false;
 
+  /// Whether the terminal has already said that a write did not arrive.
+  ///
+  /// One line, not one per keystroke. Clearing [_ready] instead would stop new
+  /// input but not the writes already in flight — on Android a write can sit
+  /// for ten seconds before it rejects, so a whole burst fails at once — and it
+  /// would not be safe anyway: Android USB fails a single write on a
+  /// PlatformException without raising a transport fault, so one transient
+  /// error would leave the page permanently dead with nothing on screen saying
+  /// how to revive it. A session that has really gone raises a disconnect, and
+  /// [_onConnectionState] is what acts on that.
+  ///
+  /// Cleared when the device says anything, since that proves the link works
+  /// and makes the next failure news again.
+  bool _writeFailureShown = false;
+
+  static final Uint8List _ctrlC = Uint8List.fromList(const [0x03]);
+  static final Uint8List _cliNudge = Uint8List.fromList(const [0x01]);
+
   @override
   void initState() {
     super.initState();
@@ -70,12 +88,16 @@ class _CliPageState extends State<CliPage> {
     Future<void> Function() send,
     String what, {
     Duration? timeout,
+    void Function(Object error)? onFailure,
   }) {
     final call = Future.sync(send);
-    return (timeout == null ? call : call.timeout(timeout)).catchError(
-      (Object e, StackTrace st) =>
-          LogService.error('[CLI] $what failed: $e\n$st'),
-    );
+    return (timeout == null ? call : call.timeout(timeout)).catchError((
+      Object e,
+      StackTrace st,
+    ) {
+      LogService.error('[CLI] $what failed: $e\n$st');
+      onFailure?.call(e);
+    });
   }
 
   /// Says something in the terminal itself, on its own line and in red.
@@ -85,26 +107,30 @@ class _CliPageState extends State<CliPage> {
   /// `bool.fromEnvironment('QLOG', defaultValue: kDebugMode)` — so in a release
   /// build a failed write drew nothing at all, and a terminal that silently
   /// eats keystrokes is indistinguishable from a Flipper that has hung.
-  void _notice(String message) =>
-      _terminal.write('\r\n\x1b[31m$message\x1b[0m\r\n');
+  ///
+  /// Not a `QNotification`, which is how the rest of the app reports a failure:
+  /// a toast that dismisses itself after two seconds and closes the one before
+  /// it is the wrong shape here. A terminal's errors belong in the scrollback,
+  /// beside the output they interrupted, for as long as the output lasts.
+  ///
+  /// Control characters are stripped from [message] before it goes in. It
+  /// carries exception text, and that in turn carries driver and OS strings —
+  /// anything holding an escape byte would otherwise break out of the colour
+  /// and drive the emulator.
+  void _notice(String message) => _terminal.write(
+    '\r\n\x1b[31m${message.replaceAll(RegExp(r'[\x00-\x1f\x7f]'), ' ')}'
+    '\x1b[0m\r\n',
+  );
 
   /// Sends something the user is waiting on, and says so when it does not
   /// arrive.
-  ///
-  /// Drops [_ready] as well. Every way `writeCliBytes` fails means the session
-  /// is gone — no transport, or already back in RPC mode — so leaving it set
-  /// gives a terminal that keeps taking keystrokes it cannot deliver and draws
-  /// one more red line for each. Backing out and re-entering the page is how a
-  /// working session is got back, which is what a disconnect already required.
-  void _fireAndShow(Future<void> Function() send, String what) {
-    unawaited(
-      Future.sync(send).catchError((Object e, StackTrace st) {
-        LogService.error('[CLI] $what failed: $e\n$st');
-        if (!mounted) return;
-        _notice(l10n.cliWriteFailed('$e'));
-        if (_ready) setState(() => _ready = false);
-      }),
-    );
+  void _fireAndShow(Future<void> Function() send, String what) =>
+      unawaited(_guarded(send, what, onFailure: _reportWriteFailure));
+
+  void _reportWriteFailure(Object error) {
+    if (!mounted || _writeFailureShown) return;
+    _writeFailureShown = true;
+    _notice(l10n.cliWriteFailed('$error'));
   }
 
   @override
@@ -115,39 +141,51 @@ class _CliPageState extends State<CliPage> {
     // cliExclusive is set, so reordering these two breaks every USB teardown.
     _client.cliExclusive = false;
 
-    // dispose() cannot be async, so there is nowhere to await this and no UI
-    // left to report into if it fails. Best effort, logged.
+    // dispose() cannot be async, so there is nowhere to await either of these
+    // and no UI left to report into if they fail. Best effort, logged.
     //
-    // Chained ahead of the switch rather than fired alongside it. Unsequenced,
-    // the two raced: _doSwitchToRpcMode flips mode partway through, so the
-    // interrupt either arrived after it and died on "Cannot send CLI bytes
-    // while in RPC mode" - logged as though the cable had been pulled - or
-    // landed as a stray 0x03 inside an RPC stream.
+    // The interrupt goes first and the switch waits for it. Unsequenced, the
+    // two raced: _doSwitchToRpcMode flips mode partway through, so the ctrl-c
+    // either arrived after it and died on "Cannot send CLI bytes while in RPC
+    // mode" - logged as though the cable had been pulled - or landed as a
+    // stray 0x03 inside an RPC stream.
     //
-    // The wait is bounded because the write need not ever finish. Desktop USB
+    // The wait is bounded because the write need not ever finish: desktop USB
     // hands it to an isolate and waits on a completer with no timeout of its
-    // own (Android's has ten seconds), so a wedged port would otherwise hold
-    // the RPC restore open for the life of the process.
-    final interrupt = _awaitingInterrupt
-        ? _guarded(
-            () => _client.writeCliBytes(Uint8List.fromList([0x03])),
-            'ctrl-c on dispose',
-            timeout: const Duration(seconds: 2),
-          )
-        : Future<void>.value();
+    // own, where Android's has ten seconds. Bounding it narrows the race
+    // rather than closing it, since a timeout abandons the wait without
+    // cancelling the write - the bytes are still in the transport's pump and
+    // can still land late. Holding the restore open for the life of the
+    // process is the worse trade. Note for tests: a dispose with a write in
+    // flight leaves this timer pending, so they have to pump past it.
+    //
+    // Everything about the client is read here, synchronously, rather than
+    // inside the chain. Read two seconds later, connectedDevice may be null
+    // and the BLE test would invert; and holding _client in the closure keeps
+    // a disposed State alive with it.
+    final client = _client;
+    final device = client.connectedDevice;
+    final restoreRpc = device?.isBle != true;
 
-    if (_client.connectedDevice?.isBle != true) {
+    Future<void> teardown() async {
+      if (_awaitingInterrupt) {
+        await _guarded(
+          () => client.writeCliBytes(_ctrlC),
+          'ctrl-c on dispose',
+          timeout: const Duration(seconds: 2),
+        );
+      }
+      // Not the session this page had, by now: the wait above can span a
+      // couple of seconds, and cliExclusive is re-read from whatever session
+      // is active, so a fresh CLI page would not be protected from this. It
+      // would be switched to RPC mode under itself and its nudge would fail.
+      if (!restoreRpc || !identical(client.connectedDevice, device)) return;
       // enterRpcMode returns quietly when the session is already gone, but the
-      // switch it returns can still reject, and unawaited silences the lint
-      // rather than the error.
-      unawaited(
-        interrupt.then(
-          (_) => _guarded(_client.enterRpcMode, 'leaving cli mode'),
-        ),
-      );
-    } else {
-      unawaited(interrupt);
+      // switch it returns can still reject.
+      await _guarded(client.enterRpcMode, 'leaving cli mode');
     }
+
+    unawaited(teardown());
     _terminalController.dispose();
     _terminalFocusNode.dispose();
     super.dispose();
@@ -165,7 +203,9 @@ class _CliPageState extends State<CliPage> {
 
   void _onTerminalOutput(String data) {
     if (!_ready) return;
-    final bytes = Uint8List.fromList(utf8.encode(data));
+    // utf8.encode returns a Uint8List already; wrapping it in
+    // Uint8List.fromList copied the buffer once per keystroke.
+    final bytes = utf8.encode(data);
     _fireAndShow(() => _client.writeCliBytes(bytes), 'write');
   }
 
@@ -216,8 +256,12 @@ class _CliPageState extends State<CliPage> {
     }
     try {
       await _client.connect(selected, autoRpc: false);
-    } catch (e) {
-      LogService.log('[CLI] connect failed: $e');
+    } catch (e, st) {
+      LogService.error('[CLI] connect failed: $e\n$st');
+      // Into the terminal before the dialog, not after: if the dialog itself
+      // throws, this is the only place the real reason survives - the outer
+      // catch would otherwise draw the dialog's failure instead.
+      if (mounted) _notice(l10n.cliStartFailed('$e'));
       await _showConnectionFailedDialog(selected, e);
       if (mounted) {
         Navigator.of(context).maybePop();
@@ -231,8 +275,11 @@ class _CliPageState extends State<CliPage> {
     try {
       await _client.disconnect();
       await _client.connect(device, autoRpc: false);
-    } catch (e) {
-      LogService.log('[CLI] reconnect failed: $e');
+    } catch (e, st) {
+      LogService.error('[CLI] reconnect failed: $e\n$st');
+      // As above: the reason reaches the scrollback before anything that could
+      // throw on the way to showing it.
+      if (mounted) _notice(l10n.cliStartFailed('$e'));
       await _showConnectionFailedDialog(device, e);
       if (mounted) {
         Navigator.of(context).maybePop();
@@ -252,24 +299,32 @@ class _CliPageState extends State<CliPage> {
 
   Future<void> _enterCliReady() async {
     if (!mounted) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _terminalFocusNode.requestFocus();
-    });
     await Future<void>.delayed(const Duration(milliseconds: 500));
     if (!mounted) return;
     try {
-      await _client.writeCliBytes(Uint8List.fromList([0x01]));
+      await _client.writeCliBytes(_cliNudge);
     } catch (e, st) {
       // Ready is claimed after the nudge lands, not before it is sent. Claimed
       // first, a nudge that failed left a black terminal that took every
       // keystroke and posted it into a session that had never been opened.
       LogService.error('[CLI] init nudge failed: $e\n$st');
-      _notice(l10n.cliStartFailed('$e'));
+      if (mounted) _notice(l10n.cliStartFailed('$e'));
       return;
     }
+    // The write is a second suspension point, and the page can be backed out
+    // of while it is in flight. Without this the setState below throws
+    // "called after dispose()", which unwinds all the way to _bootstrap's
+    // catch and is reported there as a bootstrap failure.
+    if (!mounted) return;
     setState(() {
       _ready = true;
+    });
+    // After the session is known good, not before it is opened: registered
+    // ahead of any setState, this asked for focus on a terminal that might
+    // never accept anything.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _terminalFocusNode.requestFocus();
     });
   }
 
@@ -287,6 +342,9 @@ class _CliPageState extends State<CliPage> {
 
   void _onText(String text) {
     _awaitingInterrupt = !text.contains('>:');
+    // The device answered, so the link works and the next write that does not
+    // arrive is news again rather than more of the same failure.
+    _writeFailureShown = false;
     _terminal.write(text);
   }
 
@@ -297,10 +355,7 @@ class _CliPageState extends State<CliPage> {
 
   void _sendCtrlC() {
     if (!_ready) return;
-    _fireAndShow(
-      () => _client.writeCliBytes(Uint8List.fromList([0x03])),
-      'ctrl-c',
-    );
+    _fireAndShow(() => _client.writeCliBytes(_ctrlC), 'ctrl-c');
     _terminalFocusNode.requestFocus();
   }
 
