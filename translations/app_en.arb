@@ -4893,6 +4893,26 @@
     }
   },
 
+  "wristRemoteStartFailed": "Could not start Wrist Remote: {error}",
+  "@wristRemoteStartFailed": {
+    "description": "Toast shown when the Wrist Remote setting was saved but Android refused to start the media session behind it.",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+
+  "wristRemoteSessionTitle": "Flipper Remote",
+  "@wristRemoteSessionTitle": {
+    "description": "Now playing title of the placeholder media session Wrist Remote publishes. Shown on the watch, the lock screen and Android Auto. Flipper is a device brand and must not be translated or transliterated."
+  },
+
+  "wristRemoteSessionSubtitle": "Wrist Remote",
+  "@wristRemoteSessionSubtitle": {
+    "description": "Now playing subtitle of the placeholder media session Wrist Remote publishes, shown under the title. The app name is added separately and is not translated."
+  },
+
   "wristRemoteEnabledTitle": "Enable Wrist Remote",
   "@wristRemoteEnabledTitle": {
     "description": "Toggle that enables or disables the Android media session used by Wrist Remote."

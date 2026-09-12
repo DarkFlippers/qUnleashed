@@ -21,10 +21,14 @@ import io.flutter.plugin.common.MethodChannel
  * and forwards them to Dart over a MethodChannel.
  *
  * Gesture recognition lives in Dart so single taps only incur the double-tap
- * window when the corresponding double-tap action is actually assigned.
+ * window when the corresponding double-tap mapping is actually assigned.
  *
- * This object is owned by the cached FlutterEngine rather than MainActivity, so
- * recreating or destroying the Activity does not tear down the MediaSession.
+ * Held by a static field on FlutterEngineHolder rather than by MainActivity or
+ * by the engine itself, and built on the application context - so recreating or
+ * destroying the Activity does not tear down the MediaSession. The invariant
+ * that comes with that: exactly one instance per process, bound for its whole
+ * life to the first engine it saw. See FlutterEngineHolder.ensureProcessBridges
+ * for why that holds and what would break it.
  */
 class MediaRemoteChannel(
     context: Context,
@@ -33,6 +37,16 @@ class MediaRemoteChannel(
     companion object {
         private const val CHANNEL = "qunleashed/media_remote"
         private const val TAG = "WristRemote"
+
+        /** The app name is a brand and is never translated. */
+        private const val APP_NAME = "qUnleashed"
+
+        // Only reached if Dart ever calls start() without metadata; the live
+        // path always sends the localized pair. These mirror the English of
+        // wristRemoteSessionTitle and wristRemoteSessionSubtitle in
+        // translations/app_en.arb, and will drift from it silently.
+        private const val DEFAULT_TITLE = "Flipper Remote"
+        private const val DEFAULT_SUBTITLE = "Wrist Remote"
 
         private const val ACTIONS =
             PlaybackState.ACTION_PLAY or
@@ -54,7 +68,15 @@ class MediaRemoteChannel(
             when (call.method) {
                 "start" -> {
                     try {
-                        start()
+                        // Dart owns the copy: it is shown on a watch face and a
+                        // lock screen, so it has to follow the app's locale.
+                        // The fallbacks only matter if it ever stops sending
+                        // them - stale English beats failing the whole feature
+                        // over a now-playing label.
+                        start(
+                            title = call.argument<String>("title") ?: DEFAULT_TITLE,
+                            subtitle = call.argument<String>("subtitle") ?: DEFAULT_SUBTITLE,
+                        )
                         result.success(null)
                     } catch (error: Throwable) {
                         Log.e(TAG, "Failed to start MediaSession", error)
@@ -75,7 +97,7 @@ class MediaRemoteChannel(
         }
     }
 
-    private fun start() {
+    private fun start(title: String, subtitle: String) {
         if (mediaSession != null) {
             trace("start ignored: MediaSession already active")
             return
@@ -145,11 +167,20 @@ class MediaRemoteChannel(
             )
             session.setMetadata(
                 MediaMetadata.Builder()
-                    .putString(MediaMetadata.METADATA_KEY_TITLE, "Flipper Remote")
-                    .putString(MediaMetadata.METADATA_KEY_ARTIST, "qUnleashed · Wrist Remote")
-                    .putString(MediaMetadata.METADATA_KEY_ALBUM, "qUnleashed")
+                    .putString(MediaMetadata.METADATA_KEY_TITLE, title)
+                    .putString(MediaMetadata.METADATA_KEY_ARTIST, "$APP_NAME · $subtitle")
+                    .putString(MediaMetadata.METADATA_KEY_ALBUM, APP_NAME)
                     .build(),
             )
+            // Taking remote playback is what routes the phone's own volume
+            // rocker into onAdjustVolume instead of the music stream - the
+            // whole point for a watch, and the reason the feature is opt-in.
+            //
+            // Under VOLUME_CONTROL_RELATIVE only the direction is ever
+            // delivered, so maxVolume and currentVolume are inert: nothing
+            // reads them back and setCurrentVolume is never called. They exist
+            // because the constructor demands them. A remote-volume slider, if
+            // any UI draws one, therefore sits at half and never moves.
             session.setPlaybackToRemote(
                 object : VolumeProvider(VolumeProvider.VOLUME_CONTROL_RELATIVE, 100, 50) {
                     override fun onAdjustVolume(direction: Int) {

@@ -66,6 +66,10 @@ dev_dependencies:
   # near a channel, so the platform interface is the only seam that works
   # everywhere.
   path_provider_platform_interface: ^2.1.2
+  # Same idea for preferences: setMockInitialValues gives a store whose writes
+  # always succeed, so the only way to test what happens when one does not is
+  # to stand in at the platform interface.
+  shared_preferences_platform_interface: ^2.4.2
 
 flutter:
   config:

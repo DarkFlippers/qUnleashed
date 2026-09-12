@@ -78,6 +78,13 @@ class RemoteSession extends ChangeNotifier {
   bool get justUnlocked => _justUnlocked;
   bool get isDisconnected => _isDisconnected;
   bool get inputAvailable => _inputAvailable;
+
+  /// Whether [button] is already being held down.
+  ///
+  /// [beginHold] keeps one [_HeldButton] per key and no-ops on a second call,
+  /// so whoever schedules the matching [endHold] needs to know this before
+  /// starting a hold that would release on someone else's timer.
+  bool isHolding(RemoteButton button) => _held.containsKey(button);
   List<QueuedButton> get queue => _queue;
   int? get lastBgColor => _lastBgColor;
   int? get lastFgColor => _lastFgColor;
@@ -529,11 +536,4 @@ InputKey _key(RemoteButton b) => switch (b) {
 const _animBase = 'assets/ic/control/hint';
 const _kUnlockAnim = '$_animBase/unlock.svg';
 
-String _animAsset(RemoteButton b) => switch (b) {
-  RemoteButton.up => '$_animBase/up.svg',
-  RemoteButton.down => '$_animBase/down.svg',
-  RemoteButton.left => '$_animBase/left.svg',
-  RemoteButton.right => '$_animBase/right.svg',
-  RemoteButton.ok => '$_animBase/ok.svg',
-  RemoteButton.back => '$_animBase/back.svg',
-};
+String _animAsset(RemoteButton b) => b.hintAsset;

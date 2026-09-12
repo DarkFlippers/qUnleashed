@@ -5,6 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/tools/remote/desktop/media_remote.dart';
 import 'package:qunleashed/pages/tools/remote/desktop/models/models.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
+import 'package:shared_preferences_platform_interface/types.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -141,9 +143,12 @@ void main() {
     );
 
     await bridge.start();
+    // Typed rather than the raw PlatformException: the preference has already
+    // been saved by this point, and callers have to tell that apart from a
+    // write that never landed - both of which can surface a PlatformException.
     await expectLater(
       bridge.setEnabled(true),
-      throwsA(isA<PlatformException>()),
+      throwsA(isA<WristRemoteStartException>()),
     );
     expect(nativeCalls, ['start']);
 
@@ -300,4 +305,66 @@ void main() {
     expect(bridge.actionFor(MediaRemoteInput.previous), WristRemoteAction.tap);
     expect(bridge.buttonFor(MediaRemoteInput.doublePlayPause), isNull);
   });
+
+  test('a failed write is not reported as a failed start', () async {
+    SharedPreferencesStorePlatform.instance = _FailingStore();
+    SharedPreferences.resetStatic();
+    addTearDown(() {
+      SharedPreferencesStorePlatform.instance =
+          InMemorySharedPreferencesStore.empty();
+      SharedPreferences.resetStatic();
+    });
+
+    final bridge = MediaRemoteBridge(
+      onButton: (_, _) {},
+      supportedOverride: true,
+    );
+    await bridge.ensureLoaded();
+
+    // The settings dialog picks its copy off this type: only a start failure
+    // means "we saved your choice but Android would not honour it". A write
+    // that never landed has to stay a save failure, even though both paths can
+    // surface a PlatformException underneath.
+    await expectLater(
+      bridge.setEnabled(true),
+      throwsA(isNot(isA<WristRemoteStartException>())),
+    );
+    await expectLater(
+      bridge.setButtonFor(MediaRemoteInput.previous, RemoteButton.up),
+      throwsA(isNot(isA<WristRemoteStartException>())),
+    );
+    expect(bridge.enabled, isFalse, reason: 'nothing was persisted');
+  });
+}
+
+/// A store whose writes report failure, like a full or corrupt prefs file.
+class _FailingStore extends SharedPreferencesStorePlatform {
+  final Map<String, Object> _values = {};
+
+  @override
+  Future<bool> clear() async => false;
+
+  @override
+  Future<bool> clearWithParameters(ClearParameters parameters) async => false;
+
+  @override
+  Future<bool> clearWithPrefix(String prefix) async => false;
+
+  @override
+  Future<Map<String, Object>> getAll() async => _values;
+
+  @override
+  Future<Map<String, Object>> getAllWithParameters(
+    GetAllParameters parameters,
+  ) async => _values;
+
+  @override
+  Future<Map<String, Object>> getAllWithPrefix(String prefix) async => _values;
+
+  @override
+  Future<bool> remove(String key) async => false;
+
+  @override
+  Future<bool> setValue(String valueType, String key, Object value) async =>
+      false;
 }
