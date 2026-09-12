@@ -4838,6 +4838,127 @@
     "description": "Title of the screen that mirrors the Flipper screen."
   },
 
+  "wristRemoteMappingTitle": "Wrist remote mapping",
+  "@wristRemoteMappingTitle": {
+    "description": "Title and tooltip of the Wrist Remote media gesture mapping dialog."
+  },
+
+  "wristRemoteMappingIntro": "Choose which Flipper button each media gesture sends. Double-tap rows can be left unassigned for instant single-tap response.",
+  "@wristRemoteMappingIntro": {
+    "description": "Introduction at the top of the Wrist Remote mapping dialog."
+  },
+
+
+  "wristRemoteEnabledTitle": "Enable Wrist Remote",
+  "@wristRemoteEnabledTitle": {
+    "description": "Toggle that enables or disables the Android media session used by Wrist Remote."
+  },
+
+  "wristRemoteEnabledSubtitle": "Off by default. Turn on to route media controls and volume buttons to the Flipper while Remote Control is open.",
+  "@wristRemoteEnabledSubtitle": {
+    "description": "Explanation under the Wrist Remote master enable toggle."
+  },
+
+  "wristRemoteHoldHelp": "Hold actions keep the selected Flipper button pressed for 1, 2 or 3 seconds. Double taps use a 400 ms gesture window only when the matching double-tap action is assigned.",
+  "@wristRemoteHoldHelp": {
+    "description": "Explanation of hold duration and double-tap timing in Wrist Remote."
+  },
+
+  "wristRemoteVolumeNote": "Note: some bands change Android system volume directly instead of sending Volume +/- to the media session.",
+  "@wristRemoteVolumeNote": {
+    "description": "Compatibility note explaining why wearable volume gestures may not reach Wrist Remote."
+  },
+
+  "wristRemoteResetDefaults": "Reset defaults",
+  "@wristRemoteResetDefaults": {
+    "description": "Button that restores the default Wrist Remote mappings."
+  },
+
+  "wristRemoteDone": "Done",
+  "@wristRemoteDone": {
+    "description": "Button that closes the Wrist Remote mapping dialog."
+  },
+
+  "wristRemoteNotAssigned": "Not assigned",
+  "@wristRemoteNotAssigned": {
+    "description": "Dropdown value for a Wrist Remote gesture that sends no Flipper button."
+  },
+
+  "wristRemoteTap": "Tap",
+  "@wristRemoteTap": {
+    "description": "Wrist Remote action that sends a short button press."
+  },
+
+  "wristRemoteHoldSeconds": "Hold {seconds} s",
+  "@wristRemoteHoldSeconds": {
+    "description": "Wrist Remote action that holds a Flipper button for a number of seconds.",
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+
+  "wristRemotePrevious": "Previous",
+  "@wristRemotePrevious": {
+    "description": "Single Previous media gesture in Wrist Remote."
+  },
+
+  "wristRemoteDoublePrevious": "Double Previous",
+  "@wristRemoteDoublePrevious": {
+    "description": "Double Previous media gesture in Wrist Remote."
+  },
+
+  "wristRemotePlayPause": "Play / Pause",
+  "@wristRemotePlayPause": {
+    "description": "Single Play/Pause media gesture in Wrist Remote."
+  },
+
+  "wristRemoteDoublePlayPause": "Double Play / Pause",
+  "@wristRemoteDoublePlayPause": {
+    "description": "Double Play/Pause media gesture in Wrist Remote."
+  },
+
+  "wristRemoteNext": "Next",
+  "@wristRemoteNext": {
+    "description": "Single Next media gesture in Wrist Remote."
+  },
+
+  "wristRemoteDoubleNext": "Double Next",
+  "@wristRemoteDoubleNext": {
+    "description": "Double Next media gesture in Wrist Remote."
+  },
+
+  "wristRemoteVolumeUp": "Volume +",
+  "@wristRemoteVolumeUp": {
+    "description": "Volume up media gesture in Wrist Remote."
+  },
+
+  "wristRemoteVolumeDown": "Volume −",
+  "@wristRemoteVolumeDown": {
+    "description": "Volume down media gesture in Wrist Remote."
+  },
+
+  "wristRemoteButtonUp": "Up",
+  "@wristRemoteButtonUp": {
+    "description": "Flipper Up button in the Wrist Remote mapping dropdown."
+  },
+
+  "wristRemoteButtonDown": "Down",
+  "@wristRemoteButtonDown": {
+    "description": "Flipper Down button in the Wrist Remote mapping dropdown."
+  },
+
+  "wristRemoteButtonLeft": "Left",
+  "@wristRemoteButtonLeft": {
+    "description": "Flipper Left button in the Wrist Remote mapping dropdown."
+  },
+
+  "wristRemoteButtonRight": "Right",
+  "@wristRemoteButtonRight": {
+    "description": "Flipper Right button in the Wrist Remote mapping dropdown."
+  },
+
   "remoteGifSaveFailed": "GIF save failed: {error}",
   "@remoteGifSaveFailed": {
     "description": "Toast shown when the screen recording could not be written.",
