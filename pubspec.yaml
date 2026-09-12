@@ -61,6 +61,11 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  # Lets a test stand in for getTemporaryDirectory. Mocking the method channel
+  # is not enough: path_provider_windows is pure Dart over FFI and never goes
+  # near a channel, so the platform interface is the only seam that works
+  # everywhere.
+  path_provider_platform_interface: ^2.1.2
 
 flutter:
   config:
