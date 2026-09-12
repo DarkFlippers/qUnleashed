@@ -4,6 +4,7 @@ import 'dart:io' show Platform;
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
+import '../pages/tools/infrared/local_repo.dart';
 import '../services/connection/device_info_watch.dart';
 import '../services/connection/foreground_service.dart';
 import '../services/connection/notification_service.dart';
@@ -51,6 +52,13 @@ void bootstrapAmbientServices() {
   WidgetsBinding.instance.addObserver(_WatchLifecycleObserver());
 
   unawaited(_guard('push notifications', () => PushService.instance.start()));
+
+  // A refresh killed mid-swap leaves the IR library under a name only recovery
+  // looks for. Repairing it here rather than when the IR page opens means the
+  // library is not absent to the rest of the app until the user happens to go
+  // there — Settings → Storage reported its size as zero in the meantime — and
+  // it lets exists() go back to being a plain read.
+  unawaited(_guard('ir library recovery', IrLibLocalRepo.recoverStranded));
 }
 
 class _WatchLifecycleObserver with WidgetsBindingObserver {

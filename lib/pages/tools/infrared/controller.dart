@@ -79,6 +79,13 @@ class IrLibController extends ChangeNotifier {
     _deviceName = _client.getName() ?? '';
     _settings = await _settingsStorage.load();
     final root = await _localRepo.resolveRoot();
+    // Before asking, not after. The launch pass is unawaited, so without this
+    // the answer can be read while the library is still sitting under the name
+    // an interrupted swap gave it — and this result is latched for the life of
+    // the controller, so losing that race offers DOWNLOAD for the whole
+    // session over a library that is on disk. Memoised, so this awaits the
+    // pass already running rather than starting a second one.
+    await IrLibLocalRepo.recoverStranded();
     _localAvailable = await _localRepo.exists();
     if (_settings.localPath != root.path) {
       _settings = _settings.copyWith(localPath: root.path);
