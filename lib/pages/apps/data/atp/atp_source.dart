@@ -205,7 +205,8 @@ class AtpArchive {
     if (!await file.exists()) {
       // Why it is missing, when the unpack knows. Without this the user is
       // told the app is not in the pack for a problem on their own disk, and
-      // the real reason only reaches LogService - which is compiled out of a
+      // the real reason only reaches LogService - which until #89 was compiled
+      // out of a
       // release build unless QLOG is set.
       final reason = tally?.firstError;
       throw StateError(

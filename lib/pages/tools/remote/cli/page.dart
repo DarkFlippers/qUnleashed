@@ -103,10 +103,10 @@ class _CliPageState extends State<CliPage> {
   /// Says something in the terminal itself, on its own line and in red.
   ///
   /// The one surface the user is actually looking at. Everything below used to
-  /// reach `LogService` only, and `LogService.enabled` is
-  /// `bool.fromEnvironment('QLOG', defaultValue: kDebugMode)` — so in a release
-  /// build a failed write drew nothing at all, and a terminal that silently
-  /// eats keystrokes is indistinguishable from a Flipper that has hung.
+  /// reach `LogService` only, which drew nothing at all in a release build —
+  /// and since #89 keeps the error in a buffer instead, still nothing the user
+  /// sees while it is happening. A terminal that silently eats keystrokes is
+  /// indistinguishable from a Flipper that has hung.
   ///
   /// Not a `QNotification`, which is how the rest of the app reports a failure:
   /// a toast that dismisses itself after two seconds and closes the one before

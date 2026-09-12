@@ -330,7 +330,7 @@ class IrLibLocalRepo {
       if (hadLibrary && !await root.exists()) {
         // Records it here too, not only in recovery. This is the moment the
         // library is stranded, and nothing retries until the next launch —
-        // the log line that used to be the only signal is compiled out of a
+        // the log line that used to be the only signal reaches no console on a
         // release build.
         if (!await _restoreSuperseded(root, superseded)) {
           _stranded.value = superseded;

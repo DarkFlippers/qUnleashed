@@ -46,25 +46,36 @@ class LogService {
       ? _debug
       : _trace;
 
-  /// Whether anything is being printed at all.
-  static const bool printing = level != _off;
-
   static const bool errorOn = level >= _error;
   static const bool warnOn = level >= _warn;
   static const bool infoOn = level >= _info;
+
+  /// Whether anything is printed at all. The same condition as [errorOn], and
+  /// stated that way rather than re-derived: error is the lowest printable
+  /// level, so a build that prints anything prints errors.
+  static const bool printing = errorOn;
 
   /// Guards the chatty per-frame logs, mirroring `Log.debugOn` in flipperlib.
   static const bool debugOn = level >= _debug;
   static const bool traceOn = level >= _trace;
 
-  /// How many lines [history] keeps before dropping the oldest.
+  /// How many messages [history] keeps before dropping the oldest.
   ///
-  /// A few hundred is enough to hold what led up to a failure and small enough
-  /// not to matter: at roughly a hundred characters a line this is tens of
-  /// kilobytes.
+  /// Messages, not lines — see [history]. A few hundred failures is more than
+  /// a session should produce, and even with stack traces attached that is on
+  /// the order of a megabyte at worst.
+  ///
+  /// Not `MemoryOutput` from package:logger, which is already a dependency and
+  /// does exactly this: it only sees what goes through a `Logger` instance,
+  /// where this file is wired the other way round and captures that package's
+  /// output instead. Its default filter also wraps the check in `assert`, so
+  /// it drops everything in a release build — the bug being fixed here,
+  /// shipped.
   static const int historyLimit = 500;
 
-  static final ListQueue<String> _history = ListQueue<String>();
+  static final ListQueue<String> _history = ListQueue<String>(historyLimit);
+  static String? _lastKept;
+  static int _repeats = 0;
 
   /// Errors and warnings, oldest first, whether or not anything printed them.
   ///
@@ -79,10 +90,48 @@ class LogService {
   /// Errors and warnings only. Anything below them fires often enough to churn
   /// the buffer, which would cost the failure its context — the one thing this
   /// exists to hold on to.
+  ///
+  /// One entry per message rather than per line, so a stack trace stays a
+  /// single event. Thirteen of the app's error sites pass `'$e\n$st'`, and a
+  /// Dart stack trace runs to thirty frames or so — split by line, this would
+  /// hold about sixteen failures.
+  ///
+  /// Not everything in the app can reach it. The DFU recovery runs in a
+  /// spawned isolate and statics are isolate-local, so its own logging goes
+  /// nowhere; what is recorded is the failure it reports back over its port.
+  /// A reader should not take this for a complete account of a session.
+  ///
+  /// What arrives from flipperlib differs by build: a talking one keeps its
+  /// warnings as well as its errors, a quiet one only the errors, because
+  /// [attachFlipperlibSink] pins its level to error when nothing is printing.
   static List<String> get history => List.unmodifiable(_history);
 
+  /// Keeps [stamped], unless [body] repeats what was kept last — in which case
+  /// the entry already there gains a count instead of a neighbour.
+  ///
+  /// One timed-out multi-frame RPC produces an `[RPC] rx unmatched frame` per
+  /// leftover frame, and an ordinary directory listing is hundreds of frames.
+  /// Unchecked, that single failure would evict the whole buffer, including
+  /// the timeout that explains it.
+  static void _remember(String stamped, String body) {
+    if (body == _lastKept && _history.isNotEmpty) {
+      _repeats += 1;
+      _history.removeLast();
+      _history.addLast('$stamped  (${_repeats + 1}×)');
+      return;
+    }
+    _lastKept = body;
+    _repeats = 0;
+    _history.addLast(stamped);
+    if (_history.length > historyLimit) _history.removeFirst();
+  }
+
   @visibleForTesting
-  static void clearHistory() => _history.clear();
+  static void clearHistory() {
+    _history.clear();
+    _lastKept = null;
+    _repeats = 0;
+  }
 
   static bool _initialized = false;
 
@@ -90,12 +139,7 @@ class LogService {
     if (_initialized) return;
     _initialized = true;
 
-    // Attached even when nothing is printing. Log.error checks only that a
-    // sink exists — no level, no build type — so pinning the level to error
-    // gives [history] the transport faults and session failures a bug report
-    // actually needs, and none of the traffic below them.
-    Log.level = printing ? _flipperLevel : FlipperLogLevel.error;
-    Log.sink = _flipperlibSink;
+    attachFlipperlibSink();
 
     if (!printing) {
       await UniversalBle.setLogLevel(BleLogLevel.none);
@@ -111,6 +155,19 @@ class LogService {
 
     pretty_logging.Logger.defaultOutput = _LogServiceOutput.new;
     await UniversalBle.setLogLevel(_bleLevel);
+  }
+
+  /// Routes flipperlib's own logging here.
+  ///
+  /// Attached even when nothing is printing, and kept apart from the platform
+  /// calls in [initialize] so it can be reached without them: Log.error checks
+  /// only that a sink exists — no level, no build type — so pinning the level
+  /// to error gives [history] the transport faults and session failures a bug
+  /// report actually needs, and none of the traffic below them.
+  @visibleForTesting
+  static void attachFlipperlibSink() {
+    Log.level = printing ? _flipperLevel : FlipperLogLevel.error;
+    Log.sink = _flipperlibSink;
   }
 
   static void error(String msg) =>
@@ -172,21 +229,19 @@ class LogService {
     if (stackTrace != null) _write(stackTrace.toString());
   }
 
-  static void _write(String msg) => _emit(msg, keep: false, console: true);
+  // console: printing rather than a bare true. Every caller sits behind a
+  // const guard or is installed only in a talking build, so the two agree
+  // today; saying it this way stops an ungated caller ever making a quiet
+  // build print.
+  static void _write(String msg) => _emit(msg, keep: false, console: printing);
 
   /// Stamps [msg], keeps it in [history] if [keep], prints it if [console].
   static void _emit(String msg, {required bool keep, required bool console}) {
-    if (!keep && !console) return;
     final ts = DateTime.now().toIso8601String().substring(11, 19);
+    if (keep) _remember('[$ts] $msg', msg);
+    if (!console) return;
     for (final line in msg.split('\n')) {
-      final stamped = '[$ts] $line';
-      if (keep) {
-        _history.addLast(stamped);
-        while (_history.length > historyLimit) {
-          _history.removeFirst();
-        }
-      }
-      if (console) debugPrint(stamped);
+      debugPrint('[$ts] $line');
     }
   }
 }
