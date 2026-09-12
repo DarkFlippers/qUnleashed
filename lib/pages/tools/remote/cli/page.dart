@@ -57,9 +57,8 @@ class _CliPageState extends State<CliPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _bootstrap());
   }
 
-  /// Sends something to the device that nobody can be told about — teardown,
-  /// or a keystroke the terminal has already echoed — and records why it did
-  /// not arrive.
+  /// Runs [send] and puts whatever it throws in the log, so the future it
+  /// returns never rejects and something else can be chained behind it.
   ///
   /// [Future.sync] is the point. `FlipperClient.writeCliBytes` is not async,
   /// so a session that is gone throws before there is a future to attach a
@@ -67,12 +66,44 @@ class _CliPageState extends State<CliPage> {
   /// already back in RPC mode, and the write itself all reject instead. Both
   /// StateErrors read "No active transport", so the difference is easy to
   /// miss; running the call inside Future.sync puts both in the same place.
-  void _fireAndLog(Future<void> Function() send, String what) {
+  static Future<void> _guarded(
+    Future<void> Function() send,
+    String what, {
+    Duration? timeout,
+  }) {
+    final call = Future.sync(send);
+    return (timeout == null ? call : call.timeout(timeout)).catchError(
+      (Object e, StackTrace st) =>
+          LogService.error('[CLI] $what failed: $e\n$st'),
+    );
+  }
+
+  /// Says something in the terminal itself, on its own line and in red.
+  ///
+  /// The one surface the user is actually looking at. Everything below used to
+  /// reach `LogService` only, and `LogService.enabled` is
+  /// `bool.fromEnvironment('QLOG', defaultValue: kDebugMode)` — so in a release
+  /// build a failed write drew nothing at all, and a terminal that silently
+  /// eats keystrokes is indistinguishable from a Flipper that has hung.
+  void _notice(String message) =>
+      _terminal.write('\r\n\x1b[31m$message\x1b[0m\r\n');
+
+  /// Sends something the user is waiting on, and says so when it does not
+  /// arrive.
+  ///
+  /// Drops [_ready] as well. Every way `writeCliBytes` fails means the session
+  /// is gone — no transport, or already back in RPC mode — so leaving it set
+  /// gives a terminal that keeps taking keystrokes it cannot deliver and draws
+  /// one more red line for each. Backing out and re-entering the page is how a
+  /// working session is got back, which is what a disconnect already required.
+  void _fireAndShow(Future<void> Function() send, String what) {
     unawaited(
-      Future.sync(send).catchError(
-        (Object e, StackTrace st) =>
-            LogService.error('[CLI] $what failed: $e\n$st'),
-      ),
+      Future.sync(send).catchError((Object e, StackTrace st) {
+        LogService.error('[CLI] $what failed: $e\n$st');
+        if (!mounted) return;
+        _notice(l10n.cliWriteFailed('$e'));
+        if (_ready) setState(() => _ready = false);
+      }),
     );
   }
 
@@ -80,22 +111,42 @@ class _CliPageState extends State<CliPage> {
   void dispose() {
     _textSub?.cancel();
     _connSub?.cancel();
-    if (_awaitingInterrupt) {
-      // dispose() cannot be async, so there is nowhere to await this and no
-      // UI left to report into if it fails. Best effort, logged.
-      _fireAndLog(
-        () => _client.writeCliBytes(Uint8List.fromList([0x03])),
-        'ctrl-c on dispose',
-      );
-    }
     // Stays ahead of enterRpcMode: switchToRpcMode refuses outright while
     // cliExclusive is set, so reordering these two breaks every USB teardown.
     _client.cliExclusive = false;
+
+    // dispose() cannot be async, so there is nowhere to await this and no UI
+    // left to report into if it fails. Best effort, logged.
+    //
+    // Chained ahead of the switch rather than fired alongside it. Unsequenced,
+    // the two raced: _doSwitchToRpcMode flips mode partway through, so the
+    // interrupt either arrived after it and died on "Cannot send CLI bytes
+    // while in RPC mode" - logged as though the cable had been pulled - or
+    // landed as a stray 0x03 inside an RPC stream.
+    //
+    // The wait is bounded because the write need not ever finish. Desktop USB
+    // hands it to an isolate and waits on a completer with no timeout of its
+    // own (Android's has ten seconds), so a wedged port would otherwise hold
+    // the RPC restore open for the life of the process.
+    final interrupt = _awaitingInterrupt
+        ? _guarded(
+            () => _client.writeCliBytes(Uint8List.fromList([0x03])),
+            'ctrl-c on dispose',
+            timeout: const Duration(seconds: 2),
+          )
+        : Future<void>.value();
+
     if (_client.connectedDevice?.isBle != true) {
       // enterRpcMode returns quietly when the session is already gone, but the
       // switch it returns can still reject, and unawaited silences the lint
       // rather than the error.
-      _fireAndLog(_client.enterRpcMode, 'leaving cli mode');
+      unawaited(
+        interrupt.then(
+          (_) => _guarded(_client.enterRpcMode, 'leaving cli mode'),
+        ),
+      );
+    } else {
+      unawaited(interrupt);
     }
     _terminalController.dispose();
     _terminalFocusNode.dispose();
@@ -115,7 +166,7 @@ class _CliPageState extends State<CliPage> {
   void _onTerminalOutput(String data) {
     if (!_ready) return;
     final bytes = Uint8List.fromList(utf8.encode(data));
-    _fireAndLog(() => _client.writeCliBytes(bytes), 'write');
+    _fireAndShow(() => _client.writeCliBytes(bytes), 'write');
   }
 
   Future<void> _bootstrap() async {
@@ -134,8 +185,15 @@ class _CliPageState extends State<CliPage> {
         return;
       }
       await _resetUsbCliSession(device);
-    } catch (e) {
-      LogService.log('[CLI] bootstrap failed: $e');
+    } catch (e, st) {
+      // Everything the inner handlers do not already report: a throw out of
+      // the connection dialog, a Navigator error, setState on a dead element -
+      // or _showConnectionFailedDialog itself failing, which is the bad one.
+      // That downgrades a connection error the user never saw to a log line
+      // and leaves the page mounted, black and not ready, with nothing to do
+      // but back out. The stack is what separates those from one another.
+      LogService.error('[CLI] bootstrap failed: $e\n$st');
+      if (mounted) _notice(l10n.cliStartFailed('$e'));
     } finally {
       _busy = false;
     }
@@ -194,24 +252,33 @@ class _CliPageState extends State<CliPage> {
 
   Future<void> _enterCliReady() async {
     if (!mounted) return;
-    setState(() {
-      _ready = true;
-    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _terminalFocusNode.requestFocus();
     });
     await Future<void>.delayed(const Duration(milliseconds: 500));
+    if (!mounted) return;
     try {
       await _client.writeCliBytes(Uint8List.fromList([0x01]));
-    } catch (e) {
-      LogService.log('[CLI] init nudge failed: $e');
+    } catch (e, st) {
+      // Ready is claimed after the nudge lands, not before it is sent. Claimed
+      // first, a nudge that failed left a black terminal that took every
+      // keystroke and posted it into a session that had never been opened.
+      LogService.error('[CLI] init nudge failed: $e\n$st');
+      _notice(l10n.cliStartFailed('$e'));
+      return;
     }
+    setState(() {
+      _ready = true;
+    });
   }
 
   void _onConnectionState(FlipperConnectionState state) {
     if (!mounted) return;
     if (!state.connected && _ready) {
+      // One line here explains every failure that would otherwise follow it,
+      // and without it the terminal simply stops answering.
+      _notice(l10n.cliDisconnected);
       setState(() {
         _ready = false;
       });
@@ -230,7 +297,7 @@ class _CliPageState extends State<CliPage> {
 
   void _sendCtrlC() {
     if (!_ready) return;
-    _fireAndLog(
+    _fireAndShow(
       () => _client.writeCliBytes(Uint8List.fromList([0x03])),
       'ctrl-c',
     );
