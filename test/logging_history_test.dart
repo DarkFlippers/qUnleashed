@@ -160,6 +160,50 @@ void main() {
     });
   });
 
+  group('what nothing else catches', () {
+    // The failures with the least surface of all: every handler the app added
+    // for #21, #84, #85 and #80 covers something someone thought to catch.
+    // These are the ones nobody did, and they reached nothing at all.
+    late FlutterExceptionHandler? previous;
+
+    setUp(() {
+      previous = FlutterError.onError;
+      LogService.installUncaughtHandlers();
+    });
+    tearDown(() => FlutterError.onError = previous);
+
+    test('a framework error is kept', () {
+      printed(
+        () => FlutterError.reportError(
+          FlutterErrorDetails(
+            exception: StateError('a build blew up'),
+            stack: StackTrace.current,
+          ),
+        ),
+      );
+
+      expect(LogService.history.single, contains('a build blew up'));
+    });
+
+    // flutter_test installs its own handler to fail a test on an unexpected
+    // error, and a debug build presents the red console dump through the same
+    // hook. Recording must not cost either.
+    test('the handler already installed still runs', () {
+      var presented = 0;
+      FlutterError.onError = (_) => presented += 1;
+      LogService.installUncaughtHandlers();
+
+      printed(
+        () => FlutterError.reportError(
+          FlutterErrorDetails(exception: StateError('boom')),
+        ),
+      );
+
+      expect(presented, 1);
+      expect(LogService.history.single, contains('boom'));
+    });
+  });
+
   // CI runs this file twice, and the second run is the only one that can see
   // the property the whole issue is about. If the define ever stops reaching
   // the build - a rename, a Flutter change, an edit to ci.yml - that job would

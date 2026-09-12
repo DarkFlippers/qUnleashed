@@ -12,6 +12,7 @@ import 'pages/flibler.dart';
 import 'pages/language.dart';
 import 'pages/map.dart';
 import 'pages/push.dart';
+import 'pages/logs.dart';
 import 'pages/storage.dart';
 import 'pages/theme.dart';
 import 'pages/widgets.dart';
@@ -187,6 +188,13 @@ class SettingsPage extends StatelessWidget {
                 asset: 'assets/ic/fileformat/settings.svg',
                 color: const Color(0xFF4DB6AC),
                 page: (_) => const AssemblerSettingsPage(),
+              ),
+              _Category(
+                title: context.l10n.settingsLogTitle,
+                subtitle: context.l10n.settingsLogSubtitle,
+                asset: 'assets/ic/app/logs.svg',
+                color: const Color(0xFF90A4AE),
+                page: (_) => const LogSettingsPage(),
               ),
             ],
             onTap: (c) => _open(context, c),

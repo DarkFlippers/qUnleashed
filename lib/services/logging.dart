@@ -1,4 +1,5 @@
 import 'dart:collection';
+import 'dart:ui' as ui;
 
 import 'package:flipperlib/flipperlib.dart' show FlipperLogLevel, Log;
 import 'package:flutter/foundation.dart';
@@ -126,7 +127,10 @@ class LogService {
     if (_history.length > historyLimit) _history.removeFirst();
   }
 
-  @visibleForTesting
+  /// Drops everything [history] holds.
+  ///
+  /// Not test-only: the log screen offers it, because a log is copied into a
+  /// bug report and then wants emptying before reproducing the next one.
   static void clearHistory() {
     _history.clear();
     _lastKept = null;
@@ -140,6 +144,7 @@ class LogService {
     _initialized = true;
 
     attachFlipperlibSink();
+    installUncaughtHandlers();
 
     if (!printing) {
       await UniversalBle.setLogLevel(BleLogLevel.none);
@@ -168,6 +173,33 @@ class LogService {
   static void attachFlipperlibSink() {
     Log.level = printing ? _flipperLevel : FlipperLogLevel.error;
     Log.sink = _flipperlibSink;
+  }
+
+  /// Routes what nothing else catches into [history].
+  ///
+  /// The failures with the least surface of all: a framework exception during
+  /// build, a rejected future nobody awaited. Every handler the app added for
+  /// #21, #84, #85 and #80 covers a failure someone thought to catch; these
+  /// are the ones nobody did, and until now they reached nothing at all.
+  ///
+  /// Both chain rather than replace. [FlutterError.onError] already presents
+  /// the red console dump in a debug build and flutter_test installs its own
+  /// to fail a test on an unexpected error — dropping either would be a poor
+  /// trade for recording it. Returning false from the platform handler says
+  /// the error is still unhandled, so nothing downstream is suppressed either.
+  @visibleForTesting
+  static void installUncaughtHandlers() {
+    final presented = FlutterError.onError;
+    FlutterError.onError = (details) {
+      error('[flutter] ${details.exceptionAsString()}\n${details.stack}');
+      presented?.call(details);
+    };
+
+    final dispatched = ui.PlatformDispatcher.instance.onError;
+    ui.PlatformDispatcher.instance.onError = (e, st) {
+      error('[uncaught] $e\n$st');
+      return dispatched?.call(e, st) ?? false;
+    };
   }
 
   static void error(String msg) =>

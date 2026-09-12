@@ -226,6 +226,36 @@
     "description": "Subtitle under the Notifications tile on the Settings screen."
   },
 
+  "settingsLogTitle": "Log",
+  "@settingsLogTitle": {
+    "description": "Title of the log screen and of its tile on the Settings screen. The errors and warnings the app recorded, for attaching to a bug report."
+  },
+
+  "settingsLogSubtitle": "Errors recorded for a bug report",
+  "@settingsLogSubtitle": {
+    "description": "Subtitle under the Log tile on the Settings screen."
+  },
+
+  "logEmpty": "Nothing recorded yet. Errors and warnings appear here as they happen, so they can be copied into a bug report.",
+  "@logEmpty": {
+    "description": "Shown on the log screen when the app has recorded nothing. Reassures the user that an empty log means nothing went wrong, not that recording is off."
+  },
+
+  "logCopy": "Copy the log",
+  "@logCopy": {
+    "description": "Tooltip on the log screen's copy button, which puts every recorded line on the clipboard."
+  },
+
+  "logCopied": "Log copied",
+  "@logCopied": {
+    "description": "Toast shown after the log was put on the clipboard."
+  },
+
+  "commonRefresh": "Refresh",
+  "@commonRefresh": {
+    "description": "Tooltip on a button that re-reads what is shown. Shared across screens."
+  },
+
   "settingsStorageTitle": "Storage",
   "@settingsStorageTitle": {
     "description": "Title of the storage settings screen, and of its tile on the Settings screen."
