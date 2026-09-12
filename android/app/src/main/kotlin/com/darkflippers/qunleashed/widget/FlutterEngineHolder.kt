@@ -42,6 +42,14 @@ object FlutterEngineHolder {
         return engine
     }
 
+    // Keyed on the bridge being absent rather than on the engine having
+    // changed, which is only sound because the cached engine outlives the
+    // process's use of it: MainActivity attaches by id through
+    // getCachedEngineId, so shouldDestroyEngineWithHost stays false, nothing
+    // calls FlutterEngineCache.remove or engine.destroy, and the manifest
+    // declares no android:process. Break any of those and this needs to
+    // compare identity and rebuild, because a bridge left bound to a retired
+    // engine keeps a live MediaSession wired to a dead binaryMessenger.
     private fun ensureProcessBridges(context: Context, engine: FlutterEngine) {
         if (mediaRemoteChannel == null) {
             mediaRemoteChannel = MediaRemoteChannel(context.applicationContext, engine)

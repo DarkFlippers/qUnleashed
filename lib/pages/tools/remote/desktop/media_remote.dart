@@ -5,8 +5,33 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../../services/localization/l10n.dart';
 import '../../../../services/logging.dart';
 import 'models/models.dart';
+
+/// The Android MediaSession could not be brought up.
+///
+/// Distinct from a preference failure on purpose: by the time this is thrown
+/// the user's choice has already been saved, so the two need different copy —
+/// and the runtime type of the cause cannot tell them apart, since both paths
+/// can surface a [PlatformException].
+class WristRemoteStartException implements Exception {
+  WristRemoteStartException(this.cause);
+
+  final Object cause;
+
+  @override
+  String toString() => '$cause';
+}
+
+/// How long to wait on the platform before giving up on a start or stop.
+///
+/// Both calls are answered on Android's main thread, so reaching this means it
+/// is wedged or badly backed up - a cold media stack or a long GC pause can do
+/// it without anything being broken. Worth bounding anyway: the reconcile chain
+/// is process-wide and serialized, so a reply that never arrives would block
+/// every later start and stop and strand the handler on a page that is gone.
+const Duration _kNativeTimeout = Duration(seconds: 5);
 
 /// Media controls Android may receive from a watch or fitness band.
 enum MediaRemoteInput {
@@ -21,6 +46,14 @@ enum MediaRemoteInput {
 }
 
 /// Action sent to a mapped Flipper button.
+///
+/// What the firmware sees for a hold is PRESS, then LONG once
+/// [RemoteSession.beginHold]'s fixed 500 ms timer fires, then RELEASE when the
+/// duration below runs out — never REPEAT. So the three holds do not send three
+/// different things; they differ only in how long the key stays down after the
+/// one LONG, which is what separates "long-press this" from "hold this while
+/// something happens on screen". A fourth entry buys another RELEASE delay and
+/// nothing else, and would also need an l10n label and a stored pref value.
 enum WristRemoteAction {
   tap(Duration.zero),
   hold1s(Duration(seconds: 1)),
@@ -50,7 +83,7 @@ const Duration wristRemoteDoubleTapDuration = Duration(milliseconds: 400);
 class MediaRemoteBridge {
   MediaRemoteBridge({
     required this.onButton,
-    @visibleForTesting bool? supportedOverride,
+    bool? supportedOverride,
     @visibleForTesting Future<SharedPreferences> Function()? preferencesLoader,
   }) : _supportedOverride = supportedOverride,
        _preferencesLoader = preferencesLoader ?? SharedPreferences.getInstance;
@@ -90,6 +123,10 @@ class MediaRemoteBridge {
   };
 
   final void Function(RemoteButton button, WristRemoteAction action) onButton;
+
+  /// Stands in for `Platform.isAndroid`. Only [RemoteControlPage] sets it, and
+  /// only from its own test-visible field — the annotation lives there rather
+  /// than here so the forwarding does not read as a production use.
   final bool? _supportedOverride;
   final Future<SharedPreferences> Function() _preferencesLoader;
   final Map<MediaRemoteInput, RemoteButton?> _mapping = {..._defaults};
@@ -263,16 +300,35 @@ class MediaRemoteBridge {
 
       LogService.info('[WristRemote] start requested');
       try {
-        await _channel.invokeMethod<void>('start');
+        // The now-playing card is the only part of this the user reads, and
+        // they read it on a watch face or a lock screen, so the strings come
+        // from the app's locale rather than from Kotlin. The app name is a
+        // brand and stays as it is.
+        await _channel
+            .invokeMethod<void>('start', <String, String>{
+              'title': l10n.wristRemoteSessionTitle,
+              'subtitle': l10n.wristRemoteSessionSubtitle,
+            })
+            .timeout(_kNativeTimeout);
         _nativeActive = true;
         LogService.info('[WristRemote] started');
+      } on TimeoutException catch (e) {
+        // A timeout abandons the wait; it does not cancel the platform call.
+        // The session may well exist, so keep ownership and assume it does:
+        // the next reconcile then takes the stop path, and Kotlin's stop()
+        // no-ops when there is nothing to release. Disowning here instead
+        // would strand a live, media-button-grabbing session that no later
+        // stop could ever reach.
+        _nativeActive = true;
+        LogService.error('[WristRemote] start timed out: $e');
+        throw WristRemoteStartException(e);
       } catch (e) {
         if (identical(_nativeOwner, this)) {
           _nativeOwner = null;
           _channel.setMethodCallHandler(null);
         }
         LogService.error('[WristRemote] start failed: $e');
-        rethrow;
+        throw WristRemoteStartException(e);
       }
       return;
     }
@@ -287,7 +343,7 @@ class MediaRemoteBridge {
 
     LogService.info('[WristRemote] stop requested');
     try {
-      await _channel.invokeMethod<void>('stop');
+      await _channel.invokeMethod<void>('stop').timeout(_kNativeTimeout);
       LogService.info('[WristRemote] stopped');
     } catch (e) {
       LogService.warn('[WristRemote] stop failed: $e');

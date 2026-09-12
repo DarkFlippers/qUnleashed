@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../components/icon.dart';
 import '../../../../components/notification.dart';
 import '../../../../services/localization/l10n.dart';
 import '../../../../theme/theme.dart';
@@ -25,8 +26,15 @@ Future<void> showMediaRemoteSettingsDialog(
               await operation();
             } catch (e) {
               if (context.mounted) {
+                // Only setEnabled reaches the native side, and only it can
+                // fail with the preference already saved - saying the save
+                // failed there would contradict the switch, which the bridge
+                // correctly leaves showing the stored intent for a later retry
+                // to honour. Everything else here is a write that did not land.
                 context.showNotification(
-                  context.l10n.remoteSaveFailed('$e'),
+                  e is WristRemoteStartException
+                      ? context.l10n.wristRemoteStartFailed('$e')
+                      : context.l10n.remoteSaveFailed('$e'),
                   type: QNotificationType.error,
                 );
               }
@@ -160,12 +168,24 @@ class _MappingRow extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          _inputLabel(context, input),
-          style: TextStyle(
-            color: colors.dialogText,
-            fontWeight: FontWeight.w600,
-          ),
+        Row(
+          children: [
+            Icon(
+              _inputIcon(input),
+              size: _kGlyphSize,
+              color: colors.dialogText,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                _inputLabel(context, input),
+                style: TextStyle(
+                  color: colors.dialogText,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 8),
         Row(
@@ -176,14 +196,16 @@ class _MappingRow extends StatelessWidget {
                 value: value,
                 onChanged: onChanged,
                 items: [
-                  DropdownMenuItem<RemoteButton?>(
-                    value: null,
-                    child: Text(context.l10n.wristRemoteNotAssigned),
-                  ),
-                  for (final button in RemoteButton.values)
+                  // "Not assigned" goes through the same builder as the rest,
+                  // so its label lines up with the icon rows by construction
+                  // rather than by a spacer that has to be kept in step.
+                  for (final button in <RemoteButton?>[
+                    null,
+                    ...RemoteButton.values,
+                  ])
                     DropdownMenuItem<RemoteButton?>(
                       value: button,
-                      child: Text(_buttonLabel(context, button)),
+                      child: _buttonEntry(context, button),
                     ),
                 ],
               ),
@@ -211,31 +233,73 @@ class _MappingRow extends StatelessWidget {
   }
 }
 
-String _inputLabel(
-  BuildContext context,
-  MediaRemoteInput input,
-) => switch (input) {
-  MediaRemoteInput.previous => '⏮  ${context.l10n.wristRemotePrevious}',
-  MediaRemoteInput.doublePrevious =>
-    '⏮×2  ${context.l10n.wristRemoteDoublePrevious}',
-  MediaRemoteInput.playPause => '⏯  ${context.l10n.wristRemotePlayPause}',
-  MediaRemoteInput.doublePlayPause =>
-    '⏯×2  ${context.l10n.wristRemoteDoublePlayPause}',
-  MediaRemoteInput.next => '⏭  ${context.l10n.wristRemoteNext}',
-  MediaRemoteInput.doubleNext => '⏭×2  ${context.l10n.wristRemoteDoubleNext}',
-  MediaRemoteInput.volumeUp => '🔊  ${context.l10n.wristRemoteVolumeUp}',
-  MediaRemoteInput.volumeDown => '🔉  ${context.l10n.wristRemoteVolumeDown}',
+// Glyphs stay out of the translated strings. Concatenating one onto an ARB
+// value puts it outside what Crowdin sees, so a locale can neither reorder it
+// nor drop it - and for the Flipper buttons the app already ships the real
+// icons the remote itself uses.
+
+String _inputLabel(BuildContext context, MediaRemoteInput input) =>
+    switch (input) {
+      MediaRemoteInput.previous => context.l10n.wristRemotePrevious,
+      MediaRemoteInput.doublePrevious => context.l10n.wristRemoteDoublePrevious,
+      MediaRemoteInput.playPause => context.l10n.wristRemotePlayPause,
+      MediaRemoteInput.doublePlayPause =>
+        context.l10n.wristRemoteDoublePlayPause,
+      MediaRemoteInput.next => context.l10n.wristRemoteNext,
+      MediaRemoteInput.doubleNext => context.l10n.wristRemoteDoubleNext,
+      MediaRemoteInput.volumeUp => context.l10n.wristRemoteVolumeUp,
+      MediaRemoteInput.volumeDown => context.l10n.wristRemoteVolumeDown,
+    };
+
+IconData _inputIcon(MediaRemoteInput input) => switch (input) {
+  MediaRemoteInput.previous ||
+  MediaRemoteInput.doublePrevious => Icons.skip_previous,
+  MediaRemoteInput.playPause ||
+  MediaRemoteInput.doublePlayPause => Icons.play_arrow,
+  MediaRemoteInput.next || MediaRemoteInput.doubleNext => Icons.skip_next,
+  MediaRemoteInput.volumeUp => Icons.volume_up,
+  MediaRemoteInput.volumeDown => Icons.volume_down,
 };
 
 String _buttonLabel(BuildContext context, RemoteButton button) =>
     switch (button) {
-      RemoteButton.up => '↑  ${context.l10n.wristRemoteButtonUp}',
-      RemoteButton.down => '↓  ${context.l10n.wristRemoteButtonDown}',
-      RemoteButton.left => '←  ${context.l10n.wristRemoteButtonLeft}',
-      RemoteButton.right => '→  ${context.l10n.wristRemoteButtonRight}',
+      RemoteButton.up => context.l10n.wristRemoteButtonUp,
+      RemoteButton.down => context.l10n.wristRemoteButtonDown,
+      RemoteButton.left => context.l10n.wristRemoteButtonLeft,
+      RemoteButton.right => context.l10n.wristRemoteButtonRight,
       RemoteButton.ok => context.l10n.commonOk,
       RemoteButton.back => context.l10n.remoteBack,
     };
+
+/// One dropdown entry, with [button] null standing for "not assigned" so both
+/// cases share a layout instead of agreeing on one.
+Widget _buttonEntry(BuildContext context, RemoteButton? button) => Row(
+  children: [
+    SizedBox(
+      width: _kGlyphSize,
+      height: _kGlyphSize,
+      // The same artwork the press animation and the keyboard hint legend use.
+      child: button == null
+          ? null
+          : QIcon(
+              asset: button.hintAsset,
+              color: context.appColors.accent,
+              size: _kGlyphSize,
+            ),
+    ),
+    const SizedBox(width: 10),
+    Expanded(
+      child: Text(
+        button == null
+            ? context.l10n.wristRemoteNotAssigned
+            : _buttonLabel(context, button),
+        overflow: TextOverflow.ellipsis,
+      ),
+    ),
+  ],
+);
+
+const double _kGlyphSize = 18;
 
 String _actionLabel(BuildContext context, WristRemoteAction action) =>
     switch (action) {

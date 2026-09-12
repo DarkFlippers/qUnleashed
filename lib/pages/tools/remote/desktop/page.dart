@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flipperlib/flipperlib.dart' show FlipperClient;
 import 'package:flutter/material.dart';
 import 'package:qunleashed/components/appbar.dart';
 
@@ -22,7 +23,22 @@ import 'widgets/screen.dart';
 import 'widgets/wide_body.dart';
 
 class RemoteControlPage extends StatefulWidget {
-  const RemoteControlPage({super.key});
+  const RemoteControlPage({
+    super.key,
+    @visibleForTesting this.client,
+    @visibleForTesting this.mediaRemoteSupported,
+  });
+
+  /// Link the session talks over. Null takes the app's own client, which is
+  /// what every route does; a test passes a fake so the wire is observable.
+  @visibleForTesting
+  final FlipperClient? client;
+
+  /// Overrides the bridge's `Platform.isAndroid` gate. Wrist Remote is
+  /// Android-only, so without this a test host never installs the channel
+  /// handler and the input path cannot be driven at all.
+  @visibleForTesting
+  final bool? mediaRemoteSupported;
 
   @override
   State<RemoteControlPage> createState() => _RemoteControlPageState();
@@ -44,10 +60,13 @@ class _RemoteControlPageState extends State<RemoteControlPage>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _gifRecorder = GifRecorder();
-    _session = RemoteSession()
+    _session = RemoteSession(client: widget.client)
       ..addListener(_onSessionChanged)
       ..onRawFrame = _onRawFrame;
-    _mediaRemote = MediaRemoteBridge(onButton: _onMediaRemoteButton);
+    _mediaRemote = MediaRemoteBridge(
+      onButton: _onMediaRemoteButton,
+      supportedOverride: widget.mediaRemoteSupported,
+    );
     unawaited(_startMediaRemote());
   }
 
@@ -60,11 +79,22 @@ class _RemoteControlPageState extends State<RemoteControlPage>
     }
   }
 
+  Future<void> _stopMediaRemote() async {
+    try {
+      await _mediaRemote.stop();
+    } catch (_) {
+      // Mirrors _startMediaRemote. stop() cannot reject under today's contract
+      // - it clears _started before reconciling, so the branch that rethrows is
+      // unreachable from here - but teardown must never be the thing that turns
+      // a bridge failure into an unhandled async error out of dispose().
+    }
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _recordingTick?.cancel();
-    unawaited(_mediaRemote.stop());
+    unawaited(_stopMediaRemote());
     _session
       ..removeListener(_onSessionChanged)
       ..onRawFrame = null;
@@ -111,6 +141,21 @@ class _RemoteControlPageState extends State<RemoteControlPage>
     RemoteButton button,
     Duration duration,
   ) async {
+    // A second hold on a key that is already down would share the one
+    // _HeldButton the session keeps per key: beginHold no-ops, and whichever
+    // timer expires first releases for both, so the hold the user asked for
+    // ends early rather than late. Ask the session rather than tracking it
+    // here, so a key already held from the screen counts too.
+    //
+    // This only stops a new hold from starting. An on-screen release still
+    // ends a wrist hold early, because _onHoldEnd calls endHold unconditionally
+    // - a deliberate tap winning over a running hold is the behaviour we want.
+    if (_session.isHolding(button)) {
+      LogService.debug(
+        '[WristRemote] hold for ${button.name} already running; ignored',
+      );
+      return;
+    }
     LogService.debug(
       '[WristRemote] holding ${button.name} for '
       '${duration.inMilliseconds} ms',
@@ -264,8 +309,15 @@ class _RemoteControlPageState extends State<RemoteControlPage>
 
     if (!mounted) return;
     if (startError != null) {
+      // start() fails two ways, and they need different copy: the preferences
+      // would not load, or they loaded and Android refused the session. The
+      // second leaves every setting intact, so telling the user they could not
+      // be loaded and then opening a dialog full of them says two things at
+      // once.
       context.showNotification(
-        context.l10n.wristRemoteSettingsLoadFailed('$startError'),
+        startError is WristRemoteStartException
+            ? context.l10n.wristRemoteStartFailed('$startError')
+            : context.l10n.wristRemoteSettingsLoadFailed('$startError'),
         type: QNotificationType.error,
       );
     }
@@ -273,7 +325,13 @@ class _RemoteControlPageState extends State<RemoteControlPage>
     try {
       await showMediaRemoteSettingsDialog(context, _mediaRemote);
     } catch (e) {
-      if (!mounted) return;
+      // A load failure was already reported above, and the dialog's own
+      // ensureLoaded is a second real attempt at the same broken store - it
+      // fails the same way and would say the same thing twice. The dialog is
+      // still worth attempting: a native-only start failure leaves startError
+      // set with the preferences intact, and opening is what lets the user
+      // turn Wrist Remote back off.
+      if (!mounted || startError != null) return;
       context.showNotification(
         context.l10n.wristRemoteSettingsLoadFailed('$e'),
         type: QNotificationType.error,
