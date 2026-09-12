@@ -3428,6 +3428,31 @@
     }
   },
 
+  "cliWriteFailed": "[not sent: {error}]",
+  "@cliWriteFailed": {
+    "description": "Written into the CLI terminal, in red, when a keystroke or Ctrl-C could not be delivered to the device. Keep it short and bracketed: it sits inline among the device's own output. {error} is the untranslated exception text.",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+
+  "cliStartFailed": "[could not open the CLI session: {error}]",
+  "@cliStartFailed": {
+    "description": "Written into the CLI terminal, in red, when the session could not be opened at all - the initial nudge failed, or the page could not get as far as connecting. The terminal stays black and accepts nothing after this. {error} is the untranslated exception text.",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+
+  "cliDisconnected": "[disconnected]",
+  "@cliDisconnected": {
+    "description": "Written into the CLI terminal, in red, when the device goes away. Explains why the terminal has stopped responding to input."
+  },
+
   "cliSendCtrlC": "Send Ctrl+C",
   "@cliSendCtrlC": {
     "description": "Button that interrupts the running command in the terminal. Ctrl+C is a literal key combination."
