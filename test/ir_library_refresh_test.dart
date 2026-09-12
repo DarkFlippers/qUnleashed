@@ -196,9 +196,27 @@ void main() {
     expect(Directory('${root.path}.incoming').existsSync(), isFalse);
   });
 
-  // exists() repairs on the way past, and is the most-travelled route into
-  // recovery — it runs whenever the library page opens.
-  test('opening the library repairs a swap that was interrupted', () async {
+  // Recovery runs at startup now, so the repair does not wait for the user to
+  // open the IR page. Until it did, the library read as absent to everything
+  // else — Settings → Storage reported its size as zero.
+  test('startup repairs a swap that was interrupted', () async {
+    final aside = Directory('${root.path}.superseded.1000')
+      ..createSync(recursive: true);
+    Directory('${aside.path}${sep}TVs').createSync(recursive: true);
+    File('${aside.path}${sep}TVs${sep}Old.ir').writeAsStringSync('old remote');
+
+    final report = await IrLibLocalRepo.recoverStranded();
+
+    expect(report.repaired, isTrue);
+    expect(report.strandedAt, isNull);
+    expect(read('TVs/Old.ir'), 'old remote');
+    expect(await IrLibLocalRepo().exists(), isTrue);
+  });
+
+  // The point of taking the repair out of exists(): a method that reads as a
+  // query was renaming trees and running recursive deletes, so any caller
+  // added later that treated it as a cheap check got those side effects.
+  test('asking whether the library exists does not move anything', () async {
     final aside = Directory('${root.path}.superseded.1000')
       ..createSync(recursive: true);
     Directory('${aside.path}${sep}TVs').createSync(recursive: true);
@@ -206,7 +224,61 @@ void main() {
 
     final present = await IrLibLocalRepo().exists();
 
-    expect(present, isTrue);
-    expect(read('TVs/Old.ir'), 'old remote');
+    expect(present, isFalse, reason: 'it reports, it does not repair');
+    expect(aside.existsSync(), isTrue, reason: 'and leaves the tree alone');
+  });
+
+  group('when the library cannot be put back', () {
+    /// Blocks the restore the way a stray file at the library path would: the
+    /// rename has nowhere to land, and the tree beside it is the only copy.
+    Directory blockedRestore() {
+      final aside = Directory('${root.path}.superseded.1000')
+        ..createSync(recursive: true);
+      Directory('${aside.path}${sep}TVs').createSync(recursive: true);
+      File(
+        '${aside.path}${sep}TVs${sep}Old.ir',
+      ).writeAsStringSync('old remote');
+      File(root.path).writeAsStringSync('in the way');
+      return aside;
+    }
+
+    test('recovery says where it is instead of only logging it', () async {
+      final aside = blockedRestore();
+
+      final report = await IrLibLocalRepo.recoverStranded();
+
+      expect(report.strandedAt?.path, aside.path);
+      expect(report.repaired, isFalse);
+      expect(
+        File('${aside.path}${sep}TVs${sep}Old.ir').readAsStringSync(),
+        'old remote',
+        reason: 'kept, because it is the only copy there is',
+      );
+    });
+
+    // LogService.enabled is bool.fromEnvironment('QLOG', kDebugMode), so the
+    // log line this used to be is compiled out of a release build. The path
+    // has to survive the pass that found it, or the one moment the app knows
+    // the library is one rename away is the moment it says nothing.
+    test('the path outlives the pass, for the UI to read', () async {
+      final aside = blockedRestore();
+
+      await IrLibLocalRepo.recoverStranded();
+
+      expect(IrLibLocalRepo.strandedLibrary?.path, aside.path);
+    });
+
+    test('a later run that succeeds clears it', () async {
+      blockedRestore();
+      await IrLibLocalRepo.recoverStranded();
+      expect(IrLibLocalRepo.strandedLibrary, isNotNull);
+
+      File(root.path).deleteSync();
+      final report = await IrLibLocalRepo.recoverStranded();
+
+      expect(report.repaired, isTrue);
+      expect(IrLibLocalRepo.strandedLibrary, isNull);
+      expect(read('TVs/Old.ir'), 'old remote');
+    });
   });
 }

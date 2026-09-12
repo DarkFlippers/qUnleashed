@@ -135,6 +135,7 @@ class _IrLibSettingsDialogState extends State<IrLibSettingsDialog> {
     final colors = context.appColors;
     final downloading = widget.controller.downloading;
     final localAvailable = widget.controller.localAvailable;
+    final stranded = widget.controller.strandedLibraryPath;
     return AlertDialog(
       backgroundColor: colors.card,
       title: Text('IRDB', style: TextStyle(color: colors.textPrimary)),
@@ -168,6 +169,10 @@ class _IrLibSettingsDialogState extends State<IrLibSettingsDialog> {
                   onPressed: () => setState(() => _showToken = !_showToken),
                 ),
               ),
+              if (stranded != null) ...[
+                const SizedBox(height: 14),
+                _StrandedNotice(colors: colors, path: stranded),
+              ],
               const SizedBox(height: 14),
               _PrimaryActionButton(
                 colors: colors,
@@ -247,6 +252,46 @@ class _IrLibSettingsDialogState extends State<IrLibSettingsDialog> {
           borderRadius: BorderRadius.circular(8),
           borderSide: BorderSide(color: colors.accent),
         ),
+      ),
+    );
+  }
+}
+
+/// Says the library still exists, and where.
+///
+/// The one state the app knows about and the user cannot see: an interrupted
+/// refresh left the library beside where it belongs, the restore did not land,
+/// and the recovery kept it rather than delete the only copy. Everything else
+/// reads that as no library at all, and this dialog is where the user decides
+/// whether to spend the download again — so it is the one place saying so
+/// changes what they do.
+class _StrandedNotice extends StatelessWidget {
+  const _StrandedNotice({required this.colors, required this.path});
+
+  final QAppColors colors;
+  final String path;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colors.info.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: colors.info.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline, size: 18, color: colors.info),
+          const SizedBox(width: 10),
+          Expanded(
+            child: SelectableText(
+              context.l10n.irLibraryStranded(path),
+              style: TextStyle(color: colors.textSecondary, fontSize: 13),
+            ),
+          ),
+        ],
       ),
     );
   }

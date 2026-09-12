@@ -56,6 +56,13 @@ class IrLibController extends ChangeNotifier {
   IrLibDownloadProgress? get downloadProgress => _downloadProgress;
   bool get downloading => _downloading;
   bool get localAvailable => _localAvailable;
+
+  /// Where an interrupted refresh left the library when the app could not move
+  /// it back, or null.
+  ///
+  /// Read live rather than captured: recovery runs at startup, but a download
+  /// runs it again and can clear this.
+  String? get strandedLibraryPath => IrLibLocalRepo.strandedLibrary?.path;
   String get path => _path;
   bool get loading => _loading;
   String? get error => _error;
