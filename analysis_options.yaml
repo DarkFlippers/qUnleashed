@@ -4,6 +4,10 @@ analyzer:
   exclude:
     - build/**
     - lib/modules/flipperlib/lib/src/proto/generated/**
+    # Another package's tests, with their own dev dependencies. The app
+    # never resolves those, so analysing them here reports every matcher
+    # as undefined.
+    - lib/modules/*/test/**
     - android/**
     - ios/**
     - web/**
