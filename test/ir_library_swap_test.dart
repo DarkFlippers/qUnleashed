@@ -33,10 +33,18 @@ void main() {
   String markerIn(Directory dir) =>
       File('${dir.path}${sep}Brand${sep}tv.ir').readAsStringSync();
 
-  /// The delete of the superseded tree is deliberately not awaited, so give it
-  /// a turn before asserting it is gone.
-  Future<void> settle() =>
-      Future<void>.delayed(const Duration(milliseconds: 50));
+  /// The delete of the superseded tree is deliberately not awaited, so wait
+  /// for it rather than guessing at a duration - it runs on the IO thread
+  /// pool, where a loaded machine can miss any fixed delay.
+  Future<void> waitGone(Directory dir) async {
+    final deadline = DateTime.now().add(const Duration(seconds: 5));
+    while (dir.existsSync()) {
+      if (DateTime.now().isAfter(deadline)) {
+        fail('${dir.path} was still there after 5s');
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
+  }
 
   group('swapping a new library in', () {
     test('the new tree replaces the old one', () async {
@@ -44,18 +52,17 @@ void main() {
       treeAt(incoming, 'new');
 
       await IrLibLocalRepo.swapIn(root, incoming);
-      await settle();
+      await waitGone(superseded);
 
       expect(markerIn(root), 'new');
       expect(incoming.existsSync(), isFalse);
-      expect(superseded.existsSync(), isFalse, reason: 'cleared afterwards');
     });
 
     test('works when there was no library to replace', () async {
       treeAt(incoming, 'new');
 
       await IrLibLocalRepo.swapIn(root, incoming);
-      await settle();
+      await waitGone(superseded);
 
       expect(markerIn(root), 'new');
     });
@@ -66,7 +73,7 @@ void main() {
       treeAt(superseded, 'older still');
 
       await IrLibLocalRepo.swapIn(root, incoming);
-      await settle();
+      await waitGone(superseded);
 
       expect(markerIn(root), 'new');
     });
@@ -137,6 +144,84 @@ void main() {
       await IrLibLocalRepo.recoverInterrupted(root);
 
       expect(root.existsSync(), isFalse);
+    });
+  });
+
+  group('the states review found unguarded', () {
+    // The restore failing leaves .superseded holding the only copy there is.
+    // Deleting it then - which the first version did, unconditionally - turns
+    // a recoverable interruption into the loss it was there to prevent.
+    test('a library that cannot be put back is kept, not cleared', () async {
+      treeAt(superseded, 'the only copy');
+      // A file where the library goes: the rename cannot land.
+      File(root.path).writeAsStringSync('in the way');
+
+      await IrLibLocalRepo.recoverInterrupted(root);
+
+      expect(
+        Directory(superseded.path).existsSync(),
+        isTrue,
+        reason: 'the last copy of the library must survive a failed restore',
+      );
+      expect(markerIn(superseded), 'the only copy');
+    });
+
+    // Deleting the library first leaves root missing while .superseded stands,
+    // which is indistinguishable from an interrupted swap - so an interrupted
+    // delete used to hand the previous library back.
+    test('a part-finished delete cannot resurrect the old library', () async {
+      treeAt(root, 'current');
+      treeAt(superseded, 'previous');
+      IrLibLocalRepo.debugUseRoot(root);
+      addTearDown(() => IrLibLocalRepo.debugUseRoot(null));
+
+      await IrLibLocalRepo().deleteAll();
+      await IrLibLocalRepo.recoverInterrupted(root);
+
+      expect(root.existsSync(), isFalse, reason: 'the delete stays done');
+      expect(superseded.existsSync(), isFalse);
+    });
+  });
+
+  group('what a refresh does before it fetches anything', () {
+    // #62 in one assertion. download() reaches getTemporaryDirectory, which
+    // has no plugin in a unit test, so it fails in the window the old code
+    // had already deleted the library in.
+    test('a refresh that fails early leaves the library standing', () async {
+      treeAt(root, 'old');
+      IrLibLocalRepo.debugUseRoot(root);
+      addTearDown(() => IrLibLocalRepo.debugUseRoot(null));
+
+      await expectLater(
+        IrLibLocalRepo().download(owner: 'o', repo: 'r', branch: 'b'),
+        throwsA(anything),
+      );
+
+      expect(
+        markerIn(root),
+        'old',
+        reason: 'the library is untouched until there is a replacement',
+      );
+      expect(
+        incoming.existsSync(),
+        isTrue,
+        reason: 'staged beside the library rather than over it',
+      );
+    });
+
+    test('the staging tree is cleared by the next recovery', () async {
+      treeAt(root, 'old');
+      IrLibLocalRepo.debugUseRoot(root);
+      addTearDown(() => IrLibLocalRepo.debugUseRoot(null));
+
+      await expectLater(
+        IrLibLocalRepo().download(owner: 'o', repo: 'r', branch: 'b'),
+        throwsA(anything),
+      );
+      await IrLibLocalRepo.recoverInterrupted(root);
+
+      expect(incoming.existsSync(), isFalse);
+      expect(markerIn(root), 'old');
     });
   });
 }
