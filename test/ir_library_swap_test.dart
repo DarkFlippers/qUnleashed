@@ -118,6 +118,37 @@ void main() {
       expect(root.existsSync(), isTrue, reason: 'not left with nothing');
       expect(_markerIn(root), 'old');
     });
+
+    // Not covered: the rollback inside swapIn failing, which is the moment a
+    // strand is created mid-session. Reaching it needs something to occupy the
+    // library path between the failed rename and the rollback, and there is no
+    // await between them to hook — only a seam in the production code would
+    // do it, which is a worse trade than the three lines it would cover.
+    // download() recovers before it swaps, so it can never see the state the
+    // swap creates. Without the swap clearing the record itself, the notice
+    // sat under a button that by then read DELETE, still advising a download.
+    test('a swap that lands clears a strand an earlier one left', () async {
+      useRoot(root);
+      final aside = stubSuperseded('stranded earlier');
+      // A file where the library goes: the restore has nowhere to land, so
+      // recovery keeps the tree and records it.
+      File(root.path).writeAsStringSync('in the way');
+      await IrLibLocalRepo.recoverInterrupted(root);
+      expect(
+        IrLibLocalRepo.strandedLibrary.value?.path,
+        aside.path,
+        reason: 'the strand this test is about',
+      );
+
+      // Cleared before the swap, so nothing recovers on the way past - the
+      // swap itself is the only thing that can clear the record here.
+      File(root.path).deleteSync();
+      _treeAt(incoming, 'new');
+      await IrLibLocalRepo.swapIn(root, incoming);
+
+      expect(_markerIn(root), 'new');
+      expect(IrLibLocalRepo.strandedLibrary.value, isNull);
+    });
   });
 
   group('recovering an interrupted refresh', () {

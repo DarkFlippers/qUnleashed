@@ -1,3 +1,5 @@
+import 'dart:io' as io;
+
 import 'package:flutter/material.dart';
 
 import '../../../services/localization/l10n.dart';
@@ -168,6 +170,7 @@ class _IrLibSettingsDialogState extends State<IrLibSettingsDialog> {
                   onPressed: () => setState(() => _showToken = !_showToken),
                 ),
               ),
+              const _StrandedNotice(),
               const SizedBox(height: 14),
               _PrimaryActionButton(
                 colors: colors,
@@ -247,6 +250,59 @@ class _IrLibSettingsDialogState extends State<IrLibSettingsDialog> {
           borderRadius: BorderRadius.circular(8),
           borderSide: BorderSide(color: colors.accent),
         ),
+      ),
+    );
+  }
+}
+
+/// Says the library still exists, and where.
+///
+/// The one state the app knows about and the user cannot see: an interrupted
+/// refresh left the library beside where it belongs, the restore did not land,
+/// and the recovery kept it rather than delete the only copy. Everything else
+/// reads that as no library at all, and this dialog is where the user decides
+/// whether to spend the download again — so it is the one place saying so
+/// changes what they do.
+///
+/// Listens rather than reads: a refresh can strand the library while this
+/// dialog is the thing on screen, and recovery notifies no controller.
+class _StrandedNotice extends StatelessWidget {
+  const _StrandedNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<io.Directory?>(
+      valueListenable: IrLibLocalRepo.strandedLibrary,
+      builder: (context, stranded, _) => stranded == null
+          ? const SizedBox.shrink()
+          : Padding(
+              padding: const EdgeInsets.only(top: 14),
+              child: _body(context, stranded.path),
+            ),
+    );
+  }
+
+  Widget _body(BuildContext context, String path) {
+    final colors = context.appColors;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colors.info.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: colors.info.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline, size: 18, color: colors.info),
+          const SizedBox(width: 10),
+          Expanded(
+            child: SelectableText(
+              context.l10n.irLibraryStranded(path),
+              style: TextStyle(color: colors.textSecondary, fontSize: 13),
+            ),
+          ),
+        ],
       ),
     );
   }

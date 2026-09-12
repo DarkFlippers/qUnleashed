@@ -65,33 +65,22 @@ class IrLibLocalRepo {
   /// interleave.
   static Future<void> _chain = Future<void>.value();
 
-  /// True while [_exclusive] is running something, so recovery can decline
-  /// rather than queue behind a download it would otherwise wait out.
-  static bool _busy = false;
-
   static Future<T> _exclusive<T>(Future<T> Function() body) {
     final previous = _chain;
     final released = Completer<void>();
     _chain = released.future;
-    return previous
-        .then((_) async {
-          _busy = true;
-          try {
-            return await body();
-          } finally {
-            _busy = false;
-          }
-        })
-        .whenComplete(released.complete);
+    return previous.then((_) => body()).whenComplete(released.complete);
   }
 
   /// Points the library at [dir] for the duration of a test, and clears the
-  /// refresh flag so one test cannot strand the next.
+  /// process-wide state so one test cannot strand the next — the queue, the
+  /// memoised startup pass, and the stranded path a recovery recorded.
   @visibleForTesting
   static void debugUseRoot(io.Directory? dir) {
     _cachedRoot = dir;
-    _busy = false;
     _chain = Future<void>.value();
+    _startupPass = null;
+    _stranded.value = null;
   }
 
   Future<io.Directory> resolveRoot() async {
@@ -102,9 +91,14 @@ class IrLibLocalRepo {
     return dir;
   }
 
+  /// Whether there is a library on disk. A plain read, and worth keeping one.
+  ///
+  /// It used to repair an interrupted refresh on the way past, which meant a
+  /// method that reads as a query renamed trees and ran recursive deletes.
+  /// [recoverStranded] runs at startup instead, so by the time anything asks
+  /// this, the repair has already happened.
   Future<bool> exists() async {
     final dir = await resolveRoot();
-    await recoverInterrupted(dir);
     if (!await dir.exists()) return false;
     await for (final _ in dir.list(followLinks: false)) {
       return true;
@@ -148,6 +142,10 @@ class IrLibLocalRepo {
         continue;
       }
     }
+    // The stranded tree is one of the sidecars above, so the record now names
+    // a directory this just removed. Leaving it would have the dialog tell the
+    // user their library is safe somewhere, moments after they deleted it.
+    _stranded.value = null;
   }
 
   Future<io.Directory> download({
@@ -330,10 +328,22 @@ class IrLibLocalRepo {
       // rather than leave the user with nothing, and let the original failure
       // be the one that surfaces.
       if (hadLibrary && !await root.exists()) {
-        await _restoreSuperseded(root, superseded);
+        // Records it here too, not only in recovery. This is the moment the
+        // library is stranded, and nothing retries until the next launch —
+        // the log line that used to be the only signal is compiled out of a
+        // release build.
+        if (!await _restoreSuperseded(root, superseded)) {
+          _stranded.value = superseded;
+        }
       }
       rethrow;
     }
+
+    // The library is demonstrably back where it belongs, so whatever an
+    // earlier pass stranded is no longer where the user should look. Cleared
+    // here rather than by re-running recovery, which would race the delete
+    // below over this swap's own superseded tree.
+    _stranded.value = null;
 
     if (!hadLibrary) return;
     unawaited(
@@ -352,22 +362,61 @@ class IrLibLocalRepo {
     );
   }
 
+  /// Repairs an interrupted refresh wherever the library actually lives.
+  ///
+  /// The startup entry point: called from `bootstrapAmbientServices`, so a
+  /// refresh killed mid-swap is put right before anything reads the library as
+  /// absent — Settings → Storage included, which otherwise reports its size as
+  /// zero. [recoverInterrupted] takes a root so the swap helpers stay testable
+  /// against a temp directory; this resolves the real one.
+  ///
+  /// Memoised, and awaited by [IrLibController.initialize] as well as fired at
+  /// launch. The launch call is unawaited and reaches the Android storage
+  /// permission on its way to the root, which can sit on a full-screen settings
+  /// page until the user answers — so "startup already did it" is not something
+  /// a page opening can assume. Anyone who needs the answer awaits the same
+  /// future rather than starting a second pass.
+  static Future<io.Directory?> recoverStranded() =>
+      _startupPass ??= _recoverStranded();
+  static Future<io.Directory?>? _startupPass;
+
+  static Future<io.Directory?> _recoverStranded() async =>
+      recoverInterrupted(await IrLibLocalRepo().resolveRoot());
+
+  /// Where an interrupted refresh left the library when it could not be put
+  /// back, or null when there is nothing to report.
+  ///
+  /// Process-wide and observable. The pass that finds it runs at startup, long
+  /// before there is a page to tell, and a refresh can strand one while the
+  /// dialog showing it is already open.
+  static ValueListenable<io.Directory?> get strandedLibrary => _stranded;
+  static final ValueNotifier<io.Directory?> _stranded = ValueNotifier(null);
+
   /// Repairs whatever a process that died mid-refresh left behind.
   ///
   /// The swap is only as atomic as two renames back to back, so there is a
   /// window — short, but not nothing — where the library has been moved aside
   /// and its replacement is not yet in place. Dying there is the one case that
   /// loses data, so it is the one checked first.
-  static Future<void> recoverInterrupted(io.Directory root) async {
-    // Nothing beside the library is leftover while something is using it.
-    if (_busy) return;
+  /// Returns where the library was left when it could not be put back, so a
+  /// caller can act on it without reading the shared record.
+  ///
+  /// Under the lock, where it used to decline if a refresh held it. Declining
+  /// meant two passes could run at once — the startup one against a download's
+  /// own — and the loser would record a strand the winner had already repaired,
+  /// leaving the dialog pointing at a directory that no longer exists.
+  /// Queueing instead also means the staging tree it sweeps is genuinely
+  /// leftover rather than one a refresh is still unpacking into.
+  static Future<io.Directory?> recoverInterrupted(io.Directory root) =>
+      _exclusive(() => _recoverInterrupted(root));
 
+  static Future<io.Directory?> _recoverInterrupted(io.Directory root) async {
     final incoming = _sidecar(root, _kIncomingSuffix);
     final superseded = await _supersededTrees(root);
 
     // The newest is the one the interrupted swap set aside; anything older is
     // a background delete that never finished.
-    var kept = <io.Directory>[];
+    io.Directory? kept;
     if (!await root.exists() && superseded.isNotEmpty) {
       final live = superseded.first;
       if (await _restoreSuperseded(root, live)) {
@@ -381,14 +430,14 @@ class IrLibLocalRepo {
         // must never do - and a failed recursive delete is not a no-op either,
         // since one locked file stops it having already removed what it
         // reached first.
-        kept = [live];
+        kept = live;
       }
     }
 
     final leftovers = [
       incoming,
       for (final tree in superseded)
-        if (!kept.contains(tree)) tree,
+        if (tree.path != kept?.path) tree,
     ];
 
     // A restore consumes the tree it moved, so it is gone by now.
@@ -400,6 +449,9 @@ class IrLibLocalRepo {
         LogService.error('[IrLib] could not clear ${leftover.path}: $e');
       }
     }
+
+    _stranded.value = kept;
+    return kept;
   }
 
   /// Inflates the IR database zip and writes every entry to disk inside a
