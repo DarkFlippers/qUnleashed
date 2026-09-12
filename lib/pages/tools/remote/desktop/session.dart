@@ -5,6 +5,7 @@ import 'package:flipperlib/flipperlib.dart' hide DateTime, File;
 import 'package:flutter/foundation.dart';
 
 import '../../../../services/connection/device_info_watch.dart';
+import '../../../../services/logging.dart';
 import 'frame_decoder.dart';
 import 'models/models.dart';
 import 'screenshot_encoder.dart';
@@ -16,6 +17,7 @@ const Duration _kStopTimeout = Duration(seconds: 2);
 class RemoteSession extends ChangeNotifier {
   RemoteSession({FlipperClient? client})
     : _client = client ?? FlipperOneClient().get() {
+    _inputAvailable = _client.isConnected;
     _frameSub = _client.screenFrameStream().listen(_onFrame);
     _statusSub = _client.desktopStatusStream().listen(_applyStatus);
     _connectionSub = _client.connectionStream.listen(_onConnectionState);
@@ -49,7 +51,9 @@ class RemoteSession extends ChangeNotifier {
   bool _justUnlocked = false;
   Timer? _unlockedFlashTimer;
   bool _isDisconnected = false;
+  bool _inputAvailable = false;
   bool _starting = false;
+  bool _visualsEnabled = true;
 
   /// A start asked for while one was already running.
   ///
@@ -73,6 +77,7 @@ class RemoteSession extends ChangeNotifier {
   StreamOrientation get orientation => _orientation;
   bool get justUnlocked => _justUnlocked;
   bool get isDisconnected => _isDisconnected;
+  bool get inputAvailable => _inputAvailable;
   List<QueuedButton> get queue => _queue;
   int? get lastBgColor => _lastBgColor;
   int? get lastFgColor => _lastFgColor;
@@ -80,7 +85,9 @@ class RemoteSession extends ChangeNotifier {
   set recording(bool value) {
     if (_recording == value) return;
     _recording = value;
-    if (!value && _pendingFrame != null) _ensureDecodeWorker();
+    if (!value && _pendingFrame != null && _visualsEnabled) {
+      _ensureDecodeWorker();
+    }
   }
 
   Uint8List? capturePng() {
@@ -89,14 +96,32 @@ class RemoteSession extends ChangeNotifier {
     return encodeScreenshotPng(raw);
   }
 
+  /// Keeps the control RPC session alive but pauses the expensive framebuffer
+  /// stream while the page is not visible. Wrist Remote can still send inputs.
+  Future<void> pauseVisuals() async {
+    if (_disposed || !_visualsEnabled) return;
+    _visualsEnabled = false;
+    _pendingFrame = null;
+    _pendingRgba = null;
+    if (!_client.isConnected) return;
+    await _stopVisuals();
+  }
+
+  /// Re-opens the framebuffer/status streams after [pauseVisuals].
+  Future<void> resumeVisuals() async {
+    if (_disposed || _visualsEnabled) return;
+    _visualsEnabled = true;
+    if (_client.isConnected) await _start();
+  }
+
   /// Asks for the stream straight away — a stale "not connected" flag must not
   /// keep the page from trying, so the verdict comes from the call itself.
   ///
   /// Exactly one open runs at a time, nominally three RPCs — fewer if the page
-  /// goes away mid-flight. A request arriving during one is held in
-  /// [_restartWanted] and run afterwards rather than dropped: dropping it left
-  /// a reconnect with nothing behind it, and since a frame is the only thing
-  /// that clears [_isDisconnected], the page stayed blank for good.
+  /// goes away or visuals are paused mid-flight. A request arriving during one
+  /// is held in [_restartWanted] and run afterwards rather than dropped:
+  /// dropping it left a reconnect with nothing behind it, and since a frame is
+  /// the only thing that clears [_isDisconnected], the page stayed blank.
   ///
   /// That opens never overlap is what makes a single flag enough. Were they
   /// ever made concurrent — to hide the latency of three sequential round
@@ -104,6 +129,7 @@ class RemoteSession extends ChangeNotifier {
   /// what it had already applied, and this would need to know which link each
   /// attempt belonged to rather than merely that one is outstanding.
   Future<void> _start() async {
+    if (_disposed || !_visualsEnabled) return;
     if (_starting) {
       _restartWanted = true;
       return;
@@ -114,16 +140,19 @@ class RemoteSession extends ChangeNotifier {
         // Cleared before the attempt, so only a request that arrives while
         // this one runs asks for another after it.
         _restartWanted = false;
+        if (_disposed || !_visualsEnabled) return;
         try {
-          // Checked for teardown between each, and all three at rightNow.
+          // Checked for teardown or a visual pause between each. All three
+          // requests stay at rightNow; their defaults are foreground.
           //
           // For the subscribe that is correctness, not tidiness: the queue
           // sorts by priority before arrival, so left at foreground it would
-          // be overtaken by the rightNow unsubscribe shutdown sends. The
+          // be overtaken by the rightNow unsubscribe shutdown/pause sends. The
           // device would be told to start pushing desktop status after being
-          // told to stop, and _stopRemote latches itself off, so nothing would
-          // ever unsubscribe it again. The same reasoning already applied to
-          // the stream, which guiStopScreenStream undoes at rightNow too.
+          // told to stop, and _stopRemote latches itself off at teardown, so
+          // nothing would ever unsubscribe it again. The same reasoning
+          // applies to the stream, which guiStopScreenStream undoes at
+          // rightNow. Equal-priority requests stay FIFO.
           //
           // desktopIsLocked has nothing that undoes it, so its priority only
           // buys latency on a path the user is waiting out — but the three
@@ -132,14 +161,26 @@ class RemoteSession extends ChangeNotifier {
             priority: FlipperRequestPriority.rightNow,
           );
           if (_disposed) return;
+          if (!_visualsEnabled) {
+            await _stopVisuals();
+            return;
+          }
           await _client.desktopStatusSubscribe(
             priority: FlipperRequestPriority.rightNow,
           );
           if (_disposed) return;
+          if (!_visualsEnabled) {
+            await _stopVisuals();
+            return;
+          }
           final frames = await _client.desktopIsLocked(
             priority: FlipperRequestPriority.rightNow,
           );
           if (_disposed) return;
+          if (!_visualsEnabled) {
+            await _stopVisuals();
+            return;
+          }
           for (final f in frames) {
             if (f.hasDesktopStatus()) _applyStatus(f.desktopStatus);
           }
@@ -152,7 +193,7 @@ class RemoteSession extends ChangeNotifier {
         }
         // Inside the try, so a failed attempt still honours a reconnect that
         // landed during it - that being the case where retrying matters most.
-      } while (_restartWanted && !_disposed);
+      } while (_restartWanted && !_disposed && _visualsEnabled);
     } finally {
       _starting = false;
     }
@@ -161,6 +202,8 @@ class RemoteSession extends ChangeNotifier {
   void shutdown() {
     if (_disposed) return;
     _disposed = true;
+    _visualsEnabled = false;
+    _inputAvailable = false;
     DeviceInfoWatchService.instance.unfreeze();
     for (final h in _held.values) {
       h.longTimer?.cancel();
@@ -175,9 +218,7 @@ class RemoteSession extends ChangeNotifier {
     unawaited(_chain(_releaseWireDown).whenComplete(_stopRemote));
   }
 
-  Future<void> _stopRemote() async {
-    if (_stopped) return;
-    _stopped = true;
+  Future<void> _stopVisuals() async {
     if (!_client.isConnected) return;
     await Future.wait([
       _client
@@ -189,6 +230,12 @@ class RemoteSession extends ChangeNotifier {
           .timeout(_kStopTimeout)
           .catchError((_) => <Main>[]),
     ]);
+  }
+
+  Future<void> _stopRemote() async {
+    if (_stopped) return;
+    _stopped = true;
+    await _stopVisuals();
   }
 
   @override
@@ -203,8 +250,14 @@ class RemoteSession extends ChangeNotifier {
   void _onConnectionState(FlipperConnectionState state) {
     if (_disposed) return;
 
+    final inputChanged = _inputAvailable != state.connected;
+    _inputAvailable = state.connected;
+
     if (!state.connected) {
-      if (_isDisconnected) return;
+      if (_isDisconnected) {
+        if (inputChanged) _safeNotify();
+        return;
+      }
       _isDisconnected = true;
       final prev = _frameImage;
       _frameImage = null;
@@ -214,11 +267,17 @@ class RemoteSession extends ChangeNotifier {
       return;
     }
 
+    // Input availability follows the transport; visual connectivity deliberately
+    // does not. A reconnect while paused can accept wrist inputs, but the LED
+    // stays disconnected until a real framebuffer arrives after resume.
+    if (inputChanged) _safeNotify();
+    if (!_visualsEnabled) return;
+
     unawaited(_start());
   }
 
   void _applyStatus(Status status) {
-    if (_disposed) return;
+    if (_disposed || !_visualsEnabled) return;
     final wasLocked = _isLocked;
     _isLocked = status.locked;
     if (_lockStatusKnown && wasLocked && !status.locked) _flashUnlocked();
@@ -237,7 +296,7 @@ class RemoteSession extends ChangeNotifier {
   }
 
   void _onFrame(ScreenFrame frame) {
-    if (_disposed) return;
+    if (_disposed || !_visualsEnabled) return;
     if (_isDisconnected) {
       _isDisconnected = false;
       _safeNotify();
@@ -251,14 +310,14 @@ class RemoteSession extends ChangeNotifier {
   }
 
   void _ensureDecodeWorker() {
-    if (_decodeBusy || _disposed) return;
+    if (_decodeBusy || _disposed || !_visualsEnabled) return;
     _decodeBusy = true;
     unawaited(_pumpDecode());
   }
 
   Future<void> _pumpDecode() async {
     try {
-      while (!_disposed && !_recording) {
+      while (!_disposed && !_recording && _visualsEnabled) {
         final frame = _pendingFrame;
         if (frame == null) return;
         _pendingFrame = null;
@@ -271,7 +330,7 @@ class RemoteSession extends ChangeNotifier {
   }
 
   void _ingest(RawFrameData raw) {
-    if (_disposed) return;
+    if (_disposed || !_visualsEnabled) return;
     _lastBgColor = raw.bgColor;
     _lastFgColor = raw.fgColor;
     final orientationChanged = raw.orientation != _orientation;
@@ -283,6 +342,7 @@ class RemoteSession extends ChangeNotifier {
   }
 
   void _scheduleUpload(Uint8List rgba) {
+    if (!_visualsEnabled) return;
     _pendingRgba = rgba;
     if (_uploadBusy || _disposed) return;
     _uploadBusy = true;
@@ -291,12 +351,12 @@ class RemoteSession extends ChangeNotifier {
 
   Future<void> _pumpUpload() async {
     try {
-      while (!_disposed) {
+      while (!_disposed && _visualsEnabled) {
         final rgba = _pendingRgba;
         if (rgba == null) return;
         _pendingRgba = null;
         final image = await createImageFromRgba(rgba);
-        if (_disposed) {
+        if (_disposed || !_visualsEnabled) {
           image.dispose();
           return;
         }
@@ -372,9 +432,17 @@ class RemoteSession extends ChangeNotifier {
     return next;
   }
 
-  Future<void> _sendInput(InputKey key, InputType type) => _client
-      .guiSendInputAndForget(SendInputEventRequest(key: key, type: type))
-      .catchError((_) {});
+  Future<void> _sendInput(InputKey key, InputType type) async {
+    LogService.debug('[RemoteInput] wire ${type.name} ${key.name}');
+    try {
+      await _client.guiSendInputAndForget(
+        SendInputEventRequest(key: key, type: type),
+      );
+      LogService.debug('[RemoteInput] sent ${type.name} ${key.name}');
+    } catch (e) {
+      LogService.warn('[RemoteInput] failed ${type.name} ${key.name}: $e');
+    }
+  }
 
   Future<void> _down(InputKey key) {
     if (!_wireDown.add(key)) return Future<void>.value();
@@ -391,16 +459,21 @@ class RemoteSession extends ChangeNotifier {
       onAnswer?.call();
       return Future<void>.value();
     }
+    LogService.debug('[RemoteInput] wire RELEASE ${key.name}');
     final sent = Completer<void>();
     unawaited(
       _client
           .guiSendInput(
             SendInputEventRequest(key: key, type: InputType.RELEASE),
             onSent: () {
+              LogService.debug('[RemoteInput] sent RELEASE ${key.name}');
               if (!sent.isCompleted) sent.complete();
             },
           )
-          .catchError((_) => <Main>[])
+          .catchError((e) {
+            LogService.warn('[RemoteInput] failed RELEASE ${key.name}: $e');
+            return <Main>[];
+          })
           .whenComplete(() {
             if (!sent.isCompleted) sent.complete();
             onAnswer?.call();
