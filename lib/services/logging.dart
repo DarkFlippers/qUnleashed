@@ -1,4 +1,6 @@
 import 'dart:collection';
+import 'dart:io' as io;
+import 'dart:ui' as ui;
 
 import 'package:flipperlib/flipperlib.dart' show FlipperLogLevel, Log;
 import 'package:flutter/foundation.dart';
@@ -126,7 +128,10 @@ class LogService {
     if (_history.length > historyLimit) _history.removeFirst();
   }
 
-  @visibleForTesting
+  /// Drops everything [history] holds.
+  ///
+  /// Not test-only: the log screen offers it, because a log is copied into a
+  /// bug report and then wants emptying before reproducing the next one.
   static void clearHistory() {
     _history.clear();
     _lastKept = null;
@@ -140,6 +145,7 @@ class LogService {
     _initialized = true;
 
     attachFlipperlibSink();
+    installUncaughtHandlers();
 
     if (!printing) {
       await UniversalBle.setLogLevel(BleLogLevel.none);
@@ -169,6 +175,95 @@ class LogService {
     Log.level = printing ? _flipperLevel : FlipperLogLevel.error;
     Log.sink = _flipperlibSink;
   }
+
+  /// Routes what nothing else catches into [history].
+  ///
+  /// The failures with the least surface of all: a framework exception during
+  /// build, a rejected future nobody awaited. Every handler the app added for
+  /// #21, #84, #85 and #80 covers a failure someone thought to catch; these
+  /// are the ones nobody did, and until now they reached nothing at all.
+  ///
+  /// Both chain rather than replace. [FlutterError.onError] already presents
+  /// the red console dump in a debug build and flutter_test installs its own
+  /// to fail a test on an unexpected error — dropping either would be a poor
+  /// trade for recording it. Returning what the previous handler said, or
+  /// false, leaves the error unhandled, so nothing downstream is suppressed.
+  ///
+  /// The chained handler runs first, and the recording cannot throw past it.
+  /// `FlutterError.reportError` is a bare `onError?.call(details)` with no
+  /// guard of its own, and `exceptionAsString()` calls `toString()` on an
+  /// arbitrary object — so recording first would let one bad `toString()` cost
+  /// the red screen and the failed test both. The platform handler is worse:
+  /// in the root zone a throw there escapes into the engine, and in a guarded
+  /// zone it is re-dispatched, which a recorder that always fails would turn
+  /// into a loop.
+  @visibleForTesting
+  static void installUncaughtHandlers() {
+    // Installing twice wraps the wrappers, and every error would then be
+    // recorded once per install — which _remember coalesces into "(2×)"
+    // rather than duplicating, so it reads as the app having failed twice.
+    //
+    // Checked against the slot rather than a flag we set: a test that puts the
+    // previous handler back has uninstalled us, and the next install should
+    // take. A flag would still say installed.
+    if (identical(FlutterError.onError, _ourFlutterHandler) &&
+        identical(
+          ui.PlatformDispatcher.instance.onError,
+          _ourPlatformHandler,
+        )) {
+      return;
+    }
+
+    final presented = FlutterError.onError;
+    FlutterError.onError = _ourFlutterHandler = (details) {
+      presented?.call(details);
+      // Every silent: true site in the framework is image loading, and the
+      // map tile providers put their API key in the URL — so a tile that will
+      // not load carries the user's paid key in its exception. Nothing else
+      // keeps that out of a log this screen offers to copy: the two error
+      // callbacks that suppress those reports today are one cleanup away from
+      // being deleted as pointless.
+      //
+      // Not framework parity, whatever it looks like: dumpErrorToConsole
+      // ignores silent in debug and honours it only in release, where this
+      // honours it always.
+      if (details.silent) return;
+      try {
+        final where = details.context == null
+            ? ''
+            : ' during ${details.context!.toDescription()}';
+        final stack = details.stack == null ? '' : '\n${details.stack}';
+        // console: false — the handler above prints it in the framework's own
+        // formatting, which is better than a flat copy. (From the second error
+        // onwards that dump shrinks to one summary line, so the detail here is
+        // the only full record; it is still not worth printing twice.)
+        _emit(
+          '[error] [flutter]$where ${details.exceptionAsString()}$stack',
+          keep: true,
+          console: false,
+        );
+      } catch (_) {
+        // A toString() that throws must not also cost the dump above.
+      }
+    };
+
+    final dispatched = ui.PlatformDispatcher.instance.onError;
+    ui.PlatformDispatcher.instance.onError = _ourPlatformHandler = (e, st) {
+      final handled = dispatched?.call(e, st) ?? false;
+      try {
+        // console: false, as above. Returning unhandled means the zone or the
+        // engine reports this itself, so printing here says it twice.
+        _emit('[error] [uncaught] $e\n$st', keep: true, console: false);
+      } catch (_) {
+        // Nothing upstream catches this: in the root zone the engine gets the
+        // throw, and a guarded zone re-dispatches it without end.
+      }
+      return handled;
+    };
+  }
+
+  static FlutterExceptionHandler? _ourFlutterHandler;
+  static ui.ErrorCallback? _ourPlatformHandler;
 
   static void error(String msg) =>
       _emit('[error] $msg', keep: true, console: errorOn);
@@ -235,10 +330,100 @@ class LogService {
   // build print.
   static void _write(String msg) => _emit(msg, keep: false, console: printing);
 
+  /// Home directories, longest first, replaced with `~` wherever they appear.
+  ///
+  /// The log is something a user copies into a public issue now, and absolute
+  /// paths are the one category that leaks every time it fires: the IR
+  /// recovery names the tree it could not clear — at every launch — and any
+  /// FileSystemException prints `path = '<absolute>'`. All of them begin with
+  /// the account name.
+  ///
+  /// It is also the only category that can be removed mechanically. What a
+  /// message says about the user's own files, folders and devices — a card
+  /// called `Office badge.nfc`, a Flipper's name, a card's UID inside a
+  /// dictionary filename — is not distinguishable from any other text, which
+  /// is why the log screen says what the log can contain and shows it to the
+  /// user before offering to copy it.
+  static List<RegExp> _homes = _resolveHomes(_environmentHomes());
+
+  static List<String> _environmentHomes() => [
+    for (final key in const ['USERPROFILE', 'HOME'])
+      ?io.Platform.environment[key],
+  ];
+
+  /// Builds the patterns for [homes], in both the spellings a message can
+  /// carry them in.
+  ///
+  /// A path reaches the log two ways and they do not look alike. A
+  /// FileSystemException prints the native form — `C:\Users\Myte\...` — while
+  /// a stack frame prints a URI, `file:///C:/Users/Myte/...`, with the
+  /// separators flipped and the drive behind a scheme. Matching only the
+  /// environment value catches the first and misses the second, which is
+  /// exactly backwards: the entries carrying stacks are the ones most likely
+  /// to be pasted into an issue.
+  ///
+  /// Each is anchored so that the next character cannot continue a name.
+  /// Without that, a HOME of `/root` — ordinary in a container — would rewrite
+  /// `/rootfs` to `~fs` and corrupt messages that had no path in them at all.
+  static List<RegExp> _resolveHomes(List<String> homes) {
+    final spellings = <String>{};
+    for (final home in homes) {
+      // Too short to be a home directory, and long enough to appear inside
+      // unrelated text.
+      if (home.length <= 3) continue;
+      spellings.add(home);
+      // The separator flipped, which is how a stack frame spells it. A URI
+      // form — `file:///C:/Users/Myte/...` — contains this string, so the one
+      // spelling covers both it and a bare forward-slash path. On POSIX it is
+      // the same string as above and the set drops it.
+      spellings.add(home.replaceAll(r'\', '/'));
+    }
+    return [
+      for (final spelling in spellings)
+        RegExp('${RegExp.escape(spelling)}(?![A-Za-z0-9_.-])'),
+    ];
+  }
+
+  /// Points redaction at [homes] for the duration of a test.
+  ///
+  /// The real list comes from the environment, which a test cannot vary — and
+  /// the cases worth pinning are all about unusual environments: a Windows
+  /// home reached through a URI, one that is a prefix of an unrelated word,
+  /// two that are the same string.
+  @visibleForTesting
+  static void debugUseHomes(List<String>? homes) =>
+      _homes = _resolveHomes(homes ?? _environmentHomes());
+
+  /// How many patterns redaction scans for. Behaviour cannot show a duplicate
+  /// — replacing the same thing twice is the same answer — so the cost is the
+  /// only way to see one, and on Windows under Git Bash both environment keys
+  /// hold the same string.
+  @visibleForTesting
+  static int get debugHomePatternCount => _homes.length;
+
+  static String _redact(String msg) {
+    var out = msg;
+    for (final home in _homes) {
+      out = out.replaceAll(home, '~');
+    }
+    return out;
+  }
+
   /// Stamps [msg], keeps it in [history] if [keep], prints it if [console].
+  ///
+  /// Only what is kept is redacted. The history is the only thing the log
+  /// screen offers to copy, and everything else — 177 trace, debug and info
+  /// sites against 28 that keep — would be paying a scan per home directory
+  /// per message for nothing. It also leaves a developer's own console
+  /// printing the path they are debugging rather than `~`. The trade is that
+  /// a path still reaches logcat, which is not the surface with a copy button
+  /// on it.
   static void _emit(String msg, {required bool keep, required bool console}) {
     final ts = DateTime.now().toIso8601String().substring(11, 19);
-    if (keep) _remember('[$ts] $msg', msg);
+    if (keep) {
+      final kept = _redact(msg);
+      _remember('[$ts] $kept', kept);
+    }
     if (!console) return;
     for (final line in msg.split('\n')) {
       debugPrint('[$ts] $line');

@@ -6,7 +6,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../../../components/notification.dart';
+import '../../../../components/clipboard.dart';
 import '../../../../services/localization/l10n.dart';
 import '../../../../theme/theme.dart';
 import '../style.dart';
@@ -208,16 +208,7 @@ class _HexInspectorState extends State<HexInspector> {
 
   Widget _row(QAppColors colors, String label, String value) {
     return InkWell(
-      onTap: () async {
-        await Clipboard.setData(ClipboardData(text: value));
-        if (!mounted) return;
-        if (context.mounted) {
-          context.showNotification(
-            l10n.hexCopied,
-            type: QNotificationType.good,
-          );
-        }
-      },
+      onTap: () => copyTextToClipboard(context, value),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 3),
         child: Row(

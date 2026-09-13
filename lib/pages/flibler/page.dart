@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../services/localization/l10n.dart';
 import '../../theme/theme.dart';
@@ -8,6 +7,7 @@ import '../../components/notification.dart';
 import '../../services/assembler/controller.dart';
 import 'widgets/log_view.dart';
 import 'widgets/progress_panel.dart';
+import '../../components/clipboard.dart';
 
 class AssemblerConsolePage extends StatelessWidget {
   const AssemblerConsolePage({super.key});
@@ -44,15 +44,12 @@ class AssemblerConsolePage extends StatelessWidget {
             tooltip: context.l10n.fliblerCopyLog,
             icon: Icon(Icons.copy_all_outlined, color: colors.textPrimary),
             onPressed: () async {
-              await Clipboard.setData(
-                ClipboardData(text: controller.logAsText()),
+              await copyTextToClipboard(
+                context,
+                controller.logAsText(),
+                message: context.l10n.fliblerLogCopied,
+                type: QNotificationType.info,
               );
-              if (context.mounted) {
-                QNotification.show(
-                  context,
-                  message: context.l10n.fliblerLogCopied,
-                );
-              }
             },
           ),
           IconButton(

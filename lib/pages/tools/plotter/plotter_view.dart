@@ -3,7 +3,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../../theme/theme.dart';
 import '../../../components/notification.dart';
@@ -13,6 +12,7 @@ import 'models.dart';
 import 'plot_controller.dart';
 import 'plotter_painter.dart';
 import 'ui.dart';
+import '../../../components/clipboard.dart';
 
 const List<({String text, String value})> _slicerOptions = [
   (text: 'PCM', value: 'PCM'),
@@ -1096,10 +1096,12 @@ class _CopyButton extends StatelessWidget {
       tooltip: l10n.plotCopyLabel(label),
       visualDensity: VisualDensity.compact,
       onPressed: () async {
-        await Clipboard.setData(ClipboardData(text: value));
-        if (context.mounted) {
-          context.showNotification(l10n.plotCopiedLabel(label));
-        }
+        await copyTextToClipboard(
+          context,
+          value,
+          message: l10n.plotCopiedLabel(label),
+          type: QNotificationType.info,
+        );
       },
       icon: Icon(Icons.copy_rounded, size: 18, color: colors.textSecondary),
     );
