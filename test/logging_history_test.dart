@@ -1,7 +1,6 @@
-import 'package:flipperlib/flipperlib.dart' show FlipperLogLevel, Log;
-import 'dart:io' as io;
 import 'dart:ui';
 
+import 'package:flipperlib/flipperlib.dart' show FlipperLogLevel, Log;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/services/logging.dart';
@@ -173,7 +172,6 @@ void main() {
     setUp(() {
       previousFlutter = FlutterError.onError;
       previousPlatform = PlatformDispatcher.instance.onError;
-      LogService.debugResetHandlers();
       LogService.installUncaughtHandlers();
     });
     // Both, not just the first. Restoring only FlutterError left a wrapper on
@@ -182,11 +180,10 @@ void main() {
     tearDown(() {
       FlutterError.onError = previousFlutter;
       PlatformDispatcher.instance.onError = previousPlatform;
-      LogService.debugResetHandlers();
     });
 
     test('a framework error is kept', () {
-      printed(
+      final lines = printed(
         () => FlutterError.reportError(
           FlutterErrorDetails(
             exception: StateError('a build blew up'),
@@ -196,6 +193,16 @@ void main() {
       );
 
       expect(LogService.history.single, contains('a build blew up'));
+      expect(
+        lines.where((l) => l.contains('[error] [flutter]')),
+        isEmpty,
+        reason: 'not a flat copy of it - console: false',
+      );
+      expect(
+        lines.where((l) => l.contains('EXCEPTION CAUGHT BY FLUTTER')),
+        isNotEmpty,
+        reason: 'the chained handler still prints it, better formatted',
+      );
     });
 
     // flutter_test installs its own handler to fail a test on an unexpected
@@ -204,7 +211,6 @@ void main() {
     test('the handler already installed still runs', () {
       var presented = 0;
       FlutterError.onError = (_) => presented += 1;
-      LogService.debugResetHandlers();
       LogService.installUncaughtHandlers();
 
       printed(
@@ -223,7 +229,6 @@ void main() {
     test('a failure while recording does not cost the handler below', () {
       var presented = 0;
       FlutterError.onError = (_) => presented += 1;
-      LogService.debugResetHandlers();
       LogService.installUncaughtHandlers();
 
       printed(
@@ -233,6 +238,11 @@ void main() {
       );
 
       expect(presented, 1, reason: 'the dump still happened');
+      expect(
+        LogService.history,
+        isEmpty,
+        reason: 'and nothing half-formed was kept',
+      );
     });
 
     test('a framework error carries where it was thrown', () {
@@ -267,7 +277,7 @@ void main() {
         ),
       );
 
-      expect(LogService.history.single, isNot(contains('null')));
+      expect(LogService.history.single, isNot(endsWith('null')));
     });
 
     // The other half, which had no coverage at all: a rejected future nobody
@@ -278,7 +288,6 @@ void main() {
         chained += 1;
         return false;
       };
-      LogService.debugResetHandlers();
       LogService.installUncaughtHandlers();
 
       late bool handled;
@@ -311,20 +320,80 @@ void main() {
     });
   });
 
+  // The log became something a user copies into a public issue, and every
+  // absolute path in it starts with the account name. It is the only category
+  // that can be taken out mechanically.
+  //
+  // Driven through the seam rather than the real environment: the cases worth
+  // pinning are all about environments this machine does not have, and a test
+  // that reads Platform.environment passes vacuously wherever it is unusual -
+  // which is exactly where the bug was.
   group('redaction', () {
-    // The log became something a user copies into a public issue, and every
-    // absolute path in it starts with the account name. It is the only
-    // category that can be taken out mechanically.
+    tearDown(() => LogService.debugUseHomes(null));
+
     test('a home directory is replaced wherever it appears', () {
-      final home =
-          io.Platform.environment['USERPROFILE'] ??
-          io.Platform.environment['HOME'];
-      if (home == null || home.length <= 3) return;
+      LogService.debugUseHomes([r'C:\Users\Myte']);
 
-      printed(() => LogService.error('could not clear $home/Documents/x.ir'));
+      printed(
+        () => LogService.error(r'could not clear C:\Users\Myte\Docs\x.ir'),
+      );
 
-      expect(LogService.history.single, isNot(contains(home)));
+      expect(LogService.history.single, isNot(contains('Myte')));
       expect(LogService.history.single, contains('~'));
+    });
+
+    // The case the first version missed. A FileSystemException prints the
+    // native path, but a stack frame prints a URI with the separators flipped
+    // and the drive behind a scheme - and the entries carrying stacks are the
+    // ones most likely to be pasted into an issue.
+    test('a Windows home is replaced in a stack frame URI too', () {
+      LogService.debugUseHomes([r'C:\Users\Myte']);
+
+      printed(
+        () => LogService.error(
+          'boom\n#0 main (file:///C:/Users/Myte/app/main.dart:7:20)',
+        ),
+      );
+
+      expect(LogService.history.single, isNot(contains('Myte')));
+    });
+
+    // A HOME of /root is ordinary in a container. Replacing it blind rewrote
+    // /rootfs to ~fs and corrupted messages that had no path in them at all.
+    test('a home that prefixes an unrelated word is left alone', () {
+      LogService.debugUseHomes(['/root']);
+
+      printed(() => LogService.error('mounting /rootfs failed'));
+
+      expect(LogService.history.single, contains('/rootfs'));
+    });
+
+    test('and is still replaced when it is a real path', () {
+      LogService.debugUseHomes(['/root']);
+
+      printed(() => LogService.error('could not clear /root/x.ir'));
+
+      expect(LogService.history.single, contains('~/x.ir'));
+    });
+
+    // On Windows under Git Bash both environment keys hold the same string.
+    // Behaviour cannot show the duplicate — replacing the same thing twice
+    // gives the same answer — so the count is the only way to see it.
+    test('the same home twice is not scanned for twice', () {
+      LogService.debugUseHomes([r'C:\Users\Myte']);
+      final once = LogService.debugHomePatternCount;
+
+      LogService.debugUseHomes([r'C:\Users\Myte', r'C:\Users\Myte']);
+
+      expect(LogService.debugHomePatternCount, once);
+    });
+
+    test('a home too short to be one is ignored', () {
+      LogService.debugUseHomes(['/x']);
+
+      printed(() => LogService.error('reading /x/y'));
+
+      expect(LogService.history.single, contains('/x/y'));
     });
 
     test('a message with no path in it is left alone', () {
@@ -334,6 +403,25 @@ void main() {
         LogService.history.single,
         contains('[RPC] rx unmatched frame cmdId=7'),
       );
+    });
+
+    // Only what can be copied is redacted. Everything below a warning is not
+    // kept, so paying a scan for it buys nothing - and a developer's console
+    // should print the path they are debugging.
+    test('what is only printed keeps its path', () {
+      LogService.debugUseHomes(['/root']);
+
+      final lines = printed(() => LogService.info('reading /root/x.ir'));
+
+      expect(
+        LogService.history,
+        isEmpty,
+        reason: 'nothing to copy, so no cost',
+      );
+      // Printed unredacted in a build that prints, and not printed at all in
+      // one that does not — so the check follows the build rather than
+      // pinning whichever one CI happens to be running.
+      expect(lines.join().contains('/root/x.ir'), LogService.printing);
     });
   });
 

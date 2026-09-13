@@ -9,6 +9,7 @@ import '../../../../theme/theme.dart';
 import '../style.dart';
 import 'document.dart';
 import 'style.dart';
+import '../../../../components/clipboard.dart';
 
 enum HexCopyFormat { hex, cArray, base64, text }
 
@@ -380,9 +381,7 @@ Future<void> hexCopy(
             ? document.range(document.cursor, document.cursor + 1)
             : Uint8List(0));
   if (bytes.isEmpty) return;
-  await Clipboard.setData(ClipboardData(text: hexFormatBytes(bytes, format)));
-  if (!context.mounted) return;
-  context.showNotification(l10n.hexCopied, type: QNotificationType.good);
+  await copyTextToClipboard(context, hexFormatBytes(bytes, format));
 }
 
 Future<void> hexCut(BuildContext context, HexDocument document) async {

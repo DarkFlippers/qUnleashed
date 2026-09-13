@@ -6331,10 +6331,6 @@
     "description": "Inspector line with the selection decoded as text."
   },
 
-  "hexCopied": "Copied",
-  "@hexCopied": {
-    "description": "Toast shown after bytes were copied."
-  },
 
   "hexPatternHint": "DE AD ?? EF",
   "@hexPatternHint": {

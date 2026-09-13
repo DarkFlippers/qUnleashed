@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../../components/appbar.dart';
+import '../../../components/clipboard.dart';
 import '../../../components/dialogs/confirm.dart';
-import '../../../components/share.dart';
 import '../../../services/localization/l10n.dart';
 import '../../../services/logging.dart';
 import '../../../theme/theme.dart';
@@ -29,12 +29,10 @@ class _LogSettingsPageState extends State<LogSettingsPage> {
 
   void _reload() => setState(() => _entries = LogService.history);
 
-  Future<void> _copy() async {
-    // Blank line between entries: an entry is a whole message, so joined with
-    // one newline a stack trace's last frame sits flush against the next
-    // timestamp and the paste reads as one run-on block.
-    await copyTextToClipboard(context, _entries.join('\n\n'));
-  }
+  // Blank line between entries: an entry is a whole message, so joined with
+  // one newline a stack trace's last frame sits flush against the next
+  // timestamp and the paste reads as one run-on block.
+  Future<void> _copy() => copyTextToClipboard(context, _entries.join('\n\n'));
 
   Future<void> _clear() async {
     // Confirmed, unlike the Flibler console's clear, because this button sits
@@ -45,7 +43,11 @@ class _LogSettingsPageState extends State<LogSettingsPage> {
       message: context.l10n.logClearMessage,
       confirmLabel: context.l10n.commonClear,
     );
-    if (!ok) return;
+    // Dismissing the route resolves false, so the ordinary teardown leaves
+    // above. What the mounted check catches is the narrow one: confirmed, then
+    // the page disposed before this continuation runs. _reload is a setState,
+    // and the analyzer cannot see it because it touches no BuildContext.
+    if (!ok || !mounted) return;
     LogService.clearHistory();
     _reload();
   }
@@ -77,12 +79,18 @@ class _LogSettingsPageState extends State<LogSettingsPage> {
           ),
         ],
       ),
-      body: _entries.isEmpty ? _empty() : _body(),
+      body: _entries.isEmpty
+          ? _empty(colors)
+          : Column(
+              children: [
+                _caution(colors),
+                Expanded(child: _list(colors)),
+              ],
+            ),
     );
   }
 
-  Widget _empty() {
-    final colors = context.appColors;
+  Widget _empty(QAppColors colors) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 32),
@@ -95,13 +103,6 @@ class _LogSettingsPageState extends State<LogSettingsPage> {
     );
   }
 
-  Widget _body() => Column(
-    children: [
-      _caution(),
-      Expanded(child: _list()),
-    ],
-  );
-
   /// Says what the log can name, above the log itself.
   ///
   /// Absolute paths have the account name taken out of them at the sink, but
@@ -109,8 +110,7 @@ class _LogSettingsPageState extends State<LogSettingsPage> {
   /// naming a card, a folder or a Flipper is not distinguishable from any
   /// other text. So the user is told, and the log is on screen to read, before
   /// the button that hands it to a public issue.
-  Widget _caution() {
-    final colors = context.appColors;
+  Widget _caution(QAppColors colors) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -142,8 +142,7 @@ class _LogSettingsPageState extends State<LogSettingsPage> {
   /// per-row selection cannot cross an entry boundary, which for a stack trace
   /// is the one thing anyone wants from it — and it spared every row a focus
   /// node and a selection overlay of its own.
-  Widget _list() {
-    final colors = context.appColors;
+  Widget _list(QAppColors colors) {
     final style = TextStyle(
       color: colors.terminalText,
       fontSize: 12,
