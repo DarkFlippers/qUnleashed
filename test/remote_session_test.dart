@@ -60,6 +60,17 @@ class _FakeClient implements FlipperClient {
       )
       .length;
 
+  /// The command_status a given request comes back with, when the answer is
+  /// carried there rather than in a content frame. IsLockedRequest does that:
+  /// OK for locked, ERROR for unlocked. The old fake could only fail every
+  /// call at once, and with a StateError, so neither case was reachable.
+  CommandStatus? Function(Main request)? statusFor;
+
+  /// Frames a request answers with. Empty by default, which is what the
+  /// firmware read for #94 sends for IsLockedRequest — a variant that answered
+  /// properly is the case the frames branch exists for.
+  List<Main> Function(Main request)? framesFor;
+
   @override
   bool get isConnected => connected;
 
@@ -87,7 +98,15 @@ class _FakeClient implements FlipperClient {
     final held = gate;
     if (held != null) await held.future;
     if (failCalls) throw StateError('no active session');
-    return const <Main>[];
+    final status = statusFor?.call(request);
+    if (status != null && status != CommandStatus.OK) {
+      // Through the library's own mapping, not a hand-rolled General for
+      // everything: the real client raises FlipperRpcNotImplementedException
+      // for ERROR_NOT_IMPLEMENTED, and a fake that cannot express a subclass
+      // makes every type-matching path untestable while looking covered.
+      throw exceptionFromResponse(Main()..commandStatus = status)!;
+    }
+    return framesFor?.call(request) ?? const <Main>[];
   }
 
   @override
@@ -333,6 +352,133 @@ void main() {
         reason:
             'a subscribe reaching the device after the unsubscribe leaves it '
             'pushing status for the rest of the connection',
+      );
+    },
+  );
+
+  /// A client whose IsLockedRequest answers [status]; everything else is OK.
+  _FakeClient lockAnswering(CommandStatus status) => _FakeClient()
+    ..connected = true
+    ..statusFor = (request) =>
+        request.hasDesktopIsLockedRequest() ? status : CommandStatus.OK;
+
+  // #94. IsLockedRequest answers with an empty frame and puts the state in
+  // command_status - OK locked, ERROR unlocked - so the generic handling turns
+  // the ordinary case into a rejection. Before the fix that landed in _start's
+  // catch and flagged the session disconnected over a screen that was
+  // streaming perfectly.
+  test('an unlocked device does not read as a disconnected one', () async {
+    final client = lockAnswering(CommandStatus.ERROR);
+    final session = RemoteSession(client: client);
+    addTearDown(session.dispose);
+
+    await pumpEventQueue();
+
+    expect(session.isDisconnected, isFalse);
+  });
+
+  // The direction of the mapping, which nothing else pins: every assertion
+  // around it holds whether ERROR reads as locked or unlocked. Here the device
+  // answered ERROR, so the baseline is already unlocked and a push saying the
+  // same is not a transition. Read the other way round the baseline would be
+  // locked and this would flash.
+  test('ERROR is read as unlocked, not merely as not-a-failure', () async {
+    final client = lockAnswering(CommandStatus.ERROR);
+    final session = RemoteSession(client: client);
+    addTearDown(session.dispose);
+    await pumpEventQueue();
+
+    client.broadcast.add(Main()..desktopStatus = (Status()..locked = false));
+    await pumpEventQueue();
+
+    expect(session.justUnlocked, isFalse);
+  });
+
+  // The poll is the only way to learn the initial state at all, because a
+  // subscribe never answers with it. Nothing consumed the answer before - the
+  // frames loop could not match an empty frame - so the first lock-to-unlock
+  // after opening had no baseline to flash against.
+  test('the initial lock state is learned from the poll', () async {
+    final client = lockAnswering(CommandStatus.OK);
+    final session = RemoteSession(client: client);
+    addTearDown(session.dispose);
+    await pumpEventQueue();
+
+    client.broadcast.add(Main()..desktopStatus = (Status()..locked = false));
+    await pumpEventQueue();
+
+    expect(
+      session.justUnlocked,
+      isTrue,
+      reason: 'locked was known, so unlocking is a transition worth flashing',
+    );
+  });
+
+  // The baseline seeds, it does not announce. The poll's answer predates the
+  // subscribe, and after a pause it is the first thing seen since - so an
+  // unlock the user did on the device by hand would otherwise be reported
+  // here as though it had just happened.
+  test('the polled baseline does not flash an unlock', () async {
+    final client = lockAnswering(CommandStatus.ERROR);
+    final session = RemoteSession(client: client);
+    addTearDown(session.dispose);
+    await pumpEventQueue();
+
+    client.broadcast.add(Main()..desktopStatus = (Status()..locked = true));
+    await pumpEventQueue();
+    await session.pauseVisuals();
+    await session.resumeVisuals();
+    await pumpEventQueue();
+
+    expect(session.justUnlocked, isFalse);
+  });
+
+  // OK alone means locked, so a firmware variant that did answer with a
+  // status frame would otherwise be read as locked whatever it said.
+  test('a status frame is preferred over what OK alone would mean', () async {
+    final client = lockAnswering(CommandStatus.OK)
+      ..framesFor = (request) => request.hasDesktopIsLockedRequest()
+          ? [Main()..desktopStatus = (Status()..locked = false)]
+          : const <Main>[];
+    final session = RemoteSession(client: client);
+    addTearDown(session.dispose);
+    await pumpEventQueue();
+
+    client.broadcast.add(Main()..desktopStatus = (Status()..locked = false));
+    await pumpEventQueue();
+
+    expect(
+      session.justUnlocked,
+      isFalse,
+      reason: 'the frame said unlocked, so the push is not a transition',
+    );
+  });
+
+  // A status that is not ERROR still has to surface: swallowing every
+  // rejection as "unlocked" would turn a real RPC failure into a lock state.
+  // But it is not a disconnection either - the poll runs last, so the link has
+  // already answered twice by then.
+  test(
+    'a status the firmware refuses is neither unlocked nor a drop',
+    () async {
+      final client = lockAnswering(CommandStatus.ERROR_NOT_IMPLEMENTED);
+      final session = RemoteSession(client: client);
+      addTearDown(session.dispose);
+      await pumpEventQueue();
+
+      expect(
+        session.isDisconnected,
+        isFalse,
+        reason: 'the link answered twice',
+      );
+
+      client.broadcast.add(Main()..desktopStatus = (Status()..locked = false));
+      await pumpEventQueue();
+
+      expect(
+        session.justUnlocked,
+        isFalse,
+        reason: 'no baseline was taken, so there is no transition to report',
       );
     },
   );
