@@ -236,19 +236,44 @@
     "description": "Subtitle under the Log tile on the Settings screen."
   },
 
-  "logEmpty": "Nothing recorded yet. Errors and warnings appear here as they happen, so they can be copied into a bug report.",
+  "logEmpty": "Nothing recorded yet. Errors and warnings are collected as they happen; open this screen or refresh it to see them.",
   "@logEmpty": {
     "description": "Shown on the log screen when the app has recorded nothing. Reassures the user that an empty log means nothing went wrong, not that recording is off."
   },
 
-  "logCopy": "Copy the log",
-  "@logCopy": {
-    "description": "Tooltip on the log screen's copy button, which puts every recorded line on the clipboard."
+  "logPrivacyCaution": "This log can name files, folders and devices you have used. Read it before sharing it.",
+  "@logPrivacyCaution": {
+    "description": "Shown above the log, before the button that copies it. The log is meant to be pasted into a public bug report, and paths have the account name removed automatically - but a message naming a card, a folder or a Flipper cannot be cleaned up automatically, so the user is told to read it first."
   },
 
-  "logCopied": "Log copied",
-  "@logCopied": {
-    "description": "Toast shown after the log was put on the clipboard."
+  "logClearTitle": "Clear the log?",
+  "@logClearTitle": {
+    "description": "Title of the confirmation asked before emptying the log."
+  },
+
+  "logClearMessage": "The recorded errors are dropped. Copy them first if you are reporting a problem.",
+  "@logClearMessage": {
+    "description": "Body of the confirmation asked before emptying the log. Clearing is beside Copy and destroys the only record there is."
+  },
+
+  "commonCopy": "Copy",
+  "@commonCopy": {
+    "description": "Tooltip or label on a button that copies what is shown to the clipboard. Shared across screens."
+  },
+
+  "commonCopied": "Copied",
+  "@commonCopied": {
+    "description": "Toast shown after something was put on the clipboard. Shared across screens."
+  },
+
+  "commonCopyFailed": "Could not copy: {error}",
+  "@commonCopyFailed": {
+    "description": "Toast shown when the clipboard refused what was given to it - on Android a payload beyond about a megabyte throws rather than truncating. {error} is the untranslated exception text.",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
   },
 
   "commonRefresh": "Refresh",

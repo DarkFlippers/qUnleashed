@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
-import '../../../components/notification.dart';
+import '../../../components/appbar.dart';
+import '../../../components/dialogs/confirm.dart';
+import '../../../components/share.dart';
 import '../../../services/localization/l10n.dart';
 import '../../../services/logging.dart';
 import '../../../theme/theme.dart';
@@ -24,20 +25,27 @@ class LogSettingsPage extends StatefulWidget {
 }
 
 class _LogSettingsPageState extends State<LogSettingsPage> {
-  late List<String> _entries = LogService.history;
+  List<String> _entries = LogService.history;
 
   void _reload() => setState(() => _entries = LogService.history);
 
   Future<void> _copy() async {
-    await Clipboard.setData(ClipboardData(text: _entries.join('\n')));
-    if (!mounted) return;
-    context.showNotification(
-      context.l10n.logCopied,
-      type: QNotificationType.good,
-    );
+    // Blank line between entries: an entry is a whole message, so joined with
+    // one newline a stack trace's last frame sits flush against the next
+    // timestamp and the paste reads as one run-on block.
+    await copyTextToClipboard(context, _entries.join('\n\n'));
   }
 
-  void _clear() {
+  Future<void> _clear() async {
+    // Confirmed, unlike the Flibler console's clear, because this button sits
+    // beside Copy and what it destroys is the only copy of the evidence.
+    final ok = await QConfirmDialog.show(
+      context,
+      title: context.l10n.logClearTitle,
+      message: context.l10n.logClearMessage,
+      confirmLabel: context.l10n.commonClear,
+    );
+    if (!ok) return;
     LogService.clearHistory();
     _reload();
   }
@@ -52,53 +60,107 @@ class _LogSettingsPageState extends State<LogSettingsPage> {
         backgroundColor: colors.background,
         surfaceTintColor: colors.transparent,
         actions: [
-          IconButton(
+          QPageAppBarAction(
             tooltip: context.l10n.commonRefresh,
             onPressed: _reload,
             icon: const Icon(Icons.refresh),
           ),
-          IconButton(
-            tooltip: context.l10n.logCopy,
+          QPageAppBarAction(
+            tooltip: context.l10n.commonCopy,
             onPressed: _entries.isEmpty ? null : _copy,
             icon: const Icon(Icons.copy_all_outlined),
           ),
-          IconButton(
+          QPageAppBarAction(
             tooltip: context.l10n.commonClear,
             onPressed: _entries.isEmpty ? null : _clear,
             icon: const Icon(Icons.delete_outline),
           ),
         ],
       ),
-      body: _entries.isEmpty ? _empty(colors) : _list(colors),
+      body: _entries.isEmpty ? _empty() : _body(),
     );
   }
 
-  Widget _empty(QAppColors colors) => Center(
-    child: Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 32),
-      child: Text(
-        context.l10n.logEmpty,
-        textAlign: TextAlign.center,
-        style: TextStyle(color: colors.textMuted, fontSize: 14, height: 1.5),
+  Widget _empty() {
+    final colors = context.appColors;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Text(
+          context.l10n.logEmpty,
+          textAlign: TextAlign.center,
+          style: TextStyle(color: colors.textMuted, fontSize: 14, height: 1.5),
+        ),
       ),
-    ),
+    );
+  }
+
+  Widget _body() => Column(
+    children: [
+      _caution(),
+      Expanded(child: _list()),
+    ],
   );
 
-  /// Oldest first, so reading down follows what happened. An entry is a whole
-  /// message, stack trace included, which is why each is its own selectable
-  /// block rather than a line in one long run of text.
-  Widget _list(QAppColors colors) => ListView.separated(
-    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-    itemCount: _entries.length,
-    separatorBuilder: (_, _) => Divider(color: colors.divider, height: 18),
-    itemBuilder: (context, i) => SelectableText(
-      _entries[i],
-      style: TextStyle(
-        color: colors.textSecondary,
-        fontSize: 12,
-        fontFamily: 'monospace',
-        height: 1.4,
+  /// Says what the log can name, above the log itself.
+  ///
+  /// Absolute paths have the account name taken out of them at the sink, but
+  /// that is the only category that can be removed mechanically: a message
+  /// naming a card, a folder or a Flipper is not distinguishable from any
+  /// other text. So the user is told, and the log is on screen to read, before
+  /// the button that hands it to a public issue.
+  Widget _caution() {
+    final colors = context.appColors;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      color: colors.info.withValues(alpha: 0.10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline, size: 16, color: colors.info),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              context.l10n.logPrivacyCaution,
+              style: TextStyle(
+                color: colors.textSecondary,
+                fontSize: 12,
+                height: 1.4,
+              ),
+            ),
+          ),
+        ],
       ),
-    ),
-  );
+    );
+  }
+
+  /// Oldest first, so reading down follows what happened. An entry is a whole
+  /// message, stack trace included, which is why each is its own block.
+  ///
+  /// One [SelectionArea] around the list rather than a SelectableText per row:
+  /// per-row selection cannot cross an entry boundary, which for a stack trace
+  /// is the one thing anyone wants from it — and it spared every row a focus
+  /// node and a selection overlay of its own.
+  Widget _list() {
+    final colors = context.appColors;
+    final style = TextStyle(
+      color: colors.terminalText,
+      fontSize: 12,
+      fontFamily: 'monospace',
+      height: 1.4,
+    );
+    final divider = Divider(color: colors.divider, height: 18);
+    return ColoredBox(
+      color: colors.terminalBackground,
+      child: SelectionArea(
+        child: ListView.separated(
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+          itemCount: _entries.length,
+          separatorBuilder: (_, _) => divider,
+          itemBuilder: (context, i) => Text(_entries[i], style: style),
+        ),
+      ),
+    );
+  }
 }

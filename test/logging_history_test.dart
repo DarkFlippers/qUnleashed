@@ -1,4 +1,7 @@
 import 'package:flipperlib/flipperlib.dart' show FlipperLogLevel, Log;
+import 'dart:io' as io;
+import 'dart:ui';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/services/logging.dart';
@@ -164,13 +167,23 @@ void main() {
     // The failures with the least surface of all: every handler the app added
     // for #21, #84, #85 and #80 covers something someone thought to catch.
     // These are the ones nobody did, and they reached nothing at all.
-    late FlutterExceptionHandler? previous;
+    late FlutterExceptionHandler? previousFlutter;
+    late ErrorCallback? previousPlatform;
 
     setUp(() {
-      previous = FlutterError.onError;
+      previousFlutter = FlutterError.onError;
+      previousPlatform = PlatformDispatcher.instance.onError;
+      LogService.debugResetHandlers();
       LogService.installUncaughtHandlers();
     });
-    tearDown(() => FlutterError.onError = previous);
+    // Both, not just the first. Restoring only FlutterError left a wrapper on
+    // the platform handler per test, two deep by the end of the group and
+    // never unwound into the rest of the run.
+    tearDown(() {
+      FlutterError.onError = previousFlutter;
+      PlatformDispatcher.instance.onError = previousPlatform;
+      LogService.debugResetHandlers();
+    });
 
     test('a framework error is kept', () {
       printed(
@@ -191,6 +204,7 @@ void main() {
     test('the handler already installed still runs', () {
       var presented = 0;
       FlutterError.onError = (_) => presented += 1;
+      LogService.debugResetHandlers();
       LogService.installUncaughtHandlers();
 
       printed(
@@ -201,6 +215,125 @@ void main() {
 
       expect(presented, 1);
       expect(LogService.history.single, contains('boom'));
+    });
+    // reportError has no try/catch of its own and exceptionAsString() calls
+    // toString() on whatever it was given. Recording before the chained
+    // handler would let one bad toString() cost the red screen and the failed
+    // test - the two things this is written not to cost.
+    test('a failure while recording does not cost the handler below', () {
+      var presented = 0;
+      FlutterError.onError = (_) => presented += 1;
+      LogService.debugResetHandlers();
+      LogService.installUncaughtHandlers();
+
+      printed(
+        () => FlutterError.reportError(
+          FlutterErrorDetails(exception: _ExplodingOnToString()),
+        ),
+      );
+
+      expect(presented, 1, reason: 'the dump still happened');
+    });
+
+    test('a framework error carries where it was thrown', () {
+      printed(
+        () => FlutterError.reportError(
+          FlutterErrorDetails(
+            exception: StateError('overflowed'),
+            context: ErrorDescription('building MyWidget'),
+          ),
+        ),
+      );
+
+      expect(LogService.history.single, contains('building MyWidget'));
+    });
+
+    // Silent is the framework's own word for "expected here, do not dump it",
+    // and dumpErrorToConsole honours it in release.
+    test('an error the framework marks silent is not kept', () {
+      printed(
+        () => FlutterError.reportError(
+          FlutterErrorDetails(exception: StateError('expected'), silent: true),
+        ),
+      );
+
+      expect(LogService.history, isEmpty);
+    });
+
+    test('a missing stack does not leave the word null in the entry', () {
+      printed(
+        () => FlutterError.reportError(
+          FlutterErrorDetails(exception: StateError('no stack here')),
+        ),
+      );
+
+      expect(LogService.history.single, isNot(contains('null')));
+    });
+
+    // The other half, which had no coverage at all: a rejected future nobody
+    // awaited reaches PlatformDispatcher rather than FlutterError.
+    test('an error nobody awaited is kept, and stays unhandled', () {
+      var chained = 0;
+      PlatformDispatcher.instance.onError = (e, st) {
+        chained += 1;
+        return false;
+      };
+      LogService.debugResetHandlers();
+      LogService.installUncaughtHandlers();
+
+      late bool handled;
+      printed(() {
+        handled = PlatformDispatcher.instance.onError!(
+          StateError('nobody awaited this'),
+          StackTrace.current,
+        );
+      });
+
+      expect(LogService.history.single, contains('nobody awaited this'));
+      expect(chained, 1, reason: 'whatever was there still runs');
+      expect(handled, isFalse, reason: 'still unhandled, nothing suppressed');
+    });
+
+    // A second install wraps the wrappers, and _remember then coalesces the
+    // pair into a count rather than duplicating - so the log would read as the
+    // app having failed twice, which is worse than a duplicate.
+    test('installing twice does not make one failure look like two', () {
+      LogService.installUncaughtHandlers();
+
+      printed(
+        () => FlutterError.reportError(
+          FlutterErrorDetails(exception: StateError('once')),
+        ),
+      );
+
+      expect(LogService.history, hasLength(1));
+      expect(LogService.history.single, isNot(contains('2×')));
+    });
+  });
+
+  group('redaction', () {
+    // The log became something a user copies into a public issue, and every
+    // absolute path in it starts with the account name. It is the only
+    // category that can be taken out mechanically.
+    test('a home directory is replaced wherever it appears', () {
+      final home =
+          io.Platform.environment['USERPROFILE'] ??
+          io.Platform.environment['HOME'];
+      if (home == null || home.length <= 3) return;
+
+      printed(() => LogService.error('could not clear $home/Documents/x.ir'));
+
+      expect(LogService.history.single, isNot(contains(home)));
+      expect(LogService.history.single, contains('~'));
+    });
+
+    test('a message with no path in it is left alone', () {
+      printed(() => LogService.error('[RPC] rx unmatched frame cmdId=7'));
+
+      expect(
+        LogService.history.single,
+        contains('[RPC] rx unmatched frame cmdId=7'),
+      );
     });
   });
 
@@ -213,4 +346,11 @@ void main() {
 
     expect(LogService.printing, !expectsQuiet);
   });
+}
+
+/// Stands in for an exception whose own toString() fails, which is the case
+/// that would otherwise take the chained handler down with it.
+class _ExplodingOnToString {
+  @override
+  String toString() => throw StateError('even saying what I am fails');
 }

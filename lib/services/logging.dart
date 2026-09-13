@@ -1,4 +1,5 @@
 import 'dart:collection';
+import 'dart:io' as io;
 import 'dart:ui' as ui;
 
 import 'package:flipperlib/flipperlib.dart' show FlipperLogLevel, Log;
@@ -137,6 +138,9 @@ class LogService {
     _repeats = 0;
   }
 
+  @visibleForTesting
+  static void debugResetHandlers() => _handlersInstalled = false;
+
   static bool _initialized = false;
 
   static Future<void> initialize() async {
@@ -185,22 +189,62 @@ class LogService {
   /// Both chain rather than replace. [FlutterError.onError] already presents
   /// the red console dump in a debug build and flutter_test installs its own
   /// to fail a test on an unexpected error — dropping either would be a poor
-  /// trade for recording it. Returning false from the platform handler says
-  /// the error is still unhandled, so nothing downstream is suppressed either.
+  /// trade for recording it. Returning what the previous handler said, or
+  /// false, leaves the error unhandled, so nothing downstream is suppressed.
+  ///
+  /// The chained handler runs first, and the recording cannot throw past it.
+  /// `FlutterError.reportError` is a bare `onError?.call(details)` with no
+  /// guard of its own, and `exceptionAsString()` calls `toString()` on an
+  /// arbitrary object — so recording first would let one bad `toString()` cost
+  /// the red screen and the failed test both. The platform handler is worse:
+  /// in the root zone a throw there escapes into the engine, and in a guarded
+  /// zone it is re-dispatched, which a recorder that always fails would turn
+  /// into a loop.
   @visibleForTesting
   static void installUncaughtHandlers() {
+    // Installing twice wraps the wrappers, and every error would then be
+    // recorded once per install — which _remember coalesces into "(2×)"
+    // rather than duplicating, so it reads as the app having failed twice.
+    if (_handlersInstalled) return;
+    _handlersInstalled = true;
+
     final presented = FlutterError.onError;
     FlutterError.onError = (details) {
-      error('[flutter] ${details.exceptionAsString()}\n${details.stack}');
       presented?.call(details);
+      // Silent is the framework's own word for "expected here, do not dump
+      // it": dumpErrorToConsole honours it in release, and so does this.
+      if (details.silent) return;
+      try {
+        final where = details.context == null
+            ? ''
+            : ' during ${details.context!.toDescription()}';
+        final stack = details.stack == null ? '' : '\n${details.stack}';
+        // console: false — the handler above has already printed this, in the
+        // framework's own formatting, which is better than a flat copy of it.
+        _emit(
+          '[error] [flutter]$where ${details.exceptionAsString()}$stack',
+          keep: true,
+          console: false,
+        );
+      } catch (_) {
+        // A toString() that throws must not also cost the dump above.
+      }
     };
 
     final dispatched = ui.PlatformDispatcher.instance.onError;
     ui.PlatformDispatcher.instance.onError = (e, st) {
-      error('[uncaught] $e\n$st');
-      return dispatched?.call(e, st) ?? false;
+      final handled = dispatched?.call(e, st) ?? false;
+      try {
+        error('[uncaught] $e\n$st');
+      } catch (_) {
+        // Nothing upstream catches this: in the root zone the engine gets the
+        // throw, and a guarded zone re-dispatches it without end.
+      }
+      return handled;
     };
   }
+
+  static bool _handlersInstalled = false;
 
   static void error(String msg) =>
       _emit('[error] $msg', keep: true, console: errorOn);
@@ -267,8 +311,53 @@ class LogService {
   // build print.
   static void _write(String msg) => _emit(msg, keep: false, console: printing);
 
+  /// Home directories, longest first, replaced with `~` wherever they appear.
+  ///
+  /// The log is something a user copies into a public issue now, and absolute
+  /// paths are the one category that leaks every time it fires: the IR
+  /// recovery names the tree it could not clear — at every launch — and any
+  /// FileSystemException prints `path = '<absolute>'`. All of them begin with
+  /// the account name.
+  ///
+  /// It is also the only category that can be removed mechanically. What a
+  /// message says about the user's own files, folders and devices — a card
+  /// called `Office badge.nfc`, a Flipper's name, a card's UID inside a
+  /// dictionary filename — is not distinguishable from any other text, which
+  /// is why the log screen says what the log can contain and shows it to the
+  /// user before offering to copy it.
+  static final List<String> _homes = _resolveHomes();
+
+  static List<String> _resolveHomes() {
+    if (kIsWeb) return const [];
+    final found = <String>[];
+    for (final key in const ['USERPROFILE', 'HOME']) {
+      final value = io.Platform.environment[key];
+      // Anything this short is not a home directory, and replacing it would
+      // shred unrelated messages.
+      if (value != null && value.length > 3) found.add(value);
+    }
+    // Longest first: on macOS HOME can sit inside another candidate, and a
+    // shorter match would leave the tail of the longer one behind.
+    found.sort((a, b) => b.length.compareTo(a.length));
+    return found;
+  }
+
+  @visibleForTesting
+  static String redact(String msg) {
+    var out = msg;
+    for (final home in _homes) {
+      out = out.replaceAll(home, '~');
+    }
+    return out;
+  }
+
   /// Stamps [msg], keeps it in [history] if [keep], prints it if [console].
-  static void _emit(String msg, {required bool keep, required bool console}) {
+  static void _emit(
+    String message, {
+    required bool keep,
+    required bool console,
+  }) {
+    final msg = redact(message);
     final ts = DateTime.now().toIso8601String().substring(11, 19);
     if (keep) _remember('[$ts] $msg', msg);
     if (!console) return;

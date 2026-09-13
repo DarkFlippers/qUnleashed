@@ -83,6 +83,46 @@ void main() {
 
     expect(copied, contains('first failure'));
     expect(copied, contains('second failure'));
+    expect(
+      copied,
+      contains('\n\n'),
+      reason:
+          'a blank line between entries, so a stack trace does not run '
+          'into the next timestamp',
+    );
+  });
+
+  // Every hand-rolled copy in the app discarded the future, so a refused
+  // clipboard was an unhandled async error and the only signal was the
+  // absence of a toast. On Android a payload past about a megabyte throws
+  // rather than truncating, and 500 stack traces sit right at that line.
+  testWidgets('a refused clipboard says so instead of going quiet', (
+    tester,
+  ) async {
+    quietly(() => LogService.error('something to copy'));
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          throw PlatformException(code: 'TransactionTooLargeException');
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+
+    await tester.pumpWidget(wrap(const LogSettingsPage()));
+    await tester.pump();
+    await tester.tap(find.byIcon(Icons.copy_all_outlined));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.textContaining('TransactionTooLargeException'), findsOneWidget);
   });
 
   testWidgets('clearing empties the log and the screen with it', (
@@ -93,10 +133,39 @@ void main() {
     await tester.pumpWidget(wrap(const LogSettingsPage()));
     await tester.pump();
     await tester.tap(find.byIcon(Icons.delete_outline));
-    await tester.pump();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(l10nGlobal.commonClear).last);
+    await tester.pumpAndSettle();
 
     expect(LogService.history, isEmpty);
     expect(find.text(l10nGlobal.logEmpty), findsOneWidget);
+  });
+
+  // Clear sits beside Copy and destroys the only record there is.
+  testWidgets('backing out of the confirmation keeps the log', (tester) async {
+    quietly(() => LogService.error('worth keeping'));
+
+    await tester.pumpWidget(wrap(const LogSettingsPage()));
+    await tester.pump();
+    await tester.tap(find.byIcon(Icons.delete_outline));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(l10nGlobal.commonCancel).last);
+    await tester.pumpAndSettle();
+
+    expect(LogService.history, hasLength(1));
+  });
+
+  // The log is meant to be pasted into a public issue. Paths have the account
+  // name taken out at the sink, but a message naming a card, a folder or a
+  // Flipper cannot be cleaned up mechanically - so the user is told, above the
+  // log itself and before the button that hands it over.
+  testWidgets('the screen says what the log can contain', (tester) async {
+    quietly(() => LogService.error('could not clear ~/Documents/x.ir'));
+
+    await tester.pumpWidget(wrap(const LogSettingsPage()));
+    await tester.pump();
+
+    expect(find.text(l10nGlobal.logPrivacyCaution), findsOneWidget);
   });
 
   // A snapshot on purpose - lines must not move under someone reading a
