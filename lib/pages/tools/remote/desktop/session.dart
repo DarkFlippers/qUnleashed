@@ -5,6 +5,7 @@ import 'package:flipperlib/flipperlib.dart' hide DateTime, File;
 import 'package:flutter/foundation.dart';
 
 import '../../../../services/connection/device_info_watch.dart';
+import '../../../../services/rpc/desktop_lock.dart';
 import '../../../../services/logging.dart';
 import 'frame_decoder.dart';
 import 'models/models.dart';
@@ -149,8 +150,11 @@ class RemoteSession extends ChangeNotifier {
         _restartWanted = false;
         if (_disposed || !_visualsEnabled) return;
         try {
-          // Checked for teardown or a visual pause between each. All three
-          // requests stay at rightNow; their defaults are foreground.
+          // Checked for teardown or a visual pause between each, so a page
+          // that goes away part way through stops the rest going out.
+          //
+          // Both library requests stay at rightNow; their defaults are
+          // foreground.
           //
           // For the subscribe that is correctness, not tidiness: the queue
           // sorts by priority before arrival, so left at foreground it would
@@ -161,9 +165,10 @@ class RemoteSession extends ChangeNotifier {
           // applies to the stream, which guiStopScreenStream undoes at
           // rightNow. Equal-priority requests stay FIFO.
           //
-          // desktopIsLocked has nothing that undoes it, so its priority only
-          // buys latency on a path the user is waiting out — but the three
-          // belong to one operation and are easier to reason about together.
+          // desktopIsLocked has nothing that undoes it, so unlike the
+          // subscribe its rightNow is latency rather than correctness — and
+          // little of that, since _frameSub is live from the constructor and
+          // the screen is not waiting on it.
           await _client.guiStartScreenStream(
             priority: FlipperRequestPriority.rightNow,
           );
@@ -180,17 +185,23 @@ class RemoteSession extends ChangeNotifier {
             await _stopVisuals();
             return;
           }
-          final frames = await _client.desktopIsLocked(
-            priority: FlipperRequestPriority.rightNow,
-          );
+          // Caught apart from the two above. The poll runs last, so by here
+          // the link has answered twice — a status rejection from it says
+          // something about the command, not the connection, and flagging the
+          // whole session disconnected for it is the mistake #94 was about,
+          // one status further along.
+          bool? locked;
+          try {
+            locked = await _client.desktopIsLockedNow();
+          } on FlipperRpcException catch (e) {
+            LogService.warn('[Remote] lock state unavailable: $e');
+          }
           if (_disposed) return;
           if (!_visualsEnabled) {
             await _stopVisuals();
             return;
           }
-          for (final f in frames) {
-            if (f.hasDesktopStatus()) _applyStatus(f.desktopStatus);
-          }
+          if (locked != null) _applyLocked(locked, flash: false);
         } catch (_) {
           if (_disposed) return;
           if (!_isDisconnected) {
@@ -283,11 +294,20 @@ class RemoteSession extends ChangeNotifier {
     unawaited(_start());
   }
 
-  void _applyStatus(Status status) {
+  void _applyStatus(Status status) => _applyLocked(status.locked);
+
+  /// [flash] is false for the baseline an open polls for.
+  ///
+  /// That answer is a snapshot the device took before the subscribe landed, so
+  /// it can be older than a push already applied — and after a pause it is the
+  /// first thing seen since, so an unlock the user did on the device by hand
+  /// would be announced here as though it had just happened. Seeding the
+  /// baseline is its job; reporting a transition is the stream's.
+  void _applyLocked(bool locked, {bool flash = true}) {
     if (_disposed || !_visualsEnabled) return;
     final wasLocked = _isLocked;
-    _isLocked = status.locked;
-    if (_lockStatusKnown && wasLocked && !status.locked) _flashUnlocked();
+    _isLocked = locked;
+    if (flash && _lockStatusKnown && wasLocked && !locked) _flashUnlocked();
     _lockStatusKnown = true;
     _safeNotify();
   }
@@ -422,11 +442,15 @@ class RemoteSession extends ChangeNotifier {
     Timer(_kAnimDuration, () => _dequeue(item));
     try {
       await _client.desktopUnlock(UnlockRequest());
-      final frames = await _client.desktopIsLocked();
-      for (final f in frames) {
-        if (f.hasDesktopStatus()) _applyStatus(f.desktopStatus);
-      }
-    } catch (_) {}
+      // Flashing here, unlike the open's baseline: this transition is one the
+      // user just asked for, and confirming it is the point.
+      _applyLocked(await _client.desktopIsLockedNow());
+    } catch (e) {
+      // Was a bare catch, back when the ordinary unlocked answer arrived here
+      // as a rejection. Now only real failures reach it — a refused unlock
+      // looked exactly like a successful one, with no flash and no trace.
+      LogService.warn('[Remote] unlock failed: $e');
+    }
   }
 
   Future<void> _chain(Future<void> Function() action) {
