@@ -121,6 +121,24 @@ blocks "a branch that only looks like the sync branch" l10n/crowdin-fix \
   translations/app_ru.arb \
   translations/app_ru.arb
 
+# Why any of this exists is in the script's header. What is specific here:
+# every other test feeds paths through printf, which finishes writing before
+# the guard reads anything, so none of them can leave a producer mid-write -
+# and that is the only way the early exit can strand one. awk rather than
+# `yes | head`, because head SIGPIPEs yes itself and that 141 would be the one
+# measured. 10000 lines is 240 KB, past a 64 KB pipe buffer with the margin
+# Git Bash needs: 5000 does not trip it there.
+# Bytes, not lines: a shorter path at the same count fits inside the buffer
+# and the producer finishes before the guard exits, which tests nothing.
+sigpipe_producer='BEGIN { for (i = 0; i < 10000; i++)
+  print "translations/app_ru.arb" }'
+sigpipe_status=0
+sigpipe_out="$(awk "$sigpipe_producer" \
+  | env -i PATH="$PATH" GITHUB_HEAD_REF=l10n/crowdin bash "$CHECK" 2>&1)" \
+  || sigpipe_status=$?
+assert_allowed "a producer still writing when the sync branch exits" \
+  "$sigpipe_out" "$sigpipe_status"
+
 # Empty input is a change that touched nothing relevant, not a failure.
 allows "no changed files at all" feature/x ""
 
