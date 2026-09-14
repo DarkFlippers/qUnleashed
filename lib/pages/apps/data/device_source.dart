@@ -71,6 +71,33 @@ class DeviceSource extends ChangeNotifier {
   final Map<String, FapInfo?> _parsed = {};
   final Map<String, int> _parsedStamp = {};
 
+  /// Counts device switches, so that work started against one Flipper cannot
+  /// file its result under another.
+  ///
+  /// A scan, a download or an install runs for as long as it runs, and the
+  /// maps above describe whichever device is attached now - so every pass
+  /// takes this number at its start and, after each await, drops what it was
+  /// about to write if the number has moved. A dropped link is a different
+  /// matter that [isReady] already covers: a device swapped on a live link
+  /// leaves that reading true throughout.
+  int _generation = 0;
+  Future<void> _localPass = Future<void>.value();
+
+  bool _stale(int gen) => gen != _generation;
+
+  /// Queues the passes over [_local] and [_parsed] behind one another.
+  ///
+  /// Two at once means one rebuilding a map while the other is iterating it,
+  /// which throws. This is not what [_priming] does - that one only keeps a
+  /// second `prime` from repeating the first; these passes also arrive from a
+  /// scan, from a delete and from a device switch, and none of them know about
+  /// each other.
+  Future<void> _serial(Future<void> Function() body) {
+    final pass = _localPass.then((_) => body());
+    _localPass = pass.then((_) {}, onError: (_) {});
+    return pass;
+  }
+
   FapInfo? infoFor(String alias) => _parsed[alias];
 
   List<InstalledApp> get apps {
@@ -134,16 +161,27 @@ class DeviceSource extends ChangeNotifier {
     return parts.length >= 2 ? parts[parts.length - 2] : '';
   }
 
-  Future<void> prime() async {
+  Future<void>? _priming;
+
+  Future<void> prime() =>
+      _priming ??= _prime().whenComplete(() => _priming = null);
+
+  Future<void> _prime() async {
+    final gen = _generation;
     await _loadLocalApps();
+    if (_stale(gen)) return;
     notifyListeners();
     await manifests.ensureFresh();
+    if (_stale(gen)) return;
     _warmManifestIcons();
     notifyListeners();
     await _parseLocalFaps();
   }
 
-  Future<void> _loadLocalApps() async {
+  Future<void> _loadLocalApps() => _serial(_readLocalMirror);
+
+  Future<void> _readLocalMirror() async {
+    final gen = _generation;
     final map = <String, ({int size, String folder, String path, int stamp})>{};
     try {
       final name = await _deviceName();
@@ -182,6 +220,7 @@ class DeviceSource extends ChangeNotifier {
         }
       }
     } catch (_) {}
+    if (_stale(gen)) return;
     _local
       ..clear()
       ..addAll(map);
@@ -189,22 +228,34 @@ class DeviceSource extends ChangeNotifier {
 
   /// Reads every local `.fap` copy that changed since the last pass and keeps
   /// its parsed manifest, sections and assets around for the manager UI.
-  Future<void> _parseLocalFaps() async {
+  Future<void> _parseLocalFaps() => _serial(_parsePendingFaps);
+
+  Future<void> _parsePendingFaps() async {
+    final gen = _generation;
     var changed = false;
 
-    for (final entry in _local.entries) {
-      final alias = entry.key;
-      final stamp = Object.hash(entry.value.size, entry.value.stamp);
+    for (final alias in _local.keys.toList()) {
+      final entry = _local[alias];
+      if (entry == null) continue;
+      final stamp = Object.hash(entry.size, entry.stamp);
       if (_parsed.containsKey(alias) && _parsedStamp[alias] == stamp) continue;
+      FapInfo? info;
       try {
-        final bytes = await io.File(entry.value.path).readAsBytes();
-        _parsed[alias] = FapInfo.parse(bytes);
+        info = FapInfo.parse(await io.File(entry.path).readAsBytes());
       } catch (e) {
         // One per app in the parse loop, and fap_facts renders an explicit
         // "not a valid application file" for the null this leaves.
         LogService.info('[DeviceSource] parse "$alias" failed: $e');
-        _parsed[alias] = null;
+        info = null;
       }
+      if (_stale(gen)) return;
+      // Records compare by value, which is what carries this check: a table
+      // rebuilt from the same files still matches, while a copy replaced while
+      // its bytes were being read does not. Turning the entry into a class
+      // would leave identity equality here, and every parse would be dropped
+      // without a word.
+      if (_local[alias] != entry) continue;
+      _parsed[alias] = info;
       _parsedStamp[alias] = stamp;
       changed = true;
     }
@@ -221,6 +272,7 @@ class DeviceSource extends ChangeNotifier {
 
   Future<void> scan() async {
     if (!isReady || _syncing) return;
+    final gen = _generation;
     _syncing = true;
     _syncDone = 0;
     _syncTotal = 0;
@@ -229,6 +281,7 @@ class DeviceSource extends ChangeNotifier {
     try {
       await manifests.refresh();
       final walk = await _walkDevice();
+      if (_stale(gen)) return;
       final deviceApps = walk.apps;
       // Only a complete walk proves absence. A partial one - a disconnect
       // mid-scan - must leave the previous answer alone rather than report an
@@ -244,7 +297,7 @@ class DeviceSource extends ChangeNotifier {
       final dir = await _backupDir(name);
 
       for (final d in deviceApps) {
-        if (!isReady) break;
+        if (!isReady || _stale(gen)) break;
         _syncingItem = d.alias;
         notifyListeners();
         final local = io.File(
@@ -269,7 +322,7 @@ class DeviceSource extends ChangeNotifier {
               timeout: const Duration(seconds: 60),
               priority: FlipperRequestPriority.background,
             );
-            if (bytes.isNotEmpty) {
+            if (bytes.isNotEmpty && !_stale(gen)) {
               await local.parent.create(recursive: true);
               await local.writeAsBytes(bytes, flush: true);
               unawaited(IconResolver.instance.ensureFromFap(d.alias, bytes));
@@ -392,6 +445,7 @@ class DeviceSource extends ChangeNotifier {
   Future<void> launch(InstalledApp app) => engine.launchPath(app.path);
 
   Future<bool> restore(InstalledApp app) async {
+    final gen = _generation;
     final name = await _deviceName();
     if (name == null) return false;
     final dir = await _backupDir(name);
@@ -408,7 +462,7 @@ class DeviceSource extends ChangeNotifier {
     );
     // Otherwise the app the user just put back keeps rendering as missing,
     // with no way out of that state but another full scan.
-    if (ok) {
+    if (ok && !_stale(gen)) {
       _deviceAliases?.add(app.alias);
       notifyListeners();
     }
@@ -421,6 +475,7 @@ class DeviceSource extends ChangeNotifier {
     required List<int> fapBytes,
   }) async {
     if (alias.isEmpty) return;
+    final gen = _generation;
     final folder = _folderFromPath(devicePath);
     var localPath = '';
     try {
@@ -441,6 +496,7 @@ class DeviceSource extends ChangeNotifier {
       // user taps Restore and is told there is none.
       LogService.warn('[DeviceSource] local copy of "$alias" failed: $e');
     }
+    if (_stale(gen)) return;
     _local[alias] = (
       size: fapBytes.length,
       folder: folder,
@@ -457,6 +513,7 @@ class DeviceSource extends ChangeNotifier {
   }
 
   Future<void> deleteLocal(InstalledApp app) async {
+    final gen = _generation;
     try {
       final name = await _deviceName();
       if (name == null) return;
@@ -470,13 +527,16 @@ class DeviceSource extends ChangeNotifier {
       );
       if (await file.exists()) await file.delete();
     } catch (_) {}
+    if (_stale(gen)) return;
     await _loadLocalApps();
     await _parseLocalFaps();
     notifyListeners();
   }
 
   Future<void> uninstallFromDevice(InstalledApp app) async {
+    final gen = _generation;
     await engine.deleteInstalled(alias: app.alias, fapPath: app.path);
+    if (_stale(gen)) return;
     _deviceAliases?.remove(app.alias);
     await deleteLocal(app);
   }
@@ -511,6 +571,7 @@ class DeviceSource extends ChangeNotifier {
   }
 
   void handleDeviceChange() {
+    _generation++;
     _local.clear();
     _parsed.clear();
     _parsedStamp.clear();
