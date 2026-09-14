@@ -40,6 +40,17 @@
 # branch name alone. A test keeps this default and crowdin-rx.yml in step.
 set -Eeuo pipefail
 
+# Read to the end whatever happens, because the usage above is a pipe and the
+# caller's producer is still writing: returning without draining kills it with
+# SIGPIPE, and a caller running under `-o pipefail` then reports that 141 as
+# its own status. Only the Crowdin exit below can return early enough to do it
+# today - the loop reaches EOF on every other path - but a trap covers the next
+# early exit somebody adds, which would otherwise reintroduce this silently.
+#
+# It cannot mask a real failure: pipefail takes the rightmost non-zero status,
+# so a producer that dies partway is still what the caller sees.
+trap 'cat >/dev/null || true' EXIT
+
 crowdin_branch="${CROWDIN_BRANCH:-l10n/crowdin}"
 branch="${GITHUB_HEAD_REF:-}"
 
