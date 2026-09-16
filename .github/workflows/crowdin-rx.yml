@@ -39,25 +39,146 @@ jobs:
           CROWDIN_PROJECT_ID: ${{ secrets.CROWDIN_PROJECT_ID }}
           CROWDIN_PERSONAL_TOKEN: ${{ secrets.CROWDIN_PERSONAL_TOKEN }}
 
+      - name: Find the translation pull request
+        id: pr
+        if: "!cancelled()"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          number=$(gh pr list --head l10n/crowdin --state open --json number --jq '.[0].number')
+          echo "number=${number}" >> "$GITHUB_OUTPUT"
+          if [ -z "$number" ]; then
+            echo "No open translation pull request."
+          else
+            echo "Translation pull request is #${number}."
+          fi
+
+      # Everything from here builds what the pull request contains, because
+      # nothing else will - why is in summarize_l10n_failure.sh's header, with
+      # the evidence. See #40.
+      #
+      # These steps deliberately do not use always(). They run only when the
+      # ones before them succeeded, because a build against a tree that was
+      # never overlaid would pass and report that the translations are fine.
+      #
+      # What is built is main's tree with the branch's translations laid over
+      # it, not a checkout of the branch: that is what merging produces, and it
+      # means the scripts come from main rather than from a long-lived branch
+      # that will not carry them until it is next recreated.
+      #
+      # The submodules are what pub get needs - flipperlib and dartufbt are
+      # path dependencies and it cannot resolve without them on disk. This is
+      # also a reset: the Crowdin action has already worked in this tree and
+      # may have left it on the localization branch, so the checkout is not
+      # redundant with the one at the top of the job.
+      - name: Check out the code the translations will merge into
+        if: steps.pr.outputs.number != ''
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Lay the pull request's translations over it
+        if: steps.pr.outputs.number != ''
+        run: |
+          git fetch --depth=1 origin l10n/crowdin
+          # Removed first, because `git checkout <tree> -- <path>` adds and
+          # modifies but never deletes. A language dropped on Crowdin would
+          # otherwise keep main's copy, and crowdin.yml's own note explains why
+          # that matters: gen-l10n refuses a country-coded ARB unless the base
+          # file for that language sits beside it, so a deletion that vanished
+          # here would build clean and break on main.
+          rm -rf translations
+          git checkout FETCH_HEAD -- translations
+          test -f translations/app_en.arb
+          git --no-pager diff --stat HEAD -- translations
+
+      # pub-get: false, then run it below. The action's own pub get uses
+      # --enforce-lockfile and reports every failure as a stale pubspec.lock,
+      # which is the wrong thing to tell someone whose translation is broken.
+      # Taking the action anyway is what keeps the pinned SDK in one place.
+      - name: Install Flutter
+        if: steps.pr.outputs.number != ''
+        uses: ./.github/actions/setup-flutter
+        with:
+          pub-get: "false"
+
+      # firebase_options.dart is generated, gitignored and never restored in
+      # CI, and push_service.dart imports it - so without this the analyze
+      # below fails on every run with uri_does_not_exist, and the sync reports
+      # a broken translation that nobody broke. ci.yml does the same for the
+      # same reason.
+      - name: Stub the Firebase configuration
+        if: steps.pr.outputs.number != ''
+        run: .github/scripts/stub_firebase_config.sh
+
+      # Both commands, because neither alone is enough - the three failure
+      # shapes and which command sees each are in the script's header.
+      - name: Build the translations
+        id: build
+        if: steps.pr.outputs.number != ''
+        run: |
+          # Errexit off across the measurement: a non-zero status here is the
+          # answer, not a reason to abandon the step.
+          set +e
+          # --enforce-lockfile for the reason every other job uses it:
+          # without it an overnight re-resolution changes the dependency
+          # set, and flutter analyze treats infos as fatal by default - so
+          # one new lint from a package nobody chose would fail the sync and
+          # read as a translation problem. A lockfile that no longer matches
+          # fails in the deps phase instead, which says plainly that no
+          # translation is to blame.
+          phase=deps
+          flutter pub get --enforce-lockfile > "${RUNNER_TEMP}/l10n.txt" 2>&1
+          status=$?
+          if [ "$status" -eq 0 ]; then
+            phase=analyze
+            flutter analyze >> "${RUNNER_TEMP}/l10n.txt" 2>&1
+            status=$?
+          fi
+          .github/scripts/summarize_l10n_failure.sh \
+            "$status" "$phase" "${RUNNER_TEMP}/l10n.txt" \
+            "$GITHUB_WORKSPACE" \
+            > "${RUNNER_TEMP}/verdict.md"
+          verdict=$?
+          set -e
+          cat "${RUNNER_TEMP}/l10n.txt"
+          cat "${RUNNER_TEMP}/verdict.md" >> "$GITHUB_STEP_SUMMARY"
+          exit "$verdict"
+
+      # The verdict goes above the status table, not below it. A broken
+      # translation under twenty rows of language percentages is a notice
+      # nobody reads.
       - name: Refresh the pull request
-        if: always()
+        if: "!cancelled()"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CROWDIN_PROJECT_ID: ${{ secrets.CROWDIN_PROJECT_ID }}
           CROWDIN_PERSONAL_TOKEN: ${{ secrets.CROWDIN_PERSONAL_TOKEN }}
+          NUMBER: ${{ steps.pr.outputs.number }}
         run: |
-          number=$(gh pr list --head l10n/crowdin --state open --json number --jq '.[0].number')
-          if [ -z "$number" ]; then
+          python3 .github/scripts/crowdin_summary.py > "${RUNNER_TEMP}/status.md"
+          if [ -z "$NUMBER" ]; then
             echo "No open translation pull request to refresh."
             exit 0
           fi
-          python3 .github/scripts/crowdin_summary.py > "${RUNNER_TEMP}/pr-body.md"
-          gh pr edit "$number" --body-file "${RUNNER_TEMP}/pr-body.md"
-          echo "Refreshed pull request #${number}."
+          : > "${RUNNER_TEMP}/pr-body.md"
+          if [ -f "${RUNNER_TEMP}/verdict.md" ]; then
+            {
+              cat "${RUNNER_TEMP}/verdict.md"
+              echo
+              echo "---"
+              echo
+            } >> "${RUNNER_TEMP}/pr-body.md"
+          fi
+          cat "${RUNNER_TEMP}/status.md" >> "${RUNNER_TEMP}/pr-body.md"
+          gh pr edit "$NUMBER" --body-file "${RUNNER_TEMP}/pr-body.md"
+          echo "Refreshed pull request #${NUMBER}."
 
+      # Built once above rather than fetched again: this is four Crowdin API
+      # round trips, and the job already has the answer.
       - name: Report translation status
-        if: always()
-        env:
-          CROWDIN_PROJECT_ID: ${{ secrets.CROWDIN_PROJECT_ID }}
-          CROWDIN_PERSONAL_TOKEN: ${{ secrets.CROWDIN_PERSONAL_TOKEN }}
-        run: python3 .github/scripts/crowdin_summary.py >> "$GITHUB_STEP_SUMMARY"
+        if: "!cancelled()"
+        run: |
+          if [ -f "${RUNNER_TEMP}/status.md" ]; then
+            cat "${RUNNER_TEMP}/status.md" >> "$GITHUB_STEP_SUMMARY"
+          fi

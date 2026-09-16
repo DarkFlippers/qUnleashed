@@ -46,6 +46,12 @@ jobs:
       - name: Test the translation source guard
         run: .github/scripts/check_translation_sources_test.sh
 
+      # The sync's own compile check reports through this. Its pull requests
+      # run no jobs of their own (#40), so a mistake in the summariser would
+      # surface as a translation silently reported as fine.
+      - name: Test the translation compile summary
+        run: .github/scripts/summarize_l10n_failure_test.sh
+
       # Why any of this exists is in the script's own header. What is specific
       # to running it here:
       #
