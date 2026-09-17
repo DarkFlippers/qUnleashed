@@ -81,12 +81,12 @@ class ManifestRegistry extends ChangeNotifier {
         }
       }
       _loaded = true;
-      LogService.log(
+      LogService.info(
         '[Manifests] ${_byAlias.length} installed (reused $reused, read $read)',
       );
       await _saveCache();
     } catch (e) {
-      LogService.log('[Manifests] refresh failed: $e');
+      LogService.info('[Manifests] refresh failed: $e');
     } finally {
       _loading = false;
       notifyListeners();
@@ -134,7 +134,7 @@ class ManifestRegistry extends ChangeNotifier {
       if (bytes.isEmpty) return null;
       return AppManifest.tryParse(utf8.decode(bytes, allowMalformed: true));
     } catch (e) {
-      LogService.log('[Manifests] read "$path" failed: $e');
+      LogService.info('[Manifests] read "$path" failed: $e');
       return null;
     }
   }
@@ -195,7 +195,7 @@ class ManifestRegistry extends ChangeNotifier {
         flush: true,
       );
     } catch (e) {
-      LogService.log('[Manifests] cache save failed: $e');
+      LogService.info('[Manifests] cache save failed: $e');
     }
   }
 }

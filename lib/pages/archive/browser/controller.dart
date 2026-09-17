@@ -215,7 +215,7 @@ class FileManagerController extends ChangeNotifier {
     } catch (e) {
       _error = '$e';
       _entries = const [];
-      LogService.log('[FileManager] list $_path failed: $e');
+      LogService.info('[FileManager] list $_path failed: $e');
     } finally {
       _loading = false;
       _notify();
@@ -230,7 +230,7 @@ class FileManagerController extends ChangeNotifier {
       );
     } catch (e) {
       _error = '$e';
-      LogService.log('[FileManager] read $remotePath failed: $e');
+      LogService.info('[FileManager] read $remotePath failed: $e');
       _notify();
       return null;
     }
@@ -253,7 +253,7 @@ class FileManagerController extends ChangeNotifier {
       return true;
     } catch (e) {
       _error = '$e';
-      LogService.log('[FileManager] write $remotePath failed: $e');
+      LogService.info('[FileManager] write $remotePath failed: $e');
       return false;
     } finally {
       _transferLabel = null;
@@ -271,7 +271,7 @@ class FileManagerController extends ChangeNotifier {
       return true;
     } catch (e) {
       _error = '$e';
-      LogService.log('[FileManager] delete $remotePath failed: $e');
+      LogService.info('[FileManager] delete $remotePath failed: $e');
       _notify();
       return false;
     }
@@ -287,7 +287,7 @@ class FileManagerController extends ChangeNotifier {
       return true;
     } catch (e) {
       _error = '$e';
-      LogService.log('[FileManager] mkdir $target failed: $e');
+      LogService.info('[FileManager] mkdir $target failed: $e');
       _notify();
       return false;
     }
@@ -306,7 +306,7 @@ class FileManagerController extends ChangeNotifier {
       rethrow;
     } catch (e) {
       _error = '$e';
-      LogService.log('[FileManager] appStart $remotePath failed: $e');
+      LogService.info('[FileManager] appStart $remotePath failed: $e');
       _notify();
       return false;
     }
@@ -362,7 +362,7 @@ class FileManagerController extends ChangeNotifier {
       return true;
     } catch (e) {
       _error = '$e';
-      LogService.log('[FileManager] copyRecursive $fromPath failed: $e');
+      LogService.info('[FileManager] copyRecursive $fromPath failed: $e');
       _notify();
       return false;
     }
@@ -377,7 +377,7 @@ class FileManagerController extends ChangeNotifier {
       return true;
     } catch (e) {
       _error = '$e';
-      LogService.log('[FileManager] rename $oldPath failed: $e');
+      LogService.info('[FileManager] rename $oldPath failed: $e');
       _notify();
       return false;
     }
@@ -419,7 +419,7 @@ class FileManagerController extends ChangeNotifier {
       return true;
     } catch (e) {
       _error = '$e';
-      LogService.log('[FileManager] download $remote failed: $e');
+      LogService.info('[FileManager] download $remote failed: $e');
       _notify();
       return false;
     }
@@ -447,7 +447,7 @@ class FileManagerController extends ChangeNotifier {
       );
     } catch (e) {
       _error = '$e';
-      LogService.log('[FileManager] read $remotePath failed: $e');
+      LogService.info('[FileManager] read $remotePath failed: $e');
       _notify();
       return null;
     } finally {
@@ -561,7 +561,7 @@ class FileManagerController extends ChangeNotifier {
       }
     } catch (e) {
       _error = '$e';
-      LogService.log('[FileManager] list $remoteDir failed: $e');
+      LogService.info('[FileManager] list $remoteDir failed: $e');
       _notify();
     }
   }
@@ -581,7 +581,7 @@ class FileManagerController extends ChangeNotifier {
       );
     } catch (e) {
       _error = '$e';
-      LogService.log('[FileManager] read $remotePath failed: $e');
+      LogService.info('[FileManager] read $remotePath failed: $e');
       _notify();
       return null;
     }

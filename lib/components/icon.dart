@@ -94,7 +94,7 @@ class _RasterIconCache {
       if (pixelSize != null) 'pixelSize=$pixelSize',
       if (error != null) 'error=$error',
     ];
-    LogService.log('[QIconCache] $action; ${details.join('; ')}');
+    LogService.info('[QIconCache] $action; ${details.join('; ')}');
   }
 
   static Future<ui.Image> _rasterize({

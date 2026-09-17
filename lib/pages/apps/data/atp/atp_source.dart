@@ -70,10 +70,10 @@ class AtpSource extends ChangeNotifier {
           _index = AtpIndex.parse(cached);
           _loaded = true;
           _rebind();
-          LogService.log('[ATP] index: ${_index!.blocks.length} block(s)');
+          LogService.info('[ATP] index: ${_index!.blocks.length} block(s)');
         }
       } catch (e) {
-        LogService.log('[ATP] index cache read failed: $e');
+        LogService.info('[ATP] index cache read failed: $e');
       } finally {
         _loading = false;
         notifyListeners();
@@ -108,7 +108,7 @@ class AtpSource extends ChangeNotifier {
         _rebind();
       }
     } catch (e) {
-      LogService.log('[ATP] release index download failed: $e');
+      LogService.info('[ATP] release index download failed: $e');
     } finally {
       _loading = false;
       notifyListeners();
@@ -131,7 +131,7 @@ class AtpSource extends ChangeNotifier {
       );
     _icons.clear();
     if (picked != null) {
-      LogService.log(
+      LogService.info(
         '[ATP] ${picked.api} ${picked.target} ${picked.tag}: '
         '${picked.entries.length} apps',
       );
@@ -157,7 +157,7 @@ class AtpSource extends ChangeNotifier {
       final bytes = await AppHttp.getBytes(Uri.parse(url));
       return utf8.decode(bytes, allowMalformed: true);
     }
-    LogService.log(
+    LogService.info(
       '[ATP] release ${release['tag_name']} has no $_kIndexAssetName',
     );
     return null;
@@ -404,7 +404,7 @@ class AtpArchive {
       if (failure != null) {
         throw StateError('the $pack pack could not be unpacked: $failure');
       }
-      LogService.log(
+      LogService.info(
         '[ATP] unpacked ${tally.extracted} apps from the $pack pack'
         '${tally.skipped > 0 ? ', skipped ${tally.skipped} '
                   '(first: ${tally.firstError})' : ''}'

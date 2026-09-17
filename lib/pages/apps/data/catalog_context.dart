@@ -126,7 +126,7 @@ class CatalogContext {
       try {
         serverSdks = await api.fetchSdks().timeout(kCatalogTimeout);
       } catch (e) {
-        LogService.log('[AppsBackend] fetchSdks failed: $e');
+        LogService.info('[AppsBackend] fetchSdks failed: $e');
         offline = true;
       }
       _catalogOffline = offline;
@@ -174,7 +174,7 @@ class CatalogContext {
         case CatalogMode.resolving:
           break;
       }
-      LogService.log(
+      LogService.info(
         '[AppsBackend] mode=${mode.value.name} device=$_deviceApi '
         'server=$serverApi picked=${res.api} verdict=${res.verdict.name} '
         'builder=$_builderAvailable pref=${_preference.name}',
@@ -266,7 +266,7 @@ class CatalogContext {
       }
       if (_deviceApi != null && api.api == null) api.api = _deviceApi;
     } catch (e) {
-      LogService.log('[AppsBackend] deviceInfo failed: $e');
+      LogService.info('[AppsBackend] deviceInfo failed: $e');
     }
     if (required && (_deviceTarget == null || _deviceApi == null)) {
       throw StateError(l10n.appsErrorNoDeviceApi);

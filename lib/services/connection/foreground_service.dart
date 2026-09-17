@@ -191,7 +191,7 @@ class BleForegroundService with WidgetsBindingObserver {
         }
       }
     } catch (e) {
-      LogService.log('[ForegroundService] permission prompt skipped: $e');
+      LogService.info('[ForegroundService] permission prompt skipped: $e');
     }
 
     final serviceTypes = <ForegroundServiceTypes>[
@@ -209,7 +209,7 @@ class BleForegroundService with WidgetsBindingObserver {
       _serviceRunning = true;
     } else if (result is ServiceRequestFailure) {
       // Surface the real cause (PlatformException), not the wrapper's toString.
-      LogService.log('[ForegroundService] start failed: ${result.error}');
+      LogService.info('[ForegroundService] start failed: ${result.error}');
     }
   }
 
@@ -231,7 +231,7 @@ class BleForegroundService with WidgetsBindingObserver {
         notificationText: l10n.notificationBackgroundLinkBody,
       );
     } catch (e) {
-      LogService.log('[ForegroundService] update failed: $e');
+      LogService.info('[ForegroundService] update failed: $e');
     }
   }
 
@@ -240,7 +240,7 @@ class BleForegroundService with WidgetsBindingObserver {
     _serviceRunning = false;
     final result = await FlutterForegroundTask.stopService();
     if (result is ServiceRequestFailure) {
-      LogService.log('[ForegroundService] stop failed: ${result.error}');
+      LogService.info('[ForegroundService] stop failed: ${result.error}');
     }
   }
 }

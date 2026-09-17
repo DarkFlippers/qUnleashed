@@ -101,7 +101,7 @@ class UpdateRegistry extends ChangeNotifier {
         _cardsByUid.clear();
         _updates = const [];
         _loaded = true;
-        LogService.log('[Updates] no installed apps with UID');
+        LogService.info('[Updates] no installed apps with UID');
         return;
       }
 
@@ -122,12 +122,12 @@ class UpdateRegistry extends ChangeNotifier {
       final withVer = installed.values
           .where((m) => m.versionUid.isNotEmpty)
           .length;
-      LogService.log(
+      LogService.info(
         '[Updates] installed=${installed.length} withVersionUid=$withVer '
         'cards=${cards.length} updates=${_updates.length}',
       );
     } catch (e) {
-      LogService.log('[Updates] refresh failed: $e');
+      LogService.info('[Updates] refresh failed: $e');
     } finally {
       _loading = false;
       notifyListeners();

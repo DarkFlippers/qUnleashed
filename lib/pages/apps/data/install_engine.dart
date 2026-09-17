@@ -139,7 +139,7 @@ class InstallEngine extends ChangeNotifier {
           _preparedInstalls.remove(task.alias);
           if (_clearAction(task.alias)) notifyListeners();
         } catch (e) {
-          LogService.log('[InstallEngine] task "${task.alias}" failed: $e');
+          LogService.info('[InstallEngine] task "${task.alias}" failed: $e');
           if (_clearAction(task.alias)) notifyListeners();
         }
         if (requeued) continue;
@@ -241,7 +241,7 @@ class InstallEngine extends ChangeNotifier {
         final fapPath = '$installDir/${app.alias}.fap';
         final previousPath = existingManifest?.path ?? '';
         if (previousPath.isNotEmpty && previousPath != fapPath) {
-          LogService.log(
+          LogService.info(
             '[InstallEngine] ${app.alias} moves from $previousPath to $fapPath',
           );
         }
@@ -337,7 +337,7 @@ class InstallEngine extends ChangeNotifier {
     } catch (e) {
       if (_cancelling.contains(app.alias)) {
         _preparedInstalls.remove(app.alias);
-        LogService.log('[InstallEngine] install ${app.alias} cancelled');
+        LogService.info('[InstallEngine] install ${app.alias} cancelled');
         _clearAction(app.alias);
         notifyListeners();
         return false;
@@ -352,7 +352,7 @@ class InstallEngine extends ChangeNotifier {
   }
 
   Future<bool> _failAction(String alias, Object error, String what) async {
-    LogService.log('[InstallEngine] $what $alias failed: $error');
+    LogService.info('[InstallEngine] $what $alias failed: $error');
     await Future<void>.delayed(const Duration(seconds: 2));
     _clearAction(alias);
     notifyListeners();
@@ -504,11 +504,11 @@ class InstallEngine extends ChangeNotifier {
           .trim()
           .toLowerCase();
     } catch (e) {
-      LogService.log('[InstallEngine] md5 of "$path" unavailable: $e');
+      LogService.info('[InstallEngine] md5 of "$path" unavailable: $e');
       return;
     }
     if (actual.isEmpty) {
-      LogService.log('[InstallEngine] md5 of "$path" came back empty');
+      LogService.info('[InstallEngine] md5 of "$path" came back empty');
       return;
     }
     if (actual != expected) {
@@ -516,7 +516,7 @@ class InstallEngine extends ChangeNotifier {
         'Uploaded "$path" is corrupted: md5 $actual, expected $expected',
       );
     }
-    LogService.log('[InstallEngine] md5 of "$path" verified');
+    LogService.info('[InstallEngine] md5 of "$path" verified');
   }
 
   Future<void> _ensureDir(String path) async {
@@ -557,7 +557,7 @@ class InstallEngine extends ChangeNotifier {
       final resolved = await CategoryRegistry.instance.nameFor(api, categoryId);
       if (resolved != null) return resolved;
     } catch (e) {
-      LogService.log(
+      LogService.info(
         '[InstallEngine] resolve category "$categoryId" failed: $e',
       );
     }

@@ -136,7 +136,7 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
       // down now instead of after the full connect timeout.
       await _client.disconnect();
     } catch (e) {
-      LogService.log('[Picker] disconnect error: $e');
+      LogService.info('[Picker] disconnect error: $e');
     } finally {
       if (mounted) {
         setState(() {
@@ -162,7 +162,7 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
         await _client.refreshDevices(bleTimeout: const Duration(seconds: 10));
       }
     } catch (e) {
-      LogService.log('[Picker] scan error: $e');
+      LogService.info('[Picker] scan error: $e');
     } finally {
       if (mounted) {
         setState(() {
@@ -178,7 +178,7 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
     try {
       await _client.refreshUsbOnly();
     } catch (e) {
-      LogService.log('[Picker] usb refresh error: $e');
+      LogService.info('[Picker] usb refresh error: $e');
     }
     if (!mounted) return;
     setState(() => _displayed = _filterDevices(_client.devices));

@@ -391,7 +391,7 @@ class MapToolController extends ChangeNotifier with WidgetsBindingObserver {
             },
             // kCLErrorLocationUnknown and friends are transient: Core Location
             // keeps trying, so this is a log line, not a user-facing failure.
-            onError: (Object e) => LogService.log('[Map] location stream: $e'),
+            onError: (Object e) => LogService.info('[Map] location stream: $e'),
           );
     } on MissingPluginException {
       _locationStatus = MapLocationStatus.notSupported;

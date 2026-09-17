@@ -48,11 +48,11 @@ class UpdateSettingsStore {
         try {
           _read(prefs, key);
         } catch (e) {
-          LogService.log('[UpdateSettings] "$key" unreadable: $e');
+          LogService.info('[UpdateSettings] "$key" unreadable: $e');
         }
       }
     } catch (e) {
-      LogService.log('[UpdateSettings] load failed: $e');
+      LogService.info('[UpdateSettings] load failed: $e');
     }
   }
 
@@ -99,7 +99,7 @@ class UpdateSettingsStore {
         await prefs.setString(_variantPref(shortName), variant.name);
       }
     } catch (e) {
-      LogService.log('[UpdateSettings] save failed: $e');
+      LogService.info('[UpdateSettings] save failed: $e');
     }
   }
 

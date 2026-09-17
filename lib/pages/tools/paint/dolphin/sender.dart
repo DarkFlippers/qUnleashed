@@ -189,7 +189,7 @@ abstract final class DolphinSender {
               f.name: f.md5sum.trim().toLowerCase(),
       };
     } catch (e) {
-      LogService.log('[DolphinSender] md5 list $dir failed: $e');
+      LogService.info('[DolphinSender] md5 list $dir failed: $e');
       return const {};
     }
   }
@@ -204,7 +204,7 @@ abstract final class DolphinSender {
           .trim()
           .toLowerCase();
     } catch (e) {
-      LogService.log('[DolphinSender] md5 $path failed: $e');
+      LogService.info('[DolphinSender] md5 $path failed: $e');
       return '';
     }
   }

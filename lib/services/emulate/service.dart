@@ -65,13 +65,13 @@ class EmulateService {
     } on FlipperRpcBusyException {
       return EmulateResult.fail(EmulateError.busy);
     } catch (e) {
-      LogService.log('[Emulate] appStart failed: $e');
+      LogService.info('[Emulate] appStart failed: $e');
       return EmulateResult.fail(EmulateError.appStartFailed);
     }
 
     final ready = await started;
     if (!ready) {
-      LogService.log(
+      LogService.info(
         '[Emulate] APP_STARTED not seen, proceeding after fallback',
       );
       await Future<void>.delayed(const Duration(milliseconds: 400));
@@ -83,7 +83,7 @@ class EmulateService {
         timeout: const Duration(seconds: 10),
       );
     } catch (e) {
-      LogService.log('[Emulate] appLoadFile failed: $e');
+      LogService.info('[Emulate] appLoadFile failed: $e');
       _running = true;
       await stop();
       return EmulateResult.fail(EmulateError.loadFileFailed);
@@ -113,7 +113,7 @@ class EmulateService {
     } on FlipperRpcBusyException {
       return EmulateResult.fail(EmulateError.busy);
     } catch (e) {
-      LogService.log('[Emulate] launchApp appStart failed: $e');
+      LogService.info('[Emulate] launchApp appStart failed: $e');
       return EmulateResult.fail(EmulateError.appStartFailed);
     }
 
@@ -126,7 +126,7 @@ class EmulateService {
       final content = utf8.decode(bytes, allowMalformed: true);
       return parseArchiveKeyMetaContent(key.category, content).protocol;
     } catch (e) {
-      LogService.log('[Emulate] fetchProtocol failed: $e');
+      LogService.info('[Emulate] fetchProtocol failed: $e');
       return null;
     }
   }
@@ -169,7 +169,7 @@ class EmulateService {
         _sceneLoaded = true;
         return true;
       } catch (e) {
-        LogService.log(
+        LogService.info(
           '[Emulate] reload before send failed (try $attempt): $e',
         );
         await Future<void>.delayed(const Duration(milliseconds: 150));
@@ -224,7 +224,7 @@ class EmulateService {
       try {
         await closed;
       } catch (e) {
-        LogService.log('[Emulate] wait APP_CLOSED failed: $e');
+        LogService.info('[Emulate] wait APP_CLOSED failed: $e');
       }
 
       _activeKey = null;
@@ -240,7 +240,7 @@ class EmulateService {
         timeout: const Duration(seconds: 5),
       );
     } catch (e) {
-      LogService.log('[Emulate] appExit failed: $e');
+      LogService.info('[Emulate] appExit failed: $e');
     }
   }
 }

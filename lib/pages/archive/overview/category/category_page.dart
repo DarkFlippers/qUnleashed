@@ -511,7 +511,7 @@ class _CategoryPageState extends State<CategoryPage> {
         await io.File('$dir$sep${k.fileName}').writeAsBytes(bytes, flush: true);
         saved++;
       } catch (e) {
-        LogService.log('[Archive] bulk download ${k.fileName} failed: $e');
+        LogService.info('[Archive] bulk download ${k.fileName} failed: $e');
       }
     }
     _exitSelection();

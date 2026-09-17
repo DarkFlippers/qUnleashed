@@ -101,7 +101,7 @@ class _TextEditorPageState extends State<TextEditorPage> {
     try {
       bytes = await Future(() => io.File(widget.localPath).readAsBytesSync());
     } catch (e) {
-      LogService.log('[TextEditor] read ${widget.localPath} failed: $e');
+      LogService.info('[TextEditor] read ${widget.localPath} failed: $e');
     }
     if (!mounted) return;
     final binary = bytes != null && looksBinary(bytes);
@@ -199,7 +199,7 @@ class _TextEditorPageState extends State<TextEditorPage> {
         () => io.File(widget.localPath).writeAsBytesSync(bytes, flush: true),
       );
     } catch (e) {
-      LogService.log('[TextEditor] write ${widget.localPath} failed: $e');
+      LogService.info('[TextEditor] write ${widget.localPath} failed: $e');
       ok = false;
     }
     final onSave = widget.onSave;

@@ -320,7 +320,7 @@ class FlipperNetworkResponder {
         await _sendSendResponse(id, data.length, ErrorCode.NONE);
       }
     } catch (error) {
-      LogService.log('[Network] send failed on $id: $error');
+      LogService.info('[Network] send failed on $id: $error');
       await _sendSendResponse(id, 0, ErrorCode.SEND_FAILED);
     }
   }
@@ -423,7 +423,7 @@ class FlipperNetworkResponder {
     } on FlipperWriteCancelledException {
       await _sendHttpError(id, ErrorCode.FILE_ERROR);
     } catch (error) {
-      LogService.log('[Network] http failed on $id: $error');
+      LogService.info('[Network] http failed on $id: $error');
       await _sendHttpError(id, _errorFor(error));
     }
   }
@@ -453,7 +453,7 @@ class FlipperNetworkResponder {
   }
 
   void _onSocketError(int id, Object error) {
-    LogService.log('[Network] socket error on $id: $error');
+    LogService.info('[Network] socket error on $id: $error');
     final connection = _connections.remove(id);
     if (connection == null) return;
     unawaited(
@@ -482,7 +482,7 @@ class FlipperNetworkResponder {
       connection.udp?.close();
       await connection.ws?.close();
     } catch (error) {
-      LogService.log('[Network] teardown error on ${connection.id}: $error');
+      LogService.info('[Network] teardown error on ${connection.id}: $error');
     }
   }
 
@@ -677,7 +677,7 @@ class FlipperNetworkResponder {
     try {
       await _client.sendRpc(message, priority: priority);
     } catch (error) {
-      LogService.log('[Network] failed to send response: $error');
+      LogService.info('[Network] failed to send response: $error');
     }
   }
 }

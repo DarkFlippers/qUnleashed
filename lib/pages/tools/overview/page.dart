@@ -292,7 +292,7 @@ Future<void> _openCliPage(BuildContext context) async {
     try {
       await client.disconnect();
     } catch (e) {
-      LogService.log('[CLI] disconnect before terminal failed: $e');
+      LogService.info('[CLI] disconnect before terminal failed: $e');
       return;
     }
 

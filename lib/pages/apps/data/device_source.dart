@@ -200,7 +200,7 @@ class DeviceSource extends ChangeNotifier {
         final bytes = await io.File(entry.value.path).readAsBytes();
         _parsed[alias] = FapInfo.parse(bytes);
       } catch (e) {
-        LogService.log('[DeviceSource] parse "$alias" failed: $e');
+        LogService.info('[DeviceSource] parse "$alias" failed: $e');
         _parsed[alias] = null;
       }
       _parsedStamp[alias] = stamp;
@@ -273,7 +273,7 @@ class DeviceSource extends ChangeNotifier {
               unawaited(IconResolver.instance.ensureFromFap(d.alias, bytes));
             }
           } catch (e) {
-            LogService.log('[DeviceSource] download "${d.alias}" failed: $e');
+            LogService.info('[DeviceSource] download "${d.alias}" failed: $e');
           } finally {
             _downloading = false;
             _fileProgress = 0;
@@ -285,9 +285,9 @@ class DeviceSource extends ChangeNotifier {
         notifyListeners();
       }
       _warmManifestIcons();
-      LogService.log('[DeviceSource] sync: ${apps.length} apps');
+      LogService.info('[DeviceSource] sync: ${apps.length} apps');
     } catch (e) {
-      LogService.log('[DeviceSource] sync failed: $e');
+      LogService.info('[DeviceSource] sync failed: $e');
     } finally {
       _syncing = false;
       _syncingItem = null;
@@ -375,7 +375,7 @@ class DeviceSource extends ChangeNotifier {
       }
       return wanted.isNotEmpty && wanted == localMd5;
     } catch (e) {
-      LogService.log('[DeviceSource] md5 check $devicePath failed: $e');
+      LogService.info('[DeviceSource] md5 check $devicePath failed: $e');
       return false;
     }
   }
@@ -426,7 +426,7 @@ class DeviceSource extends ChangeNotifier {
         localPath = file.path;
       }
     } catch (e) {
-      LogService.log('[DeviceSource] local copy of "$alias" failed: $e');
+      LogService.info('[DeviceSource] local copy of "$alias" failed: $e');
     }
     _local[alias] = (
       size: fapBytes.length,

@@ -74,7 +74,7 @@ class _GpsStreamPump {
         .listen(
           _onPosition,
           onError: (Object error) =>
-              LogService.log('[GPS] location stream error: $error'),
+              LogService.info('[GPS] location stream error: $error'),
         );
     _heartbeatTimer = Timer.periodic(_heartbeat, (_) {
       final fix = _lastSent;
@@ -195,7 +195,7 @@ class FlipperGpsResponder {
     try {
       readiness = await _provider.ensureReady();
     } catch (error) {
-      LogService.log('[GPS] readiness check failed: $error');
+      LogService.info('[GPS] readiness check failed: $error');
       readiness = GpsReadiness.unknown;
     }
     switch (readiness) {
@@ -246,7 +246,7 @@ class FlipperGpsResponder {
         priority: FlipperRequestPriority.background,
       );
     } catch (error) {
-      LogService.log('[GPS] failed to send location: $error');
+      LogService.info('[GPS] failed to send location: $error');
     }
   }
 
@@ -256,7 +256,7 @@ class FlipperGpsResponder {
         Main(commandStatus: status, gpsLocation: Location()),
       );
     } catch (error) {
-      LogService.log('[GPS] failed to send error ${status.name}: $error');
+      LogService.info('[GPS] failed to send error ${status.name}: $error');
     }
   }
 }
