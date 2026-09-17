@@ -213,7 +213,7 @@ abstract final class DolphinImporter {
       }
       return out;
     } catch (e) {
-      LogService.log('[DolphinImporter] list $remoteDir failed: $e');
+      LogService.info('[DolphinImporter] list $remoteDir failed: $e');
       return const [];
     }
   }

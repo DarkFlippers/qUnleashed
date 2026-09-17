@@ -63,7 +63,7 @@ class QNotification {
   }) {
     if (!LogService.debugOn) return;
 
-    LogService.log('[QNotification] status=${type.name}; message=$message');
+    LogService.info('[QNotification] status=${type.name}; message=$message');
   }
 }
 

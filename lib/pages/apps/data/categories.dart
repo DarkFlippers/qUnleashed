@@ -41,7 +41,7 @@ class CategoryRegistry {
       _bundled = out;
       if (_all.isEmpty) _all = out;
     } catch (e) {
-      LogService.log('[Categories] bundled list failed: $e');
+      LogService.info('[Categories] bundled list failed: $e');
     }
     return _all;
   }
@@ -70,7 +70,7 @@ class CategoryRegistry {
       final bundled = byId.remove(category.id);
       out.add(category.withIconAsset(_assetsById[category.id]));
       if (bundled == null) {
-        LogService.log('[Categories] new category "${category.name}"');
+        LogService.info('[Categories] new category "${category.name}"');
       }
     }
     out.addAll(byId.values);

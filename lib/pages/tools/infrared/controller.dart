@@ -125,7 +125,7 @@ class IrLibController extends ChangeNotifier {
       return true;
     } catch (e) {
       _error = '$e';
-      LogService.log('[IRLib] download failed: $e');
+      LogService.info('[IRLib] download failed: $e');
       return false;
     } finally {
       _downloading = false;
@@ -146,7 +146,7 @@ class IrLibController extends ChangeNotifier {
       return true;
     } catch (e) {
       _error = '$e';
-      LogService.log('[IRLib] delete failed: $e');
+      LogService.info('[IRLib] delete failed: $e');
       notifyListeners();
       return false;
     }
@@ -191,7 +191,7 @@ class IrLibController extends ChangeNotifier {
     } catch (e) {
       _error = '$e';
       _entries = const [];
-      LogService.log('[IRLib] list "$_path" failed: $e');
+      LogService.info('[IRLib] list "$_path" failed: $e');
     } finally {
       _loading = false;
       notifyListeners();
@@ -231,7 +231,7 @@ class IrLibController extends ChangeNotifier {
       _searchResults = results;
     } catch (e) {
       _error = '$e';
-      LogService.log('[IRLib] search "$q" failed: $e');
+      LogService.info('[IRLib] search "$q" failed: $e');
     } finally {
       _searching = false;
       notifyListeners();
@@ -250,7 +250,7 @@ class IrLibController extends ChangeNotifier {
       return await _api.fetchFile(entry);
     } catch (e) {
       _error = '$e';
-      LogService.log('[IRLib] fetch ${entry.path} failed: $e');
+      LogService.info('[IRLib] fetch ${entry.path} failed: $e');
       notifyListeners();
       return null;
     }
@@ -267,7 +267,7 @@ class IrLibController extends ChangeNotifier {
       );
     } catch (e) {
       _error = '$e';
-      LogService.log('[IRLib] save ${entry.path} failed: $e');
+      LogService.info('[IRLib] save ${entry.path} failed: $e');
       notifyListeners();
       return null;
     }
@@ -296,7 +296,7 @@ class IrLibController extends ChangeNotifier {
       return true;
     } catch (e) {
       _error = '$e';
-      LogService.log('[IRLib] send ${entry.path} failed: $e');
+      LogService.info('[IRLib] send ${entry.path} failed: $e');
       notifyListeners();
       return false;
     }

@@ -72,7 +72,7 @@ class PushService {
       );
     } catch (error) {
       _unavailable = true;
-      LogService.log('Push notifications unavailable in this build: $error');
+      LogService.info('Push notifications unavailable in this build: $error');
       return;
     }
 

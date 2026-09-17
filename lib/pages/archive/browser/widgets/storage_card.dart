@@ -67,7 +67,7 @@ class _StorageUsageCardsState extends State<StorageUsageCards> {
     _sub = _client.deviceInfoUpdates.listen((data) {
       if (!mounted || data.isEmpty) return;
       setState(() => _info = {..._info, ...data});
-    }, onError: (e) => LogService.log('[StorageCards] watchStorage: $e'));
+    }, onError: (e) => LogService.info('[StorageCards] watchStorage: $e'));
   }
 
   double? _percent(String prefix) {

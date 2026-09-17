@@ -81,7 +81,7 @@ class _IrContentPageState extends State<IrContentPage> {
           ]).whenComplete(sub.cancel);
           return true;
         } catch (e) {
-          LogService.log('[IRBackend] send $fileName failed: $e');
+          LogService.info('[IRBackend] send $fileName failed: $e');
           return false;
         }
       },

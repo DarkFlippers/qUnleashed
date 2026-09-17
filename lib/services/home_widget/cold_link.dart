@@ -34,14 +34,14 @@ class ColdLink {
     await known.load();
     final last = known.lastDevice;
     if (last == null) {
-      LogService.log('[ColdLink] no remembered device');
+      LogService.info('[ColdLink] no remembered device');
       return false;
     }
 
     try {
       await client.refreshBleKnown();
     } catch (e) {
-      LogService.log('[ColdLink] known refresh failed: $e');
+      LogService.info('[ColdLink] known refresh failed: $e');
     }
     var device = _find(client, last);
     if (device == null) {
@@ -54,14 +54,14 @@ class ColdLink {
       try {
         await client.scanBle(timeout: _scanTimeout);
       } catch (e) {
-        LogService.log('[ColdLink] scan failed: $e');
+        LogService.info('[ColdLink] scan failed: $e');
       } finally {
         await seen.cancel();
       }
       device = _find(client, last);
     }
     if (device == null) {
-      LogService.log('[ColdLink] ${last.name} not found');
+      LogService.info('[ColdLink] ${last.name} not found');
       return false;
     }
 
@@ -69,7 +69,7 @@ class ColdLink {
       await client.connect(device);
       await client.ping(PingRequest(data: const [0x51, 0x55]));
     } catch (e) {
-      LogService.log('[ColdLink] connect failed: $e');
+      LogService.info('[ColdLink] connect failed: $e');
       return false;
     }
     return client.isConnected;

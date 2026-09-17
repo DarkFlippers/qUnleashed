@@ -85,7 +85,7 @@ class HomeWidgetService {
     try {
       return await _channel.invokeMethod<bool>('pin', key.toMap()) ?? false;
     } on PlatformException catch (e) {
-      LogService.log('[HomeWidget] pin failed: ${e.message}');
+      LogService.info('[HomeWidget] pin failed: ${e.message}');
       return false;
     }
   }
@@ -97,7 +97,7 @@ class HomeWidgetService {
     try {
       await _channel.invokeMethod<void>('settings', settings);
     } on PlatformException catch (e) {
-      LogService.log('[HomeWidget] settings failed: ${e.message}');
+      LogService.info('[HomeWidget] settings failed: ${e.message}');
     }
   }
 
@@ -115,7 +115,7 @@ class HomeWidgetService {
         foregroundDark: raw['foregroundDark'] as int,
       );
     } on PlatformException catch (e) {
-      LogService.log('[HomeWidget] palette failed: ${e.message}');
+      LogService.info('[HomeWidget] palette failed: ${e.message}');
       return null;
     }
   }
@@ -127,7 +127,7 @@ class HomeWidgetService {
     try {
       await _channel.invokeMethod<void>('dismiss');
     } on PlatformException catch (e) {
-      LogService.log('[HomeWidget] dismiss failed: ${e.message}');
+      LogService.info('[HomeWidget] dismiss failed: ${e.message}');
     }
   }
 
@@ -139,7 +139,7 @@ class HomeWidgetService {
         ...key.toMap(),
       });
     } on PlatformException catch (e) {
-      LogService.log('[HomeWidget] configure failed: ${e.message}');
+      LogService.info('[HomeWidget] configure failed: ${e.message}');
     }
   }
 
@@ -203,7 +203,7 @@ class HomeWidgetService {
       await _stopActive();
       await _serve(id, key);
     } catch (e) {
-      LogService.log('[HomeWidget] tap failed: $e');
+      LogService.info('[HomeWidget] tap failed: $e');
       await _flash(id, WidgetState.errorFailed);
     } finally {
       _busy = false;
@@ -224,7 +224,7 @@ class HomeWidgetService {
     final service = EmulateService(client: client);
     final result = await service.start(key.toArchiveKey());
     if (!result.isOk) {
-      LogService.log('[HomeWidget] start failed: ${result.error}');
+      LogService.info('[HomeWidget] start failed: ${result.error}');
       await _flash(id, _errorState(result.error));
       return;
     }
@@ -300,7 +300,7 @@ class HomeWidgetService {
         'state': state.name,
       });
     } on PlatformException catch (e) {
-      LogService.log('[HomeWidget] state failed: ${e.message}');
+      LogService.info('[HomeWidget] state failed: ${e.message}');
     }
   }
 }

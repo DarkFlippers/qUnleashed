@@ -420,7 +420,7 @@ class IrLibLocalRepo {
     if (!await root.exists() && superseded.isNotEmpty) {
       final live = superseded.first;
       if (await _restoreSuperseded(root, live)) {
-        LogService.log(
+        LogService.info(
           '[IrLib] put the library back after an interrupted swap',
         );
       } else {
@@ -476,7 +476,7 @@ class IrLibLocalRepo {
 
       final tally = msg.tally;
       if (tally.skipped > 0 || tally.dropped > 0) {
-        LogService.log(
+        LogService.info(
           '[IrLib] unpacked ${tally.extracted}, skipped ${tally.skipped}, '
           'dropped ${tally.dropped} (first: ${tally.firstError})',
         );

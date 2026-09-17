@@ -29,8 +29,8 @@ void main() {
 
   // The whole point of #89. LogService.enabled is a const that follows the
   // build type, and every guard derived from it folds — so in a shipped build
-  // the error branch was shaken out and 19 call sites, 11 of them in catch
-  // blocks, reported nowhere at all.
+  // the error branch was shaken out and every error site, most of them in
+  // catch blocks, reported nowhere at all.
   //
   // Both halves are asserted together on purpose: printing still follows the
   // build, and keeping no longer does. In the default run errorOn is true and
@@ -59,7 +59,6 @@ void main() {
   test('the chatty levels are not kept', () {
     printed(() {
       LogService.info('opened the archive');
-      LogService.log('and again');
       LogService.debug('frame');
       LogService.trace('byte');
     });

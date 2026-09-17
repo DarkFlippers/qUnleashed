@@ -250,14 +250,14 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
       );
     } catch (e) {
       _lastError = '$e';
-      LogService.log('[Archive] device metadata failed: $e');
+      LogService.info('[Archive] device metadata failed: $e');
       notifyListeners();
       return false;
     }
     final name = _client.getName();
     if (name == null || name.isEmpty) {
       _lastError = l10n.archiveNoHardwareName;
-      LogService.log('[Archive] device metadata has no hardware name');
+      LogService.info('[Archive] device metadata has no hardware name');
       notifyListeners();
       return false;
     }
@@ -362,7 +362,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
     const path = '/ext/favorites.txt';
     final bytes = await _readRemoteBytes(path, logErrors: false);
     if (bytes == null) {
-      LogService.log('[Archive] $path is unavailable');
+      LogService.info('[Archive] $path is unavailable');
       return;
     }
 
@@ -473,7 +473,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
       return true;
     } catch (e) {
       _lastError = '$e';
-      LogService.log('[Archive] launch ${fav.remotePath} failed: $e');
+      LogService.info('[Archive] launch ${fav.remotePath} failed: $e');
       return false;
     }
   }
@@ -512,7 +512,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
         utf8.encode(kept.isEmpty ? '' : '${kept.join('\n')}\n'),
       );
     } catch (e) {
-      LogService.log('[Archive] update favorites.txt failed: $e');
+      LogService.info('[Archive] update favorites.txt failed: $e');
     }
   }
 
@@ -590,7 +590,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
               timeout: const Duration(seconds: 15),
             );
           } catch (e) {
-            LogService.log('[Archive] device rename failed: $e');
+            LogService.info('[Archive] device rename failed: $e');
           }
         }
         final newKeyId = _localKey(
@@ -624,7 +624,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
       }
     } catch (e) {
       _lastError = '$e';
-      LogService.log('[Archive] rename failed: $e');
+      LogService.info('[Archive] rename failed: $e');
     }
     notifyListeners();
   }
@@ -659,7 +659,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
         try {
           await _client.storageWriteChunked(newRemotePath, bytes);
         } catch (e) {
-          LogService.log('[Archive] device duplicate write failed: $e');
+          LogService.info('[Archive] device duplicate write failed: $e');
         }
       }
       final stat = await io.File(newLocalPath).stat();
@@ -687,7 +687,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
       );
     } catch (e) {
       _lastError = '$e';
-      LogService.log('[Archive] duplicate failed: $e');
+      LogService.info('[Archive] duplicate failed: $e');
     }
     notifyListeners();
   }
@@ -742,7 +742,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
         _syncStatus = ArchiveSyncStatus.idle;
       }
       _lastError = '$e';
-      LogService.log('[Archive] refresh failed: $e');
+      LogService.info('[Archive] refresh failed: $e');
     } finally {
       _loading = false;
       notifyListeners();
@@ -772,7 +772,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
       await _parseMetaForCategory(cat);
     } catch (e) {
       _lastError = '$e';
-      LogService.log('[Archive] _refreshCategory $cat failed: $e');
+      LogService.info('[Archive] _refreshCategory $cat failed: $e');
     }
   }
 
@@ -807,7 +807,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
     } catch (e) {
       _syncStatus = ArchiveSyncStatus.idle;
       _lastError = '$e';
-      LogService.log('[Archive] syncCategory $category failed: $e');
+      LogService.info('[Archive] syncCategory $category failed: $e');
     } finally {
       _syncing = false;
       _syncProgress = null;
@@ -865,7 +865,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
       }
       ok = true;
     } catch (e) {
-      LogService.log('[Archive] list $path failed: $e');
+      LogService.info('[Archive] list $path failed: $e');
     }
     if (!ok) return;
     _reconcileRemote(
@@ -988,7 +988,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
         }
       }
     } catch (e) {
-      LogService.log('[Archive] list $remotePath failed: $e');
+      LogService.info('[Archive] list $remotePath failed: $e');
     }
   }
 
@@ -1020,7 +1020,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
     } catch (e) {
       _syncStatus = ArchiveSyncStatus.idle;
       _lastError = '$e';
-      LogService.log('[Archive] sync failed: $e');
+      LogService.info('[Archive] sync failed: $e');
     } finally {
       _syncing = false;
       _syncProgress = null;
@@ -1045,7 +1045,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
           .toLowerCase();
       return remoteMd5.isNotEmpty && remoteMd5 == localMd5;
     } catch (e) {
-      LogService.log('[Archive] md5 check ${key.remotePath} failed: $e');
+      LogService.info('[Archive] md5 check ${key.remotePath} failed: $e');
       return false;
     }
   }
@@ -1059,7 +1059,9 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
     _lastDownloadedOk = 0;
     _lastUpToDate = 0;
     _lastDownloadedTotal = pendingIds.length;
-    LogService.log('[Archive] checking ${pendingIds.length} candidate file(s)');
+    LogService.info(
+      '[Archive] checking ${pendingIds.length} candidate file(s)',
+    );
     for (final keyId in pendingIds) {
       final key = _keys[keyId];
       if (key == null) {
@@ -1114,7 +1116,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
       _lastError =
           '${l10n.archiveDownloadedSummary(ok, pendingIds.length, failed)}'
           '${_lastReadError == null ? '' : ': $_lastReadError'}';
-      LogService.log('[Archive] $_lastError');
+      LogService.info('[Archive] $_lastError');
     }
     _syncProgress = SyncProgress(
       current: done,
@@ -1147,7 +1149,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
         }
       } catch (e) {
         _lastError = '$e';
-        LogService.log('[Archive] delete failed: $e');
+        LogService.info('[Archive] delete failed: $e');
       }
     }
     await refresh();
@@ -1172,7 +1174,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
       await _client.storageWriteChunked(key.remotePath, bytes);
     } catch (e) {
       _lastError = '$e';
-      LogService.log('[Archive] restore failed: $e');
+      LogService.info('[Archive] restore failed: $e');
     }
     await refresh();
   }
@@ -1210,7 +1212,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
         }
       } catch (e) {
         _lastError = '$e';
-        LogService.log('[Archive] restore ${key.fileName} failed: $e');
+        LogService.info('[Archive] restore ${key.fileName} failed: $e');
       }
     }
     await refresh();
@@ -1257,7 +1259,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
       return true;
     } catch (e) {
       _lastReadError = l10n.archiveSaveFailed(key.fileName, '$e');
-      LogService.log('[Archive] ${_lastReadError!}');
+      LogService.info('[Archive] ${_lastReadError!}');
       return false;
     }
   }
@@ -1307,7 +1309,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
       return true;
     } catch (e) {
       _lastError = '$e';
-      LogService.log('[Archive] write ${k.remotePath} failed: $e');
+      LogService.info('[Archive] write ${k.remotePath} failed: $e');
       return false;
     } finally {
       _busyPath = null;
@@ -1346,7 +1348,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
     } catch (e) {
       _lastReadError = l10n.archiveReadFailed(path, '$e');
       if (logErrors) {
-        LogService.log('[Archive] ${_lastReadError!}');
+        LogService.info('[Archive] ${_lastReadError!}');
       }
       return null;
     }

@@ -164,7 +164,7 @@ class _PaintPageState extends State<PaintPage> {
         compress: _ctrl.compressBm,
       );
     } catch (e) {
-      LogService.log('[PaintEditor] autosave draft failed: $e');
+      LogService.info('[PaintEditor] autosave draft failed: $e');
     } finally {
       _savingDraft = false;
     }

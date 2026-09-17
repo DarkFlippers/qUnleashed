@@ -203,7 +203,7 @@ class VirtualDisplaySession {
           onError: (Object error) {
             // A failed frame send (e.g. link dropped mid-write) is not fatal
             // for the session; the connection listener handles the teardown.
-            LogService.log('[VirtualDisplay] frame send failed: $error');
+            LogService.info('[VirtualDisplay] frame send failed: $error');
           },
         )
         .whenComplete(() {

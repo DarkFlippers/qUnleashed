@@ -17,18 +17,16 @@ import 'logging.dart';
 /// `previous.then(op)` expression rather than just `op`, so the chain heals
 /// itself even if that guarantee is ever broken.
 ///
-/// ## Why [LogService.error] and not [LogService.log]
-///
-/// `log` is `info`, and `info` is not kept: it never enters
-/// [LogService.history], so it cannot reach the log screen, and since
-/// `enabled` follows the build type unless `QLOG` says otherwise, the branch
-/// is compiled out of an ordinary release build. A fire-and-forget failure
-/// logged there is worse off than one nobody caught, per the paragraph above.
+/// ## Why [LogService.error]
 ///
 /// The level is fixed rather than a parameter, because a per-site level choice
-/// is the drift this exists to close. That does leave a seam: the same dropped
-/// input is `warn` where `_sendInput` catches it and `error` where it reaches
-/// here. The tie-breaker is that nobody is coming to look at this one.
+/// is the drift this exists to close — and what these sites had been doing
+/// was not choosing at all, which left them on a level that is not kept. The
+/// paragraph above is why that was worse than never catching.
+///
+/// It does leave a seam: the same dropped input is `warn` where `_sendInput`
+/// catches it and `error` where it reaches here. The tie-breaker is that
+/// nobody is coming to look at this one.
 ///
 /// ## Why [Future.sync]
 ///

@@ -193,7 +193,7 @@ class DeviceController extends ChangeNotifier {
     try {
       await _client.reboot(RebootRequest(mode: RebootRequest_RebootMode.OS));
     } catch (e) {
-      LogService.log('[DeviceController] reboot failed: $e');
+      LogService.info('[DeviceController] reboot failed: $e');
     }
     _resetSession();
   }
@@ -210,7 +210,7 @@ class DeviceController extends ChangeNotifier {
       );
       return true;
     } catch (e) {
-      LogService.log('[DeviceController] play alert failed: $e');
+      LogService.info('[DeviceController] play alert failed: $e');
       return false;
     } finally {
       _alertPlaying = false;
@@ -257,7 +257,7 @@ class DeviceController extends ChangeNotifier {
         }
       }
     } catch (e) {
-      LogService.log('[DeviceController] auto-connect discovery failed: $e');
+      LogService.info('[DeviceController] auto-connect discovery failed: $e');
     }
     if (_disposed || isConnected || _client.isConnecting) return;
 
@@ -273,11 +273,11 @@ class DeviceController extends ChangeNotifier {
     if (candidate == null) return;
 
     _autoConnectAttemptedIds.add(candidate.id);
-    LogService.log('[DeviceController] auto-connecting to ${candidate.name}');
+    LogService.info('[DeviceController] auto-connecting to ${candidate.name}');
     try {
       await connect(candidate);
     } catch (e) {
-      LogService.log('[DeviceController] auto-connect failed: $e');
+      LogService.info('[DeviceController] auto-connect failed: $e');
     }
   }
 
@@ -408,7 +408,7 @@ class DeviceController extends ChangeNotifier {
         _knownDevices.updateName(connected, hardwareName);
       }
       _notify();
-    }, onError: (e) => LogService.log('[DeviceController] info stream: $e'));
+    }, onError: (e) => LogService.info('[DeviceController] info stream: $e'));
 
     DeviceInfoWatchService.instance.start(_client);
   }

@@ -80,7 +80,7 @@ class KnownDevicesStore extends ChangeNotifier {
       _devices = parsed;
       notifyListeners();
     } catch (e) {
-      LogService.log('[KnownDevices] load failed: $e');
+      LogService.info('[KnownDevices] load failed: $e');
     }
   }
 
@@ -138,7 +138,7 @@ class KnownDevicesStore extends ChangeNotifier {
         jsonEncode([for (final device in _devices) device.toJson()]),
       );
     } catch (e) {
-      LogService.log('[KnownDevices] save failed: $e');
+      LogService.info('[KnownDevices] save failed: $e');
     }
   }
 }

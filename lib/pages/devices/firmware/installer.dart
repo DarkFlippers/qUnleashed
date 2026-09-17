@@ -16,7 +16,13 @@ import '../../../services/logging.dart';
 const _tag = '[FirmwareInstaller]';
 const _remoteRoot = '/ext/update';
 
-void _log(String msg) => LogService.log('$_tag $msg');
+/// The installer's running commentary, tagged.
+///
+/// Commentary only. [LogService.info] is not kept and folds out of a release
+/// build, so a failure that has to survive one says so at its own call site
+/// rather than coming through here - which is why this helper does not carry
+/// the level for every site in the file.
+void _log(String msg) => LogService.info('$_tag $msg');
 
 class FirmwareInstaller {
   const FirmwareInstaller._();
@@ -94,7 +100,11 @@ class FirmwareInstaller {
 
       onState(const UpdateDone());
     } catch (e, st) {
-      _log('ERROR: $e\n$st');
+      // error rather than the commentary helper: UpdateError hands the UI
+      // e.toString() and no stack, so this is the only place the stack for
+      // a flash that died mid-write exists at all - and that is the one
+      // failure in this app most worth reproducing from a bug report.
+      LogService.error('$_tag update failed: $e\n$st');
       onState(UpdateError(e.toString()));
     } finally {
       try {

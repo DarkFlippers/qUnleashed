@@ -65,7 +65,7 @@ class DeviceInfoWatchService {
     try {
       await client.awaitDeviceInfo().timeout(const Duration(seconds: 20));
     } catch (e) {
-      LogService.log('[watchInfo] device info: $e');
+      LogService.info('[watchInfo] device info: $e');
     }
     if (!alive()) return;
 
@@ -84,7 +84,7 @@ class DeviceInfoWatchService {
       );
       emit({for (final item in batch.items) 'power.${item.key}': item.value});
     } catch (e) {
-      LogService.log('[watchInfo] battery initial: $e');
+      LogService.info('[watchInfo] battery initial: $e');
     }
     if (!alive()) return;
 
@@ -103,7 +103,7 @@ class DeviceInfoWatchService {
         'protobuf_version_minor': '$minor',
       });
     } catch (e) {
-      LogService.log('[watchInfo] protobuf: $e');
+      LogService.info('[watchInfo] protobuf: $e');
     }
     if (!alive()) return;
 
@@ -121,7 +121,7 @@ class DeviceInfoWatchService {
             '${_pad(dt.hour)}:${_pad(dt.minute)}:${_pad(dt.second)}',
       });
     } catch (e) {
-      LogService.log('[watchInfo] datetime: $e');
+      LogService.info('[watchInfo] datetime: $e');
     }
     if (!alive()) return;
 
@@ -142,7 +142,7 @@ class DeviceInfoWatchService {
         );
         if (extData.isNotEmpty) emit(extData);
       } catch (e) {
-        LogService.log('[watchInfo] storage /ext $stage: $e');
+        LogService.info('[watchInfo] storage /ext $stage: $e');
       }
     }
 
@@ -193,7 +193,7 @@ class DeviceInfoWatchService {
               '${_pad(now.hour)}:${_pad(now.minute)}:${_pad(now.second)}',
         });
       } catch (e) {
-        LogService.log('[watchInfo] set datetime: $e');
+        LogService.info('[watchInfo] set datetime: $e');
       }
       if (!alive()) return;
     }
@@ -272,7 +272,7 @@ class DeviceInfoWatchService {
               for (final item in batch.items) 'power.${item.key}': item.value,
             });
           } catch (e) {
-            LogService.log('[watchInfo] battery full: $e');
+            LogService.info('[watchInfo] battery full: $e');
             if (!alive()) break;
           }
         } else {
@@ -287,7 +287,7 @@ class DeviceInfoWatchService {
             };
             if (partial.isNotEmpty) emit(partial);
           } catch (e) {
-            LogService.log('[watchInfo] battery current: $e');
+            LogService.info('[watchInfo] battery current: $e');
             if (!alive()) break;
           }
         }

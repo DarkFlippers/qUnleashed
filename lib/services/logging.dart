@@ -271,6 +271,24 @@ class LogService {
   static void warn(String msg) =>
       _emit('[warning] $msg', keep: true, console: warnOn);
 
+  /// Running commentary, and the one level that does not survive.
+  ///
+  /// Never kept, in any build: [history] holds errors and warnings only, so
+  /// nothing sent here can reach the log screen. On top of that [infoOn] is a
+  /// const that folds to false in an ordinary release build, so the call
+  /// usually compiles away — and a build made to talk with `QLOG=true` reaches
+  /// only a console that, per [history], a user of a shipped build cannot read.
+  ///
+  /// Which makes this the right level for saying what the app did, and the
+  /// wrong one for the only report of a failure. That wants [warn] or [error].
+  ///
+  /// It is not yet used that way. 117 of the calls to this sit inside a catch
+  /// block, and whether each is commentary or the last word on a failure turns
+  /// on what its caller does next — a judgement per site, not a sweep. #103
+  /// holds that triage. Until it is done, one of these inside a catch is a site
+  /// nobody has ruled on rather than one ruled to be commentary.
+  ///
+  /// There is no catch-all to reach for instead. Pick a level at each site.
   static void info(String msg) {
     if (!infoOn) return;
     _write(msg);
@@ -285,9 +303,6 @@ class LogService {
     if (!traceOn) return;
     _write(msg);
   }
-
-  /// Default channel for app messages, kept as the informational level.
-  static void log(String msg) => info(msg);
 
   static FlipperLogLevel get _flipperLevel => switch (level) {
     _error => FlipperLogLevel.error,

@@ -113,7 +113,7 @@ class ProjectManagerController extends ChangeNotifier {
       ];
     } catch (e) {
       _error = '$e';
-      LogService.log('[PixelDraw] loadAll failed: $e');
+      LogService.info('[PixelDraw] loadAll failed: $e');
     } finally {
       _loading = false;
       _notify();
@@ -147,7 +147,7 @@ class ProjectManagerController extends ChangeNotifier {
       }
     } catch (e) {
       _error = l10n.paintDeleteFailed('$e');
-      LogService.log('[PixelDraw] delete failed: $e');
+      LogService.info('[PixelDraw] delete failed: $e');
     }
     await loadAll(silent: true);
   }
@@ -264,7 +264,7 @@ class ProjectManagerController extends ChangeNotifier {
       );
     } catch (e) {
       _error = l10n.paintSendFailed('$e');
-      LogService.log('[PixelDraw] send failed: $e');
+      LogService.info('[PixelDraw] send failed: $e');
     } finally {
       _sending = false;
       _sendProgress = null;
@@ -305,7 +305,7 @@ class ProjectManagerController extends ChangeNotifier {
       );
     } catch (e) {
       _error = l10n.paintImportFailed('$e');
-      LogService.log('[PixelDraw] import failed: $e');
+      LogService.info('[PixelDraw] import failed: $e');
     } finally {
       _importing = false;
       _importProgress = null;
