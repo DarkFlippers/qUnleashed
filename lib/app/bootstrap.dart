@@ -19,18 +19,14 @@ import '../services/rpc/network/network_responder.dart';
 void bootstrapAmbientServices() {
   final client = FlipperOneClient().get();
 
-  unawaited(
-    _guard(
-      'connection notifier',
-      () => ConnectionNotificationService.instance.start(client),
-    ),
+  _start(
+    'connection notifier',
+    () => ConnectionNotificationService.instance.start(client),
   );
 
-  unawaited(
-    _guard(
-      'ble foreground service',
-      () => BleForegroundService.instance.start(client),
-    ),
+  _start(
+    'ble foreground service',
+    () => BleForegroundService.instance.start(client),
   );
 
   // Answers GPS requests from custom firmware apps with the phone's location.
@@ -40,7 +36,7 @@ void bootstrapAmbientServices() {
   // Desktop raises the prompt at launch instead of mid-request: there the ask
   // arrives when the map opens or the Flipper is already waiting for a fix.
   if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
-    unawaited(_guard('location permission', gps.ensureReady));
+    _start('location permission', gps.ensureReady);
   }
 
   // Answers network requests from custom firmware apps with the phone's
@@ -51,14 +47,14 @@ void bootstrapAmbientServices() {
   // in the background saves both the phone's and the Flipper's battery.
   WidgetsBinding.instance.addObserver(_WatchLifecycleObserver());
 
-  unawaited(_guard('push notifications', () => PushService.instance.start()));
+  _start('push notifications', () => PushService.instance.start());
 
   // A refresh killed mid-swap leaves the IR library under a name only recovery
   // looks for. Repairing it here rather than when the IR page opens means the
   // library is not absent to the rest of the app until the user happens to go
   // there — Settings → Storage reported its size as zero in the meantime — and
   // it lets exists() go back to being a plain read.
-  unawaited(_guard('ir library recovery', IrLibLocalRepo.recoverStranded));
+  _start('ir library recovery', IrLibLocalRepo.recoverStranded);
 }
 
 class _WatchLifecycleObserver with WidgetsBindingObserver {
@@ -84,8 +80,11 @@ class _WatchLifecycleObserver with WidgetsBindingObserver {
 
 /// Starts an ambient service and records a failure rather than dropping it.
 ///
-/// A one-line alias for [guarded] so the call sites above need not repeat the
-/// prefix. Nothing awaits any of them - the app comes up either way - so a
-/// service that never started is visible only in the log.
-Future<void> _guard(String label, Future<void> Function() task) =>
-    guarded('ambient service "$label"', task);
+/// Returns void rather than a future the caller must remember to drop: nothing
+/// awaits any of these - the app comes up either way - and a signature that
+/// cannot be awaited says so better than an unawaited() at each site did.
+///
+/// Tagged like every other kept entry, because these now reach the log screen
+/// a user copies into a bug report; before, at info, they reached nothing.
+void _start(String label, Future<void> Function() task) =>
+    unawaited(guarded('[Bootstrap] ambient service "$label"', task));

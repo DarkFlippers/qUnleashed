@@ -94,7 +94,7 @@ class LogService {
   /// exists to hold on to.
   ///
   /// One entry per message rather than per line, so a stack trace stays a
-  /// single event. Thirteen of the app's error sites pass `'$e\n$st'`, and a
+  /// single event. Many of the app's error sites pass `'$e\n$st'`, and a
   /// Dart stack trace runs to thirty frames or so — split by line, this would
   /// hold about sixteen failures.
   ///
@@ -412,9 +412,9 @@ class LogService {
   /// Stamps [msg], keeps it in [history] if [keep], prints it if [console].
   ///
   /// Only what is kept is redacted. The history is the only thing the log
-  /// screen offers to copy, and everything else — 177 trace, debug and info
-  /// sites against 28 that keep — would be paying a scan per home directory
-  /// per message for nothing. It also leaves a developer's own console
+  /// screen offers to copy, and everything else — five times as many trace,
+  /// debug and info sites as ones that keep — would be paying a scan per home
+  /// directory per message for nothing. It also leaves a developer's own console
   /// printing the path they are debugging rather than `~`. The trade is that
   /// a path still reaches logcat, which is not the surface with a copy button
   /// on it.

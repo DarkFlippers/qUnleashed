@@ -76,28 +76,6 @@ class _CliPageState extends State<CliPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _bootstrap());
   }
 
-  /// [guarded], with this page's prefix and an optional bound on the wait.
-  ///
-  /// `FlipperClient.writeCliBytes` is the case that shaped [guarded]: it is
-  /// not async, so a session that is gone throws before there is a future to
-  /// attach a handler to, while a session whose transport has been torn down,
-  /// one already back in RPC mode, and the write itself all reject instead.
-  /// Both StateErrors read "No active transport", so the difference is easy to
-  /// miss. The Future.sync inside [guarded] puts both in the same place.
-  ///
-  /// The timeout goes inside the task rather than around [guarded], so a
-  /// TimeoutException is a failure this reports like any other.
-  static Future<void> _guarded(
-    Future<void> Function() send,
-    String what, {
-    Duration? timeout,
-    void Function(Object error)? onFailure,
-  }) => guarded(
-    '[CLI] $what',
-    timeout == null ? send : () => send().timeout(timeout),
-    onFailure: onFailure,
-  );
-
   /// Says something in the terminal itself, on its own line and in red.
   ///
   /// The one surface the user is actually looking at. Everything below used to
@@ -122,8 +100,16 @@ class _CliPageState extends State<CliPage> {
 
   /// Sends something the user is waiting on, and says so when it does not
   /// arrive.
+  ///
+  /// This page is where the sync-versus-async split that shaped [guarded] came
+  /// from. `FlipperClient.writeCliBytes` is not async, so a session that is
+  /// already gone throws before there is a future to attach a handler to, while
+  /// a session whose transport has been torn down, one already back in RPC
+  /// mode, and the write itself all reject instead. The first two both read
+  /// "No active transport", so which of them happened is easy to mistake; the
+  /// Future.sync inside [guarded] puts all four in one place.
   void _fireAndShow(Future<void> Function() send, String what) =>
-      unawaited(_guarded(send, what, onFailure: _reportWriteFailure));
+      unawaited(guarded('[CLI] $what', send, onFailure: _reportWriteFailure));
 
   void _reportWriteFailure(Object error) {
     if (!mounted || _writeFailureShown) return;
@@ -167,10 +153,12 @@ class _CliPageState extends State<CliPage> {
 
     Future<void> teardown() async {
       if (_awaitingInterrupt) {
-        await _guarded(
-          () => client.writeCliBytes(_ctrlC),
-          'ctrl-c on dispose',
-          timeout: const Duration(seconds: 2),
+        // The bound is inside the task rather than around guarded, so a
+        // TimeoutException is reported like any other failure here.
+        await guarded(
+          '[CLI] ctrl-c on dispose',
+          () =>
+              client.writeCliBytes(_ctrlC).timeout(const Duration(seconds: 2)),
         );
       }
       // Not the session this page had, by now: the wait above can span a
@@ -180,7 +168,7 @@ class _CliPageState extends State<CliPage> {
       if (!restoreRpc || !identical(client.connectedDevice, device)) return;
       // enterRpcMode returns quietly when the session is already gone, but the
       // switch it returns can still reject.
-      await _guarded(client.enterRpcMode, 'leaving cli mode');
+      await guarded('[CLI] leaving cli mode', client.enterRpcMode);
     }
 
     unawaited(teardown());

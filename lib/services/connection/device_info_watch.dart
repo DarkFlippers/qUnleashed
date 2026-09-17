@@ -7,6 +7,7 @@ import 'dart:core' as core;
 import 'package:flipperlib/flipperlib.dart';
 
 import '../../components/format.dart';
+import '../guarded.dart';
 import '../logging.dart';
 import 'device_settings.dart';
 
@@ -149,9 +150,9 @@ class DeviceInfoWatchService {
     if (!alive()) return;
 
     // Storage /int — slow (storageDu), fire-and-forget so periodic loop starts
-    unawaited(() async {
-      if (!alive()) return;
-      try {
+    unawaited(
+      guarded('[watchInfo] storage /int', () async {
+        if (!alive()) return;
         final bytes = await client.storageDu(
           '/int',
           priority: FlipperRequestPriority.background,
@@ -162,10 +163,8 @@ class DeviceInfoWatchService {
             'storage.internal.used': _formatBytes(bytes),
           });
         }
-      } catch (e) {
-        LogService.log('[watchInfo] storage /int: $e');
-      }
-    }());
+      }),
+    );
 
     // The last of the startup commands: the phone's clock goes to the device,
     // so a Flipper that lost its time comes back right after connecting.
