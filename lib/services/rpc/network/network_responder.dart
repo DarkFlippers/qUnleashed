@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:flipperlib/flipperlib.dart';
 
+import '../../guarded.dart';
 import '../../logging.dart';
 import 'http_util.dart';
 import 'network_traffic.dart';
@@ -75,30 +76,48 @@ class FlipperNetworkResponder {
   void _onNotification(Main frame) {
     if (frame.hasNetworkConnectRequest()) {
       final request = frame.networkConnectRequest;
-      _enqueueHandler(request.connectionId, () => _onConnect(request));
+      _enqueueHandler(request.connectionId, 'connect on connection', () {
+        return _onConnect(request);
+      });
     } else if (frame.hasNetworkSendRequest()) {
       final request = frame.networkSendRequest;
-      _enqueueHandler(request.connectionId, () => _onSend(request));
+      _enqueueHandler(request.connectionId, 'send on connection', () {
+        return _onSend(request);
+      });
     } else if (frame.hasNetworkCloseRequest()) {
       final request = frame.networkCloseRequest;
-      _enqueueHandler(request.connectionId, () => _onClose(request));
+      _enqueueHandler(request.connectionId, 'close on connection', () {
+        return _onClose(request);
+      });
     } else if (frame.hasNetworkHttpRequest()) {
       final request = frame.networkHttpRequest;
-      _enqueueHandler(request.requestId, () => _onHttp(request));
+      _enqueueHandler(request.requestId, 'http request', () {
+        return _onHttp(request);
+      });
     } else if (frame.hasNetworkWebsocketOpenRequest()) {
       final request = frame.networkWebsocketOpenRequest;
-      _enqueueHandler(request.connectionId, () => _onWebSocketOpen(request));
+      _enqueueHandler(request.connectionId, 'websocket open on connection', () {
+        return _onWebSocketOpen(request);
+      });
     }
   }
 
-  void _enqueueHandler(int id, Future<void> Function() handler) {
+  /// Runs [handler] after whatever is already queued for [id].
+  ///
+  /// [what] names the request, because the id alone does not: four of the five
+  /// callers key on a connection id and _onHttp keys on a request id, into this
+  /// same map.
+  ///
+  /// guarded wraps the predecessor as well as [handler], so [next] cannot
+  /// reject. That matters more here than the logging does: a rejected link
+  /// makes `then` skip the *next* handler for this id, so a close queued behind
+  /// a failed send would never run - no teardown, no traffic accounting, and no
+  /// NetworkCloseResponse, leaving the firmware app blocked until its own
+  /// timeout.
+  void _enqueueHandler(int id, String what, Future<void> Function() handler) {
     final previous = _handlerChains[id] ?? Future<void>.value();
     late final Future<void> next;
-    next = previous
-        .then((_) => handler())
-        .catchError((Object error) {
-          LogService.log('[Network] handler failed on $id: $error');
-        })
+    next = guarded('[Network] $what $id', () => previous.then((_) => handler()))
         .whenComplete(() {
           if (identical(_handlerChains[id], next)) {
             _handlerChains.remove(id);
@@ -437,7 +456,9 @@ class FlipperNetworkResponder {
     LogService.log('[Network] socket error on $id: $error');
     final connection = _connections.remove(id);
     if (connection == null) return;
-    unawaited(_teardown(connection));
+    unawaited(
+      guarded('[Network] teardown on $id', () => _teardown(connection)),
+    );
     NetworkTrafficMonitor.instance.connectionClosed();
     unawaited(_sendStateChanged(id, ConnectionState.ERROR, _errorFor(error)));
   }

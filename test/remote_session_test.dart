@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flipperlib/flipperlib.dart' hide DateTime, File;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:qunleashed/pages/tools/remote/desktop/models/models.dart';
 import 'package:qunleashed/pages/tools/remote/desktop/session.dart';
 
 /// One request as it was handed to the client, with what the session's queue
@@ -36,6 +37,14 @@ class _FakeClient implements FlipperClient {
 
   bool connected = false;
   bool failCalls = false;
+
+  /// Throws before returning a future, the way the real client does.
+  ///
+  /// FlipperClient.callRpcFrames is not async: it resolves the session first,
+  /// and one already gone throws there rather than rejecting. A fake that can
+  /// only reject cannot express what a Flipper dropping mid-hold produces, so
+  /// nothing here could see a handler attached to the result being skipped.
+  bool throwsSynchronously = false;
 
   /// Gate for the first call, so a test can hold the initial open in flight
   /// and deliver a connection event while it is still between awaits. Without
@@ -93,6 +102,22 @@ class _FakeClient implements FlipperClient {
     bool retainFrames = true,
     bool interleavable = false,
     bool pipelined = true,
+  }) {
+    // Not async, so this throw leaves the call rather than rejecting it.
+    if (throwsSynchronously) throw StateError('No active transport');
+    return _callRpcFrames(
+      request,
+      priority: priority,
+      onFrame: onFrame,
+      onSent: onSent,
+    );
+  }
+
+  Future<List<Main>> _callRpcFrames(
+    Main request, {
+    required FlipperRequestPriority priority,
+    void Function(Main frame)? onFrame,
+    void Function()? onSent,
   }) async {
     sent.add(_Sent(request, priority, sent.length));
     final held = gate;
@@ -367,6 +392,29 @@ void main() {
   // the ordinary case into a rejection. Before the fix that landed in _start's
   // catch and flagged the session disconnected over a screen that was
   // streaming perfectly.
+  // _up is not async and guiSendInput resolves the session synchronously, so
+  // before the Future.sync there the throw escaped past both the catchError
+  // and the whenComplete that completes `sent` and calls onAnswer - stranding
+  // the button's animation in the queue for the life of the page.
+  test(
+    'a release the session refuses outright still clears the button',
+    () async {
+      final client = _FakeClient()..connected = true;
+      final session = RemoteSession(client: client);
+      addTearDown(session.dispose);
+      await Future<void>.delayed(Duration.zero);
+
+      client.throwsSynchronously = true;
+      await session.press(RemoteButton.ok);
+
+      expect(
+        session.queue,
+        isEmpty,
+        reason: 'the release answered, so the animation was dequeued',
+      );
+    },
+  );
+
   test('an unlocked device does not read as a disconnected one', () async {
     final client = lockAnswering(CommandStatus.ERROR);
     final session = RemoteSession(client: client);

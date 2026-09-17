@@ -5,6 +5,7 @@ import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:geolocator/geolocator.dart';
+import '../guarded.dart';
 import '../localization/l10n.dart';
 import '../logging.dart';
 
@@ -108,20 +109,31 @@ class BleForegroundService with WidgetsBindingObserver {
   // backgrounded is deferred until didChangeAppLifecycleState sees resume.
   void _sync() {
     if (_wantRunning && _foreground && !_serviceRunning) {
-      _enqueue(_startService);
+      _enqueue('start', _startService);
     } else if (!_wantRunning && _serviceRunning) {
-      _enqueue(_stopService);
+      _enqueue('stop', _stopService);
     } else if (_wantRunning && _serviceRunning) {
-      _enqueue(_updateNotification);
+      _enqueue('notification update', _updateNotification);
     }
   }
 
   // Chains the next op after the previous settles so the running state stays
   // consistent regardless of how fast events arrive.
-  void _enqueue(Future<void> Function() op) {
-    _pending = _pending.then((_) => op()).catchError((Object e) {
-      LogService.log('[ForegroundService] op failed: $e');
-    });
+  //
+  // The whole `previous.then` goes inside guarded rather than just [op].
+  // guarded's own result cannot reject, so wrapping only [op] would be enough
+  // today - but `then` on a rejected future skips its callback and propagates,
+  // and this is a process-lifetime singleton whose _pending is never reset. One
+  // rejected link would leave every later start, stop and update skipped for
+  // the life of the process, logging nothing, because guarded would no longer
+  // be reached either. Wrapping the predecessor as well heals the chain on the
+  // next enqueue instead, which is what the old tail-position catchError did.
+  void _enqueue(String what, Future<void> Function() op) {
+    final previous = _pending;
+    _pending = guarded(
+      '[ForegroundService] $what',
+      () => previous.then((_) => op()),
+    );
   }
 
   void _ensureInitialized() {

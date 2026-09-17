@@ -5,8 +5,9 @@ import 'package:flipperlib/flipperlib.dart' hide DateTime, File;
 import 'package:flutter/foundation.dart';
 
 import '../../../../services/connection/device_info_watch.dart';
-import '../../../../services/rpc/desktop_lock.dart';
+import '../../../../services/guarded.dart';
 import '../../../../services/logging.dart';
+import '../../../../services/rpc/desktop_lock.dart';
 import 'frame_decoder.dart';
 import 'models/models.dart';
 import 'screenshot_encoder.dart';
@@ -233,20 +234,38 @@ class RemoteSession extends ChangeNotifier {
     _connectionSub?.cancel();
     _pendingFrame = null;
     _pendingRgba = null;
-    unawaited(_chain(_releaseWireDown).whenComplete(_stopRemote));
+    // guarded around the whole thing, not just the chain: _chain cannot
+    // reject, but a whenComplete callback that throws rejects the future it
+    // returns, and this one is dropped.
+    unawaited(
+      guarded(
+        '[Remote] shutdown',
+        () => _chain(
+          'release on shutdown',
+          _releaseWireDown,
+        ).whenComplete(_stopRemote),
+      ),
+    );
   }
 
   Future<void> _stopVisuals() async {
     if (!_client.isConnected) return;
+    // Future.sync for the same reason as _up: both of these resolve the
+    // session synchronously, so one already gone throws rather than rejecting
+    // - past a catchError attached to the result. Teardown is precisely when
+    // the session is most likely to be gone, and that throw escaped dispose()
+    // into the zone.
     await Future.wait([
-      _client
-          .guiStopScreenStream(priority: FlipperRequestPriority.rightNow)
-          .timeout(_kStopTimeout)
-          .catchError((_) => <Main>[]),
-      _client
-          .desktopStatusUnsubscribe(priority: FlipperRequestPriority.rightNow)
-          .timeout(_kStopTimeout)
-          .catchError((_) => <Main>[]),
+      Future.sync(
+        () => _client
+            .guiStopScreenStream(priority: FlipperRequestPriority.rightNow)
+            .timeout(_kStopTimeout),
+      ).catchError((_) => <Main>[]),
+      Future.sync(
+        () => _client
+            .desktopStatusUnsubscribe(priority: FlipperRequestPriority.rightNow)
+            .timeout(_kStopTimeout),
+      ).catchError((_) => <Main>[]),
     ]);
   }
 
@@ -401,7 +420,7 @@ class RemoteSession extends ChangeNotifier {
     final item = _enqueue(_animAsset(button));
     final type = long ? InputType.LONG : InputType.SHORT;
     final key = _key(button);
-    return _chain(() async {
+    return _chain('press ${button.name}', () async {
       await Future.wait([
         _down(key),
         _typed(key, type),
@@ -419,9 +438,11 @@ class RemoteSession extends ChangeNotifier {
     state.longTimer = Timer(const Duration(milliseconds: 500), () {
       if (!identical(_held[button], state)) return;
       state.longFired = true;
-      unawaited(_chain(() => _typed(key, InputType.LONG)));
+      unawaited(
+        _chain('long press ${button.name}', () => _typed(key, InputType.LONG)),
+      );
     });
-    return _chain(() => _down(key));
+    return _chain('hold ${button.name}', () => _down(key));
   }
 
   Future<void> endHold(RemoteButton button) {
@@ -429,7 +450,7 @@ class RemoteSession extends ChangeNotifier {
     if (state == null) return _inputChain;
     state.longTimer?.cancel();
     final key = _key(button);
-    return _chain(() async {
+    return _chain('end hold ${button.name}', () async {
       await Future.wait([
         if (!state.longFired) _typed(key, InputType.SHORT),
         _up(key, onAnswer: () => _dequeue(state.item)),
@@ -453,11 +474,24 @@ class RemoteSession extends ChangeNotifier {
     }
   }
 
-  Future<void> _chain(Future<void> Function() action) {
-    final next = _inputChain.then((_) async {
-      try {
-        await action();
-      } catch (_) {}
+  /// Queues [action] behind whatever input is already in flight.
+  ///
+  /// [what] names the button. Most of what fails here arrives without a stack -
+  /// flipperlib rejects through a bare completeError - so an entry reading only
+  /// "queued" could not be attributed to any of the five callers.
+  ///
+  /// _sendInput catches and warns for itself, so an ordinary refused PRESS
+  /// never reaches guarded. _up is the one that could: see the Future.sync
+  /// there. With that in place what arrives here is genuinely unexpected, which
+  /// is what makes error the right level for it.
+  ///
+  /// The predecessor is awaited inside guarded, so _inputChain cannot reject
+  /// and one failed action cannot strand the input queued behind it.
+  Future<void> _chain(String what, Future<void> Function() action) {
+    final previous = _inputChain;
+    final next = guarded('[RemoteInput] $what', () async {
+      await previous;
+      await action();
     });
     _inputChain = next;
     return next;
@@ -492,14 +526,21 @@ class RemoteSession extends ChangeNotifier {
     }
     LogService.debug('[RemoteInput] wire RELEASE ${key.name}');
     final sent = Completer<void>();
+    // Future.sync, because guiSendInput is not async: it resolves the session
+    // synchronously, so one already gone throws here rather than rejecting -
+    // past the catchError below, and past the whenComplete that completes
+    // `sent` and calls onAnswer. The button's queued animation would then never
+    // be dequeued, and the release would be reported as unexpected by _chain
+    // rather than as the ordinary dropped input it is.
     unawaited(
-      _client
-          .guiSendInput(
-            SendInputEventRequest(key: key, type: InputType.RELEASE),
-            onSent: () {
-              LogService.debug('[RemoteInput] sent RELEASE ${key.name}');
-              if (!sent.isCompleted) sent.complete();
-            },
+      Future.sync(
+            () => _client.guiSendInput(
+              SendInputEventRequest(key: key, type: InputType.RELEASE),
+              onSent: () {
+                LogService.debug('[RemoteInput] sent RELEASE ${key.name}');
+                if (!sent.isCompleted) sent.complete();
+              },
+            ),
           )
           .catchError((e) {
             LogService.warn('[RemoteInput] failed RELEASE ${key.name}: $e');

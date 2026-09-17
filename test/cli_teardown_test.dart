@@ -5,6 +5,7 @@ import 'package:flipperlib/flipperlib.dart' hide DateTime, File;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/tools/remote/cli/page.dart';
+import 'package:qunleashed/services/logging.dart';
 import 'package:qunleashed/theme/theme.dart';
 import 'package:xterm/xterm.dart';
 
@@ -166,9 +167,18 @@ Widget _wrap(Widget child) => MaterialApp(
   home: child,
 );
 
-/// Collects what LogService writes, so a test can assert the handler ran
-/// rather than only that nothing blew up. Restored inline rather than through
-/// addTearDown, which flutter_test rejects as changing a debug variable.
+/// Silences the console for [body] and hands back what it would have printed.
+///
+/// Restored inline rather than through addTearDown, which flutter_test rejects
+/// as changing a debug variable.
+///
+/// For asserting a failure *was* recorded, read LogService.history instead:
+/// what prints follows the build, so these assertions failed outright under
+/// --dart-define=QLOG=false, and they could not tell a handler logging at info
+/// - which a release build compiles away - from one logging at error. The
+/// history is the surface the log screen reads and the one a bug report
+/// carries. What is left here is asserting a line is *absent*, where printing
+/// is the wider net of the two.
 Future<List<String>> recordingLogs(Future<void> Function() body) async {
   final lines = <String>[];
   final previous = debugPrint;
@@ -212,11 +222,12 @@ void main() {
       ..writeFailure = _WriteFailure.throwsSynchronously;
     addTearDown(client.text.close);
 
-    final logs = await recordingLogs(() => openThenDispose(tester, client));
+    LogService.clearHistory();
+    await recordingLogs(() => openThenDispose(tester, client));
 
     expect(client.writeCalls, 1);
     expect(
-      logs.where((l) => l.contains('ctrl-c on dispose failed')),
+      LogService.history.where((l) => l.contains('ctrl-c on dispose failed')),
       isNotEmpty,
       reason: 'the handler ran, rather than the failure merely not surfacing',
     );
@@ -232,11 +243,12 @@ void main() {
     final client = _FakeClient()..writeFailure = _WriteFailure.rejects;
     addTearDown(client.text.close);
 
-    final logs = await recordingLogs(() => openThenDispose(tester, client));
+    LogService.clearHistory();
+    await recordingLogs(() => openThenDispose(tester, client));
 
     expect(client.writeCalls, 1);
     expect(
-      logs.where((l) => l.contains('ctrl-c on dispose failed')),
+      LogService.history.where((l) => l.contains('ctrl-c on dispose failed')),
       isNotEmpty,
     );
   });
@@ -319,13 +331,17 @@ void main() {
 
     client.writeFailure = _WriteFailure.throwsSynchronously;
     final before = client.writeCalls;
-    final logs = await recordingLogs(() async {
+    LogService.clearHistory();
+    await recordingLogs(() async {
       await tester.tap(find.byIcon(Icons.stop_circle_outlined));
       await tester.pump();
     });
 
     expect(client.writeCalls, before + 1, reason: 'the button is live');
-    expect(logs.where((l) => l.contains('ctrl-c failed')), isNotEmpty);
+    expect(
+      LogService.history.where((l) => l.contains('ctrl-c failed')),
+      isNotEmpty,
+    );
   });
   // #80. A keystroke that never reached the device drew nothing at all, and
   // the only other evidence was a log line - since #89 kept in a buffer, but

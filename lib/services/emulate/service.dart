@@ -5,6 +5,7 @@ import 'package:flipperlib/flipperlib.dart';
 
 import '../../components/archive/models/key.dart';
 import '../../components/archive/parser.dart';
+import '../guarded.dart';
 import '../logging.dart';
 
 enum EmulateError {
@@ -131,7 +132,7 @@ class EmulateService {
   }
 
   Future<void> sendPress() {
-    return _enqueueButton(() async {
+    return _enqueueButton('button press', () async {
       if (_txHeld) return;
       if (!_sceneLoaded) {
         if (!await _reloadForSend()) return;
@@ -145,7 +146,7 @@ class EmulateService {
   }
 
   Future<void> sendRelease() {
-    return _enqueueButton(() async {
+    return _enqueueButton('button release', () async {
       if (!_txHeld) return;
       _txHeld = false;
       await _client.appButtonRelease(
@@ -177,14 +178,23 @@ class EmulateService {
     return false;
   }
 
-  Future<void> _enqueueButton(Future<void> Function() op) {
-    final next = _btnChain.then((_) async {
-      if (!_running) return;
-      try {
-        await op();
-      } catch (e) {
-        LogService.log('[Emulate] button command failed: $e');
-      }
+  /// Queues [op] behind whatever button command is already in flight.
+  ///
+  /// [what] names it because press and release fail the same way - a five
+  /// second RPC timeout over a link that has gone - and an entry saying only
+  /// "button command" cannot be told apart from its neighbour.
+  ///
+  /// The predecessor is awaited inside guarded rather than chained ahead of it,
+  /// so the future stored in _btnChain cannot reject and a failed command
+  /// cannot strand the ones behind it.
+  Future<void> _enqueueButton(String what, Future<void> Function() op) {
+    final previous = _btnChain;
+    final next = guarded('[Emulate] $what', () async {
+      await previous;
+      // Read after the wait, not before: stop() clears it while this is queued,
+      // and a press that ran anyway would leave the transmitter keyed with no
+      // release behind it.
+      if (_running) await op();
     });
     _btnChain = next;
     return next;
