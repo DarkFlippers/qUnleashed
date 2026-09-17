@@ -282,11 +282,13 @@ class LogService {
   /// Which makes this the right level for saying what the app did, and the
   /// wrong one for the only report of a failure. That wants [warn] or [error].
   ///
-  /// It is not yet used that way. 117 of the calls to this sit inside a catch
+  /// It is not yet used that way. Most of the calls to this sit inside a catch
   /// block, and whether each is commentary or the last word on a failure turns
   /// on what its caller does next — a judgement per site, not a sweep. #103
-  /// holds that triage. Until it is done, one of these inside a catch is a site
-  /// nobody has ruled on rather than one ruled to be commentary.
+  /// holds that triage, and test/log_level_budget_test.dart holds a per-area
+  /// budget so it cannot grow unnoticed meanwhile. Until the triage is done, one of these inside a
+  /// catch is a site nobody has ruled on rather than one ruled to be
+  /// commentary.
   ///
   /// There is no catch-all to reach for instead. Pick a level at each site.
   static void info(String msg) {

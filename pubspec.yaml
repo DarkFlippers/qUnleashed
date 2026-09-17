@@ -70,6 +70,11 @@ dev_dependencies:
   # always succeed, so the only way to test what happens when one does not is
   # to stand in at the platform interface.
   shared_preferences_platform_interface: ^2.4.2
+  # Parses lib/ for test/log_level_budget_test.dart, which counts failures
+  # logged where a release build cannot see them. A parser rather than a regex
+  # because `extension E on T {` and `mixin M on B {` are spelled exactly like
+  # a bare `on T {` catch clause, and only an AST can tell them apart.
+  analyzer: ^14.4.0
 
 flutter:
   config:
