@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:flipperlib/flipperlib.dart';
 
+import '../../guarded.dart';
 import '../../logging.dart';
 import 'http_util.dart';
 import 'network_traffic.dart';
@@ -95,10 +96,7 @@ class FlipperNetworkResponder {
     final previous = _handlerChains[id] ?? Future<void>.value();
     late final Future<void> next;
     next = previous
-        .then((_) => handler())
-        .catchError((Object error) {
-          LogService.log('[Network] handler failed on $id: $error');
-        })
+        .then((_) => guarded('[Network] handler on $id', handler))
         .whenComplete(() {
           if (identical(_handlerChains[id], next)) {
             _handlerChains.remove(id);

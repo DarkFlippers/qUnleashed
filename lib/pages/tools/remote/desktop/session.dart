@@ -5,8 +5,9 @@ import 'package:flipperlib/flipperlib.dart' hide DateTime, File;
 import 'package:flutter/foundation.dart';
 
 import '../../../../services/connection/device_info_watch.dart';
-import '../../../../services/rpc/desktop_lock.dart';
+import '../../../../services/guarded.dart';
 import '../../../../services/logging.dart';
+import '../../../../services/rpc/desktop_lock.dart';
 import 'frame_decoder.dart';
 import 'models/models.dart';
 import 'screenshot_encoder.dart';
@@ -453,12 +454,16 @@ class RemoteSession extends ChangeNotifier {
     }
   }
 
+  /// Queues [action] behind whatever input is already in flight.
+  ///
+  /// Everything routed through here reports its own failures already -
+  /// _sendInput and _up both catch and warn - so what reaches [guarded] is
+  /// what nobody expected, which is precisely what is worth a record. Either
+  /// way the chain survives a failed link, which is what the queue needs.
   Future<void> _chain(Future<void> Function() action) {
-    final next = _inputChain.then((_) async {
-      try {
-        await action();
-      } catch (_) {}
-    });
+    final next = _inputChain.then(
+      (_) => guarded('[RemoteInput] queued', action),
+    );
     _inputChain = next;
     return next;
   }

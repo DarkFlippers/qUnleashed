@@ -5,6 +5,7 @@ import 'package:flipperlib/flipperlib.dart';
 
 import '../../components/archive/models/key.dart';
 import '../../components/archive/parser.dart';
+import '../guarded.dart';
 import '../logging.dart';
 
 enum EmulateError {
@@ -178,14 +179,11 @@ class EmulateService {
   }
 
   Future<void> _enqueueButton(Future<void> Function() op) {
-    final next = _btnChain.then((_) async {
-      if (!_running) return;
-      try {
-        await op();
-      } catch (e) {
-        LogService.log('[Emulate] button command failed: $e');
-      }
-    });
+    final next = _btnChain.then(
+      (_) => _running
+          ? guarded('[Emulate] button command', op)
+          : Future<void>.value(),
+    );
     _btnChain = next;
     return next;
   }

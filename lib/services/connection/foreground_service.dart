@@ -5,6 +5,7 @@ import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:geolocator/geolocator.dart';
+import '../guarded.dart';
 import '../localization/l10n.dart';
 import '../logging.dart';
 
@@ -117,11 +118,11 @@ class BleForegroundService with WidgetsBindingObserver {
   }
 
   // Chains the next op after the previous settles so the running state stays
-  // consistent regardless of how fast events arrive.
+  // consistent regardless of how fast events arrive. guarded is what keeps the
+  // chain alive: it never rejects, so a service that fails to start does not
+  // strand the stop queued behind it.
   void _enqueue(Future<void> Function() op) {
-    _pending = _pending.then((_) => op()).catchError((Object e) {
-      LogService.log('[ForegroundService] op failed: $e');
-    });
+    _pending = _pending.then((_) => guarded('[ForegroundService] op', op));
   }
 
   void _ensureInitialized() {

@@ -12,6 +12,7 @@ import 'package:xterm/xterm.dart';
 import 'package:qunleashed/components/appbar.dart';
 import '../../../../components/dialogs/connection_error.dart';
 import '../../../../components/dialogs/connection.dart';
+import '../../../../services/guarded.dart';
 import '../../../../services/logging.dart';
 
 const _kBackgroundColor = Color(0xFF000000);
@@ -75,30 +76,27 @@ class _CliPageState extends State<CliPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _bootstrap());
   }
 
-  /// Runs [send] and puts whatever it throws in the log, so the future it
-  /// returns never rejects and something else can be chained behind it.
+  /// [guarded], with this page's prefix and an optional bound on the wait.
   ///
-  /// [Future.sync] is the point. `FlipperClient.writeCliBytes` is not async,
-  /// so a session that is gone throws before there is a future to attach a
-  /// handler to, while a session whose transport has been torn down, one
-  /// already back in RPC mode, and the write itself all reject instead. Both
-  /// StateErrors read "No active transport", so the difference is easy to
-  /// miss; running the call inside Future.sync puts both in the same place.
+  /// `FlipperClient.writeCliBytes` is the case that shaped [guarded]: it is
+  /// not async, so a session that is gone throws before there is a future to
+  /// attach a handler to, while a session whose transport has been torn down,
+  /// one already back in RPC mode, and the write itself all reject instead.
+  /// Both StateErrors read "No active transport", so the difference is easy to
+  /// miss. The Future.sync inside [guarded] puts both in the same place.
+  ///
+  /// The timeout goes inside the task rather than around [guarded], so a
+  /// TimeoutException is a failure this reports like any other.
   static Future<void> _guarded(
     Future<void> Function() send,
     String what, {
     Duration? timeout,
     void Function(Object error)? onFailure,
-  }) {
-    final call = Future.sync(send);
-    return (timeout == null ? call : call.timeout(timeout)).catchError((
-      Object e,
-      StackTrace st,
-    ) {
-      LogService.error('[CLI] $what failed: $e\n$st');
-      onFailure?.call(e);
-    });
-  }
+  }) => guarded(
+    '[CLI] $what',
+    timeout == null ? send : () => send().timeout(timeout),
+    onFailure: onFailure,
+  );
 
   /// Says something in the terminal itself, on its own line and in red.
   ///

@@ -8,7 +8,7 @@ import '../pages/tools/infrared/local_repo.dart';
 import '../services/connection/device_info_watch.dart';
 import '../services/connection/foreground_service.dart';
 import '../services/connection/notification_service.dart';
-import '../services/logging.dart';
+import '../services/guarded.dart';
 import '../services/notifications/push_service.dart';
 import '../services/rpc/gps/geolocator_gps_provider.dart';
 import '../services/rpc/gps/gps_responder.dart';
@@ -82,10 +82,10 @@ class _WatchLifecycleObserver with WidgetsBindingObserver {
   }
 }
 
-Future<void> _guard(String label, Future<void> Function() task) async {
-  try {
-    await task();
-  } catch (error, stackTrace) {
-    LogService.log('Ambient service "$label" failed: $error\n$stackTrace');
-  }
-}
+/// Starts an ambient service and records a failure rather than dropping it.
+///
+/// A one-line alias for [guarded] so the call sites above need not repeat the
+/// prefix. Nothing awaits any of them - the app comes up either way - so a
+/// service that never started is visible only in the log.
+Future<void> _guard(String label, Future<void> Function() task) =>
+    guarded('ambient service "$label"', task);
