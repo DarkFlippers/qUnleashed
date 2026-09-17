@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:collection';
 import 'dart:io' as io;
 import 'dart:typed_data';
@@ -39,7 +40,12 @@ class _SvgBytesCache {
     } catch (_) {
       return null;
     } finally {
-      _inFlight.remove(url);
+      // Not an operation: remove() hands back this future once putIfAbsent
+      // has stored it, so awaiting it here could not return. On the one path
+      // that reaches here first - Uri.parse throwing before the body's first
+      // await - it removes nothing instead, which is a pre-existing wrinkle
+      // this only wraps.
+      unawaited(_inFlight.remove(url));
     }
   }
 }

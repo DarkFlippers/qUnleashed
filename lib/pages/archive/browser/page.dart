@@ -1,3 +1,4 @@
+import 'dart:async';
 import '../../../services/localization/l10n.dart';
 import 'dart:typed_data';
 
@@ -198,7 +199,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
       );
       return;
     }
-    openRoute(context, AppRoute.remoteControl);
+    unawaited(openRoute(context, AppRoute.remoteControl));
   }
 
   void _openRemoteControlBusy() {

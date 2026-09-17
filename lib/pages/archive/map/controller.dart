@@ -361,7 +361,22 @@ class MapToolController extends ChangeNotifier with WidgetsBindingObserver {
       }
 
       if (_disposed) return;
-      _posSub?.cancel();
+      // Taken before suspending, and the field cleared, because awaiting here
+      // is a suspension point this code did not have. dispose() landing inside
+      // it cancels whatever _posSub holds - the old subscription - and the
+      // assignment below would then leave a new one running with nobody to
+      // cancel it. A second requestLocation() is the same story: the guard at
+      // the top releases once the status turns granted, so both runs would
+      // read the same old subscription and only one would be cancelled.
+      //
+      // Awaited rather than dropped because cancel() returns when the platform
+      // channel has finished tearing down, and opening a new position stream
+      // before that is what this orders. Delivery stops at the call either
+      // way.
+      final previous = _posSub;
+      _posSub = null;
+      await previous?.cancel();
+      if (_disposed) return;
       _posSub =
           Geolocator.getPositionStream(
             locationSettings: const LocationSettings(

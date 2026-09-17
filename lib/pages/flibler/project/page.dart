@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:file_picker/file_picker.dart';
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
@@ -91,7 +92,7 @@ class _FliblerProjectPageState extends State<FliblerProjectPage> {
     try {
       await _ctrl.launchOnDevice();
       if (!mounted) return;
-      openRoute(context, AppRoute.remoteControl);
+      unawaited(openRoute(context, AppRoute.remoteControl));
     } on FlipperRpcAppSystemLockedException {
       if (!mounted) return;
       final colors = context.appColors;

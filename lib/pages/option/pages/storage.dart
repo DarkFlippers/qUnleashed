@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io' as io;
 
 import 'package:dartufbt/dartufbt.dart';
@@ -8,6 +9,7 @@ import '../../../components/format.dart';
 import '../../../components/icon.dart';
 import '../../../services/http/app_http.dart';
 import '../../../services/localization/l10n.dart';
+import '../../../services/logging.dart';
 import '../../../services/storage/paths.dart';
 import '../../../services/storage/fap_icons.dart';
 import '../../../theme/theme.dart';
@@ -144,11 +146,35 @@ class _StorageSettingsPageState extends State<StorageSettingsPage> {
   }
 
   Future<void> _refreshSizes() async {
-    for (var i = 0; i < _areas.length; i++) {
-      directorySize(await _areas[i].resolve()).then((size) {
-        if (mounted) setState(() => _sizes[i] = size);
-      });
+    // Started rather than awaited so the areas size concurrently, which is the
+    // point of the loop. _areas rebuilds the whole list on every read, so it
+    // is read once rather than twice per iteration.
+    final areas = _areas;
+    for (var i = 0; i < areas.length; i++) {
+      unawaited(_sizeArea(i, areas[i]));
     }
+  }
+
+  /// Sizes one area, and records a failure rather than dropping it.
+  ///
+  /// directorySize guards its own walk but opens with an exists() outside that
+  /// guard, so a directory the OS refuses throws - and a future started and
+  /// not awaited takes its failure to the zone. At error level, so it survives
+  /// into a release build and the log screen rather than vanishing.
+  ///
+  /// The catch covers the sizing only. Around the setState as well it would
+  /// swallow a build-phase error and report it as a failed directory.
+  Future<void> _sizeArea(int index, _StorageArea area) async {
+    final int size;
+    try {
+      size = await directorySize(await area.resolve());
+    } catch (error, stack) {
+      LogService.error(
+        '[Storage] could not size ${area.title}: $error\n$stack',
+      );
+      return;
+    }
+    if (mounted) setState(() => _sizes[index] = size);
   }
 
   Future<void> _clearArea(int index) async {

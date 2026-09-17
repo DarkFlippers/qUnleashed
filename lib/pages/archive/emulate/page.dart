@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../services/localization/l10n.dart';
@@ -52,7 +53,7 @@ class _EmulatePageState extends State<EmulatePage> {
           return;
         }
         if (result.isOk) {
-          openRoute(context, AppRoute.remoteControl, replace: true);
+          unawaited(openRoute(context, AppRoute.remoteControl, replace: true));
           return;
         }
         setState(() {

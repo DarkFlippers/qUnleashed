@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
@@ -20,7 +21,9 @@ Future<void> launchApp(
 ) async {
   try {
     await start();
-    if (context.mounted) openRoute(context, AppRoute.remoteControl);
+    if (context.mounted) {
+      unawaited(openRoute(context, AppRoute.remoteControl));
+    }
   } catch (e) {
     if (!context.mounted) return;
     if (e is FlipperRpcAppSystemLockedException) {
