@@ -182,7 +182,12 @@ class _PaintPageState extends State<PaintPage> {
     if (_ctrl.isClosing) return;
     _autosaveTimer?.cancel();
     await _autosaveDraft(); // persist the latest edits as a draft before leaving
-    _ctrl.close();
+    // Awaited so the order is stated rather than incidental: close() stops
+    // the timers and leaves the live virtual display before the pop below
+    // takes the page away. It has no await of its own today, so this costs a
+    // microtask and changes nothing observable - the draft on the line above
+    // is what actually reaches disk.
+    await _ctrl.close();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) Navigator.of(context).pop();
     });

@@ -1,3 +1,4 @@
+import 'dart:async';
 import '../../../../services/localization/l10n.dart';
 import 'dart:io' as io;
 import 'dart:typed_data';
@@ -336,10 +337,12 @@ class KeyActionsSheet {
       );
       return;
     }
-    openRoute(
-      context,
-      AppRoute.plotter,
-      args: PlotterArgs(bytes: Uint8List.fromList(bytes), name: k.fileName),
+    unawaited(
+      openRoute(
+        context,
+        AppRoute.plotter,
+        args: PlotterArgs(bytes: Uint8List.fromList(bytes), name: k.fileName),
+      ),
     );
   }
 
@@ -349,10 +352,12 @@ class KeyActionsSheet {
     ArchiveKey k,
   ) async {
     if (const {'png', 'gif', 'bm'}.contains(k.extension.toLowerCase())) {
-      openRoute(
-        context,
-        AppRoute.pixelEditor,
-        args: PixelEditorArgs(remotePath: k.remotePath),
+      unawaited(
+        openRoute(
+          context,
+          AppRoute.pixelEditor,
+          args: PixelEditorArgs(remotePath: k.remotePath),
+        ),
       );
       return;
     }

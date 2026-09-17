@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../services/localization/l10n.dart';
 import '../../../components/cardlist.dart';
@@ -137,7 +138,7 @@ class _ArchivePageState extends State<ArchivePage> {
     final ok = await _ctrl.launchFapFavorite(fav);
     if (!mounted) return;
     if (ok) {
-      openRoute(context, AppRoute.remoteControl);
+      unawaited(openRoute(context, AppRoute.remoteControl));
     } else {
       context.showNotification(
         context.l10n.archiveLaunchFailed(fav.name),

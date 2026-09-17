@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
@@ -52,7 +53,11 @@ class _RasterIconCache {
         _debugLog('failed', label: label, pixelSize: pixelSize, error: error);
         rethrow;
       } finally {
-        _pending.remove(key);
+        // Not an operation: remove() hands back this very future, so
+        // awaiting it here could not return. It is reached only through
+        // rasterize(), whose two targets are both async, so nothing throws
+        // before putIfAbsent has stored the entry this removes.
+        unawaited(_pending.remove(key));
         _debugLog('finished', label: label, pixelSize: pixelSize);
       }
     });
