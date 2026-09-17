@@ -17,6 +17,15 @@ inputs:
       override to trial a different SDK fails here rather than building.
     required: false
     default: "3.47.1"
+  pub-get:
+    description: >
+      Set to "false" to install the SDK without fetching dependencies. Only the
+      Crowdin sync does: it needs to run pub get itself and read what comes
+      back, because `generate: true` makes pub get compile the translations,
+      and the --enforce-lockfile failure below would report a broken
+      translation as a stale lockfile.
+    required: false
+    default: "true"
   swift-package-manager:
     description: >
       Set to "false" on any job that builds for macOS or iOS. pubspec.yaml now
@@ -65,6 +74,7 @@ runs:
     # whose code moved still satisfies the lockfile. What pins those is the
     # gitlink plus `submodules: recursive` on every checkout.
     - name: Install Flutter dependencies
+      if: inputs.pub-get != 'false'
       shell: bash
       run: |
         if ! flutter pub get --enforce-lockfile; then
