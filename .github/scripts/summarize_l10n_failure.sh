@@ -119,7 +119,18 @@ echo '```'
   # gen-l10n also echoes translated text back, so a translation containing a
   # fence would end this block early.
   sed 's/```/\x27\x27\x27/g' |
-  head -n 60
+  # sed rather than `head -n 60`, which exits at the sixtieth line and
+  # SIGPIPEs whatever is still writing upstream. Under `set -Eeuo
+  # pipefail` that makes the pipeline 141 and the script exit right
+  # here - before the closing fence below, leaving an unterminated code
+  # block in the pull request body and a verdict nobody can read.
+  #
+  # Whether it fires is a race with the pipe buffer, so a short log
+  # passes and a long one does not - precisely backwards, since a long
+  # log is the case this exists for: one renamed placeholder yields an
+  # analyzer error per call site. This sed reads to EOF and only stops
+  # printing.
+  sed -n '1,60p'
 echo '```'
 
 exit 1

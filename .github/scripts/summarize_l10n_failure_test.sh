@@ -185,7 +185,13 @@ fi
 {
   echo "Analyzing qUnleashed..."
   printf 'error - broken ```fence``` here - lib/x.dart:1:1\n'
-  for i in $(seq 1 200); do echo "  error - filler $i - lib/x.dart:$i:1"; done
+  # Comfortably past the 64KB pipe buffer. At 200 short lines the producer
+  # usually finished writing before the reader could close the pipe, so a
+  # `head` here raced instead of failing, and the suite passed locally and on
+  # most CI runs while the bug was live.
+  for i in $(seq 1 3000); do
+    echo "  error - filler $i - lib/x.dart:$i:1 - some padding to add bulk"
+  done
 } > "$work/huge.txt"
 run 1 analyze "$work/huge.txt"
 fences=$(grep -c '^```$' <<< "$out" || true)
