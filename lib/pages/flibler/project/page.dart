@@ -25,8 +25,10 @@ class FliblerProjectPage extends StatefulWidget {
 }
 
 class _FliblerProjectPageState extends State<FliblerProjectPage> {
-  final FliblerProjectController _ctrl = FliblerProjectController();
-  final TextEditingController _repoField = TextEditingController();
+  final FliblerProjectController _ctrl = FliblerProjectController.instance;
+  late final TextEditingController _repoField = TextEditingController(
+    text: _ctrl.repoUrl,
+  );
 
   @override
   void initState() {
@@ -41,7 +43,6 @@ class _FliblerProjectPageState extends State<FliblerProjectPage> {
   @override
   void dispose() {
     _repoField.dispose();
-    _ctrl.dispose();
     super.dispose();
   }
 
@@ -470,7 +471,9 @@ class _FliblerProjectPageState extends State<FliblerProjectPage> {
   Widget build(BuildContext context) {
     final colors = context.appColors;
     return AnimatedBuilder(
-      animation: Listenable.merge([_ctrl, _ctrl.assembler]),
+      animation: TickerMode.valuesOf(context).enabled
+          ? Listenable.merge([_ctrl, _ctrl.assembler])
+          : Listenable.merge(const []),
       builder: (context, _) {
         final app = _ctrl.app;
         return Scaffold(
