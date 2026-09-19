@@ -72,7 +72,13 @@ class PushService {
       );
     } catch (error) {
       _unavailable = true;
-      LogService.info('Push notifications unavailable in this build: $error');
+      // isUnavailable does reach Settings -> Push, but what it renders is
+      // "this build is not signed for push", asserted for any throw in the
+      // block above - a missing Play Services, a denied notification
+      // permission, a transient network failure during Firebase init. A
+      // positive claim about the wrong cause is worse than silence, because
+      // the reader stops looking. The real one is only here.
+      LogService.warn('Push notifications unavailable in this build: $error');
       return;
     }
 

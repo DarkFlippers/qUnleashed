@@ -208,8 +208,12 @@ class BleForegroundService with WidgetsBindingObserver {
     if (result is ServiceRequestSuccess) {
       _serviceRunning = true;
     } else if (result is ServiceRequestFailure) {
-      // Surface the real cause (PlatformException), not the wrapper's toString.
-      LogService.info('[ForegroundService] start failed: ${result.error}');
+      // Surface the real cause (PlatformException), not the wrapper's
+      // toString - and at a level that survives a release build, since this is
+      // the whole of the report. The service failing to start is why the link
+      // dies once the screen goes off, and nothing else says so. Not a catch,
+      // so the budget test cannot see this one.
+      LogService.warn('[ForegroundService] start failed: ${result.error}');
     }
   }
 
@@ -231,7 +235,7 @@ class BleForegroundService with WidgetsBindingObserver {
         notificationText: l10n.notificationBackgroundLinkBody,
       );
     } catch (e) {
-      LogService.info('[ForegroundService] update failed: $e');
+      LogService.warn('[ForegroundService] update failed: $e');
     }
   }
 
@@ -240,7 +244,7 @@ class BleForegroundService with WidgetsBindingObserver {
     _serviceRunning = false;
     final result = await FlutterForegroundTask.stopService();
     if (result is ServiceRequestFailure) {
-      LogService.info('[ForegroundService] stop failed: ${result.error}');
+      LogService.warn('[ForegroundService] stop failed: ${result.error}');
     }
   }
 }

@@ -80,7 +80,7 @@ class KnownDevicesStore extends ChangeNotifier {
       _devices = parsed;
       notifyListeners();
     } catch (e) {
-      LogService.info('[KnownDevices] load failed: $e');
+      LogService.warn('[KnownDevices] load failed: $e');
     }
   }
 
@@ -138,7 +138,12 @@ class KnownDevicesStore extends ChangeNotifier {
         jsonEncode([for (final device in _devices) device.toJson()]),
       );
     } catch (e) {
-      LogService.info('[KnownDevices] save failed: $e');
+      // error, not warn, alone in this sweep: it is the only failure here
+      // that loses something durable. notifyListeners has already run, so the
+      // picker shows the device as remembered and the user finds out at the
+      // next launch, when it is gone. Worth having in a log kept at
+      // QLOG_LEVEL=error, and it cannot repeat - one write per mutation.
+      LogService.error('[KnownDevices] save failed: $e');
     }
   }
 }

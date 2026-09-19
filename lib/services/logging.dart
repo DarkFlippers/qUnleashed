@@ -282,6 +282,24 @@ class LogService {
   /// Which makes this the right level for saying what the app did, and the
   /// wrong one for the only report of a failure. That wants [warn] or [error].
   ///
+  /// The rule the triage applies, so the next area need not re-derive it: an
+  /// `info` inside a catch stays only when something else keeps a record of
+  /// the same failure, or when the site repeats without a user action and
+  /// would churn [history].
+  ///
+  /// "Keeps" rather than "reports", because most of these are RPC calls and
+  /// flipperlib logs its own timeouts and transport write failures at error -
+  /// see [attachFlipperlibSink], which pins its level to error even in a build
+  /// that prints nothing. Those app-side lines are a thinner second account.
+  /// A platform channel, SharedPreferences, a dart:io socket and Geolocator
+  /// have no such channel, and there the catch is the whole of the report.
+  ///
+  /// A value handed back to the caller only counts if it is *distinct*:
+  /// `EmulateService` returns a typed `EmulateError` the archive page renders,
+  /// where a hard-coded `SEND_FAILED`, a `null` the caller reads as absence,
+  /// and a message naming one cause for every fault do not - the last being
+  /// worse than silence, because the reader stops looking.
+  ///
   /// It is not yet used that way. Most of the calls to this sit inside a catch
   /// block, and whether each is commentary or the last word on a failure turns
   /// on what its caller does next — a judgement per site, not a sweep. #103
