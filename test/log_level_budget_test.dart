@@ -8,9 +8,9 @@
 // of a bug report can see. #103 holds the triage.
 //
 // Counting is the point, not forbidding. Whether a site is commentary or the
-// last word turns on what its caller does next, which no rule can see: #103
-// extrapolates roughly 45-50 of the 117 as real debt and the rest as already
-// reported somewhere. So this stops the backlog growing while #103 waits, and
+// last word turns on what its caller does next, which no rule can see: of
+// the 117 #103 measured, it extrapolated roughly 45-50 as real debt and the
+// rest as already reported somewhere. So this stops the backlog growing while #103 waits, and
 // makes each slice of it a budget rather than an intention.
 //
 // What it cannot see. None of these are in lib/ today; the first two are what
@@ -53,7 +53,7 @@ import 'package:flutter_test/flutter_test.dart';
 /// way round. The 35 has not been read through, so treat that as the
 /// expectation it is rather than a finding.
 const Map<String, int> kBudget = {
-  'services': 37,
+  'services': 24,
   'pages/archive': 35,
   'pages/apps': 18,
   'pages/tools': 17,
@@ -161,7 +161,7 @@ List<String> _dartFilesUnderLib() {
 /// The budget bucket a file belongs to.
 ///
 /// `lib/pages` is split a level deeper because that is where the sites are:
-/// three of the six buckets and 70 of the 117. A file sitting directly in
+/// three of the six buckets and 70 of the 104 left. A file sitting directly in
 /// `lib/` becomes its own bucket named for the file, which is honest -
 /// `lib/main.dart` is not part of any area, and if it ever grows one of these
 /// it should have to be declared rather than absorbed into a neighbour. A file

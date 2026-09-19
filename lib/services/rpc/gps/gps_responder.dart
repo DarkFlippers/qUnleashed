@@ -73,8 +73,11 @@ class _GpsStreamPump {
         .watch(_hz)
         .listen(
           _onPosition,
+          // cancelOnError leaves the Flipper with no further fixes, and
+          // the platform stream has no other channel. Not a catch, so the
+          // budget test cannot see it.
           onError: (Object error) =>
-              LogService.info('[GPS] location stream error: $error'),
+              LogService.warn('[GPS] location stream error: $error'),
         );
     _heartbeatTimer = Timer.periodic(_heartbeat, (_) {
       final fix = _lastSent;
@@ -195,7 +198,7 @@ class FlipperGpsResponder {
     try {
       readiness = await _provider.ensureReady();
     } catch (error) {
-      LogService.info('[GPS] readiness check failed: $error');
+      LogService.warn('[GPS] readiness check failed: $error');
       readiness = GpsReadiness.unknown;
     }
     switch (readiness) {
