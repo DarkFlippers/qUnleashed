@@ -14,15 +14,20 @@
 // while #103 waits, and makes each slice of it a budget rather than an
 // intention.
 //
-// What it cannot see. None of these are in lib/ today; the first two are what
-// someone reaches for when the ratchet is inconvenient:
+// What it cannot see. The first is in lib/ and predates this; the rest are
+// what someone reaches for when the ratchet is inconvenient:
 //
 //  * A one-line wrapper - `void _log(m) => LogService.info(m)` called from a
 //    catch. Undetectable without following the call graph.
+//    lib/pages/devices/firmware/installer.dart:25 is one, and #119 is the
+//    failure that goes through it.
 //  * `finally { LogService.info(...) }`, the same failure in the block next
 //    door. Counting it would change what the number means, so it does not.
-//  * A cascade, `LogService..info(...)`, whose invocation has no target, and a
-//    tear-off passed as `onError:`, which is not an invocation at all.
+//  * A cascade, `LogService..info(...)`, whose invocation has no target.
+//  * A closure passed as `onError:`. An invocation, but with no catch clause
+//    around it, which is the thing being counted. lib/ has three, one of them
+//    in an area declared empty below: device.dart's info stream, and two in
+//    pages/archive.
 //  * A failure reported from an `if` or a plain statement rather than a catch -
 //    a `ServiceRequestFailure` branch, a `return null` guard. The slices have
 //    raised several of those; they simply do not move this number.
@@ -74,8 +79,15 @@ const Map<String, int> kBudget = {
   // controllers disagree about when an error reaches anyone (#114), and the
   // area's bare catches are invisible here by construction.
   'pages/tools': 7,
-  'pages/devices': 7,
-  'components': 3,
+  // Empty of what this counts. Both sites the slice meant to keep turned out
+  // to rest on a flipperlib record that does not cover them - the alert's
+  // firmware-status path, and the two StateErrors establishLocked never sees.
+  // What silence is left is out of reach by construction: an onError closure
+  // in the same file, a one-line wrapper (#119), and bare catches (#118).
+  'pages/devices': 0,
+  // Empty. All three were the connection picker; #120 has the surface they
+  // want, which that file already imports for its connect path.
+  'components': 0,
 };
 
 const String kIssue = 'https://github.com/DarkFlippers/qUnleashed/issues/103';

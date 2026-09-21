@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/devices/firmware/directory.dart';
 import 'package:qunleashed/pages/devices/firmware/update_settings.dart';
+import 'package:qunleashed/services/logging.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -9,6 +10,7 @@ void main() {
   final store = UpdateSettingsStore.instance;
 
   setUp(() {
+    LogService.clearHistory();
     SharedPreferences.setMockInitialValues(const {});
     // The store is a singleton and outlives any one controller, so a test that
     // did not reset it would inherit the previous test's choices.
@@ -124,6 +126,15 @@ void main() {
       expect(store.channelFor('unlshd'), isNull);
       expect(store.variantFor('unlshd'), UnleashedVariant.compact);
       expect(store.channelFor('ofw'), 'dev');
+
+      // And it says so at a level a release build keeps. Costing only itself
+      // is the whole claim, so the count matters as much as the message: a
+      // read that gave up on the rest of the walk would be one entry too.
+      final kept = LogService.history
+          .where((l) => l.contains('[UpdateSettings]'))
+          .toList();
+      expect(kept, hasLength(1));
+      expect(kept.single, contains('"firmware.update.unlshd.channel"'));
     });
 
     test('an empty value reads as no choice', () async {
