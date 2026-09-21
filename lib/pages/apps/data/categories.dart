@@ -41,7 +41,10 @@ class CategoryRegistry {
       _bundled = out;
       if (_all.isEmpty) _all = out;
     } catch (e) {
-      LogService.info('[Categories] bundled list failed: $e');
+      // A bundled asset, so a packaging fault rather than a network one. It
+      // also leaves _assetsById empty, and nothing repopulates that - so even
+      // when refreshFromCatalog supplies the list, the icons never come back.
+      LogService.warn('[Categories] bundled list failed: $e');
     }
     return _all;
   }

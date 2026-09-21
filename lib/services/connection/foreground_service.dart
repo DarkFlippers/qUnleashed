@@ -211,8 +211,7 @@ class BleForegroundService with WidgetsBindingObserver {
       // Surface the real cause (PlatformException), not the wrapper's
       // toString - and at a level that survives a release build, since this is
       // the whole of the report. The service failing to start is why the link
-      // dies once the screen goes off, and nothing else says so. Not a catch,
-      // so the budget test cannot see this one.
+      // dies once the screen goes off, and nothing else says so.
       LogService.warn('[ForegroundService] start failed: ${result.error}');
     }
   }

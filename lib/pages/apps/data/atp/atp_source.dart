@@ -73,6 +73,8 @@ class AtpSource extends ChangeNotifier {
           LogService.info('[ATP] index: ${_index!.blocks.length} block(s)');
         }
       } catch (e) {
+        // Falls through to downloadLatest below, whose own failure is
+        // kept - so this one is commentary on a retry that follows.
         LogService.info('[ATP] index cache read failed: $e');
       } finally {
         _loading = false;
@@ -108,7 +110,11 @@ class AtpSource extends ChangeNotifier {
         _rebind();
       }
     } catch (e) {
-      LogService.info('[ATP] release index download failed: $e');
+      // This source keeps no offline or error flag - unlike catalog_context,
+      // which is why that one is left alone. So a refresh that fails silently
+      // keeps the last index, and a cold start that fails is
+      // indistinguishable from a catalogue with no apps.
+      LogService.warn('[ATP] release index download failed: $e');
     } finally {
       _loading = false;
       notifyListeners();
@@ -148,7 +154,12 @@ class AtpSource extends ChangeNotifier {
 
   Future<String?> _fetchReleaseIndex() async {
     final release = await AppHttp.getJson(Uri.parse(_kLatestReleaseUrl));
-    if (release is! Map<String, dynamic>) return null;
+    if (release is! Map<String, dynamic>) {
+      // The third way to reach an empty catalogue, and the only one that said
+      // nothing at all: a rate-limit or error object in place of the release.
+      LogService.warn('[ATP] latest release is not an object: $release');
+      return null;
+    }
     for (final raw in (release['assets'] as List?) ?? const []) {
       if (raw is! Map<String, dynamic>) continue;
       if (raw['name'] != _kIndexAssetName) continue;
@@ -157,7 +168,10 @@ class AtpSource extends ChangeNotifier {
       final bytes = await AppHttp.getBytes(Uri.parse(url));
       return utf8.decode(bytes, allowMalformed: true);
     }
-    LogService.info(
+    // Returns null, and the caller treats null as nothing to do - so the
+    // download catch above never runs and this is the only record that the
+    // catalogue came back empty.
+    LogService.warn(
       '[ATP] release ${release['tag_name']} has no $_kIndexAssetName',
     );
     return null;

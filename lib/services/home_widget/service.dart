@@ -232,8 +232,7 @@ class HomeWidgetService {
     if (!result.isOk) {
       // The widget's own account, and the only one: EmulateService logs the
       // cause at info, which is right for the archive page because it renders
-      // _error, but the widget only flashes a state. Not a catch, so the
-      // budget test cannot see this one either.
+      // _error, but the widget only flashes a state.
       LogService.warn('[HomeWidget] start failed: ${result.error}');
       await _flash(id, _errorState(result.error));
       return;

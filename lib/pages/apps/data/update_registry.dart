@@ -127,7 +127,11 @@ class UpdateRegistry extends ChangeNotifier {
         'cards=${cards.length} updates=${_updates.length}',
       );
     } catch (e) {
-      LogService.info('[Updates] refresh failed: $e');
+      // _updates keeps whatever the last successful refresh left: zero on a
+      // cold start, stale afterwards. The badge in manager/page.dart renders
+      // only when count > 0, so either way a failure looks like being up to
+      // date.
+      LogService.warn('[Updates] refresh failed: $e');
     } finally {
       _loading = false;
       notifyListeners();

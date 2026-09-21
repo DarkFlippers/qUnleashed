@@ -458,8 +458,7 @@ class FlipperNetworkResponder {
   }
 
   void _onSocketError(int id, Object error) {
-    // The cause of the teardown below, which is itself kept. Not a catch, so
-    // the budget test cannot see it.
+    // The cause of the teardown below, which is itself kept.
     LogService.warn('[Network] socket error on $id: $error');
     final connection = _connections.remove(id);
     if (connection == null) return;

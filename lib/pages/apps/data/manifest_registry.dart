@@ -86,7 +86,12 @@ class ManifestRegistry extends ChangeNotifier {
       );
       await _saveCache();
     } catch (e) {
-      LogService.info('[Manifests] refresh failed: $e');
+      // _loaded is not cleared here, so after one good refresh a later
+      // failure leaves it true. The maps are cleared inside the try, so what
+      // survives is the previous list if storageList threw and a partial one
+      // if anything below it did. On a cold start with no cache it reads as
+      // an ordinary empty catalogue.
+      LogService.warn('[Manifests] refresh failed: $e');
     } finally {
       _loading = false;
       notifyListeners();
@@ -134,6 +139,8 @@ class ManifestRegistry extends ChangeNotifier {
       if (bytes.isEmpty) return null;
       return AppManifest.tryParse(utf8.decode(bytes, allowMalformed: true));
     } catch (e) {
+      // One per manifest in the refresh loop, with the path in the text, so
+      // a disconnect mid-refresh would write an entry per installed app.
       LogService.info('[Manifests] read "$path" failed: $e');
       return null;
     }
@@ -195,7 +202,10 @@ class ManifestRegistry extends ChangeNotifier {
         flush: true,
       );
     } catch (e) {
-      LogService.info('[Manifests] cache save failed: $e');
+      // Costs a slow start rather than correctness - the next launch reads
+      // every manifest off the device again instead of the cache - but nothing
+      // else records that it happened.
+      LogService.warn('[Manifests] cache save failed: $e');
     }
   }
 }

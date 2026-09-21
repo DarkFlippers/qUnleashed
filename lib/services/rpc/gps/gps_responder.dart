@@ -74,8 +74,7 @@ class _GpsStreamPump {
         .listen(
           _onPosition,
           // cancelOnError leaves the Flipper with no further fixes, and
-          // the platform stream has no other channel. Not a catch, so the
-          // budget test cannot see it.
+          // the platform stream has no other channel.
           onError: (Object error) =>
               LogService.warn('[GPS] location stream error: $error'),
         );
