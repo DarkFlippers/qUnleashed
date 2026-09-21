@@ -47,14 +47,17 @@ import 'package:flutter_test/flutter_test.dart';
 /// all - and a failure can say where. Offsetting still hides *within* an area,
 /// which is the price of six buckets rather than 319.
 ///
-/// The areas are also not the same kind of debt. #103 sampled eight of the 35
-/// `pages/archive` sites and found a second surface on all eight, so it expects
-/// most of that 35 to need no change, where `lib/services` sampled the other
-/// way round. The 35 has not been read through, so treat that as the
-/// expectation it is rather than a finding.
+/// The areas are also not the same kind of debt, and a number cannot say which
+/// is which - so each entry that differs says so itself. Someone editing this
+/// map to get CI green reads the line they are changing, not this paragraph.
 const Map<String, int> kBudget = {
+  // Read through site by site; a new one wants justifying against the rule in
+  // [LogService.info] rather than absorbing into the figure.
   'services': 24,
-  'pages/archive': 35,
+  // Part-triaged. What remains mostly writes its error into a controller field
+  // the widgets read only in states the failure itself prevents, so its second
+  // surface mostly is not one - a UI defect, #110. A ceiling, not a verdict.
+  'pages/archive': 30,
   'pages/apps': 18,
   'pages/tools': 17,
   'pages/devices': 7,
@@ -160,8 +163,10 @@ List<String> _dartFilesUnderLib() {
 
 /// The budget bucket a file belongs to.
 ///
-/// `lib/pages` is split a level deeper because that is where the sites are:
-/// three of the six buckets and 70 of the 104 left. A file sitting directly in
+/// `lib/pages` is split a level deeper because that is where the sites are -
+/// four of the six buckets below. No count here on purpose: a derived total in
+/// prose goes stale on every slice and the map above is the figure that
+/// matters. A file sitting directly in
 /// `lib/` becomes its own bucket named for the file, which is honest -
 /// `lib/main.dart` is not part of any area, and if it ever grows one of these
 /// it should have to be declared rather than absorbed into a neighbour. A file

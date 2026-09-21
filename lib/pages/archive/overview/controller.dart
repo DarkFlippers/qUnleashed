@@ -512,7 +512,9 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
         utf8.encode(kept.isEmpty ? '' : '${kept.join('\n')}\n'),
       );
     } catch (e) {
-      LogService.info('[Archive] update favorites.txt failed: $e');
+      // The favourite is already gone locally, so the two sides diverge
+      // and the next sync brings it back. Nothing tells anyone.
+      LogService.warn('[Archive] update favorites.txt failed: $e');
     }
   }
 
@@ -590,7 +592,13 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
               timeout: const Duration(seconds: 15),
             );
           } catch (e) {
-            LogService.info('[Archive] device rename failed: $e');
+            // The local file is already renamed, and the key built below
+            // copies the original's state - so it reports onDevice under a
+            // name the device does not have, exactly as the duplicate does
+            // further down. At the next sync the reconcile sees the device's
+            // old name as a new key and the renamed one as vanished: the old
+            // name returns to the listing, the new one is marked deleted.
+            LogService.warn('[Archive] device rename failed: $e');
           }
         }
         final newKeyId = _localKey(
@@ -659,7 +667,11 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
         try {
           await _client.storageWriteChunked(newRemotePath, bytes);
         } catch (e) {
-          LogService.info('[Archive] device duplicate write failed: $e');
+          // The local copy is already made, and the key built below copies
+          // the original's state - so a duplicate of a synced key reports
+          // itself onDevice when it never reached the Flipper. Not silence:
+          // the UI says the opposite of what happened.
+          LogService.warn('[Archive] device duplicate write failed: $e');
         }
       }
       final stat = await io.File(newLocalPath).stat();
@@ -865,7 +877,19 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
       }
       ok = true;
     } catch (e) {
-      LogService.info('[Archive] list $path failed: $e');
+      // Reached only for wardriving, the one category that is not searched
+      // recursively - so this guard covers two scopes, and the unguarded
+      // recursive path below covers the other seven categories.
+      //
+      // The ok flag stops the reconcile running on a partial list, which is
+      // right, but it is not a report and it is not free: _refreshCategory has
+      // already re-ingested every local file as state local with no
+      // remoteSize, and the reconcile is what would have put the synced ones
+      // back. Skipping it leaves them local - onDevice false, so the device
+      // actions disappear from the sheet, and _needsDownload false, so the
+      // next sync will not restore them either. Nothing sets _lastError, so
+      // syncCategory's check passes and the status still reads synced.
+      LogService.warn('[Archive] list $path failed: $e');
     }
     if (!ok) return;
     _reconcileRemote(
@@ -988,6 +1012,16 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
         }
       }
     } catch (e) {
+      // Stays at info, and it is the worst failure in this file: the caller
+      // reconciles against whatever partial list survived, which is #109.
+      //
+      // Keeping it cannot be bounded either. This is one node of a recursive
+      // walk over a whole SD card, and the path is in the message - so even
+      // though the firmware's statuses stringify identically and would
+      // otherwise collapse, every directory gets its own entry. A link
+      // degrading mid-refresh would fill the history and evict the transport
+      // fault underneath. Fixing #109 fixes this too: a walk that reports
+      // failure upward can be logged once, at the caller.
       LogService.info('[Archive] list $remotePath failed: $e');
     }
   }

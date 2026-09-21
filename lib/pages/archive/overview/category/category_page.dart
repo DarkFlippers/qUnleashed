@@ -511,6 +511,10 @@ class _CategoryPageState extends State<CategoryPage> {
         await io.File('$dir$sep${k.fileName}').writeAsBytes(bytes, flush: true);
         saved++;
       } catch (e) {
+        // One per file, name included, so a large selection against a full
+        // disk would fill LogService.historyLimit on its own. The notification
+        // below carries the count; the cause wants recording once per batch,
+        // not per file.
         LogService.info('[Archive] bulk download ${k.fileName} failed: $e');
       }
     }
