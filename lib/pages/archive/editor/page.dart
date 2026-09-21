@@ -199,7 +199,10 @@ class _TextEditorPageState extends State<TextEditorPage> {
         () => io.File(widget.localPath).writeAsBytesSync(bytes, flush: true),
       );
     } catch (e) {
-      LogService.info('[TextEditor] write ${widget.localPath} failed: $e');
+      // editorSaveFailed tells the user the save failed and nothing about
+      // why, and a local write fails for reasons worth knowing - a full disk,
+      // a file gone read-only.
+      LogService.warn('[TextEditor] write ${widget.localPath} failed: $e');
       ok = false;
     }
     final onSave = widget.onSave;

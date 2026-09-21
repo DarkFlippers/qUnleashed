@@ -284,8 +284,9 @@ class LogService {
   ///
   /// The rule the triage applies, so the next area need not re-derive it: an
   /// `info` inside a catch stays only when something else keeps a record of
-  /// the same failure, or when the site repeats without a user action and
-  /// would churn [history].
+  /// the same failure, or when the site repeats faster than a person can act
+  /// - a loop, a walk, one entry per file of a batch - and would churn
+  /// [history]. Once per tap is not that, however often the tapping.
   ///
   /// "Keeps" rather than "reports", because most of these are RPC calls and
   /// flipperlib logs its own timeouts and transport write failures at error -
@@ -293,6 +294,17 @@ class LogService {
   /// that prints nothing. Those app-side lines are a thinner second account.
   /// A platform channel, SharedPreferences, a dart:io socket and Geolocator
   /// have no such channel, and there the catch is the whole of the report.
+  ///
+  /// Timeouts and transport writes, though - not every RPC error. A status
+  /// the firmware reports comes back through `storageList`, `storageRename`,
+  /// `storageDelete` and their neighbours as an exception with nothing logged
+  /// at all, so those are the app's to keep. `storageWriteChunked` is the
+  /// exception to the exception: it logs its own failures at error.
+  ///
+  /// Or when the app's own state ends up disagreeing with the device's as a
+  /// result. flipperlib records the write that failed; it cannot know that the
+  /// key left behind claims to be on a Flipper it never reached, and that is
+  /// the app's to say.
   ///
   /// A value handed back to the caller only counts if it is *distinct*:
   /// `EmulateService` returns a typed `EmulateError` the archive page renders,
@@ -304,9 +316,10 @@ class LogService {
   /// block, and whether each is commentary or the last word on a failure turns
   /// on what its caller does next — a judgement per site, not a sweep. #103
   /// holds that triage, and test/log_level_budget_test.dart holds a per-area
-  /// budget so it cannot grow unnoticed meanwhile. Until the triage is done, one of these inside a
-  /// catch is a site nobody has ruled on rather than one ruled to be
-  /// commentary.
+  /// budget so it cannot grow unnoticed meanwhile. One of these inside a
+  /// catch with no comment saying why is a site nobody has ruled on rather
+  /// than one ruled to be commentary; where the ruling was made, it is
+  /// written next to the call.
   ///
   /// There is no catch-all to reach for instead. Pick a level at each site.
   static void info(String msg) {
