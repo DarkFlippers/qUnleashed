@@ -207,7 +207,22 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
-  Future<void> fullSync() async {
+  /// Runs [body] as one task, bound to the Flipper it starts against.
+  ///
+  /// Everything below is many device calls with waits between them - walking a
+  /// category, checking md5s, pulling what differs, writing back - all about
+  /// one Flipper's card. Bound, a sync that spans a device switch finishes on
+  /// the card it was reading; unbound, it would carry on comparing one
+  /// Flipper's files against another's and copy the difference between them.
+  ///
+  /// Not on the single-call operations: one request cannot be split across two
+  /// devices, because its session is resolved once, when it is sent.
+  Future<T> _task<T>(Future<T> Function() body) =>
+      _client.runTask(FlipperRequestPriority.background, body);
+
+  Future<void> fullSync() => _task(_fullSync);
+
+  Future<void> _fullSync() async {
     final hasDeviceName = await _awaitRealDeviceName();
     if (!hasDeviceName) return;
     await syncAll();
@@ -237,9 +252,12 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
       await _client.awaitDeviceInfo().timeout(
         const Duration(seconds: 20),
         onTimeout: () async {
+          // Ordinary, not foreground: this names the Flipper the sync is
+          // about, so it has to come from the one the sync is bound to and not
+          // from whichever is on screen when it answers.
           final response = await _client.deviceInfo(
             timeout: const Duration(seconds: 15),
-            priority: FlipperRequestPriority.foreground,
+            priority: FlipperRequestPriority.unattended,
           );
           return {
             for (final item in response.items)
@@ -311,7 +329,10 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
     return name;
   }
 
-  Future<void> toggleFavorite(ArchiveKey key) async {
+  Future<void> toggleFavorite(ArchiveKey key) =>
+      _task(() => _toggleFavorite(key));
+
+  Future<void> _toggleFavorite(ArchiveKey key) async {
     final keyId = _keyIdOf(key);
     if (_favorites.contains(keyId)) {
       _favorites.remove(keyId);
@@ -326,7 +347,13 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
-  Future<void> setKeysFavorite(Iterable<ArchiveKey> keys, bool favorite) async {
+  Future<void> setKeysFavorite(Iterable<ArchiveKey> keys, bool favorite) =>
+      _task(() => _setKeysFavorite(keys, favorite));
+
+  Future<void> _setKeysFavorite(
+    Iterable<ArchiveKey> keys,
+    bool favorite,
+  ) async {
     var changed = false;
     for (final key in keys) {
       final keyId = _keyIdOf(key);
@@ -571,7 +598,10 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
 
   // ── Rename / Duplicate ─────────────────────────────────────────────────────
 
-  Future<void> renameKey(ArchiveKey key, String newName) async {
+  Future<void> renameKey(ArchiveKey key, String newName) =>
+      _task(() => _renameKey(key, newName));
+
+  Future<void> _renameKey(ArchiveKey key, String newName) async {
     if (newName.trim().isEmpty || newName == key.name) return;
     final keyId = _keyIdOf(key);
     final newFileName = '${newName.trim()}.${key.extension}';
@@ -637,7 +667,9 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
-  Future<void> duplicateKey(ArchiveKey key) async {
+  Future<void> duplicateKey(ArchiveKey key) => _task(() => _duplicateKey(key));
+
+  Future<void> _duplicateKey(ArchiveKey key) async {
     if (key.localPath == null) return;
     try {
       final existingNames = _keys.values
@@ -718,7 +750,9 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
 
   // ── Refresh / Sync ─────────────────────────────────────────────────────────
 
-  Future<void> refresh() async {
+  Future<void> refresh() => _task(_refresh);
+
+  Future<void> _refresh() async {
     if (_loading) return;
     _loading = true;
     _lastError = null;
@@ -788,7 +822,10 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  Future<void> syncCategory(ArchiveCategory category) async {
+  Future<void> syncCategory(ArchiveCategory category) =>
+      _task(() => _syncCategory(category));
+
+  Future<void> _syncCategory(ArchiveCategory category) async {
     if (_syncing) return;
     if (!_client.isConnected || _deviceName.isEmpty) {
       await _refreshCategory(category);
@@ -1026,7 +1063,9 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  Future<void> syncAll() async {
+  Future<void> syncAll() => _task(_syncAll);
+
+  Future<void> _syncAll() async {
     if (_syncing) return;
     if (!_client.isConnected || _deviceName.isEmpty) {
       if (_syncStatus == ArchiveSyncStatus.syncing) {
@@ -1163,6 +1202,12 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
     Iterable<ArchiveKey> keys, {
     bool local = true,
     bool remote = true,
+  }) => _task(() => _deleteKeys(keys, local: local, remote: remote));
+
+  Future<void> _deleteKeys(
+    Iterable<ArchiveKey> keys, {
+    bool local = true,
+    bool remote = true,
   }) async {
     for (final key in keys) {
       try {
@@ -1189,7 +1234,9 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
     await refresh();
   }
 
-  Future<void> restoreKey(ArchiveKey key) async {
+  Future<void> restoreKey(ArchiveKey key) => _task(() => _restoreKey(key));
+
+  Future<void> _restoreKey(ArchiveKey key) async {
     if (!key.isDeleted) return;
     if (!_client.isConnected) {
       _lastError = l10n.archiveConnectToRestore;
@@ -1216,7 +1263,10 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
   /// Restores every deleted key in [keys] back to the device. Each key is marked
   /// as restored (and so drops out of the deleted list) the moment its own write
   /// succeeds, so the list empties one file at a time rather than all at once.
-  Future<void> restoreKeys(Iterable<ArchiveKey> keys) async {
+  Future<void> restoreKeys(Iterable<ArchiveKey> keys) =>
+      _task(() => _restoreKeys(keys));
+
+  Future<void> _restoreKeys(Iterable<ArchiveKey> keys) async {
     if (!_client.isConnected) {
       _lastError = l10n.archiveConnectToRestore;
       notifyListeners();
