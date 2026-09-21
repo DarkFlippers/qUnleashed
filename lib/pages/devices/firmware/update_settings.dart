@@ -48,11 +48,18 @@ class UpdateSettingsStore {
         try {
           _read(prefs, key);
         } catch (e) {
-          LogService.info('[UpdateSettings] "$key" unreadable: $e');
+          // Only a per-key type mismatch reaches here - a store that will
+          // not open throws from getInstance() into the catch below - so
+          // there is no batch to churn. SharedPreferences keeps no log of its
+          // own, and the only other sign is a selector back on its default.
+          LogService.warn('[UpdateSettings] "$key" unreadable: $e');
         }
       }
     } catch (e) {
-      LogService.info('[UpdateSettings] load failed: $e');
+      // Not one setting but all of them: every firmware falls back to the
+      // release channel and the packaged variant, which is the loss this
+      // class exists to stop.
+      LogService.warn('[UpdateSettings] load failed: $e');
     }
   }
 
@@ -99,7 +106,13 @@ class UpdateSettingsStore {
         await prefs.setString(_variantPref(shortName), variant.name);
       }
     } catch (e) {
-      LogService.info('[UpdateSettings] save failed: $e');
+      // The one line the doc above promises, at a level that survives to be
+      // read: the choice is already on screen and will be gone next launch,
+      // with nothing else to say it never persisted. Warn rather than the
+      // error KnownDevices uses for its save - that one is invisible until
+      // the device is wanted, this one is on screen the next time anyone
+      // opens the selector.
+      LogService.warn('[UpdateSettings] save failed: $e');
     }
   }
 

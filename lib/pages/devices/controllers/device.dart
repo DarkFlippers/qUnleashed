@@ -193,7 +193,11 @@ class DeviceController extends ChangeNotifier {
     try {
       await _client.reboot(RebootRequest(mode: RebootRequest_RebootMode.OS));
     } catch (e) {
-      LogService.info('[DeviceController] reboot failed: $e');
+      // Two throws reach here and flipperlib logs neither: a teardown that
+      // fails inside the disconnect reboot() performs itself, and the
+      // synchronous StateError when the session went away between the guard
+      // above and the call. The RPC's own outcome never does - #120.
+      LogService.warn('[DeviceController] reboot failed: $e');
     }
     _resetSession();
   }
@@ -210,7 +214,11 @@ class DeviceController extends ChangeNotifier {
       );
       return true;
     } catch (e) {
-      LogService.info('[DeviceController] play alert failed: $e');
+      // flipperlib keeps the 8s timeout at error, but not a firmware
+      // status: ERROR_APP_SYSTEM_LOCKED, the Flipper busy running an app,
+      // which is when someone reaches for this. The page has one string for
+      // every cause, so the toast does not narrow it either.
+      LogService.warn('[DeviceController] play alert failed: $e');
       return false;
     } finally {
       _alertPlaying = false;
@@ -257,7 +265,12 @@ class DeviceController extends ChangeNotifier {
         }
       }
     } catch (e) {
-      LogService.info('[DeviceController] auto-connect discovery failed: $e');
+      // The BLE scan phase has no catch of its own, and on Android neither
+      // does the USB enumeration - on desktop that one logs at error and
+      // returns empty. Nothing in _tryAutoConnect has a surface: it runs off
+      // a timer, so a Flipper that stopped connecting by itself leaves only
+      // these two lines. #120.
+      LogService.warn('[DeviceController] auto-connect discovery failed: $e');
     }
     if (_disposed || isConnected || _client.isConnecting) return;
 
@@ -277,7 +290,12 @@ class DeviceController extends ChangeNotifier {
     try {
       await connect(candidate);
     } catch (e) {
-      LogService.info('[DeviceController] auto-connect failed: $e');
+      // establishLocked logs the transport-open failure at error, but not
+      // the two StateErrors: maxSessions is 2, so a third device reaches it,
+      // and a superseded attempt throws past the logging block.
+      // _autoConnectAttemptedIds holds the retry only while the device stays
+      // present, so a flapping cable does repeat this.
+      LogService.warn('[DeviceController] auto-connect failed: $e');
     }
   }
 

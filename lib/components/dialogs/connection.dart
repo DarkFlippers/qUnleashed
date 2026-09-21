@@ -136,7 +136,11 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
       // down now instead of after the full connect timeout.
       await _client.disconnect();
     } catch (e) {
-      LogService.info('[Picker] disconnect error: $e');
+      // The finally below clears _connectedDevice whatever happened, so the
+      // picker shows disconnected. Transport.close guards its own doClose, so
+      // most of what reaches here is the unguarded remainder of the teardown
+      // - thin, but nothing else holds it.
+      LogService.warn('[Picker] disconnect error: $e');
     } finally {
       if (mounted) {
         setState(() {
@@ -162,7 +166,11 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
         await _client.refreshDevices(bleTimeout: const Duration(seconds: 10));
       }
     } catch (e) {
-      LogService.info('[Picker] scan error: $e');
+      // Both refresh calls empty _devices before the work that can throw, so
+      // the finally rebuilds _displayed from a partial map: held sessions and
+      // USB, without the BLE scan that failed. A short list reads as the
+      // whole list. #120 has the dialog this file already imports.
+      LogService.warn('[Picker] scan error: $e');
     } finally {
       if (mounted) {
         setState(() {
@@ -178,7 +186,11 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
     try {
       await _client.refreshUsbOnly();
     } catch (e) {
-      LogService.info('[Picker] usb refresh error: $e');
+      // refreshUsbOnly drops the USB entries before it reloads them, so a
+      // throw does not leave the old list - it leaves none, and rows the user
+      // could see disappear on the plug event that should have added one.
+      // Android only: desktop's enumeration catches it and logs at error.
+      LogService.warn('[Picker] usb refresh error: $e');
     }
     if (!mounted) return;
     setState(() => _displayed = _filterDevices(_client.devices));
