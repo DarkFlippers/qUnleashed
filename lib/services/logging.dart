@@ -288,6 +288,12 @@ class LogService {
   /// - a loop, a walk, one entry per file of a batch - and would churn
   /// [history]. Once per tap is not that, however often the tapping.
   ///
+  /// A site kept for that second reason wants a tally at the batch boundary
+  /// rather than a level here, so the count survives without the churn.
+  /// `IrLibLocalRepo`'s unpack report is the shape: one record per run that
+  /// had any, carrying totals and the first error. Several areas have deferred sites
+  /// on this basis and none has built the general version.
+  ///
   /// "Keeps" rather than "reports", because most of these are RPC calls and
   /// flipperlib logs its own timeouts and transport write failures at error -
   /// see [attachFlipperlibSink], which pins its level to error even in a build
@@ -299,7 +305,9 @@ class LogService {
   /// the firmware reports comes back through `storageList`, `storageRename`,
   /// `storageDelete` and their neighbours as an exception with nothing logged
   /// at all, so those are the app's to keep. `storageWriteChunked` is the
-  /// exception to the exception: it logs its own failures at error.
+  /// exception to the exception: it logs its own failures at error - except a
+  /// link drop, which it records at info and retries, so a send torn down
+  /// mid-write is still the app's to keep.
   ///
   /// Or when the app's own state ends up disagreeing with the device's as a
   /// result. flipperlib records the write that failed; it cannot know that the

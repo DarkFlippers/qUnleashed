@@ -125,6 +125,8 @@ class IrLibController extends ChangeNotifier {
       return true;
     } catch (e) {
       _error = '$e';
+      // settings_dialog renders controller.error for this one, so the
+      // exception text reaches the user.
       LogService.info('[IRLib] download failed: $e');
       return false;
     } finally {
@@ -146,6 +148,7 @@ class IrLibController extends ChangeNotifier {
       return true;
     } catch (e) {
       _error = '$e';
+      // Also rendered by settings_dialog.
       LogService.info('[IRLib] delete failed: $e');
       notifyListeners();
       return false;
@@ -191,7 +194,10 @@ class IrLibController extends ChangeNotifier {
     } catch (e) {
       _error = '$e';
       _entries = const [];
-      LogService.info('[IRLib] list "$_path" failed: $e');
+      // The page's error view needs an empty list, and reads searchResults
+      // while a search is on screen - so a refresh under one that matched
+      // shows those matches and says nothing. #114.
+      LogService.warn('[IRLib] list "$_path" failed: $e');
     } finally {
       _loading = false;
       notifyListeners();
@@ -231,6 +237,8 @@ class IrLibController extends ChangeNotifier {
       _searchResults = results;
     } catch (e) {
       _error = '$e';
+      // _searchResults is cleared above the try, so the page's error view
+      // has the empty list it needs and renders the exception text.
       LogService.info('[IRLib] search "$q" failed: $e');
     } finally {
       _searching = false;
@@ -250,7 +258,10 @@ class IrLibController extends ChangeNotifier {
       return await _api.fetchFile(entry);
     } catch (e) {
       _error = '$e';
-      LogService.info('[IRLib] fetch ${entry.path} failed: $e');
+      // The file page - the route on screen - shows irDownloadFailed, which
+      // names no cause. The listing's error view would carry the exception
+      // text but needs an empty list, and fetching an entry means it is not.
+      LogService.warn('[IRLib] fetch ${entry.path} failed: $e');
       notifyListeners();
       return null;
     }
@@ -267,7 +278,11 @@ class IrLibController extends ChangeNotifier {
       );
     } catch (e) {
       _error = '$e';
-      LogService.info('[IRLib] save ${entry.path} failed: $e');
+      // The viewer awaits this through onAfterSend and discards what it
+      // returns, keying its notification on whether the *send* worked - so a
+      // file that reached the Flipper and failed to save locally is reported
+      // as sent, with nothing said about the archive copy.
+      LogService.warn('[IRLib] save ${entry.path} failed: $e');
       notifyListeners();
       return null;
     }
@@ -296,7 +311,11 @@ class IrLibController extends ChangeNotifier {
       return true;
     } catch (e) {
       _error = '$e';
-      LogService.info('[IRLib] send ${entry.path} failed: $e');
+      // The viewer shows irSendFailed, which names no cause. The disconnect
+      // arrives from the Future.any above rather than storageWriteChunked,
+      // which in any case records a link drop at info - so this warn is the
+      // only account history keeps.
+      LogService.warn('[IRLib] send ${entry.path} failed: $e');
       notifyListeners();
       return false;
     }

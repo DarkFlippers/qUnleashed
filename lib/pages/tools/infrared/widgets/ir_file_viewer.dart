@@ -1,4 +1,5 @@
 import '../../../../services/localization/l10n.dart';
+import '../../../../services/logging.dart';
 import 'dart:async';
 
 import 'package:flipperlib/flipperlib.dart';
@@ -117,7 +118,14 @@ class _IrFileViewerState extends State<IrFileViewer> {
     if (!mounted) return;
     setState(() => _sending = false);
     if (ok && widget.onAfterSend != null) {
-      await widget.onAfterSend!(bytes);
+      try {
+        await widget.onAfterSend!(bytes);
+      } catch (e) {
+        // Both callers swallow their own failures today, so this cannot fire
+        // - but whether the send result is reported at all should not rest on
+        // that staying true.
+        LogService.warn('[IrFileViewer] after-send hook threw: $e');
+      }
     }
     if (!mounted) return;
     context.showNotification(

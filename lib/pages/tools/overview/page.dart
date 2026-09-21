@@ -292,7 +292,9 @@ Future<void> _openCliPage(BuildContext context) async {
     try {
       await client.disconnect();
     } catch (e) {
-      LogService.info('[CLI] disconnect before terminal failed: $e');
+      // The user confirmed a dialog and the Terminal then does not open,
+      // with nothing said. #103 named this one.
+      LogService.warn('[CLI] disconnect before terminal failed: $e');
       return;
     }
 

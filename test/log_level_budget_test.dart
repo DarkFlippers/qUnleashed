@@ -10,8 +10,9 @@
 // Counting is the point, not forbidding. Whether a site is commentary or the
 // last word turns on what its caller does next, which no rule can see: of
 // the 117 #103 measured, it extrapolated roughly 45-50 as real debt and the
-// rest as already reported somewhere. So this stops the backlog growing while #103 waits, and
-// makes each slice of it a budget rather than an intention.
+// rest as already reported somewhere. So this stops the backlog growing
+// while #103 waits, and makes each slice of it a budget rather than an
+// intention.
 //
 // What it cannot see. None of these are in lib/ today; the first two are what
 // someone reaches for when the ratchet is inconvenient:
@@ -30,7 +31,9 @@
 //
 //  * A bare `catch (_) {}` - the same failure with less evidence, and lib/ has
 //    43 of them. Deleting a counted log leaves one of those and lowers the
-//    number, so the cheapest way to go green is to make the code worse.
+//    number, so the cheapest way to go green is to make the code worse. And
+//    nothing catches it going the other way either: no test asserts that a
+//    site a slice promoted still reaches history. #117.
 //  * A correct fix can move the number either way, because what replaces a
 //    counted site depends on the shape of the fix.
 //
@@ -65,7 +68,12 @@ const Map<String, int> kBudget = {
   // once per batch rather than a level here - the same deferral archive made.
   // The failures raised out of it want a failed state too: #112.
   'pages/apps': 6,
-  'pages/tools': 17,
+  // At budget, not done. What is left is rendered - the settings dialog for
+  // download and delete, the page's error view for a failed search, the
+  // pixel-draw page for two of its four - or is a per-item walk. The two
+  // controllers disagree about when an error reaches anyone (#114), and the
+  // area's bare catches are invisible here by construction.
+  'pages/tools': 7,
   'pages/devices': 7,
   'components': 3,
 };

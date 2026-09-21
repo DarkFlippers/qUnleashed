@@ -213,6 +213,8 @@ abstract final class DolphinImporter {
       }
       return out;
     } catch (e) {
+      // One per folder of the walk, so it wants a tally at the caller
+      // rather than a level here - see the unpack report in local_repo.
       LogService.info('[DolphinImporter] list $remoteDir failed: $e');
       return const [];
     }

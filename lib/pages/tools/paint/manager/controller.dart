@@ -113,6 +113,10 @@ class ProjectManagerController extends ChangeNotifier {
       ];
     } catch (e) {
       _error = '$e';
+      // The contract for this controller: a catch is reported only if it
+      // reaches a _notify with _error still set and nothing clears it first.
+      // This one and send do. Delete and import below are warn - one never
+      // notifies, the other's toast is overwritten. #114.
       LogService.info('[PixelDraw] loadAll failed: $e');
     } finally {
       _loading = false;
@@ -147,7 +151,11 @@ class ProjectManagerController extends ChangeNotifier {
       }
     } catch (e) {
       _error = l10n.paintDeleteFailed('$e');
-      LogService.info('[PixelDraw] delete failed: $e');
+      // Unlike the others in this file, this catch does not notify - and the
+      // loadAll below clears _error and notifies before any listener runs, so
+      // the string built on the line above is thrown away unread. The project
+      // reappears in the reloaded list and nothing says why.
+      LogService.warn('[PixelDraw] delete failed: $e');
     }
     await loadAll(silent: true);
   }
@@ -264,6 +272,7 @@ class ProjectManagerController extends ChangeNotifier {
       );
     } catch (e) {
       _error = l10n.paintSendFailed('$e');
+      // Reported, per the contract noted on loadAll.
       LogService.info('[PixelDraw] send failed: $e');
     } finally {
       _sending = false;
@@ -305,7 +314,11 @@ class ProjectManagerController extends ChangeNotifier {
       );
     } catch (e) {
       _error = l10n.paintImportFailed('$e');
-      LogService.info('[PixelDraw] import failed: $e');
+      // The finally below does notify with _error set, so a red toast
+      // appears - and then loadAll clears _error, the page's guard on it
+      // passes, and `written` is still 0, so paintImportUpToDate replaces it
+      // immediately: "Animations already match the device".
+      LogService.warn('[PixelDraw] import failed: $e');
     } finally {
       _importing = false;
       _importProgress = null;

@@ -476,7 +476,11 @@ class IrLibLocalRepo {
 
       final tally = msg.tally;
       if (tally.skipped > 0 || tally.dropped > 0) {
-        LogService.info(
+        // Once per unpack, not once per file. Only skipped is loss - an
+        // entry that resolved and could not be written, or one with no name
+        // at all - so this can fire on a clean run, and dropped reaches the
+        // user nowhere: failureFor below never mentions it.
+        LogService.warn(
           '[IrLib] unpacked ${tally.extracted}, skipped ${tally.skipped}, '
           'dropped ${tally.dropped} (first: ${tally.firstError})',
         );
