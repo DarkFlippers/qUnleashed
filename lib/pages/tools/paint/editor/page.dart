@@ -164,7 +164,12 @@ class _PaintPageState extends State<PaintPage> {
         compress: _ctrl.compressBm,
       );
     } catch (e) {
-      LogService.info('[PaintEditor] autosave draft failed: $e');
+      // The draft is how work survives leaving the editor, so this is the
+      // difference between losing the drawing and not. A 1.2s trailing
+      // debounce fires it once per pause, and a persistent cause keeps $e
+      // stable, so back-to-back failures fold into one counted entry -
+      // unless another kept line lands between them.
+      LogService.warn('[PaintEditor] autosave draft failed: $e');
     } finally {
       _savingDraft = false;
     }

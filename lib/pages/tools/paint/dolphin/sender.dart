@@ -189,6 +189,8 @@ abstract final class DolphinSender {
               f.name: f.md5sum.trim().toLowerCase(),
       };
     } catch (e) {
+      // One per directory, and the empty map is the safe answer: it
+      // re-sends rather than trusting a file it could not check.
       LogService.info('[DolphinSender] md5 list $dir failed: $e');
       return const {};
     }
@@ -204,7 +206,12 @@ abstract final class DolphinSender {
           .trim()
           .toLowerCase();
     } catch (e) {
-      LogService.info('[DolphinSender] md5 $path failed: $e');
+      // Not the looped one - _remoteMd5s above is. This has a single
+      // caller, for the manifest, once per send. The empty string never
+      // matches, so the manifest is re-sent rather than trusted; if the
+      // checksum is failing systematically that happens on every send and
+      // this is the only sign of it.
+      LogService.warn('[DolphinSender] md5 $path failed: $e');
       return '';
     }
   }

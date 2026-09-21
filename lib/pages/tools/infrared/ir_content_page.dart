@@ -81,7 +81,9 @@ class _IrContentPageState extends State<IrContentPage> {
           ]).whenComplete(sub.cancel);
           return true;
         } catch (e) {
-          LogService.info('[IRBackend] send $fileName failed: $e');
+          // As the controller's sendToFlipper: the disconnect arrives from
+          // the Future.any, and flipperlib records a link drop only at info.
+          LogService.warn('[IRBackend] send $fileName failed: $e');
           return false;
         }
       },
@@ -93,7 +95,12 @@ class _IrContentPageState extends State<IrContentPage> {
             _safeName(widget.fileName),
             bytes,
           );
-        } catch (_) {}
+        } catch (e) {
+          // As the controller's saveToArchive, which this was swallowing.
+          LogService.warn(
+            '[IRBackend] save ${_safeName(widget.fileName)} failed: $e',
+          );
+        }
       },
     );
   }
