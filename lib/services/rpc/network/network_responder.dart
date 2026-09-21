@@ -320,7 +320,12 @@ class FlipperNetworkResponder {
         await _sendSendResponse(id, data.length, ErrorCode.NONE);
       }
     } catch (error) {
-      LogService.info('[Network] send failed on $id: $error');
+      // A socket write, not an RPC call, so flipperlib keeps no account of it
+      // - and SEND_FAILED below is hard-coded for every cause, so the code the
+      // firmware app receives says a send failed and nothing about why. One
+      // that hands us bytes that are not valid UTF-8 is told its network
+      // broke.
+      LogService.warn('[Network] send failed on $id: $error');
       await _sendSendResponse(id, 0, ErrorCode.SEND_FAILED);
     }
   }
@@ -453,7 +458,9 @@ class FlipperNetworkResponder {
   }
 
   void _onSocketError(int id, Object error) {
-    LogService.info('[Network] socket error on $id: $error');
+    // The cause of the teardown below, which is itself kept. Not a catch, so
+    // the budget test cannot see it.
+    LogService.warn('[Network] socket error on $id: $error');
     final connection = _connections.remove(id);
     if (connection == null) return;
     unawaited(
@@ -482,7 +489,7 @@ class FlipperNetworkResponder {
       connection.udp?.close();
       await connection.ws?.close();
     } catch (error) {
-      LogService.info('[Network] teardown error on ${connection.id}: $error');
+      LogService.warn('[Network] teardown error on ${connection.id}: $error');
     }
   }
 

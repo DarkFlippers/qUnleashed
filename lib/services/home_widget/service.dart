@@ -97,7 +97,7 @@ class HomeWidgetService {
     try {
       await _channel.invokeMethod<void>('settings', settings);
     } on PlatformException catch (e) {
-      LogService.info('[HomeWidget] settings failed: ${e.message}');
+      LogService.warn('[HomeWidget] settings failed: ${e.message}');
     }
   }
 
@@ -115,7 +115,10 @@ class HomeWidgetService {
         foregroundDark: raw['foregroundDark'] as int,
       );
     } on PlatformException catch (e) {
-      LogService.info('[HomeWidget] palette failed: ${e.message}');
+      // null is also what a launcher with no Material You palette returns,
+      // so the caller cannot tell a failure from an absence - either way the
+      // theme tile greys out and the user is told their launcher cannot do it.
+      LogService.warn('[HomeWidget] palette failed: ${e.message}');
       return null;
     }
   }
@@ -127,7 +130,7 @@ class HomeWidgetService {
     try {
       await _channel.invokeMethod<void>('dismiss');
     } on PlatformException catch (e) {
-      LogService.info('[HomeWidget] dismiss failed: ${e.message}');
+      LogService.warn('[HomeWidget] dismiss failed: ${e.message}');
     }
   }
 
@@ -139,7 +142,7 @@ class HomeWidgetService {
         ...key.toMap(),
       });
     } on PlatformException catch (e) {
-      LogService.info('[HomeWidget] configure failed: ${e.message}');
+      LogService.warn('[HomeWidget] configure failed: ${e.message}');
     }
   }
 
@@ -203,7 +206,10 @@ class HomeWidgetService {
       await _stopActive();
       await _serve(id, key);
     } catch (e) {
-      LogService.info('[HomeWidget] tap failed: $e');
+      // The flash below is three seconds of "Failed", and _errorState maps
+      // three different causes onto it, so nothing the user sees survives or
+      // distinguishes. This catch spans the whole serve path.
+      LogService.warn('[HomeWidget] tap failed: $e');
       await _flash(id, WidgetState.errorFailed);
     } finally {
       _busy = false;
@@ -224,7 +230,11 @@ class HomeWidgetService {
     final service = EmulateService(client: client);
     final result = await service.start(key.toArchiveKey());
     if (!result.isOk) {
-      LogService.info('[HomeWidget] start failed: ${result.error}');
+      // The widget's own account, and the only one: EmulateService logs the
+      // cause at info, which is right for the archive page because it renders
+      // _error, but the widget only flashes a state. Not a catch, so the
+      // budget test cannot see this one either.
+      LogService.warn('[HomeWidget] start failed: ${result.error}');
       await _flash(id, _errorState(result.error));
       return;
     }
@@ -300,7 +310,7 @@ class HomeWidgetService {
         'state': state.name,
       });
     } on PlatformException catch (e) {
-      LogService.info('[HomeWidget] state failed: ${e.message}');
+      LogService.warn('[HomeWidget] state failed: ${e.message}');
     }
   }
 }
