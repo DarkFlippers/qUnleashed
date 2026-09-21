@@ -678,7 +678,7 @@ class FlipperNetworkResponder {
 
   Future<void> _send(
     Main message, {
-    FlipperRequestPriority priority = FlipperRequestPriority.defaultPriority,
+    FlipperRequestPriority priority = FlipperRequestPriority.unattended,
   }) async {
     try {
       await _client.sendRpc(message, priority: priority);

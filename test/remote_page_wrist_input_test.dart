@@ -40,7 +40,7 @@ class _FakeClient implements FlipperClient {
   Future<List<Main>> callRpcFrames(
     Main request, {
     Duration timeout = const Duration(seconds: 8),
-    FlipperRequestPriority priority = FlipperRequestPriority.defaultPriority,
+    FlipperRequestPriority priority = FlipperRequestPriority.unattended,
     void Function(Main frame)? onFrame,
     void Function()? onSent,
     bool retainFrames = true,
@@ -55,7 +55,7 @@ class _FakeClient implements FlipperClient {
   @override
   Future<void> sendRpc(
     Main message, {
-    FlipperRequestPriority priority = FlipperRequestPriority.defaultPriority,
+    FlipperRequestPriority priority = FlipperRequestPriority.unattended,
     Duration sendTimeout = const Duration(seconds: 30),
   }) async {
     sent.add(message);
