@@ -26,29 +26,15 @@ String aliasFromFapPath(String path) {
   return base.endsWith('.fap') ? base.substring(0, base.length - 4) : base;
 }
 
-/// The link is up and speaks RPC — the precondition for every device call the
-/// apps module makes.
-extension FlipperRpcReady on FlipperClient {
-  bool get isRpcReady => isConnected && mode == FlipperMode.rpc;
-}
-
 /// Which catalog the device may talk to: the firmware API/target read from the
 /// Flipper, the SDKs the server offers and the compatibility mode resolved from
 /// both. Owned by `AppsBackend`; the registries and the install engine read it
 /// instead of reaching back into the backend.
 class CatalogContext {
-  CatalogContext({
-    required this.client,
-    required this.api,
-    required this.currentDeviceId,
-  });
+  CatalogContext({required this.client, required this.api});
 
   final FlipperClient client;
   final AppsCatalogApi api;
-
-  /// Id of the device the backend is currently bound to, read at the moment a
-  /// mode resolution finishes.
-  final String? Function() currentDeviceId;
 
   bool get isReady => client.isRpcReady;
 
@@ -118,9 +104,11 @@ class CatalogContext {
     }
     _modeResolving = true;
     if (force) mode.value = CatalogMode.resolving;
+    final token = client.deviceToken;
     try {
       await loadPreference();
       await ensureDeviceFilters();
+      if (token.isStale) return;
 
       var offline = false;
       try {
@@ -133,6 +121,7 @@ class CatalogContext {
         LogService.warn('[AppsBackend] fetchSdks failed: $e');
         offline = true;
       }
+      if (token.isStale) return;
       _catalogOffline = offline;
 
       final target = _deviceTarget;
@@ -157,9 +146,11 @@ class CatalogContext {
       final needsBuilder =
           res.verdict != ApiVerdict.normal ||
           _preference == CatalogModePreference.sourceBuild;
-      _builderAvailable = needsBuilder
+      final builderAvailable = needsBuilder
           ? await AssemblerController.instance.builderAvailable()
           : false;
+      if (token.isStale) return;
+      _builderAvailable = builderAvailable;
       final next = resolveCatalogMode(
         verdict: res.verdict,
         hasNearestApi: res.api != null,
@@ -185,8 +176,16 @@ class CatalogContext {
       );
     } finally {
       _modeResolving = false;
-      if (mode.value != CatalogMode.resolving) {
-        resolvedForDeviceId = currentDeviceId();
+      if (token.isStale) {
+        // The device changed under this resolution, so what it worked out
+        // describes the Flipper that was attached when it started and the one
+        // attached now has nothing resolved for it. Nobody else will start
+        // that: the connection handler that moved the scope saw this pass
+        // still running and stood down. The hand-off belongs here.
+        mode.value = CatalogMode.resolving;
+        unawaited(resolveMode(force: true));
+      } else if (mode.value != CatalogMode.resolving) {
+        resolvedForDeviceId = client.scopedDeviceId;
       }
     }
   }
@@ -242,10 +241,12 @@ class CatalogContext {
   Future<void> ensureDeviceFilters({bool required = false}) async {
     if (_deviceApi != null && _deviceTarget != null) return;
     if (!isReady && !required) return;
+    final token = client.deviceToken;
     try {
       final info = await client.awaitDeviceInfo().timeout(
         const Duration(seconds: 20),
       );
+      if (token.isStale) return;
       final target = _firstInfoValue(info, const [
         'hardware_target',
         'hardware.target',

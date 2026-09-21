@@ -64,7 +64,12 @@ class InstallEngine extends ChangeNotifier {
 
   /// Called after a successful install so the device list can adopt the app
   /// without the engine reaching into its sibling registry.
+  ///
+  /// [token] is the one the install ran under, not a fresh one: the caller
+  /// cannot tell from here when the work started, and taking a token at the end
+  /// of a pass would call every finished install current.
   final Future<void> Function({
+    required DeviceToken token,
     required String alias,
     required String devicePath,
     required List<int> fapBytes,
@@ -121,7 +126,16 @@ class InstallEngine extends ChangeNotifier {
         var ok = false;
         var requeued = false;
         try {
-          ok = await task.run();
+          // Every queued task is device work, and this is where it starts, so
+          // this is where it binds: the frames it sends, the pings that pace
+          // them and the cleanup that follows a cancelled one all keep going to
+          // the Flipper it began against, however many the user swaps in
+          // meanwhile. What it may then write into the registries is a separate
+          // question, and the scope token answers that one.
+          ok = await client.runTask(
+            FlipperRequestPriority.background,
+            task.run,
+          );
         } on _LinkDroppedException {
           task.attempts += 1;
           task.needsLink = true;
@@ -137,6 +151,16 @@ class InstallEngine extends ChangeNotifier {
           }
         } on FlipperWriteCancelledException {
           _preparedInstalls.remove(task.alias);
+          if (_clearAction(task.alias)) notifyListeners();
+        } on _DeviceChangedException {
+          // Not a failure: the task reached the device it was for, and the
+          // registries describe a different one now. handleReset has already
+          // emptied the queue and the action map; this only keeps the task from
+          // reporting itself into a Flipper that never asked for it.
+          _preparedInstalls.remove(task.alias);
+          LogService.info(
+            '[InstallEngine] task "${task.alias}" dropped: device changed',
+          );
           if (_clearAction(task.alias)) notifyListeners();
         } catch (e) {
           // Install and uninstall each catch their own and end at
@@ -188,6 +212,17 @@ class InstallEngine extends ChangeNotifier {
     if (_cancelling.contains(alias)) throw const _CancelledException();
   }
 
+  /// The device-switch counterpart of [_throwIfCancelled].
+  ///
+  /// A running task cannot be torn out from under the device any more than a
+  /// cancelled one can, so it unwinds at its next checkpoint instead. The
+  /// checkpoints sit before the device writes and before the registry writes:
+  /// what has already reached the previous Flipper is correct there, and what
+  /// has not must not be aimed at the one attached now.
+  void _throwIfStale(DeviceToken token) {
+    if (token.isStale) throw const _DeviceChangedException();
+  }
+
   Future<bool> installOrUpdate(
     AppCard app, {
     AppCategory? category,
@@ -215,6 +250,7 @@ class InstallEngine extends ChangeNotifier {
     AppDetail? detail,
   }) async {
     if (!_actions.containsKey(app.alias)) return false;
+    final token = client.deviceToken;
 
     try {
       var prepared = _preparedInstalls[app.alias];
@@ -294,6 +330,7 @@ class InstallEngine extends ChangeNotifier {
       }
 
       _throwIfCancelled(app.alias);
+      _throwIfStale(token);
       if (!isReady) throw const _LinkDroppedException();
 
       final manifest = prepared.manifest;
@@ -329,8 +366,10 @@ class InstallEngine extends ChangeNotifier {
           prepared.previousPath != fapPath) {
         await _safeDelete(prepared.previousPath);
       }
+      _throwIfStale(token);
       manifests.put(app.alias, manifest);
       await onInstalled(
+        token: token,
         alias: app.alias,
         devicePath: fapPath,
         fapBytes: prepared.fapBytes,
@@ -340,6 +379,7 @@ class InstallEngine extends ChangeNotifier {
       notifyListeners();
       return true;
     } catch (e) {
+      if (e is _DeviceChangedException) rethrow;
       if (_cancelling.contains(app.alias)) {
         _preparedInstalls.remove(app.alias);
         // Not a failure: the user asked for this.
@@ -409,16 +449,20 @@ class InstallEngine extends ChangeNotifier {
   ) async {
     if (!_actions.containsKey(alias)) return false;
     if (!isReady) throw const _LinkDroppedException();
+    final token = client.deviceToken;
     _setActionState(alias, stage: AppActionStage.download);
     try {
       final fapPath = await resolveFapPath();
+      _throwIfStale(token);
       await _safeDelete('$kManifestsRoot/$alias.fim');
       await _safeDelete(fapPath);
+      _throwIfStale(token);
       manifests.removeAlias(alias);
       _clearAction(alias);
       notifyListeners();
       return true;
     } catch (e) {
+      if (e is _DeviceChangedException) rethrow;
       if (!isReady) {
         _setActionState(alias, stage: AppActionStage.queued, progress: 0);
         throw const _LinkDroppedException();
@@ -457,6 +501,7 @@ class InstallEngine extends ChangeNotifier {
     );
     notifyListeners();
     return _enqueueTask(alias, () async {
+      final token = client.deviceToken;
       final lastSlash = fapPath.lastIndexOf('/');
       final dir = lastSlash > 0 ? fapPath.substring(0, lastSlash) : kAppsRoot;
       await _ensureDir(kAppsRoot);
@@ -475,6 +520,7 @@ class InstallEngine extends ChangeNotifier {
         final bytes = utf8.encode(manifest.encode());
         await client.storageWriteChunked('$kManifestsRoot/$alias.fim', bytes);
         await _verifyUpload('$kManifestsRoot/$alias.fim', bytes);
+        _throwIfStale(token);
         manifests.put(alias, manifest);
       }
       _clearAction(alias);
@@ -650,6 +696,11 @@ class _PreparedInstall {
 
 class _LinkDroppedException implements Exception {
   const _LinkDroppedException();
+}
+
+/// Raised at a checkpoint when the Flipper in scope changed under a task.
+class _DeviceChangedException implements Exception {
+  const _DeviceChangedException();
 }
 
 class _CancelledException implements Exception {

@@ -74,15 +74,26 @@ class UpdateRegistry extends ChangeNotifier {
     await refresh();
   }
 
-  Future<void> refresh({bool force = false}) async {
-    if (_loading || !isReady) return;
+  /// Resolves the updates as one background task: the installed set it asks the
+  /// catalogue about belongs to one Flipper, so the answer has to come back to
+  /// that same one.
+  Future<void> refresh({bool force = false}) {
+    if (_loading || !isReady) return Future.value();
     if (catalog.mode.value == CatalogMode.managerOnly) {
       _cardsByUid.clear();
       _updates = const [];
       _loaded = true;
       notifyListeners();
-      return;
+      return Future.value();
     }
+    return client.runTask(
+      FlipperRequestPriority.background,
+      () => _refresh(force: force),
+    );
+  }
+
+  Future<void> _refresh({required bool force}) async {
+    final token = client.deviceToken;
     _loading = true;
     notifyListeners();
     try {
@@ -91,6 +102,7 @@ class UpdateRegistry extends ChangeNotifier {
         await manifests.refresh(force: true);
       }
       await _awaitManifests();
+      if (token.isStale) return;
 
       final installed = <String, AppManifest>{};
       for (final m in manifests.all) {
@@ -111,6 +123,7 @@ class UpdateRegistry extends ChangeNotifier {
       final cards = catalogUids.isEmpty
           ? const <AppCard>[]
           : await api.fetchAppsByUids(catalogUids);
+      if (token.isStale) return;
       _cardsByUid
         ..clear()
         ..addEntries(
