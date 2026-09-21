@@ -22,6 +22,9 @@
 //    door. Counting it would change what the number means, so it does not.
 //  * A cascade, `LogService..info(...)`, whose invocation has no target, and a
 //    tear-off passed as `onError:`, which is not an invocation at all.
+//  * A failure reported from an `if` or a plain statement rather than a catch -
+//    a `ServiceRequestFailure` branch, a `return null` guard. The slices have
+//    raised several of those; they simply do not move this number.
 //
 // And two that make the number a proxy rather than a measure:
 //
@@ -58,7 +61,10 @@ const Map<String, int> kBudget = {
   // the widgets read only in states the failure itself prevents, so its second
   // surface mostly is not one - a UI defect, #110. A ceiling, not a verdict.
   'pages/archive': 30,
-  'pages/apps': 18,
+  // Read through. The six left are the per-item loops, which want recording
+  // once per batch rather than a level here - the same deferral archive made.
+  // The failures raised out of it want a failed state too: #112.
+  'pages/apps': 6,
   'pages/tools': 17,
   'pages/devices': 7,
   'components': 3,

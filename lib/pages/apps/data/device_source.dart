@@ -200,6 +200,8 @@ class DeviceSource extends ChangeNotifier {
         final bytes = await io.File(entry.value.path).readAsBytes();
         _parsed[alias] = FapInfo.parse(bytes);
       } catch (e) {
+        // One per app in the parse loop, and fap_facts renders an explicit
+        // "not a valid application file" for the null this leaves.
         LogService.info('[DeviceSource] parse "$alias" failed: $e');
         _parsed[alias] = null;
       }
@@ -273,6 +275,9 @@ class DeviceSource extends ChangeNotifier {
               unawaited(IconResolver.instance.ensureFromFap(d.alias, bytes));
             }
           } catch (e) {
+            // One per app in the scan loop; the alias in the text stops
+            // repeats collapsing, so a failed scan of a full device would
+            // write an entry per app.
             LogService.info('[DeviceSource] download "${d.alias}" failed: $e');
           } finally {
             _downloading = false;
@@ -287,7 +292,9 @@ class DeviceSource extends ChangeNotifier {
       _warmManifestIcons();
       LogService.info('[DeviceSource] sync: ${apps.length} apps');
     } catch (e) {
-      LogService.info('[DeviceSource] sync failed: $e');
+      // The whole sync, once per user action. Nothing is set for the UI to
+      // read - the list simply stops where it got to.
+      LogService.warn('[DeviceSource] sync failed: $e');
     } finally {
       _syncing = false;
       _syncingItem = null;
@@ -375,6 +382,8 @@ class DeviceSource extends ChangeNotifier {
       }
       return wanted.isNotEmpty && wanted == localMd5;
     } catch (e) {
+      // One per app, and false is the safe answer: it re-downloads rather
+      // than trusting a file it could not check.
       LogService.info('[DeviceSource] md5 check $devicePath failed: $e');
       return false;
     }
@@ -426,7 +435,11 @@ class DeviceSource extends ChangeNotifier {
         localPath = file.path;
       }
     } catch (e) {
-      LogService.info('[DeviceSource] local copy of "$alias" failed: $e');
+      // Once per install, not per app - adoptInstalled is the onInstalled
+      // callback. And the entry below is written regardless, with an empty
+      // localPath, so the manager shows a backup that is not there until the
+      // user taps Restore and is told there is none.
+      LogService.warn('[DeviceSource] local copy of "$alias" failed: $e');
     }
     _local[alias] = (
       size: fapBytes.length,

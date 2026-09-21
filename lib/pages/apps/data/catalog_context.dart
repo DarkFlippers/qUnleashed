@@ -126,7 +126,11 @@ class CatalogContext {
       try {
         serverSdks = await api.fetchSdks().timeout(kCatalogTimeout);
       } catch (e) {
-        LogService.info('[AppsBackend] fetchSdks failed: $e');
+        // catalogOffline is read only by Settings -> Apps. On the apps
+        // screen the failure turns into manager-only mode, which looks exactly
+        // like a firmware the catalogue cannot serve - so the user is told
+        // their firmware is the problem when the network was.
+        LogService.warn('[AppsBackend] fetchSdks failed: $e');
         offline = true;
       }
       _catalogOffline = offline;
@@ -266,7 +270,10 @@ class CatalogContext {
       }
       if (_deviceApi != null && api.api == null) api.api = _deviceApi;
     } catch (e) {
-      LogService.info('[AppsBackend] deviceInfo failed: $e');
+      // The StateError below carries a localised string that no widget
+      // renders - every caller buries it, as a missing update badge, a
+      // two-second indicator, or a catalogue quietly unfiltered by firmware.
+      LogService.warn('[AppsBackend] deviceInfo failed: $e');
     }
     if (required && (_deviceTarget == null || _deviceApi == null)) {
       throw StateError(l10n.appsErrorNoDeviceApi);

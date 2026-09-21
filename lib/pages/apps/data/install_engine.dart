@@ -139,7 +139,12 @@ class InstallEngine extends ChangeNotifier {
           _preparedInstalls.remove(task.alias);
           if (_clearAction(task.alias)) notifyListeners();
         } catch (e) {
-          LogService.info('[InstallEngine] task "${task.alias}" failed: $e');
+          // Install and uninstall each catch their own and end at
+          // _failAction, so what reaches here is restore - one tap, not a
+          // batch. The bool handed to task.done is discarded by every caller
+          // but one, and a corrupted upload arrives as a StateError this
+          // engine raised itself, which flipperlib never saw.
+          LogService.warn('[InstallEngine] task "${task.alias}" failed: $e');
           if (_clearAction(task.alias)) notifyListeners();
         }
         if (requeued) continue;
@@ -337,6 +342,7 @@ class InstallEngine extends ChangeNotifier {
     } catch (e) {
       if (_cancelling.contains(app.alias)) {
         _preparedInstalls.remove(app.alias);
+        // Not a failure: the user asked for this.
         LogService.info('[InstallEngine] install ${app.alias} cancelled');
         _clearAction(app.alias);
         notifyListeners();
@@ -352,7 +358,11 @@ class InstallEngine extends ChangeNotifier {
   }
 
   Future<bool> _failAction(String alias, Object error, String what) async {
-    LogService.info('[InstallEngine] $what $alias failed: $error');
+    // The fan-in for an install or uninstall that failed with the link up.
+    // Link drops are rethrown past this to be requeued, and restore has no
+    // catch of its own and fails through the queue worker instead. The cause
+    // stops here.
+    LogService.warn('[InstallEngine] $what $alias failed: $error');
     await Future<void>.delayed(const Duration(seconds: 2));
     _clearAction(alias);
     notifyListeners();
@@ -504,11 +514,17 @@ class InstallEngine extends ChangeNotifier {
           .trim()
           .toLowerCase();
     } catch (e) {
-      LogService.info('[InstallEngine] md5 of "$path" unavailable: $e');
+      // Returns as though verified. A mismatch throws below, but being unable
+      // to ask is indistinguishable to every caller from having asked and been
+      // satisfied - so the install reports success and only this says
+      // otherwise.
+      LogService.warn('[InstallEngine] md5 of "$path" unavailable: $e');
       return;
     }
     if (actual.isEmpty) {
-      LogService.info('[InstallEngine] md5 of "$path" came back empty');
+      // Same as above: no checksum to compare, so the upload goes unverified
+      // and reports success.
+      LogService.warn('[InstallEngine] md5 of "$path" came back empty');
       return;
     }
     if (actual != expected) {
@@ -557,7 +573,10 @@ class InstallEngine extends ChangeNotifier {
       final resolved = await CategoryRegistry.instance.nameFor(api, categoryId);
       if (resolved != null) return resolved;
     } catch (e) {
-      LogService.info(
+      // The fallback is the catalog UID, and _resolveInstallDir turns it
+      // into a directory - so the app lands in /ext/apps/<hex uid>/ and the
+      // manifest records that path, which later installs then prefer.
+      LogService.warn(
         '[InstallEngine] resolve category "$categoryId" failed: $e',
       );
     }
