@@ -316,7 +316,17 @@ class _CliPageState extends State<CliPage> {
 
   void _onConnectionState(FlipperConnectionState state) {
     if (!mounted) return;
-    if (!state.connected && _ready) {
+    // Losing CLI, not just losing the link. A session switched to RPC under
+    // this page - FlipperConnectionEvent.modeChanged - leaves it connected to a
+    // stream that is no longer text, and a terminal that silently swallows
+    // keystrokes is worse than one that says why it stopped. Asking cliReady
+    // rather than watching for that event also covers the case where it was
+    // raised before this page subscribed.
+    //
+    // The other direction needs no handling of its own: the firmware has no
+    // RPC-to-CLI switch, so going that way tears the session down and arrives
+    // as a real disconnect, which fails this check too.
+    if (!state.cliReady && _ready) {
       // One line here explains every failure that would otherwise follow it,
       // and without it the terminal simply stops answering.
       _notice(l10n.cliDisconnected);
