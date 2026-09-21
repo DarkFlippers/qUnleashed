@@ -265,6 +265,26 @@ class LogService {
   static FlutterExceptionHandler? _ourFlutterHandler;
   static ui.ErrorCallback? _ourPlatformHandler;
 
+  /// `$error`, and the stack when there is one.
+  ///
+  /// A rejection carries a stack only when its error is an [Error].
+  /// `Completer.completeError` with no trace falls through to
+  /// `AsyncError.defaultStackTrace`, which returns `error.stackTrace` for an
+  /// [Error] and [StackTrace.empty] for anything else — so a
+  /// `PlatformException` arrives bare and a `TypeError` does not. Appending
+  /// unconditionally ends the first kind with a blank line; dropping it
+  /// unconditionally loses the trace the second kind is carrying, which is
+  /// usually the only thing naming where it came from.
+  ///
+  /// Tested by content rather than against [StackTrace.empty]: a zone can
+  /// supply its own empty trace, and `flutter test` in fact supplies a
+  /// chained one, so the identity check passes in the app and fails in the
+  /// harness. [guarded] makes the same check for the same reason.
+  static String describe(Object error, StackTrace stack) {
+    final trace = stack.toString();
+    return trace.isEmpty ? '$error' : '$error\n$trace';
+  }
+
   static void error(String msg) =>
       _emit('[error] $msg', keep: true, console: errorOn);
 

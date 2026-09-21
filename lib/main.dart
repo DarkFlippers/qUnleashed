@@ -29,6 +29,14 @@ Future<void> widgetMain() async {
   await BleForegroundService.instance.start(FlipperOneClient().get());
 }
 
+/// Everything that has to exist before there is a UI.
+///
+/// The three controller loads below read preferences and do not catch, so a
+/// store that will not open stops the app here rather than behind a blank
+/// screen. That is also what lets `DeviceSettings`, `MapSettings` and
+/// `HomeWidgetSettings` decline to retry their own reads: past this point
+/// `SharedPreferences.getInstance` holds a memoised success and cannot fail.
+/// Guarding these - which #124 proposes - means revisiting that.
 Future<void> _initCore() async {
   WidgetsFlutterBinding.ensureInitialized();
   registerAppRoutes();
