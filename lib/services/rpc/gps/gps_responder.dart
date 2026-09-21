@@ -138,6 +138,19 @@ class FlipperGpsResponder {
   _GpsStreamPump? _pump;
   int? _streamFrequency;
 
+  /// The Flipper that asked for location, held for as long as it is being sent.
+  ///
+  /// A responder answers the device that spoke to it. Once a stream is running
+  /// nothing further arrives to say who it is for, so without this the fixes
+  /// would go to whichever Flipper happened to be active - one that never asked
+  /// and has no GPS app open - while the one that did asked would go quiet.
+  FlipperSessionBinding? _binding;
+
+  Future<void> _reply(Future<void> Function() send) {
+    final binding = _binding;
+    return binding == null ? send() : binding.run(send);
+  }
+
   void attach() {
     _notifications ??= _client.notificationStream.listen(_onNotification);
     _connection ??= _client.connectionStream.listen(_onConnection);
@@ -154,7 +167,11 @@ class FlipperGpsResponder {
   }
 
   void _onConnection(FlipperConnectionState state) {
-    if (!state.connected || state.mode != FlipperMode.rpc) {
+    // Judged by the held session, not the active one: after a switch the state
+    // describes a different Flipper, and its being ready says nothing about
+    // whether the one receiving the fixes still is.
+    final binding = _binding;
+    if (binding != null ? !binding.isAlive : !state.rpcReady) {
       unawaited(_stopStream());
     }
   }
@@ -170,6 +187,7 @@ class FlipperGpsResponder {
   }
 
   Future<void> _onStreamStart(int frequency) async {
+    _binding ??= _client.bindCurrentSession();
     final hz = frequency.clamp(minFrequency, maxFrequency);
     if (_streamFrequency == hz) return;
     _streamFrequency = hz;
@@ -220,6 +238,9 @@ class FlipperGpsResponder {
 
   Future<void> _stopStream() async {
     _streamFrequency = null;
+    // Released with the stream: nothing is being sent any more, so a later
+    // one-off request binds whichever Flipper asks for it next.
+    _binding = null;
     await _stopPump();
   }
 
@@ -243,9 +264,13 @@ class FlipperGpsResponder {
       satellites: fix.satellites,
     );
     try {
-      await _client.sendRpc(
-        Main(gpsLocation: location),
-        priority: FlipperRequestPriority.background,
+      // Bound work, so not foreground - and ordinary rather than background,
+      // because a fix is one small frame the device is waiting on, not bulk.
+      await _reply(
+        () => _client.sendRpc(
+          Main(gpsLocation: location),
+          priority: FlipperRequestPriority.unattended,
+        ),
       );
     } catch (error) {
       LogService.info('[GPS] failed to send location: $error');
@@ -254,8 +279,10 @@ class FlipperGpsResponder {
 
   Future<void> _sendError(CommandStatus status) async {
     try {
-      await _client.sendRpc(
-        Main(commandStatus: status, gpsLocation: Location()),
+      await _reply(
+        () => _client.sendRpc(
+          Main(commandStatus: status, gpsLocation: Location()),
+        ),
       );
     } catch (error) {
       LogService.info('[GPS] failed to send error ${status.name}: $error');
