@@ -27,7 +27,29 @@ void _log(String msg) => LogService.info('$_tag $msg');
 class FirmwareInstaller {
   const FirmwareInstaller._();
 
+  /// Flashes [source] onto the Flipper that is in play when this is called.
+  ///
+  /// Declared as one task, so the directory it makes, every file it uploads,
+  /// the md5 checks between them and the command that finally starts the update
+  /// all reach that same Flipper. Warm sessions let the user switch devices
+  /// without the link dropping, and before this the second half of a firmware
+  /// went wherever they switched to - onto a Flipper holding the first half of
+  /// nothing, told to install it.
+  ///
+  /// Nothing here gives up when the user switches. Half a firmware is worse
+  /// than an old one, so a flash that has begun finishes where it began; what a
+  /// switch changes is only which screen is entitled to show its progress, and
+  /// that is [UpdateState.deviceId]'s job.
   static Future<void> install({
+    required FirmwareSource source,
+    required FlipperClient client,
+    required void Function(UpdateState) onState,
+  }) => client.runTask(
+    FlipperRequestPriority.background,
+    () => _install(source: source, client: client, onState: onState),
+  );
+
+  static Future<void> _install({
     required FirmwareSource source,
     required FlipperClient client,
     required void Function(UpdateState) onState,

@@ -13,6 +13,7 @@ import '../firmware/installer.dart';
 import '../firmware/matcher.dart';
 import '../firmware/source.dart';
 import '../firmware/update_state.dart';
+import '../firmware/update_tracker.dart';
 
 class FirmwareUpdateButton extends StatefulWidget {
   const FirmwareUpdateButton({
@@ -41,10 +42,48 @@ class FirmwareUpdateButton extends StatefulWidget {
 }
 
 class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
-  UpdateState? _updateState;
+  final FirmwareUpdateTracker _tracker = FirmwareUpdateTracker.instance;
+
+  /// The Flipper this button is speaking about: the one on screen, not the one
+  /// an update is running on. They differ exactly while the user has switched
+  /// away from a flash in progress, and then this button is about the device
+  /// they switched to and must offer that device's own choices.
+  String? get _deviceId => widget.client.scopedDeviceId;
+
+  /// What the flash ended as, for the button that was on screen to see it.
+  ///
+  /// Only a running update needs to survive a device switch, and only that goes
+  /// into the tracker. An outcome does not: once the flash is over the device
+  /// itself is the answer - it reboots, reports its new firmware, and the
+  /// ordinary comparison takes over - so keeping outcomes in the shared tracker
+  /// would leave a "done" sitting on the button for the rest of the run.
+  UpdateState? _outcome;
+
+  UpdateState? get _updateState =>
+      _tracker.stateFor(_deviceId, widget.entry.shortName) ?? _outcome;
+
+  static bool _isOutcome(UpdateState state) =>
+      state is UpdateDone || state is UpdateError;
+
   String? _inlineMessage;
 
   bool _dfuPresent = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _tracker.addListener(_onTrackerChanged);
+  }
+
+  @override
+  void dispose() {
+    _tracker.removeListener(_onTrackerChanged);
+    super.dispose();
+  }
+
+  void _onTrackerChanged() {
+    if (mounted) setState(() {});
+  }
 
   late QAppColors _colors;
 
@@ -157,25 +196,35 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
 
     device?.setRecovering(true);
 
+    // Captured before the flash starts, and used for every report it makes:
+    // the progress belongs to the Flipper being written, not to whichever one
+    // the user is looking at by the time a frame of it arrives.
+    final target = _deviceId;
     setState(() {
       _inlineMessage = null;
-      _updateState = source.isRemote
-          ? const UpdateFetching()
-          : const UpdateUploading(0);
+      _outcome = null;
     });
+    _tracker.publish(
+      target,
+      widget.entry.shortName,
+      source.isRemote ? const UpdateFetching() : const UpdateUploading(0),
+    );
 
     var waitForReconnect = false;
     try {
       await FirmwareInstaller.install(
         source: source,
         client: widget.client,
-        onState: _onState,
+        onState: (state) => _onState(target, state),
       );
       waitForReconnect =
-          recovering && _updateState is UpdateWaitingForReconnect;
+          recovering &&
+          _tracker.stateFor(target, widget.entry.shortName)
+              is UpdateWaitingForReconnect;
     } catch (e) {
+      _tracker.clear(target);
       if (!mounted) return;
-      setState(() => _updateState = null);
+      setState(() => _outcome = null);
       QNotification.show(
         context,
         message: l10n.fwuAborted('$e'),
@@ -208,18 +257,28 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
   }
 
   void _finishRecovery() {
+    _tracker.clear(_deviceId);
     if (!mounted) return;
     setState(() {
-      _updateState = null;
+      _outcome = null;
       _inlineMessage = l10n.fwuRecovered;
     });
   }
 
-  void _onState(UpdateState state) {
+  void _onState(String? target, UpdateState state) {
+    // Recorded whether or not this button is still on screen: the page is torn
+    // down and rebuilt on every device switch, and a flash that kept reporting
+    // only while its button happened to exist is how the progress used to go
+    // missing.
+    if (_isOutcome(state)) {
+      _tracker.clear(target);
+    } else {
+      _tracker.publish(target, widget.entry.shortName, state);
+    }
     if (!mounted) return;
     setState(() {
-      _updateState = state;
       _inlineMessage = null;
+      _outcome = _isOutcome(state) ? state : null;
     });
     if (state is UpdateError) {
       QNotification.show(
