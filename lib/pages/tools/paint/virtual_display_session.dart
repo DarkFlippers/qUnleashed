@@ -24,6 +24,18 @@ class VirtualDisplaySession {
   static const int _minIntervalMs = 1000 ~/ 8; // 8 fps
 
   StreamSubscription<FlipperConnectionState>? _connSub;
+
+  /// The Flipper the display is up on, held for as long as it is up.
+  ///
+  /// Every call here is `rightNow`, which orders it ahead of the queue but says
+  /// nothing about where it goes. A virtual display is state left switched on
+  /// inside one Flipper, and the command that switches it off has to reach that
+  /// one - so the session is held from start to stop rather than looked up per
+  /// call. Without it a device switch left the first Flipper showing a display
+  /// nothing was driving any more, while the stop went to the second.
+  FlipperSessionBinding? _binding;
+  DeviceToken? _boundTo;
+
   int _users = 0;
   int _liveHolders = 0;
   bool _active = false;
@@ -103,6 +115,25 @@ class VirtualDisplaySession {
   Future<void> _ensureStarted() async {
     if (_active || _starting || _suspended || !_client.isConnected) return;
     _starting = true;
+    final binding = _client.bindCurrentSession();
+    _binding = binding;
+    _boundTo = _client.deviceToken;
+    try {
+      await binding.run(() => _start());
+    } finally {
+      _starting = false;
+      if (_active) {
+        if (_previewFrames != null &&
+            _liveHolders == 0 &&
+            _previewTimer == null) {
+          _startPreviewTimer();
+        }
+        _flush();
+      }
+    }
+  }
+
+  Future<void> _start() async {
     try {
       await _client.guiStartVirtualDisplay(
         StartVirtualDisplayRequest(),
@@ -124,21 +155,13 @@ class VirtualDisplaySession {
           _active = true;
         }
       } catch (_) {}
-    } catch (_) {
-    } finally {
-      _starting = false;
-      if (_active) {
-        if (_previewFrames != null &&
-            _liveHolders == 0 &&
-            _previewTimer == null) {
-          _startPreviewTimer();
-        }
-        _flush();
-      }
-    }
+    } catch (_) {}
   }
 
   Future<void> _stop() async {
+    final binding = _binding;
+    _binding = null;
+    _boundTo = null;
     _active = false;
     _stopPreviewTimer();
     _previewFrames = null;
@@ -148,20 +171,35 @@ class VirtualDisplaySession {
     _sinceLastSend
       ..stop()
       ..reset();
-    if (!_client.isConnected) return;
-    await _client
+    if (binding == null ? !_client.isConnected : !binding.isAlive) return;
+    Future<List<Main>> stop() => _client
         .guiStopVirtualDisplay(priority: FlipperRequestPriority.rightNow)
         .timeout(const Duration(seconds: 2))
         .catchError((_) => <Main>[]);
+    await (binding == null ? stop() : binding.run(stop));
   }
 
   void _onConnectionChange(FlipperConnectionState state) {
     if (!state.connected) {
       _active = false;
       _starting = false;
-    } else if (_users > 0 && !_active) {
-      _ensureStarted();
+      return;
     }
+    // A different Flipper is on screen now. The display follows the user, so it
+    // is switched off on the one that still has it - by the held session, which
+    // is the only thing that still knows which that was - and put up on the new
+    // one. Letting it simply carry on would drive the new Flipper's display
+    // while leaving the old one lit with a picture nobody updates.
+    final boundTo = _boundTo;
+    if (boundTo != null && boundTo.isStale) {
+      unawaited(
+        _stop().then((_) {
+          if (_users > 0) _ensureStarted();
+        }),
+      );
+      return;
+    }
+    if (_users > 0 && !_active) _ensureStarted();
   }
 
   /// Queues the latest [frame], replacing any not-yet-sent one, and sends it as
@@ -174,7 +212,13 @@ class VirtualDisplaySession {
 
   void _flush() {
     if (_sending || _pending == null) return;
-    if (!_active || !_client.isConnected) return; // no device → skip
+    if (!_active) return;
+    // The frame goes to the Flipper whose display this is, not to whichever one
+    // is active by the time it is encoded.
+    // _active is only ever true between a start and a stop, so by then the
+    // session is held; no binding means there is nothing to send to.
+    final binding = _binding;
+    if (binding == null || !binding.isAlive) return;
     // 8 fps cap: if the last send was too recent, wait out the remainder and
     // send the latest pending frame then.
     final waited = _sinceLastSend.isRunning
@@ -193,10 +237,14 @@ class VirtualDisplaySession {
     _sinceLastSend
       ..reset()
       ..start();
-    _client
-        .sendRpc(
-          Main(guiScreenFrame: ScreenFrame(data: BmCodec.encodeXBM(frame))),
-          priority: FlipperRequestPriority.foreground,
+    binding
+        .run(
+          () => _client.sendRpc(
+            Main(guiScreenFrame: ScreenFrame(data: BmCodec.encodeXBM(frame))),
+            // Not foreground: a frame is written into one Flipper's display,
+            // so it goes where the display is, not where the user is looking.
+            priority: FlipperRequestPriority.unattended,
+          ),
         )
         .then<void>(
           (_) {},
