@@ -4,6 +4,27 @@ import '../../../services/localization/l10n.dart';
 import '../../../components/config.dart';
 import '../../../services/http/app_http.dart';
 
+/// What is known about a firmware's directory.
+///
+/// One value rather than the pair of booleans this started as. All four
+/// combinations that pair could express do occur - a retry in flight over an
+/// earlier failure is both loading and failed - and the pair left every reader
+/// to resolve that precedence for itself. [FirmwareRepository.stateFor]
+/// resolves it once. #118.
+enum FirmwareFetchState {
+  /// A fetch is in flight, or nothing has settled yet.
+  loading,
+
+  /// The last attempt failed. An older directory may still be in hand.
+  failed,
+
+  /// A directory is in hand and the last attempt for it succeeded.
+  ready;
+
+  bool get isLoading => this == FirmwareFetchState.loading;
+  bool get hasFailed => this == FirmwareFetchState.failed;
+}
+
 enum FirmwareChannel {
   release,
   releaseCandidate,
@@ -209,11 +230,39 @@ abstract class FirmwareParser {
       _fetchedAt != null &&
       DateTime.now().difference(_fetchedAt!) < _ttl;
 
+  /// Where [fetch] gets its JSON.
+  ///
+  /// A seam rather than a direct call.
+  ///
+  /// `flutter_test` installs its own HttpOverrides, so an unreplaced fetch
+  /// does not reach the network - it answers 400, which arrives as an
+  /// `AppHttpException`. That is one network-shaped failure and nothing else,
+  /// which is why the cases that need a socket error, a deadline or a document
+  /// of the wrong shape replace this.
+  ///
+  /// Under the decode rather than over it, so a test can hand it a document of
+  /// the wrong shape and have [FirmwareDirectory.fromJson] really run. Every
+  /// field below it is an unchecked cast, so that is where a feed that changed
+  /// shape actually breaks - a seam above the decode could only ever simulate
+  /// the exception, never produce it.
+  @visibleForTesting
+  Future<dynamic> Function(Uri uri) fetchJson = AppHttp.getJson;
+
   Future<FirmwareDirectory> fetch() async {
     final json =
-        await AppHttp.getJson(Uri.parse(directoryUrl)) as Map<String, dynamic>;
+        await fetchJson(Uri.parse(directoryUrl)) as Map<String, dynamic>;
+    final directory = FirmwareDirectory.fromJson(json);
+    // Stamped after the decode, not before it. A feed whose shape changed
+    // throws out of fromJson, and marking the previous cache fresh on the way
+    // past left `isFresh` true for the whole TTL - so the next attempt was
+    // short-circuited by a document that had just failed to parse.
+    //
+    // Not covered by a test: the difference only shows once the previous
+    // stamp would itself have expired, and nothing here can move the clock
+    // ten minutes. Every other freshness rule is pinned in
+    // test/firmware_failure_test.dart.
     _fetchedAt = DateTime.now();
-    return _cache = FirmwareDirectory.fromJson(json);
+    return _cache = directory;
   }
 
   Future<FirmwareDirectory> get() async => isFresh ? _cache! : await fetch();

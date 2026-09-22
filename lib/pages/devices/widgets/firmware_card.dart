@@ -89,7 +89,9 @@ class _FirmwareCardState extends State<FirmwareCard> {
 
   void _tryOpenPendingChangelog() {
     final entry = _pendingChangelog;
-    if (entry == null || !mounted || _fw.fetchLoadingFor(entry)) return;
+    if (entry == null || !mounted || _fw.fetchStateFor(entry).isLoading) {
+      return;
+    }
     final version = _fw.latestFirmwareFor(entry);
     _pendingChangelog = null;
     PushService.instance.taps.value = null;
@@ -144,7 +146,7 @@ class _FirmwareCardState extends State<FirmwareCard> {
             entry: entry,
             version: version,
             changelog: version.changelog,
-            fetchLoading: _fw.fetchLoadingFor(entry),
+            fetchState: _fw.fetchStateFor(entry),
             latestVersion: _fw.latestVersionFor(entry),
             deviceVersion: widget.deviceVersion,
             deviceInfo: widget.deviceInfo,
@@ -163,7 +165,7 @@ class _FirmwareCardState extends State<FirmwareCard> {
     if (config.firmwares.isEmpty) return const SizedBox.shrink();
 
     final entry = config.firmwares[_page.clamp(0, config.firmwares.length - 1)];
-    final loading = _fw.fetchLoadingFor(entry);
+    final fetchState = _fw.fetchStateFor(entry);
     final latestVersion = _fw.latestVersionFor(entry);
     final latestFirmware = _fw.latestFirmwareFor(entry);
     final hasChangelog = latestFirmware?.changelog.trim().isNotEmpty ?? false;
@@ -184,14 +186,14 @@ class _FirmwareCardState extends State<FirmwareCard> {
           if (config.isSingle)
             _FirmwareSlide(
               entry: entry,
-              fetchLoading: loading,
+              fetchState: fetchState,
               latestVersion: latestVersion,
             )
           else
             _carousel(config),
           _FirmwareControls(
             entry: entry,
-            fetchLoading: loading,
+            fetchState: fetchState,
             channelId: _fw.selectedChannelId(entry),
             channels: _fw.channelsFor(entry),
             variant: _fw.selectedVariant(entry),
@@ -206,7 +208,7 @@ class _FirmwareCardState extends State<FirmwareCard> {
               '${widget.deviceVersion ?? ''}',
             ),
             entry: entry,
-            fetchLoading: loading,
+            fetchState: fetchState,
             latestVersion: latestVersion,
             deviceVersion: widget.deviceVersion,
             deviceInfo: widget.deviceInfo,
@@ -238,7 +240,7 @@ class _FirmwareCardState extends State<FirmwareCard> {
                 final firmware = config.firmwares[i];
                 return _FirmwareSlide(
                   entry: firmware,
-                  fetchLoading: _fw.fetchLoadingFor(firmware),
+                  fetchState: _fw.fetchStateFor(firmware),
                   latestVersion: _fw.latestVersionFor(firmware),
                 );
               },
@@ -258,12 +260,12 @@ class _FirmwareCardState extends State<FirmwareCard> {
 class _FirmwareSlide extends StatelessWidget {
   const _FirmwareSlide({
     required this.entry,
-    required this.fetchLoading,
+    required this.fetchState,
     required this.latestVersion,
   });
 
   final FirmwareEntry entry;
-  final bool fetchLoading;
+  final FirmwareFetchState fetchState;
   final String? latestVersion;
 
   @override
@@ -298,7 +300,7 @@ class _FirmwareSlide extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  fetchLoading
+                  fetchState.isLoading
                       ? context.l10n.firmwareChecking
                       : (latestVersion ?? '—'),
                   style: TextStyle(fontSize: 12, color: colors.textMuted),
@@ -321,7 +323,7 @@ class _FirmwareSlide extends StatelessWidget {
 class _FirmwareControls extends StatelessWidget {
   const _FirmwareControls({
     required this.entry,
-    required this.fetchLoading,
+    required this.fetchState,
     required this.channelId,
     required this.channels,
     required this.variant,
@@ -331,7 +333,7 @@ class _FirmwareControls extends StatelessWidget {
   });
 
   final FirmwareEntry entry;
-  final bool fetchLoading;
+  final FirmwareFetchState fetchState;
   final String channelId;
   final List<FirmwareDirectoryChannel> channels;
   final UnleashedVariant variant;
@@ -360,7 +362,7 @@ class _FirmwareControls extends StatelessWidget {
             labelOf: (channel) => channel.title,
             descriptionOf: (channel) => channel.description,
             accent: accent,
-            placeholder: fetchLoading
+            placeholder: fetchState.isLoading
                 ? context.l10n.firmwareLoading
                 : context.l10n.firmwareUnavailable,
             onChanged: (channel) => onChannelChanged(channel.id),
