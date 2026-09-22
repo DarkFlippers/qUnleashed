@@ -111,8 +111,22 @@ class QAppThemeController extends ChangeNotifier with WidgetsBindingObserver {
     if (_themeMode == QThemeMode.system) notifyListeners();
   }
 
+  /// Moves the app onto [firmware].
+  ///
+  /// The entry must be one of the configured ones: the firmware carousel
+  /// finds its page by looking the `shortName` up in that config, and an
+  /// entry that is not there has no page. `FirmwareCard` notices and writes a
+  /// configured entry back over it, so the damage is bounded - but only
+  /// because it checks, which is not something to rely on.
+  ///
+  /// Asserted rather than rejected, because both writers today pick out of
+  /// [config] and there is nothing better to do where asserts are off.
   void setActiveFirmware(FirmwareEntry? firmware) {
     if (firmware == null) return;
+    assert(
+      _config.firmwares.any((e) => e.shortName == firmware.shortName),
+      'active firmware "${firmware.shortName}" is not in the config',
+    );
     if (identical(_activeFirmware, firmware)) return;
     if (_activeFirmware.shortName == firmware.shortName) return;
     _activeFirmware = firmware;

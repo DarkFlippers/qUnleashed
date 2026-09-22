@@ -5,24 +5,21 @@ import 'package:flipperlib/flipperlib.dart' hide DateTime, File;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/components/changelog_renderer.dart';
-import 'package:qunleashed/components/config.dart';
 import 'package:qunleashed/components/progress_button.dart';
 import 'package:qunleashed/pages/devices/controllers/device.dart';
 import 'package:qunleashed/pages/devices/controllers/firmware.dart';
-import 'package:qunleashed/pages/devices/device_scope.dart';
 import 'package:qunleashed/pages/devices/firmware/directory.dart';
 import 'package:qunleashed/pages/devices/firmware/installer.dart';
 import 'package:qunleashed/pages/devices/firmware/repository.dart';
 import 'package:qunleashed/pages/devices/firmware/source.dart';
-import 'package:qunleashed/pages/devices/firmware/update_settings.dart';
 import 'package:qunleashed/pages/devices/firmware/update_state.dart';
 import 'package:qunleashed/pages/devices/widgets/firmware_changelog_page.dart';
 import 'package:qunleashed/pages/devices/widgets/firmware_update_button.dart';
 import 'package:qunleashed/services/http/app_http.dart';
 import 'package:qunleashed/services/localization/l10n.dart';
 import 'package:qunleashed/services/logging.dart';
-import 'package:qunleashed/theme/theme.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+
+import 'firmware_fixture.dart';
 
 /// The three firmware surfaces that used to enter a state they never left,
 /// and the reasons that went with them — #118.
@@ -38,109 +35,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// log_level_budget_test.dart, which counts `LogService.info` inside a catch —
 /// a catch with no log lowers that number.
 
-/// Only what the recovery wait touches.
-///
-/// Everything else throws through [noSuchMethod], so a wait that starts
-/// reaching for something new fails here rather than quietly reading a null.
-class _FakeClient implements FlipperClient {
-  final _connection = StreamController<FlipperConnectionState>.broadcast();
-
-  bool _connected = false;
-
-  /// The device coming back: the flag flips and the stream says so.
-  ///
-  /// Shaped to what [FirmwareInstaller.awaitReconnect] reads rather than to
-  /// what the real client emits — it consults `isConnected` and ignores the
-  /// event's contents, and the real payload carries a session this fake has
-  /// no way to build.
-  void arrive() {
-    _connected = true;
-    _connection.add(
-      const FlipperConnectionState(
-        mode: FlipperMode.rpc,
-        device: null,
-        connected: true,
-      ),
-    );
-  }
-
-  /// Connected, with nothing said on the stream.
-  ///
-  /// The state the wait can only discover by asking again: it is why the
-  /// non-timeout exit reports [isConnected] rather than a flat failure.
-  void arriveQuietly() => _connected = true;
-
-  /// A connection event that is not a connection. The stream carries these
-  /// too, and a wait that took the first event for the device coming back
-  /// would report a recovery that never happened.
-  void stir() => _connection.add(
-    const FlipperConnectionState(
-      mode: FlipperMode.disconnected,
-      device: null,
-      connected: false,
-    ),
-  );
-
-  /// The link dropping, with nothing said on the stream.
-  void depart() => _connected = false;
-
-  /// A fault on the stream itself. A broadcast stream is not ended by one.
-  void fail() => _connection.addError(const SocketException('link fault'));
-
-  /// The link torn down under the wait — a disposed client, a closed session.
-  Future<void> close() => _connection.close();
-
-  /// Whether anything is still listening.
-  ///
-  /// `Future.timeout` times out the future and cannot reach the work behind
-  /// it, so a wait built on `firstWhere().timeout()` left a listener on this
-  /// broadcast stream after every deadline - and the stream lives as long as
-  /// the client.
-  bool get hasListener => _connection.hasListener;
-
-  @override
-  bool get isConnected => _connected;
-
-  @override
-  Stream<FlipperConnectionState> get connectionStream => _connection.stream;
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
-}
-
-/// A directory feed of the shape the parsers expect.
-Map<String, dynamic> _feed() => {
-  'channels': [
-    {
-      'id': 'release',
-      'title': 'Release',
-      'description': '',
-      'versions': [
-        {
-          'version': '1.0.0',
-          'changelog': 'notes',
-          'timestamp': 0,
-          'files': <dynamic>[],
-        },
-      ],
-    },
-  ],
-};
-
-/// The same feed after `version` stopped being a string upstream.
-///
-/// Every field below the decode casts unguarded (`json['version'] as String`),
-/// so this is a real `TypeError` out of `FirmwareDirectory.fromJson` rather
-/// than a stand-in thrown by the seam.
-Map<String, dynamic> _feedOfTheWrongShape() {
-  final json = _feed();
-  final channels = json['channels']! as List<dynamic>;
-  final versions =
-      (channels.first as Map<String, dynamic>)['versions']! as List<dynamic>;
-  (versions.first as Map<String, dynamic>)['version'] = 1;
-  return json;
-}
-
 /// Advances past the 30-second reconnect deadline and settles the frame.
 ///
 /// The deadline really is what drives the cases that use this: cutting the
@@ -155,87 +49,12 @@ Future<void> elapsePastReconnectDeadline(WidgetTester tester) async {
 Future<void> drainToast(WidgetTester tester) =>
     tester.pump(const Duration(seconds: 7));
 
-Widget _wrap(Widget child, DeviceController device) => MaterialApp(
-  theme: buildAppTheme(Brightness.dark, const Color(0xFFCC241D)),
-  home: DeviceScope(notifier: device, child: child),
-);
-
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  /// How many directory requests the feed has been asked for.
-  var fetchCalls = 0;
-
-  /// Controllers a test has already stopped, so a teardown does not repeat it.
-  final closed = <DeviceController>{};
-
   final repo = FirmwareRepository.instance;
-  final firmwares = QAppConfig.firmware.firmwares;
-  final unleashed = firmwares.firstWhere((f) => f.shortName == 'unlshd');
-  final official = firmwares.firstWhere((f) => f.shortName == 'ofw');
 
-  /// Answers every firmware's directory request with [fetch].
-  void feedEvery(Future<dynamic> Function(Uri uri) fetch) {
-    for (final entry in firmwares) {
-      parserForEntry(entry).fetchJson = (uri) {
-        fetchCalls++;
-        return fetch(uri);
-      };
-    }
-  }
-
-  void feedWorks() => feedEvery((_) async => _feed());
-  void feedFails(Object error) => feedEvery((_) async => throw error);
-
-  setUp(() {
-    closed.clear();
-    LogService.clearHistory();
-    SharedPreferences.setMockInitialValues(const {});
-    UpdateSettingsStore.instance.reset();
-    repo.reset();
-    fetchCalls = 0;
-    for (final entry in firmwares) {
-      parserForEntry(entry).clearCache();
-    }
-    // Not every case replaces this, and the ones that do not still build a
-    // FirmwareController, whose constructor prefetches every firmware. Left
-    // pointing at the network, that is a live request per run and an
-    // assertion that depends on what the upstream feed serves that day.
-    feedWorks();
-  });
-
-  /// A device controller and a client for a widget test.
-  ///
-  /// The controller is real: it constructs fine under `flutter test`, and both
-  /// widgets here need a `DeviceScope` carrying one.
-  ///
-  /// A widget test that presses the button must end with [closeDevice].
-  /// `setRecovering` starts the DFU detector, and where libusb is present -
-  /// Linux CI, not a Windows dev box - that polls on a one-second periodic
-  /// timer. The binding checks for live timers before tearDown runs, so
-  /// disposing from the teardown alone is too late and the test fails with a
-  /// pending timer rather than on its assertions.
-  (DeviceController, _FakeClient) mountedDevice() {
-    final device = DeviceController();
-    final client = _FakeClient();
-    addTearDown(() async {
-      if (closed.add(device)) device.dispose();
-      await client.close();
-    });
-    return (device, client);
-  }
-
-  /// Tears the tree down and stops the controller's timers, inside the body.
-  Future<void> closeDevice(WidgetTester tester, DeviceController device) async {
-    await tester.pumpWidget(const SizedBox());
-    if (closed.add(device)) device.dispose();
-    // Disposing arms teardown timers of its own - the Windows hotplug watcher
-    // sets a one-second one - so let those expire in the body as well.
-    await tester.pump(const Duration(seconds: 2));
-  }
-
-  List<String> keptAbout(String fragment) =>
-      LogService.history.where((l) => l.contains(fragment)).toList();
+  setUp(resetFirmwareState);
 
   group('FirmwareRepository', () {
     // Before anything has been asked for: no directory, no failure, nothing
@@ -261,7 +80,7 @@ void main() {
       expect(repo.stateFor(unleashed), FirmwareFetchState.loading);
       expect(repo.failedFor(unleashed), isTrue, reason: 'both are true here');
 
-      gate.complete(_feed());
+      gate.complete(feedJson());
       await refreshing;
 
       expect(repo.stateFor(unleashed), FirmwareFetchState.ready);
@@ -294,7 +113,7 @@ void main() {
     // diagnostic — and filed at warn it would sit unnoticed among a hundred
     // airplane-mode lines.
     test('a feed that changed shape is kept at error, not warn', () async {
-      feedEvery((_) async => _feedOfTheWrongShape());
+      feedEvery((_) async => feedOfTheWrongShape());
 
       await repo.ensure(unleashed);
 
@@ -420,7 +239,7 @@ void main() {
       await repo.ensure(unleashed);
       expect(keptAbout('unlshd directory fetch failed'), hasLength(1));
 
-      feedEvery((_) async => _feedOfTheWrongShape());
+      feedEvery((_) async => feedOfTheWrongShape());
       await repo.refresh();
 
       final kept = keptAbout('unlshd directory fetch failed');
@@ -440,13 +259,8 @@ void main() {
       expect(keptAbout('unlshd directory fetch failed'), hasLength(2));
     });
 
-    // FirmwareCard calls ensure from didUpdateWidget, and a connected Flipper
-    // rebuilds that subtree every five seconds because device_info_watch polls
-    // the battery on that interval. A failed fetch never leaves a fresh cache,
-    // so without the cooldown every one of those rebuilds was another request
-    // at a server already not answering.
-    // FirmwareCard calls ensure from didUpdateWidget, which a connected
-    // Flipper drives every five seconds, so a directory already in hand must
+    // ensure is reached from every carousel swipe, every push tap, and every
+    // FirmwareController construction - so a directory already in hand must
     // not be re-fetched on each of them.
     test('a directory already in hand is not fetched again', () async {
       await repo.ensure(unleashed);
@@ -483,7 +297,7 @@ void main() {
       await repo.ensure(unleashed);
       expect(fetchCalls, afterFirst, reason: 'the first one still holds it');
 
-      gate.complete(_feed());
+      gate.complete(feedJson());
       await pumpEventQueue();
     });
 
@@ -557,7 +371,7 @@ void main() {
       await withController((fw) async {
         expect(fw.fetchStateFor(unleashed), FirmwareFetchState.loading);
 
-        gate.complete(_feed());
+        gate.complete(feedJson());
         await pumpEventQueue();
 
         expect(fw.fetchStateFor(unleashed), FirmwareFetchState.ready);
@@ -578,7 +392,7 @@ void main() {
 
         expect(fw.fetchStateFor(unleashed), FirmwareFetchState.loading);
 
-        gate.complete(_feed());
+        gate.complete(feedJson());
         await refreshing;
 
         expect(fw.fetchStateFor(unleashed), FirmwareFetchState.ready);
@@ -607,10 +421,10 @@ void main() {
   });
 
   group('FirmwareInstaller.awaitReconnect', () {
-    late _FakeClient client;
+    late FakeFlipperClient client;
 
     setUp(() {
-      client = _FakeClient();
+      client = FakeFlipperClient();
       addTearDown(client.close);
     });
 
@@ -725,7 +539,7 @@ void main() {
 
   group('FirmwareUpdateButton', () {
     late DeviceController device;
-    late _FakeClient client;
+    late FakeFlipperClient client;
 
     setUp(() => (device, client) = mountedDevice());
 
@@ -738,7 +552,7 @@ void main() {
       install,
       FirmwareFetchState fetchState = FirmwareFetchState.ready,
       String? latestVersion = '1.0.0',
-    }) => _wrap(
+    }) => wrapWithDevice(
       FirmwareUpdateButton(
         entry: unleashed,
         fetchState: fetchState,
@@ -977,7 +791,7 @@ void main() {
 
   group('FirmwareChangelogPage', () {
     late DeviceController device;
-    late _FakeClient client;
+    late FakeFlipperClient client;
 
     setUp(() => (device, client) = mountedDevice());
 
@@ -989,7 +803,7 @@ void main() {
     Widget page({
       String changelog = 'raw **markdown** text',
       String Function(String source)? renderHtml,
-    }) => _wrap(
+    }) => wrapWithDevice(
       FirmwareChangelogPage(
         entry: unleashed,
         version: FirmwareVersion(
