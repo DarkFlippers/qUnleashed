@@ -1,4 +1,3 @@
-import '../../../services/localization/l10n.dart';
 import 'dart:async';
 
 import 'package:flipperlib/flipperlib.dart';
@@ -52,7 +51,7 @@ class DeviceController extends ChangeNotifier {
 
   String? _userDisconnectedId;
   String? _connectingKnownId;
-  bool _bleAutoScanDone = false;
+  bool _bleAutoConnectDone = false;
   final Set<String> _autoConnectAttemptedIds = {};
   Timer? _autoConnectTimer;
 
@@ -121,6 +120,12 @@ class DeviceController extends ChangeNotifier {
     _setupDevice(connected);
   }
 
+  Future<void> _connectAddress(String address, {String? name}) async {
+    if (_userDisconnectedId == address) _userDisconnectedId = null;
+    final connected = await _client.connectBleAddress(address, name: name);
+    _setupDevice(connected);
+  }
+
   Future<void> disconnect() async {
     _userDisconnectedId = _device?.id;
     await _client.disconnect();
@@ -131,8 +136,8 @@ class DeviceController extends ChangeNotifier {
   }
 
   /// Connects to a remembered device, or instantly swaps to it when it
-  /// already holds a warm session. Re-discovers the device first when it is
-  /// not in the current device list. Throws on failure.
+  /// already holds a warm session. The BLE address is enough to open the
+  /// link, so nothing is scanned for. Throws on failure.
   Future<void> connectKnown(KnownDevice known) async {
     if (_client.isConnecting || _connectingKnownId != null) return;
     if (isKnownActive(known)) return;
@@ -145,11 +150,7 @@ class DeviceController extends ChangeNotifier {
         if (device != null) _setupDevice(device);
         return;
       }
-      final device = await _resolveKnown(known);
-      if (device == null) {
-        throw StateError(l10n.deviceErrorNotFound(known.name));
-      }
-      await connect(device);
+      await _connectAddress(known.id, name: known.name);
     } finally {
       _connectingKnownId = null;
       _notify();
@@ -257,19 +258,11 @@ class DeviceController extends ChangeNotifier {
     final last = _settings.autoConnectBle ? _knownDevices.lastDevice : null;
     try {
       await _client.refreshUsbOnly();
-      if (last != null) {
-        await _client.refreshBleKnown();
-        if (_findPresent(last) == null && !_bleAutoScanDone) {
-          _bleAutoScanDone = true;
-          await _client.scanBle(timeout: const Duration(seconds: 8));
-        }
-      }
     } catch (e) {
-      // The BLE scan phase has no catch of its own, and on Android neither
-      // does the USB enumeration - on desktop that one logs at error and
-      // returns empty. Nothing in _tryAutoConnect has a surface: it runs off
-      // a timer, so a Flipper that stopped connecting by itself leaves only
-      // these two lines. #120.
+      // On Android the USB enumeration has no catch of its own - on desktop
+      // that one logs at error and returns empty. Nothing in _tryAutoConnect
+      // has a surface: it runs off a timer, so a Flipper that stopped
+      // connecting by itself leaves only these two lines. #120.
       LogService.warn('[DeviceController] auto-connect discovery failed: $e');
     }
     if (_disposed || isConnected || _client.isConnecting) return;
@@ -282,19 +275,35 @@ class DeviceController extends ChangeNotifier {
       _userDisconnectedId = null;
     }
 
-    final candidate = _autoConnectCandidate(present, last);
-    if (candidate == null) return;
+    final candidate = _autoConnectUsbCandidate(present);
+    if (candidate != null) {
+      _autoConnectAttemptedIds.add(candidate.id);
+      LogService.info(
+        '[DeviceController] auto-connecting to ${candidate.name}',
+      );
+      try {
+        await connect(candidate);
+      } catch (e) {
+        // establishLocked logs the transport-open failure at error, but not
+        // the two StateErrors: maxSessions is 2, so a third device reaches it,
+        // and a superseded attempt throws past the logging block.
+        // _autoConnectAttemptedIds holds the retry only while the device stays
+        // present, so a flapping cable does repeat this.
+        LogService.warn('[DeviceController] auto-connect failed: $e');
+      }
+      return;
+    }
 
-    _autoConnectAttemptedIds.add(candidate.id);
-    LogService.info('[DeviceController] auto-connecting to ${candidate.name}');
+    if (last == null || _bleAutoConnectDone) return;
+    if (last.id == _userDisconnectedId) return;
+    // The address is all the link needs, so a remembered Flipper is dialled
+    // directly. Nothing tells us beforehand whether it is in range; one
+    // attempt per controller, as the discovery scan it replaces also ran once.
+    _bleAutoConnectDone = true;
+    LogService.info('[DeviceController] auto-connecting to ${last.name}');
     try {
-      await connect(candidate);
+      await _connectAddress(last.id, name: last.name);
     } catch (e) {
-      // establishLocked logs the transport-open failure at error, but not
-      // the two StateErrors: maxSessions is 2, so a third device reaches it,
-      // and a superseded attempt throws past the logging block.
-      // _autoConnectAttemptedIds holds the retry only while the device stays
-      // present, so a flapping cable does repeat this.
       LogService.warn('[DeviceController] auto-connect failed: $e');
     }
   }
@@ -303,34 +312,15 @@ class DeviceController extends ChangeNotifier {
   // action. With no USB present, the last remembered BLE device connects;
   // an unknown BLE device never does. Both transports only reconnect on
   // their own while their toggle in the device settings is on.
-  FlipperDevice? _autoConnectCandidate(
-    List<FlipperDevice> present,
-    KnownDevice? last,
-  ) {
-    bool eligible(FlipperDevice d) =>
-        d.id != _userDisconnectedId && !_autoConnectAttemptedIds.contains(d.id);
-
-    if (_settings.autoConnectUsb) {
-      for (final d in present) {
-        if (d.isUsb && eligible(d) && _client.isFlipperDevice(d)) return d;
-      }
-    }
-    if (last != null) {
-      for (final d in present) {
-        if (last.matches(d) && eligible(d)) return d;
-      }
+  FlipperDevice? _autoConnectUsbCandidate(List<FlipperDevice> present) {
+    if (!_settings.autoConnectUsb) return null;
+    for (final d in present) {
+      if (!d.isUsb) continue;
+      if (d.id == _userDisconnectedId) continue;
+      if (_autoConnectAttemptedIds.contains(d.id)) continue;
+      if (_client.isFlipperDevice(d)) return d;
     }
     return null;
-  }
-
-  Future<FlipperDevice?> _resolveKnown(KnownDevice known) async {
-    final present = _findPresent(known);
-    if (present != null) return present;
-    await _client.refreshBleKnown();
-    final found = _findPresent(known);
-    if (found != null) return found;
-    await _client.scanBle(timeout: const Duration(seconds: 8));
-    return _findPresent(known);
   }
 
   FlipperDevice? _findPresent(KnownDevice known) {
