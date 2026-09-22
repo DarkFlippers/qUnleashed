@@ -113,6 +113,87 @@ class FirmwareInstaller {
     }
   }
 
+  /// Waits for [client] to come back after a recovery flash.
+  ///
+  /// True if it did, false if it did not - a bad cable, a device that needs a
+  /// manual power cycle, or a flash that left it unable to boot. The deadline
+  /// is a return value rather than an exception because it is an outcome of
+  /// the recovery, not a fault in the wait: whoever called has a transitional
+  /// state to leave either way.
+  ///
+  /// It lives here rather than in the button because the state being waited
+  /// out is the one this class enters - see the `UpdateWaitingForReconnect`
+  /// below, which is the only place it is ever emitted. The button was just
+  /// where the waiting happened to be written. #118.
+  ///
+  /// Not [FlipperClient.waitForRpcSession], which has the same shape and is
+  /// not the same question. That one ends early on a terminal disconnect and
+  /// requires a live transport, both right for a session that faulted and
+  /// should come back - and both wrong here, where the device has just been
+  /// flashed, is deliberately gone, and has to re-enumerate before any
+  /// transport exists. It would report a brick the moment the old link died.
+  static Future<bool> awaitReconnect(
+    FlipperClient client, {
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    if (client.isConnected) return true;
+    // The subscription is owned rather than left to `firstWhere`, because
+    // `Future.timeout` times out the future and cannot reach the work behind
+    // it: every recovery that ran out of time used to leave a listener on a
+    // broadcast stream that lives as long as the client. Owning it also means
+    // a stream that ends or errors is an outcome this can name, instead of
+    // `firstWhere` raising a bare `StateError` for a closed stream.
+    final done = Completer<bool>();
+    void finish(bool back) {
+      if (!done.isCompleted) done.complete(back);
+    }
+
+    final sub = client.connectionStream.listen(
+      (_) {
+        if (client.isConnected) finish(true);
+      },
+      // An error does not end a broadcast stream, so the reconnect can still
+      // arrive: this is recorded and the wait runs on to the deadline. Ending
+      // it here would turn one spurious error into a reported brick.
+      onError: (Object e, StackTrace st) => LogService.warn(
+        '$_tag reconnect wait saw a stream error: '
+        '${LogService.describe(e, st)}',
+      ),
+      // The link ending says nothing about the device, and it ends
+      // milliseconds after the flash rather than half a minute later - so
+      // reporting a brick would be a guess written into the log as a fact, on
+      // the most consequential screen in the app. Asking the client is the
+      // only honest answer left, and it is only worth a line when the answer
+      // is no: a device that came back quietly is a success, not a warning.
+      onDone: () {
+        if (!done.isCompleted && !client.isConnected) {
+          LogService.warn('$_tag reconnect wait ended without an answer');
+        }
+        finish(client.isConnected);
+      },
+    );
+    try {
+      return await done.future.timeout(timeout);
+    } on TimeoutException catch (e, st) {
+      // error, not the commentary helper: the device was flashed and did not
+      // come back, which is the worst outcome this app produces. Before #118
+      // this exception was caught and dropped, so the one session most worth
+      // reading a bug report about held nothing at all.
+      LogService.error(
+        '$_tag device did not reconnect after recovery: '
+        '${LogService.describe(e, st)}',
+      );
+      return false;
+    } finally {
+      // Cancelled but not awaited. Releasing the listener is the whole reason
+      // this owns the subscription; when that teardown finishes is nobody's
+      // business, and the answer is already in hand. Awaiting it also wedged
+      // the wait under the widget-test clock, where the cancel future did not
+      // resolve inside a pump.
+      unawaited(sub.cancel());
+    }
+  }
+
   static Future<void> _installViaDfu(
     List<_UpdateFile> files,
     void Function(UpdateState) onState,

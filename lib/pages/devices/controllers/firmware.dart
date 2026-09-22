@@ -21,8 +21,14 @@ class FirmwareController extends ChangeNotifier {
 
   final Map<String, _Selection> _selections = {};
 
-  bool fetchLoadingFor(FirmwareEntry entry) =>
-      _repo.isLoading(entry) || _repo.directoryFor(entry) == null;
+  /// What [entry]'s directory is doing. See [FirmwareFetchState].
+  ///
+  /// Before #118 this was a bool derived from a missing directory, and a fetch
+  /// that failed never gets one - so the card's version line read "Checking…"
+  /// and its channel dropdown "Loading…" for the rest of the session, on every
+  /// firmware, with nothing anywhere to say why.
+  FirmwareFetchState fetchStateFor(FirmwareEntry entry) =>
+      _repo.stateFor(entry);
 
   List<FirmwareDirectoryChannel> channelsFor(FirmwareEntry entry) =>
       _channelsForDirectory(_repo.directoryFor(entry));
