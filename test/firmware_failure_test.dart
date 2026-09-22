@@ -166,6 +166,9 @@ void main() {
   /// How many directory requests the feed has been asked for.
   var fetchCalls = 0;
 
+  /// Controllers a test has already stopped, so a teardown does not repeat it.
+  final closed = <DeviceController>{};
+
   final repo = FirmwareRepository.instance;
   final firmwares = QAppConfig.firmware.firmwares;
   final unleashed = firmwares.firstWhere((f) => f.shortName == 'unlshd');
@@ -185,6 +188,7 @@ void main() {
   void feedFails(Object error) => feedEvery((_) async => throw error);
 
   setUp(() {
+    closed.clear();
     LogService.clearHistory();
     SharedPreferences.setMockInitialValues(const {});
     UpdateSettingsStore.instance.reset();
@@ -200,18 +204,34 @@ void main() {
     feedWorks();
   });
 
-  /// A device controller and a client for a widget test, both torn down.
+  /// A device controller and a client for a widget test.
   ///
-  /// The controller is real: it constructs fine under `flutter test`, and the
-  /// two widgets here both need a `DeviceScope` carrying one.
+  /// The controller is real: it constructs fine under `flutter test`, and both
+  /// widgets here need a `DeviceScope` carrying one.
+  ///
+  /// A widget test that presses the button must end with [closeDevice].
+  /// `setRecovering` starts the DFU detector, and where libusb is present -
+  /// Linux CI, not a Windows dev box - that polls on a one-second periodic
+  /// timer. The binding checks for live timers before tearDown runs, so
+  /// disposing from the teardown alone is too late and the test fails with a
+  /// pending timer rather than on its assertions.
   (DeviceController, _FakeClient) mountedDevice() {
     final device = DeviceController();
     final client = _FakeClient();
     addTearDown(() async {
-      device.dispose();
+      if (closed.add(device)) device.dispose();
       await client.close();
     });
     return (device, client);
+  }
+
+  /// Tears the tree down and stops the controller's timers, inside the body.
+  Future<void> closeDevice(WidgetTester tester, DeviceController device) async {
+    await tester.pumpWidget(const SizedBox());
+    if (closed.add(device)) device.dispose();
+    // Disposing arms teardown timers of its own - the Windows hotplug watcher
+    // sets a one-second one - so let those expire in the body as well.
+    await tester.pump(const Duration(seconds: 2));
   }
 
   List<String> keptAbout(String fragment) =>
@@ -782,6 +802,7 @@ void main() {
       expect(keptAbout('did not reconnect after recovery'), hasLength(1));
 
       await drainToast(tester);
+      await closeDevice(tester, device);
     });
 
     // install() picks the DFU path from client.isConnected long after the
@@ -819,6 +840,7 @@ void main() {
       expect(keptAbout('did not reconnect after recovery'), hasLength(1));
 
       await drainToast(tester);
+      await closeDevice(tester, device);
     });
 
     Future<void> pumpIdle(WidgetTester tester, Widget w) async {
@@ -897,6 +919,8 @@ void main() {
 
       expect(find.text(l10n.fwuRecovered), findsWidgets);
       expect(find.text(l10n.fwuRecoveryNoReconnect), findsNothing);
+
+      await closeDevice(tester, device);
     });
 
     testWidgets('an install that could not start is kept', (tester) async {
@@ -920,6 +944,7 @@ void main() {
       expect(find.text(l10n.fwuLabelRepair.toUpperCase()), findsOneWidget);
 
       await drainToast(tester);
+      await closeDevice(tester, device);
     });
 
     // The changelog page hosts this same button, so leaving either screen
@@ -945,6 +970,8 @@ void main() {
       await elapsePastReconnectDeadline(tester);
 
       expect(keptAbout('did not reconnect after recovery'), hasLength(1));
+
+      await closeDevice(tester, device);
     });
   });
 
