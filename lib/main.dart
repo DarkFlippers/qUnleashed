@@ -31,12 +31,16 @@ Future<void> widgetMain() async {
 
 /// Everything that has to exist before there is a UI.
 ///
-/// The three controller loads below read preferences and do not catch, so a
-/// store that will not open stops the app here rather than behind a blank
-/// screen. That is also what lets `DeviceSettings`, `MapSettings` and
-/// `HomeWidgetSettings` decline to retry their own reads: past this point
-/// `SharedPreferences.getInstance` holds a memoised success and cannot fail.
-/// Guarding these - which #124 proposes - means revisiting that.
+/// Nothing in here may reject. `main()` awaits it ahead of `runApp`, and
+/// `widgetMain()` awaits it with no UI at all, so a throw is not a setting
+/// that falls back - it is an app that never appears, on either entry point.
+/// Every call below that touches the disk or a platform channel carries its
+/// own catch for that reason: the three preference reads and the assembler's
+/// status probe (#124), and the BLE log level inside `initialize`.
+///
+/// `LogService.initialize()` goes first so the rest have somewhere to report
+/// to. Its own uncaught-error handlers are installed before anything it
+/// awaits, so even a failure inside it is kept.
 Future<void> _initCore() async {
   WidgetsFlutterBinding.ensureInitialized();
   registerAppRoutes();

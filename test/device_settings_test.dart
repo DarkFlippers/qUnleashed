@@ -158,22 +158,23 @@ void main() {
     expect(settings.loaded, isFalse);
   });
 
-  // Not a wish for a retry, a record that there is none. getInstance
-  // memoises success for the process and only drops its own memo on failure,
-  // and main() reads preferences through three other controllers before
-  // runApp - so a store that fails here means the app did not start. A later
-  // change to re-read should be a deliberate one.
-  test('a failed read is not retried by the next caller', () async {
+  // #124 guarded the three reads main() makes before runApp, so a store that
+  // will not open no longer stops the app - which means this catch is
+  // reachable in a running session, and a transient fault should heal on the
+  // next read. Bounded: _tryAutoConnect awaits load() on a debounce fired by
+  // cable events, so it is one round-trip per plug, not a loop.
+  test('a failed read is retried by the next caller', () async {
     useUnopenablePrefs();
     addTearDown(settings.reset);
 
     await settings.load();
-    LogService.clearHistory();
+    expect(settings.loaded, isFalse);
+
     SharedPreferences.setMockInitialValues(stored);
     await settings.load();
 
-    expect(LogService.history, isEmpty);
-    expect(snapshot(), defaults, reason: 'still the defaults, not re-read');
+    expect(settings.autoConnectUsb, isTrue, reason: 'read again');
+    expect(settings.loaded, isTrue);
   });
 
   test('reset puts every field back', () async {

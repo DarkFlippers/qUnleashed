@@ -57,14 +57,14 @@ class DeviceSettings extends ChangeNotifier {
       // See MapSettings for the long version: getInstance is the only throw,
       // it carries a stack only when the error is an Error, the fields are
       // all-or-nothing because every read below goes through PrefsReader, and
-      // _loading is deliberately left set rather than released for a retry
-      // that has nothing to retry.
+      // _loading is released so the next caller reads again - see there for
+      // why #124 changed that answer.
       //
-      // Here the retry would also cost something real: _tryAutoConnect awaits
-      // load() on a 250ms debounce, so a permanently broken store would
-      // re-cross the platform channel on every cable event, and the warns
-      // would interleave with its own and stop coalescing.
+      // The retry is bounded here: _tryAutoConnect awaits load() on a 250ms
+      // debounce fired by cable events, so a permanently broken store costs
+      // one platform round-trip per plug rather than a loop.
 
+      _loading = null;
       LogService.warn(
         '[DeviceSettings] load failed: ${LogService.describe(e, st)}',
       );
@@ -76,14 +76,9 @@ class DeviceSettings extends ChangeNotifier {
     _syncTimeOnStart = reader.or(_prefSyncTime, _defaultSyncTimeOnStart);
     _loaded = true;
 
-    if (reader.mismatched.isNotEmpty) {
-      // Once per load rather than once per key, and it names them: the
-      // setting reverted to its default and the user has no other sign.
-      LogService.warn(
-        '[DeviceSettings] ignored ${reader.mismatched.length} stored '
-        'preference(s) of the wrong type: ${reader.mismatched.join(', ')}',
-      );
-    }
+    // The setting reverted to its default and the three toggles this
+    // store holds say nothing about it.
+    reader.report('[DeviceSettings]');
     notifyListeners();
   }
 

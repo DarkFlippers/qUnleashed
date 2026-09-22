@@ -3,6 +3,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../components/config.dart';
 import '../services/localization/l10n.dart';
+import '../services/logging.dart';
+import '../services/prefs_reader.dart';
 
 enum QThemeMode {
   firmware,
@@ -66,8 +68,24 @@ class QAppThemeController extends ChangeNotifier with WidgetsBindingObserver {
       firmware.shortName.toLowerCase() == 'unlshd';
 
   Future<void> loadThemeMode() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_prefThemeMode);
+    final PrefsReader reader;
+    try {
+      reader = PrefsReader(await SharedPreferences.getInstance());
+    } catch (e, st) {
+      // `_initCore` awaits this, and both entry points await that: `main`
+      // ahead of `runApp`, `widgetMain` with no UI at all. So a rejection
+      // here is not a theme that falls back - it is an app that never
+      // appears, or a widget engine whose link keeper never comes up.
+      //
+      // installUncaughtHandlers would still keep the error, but `history` is
+      // in memory and there is no log screen to read it from, so the record
+      // dies with the process. Caught, it survives into a session someone
+      // can look at. #124.
+      LogService.warn('[AppTheme] load failed: ${LogService.describe(e, st)}');
+      return;
+    }
+    final raw = reader.orNull<String>(_prefThemeMode);
+    reader.report('[AppTheme]');
     if (raw == null) return;
     for (final mode in QThemeMode.values) {
       if (mode.name == raw) {

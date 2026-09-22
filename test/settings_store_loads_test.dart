@@ -242,21 +242,21 @@ void main() {
       },
     );
 
-    // Not a wish for a retry, a record that there is none. getInstance
-    // memoises success for the process and only drops its own memo on
-    // failure, and main() reads preferences through three other controllers
-    // before runApp - so a store that fails here means the app did not start.
-    // A later change to re-read should be a deliberate one.
-    test('a failed read is not retried by the next caller', () async {
+    // #124 guarded the three reads main() makes before runApp, so a store
+    // that will not open no longer stops the app - which means this catch
+    // is reachable in a running session, and a transient fault should heal
+    // on the next read rather than pin the defaults for the process.
+    test('a failed read is retried by the next caller', () async {
       useUnopenablePrefs();
 
       await map.load();
-      LogService.clearHistory();
+      expect(map.loaded, isFalse);
+
       SharedPreferences.setMockInitialValues(stored);
       await map.load();
 
-      expect(LogService.history, isEmpty);
-      expect(snapshot(), defaults, reason: 'still the defaults, not re-read');
+      expect(map.provider.id, 'osm', reason: 'read again, not memoised');
+      expect(map.loaded, isTrue);
     });
 
     test('reset puts every field back', () async {
@@ -404,16 +404,21 @@ void main() {
       },
     );
 
-    test('a failed read is not retried by the next caller', () async {
+    // #124 guarded the three reads main() makes before runApp, so a store
+    // that will not open no longer stops the app - which means this catch
+    // is reachable in a running session, and a transient fault should heal
+    // on the next read rather than pin the defaults for the process.
+    test('a failed read is retried by the next caller', () async {
       useUnopenablePrefs();
 
       await widgets.load();
-      LogService.clearHistory();
+      expect(widgets.loaded, isFalse);
+
       SharedPreferences.setMockInitialValues(stored);
       await widgets.load();
 
-      expect(LogService.history, isEmpty);
-      expect(snapshot(), defaults);
+      expect(widgets.theme, WidgetTheme.material);
+      expect(widgets.loaded, isTrue);
     });
 
     test('reset puts every field back', () async {
