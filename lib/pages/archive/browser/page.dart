@@ -175,7 +175,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
   }
 
   Future<void> _connect() async {
-    await promptConnectDevice(context, _ctrl.client);
+    await promptConnectDevice(context);
     if (!mounted || !_ctrl.client.isConnected) return;
     await _ctrl.refresh();
   }

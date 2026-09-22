@@ -257,7 +257,7 @@ class _CategoryPageState extends State<CategoryPage> {
       return;
     }
     if (!_ctrl.isConnected) {
-      unawaited(promptConnectDevice(context, _ctrl.client));
+      unawaited(promptConnectDevice(context));
       return;
     }
     unawaited(_ctrl.syncCategory(_cat));

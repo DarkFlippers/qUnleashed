@@ -1,50 +1,61 @@
-import '../../services/localization/l10n.dart';
 import 'dart:async';
 
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
-import '../../theme/theme.dart';
+import '../../services/connection/link_service.dart';
+import '../../services/localization/l10n.dart';
 import '../../services/logging.dart';
+import '../../theme/theme.dart';
 import 'connection_error.dart';
 
 Future<FlipperDevice?> showConnectionDialog(
   BuildContext context, {
   bool usbOnly = false,
-  bool skipRpc = false,
 }) {
   return showDialog<FlipperDevice>(
     context: context,
     barrierColor: FlipperOriginalColors.barrier,
-    builder: (_) => ConnectionDialog(usbOnly: usbOnly, skipRpc: skipRpc),
+    builder: (_) => ConnectionDialog(usbOnly: usbOnly),
   );
 }
 
-/// Picks a device with [showConnectionDialog] and links [client] to it,
-/// reporting a failed attempt with the shared error dialog.
-Future<void> promptConnectDevice(
-  BuildContext context,
-  FlipperClient client,
-) async {
+/// Picks a device with [showConnectionDialog] and opens its link, reporting
+/// a failed attempt with the shared error dialog.
+Future<void> promptConnectDevice(BuildContext context) async {
   final selected = await showConnectionDialog(context);
   if (selected == null || !context.mounted) return;
+  await connectPickedDevice(context, selected);
+}
+
+Future<void> connectPickedDevice(
+  BuildContext context,
+  FlipperDevice device,
+) async {
   try {
-    await client.connect(selected);
+    await LinkService.instance.connectDevice(device);
   } catch (e) {
     if (!context.mounted) return;
-    await showConnectionFailedDialog(context, e, isBle: selected.isBle);
+    await showConnectionFailedDialog(context, e, isBle: device.isBle);
+  }
+}
+
+/// Opens the link of a connection-list row, reporting a failed attempt with
+/// the shared error dialog. A remembered BLE device that stayed silent is not
+/// a failure: the row itself shows it as out of range.
+Future<void> connectLinkEntry(BuildContext context, LinkEntry entry) async {
+  try {
+    await LinkService.instance.connect(entry);
+  } catch (e) {
+    if (!context.mounted) return;
+    await showConnectionFailedDialog(context, e, isBle: entry.isBle);
   }
 }
 
 class ConnectionDialog extends StatefulWidget {
-  const ConnectionDialog({
-    super.key,
-    this.usbOnly = false,
-    this.skipRpc = false,
-  });
+  const ConnectionDialog({super.key, this.usbOnly = false});
 
   final bool usbOnly;
-  final bool skipRpc;
 
   @override
   State<ConnectionDialog> createState() => _ConnectionDialogState();
@@ -54,106 +65,40 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
   final FlipperClient _client = FlipperOneClient().get();
 
   StreamSubscription<List<FlipperDevice>>? _devicesSub;
-  StreamSubscription<void>? _usbEventsSub;
-  StreamSubscription<FlipperConnectionState>? _connSub;
+  StreamSubscription<List<FlipperSessionInfo>>? _sessionsSub;
   bool _scanning = false;
   bool _filterEnabled = true;
   List<FlipperDevice> _displayed = [];
-
-  // Active session, tracked live so the connected device's list row can show
-  // the connected icon and an inline disconnect button (a proper transport
-  // teardown -> GATT disconnect).
-  FlipperDevice? _connectedDevice;
-  // In-flight connect attempt. A stuck attempt is the state that holds the
-  // radio and blocks scanning, so it must be shown here with a cancel action;
-  // it is otherwise invisible (no committed session yet).
-  FlipperDevice? _connectingDevice;
-  bool _disconnecting = false;
-
-  // The device the dialog is bound to right now (committed or in flight). Null
-  // when idle.
-  FlipperDevice? get _activeDevice => _connectedDevice ?? _connectingDevice;
+  List<FlipperSessionInfo> _sessions = const [];
+  final Set<String> _disconnecting = {};
 
   @override
   void initState() {
     super.initState();
+    _sessions = _client.sessions;
     _devicesSub = _client.devicesStream.listen(_onDevicesUpdate);
-    _connectedDevice = _client.isConnected ? _client.connectedDevice : null;
-    _connectingDevice = _client.isConnecting ? _client.connectingDevice : null;
-    _connSub = _client.connectionStream.listen(_onConnectionState);
+    _sessionsSub = _client.sessionsStream.listen(_onSessionsUpdate);
     _displayed = _filterDevices(_client.devices);
-    // Only kick off a scan when no connect attempt holds the radio. A live
-    // session no longer blocks scanning — that is how a second device gets
-    // discovered while the first stays connected. The in-flight device is
-    // injected into the list by _filterDevices, so its row (with a cancel
-    // button) shows without needing a scan.
-    if (!_client.isConnecting) {
-      _startScan();
-    }
-    // Refresh USB devices on hotplug events instead of polling on a timer.
-    _usbEventsSub = _client.usbEvents.listen((_) => _refreshUsb());
+    if (!_client.isConnecting) _startScan();
   }
 
   @override
   void dispose() {
-    _usbEventsSub?.cancel();
     _devicesSub?.cancel();
-    _connSub?.cancel();
+    _sessionsSub?.cancel();
     _client.stopScan();
     super.dispose();
   }
 
-  void _onConnectionState(FlipperConnectionState state) {
-    if (!mounted) return;
-    setState(() {
-      if (state.connecting) {
-        // Attempt in flight: show it so the user can cancel a stuck connect.
-        _connectingDevice = state.device;
-      } else if (state.connected) {
-        _connectedDevice = state.device ?? _client.connectedDevice;
-        _connectingDevice = null;
-        _disconnecting = false;
-      } else if (!state.reconnecting) {
-        // Terminal disconnect (not a transient reconnect): clear everything.
-        _connectedDevice = null;
-        _connectingDevice = null;
-        _disconnecting = false;
-      }
-      // While reconnecting, keep the last known device so the row stays marked.
-      // Recompute the list so the device row appears/disappears live.
-      _displayed = _filterDevices(_client.devices);
-    });
-  }
+  static String _keyOf(FlipperDevice device) =>
+      '${device.link.name}:${device.id}';
 
-  Future<void> _disconnect() async {
-    if (_disconnecting) return;
-    setState(() => _disconnecting = true);
-    try {
-      // disconnect() runs the single teardown path: it closes the transport,
-      // which on BLE issues the real GATT disconnect (cancelPeripheralConnection)
-      // instead of just dropping the app-side handle. When a connect is still in
-      // flight it also aborts the platform attempt, so a stuck connect tears
-      // down now instead of after the full connect timeout.
-      await _client.disconnect();
-    } catch (e) {
-      // The finally below clears _connectedDevice whatever happened, so the
-      // picker shows disconnected. Transport.close guards its own doClose, so
-      // most of what reaches here is the unguarded remainder of the teardown
-      // - thin, but nothing else holds it.
-      LogService.warn('[Picker] disconnect error: $e');
-    } finally {
-      if (mounted) {
-        setState(() {
-          _disconnecting = false;
-          _connectedDevice = null;
-          _connectingDevice = null;
-        });
-      }
+  FlipperSessionInfo? _sessionOf(FlipperDevice device) {
+    for (final session in _sessions) {
+      if (_keyOf(session.device) == _keyOf(device)) return session;
     }
+    return null;
   }
-
-  bool _isSameDevice(FlipperDevice? a, FlipperDevice b) =>
-      a != null && a.link == b.link && a.id == b.id;
 
   Future<void> _startScan() async {
     if (_scanning) return;
@@ -166,10 +111,6 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
         await _client.refreshDevices(bleTimeout: const Duration(seconds: 10));
       }
     } catch (e) {
-      // Both refresh calls empty _devices before the work that can throw, so
-      // the finally rebuilds _displayed from a partial map: held sessions and
-      // USB, without the BLE scan that failed. A short list reads as the
-      // whole list. #120 has the dialog this file already imports.
       LogService.warn('[Picker] scan error: $e');
     } finally {
       if (mounted) {
@@ -181,24 +122,35 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
     }
   }
 
-  Future<void> _refreshUsb() async {
-    if (!mounted) return;
+  Future<void> _disconnect(FlipperDevice device) async {
+    final key = _keyOf(device);
+    if (!_disconnecting.add(key)) return;
+    setState(() {});
     try {
-      await _client.refreshUsbOnly();
+      await LinkService.instance.disconnectDevice(
+        device,
+        id: device.id,
+        link: device.link,
+      );
     } catch (e) {
-      // refreshUsbOnly drops the USB entries before it reloads them, so a
-      // throw does not leave the old list - it leaves none, and rows the user
-      // could see disappear on the plug event that should have added one.
-      // Android only: desktop's enumeration catches it and logs at error.
-      LogService.warn('[Picker] usb refresh error: $e');
+      LogService.warn('[Picker] disconnect error: $e');
+    } finally {
+      _disconnecting.remove(key);
+      if (mounted) setState(() {});
     }
-    if (!mounted) return;
-    setState(() => _displayed = _filterDevices(_client.devices));
   }
 
   void _onDevicesUpdate(List<FlipperDevice> devices) {
     if (!mounted) return;
     setState(() => _displayed = _filterDevices(devices));
+  }
+
+  void _onSessionsUpdate(List<FlipperSessionInfo> sessions) {
+    if (!mounted) return;
+    setState(() {
+      _sessions = sessions;
+      _displayed = _filterDevices(_client.devices);
+    });
   }
 
   List<FlipperDevice> _filterDevices(List<FlipperDevice> devices) {
@@ -210,15 +162,12 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
       filtered = filtered.where(_client.isFlipperDevice);
     }
     final result = filtered.toList();
-    // Always surface the active device (connected or connect-in-flight), even
-    // when it is absent from the scan results — a scan cannot run while the
-    // radio is busy. Without this the device would have no row, so there would
-    // be no disconnect/cancel button.
-    final active = _activeDevice;
-    if (active != null &&
-        (!widget.usbOnly || active.isUsb) &&
-        !result.any((d) => _isSameDevice(active, d))) {
-      result.insert(0, active);
+    final listed = {for (final d in result) _keyOf(d)};
+    for (final session in _sessions.reversed) {
+      final device = session.device;
+      if (!(session.connected || session.connecting)) continue;
+      if (widget.usbOnly && !device.isUsb) continue;
+      if (listed.add(_keyOf(device))) result.insert(0, device);
     }
     return result;
   }
@@ -327,21 +276,20 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
           Divider(height: 1, color: FlipperOriginalColors.dialogDivider),
       itemBuilder: (_, i) {
         final device = _displayed[i];
-        final connected = _isSameDevice(_connectedDevice, device);
-        final connecting =
-            !connected && _isSameDevice(_connectingDevice, device);
-        final active = connected || connecting;
+        final session = _sessionOf(device);
+        final connecting = session?.connecting ?? false;
+        final connected = !connecting && (session?.connected ?? false);
+        final active = connected && session!.active;
+        final held = connected || connecting;
         return _DeviceListItem(
           device: device,
           connected: connected,
           connecting: connecting,
-          disconnecting: active && _disconnecting,
-          // Both states expose teardown: disconnect a live session, or cancel a
-          // stuck connect attempt.
-          onDisconnect: active ? _disconnect : null,
-          // The active row is acted on through its disconnect/cancel button;
-          // tapping it to "select" would only kick off a redundant reconnect.
-          onTap: active ? null : () => Navigator.of(context).pop(device),
+          disconnecting: held && _disconnecting.contains(_keyOf(device)),
+          onDisconnect: held ? () => _disconnect(device) : null,
+          onTap: active || connecting
+              ? null
+              : () => Navigator.of(context).pop(device),
         );
       },
     );
@@ -383,11 +331,8 @@ class _DeviceListItem extends StatelessWidget {
   final bool disconnecting;
   final VoidCallback? onDisconnect;
 
-  bool get _active => connected || connecting;
+  bool get _held => connected || connecting;
 
-  // Trailing control for the active row. A bare icon (no IconButton box / hover
-  // state-layer) keeps the row the same height as the others, so the separator
-  // below is not painted over near the icon.
   Widget _buildTrailing(QAppColors colors) {
     if (disconnecting) {
       return SizedBox(
@@ -413,8 +358,6 @@ class _DeviceListItem extends StatelessWidget {
       ),
     );
     if (!connecting) return action;
-    // While connecting, pair a progress spinner with the cancel control so the
-    // in-flight attempt reads as active, not already connected.
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -436,10 +379,10 @@ class _DeviceListItem extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final isBle = device.isBle;
-
-    final displayName = device.name;
     final subtitle = connecting
         ? context.l10n.pickerConnecting
+        : connected
+        ? context.l10n.connectTapToSwitch
         : (isBle ? device.id : (device.serialNumber ?? device.id));
 
     return InkWell(
@@ -450,7 +393,7 @@ class _DeviceListItem extends StatelessWidget {
           children: [
             Icon(
               isBle
-                  ? (_active ? Icons.bluetooth_connected : Icons.bluetooth)
+                  ? (_held ? Icons.bluetooth_connected : Icons.bluetooth)
                   : Icons.usb,
               color: isBle ? colors.info : colors.accent,
               size: 28,
@@ -461,7 +404,7 @@ class _DeviceListItem extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    displayName,
+                    device.name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -480,7 +423,7 @@ class _DeviceListItem extends StatelessWidget {
                 ],
               ),
             ),
-            if (_active)
+            if (_held)
               Padding(
                 padding: const EdgeInsets.only(left: 12),
                 child: _buildTrailing(colors),
