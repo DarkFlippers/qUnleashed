@@ -236,7 +236,7 @@ class DeviceInfoWatchService {
         if (_freezeCount > 0 ||
             client.storageBusy ||
             !client.isRpcReady ||
-            client.cliExclusive) {
+            client.cliHeld) {
           // The link is occupied; check again after another quiet window.
           scheduleStorageRefresh();
           return;
@@ -262,7 +262,7 @@ class DeviceInfoWatchService {
         // A CLI session owns the transport: polling would only throw
         // "RPC switch blocked" every tick and spam the log. Skip quietly and
         // resume once the client is back in RPC mode.
-        if (!client.isRpcReady || client.cliExclusive) continue;
+        if (!client.isRpcReady || client.cliHeld) continue;
         // Frozen while storage operations run: a battery poll queued behind
         // a long transfer would only time out and spam errors.
         if (client.storageBusy) continue;

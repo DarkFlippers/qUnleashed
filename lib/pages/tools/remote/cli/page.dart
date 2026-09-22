@@ -36,6 +36,7 @@ class _CliPageState extends State<CliPage> {
   late final Terminal _terminal;
   late final TerminalController _terminalController;
 
+  FlipperCliChannel? _channel;
   StreamSubscription<String>? _textSub;
   StreamSubscription<FlipperConnectionState>? _connSub;
 
@@ -70,9 +71,6 @@ class _CliPageState extends State<CliPage> {
       platform: _platform,
     );
     _terminalController = TerminalController();
-    _client.cliExclusive = true;
-    _connSub = _client.connectionStream.listen(_onConnectionState);
-    _textSub = _client.textStream.listen(_onText);
     WidgetsBinding.instance.addPostFrameCallback((_) => _bootstrap());
   }
 
@@ -121,54 +119,40 @@ class _CliPageState extends State<CliPage> {
   void dispose() {
     _textSub?.cancel();
     _connSub?.cancel();
-    // Stays ahead of enterRpcMode: switchToRpcMode refuses outright while
-    // cliExclusive is set, so reordering these two breaks every USB teardown.
-    _client.cliExclusive = false;
 
     // dispose() cannot be async, so there is nowhere to await either of these
     // and no UI left to report into if they fail. Best effort, logged.
     //
-    // The interrupt goes first and the switch waits for it. Unsequenced, the
-    // two raced: _doSwitchToRpcMode flips mode partway through, so the ctrl-c
-    // either arrived after it and died on "Cannot send CLI bytes while in RPC
-    // mode" - logged as though the cable had been pulled - or landed as a
-    // stray 0x03 inside an RPC stream.
+    // The interrupt goes first and the close waits for it. Unsequenced, the
+    // two raced: the RPC switch inside close flips mode partway through, so
+    // the ctrl-c either arrived after it and died on "Cannot send CLI bytes
+    // while in RPC mode" - logged as though the cable had been pulled - or
+    // landed as a stray 0x03 inside an RPC stream.
     //
     // The wait is bounded because the write need not ever finish: desktop USB
     // hands it to an isolate and waits on a completer with no timeout of its
     // own, where Android's has ten seconds. Bounding it narrows the race
     // rather than closing it, since a timeout abandons the wait without
     // cancelling the write - the bytes are still in the transport's pump and
-    // can still land late. Holding the restore open for the life of the
-    // process is the worse trade. Note for tests: a dispose with a write in
-    // flight leaves this timer pending, so they have to pump past it.
-    //
-    // Everything about the client is read here, synchronously, rather than
-    // inside the chain. Read two seconds later, connectedDevice may be null
-    // and the BLE test would invert; and holding _client in the closure keeps
-    // a disposed State alive with it.
-    final client = _client;
-    final device = client.connectedDevice;
-    final restoreRpc = device?.isBle != true;
+    // can still land late. Holding the close open for the life of the process
+    // is the worse trade. Note for tests: a dispose with a write in flight
+    // leaves this timer pending, so they have to pump past it.
+    final channel = _channel;
+    final awaitingInterrupt = _awaitingInterrupt;
 
     Future<void> teardown() async {
-      if (_awaitingInterrupt) {
+      if (channel == null) return;
+      if (awaitingInterrupt) {
         // The bound is inside the task rather than around guarded, so a
         // TimeoutException is reported like any other failure here.
         await guarded(
           '[CLI] ctrl-c on dispose',
-          () =>
-              client.writeCliBytes(_ctrlC).timeout(const Duration(seconds: 2)),
+          () => channel.write(_ctrlC).timeout(const Duration(seconds: 2)),
         );
       }
-      // Not the session this page had, by now: the wait above can span a
-      // couple of seconds, and cliExclusive is re-read from whatever session
-      // is active, so a fresh CLI page would not be protected from this. It
-      // would be switched to RPC mode under itself and its nudge would fail.
-      if (!restoreRpc || !identical(client.connectedDevice, device)) return;
-      // enterRpcMode returns quietly when the session is already gone, but the
-      // switch it returns can still reject.
-      await guarded('[CLI] leaving cli mode', client.enterRpcMode);
+      // The channel is bound to the session this page opened, so a fresh CLI
+      // page on another device is never handed back to RPC under itself.
+      await guarded('[CLI] leaving cli mode', channel.close);
     }
 
     unawaited(teardown());
@@ -188,11 +172,12 @@ class _CliPageState extends State<CliPage> {
   }
 
   void _onTerminalOutput(String data) {
-    if (!_ready) return;
+    final channel = _channel;
+    if (!_ready || channel == null) return;
     // utf8.encode returns a Uint8List already; wrapping it in
     // Uint8List.fromList copied the buffer once per keystroke.
     final bytes = utf8.encode(data);
-    _fireAndShow(() => _client.writeCliBytes(bytes), 'write');
+    _fireAndShow(() => channel.write(bytes), 'write');
   }
 
   Future<void> _bootstrap() async {
@@ -200,17 +185,11 @@ class _CliPageState extends State<CliPage> {
     _busy = true;
     try {
       final device = _client.connectedDevice;
-      if (device == null) {
+      if (device == null || !device.isUsb) {
         await _promptForDevice();
         return;
       }
-      if (device.isBle) {
-        if (mounted) {
-          Navigator.of(context).maybePop();
-        }
-        return;
-      }
-      await _resetUsbCliSession(device);
+      await _openChannel(device);
     } catch (e, st) {
       // Everything the inner handlers do not already report: a throw out of
       // the connection dialog, a Navigator error, setState on a dead element -
@@ -227,44 +206,26 @@ class _CliPageState extends State<CliPage> {
 
   Future<void> _promptForDevice() async {
     if (!mounted) return;
-    final selected = await showConnectionDialog(
-      context,
-      usbOnly: true,
-      skipRpc: true,
-    );
+    final selected = await showConnectionDialog(context, usbOnly: true);
     if (!mounted) return;
-    if (selected == null) {
+    if (selected == null || !selected.isUsb) {
       Navigator.of(context).maybePop();
       return;
     }
-    if (selected.isBle) {
-      return;
-    }
+    await _openChannel(selected);
+  }
+
+  /// One call whatever the link is in: no session opens one, a session in RPC
+  /// is switched over, a session already in CLI is used as it is.
+  Future<void> _openChannel(FlipperDevice device) async {
+    final FlipperCliChannel channel;
     try {
-      await _client.connect(selected, autoRpc: false);
+      channel = await _client.openCli(device);
     } catch (e, st) {
-      LogService.error('[CLI] connect failed: $e\n$st');
+      LogService.error('[CLI] open failed: $e\n$st');
       // Into the terminal before the dialog, not after: if the dialog itself
       // throws, this is the only place the real reason survives - the outer
       // catch would otherwise draw the dialog's failure instead.
-      if (mounted) _notice(l10n.cliStartFailed('$e'));
-      await _showConnectionFailedDialog(selected, e);
-      if (mounted) {
-        Navigator.of(context).maybePop();
-      }
-      return;
-    }
-    await _enterCliReady();
-  }
-
-  Future<void> _resetUsbCliSession(FlipperDevice device) async {
-    try {
-      await _client.disconnect();
-      await _client.connect(device, autoRpc: false);
-    } catch (e, st) {
-      LogService.error('[CLI] reconnect failed: $e\n$st');
-      // As above: the reason reaches the scrollback before anything that could
-      // throw on the way to showing it.
       if (mounted) _notice(l10n.cliStartFailed('$e'));
       await _showConnectionFailedDialog(device, e);
       if (mounted) {
@@ -272,6 +233,13 @@ class _CliPageState extends State<CliPage> {
       }
       return;
     }
+    if (!mounted) {
+      unawaited(guarded('[CLI] close after leaving', channel.close));
+      return;
+    }
+    _channel = channel;
+    _connSub = channel.connection.listen(_onConnectionState);
+    _textSub = channel.text.listen(_onText);
     await _enterCliReady();
   }
 
@@ -284,11 +252,12 @@ class _CliPageState extends State<CliPage> {
   }
 
   Future<void> _enterCliReady() async {
-    if (!mounted) return;
+    final channel = _channel;
+    if (!mounted || channel == null) return;
     await Future<void>.delayed(const Duration(milliseconds: 500));
     if (!mounted) return;
     try {
-      await _client.writeCliBytes(_cliNudge);
+      await channel.write(_cliNudge);
     } catch (e, st) {
       // Ready is claimed after the nudge lands, not before it is sent. Claimed
       // first, a nudge that failed left a black terminal that took every
@@ -350,8 +319,9 @@ class _CliPageState extends State<CliPage> {
   }
 
   void _sendCtrlC() {
-    if (!_ready) return;
-    _fireAndShow(() => _client.writeCliBytes(_ctrlC), 'ctrl-c');
+    final channel = _channel;
+    if (!_ready || channel == null) return;
+    _fireAndShow(() => channel.write(_ctrlC), 'ctrl-c');
     _terminalFocusNode.requestFocus();
   }
 

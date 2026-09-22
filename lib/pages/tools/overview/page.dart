@@ -1,14 +1,12 @@
 import '../../../services/localization/l10n.dart';
 import 'dart:io';
 
-import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
 import '../../../components/cardlist.dart';
 import '../../../components/icon.dart';
 import '../../../components/navigation.dart';
 import '../../../theme/theme.dart';
-import '../../../components/dialogs/action.dart';
 import '../../../services/assembler/controller.dart';
 import '../paint/manager/page.dart';
 import '../remote/desktop/page.dart';
@@ -20,7 +18,6 @@ import 'models/tool.dart';
 import 'widgets/app_version.dart';
 import 'widgets/tool_item_badge.dart';
 import 'widgets/tool_item_text.dart';
-import '../../../services/logging.dart';
 
 class ToolsPage extends StatelessWidget {
   const ToolsPage({super.key});
@@ -268,39 +265,6 @@ Widget _buildRemoteControlPage(BuildContext context) =>
     const RemoteControlPage();
 
 Future<void> _openCliPage(BuildContext context) async {
-  final client = FlipperOneClient().get();
-  final connectedDevice = client.connectedDevice;
-
-  if (connectedDevice?.isBle == true) {
-    final shouldContinue =
-        await showDialog<bool>(
-          context: context,
-          barrierColor: context.appColors.dialogBarrier,
-          builder: (dialogContext) {
-            return FlipperActionDialog(
-              imageAssetPath: kCliBluetoothUnavailableAssetPath,
-              title: kCliBluetoothUnavailableTitle,
-              text: kCliBluetoothUnavailableMessage,
-              actionText: kCliBluetoothUnavailableAction,
-              onAction: () => Navigator.of(dialogContext).pop(true),
-            );
-          },
-        ) ??
-        false;
-    if (!shouldContinue || !context.mounted) return;
-
-    try {
-      await client.disconnect();
-    } catch (e) {
-      // The user confirmed a dialog and the Terminal then does not open,
-      // with nothing said. #103 named this one.
-      LogService.warn('[CLI] disconnect before terminal failed: $e');
-      return;
-    }
-
-    if (!context.mounted) return;
-  }
-
   await Navigator.of(
     context,
   ).push(MaterialPageRoute(builder: (_) => const CliPage()));
