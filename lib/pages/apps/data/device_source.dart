@@ -482,11 +482,11 @@ class DeviceSource extends ChangeNotifier {
   }
 
   Future<void> adoptInstalled({
-    required DeviceToken token,
     required String alias,
     required String devicePath,
     required List<int> fapBytes,
   }) async {
+    final token = client.deviceToken;
     if (alias.isEmpty) return;
     final folder = _folderFromPath(devicePath);
     var localPath = '';

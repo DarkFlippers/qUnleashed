@@ -84,13 +84,11 @@ class AppsBackend {
       catalog.setPreference(value);
 
   Future<void> _adoptInstalled({
-    required DeviceToken token,
     required String alias,
     required String devicePath,
     required List<int> fapBytes,
   }) {
     return device.adoptInstalled(
-      token: token,
       alias: alias,
       devicePath: devicePath,
       fapBytes: fapBytes,

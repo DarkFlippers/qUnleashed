@@ -64,12 +64,7 @@ class InstallEngine extends ChangeNotifier {
 
   /// Called after a successful install so the device list can adopt the app
   /// without the engine reaching into its sibling registry.
-  ///
-  /// [token] is the one the install ran under, not a fresh one: the caller
-  /// cannot tell from here when the work started, and taking a token at the end
-  /// of a pass would call every finished install current.
   final Future<void> Function({
-    required DeviceToken token,
     required String alias,
     required String devicePath,
     required List<int> fapBytes,
@@ -369,7 +364,6 @@ class InstallEngine extends ChangeNotifier {
       _throwIfStale(token);
       manifests.put(app.alias, manifest);
       await onInstalled(
-        token: token,
         alias: app.alias,
         devicePath: fapPath,
         fapBytes: prepared.fapBytes,
