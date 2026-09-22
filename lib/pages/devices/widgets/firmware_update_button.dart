@@ -110,6 +110,7 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
         state is UpdateVerifying ||
         state is UpdateUploading ||
         state is UpdateStarting ||
+        state is UpdateInstalling ||
         state is UpdateRecovering ||
         state is UpdateWaitingForReconnect;
   }
@@ -416,6 +417,12 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
         description: l10n.fwuDescStartingUpdater,
         enabled: false,
       ),
+      UpdateInstalling() => _ResolvedButtonState(
+        label: l10n.fwuLabelRestarting,
+        color: _activeColor,
+        description: l10n.fwuDescWaitingReconnect,
+        enabled: false,
+      ),
       UpdateRecovering(:final step, :final progress) => _ResolvedButtonState(
         label: _recoveryLabel(step),
         color: _activeColor,
@@ -428,12 +435,7 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
         description: l10n.fwuDescWaitingReconnect,
         enabled: false,
       ),
-      UpdateDone() => _ResolvedButtonState(
-        label: l10n.fwuLabelRunInstaller,
-        color: _activeColor,
-        description: l10n.fwuDescWillReboot,
-        enabled: false,
-      ),
+      UpdateDone() => _baseState(),
       UpdateError() => _ResolvedButtonState(
         label: _installAction() == InstallAction.update
             ? l10n.fwuLabelUpdate
@@ -462,6 +464,7 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
         color: state.color,
       ),
       UpdateStarting() => _ProgressVisual(value: null, color: state.color),
+      UpdateInstalling() => _ProgressVisual(value: null, color: state.color),
       UpdateRecovering(:final step, :final progress) => _ProgressVisual(
         value: switch (step) {
           RecoveryStep.flashingRadio ||
@@ -474,7 +477,6 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
         value: null,
         color: state.color,
       ),
-      UpdateDone() => _ProgressVisual(value: 1, color: state.color),
       _ => null,
     };
   }
