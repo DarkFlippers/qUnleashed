@@ -110,8 +110,7 @@ class _DeviceRow extends StatelessWidget {
   Color _iconColor(QAppColors colors) {
     if (entry.session == LinkSession.active) return colors.accent;
     if (entry.held) return colors.info;
-    if (entry.isUsb) return colors.accent;
-    return entry.heard ? colors.info : colors.textMuted;
+    return entry.isBle && entry.heard ? colors.info : colors.textMuted;
   }
 
   @override
@@ -130,7 +129,7 @@ class _DeviceRow extends StatelessWidget {
             children: [
               Icon(
                 entry.isUsb
-                    ? Icons.usb
+                    ? (entry.held ? Icons.cable : Icons.usb)
                     : entry.held
                     ? Icons.bluetooth_connected
                     : Icons.bluetooth,
