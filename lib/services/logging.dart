@@ -148,7 +148,7 @@ class LogService {
     installUncaughtHandlers();
 
     if (!printing) {
-      await UniversalBle.setLogLevel(BleLogLevel.none);
+      await _quietBle(BleLogLevel.none);
       return;
     }
 
@@ -160,7 +160,26 @@ class LogService {
     });
 
     pretty_logging.Logger.defaultOutput = _LogServiceOutput.new;
-    await UniversalBle.setLogLevel(_bleLevel);
+    await _quietBle(_bleLevel);
+  }
+
+  /// Never throws, which is the whole of it.
+  ///
+  /// This is the log level of a Bluetooth library, and `_initCore` awaits
+  /// [initialize] before there is a UI - on the app entry point and on the
+  /// home-widget one - so a platform where the plugin is not registered must
+  /// not be the reason nothing appears. [installUncaughtHandlers] has already
+  /// run by the time this does, so the failure is kept.
+  ///
+  /// Unpinned: `UniversalBle.setLogLevel` is a static and [initialize]
+  /// memoises, so there is nothing a host test can drive here without a seam
+  /// costing more than the line it would protect.
+  static Future<void> _quietBle(BleLogLevel level) async {
+    try {
+      await UniversalBle.setLogLevel(level);
+    } catch (e, st) {
+      warn('[LogService] BLE log level failed: ${describe(e, st)}');
+    }
   }
 
   /// Routes flipperlib's own logging here.

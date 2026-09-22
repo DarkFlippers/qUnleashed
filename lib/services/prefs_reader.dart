@@ -1,5 +1,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'logging.dart';
+
 /// Reads preferences without the cast that [SharedPreferences.getBool] and its
 /// siblings perform, and remembers which keys did not match.
 ///
@@ -31,12 +33,25 @@ class PrefsReader {
   final SharedPreferences _prefs;
   final List<String> _mismatched = <String>[];
 
-  /// Keys whose stored value was not the type the caller asked for, in the
-  /// order they were read. Empty on an ordinary load, including a first run.
-  List<String> get mismatched => List.unmodifiable(_mismatched);
-
   /// The stored value, or [fallback] when the key is absent or the wrong type.
   T or<T extends Object>(String key, T fallback) => orNull<T>(key) ?? fallback;
+
+  /// Says once what the whole read ignored, or nothing at all.
+  ///
+  /// Call it after the last read. The level is fixed here rather than passed
+  /// in, for the reason `guarded` fixes its own: a per-site level choice is
+  /// the drift this exists to close, and a tally the log screen never keeps
+  /// is not a tally. Only [tag] varies, because what differs between callers
+  /// is which store is talking, not how bad it is.
+  ///
+  /// Three callers had written this block out inline before it moved here.
+  void report(String tag) {
+    if (_mismatched.isEmpty) return;
+    LogService.warn(
+      '$tag ignored ${_mismatched.length} stored preference(s) of the wrong '
+      'type: ${_mismatched.join(', ')}',
+    );
+  }
 
   /// The stored value, or null when the key is absent or the wrong type.
   ///

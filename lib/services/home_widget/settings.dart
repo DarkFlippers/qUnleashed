@@ -82,14 +82,12 @@ class HomeWidgetSettings extends ChangeNotifier {
       // See MapSettings for the long version: getInstance is the only throw,
       // it carries a stack only when the error is an Error, the fields are
       // all-or-nothing because every read below goes through PrefsReader, and
-      // _loading is deliberately left set rather than released for a retry
-      // that has nothing to retry.
+      // _loading is released so the next caller reads again - see there for
+      // why #124 changed that answer.
       //
       // [loaded] stays false, which is what [sync] and [_set] check before
       // they push: the initialisers must not reach the native store.
-      //
-      // [loaded] stays false, which is what [sync] and [_set] check before
-      // they push: the initialisers must not reach the native store.
+      _loading = null;
       LogService.warn(
         '[HomeWidgetSettings] load failed: ${LogService.describe(e, st)}',
       );
@@ -115,13 +113,7 @@ class HomeWidgetSettings extends ChangeNotifier {
     );
     _loaded = true;
 
-    if (reader.mismatched.isNotEmpty) {
-      // Once per load rather than once per key, and it names them.
-      LogService.warn(
-        '[HomeWidgetSettings] ignored ${reader.mismatched.length} stored '
-        'preference(s) of the wrong type: ${reader.mismatched.join(', ')}',
-      );
-    }
+    reader.report('[HomeWidgetSettings]');
     notifyListeners();
   }
 

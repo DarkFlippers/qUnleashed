@@ -188,11 +188,14 @@ class MapSettings extends ChangeNotifier {
       // fields are either all read or all left at their initialisers, and
       // "load failed" always means the second.
       //
-      // _loading is deliberately left set. getInstance memoises success for
-      // the process and drops its memo only on failure, and main() reads
-      // preferences through three other controllers before runApp (#124) - so
-      // if this fails, the app did not start, and a retry has nothing to
-      // retry.
+      // _loading is released, so the next caller reads again. Until #124
+      // this was latched instead, on the argument that main() read
+      // preferences through three unguarded controllers before runApp - so a
+      // store that would not open meant an app that never started, and there
+      // was nothing left to retry. #124 caught those three. The app starts
+      // now, which is what makes this catch reachable in a running session,
+      // and getInstance drops its own memo on failure for exactly this.
+      _loading = null;
       LogService.warn(
         '[MapSettings] load failed: ${LogService.describe(e, st)}',
       );
@@ -228,17 +231,11 @@ class MapSettings extends ChangeNotifier {
     _scanSubfolders = reader.or(_prefScanSubfolders, _defaultScanSubfolders);
     _loaded = true;
 
-    if (reader.mismatched.isNotEmpty) {
-      // Once per load rather than once per key, and it names them. Nothing
-      // says a stored value was *rejected*: an API key raises the missing-key
-      // notice as though none had ever been entered, a custom URL quietly
-      // draws OpenStreetMap instead, and the toggles just come back
-      // different.
-      LogService.warn(
-        '[MapSettings] ignored ${reader.mismatched.length} stored '
-        'preference(s) of the wrong type: ${reader.mismatched.join(', ')}',
-      );
-    }
+    // Nothing says a stored value was *rejected*: an API key raises the
+    // missing-key notice as though none had ever been entered, a custom
+    // URL quietly draws OpenStreetMap instead, and the toggles just come
+    // back different.
+    reader.report('[MapSettings]');
     notifyListeners();
   }
 
