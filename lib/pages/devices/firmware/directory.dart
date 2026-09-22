@@ -209,9 +209,24 @@ abstract class FirmwareParser {
       _fetchedAt != null &&
       DateTime.now().difference(_fetchedAt!) < _ttl;
 
+  /// Where [fetch] gets its JSON.
+  ///
+  /// A seam rather than a direct call. The real one goes to the network, so a
+  /// test that does not replace it asserts against whatever the upstream feed
+  /// serves that day, and the failure paths in [FirmwareRepository] are not
+  /// reachable at all on a machine with egress.
+  ///
+  /// Under the decode rather than over it, so a test can hand it a document of
+  /// the wrong shape and have [FirmwareDirectory.fromJson] really run. Every
+  /// field below it casts unguarded, so that is where a feed that changed
+  /// shape actually breaks - a seam above the decode can only ever simulate
+  /// the exception, never produce it.
+  @visibleForTesting
+  Future<dynamic> Function(Uri uri) fetchJson = AppHttp.getJson;
+
   Future<FirmwareDirectory> fetch() async {
     final json =
-        await AppHttp.getJson(Uri.parse(directoryUrl)) as Map<String, dynamic>;
+        await fetchJson(Uri.parse(directoryUrl)) as Map<String, dynamic>;
     _fetchedAt = DateTime.now();
     return _cache = FirmwareDirectory.fromJson(json);
   }

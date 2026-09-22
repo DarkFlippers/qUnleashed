@@ -11,6 +11,7 @@ import '../device_scope.dart';
 import '../firmware/directory.dart';
 import '../firmware/installer.dart';
 import '../firmware/matcher.dart';
+import '../firmware/repository.dart';
 import '../firmware/source.dart';
 import '../firmware/update_state.dart';
 
@@ -18,23 +19,46 @@ class FirmwareUpdateButton extends StatefulWidget {
   const FirmwareUpdateButton({
     super.key,
     required this.entry,
-    required this.fetchLoading,
+    required this.fetchState,
     required this.latestVersion,
     required this.deviceVersion,
     required this.deviceInfo,
     required this.selectedChannelId,
     required this.selectedVariant,
     required this.client,
+    @visibleForTesting this.install,
   });
 
   final FirmwareEntry entry;
-  final bool fetchLoading;
+  /// What the firmware directory is doing.
+  ///
+  /// One value rather than a loading flag beside a failed flag: "no version to
+  /// offer" has two causes that must not read the same, and a pair of bools
+  /// can also spell a fourth combination that means nothing. See [_baseState].
+  final FirmwareFetchState fetchState;
+
   final String? latestVersion;
   final String? deviceVersion;
   final Map<String, String> deviceInfo;
   final String selectedChannelId;
   final UnleashedVariant selectedVariant;
   final FlipperClient client;
+
+  /// Stands in for [FirmwareInstaller.install].
+  ///
+  /// For tests, and a constructor argument rather than a static so nothing can
+  /// replace the flasher process-wide: the widget under test gets its own and
+  /// no other instance is touched. The state the failure path below exists to
+  /// leave - `UpdateWaitingForReconnect` - is emitted only from the DFU
+  /// recovery path, which runs a real flash over FFI, so there is no other way
+  /// to reach it from a test.
+  @visibleForTesting
+  final Future<void> Function({
+    required FirmwareSource source,
+    required FlipperClient client,
+    required void Function(UpdateState) onState,
+  })?
+  install;
 
   @override
   State<FirmwareUpdateButton> createState() => _FirmwareUpdateButtonState();
@@ -133,8 +157,7 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
       return;
     }
 
-    final recovering = _dfuOnly;
-    final device = recovering ? DeviceScope.of(context) : null;
+    final device = _dfuOnly ? DeviceScope.of(context) : null;
 
     final FirmwareSource source;
     if (_isCustom) {
@@ -166,13 +189,25 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
 
     var waitForReconnect = false;
     try {
-      await FirmwareInstaller.install(
+      await (widget.install ?? FirmwareInstaller.install)(
         source: source,
         client: widget.client,
         onState: _onState,
       );
-      waitForReconnect =
-          recovering && _updateState is UpdateWaitingForReconnect;
+      // The state decides this, not a prediction made at press time. It used
+      // to be guarded on `_dfuOnly` read before the archive was fetched, but
+      // install() picks the DFU path from client.isConnected much later - so a
+      // link that dropped during a 90-second download flashed over DFU,
+      // emitted UpdateWaitingForReconnect, and was then never waited for,
+      // leaving the button disabled on RESTARTING for good. #118.
+      //
+      // Reading the last state install() emitted is safe only because
+      // UpdateWaitingForReconnect is terminal: it is emitted from one place
+      // and nothing follows it. Anything added after it there brings the latch
+      // straight back, with these tests still green - #132 makes install()
+      // return the state it ended on so this stops being an ordering
+      // assumption.
+      waitForReconnect = _updateState is UpdateWaitingForReconnect;
     } catch (e) {
       if (!mounted) return;
       setState(() => _updateState = null);
@@ -192,19 +227,37 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
   }
 
   Future<void> _completeRecoveryOnReconnect() async {
-    if (widget.client.isConnected) {
+    final returned = await FirmwareInstaller.awaitReconnect(widget.client);
+    // Asked again rather than trusting the answer alone: build() carries a
+    // post-frame _finishRecovery for a device that connects without this
+    // noticing, so if that has already run, accusing the hardware here would
+    // overwrite "Device recovered" with "power-cycle it" a frame later.
+    if (returned || widget.client.isConnected) {
       _finishRecovery();
       return;
     }
-
-    try {
-      await widget.client.connectionStream
-          .firstWhere((_) => widget.client.isConnected)
-          .timeout(const Duration(seconds: 30));
-    } catch (_) {
-      return;
-    }
-    _finishRecovery();
+    if (!mounted) return;
+    // The transitional state has to go whatever the answer was. It renders as
+    // a disabled RESTARTING button, so returning early and leaving it set - as
+    // this did until #118 - is a button the user cannot press again for the
+    // rest of the session, on the one path where trying again is the whole of
+    // what they can do. Clearing it drops back to the base state, which tells
+    // them the device is not connected and re-enables the button as soon as it
+    // is, or offers the repair again if it came back in DFU.
+    setState(() {
+      _updateState = null;
+      _inlineMessage = l10n.fwuRecoveryNoReconnect;
+    });
+    // Every other failure in this widget gets a six-second red toast: an
+    // aborted install in _onPressed, an UpdateError in _onState. A device that
+    // was flashed and did not come back is the worst of them, and it was the
+    // only one reported in 12px muted grey.
+    QNotification.show(
+      context,
+      message: l10n.fwuRecoveryNoReconnect,
+      type: QNotificationType.error,
+      duration: const Duration(seconds: 6),
+    );
   }
 
   void _finishRecovery() {
@@ -267,7 +320,7 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
         return _ResolvedButtonState(
           label: l10n.fwuLabelNoFirmware,
           color: _inactiveColor,
-          description: l10n.fwuDescNoServer,
+          description: description ?? l10n.fwuDescNoServer,
           enabled: false,
         );
       }
@@ -279,7 +332,7 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
       );
     }
 
-    if (widget.fetchLoading || widget.deviceVersion == '-') {
+    if (widget.fetchState == FirmwareFetchState.loading || widget.deviceVersion == '-') {
       return _ResolvedButtonState(
         label: l10n.fwuLabelChecking,
         color: _inactiveColor,
@@ -289,10 +342,17 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
     }
 
     if (widget.latestVersion == null) {
+      // "NO UPDATE" is a claim about what the server answered. When the fetch
+      // failed there was no answer, and saying it anyway tells someone with no
+      // network that their firmware is current - which is the one thing nobody
+      // here knows. #118.
+      final failed = widget.fetchState == FirmwareFetchState.failed;
       return _ResolvedButtonState(
-        label: l10n.fwuLabelNoUpdate,
+        label: failed ? l10n.fwuLabelCantCheck : l10n.fwuLabelNoUpdate,
         color: _inactiveColor,
-        description: l10n.fwuDescNoServer,
+        description:
+            description ??
+            (failed ? l10n.fwuDescCantCheck : l10n.fwuDescNoServer),
         enabled: false,
       );
     }
