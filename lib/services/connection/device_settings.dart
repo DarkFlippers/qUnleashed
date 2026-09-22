@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../logging.dart';
+import '../prefs_reader.dart';
 
 /// How the app behaves around a device link: which transports reconnect on
 /// their own and whether the phone's clock is pushed to the Flipper once the
@@ -49,29 +50,36 @@ class DeviceSettings extends ChangeNotifier {
   }
 
   Future<void> _load() async {
+    final PrefsReader reader;
     try {
-      final prefs = await SharedPreferences.getInstance();
-      // Read all three before assigning any. `getBool` is a cast rather than
-      // a checked read, so a value of the wrong type - an older build, an
-      // edited plist - throws partway; assigning as we went would leave the
-      // store holding some of what is stored and some of the defaults, with
-      // which depending on the order of the lines above.
-      final usb = prefs.getBool(_prefAutoConnectUsb) ?? _defaultAutoConnectUsb;
-      final ble = prefs.getBool(_prefAutoConnectBle) ?? _defaultAutoConnectBle;
-      final sync = prefs.getBool(_prefSyncTime) ?? _defaultSyncTimeOnStart;
-      _autoConnectUsb = usb;
-      _autoConnectBle = ble;
-      _syncTimeOnStart = sync;
-      _loaded = true;
-      _loading = null;
-      notifyListeners();
+      reader = PrefsReader(await SharedPreferences.getInstance());
     } catch (e, st) {
-      // With the stack: the cast above names neither the key nor the line,
-      // and this replaced an uncaught error that did carry one. KnownDevices
-      // and UpdateSettings catch their reads too; MapSettings and the home
-      // widget's store still do not - #123.
-      LogService.warn('[DeviceSettings] load failed: $e\n$st');
+      // See MapSettings for the long version: getInstance is the only throw,
+      // it carries a stack only when the error is an Error, the fields are
+      // all-or-nothing because every read below goes through PrefsReader, and
+      // _loading is released so the next caller reads again - see there for
+      // why #124 changed that answer.
+      //
+      // The retry is bounded here: _tryAutoConnect awaits load() on a 250ms
+      // debounce fired by cable events, so a permanently broken store costs
+      // one platform round-trip per plug rather than a loop.
+
+      _loading = null;
+      LogService.warn(
+        '[DeviceSettings] load failed: ${LogService.describe(e, st)}',
+      );
+      return;
     }
+
+    _autoConnectUsb = reader.or(_prefAutoConnectUsb, _defaultAutoConnectUsb);
+    _autoConnectBle = reader.or(_prefAutoConnectBle, _defaultAutoConnectBle);
+    _syncTimeOnStart = reader.or(_prefSyncTime, _defaultSyncTimeOnStart);
+    _loaded = true;
+
+    // The setting reverted to its default and the three toggles this
+    // store holds say nothing about it.
+    reader.report('[DeviceSettings]');
+    notifyListeners();
   }
 
   /// Forgets what was read, so one test does not inherit another's state.
@@ -83,6 +91,7 @@ class DeviceSettings extends ChangeNotifier {
     _autoConnectUsb = _defaultAutoConnectUsb;
     _autoConnectBle = _defaultAutoConnectBle;
     _syncTimeOnStart = _defaultSyncTimeOnStart;
+
     _loaded = false;
     _loading = null;
   }

@@ -4,6 +4,8 @@ import 'package:dartufbt/dartufbt.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../logging.dart';
+import '../prefs_reader.dart';
 import 'backend_mode.dart';
 import 'remote_build_service.dart';
 
@@ -118,6 +120,17 @@ class AssemblerController extends ChangeNotifier {
   UfbtInstaller get installer =>
       _installer ??= UfbtInstaller(logger: _logger, paths: UfbtPaths.resolve());
 
+  /// Where [refreshStatus] reads the deployed state from.
+  ///
+  /// A seam rather than a direct call, for two reasons. It is synchronous
+  /// disk and process work - decoding the ufbt state files, reading the
+  /// toolchain manifests, running `uname` - so a host test that does not
+  /// replace it runs against whatever is in the developer's own `~/.ufbt`.
+  /// And the guard in [refreshStatus] exists for exactly the states that
+  /// directory can be in, which is otherwise not drivable at all.
+  @visibleForTesting
+  late UfbtStatus Function() readStatus = () => installer.status();
+
   void setChannel(UfbtUpdateChannel value) {
     if (_channel == value || busy) return;
     _channel = value;
@@ -125,16 +138,32 @@ class AssemblerController extends ChangeNotifier {
   }
 
   Future<void> loadSettings() async {
-    final prefs = await SharedPreferences.getInstance();
-    final source = prefs.getString(_prefSdkSource);
+    final PrefsReader reader;
+    try {
+      reader = PrefsReader(await SharedPreferences.getInstance());
+    } catch (e, st) {
+      // `_initCore` awaits this, and both entry points await that: `main`
+      // ahead of `runApp`, `widgetMain` with no UI at all. So a rejection
+      // here is not a setting that falls back - it is an app that never
+      // appears, or a widget engine whose link keeper never comes up.
+      //
+      // installUncaughtHandlers would still keep the error, but `history` is
+      // in memory and there is no log screen to read it from, so the record
+      // dies with the process. Caught, it survives into a session someone
+      // can look at. #124.
+      LogService.warn('[Assembler] load failed: ${LogService.describe(e, st)}');
+      return;
+    }
+    final source = reader.orNull<String>(_prefSdkSource);
     _sdkSource = AssemblerSdkSource.values.firstWhere(
       (value) => value.name == source,
       orElse: () => AssemblerSdkSource.unleashed,
     );
-    _customIndexUrl = prefs.getString(_prefCustomIndexUrl) ?? '';
+    _customIndexUrl = reader.or(_prefCustomIndexUrl, '');
     _preference = AssemblerBackendPreference.parse(
-      prefs.getString(_prefBackend),
+      reader.orNull<String>(_prefBackend),
     );
+    reader.report('[Assembler]');
     refreshStatus();
     notifyListeners();
   }
@@ -233,7 +262,24 @@ class AssemblerController extends ChangeNotifier {
 
   void refreshStatus() {
     if (!isSupported) return;
-    _status = installer.status();
+    try {
+      _status = readStatus();
+    } catch (e, st) {
+      // Synchronous disk and process work: it decodes the ufbt state files,
+      // reads the toolchain manifests, and shells out to `uname`. A state
+      // file half-written by a power cut, an unreadable ~/.ufbt, or a PATH
+      // without `uname` all throw here.
+      //
+      // Nine callers and none of them caught, including loadSettings - which
+      // _initCore awaits before there is a UI, so this was a blank launch
+      // from a file the app itself wrote. #124.
+      //
+      // _status keeps whatever it had, null on a first call, which reads as
+      // nothing deployed. Wrong, but the settings page probes again.
+      LogService.warn(
+        '[Assembler] status failed: ${LogService.describe(e, st)}',
+      );
+    }
     notifyListeners();
   }
 
@@ -306,11 +352,15 @@ class AssemblerController extends ChangeNotifier {
     } finally {
       _job = AssemblerJob.none;
       _progress = null;
-      _status = installer.status();
       // A fresh SDK or toolchain is the answer to whatever broke the local
       // builds, so they get another chance right away.
       if (ok) _localFaulted = false;
-      notifyListeners();
+      // Through refreshStatus for its catch: this runs in a finally, so an
+      // unreadable ufbt state here would replace whatever the operation was
+      // reporting with a filesystem error from the cleanup. Unpinned - no
+      // test drives _run, which would want the installer faked and not just
+      // readStatus - so a change back to a bare readStatus() passes.
+      refreshStatus();
     }
     return ok;
   }

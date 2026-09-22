@@ -37,6 +37,29 @@ void main() {
   // this reads as "printed and kept"; under --dart-define=QLOG=false it reads
   // as "kept though nothing printed", which is the case that was broken. CI
   // runs this file both ways.
+  // A rejection carries a stack only when its error is an Error, so the
+  // two branches are the PlatformException case and the TypeError case -
+  // and the check has to be on content, because a zone can hand over an
+  // empty trace that is not the StackTrace.empty const. `flutter test` runs
+  // inside one that hands over a chained trace, which is why the identity
+  // form would be right here and wrong in the app.
+  group('describe', () {
+    test('an error with no stack is just the error', () {
+      expect(LogService.describe('boom', StackTrace.empty), 'boom');
+    });
+
+    test('an error with a stack carries it', () {
+      expect(
+        LogService.describe('boom', StackTrace.fromString('#0 frame')),
+        'boom\n#0 frame',
+      );
+    });
+
+    test('an empty stack that is not the const is still no stack', () {
+      expect(LogService.describe('boom', StackTrace.fromString('')), 'boom');
+    });
+  });
+
   test('an error is kept whether or not the build prints anything', () {
     final lines = printed(() => LogService.error('a transport fault'));
 

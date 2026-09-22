@@ -29,6 +29,18 @@ Future<void> widgetMain() async {
   await BleForegroundService.instance.start(FlipperOneClient().get());
 }
 
+/// Everything that has to exist before there is a UI.
+///
+/// Nothing in here may reject. `main()` awaits it ahead of `runApp`, and
+/// `widgetMain()` awaits it with no UI at all, so a throw is not a setting
+/// that falls back - it is an app that never appears, on either entry point.
+/// Every call below that touches the disk or a platform channel carries its
+/// own catch for that reason: the three preference reads and the assembler's
+/// status probe (#124), and the BLE log level inside `initialize`.
+///
+/// `LogService.initialize()` goes first so the rest have somewhere to report
+/// to. Its own uncaught-error handlers are installed before anything it
+/// awaits, so even a failure inside it is kept.
 Future<void> _initCore() async {
   WidgetsFlutterBinding.ensureInitialized();
   registerAppRoutes();

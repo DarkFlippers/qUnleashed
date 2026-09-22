@@ -1,80 +1,129 @@
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/services/connection/device_settings.dart';
 import 'package:qunleashed/services/logging.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
-import 'package:shared_preferences_platform_interface/types.dart';
 
+import 'unopenable_prefs.dart';
+
+/// The third store with the memoised `load()` — see
+/// `settings_store_loads_test.dart` for the shape and the other two.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   final settings = DeviceSettings.instance;
 
+  // A non-default value for every key, so a test can tell "this came from
+  // disk" from "this is the initialiser".
+  const stored = <String, Object>{
+    'device.autoconnect.usb': true,
+    'device.autoconnect.ble': false,
+    'device.sync_time_on_start': false,
+  };
+
+  Map<String, Object?> snapshot() => {
+    'usb': settings.autoConnectUsb,
+    'ble': settings.autoConnectBle,
+    'sync': settings.syncTimeOnStart,
+  };
+
+  late Map<String, Object?> defaults;
+
   setUp(() {
     LogService.clearHistory();
     SharedPreferences.setMockInitialValues(const {});
     settings.reset();
+    defaults = snapshot();
   });
 
-  /// Swaps in a store whose read throws, and puts the real one back after.
-  ///
-  /// Through the platform interface rather than `setMockInitialValues`, which
-  /// can only describe preferences that are readable - there is no value that
-  /// means "the store would not open".
-  void unopenableStore() {
-    SharedPreferencesStorePlatform.instance = _UnopenableStore();
-    SharedPreferences.resetStatic();
-    addTearDown(() {
-      SharedPreferences.setMockInitialValues(const {});
-      SharedPreferences.resetStatic();
-      settings.reset();
-    });
-  }
-
-  test('what is stored comes back', () async {
-    SharedPreferences.setMockInitialValues(const {
-      'device.autoconnect.usb': true,
-      'device.autoconnect.ble': false,
-      'device.sync_time_on_start': false,
-    });
+  test('everything stored comes back', () async {
+    SharedPreferences.setMockInitialValues(stored);
 
     await settings.load();
 
     expect(settings.autoConnectUsb, isTrue);
     expect(settings.autoConnectBle, isFalse);
     expect(settings.syncTimeOnStart, isFalse);
+    expect(LogService.history, isEmpty, reason: 'a clean read says nothing');
   });
 
   test('nothing stored is the documented default, not an error', () async {
     await settings.load();
 
-    expect(settings.autoConnectUsb, isFalse);
-    expect(settings.autoConnectBle, isTrue);
-    expect(settings.syncTimeOnStart, isTrue);
+    expect(snapshot(), defaults);
     expect(LogService.history, isEmpty);
   });
 
-  // getBool is a cast, not a checked read, so one value of the wrong type
-  // throws partway through. Reading all three before assigning any is what
-  // keeps that from leaving a store holding some of what is stored beside
-  // some of the defaults - a combination nobody chose and which depends on
-  // the order of the lines in _load.
-  test('a value of the wrong type costs the read, not half of it', () async {
-    SharedPreferences.setMockInitialValues(const {
-      'device.autoconnect.usb': true,
-      'device.autoconnect.ble': 'yes',
+  test('a load notifies', () async {
+    SharedPreferences.setMockInitialValues(stored);
+    var notifications = 0;
+    void count() => notifications++;
+    settings.addListener(count);
+    addTearDown(() => settings.removeListener(count));
+
+    await settings.load();
+
+    expect(notifications, 1);
+    expect(settings.autoConnectUsb, isTrue);
+  });
+
+  // One case per key, so the assertion does not depend on which order _load
+  // happens to read in.
+  for (final bad in stored.keys) {
+    final reverted = switch (bad) {
+      'device.autoconnect.usb' => 'usb',
+      'device.autoconnect.ble' => 'ble',
+      _ => 'sync',
+    };
+
+    test('a wrong-typed $bad costs that key and nothing else', () async {
+      // An int, not a String: that is what pins the `0.0 is T` half of
+      // PrefsReader's widening, since without it `99.toDouble() as bool`
+      // throws out of the reader and takes the whole store with it.
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        ...stored,
+        bad: 99,
+      });
+
+      await settings.load();
+
+      final now = snapshot();
+      for (final field in now.keys) {
+        expect(
+          now[field],
+          field == reverted ? defaults[field] : isNot(defaults[field]),
+          reason: '$field after a bad $bad',
+        );
+      }
+      expect(settings.loaded, isTrue, reason: 'one key, not the read');
+      final kept = LogService.history
+          .where((l) => l.contains('[DeviceSettings]'))
+          .toList();
+      expect(kept, hasLength(1));
+      expect(kept.single, contains(bad));
+    });
+  }
+
+  // One entry per load, counted and naming every key in read order. With a
+  // single bad key a hard-coded "1" and a .first would both pass.
+  test('two wrong-typed keys are one entry that names both', () async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      ...stored,
+      'device.autoconnect.usb': 99,
+      'device.sync_time_on_start': 99,
     });
 
     await settings.load();
 
-    expect(settings.autoConnectUsb, isFalse, reason: 'not the stored true');
-    expect(settings.autoConnectBle, isTrue);
-    expect(settings.syncTimeOnStart, isTrue);
+    final kept = LogService.history
+        .where((l) => l.contains('[DeviceSettings]'))
+        .toList();
+    expect(kept, hasLength(1));
+    expect(kept.single, contains('ignored 2'));
     expect(
-      LogService.history.where((l) => l.contains('[DeviceSettings] load')),
-      hasLength(1),
+      kept.single,
+      contains('device.autoconnect.usb, device.sync_time_on_start'),
     );
+    expect(settings.autoConnectBle, isFalse, reason: 'the third still landed');
   });
 
   // The behaviour this pins is the difference between auto-connect working on
@@ -87,68 +136,55 @@ void main() {
   // history read pins that the catch is not a bare swallow, which would pass
   // the first half just as well.
   test('a store that will not open leaves the defaults and says so', () async {
-    unopenableStore();
+    useUnopenablePrefs();
+    addTearDown(settings.reset);
 
     await expectLater(settings.load(), completes);
 
-    expect(settings.autoConnectBle, isTrue, reason: 'auto-connect still runs');
-    expect(settings.syncTimeOnStart, isTrue);
-    expect(settings.autoConnectUsb, isFalse);
-    expect(
-      LogService.history.where((l) => l.contains('[DeviceSettings] load')),
-      hasLength(1),
-      reason: 'labelled, rather than an anonymous [uncaught]',
-    );
+    expect(snapshot(), defaults, reason: 'auto-connect still runs on these');
+    expect(settings.loaded, isFalse);
+    final kept = LogService.history
+        .where((l) => l.contains('[DeviceSettings] load failed'))
+        .toList();
+    expect(kept, hasLength(1), reason: 'labelled, not an anonymous [uncaught]');
+    expect(kept.single, contains('could not be opened'));
+    // The entry goes through LogService.describe, so it carries whatever
+    // stack the rejection had. Here that is the harness's: `flutter test`
+    // runs inside a stack_trace chaining zone that supplies one even for a
+    // PlatformException, which in the app arrives bare. What this pins is
+    // that describe is called at all - swap it for a plain `$e` and the
+    // trace disappears for the errors that do carry one.
+    expect(kept.single, contains('\n'));
+    expect(settings.loaded, isFalse);
   });
 
-  // Not a wish for a retry - a record that there is none, so a later change
-  // to re-read is a deliberate one rather than an accident. The memo latched
-  // the same way before this store caught anything; what changed is whether
-  // what it latched was a rejection.
-  test('a failed read is not retried by the next caller', () async {
-    unopenableStore();
+  // #124 guarded the three reads main() makes before runApp, so a store that
+  // will not open no longer stops the app - which means this catch is
+  // reachable in a running session, and a transient fault should heal on the
+  // next read. Bounded: _tryAutoConnect awaits load() on a debounce fired by
+  // cable events, so it is one round-trip per plug, not a loop.
+  test('a failed read is retried by the next caller', () async {
+    useUnopenablePrefs();
+    addTearDown(settings.reset);
 
     await settings.load();
-    LogService.clearHistory();
-    await expectLater(settings.load(), completes);
+    expect(settings.loaded, isFalse);
 
-    expect(LogService.history, isEmpty);
-    expect(settings.autoConnectBle, isTrue);
+    SharedPreferences.setMockInitialValues(stored);
+    await settings.load();
+
+    expect(settings.autoConnectUsb, isTrue, reason: 'read again');
+    expect(settings.loaded, isTrue);
   });
-}
 
-/// A store that cannot be read at all, like a corrupt or unreadable prefs file.
-///
-/// `getAll` is what `SharedPreferences.getInstance()` calls, so throwing there
-/// fails the whole read rather than one key.
-class _UnopenableStore extends SharedPreferencesStorePlatform {
-  static const _unreadable = 'the preferences store could not be opened';
+  test('reset puts every field back', () async {
+    SharedPreferences.setMockInitialValues(stored);
+    await settings.load();
+    expect(snapshot(), isNot(defaults));
 
-  Never _fail() => throw PlatformException(code: 'prefs', message: _unreadable);
+    settings.reset();
 
-  @override
-  Future<bool> clear() => _fail();
-
-  @override
-  Future<bool> clearWithParameters(ClearParameters parameters) => _fail();
-
-  @override
-  Future<bool> clearWithPrefix(String prefix) => _fail();
-
-  @override
-  Future<Map<String, Object>> getAll() => _fail();
-
-  @override
-  Future<Map<String, Object>> getAllWithParameters(
-    GetAllParameters parameters,
-  ) => _fail();
-
-  @override
-  Future<Map<String, Object>> getAllWithPrefix(String prefix) => _fail();
-
-  @override
-  Future<bool> remove(String key) => _fail();
-
-  @override
-  Future<bool> setValue(String valueType, String key, Object value) => _fail();
+    expect(snapshot(), defaults);
+    expect(settings.loaded, isFalse);
+  });
 }

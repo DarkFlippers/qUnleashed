@@ -148,7 +148,7 @@ class LogService {
     installUncaughtHandlers();
 
     if (!printing) {
-      await UniversalBle.setLogLevel(BleLogLevel.none);
+      await _quietBle(BleLogLevel.none);
       return;
     }
 
@@ -160,7 +160,26 @@ class LogService {
     });
 
     pretty_logging.Logger.defaultOutput = _LogServiceOutput.new;
-    await UniversalBle.setLogLevel(_bleLevel);
+    await _quietBle(_bleLevel);
+  }
+
+  /// Never throws, which is the whole of it.
+  ///
+  /// This is the log level of a Bluetooth library, and `_initCore` awaits
+  /// [initialize] before there is a UI - on the app entry point and on the
+  /// home-widget one - so a platform where the plugin is not registered must
+  /// not be the reason nothing appears. [installUncaughtHandlers] has already
+  /// run by the time this does, so the failure is kept.
+  ///
+  /// Unpinned: `UniversalBle.setLogLevel` is a static and [initialize]
+  /// memoises, so there is nothing a host test can drive here without a seam
+  /// costing more than the line it would protect.
+  static Future<void> _quietBle(BleLogLevel level) async {
+    try {
+      await UniversalBle.setLogLevel(level);
+    } catch (e, st) {
+      warn('[LogService] BLE log level failed: ${describe(e, st)}');
+    }
   }
 
   /// Routes flipperlib's own logging here.
@@ -264,6 +283,26 @@ class LogService {
 
   static FlutterExceptionHandler? _ourFlutterHandler;
   static ui.ErrorCallback? _ourPlatformHandler;
+
+  /// `$error`, and the stack when there is one.
+  ///
+  /// A rejection carries a stack only when its error is an [Error].
+  /// `Completer.completeError` with no trace falls through to
+  /// `AsyncError.defaultStackTrace`, which returns `error.stackTrace` for an
+  /// [Error] and [StackTrace.empty] for anything else — so a
+  /// `PlatformException` arrives bare and a `TypeError` does not. Appending
+  /// unconditionally ends the first kind with a blank line; dropping it
+  /// unconditionally loses the trace the second kind is carrying, which is
+  /// usually the only thing naming where it came from.
+  ///
+  /// Tested by content rather than against [StackTrace.empty]: a zone can
+  /// supply its own empty trace, and `flutter test` in fact supplies a
+  /// chained one, so the identity check passes in the app and fails in the
+  /// harness. [guarded] makes the same check for the same reason.
+  static String describe(Object error, StackTrace stack) {
+    final trace = stack.toString();
+    return trace.isEmpty ? '$error' : '$error\n$trace';
+  }
 
   static void error(String msg) =>
       _emit('[error] $msg', keep: true, console: errorOn);

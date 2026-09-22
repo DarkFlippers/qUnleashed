@@ -62,6 +62,8 @@ class FliblerProjectController extends ChangeNotifier {
   FliblerProjectController({FlipperClient? client})
     : _client = client ?? FlipperOneClient().get();
 
+  static final FliblerProjectController instance = FliblerProjectController();
+
   final FlipperClient _client;
   final AssemblerController _assembler = AssemblerController.instance;
 

@@ -187,7 +187,7 @@ SPEC CHECKSUMS:
   flipperlib: 1566652ffd65181f030fec0ac7d98483c5856f02
   flutter_libserialport: 2c523cb8d8203fc6d1b0da88190da31ac970eb93
   flutter_local_notifications: 1fc7ffb10a83d6a2eeeeddb152d43f1944b0aad0
-  FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
+  FlutterMacOS: c232990155153907050900a2e175c7773903ba4e
   geolocator_apple: ab36aa0e8b7d7a2d7639b3b4e48308394e8cef5e
   GoogleDataTransport: aae35b7ea0c09004c3797d53c8c41f66f219d6a7
   GoogleUtilities: 766ace00c6b10d8148408f329d10c4f051931850
@@ -204,6 +204,6 @@ SPEC CHECKSUMS:
   url_launcher_macos: f87a979182d112f911de6820aefddaf56ee9fbfd
   window_manager: b729e31d38fb04905235df9ea896128991cad99e
 
-PODFILE CHECKSUM: d225da22f1698ce86befc81ee39eaf9aca5bd849
+PODFILE CHECKSUM: ad6346e6bd312070c8e31bc4a081fe977a69c70b
 
 COCOAPODS: 1.16.2

@@ -1,6 +1,8 @@
 import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../logging.dart';
+import '../prefs_reader.dart';
 import 'gen/l10n_generated.dart';
 
 /// Language names written in the language itself, so every entry of the picker
@@ -48,8 +50,24 @@ class QLocaleController extends ChangeNotifier with WidgetsBindingObserver {
       _localeNames[locale.languageCode] ?? locale.toLanguageTag();
 
   Future<void> loadLocale() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_prefLocale);
+    final PrefsReader reader;
+    try {
+      reader = PrefsReader(await SharedPreferences.getInstance());
+    } catch (e, st) {
+      // `_initCore` awaits this, and both entry points await that: `main`
+      // ahead of `runApp`, `widgetMain` with no UI at all. So a rejection
+      // here is not a locale that falls back - it is an app that never
+      // appears, or a widget engine whose link keeper never comes up.
+      //
+      // installUncaughtHandlers would still keep the error, but `history` is
+      // in memory and there is no log screen to read it from, so the record
+      // dies with the process. Caught, it survives into a session someone
+      // can look at. #124.
+      LogService.warn('[Locale] load failed: ${LogService.describe(e, st)}');
+      return;
+    }
+    final raw = reader.orNull<String>(_prefLocale);
+    reader.report('[Locale]');
     if (raw == null || raw.isEmpty) return;
     for (final locale in L10n.supportedLocales) {
       if (locale.languageCode == raw) {
@@ -62,7 +80,18 @@ class QLocaleController extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  /// Null follows the system.
+  ///
+  /// Asserted rather than filtered because [l10n] resolves through this and
+  /// `lookupL10n` throws for a language it was not generated for - and
+  /// several callers reach `l10n` outside any try, `MapSettings._load` among
+  /// them, where a throw would latch a rejection into its memo (#123).
   Future<void> setLocale(Locale? locale) async {
+    assert(
+      locale == null || L10n.supportedLocales.contains(locale),
+      'setLocale takes a locale L10n was generated for; '
+      '$locale is not one of ${L10n.supportedLocales}',
+    );
     if (locale == _locale) return;
     _locale = locale;
     notifyListeners();
