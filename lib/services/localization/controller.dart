@@ -62,7 +62,18 @@ class QLocaleController extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  /// Null follows the system.
+  ///
+  /// Asserted rather than filtered because [l10n] resolves through this and
+  /// `lookupL10n` throws for a language it was not generated for - and
+  /// several callers reach `l10n` outside any try, `MapSettings._load` among
+  /// them, where a throw would latch a rejection into its memo (#123).
   Future<void> setLocale(Locale? locale) async {
+    assert(
+      locale == null || L10n.supportedLocales.contains(locale),
+      'setLocale takes a locale L10n was generated for; '
+      '$locale is not one of ${L10n.supportedLocales}',
+    );
     if (locale == _locale) return;
     _locale = locale;
     notifyListeners();
