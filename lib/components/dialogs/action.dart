@@ -18,7 +18,6 @@ String get kFlipperBusyMessage => l10n.deviceBusyMessage;
 String get kFlipperBusyAction => l10n.deviceBusyAction;
 const String kFlipperBusyAssetPath = 'assets/pic/status/busy.svg';
 
-
 class FlipperActionDialog extends StatelessWidget {
   const FlipperActionDialog({
     super.key,

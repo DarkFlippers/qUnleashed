@@ -223,7 +223,8 @@ class LinkService extends ChangeNotifier {
       await _c.connectBleAddress(entry.id, name: entry.name);
       await _c.switchToRpcMode();
     } catch (e) {
-      if (classifyConnectError(e) == FlipperConnectErrorKind.deviceUnreachable) {
+      if (classifyConnectError(e) ==
+          FlipperConnectErrorKind.deviceUnreachable) {
         _heardBle.remove(entry.id);
       }
       rethrow;
@@ -251,11 +252,8 @@ class LinkService extends ChangeNotifier {
     }
   }
 
-  Future<void> disconnect(LinkEntry entry) => disconnectDevice(
-    entry.device,
-    id: entry.id,
-    link: entry.link,
-  );
+  Future<void> disconnect(LinkEntry entry) =>
+      disconnectDevice(entry.device, id: entry.id, link: entry.link);
 
   Future<void> disconnectDevice(
     FlipperDevice? device, {
