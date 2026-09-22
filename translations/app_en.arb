@@ -2166,6 +2166,11 @@
     }
   },
 
+  "firmwareChangelogUnstyled": "Couldn''t format this changelog. Showing the original text.",
+  "@firmwareChangelogUnstyled": {
+    "description": "Shown above a changelog whose markdown could not be rendered, so the raw text is displayed instead."
+  },
+
   "firmwareEmptyChangelog": "Empty changelog",
   "@firmwareEmptyChangelog": {
     "description": "Shown when a firmware release has no changelog text."

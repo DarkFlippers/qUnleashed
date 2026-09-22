@@ -3,6 +3,7 @@ import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
 import '../../../services/localization/l10n.dart';
+import '../../../services/logging.dart';
 import '../../../components/config.dart';
 import '../../../theme/theme.dart';
 import '../../../components/notification.dart';
@@ -11,7 +12,6 @@ import '../device_scope.dart';
 import '../firmware/directory.dart';
 import '../firmware/installer.dart';
 import '../firmware/matcher.dart';
-import '../firmware/repository.dart';
 import '../firmware/source.dart';
 import '../firmware/update_state.dart';
 
@@ -30,11 +30,8 @@ class FirmwareUpdateButton extends StatefulWidget {
   });
 
   final FirmwareEntry entry;
-  /// What the firmware directory is doing.
-  ///
-  /// One value rather than a loading flag beside a failed flag: "no version to
-  /// offer" has two causes that must not read the same, and a pair of bools
-  /// can also spell a fourth combination that means nothing. See [_baseState].
+
+  /// What the firmware directory is doing. See [FirmwareFetchState].
   final FirmwareFetchState fetchState;
 
   final String? latestVersion;
@@ -208,7 +205,14 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
       // return the state it ended on so this stops being an ordering
       // assumption.
       waitForReconnect = _updateState is UpdateWaitingForReconnect;
-    } catch (e) {
+    } catch (e, st) {
+      // FirmwareInstaller.install keeps its own failures, but the temp
+      // directory it creates before that try is outside it - a full disk or an
+      // unwritable temp path arrives here, and used to leave the log with
+      // nothing while the user got a raw toString in a toast.
+      LogService.error(
+        '[Firmware] install aborted: ${LogService.describe(e, st)}',
+      );
       if (!mounted) return;
       setState(() => _updateState = null);
       QNotification.show(
@@ -231,7 +235,7 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
     // Asked again rather than trusting the answer alone: build() carries a
     // post-frame _finishRecovery for a device that connects without this
     // noticing, so if that has already run, accusing the hardware here would
-    // overwrite "Device recovered" with "power-cycle it" a frame later.
+    // overwrite fwuRecovered with fwuRecoveryNoReconnect a frame later.
     if (returned || widget.client.isConnected) {
       _finishRecovery();
       return;
@@ -241,17 +245,17 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
     // a disabled RESTARTING button, so returning early and leaving it set - as
     // this did until #118 - is a button the user cannot press again for the
     // rest of the session, on the one path where trying again is the whole of
-    // what they can do. Clearing it drops back to the base state, which tells
-    // them the device is not connected and re-enables the button as soon as it
-    // is, or offers the repair again if it came back in DFU.
+    // what they can do. Clearing it drops back to the base state, which says
+    // what the device is actually doing and carries the message below in its
+    // description slot.
     setState(() {
       _updateState = null;
       _inlineMessage = l10n.fwuRecoveryNoReconnect;
     });
-    // Every other failure in this widget gets a six-second red toast: an
+    // The two other failures in this widget get a six-second red toast: an
     // aborted install in _onPressed, an UpdateError in _onState. A device that
-    // was flashed and did not come back is the worst of them, and it was the
-    // only one reported in 12px muted grey.
+    // was flashed and did not come back is the worst of the three, and it was
+    // the only one reported in 12px muted grey.
     QNotification.show(
       context,
       message: l10n.fwuRecoveryNoReconnect,
@@ -292,6 +296,15 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
     return _baseState();
   }
 
+  /// Why there is no version to offer.
+  ///
+  /// A fetch that failed and a directory that simply carries nothing on this
+  /// channel are different facts, and only the first can honestly say the
+  /// server was not reached.
+  String get _noVersionReason => widget.fetchState.hasFailed
+      ? l10n.fwuDescCantCheck
+      : l10n.fwuDescNoServer;
+
   _ResolvedButtonState _baseState() {
     final description = _inlineMessage;
 
@@ -320,7 +333,7 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
         return _ResolvedButtonState(
           label: l10n.fwuLabelNoFirmware,
           color: _inactiveColor,
-          description: description ?? l10n.fwuDescNoServer,
+          description: description ?? _noVersionReason,
           enabled: false,
         );
       }
@@ -332,7 +345,7 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
       );
     }
 
-    if (widget.fetchState == FirmwareFetchState.loading || widget.deviceVersion == '-') {
+    if (widget.fetchState.isLoading || widget.deviceVersion == '-') {
       return _ResolvedButtonState(
         label: l10n.fwuLabelChecking,
         color: _inactiveColor,
@@ -346,13 +359,12 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
       // failed there was no answer, and saying it anyway tells someone with no
       // network that their firmware is current - which is the one thing nobody
       // here knows. #118.
-      final failed = widget.fetchState == FirmwareFetchState.failed;
       return _ResolvedButtonState(
-        label: failed ? l10n.fwuLabelCantCheck : l10n.fwuLabelNoUpdate,
+        label: widget.fetchState.hasFailed
+            ? l10n.fwuLabelCantCheck
+            : l10n.fwuLabelNoUpdate,
         color: _inactiveColor,
-        description:
-            description ??
-            (failed ? l10n.fwuDescCantCheck : l10n.fwuDescNoServer),
+        description: description ?? _noVersionReason,
         enabled: false,
       );
     }
@@ -361,7 +373,16 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
       InstallAction.noUpdate => _ResolvedButtonState(
         label: l10n.fwuLabelNoUpdate,
         color: _inactiveColor,
-        description: description ?? l10n.fwuDescUpToDate,
+        // A refresh that failed leaves the previous directory standing, so
+        // the comparison behind "up to date" was made against whatever was
+        // last fetched - which may be arbitrarily old. The other branch of
+        // this reads fwuLabelCantCheck for the same reason; here there is a
+        // version to show, so only the explanation changes.
+        description:
+            description ??
+            (widget.fetchState.hasFailed
+                ? l10n.fwuDescCantCheck
+                : l10n.fwuDescUpToDate),
         enabled: false,
       ),
       InstallAction.update => _ResolvedButtonState(

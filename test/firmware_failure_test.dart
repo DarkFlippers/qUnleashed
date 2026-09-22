@@ -18,6 +18,7 @@ import 'package:qunleashed/pages/devices/firmware/update_settings.dart';
 import 'package:qunleashed/pages/devices/firmware/update_state.dart';
 import 'package:qunleashed/pages/devices/widgets/firmware_changelog_page.dart';
 import 'package:qunleashed/pages/devices/widgets/firmware_update_button.dart';
+import 'package:qunleashed/services/http/app_http.dart';
 import 'package:qunleashed/services/localization/l10n.dart';
 import 'package:qunleashed/services/logging.dart';
 import 'package:qunleashed/theme/theme.dart';
@@ -83,6 +84,9 @@ class _FakeClient implements FlipperClient {
   /// The link dropping, with nothing said on the stream.
   void depart() => _connected = false;
 
+  /// A fault on the stream itself. A broadcast stream is not ended by one.
+  void fail() => _connection.addError(const SocketException('link fault'));
+
   /// The link torn down under the wait — a disposed client, a closed session.
   Future<void> close() => _connection.close();
 
@@ -131,20 +135,18 @@ Map<String, dynamic> _feed() => {
 Map<String, dynamic> _feedOfTheWrongShape() {
   final json = _feed();
   final channels = json['channels']! as List<dynamic>;
-  final versions = (channels.first as Map<String, dynamic>)['versions']!
-      as List<dynamic>;
+  final versions =
+      (channels.first as Map<String, dynamic>)['versions']! as List<dynamic>;
   (versions.first as Map<String, dynamic>)['version'] = 1;
   return json;
 }
 
 /// Advances past the 30-second reconnect deadline and settles the frame.
 ///
-/// The short pump first is load-bearing: the wait only starts once _onPressed
-/// resumes past the install, and a timer created partway through an elapse is
-/// scheduled from the end of that elapse rather than from where it was
-/// created - so advancing straight to 31s leaves the deadline in the future.
+/// The deadline really is what drives the cases that use this: cutting the
+/// elapse to 28s fails them. The trailing pump builds the frame that shows
+/// whatever the resumed wait set.
 Future<void> elapsePastReconnectDeadline(WidgetTester tester) async {
-  await tester.pump(const Duration(seconds: 1));
   await tester.pump(const Duration(seconds: 31));
   await tester.pump();
 }
@@ -292,6 +294,44 @@ void main() {
       );
     });
 
+    // Each of these reaches a different arm of the network classifier. A 403
+    // from the update server, a deadline, and a captive portal answering with
+    // an HTML login page are all somebody's network - filing them as a feed
+    // that changed shape fills the level meant for "broken for everybody"
+    // with other people's Wi-Fi.
+    test('an HTTP status from the server is the network', () async {
+      feedFails(AppHttpException(403, 'https://example.invalid'));
+
+      await repo.ensure(unleashed);
+
+      expect(
+        keptAbout('unlshd directory fetch failed').single,
+        contains('[warning]'),
+      );
+    });
+
+    test('a body that is not JSON at all is the network', () async {
+      feedFails(const FormatException('Unexpected character'));
+
+      await repo.ensure(unleashed);
+
+      expect(
+        keptAbout('unlshd directory fetch failed').single,
+        contains('[warning]'),
+      );
+    });
+
+    test('a TLS handshake that failed is the network', () async {
+      feedFails(const HandshakeException('certificate verify failed'));
+
+      await repo.ensure(unleashed);
+
+      expect(
+        keptAbout('unlshd directory fetch failed').single,
+        contains('[warning]'),
+      );
+    });
+
     test('a fetch that works again clears the failure', () async {
       feedFails(const SocketException('down'));
       await repo.ensure(unleashed);
@@ -318,16 +358,23 @@ void main() {
     // the last good directory standing. That is why failedFor is cleared on
     // success rather than on the way in: it has to keep describing the attempt
     // that just failed, not the one that last got as far as starting.
-    test('a failed refresh keeps the directory it had, and is marked', () async {
-      await repo.ensure(unleashed);
-      expect(repo.directoryFor(unleashed), isNotNull);
+    test(
+      'a failed refresh keeps the directory it had, and is marked',
+      () async {
+        await repo.ensure(unleashed);
+        expect(repo.directoryFor(unleashed), isNotNull);
 
-      feedFails(const SocketException('down'));
-      await repo.refresh();
+        feedFails(const SocketException('down'));
+        await repo.refresh();
 
-      expect(repo.directoryFor(unleashed), isNotNull, reason: 'the old one');
-      expect(repo.failedFor(unleashed), isTrue);
-    });
+        expect(repo.directoryFor(unleashed), isNotNull, reason: 'the old one');
+        expect(
+          repo.stateFor(unleashed),
+          FirmwareFetchState.failed,
+          reason: 'a directory in hand does not make the refresh a success',
+        );
+      },
+    );
 
     // Said once per failure, not once per retry: ensure keeps trying on a
     // cooldown, and a hundred copies of one sentence would push everything
@@ -342,6 +389,23 @@ void main() {
       await repo.refresh();
 
       expect(keptAbout('unlshd directory fetch failed'), hasLength(1));
+    });
+
+    // The record is cleared only by a success, so keying suppression on
+    // presence alone meant a launch that failed offline and then met a broken
+    // feed recorded the socket error and nothing after it - the error-level
+    // reason this split exists for, filed at no level at all.
+    test('a different failure after the first is still said', () async {
+      feedFails(const SocketException('down'));
+      await repo.ensure(unleashed);
+      expect(keptAbout('unlshd directory fetch failed'), hasLength(1));
+
+      feedEvery((_) async => _feedOfTheWrongShape());
+      await repo.refresh();
+
+      final kept = keptAbout('unlshd directory fetch failed');
+      expect(kept, hasLength(2));
+      expect(kept.last, contains('[error]'));
     });
 
     test('a failure that comes back after a success is said again', () async {
@@ -361,25 +425,46 @@ void main() {
     // the battery on that interval. A failed fetch never leaves a fresh cache,
     // so without the cooldown every one of those rebuilds was another request
     // at a server already not answering.
-    test('ensure leaves a firmware that just failed alone', () async {
-      feedFails(const SocketException('down'));
-
+    // FirmwareCard calls ensure from didUpdateWidget, which a connected
+    // Flipper drives every five seconds, so a directory already in hand must
+    // not be re-fetched on each of them.
+    test('a directory already in hand is not fetched again', () async {
       await repo.ensure(unleashed);
       expect(fetchCalls, 1);
 
       await repo.ensure(unleashed);
       await repo.ensure(unleashed);
 
-      expect(fetchCalls, 1, reason: 'still inside the cooldown');
+      expect(fetchCalls, 1, reason: 'still fresh');
     });
 
-    test('a pull-to-refresh asks again anyway', () async {
+    test('a failed firmware is asked again', () async {
       feedFails(const SocketException('down'));
 
       await repo.ensure(unleashed);
-      await repo.refresh();
+      final afterFirst = fetchCalls;
+      await repo.ensure(unleashed);
 
-      expect(fetchCalls, greaterThan(1), reason: 'the gesture means ask again');
+      expect(fetchCalls, greaterThan(afterFirst));
+    });
+
+    // Without the in-flight guard a pull-to-refresh landing on top of the
+    // startup prefetch runs two fetches for one firmware, and the first to
+    // finish clears the loading key while the second is still running - so
+    // the card drops back to the old version and then forward again.
+    test('a second fetch does not start while one is in flight', () async {
+      final gate = Completer<Map<String, dynamic>>();
+      feedEvery((_) => gate.future);
+
+      unawaited(repo.ensure(unleashed));
+      await pumpEventQueue();
+      final afterFirst = fetchCalls;
+
+      await repo.ensure(unleashed);
+      expect(fetchCalls, afterFirst, reason: 'the first one still holds it');
+
+      gate.complete(_feed());
+      await pumpEventQueue();
     });
 
     // #118's own bug by a second route, and the one a catch cannot see:
@@ -401,6 +486,11 @@ void main() {
       final kept = keptAbout('unlshd directory fetch failed');
       expect(kept, hasLength(1));
       expect(kept.single, contains('TimeoutException'));
+      expect(
+        kept.single,
+        contains('[warning]'),
+        reason: 'a deadline is not a broken feed',
+      );
     });
   });
 
@@ -531,21 +621,24 @@ void main() {
     // The worst outcome this app produces: a device that was flashed and did
     // not come back. Before #118 the TimeoutException was caught and dropped,
     // so the one session most worth reading a bug report about held nothing.
-    test('a device that never comes back is false, and kept at error', () async {
-      final ok = await FirmwareInstaller.awaitReconnect(
-        client,
-        timeout: const Duration(milliseconds: 50),
-      );
+    test(
+      'a device that never comes back is false, and kept at error',
+      () async {
+        final ok = await FirmwareInstaller.awaitReconnect(
+          client,
+          timeout: const Duration(milliseconds: 50),
+        );
 
-      expect(ok, isFalse);
-      final kept = keptAbout('did not reconnect after recovery');
-      expect(kept, hasLength(1));
-      expect(kept.single, contains('[error]'));
-      expect(kept.single, contains('TimeoutException'));
+        expect(ok, isFalse);
+        final kept = keptAbout('did not reconnect after recovery');
+        expect(kept, hasLength(1));
+        expect(kept.single, contains('[error]'));
+        expect(kept.single, contains('TimeoutException'));
 
-      await pumpEventQueue();
-      expect(client.hasListener, isFalse, reason: 'the wait let go');
-    });
+        await pumpEventQueue();
+        expect(client.hasListener, isFalse, reason: 'the wait let go');
+      },
+    );
 
     test('a disconnect event is not the device coming back', () async {
       final waiting = FirmwareInstaller.awaitReconnect(
@@ -575,6 +668,26 @@ void main() {
       final kept = keptAbout('ended without an answer');
       expect(kept, hasLength(1));
       expect(kept.single, contains('[warning]'));
+    });
+
+    // An error does not end a broadcast stream, so the device can still come
+    // back. Ending the wait on one would turn a single spurious error into a
+    // reported brick on the most consequential screen in the app.
+    test('a stream error does not end the wait', () async {
+      final waiting = FirmwareInstaller.awaitReconnect(
+        client,
+        timeout: const Duration(seconds: 5),
+      );
+      await pumpEventQueue();
+      client.fail();
+      await pumpEventQueue();
+      client.arrive();
+
+      expect(await waiting, isTrue);
+      final kept = keptAbout('saw a stream error');
+      expect(kept, hasLength(1));
+      expect(kept.single, contains('[warning]'));
+      expect(keptAbout('did not reconnect'), isEmpty);
     });
 
     test('a device present when the link ends is still a success', () async {
@@ -631,9 +744,10 @@ void main() {
       device.setDfuPresent(true);
       await tester.pumpWidget(
         button(
-          install: ({required source, required client, required onState}) async {
-            onState(const UpdateWaitingForReconnect());
-          },
+          install:
+              ({required source, required client, required onState}) async {
+                onState(const UpdateWaitingForReconnect());
+              },
         ),
       );
 
@@ -685,10 +799,11 @@ void main() {
       fake.arriveQuietly();
       await tester.pumpWidget(
         button(
-          install: ({required source, required client, required onState}) async {
-            fake.depart();
-            onState(const UpdateWaitingForReconnect());
-          },
+          install:
+              ({required source, required client, required onState}) async {
+                fake.depart();
+                onState(const UpdateWaitingForReconnect());
+              },
         ),
       );
 
@@ -735,6 +850,8 @@ void main() {
 
       expect(find.text(l10n.fwuLabelCantCheck.toUpperCase()), findsOneWidget);
       expect(find.text(l10n.fwuLabelNoUpdate.toUpperCase()), findsNothing);
+      expect(find.text(l10n.fwuDescCantCheck), findsOneWidget);
+      expect(find.text(l10n.fwuDescNoServer), findsNothing);
     });
 
     testWidgets('a server that answered with nothing newer still says so', (
@@ -742,12 +859,92 @@ void main() {
     ) async {
       client.arriveQuietly();
 
-      await pumpIdle(
-        tester,
-        button(install: noop, latestVersion: null),
-      );
+      await pumpIdle(tester, button(install: noop, latestVersion: null));
 
       expect(find.text(l10n.fwuLabelNoUpdate.toUpperCase()), findsOneWidget);
+      expect(
+        find.text(l10n.fwuDescNoServer),
+        findsOneWidget,
+        reason: 'the server answered; it just had nothing on this channel',
+      );
+    });
+
+    // build() carries a post-frame _finishRecovery for a device that connects
+    // without the wait noticing. When that has already run, the wait coming
+    // back false must not overwrite "recovered" with "power-cycle it".
+    testWidgets('a device that came back behind the wait keeps its result', (
+      tester,
+    ) async {
+      final fake = client;
+      device.setDfuPresent(true);
+      await tester.pumpWidget(
+        button(
+          install:
+              ({required source, required client, required onState}) async {
+                onState(const UpdateWaitingForReconnect());
+              },
+        ),
+      );
+
+      await tester.tap(find.byType(ProgressButton));
+      await tester.pump();
+      await tester.pump();
+
+      // Connected, but with nothing said on the stream, so the wait itself
+      // never sees it and runs to its deadline.
+      fake.arriveQuietly();
+      await elapsePastReconnectDeadline(tester);
+
+      expect(find.text(l10n.fwuRecovered), findsWidgets);
+      expect(find.text(l10n.fwuRecoveryNoReconnect), findsNothing);
+    });
+
+    testWidgets('an install that could not start is kept', (tester) async {
+      device.setDfuPresent(true);
+      await tester.pumpWidget(
+        button(
+          install:
+              ({required source, required client, required onState}) async {
+                throw const FileSystemException('no space left on device');
+              },
+        ),
+      );
+
+      await tester.tap(find.byType(ProgressButton));
+      await tester.pump();
+      await tester.pump();
+
+      final kept = keptAbout('install aborted');
+      expect(kept, hasLength(1));
+      expect(kept.single, contains('no space left on device'));
+      expect(find.text(l10n.fwuLabelRepair.toUpperCase()), findsOneWidget);
+
+      await drainToast(tester);
+    });
+
+    // The changelog page hosts this same button, so leaving either screen
+    // during the thirty-second wait disposes the state under it.
+    testWidgets('a button disposed mid-wait still records the outcome', (
+      tester,
+    ) async {
+      device.setDfuPresent(true);
+      await tester.pumpWidget(
+        button(
+          install:
+              ({required source, required client, required onState}) async {
+                onState(const UpdateWaitingForReconnect());
+              },
+        ),
+      );
+
+      await tester.tap(find.byType(ProgressButton));
+      await tester.pump();
+      await tester.pump();
+
+      await tester.pumpWidget(const SizedBox());
+      await elapsePastReconnectDeadline(tester);
+
+      expect(keptAbout('did not reconnect after recovery'), hasLength(1));
     });
   });
 
@@ -762,31 +959,36 @@ void main() {
     // was open with nothing written down. Nothing else in the app pays for
     // that isolate: pages/apps/catalog/detail_page.dart calls the same
     // function three times from inside `build`.
+    Widget page({
+      String changelog = 'raw **markdown** text',
+      String Function(String source)? renderHtml,
+    }) => _wrap(
+      FirmwareChangelogPage(
+        entry: unleashed,
+        version: FirmwareVersion(
+          version: '1.0.0',
+          changelog: changelog,
+          timestamp: 0,
+          files: const [],
+        ),
+        changelog: changelog,
+        fetchState: FirmwareFetchState.ready,
+        latestVersion: '1.0.0',
+        deviceVersion: '0.9.0',
+        deviceInfo: const {},
+        selectedChannelId: 'release',
+        selectedVariant: UnleashedVariant.extraPacks,
+        client: client,
+        renderHtml: renderHtml,
+      ),
+      device,
+    );
+
     testWidgets('a render that fails shows the changelog unstyled', (
       tester,
     ) async {
       await tester.pumpWidget(
-        _wrap(
-          FirmwareChangelogPage(
-            entry: unleashed,
-            version: const FirmwareVersion(
-              version: '1.0.0',
-              changelog: 'raw **markdown** text',
-              timestamp: 0,
-              files: [],
-            ),
-            changelog: 'raw **markdown** text',
-            fetchState: FirmwareFetchState.ready,
-            latestVersion: '1.0.0',
-            deviceVersion: '0.9.0',
-            deviceInfo: const {},
-            selectedChannelId: 'release',
-            selectedVariant: UnleashedVariant.extraPacks,
-            client: client,
-            renderHtml: (_) => throw const FormatException('bad markdown'),
-          ),
-          device,
-        ),
+        page(renderHtml: (_) => throw const FormatException('bad markdown')),
       );
 
       // No pump-and-wait: the render is synchronous now, so the first frame
@@ -794,7 +996,46 @@ void main() {
       // - there is no longer an unsettled state for a failure to strand.
       expect(find.byType(ChangelogRenderer), findsNothing);
       expect(find.text('raw **markdown** text'), findsOneWidget);
-      expect(keptAbout('changelog render failed'), hasLength(1));
+      expect(
+        find.text(l10n.firmwareChangelogUnstyled),
+        findsOneWidget,
+        reason: 'said out loud, not quietly degraded',
+      );
+      final kept = keptAbout('changelog render failed');
+      expect(kept, hasLength(1));
+      expect(kept.single, contains('[error]'));
+    });
+
+    // The other side of the same branch. Without it, a change that hands every
+    // reader raw markdown reads as success, because the case above asserts
+    // raw markdown is on screen.
+    testWidgets('a render that works is shown styled and silently', (
+      tester,
+    ) async {
+      await tester.pumpWidget(page(renderHtml: (source) => '<p>$source</p>'));
+
+      final renderer = tester.widget<ChangelogRenderer>(
+        find.byType(ChangelogRenderer),
+      );
+      expect(renderer.html, '<p>raw **markdown** text</p>');
+      expect(find.text(l10n.firmwareChangelogUnstyled), findsNothing);
+      expect(LogService.history, isEmpty);
+    });
+
+    // A version that shipped without release notes. Reading this from
+    // initState is why the page uses the bare l10n global rather than
+    // context.l10n, which asserts before initState has finished.
+    testWidgets('a version with no changelog shows the placeholder', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        page(
+          changelog: '   ',
+          renderHtml: (_) => throw const FormatException('bad markdown'),
+        ),
+      );
+
+      expect(find.text(l10n.firmwareEmptyChangelog), findsOneWidget);
     });
   });
 }

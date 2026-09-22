@@ -21,21 +21,12 @@ class FirmwareController extends ChangeNotifier {
 
   final Map<String, _Selection> _selections = {};
 
-  /// What [entry]'s directory is doing.
+  /// What [entry]'s directory is doing. See [FirmwareFetchState].
   ///
-  /// Before #118 this was a single bool, derived from a missing directory -
-  /// and a fetch that failed never gets one, so the card's version line read
-  /// "Checking…" and its channel dropdown "Loading…" for the rest of the
-  /// session, on every firmware, with no toast, no error view and nothing in
-  /// the log to say why. (The update button's own CHECKING was narrower:
-  /// `_baseState` tests the custom channel and DFU ahead of it, so a first run
-  /// offline landed on INSTALL and a file picker instead.)
-  ///
-  /// Those now settle on "—" and "Unavailable", and the button has
-  /// [FirmwareFetchState.failed] to tell apart the two ways of having no
-  /// version to offer - without which the only thing left to say is "NO
-  /// UPDATE", in large type, to someone whose actual problem is that nothing
-  /// could be checked.
+  /// Before #118 this was a bool derived from a missing directory, and a fetch
+  /// that failed never gets one - so the card's version line read "Checking…"
+  /// and its channel dropdown "Loading…" for the rest of the session, on every
+  /// firmware, with nothing anywhere to say why.
   FirmwareFetchState fetchStateFor(FirmwareEntry entry) =>
       _repo.stateFor(entry);
 

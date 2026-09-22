@@ -6,7 +6,6 @@ import '../../../components/config.dart';
 import '../../../services/logging.dart';
 import '../../../theme/theme.dart';
 import '../firmware/directory.dart';
-import '../firmware/repository.dart';
 import 'package:qunleashed/components/appbar.dart';
 import '../../../components/changelog_renderer.dart';
 import 'firmware_update_button.dart';
@@ -56,24 +55,27 @@ class _FirmwareChangelogPageState extends State<FirmwareChangelogPage> {
   /// The rendered changelog, or null if rendering it threw.
   late final String? _html;
 
-  /// What the markdown pass is handed.
+  /// What the markdown pass was handed.
   ///
   /// Not always the changelog: a version that ships without one is shown the
   /// localised "Empty changelog" instead, and that is then what the fallback
   /// renders too.
   ///
-  /// The bare `l10n` global rather than `context.l10n`, because this is read
-  /// from [initState]: `context.l10n` goes through `Localizations.of`, and
-  /// depending on an inherited widget before initState has finished asserts in
-  /// debug and profile builds. It resolves against the same locale, and it is
-  /// what the update button already uses.
-  String get _source => widget.changelog.trim().isEmpty
-      ? l10n.firmwareEmptyChangelog
-      : widget.changelog;
+  /// A field resolved before the try below, not a getter read inside it: as a
+  /// getter it was also re-read from [build], where a throw would escape the
+  /// catch that is supposed to contain it and red-screen the page.
+  late final String _source;
 
   @override
   void initState() {
     super.initState();
+    // The bare `l10n` global rather than `context.l10n`: that one goes through
+    // `Localizations.of`, and depending on an inherited widget before
+    // initState has finished asserts in a debug build. It resolves against the
+    // same locale, and it is what the update button already uses.
+    _source = widget.changelog.trim().isEmpty
+        ? l10n.firmwareEmptyChangelog
+        : widget.changelog;
     // Rendered here and not through `compute`. The isolate hop was the whole
     // reason this page had a future to wait on, a spinner to show while it
     // waited, and - since nothing checked `hasError` - a spinner that ran
@@ -87,7 +89,10 @@ class _FirmwareChangelogPageState extends State<FirmwareChangelogPage> {
       // so [build] shows it unstyled rather than an error card nobody can act
       // on. Kept, because otherwise a render that broke for every user would
       // look to them like a plain-text changelog and be reported by nobody.
-      LogService.warn(
+      // error, not warn: nothing here touches the network, so a throw is
+      // this app's own doing and breaks for everyone at once - which is the
+      // line FirmwareRepository._recordFailure draws for the same reason.
+      LogService.error(
         '[Firmware] changelog render failed: ${LogService.describe(e, st)}',
       );
       _html = null;
@@ -117,10 +122,23 @@ class _FirmwareChangelogPageState extends State<FirmwareChangelogPage> {
                     textColor: colors.textPrimary,
                     mutedColor: colors.textSecondary,
                   ),
-                  // The markdown pass threw; see [initState].
-                  null => Text(
-                    _source,
-                    style: TextStyle(color: colors.textPrimary),
+                  // The markdown pass threw; see [initState]. Said out
+                  // loud rather than quietly degraded: a render that broke
+                  // for everyone would otherwise look like a changelog that
+                  // simply has no formatting, and be reported by nobody.
+                  null => Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        context.l10n.firmwareChangelogUnstyled,
+                        style: TextStyle(fontSize: 12, color: colors.textMuted),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        _source,
+                        style: TextStyle(color: colors.textPrimary),
+                      ),
+                    ],
                   ),
                 },
               ),

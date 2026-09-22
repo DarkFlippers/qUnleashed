@@ -42,6 +42,12 @@ void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues(const {});
     settings.reset();
+    // The repository records which firmwares failed, and that record now
+    // outlives a test: a case that lets the controller prefetch without a
+    // seeded directory leaves both marked, and the next case reads those
+    // through fetchStateFor. #118 added it; clearing the parser caches alone
+    // no longer leaves a clean slate.
+    FirmwareRepository.instance.reset();
     for (final entry in QAppConfig.firmware.firmwares) {
       parserForEntry(entry).clearCache();
     }

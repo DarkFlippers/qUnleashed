@@ -10,7 +10,6 @@ import 'page_card.dart';
 import '../controllers/firmware.dart';
 import '../device_scope.dart';
 import '../firmware/directory.dart';
-import '../firmware/repository.dart';
 import 'firmware_changelog_page.dart';
 import 'firmware_update_button.dart';
 
@@ -90,9 +89,7 @@ class _FirmwareCardState extends State<FirmwareCard> {
 
   void _tryOpenPendingChangelog() {
     final entry = _pendingChangelog;
-    if (entry == null ||
-        !mounted ||
-        _fw.fetchStateFor(entry) == FirmwareFetchState.loading) {
+    if (entry == null || !mounted || _fw.fetchStateFor(entry).isLoading) {
       return;
     }
     final version = _fw.latestFirmwareFor(entry);
@@ -303,7 +300,7 @@ class _FirmwareSlide extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  fetchState == FirmwareFetchState.loading
+                  fetchState.isLoading
                       ? context.l10n.firmwareChecking
                       : (latestVersion ?? '—'),
                   style: TextStyle(fontSize: 12, color: colors.textMuted),
@@ -365,7 +362,7 @@ class _FirmwareControls extends StatelessWidget {
             labelOf: (channel) => channel.title,
             descriptionOf: (channel) => channel.description,
             accent: accent,
-            placeholder: fetchState == FirmwareFetchState.loading
+            placeholder: fetchState.isLoading
                 ? context.l10n.firmwareLoading
                 : context.l10n.firmwareUnavailable,
             onChanged: (channel) => onChannelChanged(channel.id),
