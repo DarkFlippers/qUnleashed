@@ -86,6 +86,15 @@ void main() {
     expect(release.latest!.changelog, '# notes');
     expect(release.latest!.timestamp, 1700000000);
     expect(release.latest!.files, hasLength(2));
+    expect(release.latest!.files.map((f) => f.target), [
+      'f7',
+      'f18',
+    ], reason: 'in the order the feed lists them');
+    expect(
+      release.latest!.files.last.type,
+      'full_bin',
+      reason: 'not every file is an update package',
+    );
 
     final package = release.latest!.updatePackageFor('f7')!;
     expect(package.url, 'https://x.invalid/flipper-z-f7-update-1.2.3.tgz');
@@ -310,24 +319,26 @@ void main() {
     // RemoteFirmwareSource reads an empty checksum as "this build publishes
     // none" and skips verifying an archive it is about to flash. Only the
     // variant URLs it mints itself are entitled to that.
-    test('is one whose checksum is an empty string', () {
-      final directory = readAndReport(
-        feed([
-          channelJson('release', [
-            versionJson(
-              '1.0.0',
-              files: [
-                fileJson(sha256: ''),
-                fileJson(),
-              ],
-            ),
+    for (final blank in const ['url', 'target', 'type', 'sha256']) {
+      test('is one whose $blank is an empty string', () {
+        final directory = readAndReport(
+          feed([
+            channelJson('release', [
+              versionJson(
+                '1.0.0',
+                files: [
+                  {...fileJson(), blank: ''},
+                  fileJson(url: 'https://example.invalid/other.tgz'),
+                ],
+              ),
+            ]),
           ]),
-        ]),
-      );
+        );
 
-      expect(directory.channelById('release')!.latest!.files, hasLength(1));
-      expect(keptAbout('bad sha256'), hasLength(1));
-    });
+        expect(directory.channelById('release')!.latest!.files, hasLength(1));
+        expect(keptAbout('bad $blank'), hasLength(1));
+      });
+    }
 
     // One renamed field is renamed in every file entry of the document, so a
     // single word repeated eighty-four times would say nothing a maintainer
@@ -384,6 +395,22 @@ void main() {
       expect(release.title, 'release', reason: 'the id stands in');
       expect(release.description, isEmpty);
       expect(LogService.history, isEmpty, reason: 'the feed never had them');
+    });
+
+    // Pinned for an absent title above; a blank one is a different operand,
+    // and an empty string in the channel picker is not a title.
+    test('stands in for a title the feed blanked, not just a missing one', () {
+      final directory = readAndReport(
+        feed([
+          {
+            'id': 'release',
+            'title': '',
+            'versions': [versionJson('1.0.0')],
+          },
+        ]),
+      );
+
+      expect(directory.channelById('release')!.title, 'release');
     });
 
     test('costs nothing on a version either', () {
@@ -542,9 +569,13 @@ void main() {
 
     test('says the same thing once', () {
       readOneBadVersion();
+      // A different source in between, because `LogService` coalesces only
+      // consecutive identical bodies - without it, this suppression and that
+      // one cannot be told apart.
+      readOneBadVersion(at: '[Firmware] https://other.invalid/directory.json');
       readOneBadVersion();
 
-      expect(keptAbout('skipped'), hasLength(1));
+      expect(keptAbout('example.invalid'), hasLength(1));
     });
 
     test('says it again for a different firmware', () {
@@ -628,7 +659,13 @@ void main() {
       isFalse,
       reason: 'the good version still arrived',
     );
-    expect(keptAbout('skipped'), hasLength(1));
+    final kept = keptAbout('skipped');
+    expect(kept, hasLength(1));
+    expect(
+      kept.single,
+      contains('[Firmware] ${parserForEntry(unleashed).directoryUrl}'),
+      reason: 'or two firmwares are indistinguishable in the log',
+    );
   });
 
   // The cache is assigned on every fetch, not filled in once. A refresh that
