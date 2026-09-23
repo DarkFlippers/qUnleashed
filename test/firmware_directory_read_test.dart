@@ -452,6 +452,30 @@ void main() {
       expect(result.said, contains('bad sha256'));
     });
 
+    // Trimming must not become stringifying: a checksum that arrived as a
+    // number is not a checksum, and "7" would pass every later guard.
+    test('is one whose checksum is not a string at all', () {
+      final result = read(
+        feed([
+          channelJson('release', [
+            versionJson(
+              '1.0.0',
+              files: [
+                fileJson(sha256: 7),
+                fileJson(url: 'https://example.invalid/other.tgz'),
+              ],
+            ),
+          ]),
+        ]),
+      );
+
+      expect(
+        result.directory.channelById('release')!.latest!.files,
+        hasLength(1),
+      );
+      expect(result.said, contains('bad sha256'));
+    });
+
     test('names which of its fields were bad', () {
       final result = read(
         feed([
@@ -749,6 +773,20 @@ void main() {
       );
     });
 
+    test('counts more than one of them as entries, not as an entry', () {
+      final result = read(
+        feed([
+          channelJson('release', [
+            {'version': 1},
+            {'version': 2},
+            versionJson('1.0.0'),
+          ]),
+        ]),
+      );
+
+      expect(result.said, contains('skipped 2 unreadable entries'));
+    });
+
     // channelById answers with the first of two, so without the index in the
     // name there is no way to tell which of them broke.
     test('tells two channels with the same id apart', () {
@@ -807,10 +845,10 @@ void main() {
       ]),
     ]);
 
-    Future<void> fetchUnleashed() async {
-      parserForEntry(unleashed).clearCache();
-      await FirmwareRepository.instance.ensure(unleashed);
-    }
+    // refresh() rather than clearCache() + ensure(): clearing the cache also
+    // forgets what this feed last said, which is the memory these cases are
+    // about. refresh skips the freshness check and leaves it alone.
+    Future<void> refetch() => FirmwareRepository.instance.refresh();
 
     test('a partial read reaches the log at error, naming its feed', () async {
       feedEvery((_) async => oneBadVersion());
@@ -835,15 +873,15 @@ void main() {
     test('says the same thing once', () async {
       feedEvery((_) async => oneBadVersion());
 
-      await fetchUnleashed();
-      await fetchUnleashed();
+      await refetch();
+      await refetch();
 
       expect(keptAbout('unleashedflip'), hasLength(1));
     });
 
     test('says it again once the feed breaks differently', () async {
       feedEvery((_) async => oneBadVersion());
-      await fetchUnleashed();
+      await refetch();
 
       feedEvery(
         (_) async => feed([
@@ -851,7 +889,7 @@ void main() {
           channelJson('release', [versionJson('1.0.0')]),
         ]),
       );
-      await fetchUnleashed();
+      await refetch();
 
       expect(keptAbout('unleashedflip'), hasLength(2));
     });
@@ -861,18 +899,48 @@ void main() {
     // _failed on a success for exactly this reason.
     test('says it again after a recovery and one more break', () async {
       feedEvery((_) async => oneBadVersion());
-      await fetchUnleashed();
+      await refetch();
 
       feedWorks();
-      await fetchUnleashed();
+      await refetch();
 
       feedEvery((_) async => oneBadVersion());
-      await fetchUnleashed();
+      await refetch();
 
-      // One line, not two: the healthy read says nothing, so the two reports
-      // are consecutive and `LogService._remember` collapses identical
-      // consecutive bodies into a multiplier. The multiplier is the evidence.
-      expect(keptAbout('unleashedflip').single, contains('(2'));
+      expect(keptAbout('unleashedflip'), hasLength(2));
+    });
+
+    // The printed form groups four identical faults into a count and the
+    // first place, so two different documents can print the same line. The
+    // memory has to compare the whole thing, or a feed that broke somewhere
+    // new is silent because it happens to read like the last one.
+    test('says it again when only the printed form matches', () async {
+      Map<String, dynamic> withBadAt(List<int> bad) => feed([
+        channelJson('release', [
+          versionJson(
+            '1.0.0',
+            files: [
+              for (var i = 0; i < 6; i++)
+                bad.contains(i)
+                    ? fileJson(sha256: null)
+                    : fileJson(url: 'https://example.invalid/$i.tgz'),
+            ],
+          ),
+        ]),
+      ]);
+
+      feedEvery((_) async => withBadAt([0, 1, 2, 3]));
+      await refetch();
+      feedEvery((_) async => withBadAt([0, 1, 2, 4]));
+      await refetch();
+
+      final kept = keptAbout('unleashedflip');
+      expect(
+        kept.first,
+        contains('bad sha256 x4'),
+        reason: 'both read as four of the same fault, first in the same place',
+      );
+      expect(kept, hasLength(2));
     });
 
     // The cache is assigned on every fetch, not filled in once. A refresh that

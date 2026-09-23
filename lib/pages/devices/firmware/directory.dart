@@ -156,15 +156,6 @@ class FirmwareDirectory {
 /// One thing a read could not use, and where in the document it sat.
 typedef _Skip = ({String at, String problem});
 
-/// How many distinct problems a message names before it gives up.
-///
-/// Twenty *kinds*, not twenty entries, because the list is grouped by problem
-/// first. One renamed field is renamed in every entry that carries it - the
-/// official directory ships 84 files today - so an ungrouped list spent every
-/// slot on the same complaint and truncated away the one structural record
-/// that said which channel had gone. There are about thirty kinds in all.
-const int _maxNamed = 20;
-
 /// Names each distinct problem once, with the places it happened.
 ///
 /// A handful of places are worth naming in full - the same fault at the
@@ -176,8 +167,12 @@ String _nameSkipped(List<_Skip> skipped) {
   for (final skip in skipped) {
     (byProblem[skip.problem] ??= <String>[]).add(skip.at);
   }
-  final named = byProblem.entries
-      .take(_maxNamed)
+  // Nothing caps how many groups are named: grouping already bounds this by
+  // how many distinct things can be wrong, which is about two dozen, rather
+  // than by how many entries carry them. A count cap on top of that was
+  // ordinal, so one renamed field filled it and pushed out the structural
+  // record naming the channel that had gone.
+  return byProblem.entries
       .map(
         (e) => switch (e.value.length) {
           1 => '${e.value.single}: ${e.key}',
@@ -186,8 +181,6 @@ String _nameSkipped(List<_Skip> skipped) {
         },
       )
       .join('; ');
-  final rest = byProblem.length - _maxNamed;
-  return rest > 0 ? '$named (and $rest more kinds)' : named;
 }
 
 /// A directory document that yielded nothing usable.
@@ -209,12 +202,12 @@ class FirmwareDirectoryUnreadable implements Exception {
     : skipped = List.unmodifiable([skip]),
       _said = skip;
 
-  /// Everything that was dropped, in the order it was read, uncapped.
+  /// Every record, one per entry, in the order it was read.
   ///
-  /// [toString] is the capped, grouped form, because that is what
+  /// [toString] is the grouped form, because that is what
   /// `FirmwareRepository._recordFailure` logs and keeps as the reason it
   /// compares every later failure against. This list is for a caller that
-  /// wants the detail, which today is the tests.
+  /// wants one line per entry, which today is the tests.
   final List<String> skipped;
 
   final String _said;
