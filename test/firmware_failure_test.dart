@@ -104,6 +104,11 @@ class _FakeClient implements FlipperClient {
   @override
   Stream<FlipperConnectionState> get connectionStream => _connection.stream;
 
+  /// One Flipper for the fake's whole life, so the update tracker has a device
+  /// to hold the flash against.
+  @override
+  String? get scopedDeviceId => 'fake';
+
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

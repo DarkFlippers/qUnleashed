@@ -464,8 +464,7 @@ void main() {
   testWidgets('the page does not claim ready when the nudge fails', (
     tester,
   ) async {
-    final client = _FakeClient()
-      ..writeFailure = _WriteFailure.rejects;
+    final client = _FakeClient()..writeFailure = _WriteFailure.rejects;
     addTearDown(client.text.close);
 
     await recordingLogs(() async {
