@@ -2,6 +2,7 @@ import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
 import '../../../services/localization/l10n.dart';
+import '../../../services/logging.dart';
 import '../../../services/notifications/push_intent.dart';
 import '../../../services/notifications/push_service.dart';
 import '../../../components/config.dart';
@@ -36,28 +37,104 @@ class _FirmwareCardState extends State<FirmwareCard> {
   int _page = 0;
   FirmwareEntry? _pendingChangelog;
 
+  /// Whether the theme's active firmware is one this card can show.
+  ///
+  /// Only false where `setActiveFirmware`'s assert is compiled out, which is
+  /// every build but debug - so this and the fallback in [_themePage] are
+  /// repairs a test cannot reach, and the test that the assert fires is what
+  /// stands in for them.
+  bool get _themeIsShowable => _fw.config.firmwares.any(
+    (e) => e.shortName == _themeController.activeFirmware.shortName,
+  );
+
+  /// The page holding the firmware the theme controller calls active.
+  ///
+  /// Both writers pick out of the same config this reads, and
+  /// `setActiveFirmware` asserts it - but an assert is compiled out of a
+  /// release build, so the fallback stays and says so. A miss means something
+  /// wrote an entry from outside the config, which is the most diagnostic
+  /// single fact this can report, and page 0 is the only answer left.
+  ///
+  /// Not covered by a test, for the reason on [_themeIsShowable].
+  int get _themePage {
+    final name = _themeController.activeFirmware.shortName;
+    final index = _fw.config.firmwares.indexWhere((e) => e.shortName == name);
+    if (index < 0) {
+      LogService.error(
+        '[FirmwareCard] active firmware "$name" is not in the config '
+        '(${_fw.config.firmwares.map((e) => e.shortName).join(', ')}); '
+        'showing the first page',
+      );
+      return 0;
+    }
+    return index;
+  }
+
   @override
   void initState() {
     super.initState();
     _fw = FirmwareController()..addListener(_onChanged);
-    _syncPageToTheme();
+    if (_fw.config.firmwares.isNotEmpty) {
+      _page = _themePage;
+      // A no-op on every normal launch: [_themePage] was derived from the
+      // active firmware, so `setActiveFirmware` gets the value it already
+      // holds and returns without notifying. It is here for the case
+      // [_themePage] logs - an active firmware outside the config, where this
+      // is the only thing that puts the theme back on one the card can show.
+      _followPage(_page);
+      // A no-op at a cold start: the active firmware is not persisted, so it
+      // is page 0 here, and the shell builds this card once. Kept because the
+      // page comes from [_themePage] rather than from the controller's
+      // initial page, so a mount onto a theme that has already moved needs
+      // this to bring the view across.
+      //
+      // The listener goes on after all of this, because in the off-list case
+      // [_followPage] is the one call here that notifies.
+      _jumpTo(_page);
+    }
+    _themeController.addListener(_onThemeChanged);
     PushService.instance.taps.addListener(_onPushTap);
     WidgetsBinding.instance.addPostFrameCallback((_) => _onPushTap());
   }
 
   @override
-  void didUpdateWidget(covariant FirmwareCard oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    _syncPageToTheme();
-  }
-
-  @override
   void dispose() {
     PushService.instance.taps.removeListener(_onPushTap);
+    _themeController.removeListener(_onThemeChanged);
     _fw.removeListener(_onChanged);
     _fw.dispose();
     _pageController.dispose();
     super.dispose();
+  }
+
+  /// Follows the active firmware when something else moves it.
+  ///
+  /// This replaced a call from `didUpdateWidget`, which the parent supplies a
+  /// new widget for on every rebuild - and `DeviceScope` is an
+  /// `InheritedNotifier` driven by a five-second battery poll, so it ran
+  /// twelve times a minute with a device connected. Each run called
+  /// `ensureDirectory`, which is free while the directory is fresh but is a
+  /// fresh request once a failed fetch has left nothing cached; and each run
+  /// scheduled a `jumpToPage`, which cut off the 220ms `animateToPage` the
+  /// carousel arrows start. #135.
+  ///
+  /// The controller notifies for the theme mode too, and for a platform
+  /// brightness change while the mode is `system`, so this compares before
+  /// acting rather than syncing on every notify.
+  void _onThemeChanged() {
+    if (_fw.config.firmwares.isEmpty) return;
+    final target = _themePage;
+    // The page match is not enough on its own: an off-list firmware resolves
+    // to page 0, so with the card already there, returning here would skip
+    // the one thing that puts the theme back - and [_themePage] would say so
+    // again on every later notify instead of once.
+    if (target == _page && _themeIsShowable) return;
+    // Through setState, because nothing else is going to rebuild for this -
+    // the call it replaced was part of the parent's own rebuild and got one
+    // for free.
+    setState(() => _page = target);
+    _followPage(target);
+    _jumpTo(target);
   }
 
   void _onChanged() {
@@ -73,15 +150,38 @@ class _FirmwareCardState extends State<FirmwareCard> {
     final firmwares = _fw.config.firmwares;
     final index = firmwares.indexWhere((e) => e.shortName == intent.entry);
     if (index < 0) {
+      // Consumed rather than left pending, so it cannot be retried on every
+      // later notify - but said out loud, because a name this build does not
+      // carry means the push backend and a shipped client disagree, and that
+      // is undiagnosable from a bug report without this line.
+      LogService.warn(
+        '[FirmwareCard] push names an unknown firmware "${intent.entry}"; '
+        'this build has ${firmwares.map((e) => e.shortName).join(', ')}',
+      );
       PushService.instance.taps.value = null;
       return;
     }
+    // The same three steps as every move the code initiates - _onPageChanged
+    // skips the jump, because there the view is what moved. Inlining the
+    // middle one and letting the theme notify supply the rest worked only
+    // while `_page` was stale, which is not a property a caller should have
+    // to preserve.
+    setState(() => _page = index);
+    _followPage(index);
+    _jumpTo(index);
     final entry = firmwares[index];
-    _themeController.setActiveFirmware(entry);
-    _fw.ensureDirectory(entry);
     final channel = intent.channel;
     if (channel != null && _fw.selectedChannelId(entry) != channel) {
       _fw.setChannel(entry, channel);
+    }
+    final superseded = _pendingChangelog;
+    if (superseded != null && superseded.shortName != entry.shortName) {
+      // The other two ways a tap ends without a changelog both say so; this
+      // one is a tap still waiting for its directory when a second arrived.
+      LogService.warn(
+        '[FirmwareCard] push tap for ${superseded.shortName} superseded by '
+        '${entry.shortName} before its directory landed',
+      );
     }
     _pendingChangelog = entry;
     _tryOpenPendingChangelog();
@@ -89,39 +189,61 @@ class _FirmwareCardState extends State<FirmwareCard> {
 
   void _tryOpenPendingChangelog() {
     final entry = _pendingChangelog;
-    if (entry == null || !mounted || _fw.fetchStateFor(entry).isLoading) {
-      return;
-    }
+    final state = entry == null
+        ? FirmwareFetchState.loading
+        : _fw.fetchStateFor(entry);
+    if (entry == null || !mounted || state.isLoading) return;
     final version = _fw.latestFirmwareFor(entry);
+    final failed = state.hasFailed;
     _pendingChangelog = null;
     PushService.instance.taps.value = null;
-    if (version == null) return;
+    if (version == null) {
+      // The tap is spent and nothing is on screen, so this line is the only
+      // record that it happened at all. On the failed branch the repository
+      // will usually have said nothing either: its suppression drops a repeat
+      // with the same reason, and the reason here is the one the startup
+      // prefetch already gave. On the other branch it never had anything to
+      // say - the directory arrived, it just carries no version here.
+      LogService.warn(
+        failed
+            ? '[FirmwareCard] push tap for ${entry.shortName} dropped: the '
+                  'directory could not be fetched'
+            : '[FirmwareCard] push tap for ${entry.shortName} dropped: the '
+                  'directory has no version on '
+                  '${_fw.selectedChannelId(entry)}',
+      );
+      return;
+    }
     _openChangelog(entry, version);
   }
 
-  void _syncPageToTheme() {
-    final config = _fw.config;
-    if (config.firmwares.isEmpty) return;
-    final active = _themeController.activeFirmware;
-    final index = config.firmwares.indexWhere(
-      (entry) => entry.shortName == active.shortName,
-    );
-    final target = index < 0 ? 0 : index;
-    _page = target;
-    _themeController.setActiveFirmware(config.firmwares[target]);
-    _fw.ensureDirectory(config.firmwares[target]);
+  /// Points everything that follows the carousel at [index].
+  ///
+  /// Every caller assigns [_page] first. `setActiveFirmware` notifies when it
+  /// really moves the firmware, and [_onThemeChanged] answers that by
+  /// comparing the theme's page against [_page] - so a stale [_page] here
+  /// would send the sync round again and schedule a jump across whatever
+  /// animation is already running.
+  void _followPage(int index) {
+    final entry = _fw.config.firmwares[index];
+    _themeController.setActiveFirmware(entry);
+    _fw.ensureDirectory(entry);
+  }
+
+  /// Brings the carousel itself onto [index], once the frame has been laid
+  /// out - a single firmware builds no `PageView`, so there is nothing to
+  /// jump until then, and there may never be.
+  void _jumpTo(int index) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_pageController.hasClients) return;
-      _pageController.jumpToPage(target);
+      _pageController.jumpToPage(index);
     });
   }
 
   void _onPageChanged(int page) {
+    if (page >= _fw.config.firmwares.length) return;
     setState(() => _page = page);
-    final config = _fw.config;
-    if (page >= config.firmwares.length) return;
-    _themeController.setActiveFirmware(config.firmwares[page]);
-    _fw.ensureDirectory(config.firmwares[page]);
+    _followPage(page);
   }
 
   void _goToPage(int page) {

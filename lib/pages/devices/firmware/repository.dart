@@ -133,12 +133,12 @@ class FirmwareRepository extends ChangeNotifier {
   /// would clear the record. Comparing the reason keeps a genuinely repeating
   /// condition to one line and lets a changed one through.
   ///
-  /// Suppressing at all is needed because [ensure] is reached from
-  /// `FirmwareCard.didUpdateWidget`, which a connected Flipper drives every
-  /// five seconds - `device_info_watch` polls the battery on that interval and
-  /// its notify reaches `DeviceScope`. `LogService` coalesces only consecutive
-  /// identical bodies, and two firmwares failing in turn are not consecutive,
-  /// so it cannot do this job here.
+  /// Suppressing at all is needed because [ensure] has many callers and no
+  /// memory of its own: every `FirmwareController` construction prefetches,
+  /// every carousel swipe and push tap asks again, and a failed fetch never
+  /// leaves a fresh cache to short-circuit them. `LogService` coalesces only
+  /// consecutive identical bodies, and two firmwares failing in turn are not
+  /// consecutive, so it cannot do this job here.
   ///
   /// The level splits the two unrelated things that arrive. The user's network
   /// is an expected way to run this app and belongs at warn. Anything else is
