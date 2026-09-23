@@ -133,18 +133,18 @@ class FirmwareRepository extends ChangeNotifier {
   /// would clear the record. Comparing the reason keeps a genuinely repeating
   /// condition to one line and lets a changed one through.
   ///
-  /// Suppressing at all is needed because [ensure] is reached from
-  /// `FirmwareCard.didUpdateWidget`, which a connected Flipper drives every
-  /// five seconds - `device_info_watch` polls the battery on that interval and
-  /// its notify reaches `DeviceScope`. `LogService` coalesces only consecutive
-  /// identical bodies, and two firmwares failing in turn are not consecutive,
-  /// so it cannot do this job here.
+  /// Suppressing at all is needed because [ensure] has many callers and no
+  /// memory of its own: every `FirmwareController` construction prefetches,
+  /// every carousel swipe and push tap asks again, and a failed fetch never
+  /// leaves a fresh cache to short-circuit them. `LogService` coalesces only
+  /// consecutive identical bodies, and two firmwares failing in turn are not
+  /// consecutive, so it cannot do this job here.
   ///
   /// The level splits the two unrelated things that arrive. The user's network
   /// is an expected way to run this app and belongs at warn. Anything else is
-  /// a feed whose shape changed under a parser of unchecked casts (#133),
-  /// which disables the firmware page for every user at once and must not be
-  /// filed alongside airplane mode.
+  /// the app's own doing - a feed this can no longer read at all (#133), or a
+  /// bug - and it lands on every user at once, so it must not be filed
+  /// alongside airplane mode.
   void _recordFailure(String key, Object e, StackTrace st) {
     final network = _isNetwork(e);
     final reason = '$e';
@@ -173,8 +173,10 @@ class FirmwareRepository extends ChangeNotifier {
   /// [FormatException] counts, which is the one judgement call here. A body
   /// that will not parse as JSON at all is a captive portal or a proxy far
   /// more often than a feed regression, because the feed is machine-generated.
-  /// A feed that really did change shape parses and then fails a cast, which
-  /// arrives as a `TypeError` and is filed as the app's own problem.
+  /// A feed that really did change shape parses and then yields nothing the
+  /// reader can use, which arrives as a `FirmwareDirectoryUnreadable` - a type
+  /// kept deliberately outside this list, and outside `FormatException`, so
+  /// that it is filed as the app's own problem. Leave it out.
   static bool _isNetwork(Object e) =>
       e is IOException ||
       e is TimeoutException ||
