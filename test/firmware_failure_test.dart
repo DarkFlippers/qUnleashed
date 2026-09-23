@@ -123,13 +123,13 @@ void main() {
       expect(kept.single, contains('[error]'));
       expect(
         kept.single,
-        contains("type 'int' is not a subtype of type 'String'"),
-        reason: 'thrown by fromJson itself, not by the seam',
+        contains('FirmwareDirectoryUnreadable'),
+        reason: 'raised by the decode itself, not by the seam',
       );
       expect(
         kept.single,
-        contains('FirmwareVersion.fromJson'),
-        reason: 'the stack reaches the field that changed',
+        contains('channels[0](release).versions[0]: no version'),
+        reason: 'and it names the field that changed, and where it sat',
       );
     });
 
