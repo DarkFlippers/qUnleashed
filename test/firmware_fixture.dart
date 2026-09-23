@@ -124,7 +124,6 @@ void resetFirmwareState() {
   SharedPreferences.setMockInitialValues(const {});
   UpdateSettingsStore.instance.reset();
   FirmwareRepository.instance.reset();
-  FirmwareDirectoryReader.forgetReports();
   QAppThemeController.instance.setActiveFirmware(QAppConfig.defaultFirmware);
   // Unawaited because this is a `void` reset and only the synchronous half -
   // the mode and its notify - is what it is for. The tail writes `theme.mode`
