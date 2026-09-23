@@ -55,9 +55,9 @@ Map<String, dynamic> feedJson() => {
 
 /// The same feed after `version` stopped being a string upstream.
 ///
-/// The required scalars below the decode are unchecked casts - this trips
-/// `version: json['version'] as String` - so it is a real `TypeError` out of
-/// `FirmwareDirectory.fromJson` rather than a stand-in thrown by the seam.
+/// `version` is one of the two fields `FirmwareDirectoryReader` will not do
+/// without, so this is the whole document lost - and lost by the decode
+/// itself rather than by a stand-in thrown from the seam.
 Map<String, dynamic> feedOfTheWrongShape() {
   final json = feedJson();
   final channels = json['channels']! as List<dynamic>;
