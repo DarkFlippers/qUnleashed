@@ -34,38 +34,54 @@ final FirmwareEntry official = QAppConfig.firmware.firmwares.firstWhere(
 /// How many directory requests the feed has been asked for.
 int fetchCalls = 0;
 
-/// A directory feed of the shape the parsers expect.
-Map<String, dynamic> feedJson() => {
-  'channels': [
-    {
-      'id': 'release',
-      'title': 'Release',
-      'description': '',
-      'versions': [
-        {
-          'version': '1.0.0',
-          'changelog': 'notes',
-          'timestamp': 0,
-          'files': <dynamic>[],
-        },
-      ],
-    },
-  ],
+/// A directory document carrying [channels] verbatim, so a case can be as
+/// malformed as it needs to be.
+Map<String, dynamic> feed(List<dynamic> channels) => {'channels': channels};
+
+/// One channel of a directory document.
+Map<String, dynamic> channelJson(
+  String id,
+  List<dynamic> versions, {
+  String? title,
+  String description = '',
+}) => {
+  'id': id,
+  'title': title ?? id,
+  'description': description,
+  'versions': versions,
 };
+
+/// One version of a channel.
+Map<String, dynamic> versionJson(
+  String version, {
+  String changelog = 'notes',
+  int timestamp = 0,
+  List<dynamic> files = const <dynamic>[],
+}) => {
+  'version': version,
+  'changelog': changelog,
+  'timestamp': timestamp,
+  'files': files,
+};
+
+/// A directory feed of the shape the parsers expect.
+Map<String, dynamic> feedJson() => feed([
+  channelJson('release', [versionJson('1.0.0')], title: 'Release'),
+]);
 
 /// The same feed after `version` stopped being a string upstream.
 ///
 /// `version` is one of the two fields `FirmwareDirectoryReader` will not do
-/// without, so this is the whole document lost - and lost by the decode
-/// itself rather than by a stand-in thrown from the seam.
-Map<String, dynamic> feedOfTheWrongShape() {
-  final json = feedJson();
-  final channels = json['channels']! as List<dynamic>;
-  final versions =
-      (channels.first as Map<String, dynamic>)['versions']! as List<dynamic>;
-  (versions.first as Map<String, dynamic>)['version'] = 1;
-  return json;
-}
+/// without, so the one version here is dropped - which empties the one
+/// channel, which empties the document. That last step is what makes this a
+/// failure rather than a partial read: a feed with a second, good version
+/// would keep it and carry on. Raised by the decode itself rather than by a
+/// stand-in thrown from the seam.
+Map<String, dynamic> feedOfTheWrongShape() => feed([
+  channelJson('release', [
+    {...versionJson('1.0.0'), 'version': 1},
+  ], title: 'Release'),
+]);
 
 /// Answers every firmware's directory request with [fetch].
 void feedEvery(Future<dynamic> Function(Uri uri) fetch) {
@@ -108,6 +124,7 @@ void resetFirmwareState() {
   SharedPreferences.setMockInitialValues(const {});
   UpdateSettingsStore.instance.reset();
   FirmwareRepository.instance.reset();
+  FirmwareDirectoryReader.forgetReports();
   QAppThemeController.instance.setActiveFirmware(QAppConfig.defaultFirmware);
   // Unawaited because this is a `void` reset and only the synchronous half -
   // the mode and its notify - is what it is for. The tail writes `theme.mode`

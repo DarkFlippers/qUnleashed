@@ -142,9 +142,9 @@ class FirmwareRepository extends ChangeNotifier {
   ///
   /// The level splits the two unrelated things that arrive. The user's network
   /// is an expected way to run this app and belongs at warn. Anything else is
-  /// a feed whose shape changed under a parser of unchecked casts (#133),
-  /// which disables the firmware page for every user at once and must not be
-  /// filed alongside airplane mode.
+  /// the app's own doing - a feed this can no longer read at all (#133), or a
+  /// bug - and it lands on every user at once, so it must not be filed
+  /// alongside airplane mode.
   void _recordFailure(String key, Object e, StackTrace st) {
     final network = _isNetwork(e);
     final reason = '$e';
@@ -173,8 +173,10 @@ class FirmwareRepository extends ChangeNotifier {
   /// [FormatException] counts, which is the one judgement call here. A body
   /// that will not parse as JSON at all is a captive portal or a proxy far
   /// more often than a feed regression, because the feed is machine-generated.
-  /// A feed that really did change shape parses and then fails a cast, which
-  /// arrives as a `TypeError` and is filed as the app's own problem.
+  /// A feed that really did change shape parses and then yields nothing the
+  /// reader can use, which arrives as a `FirmwareDirectoryUnreadable` - a type
+  /// kept deliberately outside this list, and outside `FormatException`, so
+  /// that it is filed as the app's own problem. Leave it out.
   static bool _isNetwork(Object e) =>
       e is IOException ||
       e is TimeoutException ||

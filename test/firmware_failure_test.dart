@@ -128,8 +128,8 @@ void main() {
       );
       expect(
         kept.single,
-        contains('no version'),
-        reason: 'and it names the field that changed',
+        contains('channels[0](release).versions[0]: no version'),
+        reason: 'and it names the field that changed, and where it sat',
       );
     });
 

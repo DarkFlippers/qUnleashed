@@ -153,180 +153,265 @@ class FirmwareDirectory {
   }
 }
 
+/// How many of the skipped entries a message names before it gives up.
+///
+/// One renamed field is renamed in every entry that carries it: the official
+/// directory ships 84 files today, so an uncapped join is a multi-kilobyte log
+/// line - and `FirmwareRepository._recordFailure` keeps that whole string as
+/// the key it compares every later failure against. Twenty names each distinct
+/// thing that can go wrong several times over.
+const int _maxNamed = 20;
+
+String _nameSkipped(List<String> skipped) => skipped.length <= _maxNamed
+    ? skipped.join('; ')
+    : '${skipped.take(_maxNamed).join('; ')} '
+          '(and ${skipped.length - _maxNamed} more)';
+
 /// A directory document that yielded nothing at all.
 ///
 /// Not a [FormatException]: the repository files those as the user's network,
 /// and this is the opposite - the body parsed as JSON and then turned out not
-/// to be a directory. It has to reach the card as a failure rather than as an
-/// empty directory, because an empty one reads as "the server has no builds"
-/// and stops the retry.
+/// to be a directory. Returning an empty directory instead would reach the
+/// card as a success: `stateFor` reads ready, the channel list falls through
+/// to the custom one and the button offers "pick a file to install", and the
+/// empty result is cached and stamped fresh so nothing is fetched again for
+/// ten minutes at a time. Throwing is what records the failure, puts CAN'T
+/// CHECK on the card, and leaves the next `ensure` free to retry.
 class FirmwareDirectoryUnreadable implements Exception {
   const FirmwareDirectoryUnreadable(this.skipped);
 
   /// What was dropped on the way, in the order it was read.
+  ///
+  /// Uncapped, unlike [toString]: a test reads this, and the cap exists for
+  /// what gets logged and compared.
   final List<String> skipped;
 
   @override
   String toString() =>
       'FirmwareDirectoryUnreadable: nothing in the document could be read '
-      '(${skipped.length} skipped: ${skipped.join('; ')})';
+      '(${skipped.length} skipped: ${_nameSkipped(skipped)})';
 }
 
 /// Reads a directory feed, keeping whatever parses.
 ///
-/// One bad field used to cost the whole document - every channel of every
-/// version went with it, so an upstream type change disabled the firmware
-/// page for everyone at once (#133). Each entry is now read on its own, and
-/// one that will not parse is skipped and named.
+/// One bad field used to cost the whole document - every version of every
+/// channel went with it, so an upstream type change took the directory-driven
+/// half of the firmware page away from everyone at once (#133). Each entry is
+/// now read on its own, and one that will not parse is skipped and named.
 ///
 /// Only two fields are load-bearing: a channel's `id`, which is how it is
-/// looked up, and a version's `version`, which is what the card compares and
-/// shows. A title falls back to the id, a changelog and a timestamp to
-/// nothing, and a file has to carry all four of its fields or it cannot be
-/// downloaded. Everything else degrades: a version whose files all failed
-/// keeps its place and simply cannot be installed, which `updatePackageFor`
-/// already answers with null.
+/// looked up, and a version's `version`, which is what decides the entry is
+/// worth keeping and what titles the changelog page. A title falls back to the
+/// id, a changelog and a description to nothing, and a file has to carry all
+/// four of its fields, non-empty, or it is not one this can install. Whatever
+/// is dropped is named either way.
 ///
-/// Nothing surviving is not degradation, and throws - see
-/// [FirmwareDirectoryUnreadable].
+/// One rule runs at all three levels: a list that carried entries and produced
+/// none, or that stopped being a list at all, is unreadable rather than empty.
+/// So a version whose files all failed is dropped, which can empty its
+/// channel, which can empty the document - and an empty document throws, see
+/// [FirmwareDirectoryUnreadable]. Keeping such a version is worse than it
+/// looks: `UnleashedParser.getDisplayVersion` answers null for one with no
+/// installable file, while the fetch itself counts as a success, and the card
+/// then reads NO UPDATE - telling someone their firmware is current on the
+/// strength of a document it could not read. That claim is what #118 removed.
+///
+/// A list the feed left out or set to null is a different answer and is kept
+/// as empty: the unleashed feed ships `"versions": null` on its
+/// release-candidate channel today.
 class FirmwareDirectoryReader {
   final List<String> _skipped = [];
 
-  /// What was dropped, in the order it was read.
-  List<String> get skipped => List.unmodifiable(_skipped);
+  /// The last report made under each tag, so a feed that is permanently odd
+  /// is said once rather than on every refresh.
+  ///
+  /// `FirmwareParser.fetch` builds a reader per fetch, so the memory has to
+  /// outlive the instance. `FirmwareRepository._recordFailure` carries the
+  /// same mechanism and the argument for it: `ensure` has many callers and no
+  /// memory of its own, `refresh` skips the freshness check entirely, and
+  /// `LogService` coalesces only consecutive identical bodies - which the two
+  /// firmwares fetched by one `Future.wait` never are.
+  static final Map<String, String> _lastReported = {};
 
-  FirmwareDirectory read(Map<String, dynamic> json) {
-    final raw = json['channels'];
-    if (raw != null && raw is! List) _skipped.add('channels: not a list');
-    final entries = raw is List ? raw : const <dynamic>[];
+  /// Forgets what has been said, so one test cannot silence another's report.
+  @visibleForTesting
+  static void forgetReports() => _lastReported.clear();
 
-    final channels = <FirmwareDirectoryChannel>[];
-    for (var i = 0; i < entries.length; i++) {
-      final channel = _channel(entries[i], i);
-      if (channel != null) channels.add(channel);
+  FirmwareDirectory read(Object? json) {
+    final document = _object(json);
+    if (document == null) {
+      throw const FirmwareDirectoryUnreadable(['document: not an object']);
     }
-
-    // A document that carried channels and produced none is a document this
-    // no longer understands, not a feed with nothing in it.
-    if (channels.isEmpty && entries.isNotEmpty) {
-      throw FirmwareDirectoryUnreadable(skipped);
+    final channels = _each(document['channels'], 'channels', _channel);
+    if (channels.lostEverything) {
+      throw FirmwareDirectoryUnreadable(List.of(_skipped));
     }
-    return FirmwareDirectory(channels: channels);
+    return FirmwareDirectory(channels: channels.kept);
   }
 
   /// Says once what the whole read dropped, or nothing at all.
   ///
   /// At error, for the reason `FirmwareRepository._recordFailure` draws the
   /// same line: no network is involved, so a skip is the feed changing shape
-  /// under the app, and it breaks for every user at once.
-  void report(String url) {
+  /// under the app, and it affects every user at once. [tag] carries the
+  /// bracketed source, the way `PrefsReader.report` takes it.
+  void report(String tag) {
     if (_skipped.isEmpty) return;
+    final body = _nameSkipped(_skipped);
+    if (_lastReported[tag] == body) return;
+    _lastReported[tag] = body;
     LogService.error(
-      '[Firmware] $url: skipped ${_skipped.length} unreadable '
-      '${_skipped.length == 1 ? 'entry' : 'entries'}: ${_skipped.join('; ')}',
+      '$tag: skipped ${_skipped.length} unreadable '
+      '${_skipped.length == 1 ? 'entry' : 'entries'}: $body',
     );
   }
 
-  FirmwareDirectoryChannel? _channel(Object? raw, int index) {
-    final json = _object(raw);
-    if (json == null) {
-      _skipped.add('channels[$index]: not an object');
-      return null;
+  /// Reads [raw] as a list of JSON objects, keeping whatever [parse] returns.
+  ///
+  /// Every level goes through here, so the four things that make the read
+  /// tolerant are written once: a list that is not one, an entry that is not
+  /// an object, an entry [parse] rejected, and the one case that is not
+  /// degradation at all.
+  ///
+  /// [where] is the path to this list; an entry's own path is `where[i]`, and
+  /// that is what names every skip below it. Two channels sharing an id
+  /// therefore still produce records that can be told apart.
+  ({List<T> kept, bool lostEverything}) _each<T>(
+    Object? raw,
+    String where,
+    T? Function(Map<String, dynamic> json, String at) parse,
+  ) {
+    if (raw is! List) {
+      // Absent or null is an answer - the feed saying this level has nothing.
+      // Any other type is the feed changing shape under the app.
+      if (raw == null) return (kept: <T>[], lostEverything: false);
+      _skipped.add('$where: not a list');
+      return (kept: <T>[], lostEverything: true);
     }
+    final kept = <T>[];
+    for (var i = 0; i < raw.length; i++) {
+      final at = '$where[$i]';
+      final json = _object(raw[i]);
+      if (json == null) {
+        _skipped.add('$at: not an object');
+        continue;
+      }
+      final one = parse(json, at);
+      if (one != null) kept.add(one);
+    }
+    return (kept: kept, lostEverything: kept.isEmpty && raw.isNotEmpty);
+  }
+
+  FirmwareDirectoryChannel? _channel(Map<String, dynamic> json, String at) {
     final id = json['id'];
     if (id is! String || id.isEmpty) {
-      _skipped.add('channels[$index]: no id');
+      _skipped.add('$at: no id');
       return null;
     }
+    final where = '$at($id)';
 
-    final rawVersions = json['versions'];
-    if (rawVersions != null && rawVersions is! List) {
-      _skipped.add('$id.versions: not a list');
-    }
-    final entries = rawVersions is List ? rawVersions : const <dynamic>[];
-    final versions = <FirmwareVersion>[];
-    for (var i = 0; i < entries.length; i++) {
-      final version = _version(entries[i], id, i);
-      if (version != null) versions.add(version);
-    }
-
-    // A channel that carried versions and produced none is unreadable in the
-    // same way a document with no channels is: keeping it would put an empty
-    // channel on the card, which reads as a firmware with no builds rather
-    // than one whose builds could not be read.
-    if (versions.isEmpty && entries.isNotEmpty) {
-      _skipped.add('$id: no version in it could be read');
+    final versions = _each(json['versions'], '$where.versions', _version);
+    if (versions.lostEverything) {
+      _skipped.add('$where: no version in it could be read');
       return null;
     }
 
     final title = json['title'];
     final description = json['description'];
+    // Named rather than quietly defaulted. The description is rendered under
+    // the channel in the picker, so a feed that renames it takes text off the
+    // screen, and falling back in silence leaves nothing to find.
+    _notAString(where, 'title', title);
+    _notAString(where, 'description', description);
     return FirmwareDirectoryChannel(
       id: id,
       title: title is String && title.isNotEmpty ? title : id,
       description: description is String ? description : '',
-      versions: versions,
+      versions: versions.kept,
     );
   }
 
-  FirmwareVersion? _version(Object? raw, String channel, int index) {
-    final json = _object(raw);
-    if (json == null) {
-      _skipped.add('$channel[$index]: not an object');
-      return null;
-    }
+  FirmwareVersion? _version(Map<String, dynamic> json, String at) {
     final version = json['version'];
     if (version is! String || version.isEmpty) {
-      _skipped.add('$channel[$index]: no version');
+      _skipped.add('$at: no version');
       return null;
     }
+    final where = '$at($version)';
 
-    final rawFiles = json['files'];
-    if (rawFiles != null && rawFiles is! List) {
-      _skipped.add('$channel $version: files is not a list');
-    }
-    final entries = rawFiles is List ? rawFiles : const <dynamic>[];
-    final files = <FirmwareFile>[];
-    for (var i = 0; i < entries.length; i++) {
-      final file = _file(entries[i], '$channel $version', i);
-      if (file != null) files.add(file);
+    final files = _each(json['files'], '$where.files', _file);
+    if (files.lostEverything) {
+      _skipped.add('$where: no file in it could be read');
+      return null;
     }
 
     final changelog = json['changelog'];
+    // `changelog` decides whether the card offers a WHAT'S NEW button at all,
+    // so a feed that renames it makes a control disappear.
+    _notAString(where, 'changelog', changelog);
     final timestamp = json['timestamp'];
     return FirmwareVersion(
       version: version,
       changelog: changelog is String ? changelog : '',
+      // Nothing in the app reads this today, which is the only reason a bad
+      // one is neither named nor fatal. Both stop being true the moment
+      // something renders a release date.
       timestamp: timestamp is num ? timestamp.toInt() : 0,
-      files: files,
+      files: files.kept,
     );
   }
 
-  FirmwareFile? _file(Object? raw, String where, int index) {
-    final json = _object(raw);
-    if (json == null) {
-      _skipped.add('$where file $index: not an object');
-      return null;
-    }
+  FirmwareFile? _file(Map<String, dynamic> json, String at) {
     final url = json['url'];
     final target = json['target'];
     final type = json['type'];
     final sha256 = json['sha256'];
-    // All four or none: a file missing any of them cannot be downloaded or
-    // checked, so keeping it would only push the failure to the flash.
-    if (url is! String ||
-        target is! String ||
-        type is! String ||
-        sha256 is! String) {
-      _skipped.add('$where file $index: incomplete');
-      return null;
+    // All four, non-empty, or none. An empty `sha256` is the sharp one:
+    // `RemoteFirmwareSource` reads it as "this build publishes no checksum"
+    // and skips verifying an archive it is about to flash, which only the
+    // variant URLs it mints itself are entitled to.
+    if (url is String &&
+        url.isNotEmpty &&
+        target is String &&
+        target.isNotEmpty &&
+        type is String &&
+        type.isNotEmpty &&
+        sha256 is String &&
+        sha256.isNotEmpty) {
+      return FirmwareFile(url: url, target: target, type: type, sha256: sha256);
     }
-    return FirmwareFile(url: url, target: target, type: type, sha256: sha256);
+    // Named one by one: a renamed field is renamed in every file entry of the
+    // document, and `incomplete` eighty-four times says nothing a maintainer
+    // can diff a feed against.
+    final bad = [
+      if (url is! String || url.isEmpty) 'url',
+      if (target is! String || target.isEmpty) 'target',
+      if (type is! String || type.isEmpty) 'type',
+      if (sha256 is! String || sha256.isEmpty) 'sha256',
+    ];
+    _skipped.add('$at: bad ${bad.join(', ')}');
+    return null;
   }
 
-  /// A JSON object, whatever the decoder happened to type its keys as.
+  /// Names a field the feed sent as something other than a string.
+  ///
+  /// Absent is left alone: a field the feed never carried is not a change.
+  void _notAString(String where, String field, Object? value) {
+    if (value != null && value is! String) {
+      _skipped.add('$where.$field: not a string');
+    }
+  }
+
+  /// A JSON object, or null for anything else.
+  ///
+  /// `jsonDecode` types every object as `Map<String, dynamic>`, and Dart's
+  /// generics are covariant, so a literal written in a test satisfies this too
+  /// however narrowly it was inferred - `Map<String, String>` included. The
+  /// `cast` this used to do was therefore unreachable in effect, and worse
+  /// than nothing: a cast view checks on access, so iterating one would throw
+  /// from inside the one class whose whole job is not to.
   Map<String, dynamic>? _object(Object? raw) =>
-      raw is Map ? raw.cast<String, dynamic>() : null;
+      raw is Map<String, dynamic> ? raw : null;
 }
 
 FirmwareParser parserForEntry(FirmwareEntry entry) => switch (entry.shortName) {
@@ -381,21 +466,18 @@ abstract class FirmwareParser {
   /// of the wrong shape replace this.
   ///
   /// Under the decode rather than over it, so a test can hand it a document of
-  /// the wrong shape and have [FirmwareDirectory.fromJson] really run. Every
-  /// field below it is an unchecked cast, so that is where a feed that changed
-  /// shape actually breaks - a seam above the decode could only ever simulate
-  /// the exception, never produce it.
+  /// the wrong shape and have [FirmwareDirectoryReader] really run on it. A
+  /// seam above the decode could only ever stand in for what a changed feed
+  /// does; this one produces it.
   @visibleForTesting
   Future<dynamic> Function(Uri uri) fetchJson = AppHttp.getJson;
 
   Future<FirmwareDirectory> fetch() async {
-    final json =
-        await fetchJson(Uri.parse(directoryUrl)) as Map<String, dynamic>;
     final reader = FirmwareDirectoryReader();
-    final directory = reader.read(json);
-    reader.report(directoryUrl);
+    final directory = reader.read(await fetchJson(Uri.parse(directoryUrl)));
+    reader.report('[Firmware] $directoryUrl');
     // Stamped after the decode, not before it. A feed whose shape changed
-    // throws out of fromJson, and marking the previous cache fresh on the way
+    // throws out of the read, and marking the previous cache fresh on the way
     // past left `isFresh` true for the whole TTL - so the next attempt was
     // short-circuited by a document that had just failed to parse.
     //
