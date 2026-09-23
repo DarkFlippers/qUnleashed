@@ -1,7 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/devices/firmware/directory.dart';
 import 'package:qunleashed/pages/devices/firmware/repository.dart';
-import 'package:qunleashed/services/logging.dart';
 
 import 'firmware_fixture.dart';
 
@@ -39,11 +38,10 @@ void main() {
     Object? sha256 = 'abc',
   }) => {'url': url, 'target': target, 'type': type, 'sha256': sha256};
 
-  // Every case below is built to be dropped, so none of them asserts the
-  // values a decoded entry carries. Without this one, a decode that blanked
-  // every `sha256` would pass — and an empty checksum is exactly how
-  // RemoteFirmwareSource is told not to verify the archive it is about to
-  // flash.
+  // No other case asserts a *surviving* file's `sha256`, so without this one a
+  // decode that blanked every checksum would pass — and an empty checksum is
+  // exactly how RemoteFirmwareSource is told not to verify the archive it is
+  // about to flash.
   test('a well-formed feed arrives whole', () {
     final result = read(
       feed([
@@ -243,8 +241,10 @@ void main() {
       );
 
       expect(result.directory.channels.map((c) => c.id), ['release']);
-      expect(result.said, contains('channels[0](development).versions'));
-      expect(result.said, contains('missing'));
+      expect(
+        result.said,
+        contains('channels[0](development): versions missing'),
+      );
     });
 
     test('is one whose versions stopped being a list', () {
@@ -258,7 +258,7 @@ void main() {
       expect(result.directory.channels.map((c) => c.id), ['release']);
       expect(
         result.said,
-        contains('channels[0](development).versions: not a list'),
+        contains('channels[0](development): versions not a list'),
       );
     });
 
@@ -287,7 +287,7 @@ void main() {
       expect(result.directory.channels.map((c) => c.id), ['release']);
       expect(
         result.said,
-        contains('channels[0](development): no version in it could be read'),
+        contains('channels[0](development): no readable version'),
       );
     });
   });
@@ -310,14 +310,18 @@ void main() {
       expect(release.versions.map((v) => v.version), ['0.9.0']);
       expect(
         result.said,
-        contains('channels[0](release).versions[0](1.0.0): no file'),
+        contains('channels[0](release).versions[0](1.0.0): no readable file'),
       );
       expect(
         result.said,
-        contains('bad target'),
+        contains(
+          'bad target; channels[0](release).versions[0](1.0.0): '
+          'no readable file',
+        ),
         reason:
             'dropping the version must not discard why its files failed - '
-            'that name is the only thing a maintainer can diff the feed with',
+            'that name is the only thing a maintainer can diff the feed with, '
+            'and the two problems have to stay legible apart',
       );
     });
 
@@ -374,9 +378,8 @@ void main() {
       );
       expect(
         result.said,
-        contains('channels[0](release).versions[0](1.0.0).files'),
+        contains('channels[0](release).versions[0](1.0.0): files missing'),
       );
-      expect(result.said, contains('missing'));
     });
 
     test('is one that stopped being an object', () {
@@ -476,6 +479,59 @@ void main() {
       expect(result.said, contains('bad sha256'));
     });
 
+    // `_text` trims, so these three are one rule: `updatePackageFor` matches
+    // `target` and `type` exactly, and `RemoteFirmwareSource` reads a blank
+    // checksum as "do not verify the archive about to be flashed".
+    test('is one whose fields are only whitespace', () {
+      final result = read(
+        feed([
+          channelJson('release', [
+            versionJson(
+              '1.0.0',
+              files: [
+                fileJson(url: '   '),
+                fileJson(target: ' '),
+                fileJson(url: 'https://example.invalid/other.tgz'),
+              ],
+            ),
+          ]),
+        ]),
+      );
+
+      expect(
+        result.directory.channelById('release')!.latest!.files,
+        hasLength(1),
+      );
+      expect(result.said, contains('bad url'));
+      expect(result.said, contains('bad target'));
+    });
+
+    test('is not one padded around a field that is otherwise fine', () {
+      final result = read(
+        feed([
+          channelJson('release', [
+            versionJson(
+              '1.0.0',
+              files: [fileJson(target: ' f7 ', sha256: '  abc  ')],
+            ),
+          ]),
+        ]),
+      );
+
+      final file = result.directory
+          .channelById('release')!
+          .latest!
+          .files
+          .single;
+      expect(file.target, 'f7', reason: 'or updatePackageFor never finds it');
+      expect(file.sha256, 'abc');
+      expect(
+        result.directory.channelById('release')!.latest!.updatePackageFor('f7'),
+        isNotNull,
+      );
+      expect(result.said, isEmpty);
+    });
+
     test('names which of its fields were bad', () {
       final result = read(
         feed([
@@ -516,7 +572,7 @@ void main() {
       expect(release.description, isEmpty);
       expect(
         result.said,
-        isNot(contains('unreadable')),
+        startsWith('2 fields fell back'),
         reason: 'nothing was dropped - the channel is entirely usable',
       );
     });
@@ -566,6 +622,12 @@ void main() {
       expect(release.latest!.changelog, isEmpty);
       expect(result.said, contains('not a string'));
       expect(result.said, contains('channels[0](release).title'));
+      expect(result.said, contains('3 fields fell back'));
+      expect(
+        result.said,
+        isNot(contains('unreadable')),
+        reason: 'the directory is entirely usable - nothing was lost',
+      );
     });
 
     test('stands in for a title the feed blanked, not just a missing one', () {
@@ -603,6 +665,27 @@ void main() {
       );
 
       expect(result.directory.channelById('release')!.latest!.timestamp, 0);
+      expect(result.said, isEmpty, reason: 'neither named nor fatal');
+    });
+
+    test('keeps a timestamp that arrived as a fraction', () {
+      final result = read(
+        feed([
+          channelJson('release', [
+            {
+              'version': '1.0.0',
+              'changelog': 'notes',
+              'timestamp': 1700000000.0,
+              'files': <dynamic>[],
+            },
+          ]),
+        ]),
+      );
+
+      expect(
+        result.directory.channelById('release')!.latest!.timestamp,
+        1700000000,
+      );
     });
   });
 
@@ -620,15 +703,55 @@ void main() {
         );
         fail('expected FirmwareDirectoryUnreadable');
       } on FirmwareDirectoryUnreadable catch (e) {
-        expect(e.skipped, hasLength(25), reason: 'the detail is all there');
+        expect(
+          e.skipped,
+          hasLength(26),
+          reason: '25 channels, and the document saying none survived',
+        );
         expect(e.skipped.first, 'channels[0]: no id');
+        expect(e.skipped.last, 'document: no readable channel');
         // toString is what FirmwareRepository logs and keeps as the reason it
-        // compares every later failure against, so it is the grouped form -
-        // and this is the only path on which it runs.
-        expect(e.toString(), contains('25 skipped'));
+        // compares every later failure against, so it is the grouped form.
+        // This is the only case here that reads it directly;
+        // firmware_failure_test.dart sees it through the repository's log.
+        expect(
+          e.toString(),
+          startsWith(
+            'FirmwareDirectoryUnreadable: nothing usable in the '
+            'document',
+          ),
+          reason: 'channels are read before this fires - see the case below',
+        );
+        expect(e.toString(), contains('26 skipped'));
         expect(e.toString(), contains('no id x25'));
         expect(e.toString(), contains('first: channels[0]'));
         expect(e.toString(), isNot(contains('channels[24]')));
+      }
+    });
+
+    test('carries what fell back as well as what was lost', () {
+      try {
+        read(
+          feed([
+            {'id': 'release-candidate', 'title': 7, 'versions': null},
+            channelJson('release', [
+              {'version': 1},
+            ]),
+          ]),
+        );
+        fail('expected FirmwareDirectoryUnreadable');
+      } on FirmwareDirectoryUnreadable catch (e) {
+        expect(
+          e.skipped,
+          contains('channels[1](release): no readable version'),
+        );
+        expect(
+          e.skipped,
+          contains('channels[0](release-candidate).title: not a string'),
+          reason:
+              'or a feed that renamed title and versions in one commit '
+              'would only ever mention versions',
+        );
       }
     });
 
@@ -636,11 +759,12 @@ void main() {
     // this cannot read, and only the second is a failure.
     test('is not a feed that simply has none', () {
       expect(read(feed([])).directory.channels, isEmpty);
-      expect(
-        read(<String, dynamic>{'channels': null}).directory.channels,
-        isEmpty,
-      );
-      expect(LogService.history, isEmpty);
+      expect(read(feed([])).said, isEmpty);
+      final nulled = read(<String, dynamic>{'channels': null});
+      expect(nulled.directory.channels, isEmpty);
+      // Not `LogService.history`: the reader has no path to it, so that
+      // assertion could only ever restate what setUp had already cleared.
+      expect(nulled.said, isEmpty);
     });
 
     // #133 one level up: the whole field renamed. This used to reach the card
@@ -652,7 +776,7 @@ void main() {
           isA<FirmwareDirectoryUnreadable>().having(
             (e) => e.skipped,
             'skipped',
-            ['channels: missing'],
+            ['document: channels missing'],
           ),
         ),
       );
@@ -669,7 +793,7 @@ void main() {
           isA<FirmwareDirectoryUnreadable>().having(
             (e) => e.skipped,
             'skipped',
-            ['channels: not a list'],
+            ['document: channels not a list'],
           ),
         ),
       );
@@ -679,19 +803,32 @@ void main() {
       expect(
         () => read(feed(['release', 'development'])),
         throwsA(
-          isA<FirmwareDirectoryUnreadable>().having(
-            (e) => e.skipped,
-            'skipped',
-            ['channels[0]: not an object', 'channels[1]: not an object'],
-          ),
+          isA<FirmwareDirectoryUnreadable>()
+              .having((e) => e.skipped, 'skipped', [
+                'channels[0]: not an object',
+                'channels[1]: not an object',
+                'document: no readable channel',
+              ]),
         ),
       );
     });
 
     test('is one that is not an object at all', () {
+      expect(
+        () => read('a string'),
+        throwsA(
+          isA<FirmwareDirectoryUnreadable>().having(
+            (e) => '$e',
+            'toString',
+            contains('document: not an object'),
+          ),
+        ),
+        reason: 'the one reason it has is the one the repository logs',
+      );
       for (final body in <Object?>[
         <dynamic>['a list'],
         'a string',
+        <dynamic, dynamic>{'channels': <dynamic>[]},
         null,
       ]) {
         expect(
@@ -726,6 +863,37 @@ void main() {
         throwsA(isA<FirmwareDirectoryUnreadable>()),
       );
     });
+
+    // The contrast to the case above, and the reason it asks whether anything
+    // is *usable* rather than whether anything survived at all: under "any
+    // empty channel condemns the document" this feed would throw, taking a
+    // perfectly good release channel away because release-candidate ships
+    // `"versions": null` - which it does, today.
+    test('is not one where a good channel stands beside the empty one', () {
+      final result = read(
+        feed([
+          {
+            'id': 'release-candidate',
+            'title': 'Release Candidate',
+            'description': '',
+            'versions': null,
+          },
+          channelJson('release', [
+            {'version': 1},
+            versionJson('1.0.0'),
+          ]),
+        ]),
+      );
+
+      expect(result.directory.channels.map((c) => c.id), [
+        'release-candidate',
+        'release',
+      ]);
+      expect(
+        result.said,
+        contains('channels[1](release).versions[0]: no version'),
+      );
+    });
   });
 
   group('what the summary says', () {
@@ -749,7 +917,7 @@ void main() {
       expect(result.said, contains('bad sha256 x25'));
       expect(
         result.said,
-        contains('channels[1](development).versions: not a list'),
+        contains('channels[1](development): versions not a list'),
         reason: 'the structural record must survive the repetitive ones',
       );
     });
@@ -766,8 +934,8 @@ void main() {
       expect(
         result.said,
         contains(
-          'missing: channels[0](development).versions, '
-          'channels[1](release-candidate).versions',
+          'versions missing: channels[0](development), '
+          'channels[1](release-candidate)',
         ),
         reason: 'two places are worth naming; eighty-four would not be',
       );
@@ -822,7 +990,11 @@ void main() {
         ]),
       );
 
-      expect(result.said, contains('skipped 1 unreadable entry'));
+      expect(
+        result.said,
+        startsWith('skipped 1 unreadable entry'),
+        reason: 'what was lost leads; what fell back follows',
+      );
       expect(
         result.said,
         contains('2 fields fell back'),
@@ -830,6 +1002,31 @@ void main() {
             'the channel title and description - the dropped version '
             'never got as far as its changelog',
       );
+    });
+  });
+
+  group('the reader itself', () {
+    // Stripped in release if it were an assert, and the failure is silent: a
+    // second read accumulates into the same lists, so a clean document can
+    // throw because of the first one's records.
+    test('reads one document and refuses a second', () {
+      final reader = FirmwareDirectoryReader();
+      reader.read(
+        feed([
+          channelJson('release', [versionJson('1.0.0')]),
+        ]),
+      );
+
+      expect(() => reader.read(feed([])), throwsStateError);
+    });
+
+    test('hands out a record of the loss that cannot be edited', () {
+      try {
+        read(<String, dynamic>{});
+        fail('expected FirmwareDirectoryUnreadable');
+      } on FirmwareDirectoryUnreadable catch (e) {
+        expect(() => e.skipped.add('x'), throwsUnsupportedError);
+      }
     });
   });
 
@@ -870,6 +1067,11 @@ void main() {
       );
     });
 
+    // refresh() fetches both firmwares, so the two URLs interleave and no two
+    // consecutive bodies match. That is what makes this readable: `LogService`
+    // folds a consecutive identical body into the existing entry rather than
+    // adding one, so without the interleaving this could not tell "said once"
+    // from "said twice and coalesced".
     test('says the same thing once', () async {
       feedEvery((_) async => oneBadVersion());
 
@@ -941,6 +1143,37 @@ void main() {
         reason: 'both read as four of the same fault, first in the same place',
       );
       expect(kept, hasLength(2));
+    });
+
+    // The fingerprint has to carry what fell back as well as what was lost,
+    // or a feed whose only change is a different presentation field goes
+    // unsaid.
+    test('says it again when only what fell back changed', () async {
+      feedEvery(
+        (_) async => feed([
+          {
+            'id': 'release',
+            'title': 7,
+            'description': '',
+            'versions': [versionJson('1.0.0')],
+          },
+        ]),
+      );
+      await refetch();
+
+      feedEvery(
+        (_) async => feed([
+          {
+            'id': 'release',
+            'title': 'Release',
+            'description': 7,
+            'versions': [versionJson('1.0.0')],
+          },
+        ]),
+      );
+      await refetch();
+
+      expect(keptAbout('unleashedflip'), hasLength(2));
     });
 
     // The cache is assigned on every fetch, not filled in once. A refresh that
