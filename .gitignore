@@ -6,7 +6,10 @@ lib/modules/flipengine
 # Tools
 .codex
 .agents
-.claude
+# Everything under .claude is local (worktrees, caches), except the
+# project settings that pin the Dart/Flutter agent plugin for everyone.
+.claude/*
+!.claude/settings.json
 
 # Build
 *.apk
