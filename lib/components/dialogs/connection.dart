@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
+import '../cancel_spinner.dart';
 import '../../services/connection/link_service.dart';
 import '../../services/localization/l10n.dart';
 import '../../services/logging.dart';
@@ -122,6 +123,8 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
     }
   }
 
+  void _stopScan() => unawaited(_client.stopScan());
+
   Future<void> _disconnect(FlipperDevice device) async {
     final key = _keyOf(device);
     if (!_disconnecting.add(key)) return;
@@ -227,13 +230,14 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
             ),
           ),
           if (_scanning)
-            SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                strokeWidth: 2.5,
-                color: colors.accent,
-              ),
+            // The same control as a connecting row carries: a search that
+            // cannot be called off left the dialog with a spinner to wait out
+            // and a refresh button that only came back once it was over.
+            QCancelSpinner(
+              onCancel: _stopScan,
+              size: 20,
+              color: colors.accent,
+              tooltip: context.l10n.commonCancel,
             )
           else
             SizedBox(
@@ -333,7 +337,7 @@ class _DeviceListItem extends StatelessWidget {
 
   bool get _held => connected || connecting;
 
-  Widget _buildTrailing(QAppColors colors) {
+  Widget _buildTrailing(BuildContext context, QAppColors colors) {
     if (disconnecting) {
       return SizedBox(
         width: 22,
@@ -344,34 +348,14 @@ class _DeviceListItem extends StatelessWidget {
         ),
       );
     }
-    final label = connecting ? l10n.commonCancel : l10n.pickerDisconnect;
-    final action = Tooltip(
-      message: label,
+    if (connecting) return QCancelSpinner(onCancel: onDisconnect);
+    return Tooltip(
+      message: l10n.pickerDisconnect,
       child: InkResponse(
         onTap: onDisconnect,
-        radius: 20,
-        child: Icon(
-          connecting ? Icons.close : Icons.link_off,
-          size: 22,
-          color: colors.danger,
-        ),
+        radius: 22,
+        child: Icon(Icons.link_off, size: 22, color: colors.danger),
       ),
-    );
-    if (!connecting) return action;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        SizedBox(
-          width: 18,
-          height: 18,
-          child: CircularProgressIndicator(
-            strokeWidth: 2.5,
-            color: colors.info,
-          ),
-        ),
-        const SizedBox(width: 12),
-        action,
-      ],
     );
   }
 
@@ -426,7 +410,7 @@ class _DeviceListItem extends StatelessWidget {
             if (_held)
               Padding(
                 padding: const EdgeInsets.only(left: 12),
-                child: _buildTrailing(colors),
+                child: _buildTrailing(context, colors),
               )
             else if (device.rssi != null)
               Padding(

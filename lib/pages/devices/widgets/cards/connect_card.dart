@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../components/cancel_spinner.dart';
 import '../../../../components/dialogs/connection.dart';
 import '../../../../services/connection/link_service.dart';
 import '../../../../services/localization/l10n.dart';
@@ -163,14 +164,10 @@ class _DeviceRow extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               if (busy)
-                SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.5,
-                    color: colors.accent,
-                  ),
-                )
+                // A connect in flight is stopped from the row that started it.
+                // Before this the only way out was the search dialog, which
+                // holds the same session behind a second cancel button.
+                QCancelSpinner(onCancel: onDisconnect, size: 20)
               else if (entry.held)
                 Tooltip(
                   message: context.l10n.pickerDisconnect,

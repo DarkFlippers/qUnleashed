@@ -82,6 +82,11 @@ class LinkService extends ChangeNotifier {
   final Set<String> _holdUsbIds = {};
   String? _userDisconnectedKey;
   final Set<String> _autoTriedUsb = {};
+  // Keys whose connect the user called off while it was in flight. The
+  // platform reports an aborted connect as a failure like any other, and a
+  // cancel that answered with "connection failed" would read as the app
+  // refusing to do what it was just told to stop doing.
+  final Set<String> _cancelled = {};
   bool _bleAutoTried = false;
   Timer? _usbTimer;
   bool _reconciling = false;
@@ -223,12 +228,14 @@ class LinkService extends ChangeNotifier {
       await _c.connectBleAddress(entry.id, name: entry.name);
       await _c.switchToRpcMode();
     } catch (e) {
+      if (_cancelled.contains(entry.key)) return;
       if (classifyConnectError(e) ==
           FlipperConnectErrorKind.deviceUnreachable) {
         _heardBle.remove(entry.id);
       }
       rethrow;
     } finally {
+      _cancelled.remove(entry.key);
       _setActivity(entry.key, LinkActivity.idle);
     }
   }
@@ -247,7 +254,11 @@ class LinkService extends ChangeNotifier {
     try {
       await _c.connect(device);
       await _c.switchToRpcMode();
+    } catch (e) {
+      if (_cancelled.contains(key)) return;
+      rethrow;
     } finally {
+      _cancelled.remove(key);
       _setActivity(key, LinkActivity.idle);
     }
   }
@@ -260,7 +271,11 @@ class LinkService extends ChangeNotifier {
     required String id,
     required FlipperLink link,
   }) async {
-    _userDisconnectedKey = '${link.name}:$id';
+    final key = '${link.name}:$id';
+    _userDisconnectedKey = key;
+    // Pressed while the attempt is still running, this is a cancel: the
+    // teardown below aborts it and the attempt's own failure is swallowed.
+    if (_activity[key] == LinkActivity.connecting) _cancelled.add(key);
     if (link == FlipperLink.usb) _holdUsbIds.remove(id);
     final active = _c.connectedDevice ?? _c.connectingDevice;
     final wasActive = active != null && active.id == id && active.link == link;
