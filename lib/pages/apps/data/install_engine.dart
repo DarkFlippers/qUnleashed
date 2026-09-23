@@ -153,9 +153,9 @@ class InstallEngine extends ChangeNotifier {
           // emptied the queue and the action map; this only keeps the task from
           // reporting itself into a Flipper that never asked for it.
           _preparedInstalls.remove(task.alias);
-          LogService.info(
-            '[InstallEngine] task "${task.alias}" dropped: device changed',
-          );
+          // LogService.info(
+          //   '[InstallEngine] task "${task.alias}" dropped: device changed',
+          // );
           if (_clearAction(task.alias)) notifyListeners();
         } catch (e) {
           // Install and uninstall each catch their own and end at
@@ -325,7 +325,6 @@ class InstallEngine extends ChangeNotifier {
       }
 
       _throwIfCancelled(app.alias);
-      _throwIfStale(token);
       if (!isReady) throw const _LinkDroppedException();
 
       final manifest = prepared.manifest;
