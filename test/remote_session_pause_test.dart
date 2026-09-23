@@ -4,6 +4,23 @@ import 'package:flipperlib/flipperlib.dart' hide DateTime, File;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/tools/remote/desktop/session.dart';
 
+/// The one link this fake stands for: requests made under it reach the same
+/// client, and it is alive exactly while that client is connected.
+class _FakeBinding implements FlipperSessionBinding {
+  _FakeBinding(this._client);
+
+  final _PauseFakeClient _client;
+
+  @override
+  FlipperDevice? get device => null;
+
+  @override
+  bool get isAlive => _client.isConnected;
+
+  @override
+  T run<T>(T Function() body) => body();
+}
+
 class _PauseFakeClient implements FlipperClient {
   final broadcast = StreamController<Main>.broadcast();
   final connection = StreamController<FlipperConnectionState>.broadcast();
@@ -19,6 +36,9 @@ class _PauseFakeClient implements FlipperClient {
   bool get isConnected => connected;
 
   @override
+  FlipperSessionBinding bindCurrentSession() => _FakeBinding(this);
+
+  @override
   Stream<Main> get broadcastStream => broadcast.stream;
 
   @override
@@ -31,7 +51,7 @@ class _PauseFakeClient implements FlipperClient {
   Future<List<Main>> callRpcFrames(
     Main request, {
     Duration timeout = const Duration(seconds: 8),
-    FlipperRequestPriority priority = FlipperRequestPriority.defaultPriority,
+    FlipperRequestPriority priority = FlipperRequestPriority.unattended,
     void Function(Main frame)? onFrame,
     void Function()? onSent,
     bool retainFrames = true,

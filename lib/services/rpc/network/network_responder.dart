@@ -68,7 +68,16 @@ class FlipperNetworkResponder {
   }
 
   void _onConnection(FlipperConnectionState state) {
-    if (!state.connected || state.mode != FlipperMode.rpc) {
+    // Not on a switch. What the client owes a Flipper it is fetching for does
+    // not depend on which one the user is looking at: a second Flipper sitting
+    // in a warm session keeps its sockets and keeps getting answered.
+    //
+    // Known gap: this asks about the active session, so a request being served
+    // for one Flipper survives that Flipper going away while another is in
+    // focus, and dies when the one in focus goes away instead. Closing the
+    // right ones needs the connections keyed by the session that opened them,
+    // which they are not.
+    if (!state.rpcReady) {
       unawaited(_closeAll());
     }
   }
@@ -114,11 +123,25 @@ class FlipperNetworkResponder {
   /// a failed send would never run - no teardown, no traffic accounting, and no
   /// NetworkCloseResponse, leaving the firmware app blocked until its own
   /// timeout.
+  /// Queues [handler] behind whatever is already running for connection [id],
+  /// bound to the Flipper that asked.
+  ///
+  /// A responder answers the device that spoke to it, and this is the moment
+  /// that device is known: the request has just arrived from the active
+  /// session. Everything the handler then does - reading the file to send,
+  /// saving the reply, the response frame itself - takes minutes over a slow
+  /// link, and without the binding a device switch during any of it would save
+  /// somebody else's download onto the wrong Flipper and answer a request it
+  /// never made.
   void _enqueueHandler(int id, String what, Future<void> Function() handler) {
+    final binding = _client.bindCurrentSession();
     final previous = _handlerChains[id] ?? Future<void>.value();
     late final Future<void> next;
-    next = guarded('[Network] $what $id', () => previous.then((_) => handler()))
-        .whenComplete(() {
+    next =
+        guarded(
+          '[Network] $what $id',
+          () => previous.then((_) => binding.run(handler)),
+        ).whenComplete(() {
           if (identical(_handlerChains[id], next)) {
             _handlerChains.remove(id);
           }
@@ -367,7 +390,10 @@ class FlipperNetworkResponder {
     try {
       List<int>? body;
       if (request.sendPath.isNotEmpty) {
-        body = await _client.storageReadChunked(request.sendPath);
+        body = await _client.storageReadChunked(
+          request.sendPath,
+          priority: FlipperRequestPriority.unattended,
+        );
       } else if (request.body.isNotEmpty) {
         body = request.body;
       }
@@ -397,10 +423,12 @@ class FlipperNetworkResponder {
         }
         final size = bytes.length;
         NetworkTrafficMonitor.instance.recordRx(size);
+        // Owed to the Flipper that asked, focus or not, and ahead of bulk: it
+        // is blocked waiting for this.
         await _client.storageWriteChunked(
           request.savePath,
           bytes.takeBytes(),
-          priority: FlipperRequestPriority.background,
+          priority: FlipperRequestPriority.unattended,
         );
         await _sendHttpResponse(
           id,
@@ -678,7 +706,7 @@ class FlipperNetworkResponder {
 
   Future<void> _send(
     Main message, {
-    FlipperRequestPriority priority = FlipperRequestPriority.defaultPriority,
+    FlipperRequestPriority priority = FlipperRequestPriority.unattended,
   }) async {
     try {
       await _client.sendRpc(message, priority: priority);

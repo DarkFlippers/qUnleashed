@@ -4,7 +4,7 @@ import 'dart:convert';
 import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flutter/foundation.dart';
 import '../../../services/storage/paths.dart';
-import 'catalog_context.dart' show kManifestsRoot, FlipperRpcReady;
+import 'catalog_context.dart' show kManifestsRoot;
 import 'models/manifest.dart';
 import '../../../services/logging.dart';
 
@@ -33,18 +33,31 @@ class ManifestRegistry extends ChangeNotifier {
     await refresh();
   }
 
-  Future<void> refresh({bool force = false}) async {
-    if (_loading) return;
-    if (!_isReady) return;
+  /// Reads the manifests off the device as one background task, so a Flipper
+  /// swapped mid-refresh cannot answer the rest of it.
+  Future<void> refresh({bool force = false}) {
+    if (_loading) return Future.value();
+    if (!_isReady) return Future.value();
+    return client.runTask(
+      FlipperRequestPriority.background,
+      () => _refresh(force: force),
+    );
+  }
+
+  Future<void> _refresh({required bool force}) async {
+    final token = client.deviceToken;
     _loading = true;
     notifyListeners();
     try {
       if (_byAlias.isEmpty) await _loadCache();
+      if (token.isStale) return;
 
       final list = await client.storageList(
         ListRequest(path: kManifestsRoot, includeMd5: true),
         timeout: const Duration(seconds: 20),
+        priority: FlipperRequestPriority.background,
       );
+      if (token.isStale) return;
 
       final prevManifests = Map<String, AppManifest>.from(_byAlias);
       final prevMd5 = Map<String, String>.from(_md5);
@@ -71,6 +84,7 @@ class ManifestRegistry extends ChangeNotifier {
             reused++;
           } else {
             manifest = await _readManifest('$kManifestsRoot/${f.name}');
+            if (token.isStale) return;
             read++;
           }
           if (manifest != null) {
@@ -179,8 +193,13 @@ class ManifestRegistry extends ChangeNotifier {
   }
 
   Future<void> _saveCache() async {
+    final token = client.deviceToken;
     try {
       final name = await client.awaitName().timeout(const Duration(seconds: 5));
+      // The name resolves to whichever Flipper is in scope when it answers, so
+      // without this a list belonging to the previous one would be written into
+      // the new one's catalogue file and read back as its own on next launch.
+      if (token.isStale) return;
       final manifests = _byAlias.entries.map((e) {
         final m = e.value;
         return {

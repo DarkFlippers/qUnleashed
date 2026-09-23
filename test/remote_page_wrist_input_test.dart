@@ -14,6 +14,23 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// see what actually reached the wire. Shaped like the fakes in
 /// remote_session_test.dart rather than shared with them: those pin the session
 /// in isolation, this one pins what the page does in front of it.
+/// The one link this fake stands for: requests made under it reach the same
+/// client, and it is alive exactly while that client is connected.
+class _FakeBinding implements FlipperSessionBinding {
+  _FakeBinding(this._client);
+
+  final _FakeClient _client;
+
+  @override
+  FlipperDevice? get device => null;
+
+  @override
+  bool get isAlive => _client.isConnected;
+
+  @override
+  T run<T>(T Function() body) => body();
+}
+
 class _FakeClient implements FlipperClient {
   final broadcast = StreamController<Main>.broadcast();
   final connection = StreamController<FlipperConnectionState>.broadcast();
@@ -28,6 +45,9 @@ class _FakeClient implements FlipperClient {
   bool get isConnected => connected;
 
   @override
+  FlipperSessionBinding bindCurrentSession() => _FakeBinding(this);
+
+  @override
   Stream<Main> get broadcastStream => broadcast.stream;
 
   @override
@@ -40,7 +60,7 @@ class _FakeClient implements FlipperClient {
   Future<List<Main>> callRpcFrames(
     Main request, {
     Duration timeout = const Duration(seconds: 8),
-    FlipperRequestPriority priority = FlipperRequestPriority.defaultPriority,
+    FlipperRequestPriority priority = FlipperRequestPriority.unattended,
     void Function(Main frame)? onFrame,
     void Function()? onSent,
     bool retainFrames = true,
@@ -55,7 +75,7 @@ class _FakeClient implements FlipperClient {
   @override
   Future<void> sendRpc(
     Main message, {
-    FlipperRequestPriority priority = FlipperRequestPriority.defaultPriority,
+    FlipperRequestPriority priority = FlipperRequestPriority.unattended,
     Duration sendTimeout = const Duration(seconds: 30),
   }) async {
     sent.add(message);

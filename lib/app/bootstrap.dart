@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../pages/tools/infrared/local_repo.dart';
 import '../services/connection/device_info_watch.dart';
 import '../services/connection/foreground_service.dart';
+import '../services/connection/link_service.dart';
 import '../services/connection/notification_service.dart';
 import '../services/guarded.dart';
 import '../services/notifications/push_service.dart';
@@ -18,6 +19,8 @@ import '../services/rpc/network/network_responder.dart';
 /// substitute for correct per-platform configuration.
 void bootstrapAmbientServices() {
   final client = FlipperOneClient().get();
+
+  LinkService.instance.start(client);
 
   _start(
     'connection notifier',

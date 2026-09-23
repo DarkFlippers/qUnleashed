@@ -18,7 +18,6 @@ export 'catalog_context.dart' show kAppsRoot, kManifestsRoot, kTaskCooldown;
 
 class AppsBackend {
   AppsBackend._() {
-    _deviceId = client.activeDevice?.id;
     client.connectionStream.listen(_onConnection);
   }
 
@@ -28,11 +27,7 @@ class AppsBackend {
   final AppsCatalogApi api = AppsCatalogApi();
   final AtpSource atp = AtpSource.instance;
 
-  late final CatalogContext catalog = CatalogContext(
-    client: client,
-    api: api,
-    currentDeviceId: () => _deviceId,
-  );
+  late final CatalogContext catalog = CatalogContext(client: client, api: api);
 
   late final ManifestRegistry manifests = ManifestRegistry(client: client);
   late final AppSourceRegistry sources = AppSourceRegistry(
@@ -60,8 +55,6 @@ class AppsBackend {
     engine: engine,
     catalog: catalog,
   );
-
-  String? _deviceId;
 
   bool get isReady => client.isRpcReady;
 
@@ -103,7 +96,19 @@ class AppsBackend {
   }
 
   void _onConnection(FlipperConnectionState state) {
-    if (!state.connected || state.mode != FlipperMode.rpc) {
+    // Answered before the link state and regardless of it. A switch is a switch
+    // whether or not the new Flipper has RPC up yet, and the guard below drops
+    // everything that has not - which is how a switch arriving on, say, a CLI
+    // event would leave the whole section describing the previous device.
+    if (state.event == FlipperConnectionEvent.deviceChanged) {
+      catalog.resetDeviceState();
+      catalog.resolvedForDeviceId = null;
+      manifests.handleDeviceChange();
+      device.handleDeviceChange();
+      updates.handleDeviceChange();
+      engine.handleDeviceChange();
+    }
+    if (!state.rpcReady) {
       catalog.resetDeviceState();
       catalog.resolvedForDeviceId = null;
       catalog.mode.value = CatalogMode.normal;
@@ -118,20 +123,15 @@ class AppsBackend {
       );
       return;
     }
-    final id = state.device?.id;
-    if (id != null && id != _deviceId) {
-      _deviceId = id;
-      catalog.resetDeviceState();
-      catalog.resolvedForDeviceId = null;
-      manifests.handleDeviceChange();
-      device.handleDeviceChange();
-      updates.handleDeviceChange();
-      engine.handleDeviceChange();
-    } else {
+    // Not after a switch: the caches were just emptied for the new Flipper, and
+    // handleConnect exists to re-check a device that may have changed while the
+    // link was down - a different question, already answered.
+    if (state.event != FlipperConnectionEvent.deviceChanged) {
       device.handleConnect();
       engine.handleConnect();
     }
-    if (catalog.resolvedForDeviceId != _deviceId && !catalog.isResolving) {
+    if (catalog.resolvedForDeviceId != client.scopedDeviceId &&
+        !catalog.isResolving) {
       catalog.mode.value = CatalogMode.resolving;
       unawaited(catalog.resolveMode(force: true));
     }

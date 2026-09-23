@@ -71,6 +71,22 @@ class DeviceSource extends ChangeNotifier {
   final Map<String, FapInfo?> _parsed = {};
   final Map<String, int> _parsedStamp = {};
 
+  Future<void> _localPass = Future<void>.value();
+
+  /// Queues every pass over [_local] and [_parsed] behind the one before it.
+  ///
+  /// Two at once means one rebuilding a map while the other is iterating it.
+  /// Everything that touches the two maps across an await comes through here -
+  /// the mirror read, the parse, and the entry an install adopts - which is
+  /// what lets a pass trust the table it snapshotted at its start. The passes
+  /// arrive from a scan, a delete, an install and a device switch, and none of
+  /// them know about each other.
+  Future<void> _serial(Future<void> Function() body) {
+    final pass = _localPass.then((_) => body());
+    _localPass = pass.then((_) {}, onError: (_) {});
+    return pass;
+  }
+
   FapInfo? infoFor(String alias) => _parsed[alias];
 
   List<InstalledApp> get apps {
@@ -134,16 +150,40 @@ class DeviceSource extends ChangeNotifier {
     return parts.length >= 2 ? parts[parts.length - 2] : '';
   }
 
-  Future<void> prime() async {
+  ({DeviceToken token, Future<void> pass})? _priming;
+
+  /// A second caller joins the pass already running instead of repeating it.
+  ///
+  /// Only while that pass is still about the device in scope: one that started
+  /// against the previous Flipper is on its way to giving up at its next
+  /// checkpoint, and handing it to a caller who arrived after the switch would
+  /// answer them with work that is about to be thrown away.
+  Future<void> prime() {
+    final pending = _priming;
+    if (pending != null && pending.token.isCurrent) return pending.pass;
+    final token = client.deviceToken;
+    final pass = _prime(token).whenComplete(() {
+      if (_priming?.token == token) _priming = null;
+    });
+    _priming = (token: token, pass: pass);
+    return pass;
+  }
+
+  Future<void> _prime(DeviceToken token) async {
     await _loadLocalApps();
+    if (token.isStale) return;
     notifyListeners();
     await manifests.ensureFresh();
+    if (token.isStale) return;
     _warmManifestIcons();
     notifyListeners();
     await _parseLocalFaps();
   }
 
-  Future<void> _loadLocalApps() async {
+  Future<void> _loadLocalApps() => _serial(_readLocalMirror);
+
+  Future<void> _readLocalMirror() async {
+    final token = client.deviceToken;
     final map = <String, ({int size, String folder, String path, int stamp})>{};
     try {
       final name = await _deviceName();
@@ -182,6 +222,7 @@ class DeviceSource extends ChangeNotifier {
         }
       }
     } catch (_) {}
+    if (token.isStale) return;
     _local
       ..clear()
       ..addAll(map);
@@ -189,22 +230,32 @@ class DeviceSource extends ChangeNotifier {
 
   /// Reads every local `.fap` copy that changed since the last pass and keeps
   /// its parsed manifest, sections and assets around for the manager UI.
-  Future<void> _parseLocalFaps() async {
+  Future<void> _parseLocalFaps() => _serial(_parsePendingFaps);
+
+  Future<void> _parsePendingFaps() async {
+    final token = client.deviceToken;
     var changed = false;
 
-    for (final entry in _local.entries) {
-      final alias = entry.key;
-      final stamp = Object.hash(entry.value.size, entry.value.stamp);
+    // A snapshot, because a device switch empties the table synchronously and
+    // an iteration of the live one would break on it. Nothing else can: every
+    // other writer goes through [_serial], so the entry read here is still the
+    // entry when the bytes come back.
+    for (final alias in _local.keys.toList()) {
+      final entry = _local[alias];
+      if (entry == null) continue;
+      final stamp = Object.hash(entry.size, entry.stamp);
       if (_parsed.containsKey(alias) && _parsedStamp[alias] == stamp) continue;
+      FapInfo? info;
       try {
-        final bytes = await io.File(entry.value.path).readAsBytes();
-        _parsed[alias] = FapInfo.parse(bytes);
+        info = FapInfo.parse(await io.File(entry.path).readAsBytes());
       } catch (e) {
         // One per app in the parse loop, and fap_facts renders an explicit
         // "not a valid application file" for the null this leaves.
         LogService.info('[DeviceSource] parse "$alias" failed: $e');
-        _parsed[alias] = null;
+        info = null;
       }
+      if (token.isStale) return;
+      _parsed[alias] = info;
       _parsedStamp[alias] = stamp;
       changed = true;
     }
@@ -219,8 +270,19 @@ class DeviceSource extends ChangeNotifier {
     if (changed) notifyListeners();
   }
 
-  Future<void> scan() async {
-    if (!isReady || _syncing) return;
+  /// Walks the device and mirrors what it finds, as one background task.
+  ///
+  /// The walk, every download it decides on and the md5 checks between them all
+  /// belong to one Flipper, so they keep going to it even if the user swaps
+  /// devices halfway - a folder listing answered by a different Flipper would
+  /// read as apps appearing and disappearing on this one.
+  Future<void> scan() {
+    if (!isReady || _syncing) return Future.value();
+    return client.runTask(FlipperRequestPriority.background, _scan);
+  }
+
+  Future<void> _scan() async {
+    final token = client.deviceToken;
     _syncing = true;
     _syncDone = 0;
     _syncTotal = 0;
@@ -229,6 +291,7 @@ class DeviceSource extends ChangeNotifier {
     try {
       await manifests.refresh();
       final walk = await _walkDevice();
+      if (token.isStale) return;
       final deviceApps = walk.apps;
       // Only a complete walk proves absence. A partial one - a disconnect
       // mid-scan - must leave the previous answer alone rather than report an
@@ -244,7 +307,7 @@ class DeviceSource extends ChangeNotifier {
       final dir = await _backupDir(name);
 
       for (final d in deviceApps) {
-        if (!isReady) break;
+        if (!isReady || token.isStale) break;
         _syncingItem = d.alias;
         notifyListeners();
         final local = io.File(
@@ -269,7 +332,7 @@ class DeviceSource extends ChangeNotifier {
               timeout: const Duration(seconds: 60),
               priority: FlipperRequestPriority.background,
             );
-            if (bytes.isNotEmpty) {
+            if (bytes.isNotEmpty && token.isCurrent) {
               await local.parent.create(recursive: true);
               await local.writeAsBytes(bytes, flush: true);
               unawaited(IconResolver.instance.ensureFromFap(d.alias, bytes));
@@ -328,6 +391,7 @@ class DeviceSource extends ChangeNotifier {
     final root = await client.storageList(
       ListRequest(path: kAppsRoot),
       timeout: const Duration(seconds: 20),
+      priority: FlipperRequestPriority.background,
     );
     // Apps normally live one folder deep, but a .fap sitting directly in the
     // apps root is installed too, and overlooking it would let the
@@ -353,6 +417,7 @@ class DeviceSource extends ChangeNotifier {
         await client.storageList(
           ListRequest(path: '$kAppsRoot/$folder'),
           timeout: const Duration(seconds: 20),
+          priority: FlipperRequestPriority.background,
         ),
         folder,
       );
@@ -392,6 +457,7 @@ class DeviceSource extends ChangeNotifier {
   Future<void> launch(InstalledApp app) => engine.launchPath(app.path);
 
   Future<bool> restore(InstalledApp app) async {
+    final token = client.deviceToken;
     final name = await _deviceName();
     if (name == null) return false;
     final dir = await _backupDir(name);
@@ -408,7 +474,7 @@ class DeviceSource extends ChangeNotifier {
     );
     // Otherwise the app the user just put back keeps rendering as missing,
     // with no way out of that state but another full scan.
-    if (ok) {
+    if (ok && token.isCurrent) {
       _deviceAliases?.add(app.alias);
       notifyListeners();
     }
@@ -420,6 +486,7 @@ class DeviceSource extends ChangeNotifier {
     required String devicePath,
     required List<int> fapBytes,
   }) async {
+    final token = client.deviceToken;
     if (alias.isEmpty) return;
     final folder = _folderFromPath(devicePath);
     var localPath = '';
@@ -441,22 +508,29 @@ class DeviceSource extends ChangeNotifier {
       // user taps Restore and is told there is none.
       LogService.warn('[DeviceSource] local copy of "$alias" failed: $e');
     }
-    _local[alias] = (
-      size: fapBytes.length,
-      folder: folder,
-      path: localPath,
-      stamp: 0,
-    );
-    _parsed[alias] = FapInfo.parse(Uint8List.fromList(fapBytes));
-    _parsedStamp.remove(alias);
-    // The app is on the device now. Without this the set still describes the
-    // walk that ran before the install, so an app the user has just installed
-    // renders as one that is missing from the device.
-    _deviceAliases?.add(alias);
-    notifyListeners();
+    if (token.isStale) return;
+    // Queued like every other writer of the two maps, so a parse pass never
+    // finds the entry it snapshotted replaced underneath it.
+    await _serial(() async {
+      if (token.isStale) return;
+      _local[alias] = (
+        size: fapBytes.length,
+        folder: folder,
+        path: localPath,
+        stamp: 0,
+      );
+      _parsed[alias] = FapInfo.parse(Uint8List.fromList(fapBytes));
+      _parsedStamp.remove(alias);
+      // The app is on the device now. Without this the set still describes the
+      // walk that ran before the install, so an app the user has just installed
+      // renders as one that is missing from the device.
+      _deviceAliases?.add(alias);
+      notifyListeners();
+    });
   }
 
   Future<void> deleteLocal(InstalledApp app) async {
+    final token = client.deviceToken;
     try {
       final name = await _deviceName();
       if (name == null) return;
@@ -470,13 +544,16 @@ class DeviceSource extends ChangeNotifier {
       );
       if (await file.exists()) await file.delete();
     } catch (_) {}
+    if (token.isStale) return;
     await _loadLocalApps();
     await _parseLocalFaps();
     notifyListeners();
   }
 
   Future<void> uninstallFromDevice(InstalledApp app) async {
+    final token = client.deviceToken;
     await engine.deleteInstalled(alias: app.alias, fapPath: app.path);
+    if (token.isStale) return;
     _deviceAliases?.remove(app.alias);
     await deleteLocal(app);
   }

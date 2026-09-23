@@ -182,7 +182,22 @@ class FileManagerController extends ChangeNotifier {
     return '$_path/$name';
   }
 
-  Future<void> refresh() async {
+  /// Runs [body] as one task, bound to the Flipper it starts against.
+  ///
+  /// Every browse and transfer here is several device calls with waits between
+  /// them - list, then read, then write, then list again - and the file tree
+  /// they describe belongs to one Flipper. Bound, a copy that spans a device
+  /// switch finishes where it began; unbound, its second half would be read
+  /// from one Flipper and written to another.
+  ///
+  /// Not on the single-call operations. One request cannot be split across two
+  /// devices: the session is resolved once, when it is sent.
+  Future<T> _task<T>(Future<T> Function() body) =>
+      _client.runTask(FlipperRequestPriority.background, body);
+
+  Future<void> refresh() => _task(_refresh);
+
+  Future<void> _refresh() async {
     // Internal storage (`/int`) holds mostly dot-prefixed system files, so
     // reveal hidden entries automatically when first entering that root. The
     // user can still toggle them off afterwards.
@@ -312,7 +327,10 @@ class FileManagerController extends ChangeNotifier {
     }
   }
 
-  Future<bool> copy(String fromPath, String toPath) async {
+  Future<bool> copy(String fromPath, String toPath) =>
+      _task(() => _copy(fromPath, toPath));
+
+  Future<bool> _copy(String fromPath, String toPath) async {
     final bytes = await readBytes(fromPath);
     if (bytes == null) return false;
     return writeBytes(toPath, bytes);
@@ -328,7 +346,10 @@ class FileManagerController extends ChangeNotifier {
     return isDir ? copyRecursive(fromPath, toPath) : copy(fromPath, toPath);
   }
 
-  Future<bool> copyRecursive(String fromPath, String toPath) async {
+  Future<bool> copyRecursive(String fromPath, String toPath) =>
+      _task(() => _copyRecursive(fromPath, toPath));
+
+  Future<bool> _copyRecursive(String fromPath, String toPath) async {
     try {
       await _client.storageMkdir(
         MkdirRequest(path: toPath),
@@ -387,6 +408,18 @@ class FileManagerController extends ChangeNotifier {
     String remotePath, {
     String? localFolder,
     int expectedSize = 0,
+  }) => _task(
+    () => _downloadTo(
+      remotePath,
+      localFolder: localFolder,
+      expectedSize: expectedSize,
+    ),
+  );
+
+  Future<String?> _downloadTo(
+    String remotePath, {
+    String? localFolder,
+    int expectedSize = 0,
   }) async {
     final bytes = await _readEntryWithProgress(remotePath, expectedSize);
     if (bytes == null) return null;
@@ -403,7 +436,10 @@ class FileManagerController extends ChangeNotifier {
   /// Downloads a single [entry] from the current directory into [destDir],
   /// publishing inline per-entry progress so its file row renders a fill (used
   /// when exactly one file is downloaded). Returns false on failure.
-  Future<bool> downloadEntryTo(
+  Future<bool> downloadEntryTo(RemoteEntry entry, {required String destDir}) =>
+      _task(() => _downloadEntryTo(entry, destDir: destDir));
+
+  Future<bool> _downloadEntryTo(
     RemoteEntry entry, {
     required String destDir,
   }) async {
@@ -464,6 +500,11 @@ class FileManagerController extends ChangeNotifier {
   /// [FlipperStorageApi.storageReadChunked]). Returns the number of files that
   /// failed to download.
   Future<int> downloadEntriesTo(
+    List<RemoteEntry> entries, {
+    required String destDir,
+  }) => _task(() => _downloadEntriesTo(entries, destDir: destDir));
+
+  Future<int> _downloadEntriesTo(
     List<RemoteEntry> entries, {
     required String destDir,
   }) async {
@@ -587,7 +628,10 @@ class FileManagerController extends ChangeNotifier {
     }
   }
 
-  Future<bool> uploadFromLocal(String localPath, {String? targetName}) async {
+  Future<bool> uploadFromLocal(String localPath, {String? targetName}) =>
+      _task(() => _uploadFromLocal(localPath, targetName: targetName));
+
+  Future<bool> _uploadFromLocal(String localPath, {String? targetName}) async {
     final file = io.File(localPath);
     if (!await file.exists()) {
       _error = l10n.fmLocalNotFound(localPath);

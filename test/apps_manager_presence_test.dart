@@ -17,6 +17,19 @@ import 'package:qunleashed/pages/apps/data/models/manifest.dart';
 /// Only the four calls a scan makes are answered; everything else falls to
 /// [noSuchMethod], so a scan that starts reaching for something new fails
 /// loudly instead of quietly reading a default.
+/// This fake is one Flipper for its whole life. A dropped link does not move
+/// the scope in the real client either, so every token it hands out stays
+/// current.
+class _SameDeviceToken implements DeviceToken {
+  const _SameDeviceToken();
+
+  @override
+  bool get isCurrent => true;
+
+  @override
+  bool get isStale => false;
+}
+
 class _FakeClient implements FlipperClient {
   /// Directory path -> entries, as `storageList` would report them.
   final Map<String, List<fl.File>> tree = {};
@@ -44,6 +57,18 @@ class _FakeClient implements FlipperClient {
 
   @override
   FlipperMode get mode => FlipperMode.rpc;
+
+  @override
+  bool get isRpcReady => isConnected && mode == FlipperMode.rpc;
+
+  @override
+  DeviceToken get deviceToken => const _SameDeviceToken();
+
+  @override
+  Future<T> runTask<T>(
+    FlipperRequestPriority priority,
+    Future<T> Function() body,
+  ) => body();
 
   /// storageList and storageReadChunked are extension methods, so they resolve
   /// statically and arrive here rather than being overridable themselves.
@@ -81,7 +106,7 @@ class _FakeClient implements FlipperClient {
   Future<List<Main>> callRpcFrames(
     Main request, {
     Duration timeout = const Duration(seconds: 8),
-    FlipperRequestPriority priority = FlipperRequestPriority.defaultPriority,
+    FlipperRequestPriority priority = FlipperRequestPriority.unattended,
     void Function(Main frame)? onFrame,
     void Function()? onSent,
     bool retainFrames = true,
@@ -100,7 +125,7 @@ class _FakeClient implements FlipperClient {
     Main request,
     T? Function(Main frame) pick, {
     Duration timeout = const Duration(seconds: 8),
-    FlipperRequestPriority priority = FlipperRequestPriority.defaultPriority,
+    FlipperRequestPriority priority = FlipperRequestPriority.unattended,
     void Function(Main frame)? onFrame,
   }) async {
     final frames = _framesFor(request);

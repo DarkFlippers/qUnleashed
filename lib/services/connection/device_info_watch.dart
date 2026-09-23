@@ -80,7 +80,7 @@ class DeviceInfoWatchService {
     // Battery (full)
     try {
       final batch = await client.powerInfo(
-        priority: FlipperRequestPriority.background,
+        priority: FlipperRequestPriority.foreground,
       );
       emit({for (final item in batch.items) 'power.${item.key}': item.value});
     } catch (e) {
@@ -134,7 +134,7 @@ class DeviceInfoWatchService {
       try {
         final response = await client.storageInfo(
           InfoRequest(path: '/ext/'),
-          priority: FlipperRequestPriority.background,
+          priority: FlipperRequestPriority.foreground,
         );
         final extData = _storageResponseToMap(
           response.single,
@@ -149,7 +149,12 @@ class DeviceInfoWatchService {
     await fetchExtInfo('initial');
     if (!alive()) return;
 
-    // Storage /int — slow (storageDu), fire-and-forget so periodic loop starts
+    // Storage /int — slow (storageDu), fire-and-forget so periodic loop starts.
+    //
+    // The one reading here that stays background. Everything else this service
+    // asks is short, which is what lets it slip between the frames of a long
+    // write instead of sitting behind it; a directory walk is not, and parked
+    // ahead of the queue it would hold up what the screen actually needs.
     unawaited(
       guarded('[watchInfo] storage /int', () async {
         if (!alive()) return;
@@ -230,8 +235,8 @@ class DeviceInfoWatchService {
         if (!alive()) return;
         if (_freezeCount > 0 ||
             client.storageBusy ||
-            client.mode != FlipperMode.rpc ||
-            client.cliExclusive) {
+            !client.isRpcReady ||
+            client.cliHeld) {
           // The link is occupied; check again after another quiet window.
           scheduleStorageRefresh();
           return;
@@ -257,7 +262,7 @@ class DeviceInfoWatchService {
         // A CLI session owns the transport: polling would only throw
         // "RPC switch blocked" every tick and spam the log. Skip quietly and
         // resume once the client is back in RPC mode.
-        if (client.mode != FlipperMode.rpc || client.cliExclusive) continue;
+        if (!client.isRpcReady || client.cliHeld) continue;
         // Frozen while storage operations run: a battery poll queued behind
         // a long transfer would only time out and spam errors.
         if (client.storageBusy) continue;
@@ -266,7 +271,7 @@ class DeviceInfoWatchService {
         if (tick % fullEvery == 0) {
           try {
             final batch = await client.powerInfo(
-              priority: FlipperRequestPriority.background,
+              priority: FlipperRequestPriority.foreground,
             );
             emit({
               for (final item in batch.items) 'power.${item.key}': item.value,
@@ -279,7 +284,7 @@ class DeviceInfoWatchService {
           try {
             final batch = await client.propertyGet(
               GetRequest(key: 'pwrinfo.battery.current'),
-              priority: FlipperRequestPriority.background,
+              priority: FlipperRequestPriority.foreground,
             );
             final partial = {
               for (final item in batch.items)

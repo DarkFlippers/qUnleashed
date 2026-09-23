@@ -32,6 +32,18 @@ class EmulateService {
   ArchiveKey? _activeKey;
   Future<void>? _stopFuture;
 
+  /// The Flipper the emulation is open on, held from start to stop.
+  ///
+  /// An emulation belongs to the window the user tapped, so it lives only while
+  /// that Flipper is the one in front of them; [_onConnection] closes it the
+  /// moment another takes its place. Held rather than looked up per call
+  /// precisely so that closing it lands where the scene is: by then the switch
+  /// has happened, and a second appExit on a Flipper with no scene open is a
+  /// firmware check failure.
+  FlipperSessionBinding? _binding;
+
+  StreamSubscription<FlipperConnectionState>? _connection;
+
   Future<void> _btnChain = Future<void>.value();
   bool _txHeld = false;
   bool _sceneLoaded = false;
@@ -43,8 +55,18 @@ class EmulateService {
     if (!_client.isConnected) {
       return EmulateResult.fail(EmulateError.notConnected);
     }
+    // Ahead of the binding, deliberately: a run still open belongs to the
+    // Flipper it was started on, and closing it is that binding's job, not the
+    // new one's.
     if (_running || _stopFuture != null) await stop();
 
+    final binding = _client.bindCurrentSession();
+    _binding = binding;
+    _connection ??= _client.connectionStream.listen(_onConnection);
+    return binding.run(() => _start(key));
+  }
+
+  Future<EmulateResult> _start(ArchiveKey key) async {
     final appName = key.category.flipperAppName;
     if (appName == null) return EmulateResult.fail(EmulateError.notEmulatable);
 
@@ -132,29 +154,55 @@ class EmulateService {
   }
 
   Future<void> sendPress() {
-    return _enqueueButton('button press', () async {
-      if (_txHeld) return;
-      if (!_sceneLoaded) {
-        if (!await _reloadForSend()) return;
-      }
-      await _client.appButtonPress(
-        AppButtonPressRequest(),
-        timeout: const Duration(seconds: 5),
-      );
-      _txHeld = true;
-    });
+    return _enqueueButton(
+      'button press',
+      () => _onDevice(() async {
+        if (_txHeld) return;
+        if (!_sceneLoaded) {
+          if (!await _reloadForSend()) return;
+        }
+        await _client.appButtonPress(
+          AppButtonPressRequest(),
+          timeout: const Duration(seconds: 5),
+        );
+        _txHeld = true;
+      }),
+    );
   }
 
   Future<void> sendRelease() {
-    return _enqueueButton('button release', () async {
-      if (!_txHeld) return;
-      _txHeld = false;
-      await _client.appButtonRelease(
-        AppButtonReleaseRequest(),
-        timeout: const Duration(seconds: 5),
-      );
-      _sceneLoaded = false;
-    });
+    return _enqueueButton(
+      'button release',
+      () => _onDevice(() async {
+        if (!_txHeld) return;
+        _txHeld = false;
+        await _client.appButtonRelease(
+          AppButtonReleaseRequest(),
+          timeout: const Duration(seconds: 5),
+        );
+        _sceneLoaded = false;
+      }),
+    );
+  }
+
+  /// Runs [body] against the Flipper the emulation is open on.
+  ///
+  /// Falls back to the active session only when nothing is open, which is the
+  /// case for the calls that do not belong to a run - fetching a protocol, or
+  /// launching an app the user then drives themselves afterwards.
+  Future<T> _onDevice<T>(Future<T> Function() body) {
+    final binding = _binding;
+    return binding == null ? body() : binding.run(body);
+  }
+
+  void _onConnection(FlipperConnectionState state) {
+    // Gone from the screen means gone: an emulation is the window the user
+    // tapped, and the Flipper they have moved on from should not be left
+    // holding it open with nothing driving it. The link simply dropping is not
+    // this - it comes back, and the scene with it.
+    if (state.event == FlipperConnectionEvent.deviceChanged) {
+      unawaited(stop());
+    }
   }
 
   Future<bool> _reloadForSend() async {
@@ -204,7 +252,9 @@ class EmulateService {
     return _stopFuture ??= _doStop();
   }
 
-  Future<void> _doStop() async {
+  Future<void> _doStop() => _onDevice(_doStopOnDevice);
+
+  Future<void> _doStopOnDevice() async {
     try {
       if (!_running) return;
       _running = false;
@@ -229,6 +279,9 @@ class EmulateService {
 
       _activeKey = null;
     } finally {
+      _binding = null;
+      unawaited(_connection?.cancel());
+      _connection = null;
       _stopFuture = null;
     }
   }

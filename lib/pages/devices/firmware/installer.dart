@@ -8,6 +8,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/foundation.dart';
 
+import '../../../services/connection/link_service.dart';
 import '../../../services/progress_throttle.dart';
 import 'source.dart';
 import 'update_state.dart';
@@ -27,12 +28,39 @@ void _log(String msg) => LogService.info('$_tag $msg');
 class FirmwareInstaller {
   const FirmwareInstaller._();
 
+  /// Flashes [source] onto the Flipper that is in play when this is called.
+  ///
+  /// Declared as one task, so the directory it makes, every file it uploads,
+  /// the md5 checks between them and the command that finally starts the update
+  /// all reach that same Flipper. Warm sessions let the user switch devices
+  /// without the link dropping, and before this the second half of a firmware
+  /// went wherever they switched to - onto a Flipper holding the first half of
+  /// nothing, told to install it.
+  ///
+  /// Nothing here gives up when the user switches. Half a firmware is worse
+  /// than an old one, so a flash that has begun finishes where it began; what a
+  /// switch changes is only which screen is entitled to show its progress, and
+  /// that is [UpdateState.deviceId]'s job.
   static Future<void> install({
+    required FirmwareSource source,
+    required FlipperClient client,
+    required void Function(UpdateState) onState,
+  }) => client.runTask(
+    FlipperRequestPriority.background,
+    () => _install(source: source, client: client, onState: onState),
+  );
+
+  static Future<void> _install({
     required FirmwareSource source,
     required FlipperClient client,
     required void Function(UpdateState) onState,
   }) async {
     final tempDir = io.Directory.systemTemp.createTempSync('flipper_fw_');
+    // The wait for the Flipper to come back happens after this directory is
+    // gone: an install runs for as long as it runs - half an hour on a large
+    // firmware - and an unpacked bundle has no business sitting on disk for
+    // it.
+    FlipperDevice? awaitReturnOf;
     try {
       if (source.isRemote) onState(const UpdateFetching());
 
@@ -96,9 +124,18 @@ class FirmwareInstaller {
 
       _log('starting update: $manifestPath');
       onState(const UpdateStarting());
+      final target = client.bindCurrentSession().device;
       await client.runUpdate(UpdateRequest(updateManifest: manifestPath));
 
-      onState(const UpdateDone());
+      // Over USB the Flipper is followed through the install: it switches its
+      // USB controller off to reboot into the updater, and the port coming
+      // back is the signal to take the link again. Over BLE it is the user's
+      // call — the radio comes back whenever the install is done, and only
+      // they know when to reach for it.
+      awaitReturnOf = (target?.isUsb ?? false) ? target : null;
+      onState(
+        awaitReturnOf != null ? const UpdateInstalling() : const UpdateDone(),
+      );
     } catch (e, st) {
       // error rather than the commentary helper: UpdateError hands the UI
       // e.toString() and no stack, so this is the only place the stack for
@@ -111,6 +148,12 @@ class FirmwareInstaller {
         tempDir.deleteSync(recursive: true);
       } catch (_) {}
     }
+
+    final target = awaitReturnOf;
+    if (target == null) return;
+    await LinkService.instance.awaitUsbReturn(target);
+    _log('${target.name} is back on the cable');
+    onState(const UpdateDone());
   }
 
   /// Waits for [client] to come back after a recovery flash.

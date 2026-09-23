@@ -249,7 +249,12 @@ class MapToolController extends ChangeNotifier with WidgetsBindingObserver {
       await file.writeAsString(updated, flush: true);
       if (remotePath != null && remotePath.isNotEmpty && _client.isConnected) {
         try {
-          await _client.storageWriteChunked(remotePath, utf8.encode(updated));
+          // The copy on the device belongs to the Flipper the file was opened
+          // from, so the write goes back to that one.
+          await _client.runTask(
+            FlipperRequestPriority.background,
+            () => _client.storageWriteChunked(remotePath, utf8.encode(updated)),
+          );
         } catch (_) {}
       }
       await loadFiles();

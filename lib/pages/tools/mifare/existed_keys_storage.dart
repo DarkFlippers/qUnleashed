@@ -11,6 +11,11 @@ typedef DictReader = Future<List<int>> Function(String path);
 typedef DictWriter = Future<void> Function(String path, List<int> data);
 
 class ExistedKeysStorage {
+  /// Reads and writes the key dictionaries on the device.
+  ///
+  /// No task declared here: every caller is already inside one - the recovery
+  /// run - and these calls inherit its binding, so one declared here would
+  /// bind the same session a second time and say nothing extra.
   ExistedKeysStorage(FlipperClient client)
     : this.withSeams(
         reader: (path) => client.storageReadChunked(

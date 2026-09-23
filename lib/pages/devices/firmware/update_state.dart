@@ -38,6 +38,10 @@ class UpdateStarting extends UpdateState {
   const UpdateStarting();
 }
 
+class UpdateInstalling extends UpdateState {
+  const UpdateInstalling();
+}
+
 class UpdateRecovering extends UpdateState {
   const UpdateRecovering(this.step, this.progress);
 

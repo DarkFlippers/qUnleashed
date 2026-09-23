@@ -208,7 +208,7 @@ class _DeletedPageState extends State<DeletedPage> {
       return;
     }
     if (!_ctrl.isConnected) {
-      unawaited(promptConnectDevice(context, _ctrl.client));
+      unawaited(promptConnectDevice(context));
       return;
     }
     unawaited(_ctrl.refresh());

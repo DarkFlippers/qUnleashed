@@ -334,6 +334,8 @@ class FliblerProjectController extends ChangeNotifier {
     }
   }
 
+  /// Starting the app is what the user is waiting on, and it runs on whatever
+  /// Flipper is in front of them - no binding, and no queue to sit behind.
   Future<void> launchOnDevice() async {
     final path = targetPath;
     if (path.isEmpty) throw StateError(l10n.fliblerErrorNothingBuilt);
@@ -344,7 +346,15 @@ class FliblerProjectController extends ChangeNotifier {
     );
   }
 
-  Future<bool> sendToDevice() async {
+  /// Uploads the built artifacts, as one task.
+  ///
+  /// The directories it makes and every file it writes go to the Flipper it
+  /// started against, so switching devices mid-upload cannot leave half a
+  /// build on one and half on the other.
+  Future<bool> sendToDevice() =>
+      _client.runTask(FlipperRequestPriority.background, _sendToDevice);
+
+  Future<bool> _sendToDevice() async {
     final artifacts = deployable;
     if (artifacts.isEmpty || _uploading) return false;
     if (!deviceReady) {

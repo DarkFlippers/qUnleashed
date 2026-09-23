@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 
 import '../../../components/archive/category.dart';
 import '../../../services/archive/storage.dart';
+import 'send.dart';
 import 'widgets/ir_file_viewer.dart';
 import '../../../services/logging.dart';
 
@@ -64,25 +65,12 @@ class _IrContentPageState extends State<IrContentPage> {
       onSend: ({required bytes, required onProgress}) async {
         final fileName = _safeName(widget.fileName);
         try {
-          final disconnected = Completer<void>();
-          late final StreamSubscription<FlipperConnectionState> sub;
-          sub = _client.connectionStream.listen((state) {
-            if (!state.connected && !disconnected.isCompleted) {
-              disconnected.completeError(StateError(l10n.irDisconnected));
-            }
-          });
-          await Future.any<void>([
-            _client.storageWriteChunked(
-              '/ext/infrared/$fileName',
-              bytes,
-              onProgress: onProgress,
-            ),
-            disconnected.future,
-          ]).whenComplete(sub.cancel);
+          await sendIrFile(_client, fileName, bytes, onProgress: onProgress);
           return true;
         } catch (e) {
-          // As the controller's sendToFlipper: the disconnect arrives from
-          // the Future.any, and flipperlib records a link drop only at info.
+          // As the controller's sendToFlipper: the disconnect arrives as the
+          // sentence sendIrFile raises, and flipperlib records a link drop
+          // only at info.
           LogService.warn('[IRBackend] send $fileName failed: $e');
           return false;
         }

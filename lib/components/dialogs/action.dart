@@ -18,11 +18,6 @@ String get kFlipperBusyMessage => l10n.deviceBusyMessage;
 String get kFlipperBusyAction => l10n.deviceBusyAction;
 const String kFlipperBusyAssetPath = 'assets/pic/status/busy.svg';
 
-String get kCliBluetoothUnavailableTitle => l10n.terminalUnavailableTitle;
-String get kCliBluetoothUnavailableMessage => l10n.terminalUnavailableMessage;
-String get kCliBluetoothUnavailableAction => l10n.terminalUnavailableAction;
-const String kCliBluetoothUnavailableAssetPath = 'assets/pic/status/busy.svg';
-
 class FlipperActionDialog extends StatelessWidget {
   const FlipperActionDialog({
     super.key,

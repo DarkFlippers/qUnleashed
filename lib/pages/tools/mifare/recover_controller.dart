@@ -98,7 +98,17 @@ class RecoverController extends ChangeNotifier {
     super.dispose();
   }
 
-  Future<void> start() async {
+  /// Runs a whole recovery as one task.
+  ///
+  /// It reads the nonce and dictionary files off the card's Flipper, works for
+  /// as long as cracking takes and writes the candidate keys back. All of that
+  /// is about one device, so it stays with the one it began on: keys recovered
+  /// from a card read by one Flipper have no meaning written into another's
+  /// dictionary.
+  Future<void> start() =>
+      _client.runTask(FlipperRequestPriority.background, _start);
+
+  Future<void> _start() async {
     if (_running) return;
     _running = true;
     try {

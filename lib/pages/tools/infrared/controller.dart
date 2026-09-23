@@ -11,6 +11,7 @@ import '../../../components/archive/category.dart';
 import 'api.dart';
 import 'local_repo.dart';
 import 'models.dart';
+import 'send.dart';
 import 'settings.dart';
 import '../../../services/logging.dart';
 
@@ -295,26 +296,18 @@ class IrLibController extends ChangeNotifier {
   }) async {
     if (!_client.isConnected) return false;
     try {
-      final fileName = _archiveFileName(entry.name);
-      final remotePath = '/ext/infrared/$fileName';
-      final disconnected = Completer<void>();
-      late final StreamSubscription<FlipperConnectionState> sub;
-      sub = _client.connectionStream.listen((state) {
-        if (!state.connected && !disconnected.isCompleted) {
-          disconnected.completeError(StateError(l10n.irDisconnected));
-        }
-      });
-      await Future.any<void>([
-        _client.storageWriteChunked(remotePath, bytes, onProgress: onProgress),
-        disconnected.future,
-      ]).whenComplete(sub.cancel);
+      await sendIrFile(
+        _client,
+        _archiveFileName(entry.name),
+        bytes,
+        onProgress: onProgress,
+      );
       return true;
     } catch (e) {
       _error = '$e';
       // The viewer shows irSendFailed, which names no cause. The disconnect
-      // arrives from the Future.any above rather than storageWriteChunked,
-      // which in any case records a link drop at info - so this warn is the
-      // only account history keeps.
+      // arrives as the sentence sendIrFile raises, and flipperlib records a
+      // link drop at info - so this warn is the only account history keeps.
       LogService.warn('[IRLib] send ${entry.path} failed: $e');
       notifyListeners();
       return false;
