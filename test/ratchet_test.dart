@@ -39,8 +39,14 @@ void main() {
     });
 
     test('is one level deeper under pages, which is where the sites are', () {
-      expect(areaOf('lib/pages/devices/widgets/firmware_card.dart'), 'pages/devices');
-      expect(areaOf('lib/pages/tools/mifare/recover_controller.dart'), 'pages/tools');
+      expect(
+        areaOf('lib/pages/devices/widgets/firmware_card.dart'),
+        'pages/devices',
+      );
+      expect(
+        areaOf('lib/pages/tools/mifare/recover_controller.dart'),
+        'pages/tools',
+      );
     });
 
     test('is the file itself when it sits directly in lib', () {
