@@ -11,6 +11,12 @@
 # firebase_options.dart are skipped; and a new directory is covered the day it
 # is added rather than needing to be enumerated here.
 #
+# `--others --exclude-standard` as well as the index, because a file that has
+# not been added yet is exactly the one whose formatting has never been
+# checked. Without it a local run before `git add` is a false green, and the
+# first anyone hears of it is red CI on a brand-new file. On CI itself
+# everything is tracked, so it changes nothing there.
+#
 # `dart format` does not read the analyzer's exclude list, which is why this
 # cannot simply be `dart format lib test`.
 set -Eeuo pipefail
@@ -25,17 +31,20 @@ elif [[ -n "${1:-}" ]]; then
   exit 2
 fi
 
-count="$(git ls-files -- 'lib/*.dart' 'lib/**/*.dart' 'test/*.dart' 'test/**/*.dart' | wc -l)"
+list=(--cached --others --exclude-standard --
+  'lib/*.dart' 'lib/**/*.dart' 'test/*.dart' 'test/**/*.dart')
+
+count="$(git ls-files "${list[@]}" | wc -l)"
 if (( count == 0 )); then
-  echo "::error::No tracked Dart files found to format-check." >&2
+  echo "::error::No Dart files found to format-check." >&2
   exit 1
 fi
 
 # Batched through xargs: the list is a few hundred paths, which overruns the
 # command-line limit on some hosts. xargs reports non-zero if any batch does.
-if ! git ls-files -z -- 'lib/*.dart' 'lib/**/*.dart' 'test/*.dart' 'test/**/*.dart' \
+if ! git ls-files -z "${list[@]}" \
      | xargs -0 -r -n 100 dart format "${mode[@]}" --; then
   echo "::error::Dart formatting differs. Run .github/scripts/check_format.sh --write" >&2
   exit 1
 fi
-echo "Checked $count tracked Dart file(s)."
+echo "Checked $count Dart file(s)."

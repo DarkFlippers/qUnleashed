@@ -39,8 +39,10 @@ dependency precisely for that.
 **Express architectural rules as ratchet tests built on `analyzer`, not as
 lint plugins.**
 
-The first one counts `FlipperOneClient()` call sites under `lib/pages/**`,
-currently 24, and fails when the number rises.
+The first one counts `FlipperOneClient()` call sites in `lib/`, currently 24,
+and fails when the number rises. (`lib/pages/**` holds 17 of them; the rest
+are in `services`, `components` and the two composition roots, and a rule that
+stopped at `pages` would push a site one directory up rather than remove it.)
 
 A ratchet is preferred to a plugin here because it:
 
