@@ -5,12 +5,12 @@ publish_to: 'none'
 version: 0.12.1+12001
 
 environment:
-  # Те, на чому цей проєкт справді збирається, а не ширше вікно.
-  # setup-flutter пінить 3.47.1 і запускає pub get з --enforce-lockfile, а
-  # flutter_test приколює matcher, test_api, vector_math і meta до точних
-  # версій, що рухаються разом із SDK. Тому оголошувати нижчу межу, ніж та,
-  # що стоїть у CI, означає пустити людину в `pub get`, який пройде, і в
-  # збірку, яка впаде незрозуміло.
+  # What this actually builds on, rather than a wider window.
+  # setup-flutter pins 3.47.1 and runs pub get with --enforce-lockfile, and
+  # flutter_test pins matcher, test_api, vector_math and meta to exact
+  # versions that move with the SDK. Declaring a floor below the one CI uses
+  # therefore hands someone a `pub get` that resolves and a build that fails
+  # with nothing pointing back here.
   sdk: ^3.13.1
   flutter: ">=3.47.1"
 

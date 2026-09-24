@@ -5,6 +5,11 @@
 > `architecture-review.md`. Counts were taken with `grep`/`find` over `lib/`;
 > the analyzer state comes from the Dart MCP server.
 >
+> Line references into `flipperlib` are against the commit this repository
+> pins, `af4f6eb` — that submodule moves independently, and its `dev` branch
+> is already ahead. Anything cited as `client.dart:NN` is only findable at
+> that commit.
+>
 > Where the codebase does one job in more than one way, it is marked **mixed**.
 
 ## 1. Project structure
