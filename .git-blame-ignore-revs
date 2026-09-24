@@ -1,0 +1,10 @@
+# Commits that changed formatting only, and would otherwise bury every line
+# they touched under a name that never wrote it.
+#
+# GitHub reads this file automatically. Locally:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# Declare the SDK window this app is actually built in
+# (raising the language version reformatted 84 files; the constraint change
+# itself is the only part that carries meaning)
+ab1a28c16896761e5771bf4232b494ac685d68a5
