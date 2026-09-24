@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
@@ -121,9 +122,8 @@ class _FliblerProjectPageState extends State<FliblerProjectPage> {
   }
 
   void _openConsole() {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const AssemblerConsolePage()));
+    Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => const AssemblerConsolePage()));
   }
 
   void _openSettings() {

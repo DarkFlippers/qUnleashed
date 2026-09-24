@@ -256,9 +256,10 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
       // which reads the device on screen: a recovery flash ends with no device
       // at all, so the state to test is the one this flash published, not the
       // one whatever Flipper is in scope by now would answer with.
-      waitForReconnect =
-          _tracker.stateFor(target, widget.entry.shortName)
-              is UpdateWaitingForReconnect;
+      waitForReconnect = _tracker.stateFor(
+        target,
+        widget.entry.shortName,
+      ) is UpdateWaitingForReconnect;
     } catch (e, st) {
       // FirmwareInstaller.install keeps its own failures, but the temp
       // directory it creates before that try is outside it - a full disk or an

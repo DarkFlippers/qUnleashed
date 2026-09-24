@@ -63,9 +63,8 @@ void main() {
   /// fails in createSync, the same name used as the file fails in the write,
   /// and only this one reaches the second branch.
   void blockWithDir(String relative) {
-    Directory(
-      '${root.path}$sep${relative.replaceAll('/', sep)}',
-    ).createSync(recursive: true);
+    Directory('${root.path}$sep${relative.replaceAll('/', sep)}')
+        .createSync(recursive: true);
   }
 
   group('unpackWrappedArchiveTo', () {

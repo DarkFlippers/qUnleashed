@@ -84,9 +84,8 @@ abstract final class DolphinSender {
 
     const manifestName = 'manifest.txt';
     onProgress(_checking(selected.length, total, manifestName));
-    final manifestBytes = DolphinManifest.build(
-      selected.map((s) => s.$2),
-    ).codeUnits;
+    final manifestBytes = DolphinManifest.build(selected.map((s) => s.$2))
+        .codeUnits;
     if (await _remoteMd5(client, '$kDeviceDolphinPath/$manifestName') !=
         _md5(manifestBytes)) {
       pending.add(

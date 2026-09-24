@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../../services/localization/l10n.dart';
 import '../../../theme/theme.dart';
+
 import 'package:qunleashed/components/appbar.dart';
+
 import 'backend/infrared_backend_api.dart';
 import 'backend/infrared_backend_models.dart';
 import 'infrareds_page.dart';

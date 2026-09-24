@@ -10,29 +10,27 @@ abstract class MfKey32Recoverer {
   Future<BigInt?> bruteforceKey(MfKey32Nonce nonce);
 }
 
-typedef _RecoverNative =
-    Uint64 Function(
-      Uint32 uid,
-      Uint32 nt0,
-      Uint32 nr0,
-      Uint32 ar0,
-      Uint32 nt1,
-      Uint32 nr1,
-      Uint32 ar1,
-      Pointer<Int32> found,
-    );
+typedef _RecoverNative = Uint64 Function(
+  Uint32 uid,
+  Uint32 nt0,
+  Uint32 nr0,
+  Uint32 ar0,
+  Uint32 nt1,
+  Uint32 nr1,
+  Uint32 ar1,
+  Pointer<Int32> found,
+);
 
-typedef _RecoverDart =
-    int Function(
-      int uid,
-      int nt0,
-      int nr0,
-      int ar0,
-      int nt1,
-      int nr1,
-      int ar1,
-      Pointer<Int32> found,
-    );
+typedef _RecoverDart = int Function(
+  int uid,
+  int nt0,
+  int nr0,
+  int ar0,
+  int nt1,
+  int nr1,
+  int ar1,
+  Pointer<Int32> found,
+);
 
 class NativeMfKey32Recoverer implements MfKey32Recoverer {
   NativeMfKey32Recoverer();

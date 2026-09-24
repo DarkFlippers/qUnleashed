@@ -1,4 +1,5 @@
 import '../../../services/localization/l10n.dart';
+
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -6,8 +7,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../theme/theme.dart';
+
 import 'package:qunleashed/components/appbar.dart';
 import 'package:qunleashed/components/icon.dart';
+
 import 'backend/infrared_backend_api.dart';
 import 'backend/infrared_backend_models.dart';
 import 'brands_page.dart';
@@ -60,15 +63,13 @@ class _IrCategoriesPageState extends State<IrCategoriesPage> {
   }
 
   void _openCategory(DeviceCategory c) {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => IrBrandsPage(category: c)));
+    Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => IrBrandsPage(category: c)));
   }
 
   void _openIrdb() {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const IrLibPage()));
+    Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => const IrLibPage()));
   }
 
   @override

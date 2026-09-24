@@ -48,12 +48,10 @@ abstract class GpsLocationProvider {
 
 class _GpsStreamPump {
   _GpsStreamPump({
-    required GpsLocationProvider provider,
-    required int hz,
-    required void Function(GpsFix) onFix,
-  }) : _provider = provider,
-       _hz = hz,
-       _onFix = onFix;
+    required this._provider,
+    required this._hz,
+    required this._onFix,
+  });
 
   static const Duration _heartbeat = Duration(seconds: 2);
 

@@ -5,7 +5,14 @@ publish_to: 'none'
 version: 0.12.1+12001
 
 environment:
-  sdk: ^3.11.1
+  # What this actually builds on, rather than a wider window.
+  # setup-flutter pins 3.47.1 and runs pub get with --enforce-lockfile, and
+  # flutter_test pins matcher, test_api, vector_math and meta to exact
+  # versions that move with the SDK. Declaring a floor below the one CI uses
+  # therefore hands someone a `pub get` that resolves and a build that fails
+  # with nothing pointing back here.
+  sdk: ^3.13.1
+  flutter: ">=3.47.1"
 
 dependencies:
   flutter:

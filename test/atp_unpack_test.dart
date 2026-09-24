@@ -117,9 +117,9 @@ void main() {
     separator: sep,
   );
 
-  String read(String relative) => File(
-    '${root.path}$sep${relative.replaceAll('/', sep)}',
-  ).readAsStringSync();
+  String read(String relative) =>
+      File('${root.path}$sep${relative.replaceAll('/', sep)}')
+          .readAsStringSync();
 
   bool exists(String relative) =>
       File('${root.path}$sep${relative.replaceAll('/', sep)}').existsSync();

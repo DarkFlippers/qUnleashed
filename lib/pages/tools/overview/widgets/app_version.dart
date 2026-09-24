@@ -1,4 +1,5 @@
 import '../../../../services/localization/l10n.dart';
+
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -24,9 +25,8 @@ class AppVersionLabel extends StatelessWidget {
 
   static String? get _releaseType {
     if (_releaseTag.isEmpty) return 'local';
-    final match = RegExp(
-      r'^([A-Za-z][A-Za-z0-9]*)-v?[0-9]',
-    ).firstMatch(_releaseTag);
+    final match = RegExp(r'^([A-Za-z][A-Za-z0-9]*)-v?[0-9]')
+        .firstMatch(_releaseTag);
     return match?.group(1);
   }
 

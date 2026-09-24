@@ -368,75 +368,72 @@ void main() {
     });
   });
 
-  test(
-    'no area logs more failures below the surviving levels than its budget',
-    () {
-      final files = _dartFilesUnderLib();
-      // A guard that counts nothing passes every budget. The wrong working
-      // directory, a pathspec that stops matching, a submodule layout change -
-      // all of them empty this list, and without this the build stays green
-      // having looked at nothing at all.
-      expect(
-        files,
-        hasLength(greaterThan(100)),
-        reason: 'expected the whole of lib/, got ${files.length} files',
+  test('no area logs more failures below the surviving levels than its budget', () {
+    final files = _dartFilesUnderLib();
+    // A guard that counts nothing passes every budget. The wrong working
+    // directory, a pathspec that stops matching, a submodule layout change -
+    // all of them empty this list, and without this the build stays green
+    // having looked at nothing at all.
+    expect(
+      files,
+      hasLength(greaterThan(100)),
+      reason: 'expected the whole of lib/, got ${files.length} files',
+    );
+
+    final counted = <String, int>{};
+    final sites = <String, List<String>>{};
+    for (final path in files) {
+      final lines = catchSiteLines(File(path).readAsStringSync(), path: path);
+      if (lines.isEmpty) continue;
+      final area = _areaOf(path);
+      counted.update(
+        area,
+        (n) => n + lines.length,
+        ifAbsent: () => lines.length,
       );
+      sites
+          .putIfAbsent(area, () => <String>[])
+          .addAll(lines.map((line) => '$path:$line'));
+    }
 
-      final counted = <String, int>{};
-      final sites = <String, List<String>>{};
-      for (final path in files) {
-        final lines = catchSiteLines(File(path).readAsStringSync(), path: path);
-        if (lines.isEmpty) continue;
-        final area = _areaOf(path);
-        counted.update(
-          area,
-          (n) => n + lines.length,
-          ifAbsent: () => lines.length,
-        );
-        sites
-            .putIfAbsent(area, () => <String>[])
-            .addAll(lines.map((line) => '$path:$line'));
-      }
+    final drift = budgetDrift(counted, kBudget);
 
-      final drift = budgetDrift(counted, kBudget);
+    if (drift.under.isNotEmpty) {
+      // Printed rather than failed. An expected count checked into the tree
+      // races on merge: two branches that each remove a site in the same area
+      // write the same lower number, both pass their own run, and main lands
+      // below what the file claims. That cuts both ways - two additions merge
+      // to a false failure - but a number gone stale low is a nag where one
+      // gone stale high lets debt back in, so only the upward case fails.
+      // ignore: avoid_print
+      print(
+        'Lower kBudget in test/log_level_budget_test.dart:\n'
+        '  ${drift.under.join('\n  ')}\n'
+        'See $kIssue',
+      );
+    }
 
-      if (drift.under.isNotEmpty) {
-        // Printed rather than failed. An expected count checked into the tree
-        // races on merge: two branches that each remove a site in the same area
-        // write the same lower number, both pass their own run, and main lands
-        // below what the file claims. That cuts both ways - two additions merge
-        // to a false failure - but a number gone stale low is a nag where one
-        // gone stale high lets debt back in, so only the upward case fails.
-        // ignore: avoid_print
-        print(
-          'Lower kBudget in test/log_level_budget_test.dart:\n'
-          '  ${drift.under.join('\n  ')}\n'
+    // Only the areas that broke. Listing all of them buries the one line that
+    // matters under a hundred that were already there and already green.
+    final offending = [
+      for (final line in drift.over) ...[
+        '  $line',
+        ...?sites[line.split(':').first]?.map((site) => '    $site'),
+      ],
+    ];
+
+    expect(
+      drift.over,
+      isEmpty,
+      reason:
+          'LogService.info is not kept, and in an ordinary release build the '
+          'call compiles away - so a failure logged only there reports nowhere '
+          'a reader of a bug report can see.\n'
+          '${offending.join('\n')}\n'
+          'If the new call is the last word on a failure, use warn or error. '
+          'If something else already reports it, raise kBudget in '
+          'test/log_level_budget_test.dart and say why.\n'
           'See $kIssue',
-        );
-      }
-
-      // Only the areas that broke. Listing all of them buries the one line that
-      // matters under a hundred that were already there and already green.
-      final offending = [
-        for (final line in drift.over) ...[
-          '  $line',
-          ...?sites[line.split(':').first]?.map((site) => '    $site'),
-        ],
-      ];
-
-      expect(
-        drift.over,
-        isEmpty,
-        reason:
-            'LogService.info is not kept, and in an ordinary release build the '
-            'call compiles away - so a failure logged only there reports nowhere '
-            'a reader of a bug report can see.\n'
-            '${offending.join('\n')}\n'
-            'If the new call is the last word on a failure, use warn or error. '
-            'If something else already reports it, raise kBudget in '
-            'test/log_level_budget_test.dart and say why.\n'
-            'See $kIssue',
-      );
-    },
-  );
+    );
+  });
 }

@@ -1,5 +1,7 @@
 import 'dart:async';
+
 import '../../../services/localization/l10n.dart';
+
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
@@ -8,7 +10,9 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../components/navigation.dart';
 import '../../../theme/theme.dart';
+
 import 'package:flipperlib/flipperlib.dart';
+
 import '../../../services/storage/fap_icons.dart' as icon_repo;
 import '../../../components/notification.dart';
 import '../../../components/codec/fap/icon.dart';
@@ -249,9 +253,8 @@ class _FileManagerPageState extends State<FileManagerPage> {
       extension: e.extension,
       remotePath: remotePath,
     );
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => EmulatePage(flipperKey: key)));
+    Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => EmulatePage(flipperKey: key)));
   }
 
   /// Opens the system folder picker and returns the chosen directory, or null

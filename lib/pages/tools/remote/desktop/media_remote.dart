@@ -83,10 +83,9 @@ const Duration wristRemoteDoubleTapDuration = Duration(milliseconds: 400);
 class MediaRemoteBridge {
   MediaRemoteBridge({
     required this.onButton,
-    bool? supportedOverride,
+    this._supportedOverride,
     @visibleForTesting Future<SharedPreferences> Function()? preferencesLoader,
-  }) : _supportedOverride = supportedOverride,
-       _preferencesLoader = preferencesLoader ?? SharedPreferences.getInstance;
+  }) : _preferencesLoader = preferencesLoader ?? SharedPreferences.getInstance;
 
   static const MethodChannel _channel = MethodChannel(
     'qunleashed/media_remote',

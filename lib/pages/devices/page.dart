@@ -41,9 +41,8 @@ class DeviceTab extends StatelessWidget {
       children: [
         Positioned.fill(
           child: ScrollConfiguration(
-            behavior: ScrollConfiguration.of(
-              context,
-            ).copyWith(scrollbars: false),
+            behavior: ScrollConfiguration.of(context)
+                .copyWith(scrollbars: false),
             child: RefreshIndicator(
               onRefresh: () => _onRefresh(context),
               edgeOffset: headerHeight,

@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+
 import 'manifest.dart';
 import 'elf.dart';
 import 'assets.dart';

@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'package:qunleashed/components/appbar.dart';
+
 import '../../../services/localization/l10n.dart';
 import '../../../theme/theme.dart';
 import '../../../components/notification.dart';
