@@ -93,20 +93,25 @@ class FirmwareFile {
   final String url;
   final String target;
   final String type;
-  final String sha256;
+
+  /// `null` means this build publishes no checksum.
+  ///
+  /// Only the variant URLs [UnleashedParser.getUpdatePackage] mints itself are
+  /// entitled to that; a feed entry that omits one is dropped by [_file]
+  /// rather than admitted with a `null`. Kept `required` so a construction
+  /// site has to say which of the two it is.
+  final String? sha256;
 }
 
 class FirmwareVersion {
   const FirmwareVersion({
     required this.version,
     required this.changelog,
-    required this.timestamp,
     required this.files,
   });
 
   final String version;
   final String changelog;
-  final int timestamp;
   final List<FirmwareFile> files;
 
   FirmwareFile? updatePackageFor(String target) {
@@ -453,14 +458,13 @@ class FirmwareDirectoryReader {
     final files = _each(json, 'files', at, 'file', _file);
     if (files == null) return null;
 
-    final timestamp = json['timestamp'];
+    // `timestamp` is in the feed and is not modelled: nothing renders a
+    // release date. Reading it would mean manufacturing an epoch for a
+    // malformed one, and 0 is a real date. If a date is ever shown, it comes
+    // back as `int?`, with a consumer.
     return FirmwareVersion(
       version: version,
       changelog: _presentation(json, 'changelog', at, or: ''),
-      // Nothing in the app reads this today, which is the only reason a bad
-      // one is neither named nor fatal. Both stop being true the moment
-      // something renders a release date.
-      timestamp: timestamp is num ? timestamp.toInt() : 0,
       files: files,
     );
   }
@@ -469,11 +473,10 @@ class FirmwareDirectoryReader {
     final url = _text(json['url']);
     final target = _text(json['target']);
     final type = _text(json['type']);
-    // An empty `sha256` is the sharp one: `RemoteFirmwareSource` reads it as
-    // "this build publishes no checksum" and skips verifying an archive it is
-    // about to flash. Only the variant URLs `UnleashedParser.getUpdatePackage`
-    // mints itself are entitled to that, and [_text] trims so a checksum of
-    // spaces cannot pass for one.
+    // `sha256` is required of the feed even though the field is nullable:
+    // `null` is reserved for the variant builds `getUpdatePackage` mints, and
+    // [_text] trims so a checksum of spaces is a missing one, not a checksum
+    // that fails to match.
     final sha256 = _text(json['sha256']);
     if (url == null || target == null || type == null || sha256 == null) {
       // Named one by one: a renamed field is renamed in every file entry of
@@ -495,9 +498,9 @@ class FirmwareDirectoryReader {
   /// [_presentation] reuses it, which is what makes a blanked title fall back
   /// to the id.
   ///
-  /// Trimmed, because `RemoteFirmwareSource._verifySha256` trims before it
-  /// decides, so a checksum of spaces read there as "this build publishes
-  /// none" and skipped verifying an archive about to be flashed. The same
+  /// Trimmed, because a checksum of spaces is not a checksum: it would reach
+  /// `RemoteFirmwareSource._verifySha256` as a value to match and fail an
+  /// archive the feed never meant to publish one for. The same
   /// answer is the right one for the rest: `updatePackageFor` matches `target`
   /// and `type` exactly, so a feed that started padding them would take
   /// updates away from every device without a word.
@@ -700,7 +703,7 @@ class UnleashedParser extends FirmwareParser {
       url: _buildVariantUrl(base.url, suffix),
       target: base.target,
       type: base.type,
-      sha256: '',
+      sha256: null,
     );
   }
 

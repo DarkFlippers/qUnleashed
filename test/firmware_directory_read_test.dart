@@ -38,10 +38,10 @@ void main() {
     Object? sha256 = 'abc',
   }) => {'url': url, 'target': target, 'type': type, 'sha256': sha256};
 
-  // No other case asserts a *surviving* file's `sha256`, so without this one a
-  // decode that blanked every checksum would pass — and an empty checksum is
-  // exactly how RemoteFirmwareSource is told not to verify the archive it is
-  // about to flash.
+  // No other case asserts a *surviving* file's `sha256`, so without this one
+  // a decode that blanked every checksum would pass — and the installer
+  // matches whatever it is handed, so a blanked one fails an archive the feed
+  // published a good checksum for.
   test('a well-formed feed arrives whole', () {
     final result = read(
       feed([
@@ -53,7 +53,6 @@ void main() {
             {
               'version': '1.2.3',
               'changelog': '# notes',
-              'timestamp': 1700000000,
               'files': [
                 // Ahead of the update package on purpose: `updatePackageFor`
                 // matches on type as well as target, and a raw image handed to
@@ -91,7 +90,6 @@ void main() {
       reason: 'newest first, the order the feed lists them in',
     );
     expect(release.latest!.changelog, '# notes');
-    expect(release.latest!.timestamp, 1700000000);
     expect(release.latest!.files.map((f) => f.type), [
       'full_bin',
       'update_tgz',
@@ -108,7 +106,7 @@ void main() {
     expect(
       package.sha256,
       'abc',
-      reason: 'an empty one tells the installer not to check the download',
+      reason: 'the checksum the installer matches the download against',
     );
     expect(result.said, isEmpty);
   });
@@ -650,7 +648,11 @@ void main() {
       );
     });
 
-    test('costs nothing on a version either', () {
+    // `timestamp` is in both live feeds and is not modelled. A field the
+    // reader does not read must not become a drop or a complaint, whatever
+    // shape it arrives in - the feed is free to carry things this app has no
+    // use for.
+    test('costs nothing when it is a field the reader does not model', () {
       final result = read(
         feed([
           channelJson('release', [
@@ -658,34 +660,15 @@ void main() {
               'version': '1.0.0',
               'changelog': 'notes',
               'timestamp': 'yesterday',
+              'nothing_here_reads_this': <dynamic>[],
               'files': <dynamic>[],
             },
           ]),
         ]),
       );
 
-      expect(result.directory.channelById('release')!.latest!.timestamp, 0);
+      expect(result.directory.channelById('release')!.latest!.version, '1.0.0');
       expect(result.said, isEmpty, reason: 'neither named nor fatal');
-    });
-
-    test('keeps a timestamp that arrived as a fraction', () {
-      final result = read(
-        feed([
-          channelJson('release', [
-            {
-              'version': '1.0.0',
-              'changelog': 'notes',
-              'timestamp': 1700000000.0,
-              'files': <dynamic>[],
-            },
-          ]),
-        ]),
-      );
-
-      expect(
-        result.directory.channelById('release')!.latest!.timestamp,
-        1700000000,
-      );
     });
   });
 

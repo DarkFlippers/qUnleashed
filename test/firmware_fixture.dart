@@ -55,14 +55,8 @@ Map<String, dynamic> channelJson(
 Map<String, dynamic> versionJson(
   String version, {
   String changelog = 'notes',
-  int timestamp = 0,
   List<dynamic> files = const <dynamic>[],
-}) => {
-  'version': version,
-  'changelog': changelog,
-  'timestamp': timestamp,
-  'files': files,
-};
+}) => {'version': version, 'changelog': changelog, 'files': files};
 
 /// A directory feed of the shape the parsers expect.
 Map<String, dynamic> feedJson() => feed([

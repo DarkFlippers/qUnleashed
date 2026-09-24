@@ -61,11 +61,13 @@ class RemoteFirmwareSource implements FirmwareSource {
   }
 
   // This archive gets flashed to the device; a truncated or tampered download
-  // must never reach it. Variant builds publish no checksum (sha256 empty) and
-  // are skipped.
-  static Future<void> _verifySha256(String path, String expected) async {
+  // must never reach it. `null` is the one skip, and it means the build
+  // publishes no checksum - a variant URL. Anything else is matched, including
+  // a blank, which the feed reader does not let through and which would be a
+  // bug rather than a permission to skip.
+  static Future<void> _verifySha256(String path, String? expected) async {
+    if (expected == null) return;
     final want = expected.trim().toLowerCase();
-    if (want.isEmpty) return;
     final got = await compute(_fileSha256, path);
     if (got != want) {
       throw FirmwareSourceException(l10n.firmwareErrorChecksum);
