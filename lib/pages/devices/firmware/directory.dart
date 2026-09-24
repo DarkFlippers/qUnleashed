@@ -722,9 +722,8 @@ class UnleashedParser extends FirmwareParser {
     if (segments.isEmpty) return baseUrl;
 
     final fileName = segments.removeLast();
-    final match = RegExp(
-      r'^(flipper-z-[^-]+-update-[^.]+)(\.tgz)$',
-    ).firstMatch(fileName);
+    final match = RegExp(r'^(flipper-z-[^-]+-update-[^.]+)(\.tgz)$')
+        .firstMatch(fileName);
     if (match == null) return baseUrl;
 
     final variantFileName = '${match.group(1)}$suffix${match.group(2)}';
@@ -736,9 +735,8 @@ class UnleashedParser extends FirmwareParser {
   static String? _extractVersionFromUrl(String url) {
     final fileName =
         Uri.tryParse(url)?.pathSegments.last ?? url.split('/').last;
-    final match = RegExp(
-      r'^flipper-z-[^-]+-update-([^.]+)\.tgz$',
-    ).firstMatch(fileName);
+    final match = RegExp(r'^flipper-z-[^-]+-update-([^.]+)\.tgz$')
+        .firstMatch(fileName);
     return match?.group(1);
   }
 }

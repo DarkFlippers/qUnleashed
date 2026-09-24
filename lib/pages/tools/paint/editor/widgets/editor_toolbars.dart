@@ -1,4 +1,5 @@
 import '../../../../../services/localization/l10n.dart';
+
 import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
@@ -6,7 +7,9 @@ import 'package:flutter/material.dart';
 
 import '../../../../../theme/colors/display.dart';
 import '../../../../../theme/theme.dart';
+
 import 'package:qunleashed/components/appbar.dart';
+
 import '../../constants.dart';
 import '../controller.dart';
 import 'editor_widgets.dart';

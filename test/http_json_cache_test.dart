@@ -325,9 +325,9 @@ void main() {
 
         await AppHttp.getJsonCached(server.uri, ttl: const Duration(days: 30));
 
-        final meta =
-            jsonDecode(cacheFile(server.uri, 'meta').readAsStringSync())
-                as Map<String, dynamic>;
+        final meta = jsonDecode(
+          cacheFile(server.uri, 'meta').readAsStringSync(),
+        ) as Map<String, dynamic>;
         expect(meta['etag'], 'W/"v1"');
         expect(meta['fetched_at'], threeDaysAgo.millisecondsSinceEpoch);
         expect(server.requests, 0, reason: 'served from the migrated entry');

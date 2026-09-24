@@ -1,4 +1,5 @@
 import '../../../services/localization/l10n.dart';
+
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -265,7 +266,6 @@ Widget _buildRemoteControlPage(BuildContext context) =>
     const RemoteControlPage();
 
 Future<void> _openCliPage(BuildContext context) async {
-  await Navigator.of(
-    context,
-  ).push(MaterialPageRoute(builder: (_) => const CliPage()));
+  await Navigator.of(context)
+      .push(MaterialPageRoute(builder: (_) => const CliPage()));
 }

@@ -1,4 +1,5 @@
 import '../../../services/localization/l10n.dart';
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io' as io;
@@ -523,9 +524,9 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
     final bytes = await _readRemoteBytes(favPath, logErrors: false);
     if (bytes == null) return;
     final target = _normalizeFavoritePath(remotePath);
-    final lines = const Utf8Decoder(
-      allowMalformed: true,
-    ).convert(bytes).split(RegExp(r'\r?\n'));
+    final lines = const Utf8Decoder(allowMalformed: true)
+        .convert(bytes)
+        .split(RegExp(r'\r?\n'));
     final kept = lines
         .where(
           (l) => l.trim().isNotEmpty && _normalizeFavoritePath(l) != target,

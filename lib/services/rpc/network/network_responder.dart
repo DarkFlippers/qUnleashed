@@ -222,9 +222,8 @@ class FlipperNetworkResponder {
     final connection = _NetworkConnection.udp(id);
     _connections[id] = connection;
     try {
-      final addresses = await InternetAddress.lookup(
-        request.host,
-      ).timeout(timeout);
+      final addresses = await InternetAddress.lookup(request.host)
+          .timeout(timeout);
       if (addresses.isEmpty) {
         _connections.remove(id);
         await _sendConnectError(id, ErrorCode.DNS_FAILED);

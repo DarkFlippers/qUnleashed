@@ -39,28 +39,25 @@ void main() {
     LogService.clearHistory();
   });
 
-  test(
-    'a rejection is kept at error level, and does not reject the caller',
-    () async {
-      var chained = false;
-      await guarded('[Test] work', boom).then((_) => chained = true);
+  test('a rejection is kept at error level, and does not reject the caller', () async {
+    var chained = false;
+    await guarded('[Test] work', boom).then((_) => chained = true);
 
-      // Not decoration: the queues chain on this future, and `then` on a
-      // rejected future skips its callback and propagates - so a helper that let
-      // the rejection through would strand everything queued behind one failed
-      // link.
-      expect(chained, isTrue);
+    // Not decoration: the queues chain on this future, and `then` on a
+    // rejected future skips its callback and propagates - so a helper that let
+    // the rejection through would strand everything queued behind one failed
+    // link.
+    expect(chained, isTrue);
 
-      // The level, not just the fact of a record. warn is kept too, so asserting
-      // only on history cannot tell error from warn - and the prefix is the only
-      // thing in the entry that can.
-      expect(LogService.history.single, contains('[error]'));
-      expect(
-        LogService.history.single,
-        contains('[Test] work failed: Bad state: boom'),
-      );
-    },
-  );
+    // The level, not just the fact of a record. warn is kept too, so asserting
+    // only on history cannot tell error from warn - and the prefix is the only
+    // thing in the entry that can.
+    expect(LogService.history.single, contains('[error]'));
+    expect(
+      LogService.history.single,
+      contains('[Test] work failed: Bad state: boom'),
+    );
+  });
 
   test(
     'the returned future waits for the task, not just for its first turn',
@@ -176,27 +173,21 @@ void main() {
     );
   });
 
-  test(
-    'an error whose toString() throws is recorded, and does not reject',
-    () async {
-      // Building the message is the one part of the handler that touches the
-      // error, and it runs before anything guards it. A throw there would reject
-      // the future the queues are promised cannot reject - poisoning the chain,
-      // and losing the message that would have explained it.
-      await expectLater(
-        guarded(
-          '[Test] nasty',
-          () => Future<void>.error(_ExplodingOnToString()),
-        ),
-        completes,
-      );
+  test('an error whose toString() throws is recorded, and does not reject', () async {
+    // Building the message is the one part of the handler that touches the
+    // error, and it runs before anything guards it. A throw there would reject
+    // the future the queues are promised cannot reject - poisoning the chain,
+    // and losing the message that would have explained it.
+    await expectLater(
+      guarded('[Test] nasty', () => Future<void>.error(_ExplodingOnToString())),
+      completes,
+    );
 
-      expect(
-        LogService.history.single,
-        contains('[Test] nasty failed: an error whose toString() threw'),
-      );
-    },
-  );
+    expect(
+      LogService.history.single,
+      contains('[Test] nasty failed: an error whose toString() threw'),
+    );
+  });
 
   test(
     'the same failure repeated coalesces rather than filling the buffer',

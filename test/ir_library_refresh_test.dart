@@ -133,9 +133,9 @@ void main() {
     branch: 'main',
   );
 
-  String read(String relative) => File(
-    '${root.path}$sep${relative.replaceAll('/', sep)}',
-  ).readAsStringSync();
+  String read(String relative) =>
+      File('${root.path}$sep${relative.replaceAll('/', sep)}')
+          .readAsStringSync();
 
   List<Directory> supersededTrees() => base
       .listSync()

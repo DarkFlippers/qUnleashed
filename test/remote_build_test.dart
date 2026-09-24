@@ -194,8 +194,7 @@ void main() {
 
     final phases = <RemoteBuildPhase>[];
     final bytes = await service.build(
-      bundleUrl:
-          'https://catalog.flipperzero.one/api/v0/application/version/v1/bundle',
+      bundleUrl: 'https://catalog.flipperzero.one/api/v0/application/version/v1/bundle',
       alias: 'test_app',
       target: 'f7',
       api: '86.0',
@@ -229,8 +228,7 @@ void main() {
 
     await expectLater(
       service.build(
-        bundleUrl:
-            'https://catalog.flipperzero.one/api/v0/application/version/v1/bundle',
+        bundleUrl: 'https://catalog.flipperzero.one/api/v0/application/version/v1/bundle',
         alias: 'test_app',
         target: 'f7',
       ),
@@ -256,8 +254,7 @@ void main() {
     )..pollInterval = const Duration(milliseconds: 50);
 
     final first = service.build(
-      bundleUrl:
-          'https://catalog.flipperzero.one/api/v0/application/version/v1/bundle',
+      bundleUrl: 'https://catalog.flipperzero.one/api/v0/application/version/v1/bundle',
       alias: 'first_app',
       target: 'f7',
     );
@@ -267,8 +264,7 @@ void main() {
     expect(service.activeAlias, 'first_app');
     await expectLater(
       service.build(
-        bundleUrl:
-            'https://catalog.flipperzero.one/api/v0/application/version/v2/bundle',
+        bundleUrl: 'https://catalog.flipperzero.one/api/v0/application/version/v2/bundle',
         alias: 'second_app',
         target: 'f7',
       ),
@@ -304,8 +300,7 @@ void main() {
 
     await expectLater(
       service.build(
-        bundleUrl:
-            'https://catalog.flipperzero.one/api/v0/application/version/v1/bundle',
+        bundleUrl: 'https://catalog.flipperzero.one/api/v0/application/version/v1/bundle',
         alias: 'test_app',
         target: 'f7',
       ),
@@ -363,8 +358,7 @@ void main() {
 
     await expectLater(
       service.build(
-        bundleUrl:
-            'https://catalog.flipperzero.one/api/v0/application/version/v1/bundle',
+        bundleUrl: 'https://catalog.flipperzero.one/api/v0/application/version/v1/bundle',
         alias: 'test_app',
         target: 'f7',
       ),
@@ -404,8 +398,7 @@ void main() {
 
     await expectLater(
       service.build(
-        bundleUrl:
-            'https://catalog.flipperzero.one/api/v0/application/version/v1/bundle',
+        bundleUrl: 'https://catalog.flipperzero.one/api/v0/application/version/v1/bundle',
         alias: 'test_app',
         target: 'f7',
       ),
@@ -434,9 +427,9 @@ void main() {
       );
       req.headers.set(HttpHeaders.userAgentHeader, 'qunleashed-app');
       final res = await req.close();
-      final detail =
-          jsonDecode(await res.transform(utf8.decoder).join())
-              as Map<String, dynamic>;
+      final detail = jsonDecode(
+        await res.transform(utf8.decoder).join(),
+      ) as Map<String, dynamic>;
       http.close();
       final uid = (detail['_id'] ?? detail['id']) as String;
       final cv = detail['current_version'] as Map<String, dynamic>;

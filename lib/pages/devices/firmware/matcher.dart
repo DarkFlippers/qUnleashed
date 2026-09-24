@@ -105,9 +105,8 @@ class FirmwareMatcher {
     String? branchName,
   ) {
     final normalized = rawVersion.trim().toLowerCase();
-    final releaseMatch = RegExp(
-      r'((?:unlshd-\d+)|(?:\d+))([ce]?)',
-    ).firstMatch(normalized);
+    final releaseMatch = RegExp(r'((?:unlshd-\d+)|(?:\d+))([ce]?)')
+        .firstMatch(normalized);
     final channel = _detectUnleashedChannel(normalized, branchName);
     if (releaseMatch != null) {
       final suffix = releaseMatch.group(2) ?? '';
@@ -211,10 +210,11 @@ class FirmwareMatcher {
     return false;
   }
 
-  List<int> _numericParts(String value) => RegExp(r'\d+')
-      .allMatches(value)
-      .map((match) => int.tryParse(match.group(0) ?? '') ?? 0)
-      .toList();
+  List<int> _numericParts(String value) =>
+      RegExp(r'\d+')
+          .allMatches(value)
+          .map((match) => int.tryParse(match.group(0) ?? '') ?? 0)
+          .toList();
 
   String _normalizeUnleashedVersion(String value) {
     final match = RegExp(

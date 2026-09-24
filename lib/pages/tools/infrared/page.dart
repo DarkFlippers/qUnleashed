@@ -3,10 +3,12 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../services/localization/l10n.dart';
 import '../../../theme/theme.dart';
+
 import 'package:qunleashed/components/appbar.dart';
 import 'package:qunleashed/components/format.dart';
 import 'package:qunleashed/components/icon.dart';
 import 'package:qunleashed/theme/colors/category.dart';
+
 import '../../../components/notification.dart';
 import 'controller.dart';
 import 'file_page.dart';

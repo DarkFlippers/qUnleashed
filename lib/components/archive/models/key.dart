@@ -17,10 +17,9 @@ class ArchiveKey {
     this.extra,
     this.mtime,
     this.meta,
-    String? flipperDir,
+    this._flipperDir,
     String? remotePath,
   }) : extension = extension ?? category.extension,
-       _flipperDir = flipperDir,
        _remotePathOverride = remotePath;
 
   final String name;

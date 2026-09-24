@@ -6,7 +6,9 @@ import '../actions.dart';
 import 'widgets/states.dart';
 import 'widgets/screenshots_viewer.dart';
 import '../../../theme/theme.dart';
+
 import 'package:qunleashed/components/appbar.dart';
+
 import '../../../components/changelog_renderer.dart';
 import '../../../components/open_url.dart';
 import '../data/models/category.dart';

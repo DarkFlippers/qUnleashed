@@ -5,6 +5,7 @@ import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:geolocator/geolocator.dart';
+
 import '../guarded.dart';
 import '../localization/l10n.dart';
 import '../logging.dart';
