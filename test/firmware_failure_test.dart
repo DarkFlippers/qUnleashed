@@ -809,7 +809,6 @@ void main() {
         version: FirmwareVersion(
           version: '1.0.0',
           changelog: changelog,
-          timestamp: 0,
           files: const [],
         ),
         changelog: changelog,

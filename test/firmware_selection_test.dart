@@ -10,9 +10,7 @@ FirmwareDirectoryChannel channel(String id) => FirmwareDirectoryChannel(
   id: id,
   title: id,
   description: '',
-  versions: const [
-    FirmwareVersion(version: '1.0.0', changelog: '', timestamp: 0, files: []),
-  ],
+  versions: const [FirmwareVersion(version: '1.0.0', changelog: '', files: [])],
 );
 
 /// Runs [body] once the controller has read its stored choices.
