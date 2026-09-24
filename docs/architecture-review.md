@@ -1,402 +1,424 @@
-# Порівняння архітектури з еталоном
+# Architecture review against a reference project
 
-> Вхідні дані: `docs/architecture.md` (as-is, `11107c0`), еталон —
-> `C:\Projects\Ralliva\app\CLAUDE.md` і структура того проєкту, нейтральний
-> орієнтир — <https://docs.flutter.dev/app-architecture>.
-> Попереднього аналізу цього проєкту не було.
+> Inputs: `docs/architecture.md` (as-is, `11107c0`); the reference is
+> `C:\Projects\Ralliva\app\CLAUDE.md` together with that project's structure;
+> the neutral benchmark is <https://docs.flutter.dev/app-architecture>.
+> There was no earlier analysis of this project.
 >
-> Вердикт `ЛИШИТИ` / `МІГРУВАТИ` / `НЕ ВАРТО` (еталон кращий, але ціна не
-> виправдана). Ціна: S ≤ 10 файлів, M ≤ 50, L > 50.
+> Verdicts are `KEEP` / `MIGRATE` / `NOT WORTH IT` (the reference is better,
+> but the price is not justified). Cost: S ≤ 10 files, M ≤ 50, L > 50.
 
-## Перше, що треба сказати про еталон
+## First, something about the reference
 
-Ralliva — **39 файлів `.dart` у `lib/`, 4 тестові файли**. qUnleashed —
-**454 і 53**. Це не «той самий проєкт, тільки акуратніший»: різниця в 11 разів,
-і разом із нею різниця в домені. У Ralliva немає пристрою, немає двох
-транспортів, немає нативного C/C++, немає десктопних таргетів і немає
-віджета домашнього екрана з власною точкою входу в ізолят.
+Ralliva is **39 `.dart` files in `lib/` and 4 test files**. qUnleashed is
+**454 and 51**. That is not the same project done more tidily: it is an
+eleven-fold difference, and with it a difference in domain. Ralliva has no
+device, no two transports, no native C/C++, no desktop targets and no
+home-screen widget with its own isolate entry point.
 
-Тому еталон говорить багато про те, чого в qUnleashed немає (Dio, OAuth,
-токени, теми з design-репо), і майже нічого про те, що в qUnleashed є
-найскладнішим — сесія, черга RPC, reconnect, DFU.
+So the reference says a great deal about things qUnleashed does not have (Dio,
+OAuth, tokens, themes generated from a design repo) and almost nothing about
+what is hardest here — the session, the RPC queue, reconnect, DFU.
 
-**І одне уточнення, яке міняє вердикт.** Офіційний case study Flutter
-(`docs.flutter.dev/app-architecture/case-study`) побудований на
-`ChangeNotifier` і `package:provider`, а не на Riverpod, і прямо каже:
+**And one correction that changes a verdict.** Flutter's official architecture
+case study (`docs.flutter.dev/app-architecture/case-study`) is built on
+`ChangeNotifier` and `package:provider`, not on Riverpod, and says plainly:
 
-> «The UI of this app leans heavily on view models and `ChangeNotifier`, but it
-> could've easily been written with streams, or with other libraries such as
-> `riverpod`, `flutter_bloc`, and `signals`.»
+> "The UI of this app leans heavily on view models and `ChangeNotifier`, but
+> it could've easily been written with streams, or with other libraries such
+> as `riverpod`, `flutter_bloc`, and `signals`."
 
-Сам гайд package-agnostic: «These recommendations are guidelines, not steadfast
-rules». Отже Riverpod — вибір Ralliva з його власних причин (compile-checked
-пошук залежностей, `AsyncValue`), а не галузевий стандарт, від якого qUnleashed
-відхилився.
+The guide itself is package-agnostic: "These recommendations are guidelines,
+not steadfast rules." So Riverpod is Ralliva's choice for Ralliva's own
+reasons (compile-checked lookups, `AsyncValue`), not an industry standard
+qUnleashed has drifted away from.
 
-## Зведена таблиця (до контраргументів)
+## Summary table (before the counter-arguments)
 
-> Це вердикти **першого проходу**. Після розділу «Контраргументи» чотири з
-> них змінилися — чинними є ті, що у «Фінальній таблиці вердиктів» у кінці
-> файлу.
+> These are the **first-pass** verdicts. Four of them changed after the
+> "Counter-arguments" section; the ones in force are in the final table at the
+> end of this file.
 
-| # | Зона | Зараз | Еталон | Вердикт | Ціна | Ризик |
+| # | Area | Now | Reference | Verdict | Cost | Risk |
 |---|---|---|---|---|---|---|
-| 1 | Структура | feature-first `pages/` + layer `services/` | `ui/` `data/` `domain/` `routing/` `config/` | **ЛИШИТИ** | L (454) | — |
-| 2 | Стейт | `ChangeNotifier` + `setState` | Riverpod 3 (`Notifier`) | **НЕ ВАРТО** | L (85+) | стани зʼєднання, lifecycle |
-| 3 | DI | 28 глобальних синглтонів | Riverpod-провайдери | **МІГРУВАТИ** (лише новий код) | L якщо все | тестованість уже страждає |
-| 4 | Роутинг | власний реєстр + `Navigator` | `go_router` | **НЕ ВАРТО** | M (26) | deep links відсутні |
-| 5 | Шари | меж немає, 37 файлів UI тягнуть транспорт | View→VM→Repo→Service | **МІГРУВАТИ** (поступово) | L | найвища цінність |
-| 6 | BLE/транспорт | `flipperlib`: transport/session/client | немає аналога | **ЛИШИТИ** | — | — |
-| 7 | Файли пристрою | protobuf + 14 операцій | немає аналога | **ЛИШИТИ** | — | — |
-| 8 | Помилки | лише винятки, 49 німих `catch` | sealed-ієрархії відмов | **МІГРУВАТИ** (поточково) | M | німі catch ховають регресії |
-| 9 | Серіалізація | 135 рукописних `fromJson` | `json_serializable` | **НЕ ВАРТО** | L | див. §9 — є прямий доказ |
-| 10 | Платформний код | Kotlin-віджет, FFI, 4 десктопи | AppDelegate і все | **ЛИШИТИ** | — | — |
-| 11 | Тести | 691 тест, 53 файли | 4 файли | **ЛИШИТИ** | — | — |
-| 12 | Залежності | 44 прямі | 10 прямих | **ЛИШИТИ** | — | — |
-| 13 | Лінт | `flutter_lints` + 1 правило | + `riverpod_lint` | **МІГРУВАТИ** (інше правило) | S | — |
+| 1 | Structure | feature-first `pages/` + layer `services/` | `ui/` `data/` `domain/` `routing/` `config/` | **KEEP** | L (454) | — |
+| 2 | State | `ChangeNotifier` + `setState` | Riverpod 3 (`Notifier`) | **NOT WORTH IT** | L (85+) | connection state, lifecycle |
+| 3 | DI | 28 global singletons | Riverpod providers | **MIGRATE** (new code only) | L if all | testability already suffers |
+| 4 | Routing | hand-rolled registry + `Navigator` | `go_router` | **NOT WORTH IT** | M (26) | no deep links exist |
+| 5 | Layers | no boundaries, 37 UI files reach the transport | View→VM→Repo→Service | **MIGRATE** (gradually) | L | highest value |
+| 6 | BLE / transport | `flipperlib`: transport/session/client | no equivalent | **KEEP** | — | — |
+| 7 | Device files | protobuf + 14 operations | no equivalent | **KEEP** | — | — |
+| 8 | Errors | exceptions only, 49 silent `catch` | sealed failure hierarchies | **MIGRATE** (targeted) | M | silent catches hide regressions |
+| 9 | Serialization | 135 hand-written `fromJson` | `json_serializable` | **NOT WORTH IT** | L | see §9 — there is direct evidence |
+| 10 | Platform code | Kotlin widget, FFI, 4 desktops | AppDelegate and that is all | **KEEP** | — | — |
+| 11 | Tests | 691 tests, 51 files | 4 files | **KEEP** | — | — |
+| 12 | Dependencies | 44 direct | 10 direct | **KEEP** | — | — |
+| 13 | Lint | `flutter_lints` + 1 rule | + `riverpod_lint` | **MIGRATE** (a different rule) | S | — |
 
-## Деталі по зонах, де вердикт не очевидний
+## The areas where the verdict is not obvious
 
-### 2. Стейт-менеджмент — **НЕ ВАРТО**
+### 2. State management — **NOT WORTH IT**
 
-Еталон: Riverpod 3 з `riverpod_lint`, аргумент — «a missing dependency is a
-build error, not a crash when a user taps a button».
+The reference uses Riverpod 3 with `riverpod_lint`, arguing that "a missing
+dependency is a build error, not a crash when a user taps a button."
 
-Аргумент сильний, але він про **DI**, а не про стейт. Саме сховище стану
-(`ChangeNotifier`) збігається з офіційним case study. Міграція зачепила б 29
-класів `ChangeNotifier`, 56 файлів із `setState` і всіх їхніх споживачів — і це
-той самий шар, через який проходять стани зʼєднання з пристроєм.
+That argument is strong, but it is about **DI**, not about state. The state
+container itself (`ChangeNotifier`) matches the official case study. Migrating
+would touch 29 `ChangeNotifier` classes, 56 files using `setState` and all of
+their consumers — and that is the same layer device connection state travels
+through.
 
-**Ризик конкретний, а не абстрактний:** цього тижня три раунди рев'ю PR #140
-показали, що в цьому коді помилки живуть не там, де на них дивляться. Дві
-критичні знахідки другого раунду виникли з **взаємодії** двох окремо
-правильних механізмів. Переписування шару, через який іде reconnect, дає рівно
-такий клас дефектів, і жоден із них не ловиться читанням.
+**The risk is specific, not abstract:** three review rounds on PR #140 this
+week showed that bugs in this code do not live where anyone is looking. Two of
+the critical findings in round two came out of the **interaction** between two
+separately correct mechanisms. Rewriting the layer reconnect runs through
+produces exactly that class of defect, and none of it is caught by reading.
 
-Цінність Riverpod тут забирається зоною 3 окремо і дешевше.
+What Riverpod would buy here is taken by area 3, separately and more cheaply.
 
-### 3. DI — **МІГРУВАТИ, але тільки для нового коду**
+### 3. DI — **MIGRATE, but for new code only**
 
-Це реальна розбіжність **з обома** орієнтирами: і Ralliva (Riverpod), і
-офіційний case study (`package:provider`) передають залежності, а не дістають
-їх із глобального стану. qUnleashed має 28 `static final X instance`.
+This is a real divergence from **both** benchmarks: Ralliva (Riverpod) and the
+official case study (`package:provider`) both pass dependencies in rather than
+reaching for global state. qUnleashed has 28 `static final X instance`.
 
-Ціна повної міграції — L. Але цінність несиметрична: біль від синглтона
-виникає у **тесті**, а тест пишеться для нового коду. Тому правило «нові
-залежності передаються, існуючі синглтони не чіпаємо» дає більшу частину
-виграшу за ціну S.
+A full migration is L. But the value is asymmetric: the pain of a singleton
+shows up in a **test**, and tests are written for new code. So the rule "new
+dependencies are passed in, existing singletons are left alone" captures most
+of the benefit at cost S.
 
-Факт із цього тижня на підтвердження: `test/firmware_fixture.dart` має функцію
-`resetFirmwareState()`, яка вручну скидає **сім** процесних синглтонів між
-тестами. Це і є ціна, яку вже платять.
+Evidence from this week: `test/firmware_fixture.dart` has a
+`resetFirmwareState()` that manually resets **seven** process-wide singletons
+between tests. That is the price already being paid.
 
-### 4. Роутинг — **НЕ ВАРТО**
+### 4. Routing — **NOT WORTH IT**
 
-`go_router` виграє там, де є URL і deep links. У qUnleashed:
+`go_router` wins where there are URLs and deep links. In qUnleashed:
 
-- `app_links` / `uni_links` / `deepLink` — **0 згадок**;
-- `web/` виключений з аналізу в `analysis_options.yaml` і **не збирається в
-  CI**;
-- маршрутів усього 10, і вони вже зібрані в одному місці (`app/routes.dart`).
+- `app_links` / `uni_links` / `deepLink` — **0 matches**;
+- `web/` is excluded in `analysis_options.yaml` and **is not built in CI**;
+- there are 10 routes and they are already collected in one place
+  (`app/routes.dart`).
 
-Тобто платимо M за можливість, якої проєкт не використовує. Власний реєстр
-робить рівно те, для чого його зробили: фіча не імпортує сусідню фічу.
+So the cost is M for a capability the project does not use. The hand-rolled
+registry does exactly what it was built for: a feature never imports a sibling
+feature.
 
-**Що варто зробити замість міграції** — прибрати змішаність: 16 прямих
-`Navigator.push` всередині фіч живуть за іншим правилом, ніж реєстр. Це не
-вимагає `go_router`.
+**What would be worth doing instead** — remove the mixed state: 16 direct
+`Navigator.push` calls inside features live by a different rule than the
+registry. That needs no `go_router`.
 
-### 5. Шари — **МІГРУВАТИ, поступово**
+### 5. Layers — **MIGRATE, gradually**
 
-Найцінніша зона. Еталон і офіційний гайд збігаються: View не розмовляє з
-транспортом. У qUnleashed `package:flipperlib` імпортують 37 файлів у
-`lib/pages/`, з них 3 — прямо в `widgets/`.
+The most valuable area. The reference and the official guide agree: a View
+does not talk to the transport. In qUnleashed `package:flipperlib` is imported
+by 37 files under `lib/pages/`, 5 of them inside `widgets/`.
 
-Що це вже коштує, видно на прикладі: `FirmwareCard` одночасно читає і пише
-активну прошивку, бере контролери з двох різних джерел, і три раунди рев'ю
-витратили помітну частину зусиль саме на його зв'язки.
+What that already costs is visible in one place: `FirmwareCard` both reads and
+writes the active firmware, takes controllers from two different sources, and
+three review rounds spent a noticeable share of their effort on its wiring.
 
-**Але вердикт «поступово» — не ввічливість.** Повний перехід на
-View→ViewModel→Repository→Service — це L і той самий ризик, що в §2. Робоча
-форма: репозиторій зʼявляється там, де фіча **вже** має контролер (наразі це
-`devices`), і кожна нова фіча пишеться так від початку.
+**"Gradually" is not politeness.** A full move to
+View→ViewModel→Repository→Service is L and carries the same risk as §2. The
+working form is: a repository appears where a feature **already** has a
+controller (today that is `devices`), and every new feature is written that way
+from the start.
 
-`lib/pages/devices/firmware/repository.dart` уже існує і робить саме це —
-шар між UI і мережею з власним станом і класифікацією помилок. Тобто патерн у
-проєкті вже є, просто не названий правилом.
+`lib/pages/devices/firmware/repository.dart` already exists and does exactly
+this — a layer between UI and the network with its own state and error
+classification. The pattern is in the tree; it is simply not stated as a rule.
 
-### 8. Помилки — **МІГРУВАТИ поточково**
+### 8. Errors — **MIGRATE, targeted**
 
-Еталон моделює відмови як sealed-ієрархії й наполягає, що 4xx має кидати, а
-репозиторій — перекладати транспортну помилку в доменний результат. У
-qUnleashed Result-типів 0, зате 378 `catch`, з них типізованих 23 і **49
-порожніх `catch (_) {}`**.
+The reference models failures as sealed hierarchies and insists that a 4xx
+must throw, with the repository translating a transport error into a domain
+outcome. qUnleashed has 0 result types, 378 `catch`, of which 23 are typed and
+**49 are empty `catch (_) {}`**.
 
-Повний перехід на Result-типи — L і суперечить решті коду. Але дві частини
-беруться дешево:
+A full move to result types is L and would fight the rest of the code. But two
+pieces come cheaply:
 
-1. **`catch (_) {}` — 49 штук.** Кожен ховає щось, про що ніхто не дізнається.
-   Issue #138 уже зафіксував один такий у `manifest_registry.dart`, де він
-   губить усі встановлені застосунки частково й мовчки.
-2. **Sealed-ієрархія для відмов однієї фічі** там, де UI має показати різні
-   тексти. `FirmwareFetchState` (enum із трьох станів) — це вже зародок такого
-   підходу.
+1. **The 49 `catch (_) {}`.** Each hides something nobody will learn about.
+   Issue #138 already records one in `manifest_registry.dart` that loses every
+   installed app, partially and silently.
+2. **A sealed hierarchy for one feature's failures** where the UI has to show
+   different text. `FirmwareFetchState` (a three-state enum) is already the
+   seed of that approach.
 
-### 9. Серіалізація — **НЕ ВАРТО**, і на це є прямий доказ
+### 9. Serialization — **NOT WORTH IT**, and there is direct evidence
 
-Еталон: `json_serializable`, без `freezed`. Виглядає як очевидний виграш проти
-135 рукописних `fromJson`.
+The reference uses `json_serializable` without `freezed`. Against 135
+hand-written `fromJson` that looks like an obvious win.
 
-Проти цього є доказ із цього тижня. Issue #133 — це рівно дефект рукописного
-декодера: одне змінене поле вбивало весь документ. Але **згенерований декодер
-має ту саму ваду за замовчуванням**: `json_serializable` кидає на першому
-поганому полі, тобто дає точно ту поведінку, яку PR #140 прибирав. Толерантне
-читання по одному запису — це те, чого codegen не робить, і його довелося б
-писати руками **поверх** згенерованого коду.
+There is evidence against it from this week. Issue #133 was precisely a
+hand-written decoder defect: one changed field killed the whole document. But
+**a generated decoder has the same flaw by default**: `json_serializable`
+throws on the first bad field, which is exactly the behaviour PR #140 spent a
+week removing. Reading entry by entry and keeping what parses is not something
+codegen does, and it would have to be written by hand **on top of** the
+generated code.
 
-Додатково: `pubspec.yaml` не має `build_runner` взагалі, а обидва живі фіди —
-сторонні й без версіонування схеми.
+Also: `pubspec.yaml` has no `build_runner` at all, and both live feeds are
+third-party with no schema versioning.
 
-Що з цього варто взяти — не codegen, а **патерн** із #133: `_each`, `_text`,
-`_presentation` і список пропущеного. Issue #137 і #138 уже описують місця, де
-той самий дефект лишився.
+What is worth taking from #133 is not codegen but the **pattern**: `_each`,
+`_text`, `_presentation` and a list of what was skipped. Issues #137 and #138
+already name the places where the same defect remains.
 
-### 13. Лінт — **МІГРУВАТИ, але інше правило**
+### 13. Lint — **MIGRATE, but a different rule**
 
-`riverpod_lint` без Riverpod не має сенсу. Але сама ідея еталона — «правило,
-що ловить архітектурну помилку під час аналізу» — застосовна: qUnleashed має
-`flutter_lints` плюс одне правило (`unawaited_futures`).
+`riverpod_lint` without Riverpod is meaningless. But the reference's idea — a
+rule that catches an architectural mistake during analysis — does apply:
+qUnleashed has `flutter_lints` plus one rule (`unawaited_futures`).
 
-Корисне тут — не riverpod_lint, а обмеження імпортів, яке зробить зону 5
-самоперевірною: заборона `package:flipperlib` у `lib/pages/**/widgets/**`.
-Це ціна S і воно прямо гасить 3 наявні порушення, не даючи зʼявитися новим.
+What is useful here is not riverpod_lint but an import restriction that makes
+area 5 self-checking: banning `package:flipperlib` inside
+`lib/pages/**/widgets/**`. That is cost S and it extinguishes the existing
+violations while stopping new ones appearing.
 
-## Чого еталон не покриває взагалі
+## What the reference does not cover at all
 
-Це найскладніші частини qUnleashed, і для них у Ralliva немає ні відповіді, ні
-питання:
+These are the hardest parts of qUnleashed, and Ralliva has neither an answer
+nor a question for them:
 
-- сесія з чергою пріоритетів, `interleavable`, `holdsTxUntilAnswer`;
-- auto-reconnect і те, що після нього перезапускається передача файлу;
-- дві точки входу в ізолят (`main` / `widgetMain`) і foreground-сервіс;
-- DFU і прошивка;
-- FFI до `lib/modules/cpp` (hardnested, mfkey32);
-- 4 десктопні таргети.
+- the session with its priority queue, `interleavable`, `holdsTxUntilAnswer`;
+- auto-reconnect, and the file transfer that restarts after it;
+- two isolate entry points (`main` / `widgetMain`) and the foreground service;
+- DFU and firmware flashing;
+- FFI into `lib/modules/cpp` (hardnested, mfkey32);
+- 4 desktop targets.
 
-Для них орієнтиром має бути не Ralliva, а власні ADR.
-
----
-
-# Контраргументи (окремий рецензент)
-
-> Запущено окремим субагентом, який бачив лише `docs/architecture.md` і список
-> міграцій — без обґрунтувань із цього файлу. Задача була аргументувати проти
-> кожної пропозиції. Нижче його висновки, далі — мої відповіді там, де я не
-> згоден.
-
-## Поправки до вхідних чисел
-
-Три з них я перевірив і прийняв; `docs/architecture.md` виправлено.
-
-1. **`flipperlib`, `dartufbt` і `nfc-tools` — git-сабмодулі, окремі
-   репозиторії** (`.gitmodules`). Тому з 49 порожніх `catch (_) {}` **42 у
-   цьому репозиторії, 7 — у чужих**, і PR сюди їх не прибере.
-2. **Правило ліну на `widgets/` ловить 5 файлів, не 3.** Мій глоб був на один
-   рівень (`lib/pages/*/widgets/`); глибші — `archive/browser/widgets/storage_card.dart`
-   і `tools/infrared/widgets/ir_file_viewer.dart`.
-3. **Головний глобал не має форми `static final X instance`.**
-   `FlipperOneClient()` — фабрика-синглтон із **24 викликами** в `lib/` поза
-   модулями, і вона в чужому репозиторії.
-
-## Його висновки по пропозиціях
-
-**1. DI — «так, але мішень неправильна».** Доказ шкоди в репозиторії є
-(`resetFirmwareState()`, вхолосту пройдений тест, #139). Але метрика «28
-синглтонів» не покриває жодну з двох відомих поломок: у
-`flibler_project_test.dart` винен `SharedPreferences.getInstance()` (і той тест
-**уже ін'єктує** контролер), у `logging_history_test.dart` — `FlutterError.onError`.
-Окремо: 27 із 28 мають приватний конструктор, тобто другий екземпляр неможливий
-за побудовою; ін'єкція цю гарантію знімає. Небезпека — дві точки входу: граф,
-зібраний у `_runApp`, у `widgetMain()` відсутній.
-
-**2. Шари — «здебільшого смакова, і найнебезпечніша».** `flipperlib` — не
-внутрішній шар, а окремий репозиторій із спроєктованим фасадом
-(`client/api/*.dart`); 37 імпортів — це 37 імпортів залежності. Частина з них
-тягне flipperlib **лише заради типу в конструкторі**, що вже є правильною
-ін'єкцією. Головне: репозиторій у домашній ідіомі — це новий синглтон, тобто
-пропозиції 1 і 2 конфліктують. Половинний стан дає **трьох власників кешу** в
-одній фічі, а #136 — рівно цей клас дефекту.
-
-**3. Помилки — «розділити надвоє».** «49 catch» здебільшого смакова: більшість
-навмисний best-effort (`mkdir` наявного каталогу, прибирання тимчасових файлів
-у `finally`, запис кешу «якщо вийде»). Sealed-ієрархії винятків — **проти**:
-найдиференційованіша відмова вже має відповідь, і це `classifyConnectError` →
-`FlipperConnectErrorKind` із вичерпним `switch`; sealed там **неможливий у
-принципі**, бо класифікатор зіставляє підрядки платформних BLE-помилок, а
-`PlatformException` з Android GATT не можна зробити членом власної ієрархії.
-
-**4. Лінт — «правило неможливо написати наявним інструментарієм».**
-`flutter_lints` не має обмеження імпортів за каталогом, `custom_lint` у
-`pubspec.yaml` немає. Тобто ціна — новий analyzer-плагін і крок CI заради 5
-місць, два з яких — коректна ін'єкція через конструктор. Справжній запах
-(`final FlipperClient _client = FlipperOneClient().get();` у
-`firmware_card.dart:34`) правило не ловить.
-
-**5. Роутинг — «ні, і стане гірше».** Реєстр приймає `Object? args` і кастить у
-рантаймі, тобто переведення міняє перевірку компілятора на рантаймну. Половина
-з 16 пушів несе **живий контролер**, а `registerAppRoutes()` виконується в
-`_initCore` до `runApp` і доступу до нього не має. Є також колбеки з читанням
-результату, `fullscreenDialog: true` (якого `openRoute` не вміє) і
-перегортання `DeviceScope` для пушнутого піддерева. Розділення «між фічами /
-всередині фічі» — свідома межа, записана в доці обох файлів.
-
-## Мої відповіді
-
-**Погоджуюсь повністю — 3 з 5.**
-
-- **Роутинг (5).** Аргумент розбиває мою пропозицію фактами, яких я не
-  перевірив: живий контролер у половині пушів і `routes.dart`, що стартує до
-  `runApp`. Мій «прибрати змішаність» зробив би гірше. **Знімаю.** Лишається
-  єдиний справжній дефект, який він сам і знайшов: `FlipperMapPage` досяжна
-  двома дверима, і вхід через реєстр не вміє нести аргументи.
-- **Sealed-ієрархії (3б).** `classifyConnectError` зіставляє підрядки
-  платформних помилок — sealed на межі з Android GATT неможливий. Я цього не
-  перевірив. **Знімаю.**
-- **Лінт (4).** Я написав «ціна S», не перевіривши, чи таке правило взагалі
-  можна написати. `custom_lint` у проєкті немає. Його альтернатива —
-  ратчет-тест на `analyzer`, що рахує `FlipperOneClient()` у `lib/pages/**` —
-  краща за мою: ловить справжній дефект замість розташування імпорту, не
-  потребує нового пакета і повторює патерн, який у репо вже є
-  (`test/log_level_budget_test.dart`). **Приймаю його форму.**
-
-**Частково не погоджуюсь — 2 з 5.**
-
-- **DI (1).** Його уточнення мішені правильне і я його беру. Але з «27 із 28
-  мають приватний конструктор, тож ін'єкція знімає гарантію» не згоден:
-  приватний конструктор захищає від *випадкового* другого екземпляра, а не від
-  того, заради чого ін'єкція потрібна — можливості дати тесту інший. Ціна цієї
-  гарантії вже видна: `resetFirmwareState()` скидає сім синглтонів вручну, і
-  саме там один тест пройшов вхолосту. Його ж застереження про `widgetMain()`
-  сильніше за цей аргумент і варте окремого ADR.
-
-- **Порожні catch (3а).** «Більшість — навмисний best-effort» він довів
-  читанням, і це я приймаю. А от «бекглог не росте: 43 → 42» — одна точка за
-  кілька днів, це не тренд. Утім висновок від цього не змінюється: цілити треба
-  не в число, а в підмножину «голий catch там, де UI лишається в нерозв'язаному
-  стані» — форма #118/#134, яка вже коштувала трьох відвантажених багів.
-
-**Його спостереження поза межами питання**, яке варто винести окремо: з ~850
-комітів рівно один — від зовнішнього контриб'ютора, а `CONTRIBUTING.md` у
-репозиторії немає. Якщо турбота — поріг входу для OSS, це дешевший важіль, ніж
-будь-яка з п'яти міграцій.
+For those the benchmark should not be Ralliva but this project's own ADRs.
 
 ---
 
-# Фінальна таблиця вердиктів
+# Counter-arguments (independent reviewer)
 
-Після контраргументів. Змінені рядки позначені **(змінено)**.
+> Run as a separate subagent that saw only `docs/architecture.md` and the list
+> of proposed migrations — none of the reasoning in this file. Its task was to
+> argue against each proposal. Its conclusions are below, followed by my
+> replies where I disagree.
 
-| # | Зона | Вердикт | Що саме робити | Ціна |
+## Corrections to the input numbers
+
+I verified all three and accepted them; `docs/architecture.md` was corrected.
+
+1. **`flipperlib`, `dartufbt` and `nfc-tools` are git submodules, separate
+   repositories** (`.gitmodules`). So of the 49 empty `catch (_) {}`, **42 are
+   in this repository and 7 are elsewhere**.
+2. **A lint rule on `widgets/` catches 5 files, not 3.** My glob was one level
+   deep (`lib/pages/*/widgets/`); the deeper ones are
+   `archive/browser/widgets/storage_card.dart` and
+   `tools/infrared/widgets/ir_file_viewer.dart`.
+3. **The most important global does not have the `static final X instance`
+   shape.** `FlipperOneClient()` is a factory singleton with **24 call sites**
+   in `lib/` outside the modules.
+
+## Its conclusions, proposal by proposal
+
+**1. DI — "yes, but the target is wrong."** There is evidence of harm in the
+repository (`resetFirmwareState()`, a test that passed vacuously, #139). But
+the metric "28 singletons" covers neither of the two known breakages: in
+`flibler_project_test.dart` the culprit is `SharedPreferences.getInstance()`
+(and that test **already injects** its controller), and in
+`logging_history_test.dart` it is `FlutterError.onError`. Separately: 27 of
+the 28 have a private constructor, so a second instance is impossible by
+construction, and injection removes that guarantee. The danger is the two
+entry points: the graph assembled in `_runApp` does not exist in
+`widgetMain()`.
+
+**2. Layers — "mostly a matter of taste, and the most dangerous."**
+`flipperlib` is not an internal layer but a separate repository with a designed
+facade (`client/api/*.dart`); 37 imports are 37 imports of a dependency. Some
+of them pull `flipperlib` in **only for a constructor type**, which is already
+correct injection. Above all: a repository in the house idiom is a new
+singleton, so proposals 1 and 2 conflict. A half-finished state leaves **three
+owners of the cache** in one feature, and #136 is precisely that class of
+defect.
+
+**3. Errors — "split it in two."** The 49 catches are mostly a matter of taste:
+most are deliberate best-effort (`mkdir` of a directory that may exist,
+cleaning up temporary files in `finally`, writing a cache if it works out).
+Sealed exception hierarchies — **against**: the most differentiated failure in
+the app already has an answer, and it is `classifyConnectError` →
+`FlipperConnectErrorKind` with an exhaustive `switch`. A sealed type is
+**impossible in principle** there, because the classifier matches substrings
+from platform BLE errors, and a `PlatformException` from Android GATT cannot
+be made a member of your own hierarchy.
+
+**4. Lint — "the rule cannot be written with what the project has."**
+`flutter_lints` has no directory-scoped import restriction and `custom_lint` is
+not in `pubspec.yaml`. So the price is a new analyzer plugin and a CI step, for
+5 sites, two of which are correct constructor injection. The real smell —
+`final FlipperClient _client = FlipperOneClient().get();` in
+`firmware_card.dart:34` — is not what the rule catches.
+
+**5. Routing — "no, and it would make things worse."** The registry takes
+`Object? args` and casts at runtime, so converting trades a compiler check for
+a runtime one. Half of the 16 pushes carry a **live controller**, and
+`registerAppRoutes()` runs inside `_initCore` before `runApp` and has no access
+to one. There are also callbacks whose result is read, `fullscreenDialog: true`
+(which `openRoute` cannot express) and a `DeviceScope` re-wrap for the pushed
+subtree. The split between cross-feature and in-feature navigation is a
+deliberate boundary, written in the docs of both files.
+
+## My replies
+
+**I agree entirely — 3 of 5.**
+
+- **Routing (5).** The argument dismantles my proposal with facts I had not
+  checked: a live controller in half the pushes, and `routes.dart` running
+  before `runApp`. My "remove the mixed state" would have made things worse.
+  **Withdrawn.** What remains is the one real defect it found itself:
+  `FlipperMapPage` is reachable through two doors, and the registry entrance
+  cannot carry arguments.
+- **Sealed hierarchies (3b).** `classifyConnectError` matches substrings from
+  platform errors — a sealed type at the boundary with Android GATT is
+  impossible. I had not checked that. **Withdrawn.**
+- **Lint (4).** I wrote "cost S" without checking whether such a rule can be
+  written at all. `custom_lint` is not in the project. Its alternative — a
+  ratchet test on `analyzer` counting `FlipperOneClient()` under `lib/pages/**`
+  — is better than mine: it catches the real defect rather than the location of
+  an import, needs no new package, and repeats a pattern the repo already has
+  (`test/log_level_budget_test.dart`). **Adopting its form.**
+
+**I partly disagree — 2 of 5.**
+
+- **DI (1).** Its refinement of the target is right and I am taking it. But I
+  do not accept "27 of 28 have a private constructor, so injection removes a
+  guarantee": a private constructor protects against an *accidental* second
+  instance, not against the thing injection is for — being able to hand a test
+  a different one. The cost of that guarantee is already visible:
+  `resetFirmwareState()` resets seven singletons by hand, and that is exactly
+  where one test passed vacuously. Its warning about `widgetMain()` is stronger
+  than this argument and deserves its own ADR.
+
+- **Empty catches (3a).** "Most are deliberate best-effort" it proved by
+  reading, and I accept that. But "the backlog is not growing: 43 → 42" is one
+  data point over a few days, which is not a trend. The conclusion does not
+  change either way: the target should not be the number but the subset "a bare
+  catch on a path where the UI is left in an unresolved state" — the shape of
+  #118/#134, which has already cost three shipped bugs.
+
+**Its observation outside the question**, worth recording separately: of ~850
+commits exactly one came from an outside contributor, and there is no
+`CONTRIBUTING.md`. If the concern is the barrier to entry for an open-source
+project, that is a cheaper lever than any of the five migrations.
+
+---
+
+# Final verdict table
+
+After the counter-arguments. Changed rows are marked **(changed)**.
+
+| # | Area | Verdict | What exactly | Cost |
 |---|---|---|---|---|
-| 1 | Структура | **ЛИШИТИ** | — | — |
-| 2 | Стейт | **НЕ ВАРТО** | `ChangeNotifier` збігається з офіційним case study | — |
-| 3 | DI | **МІГРУВАТИ** *(змінено)* | мішень — не «28 синглтонів», а процесний стан між тестами; корінь композиції в `_initCore`; окремий ADR на дві точки входу | M |
-| 4 | Роутинг | **НЕ ВАРТО** *(змінено)* | 16 пушів не чіпати; полагодити лише аргументи `AppRoute.archiveMap` | S |
-| 5 | Шари | **НЕ ВАРТО в цілому** *(змінено)* | замість шару — заборона I/O в `build`/`didUpdateWidget`; репозиторій лише там, де два викликачі вже ділять кеш | M |
-| 6 | Транспорт | **ЛИШИТИ** | — | — |
-| 7 | Файли пристрою | **ЛИШИТИ** | — | — |
-| 8 | Помилки | **МІГРУВАТИ** *(звужено)* | тільки голі catch на шляхах із нерозв'язаним станом UI (#117/#118); sealed-ієрархії винятків — зняті | M |
-| 9 | Серіалізація | **НЕ ВАРТО** | codegen кидає на першому поганому полі — це дефект #133 | — |
-| 10 | Платформний код | **ЛИШИТИ** | — | — |
-| 11 | Тести | **ЛИШИТИ** | — | — |
-| 12 | Залежності | **ЛИШИТИ** | — | — |
-| 13 | Лінт | **МІГРУВАТИ** *(інша форма)* | не `custom_lint`, а ратчет-тест на `analyzer`, що рахує `FlipperOneClient()` у `lib/pages/**` | S |
+| 1 | Structure | **KEEP** | — | — |
+| 2 | State | **NOT WORTH IT** | `ChangeNotifier` matches the official case study | — |
+| 3 | DI | **MIGRATE** *(changed)* | target is not "28 singletons" but process state leaking between tests; composition root in `_initCore`; a separate ADR for the two entry points | M |
+| 4 | Routing | **NOT WORTH IT** *(changed)* | leave the 16 pushes alone; fix only the arguments on `AppRoute.archiveMap` | S |
+| 5 | Layers | **NOT WORTH IT overall** *(changed)* | instead of a layer, ban I/O in `build`/`didUpdateWidget`; a repository only where two callers already share a cache | M |
+| 6 | Transport | **KEEP** | — | — |
+| 7 | Device files | **KEEP** | — | — |
+| 8 | Errors | **MIGRATE** *(narrowed)* | only bare catches on paths with unresolved UI state (#117/#118); sealed exception hierarchies withdrawn | M |
+| 9 | Serialization | **NOT WORTH IT** | codegen throws on the first bad field — that is defect #133 | — |
+| 10 | Platform code | **KEEP** | — | — |
+| 11 | Tests | **KEEP** | — | — |
+| 12 | Dependencies | **KEEP** | — | — |
+| 13 | Lint | **MIGRATE** *(different form)* | not `custom_lint` but a ratchet test on `analyzer` counting `FlipperOneClient()` under `lib/pages/**` | S |
 
-**Поза таблицею, як наслідок рев'ю:** `CONTRIBUTING.md` — один зовнішній коміт
-із ~850 і жодного опису, як почати.
+**Outside the table, as a result of the review:** `CONTRIBUTING.md` — one
+outside commit out of ~850 and no description of how to start.
 
 ---
 
-# Перегляд після уточнення: сабмодулі наші
+# Revision: the submodules are ours
 
-`flipperlib` і `dartufbt` належать тій самій організації
-(`DarkFlippers/dart-flipperlib`, `DarkFlippers/dart-ufbt`), тобто правки в них
-можливі — окремим PR у свій репозиторій і зсувом сабмодуля тут. Поза межами
-лишається лише `lib/modules/cpp/nfc-tools` (`flipperdevices`, до того ж це C).
+`flipperlib` and `dartufbt` belong to the same organisation
+(`DarkFlippers/dart-flipperlib`, `DarkFlippers/dart-ufbt`), so changes to them
+are possible — a PR in their own repository and a submodule bump here. Only
+`lib/modules/cpp/nfc-tools` (`flipperdevices`, and C rather than Dart) stays
+out of reach.
 
-Це прибирає передумову, на якій трималися два аргументи вище, і **відкриває
-знахідку, якої не було видно взагалі**.
+That removes the premise two arguments above rested on, and **opens a finding
+that was not visible at all**.
 
-## Що змінюється
+## What changes
 
-### Зона 11, Тести — **ЛИШИТИ → МІГРУВАТИ. Тепер це найцінніша зона рев'ю.**
+### Area 11, Tests — **KEEP → MIGRATE. This is now the most valuable area.**
 
-Мій вердикт «691 тест проти 4 в еталона, лишити» рахував тільки `test/` цього
-репозиторію. Рахуючи весь код, який належить організації:
+My verdict of "691 tests against the reference's 4, keep it" counted only
+`test/` in this repository. Counting all the code the organisation owns:
 
-| Частина | Файлів `.dart` | Тестових файлів |
+| Part | `.dart` files | Test files |
 |---|---|---|
-| додаток (`lib/` без `modules/`) | 324 | 51 |
+| app (`lib/` without `modules/`) | 324 | 51 |
 | `flipperlib` | 96 | **0** |
 | `dartufbt` | 31 | 1 |
 
-CI `flipperlib` виконує `dart format` і `flutter analyze`; **кроку
-`flutter test` у ньому немає**. Без покриття лишається саме той код, де живуть
-черга з пріоритетами, `interleavable`, `holdsTxUntilAnswer`, auto-reconnect із
-`reconnectSettle`, перезапуск передачі файлу після відновлення сесії і DFU.
+`flipperlib`'s CI runs `dart format` and `flutter analyze`; **it has no
+`flutter test` step**. What is left uncovered is exactly the code holding the
+priority queue, `interleavable`, `holdsTxUntilAnswer`, auto-reconnect with
+`reconnectSettle`, the file transfer that restarts after a session is restored,
+and DFU.
 
-Це інвертує співвідношення ціни й ризику для всього іншого в цьому документі:
-кожен аргумент виду «переписувати шар, через який іде reconnect, небезпечно»
-спирався на те, що поломку нема чим зловити — і це буквально так.
+This inverts the cost-versus-risk balance for everything else in this document:
+every argument of the form "rewriting the layer reconnect runs through is
+dangerous" rested on there being nothing to catch the breakage — and that is
+literally true.
 
-**Що робити:** не «покрити 96 файлів», а почати з того, що вже ламалося.
-Черга і класифікатор помилок (`classifyConnectError`) — чисті функції над
-даними, тестуються без пристрою. `FakeFlipperClient` у `test/firmware_fixture.dart`
-уже показує, що шов для цього існує. Додати крок `flutter test` у CI
-сабмодуля — S, і він фіксує результат.
+**What to do:** not "cover 96 files", but start with what has already broken.
+The queue and the error classifier (`classifyConnectError`) are pure functions
+over data and test without a device. `FakeFlipperClient` in
+`test/firmware_fixture.dart` already shows the seam exists. Adding a
+`flutter test` step to the submodule's CI is S, and it locks the result in.
 
-### Зона 3, DI — аргумент проти знято
+### Area 3, DI — the argument against is withdrawn
 
-Найсильніше заперечення рецензента було: «найважливіший глобал лишається поза
-межами — `FlipperOneClient()` у 24 місцях, і виправити його не можна PR-ом у
-цей репозиторій». Друга половина хибна. Шов можна зробити у `flipperlib`, де
-фабрика й оголошена.
+The reviewer's strongest objection was: "the most important global stays out of
+reach — `FlipperOneClient()` in 24 places, and it cannot be fixed by a PR in
+this repository." The second half is false. The seam can be made in
+`flipperlib`, where the factory is declared.
 
-Вердикт лишається **МІГРУВАТИ**, але цінність вища, ніж я оцінював: мішень
-тепер включає той глобал, до якого тягнеться майже кожна фіча.
+The verdict stays **MIGRATE**, but the value is higher than I estimated: the
+target now includes the global almost every feature reaches for.
 
-### Зона 8, Помилки — 49 наші, і 4 з них в ізоляті
+### Area 8, Errors — all 49 are ours, and 4 of them are in an isolate
 
-Усі 7 «чужих» порожніх `catch` — у `flipperlib`, не в `nfc-tools`. Поправка
-рецензента «42 у цьому репозиторії» технічно правильна, але висновок із неї
-(«PR сюди їх не прибере») — ні.
+All 7 "foreign" empty catches are in `flipperlib`, not in `nfc-tools`. The
+reviewer's correction — "42 in this repository" — is technically right, but the
+conclusion drawn from it ("a PR here will not remove them") is not.
 
-Чотири з семи — у `transport/usb/isolate.dart`, і це місце заслуговує на
-окрему згадку: в ізоляті проковтнута помилка невидима **за побудовою**, бо
-немає зони, куди вона могла б спливти. Три з них (`port.close()`,
-`port.dispose()`) — коректний best-effort, тут рецензент має рацію.
+Four of the seven are in `transport/usb/isolate.dart`, and that place deserves
+a separate mention: inside an isolate a swallowed error is invisible **by
+construction**, because there is no zone for it to surface into. Three of them
+(`port.close()`, `port.dispose()`) are correct best-effort — there the reviewer
+is right.
 
-### Зона 5, Шари — вердикт той самий, але з'являється інший варіант
+### Area 5, Layers — same verdict, but another option appears
 
-Аргумент «`flipperlib` — чужий репозиторій зі спроєктованим фасадом, 37
-імпортів це просто імпорти залежності» втрачає першу половину. Фасад наш.
+The argument that "`flipperlib` is a separate repository with a designed
+facade, and 37 imports are just imports of a dependency" loses its first half.
+The facade is ours.
 
-Це **не** повертає пропозицію про шар репозиторію — решта заперечень
-(частина з 37 імпортів тягне лише тип у конструкторі; репозиторій у домашній
-ідіомі = новий синглтон; половинний стан дає трьох власників кешу) тримається
-без неї. Але відкриває дешевшу альтернативу: прибрати з `flipperlib` глобальну
-фабрику як єдиний спосіб дістати клієнта, і тоді 24 виклики стають видимою
-залежністю без жодного нового шару в застосунку.
+That does **not** bring back the repository-layer proposal — the remaining
+objections hold without it (some of the 37 imports pull in only a constructor
+type; a repository in the house idiom is a new singleton; a half-finished state
+gives three owners of the cache). But it opens a cheaper alternative: stop
+`flipperlib` exposing a global factory as the only way to get a client, and
+those 24 call sites become a visible dependency with no new layer in the app at
+all.
 
-## Оновлена фінальна таблиця
+## Updated final table
 
-| # | Зона | Вердикт | Ціна |
+| # | Area | Verdict | Cost |
 |---|---|---|---|
-| 11 | **Тести (сабмодулі)** | **МІГРУВАТИ — найвищий пріоритет** *(змінено)* | S за крок CI, M за перші тести |
-| 3 | DI | **МІГРУВАТИ** — мішень включає `FlipperOneClient()` | M |
-| 8 | Помилки | **МІГРУВАТИ** — голі catch на шляхах із нерозв'язаним станом | M |
-| 13 | Лінт | **МІГРУВАТИ** — ратчет, не плагін | S |
-| 1, 6, 7, 10, 12 | Структура, транспорт, файли, платформа, залежності | **ЛИШИТИ** | — |
-| 2, 4, 5, 9 | Стейт, роутинг, шари, серіалізація | **НЕ ВАРТО** | — |
+| 11 | **Tests (submodules)** | **MIGRATE — highest priority** *(changed)* | S for the CI step, M for the first tests |
+| 3 | DI | **MIGRATE** — the target includes `FlipperOneClient()` | M |
+| 8 | Errors | **MIGRATE** — bare catches on paths with unresolved state | M |
+| 13 | Lint | **MIGRATE** — a ratchet, not a plugin | S |
+| 1, 6, 7, 10, 12 | Structure, transport, device files, platform, dependencies | **KEEP** | — |
+| 2, 4, 5, 9 | State, routing, layers, serialization | **NOT WORTH IT** | — |
 
-Поза таблицею: `CONTRIBUTING.md` відсутній, зовнішніх комітів — один із ~850.
+Outside the table: there is no `CONTRIBUTING.md`, and one outside commit out of
+~850.
