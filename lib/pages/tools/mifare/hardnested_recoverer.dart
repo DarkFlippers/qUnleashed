@@ -20,23 +20,21 @@ abstract class HardnestedRecoverer {
   });
 }
 
-typedef _RecoverNative =
-    Int32 Function(
-      Uint32 cuid,
-      Pointer<Uint32> ntEnc,
-      Pointer<Uint8> parEnc,
-      Uint32 count,
-      Pointer<Uint64> found,
-    );
+typedef _RecoverNative = Int32 Function(
+  Uint32 cuid,
+  Pointer<Uint32> ntEnc,
+  Pointer<Uint8> parEnc,
+  Uint32 count,
+  Pointer<Uint64> found,
+);
 
-typedef _RecoverDart =
-    int Function(
-      int cuid,
-      Pointer<Uint32> ntEnc,
-      Pointer<Uint8> parEnc,
-      int count,
-      Pointer<Uint64> found,
-    );
+typedef _RecoverDart = int Function(
+  int cuid,
+  Pointer<Uint32> ntEnc,
+  Pointer<Uint8> parEnc,
+  int count,
+  Pointer<Uint64> found,
+);
 
 class NativeHardnestedRecoverer implements HardnestedRecoverer {
   @override

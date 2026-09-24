@@ -318,9 +318,8 @@ void main() {
     // its manifest gone with its .fap. This is the case the whole fix is for.
     test('a local copy with no manifest reads as missing', () async {
       give(manifests: [], onDisk: []);
-      Directory(
-        '${backup.path}${Platform.pathSeparator}Tools',
-      ).createSync(recursive: true);
+      Directory('${backup.path}${Platform.pathSeparator}Tools')
+          .createSync(recursive: true);
       File(
         '${backup.path}${Platform.pathSeparator}Tools'
         '${Platform.pathSeparator}orphan.fap',
@@ -379,9 +378,8 @@ void main() {
 
     test('restoring marks the app present again', () async {
       give(manifests: ['tool'], onDisk: []);
-      Directory(
-        '${backup.path}${Platform.pathSeparator}Tools',
-      ).createSync(recursive: true);
+      Directory('${backup.path}${Platform.pathSeparator}Tools')
+          .createSync(recursive: true);
       File(
         '${backup.path}${Platform.pathSeparator}Tools'
         '${Platform.pathSeparator}tool.fap',
@@ -397,9 +395,8 @@ void main() {
 
     test('a failed restore leaves the app absent', () async {
       give(manifests: ['tool'], onDisk: []);
-      Directory(
-        '${backup.path}${Platform.pathSeparator}Tools',
-      ).createSync(recursive: true);
+      Directory('${backup.path}${Platform.pathSeparator}Tools')
+          .createSync(recursive: true);
       File(
         '${backup.path}${Platform.pathSeparator}Tools'
         '${Platform.pathSeparator}tool.fap',

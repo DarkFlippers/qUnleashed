@@ -1,5 +1,7 @@
 import 'dart:async';
+
 import '../../../../services/localization/l10n.dart';
+
 import 'dart:io' as io;
 import 'dart:typed_data';
 
@@ -296,9 +298,8 @@ class KeyActionsSheet {
   /// Opens [k] on the connected Flipper. Public so the file manager can reuse
   /// the exact same emulation entry point for matching files.
   static void emulateOnFlipper(BuildContext context, ArchiveKey k) {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => EmulatePage(flipperKey: k)));
+    Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => EmulatePage(flipperKey: k)));
   }
 
   static Future<void> _pinToHomeScreen(

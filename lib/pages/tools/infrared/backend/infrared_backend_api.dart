@@ -42,9 +42,8 @@ class InfraredBackendApi {
 
   Future<List<BrandModel>> getBrands(int categoryId) async {
     final body = await _getJson(
-      Uri.parse(
-        '$host/brands',
-      ).replace(queryParameters: {'category_id': '$categoryId'}),
+      Uri.parse('$host/brands')
+          .replace(queryParameters: {'category_id': '$categoryId'}),
     );
     final list = (body is Map<String, dynamic>) ? body['brands'] : null;
     if (list is! List) return const [];
@@ -56,9 +55,8 @@ class InfraredBackendApi {
 
   Future<List<IfrFileModel>> getInfrareds(int brandId) async {
     final body = await _getJson(
-      Uri.parse(
-        '$host/infrareds',
-      ).replace(queryParameters: {'brand_id': '$brandId'}),
+      Uri.parse('$host/infrareds')
+          .replace(queryParameters: {'brand_id': '$brandId'}),
     );
     final list = (body is Map<String, dynamic>) ? body['infrared_files'] : null;
     if (list is! List) return const [];
@@ -70,9 +68,8 @@ class InfraredBackendApi {
 
   Future<String> getKeyContent(int ifrFileId) async {
     final body = await _getJson(
-      Uri.parse(
-        '$host/key',
-      ).replace(queryParameters: {'ifr_file_id': '$ifrFileId'}),
+      Uri.parse('$host/key')
+          .replace(queryParameters: {'ifr_file_id': '$ifrFileId'}),
     );
     if (body is Map<String, dynamic>) {
       final c = body['content'];

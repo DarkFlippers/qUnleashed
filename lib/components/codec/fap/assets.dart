@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+
 import 'readcs.dart';
 
 const int kFapAssetsMagic = 0x4F4C5A44;

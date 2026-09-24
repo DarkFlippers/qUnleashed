@@ -79,7 +79,10 @@ layer-first (`lib/services/`, `lib/components/`). Усередині фічі с
    `QLocaleController.instance`, `AssemblerController.instance`,
    `HomeWidgetService.instance`, `FirmwareRepository.instance`,
    `PushService.instance`. Викликаються з будь-якого місця напряму.
-2. **`InheritedNotifier`** — `DeviceScope` (`lib/pages/devices/device_scope.dart`)
+2. **Фабрика-синглтон `FlipperOneClient()`** (`lib/modules/flipperlib/lib/flipperlib.dart:28`)
+   — не має форми `static final instance`, тому в 28 вище не входить, але саме
+   вона дає доступ до пристрою: **24 виклики** в `lib/` поза модулями.
+3. **`InheritedNotifier`** — `DeviceScope` (`lib/pages/devices/device_scope.dart`)
    передає `DeviceController` піддереву; `lib/components/cardlist.dart` робить
    те саме для свого списку.
 
@@ -115,8 +118,11 @@ layer-first (`lib/services/`, `lib/components/`). Усередині фічі с
 | `lib/services/` | 11 |
 | `lib/components/` | 4 |
 
-З них 3 файли лежать безпосередньо в `lib/pages/*/widgets/`, тобто віджет
-звертається до клієнта пристрою без проміжного шару.
+З них **5 файлів лежать у теках `widgets/`** на будь-якій глибині —
+`devices/widgets/{firmware_card,firmware_changelog_page,firmware_update_button}.dart`,
+`archive/browser/widgets/storage_card.dart`,
+`tools/infrared/widgets/ir_file_viewer.dart` — тобто віджет звертається до
+клієнта пристрою без проміжного шару.
 
 Тека `controllers/` існує лише у `lib/pages/devices/` (2 файли). У решті фіч
 класи з логікою лежать поруч зі сторінками (§2).
@@ -188,7 +194,7 @@ Result-типів немає: 0 збігів на `class Result`, `sealed class 
 |---|---|
 | `} catch (` | 378 |
 | `} on <Тип> catch` | 23 |
-| `catch (_) {}` (порожній) | 49 |
+| `catch (_) {}` (порожній) | 49 — 42 в додатку, 7 у `flipperlib` (з них 4 в ізоляті) |
 | `implements Exception` (власні типи) | 26 |
 
 **Змішано:** 378 нетипізованих `catch` проти 23 типізованих.
@@ -223,13 +229,13 @@ Result-типів немає: 0 збігів на `class Result`, `sealed class 
 шаблоном нічого.
 
 **Нативний C/C++**: `lib/modules/cpp/` — `CMakeLists.txt`, `hardnested/`,
-`mfkey32/`, `nfc-tools/`. Підключається через `ffi ^2.1.3`.
+`mfkey32/`, `nfc-tools/` (останній — теж сабмодуль, з репо flipperdevices). Підключається через `ffi ^2.1.3`.
 
 Десктоп: є теки `linux/`, `macos/`, `windows/`, `web/`.
 
 ## 11. Тести
 
-- 53 файли в `test/`.
+- 51 файл `*_test.dart` у `test/` (53 файли `.dart` разом із фікстурами).
 - `flutter test` на `main`: **691 пройдено, 4 пропущено**, падінь немає.
 - CI (`.github/workflows/ci.yml`) запускає format → analyze → test; Flutter
   запінено на `3.47.1` у `.github/actions/setup-flutter/action.yml:19`.
@@ -239,10 +245,27 @@ Result-типів немає: 0 збігів на `class Result`, `sealed class 
   зелений.
 - Мутаційного тестування в репо немає; воно робилося разово скриптами поза
   репозиторієм.
+- **Сабмодулі покриті інакше.** Рахуючи весь код, який належить тій самій
+  організації:
+
+  | Частина | Файлів `.dart` | Тестових файлів |
+  |---|---|---|
+  | додаток (`lib/` без `modules/`) | 324 | 51 |
+  | `flipperlib` | 96 | **0** |
+  | `dartufbt` | 31 | 1 |
+
+  CI самого `flipperlib` виконує `dart format --set-exit-if-changed` і
+  `flutter analyze`; кроку `flutter test` у ньому немає. Це той код, що
+  містить транспорт, сесію, чергу RPC, auto-reconnect і DFU.
 
 ## 12. Залежності
 
-**Локальні пакети** (`path:`):
+**Локальні пакети** — підключені через `path:`, але це git-сабмодулі, тобто
+окремі репозиторії (`.gitmodules`). Обидва належать тій самій організації
+(`DarkFlippers/dart-flipperlib`, `DarkFlippers/dart-ufbt`), тож правки в них
+роблять окремим PR у свій репозиторій, а сюди приходить зсув сабмодуля.
+Третій сабмодуль, `lib/modules/cpp/nfc-tools`, — чужий
+(`flipperdevices/flipperzero-nfc-tools`):
 
 | Пакет | Шлях | Роль |
 |---|---|---|

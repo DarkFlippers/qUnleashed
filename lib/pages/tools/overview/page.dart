@@ -1,4 +1,5 @@
 import '../../../services/localization/l10n.dart';
+
 import 'dart:io';
 
 import 'package:flipperlib/flipperlib.dart';
@@ -301,7 +302,6 @@ Future<void> _openCliPage(BuildContext context) async {
     if (!context.mounted) return;
   }
 
-  await Navigator.of(
-    context,
-  ).push(MaterialPageRoute(builder: (_) => const CliPage()));
+  await Navigator.of(context)
+      .push(MaterialPageRoute(builder: (_) => const CliPage()));
 }

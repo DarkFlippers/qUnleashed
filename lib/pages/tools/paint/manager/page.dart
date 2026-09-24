@@ -1,4 +1,5 @@
 import '../../../../services/localization/l10n.dart';
+
 import 'dart:convert';
 import 'dart:io' as io;
 
@@ -8,7 +9,9 @@ import '../../../../theme/theme.dart';
 import '../../../../components/filelist/sync_progress_bar.dart';
 import '../../../../components/notification.dart';
 import '../../../../components/path.dart';
+
 import 'package:qunleashed/components/appbar.dart';
+
 import '../../../archive/editor/open.dart';
 import '../dolphin/importer.dart';
 import '../dolphin/sender.dart';
@@ -76,9 +79,8 @@ class _ProjectManagerPageState extends State<ProjectManagerPage> {
   }
 
   Future<void> _openEditor(PaintProject? project) async {
-    await Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => PaintPage(project: project)));
+    await Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => PaintPage(project: project)));
     // Returning from the editor may have created or updated a draft.
     await _ctrl.loadAll(silent: true);
   }

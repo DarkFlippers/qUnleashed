@@ -803,12 +803,15 @@ void main() {
       expect(
         () => read(feed(['release', 'development'])),
         throwsA(
-          isA<FirmwareDirectoryUnreadable>()
-              .having((e) => e.skipped, 'skipped', [
-                'channels[0]: not an object',
-                'channels[1]: not an object',
-                'document: no readable channel',
-              ]),
+          isA<FirmwareDirectoryUnreadable>().having(
+            (e) => e.skipped,
+            'skipped',
+            [
+              'channels[0]: not an object',
+              'channels[1]: not an object',
+              'document: no readable channel',
+            ],
+          ),
         ),
       );
     });

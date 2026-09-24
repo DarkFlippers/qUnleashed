@@ -91,10 +91,8 @@ class ArchiveStorage {
     final candidates = <io.File>[
       io.File(
         pathJoin([
-          (await legacyApplicationDocumentsDirectory([
-            'qunleashed',
-            'archive',
-          ])).path,
+          (await legacyApplicationDocumentsDirectory(['qunleashed', 'archive']))
+              .path,
           '.last_device',
         ]),
       ),
@@ -288,9 +286,8 @@ class ArchiveStorage {
       await resolveRootDir();
       final dir = deviceDir(deviceName);
       await dir.create(recursive: true);
-      await _fapFavoritesFile(
-        deviceName,
-      ).writeAsString(entries.map((e) => '${e.path}\t${e.name}').join('\n'));
+      await _fapFavoritesFile(deviceName)
+          .writeAsString(entries.map((e) => '${e.path}\t${e.name}').join('\n'));
     } catch (_) {}
   }
 

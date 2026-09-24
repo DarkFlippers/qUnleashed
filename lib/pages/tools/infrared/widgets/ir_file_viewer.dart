@@ -1,5 +1,6 @@
 import '../../../../services/localization/l10n.dart';
 import '../../../../services/logging.dart';
+
 import 'dart:async';
 
 import 'package:flipperlib/flipperlib.dart';
@@ -7,18 +8,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../../theme/theme.dart';
+
 import 'package:qunleashed/components/appbar.dart';
 import 'package:qunleashed/components/icon.dart';
 import 'package:qunleashed/theme/colors/category.dart';
+
 import '../../../../components/notification.dart';
 import '../../../../components/progress_button.dart';
+
 import 'package:qunleashed/services/progress_throttle.dart';
 
-typedef IrFileSendHandler =
-    Future<bool> Function({
-      required List<int> bytes,
-      required void Function(double progress) onProgress,
-    });
+typedef IrFileSendHandler = Future<bool> Function({
+  required List<int> bytes,
+  required void Function(double progress) onProgress,
+});
 
 typedef IrFileAfterSend = Future<void> Function(List<int> bytes);
 

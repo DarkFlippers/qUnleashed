@@ -6,7 +6,9 @@ import '../../../components/config.dart';
 import '../../../services/logging.dart';
 import '../../../theme/theme.dart';
 import '../firmware/directory.dart';
+
 import 'package:qunleashed/components/appbar.dart';
+
 import '../../../components/changelog_renderer.dart';
 import 'firmware_update_button.dart';
 

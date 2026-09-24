@@ -64,8 +64,8 @@ class RemoteBuildService {
     required this.serverUrl,
     required this.sharedKey,
     this.pollInterval = Duration.zero,
-    String? clientId,
-  }) : _clientId = clientId;
+    this._clientId,
+  });
 
   static final RemoteBuildService instance = RemoteBuildService._();
 

@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flutter/foundation.dart';
+
 import '../../../services/storage/paths.dart';
 import 'catalog_context.dart' show kManifestsRoot, FlipperRpcReady;
 import 'models/manifest.dart';

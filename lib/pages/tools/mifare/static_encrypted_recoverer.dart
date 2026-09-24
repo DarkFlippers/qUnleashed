@@ -137,44 +137,48 @@ List<StaticCandidateDict> buildStaticDicts(
 // reaching it is what `atCapacity` reports.
 const _capacity = 1 << 18;
 
-typedef _StaticNative =
-    Uint32 Function(Uint32, Uint32, Uint32, Uint32, Pointer<Uint64>, Uint32);
+typedef _StaticNative = Uint32 Function(
+  Uint32,
+  Uint32,
+  Uint32,
+  Uint32,
+  Pointer<Uint64>,
+  Uint32,
+);
 typedef _StaticDart = int Function(int, int, int, int, Pointer<Uint64>, int);
 
-typedef _ReduceNative =
-    Void Function(
-      Uint32,
-      Uint32,
-      Uint32,
-      Uint32,
-      Uint32,
-      Uint32,
-      Uint32,
-      Pointer<Uint64>,
-      Uint32,
-      Pointer<Uint32>,
-      Pointer<Uint64>,
-      Uint32,
-      Pointer<Uint32>,
-      Pointer<Uint32>,
-    );
-typedef _ReduceDart =
-    void Function(
-      int,
-      int,
-      int,
-      int,
-      int,
-      int,
-      int,
-      Pointer<Uint64>,
-      int,
-      Pointer<Uint32>,
-      Pointer<Uint64>,
-      int,
-      Pointer<Uint32>,
-      Pointer<Uint32>,
-    );
+typedef _ReduceNative = Void Function(
+  Uint32,
+  Uint32,
+  Uint32,
+  Uint32,
+  Uint32,
+  Uint32,
+  Uint32,
+  Pointer<Uint64>,
+  Uint32,
+  Pointer<Uint32>,
+  Pointer<Uint64>,
+  Uint32,
+  Pointer<Uint32>,
+  Pointer<Uint32>,
+);
+typedef _ReduceDart = void Function(
+  int,
+  int,
+  int,
+  int,
+  int,
+  int,
+  int,
+  Pointer<Uint64>,
+  int,
+  Pointer<Uint32>,
+  Pointer<Uint64>,
+  int,
+  Pointer<Uint32>,
+  Pointer<Uint32>,
+);
 
 class NativeStaticEncryptedRecoverer implements StaticEncryptedRecoverer {
   @override

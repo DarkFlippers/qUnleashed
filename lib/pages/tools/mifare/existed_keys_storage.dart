@@ -21,11 +21,7 @@ class ExistedKeysStorage {
       );
 
   /// Test seam: inject the device read/write directly instead of a FlipperClient.
-  ExistedKeysStorage.withSeams({
-    required DictReader reader,
-    required DictWriter writer,
-  }) : _reader = reader,
-       _writer = writer;
+  ExistedKeysStorage.withSeams({required this._reader, required this._writer});
 
   final DictReader _reader;
   final DictWriter _writer;
