@@ -18,6 +18,12 @@ import 'firmware_fixture.dart';
 /// Navigator. The two cases below are the before and after of that: the first
 /// is what the app does, the second is what it used to do, kept so the
 /// difference is a test rather than a paragraph.
+///
+/// Both end with [closeDevice]. `mountedDevice` builds a real
+/// `DeviceController`, which starts a DFU detector that polls on a one-second
+/// timer wherever libusb is present - Linux CI, not a Windows dev box. The
+/// binding checks for live timers before tearDown runs, so disposing from a
+/// teardown is too late and the failure is platform-dependent.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -43,8 +49,13 @@ void main() {
     unawaitedPush(navigator, key);
     await tester.pumpAndSettle();
 
+    // Read before the tree goes, asserted after: `closeDevice` has to run
+    // whatever this says, or a failure here is reported as a pending timer.
+    final reached = reachedFrom(key);
+    await closeDevice(tester, device);
+
     expect(
-      reachedFrom(key),
+      reached,
       same(device),
       reason: 'the same controller the shell reads, not a second one',
     );
@@ -66,8 +77,11 @@ void main() {
     unawaitedPush(navigator, key);
     await tester.pumpAndSettle();
 
+    final reached = reachedFrom(key);
+    await closeDevice(tester, device);
+
     expect(
-      reachedFrom(key),
+      reached,
       isNull,
       reason: 'which is why every push had to re-provide it, and one did',
     );
