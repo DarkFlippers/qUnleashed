@@ -71,9 +71,20 @@ class HomeWidgetService {
 
   bool get supported => Platform.isAndroid;
 
+  FlipperClient? _client;
+
   /// [promote] brings a cold isolate up to the full app; it runs once, when
   /// the activity attaches to an engine a widget started.
-  void install({required Future<void> Function() promote}) {
+  ///
+  /// [client] comes from `_initCore`, which is the one place that runs on
+  /// both entry points - this serves widget taps in the headless isolate as
+  /// well as in the full app, so a client taken from anything the UI builds
+  /// would not exist on half the paths that reach here. ADR 0002.
+  void install({
+    required FlipperClient client,
+    required Future<void> Function() promote,
+  }) {
+    _client = client;
     _promote = promote;
     if (_installed || !supported) return;
     _installed = true;
@@ -219,7 +230,15 @@ class HomeWidgetService {
   }
 
   Future<void> _serve(int id, WidgetKey key) async {
-    final client = FlipperOneClient().get();
+    final client = _client;
+    if (client == null) {
+      // install() runs in `_initCore`, which both entry points await before
+      // anything can tap a widget. Reaching here means the channel handler
+      // was wired without it, which is a wiring bug rather than a state.
+      LogService.warn('[HomeWidget] tap before install; no client');
+      await _flash(id, WidgetState.errorFailed);
+      return;
+    }
     await _setState(id, WidgetState.connecting);
     if (!await ColdLink.instance.ensureConnected(client)) {
       await _flash(id, WidgetState.errorNoDevice);

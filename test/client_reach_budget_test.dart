@@ -73,9 +73,12 @@ const Map<String, int> kBudget = {
   'pages/devices': 1,
   'pages/apps': 1,
   'pages/flibler': 1,
-  // Long-lived services that outlive any one page. They want a client handed
-  // to them at construction by the same root that builds them.
-  'services': 3,
+  // `LinkService`, and only as a fallback: `start(client)` hands it one from
+  // `bootstrapAmbientServices`, and `_c` reaches for the global until that
+  // has run. Was 3 - `EmulateService` requires one now, and the home-screen
+  // widget takes its from `_initCore`, which is the one place both entry
+  // points share.
+  'services': 1,
 };
 
 const String kAdr =

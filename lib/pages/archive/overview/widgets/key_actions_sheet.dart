@@ -23,6 +23,7 @@ import '../../../../components/archive/category.dart';
 import '../../../../components/archive/models/key.dart';
 import '../../../../services/home_widget/service.dart';
 import '../../widgets/actions_sheet.dart';
+import '../../../devices/device_scope.dart';
 
 /// Builds the archive-specific action set for an [ArchiveKey] and presents it
 /// through the shared [ActionsSheet], so the file manager and the category
@@ -298,8 +299,12 @@ class KeyActionsSheet {
   /// Opens [k] on the connected Flipper. Public so the file manager can reuse
   /// the exact same emulation entry point for matching files.
   static void emulateOnFlipper(BuildContext context, ArchiveKey k) {
-    Navigator.of(context)
-        .push(MaterialPageRoute(builder: (_) => EmulatePage(flipperKey: k)));
+    final client = DeviceScope.of(context).client;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => EmulatePage(flipperKey: k, client: client),
+      ),
+    );
   }
 
   static Future<void> _pinToHomeScreen(

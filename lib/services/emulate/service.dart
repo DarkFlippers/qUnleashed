@@ -24,8 +24,13 @@ class EmulateResult {
 }
 
 class EmulateService {
-  EmulateService({FlipperClient? client})
-    : _client = client ?? FlipperOneClient().get();
+  /// [client] is the Flipper the emulation opens on.
+  ///
+  /// Required: both builders have one - the emulate page takes it from the
+  /// scope its pusher was in, the home-screen widget from the composition
+  /// root - and a default would only hide which device a run belongs to,
+  /// which is the one thing this class is careful about. ADR 0002.
+  EmulateService({required this._client});
 
   final FlipperClient _client;
   bool _running = false;

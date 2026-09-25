@@ -29,6 +29,7 @@ import '../widgets/actions_sheet.dart';
 import '../../../components/filelist/sync_progress_bar.dart';
 import '../../../components/filelist/empty_view.dart';
 import '../../../components/dialogs/connection.dart';
+import '../../devices/device_scope.dart';
 
 class _ClipEntry {
   _ClipEntry({
@@ -253,8 +254,12 @@ class _FileManagerPageState extends State<FileManagerPage> {
       extension: e.extension,
       remotePath: remotePath,
     );
-    Navigator.of(context)
-        .push(MaterialPageRoute(builder: (_) => EmulatePage(flipperKey: key)));
+    final client = DeviceScope.of(context).client;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => EmulatePage(flipperKey: key, client: client),
+      ),
+    );
   }
 
   /// Opens the system folder picker and returns the chosen directory, or null

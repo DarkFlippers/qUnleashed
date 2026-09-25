@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flipperlib/flipperlib.dart' show FlipperClient;
 
 import '../../../services/localization/l10n.dart';
 import '../../../components/icon.dart';
@@ -13,19 +14,27 @@ import '../../../components/notification.dart';
 import '../../../components/archive/category.dart';
 import '../../../components/archive/models/key.dart';
 import '../../../services/emulate/service.dart';
-import '../../devices/device_scope.dart';
 
 class EmulatePage extends StatefulWidget {
-  const EmulatePage({super.key, required this.flipperKey});
+  const EmulatePage({
+    super.key,
+    required this.flipperKey,
+    required this.client,
+  });
 
   final ArchiveKey flipperKey;
+
+  /// The Flipper this run opens on, taken by whoever pushed the page from the
+  /// scope they were in. An emulation belongs to one device from start to
+  /// stop, so which one is not a detail the page should look up itself.
+  final FlipperClient client;
 
   @override
   State<EmulatePage> createState() => _EmulatePageState();
 }
 
 class _EmulatePageState extends State<EmulatePage> {
-  final EmulateService _service = EmulateService();
+  late final EmulateService _service = EmulateService(client: widget.client);
   bool _starting = true;
   bool _running = false;
   bool _closing = false;
@@ -156,7 +165,7 @@ class _EmulatePageState extends State<EmulatePage> {
       child: Scaffold(
         backgroundColor: colors.background,
         appBar: QPageAppBar(
-          client: DeviceScope.of(context).client,
+          client: widget.client,
           title: l10n.emuOpenOnDevice(k.category.title),
           backgroundColor: colors.accent,
           foregroundColor: colors.onAccent,
