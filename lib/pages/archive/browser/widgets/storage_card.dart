@@ -16,10 +16,18 @@ import '../../../../services/logging.dart';
 class StorageUsageCards extends StatefulWidget {
   const StorageUsageCards({
     super.key,
+    required this.client,
     required this.enabled,
     required this.onOpenInternal,
     required this.onOpenExternal,
   });
+
+  /// The device this reads storage figures from.
+  ///
+  /// Required rather than defaulted: the archive page is the only builder,
+  /// it sits inside a `DeviceScope` that already owns one, and a default
+  /// would leave the widget untestable for the sake of nothing. ADR 0002.
+  final FlipperClient client;
 
   final bool enabled;
   final VoidCallback onOpenInternal;
@@ -30,7 +38,6 @@ class StorageUsageCards extends StatefulWidget {
 }
 
 class _StorageUsageCardsState extends State<StorageUsageCards> {
-  final FlipperClient _client = FlipperOneClient().get();
   StreamSubscription<Map<String, String>>? _sub;
   Map<String, String> _info = const {};
 
@@ -43,12 +50,15 @@ class _StorageUsageCardsState extends State<StorageUsageCards> {
   @override
   void didUpdateWidget(covariant StorageUsageCards old) {
     super.didUpdateWidget(old);
-    if (widget.enabled && !old.enabled) {
-      _subscribe();
-    } else if (!widget.enabled && old.enabled) {
+    if (!widget.enabled && old.enabled) {
       _sub?.cancel();
       _sub = null;
       setState(() => _info = const {});
+    } else if (widget.enabled &&
+        (!old.enabled || widget.client != old.client)) {
+      // The client can change under this now that it is passed in, and the
+      // subscription belongs to the one it was opened on.
+      _subscribe();
     }
   }
 
@@ -63,9 +73,9 @@ class _StorageUsageCardsState extends State<StorageUsageCards> {
     // Seed from the session snapshot: storage.* is fetched once at connect and
     // never re-emits on a timer, so a screen opened after an automatic USB link
     // would otherwise stay blank until the next storage mutation.
-    final snapshot = _client.deviceInfoWatchSnapshot;
+    final snapshot = widget.client.deviceInfoWatchSnapshot;
     if (snapshot.isNotEmpty) _info = {..._info, ...snapshot};
-    _sub = _client.deviceInfoUpdates.listen((data) {
+    _sub = widget.client.deviceInfoUpdates.listen((data) {
       if (!mounted || data.isEmpty) return;
       setState(() => _info = {..._info, ...data});
     }, onError: (e) => LogService.info('[StorageCards] watchStorage: $e'));

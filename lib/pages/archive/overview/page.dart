@@ -10,6 +10,7 @@ import '../../../theme/theme.dart';
 import '../../../components/notification.dart';
 import '../browser/page.dart';
 import '../browser/widgets/storage_card.dart';
+import '../../devices/device_scope.dart';
 import 'category/category_page.dart';
 import 'category/deleted_page.dart';
 import 'controller.dart';
@@ -260,6 +261,7 @@ class _ArchivePageState extends State<ArchivePage> {
                     child: Padding(
                       padding: const EdgeInsets.only(top: 16, bottom: 4),
                       child: StorageUsageCards(
+                        client: DeviceScope.of(context).client,
                         enabled: _ctrl.isConnected,
                         onOpenInternal: () => _openFileManager('/int'),
                         onOpenExternal: () => _openFileManager('/ext'),
