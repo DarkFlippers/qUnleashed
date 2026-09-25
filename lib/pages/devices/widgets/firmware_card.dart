@@ -257,23 +257,23 @@ class _FirmwareCardState extends State<FirmwareCard> {
   }
 
   void _openChangelog(FirmwareEntry entry, FirmwareVersion version) {
+    // No `DeviceScope` around this any more: it is provided above the
+    // Navigator, so a pushed route is inside it - ADR 0011. It used to be
+    // re-provided here, and this was the only push that remembered to.
     final device = DeviceScope.of(context);
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => DeviceScope(
-          notifier: device,
-          child: FirmwareChangelogPage(
-            entry: entry,
-            version: version,
-            changelog: version.changelog,
-            fetchState: _fw.fetchStateFor(entry),
-            latestVersion: _fw.latestVersionFor(entry),
-            deviceVersion: widget.deviceVersion,
-            deviceInfo: widget.deviceInfo,
-            selectedChannelId: _fw.selectedChannelId(entry),
-            selectedVariant: _fw.selectedVariant(entry),
-            client: device.client,
-          ),
+        builder: (_) => FirmwareChangelogPage(
+          entry: entry,
+          version: version,
+          changelog: version.changelog,
+          fetchState: _fw.fetchStateFor(entry),
+          latestVersion: _fw.latestVersionFor(entry),
+          deviceVersion: widget.deviceVersion,
+          deviceInfo: widget.deviceInfo,
+          selectedChannelId: _fw.selectedChannelId(entry),
+          selectedVariant: _fw.selectedVariant(entry),
+          client: device.client,
         ),
       ),
     );
