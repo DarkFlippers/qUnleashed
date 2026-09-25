@@ -57,7 +57,10 @@ const Map<String, int> kBudget = {
   // Controllers, mostly - the layer that would take a client as a constructor
   // parameter with no new abstraction at all.
   'pages/tools': 9,
-  'pages/archive': 4,
+  // Three controllers. Was 4 - `browser/widgets/storage_card.dart` takes a
+  // client parameter now, passed by the one page that builds it, which is
+  // what let it have a test at all.
+  'pages/archive': 3,
   // The controller, and only as a fallback: `DeviceController` takes a client
   // parameter now and reaches for the global when nobody passes one. Was 2 -
   // the widget ADR 0004 named as the real smell an import lint would have
