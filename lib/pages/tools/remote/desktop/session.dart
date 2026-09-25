@@ -17,6 +17,10 @@ const Duration _kUnlockedFlashDuration = Duration(seconds: 1);
 const Duration _kStopTimeout = Duration(seconds: 2);
 
 class RemoteSession extends ChangeNotifier {
+  /// The link this session talks over, for whoever needs to name it - the
+  /// page's title bar shows this device, not whatever the tree carries.
+  FlipperClient get client => _client;
+
   RemoteSession({FlipperClient? client})
     : _client = client ?? FlipperOneClient().get() {
     _inputAvailable = _client.isConnected;

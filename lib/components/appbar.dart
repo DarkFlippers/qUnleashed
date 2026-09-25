@@ -10,7 +10,7 @@ class QPageAppBar extends StatelessWidget implements PreferredSizeWidget {
   const QPageAppBar({
     super.key,
     required this.title,
-    this.client,
+    required this.client,
     this.leading,
     this.actions,
     this.backgroundColor,
@@ -26,11 +26,11 @@ class QPageAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   /// The device whose name and link the subtitle shows.
   ///
-  /// Optional, falling back to the global, because sixteen pages build one of
-  /// these and most of them sit on pushed routes - which are outside the
-  /// shell's `DeviceScope` and have nothing to pass. The parameter is what
-  /// makes the title testable at all. ADR 0002.
-  final FlipperClient? client;
+  /// Required since ADR 0011 put `DeviceScope` above the Navigator: every one
+  /// of the sixteen pages that build one of these is inside it now, so each
+  /// has a client to pass. It was optional, with the global as a fallback,
+  /// for exactly as long as that was not true.
+  final FlipperClient client;
 
   final Widget? leading;
   final List<Widget>? actions;
@@ -69,10 +69,7 @@ class QPageAppBar extends StatelessWidget implements PreferredSizeWidget {
       actions: actions,
       bottom: bottom,
       title: _PageTitle(
-        // Resolved here rather than inside the title, so the one reach for the
-        // global sits in a single place instead of behind a `late final` that
-        // would quietly ignore a client handed in later.
-        client: client ?? FlipperOneClient().get(),
+        client: client,
         title: title,
         subtitle: subtitle,
         showDeviceStatus: showDeviceStatus,

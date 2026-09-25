@@ -332,6 +332,7 @@ class _CliPageState extends State<CliPage> {
     return Scaffold(
       backgroundColor: _kBackgroundColor,
       appBar: QPageAppBar(
+        client: _client,
         title: 'CLI',
         backgroundColor: _kBackgroundColor,
         foregroundColor: Colors.white,

@@ -482,6 +482,7 @@ class _RemoteControlPageState extends State<RemoteControlPage>
           appBar: wide
               ? null
               : QPageAppBar(
+                  client: _session.client,
                   title: context.l10n.remoteControlTitle,
                   leading: IconButton(
                     onPressed: _close,

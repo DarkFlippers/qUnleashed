@@ -17,6 +17,7 @@ import '../../../components/progress_button.dart';
 import '../../../components/fap_facts.dart';
 import '../page.dart';
 import 'controller.dart';
+import '../../devices/device_scope.dart';
 
 class FliblerProjectPage extends StatefulWidget {
   const FliblerProjectPage({super.key});
@@ -479,6 +480,7 @@ class _FliblerProjectPageState extends State<FliblerProjectPage> {
         return Scaffold(
           backgroundColor: colors.background,
           appBar: QPageAppBar(
+            client: DeviceScope.of(context).client,
             title: 'Flibler',
             backgroundColor: colors.accent,
             foregroundColor: colors.onAccent,

@@ -11,6 +11,7 @@ import 'models.dart';
 import 'parsing.dart';
 import 'plotter_view.dart';
 import 'ui.dart';
+import '../../devices/device_scope.dart';
 
 const double _maxContentWidth = 720;
 const double _wideContentThreshold = 1000;
@@ -121,6 +122,7 @@ class _PulsePlotterPageState extends State<PulsePlotterPage> {
     return Scaffold(
       backgroundColor: colors.background,
       appBar: QPageAppBar(
+        client: DeviceScope.of(context).client,
         title: context.l10n.toolPulsePlotter,
         subtitle: _fileName,
         showDeviceStatus: false,

@@ -20,6 +20,7 @@ import '../project.dart';
 import '../project_preview.dart';
 import 'controller.dart';
 import 'details.dart';
+import '../../../devices/device_scope.dart';
 
 /// Pixel Draw's library screen: every local animation with its manifest
 /// settings. Rows open in the editor, the preview picks the animation the
@@ -214,6 +215,7 @@ class _ProjectManagerPageState extends State<ProjectManagerPage> {
     return Scaffold(
       backgroundColor: colors.background,
       appBar: QPageAppBar(
+        client: DeviceScope.of(context).client,
         title: context.l10n.paintTitle,
         actions: [
           QPageAppBarAction(

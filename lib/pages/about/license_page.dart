@@ -3,6 +3,7 @@ import 'package:flutter/services.dart' show rootBundle;
 
 import '../../services/localization/l10n.dart';
 import '../../theme/theme.dart';
+import '../devices/device_scope.dart';
 
 import 'package:qunleashed/components/appbar.dart';
 
@@ -47,6 +48,7 @@ class _AppLicensePageState extends State<AppLicensePage> {
     return Scaffold(
       backgroundColor: colors.background,
       appBar: QPageAppBar(
+        client: DeviceScope.of(context).client,
         title: context.l10n.licenseTitle,
         backgroundColor: colors.accent,
         foregroundColor: colors.onAccent,

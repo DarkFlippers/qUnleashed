@@ -22,6 +22,7 @@ import 'line_numbers.dart';
 import 'style.dart';
 import 'syntax.dart';
 import 'toolbar.dart';
+import '../../devices/device_scope.dart';
 
 enum EditorMode { text, hex }
 
@@ -231,6 +232,7 @@ class _TextEditorPageState extends State<TextEditorPage> {
     return Scaffold(
       backgroundColor: colors.background,
       appBar: QPageAppBar(
+        client: DeviceScope.of(context).client,
         title: _name,
         backgroundColor: colors.accent,
         foregroundColor: colors.onAccent,

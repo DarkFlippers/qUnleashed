@@ -10,6 +10,8 @@ import 'package:qunleashed/pages/tools/remote/desktop/page.dart';
 import 'package:qunleashed/theme/theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'quiet_device_title.dart';
+
 /// Enough of a client for the page to open a session over and for the test to
 /// see what actually reached the wire. Shaped like the fakes in
 /// remote_session_test.dart rather than shared with them: those pin the session
@@ -31,7 +33,7 @@ class _FakeBinding implements FlipperSessionBinding {
   T run<T>(T Function() body) => body();
 }
 
-class _FakeClient implements FlipperClient {
+class _FakeClient with QuietDeviceTitle implements FlipperClient {
   final broadcast = StreamController<Main>.broadcast();
   final connection = StreamController<FlipperConnectionState>.broadcast();
   final List<Main> sent = [];

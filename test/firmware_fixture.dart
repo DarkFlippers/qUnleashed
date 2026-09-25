@@ -15,6 +15,8 @@ import 'package:qunleashed/services/notifications/push_service.dart';
 import 'package:qunleashed/theme/theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'quiet_device_title.dart';
+
 /// What a firmware test needs to keep itself off the network and out of the
 /// previous test's state.
 ///
@@ -139,7 +141,7 @@ List<String> keptAbout(String fragment) =>
 ///
 /// Everything else throws through [noSuchMethod], so a caller that starts
 /// reaching for something new fails here rather than quietly reading a null.
-class FakeFlipperClient implements FlipperClient {
+class FakeFlipperClient with QuietDeviceTitle implements FlipperClient {
   final _connection = StreamController<FlipperConnectionState>.broadcast();
   final _sessions = StreamController<List<FlipperSessionInfo>>.broadcast();
 

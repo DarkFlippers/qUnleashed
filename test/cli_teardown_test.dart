@@ -9,6 +9,8 @@ import 'package:qunleashed/services/logging.dart';
 import 'package:qunleashed/theme/theme.dart';
 import 'package:xterm/xterm.dart';
 
+import 'quiet_device_title.dart';
+
 class _FakeDiscovered implements DiscoveredDevice {
   _FakeDiscovered(this.transport);
   @override
@@ -43,7 +45,7 @@ enum _WriteFailure {
   escapeInMessage,
 }
 
-class _FakeClient implements FlipperClient {
+class _FakeClient with QuietDeviceTitle implements FlipperClient {
   _FakeClient() {
     _current = _device(FlipperLink.usb);
   }

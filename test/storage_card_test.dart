@@ -6,6 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/archive/browser/widgets/storage_card.dart';
 import 'package:qunleashed/theme/theme.dart';
 
+import 'quiet_device_title.dart';
+
 /// The two storage cards on the archive screen, which had no test at all.
 ///
 /// They could not have one: the widget built its own client from
@@ -17,7 +19,7 @@ import 'package:qunleashed/theme/theme.dart';
 /// an automatic USB link gets no event at all - the snapshot is the only
 /// thing that fills it, and a card that waits for the stream stays blank
 /// until the next file is written.
-class FakeStorageClient implements FlipperClient {
+class FakeStorageClient with QuietDeviceTitle implements FlipperClient {
   FakeStorageClient({this.snapshot = const {}});
 
   final _updates = StreamController<Map<String, String>>.broadcast();

@@ -160,6 +160,7 @@ class _IrFileViewerState extends State<IrFileViewer> {
     return Scaffold(
       backgroundColor: colors.background,
       appBar: QPageAppBar(
+        client: widget.client,
         title: widget.fileName,
         backgroundColor: colors.accent,
         foregroundColor: colors.onAccent,
