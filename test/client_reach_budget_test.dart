@@ -56,7 +56,9 @@ const Map<String, int> kBudget = {
   'components': 2,
   // Controllers, mostly - the layer that would take a client as a constructor
   // parameter with no new abstraction at all.
-  'pages/tools': 9,
+  // Was 9 - `infrared/widgets/ir_file_viewer.dart` takes a client parameter
+  // now, from the two pages that build it, both of which already held one.
+  'pages/tools': 8,
   // Three controllers. Was 4 - `browser/widgets/storage_card.dart` takes a
   // client parameter now, passed by the one page that builds it, which is
   // what let it have a test at all.

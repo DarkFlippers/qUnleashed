@@ -56,6 +56,7 @@ class _IrContentPageState extends State<IrContentPage> {
   Widget build(BuildContext context) {
     final bytes = utf8.encode(widget.content);
     return IrFileViewer(
+      client: _client,
       fileName: widget.fileName,
       subtitle: widget.subtitle,
       loading: false,
