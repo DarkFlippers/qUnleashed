@@ -21,6 +21,7 @@ likely to be proposed again.
 | [0008](0008-swallowed-errors.md) | Swallowed errors | target the paths where the UI is left unresolved, not the count |
 | [0009](0009-absence-is-null.md) | Sentinels | absence is `null`; `sha256` becomes `String?`, `timestamp` is deleted |
 | [0010](0010-declared-sdk-window.md) | SDK versions | declare the floor CI covers, and accept the reformat it causes |
+| [0011](0011-device-scope-above-the-navigator.md) | Device scope | `DeviceScope` moves above the Navigator so pushed routes are in it |
 
 ## Reading order
 
@@ -40,6 +41,10 @@ Status: Accepted (<date>)
 ## Consequences
 ## Migration: what happens to legacy code
 ```
+
+A decision not yet taken is `Status: Proposed (<date>)`, and the status changes
+in the commit that implements it. Writing it down first is for the ones whose
+cost is in the consequences rather than in the diff.
 
 A decision that is later reversed gets a new ADR that supersedes the old one.
 The old file stays, with its status changed — the reasoning that turned out to
