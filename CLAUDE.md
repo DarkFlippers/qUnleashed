@@ -90,6 +90,12 @@ there and why it was the first thing scheduled.
 - **`connectionStream` is a broadcast stream**, and an error on it does not end
   it. A wait that treats the first event as "connected" is wrong; consult
   `isConnected`.
+- **The client's API is extensions over a small core.** `appStart`,
+  `storageRead`, `appStateStream` and the rest of `client/api/*.dart` are
+  `extension ... on FlipperClient`, and an extension is resolved statically -
+  declaring one on a fake does nothing, the real body runs. Fake
+  `callRpcFrames` and `notificationStream` instead; everything above them goes
+  through those two. `test/emulate_start_test.dart` is the worked example.
 - **Connection errors are classified at the boundary**, not typed:
   `classifyConnectError` → `FlipperConnectErrorKind`, consumed by an exhaustive
   `switch`. It matches substrings from platform BLE stacks, so a sealed
