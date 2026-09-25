@@ -58,10 +58,12 @@ const Map<String, int> kBudget = {
   // parameter with no new abstraction at all.
   'pages/tools': 9,
   'pages/archive': 4,
-  // One controller and one widget. `widgets/firmware_card.dart` is the site
-  // ADR 0004 names as the real smell an import lint would have missed: a
-  // widget holding `final FlipperClient _client = FlipperOneClient().get();`.
-  'pages/devices': 2,
+  // The controller, and only as a fallback: `DeviceController` takes a client
+  // parameter now and reaches for the global when nobody passes one. Was 2 -
+  // the widget ADR 0004 named as the real smell an import lint would have
+  // missed, `widgets/firmware_card.dart`, reads it off `DeviceScope` instead
+  // and no longer imports flipperlib at all.
+  'pages/devices': 1,
   'pages/apps': 1,
   'pages/flibler': 1,
   // Long-lived services that outlive any one page. They want a client handed
