@@ -15,6 +15,7 @@ import 'file_page.dart';
 import 'models.dart';
 import 'settings_dialog.dart';
 import 'widgets/ir_search_field.dart';
+import '../../devices/device_scope.dart';
 
 const _infraredAsset = 'assets/ic/fileformat/ir.svg';
 
@@ -89,6 +90,7 @@ class _IrLibPageState extends State<IrLibPage> {
           return Scaffold(
             backgroundColor: colors.background,
             appBar: QPageAppBar(
+              client: DeviceScope.of(context).client,
               title: _ctrl.title,
               backgroundColor: colors.accent,
               foregroundColor: colors.onAccent,

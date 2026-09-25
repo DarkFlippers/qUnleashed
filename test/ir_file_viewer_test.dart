@@ -7,6 +7,8 @@ import 'package:qunleashed/components/progress_button.dart';
 import 'package:qunleashed/pages/tools/infrared/widgets/ir_file_viewer.dart';
 import 'package:qunleashed/theme/theme.dart';
 
+import 'quiet_device_title.dart';
+
 /// Whether the send button does anything, which is the one thing this screen
 /// decides for itself.
 ///
@@ -19,7 +21,7 @@ import 'package:qunleashed/theme/theme.dart';
 /// It could not be tested before. The viewer built its own client from
 /// `FlipperOneClient()`; it takes one as a parameter now (ADR 0002), and both
 /// builders already had one to give it.
-class FakeLinkClient implements FlipperClient {
+class FakeLinkClient with QuietDeviceTitle implements FlipperClient {
   FakeLinkClient({this.connected = false});
 
   final _connection = StreamController<FlipperConnectionState>.broadcast();

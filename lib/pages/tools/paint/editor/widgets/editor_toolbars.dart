@@ -13,6 +13,7 @@ import 'package:qunleashed/components/appbar.dart';
 import '../../constants.dart';
 import '../controller.dart';
 import 'editor_widgets.dart';
+import '../../../../devices/device_scope.dart';
 
 class EditorAppBar extends StatelessWidget implements PreferredSizeWidget {
   const EditorAppBar({
@@ -36,6 +37,7 @@ class EditorAppBar extends StatelessWidget implements PreferredSizeWidget {
   @override
   Widget build(BuildContext context) {
     return QPageAppBar(
+      client: DeviceScope.of(context).client,
       title: context.l10n.paintTitle,
       leading: IconButton(
         onPressed: onClose,

@@ -107,6 +107,7 @@ class _FirmwareChangelogPageState extends State<FirmwareChangelogPage> {
     return Scaffold(
       backgroundColor: colors.background,
       appBar: QPageAppBar(
+        client: widget.client,
         title: context.l10n.firmwareWhatsNewVersion(widget.version.version),
         backgroundColor: colors.card,
         foregroundColor: colors.textPrimary,

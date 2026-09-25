@@ -9,6 +9,7 @@ import 'backend/infrared_backend_api.dart';
 import 'backend/infrared_backend_models.dart';
 import 'infrareds_page.dart';
 import 'widgets/ir_search_field.dart';
+import '../../devices/device_scope.dart';
 
 class IrBrandsPage extends StatefulWidget {
   const IrBrandsPage({super.key, required this.category});
@@ -84,6 +85,7 @@ class _IrBrandsPageState extends State<IrBrandsPage> {
     return Scaffold(
       backgroundColor: colors.background,
       appBar: QPageAppBar(
+        client: DeviceScope.of(context).client,
         title: widget.category.displayName,
         backgroundColor: colors.accent,
         foregroundColor: colors.onAccent,

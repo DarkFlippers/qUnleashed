@@ -51,9 +51,11 @@ const Map<String, int> kBudget = {
   // everything below could be given a client instead of reaching for one.
   'app': 1,
   'main.dart': 1,
-  // The connection picker and the appbar's connection indicator. Both are
-  // widgets that talk to the device directly.
-  'components': 2,
+  // The connection picker. Was 2 - `appbar.dart` took an optional client with
+  // the global as a fallback, and that fallback is gone: ADR 0011 put the
+  // device scope above the Navigator, so all sixteen pages that build a
+  // `QPageAppBar` are inside it and each has one to pass.
+  'components': 1,
   // Controllers, mostly - the layer that would take a client as a constructor
   // parameter with no new abstraction at all.
   // Was 9 - `infrared/widgets/ir_file_viewer.dart` takes a client parameter

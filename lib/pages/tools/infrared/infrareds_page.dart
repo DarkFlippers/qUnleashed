@@ -12,6 +12,7 @@ import '../../../components/notification.dart';
 import 'backend/infrared_backend_api.dart';
 import 'backend/infrared_backend_models.dart';
 import 'ir_content_page.dart';
+import '../../devices/device_scope.dart';
 
 const _infraredAsset = 'assets/ic/fileformat/ir.svg';
 
@@ -106,6 +107,7 @@ class _IrInfraredsPageState extends State<IrInfraredsPage> {
     return Scaffold(
       backgroundColor: colors.background,
       appBar: QPageAppBar(
+        client: DeviceScope.of(context).client,
         title: widget.brand.name,
         backgroundColor: colors.accent,
         foregroundColor: colors.onAccent,

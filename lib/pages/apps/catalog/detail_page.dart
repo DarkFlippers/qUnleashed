@@ -18,6 +18,7 @@ import 'widgets/action_button.dart';
 import 'widgets/card.dart';
 import 'widgets/category_chip.dart';
 import 'widgets/screenshot_frame.dart';
+import '../../devices/device_scope.dart';
 
 class AppDetailPage extends StatefulWidget {
   const AppDetailPage({
@@ -77,6 +78,7 @@ class _AppDetailPageState extends State<AppDetailPage> {
       builder: (context, _) => Scaffold(
         backgroundColor: colors.background,
         appBar: QPageAppBar(
+          client: DeviceScope.of(context).client,
           title: _detail?.card.name ?? context.l10n.appDetailFallbackTitle,
           backgroundColor: colors.accent,
           foregroundColor: colors.onAccent,

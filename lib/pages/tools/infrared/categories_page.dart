@@ -15,6 +15,7 @@ import 'backend/infrared_backend_api.dart';
 import 'backend/infrared_backend_models.dart';
 import 'brands_page.dart';
 import 'page.dart';
+import '../../devices/device_scope.dart';
 
 class IrCategoriesPage extends StatefulWidget {
   const IrCategoriesPage({super.key});
@@ -78,6 +79,7 @@ class _IrCategoriesPageState extends State<IrCategoriesPage> {
     return Scaffold(
       backgroundColor: colors.background,
       appBar: QPageAppBar(
+        client: DeviceScope.of(context).client,
         title: context.l10n.irLibraryTitle,
         backgroundColor: colors.accent,
         foregroundColor: colors.onAccent,
