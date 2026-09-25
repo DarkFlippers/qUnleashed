@@ -63,6 +63,17 @@ class LinkService extends ChangeNotifier {
 
   static final LinkService instance = LinkService._();
 
+  /// A service of its own, already started on [client].
+  ///
+  /// [instance] stays the one the app uses - ADR 0002 leaves the existing
+  /// singletons alone. This exists because [entries] is the list a user picks
+  /// a Flipper from and could not be exercised at all: the constructor is
+  /// private, and [start] is one-shot, so a second case would have inherited
+  /// the first one's client and its sessions.
+  @visibleForTesting
+  factory LinkService.forTest(FlipperClient client) =>
+      LinkService._()..start(client);
+
   static const Duration _usbDebounce = Duration(milliseconds: 250);
 
   FlipperClient? _client;
