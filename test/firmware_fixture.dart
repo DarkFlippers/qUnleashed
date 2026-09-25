@@ -141,6 +141,7 @@ List<String> keptAbout(String fragment) =>
 /// reaching for something new fails here rather than quietly reading a null.
 class FakeFlipperClient implements FlipperClient {
   final _connection = StreamController<FlipperConnectionState>.broadcast();
+  final _sessions = StreamController<List<FlipperSessionInfo>>.broadcast();
 
   bool _connected = false;
 
@@ -181,7 +182,10 @@ class FakeFlipperClient implements FlipperClient {
   void fail() => _connection.addError(const SocketException('link fault'));
 
   /// The link torn down - a disposed client, a closed session.
-  Future<void> close() => _connection.close();
+  Future<void> close() async {
+    await _sessions.close();
+    await _connection.close();
+  }
 
   /// Whether anything is still listening.
   ///
@@ -190,6 +194,15 @@ class FakeFlipperClient implements FlipperClient {
   /// broadcast stream after every deadline - and the stream lives as long as
   /// the client.
   bool get hasListener => _connection.hasListener;
+
+  /// What `connectionState` asks before it answers "disconnected".
+  ///
+  /// A plain field so a test can say the client is mid-connect without an
+  /// event; the real one flips this around a connect attempt.
+  bool connecting = false;
+
+  @override
+  bool get isConnecting => connecting;
 
   @override
   bool get isConnected => _connected;
@@ -201,6 +214,17 @@ class FakeFlipperClient implements FlipperClient {
   /// to hold the flash against.
   @override
   String? get scopedDeviceId => 'fake';
+
+  /// Nothing connected at construction. `DeviceController` reads this once in
+  /// its constructor, and a null keeps it out of `_ensureDataLoading`, which
+  /// would reach for `deviceInfoUpdates` this does not answer.
+  @override
+  FlipperDevice? get connectedDevice => null;
+
+  /// Never anything on it. `DeviceController` subscribes in its constructor
+  /// and only notifies on an event, so an empty stream is the whole contract.
+  @override
+  Stream<List<FlipperSessionInfo>> get sessionsStream => _sessions.stream;
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -233,8 +257,8 @@ final Set<DeviceController> _closed = {};
 /// exact condition for arming the timer is narrower than this, and nobody has
 /// pinned down what it is.
 (DeviceController, FakeFlipperClient) mountedDevice() {
-  final device = DeviceController();
   final client = FakeFlipperClient();
+  final device = DeviceController(client: client);
   addTearDown(() async {
     if (_closed.add(device)) device.dispose();
     await client.close();

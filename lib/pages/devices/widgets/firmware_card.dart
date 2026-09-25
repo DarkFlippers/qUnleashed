@@ -1,4 +1,3 @@
-import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
 import '../../../services/localization/l10n.dart';
@@ -31,7 +30,6 @@ class FirmwareCard extends StatefulWidget {
 class _FirmwareCardState extends State<FirmwareCard> {
   final _pageController = PageController();
   final _themeController = QAppThemeController.instance;
-  final FlipperClient _client = FlipperOneClient().get();
   late final FirmwareController _fw;
 
   int _page = 0;
@@ -274,7 +272,7 @@ class _FirmwareCardState extends State<FirmwareCard> {
             deviceInfo: widget.deviceInfo,
             selectedChannelId: _fw.selectedChannelId(entry),
             selectedVariant: _fw.selectedVariant(entry),
-            client: _client,
+            client: device.client,
           ),
         ),
       ),
@@ -285,6 +283,11 @@ class _FirmwareCardState extends State<FirmwareCard> {
   Widget build(BuildContext context) {
     final config = _fw.config;
     if (config.firmwares.isEmpty) return const SizedBox.shrink();
+
+    // The device scope owns the client; this card is always built inside one.
+    // Reading it here rather than holding `FlipperOneClient().get()` in a
+    // field is what lets a widget test mount this against a fake - ADR 0002.
+    final client = DeviceScope.of(context).client;
 
     final entry = config.firmwares[_page.clamp(0, config.firmwares.length - 1)];
     final fetchState = _fw.fetchStateFor(entry);
@@ -336,7 +339,7 @@ class _FirmwareCardState extends State<FirmwareCard> {
             deviceInfo: widget.deviceInfo,
             selectedChannelId: _fw.selectedChannelId(entry),
             selectedVariant: _fw.selectedVariant(entry),
-            client: _client,
+            client: client,
           ),
         ],
       ),
