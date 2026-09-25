@@ -278,5 +278,11 @@ Future<void> closeDevice(WidgetTester tester, DeviceController device) async {
 /// A tree a firmware widget can be built in.
 Widget wrapWithDevice(Widget child, DeviceController device) => MaterialApp(
   theme: buildAppTheme(Brightness.dark, const Color(0xFFCC241D)),
-  home: DeviceScope(notifier: device, child: child),
+  // Through `builder` rather than around `home`, because that is where the
+  // app puts it - above the Navigator, so a pushed route is inside it too
+  // (ADR 0011). Wrapping `home` instead would leave every case that opens a
+  // route testing a tree the app does not have.
+  builder: (context, navigator) =>
+      DeviceScope(notifier: device, child: navigator!),
+  home: child,
 );

@@ -1,6 +1,6 @@
 # 0011. The device scope sits above the Navigator
 
-Status: Proposed (2026-09-25)
+Status: Accepted (2026-09-25)
 
 ## Context
 
@@ -89,7 +89,17 @@ constructed in `build` would be replaced on every accent-colour change,
 taking its subscriptions and its device with it.
 
 **`FirmwareCard._openChangelog`'s manual re-provide becomes redundant** and
-should go in the same change, so the pattern is not copied from it later.
+goes in the same change, so the pattern is not copied from it later.
+
+**`wrapWithDevice` in `test/firmware_fixture.dart` has to move with it.** It
+wrapped `home`, which is the shape being abandoned - so every case that opens
+a route would have gone on testing a tree the app no longer has. It provides
+through `builder` now, for the same reason the app does.
+
+**`QUnleashedApp` disposes only a controller it built.** The optional
+`device` parameter is a test seam, and a caller that supplies one owns it;
+disposing it here tore down a fixture the test was still holding, and the
+failure landed in a teardown rather than in a body.
 
 **`QPageAppBar`'s client parameter can become required**, and `components`
 stops being the area that could not move. That is the payoff, and it is a

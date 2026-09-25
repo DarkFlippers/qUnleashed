@@ -43,7 +43,6 @@ class _AppShellState extends State<AppShell> {
   static final int _slotTools = _slotApps + 1;
   static final int _slotCount = _slotTools + 1;
 
-  final DeviceController _ctrl = DeviceController();
   final ArchiveController _archiveController = ArchiveController();
 
   int _slot = _slotDevice;
@@ -71,10 +70,8 @@ class _AppShellState extends State<AppShell> {
       _onWidgetPickRequest,
     );
     PushService.instance.taps.removeListener(_onPushTap);
-    _ctrl.dispose();
     _archiveController.removeListener(_onArchiveChanged);
     _archiveController.dispose();
-    _ctrl.client.disconnectAll();
     super.dispose();
   }
 
@@ -117,23 +114,24 @@ class _AppShellState extends State<AppShell> {
     final slot = _visibleSlot(wide);
     _mounted.add(slot);
 
-    return DeviceScope(
-      notifier: _ctrl,
-      child: ListenableBuilder(
-        listenable: _ctrl,
-        builder: (context, _) {
-          return FlipperRootScaffold(
-            currentTab: _tabOf(slot),
-            onTabSelected: (tab) => _select(_slotOfTab(tab)),
-            deviceLabel: _deviceLabel(),
-            railGroups: _railGroups(colors, slot),
-            child: IndexedStack(
-              index: slot,
-              children: [for (var i = 0; i < _slotCount; i++) _page(i, wide)],
-            ),
-          );
-        },
-      ),
+    // Provided above the Navigator now, so this reads it like every other
+    // page rather than owning it - ADR 0011.
+    final device = DeviceScope.of(context);
+
+    return ListenableBuilder(
+      listenable: device,
+      builder: (context, _) {
+        return FlipperRootScaffold(
+          currentTab: _tabOf(slot),
+          onTabSelected: (tab) => _select(_slotOfTab(tab)),
+          deviceLabel: _deviceLabel(device),
+          railGroups: _railGroups(colors, slot),
+          child: IndexedStack(
+            index: slot,
+            children: [for (var i = 0; i < _slotCount; i++) _page(i, wide)],
+          ),
+        );
+      },
     );
   }
 
@@ -281,11 +279,11 @@ class _AppShellState extends State<AppShell> {
     );
   }
 
-  String _deviceLabel() {
+  String _deviceLabel(DeviceController device) {
     final strings = l10n;
-    switch (_ctrl.connectionState) {
+    switch (device.connectionState) {
       case DeviceConnectionState.disconnected:
-        return _ctrl.device != null
+        return device.device != null
             ? strings.deviceStateDisconnected
             : strings.deviceStateNoDevice;
       case DeviceConnectionState.connecting:
@@ -295,12 +293,12 @@ class _AppShellState extends State<AppShell> {
       case DeviceConnectionState.recovering:
         return strings.deviceStateRecovering;
       case DeviceConnectionState.connected:
-        if (_ctrl.deviceLoading) return strings.deviceStateSyncing;
+        if (device.deviceLoading) return strings.deviceStateSyncing;
         switch (_syncStatus) {
           case ArchiveSyncStatus.syncing:
             return strings.deviceStateSyncing;
           case ArchiveSyncStatus.synced:
-            return _ctrl.deviceInfoConnected
+            return device.deviceInfoConnected
                 ? strings.deviceStateConnected
                 : strings.deviceStateSynced;
           case ArchiveSyncStatus.idle:
