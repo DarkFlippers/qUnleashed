@@ -25,8 +25,7 @@ Future<void> main() async {
 /// survives the screen going dark. `promote` turns it into the full app.
 @pragma('vm:entry-point')
 Future<void> widgetMain() async {
-  await _initCore();
-  await BleForegroundService.instance.start(FlipperOneClient().get());
+  await BleForegroundService.instance.start(await _initCore());
 }
 
 /// Everything that has to exist before there is a UI.
@@ -41,14 +40,20 @@ Future<void> widgetMain() async {
 /// `LogService.initialize()` goes first so the rest have somewhere to report
 /// to. Its own uncaught-error handlers are installed before anything it
 /// awaits, so even a failure inside it is kept.
-Future<void> _initCore() async {
+Future<FlipperClient> _initCore() async {
   WidgetsFlutterBinding.ensureInitialized();
   registerAppRoutes();
   await LogService.initialize();
   await QAppThemeController.instance.loadThemeMode();
   await QLocaleController.instance.loadLocale();
   await AssemblerController.instance.loadSettings();
-  HomeWidgetService.instance.install(promote: _runApp);
+  // The one place both entry points share, so the one place the client is
+  // resolved: `widgetMain` hands it to the foreground service, and the home
+  // widget serves taps with it on either path. Constructing it touches no
+  // disk and no platform channel, so it does not need a catch of its own.
+  final client = FlipperOneClient().get();
+  HomeWidgetService.instance.install(client: client, promote: _runApp);
+  return client;
 }
 
 Future<void> _runApp() async {
