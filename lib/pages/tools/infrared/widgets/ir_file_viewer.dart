@@ -30,6 +30,7 @@ const _infraredAsset = 'assets/ic/fileformat/ir.svg';
 class IrFileViewer extends StatefulWidget {
   const IrFileViewer({
     super.key,
+    required this.client,
     required this.fileName,
     required this.subtitle,
     required this.loading,
@@ -40,6 +41,13 @@ class IrFileViewer extends StatefulWidget {
     required this.onSend,
     this.onAfterSend,
   });
+
+  /// The device whose link this watches while the file is on screen.
+  ///
+  /// Required rather than defaulted: both builders already hold one - the
+  /// library page through its controller, the content page directly - so a
+  /// default would only make this untestable. ADR 0002.
+  final FlipperClient client;
 
   final String fileName;
   final String subtitle;
@@ -56,7 +64,6 @@ class IrFileViewer extends StatefulWidget {
 }
 
 class _IrFileViewerState extends State<IrFileViewer> {
-  final FlipperClient _client = FlipperOneClient().get();
   bool _sending = false;
   bool _connected = false;
   double _sendProgress = 0;
@@ -66,15 +73,25 @@ class _IrFileViewerState extends State<IrFileViewer> {
   @override
   void initState() {
     super.initState();
-    _connected = widget.isConnected && _client.isConnected;
-    _connectionSub = _client.connectionStream.listen(_onConnectionState);
+    _connected = widget.isConnected && widget.client.isConnected;
+    _connectionSub = widget.client.connectionStream.listen(_onConnectionState);
   }
 
   @override
   void didUpdateWidget(covariant IrFileViewer oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.isConnected != widget.isConnected) {
-      _connected = widget.isConnected && _client.isConnected;
+    // The client can change under this now that it is passed in, and the
+    // subscription belongs to the one it was opened on - a page that swapped
+    // devices would otherwise keep reading the link that left.
+    if (oldWidget.client != widget.client) {
+      _connectionSub?.cancel();
+      _connectionSub = widget.client.connectionStream.listen(
+        _onConnectionState,
+      );
+    }
+    if (oldWidget.isConnected != widget.isConnected ||
+        oldWidget.client != widget.client) {
+      _connected = widget.isConnected && widget.client.isConnected;
     }
   }
 

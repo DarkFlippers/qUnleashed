@@ -64,6 +64,7 @@ class _IrLibFilePageState extends State<IrLibFilePage> {
   @override
   Widget build(BuildContext context) {
     return IrFileViewer(
+      client: widget.controller.client,
       fileName: widget.entry.name,
       subtitle: widget.entry.path,
       loading: _loading,
