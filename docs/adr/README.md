@@ -22,6 +22,7 @@ likely to be proposed again.
 | [0009](0009-absence-is-null.md) | Sentinels | absence is `null`; `sha256` becomes `String?`, `timestamp` is deleted |
 | [0010](0010-declared-sdk-window.md) | SDK versions | declare the floor CI covers, and accept the reformat it causes |
 | [0011](0011-device-scope-above-the-navigator.md) | Device scope | `DeviceScope` moves above the Navigator so pushed routes are in it |
+| [0012](0012-the-di-scoreboard-is-the-ratchet.md) | DI metric | amends [0002](0002-dependencies-are-passed-in.md): the scoreboard is the ratchet |
 
 ## Reading order
 

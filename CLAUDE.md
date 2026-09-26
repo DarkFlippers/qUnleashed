@@ -48,12 +48,11 @@ repository plus a submodule bump here.
 Legacy, kept deliberately, not to be imitated:
 
 - **`static final X instance` singletons, and `FlipperOneClient()`.** New code
-  takes dependencies as parameters instead. Two scoreboards say whether this is
-  going the right way: `resetFirmwareState()` in `test/firmware_fixture.dart`
-  should get shorter, and the ratchet counting `FlipperOneClient()` under
-  `lib/pages/**` should not rise.
+  takes dependencies as parameters instead. The scoreboard is
+  `test/client_reach_budget_test.dart`, which counts `FlipperOneClient()` per
+  area in `lib/` and fails when one rises.
   [0002](docs/adr/0002-dependencies-are-passed-in.md),
-  [0004](docs/adr/0004-ratchet-not-lint.md)
+  [0012](docs/adr/0012-the-di-scoreboard-is-the-ratchet.md)
 - **All-or-nothing `fromJson`** — a decoder that throws on the first bad field.
   Feed decoding reads entry by entry and names what it skipped.
   [0005](docs/adr/0005-tolerant-decoding.md)
