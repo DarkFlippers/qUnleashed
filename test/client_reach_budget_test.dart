@@ -58,9 +58,18 @@ const Map<String, int> kBudget = {
   'components': 1,
   // Controllers, mostly - the layer that would take a client as a constructor
   // parameter with no new abstraction at all.
-  // Was 9 - `infrared/widgets/ir_file_viewer.dart` takes a client parameter
-  // now, from the two pages that build it, both of which already held one.
-  'pages/tools': 8,
+  // Six of the seven are fallbacks behind a parameter that is already there -
+  // `client ?? FlipperOneClient().get()` - so they go when their callers all
+  // pass one. The seventh, `paint/virtual_display_session.dart`, is a reach
+  // with no parameter at all, and it cannot get one until `DeviceToken` can
+  // be built outside flipperlib: the session reads `client.deviceToken`,
+  // whose type has only a private constructor, so a fake client cannot
+  // answer it and nothing there is testable yet.
+  //
+  // Was 9, then 8 - `widgets/ir_file_viewer.dart` and then
+  // `infrared/ir_content_page.dart` take a client from the pages that build
+  // them.
+  'pages/tools': 7,
   // Three controllers. Was 4 - `browser/widgets/storage_card.dart` takes a
   // client parameter now, passed by the one page that builds it, which is
   // what let it have a test at all.
