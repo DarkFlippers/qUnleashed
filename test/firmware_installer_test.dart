@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io' as io;
 
 import 'package:archive/archive_io.dart';
@@ -17,21 +18,23 @@ import 'package:qunleashed/pages/devices/firmware/update_state.dart';
 /// protobuf request to decide what it is being asked - which is also what lets
 /// it record the upload order.
 ///
-/// Not covered, and it is a seam rather than an omission: what happens after
-/// `runUpdate`. The install decides whether to wait for the Flipper from
-/// `bindCurrentSession().device`, and the only binding a fake can build is
-/// `FlipperSessionBinding.unbound()`, which has no device by construction -
-/// so `awaitReturnOf` is always null here and both outcomes collapse into
-/// one. Cases for it would assert nothing, so there are none.
+/// What happens after `runUpdate` is decided by
+/// `bindCurrentSession().device`, and until dart-flipperlib#6 the only binding
+/// a fake could build named no device - so both outcomes collapsed into one
+/// and the cases for them were left out rather than left green and empty.
+/// `FlipperSessionBinding.to` is what opened them.
 ///
-/// dart-flipperlib#5 named this: the half of the binding that needs a live
-/// session. A `FlipperSessionBinding.to(device)` would open the USB branch,
-/// the `UpdateInstalling` state and, with it, `LinkService.awaitUsbReturn`'s
-/// one real caller.
+/// The wait itself is still not here: it is `LinkService.awaitUsbReturn`,
+/// reached through the singleton rather than passed in, and it has its own
+/// file. What is asserted is which side of it each link ends up on.
 class FakeFlashClient implements FlipperClient {
-  FakeFlashClient({this.connected = true});
+  FakeFlashClient({this.connected = true, this.bound});
 
   bool connected;
+
+  /// The device the install binds, which is what decides whether it waits for
+  /// the Flipper to come back afterwards.
+  FlipperDevice? bound;
 
   /// md5 the device reports per path. Absent means the file is not there.
   final Map<String, String> remote = {};
@@ -49,8 +52,9 @@ class FakeFlashClient implements FlipperClient {
   bool get isConnected => connected;
 
   @override
-  FlipperSessionBinding bindCurrentSession() =>
-      const FlipperSessionBinding.unbound();
+  FlipperSessionBinding bindCurrentSession() => bound == null
+      ? const FlipperSessionBinding.unbound()
+      : FlipperSessionBinding.to(bound!);
 
   /// Runs the body without a session, which is what an unbound binding does.
   @override
@@ -211,6 +215,14 @@ void main() {
     onState: states.add,
   );
 
+  /// Polls until [ready], or gives up after five seconds.
+  Future<void> waitFor(bool Function() ready) async {
+    final deadline = DateTime.now().add(const Duration(seconds: 5));
+    while (!ready() && DateTime.now().isBefore(deadline)) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+  }
+
   String? errorText() =>
       states.whereType<UpdateError>().map((e) => e.message).firstOrNull;
 
@@ -293,6 +305,48 @@ void main() {
       final verifying = states.whereType<UpdateVerifying>().toList();
       expect(verifying.map((s) => s.fileIndex), [1, 2]);
       expect(verifying.every((s) => s.fileCount == 2), isTrue);
+    });
+  });
+
+  group('after the update has been told to start', () {
+    final files = {'update.fuf': 'manifest'};
+
+    // Over BLE the radio comes back whenever the install is done and only the
+    // user knows when to reach for it, so the app stops here.
+    test('a BLE install is done, and waits for nothing', () async {
+      client.bound = device(FlipperLink.ble);
+
+      await flash(archiveOf(files));
+
+      expect(states.last, isA<UpdateDone>());
+    });
+
+    // Over USB the port coming back is the signal, so the install is not over
+    // until it does. The wait is `LinkService.awaitUsbReturn`; what matters
+    // here is that this is the link that enters it.
+    test('a USB install says it is installing, and does not finish', () async {
+      client.bound = device(FlipperLink.usb);
+      var finished = false;
+
+      unawaited(flash(archiveOf(files)).then((_) => finished = true));
+      // Waited for rather than slept past: the flash does real work - gzip,
+      // md5, the writes - and a fixed delay is either flaky or slow.
+      await waitFor(() => states.any((s) => s is UpdateInstalling));
+
+      expect(states.last, isA<UpdateInstalling>());
+      expect(
+        finished,
+        isFalse,
+        reason: 'it is waiting on the port coming back',
+      );
+    });
+
+    // Nothing bound at all - no session when the update went out. There is no
+    // device to wait for, so waiting would be waiting on nothing.
+    test('an install that bound no device is done', () async {
+      await flash(archiveOf(files));
+
+      expect(states.last, isA<UpdateDone>());
     });
   });
 }
