@@ -1773,6 +1773,10 @@
       }
     }
   },
+  "firmwareChangelogUnstyled": "Couldn''t format this changelog. Showing the original text.",
+  "@firmwareChangelogUnstyled": {
+    "description": "Shown above a changelog whose markdown could not be rendered, so the raw text is displayed instead."
+  },
   "firmwareEmptyChangelog": "Список изменений пуст",
   "@firmwareEmptyChangelog": {
     "description": "Shown when a firmware release has no changelog text."
@@ -1959,6 +1963,10 @@
   "@fwuLabelChecking": {
     "description": "Update button label while the firmware state is being checked. Shown in capitals."
   },
+  "fwuLabelCantCheck": "CAN''T CHECK",
+  "@fwuLabelCantCheck": {
+    "description": "Update button label when the update server could not be reached, so whether an update exists is unknown."
+  },
   "fwuLabelNoUpdate": "НЕТ ОБНОВЛЕНИЙ",
   "@fwuLabelNoUpdate": {
     "description": "Update button label when the installed firmware is already current. Shown in capitals."
@@ -2010,6 +2018,10 @@
   "fwuDescPickInstall": "Выберите локальный архив .tgz для установки",
   "@fwuDescPickInstall": {
     "description": "Explanation when a hand-picked archive will be installed."
+  },
+  "fwuDescCantCheck": "The update server didn''t answer.",
+  "@fwuDescCantCheck": {
+    "description": "Explanation under CAN''T CHECK: the directory fetch failed, so no version could be compared."
   },
   "fwuDescNoServer": "Не удаётся связаться с сервером обновлений",
   "@fwuDescNoServer": {
@@ -2082,6 +2094,10 @@
   "fwuDescWaitingReconnect": "Ожидание переподключения устройства…",
   "@fwuDescWaitingReconnect": {
     "description": "Explanation while the Flipper reboots after an update."
+  },
+  "fwuRecoveryNoReconnect": "Device didn''t reconnect. Power-cycle it and try again.",
+  "@fwuRecoveryNoReconnect": {
+    "description": "Shown when the Flipper does not come back after a recovery flash."
   },
   "fwuDescWillReboot": "Устройство перезагрузится и применит обновление.",
   "@fwuDescWillReboot": {
