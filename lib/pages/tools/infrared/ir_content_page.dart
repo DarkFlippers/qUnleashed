@@ -18,11 +18,16 @@ class IrContentPage extends StatefulWidget {
     required this.fileName,
     required this.subtitle,
     required this.content,
+    required this.client,
   });
 
   final String fileName;
   final String subtitle;
   final String content;
+
+  /// The Flipper this page reads its name from and sends to. Taken by the
+  /// library page that pushes it, from the scope it was in. ADR 0002.
+  final FlipperClient client;
 
   @override
   State<IrContentPage> createState() => _IrContentPageState();
@@ -30,7 +35,7 @@ class IrContentPage extends StatefulWidget {
 
 class _IrContentPageState extends State<IrContentPage> {
   final ArchiveStorage _storage = ArchiveStorage();
-  final FlipperClient _client = FlipperOneClient().get();
+  late final FlipperClient _client = widget.client;
   late String _deviceName = l10n.irLibraryTab;
 
   @override

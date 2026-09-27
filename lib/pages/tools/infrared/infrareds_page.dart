@@ -78,9 +78,11 @@ class _IrInfraredsPageState extends State<IrInfraredsPage> {
     try {
       final content = await _api.getKeyContent(f.id);
       if (!mounted) return;
+      final client = DeviceScope.of(context).client;
       Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => IrContentPage(
+            client: client,
             fileName: f.fileName,
             subtitle: context.l10n.irBreadcrumb(
               widget.category.displayName,
