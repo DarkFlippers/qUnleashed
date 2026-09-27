@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flipperlib/flipperlib.dart' hide DateTime;
+import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../../../components/codec/bm.dart';
 import '../../../services/connection/device_info_watch.dart';
@@ -14,11 +15,22 @@ import '../../../services/logging.dart';
 /// control via [enterLive]/[leaveLive] and pushes its canvas (debounced to the
 /// end of a stroke); the manager mirrors a selected project via [setPreview].
 class VirtualDisplaySession {
-  VirtualDisplaySession._();
+  VirtualDisplaySession._({FlipperClient? client})
+    : _client = client ?? FlipperOneClient().get();
 
   static final VirtualDisplaySession instance = VirtualDisplaySession._();
 
-  final FlipperClient _client = FlipperOneClient().get();
+  /// A session of its own, on [client].
+  ///
+  /// [instance] stays the one the app uses - two pages share it by design, and
+  /// ADR 0002 leaves the existing singletons alone. This exists because
+  /// nothing here could be exercised: a second case would have inherited the
+  /// first one's holder counts along with its client.
+  @visibleForTesting
+  factory VirtualDisplaySession.forTest(FlipperClient client) =>
+      VirtualDisplaySession._(client: client);
+
+  final FlipperClient _client;
 
   /// Hard cap on the device refresh rate, enforced in [_flush] (the send path).
   static const int _minIntervalMs = 1000 ~/ 8; // 8 fps
