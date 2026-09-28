@@ -7452,6 +7452,15 @@
   "@paintManifestInvalid": {
     "description": "Shown when hand-edited manifest text holds no animation block."
   },
+  "paintManifestNameless": "{count, plural, one{One block named no animation and was skipped} other{{count} blocks named no animation and were skipped}}",
+  "@paintManifestNameless": {
+    "description": "Shown after applying hand-edited manifest text that held one or more paragraphs of settings with no Name: line. Those settings belong to no animation and are dropped.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "paintAnimationSettings": "Animation settings",
   "@paintAnimationSettings": {
     "description": "Title of the sheet holding one animation's level and butthurt ranges."

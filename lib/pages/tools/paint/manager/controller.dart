@@ -28,6 +28,17 @@ class PaintItem {
   String get id => project.id;
 }
 
+/// What applying hand-edited manifest text did.
+class ManifestApplied {
+  const ManifestApplied({required this.applied, required this.nameless});
+
+  /// Animations named in the text that exist locally and were selected.
+  final int applied;
+
+  /// Paragraphs that held settings but named no animation. Dropped.
+  final int nameless;
+}
+
 /// Backs the whole Pixel Draw library screen: lists local projects (drawings,
 /// GIFs, dolphin animations and drafts) with their manifest settings, imports
 /// the device's animations, and sends the selected pack back to it.
@@ -208,11 +219,17 @@ class ProjectManagerController extends ChangeNotifier {
   );
 
   /// Applies hand-edited manifest text: every animation listed there joins the
-  /// pack with the settings from the text, everything else leaves it. Returns
-  /// how many of the listed animations exist locally.
-  int applyManifest(String text) {
-    final parsed = DolphinManifest.parse(text);
-    if (parsed.isEmpty) return 0;
+  /// pack with the settings from the text, everything else leaves it.
+  ///
+  /// Reports how many of the listed animations exist locally, and how many
+  /// paragraphs of the text belonged to no animation at all - those are
+  /// dropped, and a user who typed one wants telling.
+  ManifestApplied applyManifest(String text) {
+    final read = DolphinManifest.parse(text);
+    final parsed = read.entries;
+    if (parsed.isEmpty) {
+      return ManifestApplied(applied: 0, nameless: read.nameless);
+    }
     var applied = 0;
     for (final item in _items) {
       final edited = parsed[item.entry.name];
@@ -230,7 +247,7 @@ class ProjectManagerController extends ChangeNotifier {
       applied++;
     }
     _notify();
-    return applied;
+    return ManifestApplied(applied: applied, nameless: read.nameless);
   }
 
   // ------------------------------------------------------------------ upload

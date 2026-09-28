@@ -23,6 +23,10 @@ ManifestEntry entry(
   maxLevel: maxLevel,
 );
 
+/// The entries half of a parse, for the cases that are only about those.
+Map<String, ManifestEntry> entriesOf(String text) =>
+    DolphinManifest.parse(text).entries;
+
 void main() {
   group('what comes back out', () {
     // The user edits the text and the app reads it back. Anything that does
@@ -33,7 +37,7 @@ void main() {
         entry('L2_Hex_128x64'),
       ]);
 
-      final read = DolphinManifest.parse(written);
+      final read = entriesOf(written);
 
       expect(read.keys, ['L1_Waves_128x50', 'L2_Hex_128x64']);
       final waves = read['L1_Waves_128x50']!;
@@ -43,7 +47,7 @@ void main() {
     });
 
     test('keeps the defaults it was not told to change', () {
-      final read = DolphinManifest.parse(DolphinManifest.build([entry('A')]));
+      final read = entriesOf(DolphinManifest.build([entry('A')]));
 
       final a = read['A']!;
       expect(a.minButthurt, ManifestEntry.kDefaultMinButthurt);
@@ -54,7 +58,7 @@ void main() {
     // Everything in the file is there because someone chose it, so a parsed
     // entry is a selected one - the screen ticks them from this.
     test('is selected, because being in the file is the choosing', () {
-      final read = DolphinManifest.parse(DolphinManifest.build([entry('A')]));
+      final read = entriesOf(DolphinManifest.build([entry('A')]));
 
       expect(read['A']!.selected, isTrue);
     });
@@ -91,7 +95,7 @@ void main() {
     // blank line then the app and the device disagree about a manifest the
     // user edited by hand. #171 holds the question.
     test('keeps every animation around a nameless paragraph', () {
-      final read = DolphinManifest.parse('''
+      final read = entriesOf('''
 ${DolphinManifest.header}
 Name: Good1
 Weight: 4
@@ -107,18 +111,67 @@ Weight: 5
       expect(read['Good2']!.weight, 5);
     });
 
-    test('folds a nameless paragraph into the block above it', () {
-      final read = DolphinManifest.parse('Name: A\nWeight: 4\n\nWeight: 9\n');
+    test('does not fold a nameless paragraph into the block above it', () {
+      final read = entriesOf('Name: A\nWeight: 4\n\nWeight: 9\n');
 
       expect(
         read['A']!.weight,
-        9,
-        reason: 'a block ends at the next name, not at the blank line',
+        4,
+        reason: 'the blank line ended the block; what follows is not its own',
       );
     });
 
+    group('and is told how many paragraphs named nothing', () {
+      test('none when every block has a name', () {
+        expect(DolphinManifest.parse('Name: A\nWeight: 4\n').nameless, 0);
+      });
+
+      test('one for a paragraph of settings with no name', () {
+        expect(
+          DolphinManifest.parse('Name: A\nWeight: 4\n\nWeight: 9\n').nameless,
+          1,
+        );
+      });
+
+      test('one per paragraph, not one per line', () {
+        expect(
+          DolphinManifest.parse(
+            'Name: A\n\nWeight: 9\nMin level: 2\n\nWeight: 3\n',
+          ).nameless,
+          2,
+        );
+      });
+
+      // Settings before the first name are the same mistake at the top of the
+      // file, and were already being dropped - silently.
+      test('counts one written before any name', () {
+        expect(DolphinManifest.parse('Weight: 4\n\nName: A\n').nameless, 1);
+      });
+
+      // A user's note between blocks is not a paragraph that lost its name.
+      test('does not count a paragraph that holds no settings', () {
+        expect(
+          DolphinManifest.parse('Name: A\n\nsome note\n\nName: B\n').nameless,
+          0,
+        );
+      });
+
+      // Text pasted without a trailing newline ends mid-paragraph, so the
+      // count has to be taken when the lines run out as well as at a blank
+      // one. Every other case here happens to end with a newline.
+      test('counts one the text ended on', () {
+        expect(DolphinManifest.parse('Name: A\n\nWeight: 9').nameless, 1);
+      });
+
+      test('does not count the blank lines a manifest is built with', () {
+        final text = DolphinManifest.build([entry('A'), entry('B')]);
+
+        expect(DolphinManifest.parse(text).nameless, 0);
+      });
+    });
+
     test('drops settings written before any name', () {
-      final read = DolphinManifest.parse('Weight: 4\nName: A\n');
+      final read = entriesOf('Weight: 4\nName: A\n');
 
       expect(read.keys, ['A']);
       expect(read['A']!.weight, ManifestEntry.kDefaultWeight);
@@ -128,13 +181,13 @@ Weight: 5
     // field: a weight of 0 is an animation that never plays, which is not
     // what a typo meant.
     test('leaves a default where a number was expected', () {
-      final read = DolphinManifest.parse('Name: A\nWeight: often\n');
+      final read = entriesOf('Name: A\nWeight: often\n');
 
       expect(read['A']!.weight, ManifestEntry.kDefaultWeight);
     });
 
     test('takes a negative number as written', () {
-      final read = DolphinManifest.parse('Name: A\nMin level: -1\n');
+      final read = entriesOf('Name: A\nMin level: -1\n');
 
       expect(read['A']!.minLevel, -1);
     });
@@ -146,7 +199,7 @@ Weight: 5
     // on the line - removing the latter changes nothing, so this pins the
     // outcome rather than the mechanism.
     test('tolerates trailing whitespace on a line', () {
-      final read = DolphinManifest.parse('Name: A  \r\nWeight: 6  \r\n');
+      final read = entriesOf('Name: A  \r\nWeight: 6  \r\n');
 
       expect(read.keys, ['A']);
       expect(read['A']!.weight, 6);
@@ -155,17 +208,15 @@ Weight: 5
     // Entries are keyed by name, and the name is the on-device folder, so two
     // blocks claiming the same folder are one animation described twice.
     test('lets the last block win when a name repeats', () {
-      final read = DolphinManifest.parse(
-        'Name: A\nWeight: 1\n\nName: A\nWeight: 9\n',
-      );
+      final read = entriesOf('Name: A\nWeight: 1\n\nName: A\nWeight: 9\n');
 
       expect(read, hasLength(1));
       expect(read['A']!.weight, 9);
     });
 
     test('reads nothing out of nothing', () {
-      expect(DolphinManifest.parse(''), isEmpty);
-      expect(DolphinManifest.parse(DolphinManifest.header), isEmpty);
+      expect(entriesOf(''), isEmpty);
+      expect(entriesOf(DolphinManifest.header), isEmpty);
     });
   });
 }

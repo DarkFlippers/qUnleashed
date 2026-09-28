@@ -181,15 +181,21 @@ class _ProjectManagerPageState extends State<ProjectManagerPage> {
         localPath: file.path,
         title: 'manifest.txt',
         onSave: (bytes) async {
-          final applied = _ctrl.applyManifest(
+          final result = _ctrl.applyManifest(
             utf8.decode(bytes, allowMalformed: true),
           );
           if (!mounted) return true;
+          // A paragraph that named no animation is dropped, so it is the more
+          // useful thing to say even when the rest of the text applied: the
+          // user wrote something the file does not do.
+          final nameless = result.nameless;
           context.showNotification(
-            applied == 0
+            nameless > 0
+                ? context.l10n.paintManifestNameless(nameless)
+                : result.applied == 0
                 ? context.l10n.paintManifestInvalid
                 : context.l10n.paintManifestApplied,
-            type: applied == 0
+            type: nameless > 0 || result.applied == 0
                 ? QNotificationType.warning
                 : QNotificationType.good,
           );
