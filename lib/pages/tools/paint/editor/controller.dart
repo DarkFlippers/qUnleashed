@@ -41,9 +41,18 @@ class PaintController extends ChangeNotifier {
   int passiveFrameCount = -1;
   bool compressBm = false;
 
-  PaintController() {
-    VirtualDisplaySession.instance.enterLive();
+  /// [display] is the virtual-display session the canvas streams to.
+  ///
+  /// Defaulted to the shared one, which the manager screen holds too - the
+  /// editor takes it live and the manager's preview gives way. A test passes
+  /// its own, because the shared session reaches for the app's client and
+  /// would put a real display on a real Flipper. ADR 0002.
+  PaintController({VirtualDisplaySession? display})
+    : _display = display ?? VirtualDisplaySession.instance {
+    _display.enterLive();
   }
+
+  final VirtualDisplaySession _display;
 
   Uint8List get currentPixels => frames[currentFrame];
 
@@ -71,7 +80,7 @@ class PaintController extends ChangeNotifier {
   void schedulePush() {
     _pushTimer?.cancel();
     _pushTimer = Timer(const Duration(milliseconds: 100), () {
-      VirtualDisplaySession.instance.pushFrame(currentPixels);
+      _display.pushFrame(currentPixels);
     });
   }
 
@@ -593,14 +602,14 @@ class PaintController extends ChangeNotifier {
     _closing = true;
     _playTimer?.cancel();
     _pushTimer?.cancel();
-    VirtualDisplaySession.instance.leaveLive();
+    _display.leaveLive();
   }
 
   @override
   void dispose() {
     _playTimer?.cancel();
     _pushTimer?.cancel();
-    if (!_closing) VirtualDisplaySession.instance.leaveLive();
+    if (!_closing) _display.leaveLive();
     super.dispose();
   }
 }
