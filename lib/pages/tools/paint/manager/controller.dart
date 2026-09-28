@@ -43,13 +43,23 @@ class ManifestApplied {
 /// GIFs, dolphin animations and drafts) with their manifest settings, imports
 /// the device's animations, and sends the selected pack back to it.
 class ProjectManagerController extends ChangeNotifier {
-  ProjectManagerController({FlipperClient? client})
-    : _client = client ?? FlipperOneClient().get() {
+  /// [display] is the virtual-display session the previews go to.
+  ///
+  /// Defaulted to the shared one, which is what the screen wants: the editor
+  /// holds the same session, and a preview here has to give way to a canvas
+  /// there. A test passes its own, because the shared one reaches for the
+  /// app's client and would put a real display in play. ADR 0002.
+  ProjectManagerController({
+    FlipperClient? client,
+    VirtualDisplaySession? display,
+  }) : _client = client ?? FlipperOneClient().get(),
+       _display = display ?? VirtualDisplaySession.instance {
     _connSub = _client.connectionStream.listen((_) => _notify());
-    VirtualDisplaySession.instance.enter();
+    _display.enter();
   }
 
   final FlipperClient _client;
+  final VirtualDisplaySession _display;
   StreamSubscription<FlipperConnectionState>? _connSub;
   bool _disposed = false;
 
@@ -63,6 +73,18 @@ class ProjectManagerController extends ChangeNotifier {
   String? _error;
 
   List<PaintItem> get items => _items;
+
+  /// Installs a library without reading one off disk.
+  ///
+  /// For tests. Everything the manifest screen does - selecting, editing
+  /// settings, applying pasted text - works over this list, and the real one
+  /// comes from a directory walk that a test has no business staging.
+  @visibleForTesting
+  void seedItems(List<PaintItem> items) {
+    _items = items;
+    _notify();
+  }
+
   bool get loading => _loading;
   bool get importing => _importing;
   bool get sending => _sending;
@@ -95,16 +117,13 @@ class ProjectManagerController extends ChangeNotifier {
     final token = ++_previewToken;
     final project = selected?.project;
     if (project == null) {
-      VirtualDisplaySession.instance.clearPreview();
+      _display.clearPreview();
       return;
     }
     try {
       final preview = await project.loadDevicePreview();
       if (token != _previewToken || _disposed) return;
-      VirtualDisplaySession.instance.setPreview(
-        preview.frames,
-        preview.delayMs,
-      );
+      _display.setPreview(preview.frames, preview.delayMs);
     } catch (_) {}
   }
 
@@ -159,7 +178,7 @@ class ProjectManagerController extends ChangeNotifier {
       }
       if (_selectedId == project.id) {
         _selectedId = null;
-        VirtualDisplaySession.instance.clearPreview();
+        _display.clearPreview();
       }
     } catch (e) {
       _error = l10n.paintDeleteFailed('$e');
@@ -277,7 +296,7 @@ class ProjectManagerController extends ChangeNotifier {
     _selectedId = null;
     _notify();
 
-    await VirtualDisplaySession.instance.suspend();
+    await _display.suspend();
 
     try {
       await DolphinSender.send(
@@ -295,7 +314,7 @@ class ProjectManagerController extends ChangeNotifier {
     } finally {
       _sending = false;
       _sendProgress = null;
-      VirtualDisplaySession.instance.resume();
+      _display.resume();
       _notify();
     }
   }
@@ -355,8 +374,8 @@ class ProjectManagerController extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _connSub?.cancel();
-    VirtualDisplaySession.instance.clearPreview();
-    VirtualDisplaySession.instance.leave();
+    _display.clearPreview();
+    _display.leave();
     super.dispose();
   }
 }
