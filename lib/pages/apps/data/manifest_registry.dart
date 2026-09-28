@@ -161,36 +161,91 @@ class ManifestRegistry extends ChangeNotifier {
     }
   }
 
+  /// Reads the on-disk catalogue, for a test that wants that path alone.
+  ///
+  /// `_refresh` calls it first and then goes to the device; the cache is what
+  /// fills the apps screen before the Flipper has answered.
+  @visibleForTesting
+  Future<void> readCacheFile() => _loadCache();
+
+  /// Loads the catalogue written on the last refresh.
+  ///
+  /// Entry by entry, so one app whose record changed shape costs itself and
+  /// not the list. It used to be a single `catch (_) {}` around the whole
+  /// loop, which meant a throw on the fifth of fifty left four apps indexed,
+  /// the rest missing, and nothing said anywhere - #138.
   Future<void> _loadCache() async {
+    final String body;
     try {
       final name = await client.awaitName().timeout(const Duration(seconds: 5));
       final file = await installedCatalogFile(name);
       if (!await file.exists()) return;
-      final body = await file.readAsString();
-      if (body.trim().isEmpty) return;
+      body = await file.readAsString();
+    } catch (e) {
+      // The whole catalogue rather than one entry: no name, or a file that
+      // will not open. The refresh behind this reads the device itself, so
+      // what is lost is the head start, not the list - but it is a loss, and
+      // it used to happen in silence.
+      LogService.warn('[Manifests] cached catalogue unreadable: $e');
+      return;
+    }
+    if (body.trim().isEmpty) return;
+
+    final List<dynamic> items;
+    try {
       final data = jsonDecode(body) as Map<String, dynamic>;
-      final items = data['manifests'] as List<dynamic>? ?? const [];
-      for (final raw in items) {
-        final e = raw as Map<String, dynamic>;
-        final alias = (e['alias'] as String?)?.trim() ?? '';
-        final path = (e['path'] as String?)?.trim() ?? '';
-        if (alias.isEmpty || path.isEmpty) continue;
-        _index(
-          alias,
-          AppManifest(
-            uid: (e['uid'] as String?) ?? '',
-            versionUid: (e['version_uid'] as String?) ?? '',
-            fullName: (e['full_name'] as String?) ?? '',
-            path: path,
-            iconBase64: (e['icon_base64'] as String?) ?? '',
-            sdkApi: (e['sdk_api'] as String?) ?? '',
-            devCatalog: (e['dev_catalog'] as bool?) ?? false,
-          ),
-        );
-        final md5 = (e['md5'] as String?) ?? '';
-        if (md5.isNotEmpty) _md5[alias] = md5;
-      }
-    } catch (_) {}
+      items = data['manifests'] as List<dynamic>? ?? const [];
+    } catch (e) {
+      LogService.warn('[Manifests] cached catalogue is not one: $e');
+      return;
+    }
+
+    var dropped = 0;
+    for (final raw in items) {
+      if (!_indexCached(raw)) dropped++;
+    }
+    if (dropped > 0) {
+      // Once for the batch. A catalogue whose shape has changed drops every
+      // entry, and one line per installed app is a log nobody reads.
+      LogService.warn(
+        '[Manifests] dropped $dropped of ${items.length} cached entries',
+      );
+    }
+  }
+
+  /// Indexes one cached entry. False when it could not be read.
+  ///
+  /// Nothing here casts: the file is written by an older build of this app as
+  /// much as by this one, and a field that changed type is exactly the case
+  /// that used to take the rest of the list with it.
+  bool _indexCached(Object? raw) {
+    if (raw is! Map<String, dynamic>) return false;
+    final alias = _text(raw['alias']);
+    final path = _text(raw['path']);
+    if (alias == null || path == null) return false;
+
+    _index(
+      alias,
+      AppManifest(
+        uid: _text(raw['uid']) ?? '',
+        versionUid: _text(raw['version_uid']) ?? '',
+        fullName: _text(raw['full_name']) ?? '',
+        path: path,
+        iconBase64: _text(raw['icon_base64']) ?? '',
+        sdkApi: _text(raw['sdk_api']) ?? '',
+        devCatalog: raw['dev_catalog'] == true,
+      ),
+    );
+    final md5 = _text(raw['md5']);
+    if (md5 != null) _md5[alias] = md5;
+    return true;
+  }
+
+  /// A string field that is a string and is not blank, or null.
+  static String? _text(Object? raw) {
+    if (raw is! String) return null;
+    final text = raw.trim();
+    return text.isEmpty ? null : text;
   }
 
   Future<void> _saveCache() async {
