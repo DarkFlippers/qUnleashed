@@ -1,5 +1,7 @@
 import 'dart:io' as io;
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import 'package:path_provider/path_provider.dart';
 
 import '../../components/path.dart';
@@ -62,7 +64,26 @@ String? normalizeFlipperDeviceName(String? raw) {
   return name.isEmpty ? null : name;
 }
 
+/// Stands in for the user's Documents folder while a test runs.
+///
+/// Every path in this file hangs off [userDocumentsDirectory], and on desktop
+/// that reads `USERPROFILE`/`HOME` directly rather than going through
+/// `path_provider` - so a test that stubs the platform interface still writes
+/// into the real one. It is set by [debugUseDocumentsRoot] and nothing else.
+io.Directory? _debugDocumentsRoot;
+
+/// Points every app path at [dir], or back at the user's own folder for null.
+///
+/// For tests. Without it a case that touches storage writes into the
+/// developer's actual `Documents/qUnleashed`, alongside their devices, and
+/// leaves it there.
+@visibleForTesting
+void debugUseDocumentsRoot(io.Directory? dir) => _debugDocumentsRoot = dir;
+
 Future<io.Directory> userDocumentsDirectory() async {
+  final override = _debugDocumentsRoot;
+  if (override != null) return override;
+
   final sep = io.Platform.pathSeparator;
 
   if (io.Platform.isWindows) {

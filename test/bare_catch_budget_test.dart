@@ -53,9 +53,11 @@ const Map<String, int> kBudget = {
   // around file operations during a library swap, one of which is deliberate
   // and says so in its body.
   'pages/tools': 12,
-  // The apps catalog and installer. #138 is here: a bare catch that loses
-  // every installed app rather than the one that failed to decode.
-  'pages/apps': 11,
+  // The apps catalog and installer. Was 11 - the cached-catalogue loop in
+  // `manifest_registry.dart` reads entry by entry now and says what it
+  // dropped, which is the first half of #138. The four all-or-nothing list
+  // decodes in `catalog_api.dart` are the other half and are not these.
+  'pages/apps': 10,
   'pages/archive': 3,
   // #118 was this area and has been dealt with; what is left is not that
   // shape.
