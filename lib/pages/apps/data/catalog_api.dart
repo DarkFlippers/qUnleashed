@@ -2,6 +2,7 @@ import 'dart:io' as io;
 import 'dart:math' as math;
 
 import '../../../services/http/app_http.dart';
+import '../../../services/logging.dart';
 import 'models/card.dart';
 import 'models/category.dart';
 import 'models/detail.dart';
@@ -43,6 +44,44 @@ class AppsCatalogException implements Exception {
   @override
   String toString() =>
       'AppsCatalogException($statusCode, $url${body == null ? '' : ', $body'})';
+}
+
+/// Decodes a catalogue list entry by entry, keeping what reads.
+///
+/// One bad field in one entry used to cost the whole list: `whereType` filters
+/// out what is not an object and does nothing about what is inside one, and
+/// `.toList()` forces the lazy `.map` so the throw arrives anyway. A page of
+/// apps, up to five hundred of them by uid, or the entire SDK list - which the
+/// catalogue context turns into a disabled screen. #138.
+///
+/// The models cast their fields, and rewriting them to read field by field is
+/// a larger change than this. Catching per entry bounds the loss to the entry
+/// meanwhile, which is the part a user sees.
+///
+/// What was dropped is said once for the list. One line per app is a log
+/// nobody reads, and a feed whose shape has changed drops every one of them.
+List<T> readEach<T>(
+  List<dynamic> body,
+  T Function(Map<String, dynamic> json) read,
+  String what,
+) {
+  final out = <T>[];
+  var dropped = 0;
+  for (final raw in body) {
+    if (raw is! Map<String, dynamic>) {
+      dropped++;
+      continue;
+    }
+    try {
+      out.add(read(raw));
+    } catch (e) {
+      dropped++;
+    }
+  }
+  if (dropped > 0) {
+    LogService.warn('[Catalog] dropped $dropped of ${body.length} $what');
+  }
+  return List<T>.unmodifiable(out);
 }
 
 class AppsCatalogApi {
@@ -93,10 +132,7 @@ class AppsCatalogApi {
     if (body is! List) {
       throw AppsCatalogException(0, uri.toString(), 'expected list');
     }
-    return body
-        .whereType<Map<String, dynamic>>()
-        .map(AppSdk.fromJson)
-        .toList(growable: false);
+    return readEach(body, AppSdk.fromJson, 'SDKs');
   }
 
   Future<List<AppCategory>> fetchCategories({int limit = 500}) {
@@ -106,10 +142,7 @@ class AppsCatalogApi {
       if (body is! List) {
         throw AppsCatalogException(0, uri.toString(), 'expected list');
       }
-      return body
-          .whereType<Map<String, dynamic>>()
-          .map(AppCategory.fromJson)
-          .toList(growable: false);
+      return readEach(body, AppCategory.fromJson, 'categories');
     });
   }
 
@@ -145,10 +178,7 @@ class AppsCatalogApi {
       if (body is! List) {
         throw AppsCatalogException(0, uri.toString(), 'expected list');
       }
-      final items = body
-          .whereType<Map<String, dynamic>>()
-          .map(AppCard.fromJson)
-          .toList(growable: false);
+      final items = readEach(body, AppCard.fromJson, 'apps');
       return AppsPage(items: items, offset: offset, limit: limit);
     });
   }
@@ -184,9 +214,7 @@ class AppsCatalogApi {
         if (body is! List) {
           throw AppsCatalogException(0, uri.toString(), 'expected list');
         }
-        out.addAll(
-          body.whereType<Map<String, dynamic>>().map(AppCard.fromJson),
-        );
+        out.addAll(readEach(body, AppCard.fromJson, 'apps'));
       }
       return out;
     });
