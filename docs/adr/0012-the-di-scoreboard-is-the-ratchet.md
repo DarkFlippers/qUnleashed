@@ -1,6 +1,6 @@
 # 0012. The DI scoreboard is the ratchet, not `resetFirmwareState()`
 
-Status: Proposed (2026-09-26)
+Status: Accepted (2026-09-26)
 
 Amends [0002](0002-dependencies-are-passed-in.md). The decision there stands;
 its metric does not.
