@@ -34,11 +34,12 @@
 //
 // And two that make the number a proxy rather than a measure:
 //
-//  * A bare `catch (_) {}` - the same failure with less evidence, and lib/ has
-//    43 of them. Deleting a counted log leaves one of those and lowers the
-//    number, so the cheapest way to go green is to make the code worse. And
-//    nothing catches it going the other way either: no test asserts that a
-//    site a slice promoted still reaches history. #117.
+//  * A bare `catch (_) {}` - the same failure with less evidence. Deleting a
+//    counted log leaves one of those and lowers this number, which used to be
+//    the cheapest way to go green. `test/bare_catch_budget_test.dart` counts
+//    them now, so that trade is red on the other side and #117 is answered.
+//    What still has no test is the other direction: nothing asserts that a
+//    site a slice promoted actually reaches history.
 //  * A correct fix can move the number either way, because what replaces a
 //    counted site depends on the shape of the fix.
 //
