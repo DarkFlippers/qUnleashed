@@ -89,7 +89,7 @@ void main() {
     // Pinned as it behaves. It is worth knowing because the firmware's own
     // parser is the other reader of this file, and if it ends a block at the
     // blank line then the app and the device disagree about a manifest the
-    // user edited by hand.
+    // user edited by hand. #171 holds the question.
     test('keeps every animation around a nameless paragraph', () {
       final read = DolphinManifest.parse('''
 ${DolphinManifest.header}
