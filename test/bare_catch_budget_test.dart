@@ -45,15 +45,21 @@ import 'ratchet.dart';
 /// taken on the day, and the first pass through them is #118's shape: a catch
 /// on a path the UI is waiting on.
 const Map<String, int> kBudget = {
-  // Was 21. Four went from `archive/storage.dart`: the last device the app
-  // was on and the two favourites lists are the user's own choices, and each
-  // used to vanish between launches with nothing said anywhere. The two that
-  // stay there are the icon cache, which is fetched again when it is missing.
+  // Was 21, then 17. Four went from `archive/storage.dart` - the last device
+  // and the two favourites lists are the user's own choices, and each used to
+  // vanish between launches with nothing said anywhere. Three more went from
+  // `http/app_http.dart`: reading the cache, writing it, and the legacy file
+  // left behind by a migration.
   //
-  // What is left is the most mixed area: HTTP caching, storage paths,
-  // notification channels, and two in `logging.dart` that cannot report a
-  // failure to report.
-  'services': 17,
+  // The two that stay in each are the ones the code earns. An icon is fetched
+  // again when it is missing; a 304 re-stamp that fails costs one revalidation
+  // round trip and the body on disk is valid either way; and the temp file a
+  // failed store tries to clean up is already being reported by the rethrow
+  // above it.
+  //
+  // What is left is the most mixed: storage paths, notification channels, and
+  // two in `logging.dart` that cannot report a failure to report.
+  'services': 14,
   // Infrared, paint and the remote. `infrared/local_repo.dart` holds several
   // around file operations during a library swap, one of which is deliberate
   // and says so in its body.
