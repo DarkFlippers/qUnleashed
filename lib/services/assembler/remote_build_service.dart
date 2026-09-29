@@ -7,6 +7,7 @@ import 'package:crypto/crypto.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../http/app_http.dart';
+import '../logging.dart';
 import '../localization/l10n.dart';
 
 /// The builder address is public; only the signing key is a secret, so the
@@ -250,7 +251,12 @@ class RemoteBuildService {
       ).forEach(request.headers.set);
       final response = await request.close();
       await response.drain<void>();
-    } catch (_) {}
+    } catch (e) {
+      // The build carries on at the other end. Nothing here is waiting on the
+      // cancel - it is sent as the caller walks away - so what is lost is the
+      // only trace that a job is still running on a server nobody is watching.
+      LogService.warn('[RemoteBuild] could not cancel $id: $e');
+    }
   }
 
   Future<Map<String, dynamic>> _postJson(
@@ -291,7 +297,19 @@ class RemoteBuildService {
     try {
       final decoded = jsonDecode(text);
       if (decoded is Map<String, dynamic>) return decoded;
-    } catch (_) {}
+      // Read, and not what was asked for. A different shape from a server
+      // that has moved on is not the same fault as a proxy's error page, and
+      // the message the user gets cannot tell them apart.
+      LogService.warn(
+        '[RemoteBuild] unreadable response: expected an object, '
+        'got ${decoded.runtimeType}',
+      );
+    } catch (e) {
+      // The user is told: the throw below is a surface. What was missing is
+      // why - a proxy's HTML error page and a server that changed its shape
+      // read identically from the message alone.
+      LogService.warn('[RemoteBuild] unreadable response: $e');
+    }
     throw RemoteBuildException(l10n.remoteUnexpectedResponse);
   }
 
@@ -302,7 +320,12 @@ class RemoteBuildService {
       if (decoded is Map<String, dynamic>) {
         detail = decoded['detail'] as String? ?? '';
       }
-    } catch (_) {}
+    } catch (e) {
+      // The status code still answers the user. This is the server's own
+      // account of the refusal, and losing it turns "why did the build fail"
+      // into a guess - once per failed request, so it cannot flood.
+      LogService.warn('[RemoteBuild] error body unreadable: $e');
+    }
     return switch (statusCode) {
       400 =>
         detail.isNotEmpty
