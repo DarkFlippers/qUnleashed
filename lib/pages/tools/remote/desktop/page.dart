@@ -257,7 +257,11 @@ class _RemoteControlPageState extends State<RemoteControlPage>
         savedPath = path;
         try {
           await copyGifFileToClipboard(path);
-        } catch (_) {}
+        } catch (e) {
+          // The file is saved and the screen says where. What does not happen
+          // is the paste the user is about to try.
+          LogService.warn('[Remote] recording saved but not copied: $e');
+        }
       }
     } catch (e) {
       saveError = e;

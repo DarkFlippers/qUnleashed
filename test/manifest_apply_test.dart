@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flipperlib/flipperlib.dart' hide DateTime;
+import 'package:flipperlib/flipperlib.dart' hide DateTime, File;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/tools/paint/dolphin/manifest.dart';
 import 'package:qunleashed/pages/tools/paint/dolphin_animation.dart';
@@ -14,6 +14,14 @@ import 'package:qunleashed/pages/tools/paint/virtual_display_session.dart';
 /// which animations end up in the pack, with which settings, and what the
 /// screen is told. The pack is what gets uploaded, so an animation that
 /// quietly leaves it is one the Flipper stops playing.
+///
+/// Not covered: the device preview failing. `loadDevicePreview` cannot be
+/// made to throw from here - a missing frame file falls back to a blank one
+/// and `BmCodec.xbmToPixels` bounds-checks every read, so a truncated file is
+/// decoded rather than refused. Only a genuine I/O fault on a file that
+/// `exists()` has already answered for would reach it, which is not something
+/// a test can arrange portably. The catch there reports now, and this is the
+/// record that it does so untested.
 class FakeManagerClient implements FlipperClient {
   final _connection = StreamController<FlipperConnectionState>.broadcast();
 
@@ -47,34 +55,39 @@ class FakeDisplayClient implements FlipperClient {
 }
 
 /// One animation in the library. Only its name and manifest entry matter
-/// here; the rest is the smallest shape a `PaintProject` can take.
-PaintItem item(String name, {bool selected = false, int weight = 8}) =>
-    PaintItem(
-      PaintProject(
-        id: name,
-        name: name,
-        path: '/local/$name',
-        isDraft: false,
-        modified: DateTime(2026),
-        frameCount: 1,
-        dolphin: DolphinAnimation(
-          name: name,
-          dirPath: '/local/$name',
-          metaPath: '/local/$name/meta.txt',
-          width: 128,
-          height: 54,
-          passiveFrames: 1,
-          activeFrames: 0,
-          frameRate: 2,
-          duration: 3600,
-          activeCycles: 1,
-          activeCooldown: 5,
-          framesOrder: const [0],
-          frameFileCount: 1,
-        ),
-      ),
-      ManifestEntry(name: name, selected: selected, weight: weight),
-    );
+/// here; [dirPath] is where a preview would read its frames, and no case
+/// needs it - see the note at the top about why.
+PaintItem item(
+  String name, {
+  bool selected = false,
+  int weight = 8,
+  String? dirPath,
+}) => PaintItem(
+  PaintProject(
+    id: name,
+    name: name,
+    path: dirPath ?? '/local/$name',
+    isDraft: false,
+    modified: DateTime(2026),
+    frameCount: 1,
+    dolphin: DolphinAnimation(
+      name: name,
+      dirPath: dirPath ?? '/local/$name',
+      metaPath: '${dirPath ?? '/local/$name'}/meta.txt',
+      width: 128,
+      height: 54,
+      passiveFrames: 1,
+      activeFrames: 0,
+      frameRate: 2,
+      duration: 3600,
+      activeCycles: 1,
+      activeCooldown: 5,
+      framesOrder: const [0],
+      frameFileCount: 1,
+    ),
+  ),
+  ManifestEntry(name: name, selected: selected, weight: weight),
+);
 
 void main() {
   late FakeManagerClient client;
@@ -221,4 +234,9 @@ void main() {
       expect(entryOf('C').selected, isTrue);
     });
   });
+
+  // The preview is the whole point of selecting a row: the animation appears
+  // on the Flipper's external display. It is loaded off disk, and a project
+  // whose folder has gone used to fail with the row selected, the device
+  // blank, and nothing said anywhere.
 }

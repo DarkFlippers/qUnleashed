@@ -78,10 +78,17 @@ const Map<String, int> kBudget = {
   // a failed cache write tries to clean up, which its own rethrow already
   // covers.
   'services': 8,
-  // Infrared, paint and the remote. `infrared/local_repo.dart` holds several
-  // around file operations during a library swap, one of which is deliberate
-  // and says so in its body.
-  'pages/tools': 12,
+  // Was 12. Five went: a display that would not come up and said nothing
+  // while the screen sat blank, a preview that failed the same way, a draft
+  // folder left behind by "save as" and listed beside its own copy, and a
+  // recording saved but not copied to the clipboard the user pressed for.
+  //
+  // The seven left are cleanup and retries, and each says so where it sits:
+  // closing an API client before rebuilding it, two temp files deleted in a
+  // `finally`, a `mkdir` of a folder that already exists, a directory that
+  // could not be created and is counted where its files are written, and two
+  // media-remote calls whose own bridge already logs.
+  'pages/tools': 7,
   // The apps catalog and installer. Was 11 - the cached-catalogue loop in
   // `manifest_registry.dart` reads entry by entry now and says what it
   // dropped, which is the first half of #138. The four all-or-nothing list

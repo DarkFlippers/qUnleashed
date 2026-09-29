@@ -124,7 +124,16 @@ class ProjectManagerController extends ChangeNotifier {
       final preview = await project.loadDevicePreview();
       if (token != _previewToken || _disposed) return;
       _display.setPreview(preview.frames, preview.delayMs);
-    } catch (_) {}
+    } catch (e) {
+      // The user picked an animation and the Flipper shows nothing. There is
+      // no failed state on this screen to put it in - the row is selected and
+      // the device is blank - so the log is the only place it can go.
+      if (token != _previewToken || _disposed) return;
+      _display.clearPreview();
+      LogService.warn(
+        '[Paint] could not preview "${project.id}" on the device: $e',
+      );
+    }
   }
 
   /// Scans the local library, seeding each animation's manifest entry from the
