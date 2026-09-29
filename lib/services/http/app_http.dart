@@ -7,6 +7,8 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../logging.dart';
+
 class AppHttpException implements Exception {
   AppHttpException(this.statusCode, this.url, [this.body]);
 
@@ -121,7 +123,13 @@ class AppHttp {
       final key = sha256.convert(utf8.encode(uri.toString())).toString();
       paths = _CachePaths(dir, key);
       cached = await _JsonCacheEntry.read(paths);
-    } catch (_) {}
+    } catch (e) {
+      // Everything below still works: `cached` stays null and the call goes
+      // to the network. What it costs is the offline copy - a user with no
+      // connection gets a network error where they had a screen - so the
+      // reason the cache was skipped is the one thing worth keeping.
+      LogService.warn('[Http] cache unreadable for $uri: $e');
+    }
 
     if (cached != null && DateTime.now().difference(cached.fetchedAt) < ttl) {
       final hit = await _tryDecodeBodyFile(cached.bodyFile);
@@ -195,7 +203,12 @@ class AppHttp {
       if (paths != null && body.isNotEmpty) {
         try {
           await _JsonCacheEntry.store(paths, etag: freshEtag ?? '', body: body);
-        } catch (_) {}
+        } catch (e) {
+          // The answer is already on its way to the caller, so this is not a
+          // failure they see now. It is the one they see next time, offline,
+          // with nothing on disk and no record of why.
+          LogService.warn('[Http] could not cache $uri: $e');
+        }
       }
       return decoded;
     }
@@ -352,7 +365,13 @@ class _JsonCacheEntry {
           bodyFile: paths.body,
         );
       }
-    } catch (_) {
+    } catch (e) {
+      // A pair that is on disk and will not read: a meta file truncated by a
+      // process that died mid-write, or one this version no longer
+      // understands. Treating it as absent is right - the network still
+      // answers - but it is a cache that will fail this way every time until
+      // something overwrites it, and it used to say nothing.
+      LogService.warn('[Http] cache entry unreadable: $e');
       return null;
     }
     return _migrate(paths);
@@ -383,7 +402,13 @@ class _JsonCacheEntry {
       // call that already deleted it - must not discard the migrated entry.
       try {
         await paths.legacy.delete();
-      } catch (_) {}
+      } catch (e) {
+        // Migrated and then not cleaned up. Harmless twice over - the new
+        // pair is on disk and the next migration finds nothing to do - but a
+        // file that will not delete is worth knowing about before the rest of
+        // the cache meets the same permission.
+        LogService.warn('[Http] left a migrated cache file behind: $e');
+      }
       return _JsonCacheEntry(
         etag: etag,
         fetchedAt: DateTime.fromMillisecondsSinceEpoch(fetchedAtMs),
