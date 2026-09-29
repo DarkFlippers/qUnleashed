@@ -45,10 +45,15 @@ import 'ratchet.dart';
 /// taken on the day, and the first pass through them is #118's shape: a catch
 /// on a path the UI is waiting on.
 const Map<String, int> kBudget = {
-  // The largest share, and the most mixed: HTTP caching, storage paths,
-  // notification channels. Some are genuinely best-effort - a cache write that
-  // fails leaves the network answer intact - and some are not.
-  'services': 21,
+  // Was 21. Four went from `archive/storage.dart`: the last device the app
+  // was on and the two favourites lists are the user's own choices, and each
+  // used to vanish between launches with nothing said anywhere. The two that
+  // stay there are the icon cache, which is fetched again when it is missing.
+  //
+  // What is left is the most mixed area: HTTP caching, storage paths,
+  // notification channels, and two in `logging.dart` that cannot report a
+  // failure to report.
+  'services': 17,
   // Infrared, paint and the remote. `infrared/local_repo.dart` holds several
   // around file operations during a library swap, one of which is deliberate
   // and says so in its body.
