@@ -57,9 +57,18 @@ const Map<String, int> kBudget = {
   // failed store tries to clean up is already being reported by the rethrow
   // above it.
   //
-  // What is left is the most mixed: storage paths, notification channels, and
-  // two in `logging.dart` that cannot report a failure to report.
-  'services': 14,
+  // Then three more from `storage/paths.dart`: the walk behind Settings ->
+  // Storage reported a size short by whatever it could not read, and the
+  // clear beside it reported success over files it had left. Both count and
+  // say so once now.
+  //
+  // What is left is eleven, and two of them are as deliberate as a bare catch
+  // gets. `localization/controller.dart` adds a `WidgetsBinding` observer
+  // that a plain unit test has no binding for, and reporting it would fire in
+  // every one of them. `storage/fap_icons.dart` caches an app icon that is
+  // fetched again when it is missing - the same trade the archive's icon
+  // cache makes.
+  'services': 11,
   // Infrared, paint and the remote. `infrared/local_repo.dart` holds several
   // around file operations during a library swap, one of which is deliberate
   // and says so in its body.

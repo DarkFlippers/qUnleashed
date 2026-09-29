@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import 'package:path_provider/path_provider.dart';
 
+import '../logging.dart';
 import '../../components/path.dart';
 import 'permissions.dart';
 
@@ -234,26 +235,57 @@ Future<io.Directory> legacyApplicationDocumentsDirectory(
   return io.Directory(pathJoin([base.path, ...parts]));
 }
 
+/// Adds up the files under [dir], skipping what it cannot measure.
+///
+/// The figure reaches the user as a size on the storage screen, so a partial
+/// one is a wrong number presented as a fact. Both ways it can go short say
+/// so: files that would not answer their length, and a walk that stopped.
+///
+/// Counted and reported once rather than per file - a folder the OS has
+/// locked fails every entry in it, and a line each is a log nobody reads.
 Future<int> directorySize(io.Directory dir) async {
   if (!await dir.exists()) return 0;
   var total = 0;
+  var skipped = 0;
   try {
     await for (final entity in dir.list(recursive: true, followLinks: false)) {
       if (entity is! io.File) continue;
       try {
         total += await entity.length();
-      } catch (_) {}
+      } catch (_) {
+        skipped++;
+      }
     }
-  } catch (_) {}
+  } catch (e) {
+    LogService.warn('[Storage] stopped measuring "${dir.path}" early: $e');
+  }
+  if (skipped > 0) {
+    LogService.warn(
+      '[Storage] could not measure $skipped file(s) under "${dir.path}"',
+    );
+  }
   return total;
 }
 
+/// Empties [dir], leaving behind what will not delete.
+///
+/// A file held open by another process, or one the OS refuses, used to leave
+/// the screen reporting a cleared cache over a folder that still has things
+/// in it. Reported once with a count, for the same reason as the walk above.
 Future<void> clearDirectory(io.Directory dir) async {
   if (!await dir.exists()) return;
+  var left = 0;
   await for (final entity in dir.list(followLinks: false)) {
     try {
       await entity.delete(recursive: true);
-    } catch (_) {}
+    } catch (_) {
+      left++;
+    }
+  }
+  if (left > 0) {
+    LogService.warn(
+      '[Storage] could not remove $left entr(ies) from "${dir.path}"',
+    );
   }
 }
 
