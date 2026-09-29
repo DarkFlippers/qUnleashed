@@ -271,6 +271,9 @@ class FlipperGpsResponder {
         ),
       );
     } catch (error) {
+      // Stays at info: one of these goes out per fix, for as long as the
+      // device is asking. A link that has gone would put a line up every
+      // second and push the rest of the log screen out.
       LogService.info('[GPS] failed to send location: $error');
     }
   }
@@ -283,6 +286,8 @@ class FlipperGpsResponder {
         ),
       );
     } catch (error) {
+      // Stays at info: this is the report of a report, on the same link that
+      // has just failed to carry one.
       LogService.info('[GPS] failed to send error ${status.name}: $error');
     }
   }

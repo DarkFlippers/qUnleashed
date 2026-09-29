@@ -41,7 +41,12 @@ class ColdLink {
       await client.connectBleAddress(last.id, name: last.name);
       await client.ping(PingRequest(data: const [0x51, 0x55]));
     } catch (e) {
-      LogService.info('[ColdLink] connect failed: $e');
+      // The only way a home-screen widget reaches a Flipper, and it runs in
+      // the headless isolate where there is no UI to put anything in - the
+      // widget just draws its "no device" face, which is the same face it
+      // draws when none is remembered. The false below is the whole report,
+      // and it says nothing about which of the two happened.
+      LogService.warn('[ColdLink] connect failed: $e');
       return false;
     }
     return client.isConnected;

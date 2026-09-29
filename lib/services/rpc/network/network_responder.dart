@@ -455,6 +455,9 @@ class FlipperNetworkResponder {
     } on FlipperWriteCancelledException {
       await _sendHttpError(id, ErrorCode.FILE_ERROR);
     } catch (error) {
+      // Stays at info: the line below tells the device, with a code it maps
+      // from the same exception, so the failure is reported to the thing
+      // that asked for it.
       LogService.info('[Network] http failed on $id: $error');
       await _sendHttpError(id, _errorFor(error));
     }
@@ -710,6 +713,9 @@ class FlipperNetworkResponder {
     try {
       await _client.sendRpc(message, priority: priority);
     } catch (error) {
+      // Stays at info: this is the reply path for every relayed frame, so on
+      // a busy socket it runs thousands of times. There is no batch boundary
+      // to tally at either - the relay is live, not a pass over a list.
       LogService.info('[Network] failed to send response: $error');
     }
   }
