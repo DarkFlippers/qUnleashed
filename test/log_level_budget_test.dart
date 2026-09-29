@@ -88,7 +88,20 @@ const Map<String, int> kBudget = {
   // storage operation, which leaves the last good figure on screen and stays
   // here. A number that goes 8 -> 4 rather than 8 -> 3 for a reason worth
   // having.
-  'services': 18,
+  //
+  // Then five from `emulate/service.dart`. Four of them sit above an
+  // `EmulateResult.fail`, which is a category rather than a cause: the page
+  // renders "could not open the app" for a firmware that refused, a link
+  // that went and a file that is not there alike, so the difference between
+  // them existed only here. The fifth is an appExit the Flipper refused,
+  // which leaves the app running and turns the *next* emulate into "device
+  // busy" - a symptom one step removed from its cause.
+  //
+  // The two left there repeat or are already answered: the reload before a
+  // press tries four times in under a second, and its giving up is a warn at
+  // the end of the loop rather than four lines through it; and the wait for
+  // APP_CLOSED has a five-second timeout that answers the case it is for.
+  'services': 13,
   // Part-triaged. What remains mostly writes its error into a controller field
   // the widgets read only in states the failure itself prevents, so its second
   // surface mostly is not one - a UI defect, #110. A ceiling, not a verdict.

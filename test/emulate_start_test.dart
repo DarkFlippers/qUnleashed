@@ -1,10 +1,8 @@
-import 'dart:async';
-
 import 'package:flipperlib/flipperlib.dart' hide DateTime;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:qunleashed/components/archive/category.dart';
-import 'package:qunleashed/components/archive/models/key.dart';
 import 'package:qunleashed/services/emulate/service.dart';
+
+import 'fake_app_client.dart';
 
 /// Opening a key on the Flipper, and every way that goes wrong.
 ///
@@ -18,104 +16,6 @@ import 'package:qunleashed/services/emulate/service.dart';
 /// belongs to the Flipper it started on, and `_onConnection` closes it when
 /// another takes its place. That needs a *live* session, which `unbound` is
 /// by definition not.
-class FakeAppClient implements FlipperClient {
-  final _frames = StreamController<Main>.broadcast();
-  final _connection = StreamController<FlipperConnectionState>.broadcast();
-
-  bool connected = true;
-
-  /// Raised instead of answering `appStart`, when set.
-  Object? startThrows;
-
-  /// Raised instead of answering `appLoadFile`, when set.
-  Object? loadThrows;
-
-  /// Whether the app ever reports itself started. False is the real case
-  /// where the fallback delay has to carry the call.
-  bool reportsStarted = true;
-
-  final calls = <String>[];
-
-  Future<void> close() async {
-    await _frames.close();
-    await _connection.close();
-  }
-
-  void _notify(AppState state) => scheduleMicrotask(
-    () => _frames.add(Main(appStateResponse: AppStateResponse(state: state))),
-  );
-
-  @override
-  bool get isConnected => connected;
-
-  @override
-  Stream<FlipperConnectionState> get connectionStream => _connection.stream;
-
-  /// Where `appStateStream()` gets its frames: the API is an extension over
-  /// this, so faking it is faking the notification stream.
-  @override
-  Stream<Main> get notificationStream => _frames.stream;
-
-  /// Unbound, which is what the real one returns with nothing connected.
-  @override
-  FlipperSessionBinding bindCurrentSession() =>
-      const FlipperSessionBinding.unbound();
-
-  /// The one method the whole app API runs through.
-  ///
-  /// `appStart`, `appLoadFile` and `appExit` are extensions on
-  /// `FlipperClient`, and an extension is resolved statically - declaring
-  /// them on a fake does nothing, the real bodies run. They all reach here,
-  /// so this is the boundary a fake belongs at.
-  @override
-  Future<List<Main>> callRpcFrames(
-    Main request, {
-    Duration timeout = const Duration(seconds: 8),
-    FlipperRequestPriority priority = FlipperRequestPriority.unattended,
-    void Function(Main frame)? onFrame,
-    void Function()? onSent,
-    bool retainFrames = true,
-    bool interleavable = false,
-    bool pipelined = true,
-  }) async {
-    if (request.hasAppStartRequest()) {
-      final r = request.appStartRequest;
-      calls.add('appStart(${r.name}, ${r.args})');
-      if (startThrows != null) throw startThrows!;
-      if (reportsStarted) _notify(AppState.APP_STARTED);
-      return const [];
-    }
-    if (request.hasAppLoadFileRequest()) {
-      calls.add('appLoadFile(${request.appLoadFileRequest.path})');
-      if (loadThrows != null) throw loadThrows!;
-      return const [];
-    }
-    if (request.hasAppExitRequest()) {
-      calls.add('appExit');
-      _notify(AppState.APP_CLOSED);
-      return const [];
-    }
-    calls.add('unexpected ${request.whichContent()}');
-    return const [];
-  }
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
-}
-
-ArchiveKey key() => ArchiveKey(
-  name: 'garage',
-  category: ArchiveCategory.subghz,
-  state: ArchiveKeyState.synced,
-  extension: '.sub',
-  remotePath: '/ext/subghz/garage.sub',
-);
-
-/// An RPC failure of [T]'s kind. The response carries no status the service
-/// reads; it is the type that decides the answer.
-FlipperRpcException rpcFailure(FlipperRpcException Function(Main) build) =>
-    build(Main());
-
 void main() {
   late FakeAppClient client;
   late EmulateService service;
