@@ -185,6 +185,7 @@ class DeviceSource extends ChangeNotifier {
   Future<void> _readLocalMirror() async {
     final token = client.deviceToken;
     final map = <String, ({int size, String folder, String path, int stamp})>{};
+    var unstatted = 0;
     try {
       final name = await _deviceName();
       if (name != null) {
@@ -211,7 +212,9 @@ class DeviceSource extends ChangeNotifier {
               final stat = await e.stat();
               size = stat.size;
               stamp = stat.modified.millisecondsSinceEpoch;
-            } catch (_) {}
+            } catch (_) {
+              unstatted++;
+            }
             map[alias] = (
               size: size,
               folder: folder,
@@ -221,7 +224,17 @@ class DeviceSource extends ChangeNotifier {
           }
         }
       }
-    } catch (_) {}
+    } catch (e) {
+      // Whatever was gathered before the walk stopped is what the screen
+      // shows, and it shows it as the whole list. An install that is missing
+      // from it looks uninstalled.
+      LogService.warn('[Apps] stopped reading installed apps early: $e');
+    }
+    if (unstatted > 0) {
+      // Once for the walk. A folder the device will not stat fails every file
+      // under it, and those rows show a size of zero and no date.
+      LogService.warn('[Apps] could not size $unstatted installed file(s)');
+    }
     if (token.isStale) return;
     _local
       ..clear()
