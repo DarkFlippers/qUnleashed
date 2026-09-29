@@ -65,7 +65,10 @@ class DeviceInfoWatchService {
     try {
       await client.awaitDeviceInfo().timeout(const Duration(seconds: 20));
     } catch (e) {
-      LogService.info('[watchInfo] device info: $e');
+      // The whole snapshot, and the only request for it in the session. Every
+      // field on the device screen - name, firmware, hardware - stays blank,
+      // and a blank field says nothing about why it is blank.
+      LogService.warn('[watchInfo] no device info: $e');
     }
     if (!alive()) return;
 
@@ -84,6 +87,8 @@ class DeviceInfoWatchService {
       );
       emit({for (final item in batch.items) 'power.${item.key}': item.value});
     } catch (e) {
+      // Stays at info: the poll in phase 2 asks again every few seconds, so
+      // this one is the first of many rather than the last word.
       LogService.info('[watchInfo] battery initial: $e');
     }
     if (!alive()) return;
@@ -103,7 +108,9 @@ class DeviceInfoWatchService {
         'protobuf_version_minor': '$minor',
       });
     } catch (e) {
-      LogService.info('[watchInfo] protobuf: $e');
+      // Asked once and never again this session, so the version is simply
+      // absent from the device screen from here on.
+      LogService.warn('[watchInfo] no protobuf version: $e');
     }
     if (!alive()) return;
 
@@ -121,7 +128,9 @@ class DeviceInfoWatchService {
             '${_pad(dt.hour)}:${_pad(dt.minute)}:${_pad(dt.second)}',
       });
     } catch (e) {
-      LogService.info('[watchInfo] datetime: $e');
+      // Also asked once. The clock the device screen shows is whatever was
+      // there before, which is nothing.
+      LogService.warn('[watchInfo] could not read the device clock: $e');
     }
     if (!alive()) return;
 
@@ -142,7 +151,14 @@ class DeviceInfoWatchService {
         );
         if (extData.isNotEmpty) emit(extData);
       } catch (e) {
-        LogService.info('[watchInfo] storage /ext $stage: $e');
+        // The initial read is the one that fills the figure in; a refresh
+        // that fails leaves the last good one on screen, and they run per
+        // storage operation, which is far faster than anyone can act on.
+        if (stage == 'initial') {
+          LogService.warn('[watchInfo] no SD card info: $e');
+        } else {
+          LogService.info('[watchInfo] storage /ext $stage: $e');
+        }
       }
     }
 
@@ -198,7 +214,10 @@ class DeviceInfoWatchService {
               '${_pad(now.hour)}:${_pad(now.minute)}:${_pad(now.second)}',
         });
       } catch (e) {
-        LogService.info('[watchInfo] set datetime: $e');
+        // The user turned "sync time on start" on and it did not happen. The
+        // Flipper keeps whatever time it had, and the setting still reads as
+        // enabled.
+        LogService.warn('[watchInfo] could not set the device clock: $e');
       }
       if (!alive()) return;
     }
@@ -277,6 +296,10 @@ class DeviceInfoWatchService {
               for (final item in batch.items) 'power.${item.key}': item.value,
             });
           } catch (e) {
+            // Stays at info, here and below: this is the poll, once every
+            // five seconds for as long as the Flipper is connected. A link
+            // that has gone would fill the log screen with one line per tick
+            // and push out what a reader came for.
             LogService.info('[watchInfo] battery full: $e');
             if (!alive()) break;
           }
