@@ -101,7 +101,23 @@ const Map<String, int> kBudget = {
   // press tries four times in under a second, and its giving up is a warn at
   // the end of the loop rather than four lines through it; and the wait for
   // APP_CLOSED has a five-second timeout that answers the case it is for.
-  'services': 13,
+  //
+  // Then one from `home_widget/cold_link.dart`, and with it the area is read
+  // through. It is the only way a home-screen widget reaches a Flipper, it
+  // runs in the headless isolate where there is no UI to put a failure in,
+  // and the widget draws the same "no device" face whether the dial failed
+  // or nothing was remembered to dial.
+  //
+  // The twelve left each say in place why they stay, and they are four
+  // shapes. Readings that repeat: the battery poll, the SD card refresh, the
+  // four reload retries, a GPS fix per second, and the reply path for every
+  // relayed network frame. Failures already reported to whoever asked: an
+  // HTTP error the device is sent a code for, a pin refusal the sheet renders
+  // as "not supported here". Waits whose own timeout is the answer: APP_CLOSED.
+  // And one whose catch is the documented path rather than a failure - the
+  // permission prompts, which need an activity a widget engine does not have
+  // and which the service comes up without.
+  'services': 12,
   // Part-triaged. What remains mostly writes its error into a controller field
   // the widgets read only in states the failure itself prevents, so its second
   // surface mostly is not one - a UI defect, #110. A ceiling, not a verdict.

@@ -192,6 +192,10 @@ class BleForegroundService with WidgetsBindingObserver {
         }
       }
     } catch (e) {
+      // Stays at info, and the comment above is why: the outcome is ignored
+      // by design. Both prompts need an activity, an engine a home-screen
+      // widget started has none, and the service comes up regardless - so a
+      // throw here is the documented path, not a failure.
       LogService.info('[ForegroundService] permission prompt skipped: $e');
     }
 
