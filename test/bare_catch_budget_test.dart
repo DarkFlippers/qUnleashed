@@ -109,12 +109,28 @@ const Map<String, int> kBudget = {
   // a .fap removed after the app itself is gone, and an `awaitName` that
   // falls through to the name the client already holds.
   'pages/apps': 6,
-  'pages/archive': 3,
+  // Was 3. The one that went is the copy of a map pin on the Flipper: the
+  // save patched the file on the phone, pushed it to the device, and reported
+  // success whether or not the push landed - so the pin moved on screen and
+  // the Flipper kept the old coordinates with nothing saying the two had come
+  // apart.
+  //
+  // The two left are both commented where they sit: a `mkdir` of a
+  // destination that may already exist, and a location fix that has not
+  // arrived yet, which the position stream behind it keeps asking for.
+  'pages/archive': 2,
   // #118 was this area and has been dealt with; what is left is not that
-  // shape.
+  // shape - a temp directory removed in a `finally` and a `mkdir` of a folder
+  // that may already exist.
   'pages/devices': 2,
+  // A `mkdir` per path segment, walking down to the folder a write needs. Any
+  // failure that is not "it is already there" fails that write, which reports.
   'pages/flibler': 1,
-  'components': 1,
+  // Was 1, and it was the last link in a chain with nothing after it: the
+  // in-app browser falls back to the external one, and the external one fell
+  // back to nothing at all. The user tapped a link and the app carried on as
+  // though they had not.
+  'components': 0,
 };
 
 const String kAdr =
