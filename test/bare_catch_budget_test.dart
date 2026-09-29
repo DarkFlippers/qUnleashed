@@ -93,7 +93,22 @@ const Map<String, int> kBudget = {
   // `manifest_registry.dart` reads entry by entry now and says what it
   // dropped, which is the first half of #138. The four all-or-nothing list
   // decodes in `catalog_api.dart` are the other half and are not these.
-  'pages/apps': 10,
+  //
+  // Then four more, and every one of them left a screen saying something that
+  // was not so. The mirror walk behind the apps list showed whatever it had
+  // reached as the whole list, so an app it never got to read as uninstalled,
+  // and a file it could not stat read as zero bytes with no date. The
+  // catalogue icon queue failed every icon in silence, one reason at a time.
+  // And a delete the Flipper refused left a file on the card the app had
+  // already forgotten.
+  //
+  // The six left are cleanup and second chances, and none of them is a screen
+  // left waiting: a `mkdir` of a folder that already exists, a cached app
+  // icon that is fetched again when it is missing, an embedded ATP icon that
+  // renders as no icon, a temp zip deleted in a `finally`, the backup copy of
+  // a .fap removed after the app itself is gone, and an `awaitName` that
+  // falls through to the name the client already holds.
+  'pages/apps': 6,
   'pages/archive': 3,
   // #118 was this area and has been dealt with; what is left is not that
   // shape.

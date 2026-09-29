@@ -584,7 +584,13 @@ class InstallEngine extends ChangeNotifier {
   Future<void> _safeDelete(String path) async {
     try {
       await client.storageDelete(DeleteRequest(path: path, recursive: false));
-    } catch (_) {}
+    } catch (e) {
+      // Best-effort on purpose: the caller carries on and reports success
+      // either way, because the file may already be gone and stopping here
+      // would leave an app half-installed or half-removed. What is left is a
+      // file on the SD card the app believes it has deleted.
+      LogService.warn('[InstallEngine] could not remove "$path": $e');
+    }
   }
 
   Future<String> _resolveInstallDir(
