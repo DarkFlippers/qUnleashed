@@ -504,6 +504,76 @@ class LogService {
     return out;
   }
 
+  /// How long a cached zone offset is trusted before it is read again.
+  static Duration _zoneOffsetTtl = const Duration(minutes: 1);
+
+  /// The offset local time is ahead of UTC, and the instant that reading of
+  /// it stops being trusted.
+  static Duration _zoneOffset = Duration.zero;
+  static int _zoneOffsetExpiryMs = 0;
+
+  /// How many times the offset has been read off the platform. The cache
+  /// cannot be seen in the stamp - a correct cache and no cache at all print
+  /// the same thing - so this is the only way a test can tell them apart.
+  @visibleForTesting
+  static int debugZoneLookups = 0;
+
+  /// Forgets the cached offset, and optionally shortens how long the next one
+  /// is trusted, so a test need not wait a minute to watch it expire.
+  @visibleForTesting
+  static void debugResetZoneOffset({
+    Duration ttl = const Duration(minutes: 1),
+  }) {
+    _zoneOffsetTtl = ttl;
+    _zoneOffsetExpiryMs = 0;
+    debugZoneLookups = 0;
+  }
+
+  /// The stamp [_emit] would put on a line logged at [now].
+  ///
+  /// The ordinary entry points stamp whatever the clock reads, so an hour, a
+  /// minute or a second below ten is only covered at the times of day that
+  /// happen to have one - which is how a test comes to pass all afternoon and
+  /// fail at nine in the morning.
+  @visibleForTesting
+  static String debugStamp(DateTime now) => _stamp(now);
+
+  /// A line with neither consumer, which is what [_write] is in a build that
+  /// prints nothing.
+  ///
+  /// A test build always prints, so that state cannot be reached through the
+  /// ordinary entry points - and it is the one the skip in [_emit] exists
+  /// for, because package:logging and universal_ble keep feeding it.
+  @visibleForTesting
+  static void debugEmitUnheard(String msg) =>
+      _emit(msg, keep: false, console: false);
+
+  static String _two(int value) => value < 10 ? '0$value' : '$value';
+
+  /// `hh:mm:ss` of [now] on the wall clock, without asking the platform what
+  /// the clock reads.
+  ///
+  /// Reading an hour, a minute or a second off a *local* DateTime forces a
+  /// timezone lookup, and that lookup is most of what logging costs: measured
+  /// here at 6676 ns against 260 ns for this, per line, and worse under AOT
+  /// (#116). Shifting a UTC instant by a remembered offset gives the same
+  /// digits for a fifth of a percent of the price.
+  ///
+  /// What the cache can be wrong about is a DST change, for as long as
+  /// [_zoneOffsetTtl]: stamps inside that window carry the old offset and so
+  /// read an hour out, and the line after it jumps. Twice a year, in one
+  /// minute of a log that shows `hh:mm:ss` and is read against itself.
+  static String _stamp(DateTime now) {
+    final ms = now.millisecondsSinceEpoch;
+    if (ms >= _zoneOffsetExpiryMs) {
+      _zoneOffset = now.timeZoneOffset;
+      _zoneOffsetExpiryMs = ms + _zoneOffsetTtl.inMilliseconds;
+      debugZoneLookups++;
+    }
+    final wall = now.toUtc().add(_zoneOffset);
+    return '${_two(wall.hour)}:${_two(wall.minute)}:${_two(wall.second)}';
+  }
+
   /// Stamps [msg], keeps it in [history] if [keep], prints it if [console].
   ///
   /// Only what is kept is redacted. The history is the only thing the log
@@ -514,7 +584,12 @@ class LogService {
   /// a path still reaches logcat, which is not the surface with a copy button
   /// on it.
   static void _emit(String msg, {required bool keep, required bool console}) {
-    final ts = DateTime.now().toIso8601String().substring(11, 19);
+    // Nobody is listening, so there is nothing to stamp. This is the whole of
+    // _write's cost in a build that prints nothing: package:logging and
+    // universal_ble keep handing lines to a sink that drops them, and every
+    // one of them used to buy a timestamp first.
+    if (!keep && !console) return;
+    final ts = _stamp(DateTime.now());
     if (keep) {
       final kept = _redact(msg);
       _remember('[$ts] $kept', kept);
