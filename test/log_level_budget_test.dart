@@ -70,7 +70,25 @@ const Map<String, int> kBudget = {
   // "down from 24" ever since. Lowered here rather than left: a budget above
   // what the tree holds lets two sites back in silently, which is the one
   // direction this is meant to stop.
-  'services': 22,
+  // Was 22. Five went from `connection/device_info_watch.dart`, and each was
+  // the last word on a field of the device screen for the whole session: the
+  // info snapshot behind every identifying field, the protobuf version, the
+  // device clock, the SD card figure, and the clock the user asked the app to
+  // set on connect. A field that never arrives renders as a blank, and a
+  // blank says nothing about why.
+  //
+  // The four left in that file are the readings that repeat: the battery
+  // poll runs every five seconds for as long as the Flipper is connected, so
+  // the first of them is not the last word on anything and a line per tick
+  // would push the rest of the log screen out.
+  //
+  // Four rather than three because the SD card read is both shapes in one
+  // function, and splitting them turned one counted site into two - the read
+  // that fills the figure in, now a warn, and the refresh behind every
+  // storage operation, which leaves the last good figure on screen and stays
+  // here. A number that goes 8 -> 4 rather than 8 -> 3 for a reason worth
+  // having.
+  'services': 18,
   // Part-triaged. What remains mostly writes its error into a controller field
   // the widgets read only in states the failure itself prevents, so its second
   // surface mostly is not one - a UI defect, #110. A ceiling, not a verdict.
