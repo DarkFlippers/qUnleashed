@@ -256,7 +256,13 @@ class MapToolController extends ChangeNotifier with WidgetsBindingObserver {
             FlipperRequestPriority.background,
             () => _client.storageWriteChunked(remotePath, utf8.encode(updated)),
           );
-        } catch (_) {}
+        } catch (e) {
+          // The copy on the phone has the new coordinates and the save
+          // reports success, so the pin moves on screen and stays moved. The
+          // Flipper still holds the old ones, and nothing says the two have
+          // come apart.
+          LogService.warn('[Map] saved "$remotePath" locally only: $e');
+        }
       }
       await loadFiles();
       return true;

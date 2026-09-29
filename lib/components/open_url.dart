@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../services/localization/l10n.dart';
+import '../services/logging.dart';
 import '../theme/theme.dart';
 
 Future<void> openUrl(
@@ -54,7 +55,12 @@ Future<void> _launchInApp(Uri uri) async {
 Future<void> _launchExternal(Uri uri) async {
   try {
     await launchUrl(uri, mode: LaunchMode.externalApplication);
-  } catch (_) {}
+  } catch (e) {
+    // The end of the line: the in-app view has already fallen through to
+    // here, so there is nothing left to try and nothing on screen changes.
+    // The user taps a link and the app does nothing at all.
+    LogService.warn('[OpenUrl] could not open $uri: $e');
+  }
 }
 
 class _OpenUrlMenu extends StatelessWidget {

@@ -78,7 +78,14 @@ it is not growing, and the count was never the problem. The location is.
   instead of a style rule.
 - The ratchet stops being gameable in one direction, which matters because its
   own comment predicted that hole.
-- 42 bare catches stay in the tree, deliberately, and this ADR is why.
+- 26 bare catches stay in the tree, deliberately, and this ADR is why. The
+  sweep is finished: every area has been read through once, and every catch
+  that is left is named in `kBudget` in `test/bare_catch_budget_test.dart`
+  with the reason it earns its place — a `mkdir` of a folder that already
+  exists, a temp file removed in a `finally`, a cache entry that is fetched
+  again when it is missing, a retry that has not given up yet. The 25 that
+  went were the other kind: a screen that kept saying something no longer
+  true, and nothing anywhere recording why.
 - `classifyConnectError` becomes the named pattern for differentiated failures,
   and it needs tests — it is one of the two modules named in
   [0003](0003-test-flipperlib-first.md).
