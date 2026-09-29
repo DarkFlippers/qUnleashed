@@ -179,6 +179,20 @@ class _FileManagerPageState extends State<FileManagerPage> {
     setState(() => _ctrl.setSearch(''));
   }
 
+  /// The failure toast [message], with the reason the device gave appended.
+  ///
+  /// The controller keeps that reason in `lastFailure`, which a refresh does
+  /// not clear - unlike `error`, which is about the listing rather than about
+  /// what the user just asked for. Without this the page renders "Delete
+  /// failed" for a card that is full, a file that is open and a link that
+  /// went, and a bug report cannot tell them apart. #110.
+  String _because(String message) {
+    final reason = _ctrl.lastFailure;
+    return reason == null || reason.isEmpty
+        ? message
+        : context.l10n.fmFailedBecause(message, reason);
+  }
+
   Future<void> _connect() async {
     await promptConnectDevice(context);
     if (!mounted || !_ctrl.client.isConnected) return;
@@ -199,7 +213,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
     if (!mounted) return;
     if (!ok) {
       context.showNotification(
-        context.l10n.fmLaunchFailed,
+        _because(context.l10n.fmLaunchFailed),
         type: QNotificationType.error,
       );
       return;
@@ -298,7 +312,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
       final ok = await _ctrl.downloadEntryTo(entries.single, destDir: destDir);
       if (!mounted || ok) return;
       context.showNotification(
-        context.l10n.fmDownloadFailed,
+        _because(context.l10n.fmDownloadFailed),
         type: QNotificationType.error,
       );
       return;
@@ -307,7 +321,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
     final failures = await _ctrl.downloadEntriesTo(entries, destDir: destDir);
     if (!mounted || failures == 0) return;
     context.showNotification(
-      context.l10n.fmDownloadFailedCount(failures),
+      _because(context.l10n.fmDownloadFailedCount(failures)),
       type: QNotificationType.error,
     );
   }
@@ -391,7 +405,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
     if (!mounted) return;
     if (!success) {
       context.showNotification(
-        context.l10n.fmDeleteFailed,
+        _because(context.l10n.fmDeleteFailed),
         type: QNotificationType.error,
       );
     }
@@ -416,7 +430,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
     context.showNotification(
       failures == 0
           ? context.l10n.fmDeletedMany(items.length)
-          : context.l10n.fmDeleteFailedCount(failures),
+          : _because(context.l10n.fmDeleteFailedCount(failures)),
       type: failures == 0 ? QNotificationType.good : QNotificationType.error,
     );
   }
@@ -449,7 +463,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
     if (!mounted) return;
     if (!ok) {
       context.showNotification(
-        context.l10n.fmRenameFailed,
+        _because(context.l10n.fmRenameFailed),
         type: QNotificationType.error,
       );
     }
@@ -476,7 +490,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
     if (!mounted) return;
     if (!ok) {
       context.showNotification(
-        context.l10n.fmCreateFileFailed,
+        _because(context.l10n.fmCreateFileFailed),
         type: QNotificationType.error,
       );
       return;
@@ -552,8 +566,8 @@ class _FileManagerPageState extends State<FileManagerPage> {
     } else {
       context.showNotification(
         cb.isCut
-            ? context.l10n.fmMoveFailedCount(failures)
-            : context.l10n.fmCopyFailedCount(failures),
+            ? _because(context.l10n.fmMoveFailedCount(failures))
+            : _because(context.l10n.fmCopyFailedCount(failures)),
         type: QNotificationType.error,
       );
     }
@@ -597,8 +611,13 @@ class _FileManagerPageState extends State<FileManagerPage> {
     await _ctrl.refresh();
     if (!mounted) return;
     if (failures > 0) {
+      // `lastFailure` rather than `error`, which the refresh above has just
+      // nulled - this line rendered "Upload failed for 1 file(s): " with an
+      // empty slot for as long as the two were in that order. Reading the
+      // reason after the refresh is now simply safe, rather than something
+      // every call site has to remember. #110.
       context.showNotification(
-        context.l10n.fmUploadFailedCount(failures, _ctrl.error ?? ''),
+        context.l10n.fmUploadFailedCount(failures, _ctrl.lastFailure ?? ''),
         type: QNotificationType.error,
       );
     } else {

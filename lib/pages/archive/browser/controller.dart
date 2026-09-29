@@ -41,6 +41,7 @@ class FileManagerController extends ChangeNotifier {
   String _path;
   bool _loading = false;
   String? _error;
+  String? _lastFailure;
   List<RemoteEntry> _entries = const [];
   bool _showHidden = true;
   double _transferProgress = 0;
@@ -57,6 +58,19 @@ class FileManagerController extends ChangeNotifier {
   String get path => _path;
   bool get loading => _loading;
   String? get error => _error;
+
+  /// Why the last operation failed, in the device's own words.
+  ///
+  /// Separate from [error] because the two have different lifetimes. [error]
+  /// describes the listing on screen, and a refresh replaces it. This
+  /// describes something the user asked for - a delete, a rename, an upload -
+  /// and a refresh is the *first* thing that follows one, so a field the
+  /// refresh clears is one the page can never read. #110.
+  ///
+  /// Kept until the next failure. The page reads it beside the count it has
+  /// already got, which is where the action ends.
+  String? get lastFailure => _lastFailure;
+
   bool get showHidden => _showHidden;
   double get transferProgress => _transferProgress;
   String? get transferLabel => _transferLabel;
@@ -229,6 +243,9 @@ class FileManagerController extends ChangeNotifier {
       }
       _entries = out;
     } catch (e) {
+      // Not _lastFailure: that one belongs to something the user asked for,
+      // and the panel below already renders this one for as long as the
+      // listing it describes is on screen.
       _error = '$e';
       _entries = const [];
       LogService.info('[FileManager] list $_path failed: $e');
@@ -245,7 +262,7 @@ class FileManagerController extends ChangeNotifier {
         timeout: const Duration(minutes: 5),
       );
     } catch (e) {
-      _error = '$e';
+      _error = _lastFailure = '$e';
       LogService.info('[FileManager] read $remotePath failed: $e');
       _notify();
       return null;
@@ -268,7 +285,7 @@ class FileManagerController extends ChangeNotifier {
       );
       return true;
     } catch (e) {
-      _error = '$e';
+      _error = _lastFailure = '$e';
       LogService.info('[FileManager] write $remotePath failed: $e');
       return false;
     } finally {
@@ -286,7 +303,7 @@ class FileManagerController extends ChangeNotifier {
       );
       return true;
     } catch (e) {
-      _error = '$e';
+      _error = _lastFailure = '$e';
       LogService.info('[FileManager] delete $remotePath failed: $e');
       _notify();
       return false;
@@ -302,7 +319,7 @@ class FileManagerController extends ChangeNotifier {
       );
       return true;
     } catch (e) {
-      _error = '$e';
+      _error = _lastFailure = '$e';
       LogService.info('[FileManager] mkdir $target failed: $e');
       _notify();
       return false;
@@ -321,7 +338,7 @@ class FileManagerController extends ChangeNotifier {
     } on FlipperRpcBusyException {
       rethrow;
     } catch (e) {
-      _error = '$e';
+      _error = _lastFailure = '$e';
       LogService.info('[FileManager] appStart $remotePath failed: $e');
       _notify();
       return false;
@@ -383,7 +400,7 @@ class FileManagerController extends ChangeNotifier {
       }
       return true;
     } catch (e) {
-      _error = '$e';
+      _error = _lastFailure = '$e';
       LogService.info('[FileManager] copyRecursive $fromPath failed: $e');
       _notify();
       return false;
@@ -398,7 +415,7 @@ class FileManagerController extends ChangeNotifier {
       );
       return true;
     } catch (e) {
-      _error = '$e';
+      _error = _lastFailure = '$e';
       LogService.info('[FileManager] rename $oldPath failed: $e');
       _notify();
       return false;
@@ -455,7 +472,7 @@ class FileManagerController extends ChangeNotifier {
       await file.writeAsBytes(bytes, flush: true);
       return true;
     } catch (e) {
-      _error = '$e';
+      _error = _lastFailure = '$e';
       LogService.info('[FileManager] download $remote failed: $e');
       _notify();
       return false;
@@ -483,7 +500,7 @@ class FileManagerController extends ChangeNotifier {
         timeout: const Duration(minutes: 5),
       );
     } catch (e) {
-      _error = '$e';
+      _error = _lastFailure = '$e';
       LogService.info('[FileManager] read $remotePath failed: $e');
       _notify();
       return null;
@@ -602,7 +619,7 @@ class FileManagerController extends ChangeNotifier {
         }
       }
     } catch (e) {
-      _error = '$e';
+      _error = _lastFailure = '$e';
       LogService.info('[FileManager] list $remoteDir failed: $e');
       _notify();
     }
@@ -622,7 +639,7 @@ class FileManagerController extends ChangeNotifier {
         onProgress: onProgress,
       );
     } catch (e) {
-      _error = '$e';
+      _error = _lastFailure = '$e';
       LogService.info('[FileManager] read $remotePath failed: $e');
       _notify();
       return null;
@@ -635,7 +652,7 @@ class FileManagerController extends ChangeNotifier {
   Future<bool> _uploadFromLocal(String localPath, {String? targetName}) async {
     final file = io.File(localPath);
     if (!await file.exists()) {
-      _error = l10n.fmLocalNotFound(localPath);
+      _error = _lastFailure = l10n.fmLocalNotFound(localPath);
       _notify();
       return false;
     }
