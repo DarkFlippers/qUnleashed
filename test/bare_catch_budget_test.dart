@@ -68,7 +68,16 @@ const Map<String, int> kBudget = {
   // every one of them. `storage/fap_icons.dart` caches an app icon that is
   // fetched again when it is missing - the same trade the archive's icon
   // cache makes.
-  'services': 11,
+  // And three from `assembler/remote_build_service.dart`: a cancel the server
+  // never heard, a reply that could not be read, and a refusal the server
+  // would not explain. The user was told a build failed in all three; what
+  // was missing every time was why.
+  //
+  // Five left, and none is a screen left waiting: the two above, two in
+  // `logging.dart` that cannot report a failure to report, and the temp file
+  // a failed cache write tries to clean up, which its own rethrow already
+  // covers.
+  'services': 8,
   // Infrared, paint and the remote. `infrared/local_repo.dart` holds several
   // around file operations during a library swap, one of which is deliberate
   // and says so in its body.
