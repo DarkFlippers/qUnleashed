@@ -352,7 +352,12 @@ class _PaintPageState extends State<PaintPage> {
       try {
         final old = io.Directory(prevTarget);
         if (await old.exists()) await old.delete(recursive: true);
-      } catch (_) {}
+      } catch (e) {
+        // The project is saved under its new name either way. What is left is
+        // the draft it was saved from, which the library then lists beside it
+        // as a second, older copy of the same drawing.
+        LogService.warn('[Paint] left the draft "$prevTarget" behind: $e');
+      }
     }
   }
 

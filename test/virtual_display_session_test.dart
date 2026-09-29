@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flipperlib/flipperlib.dart' hide DateTime;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/tools/paint/virtual_display_session.dart';
+import 'package:qunleashed/services/logging.dart';
 
 /// The virtual display Pixel Draw puts up on the Flipper.
 ///
@@ -62,6 +63,9 @@ class FakeDisplayClient implements FlipperClient {
   /// from a previous run is still up.
   bool startSaysAlreadyUp = false;
 
+  /// Raised by every start, so the reclaim can be made to fail as well.
+  bool startAlwaysFails = false;
+
   Future<void> close() => _connection.close();
 
   /// A link event. `connected` false is a drop; true with [tokenIsCurrent]
@@ -110,6 +114,7 @@ class FakeDisplayClient implements FlipperClient {
         startSaysAlreadyUp = false;
         throw FlipperRpcVirtualDisplayAlreadyStartedException(Main());
       }
+      if (startAlwaysFails) throw StateError('the link went away');
       return const [];
     }
     if (request.hasGuiStopVirtualDisplayRequest()) {
@@ -127,9 +132,13 @@ void main() {
   late FakeDisplayClient client;
   late VirtualDisplaySession display;
 
+  late int logBase;
+
   setUp(() {
     client = FakeDisplayClient();
     display = VirtualDisplaySession.forTest(client);
+    LogService.clearHistory();
+    logBase = LogService.history.length;
   });
   tearDown(() => client.close());
 
@@ -143,6 +152,9 @@ void main() {
 
   Future<void> settle() =>
       Future<void>.delayed(const Duration(milliseconds: 60));
+
+  bool said(String fragment) =>
+      LogService.history.skip(logBase).any((l) => l.contains(fragment));
 
   group('two pages sharing one display', () {
     test('puts it up for the first holder', () async {
@@ -226,6 +238,42 @@ void main() {
     await waitFor(() => display.isActive);
 
     expect(client.calls, ['start', 'stop', 'start']);
+  });
+
+  group('a display that will not come up', () {
+    // The screen is open and the Flipper stays blank. There is no failed
+    // state to put this in, so the log is the only place it can go.
+    test('says why the start failed', () async {
+      client.startAlwaysFails = true;
+
+      display.enter();
+      await waitFor(() => client.calls.isNotEmpty);
+      await settle();
+
+      expect(said('could not start the display'), isTrue);
+      expect(display.isActive, isFalse);
+    });
+
+    // The reclaim is the recovery from a display left on by a previous run.
+    // Failing it leaves the old picture up and the new one never arrives.
+    test('says why the reclaim failed', () async {
+      client
+        ..startSaysAlreadyUp = true
+        ..startAlwaysFails = true;
+
+      display.enter();
+      await waitFor(() => client.calls.length >= 3);
+      await settle();
+
+      expect(said('could not reclaim the display'), isTrue);
+    });
+
+    test('says nothing when it comes up', () async {
+      display.enter();
+      await waitFor(() => display.isActive);
+
+      expect(said('[VirtualDisplay]'), isFalse);
+    });
   });
 
   test('does not put one up with nothing connected', () async {

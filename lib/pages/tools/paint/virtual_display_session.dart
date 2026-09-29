@@ -166,8 +166,15 @@ class VirtualDisplaySession {
           );
           _active = true;
         }
-      } catch (_) {}
-    } catch (_) {}
+      } catch (e) {
+        // Taking it down and putting it back is the only way to own a display
+        // left on by a previous run. Failing that, the screen is open and the
+        // Flipper stays blank with nothing to say why.
+        LogService.warn('[VirtualDisplay] could not reclaim the display: $e');
+      }
+    } catch (e) {
+      LogService.warn('[VirtualDisplay] could not start the display: $e');
+    }
   }
 
   Future<void> _stop() async {
