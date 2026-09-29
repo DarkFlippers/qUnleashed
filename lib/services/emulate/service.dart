@@ -92,7 +92,11 @@ class EmulateService {
     } on FlipperRpcBusyException {
       return EmulateResult.fail(EmulateError.busy);
     } catch (e) {
-      LogService.info('[Emulate] appStart failed: $e');
+      // The fail below is the surface, and it carries a category rather
+      // than a cause: the page renders "could not open the app" for it, the
+      // same words for a firmware that refused and a link that went. This is
+      // the only place the difference exists.
+      LogService.warn('[Emulate] appStart failed: $e');
       return EmulateResult.fail(EmulateError.appStartFailed);
     }
 
@@ -110,7 +114,9 @@ class EmulateService {
         timeout: const Duration(seconds: 10),
       );
     } catch (e) {
-      LogService.info('[Emulate] appLoadFile failed: $e');
+      // As above: loadFileFailed renders one message for every way a file
+      // can fail to load.
+      LogService.warn('[Emulate] appLoadFile failed: $e');
       _running = true;
       await stop();
       return EmulateResult.fail(EmulateError.loadFileFailed);
@@ -140,7 +146,8 @@ class EmulateService {
     } on FlipperRpcBusyException {
       return EmulateResult.fail(EmulateError.busy);
     } catch (e) {
-      LogService.info('[Emulate] launchApp appStart failed: $e');
+      // As above, on the path that opens an app for the user to drive.
+      LogService.warn('[Emulate] launchApp appStart failed: $e');
       return EmulateResult.fail(EmulateError.appStartFailed);
     }
 
@@ -153,7 +160,10 @@ class EmulateService {
       final content = utf8.decode(bytes, allowMalformed: true);
       return parseArchiveKeyMetaContent(key.category, content).protocol;
     } catch (e) {
-      LogService.info('[Emulate] fetchProtocol failed: $e');
+      // Not a failure the caller treats as one: a null protocol resolves to
+      // a different launch method, so the button quietly does something other
+      // than what the file asks for.
+      LogService.warn('[Emulate] could not read the protocol: $e');
       return null;
     }
   }
@@ -222,12 +232,20 @@ class EmulateService {
         _sceneLoaded = true;
         return true;
       } catch (e) {
+        // Per attempt, and there are four of them in under a second - the
+        // tally below is what says the run gave up.
         LogService.info(
           '[Emulate] reload before send failed (try $attempt): $e',
         );
         await Future<void>.delayed(const Duration(milliseconds: 150));
       }
     }
+    // Four tries and the scene is still not on the device, so the press that
+    // follows is never sent. Nothing on screen says so - the button behaves
+    // as it always does, which is #104 - and the lines above do not survive a
+    // release build, so without this the one failure the user can feel leaves
+    // no record anywhere.
+    LogService.warn('[Emulate] gave up reloading "${key.remotePath}" to send');
     return false;
   }
 
@@ -279,6 +297,10 @@ class EmulateService {
       try {
         await closed;
       } catch (e) {
+        // Stays at info: the five-second timeout above answers the case
+        // this is here for - a device that simply does not say it closed -
+        // by returning APP_CLOSED itself. What reaches here is the state
+        // stream erroring, which the client reports where it happens.
         LogService.info('[Emulate] wait APP_CLOSED failed: $e');
       }
 
@@ -298,7 +320,10 @@ class EmulateService {
         timeout: const Duration(seconds: 5),
       );
     } catch (e) {
-      LogService.info('[Emulate] appExit failed: $e');
+      // The app is left running on the Flipper, and the next emulate the
+      // user starts comes back "device busy" - a symptom one step removed
+      // from its cause, with nothing connecting the two.
+      LogService.warn('[Emulate] appExit failed: $e');
     }
   }
 }
