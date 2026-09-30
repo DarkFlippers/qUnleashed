@@ -15,6 +15,7 @@ import '../../../../components/filelist/columns.dart';
 import 'sort.dart';
 import '../../../../components/filelist/table.dart';
 import '../../../../components/filelist/toolbar.dart';
+import '../failure_toast.dart';
 
 /// Lists keys deleted remotely but still cached on this device, using the same
 /// table design as the per-category pages. Unlike those, every category shares a
@@ -145,6 +146,13 @@ class _DeletedPageState extends State<DeletedPage> {
 
   Future<void> _bulkRestore() async {
     await _ctrl.restoreKeys(_selectedKeys);
+    if (mounted) {
+      reportArchiveFailure(
+        context,
+        _ctrl.lastFailure,
+        context.l10n.archiveRestoreFailed,
+      );
+    }
     _exitSelection();
   }
 

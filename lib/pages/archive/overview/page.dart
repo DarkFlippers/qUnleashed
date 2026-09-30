@@ -22,6 +22,7 @@ import '../../../components/filelist/empty_view.dart';
 import 'widgets/key_actions_sheet.dart';
 import '../../../components/filelist/progress_fill.dart';
 import 'widgets/sync_progress_view.dart';
+import 'failure_toast.dart';
 
 class ArchivePage extends StatefulWidget {
   const ArchivePage({super.key, this.controller});
@@ -195,7 +196,15 @@ class _ArchivePageState extends State<ArchivePage> {
       _ctrl,
       key,
       onRename: () => _showRenameDialog(context, key),
-      onDuplicate: () => _ctrl.duplicateKey(key),
+      onDuplicate: () async {
+        await _ctrl.duplicateKey(key);
+        if (!context.mounted) return;
+        reportArchiveFailure(
+          context,
+          _ctrl.lastFailure,
+          context.l10n.archiveDuplicateFailed,
+        );
+      },
       onToggleFavorite: () => _ctrl.toggleFavorite(key),
     );
   }
@@ -236,6 +245,12 @@ class _ArchivePageState extends State<ArchivePage> {
     ctrl.dispose();
     if (newName != null && newName.isNotEmpty && newName != key.name) {
       await _ctrl.renameKey(key, newName);
+      if (!context.mounted) return;
+      reportArchiveFailure(
+        context,
+        _ctrl.lastFailure,
+        context.l10n.archiveRenameFailed,
+      );
     }
   }
 

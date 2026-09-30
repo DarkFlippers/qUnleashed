@@ -24,6 +24,7 @@ import '../../../../components/archive/models/key.dart';
 import '../../../../services/home_widget/service.dart';
 import '../../widgets/actions_sheet.dart';
 import '../../../devices/device_scope.dart';
+import '../failure_toast.dart';
 
 /// Builds the archive-specific action set for an [ArchiveKey] and presents it
 /// through the shared [ActionsSheet], so the file manager and the category
@@ -122,6 +123,12 @@ class KeyActionsSheet {
               return;
             }
             await controller.restoreKey(k);
+            if (!context.mounted) return;
+            reportArchiveFailure(
+              context,
+              controller.lastFailure,
+              context.l10n.archiveRestoreFailed,
+            );
           },
         ),
       );
@@ -536,6 +543,13 @@ class KeyActionsSheet {
     );
     if (ok == true) {
       await controller.deleteKeys(keys, local: local, remote: remote);
+      if (context.mounted) {
+        reportArchiveFailure(
+          context,
+          controller.lastFailure,
+          context.l10n.archiveDeleteFailed,
+        );
+      }
       onDone?.call();
     }
   }

@@ -7240,6 +7240,26 @@
     }
   },
 
+  "archiveDeleteFailed": "Delete failed",
+  "@archiveDeleteFailed": {
+    "description": "Toast shown when deleting one or more archive keys failed. Followed by the reason, joined with fmFailedBecause."
+  },
+
+  "archiveRenameFailed": "Rename failed",
+  "@archiveRenameFailed": {
+    "description": "Toast shown when renaming an archive key failed. Followed by the reason, joined with fmFailedBecause."
+  },
+
+  "archiveDuplicateFailed": "Duplicate failed",
+  "@archiveDuplicateFailed": {
+    "description": "Toast shown when duplicating an archive key failed. Followed by the reason, joined with fmFailedBecause."
+  },
+
+  "archiveRestoreFailed": "Restore failed",
+  "@archiveRestoreFailed": {
+    "description": "Toast shown when restoring a deleted archive key back to the Flipper failed. Followed by the reason, joined with fmFailedBecause."
+  },
+
   "archiveDuplicate": "Duplicate",
   "@archiveDuplicate": {
     "description": "Button that makes a copy of the file."
