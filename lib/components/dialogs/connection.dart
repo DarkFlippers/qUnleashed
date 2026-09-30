@@ -4,8 +4,10 @@ import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
 import '../cancel_spinner.dart';
+import '../notification.dart';
 import '../../services/connection/link_service.dart';
 import '../../services/localization/l10n.dart';
+import '../../services/guarded.dart';
 import '../../services/logging.dart';
 import '../../theme/theme.dart';
 import 'connection_error.dart';
@@ -87,7 +89,10 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
   void dispose() {
     _devicesSub?.cancel();
     _sessionsSub?.cancel();
-    _client.stopScan();
+    // Guarded rather than discarded: closing the picker while a scan is
+    // failing rejected a future nobody was holding, and that arrives as an
+    // unlabelled [uncaught] with no operation on it. #120.
+    unawaited(guarded('[Picker] stop scan', _client.stopScan));
     super.dispose();
   }
 
@@ -113,6 +118,15 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
       }
     } catch (e) {
       LogService.warn('[Picker] scan error: $e');
+      // The list the finally rebuilds is a partial one: refreshDevices
+      // clears it and re-adds held sessions and USB devices before the BLE
+      // scan that threw, so a short list reads as the whole list - worse
+      // than an obviously empty one. Bluetooth off and a busy adapter are
+      // both exactly this, and classifyConnectError already has a bucket
+      // and a sentence for each. #120.
+      if (mounted) {
+        await showConnectionFailedDialog(context, e, isBle: !widget.usbOnly);
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -137,6 +151,20 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
       );
     } catch (e) {
       LogService.warn('[Picker] disconnect error: $e');
+      // The finally below clears the row whatever happened, so the picker
+      // shows the device as disconnected while the link may still be up -
+      // and the next thing the user does goes to a Flipper they believe
+      // they have let go of. As above, the connect dialog is the wrong
+      // vocabulary for this. #120.
+      if (mounted) {
+        context.showNotification(
+          context.l10n.fmFailedBecause(
+            context.l10n.connectDisconnectFailed(device.name),
+            '$e',
+          ),
+          type: QNotificationType.error,
+        );
+      }
     } finally {
       _disconnecting.remove(key);
       if (mounted) setState(() {});
