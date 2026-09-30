@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../../components/cancel_spinner.dart';
 import '../../../../components/dialogs/connection.dart';
 import '../../../../services/connection/link_service.dart';
+import '../../../../services/guarded.dart';
 import '../../../../services/localization/l10n.dart';
 import '../../../../theme/theme.dart';
 import '../page_card.dart';
@@ -31,9 +34,21 @@ class ConnectCard extends StatelessWidget {
                 _DeviceRow(
                   entry: entry,
                   onTap: () => connectLinkEntry(context, entry),
-                  onDisconnect: () => links.disconnect(entry),
+                  // Both tear a Future off into a VoidCallback, so a
+                  // rejection reached only PlatformDispatcher.onError and
+                  // arrived in the log as an unlabelled [uncaught] with no
+                  // operation on it. Named, so a bug report says which. #120.
+                  onDisconnect: () => unawaited(
+                    guarded('[ConnectCard] disconnect', () async {
+                      await links.disconnect(entry);
+                    }),
+                  ),
                   onForget: entry.isBle && !entry.held
-                      ? () => links.forget(entry)
+                      ? () => unawaited(
+                          guarded('[ConnectCard] forget', () async {
+                            await links.forget(entry);
+                          }),
+                        )
                       : null,
                 ),
               ],

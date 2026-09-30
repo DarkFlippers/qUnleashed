@@ -1570,6 +1570,21 @@
     "description": "Body of the unreachable error over USB."
   },
 
+  "connectScanFailed": "Could not finish looking for devices",
+  "@connectScanFailed": {
+    "description": "Toast shown when the device scan in the connection picker fails part-way. The list on screen is short rather than empty, so it needs saying."
+  },
+
+  "connectDisconnectFailed": "Could not disconnect {name}",
+  "@connectDisconnectFailed": {
+    "description": "Toast shown when letting go of a device failed. The row clears regardless, so the link may still be up.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+
   "connectFailedTitle": "Connection failed",
   "@connectFailedTitle": {
     "description": "Title of the connection error when the cause is unknown."
