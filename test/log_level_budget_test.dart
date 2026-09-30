@@ -118,10 +118,21 @@ const Map<String, int> kBudget = {
   // permission prompts, which need an activity a widget engine does not have
   // and which the service comes up without.
   'services': 12,
-  // Part-triaged. What remains mostly writes its error into a controller field
-  // the widgets read only in states the failure itself prevents, so its second
-  // surface mostly is not one - a UI defect, #110. A ceiling, not a verdict.
-  'pages/archive': 30,
+  // Was 30, and a ceiling rather than a verdict: what remained wrote its error
+  // into a controller field the widgets read only in states the failure itself
+  // prevents, so the second surface mostly was not one. #110 was that defect,
+  // and it is fixed - both controllers now keep the reason in a field a
+  // refresh does not clear, and the pages render it.
+  //
+  // Five went with it, the ones whose surface arrived at the same time: a
+  // rename, a duplicate, a delete, and a restore on each of its two paths.
+  // Each is once per action the user took, which is the shape that earns a
+  // warn - the level was the reason a bug report about any of them had
+  // nothing in it.
+  //
+  // The twenty-five left can be read on their merits now rather than deferred
+  // behind a UI question.
+  'pages/archive': 25,
   // Read through. The six left are the per-item loops, which want recording
   // once per batch rather than a level here - the same deferral archive made.
   // The failures raised out of it want a failed state too: #112.

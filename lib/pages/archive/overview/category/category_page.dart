@@ -22,6 +22,7 @@ import 'sort.dart';
 import '../../../../components/filelist/table.dart';
 import '../../../../components/filelist/toolbar.dart';
 import '../../../../services/logging.dart';
+import '../failure_toast.dart';
 
 class CategoryPage extends StatefulWidget {
   const CategoryPage({
@@ -182,7 +183,15 @@ class _CategoryPageState extends State<CategoryPage> {
       _ctrl,
       key,
       onRename: () => _showRenameDialog(context, key),
-      onDuplicate: () => _ctrl.duplicateKey(key),
+      onDuplicate: () async {
+        await _ctrl.duplicateKey(key);
+        if (!context.mounted) return;
+        reportArchiveFailure(
+          context,
+          _ctrl.lastFailure,
+          context.l10n.archiveDuplicateFailed,
+        );
+      },
       onToggleFavorite: () => _ctrl.toggleFavorite(key),
     );
   }
@@ -223,6 +232,12 @@ class _CategoryPageState extends State<CategoryPage> {
     ctrl.dispose();
     if (newName != null && newName.isNotEmpty && newName != key.name) {
       await _ctrl.renameKey(key, newName);
+      if (!context.mounted) return;
+      reportArchiveFailure(
+        context,
+        _ctrl.lastFailure,
+        context.l10n.archiveRenameFailed,
+      );
     }
   }
 

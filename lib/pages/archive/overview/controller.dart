@@ -78,10 +78,11 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
   String? _busyPath;
   double _busyProgress = 0;
   String? _lastError;
+  String? _lastFailure;
+
+  /// The last file a download could not read, folded into the sync summary
+  /// below. Internal: it is not a second error field, it is one line of one.
   String? _lastReadError;
-  int _lastDownloadedOk = 0;
-  int _lastUpToDate = 0;
-  int _lastDownloadedTotal = 0;
   Set<String> _favorites = <String>{};
   List<FapFavorite> _fapFavorites = <FapFavorite>[];
 
@@ -102,9 +103,19 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
       _busyPath == k.remotePath ? _busyProgress : null;
 
   String? get lastError => _lastError;
-  int get lastDownloadedOk => _lastDownloadedOk;
-  int get lastUpToDate => _lastUpToDate;
-  int get lastDownloadedTotal => _lastDownloadedTotal;
+
+  /// Why the thing the user just asked for did not happen.
+  ///
+  /// Separate from [lastError] because their lifetimes differ, and because
+  /// [lastError] has nowhere to be seen for most of what happens here: its
+  /// readers are the full-sync dialog and an empty-list subtitle, and a
+  /// rename or a delete that fails does not empty a list. Every one of these
+  /// operations also ends in a refresh, which clears [lastError] before
+  /// anything could have read it - so the failure reached nobody at all. #110.
+  ///
+  /// Cleared when the next operation starts, so a page reading it straight
+  /// after one is reading about that one.
+  String? get lastFailure => _lastFailure;
   String get deviceName => _deviceName;
   bool get isConnected => _client.isConnected;
   FlipperClient get client => _client;
@@ -603,6 +614,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
       _task(() => _renameKey(key, newName));
 
   Future<void> _renameKey(ArchiveKey key, String newName) async {
+    _lastFailure = null;
     if (newName.trim().isEmpty || newName == key.name) return;
     final keyId = _keyIdOf(key);
     final newFileName = '${newName.trim()}.${key.extension}';
@@ -662,8 +674,8 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
         );
       }
     } catch (e) {
-      _lastError = '$e';
-      LogService.info('[Archive] rename failed: $e');
+      _lastError = _lastFailure = '$e';
+      LogService.warn('[Archive] rename failed: $e');
     }
     notifyListeners();
   }
@@ -671,6 +683,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> duplicateKey(ArchiveKey key) => _task(() => _duplicateKey(key));
 
   Future<void> _duplicateKey(ArchiveKey key) async {
+    _lastFailure = null;
     if (key.localPath == null) return;
     try {
       final existingNames = _keys.values
@@ -731,8 +744,8 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
         flipperDir: key.flipperDir,
       );
     } catch (e) {
-      _lastError = '$e';
-      LogService.info('[Archive] duplicate failed: $e');
+      _lastError = _lastFailure = '$e';
+      LogService.warn('[Archive] duplicate failed: $e');
     }
     notifyListeners();
   }
@@ -1130,9 +1143,6 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
     var done = 0;
     var failed = 0;
     _lastReadError = null;
-    _lastDownloadedOk = 0;
-    _lastUpToDate = 0;
-    _lastDownloadedTotal = pendingIds.length;
     LogService.info(
       '[Archive] checking ${pendingIds.length} candidate file(s)',
     );
@@ -1152,7 +1162,6 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
       notifyListeners();
 
       if (key.hasLocalFile && await _localMatchesRemote(key)) {
-        _lastUpToDate++;
         done++;
         notifyListeners();
         continue;
@@ -1177,11 +1186,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
 
       publish(0);
       final ok = await _downloadAndApply(keyId, key, onProgress: publish);
-      if (ok) {
-        _lastDownloadedOk++;
-      } else {
-        failed++;
-      }
+      if (!ok) failed++;
       done++;
       notifyListeners();
     }
@@ -1210,6 +1215,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
     bool local = true,
     bool remote = true,
   }) async {
+    _lastFailure = null;
     for (final key in keys) {
       try {
         if (remote && _client.isConnected && !key.isDeleted) {
@@ -1228,8 +1234,8 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
           );
         }
       } catch (e) {
-        _lastError = '$e';
-        LogService.info('[Archive] delete failed: $e');
+        _lastError = _lastFailure = '$e';
+        LogService.warn('[Archive] delete failed: $e');
       }
     }
     await refresh();
@@ -1238,9 +1244,10 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> restoreKey(ArchiveKey key) => _task(() => _restoreKey(key));
 
   Future<void> _restoreKey(ArchiveKey key) async {
+    _lastFailure = null;
     if (!key.isDeleted) return;
     if (!_client.isConnected) {
-      _lastError = l10n.archiveConnectToRestore;
+      _lastError = _lastFailure = l10n.archiveConnectToRestore;
       notifyListeners();
       return;
     }
@@ -1255,8 +1262,8 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
       if (bytes == null) return;
       await _client.storageWriteChunked(key.remotePath, bytes);
     } catch (e) {
-      _lastError = '$e';
-      LogService.info('[Archive] restore failed: $e');
+      _lastError = _lastFailure = '$e';
+      LogService.warn('[Archive] restore failed: $e');
     }
     await refresh();
   }
@@ -1268,8 +1275,9 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
       _task(() => _restoreKeys(keys));
 
   Future<void> _restoreKeys(Iterable<ArchiveKey> keys) async {
+    _lastFailure = null;
     if (!_client.isConnected) {
-      _lastError = l10n.archiveConnectToRestore;
+      _lastError = _lastFailure = l10n.archiveConnectToRestore;
       notifyListeners();
       return;
     }
@@ -1296,8 +1304,8 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
           notifyListeners();
         }
       } catch (e) {
-        _lastError = '$e';
-        LogService.info('[Archive] restore ${key.fileName} failed: $e');
+        _lastError = _lastFailure = '$e';
+        LogService.warn('[Archive] restore ${key.fileName} failed: $e');
       }
     }
     await refresh();
