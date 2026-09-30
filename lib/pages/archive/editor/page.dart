@@ -100,9 +100,14 @@ class _TextEditorPageState extends State<TextEditorPage> {
       _error = null;
     });
     List<int>? bytes;
+    String? reason;
     try {
       bytes = await Future(() => io.File(widget.localPath).readAsBytesSync());
     } catch (e) {
+      // Stays at info: the panel below renders the reason now. A file that is
+      // gone and one the platform will not hand over used to read the same on
+      // screen, and the difference lived only in a release build's silence.
+      reason = '$e';
       LogService.info('[TextEditor] read ${widget.localPath} failed: $e');
     }
     if (!mounted) return;
@@ -110,7 +115,10 @@ class _TextEditorPageState extends State<TextEditorPage> {
     setState(() {
       _loading = false;
       if (bytes == null) {
-        _error = context.l10n.editorReadFailed;
+        final message = context.l10n.editorReadFailed;
+        _error = reason == null
+            ? message
+            : context.l10n.fmFailedBecause(message, reason);
       } else if (binary) {
         _openHex(bytes);
       } else {

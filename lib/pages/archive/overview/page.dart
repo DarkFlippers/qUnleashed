@@ -145,7 +145,11 @@ class _ArchivePageState extends State<ArchivePage> {
       unawaited(openRoute(context, AppRoute.remoteControl));
     } else {
       context.showNotification(
-        context.l10n.archiveLaunchFailed(fav.name),
+        withArchiveReason(
+          context,
+          context.l10n.archiveLaunchFailed(fav.name),
+          _ctrl.lastFailure,
+        ),
         type: QNotificationType.error,
       );
     }

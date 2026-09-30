@@ -1,7 +1,6 @@
 import '../../../../services/localization/l10n.dart';
 
 import 'dart:async';
-import 'dart:io' as io;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -21,8 +20,8 @@ import '../../../../components/filelist/columns.dart';
 import 'sort.dart';
 import '../../../../components/filelist/table.dart';
 import '../../../../components/filelist/toolbar.dart';
-import '../../../../services/logging.dart';
 import '../failure_toast.dart';
+import 'bulk_save.dart';
 
 class CategoryPage extends StatefulWidget {
   const CategoryPage({
@@ -519,21 +518,7 @@ class _CategoryPageState extends State<CategoryPage> {
     );
     if (dir == null) return;
 
-    final sep = io.Platform.pathSeparator;
-    var saved = 0;
-    for (final k in keys) {
-      try {
-        final bytes = await io.File(k.localPath!).readAsBytes();
-        await io.File('$dir$sep${k.fileName}').writeAsBytes(bytes, flush: true);
-        saved++;
-      } catch (e) {
-        // One per file, name included, so a large selection against a full
-        // disk would fill LogService.historyLimit on its own. The notification
-        // below carries the count; the cause wants recording once per batch,
-        // not per file.
-        LogService.info('[Archive] bulk download ${k.fileName} failed: $e');
-      }
-    }
+    final saved = await saveKeysInto(keys, dir);
     _exitSelection();
     if (!context.mounted) return;
     context.showNotification(
