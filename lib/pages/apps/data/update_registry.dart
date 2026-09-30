@@ -59,6 +59,15 @@ class UpdateRegistry extends ChangeNotifier {
   List<AppUpdate> _updates = const [];
   int get count => _updates.length;
 
+  bool _failed = false;
+
+  /// Whether the last check for updates finished.
+  ///
+  /// [count] is zero both when everything is current and when nothing could
+  /// be checked, and the badge renders only above zero - so a failed check
+  /// looks exactly like being up to date. #112.
+  bool get failed => _failed;
+
   AppCard? cardForUid(String uid) => uid.isEmpty ? null : _cardsByUid[uid];
   Set<String> get updatableAliases => _updates.map((u) => u.alias).toSet();
 
@@ -95,6 +104,7 @@ class UpdateRegistry extends ChangeNotifier {
   Future<void> _refresh({required bool force}) async {
     final token = client.deviceToken;
     _loading = true;
+    _failed = false;
     notifyListeners();
     try {
       await catalog.ensureDeviceFilters(required: true);
@@ -141,9 +151,9 @@ class UpdateRegistry extends ChangeNotifier {
       );
     } catch (e) {
       // _updates keeps whatever the last successful refresh left: zero on a
-      // cold start, stale afterwards. The badge in manager/page.dart renders
-      // only when count > 0, so either way a failure looks like being up to
-      // date.
+      // cold start, stale afterwards. [failed] is what separates that from
+      // an answer, because the count cannot.
+      _failed = true;
       LogService.warn('[Updates] refresh failed: $e');
     } finally {
       _loading = false;

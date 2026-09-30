@@ -2682,6 +2682,11 @@
     "description": "Catalog mode: install builds made for the closest firmware API."
   },
 
+  "appsCatalogUnreachable": "Could not reach the app catalogue — showing installed apps only",
+  "@appsCatalogUnreachable": {
+    "description": "Toast shown when the catalog could not be fetched and the apps screen falls back to managing installed apps. Tells the user the network was the problem, not their firmware."
+  },
+
   "catalogModeManagerOnly": "Manager only",
   "@catalogModeManagerOnly": {
     "description": "Catalog mode: the catalog is hidden, only installed apps are managed."

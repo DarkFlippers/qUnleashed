@@ -345,10 +345,16 @@ class _AtpInstallPageState extends State<AtpInstallPage> {
 
   Widget _buildBody(List<AtpEntry> visible, Color header) {
     if (_atp.entries.isEmpty) {
+      // Three states, not two: reading it, read it and it was empty, and
+      // could not read it at all. The third used to render as the second.
+      // #112.
+      final failed = !_atp.loading && _atp.failed;
       return ArchiveEmptyView(
-        icon: Icons.extension_off,
+        icon: failed ? Icons.cloud_off : Icons.extension_off,
         title: _atp.loading
             ? context.l10n.atpReadingRelease
+            : failed
+            ? context.l10n.appsLoadFailed
             : context.l10n.atpNoApps,
         subtitle: _atp.loading ? null : context.l10n.atpSyncToFetch,
       );

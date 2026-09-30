@@ -44,6 +44,11 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
   InstallEngine get _engine => _backend.engine;
   UpdateRegistry get _updates => _backend.updates;
 
+  /// Whether the list on screen is short because nothing could be read,
+  /// rather than because there is nothing to read. A scan still running is
+  /// neither.
+  bool get _readFailed => !_device.scanning && _backend.manifests.failed;
+
   @override
   void initState() {
     super.initState();
@@ -290,14 +295,26 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
               ],
             ),
             actions: [
-              if (_updates.count > 0)
+              // The badge used to render only above zero, and a check that
+              // never finished leaves the count at zero - so a failure read
+              // as being up to date. It shows either way now, and a failed
+              // one offers the check again rather than an update of nothing.
+              // #112.
+              if (_updates.count > 0 || _updates.failed)
                 IconButton(
                   icon: Badge(
-                    label: Text('${_updates.count}'),
+                    label: Text(_updates.failed ? '!' : '${_updates.count}'),
+                    backgroundColor: _updates.failed
+                        ? Colors.amber.shade700
+                        : null,
                     child: const Icon(Icons.update, color: Colors.white),
                   ),
-                  tooltip: context.l10n.managerUpdateAll,
-                  onPressed: _updateAll,
+                  tooltip: _updates.failed
+                      ? context.l10n.appsLoadFailed
+                      : context.l10n.managerUpdateAll,
+                  onPressed: _updates.failed
+                      ? () => unawaited(_updates.refresh(force: true))
+                      : _updateAll,
                 ),
               IconButton(
                 icon: const Icon(Icons.extension, color: Colors.white),
@@ -415,10 +432,14 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
         children: [
           SizedBox(
             height: MediaQuery.of(context).size.height * 0.5,
+            // A read that came back short is not a Flipper with no apps on
+            // it, and this screen rendered the same thing for both. #112.
             child: ArchiveEmptyView(
-              icon: Icons.apps,
+              icon: _readFailed ? Icons.cloud_off : Icons.apps,
               title: _filtering
                   ? context.l10n.appsNothingMatches
+                  : _readFailed
+                  ? context.l10n.appsLoadFailed
                   : context.l10n.managerNoApps,
               subtitle: _filtering ? null : context.l10n.managerSyncHint,
             ),
