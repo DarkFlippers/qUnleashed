@@ -1,5 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:qunleashed/services/logging.dart';
 import 'package:qunleashed/services/settings/persist.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -16,8 +15,7 @@ import 'package:shared_preferences_platform_interface/shared_preferences_platfor
 
 /// A store that reads back what is there and refuses every write, the way a
 /// full disk or a profile the app cannot write to does.
-class _ReadOnlyStore extends SharedPreferencesStorePlatform
-    with MockPlatformInterfaceMixin {
+class _ReadOnlyStore extends SharedPreferencesStorePlatform {
   final Map<String, Object> _values = {};
 
   @override

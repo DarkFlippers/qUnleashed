@@ -38,6 +38,50 @@ void main() {
     widgets.reset();
   });
 
+  // The half of load() that no field shows. Counting platform reads would
+  // measure SharedPreferences rather than this - getInstance memoises too,
+  // so a second call is served from its cache whether or not this class
+  // holds a memo of its own. What this class decides is how many times the
+  // fields are filled and the listeners told.
+  group('the read behind every store', () {
+    late int notifications;
+    void count() => notifications += 1;
+
+    setUp(() {
+      notifications = 0;
+      map.reset();
+      map.addListener(count);
+      addTearDown(() => map.removeListener(count));
+    });
+
+    test('fills the fields once for two callers arriving together', () async {
+      await Future.wait([map.load(), map.load()]);
+
+      expect(notifications, 1);
+    });
+
+    test('does not do it again once it has', () async {
+      await map.load();
+      await map.load();
+
+      expect(notifications, 1);
+    });
+
+    // Counting a re-read after reset() would measure SharedPreferences, not
+    // this: getInstance memoises too, so a second load() serves from its
+    // cache and never reaches the store below. What reset() owns is the
+    // flag, and the release of the memo after a failure is covered by the
+    // unopenable cases further down.
+    test('leaves the store ready to read again after a reset', () async {
+      await map.load();
+      expect(map.loaded, isTrue);
+
+      map.reset();
+
+      expect(map.loaded, isFalse);
+    });
+  });
+
   group('MapSettings', () {
     // A non-default value for every key the store reads, so a test can tell
     // "this came from disk" from "this is the initialiser".
