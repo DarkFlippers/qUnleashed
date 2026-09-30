@@ -130,9 +130,32 @@ const Map<String, int> kBudget = {
   // warn - the level was the reason a bug report about any of them had
   // nothing in it.
   //
-  // The twenty-five left can be read on their merits now rather than deferred
-  // behind a UI question.
-  'pages/archive': 25,
+  // Then one more, and the area is read through. The bulk download in a
+  // category page logged one line per file, so a hundred keys against a full
+  // disk filled the log screen from a single tap - which is the only reason
+  // #111 declined to record the cause at all. It is one entry for the
+  // selection now, at warn, carrying the count and the first failure.
+  //
+  // The twenty-four left are three shapes, and the two conversions that
+  // happened without moving the number belong to the first of them.
+  //
+  // Reported somewhere the user can see, so the log is commentary: every
+  // operation in `browser/controller.dart` - twelve of them - hands a bool or
+  // a null back to a page that now renders the reason; the launch of a
+  // favourited app and the text editor's read do the same, and each says so
+  // in place. A refresh and a category refresh write the panel and the empty
+  // view. A save or a read inside a sync is folded into the summary the user
+  // is shown at the end of it.
+  //
+  // Repeats without a boundary to tally at: the recursive listing behind a
+  // refresh is one node of a walk over a whole SD card, and its own comment
+  // records that fixing #109 - a walk that reports failure upward - is what
+  // makes it loggable once. The md5 check beside it is not a failure at all;
+  // it falls back to downloading the file again.
+  //
+  // What is left after those is the sync path's own catches, which end in a
+  // status the page renders.
+  'pages/archive': 24,
   // Read through. The six left are the per-item loops, which want recording
   // once per batch rather than a level here - the same deferral archive made.
   // The failures raised out of it want a failed state too: #112.

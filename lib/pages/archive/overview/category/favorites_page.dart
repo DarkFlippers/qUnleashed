@@ -20,6 +20,7 @@ import '../../../../components/filelist/columns.dart';
 import 'sort.dart';
 import '../../../../components/filelist/table.dart';
 import '../../../../components/filelist/toolbar.dart';
+import '../failure_toast.dart';
 
 /// Lists everything starred — keys of every category plus the favorite apps
 /// read off the device — in the unified table used by the deleted page. Key
@@ -230,7 +231,11 @@ class _FavoritesPageState extends State<FavoritesPage> {
       unawaited(openRoute(context, AppRoute.remoteControl));
     } else {
       context.showNotification(
-        context.l10n.archiveLaunchFailed(fav.name),
+        withArchiveReason(
+          context,
+          context.l10n.archiveLaunchFailed(fav.name),
+          _ctrl.lastFailure,
+        ),
         type: QNotificationType.error,
       );
     }

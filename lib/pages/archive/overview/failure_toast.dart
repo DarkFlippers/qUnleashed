@@ -21,7 +21,20 @@ void reportArchiveFailure(
 ) {
   if (reason == null || reason.isEmpty) return;
   context.showNotification(
-    context.l10n.fmFailedBecause(message, reason),
+    withArchiveReason(context, message, reason),
     type: QNotificationType.error,
   );
 }
+
+/// [message] with [reason] appended, when there is one to append.
+///
+/// For the call sites that already know the operation failed - the ones whose
+/// method returns a bool - where a null reason must not swallow the message
+/// the way it does in [reportArchiveFailure].
+String withArchiveReason(
+  BuildContext context,
+  String message,
+  String? reason,
+) => reason == null || reason.isEmpty
+    ? message
+    : context.l10n.fmFailedBecause(message, reason);

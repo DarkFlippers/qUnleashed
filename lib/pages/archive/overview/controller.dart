@@ -503,6 +503,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
   /// Starts a favorited app on the device by its full path. Returns whether the
   /// loader accepted the request; callers open the remote control on success.
   Future<bool> launchFapFavorite(FapFavorite fav) async {
+    _lastFailure = null;
     if (!_client.isConnected) return false;
     try {
       await _client.appStart(
@@ -511,7 +512,9 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
       );
       return true;
     } catch (e) {
-      _lastError = '$e';
+      // Stays at info: the toast at the call site renders the reason now,
+      // which is the surface this was standing in for.
+      _lastError = _lastFailure = '$e';
       LogService.info('[Archive] launch ${fav.remotePath} failed: $e');
       return false;
     }
