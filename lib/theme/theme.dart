@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../services/settings/persist.dart';
+
 import '../components/config.dart';
 import '../services/localization/l10n.dart';
 import '../services/logging.dart';
@@ -102,8 +104,10 @@ class QAppThemeController extends ChangeNotifier with WidgetsBindingObserver {
     if (mode == _themeMode) return;
     _themeMode = mode;
     notifyListeners();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_prefThemeMode, mode.name);
+    await persistSetting(
+      _prefThemeMode,
+      (prefs) => prefs.setString(_prefThemeMode, mode.name),
+    );
   }
 
   @override

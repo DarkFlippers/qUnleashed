@@ -77,6 +77,11 @@ dev_dependencies:
   # always succeed, so the only way to test what happens when one does not is
   # to stand in at the platform interface.
   shared_preferences_platform_interface: ^2.4.2
+  # Standing in at a platform interface needs its token, and
+  # MockPlatformInterfaceMixin is what supplies one. Already here as a
+  # transitive dependency; named so the analyzer stops calling the import
+  # undeclared.
+  plugin_platform_interface: ^2.1.8
   # Parses lib/ for test/log_level_budget_test.dart, which counts failures
   # logged where a release build cannot see them. A parser rather than a regex
   # because `extension E on T {` and `mixin M on B {` are spelled exactly like

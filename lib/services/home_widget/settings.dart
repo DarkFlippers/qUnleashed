@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../settings/persist.dart';
+
 import '../logging.dart';
 import '../prefs_reader.dart';
 import 'service.dart';
@@ -196,13 +198,19 @@ class HomeWidgetSettings extends ChangeNotifier {
     }
     apply();
     notifyListeners();
+    // Persisted before the push, not after. The other order redrew the
+    // widget on the home screen immediately, and a Dart write that then
+    // failed left sync() pushing the old look back at the next launch - the
+    // change undoing itself hours later, with nothing to connect the two.
+    // This way a write that fails never reaches the launcher at all. #120.
+    await persistSetting('$_prefix$key', (prefs) async {
+      switch (value) {
+        case final String s:
+          await prefs.setString('$_prefix$key', s);
+        case final bool b:
+          await prefs.setBool('$_prefix$key', b);
+      }
+    });
     await push(toMap());
-    final prefs = await SharedPreferences.getInstance();
-    switch (value) {
-      case final String s:
-        await prefs.setString('$_prefix$key', s);
-      case final bool b:
-        await prefs.setBool('$_prefix$key', b);
-    }
   }
 }

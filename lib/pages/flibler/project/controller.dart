@@ -9,6 +9,8 @@ import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../services/settings/persist.dart';
+
 import '../../../components/codec/fap/info.dart';
 import '../../../services/progress_throttle.dart';
 import '../../../services/assembler/build_service.dart';
@@ -191,8 +193,10 @@ class FliblerProjectController extends ChangeNotifier {
   Future<void> _saveLastFolder(String path) async {
     if (path.isEmpty || path == _lastFolder) return;
     _lastFolder = path;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(kFliblerLastFolderPrefsKey, path);
+    await persistSetting(
+      kFliblerLastFolderPrefsKey,
+      (prefs) => prefs.setString(kFliblerLastFolderPrefsKey, path),
+    );
   }
 
   Future<void> removeRecent(FliblerRecentSource entry) async {
@@ -202,10 +206,12 @@ class FliblerProjectController extends ChangeNotifier {
   }
 
   Future<void> _saveRecent() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList(kFliblerRecentPrefsKey, [
-      for (final entry in _recent) entry.encode(),
-    ]);
+    await persistSetting(
+      kFliblerRecentPrefsKey,
+      (prefs) => prefs.setStringList(kFliblerRecentPrefsKey, [
+        for (final entry in _recent) entry.encode(),
+      ]),
+    );
   }
 
   Future<void> _rememberSource() async {

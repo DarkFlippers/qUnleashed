@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../settings/persist.dart';
+
 import '../logging.dart';
 import '../prefs_reader.dart';
 
@@ -100,23 +102,29 @@ class DeviceSettings extends ChangeNotifier {
     if (_autoConnectUsb == value) return;
     _autoConnectUsb = value;
     notifyListeners();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_prefAutoConnectUsb, value);
+    await persistSetting(
+      _prefAutoConnectUsb,
+      (prefs) => prefs.setBool(_prefAutoConnectUsb, value),
+    );
   }
 
   Future<void> setAutoConnectBle(bool value) async {
     if (_autoConnectBle == value) return;
     _autoConnectBle = value;
     notifyListeners();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_prefAutoConnectBle, value);
+    await persistSetting(
+      _prefAutoConnectBle,
+      (prefs) => prefs.setBool(_prefAutoConnectBle, value),
+    );
   }
 
   Future<void> setSyncTimeOnStart(bool value) async {
     if (_syncTimeOnStart == value) return;
     _syncTimeOnStart = value;
     notifyListeners();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_prefSyncTime, value);
+    await persistSetting(
+      _prefSyncTime,
+      (prefs) => prefs.setBool(_prefSyncTime, value),
+    );
   }
 }

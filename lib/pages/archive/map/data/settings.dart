@@ -5,6 +5,8 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../../services/settings/persist.dart';
+
 import '../../../../services/logging.dart';
 import '../../../../services/prefs_reader.dart';
 import 'carto_key.dart';
@@ -272,16 +274,20 @@ class MapSettings extends ChangeNotifier {
     if (_provider.id == value.id) return;
     _provider = value;
     notifyListeners();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_prefProvider, value.id);
+    await persistSetting(
+      _prefProvider,
+      (prefs) => prefs.setString(_prefProvider, value.id),
+    );
   }
 
   Future<void> setAppearance(MapAppearance value) async {
     if (_appearance == value) return;
     _appearance = value;
     notifyListeners();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_prefAppearance, value.name);
+    await persistSetting(
+      _prefAppearance,
+      (prefs) => prefs.setString(_prefAppearance, value.name),
+    );
   }
 
   Future<void> setDesign(MapTileProvider provider, MapTileDesign design) async {
@@ -289,8 +295,7 @@ class MapSettings extends ChangeNotifier {
     if (_designs[pref] == design.id) return;
     _designs[pref] = design.id;
     notifyListeners();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(pref, design.id);
+    await persistSetting(pref, (prefs) => prefs.setString(pref, design.id));
   }
 
   Future<void> setKey(MapTileProvider provider, String value) async {
@@ -302,8 +307,8 @@ class MapSettings extends ChangeNotifier {
       _keys[provider.id] = key;
     }
     notifyListeners();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_keyPref(provider.id), key);
+    final pref = _keyPref(provider.id);
+    await persistSetting(pref, (prefs) => prefs.setString(pref, key));
   }
 
   Future<void> setCustomUrl(String value) async {
@@ -311,8 +316,10 @@ class MapSettings extends ChangeNotifier {
     if (_customUrl == url) return;
     _customUrl = url;
     notifyListeners();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_prefCustomUrl, url);
+    await persistSetting(
+      _prefCustomUrl,
+      (prefs) => prefs.setString(_prefCustomUrl, url),
+    );
   }
 
   Future<void> setCustomSubdomains(String value) async {
@@ -320,8 +327,10 @@ class MapSettings extends ChangeNotifier {
     if (_customSubdomains == raw) return;
     _customSubdomains = raw;
     notifyListeners();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_prefCustomSubdomains, raw);
+    await persistSetting(
+      _prefCustomSubdomains,
+      (prefs) => prefs.setString(_prefCustomSubdomains, raw),
+    );
   }
 
   Future<void> setCustomMaxZoom(double value) async {
@@ -329,40 +338,50 @@ class MapSettings extends ChangeNotifier {
     if (_customMaxZoom == zoom) return;
     _customMaxZoom = zoom;
     notifyListeners();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble(_prefCustomMaxZoom, zoom);
+    await persistSetting(
+      _prefCustomMaxZoom,
+      (prefs) => prefs.setDouble(_prefCustomMaxZoom, zoom),
+    );
   }
 
   Future<void> setRetina(bool value) async {
     if (_retina == value) return;
     _retina = value;
     notifyListeners();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_prefRetina, value);
+    await persistSetting(
+      _prefRetina,
+      (prefs) => prefs.setBool(_prefRetina, value),
+    );
   }
 
   Future<void> setAutoCenter(bool value) async {
     if (_autoCenter == value) return;
     _autoCenter = value;
     notifyListeners();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_prefAutoCenter, value);
+    await persistSetting(
+      _prefAutoCenter,
+      (prefs) => prefs.setBool(_prefAutoCenter, value),
+    );
   }
 
   Future<void> setTrackDevice(bool value) async {
     if (_trackDevice == value) return;
     _trackDevice = value;
     notifyListeners();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_prefTrackDevice, value);
+    await persistSetting(
+      _prefTrackDevice,
+      (prefs) => prefs.setBool(_prefTrackDevice, value),
+    );
   }
 
   Future<void> setScanSubfolders(bool value) async {
     if (_scanSubfolders == value) return;
     _scanSubfolders = value;
     notifyListeners();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_prefScanSubfolders, value);
+    await persistSetting(
+      _prefScanSubfolders,
+      (prefs) => prefs.setBool(_prefScanSubfolders, value),
+    );
   }
 
   MapTileConfig resolve({required bool dark}) {

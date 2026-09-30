@@ -6,6 +6,8 @@ import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../../services/settings/persist.dart';
+
 import '../../../components/codec/fap/api_version.dart';
 import '../../../components/path.dart';
 import '../../../services/assembler/controller.dart';
@@ -89,8 +91,10 @@ class CatalogContext {
     if (_preference == value) return;
     _preference = value;
     _preferenceLoaded = true;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_prefMode, value.name);
+    await persistSetting(
+      _prefMode,
+      (prefs) => prefs.setString(_prefMode, value.name),
+    );
     await resolveMode(force: true);
   }
 
