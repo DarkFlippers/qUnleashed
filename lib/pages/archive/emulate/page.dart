@@ -111,10 +111,14 @@ class _EmulatePageState extends State<EmulatePage> {
     Navigator.of(context).pop();
   }
 
+  /// Whether the press this hold started reached the Flipper, so that the
+  /// release can tell a send that did not happen from one that did.
+  bool _pressLanded = true;
+
   Future<void> _onSendDown() async {
     if (!_running || _closing) return;
     setState(() => _sending = true);
-    await _service.sendPress();
+    _pressLanded = await _service.sendPress();
   }
 
   Future<void> _onSendUp() async {
@@ -123,7 +127,15 @@ class _EmulatePageState extends State<EmulatePage> {
       return;
     }
     setState(() => _sending = false);
-    await _service.sendRelease();
+    final released = await _service.sendRelease();
+    if (!mounted || (_pressLanded && released)) return;
+    // The button goes back to looking idle either way, which is the whole of
+    // what the user saw before: a send that timed out on a quiet link and one
+    // that worked ended on the same screen. #104.
+    context.showNotification(
+      context.l10n.emuSendFailed,
+      type: QNotificationType.error,
+    );
   }
 
   @override
