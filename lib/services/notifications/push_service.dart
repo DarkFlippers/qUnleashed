@@ -6,6 +6,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../settings/persist.dart';
+
 import '../localization/l10n.dart';
 import '../logging.dart';
 import 'firebase_options.dart';
@@ -111,8 +113,10 @@ class PushService {
   }
 
   Future<void> setAppReleasesEnabled(bool enabled) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_prefAppReleases, enabled);
+    await persistSetting(
+      _prefAppReleases,
+      (prefs) => prefs.setBool(_prefAppReleases, enabled),
+    );
     if (isSupported && !_unavailable) await _applySubscriptions();
   }
 
@@ -122,8 +126,10 @@ class PushService {
   }
 
   Future<void> setAppDevEnabled(bool enabled) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_prefAppDev, enabled);
+    await persistSetting(
+      _prefAppDev,
+      (prefs) => prefs.setBool(_prefAppDev, enabled),
+    );
     if (isSupported && !_unavailable) await _applySubscriptions();
   }
 
@@ -133,8 +139,10 @@ class PushService {
   }
 
   Future<void> setFirmwareReleasesEnabled(bool enabled) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_prefEnabled, enabled);
+    await persistSetting(
+      _prefEnabled,
+      (prefs) => prefs.setBool(_prefEnabled, enabled),
+    );
     if (isSupported && !_unavailable) await _applySubscriptions();
   }
 
@@ -144,8 +152,10 @@ class PushService {
   }
 
   Future<void> setFirmwareDevEnabled(bool enabled) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_prefDevUpdates, enabled);
+    await persistSetting(
+      _prefDevUpdates,
+      (prefs) => prefs.setBool(_prefDevUpdates, enabled),
+    );
     if (isSupported && !_unavailable) await _applySubscriptions();
   }
 

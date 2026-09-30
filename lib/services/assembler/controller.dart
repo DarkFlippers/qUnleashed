@@ -4,6 +4,8 @@ import 'package:dartufbt/dartufbt.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../settings/persist.dart';
+
 import '../logging.dart';
 import '../prefs_reader.dart';
 import 'backend_mode.dart';
@@ -176,8 +178,10 @@ class AssemblerController extends ChangeNotifier {
       refreshStatus();
     }
     notifyListeners();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_prefBackend, value.name);
+    await persistSetting(
+      _prefBackend,
+      (prefs) => prefs.setString(_prefBackend, value.name),
+    );
   }
 
   /// Called when a local build could not run at all — a missing toolchain
@@ -196,8 +200,10 @@ class AssemblerController extends ChangeNotifier {
     if (_sdkSource == value || busy) return;
     _sdkSource = value;
     notifyListeners();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_prefSdkSource, value.name);
+    await persistSetting(
+      _prefSdkSource,
+      (prefs) => prefs.setString(_prefSdkSource, value.name),
+    );
   }
 
   Future<void> setCustomIndexUrl(String value) async {
@@ -205,8 +211,10 @@ class AssemblerController extends ChangeNotifier {
     if (_customIndexUrl == url) return;
     _customIndexUrl = url;
     notifyListeners();
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_prefCustomIndexUrl, url);
+    await persistSetting(
+      _prefCustomIndexUrl,
+      (prefs) => prefs.setString(_prefCustomIndexUrl, url),
+    );
   }
 
   static const Duration _probeTtl = Duration(minutes: 5);
