@@ -119,10 +119,14 @@ const Map<String, int> kBudget = {
   // destination that may already exist, and a location fix that has not
   // arrived yet, which the position stream behind it keeps asking for.
   'pages/archive': 2,
-  // #118 was this area and has been dealt with; what is left is not that
-  // shape - a temp directory removed in a `finally` and a `mkdir` of a folder
-  // that may already exist.
-  'pages/devices': 2,
+  // Was 2, and now empty. The temp directory was tens to hundreds of
+  // megabytes of extracted firmware left in the system temp folder for good,
+  // once per install whose cleanup failed; and the `mkdir` made "it is
+  // already there" indistinguishable from a read-only /ext, a full card or
+  // no card at all, which the upload two steps later then failed on with a
+  // confusing write error. The second one is narrowed rather than removed -
+  // a directory that exists still says nothing. #119.
+  'pages/devices': 0,
   // A `mkdir` per path segment, walking down to the folder a write needs. Any
   // failure that is not "it is already there" fails that write, which reports.
   'pages/flibler': 1,

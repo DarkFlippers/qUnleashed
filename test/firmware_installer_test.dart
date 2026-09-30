@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/devices/firmware/installer.dart';
 import 'package:qunleashed/pages/devices/firmware/source.dart';
 import 'package:qunleashed/pages/devices/firmware/update_state.dart';
+import 'package:qunleashed/services/logging.dart';
 
 /// Flashing a firmware, which is the one thing in this app where getting it
 /// wrong bricks a device.
@@ -41,6 +42,11 @@ class FakeFlashClient implements FlipperClient {
 
   /// Paths written, in order.
   final uploaded = <String>[];
+
+  /// Raised instead of making a directory, when set. Two of them are not
+  /// the same thing: "it is already there" is the ordinary case, and a
+  /// read-only /ext or a card that is not in the slot is not.
+  Object? mkdirThrows;
 
   /// Directories made, in order.
   final made = <String>[];
@@ -75,6 +81,7 @@ class FakeFlashClient implements FlipperClient {
     bool pipelined = true,
   }) async {
     if (request.hasStorageMkdirRequest()) {
+      if (mkdirThrows != null) throw mkdirThrows!;
       made.add(request.storageMkdirRequest.path);
       return const [];
     }
@@ -258,6 +265,52 @@ void main() {
       await flash(archiveOf(files));
 
       expect(client.made, ['/ext/update', '/ext/update/f7-update-1.0']);
+    });
+
+    // A directory that is already there is the ordinary case on every
+    // install after the first, and saying so every time would be noise.
+    test('says nothing when the directory is already there', () async {
+      LogService.clearHistory();
+      final base = LogService.history.length;
+      client.mkdirThrows = StateError('ERROR_STORAGE_EXIST');
+
+      await flash(archiveOf(files));
+
+      expect(
+        LogService.history
+            .skip(base)
+            .where((l) => l.contains('could not create')),
+        isEmpty,
+      );
+    });
+
+    // Everything else is a reason the upload two steps later fails with a
+    // confusing write error, and the two were indistinguishable. #119.
+    test('says so when the card will not take a directory', () async {
+      LogService.clearHistory();
+      final base = LogService.history.length;
+      client.mkdirThrows = StateError('ERROR_STORAGE_NOT_READY');
+
+      await flash(archiveOf(files));
+
+      final said = LogService.history
+          .skip(base)
+          .where((l) => l.contains('could not create'));
+      expect(said, hasLength(2), reason: 'one per directory it tried');
+      expect(said.first, contains('ERROR_STORAGE_NOT_READY'));
+    });
+
+    test('names the directory it could not make', () async {
+      LogService.clearHistory();
+      final base = LogService.history.length;
+      client.mkdirThrows = StateError('ERROR_STORAGE_NOT_READY');
+
+      await flash(archiveOf(files));
+
+      expect(
+        LogService.history.skip(base).where((l) => l.contains('/ext/update')),
+        isNotEmpty,
+      );
     });
 
     test(
