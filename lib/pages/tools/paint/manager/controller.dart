@@ -91,7 +91,22 @@ class ProjectManagerController extends ChangeNotifier {
   bool get busy => _importing || _sending;
   ImportProgress? get importProgress => _importProgress;
   SendProgress? get sendProgress => _sendProgress;
-  String? get error => _error;
+
+  /// The last failure nobody has been told about yet, taken once.
+  ///
+  /// Read-and-clear rather than a field the page polls, because the page
+  /// showed [_error] on every notification: a stale one re-appeared on every
+  /// tick of the weight slider after a failed scan. Taken once, it cannot.
+  ///
+  /// It also has to outlive the reload each operation ends with - delete set
+  /// it and never notified, and the reload that followed cleared it before
+  /// any listener ran, so the string was built and thrown away unread. #114.
+  String? takeFailure() {
+    final failure = _error;
+    _error = null;
+    return failure;
+  }
+
   bool get isConnected => _client.isConnected;
   String? get selectedId => _selectedId;
   int get packCount => _items.where((i) => i.entry.selected).length;
@@ -141,8 +156,13 @@ class ProjectManagerController extends ChangeNotifier {
   /// never discards edits that have not been sent yet. When [silent] is true
   /// the loading spinner is suppressed.
   Future<void> loadAll({bool silent = false}) async {
-    if (!silent) _loading = true;
-    _error = null;
+    if (!silent) {
+      _loading = true;
+      // Only a load the user asked for starts clean. A silent one is the
+      // reload another operation ends with, and clearing here is what used to
+      // swallow that operation's own failure. #114.
+      _error = null;
+    }
     _notify();
     try {
       final projects = await PaintProject.scanAll();
@@ -152,11 +172,10 @@ class ProjectManagerController extends ChangeNotifier {
         for (final p in projects) PaintItem(p, _entryFor(p, current, stored)),
       ];
     } catch (e) {
+      // The contract for this controller: every catch sets the failure, and
+      // the page takes it on the next notification. Nothing clears it in
+      // between, which is what #114 was about.
       _error = '$e';
-      // The contract for this controller: a catch is reported only if it
-      // reaches a _notify with _error still set and nothing clears it first.
-      // This one and send do. Delete and import below are warn - one never
-      // notifies, the other's toast is overwritten. #114.
       LogService.info('[PixelDraw] loadAll failed: $e');
     } finally {
       _loading = false;
@@ -190,11 +209,15 @@ class ProjectManagerController extends ChangeNotifier {
         _display.clearPreview();
       }
     } catch (e) {
+      // This one still does not notify. It does not need to: the silent
+      // reload below notifies, and no longer clears the failure on its way
+      // past - so the page takes it there, and the project reappearing in
+      // the list comes with the reason it did.
       _error = l10n.paintDeleteFailed('$e');
-      // Unlike the others in this file, this catch does not notify - and the
-      // loadAll below clears _error and notifies before any listener runs, so
-      // the string built on the line above is thrown away unread. The project
-      // reappears in the reloaded list and nothing says why.
+      // Stays at warn even though the toast works now: the toast fades and a
+      // bug report about a project that would not delete has nothing in it.
+      // A surface names the outcome, the log keeps the cause, and both are
+      // wanted - the same call #112 made.
       LogService.warn('[PixelDraw] delete failed: $e');
     }
     await loadAll(silent: true);
@@ -318,7 +341,6 @@ class ProjectManagerController extends ChangeNotifier {
       );
     } catch (e) {
       _error = l10n.paintSendFailed('$e');
-      // Reported, per the contract noted on loadAll.
       LogService.info('[PixelDraw] send failed: $e');
     } finally {
       _sending = false;
@@ -334,12 +356,18 @@ class ProjectManagerController extends ChangeNotifier {
   /// many files were actually transferred — zero when everything already
   /// matched by md5. The work itself lives in [DolphinImporter]; the controller
   /// only owns the state it publishes.
-  Future<int> importFromDevice() async {
-    if (_importing) return 0;
+  /// Returns how many files were transferred, or null when the import did
+  /// not finish.
+  ///
+  /// Null rather than zero, because zero is the answer that makes the page
+  /// say "already up to date" - and it said it over the failure's own toast,
+  /// which [QNotification.show] removes outright rather than fading. #114.
+  Future<int?> importFromDevice() async {
+    if (_importing) return null;
     if (!_client.isConnected) {
       _error = l10n.paintNoDevice;
       _notify();
-      return 0;
+      return null;
     }
     _importing = true;
     _importProgress = null;
@@ -347,6 +375,7 @@ class ProjectManagerController extends ChangeNotifier {
     _notify();
 
     var written = 0;
+    var failed = false;
     try {
       final localRoot = await appDolphinAnimationsDirectory();
       written = await DolphinImporter.run(
@@ -359,11 +388,9 @@ class ProjectManagerController extends ChangeNotifier {
         onFolder: () => loadAll(silent: true),
       );
     } catch (e) {
+      failed = true;
       _error = l10n.paintImportFailed('$e');
-      // The finally below does notify with _error set, so a red toast
-      // appears - and then loadAll clears _error, the page's guard on it
-      // passes, and `written` is still 0, so paintImportUpToDate replaces it
-      // immediately: "Animations already match the device".
+      // Stays at warn, as delete above.
       LogService.warn('[PixelDraw] import failed: $e');
     } finally {
       _importing = false;
@@ -372,7 +399,7 @@ class ProjectManagerController extends ChangeNotifier {
     }
 
     await loadAll(silent: true);
-    return written;
+    return failed ? null : written;
   }
 
   void _notify() {

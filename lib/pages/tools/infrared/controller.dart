@@ -60,7 +60,24 @@ class IrLibController extends ChangeNotifier {
   bool get localAvailable => _localAvailable;
   String get path => _path;
   bool get loading => _loading;
+
+  /// Why the list or the settings dialog on screen has nothing in it.
+  ///
+  /// Written only by the four operations whose result *is* what is rendered:
+  /// opening a folder, searching, and downloading or deleting the local
+  /// repository. Each clears it when it starts.
+  ///
+  /// Everything else keeps its failure in [lastFailure] instead. A send or a
+  /// fetch that failed used to land here too, and the page's error view
+  /// renders on `error != null && list.isEmpty` - so the next search that
+  /// matched nothing reported a disconnected Flipper as the reason. #114.
   String? get error => _error;
+
+  String? _lastFailure;
+
+  /// Why the last thing the user asked for did not happen, for the callers
+  /// that show a message naming no cause of their own.
+  String? get lastFailure => _lastFailure;
   List<IrEntry> get entries => _entries;
   bool get searching => _searching;
   String get searchQuery => _searchQuery;
@@ -226,6 +243,9 @@ class IrLibController extends ChangeNotifier {
     _searching = true;
     _searchResults = const [];
     _searchProgressPath = '';
+    // A search starting is a new answer to the same question, so whatever
+    // the last one said no longer applies.
+    _error = null;
     notifyListeners();
     try {
       final throttle = ProgressThrottle();
@@ -252,6 +272,10 @@ class IrLibController extends ChangeNotifier {
     _searchQuery = '';
     _searchResults = const [];
     _searching = false;
+    // Back to the listing, so a search's error stops describing what is on
+    // screen. Leaving it is how the page came to explain an empty folder
+    // with the reason a search failed.
+    _error = null;
     notifyListeners();
   }
 
@@ -259,10 +283,11 @@ class IrLibController extends ChangeNotifier {
     try {
       return await _api.fetchFile(entry);
     } catch (e) {
-      _error = '$e';
-      // The file page - the route on screen - shows irDownloadFailed, which
-      // names no cause. The listing's error view would carry the exception
-      // text but needs an empty list, and fetching an entry means it is not.
+      // Not _error: the listing behind this is fine and still on screen, and
+      // writing there is what left a stale reason for the next empty search
+      // to render. The file page shows irDownloadFailed, which names no
+      // cause - so the cause goes where that page can reach it. #114.
+      _lastFailure = '$e';
       LogService.warn('[IRLib] fetch ${entry.path} failed: $e');
       notifyListeners();
       return null;
@@ -279,11 +304,11 @@ class IrLibController extends ChangeNotifier {
         bytes,
       );
     } catch (e) {
-      _error = '$e';
-      // The viewer awaits this through onAfterSend and discards what it
-      // returns, keying its notification on whether the *send* worked - so a
-      // file that reached the Flipper and failed to save locally is reported
-      // as sent, with nothing said about the archive copy.
+      // As above, and the viewer still reports this one as sent: it awaits
+      // through onAfterSend and keys its notification on the send alone, so
+      // a file that reached the Flipper and failed to save locally says
+      // nothing about the archive copy. That is its own gap, left named.
+      _lastFailure = '$e';
       LogService.warn('[IRLib] save ${entry.path} failed: $e');
       notifyListeners();
       return null;
@@ -305,10 +330,9 @@ class IrLibController extends ChangeNotifier {
       );
       return true;
     } catch (e) {
-      _error = '$e';
-      // The viewer shows irSendFailed, which names no cause. The disconnect
-      // arrives as the sentence sendIrFile raises, and flipperlib records a
-      // link drop at info - so this warn is the only account history keeps.
+      // As above. The viewer shows irSendFailed, which names no cause; the
+      // disconnect arrives as the sentence sendIrFile raises.
+      _lastFailure = '$e';
       LogService.warn('[IRLib] send ${entry.path} failed: $e');
       notifyListeners();
       return false;

@@ -40,6 +40,7 @@ class IrFileViewer extends StatefulWidget {
     required this.isConnected,
     required this.onSend,
     this.onAfterSend,
+    this.sendFailureReason,
   });
 
   /// The device whose link this watches while the file is on screen.
@@ -58,6 +59,14 @@ class IrFileViewer extends StatefulWidget {
   final bool isConnected;
   final IrFileSendHandler onSend;
   final IrFileAfterSend? onAfterSend;
+
+  /// Why the last send did not go, asked for only when one did not.
+  ///
+  /// A callback rather than a value because the viewer is built before the
+  /// send happens, and a parameter would carry the reason from the send
+  /// before it. Null where the builder has nobody to ask - the content page
+  /// sends through the client directly and keeps no such record.
+  final String? Function()? sendFailureReason;
 
   @override
   State<IrFileViewer> createState() => _IrFileViewerState();
@@ -148,8 +157,15 @@ class _IrFileViewerState extends State<IrFileViewer> {
       }
     }
     if (!mounted) return;
+    // The failed half named no cause, and the disconnect that usually
+    // causes it arrives as the sentence sendIrFile raises. #114.
+    final reason = ok ? null : widget.sendFailureReason?.call();
     context.showNotification(
-      ok ? context.l10n.irSentToDevice : context.l10n.irSendFailed,
+      ok
+          ? context.l10n.irSentToDevice
+          : reason == null
+          ? context.l10n.irSendFailed
+          : context.l10n.fmFailedBecause(context.l10n.irSendFailed, reason),
       type: ok ? QNotificationType.good : QNotificationType.error,
     );
   }
