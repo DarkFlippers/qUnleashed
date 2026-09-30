@@ -960,17 +960,53 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
     String flipperDir,
   ) async {
     final remoteFiles = <_RemoteFile>[];
+    final unread = <String>{};
     await _collectRemoteFiles(
       cat,
       flipperDir,
       ArchiveCategory.remoteDirOf(flipperDir),
       '',
       remoteFiles,
+      unread,
     );
+    if (unread.isNotEmpty) {
+      // Once for the walk, however many of its directories went unread -
+      // which is what the per-node line below cannot be, and the reason #111
+      // would not raise it. A walk over a whole SD card has hundreds of
+      // nodes, each with its own path and its own exception text, so nothing
+      // coalesces and a degrading link would evict the transport fault
+      // underneath it.
+      LogService.warn(
+        '[Archive] ${cat.name}: ${unread.length} folder(s) could not be '
+        'listed, so what is in them is left as it was',
+      );
+    }
     _reconcileRemote(
       remoteFiles,
-      (k) => k.category == cat && k.flipperDir == flipperDir,
+      (k) =>
+          k.category == cat &&
+          k.flipperDir == flipperDir &&
+          _wasWalked(k.subFolder, unread),
     );
+  }
+
+  /// Whether the walk actually got to see [subFolder], so that a key in it
+  /// missing from the listing means the file is gone rather than unread.
+  ///
+  /// A folder is walked unless its own listing failed or one above it did. A
+  /// folder that is simply not there any more passes, because every folder on
+  /// its path listed fine and none of them mentioned it - which is what makes
+  /// deleting a whole directory on the Flipper still read as deleted here.
+  ///
+  /// The root failing puts the empty string in [unread], and then nothing is
+  /// in scope at all. That is the case #109 was filed for: one `storageList`
+  /// that timed out marked every key in the category deleted.
+  static bool _wasWalked(String subFolder, Set<String> unread) {
+    for (final path in unread) {
+      if (path.isEmpty) return false;
+      if (path == subFolder || subFolder.startsWith('$path/')) return false;
+    }
+    return true;
   }
 
   /// Merges a freshly-listed set of [remoteFiles] into [_keys]: refreshes remote
@@ -1022,12 +1058,20 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  /// Walks [remotePath] and everything under it, adding what it finds to
+  /// [out] and the relative path of every folder it could not read to
+  /// [unread].
+  ///
+  /// The second one is the point: the caller reconciles what is on the device
+  /// against what is on the phone, and a folder it never saw is not a folder
+  /// whose files are gone.
   Future<void> _collectRemoteFiles(
     ArchiveCategory cat,
     String flipperDir,
     String remotePath,
     String relPath,
     List<_RemoteFile> out,
+    Set<String> unread,
   ) async {
     try {
       final batch = await _client.storageList(
@@ -1046,6 +1090,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
               '$remotePath/$name',
               childRelPath,
               out,
+              unread,
             );
           } else {
             final ext = cat.matchExtension(name);
@@ -1066,16 +1111,13 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
         }
       }
     } catch (e) {
-      // Stays at info, and it is the worst failure in this file: the caller
-      // reconciles against whatever partial list survived, which is #109.
-      //
-      // Keeping it cannot be bounded either. This is one node of a recursive
-      // walk over a whole SD card, and the path is in the message - so even
-      // though the firmware's statuses stringify identically and would
-      // otherwise collapse, every directory gets its own entry. A link
-      // degrading mid-refresh would fill the history and evict the transport
-      // fault underneath. Fixing #109 fixes this too: a walk that reports
-      // failure upward can be logged once, at the caller.
+      unread.add(relPath);
+      // Stays at info, and now legitimately so: this is one node of a walk
+      // over a whole SD card, with its own path and its own exception text,
+      // so hundreds of them would not coalesce and would evict the transport
+      // fault underneath. The bounded record is the caller's, one per walk -
+      // which is what #109 unblocked. This one is the detail a talking build
+      // can still name the directory with.
       LogService.info('[Archive] list $remotePath failed: $e');
     }
   }

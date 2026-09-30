@@ -147,11 +147,13 @@ const Map<String, int> kBudget = {
   // view. A save or a read inside a sync is folded into the summary the user
   // is shown at the end of it.
   //
-  // Repeats without a boundary to tally at: the recursive listing behind a
-  // refresh is one node of a walk over a whole SD card, and its own comment
-  // records that fixing #109 - a walk that reports failure upward - is what
-  // makes it loggable once. The md5 check beside it is not a failure at all;
-  // it falls back to downloading the file again.
+  // Repeats, with the bounded record now living at the caller: the recursive
+  // listing behind a refresh is one node of a walk over a whole SD card, and
+  // #109 made that walk report upward - so the folder count and the fact that
+  // what is in them was left alone go out once per walk, at warn, while this
+  // stays as the per-directory detail a talking build can name a path with.
+  // The md5 check beside it is not a failure at all; it falls back to
+  // downloading the file again.
   //
   // What is left after those is the sync path's own catches, which end in a
   // status the page renders.
