@@ -25,14 +25,14 @@ import 'widgets/wide_body.dart';
 class RemoteControlPage extends StatefulWidget {
   const RemoteControlPage({
     super.key,
-    @visibleForTesting this.client,
+    required this.client,
     @visibleForTesting this.mediaRemoteSupported,
   });
 
-  /// Link the session talks over. Null takes the app's own client, which is
-  /// what every route does; a test passes a fake so the wire is observable.
-  @visibleForTesting
-  final FlipperClient? client;
+  /// The Flipper this session runs on. Required rather than defaulted, so a
+  /// desktop opened from one device cannot end up driving another, and a test
+  /// passes a fake so the wire is observable. ADR 0002.
+  final FlipperClient client;
 
   /// Overrides the bridge's `Platform.isAndroid` gate. Wrist Remote is
   /// Android-only, so without this a test host never installs the channel

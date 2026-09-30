@@ -21,8 +21,7 @@ class RemoteSession extends ChangeNotifier {
   /// page's title bar shows this device, not whatever the tree carries.
   FlipperClient get client => _client;
 
-  RemoteSession({FlipperClient? client})
-    : _client = client ?? FlipperOneClient().get() {
+  RemoteSession({required this._client}) {
     _inputAvailable = _client.isConnected;
     _frameSub = _client.screenFrameStream().listen(_onFrame);
     _statusSub = _client.desktopStatusStream().listen(_applyStatus);

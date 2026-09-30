@@ -17,17 +17,24 @@ import 'settings_dialog.dart';
 import 'widgets/ir_search_field.dart';
 import '../../devices/device_scope.dart';
 
+import 'package:flipperlib/flipperlib.dart';
+
 const _infraredAsset = 'assets/ic/fileformat/ir.svg';
 
 class IrLibPage extends StatefulWidget {
-  const IrLibPage({super.key});
+  const IrLibPage({super.key, required this.client});
+
+  /// The Flipper a send from this library goes to. Required rather than
+  /// defaulted: every route into here is built with a context that has a
+  /// DeviceScope above it. ADR 0002.
+  final FlipperClient client;
 
   @override
   State<IrLibPage> createState() => _IrLibPageState();
 }
 
 class _IrLibPageState extends State<IrLibPage> {
-  final IrLibController _ctrl = IrLibController();
+  late final IrLibController _ctrl = IrLibController(client: widget.client);
   final TextEditingController _searchCtrl = TextEditingController();
 
   @override

@@ -69,8 +69,9 @@ class _IrCategoriesPageState extends State<IrCategoriesPage> {
   }
 
   void _openIrdb() {
+    final client = DeviceScope.of(context).client;
     Navigator.of(context)
-        .push(MaterialPageRoute(builder: (_) => const IrLibPage()));
+        .push(MaterialPageRoute(builder: (_) => IrLibPage(client: client)));
   }
 
   @override

@@ -369,7 +369,10 @@ class KeyActionsSheet {
         openRoute(
           context,
           AppRoute.pixelEditor,
-          args: PixelEditorArgs(remotePath: k.remotePath),
+          args: PixelEditorArgs(
+            remotePath: k.remotePath,
+            client: controller.client,
+          ),
         ),
       );
       return;
