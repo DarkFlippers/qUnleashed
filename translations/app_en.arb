@@ -6590,6 +6590,11 @@
     "description": "Status bar label of the insert or overwrite mode."
   },
 
+  "emuSendFailed": "The Flipper did not take the send",
+  "@emuSendFailed": {
+    "description": "Toast shown when a hold-to-send on the emulate page did not reach the device, usually because the link went quiet."
+  },
+
   "emuNotConnected": "Device is not connected",
   "@emuNotConnected": {
     "description": "Error shown when emulation needs a connected Flipper."

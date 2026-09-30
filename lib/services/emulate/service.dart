@@ -168,34 +168,45 @@ class EmulateService {
     }
   }
 
-  Future<void> sendPress() {
+  /// Keys the transmitter. Tells whether it is keyed when the future ends.
+  ///
+  /// False is a press the Flipper never took: the five-second RPC timeout
+  /// over a link that has gone is the ordinary way, and the scene failing to
+  /// reload before it is the other. The caller cannot see either from the
+  /// log, and the home-screen widget flashed "sent" for both. #104.
+  Future<bool> sendPress() {
     return _enqueueButton(
       'button press',
       () => _onDevice(() async {
-        if (_txHeld) return;
+        // Already keyed, so the press the caller asked for is in effect.
+        if (_txHeld) return true;
         if (!_sceneLoaded) {
-          if (!await _reloadForSend()) return;
+          if (!await _reloadForSend()) return false;
         }
         await _client.appButtonPress(
           AppButtonPressRequest(),
           timeout: const Duration(seconds: 5),
         );
         _txHeld = true;
+        return true;
       }),
     );
   }
 
-  Future<void> sendRelease() {
+  /// Unkeys the transmitter. Tells whether it is unkeyed when the future ends.
+  Future<bool> sendRelease() {
     return _enqueueButton(
       'button release',
       () => _onDevice(() async {
-        if (!_txHeld) return;
+        // Nothing keyed, so there is nothing to release and nothing failed.
+        if (!_txHeld) return true;
         _txHeld = false;
         await _client.appButtonRelease(
           AppButtonReleaseRequest(),
           timeout: const Duration(seconds: 5),
         );
         _sceneLoaded = false;
+        return true;
       }),
     );
   }
@@ -258,17 +269,29 @@ class EmulateService {
   /// The predecessor is awaited inside guarded rather than chained ahead of it,
   /// so the future stored in _btnChain cannot reject and a failed command
   /// cannot strand the ones behind it.
-  Future<void> _enqueueButton(String what, Future<void> Function() op) {
+  ///
+  /// The outcome reaches the caller through a flag rather than the future,
+  /// for that reason: [guarded] swallows the throw by contract, and the
+  /// returned future is `next.then(...)`, which inherits never rejecting.
+  /// A run that never happened - the queue drained after stop() - reports
+  /// false, because nothing reached the Flipper either way.
+  Future<bool> _enqueueButton(String what, Future<bool> Function() op) {
     final previous = _btnChain;
+    // False until the operation says otherwise, which covers both ways it
+    // can fail to reach the Flipper: a throw, which guarded swallows before
+    // the assignment happens, and a run that never started because stop()
+    // emptied the chain while this was queued. No onFailure hook for that
+    // reason - it would only assign what is already there.
+    var sent = false;
     final next = guarded('[Emulate] $what', () async {
       await previous;
-      // Read after the wait, not before: stop() clears it while this is queued,
-      // and a press that ran anyway would leave the transmitter keyed with no
-      // release behind it.
-      if (_running) await op();
+      // Read after the wait, not before: stop() clears it while this is
+      // queued, and a press that ran anyway would leave the transmitter
+      // keyed with no release behind it.
+      if (_running) sent = await op();
     });
     _btnChain = next;
-    return next;
+    return next.then((_) => sent);
   }
 
   Future<void> stop() {

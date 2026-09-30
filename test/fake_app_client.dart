@@ -32,6 +32,13 @@ class FakeAppClient implements FlipperClient {
   /// Raised instead of answering a storage read, when set.
   Object? readThrows;
 
+  /// Raised instead of answering `appButtonPress`, when set. A five-second
+  /// RPC timeout over a link that has gone quiet is the real one.
+  Object? pressThrows;
+
+  /// Raised instead of answering `appButtonRelease`, when set.
+  Object? releaseThrows;
+
   /// What a storage read answers with when it does not throw.
   String fileBody = '';
 
@@ -113,10 +120,12 @@ class FakeAppClient implements FlipperClient {
       return const [];
     }
     if (request.hasAppButtonPressRequest()) {
+      if (pressThrows != null) throw pressThrows!;
       calls.add('appButtonPress');
       return const [];
     }
     if (request.hasAppButtonReleaseRequest()) {
+      if (releaseThrows != null) throw releaseThrows!;
       calls.add('appButtonRelease');
       return const [];
     }

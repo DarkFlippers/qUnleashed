@@ -268,11 +268,24 @@ class HomeWidgetService {
 
     if (key.holdToSend) {
       await _setState(id, WidgetState.sending);
-      await service.sendPress();
+      // The widget has one frame to tell the user what happened, and it used
+      // to say "sent" whether or not anything reached the Flipper. A press
+      // that timed out on a link that had gone looked exactly like one that
+      // worked. #104.
+      final pressed = await service.sendPress();
       await Future<void>.delayed(_sendHold);
-      await service.sendRelease();
+      final released = await service.sendRelease();
       await service.stop();
-      await _flash(id, WidgetState.sent);
+      if (!pressed || !released) {
+        LogService.warn(
+          '[HomeWidget] send did not complete: press=$pressed '
+          'release=$released',
+        );
+      }
+      await _flash(
+        id,
+        pressed && released ? WidgetState.sent : WidgetState.errorFailed,
+      );
       return;
     }
 
