@@ -147,7 +147,13 @@ class FirmwareInstaller {
     } finally {
       try {
         tempDir.deleteSync(recursive: true);
-      } catch (_) {}
+      } catch (e) {
+        // An extracted firmware bundle is tens to hundreds of megabytes, and
+        // a cleanup that fails leaves all of it in the system temp directory
+        // for good. It accumulates per install, the user feels it as disk
+        // pressure, and nothing connects it back to this app. #119.
+        LogService.warn('$_tag could not remove ${tempDir.path}: $e');
+      }
     }
 
     final target = awaitReturnOf;
@@ -288,8 +294,20 @@ class FirmwareInstaller {
         switch (message) {
           case RecoveryProgress(:final step, :final percent):
             onState(_dfuProgressState(step, percent));
-          case RecoveryLog(:final message):
-            _log('DFU: $message');
+          case RecoveryLog(:final message, :final level):
+            // Recovery runs in a spawned isolate, so LogService's statics are
+            // not the ones the runner can reach - this port is the only way
+            // anything it saw crosses back. _log is commentary by contract
+            // and folds out of a release build, which for the four lines
+            // marked warning is the whole of the report: a radio stack that
+            // did not flash still ends in RecoveryDone, by design, and the
+            // button lands on "recovered". #119.
+            switch (level) {
+              case RecoveryLogLevel.progress:
+                _log('DFU: $message');
+              case RecoveryLogLevel.warning:
+                LogService.warn('$_tag DFU: $message');
+            }
           case RecoveryDone():
             if (!done.isCompleted) done.complete();
           case RecoveryFailed(:final error, failure: final reason):
@@ -451,11 +469,28 @@ class FirmwareInstaller {
     }
   }
 
+  /// Makes [path] on the device, tolerating the one failure that is not one.
+  ///
+  /// A directory that is already there is the ordinary case and says nothing.
+  /// Everything else - a read-only /ext, a full card, no card at all - is a
+  /// reason the upload two steps later fails with a confusing write error,
+  /// and the two used to be indistinguishable. #119.
   static Future<void> _mkdirSafe(FlipperClient client, String path) async {
     try {
       await client.storageMkdir(MkdirRequest(path: path));
-    } catch (_) {}
+    } catch (e) {
+      if (_alreadyExists(e)) return;
+      LogService.warn('$_tag could not create $path: $e');
+    }
   }
+
+  /// Whether [error] is the firmware saying the directory is already there.
+  ///
+  /// Matched on the status text because that is how it arrives: flipperlib
+  /// classifies connection faults, not storage ones, so there is no type to
+  /// switch on here.
+  static bool _alreadyExists(Object error) =>
+      '$error'.contains('ERROR_STORAGE_EXIST');
 }
 
 class _UpdateFile {
