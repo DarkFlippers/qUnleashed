@@ -48,9 +48,12 @@ class _ProjectManagerPageState extends State<ProjectManagerPage> {
   void _onChange() {
     if (!mounted) return;
     setState(() {});
-    final err = _ctrl.error;
-    if (err != null) {
-      context.showNotification(err, type: QNotificationType.error);
+    // Taken, not read: this fires on every notification the controller makes,
+    // including a slider tick, and a failure left in place re-appeared on
+    // each one. #114.
+    final failure = _ctrl.takeFailure();
+    if (failure != null) {
+      context.showNotification(failure, type: QNotificationType.error);
     }
   }
 
@@ -70,7 +73,10 @@ class _ProjectManagerPageState extends State<ProjectManagerPage> {
       return;
     }
     final written = await _ctrl.importFromDevice();
-    if (!mounted || _ctrl.error != null) return;
+    // Null is an import that did not finish, and its own toast is already up.
+    // Zero used to cover both, so "Animations already match the device"
+    // replaced the failure the user had just been shown. #114.
+    if (!mounted || written == null) return;
     if (written == 0) {
       context.showNotification(
         context.l10n.paintImportUpToDate,
