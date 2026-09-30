@@ -194,6 +194,13 @@ void main() {
     setUp(() {
       previousFlutter = FlutterError.onError;
       previousPlatform = PlatformDispatcher.instance.onError;
+      // dumpErrorToConsole prints the full banner for the first error in the
+      // isolate and "Another exception was thrown: ..." for every one after
+      // it, and this file runs on plain test() with no binding to reset that
+      // between cases. So the test below asserting on the banner passed only
+      // while it happened to dump first, which the declared order gave it and
+      // a randomized one does not. #139.
+      FlutterError.resetErrorCount();
       LogService.installUncaughtHandlers();
     });
     // Both, not just the first. Restoring only FlutterError left a wrapper on
