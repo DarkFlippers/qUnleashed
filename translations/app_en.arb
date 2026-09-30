@@ -5814,6 +5814,19 @@
     "description": "Toast shown when creating a folder failed."
   },
 
+  "fmFailedBecause": "{message}: {reason}",
+  "@fmFailedBecause": {
+    "description": "Joins a failure toast to the reason the device gave for it, e.g. 'Delete failed: ERROR_STORAGE_DENIED'. Reorder or repunctuate as the language needs; {message} is already a complete sentence.",
+    "placeholders": {
+      "message": {
+        "type": "String"
+      },
+      "reason": {
+        "type": "String"
+      }
+    }
+  },
+
   "fmUploadFailedCount": "Upload failed for {count} file(s): {error}",
   "@fmUploadFailedCount": {
     "description": "Toast shown when some uploads failed.",
