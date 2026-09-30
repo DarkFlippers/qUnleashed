@@ -21,6 +21,15 @@ class ManifestRegistry extends ChangeNotifier {
   bool _loading = false;
   bool get loading => _loading;
 
+  bool _failed = false;
+
+  /// Whether the last read of what is installed came back short.
+  ///
+  /// Without it an empty list means "this Flipper has no apps" and "we could
+  /// not read them" alike, and the manager renders the same screen for both.
+  /// #112.
+  bool get failed => _failed;
+
   bool _loaded = false;
 
   bool get _isReady => client.isRpcReady;
@@ -96,6 +105,7 @@ class ManifestRegistry extends ChangeNotifier {
         }
       }
       _loaded = true;
+      _failed = false;
       LogService.info(
         '[Manifests] ${_byAlias.length} installed (reused $reused, read $read)',
       );
@@ -104,8 +114,9 @@ class ManifestRegistry extends ChangeNotifier {
       // _loaded is not cleared here, so after one good refresh a later
       // failure leaves it true. The maps are cleared inside the try, so what
       // survives is the previous list if storageList threw and a partial one
-      // if anything below it did. On a cold start with no cache it reads as
-      // an ordinary empty catalogue.
+      // if anything below it did. On a cold start with no cache it read as
+      // an ordinary empty catalogue - which is what [failed] is for.
+      _failed = true;
       LogService.warn('[Manifests] refresh failed: $e');
     } finally {
       _loading = false;

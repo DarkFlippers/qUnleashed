@@ -31,9 +31,18 @@ class AtpSource extends ChangeNotifier {
 
   bool _loading = false;
   bool _loaded = false;
+  bool _failed = false;
 
   AtpBlock? get block => _block;
   bool get loading => _loading;
+
+  /// Whether the last attempt to fetch the release index came back empty
+  /// handed.
+  ///
+  /// The list has no other way to tell a pack it could not reach from a pack
+  /// with nothing in it, and the screen renders "No apps in the release" for
+  /// both. #112.
+  bool get failed => _failed;
   String get tag => _block?.tag ?? '';
   List<AtpEntry> get entries => _block?.entries ?? const [];
   AtpEntry? entryFor(String appId) => appId.isEmpty ? null : _byAppId[appId];
@@ -100,7 +109,13 @@ class AtpSource extends ChangeNotifier {
     _loading = true;
     notifyListeners();
     try {
+      // Every path out of here assigns [_failed], so there is nothing to
+      // clear first: a body sets it false, no body and a throw set it true.
       final body = await _fetchReleaseIndex();
+      // Null is the quiet half of this: the fetch decided there was nothing
+      // to take and raised nothing, which reads on screen exactly like a
+      // release with no apps in it.
+      _failed = body == null;
       if (body != null) {
         final file = await atpIndexFile();
         await file.writeAsString(body, flush: true);
@@ -110,10 +125,10 @@ class AtpSource extends ChangeNotifier {
         _rebind();
       }
     } catch (e) {
-      // This source keeps no offline or error flag - unlike catalog_context,
-      // which is why that one is left alone. So a refresh that fails silently
-      // keeps the last index, and a cold start that fails is
-      // indistinguishable from a catalogue with no apps.
+      // The warn keeps the cause; [failed] is what stops the screen saying
+      // the release is empty when nobody could read it. Both are wanted -
+      // a flag names the outcome and never the reason. #112.
+      _failed = true;
       LogService.warn('[ATP] release index download failed: $e');
     } finally {
       _loading = false;
@@ -152,7 +167,21 @@ class AtpSource extends ChangeNotifier {
     return body.trim().isEmpty ? null : body;
   }
 
-  Future<String?> _fetchReleaseIndex() async {
+  /// Replaces the release fetch for the duration of a test.
+  ///
+  /// The real one goes to a hardcoded GitHub URL through [AppHttp], which has
+  /// no seam of its own - so without this the three answers that matter
+  /// (a body, nothing, a throw) all depend on whether the machine running the
+  /// suite has network and on what GitHub says that minute.
+  @visibleForTesting
+  static Future<String?> Function()? debugFetchReleaseIndex;
+
+  Future<String?> _fetchReleaseIndex() {
+    final override = debugFetchReleaseIndex;
+    return override == null ? _fetchFromRelease() : override();
+  }
+
+  Future<String?> _fetchFromRelease() async {
     final release = await AppHttp.getJson(Uri.parse(_kLatestReleaseUrl));
     if (release is! Map<String, dynamic>) {
       // The third way to reach an empty catalogue, and the only one that said

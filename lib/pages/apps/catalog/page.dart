@@ -7,6 +7,7 @@ import 'widgets/states.dart';
 import '../../../components/navigation.dart';
 import '../../../theme/theme.dart';
 import '../../../services/assembler/controller.dart';
+import '../../../components/notification.dart';
 import '../data/apps_backend.dart';
 import '../manager/install_page.dart';
 import '../manager/page.dart';
@@ -202,9 +203,21 @@ class _CatalogViewState extends State<CatalogView> {
     }
     if (_managerHandoff) return;
     _managerHandoff = true;
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => widget.onOpenManager?.call(),
-    );
+    // A catalogue that could not be reached resolves to manager-only, which
+    // on screen is indistinguishable from a firmware the catalogue does not
+    // serve - so the user was told their Flipper was the problem when the
+    // network was. The flag has existed all along and only Settings -> Apps
+    // read it. #112.
+    final offline = AppsBackend.instance.catalogOffline;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (offline && mounted) {
+        context.showNotification(
+          context.l10n.appsCatalogUnreachable,
+          type: QNotificationType.warning,
+        );
+      }
+      widget.onOpenManager?.call();
+    });
   }
 
   Widget _buildForMode(BuildContext context) {
