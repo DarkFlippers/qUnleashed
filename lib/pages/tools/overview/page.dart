@@ -19,6 +19,7 @@ import 'models/tool.dart';
 import 'widgets/app_version.dart';
 import 'widgets/tool_item_badge.dart';
 import 'widgets/tool_item_text.dart';
+import '../../devices/device_scope.dart';
 
 class ToolsPage extends StatelessWidget {
   const ToolsPage({super.key});
@@ -238,7 +239,8 @@ class ToolsPage extends StatelessWidget {
   }
 }
 
-Widget _buildRecoverPage(BuildContext context) => const RecoverPage();
+Widget _buildRecoverPage(BuildContext context) =>
+    RecoverPage(client: DeviceScope.of(context).client);
 
 Widget _buildPlotterPage(BuildContext context) => const PulsePlotterPage();
 
@@ -256,16 +258,18 @@ Future<void> _openSettingsPage(BuildContext context) async {
   await openRoute(context, AppRoute.appSettings);
 }
 
-Widget _buildPaintPage(BuildContext context) => const ProjectManagerPage();
+Widget _buildPaintPage(BuildContext context) =>
+    ProjectManagerPage(client: DeviceScope.of(context).client);
 
 Future<void> _openFliblerPage(BuildContext context) async {
   await openRoute(context, AppRoute.fliblerProject);
 }
 
 Widget _buildRemoteControlPage(BuildContext context) =>
-    const RemoteControlPage();
+    RemoteControlPage(client: DeviceScope.of(context).client);
 
 Future<void> _openCliPage(BuildContext context) async {
+  final client = DeviceScope.of(context).client;
   await Navigator.of(context)
-      .push(MaterialPageRoute(builder: (_) => const CliPage()));
+      .push(MaterialPageRoute(builder: (_) => CliPage(client: client)));
 }

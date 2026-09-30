@@ -21,18 +21,20 @@ const _kBackgroundColor = Color(0xFF000000);
 const _kForegroundColor = Color(0xFFE0E0E0);
 
 class CliPage extends StatefulWidget {
-  const CliPage({super.key, this.client});
+  const CliPage({super.key, required this.client});
 
   /// Supplied by tests only; the app always uses the shared client, which is
   /// otherwise reached through a singleton no test can replace.
-  final FlipperClient? client;
+  /// The Flipper the session talks to. Required rather than defaulted: a CLI
+  /// opened from one device must not end up on another. ADR 0002.
+  final FlipperClient client;
 
   @override
   State<CliPage> createState() => _CliPageState();
 }
 
 class _CliPageState extends State<CliPage> {
-  late final FlipperClient _client = widget.client ?? FlipperOneClient().get();
+  late final FlipperClient _client = widget.client;
   final FocusNode _terminalFocusNode = FocusNode(debugLabel: 'cli-terminal');
 
   late final Terminal _terminal;

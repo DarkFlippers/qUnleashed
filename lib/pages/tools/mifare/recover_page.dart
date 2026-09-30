@@ -8,8 +8,15 @@ import 'cuid_dict_format.dart';
 import 'recover_controller.dart';
 import 'recover_models.dart';
 
+import 'package:flipperlib/flipperlib.dart';
+
 class RecoverPage extends StatefulWidget {
-  const RecoverPage({super.key});
+  const RecoverPage({super.key, required this.client});
+
+  /// The Flipper this run belongs to. Required rather than defaulted: the
+  /// route builder is handed a context with a DeviceScope above it, so a
+  /// default would only hide which device a recovery ran against. ADR 0002.
+  final FlipperClient client;
 
   @override
   State<RecoverPage> createState() => _RecoverPageState();
@@ -21,7 +28,8 @@ class _RecoverPageState extends State<RecoverPage> {
   @override
   void initState() {
     super.initState();
-    _controller = RecoverController()..addListener(_onChanged);
+    _controller = RecoverController(client: widget.client)
+      ..addListener(_onChanged);
     _controller.start();
   }
 

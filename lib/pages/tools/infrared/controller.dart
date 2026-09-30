@@ -19,12 +19,11 @@ import '../../../services/logging.dart';
 class IrLibController extends ChangeNotifier {
   IrLibController({
     IrLibApi? api,
-    FlipperClient? client,
+    required this._client,
     ArchiveStorage? storage,
     IrLibSettingsStorage? settingsStorage,
     IrLibLocalRepo? localRepo,
   }) : _api = api ?? IrLibApi(),
-       _client = client ?? FlipperOneClient().get(),
        _storage = storage ?? ArchiveStorage(),
        _settingsStorage = settingsStorage ?? IrLibSettingsStorage(),
        _localRepo = localRepo ?? IrLibLocalRepo();

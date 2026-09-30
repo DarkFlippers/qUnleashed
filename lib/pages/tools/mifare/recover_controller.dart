@@ -32,15 +32,14 @@ import 'static_encrypted_recoverer.dart';
 /// instead produce a per-card candidate dictionary for on-device verification.
 class RecoverController extends ChangeNotifier {
   RecoverController({
-    FlipperClient? client,
+    required this._client,
     MfKey32Api? mfApi,
     NestedApi? nestedApi,
     MfKey32Recoverer? mfRecoverer,
     NestedRecoverer? nestedRecoverer,
     StaticEncryptedRecoverer? staticRecoverer,
     HardnestedRecoverer? hardnestedRecoverer,
-  }) : _client = client ?? FlipperOneClient().get(),
-       _mfApi = mfApi ?? MfKey32ApiImpl(),
+  }) : _mfApi = mfApi ?? MfKey32ApiImpl(),
        _nestedApi = nestedApi ?? NestedApiImpl(),
        _mfRecoverer = mfRecoverer ?? NativeMfKey32Recoverer(),
        _nestedRecoverer = nestedRecoverer ?? NativeNestedRecoverer(),

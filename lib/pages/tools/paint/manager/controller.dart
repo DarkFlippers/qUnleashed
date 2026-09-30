@@ -50,10 +50,9 @@ class ProjectManagerController extends ChangeNotifier {
   /// there. A test passes its own, because the shared one reaches for the
   /// app's client and would put a real display in play. ADR 0002.
   ProjectManagerController({
-    FlipperClient? client,
+    required this._client,
     VirtualDisplaySession? display,
-  }) : _client = client ?? FlipperOneClient().get(),
-       _display = display ?? VirtualDisplaySession.instance {
+  }) : _display = display ?? VirtualDisplaySession.instance {
     _connSub = _client.connectionStream.listen((_) => _notify());
     _display.enter();
   }

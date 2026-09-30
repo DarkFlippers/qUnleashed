@@ -22,13 +22,19 @@ import 'controller.dart';
 import 'details.dart';
 import '../../../devices/device_scope.dart';
 
+import 'package:flipperlib/flipperlib.dart';
+
 /// Pixel Draw's library screen: every local animation with its manifest
 /// settings. Rows open in the editor, the preview picks the animation the
 /// details pane describes (and mirrors it on the device), and the pack that
 /// goes to `/ext/dolphin` is assembled right here — including editing the
 /// manifest as text.
 class ProjectManagerPage extends StatefulWidget {
-  const ProjectManagerPage({super.key});
+  const ProjectManagerPage({super.key, required this.client});
+
+  /// The Flipper a pack is sent to and imported from. Required rather than
+  /// defaulted: the route builder has a DeviceScope above it. ADR 0002.
+  final FlipperClient client;
 
   @override
   State<ProjectManagerPage> createState() => _ProjectManagerPageState();
@@ -40,7 +46,7 @@ class _ProjectManagerPageState extends State<ProjectManagerPage> {
   @override
   void initState() {
     super.initState();
-    _ctrl = ProjectManagerController();
+    _ctrl = ProjectManagerController(client: widget.client);
     _ctrl.addListener(_onChange);
     _ctrl.loadAll();
   }

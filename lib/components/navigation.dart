@@ -20,10 +20,14 @@ enum AppRoute {
 
 /// Arguments for [AppRoute.pixelEditor]: one image file on the Flipper.
 class PixelEditorArgs {
-  const PixelEditorArgs({required this.remotePath, this.client});
+  const PixelEditorArgs({required this.remotePath, required this.client});
 
   final String remotePath;
-  final FlipperClient? client;
+
+  /// The Flipper the drawing is read from and written back to. Required
+  /// rather than defaulted, so an editor opened from one device cannot save
+  /// to another. ADR 0002.
+  final FlipperClient client;
 }
 
 /// Arguments for [AppRoute.plotter]: a captured signal to plot right away.

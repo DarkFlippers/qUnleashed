@@ -28,7 +28,11 @@ import 'widgets/frames_strip.dart';
 
 class PaintPage extends StatefulWidget {
   const PaintPage({super.key, this.project, this.remotePath, this.client})
-    : assert(project == null || remotePath == null);
+    : assert(project == null || remotePath == null),
+      // A drawing on the Flipper cannot be read without one, and the two
+      // routes that open one both have a scope to take it from. A local
+      // project needs no device at all. ADR 0002.
+      assert(remotePath == null || client != null);
 
   /// Project to load into the canvas when the editor opens. When null the editor
   /// starts a fresh, blank project (which becomes a draft once edited).
@@ -114,8 +118,10 @@ class _PaintPageState extends State<PaintPage> {
 
   Future<void> _loadRemoteFile(String path) async {
     try {
-      final bytes = await (widget.client ?? FlipperOneClient().get())
-          .storageReadChunked(path, timeout: const Duration(minutes: 5));
+      final bytes = await widget.client!.storageReadChunked(
+        path,
+        timeout: const Duration(minutes: 5),
+      );
       if (bytes.isEmpty) {
         throw StateError(l10n.paintFileEmpty);
       }

@@ -9,11 +9,15 @@ import '../pages/option/page.dart';
 import '../pages/tools/paint/editor/page.dart';
 import '../pages/tools/plotter/page.dart';
 import '../pages/tools/remote/desktop/page.dart';
+import '../pages/devices/device_scope.dart';
 
 /// Binds every cross-feature route to the page that implements it. This is the
 /// only place that knows about all feature pages at once.
 void registerAppRoutes() {
-  registerRoute(AppRoute.remoteControl, (_, _) => const RemoteControlPage());
+  registerRoute(
+    AppRoute.remoteControl,
+    (context, _) => RemoteControlPage(client: DeviceScope.of(context).client),
+  );
   registerRoute(AppRoute.pixelEditor, (_, args) {
     final editor = args as PixelEditorArgs;
     return PaintPage(remotePath: editor.remotePath, client: editor.client);

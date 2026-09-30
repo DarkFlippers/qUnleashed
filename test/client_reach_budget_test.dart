@@ -69,7 +69,18 @@ const Map<String, int> kBudget = {
   // Was 9, then 8 - `widgets/ir_file_viewer.dart` and then
   // `infrared/ir_content_page.dart` take a client from the pages that build
   // them.
-  'pages/tools': 7,
+  //
+  // Then 7 to 1. Six defaults went at once, because they all had the same
+  // shape: a `client` parameter that was already there with a fallback
+  // behind it, and exactly one construction site. What made the callers able
+  // to supply one is ADR 0011 - DeviceScope sits above the Navigator, so
+  // every route builder in this area is handed a context that has one.
+  //
+  // The one left is `paint/virtual_display_session.dart`, and it is a
+  // singleton by design: two pages share the display session, and ADR 0002
+  // leaves the existing singletons alone. Its own doc says so, and
+  // `VirtualDisplaySession.forTest` is what makes it testable anyway.
+  'pages/tools': 1,
   // Three controllers. Was 4 - `browser/widgets/storage_card.dart` takes a
   // client parameter now, passed by the one page that builds it, which is
   // what let it have a test at all.
