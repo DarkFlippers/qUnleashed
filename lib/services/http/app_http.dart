@@ -34,6 +34,38 @@ class AppHttp {
     ..connectionTimeout = const Duration(seconds: 25)
     ..userAgent = userAgent;
 
+  /// How long a request may take to produce its response headers.
+  ///
+  /// [io.HttpClient.connectionTimeout] covers the TCP handshake and nothing
+  /// after it, so a server that accepts the connection and then says nothing
+  /// - a half-open corporate proxy, a captive portal that stalls past the
+  /// handshake, a blackholing mobile link - left every request pending for
+  /// the life of the process. `idleTimeout` does not close that: it only
+  /// reaps idle pooled connections. #130.
+  /// Shortened by tests, which cannot wait half a minute to watch a stall.
+  static Duration headersDeadline = const Duration(seconds: 30);
+
+  /// How long a response body may go without a byte before it is abandoned.
+  ///
+  /// Between chunks rather than in total, deliberately. Half the call sites
+  /// stream something large - a firmware `.tgz`, an IR library, an ATP
+  /// bundle - and any fixed total budget breaks those on a slow link, while
+  /// a stall is a stall whatever the size.
+  /// Shortened by tests, as [headersDeadline].
+  static Duration idleDeadline = const Duration(seconds: 30);
+
+  /// [stream] with [idleDeadline] applied.
+  ///
+  /// The error alone ends an `await for`: the loop throws on it and cancels
+  /// the subscription, so there is no sink left for the source to write to
+  /// afterwards.
+  static Stream<List<int>> _untilStalled(Stream<List<int>> stream, Uri uri) =>
+      stream.timeout(
+        idleDeadline,
+        onTimeout: (sink) =>
+            sink.addError(TimeoutException('No data from $uri', idleDeadline)),
+      );
+
   static Future<io.HttpClientResponse> get(
     Uri uri, {
     Map<String, String> headers = const {},
@@ -42,7 +74,15 @@ class AppHttp {
     for (final entry in headers.entries) {
       req.headers.set(entry.key, entry.value);
     }
-    return req.close();
+    return req.close().timeout(
+      headersDeadline,
+      onTimeout: () {
+        // Aborted as well as abandoned: without this the socket stays open
+        // and the connection sits in the pool for the next caller to inherit.
+        req.abort();
+        throw TimeoutException('No response from $uri', headersDeadline);
+      },
+    );
   }
 
   static Future<dynamic> getJson(
@@ -53,7 +93,7 @@ class AppHttp {
       uri,
       headers: {io.HttpHeaders.acceptHeader: 'application/json', ...headers},
     );
-    final text = await res.transform(utf8.decoder).join();
+    final text = await _untilStalled(res, uri).transform(utf8.decoder).join();
     if (res.statusCode < 200 || res.statusCode >= 300) {
       throw AppHttpException(res.statusCode, uri.toString(), text);
     }
@@ -73,8 +113,14 @@ class AppHttp {
       req.headers.set(entry.key, entry.value);
     }
     req.write(jsonEncode(body));
-    final res = await req.close();
-    final text = await res.transform(utf8.decoder).join();
+    final res = await req.close().timeout(
+      headersDeadline,
+      onTimeout: () {
+        req.abort();
+        throw TimeoutException('No response from $uri', headersDeadline);
+      },
+    );
+    final text = await _untilStalled(res, uri).transform(utf8.decoder).join();
     if (res.statusCode < 200 || res.statusCode >= 300) {
       throw AppHttpException(res.statusCode, uri.toString(), text);
     }
@@ -86,6 +132,13 @@ class AppHttp {
   /// The on-disk JSON HTTP cache directory (inside the app support container).
   /// Exposed so the Storage settings can report its size and clear it.
   static Future<io.Directory> httpCacheDirectory() => _ensureJsonCacheDir();
+
+  /// Puts both deadlines back to what a shipped build uses.
+  @visibleForTesting
+  static void debugResetDeadlines() {
+    headersDeadline = const Duration(seconds: 30);
+    idleDeadline = const Duration(seconds: 30);
+  }
 
   /// Points the cache at a directory of the caller's choosing.
   ///
@@ -172,7 +225,10 @@ class AppHttp {
         }
         unchanged = cached.bodyFile;
       } else {
-        final text = await res.transform(utf8.decoder).join();
+        final text = await _untilStalled(
+          res,
+          uri,
+        ).transform(utf8.decoder).join();
         if (res.statusCode < 200 || res.statusCode >= 300) {
           throw AppHttpException(res.statusCode, uri.toString(), text);
         }
@@ -271,13 +327,13 @@ class AppHttp {
   }) async {
     final res = await get(uri, headers: headers);
     if (res.statusCode < 200 || res.statusCode >= 300) {
-      final text = await res.transform(utf8.decoder).join();
+      final text = await _untilStalled(res, uri).transform(utf8.decoder).join();
       throw AppHttpException(res.statusCode, uri.toString(), text);
     }
     final total = res.contentLength > 0 ? res.contentLength : null;
     final out = BytesBuilder(copy: false);
     onProgress?.call(0, total);
-    await for (final chunk in res) {
+    await for (final chunk in _untilStalled(res, uri)) {
       out.add(chunk);
       onProgress?.call(out.length, total);
     }
@@ -299,7 +355,7 @@ class AppHttp {
     var received = 0;
     try {
       onProgress?.call(0, total);
-      await for (final chunk in res) {
+      await for (final chunk in _untilStalled(res, uri)) {
         sink.add(chunk);
         received += chunk.length;
         onProgress?.call(received, total);
