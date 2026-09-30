@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../settings/persist.dart';
+import '../settings/store.dart';
 
 import '../logging.dart';
 import '../prefs_reader.dart';
@@ -29,15 +29,12 @@ enum WidgetCaptionSize { small, normal, large }
 
 /// How the home-screen widgets look. Persisted here and mirrored to the
 /// native store on every change, which redraws every widget at once.
-class HomeWidgetSettings extends ChangeNotifier {
+class HomeWidgetSettings extends PrefsBackedSettings {
   HomeWidgetSettings._();
 
   static final HomeWidgetSettings instance = HomeWidgetSettings._();
 
   static const String _prefix = 'home_widget.';
-
-  bool _loaded = false;
-  Future<void>? _loading;
 
   /// Named so [reset] and the fallbacks in [_load] cannot drift from the
   /// initialisers below. These are also what the native store ships with, so
@@ -54,48 +51,14 @@ class HomeWidgetSettings extends ChangeNotifier {
   bool _captionShown = _defaultCaptionShown;
   WidgetCaptionSize _captionSize = _defaultCaptionSize;
 
-  bool get loaded => _loaded;
   WidgetTheme get theme => _theme;
   WidgetIconStyle get iconStyle => _iconStyle;
   WidgetBorder get border => _border;
   bool get captionShown => _captionShown;
   WidgetCaptionSize get captionSize => _captionSize;
 
-  /// Reads once per process; later callers await the same read.
-  ///
-  /// Never throws. This memoises, and both callers assume it: [sync] awaits
-  /// it during `_runApp`, and the widgets option page starts it unawaited -
-  /// so a rejection would take out the push that redraws every widget, and
-  /// then be handed to every later caller for the life of the process.
-  ///
-  /// A read that fails leaves [loaded] false, which [sync] checks before
-  /// pushing: the fields hold the initialisers above, and pushing those would
-  /// overwrite the native store with a look the user did not choose. #123.
-  Future<void> load() {
-    if (_loaded) return Future.value();
-    return _loading ??= _load();
-  }
-
-  Future<void> _load() async {
-    final PrefsReader reader;
-    try {
-      reader = PrefsReader(await SharedPreferences.getInstance());
-    } catch (e, st) {
-      // See MapSettings for the long version: getInstance is the only throw,
-      // it carries a stack only when the error is an Error, the fields are
-      // all-or-nothing because every read below goes through PrefsReader, and
-      // _loading is released so the next caller reads again - see there for
-      // why #124 changed that answer.
-      //
-      // [loaded] stays false, which is what [sync] and [_set] check before
-      // they push: the initialisers must not reach the native store.
-      _loading = null;
-      LogService.warn(
-        '[HomeWidgetSettings] load failed: ${LogService.describe(e, st)}',
-      );
-      return;
-    }
-
+  @override
+  void readFrom(PrefsReader reader) {
     T pick<T extends Enum>(List<T> values, String key, T fallback) {
       final raw = reader.orNull<String>('$_prefix$key');
       for (final v in values) {
@@ -113,18 +76,21 @@ class HomeWidgetSettings extends ChangeNotifier {
       'caption_size',
       _defaultCaptionSize,
     );
-    _loaded = true;
 
     reader.report('[HomeWidgetSettings]');
-    notifyListeners();
   }
 
-  /// Forgets what was read, so one test does not inherit another's state.
-  ///
-  /// Without this the first test to drive a failure fixes the result for
-  /// every test after it in the same isolate - see [load].
-  @visibleForTesting
-  void reset() {
+  /// [loaded] stays false, which is what [sync] and [_set] check before they
+  /// push: the initialisers must not reach the native store.
+  @override
+  void onLoadFailed(Object error, StackTrace stack) {
+    LogService.warn(
+      '[HomeWidgetSettings] load failed: ${LogService.describe(error, stack)}',
+    );
+  }
+
+  @override
+  void resetFields() {
     _theme = _defaultTheme;
     _iconStyle = _defaultIconStyle;
     _border = _defaultBorder;
@@ -132,8 +98,6 @@ class HomeWidgetSettings extends ChangeNotifier {
     _captionSize = _defaultCaptionSize;
 
     push = HomeWidgetService.instance.pushSettings;
-    _loaded = false;
-    _loading = null;
   }
 
   /// Where [sync] and [_set] send the look.
@@ -164,7 +128,7 @@ class HomeWidgetSettings extends ChangeNotifier {
   /// Leaving the last good look in place loses nothing.
   Future<void> sync() async {
     await load();
-    if (!_loaded) return;
+    if (!loaded) return;
     await push(toMap());
   }
 
@@ -186,7 +150,7 @@ class HomeWidgetSettings extends ChangeNotifier {
     Object value,
   ) async {
     if (!changed) return;
-    if (!_loaded) {
+    if (!loaded) {
       // The same reason [sync] gates its push. toMap() sends all five fields,
       // so honouring one tap here would write the other four as initialisers
       // into the native store - the look the user never chose. The tile does

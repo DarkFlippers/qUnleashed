@@ -2,10 +2,8 @@ import '../../../../services/localization/l10n.dart';
 
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-
 import '../../../../services/settings/persist.dart';
+import '../../../../services/settings/store.dart';
 
 import '../../../../services/logging.dart';
 import '../../../../services/prefs_reader.dart';
@@ -59,7 +57,7 @@ class MapTileConfig {
   final bool missingKey;
 }
 
-class MapSettings extends ChangeNotifier {
+class MapSettings extends PrefsBackedSettings {
   MapSettings._();
 
   static final MapSettings instance = MapSettings._();
@@ -89,9 +87,6 @@ class MapSettings extends ChangeNotifier {
   static const double minCustomZoom = 2;
   static const double maxCustomZoom = 22;
 
-  bool _loaded = false;
-  Future<void>? _loading;
-
   /// Named so [reset] and the fallbacks in [_load] cannot drift from the
   /// initialisers below, which is the drift [reset] exists to prevent.
   static const MapAppearance _defaultAppearance = MapAppearance.auto;
@@ -120,7 +115,6 @@ class MapSettings extends ChangeNotifier {
   bool _trackDevice = _defaultTrackDevice;
   bool _scanSubfolders = _defaultScanSubfolders;
 
-  bool get loaded => _loaded;
   MapTileProvider get provider => _provider;
   MapAppearance get appearance => _appearance;
   String get customUrl => _customUrl;
@@ -155,56 +149,11 @@ class MapSettings extends ChangeNotifier {
     return provider.defaultDesign(dark: dark);
   }
 
-  /// Reads once per process; later callers await the same read.
-  ///
-  /// Never throws. This memoises, and all three callers assume it: the map
-  /// page and the map settings page both start it unawaited, and the map
-  /// controller awaits it ahead of loading files and requesting location - so
-  /// a rejection would abort the rest of that initialize, and then be handed
-  /// to every later caller for the life of the process. #123.
-  ///
-  /// The fallback is the Carto provider with no key, so unless the build
-  /// carries an embedded one the tile layer is still built and still asks for
-  /// tiles, with the key stripped out of the template, and the map page shows
-  /// the missing-key notice - a toast that dismisses after three seconds and
-  /// is skipped entirely in pick mode. Better than nothing, but the log line
-  /// below is what actually keeps the failure.
-  Future<void> load() {
-    if (_loaded) return Future.value();
-    return _loading ??= _load();
-  }
-
-  Future<void> _load() async {
-    final PrefsReader reader;
-    try {
-      reader = PrefsReader(await SharedPreferences.getInstance());
-    } catch (e, st) {
-      // The only throw in here. It carries a stack when the error is an
-      // Error - a TypeError out of the platform decoder, which is the
-      // corrupted store this exists for - and none when it is not, which is
-      // what a PlatformException from an unopenable store is. LogService
-      // .describe is the one place that difference is handled.
-      //
-      // Nothing below can throw: every value goes through PrefsReader, which
-      // cannot, and the two l10n calls cannot either - QLocaleController only
-      // ever holds a supported locale, which setLocale now asserts. So the
-      // fields are either all read or all left at their initialisers, and
-      // "load failed" always means the second.
-      //
-      // _loading is released, so the next caller reads again. Until #124
-      // this was latched instead, on the argument that main() read
-      // preferences through three unguarded controllers before runApp - so a
-      // store that would not open meant an app that never started, and there
-      // was nothing left to retry. #124 caught those three. The app starts
-      // now, which is what makes this catch reachable in a running session,
-      // and getInstance drops its own memo on failure for exactly this.
-      _loading = null;
-      LogService.warn(
-        '[MapSettings] load failed: ${LogService.describe(e, st)}',
-      );
-      return;
-    }
-
+  /// The two l10n calls below cannot throw either - QLocaleController only
+  /// ever holds a supported locale, which setLocale asserts - so this store
+  /// is all-or-nothing like its siblings.
+  @override
+  void readFrom(PrefsReader reader) {
     _provider = mapProviderById(reader.orNull<String>(_prefProvider));
     _appearance = MapAppearance.parse(reader.orNull<String>(_prefAppearance));
     for (final provider in mapTileProviders(l10n)) {
@@ -232,22 +181,27 @@ class MapSettings extends ChangeNotifier {
     _autoCenter = reader.or(_prefAutoCenter, _defaultAutoCenter);
     _trackDevice = reader.or(_prefTrackDevice, _defaultTrackDevice);
     _scanSubfolders = reader.or(_prefScanSubfolders, _defaultScanSubfolders);
-    _loaded = true;
 
     // Nothing says a stored value was *rejected*: an API key raises the
     // missing-key notice as though none had ever been entered, a custom
     // URL quietly draws OpenStreetMap instead, and the toggles just come
     // back different.
     reader.report('[MapSettings]');
-    notifyListeners();
   }
 
-  /// Forgets what was read, so one test does not inherit another's state.
-  ///
-  /// Without this the first test to drive a failure fixes the result for
-  /// every test after it in the same isolate - see [load].
-  @visibleForTesting
-  void reset() {
+  /// The error carries a stack when it is an Error - a TypeError out of the
+  /// platform decoder, which is the corrupted store this exists for - and
+  /// none when it is a PlatformException from a store that will not open.
+  /// LogService.describe is the one place that difference is handled.
+  @override
+  void onLoadFailed(Object error, StackTrace stack) {
+    LogService.warn(
+      '[MapSettings] load failed: ${LogService.describe(error, stack)}',
+    );
+  }
+
+  @override
+  void resetFields() {
     _provider = _defaultProvider;
     _appearance = _defaultAppearance;
     _designs.clear();
@@ -259,9 +213,6 @@ class MapSettings extends ChangeNotifier {
     _autoCenter = _defaultAutoCenter;
     _trackDevice = _defaultTrackDevice;
     _scanSubfolders = _defaultScanSubfolders;
-
-    _loaded = false;
-    _loading = null;
   }
 
   bool darkFor(bool appDark) => switch (_appearance) {
