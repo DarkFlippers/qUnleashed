@@ -63,9 +63,13 @@ class _RemoteFile {
 }
 
 class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
-  ArchiveController({FlipperClient? client, ArchiveStorage? storage})
-    : _client = client ?? FlipperOneClient().get(),
-      _storage = storage ?? ArchiveStorage();
+  /// [client] is the one the app resolved at its composition root.
+  ///
+  /// Required now. The fallback was there for `ArchivePage` building its own
+  /// controller, and that page is built in one place - `AppShell`, which has
+  /// the client the root handed it. ADR 0002.
+  ArchiveController({required this._client, ArchiveStorage? storage})
+    : _storage = storage ?? ArchiveStorage();
 
   final FlipperClient _client;
   final ArchiveStorage _storage;

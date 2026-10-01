@@ -29,9 +29,8 @@ enum MapLocationStatus {
 }
 
 class MapToolController extends ChangeNotifier with WidgetsBindingObserver {
-  MapToolController({ArchiveStorage? storage, FlipperClient? client})
-    : _storage = storage ?? ArchiveStorage(),
-      _client = client ?? FlipperOneClient().get();
+  MapToolController({required this._client, ArchiveStorage? storage})
+    : _storage = storage ?? ArchiveStorage();
 
   final ArchiveStorage _storage;
   final FlipperClient _client;

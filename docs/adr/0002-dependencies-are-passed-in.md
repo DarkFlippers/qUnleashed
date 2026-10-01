@@ -1,6 +1,7 @@
 # 0002. Dependencies are passed in, not reached for
 
-Status: Accepted (2026-09-24)
+Status: Accepted (2026-09-24); the client sites are down to their roots
+(2026-10-01)
 
 ## Context
 
@@ -56,6 +57,47 @@ That last point is a constraint, not a detail. `widgetMain()` is a headless
 isolate started by a home-screen widget; the graph assembled in `_runApp` does
 not exist there. A dependency wired in the wrong place breaks a path that is
 never run locally and is not covered by CI.
+
+## Where the 24 went (2026-10-01)
+
+Six are left, and every one of them is a site this ADR already excludes:
+
+| Area | Site | Why it stays |
+|---|---|---|
+| `app` | `bootstrap.dart` | Composition root. |
+| `main.dart` | `_initCore` | Composition root - the one both entry points share. |
+| `pages/apps` | `apps_backend.dart` | Existing singleton, left alone by the Decision above. |
+| `pages/flibler` | `project/controller.dart` | Fallback behind `FliblerProjectController.instance`. |
+| `pages/tools` | `paint/virtual_display_session.dart` | Two pages share one session; `forTest` is its seam. |
+| `services` | `link_service.dart` | Fallback until `bootstrapAmbientServices` has handed it one. |
+
+What moved the other eighteen was not the seam this ADR named. It was
+[0011](0011-device-scope-above-the-navigator.md): with `DeviceScope` above the
+Navigator, every route builder and every pushed page has a client in its
+context, so a `client ?? FlipperOneClient().get()` default had a caller that
+could supply one. The parameters were in most cases already there - the
+defaults behind them were the whole reach. Making them required is what turns
+the ratchet from a number into a rule the compiler keeps.
+
+**The seam in `flipperlib` was not needed for any of this, and is still the
+only way the last four go.** Each of them is a singleton or a fallback for
+one, and a singleton cannot be handed a client by a caller that does not build
+it.
+
+One thing the count does not say, and it is the ratchet's own caveat: a site
+removed by threading a client through six constructors and a site removed by
+making the widget stop touching the device both lower it by one, and only the
+second is what this ADR is after.
+[`test/client_reach_budget_test.dart`](../../test/client_reach_budget_test.dart)
+records that in its header. Of the eighteen, `widgets/firmware_card.dart` was
+the second kind; the rest were the first. What they bought is narrower than
+the number looks: eighteen classes now say in their signature that they need a
+device, and can be built in a test with a fake.
+
+The metric this ADR originally named - what `resetFirmwareState()` resets by
+hand - is not the one being read here.
+[0012](0012-the-di-scoreboard-is-the-ratchet.md) replaced it with the ratchet,
+for reasons that this slice is another instance of.
 
 ## Rejected alternatives (and why)
 

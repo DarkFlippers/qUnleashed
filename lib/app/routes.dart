@@ -26,7 +26,10 @@ void registerAppRoutes() {
     final plot = args as PlotterArgs?;
     return PulsePlotterPage(initialBytes: plot?.bytes, initialName: plot?.name);
   });
-  registerRoute(AppRoute.archiveMap, (_, _) => const FlipperMapPage());
+  registerRoute(
+    AppRoute.archiveMap,
+    (context, _) => FlipperMapPage(client: DeviceScope.of(context).client),
+  );
   registerRoute(AppRoute.fliblerProject, (_, _) => const FliblerProjectPage());
   registerRoute(AppRoute.appSettings, (_, _) => const SettingsPage());
   registerRoute(AppRoute.mapSettings, (_, _) => const MapSettingsPage());

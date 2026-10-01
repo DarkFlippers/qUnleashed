@@ -89,8 +89,12 @@ There is no container (`get_it`: 0 matches). Dependencies arrive three ways:
 2. **The `FlipperOneClient()` factory singleton**
    (`lib/modules/flipperlib/lib/flipperlib.dart:28`) — it does not have the
    `static final instance` shape, so it is not among the 30 above, but it is
-   what gives access to the device: **24 call sites** in `lib/` outside the
-   modules.
+   what gives access to the device: **6 call sites** in `lib/` outside the
+   modules, down from 24. Two are composition roots (`main.dart`'s `_initCore`
+   and `app/bootstrap.dart`) and four are the singletons in 1 above, or
+   fallbacks behind one. Everything else is handed a client by whoever built
+   it. The count is enforced per area by
+   `test/client_reach_budget_test.dart`.
 3. **`InheritedNotifier`** — `DeviceScope`
    (`lib/pages/devices/device_scope.dart`) passes a `DeviceController` down the
    subtree; `lib/components/cardlist.dart` does the same for its list.

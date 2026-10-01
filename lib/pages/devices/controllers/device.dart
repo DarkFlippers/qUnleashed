@@ -14,13 +14,10 @@ import '../models/device_info.dart';
 class DeviceController extends ChangeNotifier {
   /// [client] is the one the app built at its composition root.
   ///
-  /// Optional, and falling back to the global, because the two entry points in
-  /// `main.dart` are not the only builders - ADR 0002 converts a site when a
-  /// change is already touching it, rather than all at once. What the
-  /// parameter buys today is that a widget test can hand this a fake instead
-  /// of a client that opens real BLE streams for the length of the run.
-  DeviceController({FlipperClient? client})
-    : _client = client ?? FlipperOneClient().get() {
+  /// Required now. It was optional while the two entry points in `main.dart`
+  /// were not the only builders, and they are: `QUnleashedApp` takes the
+  /// client the root resolved and hands it here. ADR 0002.
+  DeviceController({required this._client}) {
     _device = _client.connectedDevice;
     _connectionSub = _client.connectionStream.listen(_onConnectionState);
     _sessionsSub = _client.sessionsStream.listen((_) => _notify());

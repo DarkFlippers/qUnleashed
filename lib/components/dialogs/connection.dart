@@ -10,16 +10,22 @@ import '../../services/localization/l10n.dart';
 import '../../services/guarded.dart';
 import '../../services/logging.dart';
 import '../../theme/theme.dart';
+import '../../pages/devices/device_scope.dart';
 import 'connection_error.dart';
 
 Future<FlipperDevice?> showConnectionDialog(
   BuildContext context, {
   bool usbOnly = false,
 }) {
+  // Read here rather than inside the dialog: ADR 0011 put the device scope
+  // above the Navigator, so every caller of this has one - and the dialog
+  // reaching for the global itself was the last thing in `components`
+  // resolving its own. ADR 0002.
+  final client = DeviceScope.of(context).client;
   return showDialog<FlipperDevice>(
     context: context,
     barrierColor: FlipperOriginalColors.barrier,
-    builder: (_) => ConnectionDialog(usbOnly: usbOnly),
+    builder: (_) => ConnectionDialog(client: client, usbOnly: usbOnly),
   );
 }
 
@@ -56,7 +62,14 @@ Future<void> connectLinkEntry(BuildContext context, LinkEntry entry) async {
 }
 
 class ConnectionDialog extends StatefulWidget {
-  const ConnectionDialog({super.key, this.usbOnly = false});
+  const ConnectionDialog({
+    super.key,
+    required this.client,
+    this.usbOnly = false,
+  });
+
+  /// The link this picker scans and connects on.
+  final FlipperClient client;
 
   final bool usbOnly;
 
@@ -65,7 +78,7 @@ class ConnectionDialog extends StatefulWidget {
 }
 
 class _ConnectionDialogState extends State<ConnectionDialog> {
-  final FlipperClient _client = FlipperOneClient().get();
+  FlipperClient get _client => widget.client;
 
   StreamSubscription<List<FlipperDevice>>? _devicesSub;
   StreamSubscription<List<FlipperSessionInfo>>? _sessionsSub;

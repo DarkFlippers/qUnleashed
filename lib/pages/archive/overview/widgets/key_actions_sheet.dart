@@ -463,9 +463,11 @@ class KeyActionsSheet {
   }
 
   static void _openInFileManager(BuildContext context, ArchiveKey k) {
+    final client = DeviceScope.of(context).client;
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => FileManagerPage(initialPath: _parent(k.remotePath)),
+        builder: (_) =>
+            FileManagerPage(client: client, initialPath: _parent(k.remotePath)),
       ),
     );
   }
@@ -474,7 +476,12 @@ class KeyActionsSheet {
     final path = k.localPath;
     if (path == null || path.isEmpty) return;
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => FlipperMapPage(focusPinPath: path)),
+      MaterialPageRoute(
+        builder: (_) => FlipperMapPage(
+          client: DeviceScope.of(context).client,
+          focusPinPath: path,
+        ),
+      ),
     );
   }
 
@@ -484,6 +491,7 @@ class KeyActionsSheet {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => FlipperMapPage(
+          client: DeviceScope.of(context).client,
           pickLocationFor: MapPickTarget(
             localPath: path,
             remotePath: k.remotePath,

@@ -21,14 +21,19 @@ resets the same ten now. By its own metric, nothing happened.
 The ratchet [0004](0004-ratchet-not-lint.md) put on `FlipperOneClient()` says
 otherwise:
 
-| Area | Before #151 | Now |
-|---|---|---|
-| `pages/devices` | 2 | 1 |
-| `pages/archive` | 4 | 3 |
-| `pages/tools` | 9 | 8 |
-| `components` | 2 | 1 |
-| `services` | 3 | 1 |
-| **Total** | **24** | **18** |
+| Area | Before #151 | At this ADR | 2026-10-01 |
+|---|---|---|---|
+| `pages/devices` | 2 | 1 | 0 |
+| `pages/archive` | 4 | 3 | 0 |
+| `pages/tools` | 9 | 8 | 1 |
+| `components` | 2 | 1 | 0 |
+| `services` | 3 | 1 | 1 |
+| **Total** | **24** | **18** | **6** |
+
+The third column was added when the work this ADR was written during
+finished; what is left is two composition roots and four singletons. See
+[0002](0002-dependencies-are-passed-in.md) for which, and for what actually
+moved them.
 
 And six widgets and services that could not be tested at all now have tests,
 because each slice ended with a seam and the first cases through it.
@@ -77,7 +82,7 @@ for reasons that still hold: it tracks neither known failure.
 ## Consequences
 
 - One scoreboard instead of two, and it is one CI already enforces.
-- The remaining 18 are named in the ratchet's budget map with what kind of
+- The remaining sites are named in the ratchet's budget map with what kind of
   site each is. Two are composition roots and expected to survive; the rest
   are controllers and one service fallback.
 - `resetFirmwareState()`'s own doc still records what happened before it

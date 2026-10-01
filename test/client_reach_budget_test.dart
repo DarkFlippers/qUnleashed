@@ -51,11 +51,13 @@ const Map<String, int> kBudget = {
   // everything below could be given a client instead of reaching for one.
   'app': 1,
   'main.dart': 1,
-  // The connection picker. Was 2 - `appbar.dart` took an optional client with
-  // the global as a fallback, and that fallback is gone: ADR 0011 put the
-  // device scope above the Navigator, so all sixteen pages that build a
-  // `QPageAppBar` are inside it and each has one to pass.
-  'components': 1,
+  // Was 2, then 1, now none. `appbar.dart`'s optional client went first;
+  // `dialogs/connection.dart` was the last, and both went for the same
+  // reason: ADR 0011 put the device scope above the Navigator, so every
+  // caller is inside it and `DeviceScope.of(context).client` is a client to
+  // pass. `showConnectionDialog` reads it there and `ConnectionDialog`
+  // requires one.
+  'components': 0,
   // Controllers, mostly - the layer that would take a client as a constructor
   // parameter with no new abstraction at all.
   // Six of the seven are fallbacks behind a parameter that is already there -
@@ -81,16 +83,20 @@ const Map<String, int> kBudget = {
   // leaves the existing singletons alone. Its own doc says so, and
   // `VirtualDisplaySession.forTest` is what makes it testable anyway.
   'pages/tools': 1,
-  // Three controllers. Was 4 - `browser/widgets/storage_card.dart` takes a
-  // client parameter now, passed by the one page that builds it, which is
-  // what let it have a test at all.
-  'pages/archive': 3,
-  // The controller, and only as a fallback: `DeviceController` takes a client
-  // parameter now and reaches for the global when nobody passes one. Was 2 -
-  // the widget ADR 0004 named as the real smell an import lint would have
-  // missed, `widgets/firmware_card.dart`, reads it off `DeviceScope` instead
-  // and no longer imports flipperlib at all.
-  'pages/devices': 1,
+  // Was 4, then 3, now none. `browser/widgets/storage_card.dart` went first;
+  // the other three were `FileManagerController`, `MapToolController` and
+  // `ArchiveController`, each a `client ?? FlipperOneClient().get()` behind a
+  // parameter that was already there. All three require one now, and the six
+  // sites that build them - `routes.dart`, `shell.dart`, the overview page
+  // and `key_actions_sheet.dart` - pass either the scope's client or the one
+  // `AppShell` was given.
+  'pages/archive': 0,
+  // Was 2, then 1, now none. `widgets/firmware_card.dart` - the widget ADR
+  // 0004 named as the real smell an import lint would have missed - reads it
+  // off `DeviceScope` and no longer imports flipperlib at all. Then
+  // `DeviceController`'s fallback: `QUnleashedApp` takes the client the root
+  // resolved, so the one place that builds the controller has one.
+  'pages/devices': 0,
   'pages/apps': 1,
   'pages/flibler': 1,
   // `LinkService`, and only as a fallback: `start(client)` hands it one from

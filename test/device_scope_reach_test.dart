@@ -39,10 +39,10 @@ void main() {
   testWidgets('a route pushed over the app is inside the scope', (
     tester,
   ) async {
-    final (device, _) = mountedDevice();
+    final (device, client) = mountedDevice();
     final key = GlobalKey();
 
-    await tester.pumpWidget(QUnleashedApp(device: device));
+    await tester.pumpWidget(QUnleashedApp(client: client, device: device));
     await tester.pump();
 
     final navigator = tester.state<NavigatorState>(find.byType(Navigator));
@@ -62,7 +62,7 @@ void main() {
   });
 
   testWidgets('a scope mounted under home does not reach one', (tester) async {
-    final (device, _) = mountedDevice();
+    final (device, client) = mountedDevice();
     final key = GlobalKey();
 
     // The shape this used to have: the scope around `home` rather than around
