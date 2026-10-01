@@ -1545,6 +1545,21 @@
     "description": "Body of the too many devices error."
   },
 
+  "connectSessionLimitTitle": "All connection slots are in use",
+  "@connectSessionLimitTitle": {
+    "description": "Title of the connection error when the app already holds as many links as it can."
+  },
+
+  "fmConnectSessionLimitBody": "qUnleashed keeps at most {count} Flippers connected at once. Disconnect one of them in the list, then connect again.",
+  "@fmConnectSessionLimitBody": {
+    "description": "Body of the session limit error. Distinct from the too many devices error, which is the system pairing limit: this one is the app's own cap and is fixed in the picker rather than in system settings.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+
   "connectBusyTitle": "Connection in progress",
   "@connectBusyTitle": {
     "description": "Title of the connection error when another connection attempt is still running."
