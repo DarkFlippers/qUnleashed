@@ -10,9 +10,10 @@
 // its own visitor and its own budget - what they share is how a file list is
 // obtained, how a path becomes an area, and how two maps are compared.
 //
-// The fourth, `unawaited_budget_test.dart`, is the first whose budget went in
-// before its sweep rather than after. Its header says so, because an area's
-// number there does not mean what the same number means in the other three.
+// The fourth, `unawaited_budget_test.dart`, was the first whose budget went in
+// before its sweep rather than after - deliberately, so the figure could not
+// climb while the sweep ran. That sweep is done, so all four now mean the same
+// thing: what is left has been read and kept.
 import 'dart:io';
 
 import 'package:analyzer/dart/analysis/utilities.dart';

@@ -159,7 +159,7 @@ class _CliPageState extends State<CliPage> {
       await guarded('[CLI] leaving cli mode', channel.close);
     }
 
-    unawaited(teardown());
+    unawaited(guarded('[CLI] teardown', teardown));
     _terminalController.dispose();
     _terminalFocusNode.dispose();
     super.dispose();

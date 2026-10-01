@@ -4,6 +4,7 @@ import 'package:flipperlib/flipperlib.dart' show FlipperClient;
 import 'package:flutter/material.dart';
 import 'package:qunleashed/components/appbar.dart';
 
+import '../../../../services/guarded.dart';
 import '../../../../components/notification.dart';
 import '../../../../services/localization/l10n.dart';
 import '../../../../services/logging.dart';
@@ -106,13 +107,13 @@ class _RemoteControlPageState extends State<RemoteControlPage>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      unawaited(_session.resumeVisuals());
+      unawaited(guarded('[Remote] resume visuals', _session.resumeVisuals));
       return;
     }
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden ||
         state == AppLifecycleState.detached) {
-      unawaited(_session.pauseVisuals());
+      unawaited(guarded('[Remote] pause visuals', _session.pauseVisuals));
     }
   }
 

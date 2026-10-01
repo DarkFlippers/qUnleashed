@@ -19,12 +19,16 @@
 //    error with the operation's name on it and never rejects.
 //  * anything ending in `.catchError(...)` or `.onError(...)`.
 //
-// This budget is a floor, not a verdict. The other three ratchets went in
-// after their area had been read through; this one goes in before. #23's first
-// box is that triage, and these numbers are only where the tree stood when the
-// ratchet arrived - so the figure can fall while the sweep happens and cannot
-// quietly climb while it does not. Do not read an area's number as a set of
-// sites somebody has judged fine.
+// The sweep is finished: 119 sites when this went in, 22 now, and every one
+// that is left is named in the budget map with the reason it earns its place.
+// Most of them are a handler that is already attached one level down - inside
+// `_chain`, or in the callee's own catch - and the rest are `openRoute`, whose
+// only throw is synchronous. Three could not be wrapped at all without making
+// the code worse; `components` says which.
+//
+// So the number is now a verdict and not a floor, which is what it was when it
+// arrived. Reading it as "sites nobody has looked at" was right for one week
+// and is wrong now.
 //
 // What it cannot see:
 //
@@ -55,8 +59,26 @@ import 'ratchet.dart';
 /// thing these numbers do say is that nothing may be added without a reader
 /// deciding it belongs.
 const Map<String, int> kBudget = {
-  // Untriaged. This is where the tree stood.
-  'pages/tools': 18,
+  // Read through, and the last area to be. Was 18; eight were real - the
+  // visuals start, the two frame pumps, resume and pause, the CLI teardown out
+  // of `dispose`, and the virtual display following a device swap. Each had a
+  // `try`/`finally` with no catch underneath it, so a rejection reached the
+  // zone while a `_busy` flag was tidied.
+  //
+  // The ten left are all already handled, and wrapping them would be a layer
+  // that can never fire:
+  //
+  //  * Six go through `_chain`, which *is* `guarded` - `press`, `beginHold`,
+  //    `endHold` and the long-press it queues all hand back a future that
+  //    cannot reject.
+  //  * `_startMediaRemote` and `_stopMediaRemote` each catch their own, and
+  //    their comments say why the bridge reports it instead.
+  //  * `_holdMediaRemoteButton` only awaits those two hold calls and a delay.
+  //  * `_up`'s release chain carries its own `.catchError`; it is counted
+  //    because the rule reads only the outermost call and that one is
+  //    `whenComplete`, which this header lists as something it cannot see
+  //    through.
+  'pages/tools': 10,
   // Read through. Was 23. The favourites and device-name writes were the
   // settings-write shape #202 settled - the control has already applied the
   // choice on screen, so a write that will not persist is worth a line in the

@@ -27,7 +27,7 @@ class RemoteSession extends ChangeNotifier {
     _statusSub = _client.desktopStatusStream().listen(_applyStatus);
     _connectionSub = _client.connectionStream.listen(_onConnectionState);
     DeviceInfoWatchService.instance.freeze();
-    unawaited(_start());
+    unawaited(guarded('[Remote] start visuals', _start));
   }
 
   final FlipperClient _client;
@@ -336,7 +336,7 @@ class RemoteSession extends ChangeNotifier {
     if (inputChanged) _safeNotify();
     if (!_visualsEnabled) return;
 
-    unawaited(_start());
+    unawaited(guarded('[Remote] start visuals', _start));
   }
 
   void _applyStatus(Status status) => _applyLocked(status.locked);
@@ -384,7 +384,7 @@ class RemoteSession extends ChangeNotifier {
   void _ensureDecodeWorker() {
     if (_decodeBusy || _disposed || !_visualsEnabled) return;
     _decodeBusy = true;
-    unawaited(_pumpDecode());
+    unawaited(guarded('[Remote] decode frames', _pumpDecode));
   }
 
   Future<void> _pumpDecode() async {
@@ -418,7 +418,7 @@ class RemoteSession extends ChangeNotifier {
     _pendingRgba = rgba;
     if (_uploadBusy || _disposed) return;
     _uploadBusy = true;
-    unawaited(_pumpUpload());
+    unawaited(guarded('[Remote] upload frames', _pumpUpload));
   }
 
   Future<void> _pumpUpload() async {

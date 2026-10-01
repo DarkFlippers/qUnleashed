@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flipperlib/flipperlib.dart' hide DateTime;
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
+import '../../../services/guarded.dart';
 import '../../../components/codec/bm.dart';
 import '../../../services/connection/device_info_watch.dart';
 import '../../../services/logging.dart';
@@ -212,8 +213,9 @@ class VirtualDisplaySession {
     final boundTo = _boundTo;
     if (boundTo != null && boundTo.isStale) {
       unawaited(
-        _stop().then((_) {
-          if (_users > 0) _ensureStarted();
+        guarded('[VirtualDisplay] follow the device swap', () async {
+          await _stop();
+          if (_users > 0) await _ensureStarted();
         }),
       );
       return;
