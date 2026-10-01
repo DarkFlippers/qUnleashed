@@ -42,7 +42,24 @@ class FirmwareInstaller {
   /// than an old one, so a flash that has begun finishes where it began; what a
   /// switch changes is only which screen is entitled to show its progress, and
   /// that is [UpdateState.deviceId]'s job.
-  static Future<void> install({
+  /// Flashes [source], and hands back the state it ended on.
+  ///
+  /// Returned as well as published through [onState], because the two answer
+  /// different questions: the stream is what the screen follows, and the
+  /// return is what the caller acts on afterwards.
+  ///
+  /// Three outcomes reach a caller - [UpdateDone], [UpdateError] and
+  /// [UpdateWaitingForReconnect], the last being a DFU flash the user has to
+  /// power-cycle out of. Which of them happened used to be knowable only by
+  /// inspecting the last state the button had seen, and that worked solely
+  /// because `UpdateWaitingForReconnect` is terminal: one trailing emission
+  /// anywhere and #118's latch came back silently, with every test still
+  /// green. #132.
+  ///
+  /// Never throws, as before: every failure inside arrives as an
+  /// [UpdateError], which is also why the caller's own try/catch around this
+  /// call could go.
+  static Future<UpdateState> install({
     required FirmwareSource source,
     required FlipperClient client,
     required void Function(UpdateState) onState,
@@ -51,7 +68,7 @@ class FirmwareInstaller {
     () => _install(source: source, client: client, onState: onState),
   );
 
-  static Future<void> _install({
+  static Future<UpdateState> _install({
     required FirmwareSource source,
     required FlipperClient client,
     required void Function(UpdateState) onState,
@@ -72,13 +89,14 @@ class FirmwareInstaller {
 
       final extracted = await _extractFlat(archivePath);
       if (extracted.dirName == null || extracted.files.isEmpty) {
-        onState(UpdateError(l10n.firmwareErrorEmptyArchive));
-        return;
+        return _report(onState, UpdateError(l10n.firmwareErrorEmptyArchive));
       }
 
       if (!client.isConnected) {
-        await _installViaDfu(extracted.files, onState);
-        return;
+        // Awaited rather than returned straight: the catch below is what
+        // turns a throw into an UpdateError, and a future handed back
+        // unawaited leaves the try before it can.
+        return await _installViaDfu(extracted.files, onState);
       }
 
       final remoteDir = '$_remoteRoot/${extracted.dirName}';
@@ -119,8 +137,7 @@ class FirmwareInstaller {
       }
 
       if (manifestPath == null) {
-        onState(UpdateError(l10n.firmwareErrorNoManifest));
-        return;
+        return _report(onState, UpdateError(l10n.firmwareErrorNoManifest));
       }
 
       _log('starting update: $manifestPath');
@@ -134,16 +151,17 @@ class FirmwareInstaller {
       // call — the radio comes back whenever the install is done, and only
       // they know when to reach for it.
       awaitReturnOf = (target?.isUsb ?? false) ? target : null;
-      onState(
-        awaitReturnOf != null ? const UpdateInstalling() : const UpdateDone(),
-      );
+      if (awaitReturnOf == null) {
+        return _report(onState, const UpdateDone());
+      }
+      onState(const UpdateInstalling());
     } catch (e, st) {
       // error rather than the commentary helper: UpdateError hands the UI
       // e.toString() and no stack, so this is the only place the stack for
       // a flash that died mid-write exists at all - and that is the one
       // failure in this app most worth reproducing from a bug report.
       LogService.error('$_tag update failed: $e\n$st');
-      onState(UpdateError(e.toString()));
+      return _report(onState, UpdateError(e.toString()));
     } finally {
       try {
         tempDir.deleteSync(recursive: true);
@@ -156,11 +174,23 @@ class FirmwareInstaller {
       }
     }
 
+    // Only reached when the install bound a USB device: every other path has
+    // returned by now, which is what lets this end in one outcome rather than
+    // a second nullable check.
     final target = awaitReturnOf;
-    if (target == null) return;
     await LinkService.instance.awaitUsbReturn(target);
     _log('${target.name} is back on the cable');
-    onState(const UpdateDone());
+    return _report(onState, const UpdateDone());
+  }
+
+  /// Publishes [state] and hands it back, so a terminal state is named once
+  /// rather than built twice.
+  static UpdateState _report(
+    void Function(UpdateState) onState,
+    UpdateState state,
+  ) {
+    onState(state);
+    return state;
   }
 
   /// Waits for [client] to come back after a recovery flash.
@@ -244,7 +274,7 @@ class FirmwareInstaller {
     }
   }
 
-  static Future<void> _installViaDfu(
+  static Future<UpdateState> _installViaDfu(
     List<_UpdateFile> files,
     void Function(UpdateState) onState,
   ) async {
@@ -255,17 +285,17 @@ class FirmwareInstaller {
     final firmwareName = fuf?.firmware ?? 'firmware.dfu';
     final firmware = byName[firmwareName];
     if (firmware == null) {
-      onState(UpdateError(l10n.firmwareErrorNoBinary(firmwareName)));
-      return;
+      return _report(
+        onState,
+        UpdateError(l10n.firmwareErrorNoBinary(firmwareName)),
+      );
     }
     if (fuf == null) {
-      onState(UpdateError(l10n.firmwareErrorBadManifest));
-      return;
+      return _report(onState, UpdateError(l10n.firmwareErrorBadManifest));
     }
     final obError = fuf.optionBytesError;
     if (obError != null) {
-      onState(UpdateError(obError));
-      return;
+      return _report(onState, UpdateError(obError));
     }
     final radio = fuf.radio == null ? null : byName[fuf.radio!];
     _log(
@@ -330,11 +360,12 @@ class FirmwareInstaller {
     await done.future;
     await sub.cancel();
 
-    if (failure != null) {
-      onState(UpdateError(failure.toString()));
-    } else {
-      onState(const UpdateWaitingForReconnect());
-    }
+    return _report(
+      onState,
+      failure != null
+          ? UpdateError(failure.toString())
+          : const UpdateWaitingForReconnect(),
+    );
   }
 
   static String _dfuFailureMessage(DfuHostFailure failure, String error) {

@@ -544,7 +544,7 @@ void main() {
     setUp(() => (device, client) = mountedDevice());
 
     Widget button({
-      required Future<void> Function({
+      required Future<UpdateState> Function({
         required FirmwareSource source,
         required FlipperClient client,
         required void Function(UpdateState) onState,
@@ -581,6 +581,7 @@ void main() {
           install:
               ({required source, required client, required onState}) async {
                 onState(const UpdateWaitingForReconnect());
+                return const UpdateWaitingForReconnect();
               },
         ),
       );
@@ -638,6 +639,7 @@ void main() {
               ({required source, required client, required onState}) async {
                 fake.depart();
                 onState(const UpdateWaitingForReconnect());
+                return const UpdateWaitingForReconnect();
               },
         ),
       );
@@ -662,11 +664,13 @@ void main() {
       await tester.pump();
     }
 
-    Future<void> noop({
+    /// A flash that does nothing and reports that it finished, which is what
+    /// every case below that is not about the outcome wants.
+    Future<UpdateState> noop({
       required FirmwareSource source,
       required FlipperClient client,
       required void Function(UpdateState) onState,
-    }) async {}
+    }) async => const UpdateDone();
 
     // "NO UPDATE" is a claim about what the server answered. After a fetch
     // that failed there was no answer, and saying it anyway tells someone with
@@ -718,6 +722,7 @@ void main() {
           install:
               ({required source, required client, required onState}) async {
                 onState(const UpdateWaitingForReconnect());
+                return const UpdateWaitingForReconnect();
               },
         ),
       );
@@ -772,6 +777,7 @@ void main() {
           install:
               ({required source, required client, required onState}) async {
                 onState(const UpdateWaitingForReconnect());
+                return const UpdateWaitingForReconnect();
               },
         ),
       );
