@@ -10,6 +10,8 @@ import 'widgets/page_card.dart';
 import 'device_scope.dart';
 import 'firmware/repository.dart';
 import 'models/connection_state.dart';
+import '../../services/connection/link_service.dart';
+import 'widgets/cards/auto_connect_hint.dart';
 import 'widgets/cards/battery_card.dart';
 import 'widgets/cards/connect_card.dart';
 import 'widgets/cards/device_actions_row.dart';
@@ -58,6 +60,11 @@ class DeviceTab extends StatelessWidget {
                       ),
                       child: Column(
                         children: [
+                          // Above everything, and in every state: the sharp
+                          // case is the app already holding two links and a
+                          // third Flipper being plugged in, where the page
+                          // otherwise looks entirely connected. #120.
+                          AutoConnectHintCard(links: LinkService.instance),
                           // Always in tree — preserves carousel state across
                           // connect/disconnect without rebuilding.
                           FirmwareCard(

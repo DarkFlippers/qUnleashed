@@ -1545,6 +1545,16 @@
     "description": "Body of the too many devices error."
   },
 
+  "fmAutoConnectFailedTitle": "Could not connect to {name} on its own",
+  "@fmAutoConnectFailedTitle": {
+    "description": "Title of the device page hint shown after an automatic connection attempt failed. The body is the same sentence the connection error dialog would have shown.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+
   "connectSessionLimitTitle": "All connection slots are in use",
   "@connectSessionLimitTitle": {
     "description": "Title of the connection error when the app already holds as many links as it can."
