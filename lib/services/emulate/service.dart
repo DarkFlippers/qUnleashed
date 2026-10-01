@@ -307,25 +307,29 @@ class EmulateService {
       _txHeld = false;
       _sceneLoaded = false;
 
+      // The handler goes on at creation, not at the await below. `_safeExit`
+      // sits between the two and spans event-loop turns, and a future that
+      // rejects while nothing is listening is reported unhandled there and
+      // then - attaching a catch afterwards is too late. The sibling in
+      // `_start` has always done it this way. #23
       final closed = _client
           .appStateStream()
           .firstWhere((s) => s.state == AppState.APP_CLOSED)
           .timeout(
             const Duration(seconds: 5),
             onTimeout: () => AppStateResponse(state: AppState.APP_CLOSED),
-          );
+          )
+          .catchError((Object e) {
+            // Stays at info: the five-second timeout above answers the case
+            // this is here for - a device that simply does not say it closed -
+            // by returning APP_CLOSED itself. What reaches here is the state
+            // stream erroring, which the client reports where it happens.
+            LogService.info('[Emulate] wait APP_CLOSED failed: $e');
+            return AppStateResponse(state: AppState.APP_CLOSED);
+          });
 
       await _safeExit();
-
-      try {
-        await closed;
-      } catch (e) {
-        // Stays at info: the five-second timeout above answers the case
-        // this is here for - a device that simply does not say it closed -
-        // by returning APP_CLOSED itself. What reaches here is the state
-        // stream erroring, which the client reports where it happens.
-        LogService.info('[Emulate] wait APP_CLOSED failed: $e');
-      }
+      await closed;
 
       _activeKey = null;
     } finally {

@@ -61,6 +61,12 @@ Legacy, kept deliberately, not to be imitated:
 - **`LogService.info` as the last word on a failure.** `info` is `keep: false`
   and const-folds away in release, so nothing reaches the in-app log.
   `test/log_level_budget_test.dart` ratchets the count per directory.
+- **A bare `unawaited(f())`.** The future still rejects, and with no listener
+  the rejection reaches the zone — so it lands in the log as `[uncaught]` with
+  nothing saying which operation it was, and a `try` around the call site never
+  sees it. Use `guarded('[Area] what it was doing', ...)`.
+  `test/unawaited_budget_test.dart` ratchets the count per area; its budget is
+  a floor rather than a verdict, because that sweep is not finished (#23).
 
 ## BLE and transport invariants
 

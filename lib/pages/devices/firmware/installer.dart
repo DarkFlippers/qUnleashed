@@ -10,6 +10,7 @@ import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../../services/connection/link_service.dart';
+import '../../../services/guarded.dart';
 import '../../../services/progress_throttle.dart';
 import 'source.dart';
 import 'update_state.dart';
@@ -270,7 +271,10 @@ class FirmwareInstaller {
       // business, and the answer is already in hand. Awaiting it also wedged
       // the wait under the widget-test clock, where the cancel future did not
       // resolve inside a pump.
-      unawaited(sub.cancel());
+      //
+      // Guarded all the same: a teardown that throws would otherwise arrive as
+      // an unlabelled [uncaught] in the middle of an install. #23
+      unawaited(guarded('[Installer] release state listener', sub.cancel));
     }
   }
 
