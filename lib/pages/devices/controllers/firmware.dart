@@ -7,11 +7,12 @@ import '../../../theme/theme.dart';
 import '../firmware/directory.dart';
 import '../firmware/repository.dart';
 import '../firmware/update_settings.dart';
+import '../../../services/guarded.dart';
 
 class FirmwareController extends ChangeNotifier {
   FirmwareController() {
     _repo.addListener(_onRepoChanged);
-    unawaited(_restore());
+    unawaited(guarded('[Firmware] restore selections', _restore));
     _repo.prefetchAll();
   }
 
@@ -83,7 +84,12 @@ class FirmwareController extends ChangeNotifier {
     // still held it.
     // Only the channel: the variant sitting in the selection may be a default
     // nobody chose, and writing it would make it look like one they did.
-    unawaited(_settings.remember(entry.shortName, channelId: channelId));
+    unawaited(
+      guarded(
+        '[Firmware] remember channel',
+        () => _settings.remember(entry.shortName, channelId: channelId),
+      ),
+    );
     notifyListeners();
   }
 
@@ -91,7 +97,12 @@ class FirmwareController extends ChangeNotifier {
     final selection = _selectionFor(entry.shortName);
     selection.variant = variant;
     selection.variantPicked = true;
-    unawaited(_settings.remember(entry.shortName, variant: variant));
+    unawaited(
+      guarded(
+        '[Firmware] remember variant',
+        () => _settings.remember(entry.shortName, variant: variant),
+      ),
+    );
     notifyListeners();
   }
 

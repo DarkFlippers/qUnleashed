@@ -1,3 +1,4 @@
+import '../../../services/guarded.dart';
 import '../../../services/localization/l10n.dart';
 
 import 'dart:async';
@@ -159,7 +160,9 @@ class FliblerProjectController extends ChangeNotifier {
     _kind = FliblerSourceKind.folder;
     _forget();
     notifyListeners();
-    unawaited(_saveLastFolder(path));
+    unawaited(
+      guarded('[Flibler] remember last folder', () => _saveLastFolder(path)),
+    );
   }
 
   void setRepo(String url) {
@@ -256,7 +259,11 @@ class FliblerProjectController extends ChangeNotifier {
         'Loaded ${_app!.name.isEmpty ? _app!.appid : _app!.name}'
         '${_app!.fapAuthor.isEmpty ? '' : ' by ${_app!.fapAuthor}'}',
       );
-      unawaited(_rememberSource());
+      // Guarded rather than bare: this sits inside the try below, and a
+      // rejection from it arrives after this body has returned - so the catch
+      // that sets `_error` never sees it and the zone gets an unlabelled
+      // [uncaught] instead. #23
+      unawaited(guarded('[Flibler] remember source', _rememberSource));
       return true;
     } catch (e) {
       _error = '$e';
