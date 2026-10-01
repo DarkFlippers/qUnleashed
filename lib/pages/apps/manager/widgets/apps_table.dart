@@ -43,8 +43,15 @@ class AppsSortState {
 }
 
 List<SizedColumn> appsTableColumns(double avail) {
-  const sizeW = 64.0;
-  const versionW = 74.0;
+  // Each has to hold its uppercased label, the 8px of padding inside a header
+  // cell and the 12px sort arrow the active column carries. "VERSION" renders
+  // at 74.2, so 74 was 20 short of what it needed and "SIZE" at 42.4 had 1.6
+  // to spare - close enough that a slightly wider font metric would have taken
+  // it too. The header ellipsizes now rather than overflowing, so these are
+  // what keeps the English labels whole rather than what keeps the layout
+  // legal.
+  const sizeW = 72.0;
+  const versionW = 96.0;
   const folderW = 118.0;
   final showFolder = avail > 460;
   final showVersion = avail > 360;

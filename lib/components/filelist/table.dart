@@ -86,7 +86,23 @@ class _HeaderCell extends StatelessWidget {
           ? MainAxisAlignment.end
           : MainAxisAlignment.start,
       children: [
-        Text(col.label.toUpperCase(), style: textStyle),
+        // Shrinks rather than overflows. A label is a translated string and a
+        // column width is a number somebody picked, so the two cannot be kept
+        // in step by hand: `appsTableColumns` gave the version column 74 while
+        // "VERSION" renders at 74.2, which overflowed the row by 8.2 pixels at
+        // every window width - striped in debug, silently clipped in release,
+        // and rendered by no test until one was written. The archive's own
+        // columns escaped it only because `_requiredWidth` sizes them from the
+        // label.
+        Flexible(
+          child: Text(
+            col.label.toUpperCase(),
+            style: textStyle,
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
         if (active) ...[
           const SizedBox(width: 2),
           Icon(
