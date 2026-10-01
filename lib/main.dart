@@ -15,8 +15,7 @@ import 'theme/theme.dart';
 bool _appRunning = false;
 
 Future<void> main() async {
-  await _initCore();
-  await _runApp();
+  await _runApp(await _initCore());
 }
 
 /// Entry point of the engine a home-screen widget starts while the app is not
@@ -52,14 +51,22 @@ Future<FlipperClient> _initCore() async {
   // widget serves taps with it on either path. Constructing it touches no
   // disk and no platform channel, so it does not need a catch of its own.
   final client = FlipperOneClient().get();
-  HomeWidgetService.instance.install(client: client, promote: _runApp);
+  HomeWidgetService.instance.install(
+    client: client,
+    promote: () => _runApp(client),
+  );
   return client;
 }
 
-Future<void> _runApp() async {
+/// Puts the UI up around [client], the one `_initCore` resolved.
+///
+/// Taking it as a parameter rather than reading it back is what keeps the
+/// comment above true: `promote` closes over the client its own `_initCore`
+/// returned, so neither entry point resolves a second one.
+Future<void> _runApp(FlipperClient client) async {
   if (_appRunning) return;
   _appRunning = true;
-  runApp(const QUnleashedApp());
+  runApp(QUnleashedApp(client: client));
   bootstrapAmbientServices();
   await HomeWidgetSettings.instance.sync();
 }

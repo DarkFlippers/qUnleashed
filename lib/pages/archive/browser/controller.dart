@@ -32,9 +32,8 @@ enum FileSortMode { name, size, type }
 enum FileViewMode { list, grid }
 
 class FileManagerController extends ChangeNotifier {
-  FileManagerController({FlipperClient? client, String initialPath = '/ext'})
-    : _client = client ?? FlipperOneClient().get(),
-      _path = initialPath;
+  FileManagerController({required this._client, String initialPath = '/ext'})
+    : _path = initialPath;
 
   final FlipperClient _client;
   bool _disposed = false;

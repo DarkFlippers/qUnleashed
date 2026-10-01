@@ -1,3 +1,4 @@
+import 'package:flipperlib/flipperlib.dart' hide DateTime, File;
 import 'package:flutter/material.dart';
 
 import '../pages/devices/controllers/device.dart';
@@ -8,7 +9,11 @@ import '../theme/theme.dart';
 import 'shell.dart';
 
 class QUnleashedApp extends StatefulWidget {
-  const QUnleashedApp({super.key, this.device});
+  const QUnleashedApp({super.key, required this.client, this.device});
+
+  /// The one the composition root resolved. Everything below is given this
+  /// rather than reaching for the factory itself. ADR 0002.
+  final FlipperClient client;
 
   /// The device controller the whole app reads, for a test that wants to
   /// supply its own. Built here when nobody does.
@@ -25,7 +30,8 @@ class _QUnleashedAppState extends State<QUnleashedApp> {
   /// The `MaterialApp` below is rebuilt on every theme and locale change, so
   /// a controller constructed in `build` would be replaced on each accent
   /// colour, taking its subscriptions and its device with it.
-  late final DeviceController _device = widget.device ?? DeviceController();
+  late final DeviceController _device =
+      widget.device ?? DeviceController(client: widget.client);
 
   @override
   void dispose() {
@@ -62,7 +68,7 @@ class _QUnleashedAppState extends State<QUnleashedApp> {
           // on route `/`, and a pushed route is that route's sibling.
           builder: (context, child) =>
               DeviceScope(notifier: _device, child: child!),
-          home: const AppShell(),
+          home: AppShell(client: widget.client),
         );
       },
     );

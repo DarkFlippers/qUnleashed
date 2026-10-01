@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:io' show HttpClient;
 import 'dart:math' as math;
 
+import 'package:flipperlib/flipperlib.dart' hide DateTime, File;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_map/flutter_map.dart';
@@ -25,7 +26,16 @@ part 'widgets/panel.dart';
 part 'widgets/sheet.dart';
 
 class FlipperMapPage extends StatefulWidget {
-  const FlipperMapPage({super.key, this.focusPinPath, this.pickLocationFor});
+  const FlipperMapPage({
+    super.key,
+    required this.client,
+    this.focusPinPath,
+    this.pickLocationFor,
+  });
+
+  /// The Flipper a pin is read from and written back to. Required rather
+  /// than defaulted, for the reason in [FileManagerPage]. ADR 0002.
+  final FlipperClient client;
 
   final String? focusPinPath;
   final MapPickTarget? pickLocationFor;
@@ -70,7 +80,8 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
   @override
   void initState() {
     super.initState();
-    _controller = MapToolController()..addListener(_onChanged);
+    _controller = MapToolController(client: widget.client)
+      ..addListener(_onChanged);
     _settings.addListener(_onChanged);
     unawaited(_settings.load());
     _openedInPickMode = widget.pickLocationFor != null;

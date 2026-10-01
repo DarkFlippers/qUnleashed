@@ -1,3 +1,4 @@
+import 'package:flipperlib/flipperlib.dart' hide DateTime, File;
 import 'package:flutter/material.dart';
 
 import 'nav_bar.dart';
@@ -23,7 +24,12 @@ import '../services/notifications/push_service.dart';
 import '../theme/theme.dart';
 
 class AppShell extends StatefulWidget {
-  const AppShell({super.key});
+  const AppShell({super.key, required this.client});
+
+  /// The Flipper the archive this shell owns talks to. Handed down rather
+  /// than resolved here: `main.dart` calls itself the one place the client is
+  /// resolved, and it only is if everything below takes one. ADR 0002.
+  final FlipperClient client;
 
   @override
   State<AppShell> createState() => _AppShellState();
@@ -43,7 +49,9 @@ class _AppShellState extends State<AppShell> {
   static final int _slotTools = _slotApps + 1;
   static final int _slotCount = _slotTools + 1;
 
-  final ArchiveController _archiveController = ArchiveController();
+  late final ArchiveController _archiveController = ArchiveController(
+    client: widget.client,
+  );
 
   int _slot = _slotDevice;
 
@@ -189,7 +197,9 @@ class _AppShellState extends State<AppShell> {
     if (slot == _slotFavorites) {
       return FavoritesPage(controller: _archiveController);
     }
-    if (slot == _slotFiles) return const FileManagerPage(initialPath: '/ext');
+    if (slot == _slotFiles) {
+      return FileManagerPage(client: widget.client, initialPath: '/ext');
+    }
     if (slot == _slotDeleted) {
       return DeletedPage(controller: _archiveController);
     }

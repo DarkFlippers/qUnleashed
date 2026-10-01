@@ -25,35 +25,18 @@ import 'widgets/sync_progress_view.dart';
 import 'failure_toast.dart';
 
 class ArchivePage extends StatefulWidget {
-  const ArchivePage({super.key, this.controller});
+  const ArchivePage({super.key, required this.controller});
 
-  final ArchiveController? controller;
+  /// Built and owned by [AppShell], which keeps it across slot changes - so
+  /// this page neither creates nor disposes one.
+  final ArchiveController controller;
 
   @override
   State<ArchivePage> createState() => _ArchivePageState();
 }
 
 class _ArchivePageState extends State<ArchivePage> {
-  late final ArchiveController _ctrl;
-  late final bool _ownsController;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = widget.controller ?? ArchiveController();
-    _ownsController = widget.controller == null;
-    if (_ownsController) {
-      _ctrl.initialize();
-    }
-  }
-
-  @override
-  void dispose() {
-    if (_ownsController) {
-      _ctrl.dispose();
-    }
-    super.dispose();
-  }
+  ArchiveController get _ctrl => widget.controller;
 
   void _openCategory(ArchiveCategory cat) {
     Navigator.of(context).push(
@@ -124,9 +107,11 @@ class _ArchivePageState extends State<ArchivePage> {
   }
 
   void _openFileManager(String initialPath) {
+    final client = DeviceScope.of(context).client;
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => FileManagerPage(initialPath: initialPath),
+        builder: (_) =>
+            FileManagerPage(client: client, initialPath: initialPath),
       ),
     );
   }

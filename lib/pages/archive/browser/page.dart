@@ -54,7 +54,16 @@ class _Clipboard {
 }
 
 class FileManagerPage extends StatefulWidget {
-  const FileManagerPage({super.key, this.initialPath = '/ext'});
+  const FileManagerPage({
+    super.key,
+    required this.client,
+    this.initialPath = '/ext',
+  });
+
+  /// The Flipper whose storage this browses. Required rather than defaulted:
+  /// every route into here is built with a context that has a DeviceScope
+  /// above it. ADR 0002.
+  final FlipperClient client;
 
   final String initialPath;
 
@@ -78,7 +87,10 @@ class _FileManagerPageState extends State<FileManagerPage> {
   @override
   void initState() {
     super.initState();
-    _ctrl = FileManagerController(initialPath: widget.initialPath);
+    _ctrl = FileManagerController(
+      client: widget.client,
+      initialPath: widget.initialPath,
+    );
     _ctrl.refresh();
   }
 
