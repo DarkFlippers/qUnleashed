@@ -179,6 +179,24 @@ class CatalogContext {
         'server=$serverApi picked=${res.api} verdict=${res.verdict.name} '
         'builder=$_builderAvailable pref=${_preference.name}',
       );
+    } catch (e) {
+      // Without this the mode stayed at `resolving`, which it was set to above
+      // when forced - so Settings -> Apps rendered its Recheck button as
+      // `resolving ? null : ...` and it was dead for as long as the page was
+      // open. #118's shape, and the rejection reached the zone unlabelled.
+      //
+      // It lands where a failed `fetchSdks` already lands: manager-only, with
+      // `catalogOffline` set, so Settings -> Apps says the catalogue could not
+      // be reached rather than blaming the firmware. That is right for this
+      // too - whatever threw, the catalogue is not usable this pass - and the
+      // actual cause is on this line rather than guessed at from the mode.
+      //
+      // The `finally` below still wins when the device changed under this
+      // pass, which is correct: that failure belonged to the Flipper that was
+      // attached when it started.
+      LogService.warn('[AppsBackend] resolveMode failed: $e');
+      _catalogOffline = true;
+      _useManagerOnly();
     } finally {
       _modeResolving = false;
       if (token.isStale) {

@@ -117,7 +117,14 @@ const Map<String, int> kBudget = {
   // And one whose catch is the documented path rather than a failure - the
   // permission prompts, which need an activity a widget engine does not have
   // and which the service comes up without.
-  'services': 12,
+  // Was 12, and the twelfth did not go: #216 moved `emulate/service.dart`'s
+  // APP_CLOSED line out of a `catch` clause and into the `.catchError` the
+  // handler now attaches at creation. The line is still there and still
+  // `info`, so the hazard is unchanged - it has moved into the `onError:`
+  // blind spot this header already lists. Closing that hole would count three
+  // pre-existing sites too and belongs with #103 rather than with the change
+  // that exposed it.
+  'services': 11,
   // Was 30, and a ceiling rather than a verdict: what remained wrote its error
   // into a controller field the widgets read only in states the failure itself
   // prevents, so the second surface mostly was not one. #110 was that defect,

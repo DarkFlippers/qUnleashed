@@ -1,3 +1,4 @@
+import '../../../services/guarded.dart';
 import '../../../services/localization/l10n.dart';
 
 import 'dart:async';
@@ -371,7 +372,13 @@ class _AtpInstallPageState extends State<AtpInstallPage> {
       sort: _sort,
       onSort: _onSort,
       header: header,
-      onRefresh: () async => unawaited(_refresh()),
+      // Returns the work rather than starting it. `RefreshIndicator` holds
+      // its spinner until this future settles, and
+      // `() async => unawaited(...)` settles immediately - so the spinner used
+      // to vanish before the download had begun. `guarded` completes when the
+      // task does and never rejects, which is also what the indicator wants.
+      // #23
+      onRefresh: () => guarded('[AppsInstall] pull to refresh', _refresh),
       rowBuilder: (entry, cols) => _EntryRow(
         key: ValueKey(entry.appId),
         entry: entry,

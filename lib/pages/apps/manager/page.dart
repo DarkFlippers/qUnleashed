@@ -1,3 +1,4 @@
+import '../../../services/guarded.dart';
 import '../../../services/localization/l10n.dart';
 
 import 'dart:async';
@@ -401,7 +402,12 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
       sort: _sort,
       onSort: _onSort,
       header: header,
-      onRefresh: () async => unawaited(_device.prime()),
+      // Returns the work rather than starting it. `RefreshIndicator` holds
+      // its spinner until this future settles, and
+      // `() async => unawaited(...)` settles immediately - so the spinner used
+      // to vanish before the scan had begun. `guarded` completes when the task
+      // does and never rejects, which is also what the indicator wants. #23
+      onRefresh: () => guarded('[AppsManager] pull to refresh', _device.prime),
       rowBuilder: (app, cols) => _AppRow(
         key: ValueKey(app.path),
         app: app,
@@ -426,7 +432,7 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
     return RefreshIndicator(
       color: header,
       displacement: 15,
-      onRefresh: () async => unawaited(_device.prime()),
+      onRefresh: () => guarded('[AppsManager] pull to refresh', _device.prime),
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         children: [

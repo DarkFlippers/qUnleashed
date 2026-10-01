@@ -55,8 +55,11 @@ import 'ratchet.dart';
 /// thing these numbers do say is that nothing may be added without a reader
 /// deciding it belongs.
 const Map<String, int> kBudget = {
-  // Untriaged. These are where the tree stood.
-  'pages/apps': 34,
+  // Partly read through. Was 34; the three that went were the pull-to-refresh
+  // handlers on the apps tables, which is the one place in this area where the
+  // bare shape was a user-visible defect rather than a missing label - see
+  // `test/apps_pull_to_refresh_test.dart`. The rest are untriaged.
+  'pages/apps': 31,
   'pages/archive': 23,
   'pages/tools': 18,
   // Read through. Was 10, and nine were a settings page starting a load in
