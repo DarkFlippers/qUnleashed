@@ -7,6 +7,7 @@ import 'package:flutter/widgets.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart' as ph;
 
+import '../../guarded.dart';
 import 'gnss_satellites.dart';
 import 'gps_responder.dart';
 
@@ -63,10 +64,10 @@ class GeolocatorGpsProvider implements GpsLocationProvider {
     Timer? gnssTimer;
 
     controller.onListen = () {
-      unawaited(_gnss.start());
+      unawaited(guarded('[GPS] start GNSS status', _gnss.start));
       gnssTimer = Timer.periodic(
         _gnssPollInterval,
-        (_) => unawaited(_gnss.poll()),
+        (_) => unawaited(guarded('[GPS] poll GNSS status', _gnss.poll)),
       );
       positionSub =
           Geolocator.getPositionStream(

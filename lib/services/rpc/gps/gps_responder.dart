@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flipperlib/flipperlib.dart';
 
+import '../../guarded.dart';
 import '../../logging.dart';
 
 class GpsFix {
@@ -170,17 +171,22 @@ class FlipperGpsResponder {
     // whether the one receiving the fixes still is.
     final binding = _binding;
     if (binding != null ? !binding.isAlive : !state.rpcReady) {
-      unawaited(_stopStream());
+      unawaited(guarded('[GPS] stop stream on link change', _stopStream));
     }
   }
 
   void _onNotification(Main frame) {
     if (frame.hasGpsStreamStartRequest()) {
-      unawaited(_onStreamStart(frame.gpsStreamStartRequest.frequency));
+      unawaited(
+        guarded(
+          '[GPS] stream start',
+          () => _onStreamStart(frame.gpsStreamStartRequest.frequency),
+        ),
+      );
     } else if (frame.hasGpsStreamStopRequest()) {
-      unawaited(_stopStream());
+      unawaited(guarded('[GPS] stream stop', _stopStream));
     } else if (frame.hasGpsLocationRequest()) {
-      unawaited(_onLocationRequest());
+      unawaited(guarded('[GPS] location request', _onLocationRequest));
     }
   }
 
@@ -198,7 +204,8 @@ class FlipperGpsResponder {
     _pump = _GpsStreamPump(
       provider: _provider,
       hz: hz,
-      onFix: (fix) => unawaited(_sendLocation(fix)),
+      onFix: (fix) =>
+          unawaited(guarded('[GPS] send fix', () => _sendLocation(fix))),
     )..start();
   }
 

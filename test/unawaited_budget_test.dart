@@ -55,9 +55,8 @@ import 'ratchet.dart';
 /// thing these numbers do say is that nothing may be added without a reader
 /// deciding it belongs.
 const Map<String, int> kBudget = {
-  // Untriaged, all of them. These are where the tree stood.
+  // Untriaged. These are where the tree stood.
   'pages/apps': 34,
-  'services': 24,
   'pages/archive': 23,
   'pages/tools': 18,
   'pages/option': 10,
@@ -70,6 +69,14 @@ const Map<String, int> kBudget = {
   // unregistered route, which the surrounding try does catch, and the pushed
   // route's future resolves when it is popped.
   'pages/flibler': 1,
+  // Read through, and empty. Was 24, and the whole of it went the same way:
+  // every one was a stream callback, a platform-channel handler or a timer,
+  // so there was never a caller to hand a failure back to - which is the case
+  // `guarded` exists for. The two that needed more than a wrapper are in
+  // `emulate/service.dart`: the APP_CLOSED wait now attaches its handler at
+  // creation rather than across `_safeExit`, and the connection subscription
+  // is read into a local before the field is cleared.
+  'services': 0,
   // Read through, and empty. Was 4: two `UpdateSettingsStore.remember` calls
   // whose store does catch its own write but said nothing at the call site,
   // the `_restore()` in the constructor, and the subscription teardown in

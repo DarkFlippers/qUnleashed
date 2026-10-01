@@ -227,7 +227,7 @@ class EmulateService {
     // holding it open with nothing driving it. The link simply dropping is not
     // this - it comes back, and the scene with it.
     if (state.event == FlipperConnectionEvent.deviceChanged) {
-      unawaited(stop());
+      unawaited(guarded('[Emulate] stop on device change', stop));
     }
   }
 
@@ -334,9 +334,18 @@ class EmulateService {
       _activeKey = null;
     } finally {
       _binding = null;
-      unawaited(_connection?.cancel());
+      // Read into a local before the field is cleared. `guarded` runs its task
+      // through `Future.sync`, so the body does start before the next line -
+      // but relying on that to decide which subscription gets cancelled is a
+      // worse thing to leave behind than one extra variable.
+      final connection = _connection;
       _connection = null;
       _stopFuture = null;
+      unawaited(
+        guarded('[Emulate] release connection listener', () async {
+          await connection?.cancel();
+        }),
+      );
     }
   }
 

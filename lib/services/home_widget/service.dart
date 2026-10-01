@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../emulate/service.dart';
+import '../guarded.dart';
 import '../logging.dart';
 import 'cold_link.dart';
 import 'widget_key.dart';
@@ -175,11 +176,13 @@ class HomeWidgetService {
           await _setState(id, WidgetState.errorFile);
           return null;
         }
-        unawaited(_onTap(id, key));
+        unawaited(guarded('[Widget] tap', () => _onTap(id, key)));
         return null;
       case 'cancel':
         final args = call.arguments as Map<Object?, Object?>;
-        unawaited(_onCancel(args['widgetId'] as int));
+        unawaited(
+          guarded('[Widget] cancel', () => _onCancel(args['widgetId'] as int)),
+        );
         return null;
       case 'pick':
         final args = call.arguments as Map<Object?, Object?>;
@@ -295,7 +298,14 @@ class HomeWidgetService {
     _closedSub = client
         .appStateStream()
         .where((s) => s.state == AppState.APP_CLOSED)
-        .listen((_) => unawaited(_onClosedOnDevice(service)));
+        .listen(
+          (_) => unawaited(
+            guarded(
+              '[Widget] closed on device',
+              () => _onClosedOnDevice(service),
+            ),
+          ),
+        );
   }
 
   Future<void> _onClosedOnDevice(EmulateService service) async {
@@ -334,7 +344,14 @@ class HomeWidgetService {
     await _setState(id, state);
     _flashTimer?.cancel();
     _flashTimer = Timer(_flashDuration, () {
-      if (_activeId != id) unawaited(_setState(id, WidgetState.idle));
+      if (_activeId != id) {
+        unawaited(
+          guarded(
+            '[Widget] back to idle',
+            () => _setState(id, WidgetState.idle),
+          ),
+        );
+      }
     });
   }
 

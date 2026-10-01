@@ -78,7 +78,7 @@ class FlipperNetworkResponder {
     // right ones needs the connections keyed by the session that opened them,
     // which they are not.
     if (!state.rpcReady) {
-      unawaited(_closeAll());
+      unawaited(guarded('[Network] close all on link loss', _closeAll));
     }
   }
 
@@ -475,7 +475,16 @@ class FlipperNetworkResponder {
 
   void _emitInbound(int id, List<int> data, bool binary) {
     for (final piece in chunkByteViews(asBytes(data), maxChunkSize)) {
-      unawaited(_sendReceiveData(id, piece, binary));
+      // Per chunk rather than around the loop: hoisting the guard would make
+      // these sequential, and the order these reach the Flipper is the RPC
+      // queue's business rather than this loop's. A dead session fails every
+      // chunk with the same text, which `_remember` folds into one entry.
+      unawaited(
+        guarded(
+          '[Network] forward inbound on $id',
+          () => _sendReceiveData(id, piece, binary),
+        ),
+      );
     }
   }
 
@@ -496,16 +505,27 @@ class FlipperNetworkResponder {
       guarded('[Network] teardown on $id', () => _teardown(connection)),
     );
     NetworkTrafficMonitor.instance.connectionClosed();
-    unawaited(_sendStateChanged(id, ConnectionState.ERROR, _errorFor(error)));
+    unawaited(
+      guarded(
+        '[Network] report error on $id',
+        () => _sendStateChanged(id, ConnectionState.ERROR, _errorFor(error)),
+      ),
+    );
   }
 
   void _onSocketDone(int id) {
     final connection = _connections.remove(id);
     if (connection == null) return;
-    unawaited(_teardown(connection));
+    unawaited(
+      guarded('[Network] teardown on $id', () => _teardown(connection)),
+    );
     NetworkTrafficMonitor.instance.connectionClosed();
     unawaited(
-      _sendStateChanged(id, ConnectionState.DISCONNECTED, ErrorCode.NONE),
+      guarded(
+        '[Network] report close on $id',
+        () =>
+            _sendStateChanged(id, ConnectionState.DISCONNECTED, ErrorCode.NONE),
+      ),
     );
   }
 
