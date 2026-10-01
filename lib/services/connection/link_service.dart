@@ -48,6 +48,36 @@ class LinkEntry {
   String get key => '${link.name}:$id';
 }
 
+/// An auto-connect that failed and has not been answered since.
+///
+/// Auto-connect runs off a debounced timer with no gesture behind it, so
+/// there is nothing to hang a dialog on - and popping one for a cable event
+/// would be wrong even if there were. The condition also outlives the
+/// attempt: the device stays in `_autoTriedUsb` while it is present, so the
+/// Flipper that just failed is not dialled again until something changes.
+/// From the user's side the cable does nothing, forever, with no explanation.
+///
+/// So the failure is kept rather than only logged, and the device page shows
+/// it until it stops being true. #120.
+class AutoConnectFailure {
+  const AutoConnectFailure({
+    required this.key,
+    required this.name,
+    required this.error,
+  });
+
+  /// The `link:id` of the Flipper that was being dialled.
+  final String key;
+
+  /// What to call it in the hint.
+  final String name;
+
+  /// The thrown object, for [FlipperConnectErrorKind] and for the log.
+  final Object error;
+
+  bool get isBle => key.startsWith('ble:');
+}
+
 /// Owns every link decision the app makes on its own: which USB Flippers are
 /// plugged in, which remembered BLE ones were actually heard, and when to
 /// connect without being asked.
@@ -99,6 +129,7 @@ class LinkService extends ChangeNotifier {
   // refusing to do what it was just told to stop doing.
   final Set<String> _cancelled = {};
   bool _bleAutoTried = false;
+  AutoConnectFailure? _autoFailure;
   Timer? _usbTimer;
   bool _reconciling = false;
   bool _reconcileAgain = false;
@@ -117,6 +148,33 @@ class LinkService extends ChangeNotifier {
   Stream<FlipperDevice> get activeReleased => _releasedCtrl.stream;
 
   bool get scanning => _c.isScanning;
+
+  /// The last auto-connect that failed, while that is still the situation.
+  ///
+  /// Cleared when the same Flipper comes up, when it goes away, when the user
+  /// dials it by hand - the picker reports its own outcome then - and by
+  /// [dismissAutoConnectFailure]. Nothing else expires it, because nothing
+  /// else changes the answer: see [AutoConnectFailure].
+  AutoConnectFailure? get autoConnectFailure => _autoFailure;
+
+  /// Puts the hint away. The condition may well still hold; the user has read
+  /// it, and auto-connect does not try again on its own either way.
+  void dismissAutoConnectFailure() {
+    if (_autoFailure == null) return;
+    _autoFailure = null;
+    notifyListeners();
+  }
+
+  void _recordAutoFailure(String key, String name, Object error) {
+    _autoFailure = AutoConnectFailure(key: key, name: name, error: error);
+    notifyListeners();
+  }
+
+  void _clearAutoFailure(String key) {
+    if (_autoFailure?.key != key) return;
+    _autoFailure = null;
+    notifyListeners();
+  }
 
   /// Set while a DFU repair holds the USB port; nothing connects on its own
   /// until it is released.
@@ -348,6 +406,20 @@ class LinkService extends ChangeNotifier {
       }
     }
 
+    // The hint is about a Flipper the app could not reach. One that is now
+    // connecting or connected answers it, whoever asked.
+    final failure = _autoFailure;
+    if (failure != null) {
+      for (final session in sessions) {
+        if (!(session.connected || session.connecting)) continue;
+        final key = '${session.device.link.name}:${session.device.id}';
+        if (key == failure.key) {
+          _clearAutoFailure(key);
+          break;
+        }
+      }
+    }
+
     final bleNow = _sessionIds(sessions, FlipperLink.ble);
     for (final s in sessions) {
       if (!s.device.isBle || !s.connected) continue;
@@ -399,6 +471,9 @@ class LinkService extends ChangeNotifier {
 
   void _forgiveUserDisconnect(String key) {
     if (_userDisconnectedKey == key) _userDisconnectedKey = null;
+    // A hand-dialled connect reports its own outcome in the picker, so the
+    // hint about the automatic one has nothing left to say either way.
+    _clearAutoFailure(key);
   }
 
   // ── Auto-connect ─────────────────────────────────────────────────────────
@@ -433,6 +508,15 @@ class LinkService extends ChangeNotifier {
 
     final presentIds = {for (final d in _usbPresent) d.id};
     _autoTriedUsb.removeWhere((id) => !presentIds.contains(id));
+    // Unplugged, so there is nothing left to explain - and the same event
+    // that clears `_autoTriedUsb` is what lets the next appearance be dialled
+    // again, which is the thing the hint was standing in for.
+    final failed = _autoFailure;
+    if (failed != null &&
+        !failed.isBle &&
+        !presentIds.contains(failed.key.substring(4))) {
+      _clearAutoFailure(failed.key);
+    }
     final userKey = _userDisconnectedKey;
     if (userKey != null &&
         userKey.startsWith('usb:') &&
@@ -472,17 +556,22 @@ class LinkService extends ChangeNotifier {
     try {
       await _c.connectBleAddress(last.id, name: last.name);
       await _c.switchToRpcMode();
+      _clearAutoFailure('ble:${last.id}');
     } catch (e) {
       LogService.warn('[Link] auto-connect to ${last.name} failed: $e');
+      _recordAutoFailure('ble:${last.id}', last.name, e);
     }
   }
 
   Future<void> _autoConnect(FlipperDevice device, String why) async {
+    final key = 'usb:${device.id}';
     LogService.info('[Link] auto-connecting to ${device.name} ($why)');
     try {
-      await _open(device, 'usb:${device.id}');
+      await _open(device, key);
+      _clearAutoFailure(key);
     } catch (e) {
       LogService.warn('[Link] auto-connect to ${device.name} failed: $e');
+      _recordAutoFailure(key, device.name, e);
     }
   }
 

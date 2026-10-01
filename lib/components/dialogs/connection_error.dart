@@ -33,11 +33,11 @@ Future<void> showConnectionFailedDialog(
 
 /// The title and body a [FlipperConnectErrorKind] is shown as.
 ///
-/// Separate from the dialog so the mapping can be read without a widget tree.
-/// It is the part worth testing: a kind that falls through to `unknown`, or
-/// two kinds sharing one sentence, is a user told the wrong thing - and both
-/// have happened here (#120).
-@visibleForTesting
+/// Separate from the dialog because it has a second caller that is not one:
+/// the device page's auto-connect hint, which has no gesture behind it and so
+/// no dialog to put this in. Keeping the sentences in one place is the point -
+/// a kind that falls through to `unknown`, or two kinds sharing one sentence,
+/// is a user told the wrong thing, and both have happened here (#120).
 (String, String) describeConnectError(
   FlipperConnectErrorKind kind, {
   required bool isBle,

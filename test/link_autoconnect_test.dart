@@ -367,4 +367,135 @@ void main() {
       expect(client.dialled, isEmpty);
     });
   });
+
+  /// What the device page has to show for an attempt nobody watched.
+  ///
+  /// Everything above is about *whether* the app dials. This is about what is
+  /// left when it did and the Flipper said no: the attempt has no gesture
+  /// behind it, so there is nothing to put a dialog on, and the condition
+  /// outlives it - the id stays in `_autoTriedUsb` while the cable is in, so
+  /// nothing dials again until something changes. Until #120 the only record
+  /// was a log line, and the cable simply did nothing.
+  group('an auto-connect that failed', () {
+    Future<LinkService> failedUsbAttempt() async {
+      final service = await serviceWith(usbAuto: true);
+      client.present = [usb('A')];
+      client.connectThrows = StateError('port busy');
+      client.plugged();
+      await settle();
+      return service;
+    }
+
+    test('is kept, not only logged', () async {
+      links = await failedUsbAttempt();
+
+      expect(links.autoConnectFailure, isNotNull);
+    });
+
+    test('names the Flipper it was dialling', () async {
+      links = await failedUsbAttempt();
+
+      expect(links.autoConnectFailure?.name, 'A');
+    });
+
+    // The hint shows the same sentence the picker's dialog would, and that
+    // sentence is chosen from this.
+    test('keeps what was thrown', () async {
+      links = await failedUsbAttempt();
+
+      expect('${links.autoConnectFailure?.error}', contains('port busy'));
+    });
+
+    test('is not there when the attempt worked', () async {
+      links = await serviceWith(usbAuto: true);
+      client.present = [usb('A')];
+
+      client.plugged();
+      await settle();
+
+      expect(links.autoConnectFailure, isNull);
+    });
+
+    test('is not there before anything was attempted', () async {
+      links = await serviceWith(usbAuto: true);
+
+      expect(links.autoConnectFailure, isNull);
+    });
+
+    // Unplugging is also what lets the next appearance be dialled again, so
+    // the hint would be describing a situation that no longer holds.
+    test('goes when the Flipper is unplugged', () async {
+      links = await failedUsbAttempt();
+
+      client.present = const [];
+      client.plugged();
+      await settle();
+
+      expect(links.autoConnectFailure, isNull);
+    });
+
+    test('goes when that Flipper comes up anyway', () async {
+      links = await failedUsbAttempt();
+
+      client.reportSessions([connected(usb('A'))]);
+      await settle();
+
+      expect(links.autoConnectFailure, isNull);
+    });
+
+    // A different Flipper connecting does not answer it. The sharp case in
+    // #120 is exactly this: two links held, a third refused, and the page
+    // looking entirely connected.
+    test('stays while a different Flipper is the connected one', () async {
+      links = await failedUsbAttempt();
+
+      client.reportSessions([connected(usb('B'))]);
+      await settle();
+
+      expect(links.autoConnectFailure, isNotNull);
+    });
+
+    // The picker reports its own outcome, so there is nothing left for the
+    // hint to say - whatever the hand-dialled attempt then does.
+    test('goes when the user dials it themselves', () async {
+      links = await failedUsbAttempt();
+
+      await expectLater(links.connectDevice(usb('A')), throwsA(anything));
+
+      expect(links.autoConnectFailure, isNull);
+    });
+
+    test('goes when the user puts it away', () async {
+      links = await failedUsbAttempt();
+
+      links.dismissAutoConnectFailure();
+
+      expect(links.autoConnectFailure, isNull);
+    });
+
+    test('notifies when it arrives', () async {
+      links = await serviceWith(usbAuto: true);
+      client.present = [usb('A')];
+      client.connectThrows = StateError('port busy');
+      var notified = 0;
+      links.addListener(() => notified++);
+
+      client.plugged();
+      await settle();
+
+      expect(notified, greaterThan(0));
+    });
+
+    test('is recorded for BLE too, and says so', () async {
+      links = await serviceWith(bleAuto: true);
+      await KnownDevicesStore.instance.remember(ble('B1'));
+      client.connectThrows = StateError('out of range');
+
+      client.plugged();
+      await settle();
+
+      expect(links.autoConnectFailure?.isBle, isTrue);
+      expect(links.autoConnectFailure?.name, 'B1');
+    });
+  });
 }
