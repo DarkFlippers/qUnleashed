@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../services/guarded.dart';
 import '../../../services/localization/l10n.dart';
 import '../../../components/icon.dart';
 import 'widgets/mode_badge.dart';
@@ -234,10 +235,13 @@ class _CatalogViewState extends State<CatalogView> {
     final colors = context.appColors;
     return RefreshIndicator(
       color: colors.accent,
-      onRefresh: () async {
+      // This one already returned its work; what it did not have is a
+      // handler. `RefreshIndicator` does not catch a rejected `onRefresh`, so
+      // a failed category load reached the zone as `[uncaught]`. #23
+      onRefresh: () => guarded('[AppsCatalog] pull to refresh', () async {
         await _ctrl.loadCategories();
         await _ctrl.refresh();
-      },
+      }),
       child: CustomScrollView(
         controller: _scroll,
         physics: const AlwaysScrollableScrollPhysics(),
