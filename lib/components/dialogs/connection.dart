@@ -150,7 +150,12 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
     }
   }
 
-  void _stopScan() => unawaited(_client.stopScan());
+  /// Guarded for the same reason as the one in `dispose`: the future is torn
+  /// off into a `VoidCallback`, so a rejection reaches only
+  /// `PlatformDispatcher.onError` and arrives in the log as an unlabelled
+  /// `[uncaught]` with nothing saying which operation it was. #120.
+  void _stopScan() =>
+      unawaited(guarded('[Picker] stop scan', _client.stopScan));
 
   Future<void> _disconnect(FlipperDevice device) async {
     final key = _keyOf(device);
