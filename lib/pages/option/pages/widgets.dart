@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../services/guarded.dart';
 import '../../../components/archive/category.dart';
 import '../../../components/cardlist.dart';
 import '../../../components/config.dart';
@@ -27,8 +28,8 @@ class _WidgetSettingsPageState extends State<WidgetSettingsPage> {
   @override
   void initState() {
     super.initState();
-    unawaited(_settings.load());
-    unawaited(_loadPalette());
+    unawaited(guarded('[Settings/Widgets] load settings', _settings.load));
+    unawaited(guarded('[Settings/Widgets] load palette', _loadPalette));
   }
 
   Future<void> _loadPalette() async {

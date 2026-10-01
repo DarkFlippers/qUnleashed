@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../services/guarded.dart';
 import '../../../components/cardlist.dart';
 import '../../../services/localization/l10n.dart';
 import '../../../theme/theme.dart';
@@ -41,7 +42,7 @@ class _AppsSettingsPageState extends State<AppsSettingsPage> {
       if (mounted) setState(() {});
       // The page can be the first screen that asks, so the mode is resolved
       // here too instead of waiting for the catalog to be opened.
-      unawaited(_backend.resolveMode());
+      unawaited(guarded('[Settings/Apps] resolve mode', _backend.resolveMode));
     });
   }
 
@@ -198,7 +199,12 @@ class _AppsSettingsPageState extends State<AppsSettingsPage> {
                 title: context.l10n.appsGroupCatalogMode,
                 items: CatalogModePreference.values,
                 onTap: (value) =>
-                    () => unawaited(_select(value)),
+                    () => unawaited(
+                      guarded(
+                        '[Settings/Apps] set catalog mode',
+                        () => _select(value),
+                      ),
+                    ),
                 itemBuilder: _modeTile,
               ),
               const SizedBox(height: 14),
@@ -261,7 +267,11 @@ class _AppsSettingsPageState extends State<AppsSettingsPage> {
                 child: SizedBox(
                   width: 200,
                   child: OutlinedButton(
-                    onPressed: resolving ? null : () => unawaited(_recheck()),
+                    onPressed: resolving
+                        ? null
+                        : () => unawaited(
+                            guarded('[Settings/Apps] recheck mode', _recheck),
+                          ),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: colors.textSecondary,
                       side: BorderSide(color: colors.divider),

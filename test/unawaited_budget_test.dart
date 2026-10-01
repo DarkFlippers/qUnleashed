@@ -59,7 +59,24 @@ const Map<String, int> kBudget = {
   'pages/apps': 34,
   'pages/archive': 23,
   'pages/tools': 18,
-  'pages/option': 10,
+  // Read through. Was 10, and nine were a settings page starting a load in
+  // `initState` or a tap persisting a choice - no caller, so `guarded` is the
+  // whole fix. The one left is `storage.dart`'s `_sizeArea`, which already
+  // catches everything it can throw and logs at error with the area's name:
+  // better than what wrapping the call site would say, and a second layer
+  // there could never fire.
+  'pages/option': 1,
+  // Read through, and none of the three should change.
+  //
+  // `icon.dart` and `remote_image.dart` both `unawaited(_map.remove(key))` in
+  // a `finally`, and what `remove` hands back is *this very future* - awaiting
+  // it could not return, and attaching a handler to it would log every failed
+  // rasterize a second time, next to the `rethrow` that is the real report.
+  // Both comments already say so.
+  //
+  // `notification.dart` forwards an AnimationController. A plain TickerFuture
+  // completes normally when its ticker is cancelled; only `.orCancel` rejects,
+  // and this is not that.
   'components': 3,
   // Read through. Was 3: `_saveLastFolder` and `_rememberSource` are named
   // through `guarded` now, the second because it sits inside a `try` whose
