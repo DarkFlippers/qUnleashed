@@ -10,6 +10,7 @@ Future<bool> openLocalFileInEditor(
   required String localPath,
   String? title,
   Future<bool> Function(List<int> bytes)? onSave,
+  String? Function()? onSaveFailureReason,
   VoidCallback? onRun,
 }) async {
   final saved = await Navigator.of(context).push<bool>(
@@ -18,6 +19,7 @@ Future<bool> openLocalFileInEditor(
         localPath: localPath,
         title: title,
         onSave: onSave,
+        onSaveFailureReason: onSaveFailureReason,
         onRun: onRun,
       ),
     ),
@@ -30,13 +32,21 @@ Future<bool> openRemoteFileInEditor(
   required String remotePath,
   required Future<String?> Function() download,
   required Future<bool> Function(List<int> bytes) upload,
+
+  /// Why the last [download] or [upload] did not work. Both report through
+  /// it: the one failure the user sees is whichever of the two just ran, and
+  /// the controller keeps the reason for either. #110.
+  String? Function()? failureReason,
   VoidCallback? onRun,
 }) async {
   final localPath = await download();
   if (!context.mounted) return false;
   if (localPath == null) {
+    final reason = failureReason?.call();
     context.showNotification(
-      l10n.fmDownloadFailed,
+      reason == null || reason.isEmpty
+          ? l10n.fmDownloadFailed
+          : l10n.fmFailedBecause(l10n.fmDownloadFailed, reason),
       type: QNotificationType.error,
     );
     return false;
@@ -46,6 +56,7 @@ Future<bool> openRemoteFileInEditor(
     localPath: localPath,
     title: basename(remotePath),
     onSave: upload,
+    onSaveFailureReason: failureReason,
     onRun: onRun,
   );
 }

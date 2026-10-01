@@ -440,14 +440,26 @@ class FileManagerController extends ChangeNotifier {
   }) async {
     final bytes = await _readEntryWithProgress(remotePath, expectedSize);
     if (bytes == null) return null;
-    final dir = io.Directory(
-      localFolder ?? await _defaultDownloadDir(remotePath),
-    );
-    await dir.create(recursive: true);
-    final sep = io.Platform.pathSeparator;
-    final file = io.File('${dir.path}$sep${basename(remotePath)}');
-    await file.writeAsBytes(bytes, flush: true);
-    return file.path;
+    try {
+      final dir = io.Directory(
+        localFolder ?? await _defaultDownloadDir(remotePath),
+      );
+      await dir.create(recursive: true);
+      final sep = io.Platform.pathSeparator;
+      final file = io.File('${dir.path}$sep${basename(remotePath)}');
+      await file.writeAsBytes(bytes, flush: true);
+      return file.path;
+    } catch (e) {
+      // The half after the device, which `_downloadEntryTo` next door has
+      // guarded all along and this one did not: a folder that cannot be made
+      // or a disk with no room threw out of here into callers with no catch,
+      // so opening a file in the editor on a full phone produced an
+      // unlabelled [uncaught] and an editor that never opened. #110.
+      _error = _lastFailure = '$e';
+      LogService.warn('[FileManager] save $remotePath failed: $e');
+      _notify();
+      return null;
+    }
   }
 
   /// Downloads a single [entry] from the current directory into [destDir],

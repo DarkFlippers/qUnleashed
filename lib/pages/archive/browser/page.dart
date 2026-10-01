@@ -248,6 +248,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
       remotePath: remotePath,
       download: () => _ctrl.downloadTo(remotePath, expectedSize: e.size),
       upload: (bytes) => _ctrl.writeBytes(remotePath, bytes),
+      failureReason: () => _ctrl.lastFailure,
       onRun: e.extension == 'js'
           ? () => _emulateEntry(e, ArchiveCategory.javascript)
           : null,

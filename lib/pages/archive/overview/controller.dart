@@ -1409,12 +1409,13 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
   /// Reads [k] from the device, publishing inline per-key transfer progress so
   /// its file element renders a fill. Returns null on failure.
   Future<List<int>?> readKeyBytes(ArchiveKey k) async {
+    _lastFailure = null;
     _busyPath = k.remotePath;
     _busyProgress = 0;
     notifyListeners();
     final throttle = ProgressThrottle();
     try {
-      return await _readRemoteBytes(
+      final bytes = await _readRemoteBytes(
         k.remotePath,
         expectedSize: k.remoteSize,
         onProgress: (p) {
@@ -1422,6 +1423,13 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
           if (throttle.shouldEmit(_busyProgress)) notifyListeners();
         },
       );
+      // The reason is lifted to [lastFailure] here rather than inside
+      // `_readRemoteBytes`, because this is where one thing the user asked
+      // for ends. The four internal callers of that helper read a file as
+      // part of something larger and recover from a miss, so a failure there
+      // is not the outcome of the operation and must not be reported as one.
+      if (bytes == null) _lastFailure = _lastReadError;
+      return bytes;
     } finally {
       _busyPath = null;
       _busyProgress = 0;
@@ -1430,8 +1438,9 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<bool> writeKeyBytes(ArchiveKey k, List<int> bytes) async {
+    _lastFailure = null;
     if (!_client.isConnected) {
-      _lastError = l10n.archiveConnectToSave;
+      _lastError = _lastFailure = l10n.archiveConnectToSave;
       notifyListeners();
       return false;
     }
@@ -1450,7 +1459,9 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
       );
       return true;
     } catch (e) {
-      _lastError = '$e';
+      // Stays at info: the editor renders the reason beside its own message
+      // now, which is the surface this was standing in for.
+      _lastError = _lastFailure = '$e';
       LogService.info('[Archive] write ${k.remotePath} failed: $e');
       return false;
     } finally {
@@ -1465,13 +1476,23 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
   Future<String?> downloadKeyToCache(ArchiveKey k) async {
     final bytes = await readKeyBytes(k);
     if (bytes == null) return null;
-    final root = await icon_repo.shareCacheDirectory();
-    final dir = io.Directory(root.path);
-    await dir.create(recursive: true);
-    final sep = io.Platform.pathSeparator;
-    final file = io.File('${dir.path}$sep${k.fileName}');
-    await file.writeAsBytes(bytes, flush: true);
-    return file.path;
+    try {
+      final root = await icon_repo.shareCacheDirectory();
+      final dir = io.Directory(root.path);
+      await dir.create(recursive: true);
+      final sep = io.Platform.pathSeparator;
+      final file = io.File('${dir.path}$sep${k.fileName}');
+      await file.writeAsBytes(bytes, flush: true);
+      return file.path;
+    } catch (e) {
+      // The half after the device: a cache directory that cannot be made or
+      // a disk with no room. It threw out of here into a caller that had no
+      // catch, so sharing a key on a full phone produced an unlabelled
+      // [uncaught] and a share sheet that never opened. #110.
+      _lastError = _lastFailure = '$e';
+      LogService.warn('[Archive] cache ${k.fileName} failed: $e');
+      return null;
+    }
   }
 
   Future<List<int>?> _readRemoteBytes(
