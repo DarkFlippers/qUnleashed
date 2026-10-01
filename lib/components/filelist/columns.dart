@@ -226,9 +226,13 @@ List<SizedColumn> layoutColumns(
 
   final core = all.where((c) => c.hideLevel == null).toList();
   final fixed = core.where((c) => c.width > 0).fold(0.0, (s, c) => s + req[c]!);
-  final nameW = (availableWidth - fixed - 16).clamp(
-    kNameMinWidth,
-    double.infinity,
-  );
+  // Nothing left to hide, so the name column takes what remains rather than
+  // its minimum: clamping it up to kNameMinWidth here made the header wider
+  // than the row it sits in, and the column that got clipped was the last one
+  // rather than this one. At 320 - the narrowest width the project declares -
+  // subghz and wardriving overflowed by 4.2 pixels, which is 140 against the
+  // 136 that was actually free. The floor at zero is for arithmetic rather
+  // than for layout; progressive hiding above has already given up by here.
+  final nameW = (availableWidth - fixed - 16).clamp(0.0, double.infinity);
   return sized(core, nameW);
 }
