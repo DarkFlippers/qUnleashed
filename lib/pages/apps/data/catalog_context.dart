@@ -1,3 +1,4 @@
+import '../../../services/guarded.dart';
 import '../../../services/localization/l10n.dart';
 
 import 'dart:async';
@@ -206,7 +207,12 @@ class CatalogContext {
         // that: the connection handler that moved the scope saw this pass
         // still running and stood down. The hand-off belongs here.
         mode.value = CatalogMode.resolving;
-        unawaited(resolveMode(force: true));
+        unawaited(
+          guarded(
+            '[AppsBackend] re-resolve for the new device',
+            () => resolveMode(force: true),
+          ),
+        );
       } else if (mode.value != CatalogMode.resolving) {
         resolvedForDeviceId = client.scopedDeviceId;
       }

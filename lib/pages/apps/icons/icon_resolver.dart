@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import '../../../services/guarded.dart';
 import '../../../services/http/app_http.dart';
 import '../../../services/logging.dart';
 import '../../../services/storage/fap_icons.dart';
@@ -38,7 +39,7 @@ class IconResolver {
       if (url.toLowerCase().endsWith('.svg')) continue;
       _catalogQueue.putIfAbsent(alias, () => url);
     }
-    unawaited(_drainCatalogQueue());
+    unawaited(guarded('[Icons] drain catalog queue', _drainCatalogQueue));
   }
 
   Future<void> _drainCatalogQueue() async {

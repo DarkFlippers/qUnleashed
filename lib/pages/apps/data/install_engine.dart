@@ -1,3 +1,4 @@
+import '../../../services/guarded.dart';
 import '../../../services/localization/l10n.dart';
 
 import 'dart:async';
@@ -100,7 +101,7 @@ class InstallEngine extends ChangeNotifier {
   }) {
     final task = _AppTask(alias, run, needsLink: needsLink);
     _taskQueue.add(task);
-    unawaited(_drainTaskQueue());
+    unawaited(guarded('[InstallEngine] drain task queue', _drainTaskQueue));
     return task.done.future;
   }
 
@@ -315,7 +316,12 @@ class InstallEngine extends ChangeNotifier {
         _throwIfCancelled(app.alias);
         _setActionState(app.alias, stage: AppActionStage.download, progress: 1);
 
-        unawaited(_cacheFapIcon(app.alias, fapBytes));
+        unawaited(
+          guarded(
+            '[InstallEngine] cache icon',
+            () => _cacheFapIcon(app.alias, fapBytes),
+          ),
+        );
 
         prepared = _PreparedInstall(
           manifest: manifest,
@@ -663,7 +669,7 @@ class InstallEngine extends ChangeNotifier {
   }
 
   void handleConnect() {
-    unawaited(_drainTaskQueue());
+    unawaited(guarded('[InstallEngine] drain task queue', _drainTaskQueue));
     notifyListeners();
   }
 

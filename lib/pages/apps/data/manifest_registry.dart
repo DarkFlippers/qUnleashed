@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flutter/foundation.dart';
 
+import '../../../services/guarded.dart';
 import '../../../services/storage/paths.dart';
 import 'catalog_context.dart' show kManifestsRoot;
 import 'models/manifest.dart';
@@ -131,7 +132,7 @@ class ManifestRegistry extends ChangeNotifier {
 
   void put(String alias, AppManifest manifest) {
     _index(alias, manifest);
-    unawaited(_saveCache());
+    unawaited(guarded('[Manifests] save cache', _saveCache));
     notifyListeners();
   }
 
@@ -139,7 +140,7 @@ class ManifestRegistry extends ChangeNotifier {
     final m = _byAlias.remove(alias);
     if (m != null && m.uid.isNotEmpty) _byUid.remove(m.uid);
     _md5.remove(alias);
-    unawaited(_saveCache());
+    unawaited(guarded('[Manifests] save cache', _saveCache));
     notifyListeners();
   }
 

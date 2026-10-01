@@ -13,6 +13,7 @@ import 'install_engine.dart';
 import 'manifest_registry.dart';
 import 'models/card.dart';
 import 'update_registry.dart';
+import '../../../services/guarded.dart';
 
 export 'catalog_context.dart' show kAppsRoot, kManifestsRoot, kTaskCooldown;
 
@@ -133,7 +134,12 @@ class AppsBackend {
     if (catalog.resolvedForDeviceId != client.scopedDeviceId &&
         !catalog.isResolving) {
       catalog.mode.value = CatalogMode.resolving;
-      unawaited(catalog.resolveMode(force: true));
+      unawaited(
+        guarded(
+          '[AppsBackend] resolve mode',
+          () => catalog.resolveMode(force: true),
+        ),
+      );
     }
   }
 }

@@ -54,12 +54,14 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) unawaited(_primeAll());
+      if (mounted) {
+        unawaited(guarded('[AppsManager] first load', _primeAll));
+      }
     });
   }
 
   Future<void> _primeAll() async {
-    unawaited(_backend.ensureIndex());
+    unawaited(guarded('[AppsManager] ensure index', _backend.ensureIndex));
     await _device.prime();
     await _updates.ensureFresh();
   }
@@ -194,21 +196,30 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
             icon: Icons.restore,
             color: colors.accent,
             filled: true,
-            onTap: () => unawaited(_restore(app)),
+            onTap: () => unawaited(
+              guarded('[AppsManager] restore', () => _restore(app)),
+            ),
           ),
           AppActionEntry(
             label: ctx.l10n.appActionDeleteCopy,
             icon: Icons.sd_card_outlined,
             color: colors.danger,
             half: true,
-            onTap: () => unawaited(_deleteLocal(app)),
+            onTap: () => unawaited(
+              guarded(
+                '[AppsManager] delete local copy',
+                () => _deleteLocal(app),
+              ),
+            ),
           ),
           AppActionEntry(
             label: ctx.l10n.appActionUninstall,
             icon: Icons.delete_outline,
             color: colors.danger,
             half: true,
-            onTap: () => unawaited(_uninstall(app)),
+            onTap: () => unawaited(
+              guarded('[AppsManager] uninstall', () => _uninstall(app)),
+            ),
           ),
         ] else ...[
           if (updatable)
@@ -217,7 +228,9 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
               icon: Icons.system_update_alt,
               color: colors.success,
               filled: true,
-              onTap: () => unawaited(_update(app)),
+              onTap: () => unawaited(
+                guarded('[AppsManager] update', () => _update(app)),
+              ),
             ),
           AppActionEntry(
             label: ctx.l10n.commonOpen,
@@ -225,21 +238,29 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
             color: colors.accent,
             filled: !updatable,
             half: true,
-            onTap: () => unawaited(_launch(app)),
+            onTap: () =>
+                unawaited(guarded('[AppsManager] launch', () => _launch(app))),
           ),
           AppActionEntry(
             label: ctx.l10n.appActionRestore,
             icon: Icons.restore,
             color: colors.accent,
             half: true,
-            onTap: () => unawaited(_restore(app)),
+            onTap: () => unawaited(
+              guarded('[AppsManager] restore', () => _restore(app)),
+            ),
           ),
           AppActionEntry(
             label: ctx.l10n.appActionDeleteCopy,
             icon: Icons.sd_card_outlined,
             color: colors.danger,
             half: true,
-            onTap: () => unawaited(_deleteLocal(app)),
+            onTap: () => unawaited(
+              guarded(
+                '[AppsManager] delete local copy',
+                () => _deleteLocal(app),
+              ),
+            ),
           ),
           AppActionEntry(
             label: ctx.l10n.appActionUninstall,
@@ -247,7 +268,9 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
             color: colors.danger,
             filled: true,
             half: true,
-            onTap: () => unawaited(_uninstall(app)),
+            onTap: () => unawaited(
+              guarded('[AppsManager] uninstall', () => _uninstall(app)),
+            ),
           ),
         ],
       ],
@@ -314,7 +337,12 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
                       ? context.l10n.appsLoadFailed
                       : context.l10n.managerUpdateAll,
                   onPressed: _updates.failed
-                      ? () => unawaited(_updates.refresh(force: true))
+                      ? () => unawaited(
+                          guarded(
+                            '[AppsManager] retry update check',
+                            () => _updates.refresh(force: true),
+                          ),
+                        )
                       : _updateAll,
                 ),
               IconButton(

@@ -55,11 +55,7 @@ import 'ratchet.dart';
 /// thing these numbers do say is that nothing may be added without a reader
 /// deciding it belongs.
 const Map<String, int> kBudget = {
-  // Partly read through. Was 34; the three that went were the pull-to-refresh
-  // handlers on the apps tables, which is the one place in this area where the
-  // bare shape was a user-visible defect rather than a missing label - see
-  // `test/apps_pull_to_refresh_test.dart`. The rest are untriaged.
-  'pages/apps': 31,
+  // Untriaged. These are where the tree stood.
   'pages/archive': 23,
   'pages/tools': 18,
   // Read through. Was 10, and nine were a settings page starting a load in
@@ -89,6 +85,18 @@ const Map<String, int> kBudget = {
   // unregistered route, which the surrounding try does catch, and the pushed
   // route's future resolves when it is popped.
   'pages/flibler': 1,
+  // Read through. Was 34. Three were the pull-to-refresh handlers, the one
+  // place here where the bare shape was a defect a user felt rather than a
+  // missing label - see `test/apps_pull_to_refresh_test.dart`. The other thirty
+  // were a tap handler, a post-frame callback or a queue drained in the
+  // background, with no caller to hand a failure back to.
+  //
+  // The one left is `actions.dart`'s `openRoute`, and it is deliberate for the
+  // same reason as `pages/flibler`'s: the only throw in `openRoute` is the
+  // synchronous StateError for a route nobody registered, which the `try` it
+  // sits in does catch, and the future it hands back resolves when the pushed
+  // route is popped.
+  'pages/apps': 1,
   // Read through, and empty. Was 24, and the whole of it went the same way:
   // every one was a stream callback, a platform-channel handler or a timer,
   // so there was never a caller to hand a failure back to - which is the case
