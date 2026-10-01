@@ -1,3 +1,4 @@
+import '../../../../services/guarded.dart';
 import '../../../../services/localization/l10n.dart';
 
 import 'dart:async';
@@ -47,7 +48,7 @@ class _DeletedPageState extends State<DeletedPage> {
   @override
   void initState() {
     super.initState();
-    unawaited(_ctrl.loadMetaForDeleted());
+    unawaited(guarded('[Archive] load deleted meta', _ctrl.loadMetaForDeleted));
   }
 
   @override
@@ -217,10 +218,15 @@ class _DeletedPageState extends State<DeletedPage> {
       return;
     }
     if (!_ctrl.isConnected) {
-      unawaited(promptConnectDevice(context));
+      unawaited(
+        guarded(
+          '[Archive] open the picker',
+          () => promptConnectDevice(context),
+        ),
+      );
       return;
     }
-    unawaited(_ctrl.refresh());
+    unawaited(guarded('[Archive] refresh deleted', _ctrl.refresh));
   }
 
   void _clearFilters() {

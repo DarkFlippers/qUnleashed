@@ -1,3 +1,4 @@
+import '../../../services/guarded.dart';
 import '../../../services/localization/l10n.dart';
 
 import 'dart:async';
@@ -83,7 +84,7 @@ class _FlipperMapPageState extends State<FlipperMapPage> {
     _controller = MapToolController(client: widget.client)
       ..addListener(_onChanged);
     _settings.addListener(_onChanged);
-    unawaited(_settings.load());
+    unawaited(guarded('[Map] load settings', _settings.load));
     _openedInPickMode = widget.pickLocationFor != null;
     if (_openedInPickMode) {
       _mode = _MapMode.pick;

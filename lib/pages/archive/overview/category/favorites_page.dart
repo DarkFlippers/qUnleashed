@@ -1,3 +1,4 @@
+import '../../../../services/guarded.dart';
 import '../../../../services/localization/l10n.dart';
 
 import 'dart:async';
@@ -54,7 +55,9 @@ class _FavoritesPageState extends State<FavoritesPage> {
   @override
   void initState() {
     super.initState();
-    unawaited(_ctrl.loadMetaForFavorites());
+    unawaited(
+      guarded('[Archive] load favourites meta', _ctrl.loadMetaForFavorites),
+    );
   }
 
   @override

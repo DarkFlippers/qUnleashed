@@ -55,9 +55,25 @@ import 'ratchet.dart';
 /// thing these numbers do say is that nothing may be added without a reader
 /// deciding it belongs.
 const Map<String, int> kBudget = {
-  // Untriaged. These are where the tree stood.
-  'pages/archive': 23,
+  // Untriaged. This is where the tree stood.
   'pages/tools': 18,
+  // Read through. Was 23. The favourites and device-name writes were the
+  // settings-write shape #202 settled - the control has already applied the
+  // choice on screen, so a write that will not persist is worth a line in the
+  // log and nothing more - and the rest were a load started in `initState` or a
+  // sync a button asked for.
+  //
+  // One was a defect: `category_page.dart`'s pull-to-sync had the same
+  // `() async => unawaited(...)` handler as the three apps tables in #219, so
+  // its spinner ended before the sync began. It was the last of that shape in
+  // `lib/`.
+  //
+  // The six left are all `openRoute`, deliberate for the reason in
+  // `pages/flibler`: the only throw in it is the synchronous StateError for a
+  // route nobody registered, and the future it returns resolves when the pushed
+  // route is popped. Four of the six sit in a `try` that would catch that throw
+  // anyway.
+  'pages/archive': 6,
   // Read through. Was 10, and nine were a settings page starting a load in
   // `initState` or a tap persisting a choice - no caller, so `guarded` is the
   // whole fix. The one left is `storage.dart`'s `_sizeArea`, which already

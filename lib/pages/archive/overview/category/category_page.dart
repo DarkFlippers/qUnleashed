@@ -1,3 +1,4 @@
+import '../../../../services/guarded.dart';
 import '../../../../services/localization/l10n.dart';
 
 import 'dart:async';
@@ -55,7 +56,12 @@ class _CategoryPageState extends State<CategoryPage> {
   @override
   void initState() {
     super.initState();
-    unawaited(_ctrl.loadMetaForCategory(_cat));
+    unawaited(
+      guarded(
+        '[Archive] load category meta',
+        () => _ctrl.loadMetaForCategory(_cat),
+      ),
+    );
   }
 
   @override
@@ -272,10 +278,17 @@ class _CategoryPageState extends State<CategoryPage> {
       return;
     }
     if (!_ctrl.isConnected) {
-      unawaited(promptConnectDevice(context));
+      unawaited(
+        guarded(
+          '[Archive] open the picker',
+          () => promptConnectDevice(context),
+        ),
+      );
       return;
     }
-    unawaited(_ctrl.syncCategory(_cat));
+    unawaited(
+      guarded('[Archive] sync category', () => _ctrl.syncCategory(_cat)),
+    );
   }
 
   void _clearFilters() {
@@ -403,7 +416,13 @@ class _CategoryPageState extends State<CategoryPage> {
         return RefreshIndicator(
           color: catColor,
           displacement: 15,
-          onRefresh: () async => unawaited(_ctrl.syncCategory(_cat)),
+          // Returns the work rather than starting it: `RefreshIndicator` holds
+          // its spinner only until the future it is given settles, and
+          // `() async => unawaited(...)` settles at once - so the spinner
+          // flashed while the sync had not begun. The same defect as the three
+          // apps tables in #219, and the last one of its shape in `lib/`.
+          onRefresh: () =>
+              guarded('[Archive] pull to sync', () => _ctrl.syncCategory(_cat)),
           child: filtered.isEmpty
               ? SingleChildScrollView(
                   physics: const AlwaysScrollableScrollPhysics(),
