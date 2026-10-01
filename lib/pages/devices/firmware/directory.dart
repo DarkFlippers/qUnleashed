@@ -588,6 +588,14 @@ abstract class FirmwareParser {
     _lastSaid = null;
   }
 
+  /// Kept, though [fetchJson] now caches on disk as well.
+  ///
+  /// #131 expected this to become redundant, and it would be if the only
+  /// thing [FirmwareRepository.ensure] skipped were the request. It also
+  /// skips entering the loading state and notifying - so dropping this would
+  /// put the firmware card through a loading flicker on every call, for a
+  /// document already decoded in this process. The disk cache answers the
+  /// cold start; this answers the warm one.
   bool get isFresh =>
       _cache != null &&
       _fetchedAt != null &&
@@ -607,8 +615,19 @@ abstract class FirmwareParser {
   /// the wrong shape and have [FirmwareDirectoryReader] really run on it. A
   /// seam above the decode could only ever stand in for what a changed feed
   /// does; this one produces it.
+  /// Through the disk cache, not the plain fetch. The in-memory stamp below
+  /// dies with the process, so every cold start re-fetched - and an offline
+  /// launch had no directory at all, which is most of what made #118's
+  /// "can't check" state and its retry cooldown load-bearing. The disk copy
+  /// is served stale when the network will not answer, so the screen shows
+  /// the last directory instead of nothing. #131.
+  ///
+  /// The two caches do not disagree: both are stamped by the same fetch,
+  /// microseconds apart, and share [_ttl] - so the memory being stale means
+  /// the disk is too, and the call that follows is a real revalidation.
   @visibleForTesting
-  Future<dynamic> Function(Uri uri) fetchJson = AppHttp.getJson;
+  Future<dynamic> Function(Uri uri) fetchJson = (uri) =>
+      AppHttp.getJsonCached(uri, ttl: _ttl);
 
   /// The fingerprint of the last read [_say] reported for this feed, so one
   /// that is permanently odd is said once rather than on every refresh.
