@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flipperlib/flipperlib.dart' hide DateTime;
 import 'package:flutter/foundation.dart';
 
+import '../guarded.dart';
 import '../logging.dart';
 import 'device_settings.dart';
 import 'known_devices.dart';
@@ -194,8 +195,13 @@ class LinkService extends ChangeNotifier {
     _heardSub = client.bleHeard.listen(_onHeard);
     _known.addListener(notifyListeners);
     _settings.addListener(_scheduleReconcile);
-    unawaited(_settings.load());
-    unawaited(_known.load().whenComplete(_scheduleReconcile));
+    unawaited(guarded('[Link] load device settings', _settings.load));
+    unawaited(
+      guarded(
+        '[Link] load known devices',
+        () => _known.load().whenComplete(_scheduleReconcile),
+      ),
+    );
   }
 
   // ── Rows ─────────────────────────────────────────────────────────────────
@@ -425,7 +431,9 @@ class LinkService extends ChangeNotifier {
       if (!s.device.isBle || !s.connected) continue;
       if (_bleSessionIds.contains(s.device.id)) continue;
       _heardBle.add(s.device.id);
-      unawaited(_known.remember(s.device));
+      unawaited(
+        guarded('[Link] remember device', () => _known.remember(s.device)),
+      );
     }
     _bleSessionIds = bleNow;
 
@@ -480,7 +488,10 @@ class LinkService extends ChangeNotifier {
 
   void _scheduleReconcile() {
     _usbTimer?.cancel();
-    _usbTimer = Timer(_usbDebounce, () => unawaited(_reconcile()));
+    _usbTimer = Timer(
+      _usbDebounce,
+      () => unawaited(guarded('[Link] reconcile', _reconcile)),
+    );
   }
 
   Future<void> _reconcile() async {

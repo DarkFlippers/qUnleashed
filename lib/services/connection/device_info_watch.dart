@@ -28,7 +28,9 @@ class DeviceInfoWatchService {
 
   void start(FlipperClient client) {
     final gen = ++_gen;
-    unawaited(_runCollection(gen, client));
+    unawaited(
+      guarded('[watchInfo] collection loop', () => _runCollection(gen, client)),
+    );
   }
 
   void stop() {
@@ -261,7 +263,9 @@ class DeviceInfoWatchService {
           return;
         }
         lastRefreshAt = clock.elapsed;
-        unawaited(fetchExtInfo('refresh'));
+        unawaited(
+          guarded('[watchInfo] refresh', () => fetchExtInfo('refresh')),
+        );
       });
     }
 
