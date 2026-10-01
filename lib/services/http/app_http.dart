@@ -59,6 +59,16 @@ class AppHttp {
   /// The error alone ends an `await for`: the loop throws on it and cancels
   /// the subscription, so there is no sink left for the source to write to
   /// afterwards.
+  /// Widens the element type to `List<int>`, which is safe only because
+  /// every caller binds a decoder to the result rather than transforming it.
+  ///
+  /// `stream.transform(utf8.decoder)` would cast the decoder to a transformer
+  /// over the stream's *runtime* element type, and the widening here leaves
+  /// that as whatever the response carried. Which clients hit it differs: a
+  /// real one does not, the mock `flutter_test` installs does - so #199 left
+  /// every widget test whose fetch reached that mock throwing a `TypeError`
+  /// where it had been given an `AppHttpException`, and nothing failed. See
+  /// [getJson] for the other half.
   static Stream<List<int>> _untilStalled(Stream<List<int>> stream, Uri uri) =>
       stream.timeout(
         idleDeadline,
@@ -93,7 +103,12 @@ class AppHttp {
       uri,
       headers: {io.HttpHeaders.acceptHeader: 'application/json', ...headers},
     );
-    final text = await _untilStalled(res, uri).transform(utf8.decoder).join();
+    // `utf8.decoder.bind(stream)` rather than `stream.transform(utf8.decoder)`.
+    // bind takes a `Stream<List<int>>` and a `Stream<Uint8List>` is one, so
+    // nothing is cast; transform goes the other way and casts the decoder to
+    // a transformer over the stream's runtime element type. See
+    // [_untilStalled].
+    final text = await utf8.decoder.bind(_untilStalled(res, uri)).join();
     if (res.statusCode < 200 || res.statusCode >= 300) {
       throw AppHttpException(res.statusCode, uri.toString(), text);
     }
@@ -120,7 +135,7 @@ class AppHttp {
         throw TimeoutException('No response from $uri', headersDeadline);
       },
     );
-    final text = await _untilStalled(res, uri).transform(utf8.decoder).join();
+    final text = await utf8.decoder.bind(_untilStalled(res, uri)).join();
     if (res.statusCode < 200 || res.statusCode >= 300) {
       throw AppHttpException(res.statusCode, uri.toString(), text);
     }
@@ -225,10 +240,7 @@ class AppHttp {
         }
         unchanged = cached.bodyFile;
       } else {
-        final text = await _untilStalled(
-          res,
-          uri,
-        ).transform(utf8.decoder).join();
+        final text = await utf8.decoder.bind(_untilStalled(res, uri)).join();
         if (res.statusCode < 200 || res.statusCode >= 300) {
           throw AppHttpException(res.statusCode, uri.toString(), text);
         }
@@ -327,7 +339,7 @@ class AppHttp {
   }) async {
     final res = await get(uri, headers: headers);
     if (res.statusCode < 200 || res.statusCode >= 300) {
-      final text = await _untilStalled(res, uri).transform(utf8.decoder).join();
+      final text = await utf8.decoder.bind(_untilStalled(res, uri)).join();
       throw AppHttpException(res.statusCode, uri.toString(), text);
     }
     final total = res.contentLength > 0 ? res.contentLength : null;
