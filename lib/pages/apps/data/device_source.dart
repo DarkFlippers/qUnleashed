@@ -5,6 +5,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flutter/foundation.dart';
 
+import '../../../services/guarded.dart';
 import '../../../components/codec/fap/info.dart';
 import '../../../components/path.dart';
 import '../../../services/progress_throttle.dart';
@@ -348,7 +349,12 @@ class DeviceSource extends ChangeNotifier {
             if (bytes.isNotEmpty && token.isCurrent) {
               await local.parent.create(recursive: true);
               await local.writeAsBytes(bytes, flush: true);
-              unawaited(IconResolver.instance.ensureFromFap(d.alias, bytes));
+              unawaited(
+                guarded(
+                  '[AppsDevice] cache icon from fap',
+                  () => IconResolver.instance.ensureFromFap(d.alias, bytes),
+                ),
+              );
             }
           } catch (e) {
             // One per app in the scan loop; the alias in the text stops
@@ -575,7 +581,12 @@ class DeviceSource extends ChangeNotifier {
     for (final app in apps) {
       final m = app.manifest;
       if (m != null && m.iconBase64.isNotEmpty) {
-        unawaited(IconResolver.instance.ensureFromManifest(app.alias, m));
+        unawaited(
+          guarded(
+            '[AppsDevice] cache icon from manifest',
+            () => IconResolver.instance.ensureFromManifest(app.alias, m),
+          ),
+        );
       }
     }
   }
@@ -610,7 +621,7 @@ class DeviceSource extends ChangeNotifier {
     _syncDone = 0;
     _syncTotal = 0;
     notifyListeners();
-    unawaited(_refreshLocal());
+    unawaited(guarded('[AppsDevice] refresh local apps', _refreshLocal));
   }
 
   Future<void> _refreshLocal() async {

@@ -51,7 +51,9 @@ class _AtpInstallPageState extends State<AtpInstallPage> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => unawaited(_prime()));
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => unawaited(guarded('[AppsInstall] first load', _prime)),
+    );
   }
 
   Future<void> _prime() async {
@@ -210,7 +212,9 @@ class _AtpInstallPageState extends State<AtpInstallPage> {
             color: colors.accent,
             filled: action == PackAction.none,
             half: true,
-            onTap: () => unawaited(_launch(entry)),
+            onTap: () => unawaited(
+              guarded('[AppsInstall] launch', () => _launch(entry)),
+            ),
           ),
           AppActionEntry(
             label: ctx.l10n.appActionUninstall,
@@ -218,9 +222,12 @@ class _AtpInstallPageState extends State<AtpInstallPage> {
             color: colors.danger,
             half: true,
             onTap: () => unawaited(
-              _engine.deleteInstalled(
-                alias: entry.appId,
-                fapPath: entry.installPath,
+              guarded(
+                '[AppsInstall] uninstall',
+                () => _engine.deleteInstalled(
+                  alias: entry.appId,
+                  fapPath: entry.installPath,
+                ),
               ),
             ),
           ),
@@ -305,7 +312,7 @@ class _AtpInstallPageState extends State<AtpInstallPage> {
                 syncing: _atp.loading,
                 enabled: !_atp.loading,
                 catColor: header,
-                onTap: () => unawaited(_refresh()),
+                onTap: () => unawaited(guarded('[AppsInstall] sync', _refresh)),
               ),
               CategoryCountBadge(
                 filtered: visible.length,
@@ -386,7 +393,9 @@ class _AtpInstallPageState extends State<AtpInstallPage> {
         header: header,
         packAction: _actionFor(entry),
         action: _engine.actions[entry.appId],
-        onTap: () => unawaited(_showActions(entry)),
+        onTap: () => unawaited(
+          guarded('[AppsInstall] open actions', () => _showActions(entry)),
+        ),
       ),
     );
   }
