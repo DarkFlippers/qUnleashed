@@ -1,6 +1,6 @@
 # 0001. ChangeNotifier now, Riverpod behind a coverage gate
 
-Status: Accepted (2026-09-24)
+Status: Accepted (2026-09-24); gate met and decision reaffirmed (2026-10-01)
 
 ## Context
 
@@ -51,6 +51,37 @@ Meanwhile, take the value that motivated Riverpod without the framework: where
 the UI must show a failure, model it as an explicit state rather than an
 absence. `FirmwareFetchState` (a three-state enum, added in #134) is the shape
 to copy; #112 is the next place it applies.
+
+## The gate opened, and the answer did not change (2026-10-01)
+
+All three conditions are met:
+
+1. `flipperlib`'s CI runs `flutter test`, in two steps.
+2. The RPC queue has 22 tests (`test/queue_test.dart`).
+3. `classifyConnectError` has 13 (`test/connect_error_test.dart`).
+
+So this ADR can now be closed by evidence, which is what it was written for.
+The evidence says keep `ChangeNotifier`, and for a reason the gate did not
+anticipate: **the bug class that motivated Riverpod has been closed without
+it.**
+
+Both cases in the Context above are fixed. #118 landed first; #112 followed,
+and with it the same shape in six more places - the apps layer
+(`AtpSource.failed`, `ManifestRegistry.failed`, `UpdateRegistry.failed`),
+the archive (#191, #192), the tools controllers (#197) and the settings
+stores (#202). Every one of them is the instruction this ADR already gave:
+*where the UI must show a failure, model it as an explicit state rather than
+an absence.*
+
+`AsyncValue` would have made that class of bug unrepresentable. Explicit
+states made the instances of it absent, at a cost measured in single fields
+rather than in 29 `ChangeNotifier` classes, 55 `setState` files and a
+`build_runner` the project uses nowhere. The motivating evidence is spent;
+what is left is a preference, and this ADR was written to refuse those.
+
+What would change the answer now is a *new* instance of the same bug class
+appearing in code written after all this - that is, the discipline failing
+rather than the framework being missed. Nothing like that has been filed.
 
 ## Rejected alternatives (and why)
 

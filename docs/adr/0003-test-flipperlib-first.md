@@ -1,6 +1,6 @@
 # 0003. flipperlib is tested before it is changed
 
-Status: Accepted (2026-09-24)
+Status: Accepted (2026-09-24); the two named modules are covered (2026-10-01)
 
 ## Context
 
@@ -40,6 +40,17 @@ need no device, no BLE stack and no transport mock. `FakeFlipperClient` in
 `test/firmware_fixture.dart` already demonstrates the seam exists.
 
 This is also the gate that unblocks [0001](0001-state-management.md).
+
+Both are done. `flipperlib`'s CI runs `flutter test`, the queue has 22 tests
+and `classifyConnectError` has 13 - and three more files have joined them
+since, for seams the consumer needed rather than for this gate. [0001] was
+re-read against that and kept its answer, for a reason this ADR did not
+predict: the bug class it was holding the gate for was closed another way.
+
+What this ADR asked for is finished. What it was *about* is not: 96 files
+still have five test files between them, and everything in the list above
+that is not the queue or the error classifier remains uncovered. A later
+change to the transport still wants its own tests first.
 
 It was the stated precondition for the API migration in issue #144 as well.
 That migration landed first, in #127, through `client.dart` and `session.dart`
