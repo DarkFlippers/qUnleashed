@@ -100,8 +100,22 @@ jobs:
       - name: Analyze
         run: flutter analyze
 
+      # Randomised rather than declared order, and only randomised: a suite
+      # that passes in any order passes in the declared one too, so this is
+      # the stronger of the two and costs no extra run.
+      #
+      # The seed is new every time, which is the point - an ordering fault
+      # that only one arrangement shows would otherwise sit there until it
+      # happened to matter. `flutter test` prints the seed it chose
+      # ("Shuffling test order with --test-randomize-ordering-seed=N"), so a
+      # red run is reproducible: pass that N locally.
+      #
+      # A failure here is a real bug, not flakiness. Test order is a hidden
+      # dependency between files - one leaving a static set for the next, a
+      # mock installed in one and read in another - and #139 was exactly that,
+      # found by accident rather than by this.
       - name: Test
-        run: flutter test
+        run: flutter test --test-randomize-ordering-seed=random
 
       # The guards are compile-time consts, so the run above is always the
       # talking build. See the header of the test file. QLOG_EXPECT_QUIET is
@@ -110,6 +124,7 @@ jobs:
       - name: Test the build that prints nothing
         run: >
           flutter test
+          --test-randomize-ordering-seed=random
           --dart-define=QLOG=false
           --dart-define=QLOG_EXPECT_QUIET=true
           test/logging_history_test.dart
