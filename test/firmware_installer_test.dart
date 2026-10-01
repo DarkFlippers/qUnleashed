@@ -216,7 +216,7 @@ void main() {
     states = [];
   });
 
-  Future<void> flash(String archivePath) => FirmwareInstaller.install(
+  Future<UpdateState> flash(String archivePath) => FirmwareInstaller.install(
     source: _LocalArchive(archivePath),
     client: client,
     onState: states.add,
@@ -232,6 +232,44 @@ void main() {
 
   String? errorText() =>
       states.whereType<UpdateError>().map((e) => e.message).firstOrNull;
+
+  // What install() hands back, as opposed to what it publishes. The two said
+  // the same before this, and the caller read the published one - which was
+  // safe only while UpdateWaitingForReconnect happened to be the last thing
+  // emitted. #132.
+  group('the outcome the caller is given', () {
+    final files = {'update.fuf': 'manifest', 'flipper.bin': 'image'};
+
+    test('is the same object the last state was published as', () async {
+      final outcome = await flash(archiveOf(files));
+
+      expect(outcome, same(states.last));
+    });
+
+    test('says it finished when it did', () async {
+      expect(await flash(archiveOf(files)), isA<UpdateDone>());
+    });
+
+    test('says what went wrong when nothing was in the archive', () async {
+      final outcome = await flash(archiveOf(const {}));
+
+      expect(outcome, isA<UpdateError>());
+      expect((outcome as UpdateError).message, isNotEmpty);
+    });
+
+    test('says what went wrong when there is no manifest', () async {
+      expect(
+        await flash(archiveOf(const {'flipper.bin': 'image'})),
+        isA<UpdateError>(),
+      );
+    });
+
+    // Not covered here: the USB path, whose outcome only exists once the port
+    // comes back. The case for it is further down - "a USB install says it is
+    // installing, and does not finish" - where the flash is left running
+    // rather than awaited, because awaiting it enters LinkService's real
+    // thirty-second wait for a device no test has.
+  });
 
   test(
     'an archive with nothing in it is an error, not an empty install',

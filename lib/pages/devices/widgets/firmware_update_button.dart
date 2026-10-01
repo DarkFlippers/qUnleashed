@@ -51,7 +51,7 @@ class FirmwareUpdateButton extends StatefulWidget {
   /// recovery path, which runs a real flash over FFI, so there is no other way
   /// to reach it from a test.
   @visibleForTesting
-  final Future<void> Function({
+  final Future<UpdateState> Function({
     required FirmwareSource source,
     required FlipperClient client,
     required void Function(UpdateState) onState,
@@ -233,33 +233,24 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
 
     var waitForReconnect = false;
     try {
-      await (widget.install ?? FirmwareInstaller.install)(
+      final outcome = await (widget.install ?? FirmwareInstaller.install)(
         source: source,
         client: widget.client,
         onState: (state) => _onState(target, state),
       );
-      // The state decides this, not a prediction made at press time. It used
+      // The outcome decides this, not a prediction made at press time. It used
       // to be guarded on `_dfuOnly` read before the archive was fetched, but
       // install() picks the DFU path from client.isConnected much later - so a
-      // link that dropped during a 90-second download flashed over DFU,
-      // emitted UpdateWaitingForReconnect, and was then never waited for,
-      // leaving the button disabled on RESTARTING for good. #118.
+      // link that dropped during a 90-second download flashed over DFU and
+      // was then never waited for, leaving the button disabled on RESTARTING
+      // for good. #118.
       //
-      // Reading the last state install() emitted is safe only because
-      // UpdateWaitingForReconnect is terminal: it is emitted from one place
-      // and nothing follows it. Anything added after it there brings the latch
-      // straight back, with these tests still green - #132 makes install()
-      // return the state it ended on so this stops being an ordering
-      // assumption.
-      //
-      // Asked of the tracker under `target` rather than through _updateState,
-      // which reads the device on screen: a recovery flash ends with no device
-      // at all, so the state to test is the one this flash published, not the
-      // one whatever Flipper is in scope by now would answer with.
-      waitForReconnect = _tracker.stateFor(
-        target,
-        widget.entry.shortName,
-      ) is UpdateWaitingForReconnect;
+      // Read from what install() returned rather than from the last state it
+      // published. Both answer the same today, and only because
+      // UpdateWaitingForReconnect happens to be terminal - one trailing
+      // emission anywhere in install() and the latch came back with every
+      // test here still green. #132.
+      waitForReconnect = outcome is UpdateWaitingForReconnect;
     } catch (e, st) {
       // FirmwareInstaller.install keeps its own failures, but the temp
       // directory it creates before that try is outside it - a full disk or an
