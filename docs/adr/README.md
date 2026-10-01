@@ -23,6 +23,8 @@ likely to be proposed again.
 | [0010](0010-declared-sdk-window.md) | SDK versions | declare the floor CI covers, and accept the reformat it causes |
 | [0011](0011-device-scope-above-the-navigator.md) | Device scope | `DeviceScope` moves above the Navigator so pushed routes are in it |
 | [0012](0012-the-di-scoreboard-is-the-ratchet.md) | DI metric | amends [0002](0002-dependencies-are-passed-in.md): the scoreboard is the ratchet |
+| [0013](0013-observability-with-sentry.md) | Observability | Sentry behind consent, wired into `LogService`, `guarded` and the classifier; submodules expose hooks *(proposed)* |
+| [0014](0014-build-identity.md) | Build identity | a build per channel, pubspec holds the next version, the commit is compiled in *(proposed)* |
 
 ## Reading order
 
