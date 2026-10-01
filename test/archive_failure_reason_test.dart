@@ -196,6 +196,100 @@ void main() {
       expect(ctrl.lastFailure, isNotNull);
     });
 
+    // Reading one key is the other half of the issue, and it had no field to
+    // report through at all: the reason went into `_lastReadError`, which has
+    // no getter and whose only escape is the sync summary. So sharing a key
+    // the Flipper would not hand over said "Could not read garage.sub" and
+    // stopped there.
+    group('a read of one key', () {
+      test('is reported like every other action', () async {
+        client.refuses = StateError('ERROR_STORAGE_NOT_EXIST');
+
+        await ctrl.readKeyBytes(key());
+
+        expect(ctrl.lastFailure, contains('ERROR_STORAGE_NOT_EXIST'));
+      });
+
+      test('names the file it could not read', () async {
+        client.refuses = StateError('ERROR_STORAGE_DENIED');
+
+        await ctrl.readKeyBytes(key());
+
+        expect(ctrl.lastFailure, contains('garage'));
+      });
+
+      // The reason has to be this read's. A field that is only ever written
+      // would hand the previous action's excuse to this one, which is worse
+      // than saying nothing: the user is told about a delete they already
+      // know failed.
+      test('does not inherit the reason from the action before it', () async {
+        client.refuses = StateError('FROM_THE_DELETE');
+        await ctrl.deleteKeys([key()]);
+
+        client.refuses = StateError('FROM_THE_READ');
+        await ctrl.readKeyBytes(key());
+
+        expect(ctrl.lastFailure, contains('FROM_THE_READ'));
+        expect(ctrl.lastFailure, isNot(contains('FROM_THE_DELETE')));
+      });
+
+      // The other half of the contract: `lastFailure` is why the last thing
+      // the user asked for did not happen, so a read that *worked* has to
+      // leave nothing behind. Without this the next bare message picks up the
+      // delete's excuse.
+      test('leaves nothing behind when it worked', () async {
+        client.refuses = StateError('FROM_THE_DELETE');
+        await ctrl.deleteKeys([key()]);
+        expect(ctrl.lastFailure, isNotNull);
+
+        client.refuses = null;
+        await ctrl.readKeyBytes(key());
+
+        expect(ctrl.lastFailure, isNull);
+      });
+
+      test('is the same when the read is for sharing', () async {
+        client.refuses = StateError('ERROR_STORAGE_DENIED');
+
+        final path = await ctrl.downloadKeyToCache(key());
+
+        expect(path, isNull);
+        expect(ctrl.lastFailure, contains('ERROR_STORAGE_DENIED'));
+      });
+    });
+
+    group('a write of one key', () {
+      test('says what the device refused', () async {
+        client.refuses = StateError('ERROR_STORAGE_DENIED');
+
+        final ok = await ctrl.writeKeyBytes(key(), const [1, 2, 3]);
+
+        expect(ok, isFalse);
+        expect(ctrl.lastFailure, contains('ERROR_STORAGE_DENIED'));
+      });
+
+      // Not an exception, and still the reason the save did not happen - the
+      // editor's "Save failed" had nothing else to add.
+      test('says so when there is no Flipper', () async {
+        client.connected = false;
+
+        final ok = await ctrl.writeKeyBytes(key(), const [1, 2, 3]);
+
+        expect(ok, isFalse);
+        expect(ctrl.lastFailure, isNotNull);
+      });
+
+      test('does not inherit the reason from the action before it', () async {
+        client.refuses = StateError('FROM_THE_DELETE');
+        await ctrl.deleteKeys([key()]);
+
+        client.refuses = StateError('FROM_THE_WRITE');
+        await ctrl.writeKeyBytes(key(), const [1, 2, 3]);
+
+        expect(ctrl.lastFailure, isNot(contains('FROM_THE_DELETE')));
+      });
+    });
+
     test('is nothing at all until something fails', () {
       expect(ctrl.lastFailure, isNull);
     });

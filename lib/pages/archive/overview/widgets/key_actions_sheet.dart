@@ -334,6 +334,12 @@ class KeyActionsSheet {
     ArchiveKey k,
   ) async {
     List<int>? bytes;
+    // Only the reason of a read that actually ran. The branch below is
+    // skipped for a key that is not on the device or with no link, and the
+    // controller's field would then still hold whatever the *previous*
+    // action failed with - a stale excuse on a fresh message is worse than
+    // no excuse at all. #110.
+    String? reason;
     final localPath = k.localPath;
     if (localPath != null && localPath.isNotEmpty) {
       final file = io.File(localPath);
@@ -341,11 +347,16 @@ class KeyActionsSheet {
     }
     if (bytes == null && k.onDevice && controller.isConnected) {
       bytes = await controller.readKeyBytes(k);
+      reason = controller.lastFailure;
     }
     if (!context.mounted) return;
     if (bytes == null) {
       context.showNotification(
-        context.l10n.archiveCouldNotRead(k.fileName),
+        withArchiveReason(
+          context,
+          context.l10n.archiveCouldNotRead(k.fileName),
+          reason,
+        ),
         type: QNotificationType.error,
       );
       return;
@@ -383,6 +394,7 @@ class KeyActionsSheet {
         remotePath: k.remotePath,
         download: () => controller.downloadKeyToCache(k),
         upload: (bytes) => controller.writeKeyBytes(k, bytes),
+        failureReason: () => controller.lastFailure,
         onRun: k.extension.toLowerCase() == 'js'
             ? () => emulateOnFlipper(context, k)
             : null,
@@ -407,7 +419,11 @@ class KeyActionsSheet {
     if (!context.mounted) return;
     if (path == null) {
       context.showNotification(
-        context.l10n.fmDownloadFailed,
+        withArchiveReason(
+          context,
+          context.l10n.fmDownloadFailed,
+          controller.lastFailure,
+        ),
         type: QNotificationType.error,
       );
       return;
@@ -421,6 +437,12 @@ class KeyActionsSheet {
     ArchiveKey k,
   ) async {
     List<int>? bytes;
+    // Only the reason of a read that actually ran. The branch below is
+    // skipped for a key that is not on the device or with no link, and the
+    // controller's field would then still hold whatever the *previous*
+    // action failed with - a stale excuse on a fresh message is worse than
+    // no excuse at all. #110.
+    String? reason;
     final localPath = k.localPath;
     if (localPath != null && localPath.isNotEmpty) {
       final file = io.File(localPath);
@@ -428,11 +450,12 @@ class KeyActionsSheet {
     }
     if (bytes == null && k.onDevice && controller.isConnected) {
       bytes = await controller.readKeyBytes(k);
+      reason = controller.lastFailure;
     }
     if (!context.mounted) return;
     if (bytes == null) {
       context.showNotification(
-        context.l10n.fmDownloadFailed,
+        withArchiveReason(context, context.l10n.fmDownloadFailed, reason),
         type: QNotificationType.error,
       );
       return;

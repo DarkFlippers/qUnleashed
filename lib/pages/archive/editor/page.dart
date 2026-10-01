@@ -32,12 +32,21 @@ class TextEditorPage extends StatefulWidget {
     required this.localPath,
     this.title,
     this.onSave,
+    this.onSaveFailureReason,
     this.onRun,
   });
 
   final String localPath;
   final String? title;
   final Future<bool> Function(List<int> bytes)? onSave;
+
+  /// Why the last [onSave] returned false, read straight after it did.
+  ///
+  /// A callback rather than a return value because the writer that knows the
+  /// reason is a controller the editor does not have, and `onSave`'s bool is
+  /// the shape every caller already passes. The same arrangement as
+  /// `sendFailureReason` in the infrared file page. #110.
+  final String? Function()? onSaveFailureReason;
   final VoidCallback? onRun;
 
   @override
@@ -227,8 +236,13 @@ class _TextEditorPageState extends State<TextEditorPage> {
         doc!.markSaved(_controller.codeLines);
       }
     });
+    final reason = ok ? null : widget.onSaveFailureReason?.call();
     context.showNotification(
-      ok ? context.l10n.editorSaved : context.l10n.editorSaveFailed,
+      ok
+          ? context.l10n.editorSaved
+          : reason == null || reason.isEmpty
+          ? context.l10n.editorSaveFailed
+          : context.l10n.fmFailedBecause(context.l10n.editorSaveFailed, reason),
       type: ok ? QNotificationType.good : QNotificationType.error,
     );
     if (ok) Navigator.of(context).pop(true);
