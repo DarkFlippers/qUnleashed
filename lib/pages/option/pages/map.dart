@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../services/guarded.dart';
 import '../../../components/cardlist.dart';
 import '../../../services/localization/l10n.dart';
 import '../../../theme/theme.dart';
@@ -22,7 +23,7 @@ class _MapSettingsPageState extends State<MapSettingsPage> {
   @override
   void initState() {
     super.initState();
-    unawaited(_settings.load());
+    unawaited(guarded('[Settings/Map] load settings', _settings.load));
   }
 
   @override

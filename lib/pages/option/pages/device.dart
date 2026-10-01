@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../services/guarded.dart';
 import '../../../components/cardlist.dart';
 import '../../../services/connection/device_settings.dart';
 import '../../../services/localization/l10n.dart';
@@ -34,7 +35,7 @@ class _DeviceSettingsPageState extends State<DeviceSettingsPage> {
   @override
   void initState() {
     super.initState();
-    unawaited(_settings.load());
+    unawaited(guarded('[Settings/Device] load settings', _settings.load));
   }
 
   Widget _tile(BuildContext context, _Toggle t) {
