@@ -65,8 +65,10 @@ Legacy, kept deliberately, not to be imitated:
   the rejection reaches the zone — so it lands in the log as `[uncaught]` with
   nothing saying which operation it was, and a `try` around the call site never
   sees it. Use `guarded('[Area] what it was doing', ...)`.
-  `test/unawaited_budget_test.dart` ratchets the count per area; its budget is
-  a floor rather than a verdict, because that sweep is not finished (#23).
+  `test/unawaited_budget_test.dart` ratchets the count per area. What is left is
+  either already handled a level down - `_chain` in the remote session is
+  `guarded`, several callees catch their own - or `openRoute`, whose only throw
+  is synchronous. #23
 
 ## BLE and transport invariants
 
