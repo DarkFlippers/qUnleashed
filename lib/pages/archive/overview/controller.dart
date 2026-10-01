@@ -1,3 +1,4 @@
+import '../../../services/guarded.dart';
 import '../../../services/localization/l10n.dart';
 
 import 'dart:async';
@@ -202,7 +203,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed) return;
-    unawaited(_retryLastDeviceName());
+    unawaited(guarded('[Archive] retry device name', _retryLastDeviceName));
   }
 
   Future<void> _retryLastDeviceName() async {
@@ -302,7 +303,12 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
   void _setDeviceName(String name) {
     if (name.isEmpty || _deviceName == name) return;
     _deviceName = name;
-    unawaited(_storage.writeLastDeviceName(name));
+    unawaited(
+      guarded(
+        '[Archive] remember device name',
+        () => _storage.writeLastDeviceName(name),
+      ),
+    );
     notifyListeners();
   }
 
@@ -355,7 +361,12 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
     } else {
       _favorites.add(keyId);
     }
-    unawaited(_storage.writeFavorites(_deviceName, _favorites));
+    unawaited(
+      guarded(
+        '[Archive] save favourites',
+        () => _storage.writeFavorites(_deviceName, _favorites),
+      ),
+    );
     final existing = _keys[keyId];
     if (existing != null) {
       _keys[keyId] = existing.copyWith(favorite: _favorites.contains(keyId));
@@ -387,7 +398,12 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
       }
     }
     if (changed) {
-      unawaited(_storage.writeFavorites(_deviceName, _favorites));
+      unawaited(
+        guarded(
+          '[Archive] save favourites',
+          () => _storage.writeFavorites(_deviceName, _favorites),
+        ),
+      );
       notifyListeners();
     }
   }
@@ -532,8 +548,18 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
         .toList();
     notifyListeners();
     await _persistFapFavorites();
-    unawaited(_storage.deleteFapIcon(_deviceName, fav.remotePath));
-    unawaited(_removeDeviceFavorite(fav.remotePath));
+    unawaited(
+      guarded(
+        '[Archive] delete app icon',
+        () => _storage.deleteFapIcon(_deviceName, fav.remotePath),
+      ),
+    );
+    unawaited(
+      guarded(
+        '[Archive] unfavourite on device',
+        () => _removeDeviceFavorite(fav.remotePath),
+      ),
+    );
   }
 
   Future<void> _removeDeviceFavorite(String remotePath) async {
@@ -661,7 +687,12 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
         if (_favorites.contains(keyId)) {
           _favorites.remove(keyId);
           _favorites.add(newKeyId);
-          unawaited(_storage.writeFavorites(_deviceName, _favorites));
+          unawaited(
+            guarded(
+              '[Archive] save favourites',
+              () => _storage.writeFavorites(_deviceName, _favorites),
+            ),
+          );
         }
         _keys[newKeyId] = ArchiveKey(
           name: newName.trim(),
