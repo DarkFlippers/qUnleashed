@@ -1,6 +1,7 @@
 # 0013. Sentry is the second channel, wired into the chokepoints that exist
 
-Status: Proposed (2026-10-01)
+Status: Proposed (2026-10-01); breadcrumb source settled and the logging
+chokepoints checked against the code (2026-10-02)
 
 Build identity — release, channel, commit — is its own decision,
 [0014](0014-build-identity.md). This one consumes it.
@@ -79,7 +80,7 @@ as it does now.
 | Chokepoint | What reaches Sentry |
 |---|---|
 | `_initCore` | Init, after `LogService.initialize()` and the consent read, with its own catch. Sentry saves and calls the `FlutterError.onError` and `PlatformDispatcher.onError` it finds, so `LogService`'s handlers going in first keeps both. One init serves `main()` and `widgetMain()`: `promote` reuses the engine. |
-| `LogService._emit`, kept entries | Sentry Logs, through a `keptSink` hook in the shape of flipperlib's `Log.sink`. **The first of a run only**: one RPC timeout produces hundreds of identical lines, which is why `_remember` coalesces them. |
+| `LogService._emit`, kept entries | Sentry Logs, through a `keptSink` hook in the shape of flipperlib's `Log.sink`. **The first of a run only**: one RPC timeout produces hundreds of identical lines, which is why `_remember` coalesces them. That coalescing is not visible from `_emit` today - `_remember` returns `void` and folds silently - so it has to report whether the line was new. One signature, and the hook reads it rather than comparing bodies a second time. |
 | `guarded(what, …)` | An issue, fingerprinted on `what` and the error type — the best grouping key the app has. |
 | `classifyConnectError` | `unknown` becomes an issue; every other kind is a metric and a breadcrumb. The issue list is then exactly the platform strings the classifier does not know yet. |
 | `AppHttp` | Hand-made spans. Nothing instruments `dart:io` `HttpClient`, and the map's tile client is left out: URLs and query strings are always sent, and tile URLs carry the Carto key. |
@@ -101,7 +102,16 @@ No submodule depends on Sentry. Each says what happened in its own types, and
 - **flipperlib.** Errors already reach `LogService` through `Log.sink`; nothing
   changes for them. While reporting is on, `Log.level` is raised to `info` and
   `info` becomes a breadcrumb only, so a crash arrives with "link lost →
-  reconnecting → reconnected" in front of it. Request tracing needs a PR there:
+  reconnecting → reconnected" in front of it.
+
+  Two things that is, concretely. `attachFlipperlibSink` pins the level to
+  `error` whenever nothing is printing, which is every release build, and its
+  doc says why: history gets the transport faults and session failures a bug
+  report needs "and none of the traffic below them". Reporting raises that pin;
+  it is a change to a recorded decision rather than a setting that already
+  allows it, and the pin returns when reporting is turned off. And the hook
+  belongs in `_flipperlibSink`, **before** it calls `_emit` - see the section
+  below for why it cannot sit inside `_emit`. Request tracing needs a PR there:
   a `FlipperRpcObserver` constructor parameter on `FlipperClient`, no-op by
   default ([0002](0002-dependencies-are-passed-in.md)), called **synchronously
   inside `callRpcFrames`** at enqueue, send and completion. Synchronously,
@@ -117,7 +127,50 @@ Sentry is told `package:flipperlib` and `package:dartufbt` are the app's own
 (`addInAppInclude`), or their frames are collapsed as third-party. Code
 mappings point each at its own repository.
 
-### 4. Privacy is four layers, because no single one covers everything
+### 4. Breadcrumbs come from flipperlib only, and `_emit` is not touched
+
+Decided 2026-10-02, after reading what the alternative costs.
+
+The app's `info` is not reachable in a release build, and not merely quiet.
+`info` opens with `if (!infoOn) return;`, and `infoOn` is a `const` derived
+from `QLOG`, which defaults to `kDebugMode` - so in a release build the guard
+is a const false and the call sites shake out of the binary. There is nothing
+there to hook.
+
+Making them reachable means making `infoOn` true, and the levels are ordered:
+`infoOn` implies `errorOn`, and `printing` *is* `errorOn`. A release build that
+could emit app-side breadcrumbs is therefore a release build that prints
+everything to the platform log. That is not a trade worth making for
+commentary.
+
+Even in a talking build the hook would be awkward in the obvious place.
+`_emit` opens with `if (!keep && !console) return;`, which is #187: five
+sites out of six are dropped, and each used to buy a timestamp first. A
+breadcrumb hook would have to sit above that return and would reinstate the
+stamp, plus a scrub, since a breadcrumb is sent and §5 scrubs everything
+sent.
+
+flipperlib is the other way round, which is what makes this decision
+available at all. Its `Log.level` is a mutable static and `Log.info` checks it
+at runtime - only `debug` and `trace` sit behind the `debugBuild` const - so
+raising the level in a release build genuinely produces lines, where the same
+move on the app's side produces nothing without recompiling it.
+
+So breadcrumbs have one source: **flipperlib, hooked in `_flipperlibSink`
+before it calls `_emit`.** `info` from the library becomes a breadcrumb and is
+dropped as it is today; `warning` and `error` keep going to `history`, and
+reach Sentry as Logs through the `keptSink` above. The app's own `info` feeds
+nothing, which is what it does now.
+
+What that buys is the sequence worth having - "link lost → reconnecting →
+reconnected" in front of a crash - at a cost that only exists while reporting
+is on, and only for the library's traffic rather than the whole app's.
+
+What it gives up is app-side commentary before a crash. That is the right
+trade only while the app's `info` sites are genuinely commentary, which is
+exactly the question #103 asks about 48 of them. See the Consequences.
+
+### 5. Privacy is four layers, because no single one covers everything
 
 1. **Not collected:** `sendDefaultPii: false`; no screenshots, no view
    hierarchy; print breadcrumbs off, since `LogService` feeds Sentry directly.
@@ -136,7 +189,7 @@ mappings point each at its own repository.
    are wrapped in `SentryMask` and checked in a recorded replay before replay
    ships.
 
-### 5. `sentry_flutter` 9.30.1, written to move to 10
+### 6. `sentry_flutter` 9.30.1, written to move to 10
 
 9.30.0 is the floor: it fixed a native worker leaked per engine, reported by a
 BLE app with a headless engine — the home widget's shape (sentry-dart#3960).
@@ -152,7 +205,7 @@ Code is written so that 10 is a version bump: no SDK profiling, no
 `enableLogs` or `enableMetrics` flags, `SentryFeedbackForm` rather than
 `SentryFeedbackWidget`.
 
-### 6. Sampling
+### 7. Sampling
 
 Errors, traces, logs and metrics at 100%. Replay records on error only
 (`onErrorSampleRate: 1.0`, `sessionSampleRate: 0`), Android and iOS. Revisited
@@ -201,6 +254,16 @@ carry.
 - Desktop gets no crash-free rate and no offline cache; mobile carries replay's
   overhead (about +13% CPU and +5% memory on Android, +6% CPU on iOS, per
   Sentry's measurements).
+- **#103 gets a second argument.** Its 48 `LogService.info` calls inside a
+  catch were left on the grounds that the UI resolves and the cause reaches a
+  surface ([0008](0008-swallowed-errors.md)); the count was never the target.
+  Once this lands, "a surface" also means the one a developer reads remotely,
+  and `info` is not on it: `info` returns at `if (!infoOn) return;` and
+  `infoOn` is false in every release build. A site that is commentary stays
+  commentary; a site that is the last word on a failure now loses a second
+  reader rather than one. The triage does not change, the stakes do.
+- `_remember` gains a return value, which is the only change this makes to a
+  file outside `lib/services/telemetry/` beyond the two hooks.
 - To verify before the first release that carries it: `crashpad_handler`
   keeping its exec bit on Linux; where the crash database lives, since the
   Linux launcher deletes `/tmp/qunleashed-self-$$` on exit; a JDK on the Windows
@@ -212,7 +275,7 @@ carry.
 |---|---|
 | 0 | Sentry project, server-side scrubbing, GitHub integration for the three repositories, alerts |
 | 1 | Errors and crashes: dependency, `telemetry/`, consent and Diagnostics, scrubber, `guarded` → issues, CI defines and symbol upload, the import ratchet |
-| 2 | Logs and tracing: `keptSink`, flipperlib breadcrumbs, named routes and `SentryNavigatorObserver`, `traced`, `AppHttp` spans, the dartufbt sink |
+| 2 | Logs and tracing: `keptSink` and the `_remember` return it needs, flipperlib breadcrumbs in `_flipperlibSink` with the level pin raised, named routes and `SentryNavigatorObserver`, `traced`, `AppHttp` spans, the dartufbt sink |
 | 3 | Metrics, replay with its masks, a "Send to developers" action on the Log screen through `captureFeedback`, the flipperlib observer |
 
 Phase 1 is done when a `dev` build has delivered one forced Dart error and one
