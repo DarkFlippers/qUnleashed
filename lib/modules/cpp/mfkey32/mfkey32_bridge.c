@@ -3,10 +3,14 @@
 
 #include "../nfc-tools/mfkey32v2/crapto1/crapto1.h"
 
+// `used` is load-bearing on Apple, where this file links into the Runner
+// executable rather than a shared library and the linker would otherwise drop a
+// global no Swift or Obj-C calls - see the note on the same macro in
+// nested_bridge.c.
 #if defined(_WIN32)
 #define QUNLEASHED_EXPORT __declspec(dllexport)
 #else
-#define QUNLEASHED_EXPORT __attribute__((visibility("default")))
+#define QUNLEASHED_EXPORT __attribute__((visibility("default"), used))
 #endif
 
 QUNLEASHED_EXPORT uint64_t qunleashed_mfkey32_recover_key(

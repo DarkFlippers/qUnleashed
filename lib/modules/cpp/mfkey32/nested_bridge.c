@@ -4,10 +4,20 @@
 #include "../nfc-tools/mfkey32v2/crapto1/crapto1.h"
 #include "../nfc-tools/mfkey32v2/crapto1/parity.h"
 
+// `used` is what keeps these entry points in an Apple build, and it is not
+// redundant with `visibility`: visibility says who may see the symbol, `used`
+// says the linker may not drop it. On Windows/Linux/Android this file is its
+// own shared library, where ld roots dead-stripping at every exported global.
+// On macOS/iOS it compiles straight into the Runner executable (see
+// ios|macos/Runner.xcodeproj), and ld64 roots an executable's dead-stripping at
+// the entry point instead - so a global nothing in Swift or Obj-C references is
+// unreachable. Only Dart calls these, by name, through
+// DynamicLibrary.process(); the linker cannot see that, and what it strips
+// surfaces as NativeEngineUnavailable at the first lookup.
 #if defined(_WIN32)
 #define QUNLEASHED_EXPORT __declspec(dllexport)
 #else
-#define QUNLEASHED_EXPORT __attribute__((visibility("default")))
+#define QUNLEASHED_EXPORT __attribute__((visibility("default"), used))
 #endif
 
 // Recover a MIFARE Classic sector key from nested nonces collected by the
