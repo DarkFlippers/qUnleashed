@@ -64,7 +64,12 @@ fi
 
 TARGET_ARCH="$(uname -m)"
 APP_EXECUTABLE="$BUILD_APP/Contents/MacOS/$APP_NAME"
-if command -v lipo >/dev/null 2>&1 && [[ -f "$APP_EXECUTABLE" ]]; then
+
+# Also the point a missing executable stops the build: the arch detection below
+# used to fall back to `uname -m` for the filename rather than say anything.
+"$ROOT_DIR/.github/scripts/check_ffi_exports.sh" "$APP_EXECUTABLE" "$BUILD_APP"
+
+if command -v lipo >/dev/null 2>&1; then
   APP_ARCHS="$(lipo -archs "$APP_EXECUTABLE" 2>/dev/null || true)"
   if [[ "$APP_ARCHS" == *"arm64"* && "$APP_ARCHS" == *"x86_64"* ]]; then
     TARGET_ARCH="universal"

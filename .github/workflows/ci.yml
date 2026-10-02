@@ -43,6 +43,11 @@ jobs:
       - name: Test the Android artifact verification
         run: .github/scripts/verify_apks_test.sh
 
+      # The guard itself only ever runs on a tagged release, on macOS. This runs
+      # its logic here so it is not first trusted at the moment it matters.
+      - name: Test the Apple FFI export guard
+        run: .github/scripts/check_ffi_exports_test.sh
+
       - name: Test the translation source guard
         run: .github/scripts/check_translation_sources_test.sh
 

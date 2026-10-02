@@ -59,10 +59,12 @@ class NativeHardnestedRecoverer implements HardnestedRecoverer {
   }
 
   static BigInt? _recoverInIsolate(_HardnestedPayload p) {
-    final recover = openHardnestedNativeLibrary()
-        .lookupFunction<_RecoverNative, _RecoverDart>(
-          'qunleashed_hardnested_recover',
-        );
+    final recover = lookupNativeFunction(
+      () => openHardnestedNativeLibrary()
+          .lookupFunction<_RecoverNative, _RecoverDart>(
+            'qunleashed_hardnested_recover',
+          ),
+    );
     final count = p.ntEnc.length;
     final ntPtr = calloc<Uint32>(count);
     final parPtr = calloc<Uint8>(count);

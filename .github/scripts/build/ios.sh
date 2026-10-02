@@ -54,6 +54,8 @@ if [[ ! -d "$BUILD_APP" ]]; then
   exit 1
 fi
 
+"$ROOT_DIR/.github/scripts/check_ffi_exports.sh" "$BUILD_APP/$APP_NAME" "$BUILD_APP"
+
 OUT_FILE="$DIST_DIR/${FILE_NAME}_${VERSION_NAME}_ios_arm64.ipa"
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/${FILE_NAME}-ipa.XXXXXX")"
 trap 'rm -rf "$TMP_DIR"' EXIT

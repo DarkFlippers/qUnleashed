@@ -16,10 +16,14 @@
 
 #include "hardnested.h"  // mfnestedhard
 
+// Kept identical to qunleashed_mfkey32's copy, which carries the explanation -
+// see lib/modules/cpp/mfkey32/nested_bridge.c. `used` costs nothing in the
+// framework this lib ships as on Apple, and the two macros not drifting is
+// worth more than the one line saved.
 #if defined(_WIN32)
 #define QUNLEASHED_EXPORT __declspec(dllexport)
 #else
-#define QUNLEASHED_EXPORT __attribute__((visibility("default")))
+#define QUNLEASHED_EXPORT __attribute__((visibility("default"), used))
 #endif
 
 static void put_be32(uint8_t *p, uint32_t v) {

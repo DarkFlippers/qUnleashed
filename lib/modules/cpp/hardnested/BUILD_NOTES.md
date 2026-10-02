@@ -67,10 +67,20 @@ the `_WIN32` path.
 
 Note: this lib bundles its own crapto1 (from the CUG fork), identical to the
 `nfc-tools` submodule crapto1 used by `qunleashed_mfkey32`. On Windows/Linux/
-Android they are separate DLLs/SOs (no clash); on Apple everything links into one
-Runner binary, so `hn_namespace.h` renames this lib's 17 crapto1 symbols with an
-`hn_` prefix (force-included via the CMake and the podspec). The exported bridge
-is untouched.
+Android they are separate DLLs/SOs (no clash). On Apple the two end up in one
+process either way, so `hn_namespace.h` renames this lib's 17 crapto1 symbols
+with an `hn_` prefix (force-included via the CMake and the podspec). The exported
+bridge is untouched.
+
+The renaming was written down here as avoiding a *link-time* clash in a single
+Runner binary. That reason is only right if the pod links statically; with a bare
+`use_frameworks!` CocoaPods builds it as a dynamic framework and there is no
+link-time clash to avoid. Which of the two actually happens has never been
+observed - see the validation note at the end of this file - and the renaming is
+worth keeping under either, because two images exporting the same 17 names in one
+process make a `dlsym` lookup ambiguous. What changed is that nothing now depends
+on knowing: `.github/scripts/check_ffi_exports.sh` looks for each FFI entry point
+across the main executable *and* every framework the bundle embeds.
 
 ## Build wiring (all platforms)
 `lib/modules/cpp/CMakeLists.txt` builds both `qunleashed_mfkey32` and
@@ -80,7 +90,17 @@ Apple (macOS/iOS) uses a development **CocoaPods pod** in `apple/`
 (`qunleashed_hardnested.podspec` + `qunleashed_hardnested_unity.c` - a forwarder
 that `#include`s the shared sources into one TU, with `hn_namespace.h`
 force-included); both `ios/Podfile` and `macos/Podfile` reference it. Dart loads
-the symbols via `DynamicLibrary.process()` on Apple (the pod links into Runner).
+the symbols via `DynamicLibrary.process()` on Apple, which resolves across every
+image loaded into the process - so it does not matter whether the pod's code sits
+in the Runner binary or in an embedded framework beside it.
+
+`qunleashed_mfkey32` is wired differently on Apple, and deliberately not as a pod:
+its sources are listed directly in `ios/Runner.xcodeproj` and
+`macos/Runner.xcodeproj`, so they compile into the Runner executable. That is why
+`QUNLEASHED_EXPORT` carries `used` - an executable's unreferenced globals are not
+dead-strip roots, and shipping without it cost every MIFARE recovery path on both
+Apple platforms. The note on the macro in `../mfkey32/nested_bridge.c` is the
+canonical account.
 
 Validated (MinGW gcc 13): the top-level CMake builds both libs and exports their
 bridges; the Apple unity forwarder compiles as one TU and recovers a known key.

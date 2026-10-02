@@ -71,10 +71,12 @@ class NativeMfKey32Recoverer implements MfKey32Recoverer {
   }
 
   static _RecoverDart _loadRecover() {
-    return openMifareNativeLibrary()
-        .lookupFunction<_RecoverNative, _RecoverDart>(
-          'qunleashed_mfkey32_recover_key',
-        );
+    return lookupNativeFunction(
+      () => openMifareNativeLibrary()
+          .lookupFunction<_RecoverNative, _RecoverDart>(
+            'qunleashed_mfkey32_recover_key',
+          ),
+    );
   }
 }
 

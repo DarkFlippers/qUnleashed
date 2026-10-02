@@ -27,6 +27,10 @@ require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelpe
 flutter_macos_podfile_setup
 
 target 'Runner' do
+  # Not `:linkage => :static`: the pod's FFI entry point is reached only by name
+  # through DynamicLibrary.process(), and a static archive member is pulled in
+  # only when something already references a symbol inside it - `used` on the
+  # bridge would not save it. See lib/modules/cpp/mfkey32/nested_bridge.c.
   use_frameworks!
   # Host-side hardnested attack FFI lib (see lib/modules/cpp/hardnested).
   pod 'qunleashed_hardnested', :path => '../lib/modules/cpp/hardnested/apple'
