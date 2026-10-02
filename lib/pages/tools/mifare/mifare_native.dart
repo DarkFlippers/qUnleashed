@@ -31,6 +31,30 @@ DynamicLibrary openNativeLibrary(String base) {
   );
 }
 
+/// Looks [symbol] up in [library], raising [NativeEngineUnavailable] when it is
+/// not there.
+///
+/// A library that loads but is missing a symbol is the same packaging fault as
+/// one that does not load at all, and [openNativeLibrary] already promises to
+/// report that as [NativeEngineUnavailable]. `lookupFunction` signals it with a
+/// bare `ArgumentError`, which this codebase cannot tell apart from an FFI
+/// allocation failure or a refused dictionary entry - `_staticFailureNote` in
+/// `recover_controller.dart` says so - so every lookup goes through here and
+/// the caller gets one answer whichever way the build is broken.
+///
+/// It has happened: the Apple builds shipped without these symbols at all. See
+/// the note on `QUNLEASHED_EXPORT` in `lib/modules/cpp/mfkey32/nested_bridge.c`.
+/// Takes the lookup as a callback rather than the symbol name because
+/// `lookupFunction` will not accept a type variable for its native signature -
+/// the analyzer requires both types to be written out at the call site.
+F lookupNativeFunction<F extends Function>(F Function() lookup) {
+  try {
+    return lookup();
+  } on ArgumentError catch (e) {
+    throw NativeEngineUnavailable(e);
+  }
+}
+
 /// The `qunleashed_mfkey32` library: mfkey32 + nested/static recovery entry
 /// points (see `lib/modules/cpp/mfkey32`).
 DynamicLibrary openMifareNativeLibrary() =>

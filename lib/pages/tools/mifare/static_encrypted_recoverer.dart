@@ -208,21 +208,17 @@ class NativeStaticEncryptedRecoverer implements StaticEncryptedRecoverer {
   }
 
   static List<StaticCandidateDict> _buildInIsolate(List<StaticNonce> singles) {
-    // openMifareNativeLibrary already reports a missing library as one of
-    // these; a library built without the symbol is just as unusable.
     final library = openMifareNativeLibrary();
-    final _StaticDart staticFn;
-    final _ReduceDart reduceFn;
-    try {
-      staticFn = library.lookupFunction<_StaticNative, _StaticDart>(
+    final staticFn = lookupNativeFunction(
+      () => library.lookupFunction<_StaticNative, _StaticDart>(
         'qunleashed_static_candidates',
-      );
-      reduceFn = library.lookupFunction<_ReduceNative, _ReduceDart>(
+      ),
+    );
+    final reduceFn = lookupNativeFunction(
+      () => library.lookupFunction<_ReduceNative, _ReduceDart>(
         'qunleashed_rf08s_reduce_pair',
-      );
-    } catch (e) {
-      throw NativeEngineUnavailable(e);
-    }
+      ),
+    );
 
     // The arena frees whatever was taken even if allocation fails part-way
     // through, and native memory is process-scoped: it outlives the isolate,

@@ -4,10 +4,32 @@
 #include "../nfc-tools/mfkey32v2/crapto1/crapto1.h"
 #include "../nfc-tools/mfkey32v2/crapto1/parity.h"
 
+// The canonical note on QUNLEASHED_EXPORT; the other two bridges point here.
+//
+// `used` is what keeps these entry points in an Apple build, and it is not
+// redundant with `visibility`: visibility says who may see a symbol, `used`
+// says the compiler must emit it even though nothing in the translation unit
+// uses it. On Mach-O clang lowers that to `.no_dead_strip`, which is what makes
+// ld64 keep it. (On ELF it is not the answer to `--gc-sections` - that is
+// `retain` - but nothing here passes `--gc-sections`, and the shared-library
+// shape below means nothing needs to.)
+//
+// On Linux/Android this file builds as a shared library (CMakeLists.txt), where
+// an exported global is reachable from outside by construction. The _WIN32
+// branch below never needs `used` either - dllexport already implies it. On
+// macOS/iOS these sources compile straight into the Runner executable
+// (ios|macos/Runner.xcodeproj), and ld64 roots an executable's dead-stripping
+// at the entry point - so a global nothing in Swift or Obj-C references is
+// unreachable. Only Dart calls these, by name, through
+// DynamicLibrary.process(), which the linker cannot see. That is the bug this
+// shipped with: every MIFARE recovery path was dead on both Apple platforms.
+//
+// Two guards hold it: test/ffi_export_test.dart on every PR, and
+// .github/scripts/check_ffi_exports.sh against the linked bundle at release.
 #if defined(_WIN32)
 #define QUNLEASHED_EXPORT __declspec(dllexport)
 #else
-#define QUNLEASHED_EXPORT __attribute__((visibility("default")))
+#define QUNLEASHED_EXPORT __attribute__((visibility("default"), used))
 #endif
 
 // Recover a MIFARE Classic sector key from nested nonces collected by the
