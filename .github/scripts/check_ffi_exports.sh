@@ -30,7 +30,7 @@ set -Eeuo pipefail
 NM="${NM:-nm}"
 LIPO="${LIPO:-lipo}"
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CPP_DIR="${QUNLEASHED_CPP_DIR:-$ROOT_DIR/lib/modules/cpp}"
 
 BINARY="${1:-}"
@@ -57,7 +57,13 @@ done
 
 # Read the expected names off the definitions rather than restating them, so an
 # entry point added to either lib is covered the day it is added.
-mapfile -t SYMBOLS < <(
+#
+# Read in a loop rather than with `mapfile`: this is the only script here that
+# runs on macOS, where /usr/bin/bash is still 3.2 and has no such builtin.
+SYMBOLS=()
+while IFS= read -r symbol; do
+  SYMBOLS+=("$symbol")
+done < <(
   find "$CPP_DIR" -name '*.c' -exec sed -nE \
     's/^QUNLEASHED_EXPORT[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]+(qunleashed_[A-Za-z0-9_]+)\(.*/\1/p' {} + |
     sort -u

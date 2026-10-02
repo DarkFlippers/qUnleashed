@@ -154,6 +154,36 @@ else
   pass "a missing bundle argument is red"
 fi
 
+# Every case above passes QUNLEASHED_CPP_DIR, which overrides the path the
+# script works out from its own location - so none of them can see that
+# computation being wrong. It was: the first release this guard ran in died on
+# `.github/lib/modules/cpp`, one directory short of the repo root. This case
+# takes the default and expects the names the repo actually exports.
+export STUB_ARCHS="arm64"
+export STUB_MAIN_arm64="0000000000000000 T _qunleashed_mfkey32_recover_key
+0000000000000008 T _qunleashed_nested_recover_key
+0000000000000010 T _qunleashed_static_candidates
+0000000000000018 T _qunleashed_rf08s_reduce_pair
+0000000000000020 T _qunleashed_hardnested_recover"
+export STUB_FRAMEWORK_arm64=""
+if out="$(NM="$STUBS/nm" LIPO="$STUBS/lipo" PATH="$STUBS:$PATH" \
+  bash "$SCRIPT" "$BIN" "$BUNDLE" 2>&1)"; then
+  pass "the default CPP dir resolves to the repo's own sources"
+else
+  fail "the default CPP dir resolves to the repo's own sources" "$out"
+fi
+
+# The guard runs on macOS, whose /usr/bin/bash is 3.2. There is no 3.2 here to
+# run it under, so this reads the script for the builtins that release died on
+# instead. A poor substitute for running it, and better than finding out from a
+# blocked release twice.
+bash4_only="$(grep -nE '(^|[^[:alnum:]_])(mapfile|readarray)[[:space:]]|declare[[:space:]]+-A|\$\{[A-Za-z_][A-Za-z0-9_]*\^\^|\$\{[A-Za-z_][A-Za-z0-9_]*,,' "$SCRIPT" || true)"
+if [[ -z "$bash4_only" ]]; then
+  pass "no bash 4+ builtins (macOS ships bash 3.2)"
+else
+  fail "no bash 4+ builtins (macOS ships bash 3.2)" "$bash4_only"
+fi
+
 if ((failures > 0)); then
   echo "::error::check_ffi_exports.sh: $failures case(s) failed."
   exit 1
