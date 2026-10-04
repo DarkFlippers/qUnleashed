@@ -87,9 +87,11 @@ class RecoverController extends ChangeNotifier {
   /// groups + one for the static-encrypted batch). Drives the "N of M" readout.
   int get totalUnits => _totalUnits;
 
-  /// Units finished so far. Each unit runs to completion with no sub-progress,
-  /// so the UI pairs this count with an animated bar rather than a percentage
-  /// that would freeze between units.
+  /// Units finished so far. A unit runs to completion with no sub-progress, so
+  /// the UI pairs this count with an animated bar rather than a percentage that
+  /// would freeze between units. The one exception is the static-encrypted
+  /// batch, whose device write reports through [RecoverUploading] instead -
+  /// that step is long enough that an unmoving readout reads as a hang.
   int get doneUnits => _doneUnits;
 
   @override
@@ -394,6 +396,15 @@ class RecoverController extends ChangeNotifier {
       return;
     }
 
+    // Across every card, so a run with two dictionaries reads as one upload
+    // rather than two bars that each start again at zero.
+    final totalBytes = dicts.fold<int>(
+      0,
+      (sum, dict) => sum + (dict.body?.bytes.length ?? 0),
+    );
+    final throttle = ProgressThrottle();
+    var doneBytes = 0;
+
     for (final dict in dicts) {
       if (_disposed) return;
       final body = dict.body;
@@ -414,8 +425,39 @@ class RecoverController extends ChangeNotifier {
         continue;
       }
       try {
-        await _client.storageWriteChunked(cuidDictPath(dict.cuid), body.bytes);
+        await _client.storageWriteChunked(
+          cuidDictPath(dict.cuid),
+          body.bytes,
+          // Reported, because this is the one step of a run whose duration the
+          // user cannot guess from the work: a dictionary is tens of thousands
+          // of entries, and over BLE that is minutes during which every other
+          // readout holds still. Scaled across all the cards, so a second
+          // dictionary does not send the bar back to zero. Within one card it
+          // can still go backwards: a link drop restarts that upload from the
+          // beginning, and the bytes really are being sent again.
+          onProgress: (fraction) {
+            // No _disposed check: _emit already has one. totalBytes cannot be
+            // zero here - an empty body never reaches this write - but a
+            // division that produced NaN would reach the bar silently.
+            if (totalBytes == 0) return;
+            final overall =
+                ((doneBytes + fraction * body.bytes.length) / totalBytes).clamp(
+                  0.0,
+                  1.0,
+                );
+            if (throttle.shouldEmit(overall)) _emit(RecoverUploading(overall));
+          },
+          // Stop means stop: without this the write runs to completion against
+          // a device the user has walked away from, and the page it was
+          // reporting to is gone. The firmware's stream is closed cleanly, and
+          // the half-written file deleted where the link outlived the cancel.
+          isCancelled: () => _disposed,
+        );
         _wroteCandidates = true;
+      } on FlipperWriteCancelledException {
+        // Already handled: the user asked to stop, and nothing is left to
+        // report to a disposed controller.
+        return;
       } catch (e, st) {
         LogService.error('[Recover] static dict write failed: $e\n$st');
         _hadFailure = true;
@@ -426,6 +468,12 @@ class RecoverController extends ChangeNotifier {
           note: l10n.mfWriteFailed(body.entries),
         );
         continue;
+      } finally {
+        // On every attempted card, not only the ones that landed: a card
+        // counted in the denominator and never in the numerator leaves the bar
+        // short of full for the rest of the run, and the >= 1.0 shortcut that
+        // would have corrected it never fires.
+        doneBytes += body.bytes.length;
       }
       if (!body.isComplete) _hadFailure = true;
       _addStaticEntry(

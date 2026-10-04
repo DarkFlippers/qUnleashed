@@ -1,11 +1,16 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flipperlib/flipperlib.dart' hide DateTime;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/tools/mifare/mfkey32_api.dart';
 import 'package:qunleashed/pages/tools/mifare/nested_api.dart';
 import 'package:qunleashed/pages/tools/mifare/recover_controller.dart';
+import 'package:qunleashed/pages/tools/mifare/cuid_dict_format.dart';
+import 'package:qunleashed/pages/tools/mifare/nested_models.dart';
 import 'package:qunleashed/pages/tools/mifare/recover_models.dart';
+import 'package:qunleashed/pages/tools/mifare/static_encrypted_recoverer.dart';
 
 /// Which answer "Recover MIFARE Keys" gives before it cracks anything.
 ///
@@ -202,6 +207,132 @@ void main() {
     });
   });
 
+  // A dictionary is tens of thousands of entries, and over BLE that is minutes
+  // during which every other readout on the page holds still. The run that
+  // produced the report behind this had two sector keys sharing a nonce, so the
+  // cross-filter reduced nothing and the file was 1.64 MB.
+  group('writing a candidate dictionary', () {
+    const log =
+        'Sec 3 key A cuid e37aa759 nt0 db7df8ae ks0 77ff617e par0 1111 dist 0\n'
+        'Sec 3 key B cuid e37aa759 nt0 db7df8ae ks0 77ff617e par0 1111 dist 0\n';
+
+    late FakeUploadClient upload;
+
+    RecoverController buildWithDicts(List<StaticCandidateDict> dicts) {
+      final controller = RecoverController(
+        client: upload,
+        mfApi: reader,
+        nestedApi: tag,
+        staticRecoverer: FakeStaticRecoverer(dicts),
+      );
+      addTearDown(controller.dispose);
+      return controller;
+    }
+
+    setUp(() {
+      upload = FakeUploadClient(log);
+      tag.exists = true;
+      // ProgressThrottle's floor is wall-clock. With no delay a run finishes
+      // inside one window and the only report that survives is the final 1.0,
+      // which every wiring passes - including a wrong one.
+      upload.frameDelay = const Duration(milliseconds: 60);
+    });
+
+    test('says how far along it is', () async {
+      final seen = <double>[];
+      final controller = buildWithDicts([dictOf(0xe37aa759, 400)]);
+      controller.addListener(() {
+        final state = controller.state;
+        if (state is RecoverUploading && state.progress != null) {
+          seen.add(state.progress!);
+        }
+      });
+
+      await controller.start();
+
+      expect(
+        seen.any((p) => p > 0 && p < 1),
+        isTrue,
+        reason: 'a report only at the end is the frozen readout, not a fix',
+      );
+      expect(seen.last, 1.0);
+    });
+
+    // Scaled across every card, so a second dictionary does not send the bar
+    // back to zero. Both halves of the run report against one denominator.
+    test('counts both cards as one upload', () async {
+      final seen = <double>[];
+      final controller = buildWithDicts([
+        dictOf(0xe37aa759, 400),
+        dictOf(0x11223344, 400),
+      ]);
+      controller.addListener(() {
+        final state = controller.state;
+        if (state is RecoverUploading && state.progress != null) {
+          seen.add(state.progress!);
+        }
+      });
+
+      await controller.start();
+
+      expect(seen.any((p) => p > 0 && p < 1), isTrue);
+      expect(
+        seen,
+        orderedEquals(List<double>.from(seen)..sort()),
+        reason:
+            'a denominator per card sends the bar to 1.0 on the first and '
+            'back down on the second. Within a card it may legitimately fall - '
+            'a link drop restarts that upload - but nothing drops here.',
+      );
+    });
+
+    // A card counted in the denominator and never in the numerator leaves the
+    // bar short for the rest of the run, and the >= 1.0 shortcut that would
+    // have corrected it never fires.
+    test('a card whose write fails still counts toward the whole', () async {
+      final seen = <double>[];
+      upload.failWriteForCuid = 0xe37aa759;
+      final controller = buildWithDicts([
+        dictOf(0xe37aa759, 400),
+        dictOf(0x11223344, 400),
+      ]);
+      controller.addListener(() {
+        final state = controller.state;
+        if (state is RecoverUploading && state.progress != null) {
+          seen.add(state.progress!);
+        }
+      });
+
+      await controller.start();
+
+      expect(seen.last, 1.0, reason: 'the surviving card has to fill the bar');
+    });
+
+    // Stop is a pop. Without isCancelled the write runs to completion against a
+    // device the user walked away from, reporting to a page that is gone.
+    test('stops when the page does', () async {
+      // Built without the teardown the others use: this one disposes itself
+      // mid-write, and a second dispose throws.
+      final controller = RecoverController(
+        client: upload,
+        mfApi: reader,
+        nestedApi: tag,
+        staticRecoverer: FakeStaticRecoverer([dictOf(0xe37aa759, 4000)]),
+      );
+      upload.onFrameSent = (frames) {
+        if (frames == 2) controller.dispose();
+      };
+
+      await controller.start();
+
+      expect(
+        upload.framesSent,
+        lessThan(10),
+        reason: 'the write should end soon after the page went away',
+      );
+    });
+  });
+
   // The page can be popped while a run is still in flight - Stop is a pop -
   // and a disposed ChangeNotifier that is notified throws.
   test('a run that outlives the page does not notify it', () async {
@@ -215,4 +346,121 @@ void main() {
 
     await expectLater(run, completes);
   });
+}
+
+/// Serves a `.nested.log` and accepts a dictionary write, so a run reaches the
+/// one step whose duration a user cannot guess from the work in front of them.
+///
+/// `storageWriteChunked` is an extension on `FlipperClient`, so declaring one
+/// here would do nothing — the real body runs either way. What it goes through
+/// is `callRpcFramesMulti`, and that is what this fakes.
+class FakeUploadClient extends FakeRecoverClient {
+  FakeUploadClient(this.log);
+
+  final String log;
+
+  /// Frames the real `storageWriteChunked` handed down, counted so a run that
+  /// stopped early can be told from one that finished.
+  int framesSent = 0;
+
+  /// Runs after each frame, for a test that wants to pull the page away
+  /// mid-upload. Not `onFrame`: `callRpcFrames` takes a parameter by that name
+  /// and would shadow it.
+  void Function(int framesSoFar)? onFrameSent;
+
+  /// Refuses the write whose path names this cuid, for the case where one card
+  /// fails and the run carries on.
+  int? failWriteForCuid;
+
+  /// Slows each frame so the reports clear `ProgressThrottle`'s 150 ms floor.
+  /// Without it a run finishes inside one window and the only report that
+  /// survives is the final 1.0 - which every wiring passes, including a wrong
+  /// one.
+  Duration frameDelay = Duration.zero;
+
+  @override
+  Future<List<Main>> callRpcFrames(
+    Main request, {
+    Duration timeout = const Duration(seconds: 8),
+    FlipperRequestPriority priority = FlipperRequestPriority.unattended,
+    void Function(Main frame)? onFrame,
+    void Function()? onSent,
+    bool retainFrames = true,
+    bool interleavable = false,
+    bool pipelined = true,
+  }) async {
+    if (request.hasStorageReadRequest()) {
+      final frame = Main()
+        ..storageReadResponse = (ReadResponse()
+          ..file = (File()..data = utf8.encode(log)));
+      onFrame?.call(frame);
+      return [frame];
+    }
+    if (request.hasSystemPingRequest()) {
+      // storageWriteChunked paces a non-BLE transport with a ping every 16
+      // frames. The dictionaries here are shorter than that, but a future one
+      // would trip it and fail as a storage error rather than as itself.
+      return [Main()..systemPingResponse = PingResponse()];
+    }
+    // Everything else - the stat ahead of the download, the delete behind a
+    // cancelled write - is best-effort in the caller and refuses here.
+    throw StateError('not served');
+  }
+
+  /// `storageWriteChunked` reads `transport` for its chunk size. Answered null
+  /// here - which gives it the BLE chunk size, the transport these reports
+  /// exist for - rather than letting the inherited noSuchMethod throw. Named
+  /// through noSuchMethod because `Transport` is not exported from the package
+  /// facade this file imports.
+  @override
+  dynamic noSuchMethod(Invocation invocation) {
+    if (invocation.memberName == #transport) return null;
+    return super.noSuchMethod(invocation);
+  }
+
+  @override
+  Future<List<Main>> callRpcFramesMulti(
+    Future<void> Function(Future<void> Function(Main frame)) body, {
+    Duration timeout = const Duration(seconds: 60),
+    FlipperRequestPriority priority = FlipperRequestPriority.unattended,
+  }) async {
+    var refuse = false;
+    await body((frame) async {
+      if (failWriteForCuid != null &&
+          frame.hasStorageWriteRequest() &&
+          frame.storageWriteRequest.path.contains(
+            failWriteForCuid!.toRadixString(16),
+          )) {
+        refuse = true;
+        return;
+      }
+      if (frameDelay > Duration.zero) await Future<void>.delayed(frameDelay);
+      framesSent++;
+      onFrameSent?.call(framesSent);
+    });
+    if (refuse) throw StateError('the card refused the write');
+    return const [];
+  }
+}
+
+class FakeStaticRecoverer implements StaticEncryptedRecoverer {
+  FakeStaticRecoverer(this.dicts);
+
+  final List<StaticCandidateDict> dicts;
+
+  @override
+  Future<List<StaticCandidateDict>> buildCandidateDicts(
+    List<NestedNonce> nonces,
+  ) async => dicts;
+}
+
+/// A dictionary of [entries] candidates for one sector key.
+StaticCandidateDict dictOf(int cuid, int entries) {
+  final builder = CuidDictBuilder()
+    ..add(
+      sector: 3,
+      isKeyA: true,
+      keys: Uint64List.fromList(List.generate(entries, (i) => i + 1)),
+    );
+  return StaticCandidateDict.built(cuid, builder.build());
 }

@@ -277,16 +277,19 @@ class _StatusBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    // Each recovery unit runs to completion with no sub-progress, and units vary
+    // A recovery unit runs to completion with no sub-progress, and units vary
     // wildly in duration (a hardnested attack dwarfs an mfkey32 one), so a
     // percentage freezes between units and misleads. Instead the recovery bar
     // animates (liveness) and, when there is more than one unit, shows how many
     // are done. A null barText hides the bar (the terminal Saved / Error states).
+    //
+    // The two transfers are the exception and do carry a percentage: both know
+    // their size up front, and both are long enough on a slow link that an
+    // animated bar alone reads as a hang rather than as work.
     final (String title, String? barText, double? progress) = switch (state) {
       RecoverWaitingForDevice() => (l10n.mfConnecting, '…', null),
-      RecoverDownloading(:final progress) => (
+      RecoverDownloading(:final progress) => _percentRow(
         l10n.mfDownloading,
-        progress == null ? '…' : '${(progress * 100).round()}%',
         progress,
       ),
       RecoverCalculating() => (
@@ -294,7 +297,10 @@ class _StatusBlock extends StatelessWidget {
         totalUnits > 1 ? '$doneUnits / $totalUnits' : '…',
         null,
       ),
-      RecoverUploading() => (l10n.mfSyncing, '…', null),
+      RecoverUploading(:final progress) => _percentRow(
+        l10n.mfSyncing,
+        progress,
+      ),
       RecoverSaved(:final keys, :final hasCandidates, :final hasFailures) => (
         _savedTitle(keys.length, hasCandidates, hasFailures),
         null,
@@ -331,6 +337,18 @@ class _StatusBlock extends StatelessWidget {
       ],
     );
   }
+
+  /// A transfer that knows its own size: the bar tracks it and the text reads
+  /// as a percentage. Null before the size is known, which shows as an
+  /// indeterminate bar rather than 0%.
+  static (String, String?, double?) _percentRow(
+    String title,
+    double? progress,
+  ) => (
+    title,
+    progress == null ? '…' : '${(progress * 100).round()}%',
+    progress,
+  );
 
   static String _savedTitle(int newKeys, bool hasCandidates, bool hadFailure) {
     final String base;

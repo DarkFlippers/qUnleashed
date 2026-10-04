@@ -98,7 +98,14 @@ class RecoverCalculating extends RecoverState {
 }
 
 class RecoverUploading extends RecoverState {
-  const RecoverUploading();
+  const RecoverUploading([this.progress]);
+
+  /// Null while the size of the work is not known - the user dictionary is a
+  /// read-modify-write of a file small enough that a percentage would be gone
+  /// before it was read. The candidate dictionaries are not: a card whose two
+  /// sector keys share a nonce yields no cross-filter reduction and over a
+  /// megabyte of entries, which is minutes over BLE.
+  final double? progress;
 }
 
 class RecoverSaved extends RecoverState {
