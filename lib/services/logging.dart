@@ -103,9 +103,9 @@ class LogService {
   /// nowhere; what is recorded is the failure it reports back over its port.
   /// A reader should not take this for a complete account of a session.
   ///
-  /// What arrives from flipperlib differs by build: a talking one keeps its
-  /// warnings as well as its errors, a quiet one only the errors, because
-  /// [attachFlipperlibSink] pins its level to error when nothing is printing.
+  /// What arrives from flipperlib is its warnings and errors, in either build —
+  /// see [attachFlipperlibSink] for why both, and for how long that was not
+  /// true of a quiet one.
   static List<String> get history => List.unmodifiable(_history);
 
   /// Keeps [stamped], unless [body] repeats what was kept last — in which case
@@ -185,13 +185,28 @@ class LogService {
   /// Routes flipperlib's own logging here.
   ///
   /// Attached even when nothing is printing, and kept apart from the platform
-  /// calls in [initialize] so it can be reached without them: Log.error checks
-  /// only that a sink exists — no level, no build type — so pinning the level
-  /// to error gives [history] the transport faults and session failures a bug
-  /// report actually needs, and none of the traffic below them.
+  /// calls in [initialize] so it can be reached without them, giving [history]
+  /// the transport faults and session failures a bug report actually needs and
+  /// none of the traffic below them.
+  ///
+  /// Warning, not error, and that is a fix rather than a widening.
+  /// [_flipperlibSink] has always kept warnings — its cut is [_keptFrom] — but
+  /// `Log.level` was pinned a level above it, so the threshold was unreachable
+  /// and every `Log.warn` in the submodule died at the library's own gate
+  /// before the sink could apply its own. Lines written to be kept were not:
+  /// a transport MTU read that failed, a reboot the firmware refused. The two
+  /// gates now read the same constant and cannot disagree again.
+  ///
+  /// What it admits is the class those belong to — a link or a call that is
+  /// degraded rather than broken. The BLE transport warns when a connection
+  /// carries a payload small enough to make transfers slow, which answers "why
+  /// did it take so long" and is in nothing else a shipped build keeps. Volume
+  /// is bounded by what the submodule chooses to warn about, which is its own
+  /// review's problem; `Log.error` outnumbers `Log.warn` there by more than an
+  /// order of magnitude.
   @visibleForTesting
   static void attachFlipperlibSink() {
-    Log.level = printing ? _flipperLevel : FlipperLogLevel.error;
+    Log.level = printing ? _flipperLevel : _keptFrom;
     Log.sink = _flipperlibSink;
   }
 
@@ -335,8 +350,8 @@ class LogService {
   ///
   /// "Keeps" rather than "reports", because most of these are RPC calls and
   /// flipperlib logs its own timeouts and transport write failures at error -
-  /// see [attachFlipperlibSink], which pins its level to error even in a build
-  /// that prints nothing. Those app-side lines are a thinner second account.
+  /// see [attachFlipperlibSink], which routes those here in every build. Those
+  /// app-side lines are a thinner second account.
   /// A platform channel, SharedPreferences, a dart:io socket and Geolocator
   /// have no such channel, and there the catch is the whole of the report.
   ///
@@ -406,10 +421,16 @@ class LogService {
     _ => logging.Level.ALL,
   };
 
+  /// The level at or above which a flipperlib line is worth keeping for a bug
+  /// report. Read by both gates it has to pass - the library's own `Log.level`
+  /// and this sink - because setting them apart is what made warnings
+  /// unreachable for as long as it did.
+  static const FlipperLogLevel _keptFrom = FlipperLogLevel.warning;
+
   static void _flipperlibSink(FlipperLogLevel severity, String message) {
     _emit(
       '[${severity.name}] $message',
-      keep: severity.index >= FlipperLogLevel.warning.index,
+      keep: severity.index >= _keptFrom.index,
       console: printing,
     );
   }

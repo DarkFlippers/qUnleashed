@@ -173,6 +173,18 @@ void main() {
       expect(LogService.history.single, contains('port closed'));
     });
 
+    // Why warnings are kept at all is on [attachFlipperlibSink] and not
+    // repeated here. What matters for reading this file: like the error case
+    // above, it is the quiet run that bites. Under `flutter test` with no
+    // dart-define, `printing` is true and the level comes from QLOG, so this
+    // passed before the fix too — only the `QLOG=false` CI job exercises the
+    // branch that was pinning warnings out of existence.
+    test('a warning from the library is kept', () {
+      printed(() => Log.warn('[BLE] link carries only payload=20 of 411'));
+
+      expect(LogService.history.single, contains('payload=20'));
+    });
+
     test('the chatty levels from the library are not', () {
       printed(() {
         Log.info('connected');
