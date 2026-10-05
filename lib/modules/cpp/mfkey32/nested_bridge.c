@@ -286,3 +286,27 @@ QUNLEASHED_EXPORT void qunleashed_rf08s_reduce_pair(
   *count_a = ka;
   *count_b = kb;
 }
+
+// Returns the index of the first key in `keys` that already opens this nonce,
+// or -1. The nested counterpart of qunleashed_mfkey32_known_key; see the note
+// there for why the dictionary is tried before the attack rather than after.
+//
+// Uses the same forward relation the recovery inverts: a key that opens this
+// sector reproduces ks from nt.
+QUNLEASHED_EXPORT int32_t qunleashed_nested_known_key(
+    uint32_t uid,
+    uint32_t nt,
+    uint32_t ks,
+    const uint64_t* keys,
+    uint32_t count) {
+  // Stack state rather than crypto1_create; see the note on the mfkey32
+  // counterpart for why the allocation had to go.
+  for (uint32_t i = 0; i < count; i++) {
+    struct Crypto1State s;
+    crypto1_init(&s, keys[i]);
+    if (crypto1_word(&s, uid ^ nt, 0) == ks) {
+      return (int32_t)i;
+    }
+  }
+  return -1;
+}

@@ -4429,6 +4429,68 @@
   "@mfCandidateExplainer": {
     "description": "Explanation under a candidate key dictionary result."
   },
+  "mfVerifyOnDevice": "Now read the same card on your Flipper. It tries these candidates against the card itself, which can take several minutes per card.",
+  "@mfVerifyOnDevice": {
+    "description": "Footer on the result screen telling the user that candidate dictionaries still have to be verified by the Flipper against the physical card."
+  },
+  "mfCandidatesAlso": "{base} · candidate keys saved too",
+  "@mfCandidatesAlso": {
+    "description": "Result title when keys were recovered AND candidate dictionaries were written, so the candidates are not hidden behind the key count.",
+    "placeholders": {
+      "base": {
+        "type": "String"
+      }
+    }
+  },
+  "mfKeysKept": "{count, plural, =1{1 key from this run is still listed below} other{{count} keys from this run are still listed below}}",
+  "@mfKeysKept": {
+    "description": "Shown under an error when the run had already recovered keys before it failed.",
+    "placeholders": {
+      "count": {
+        "type": "num",
+        "format": "compact"
+      }
+    }
+  },
+  "mfSaveFailedAfterRecovery": "The keys found could not be saved to the device. They are listed below — copy them before you leave this screen.",
+  "@mfSaveFailedAfterRecovery": {
+    "description": "Error shown when recovery succeeded but writing the user dictionary failed. Distinct from a plain read/write error because work was done and is at risk of being lost."
+  },
+  "mfBackupLost": "A copy of your previous keys could not be made first, so the dictionary on the device may be incomplete. Check it before running this again.",
+  "@mfBackupLost": {
+    "description": "Shown under a failed dictionary save when the backup copy also failed, so the previous dictionary may have been truncated with nothing to restore from."
+  },
+  "mfBackupKept": "Your previous keys were copied to {file} before the write, so none of them are lost.",
+  "@mfBackupKept": {
+    "description": "Shown under a failed dictionary save when a backup copy of the previous dictionary was left on the device.",
+    "placeholders": {
+      "file": {
+        "type": "String"
+      }
+    }
+  },
+  "mfHardnestedPhase": "Cracking a hardened key…",
+  "@mfHardnestedPhase": {
+    "description": "Status title while the hardnested brute force runs on one sector key. Distinct from the generic 'Recovering keys' so the percentage beside it is not read as run-level progress."
+  },
+  "mfGenerating": "Generating candidate keys…",
+  "@mfGenerating": {
+    "description": "Status title while candidate keys are being computed, before they are written to the device."
+  },
+  "mfHardnestedOutOfMemory": "Could not set up the hardnested attack on this device — not enough memory.",
+  "@mfHardnestedOutOfMemory": {
+    "description": "Note when the bridge could not allocate its own nonce buffer. It does NOT cover the engine running out of memory later, which still terminates the app; see the comment on qunleashed_hardnested_recover."
+  },
+  "mfSkippedKnown": "{count, plural, =1{1 sector key was already in your dictionary and was not attacked again} other{{count} sector keys were already in your dictionary and were not attacked again}}",
+  "@mfSkippedKnown": {
+    "description": "Summary row explaining work that was skipped because the key was already known.",
+    "placeholders": {
+      "count": {
+        "type": "num",
+        "format": "compact"
+      }
+    }
+  },
 
   "mfConnecting": "Connecting device…",
   "@mfConnecting": {

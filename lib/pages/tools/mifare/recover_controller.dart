@@ -11,6 +11,7 @@ import '../../../services/progress_throttle.dart';
 import 'cuid_dict_format.dart';
 import 'existed_keys_storage.dart';
 import 'hardnested_recoverer.dart';
+import 'known_key_filter.dart';
 import 'key_nonce_parser.dart';
 import 'mfkey32_api.dart';
 import 'mfkey32_models.dart';
@@ -39,7 +40,9 @@ class RecoverController extends ChangeNotifier {
     NestedRecoverer? nestedRecoverer,
     StaticEncryptedRecoverer? staticRecoverer,
     HardnestedRecoverer? hardnestedRecoverer,
-  }) : _mfApi = mfApi ?? MfKey32ApiImpl(),
+    KnownKeyFilter Function(Iterable<String> keys)? knownKeyFilter,
+  }) : _knownKeyFilter = knownKeyFilter ?? nativeKnownKeyFilter,
+       _mfApi = mfApi ?? MfKey32ApiImpl(),
        _nestedApi = nestedApi ?? NestedApiImpl(),
        _mfRecoverer = mfRecoverer ?? NativeMfKey32Recoverer(),
        _nestedRecoverer = nestedRecoverer ?? NativeNestedRecoverer(),
@@ -57,6 +60,7 @@ class RecoverController extends ChangeNotifier {
   final NestedRecoverer _nestedRecoverer;
   final StaticEncryptedRecoverer _staticRecoverer;
   final HardnestedRecoverer _hardnestedRecoverer;
+  final KnownKeyFilter Function(Iterable<String> keys) _knownKeyFilter;
   late final ExistedKeysStorage _storage;
 
   late RecoverState _state;
@@ -76,6 +80,11 @@ class RecoverController extends ChangeNotifier {
 
   int _totalUnits = 0;
   int _doneUnits = 0;
+  // Rebuilt per run from the dictionaries this run loaded, and released when
+  // the next run replaces it or the page goes: it holds native memory, which
+  // outlives the isolate that took it.
+  KnownKeyFilter _known = const NoKnownKeys();
+  int _skippedKnown = 0;
 
   RecoverState get state => _state;
   bool get running => _running;
@@ -87,16 +96,27 @@ class RecoverController extends ChangeNotifier {
   /// groups + one for the static-encrypted batch). Drives the "N of M" readout.
   int get totalUnits => _totalUnits;
 
-  /// Units finished so far. A unit runs to completion with no sub-progress, so
-  /// the UI pairs this count with an animated bar rather than a percentage that
-  /// would freeze between units. The one exception is the static-encrypted
-  /// batch, whose device write reports through [RecoverUploading] instead -
-  /// that step is long enough that an unmoving readout reads as a hang.
+  /// True when a failed dictionary save left the previous keys in a copy on the
+  /// device. Only meaningful alongside [RecoverErrorType.saveFailed].
+  bool get dictBackupKept => _storage.backupKept;
+
+  /// True when the dictionary was overwritten with no copy behind it, because
+  /// the copy itself failed. Only meaningful alongside
+  /// [RecoverErrorType.saveFailed].
+  bool get dictBackupFailed => _storage.backupFailed;
+
+  /// Units finished so far. Most units run to completion with no sub-progress,
+  /// so the UI pairs this count with an animated bar rather than a percentage
+  /// that would freeze between them. Two report more: a hardnested unit carries
+  /// a brute-force fraction on [RecoverCalculating], and the static-encrypted
+  /// device write reports through [RecoverUploading]. Both are long enough that
+  /// an unmoving readout reads as a hang.
   int get doneUnits => _doneUnits;
 
   @override
   void dispose() {
     _disposed = true;
+    _known.dispose();
     super.dispose();
   }
 
@@ -130,6 +150,7 @@ class RecoverController extends ChangeNotifier {
     _hadFailure = false;
     _totalUnits = 0;
     _doneUnits = 0;
+    _skippedKnown = 0;
 
     if (!_client.isConnected) {
       _emit(const RecoverError(RecoverErrorType.flipperConnection));
@@ -206,6 +227,22 @@ class RecoverController extends ChangeNotifier {
       return;
     }
 
+    // dispose() has already run if the page went while the dictionaries were
+    // loading, and it will not run again - so a filter built now would hold its
+    // native buffer until the process ends.
+    if (_disposed) return;
+    _known.dispose();
+    try {
+      _known = _knownKeyFilter(_storage.knownKeys);
+    } catch (e, st) {
+      // A build without the engine still runs; it just does the work it could
+      // have skipped. Degrading here must never cost a key.
+      LogService.warn(
+        '[Recover] known-key filter unavailable: ${LogService.describe(e, st)}',
+      );
+      _known = const NoKnownKeys();
+    }
+
     // Plan the work up front so progress is meaningful across both logs.
     final readerNonces = readerText == null
         ? const <MfKey32Nonce>[]
@@ -213,15 +250,42 @@ class RecoverController extends ChangeNotifier {
     final tagLog = NestedNonceParser.parse(tagText ?? '');
     final tagNonces = tagLog.nonces;
     if (tagLog.droppedLines > 0) _reportDroppedNonces(tagLog);
-    final weak = dedupeWeakNonces(tagNonces.where((n) => n.hasPair));
-    final (staticSingles, hardGroups) = splitSingles(
+    final weak = dedupeNestedNonces(tagNonces.where((n) => n.hasPair));
+    final (allStaticSingles, hardGroups) = splitSingles(
       tagNonces.where((n) => !n.hasPair),
     );
+    // Worth most here: a static-encrypted sector key whose key is already known
+    // would otherwise cost tens of thousands of generated candidates and a
+    // megabyte uploaded to the device, for a key the card already opens with.
+    final split = splitKnownStatic(
+      // Deduped first: without it a card read five times reports five identical
+      // skipped rows and counts one sector key as five.
+      dedupeNestedNonces(allStaticSingles),
+      (n) => _known.nestedMatch(
+        cuid: n.cuid,
+        nt: n.samples[0].nt,
+        ks: n.samples[0].ks,
+      ),
+    );
+    final staticSingles = split.attack;
+    split.known.forEach((n, key) {
+      _skippedKnown++;
+      _recordKey(
+        source: RecoverSource.tag,
+        kind: RecoverKind.staticEncrypted,
+        cuid: n.cuid,
+        sectorName: n.sectorName,
+        keyName: n.keyName,
+        key: key,
+        counted: false,
+      );
+    });
+    // One unit per card, not one for the whole batch. A 4K card is forty
+    // sectors and a run can hold several cards; counting them as a single step
+    // left the readout still for the longest stretch of the run.
+    final staticCards = staticSingles.map((n) => n.cuid).toSet().length;
     _totalUnits =
-        readerNonces.length +
-        weak.length +
-        hardGroups.length +
-        (staticSingles.isEmpty ? 0 : 1);
+        readerNonces.length + weak.length + hardGroups.length + staticCards;
     _emit(const RecoverCalculating());
 
     await _recoverReader(readerNonces);
@@ -230,18 +294,29 @@ class RecoverController extends ChangeNotifier {
       if (_disposed) return;
       await _recoverHardnested(group);
     }
-    if (staticSingles.isNotEmpty) await _recoverStatic(staticSingles);
+    if (staticSingles.isNotEmpty) {
+      await _recoverStatic(staticSingles, cards: staticCards);
+    }
     // The user can back out (Stop) mid-run; don't rewrite the user dict (a
     // read-modify-write over the shared client) after that point.
     if (_disposed) return;
 
+    await _saveKeys();
+  }
+
+  /// Writes the recovered keys to the device and reports the run.
+  ///
+  /// Its own method because it is the only part worth retrying alone: the keys
+  /// are already in memory, so a failed write of a dictionary measured in
+  /// kilobytes should not cost the hours of cracking that produced it.
+  Future<void> _saveKeys() async {
     _emit(const RecoverUploading());
     final List<String> added;
     try {
       added = await _storage.upload();
     } catch (e, st) {
       LogService.error('[Recover] save keys failed: $e\n$st');
-      _emit(const RecoverError(RecoverErrorType.readWrite));
+      _emit(const RecoverError(RecoverErrorType.saveFailed));
       return;
     }
 
@@ -250,16 +325,48 @@ class RecoverController extends ChangeNotifier {
         keys: added,
         hasCandidates: _wroteCandidates,
         hasFailures: _hadFailure,
+        skippedKnown: _skippedKnown,
       ),
     );
   }
+
+  /// Retries only the device write, keeping everything this run recovered.
+  ///
+  /// `_storage` still holds the keys - it is only ever added to - so this is
+  /// the whole of what failed. Starting the run over would re-download both
+  /// logs, re-read both dictionaries and re-run every attack, a hardnested one
+  /// among them, to redo a write of a few kilobytes.
+  Future<void> retrySave() =>
+      _client.runTask(FlipperRequestPriority.background, () async {
+        if (_running || _disposed) return;
+        _running = true;
+        try {
+          await _saveKeys();
+        } catch (e, st) {
+          LogService.error('[Recover] save retry failed: $e\n$st');
+          _emit(const RecoverError(RecoverErrorType.saveFailed));
+        } finally {
+          _running = false;
+          if (!_disposed) notifyListeners();
+        }
+      });
 
   // ---- reader (mfkey32) ----
 
   Future<void> _recoverReader(List<MfKey32Nonce> nonces) async {
     for (final n in nonces) {
       if (_disposed) return;
-      final key = await _mfRecoverer.bruteforceKey(n);
+      // Already in a dictionary: record it as known and skip the attack. The
+      // row reads the same either way, so the only visible difference is that
+      // the run gets there sooner.
+      final known = _known.readerMatch(
+        uid: n.uid,
+        nt: n.nt0,
+        nr: n.nr0,
+        ar: n.ar0,
+      );
+      if (known != null) _skippedKnown++;
+      final key = known ?? await _mfRecoverer.bruteforceKey(n);
       _recordKey(
         source: RecoverSource.reader,
         kind: RecoverKind.mfkey32,
@@ -280,7 +387,13 @@ class RecoverController extends ChangeNotifier {
       if (_disposed) return;
       await Future.wait(
         weak.skip(i).take(maxConcurrent).map((n) async {
-          final key = await _nestedRecoverer.recoverKey(n);
+          final known = _known.nestedMatch(
+            cuid: n.cuid,
+            nt: n.samples[0].nt,
+            ks: n.samples[0].ks,
+          );
+          if (known != null) _skippedKnown++;
+          final key = known ?? await _nestedRecoverer.recoverKey(n);
           _recordKey(
             source: RecoverSource.tag,
             kind: weakKind(n),
@@ -310,17 +423,71 @@ class RecoverController extends ChangeNotifier {
     BigInt? key;
     String? note;
     try {
-      key = await _hardnestedRecoverer.recoverKey(
+      final result = await _hardnestedRecoverer.recoverKey(
         cuid: first.cuid,
         ntEnc: ntEnc,
         parEnc: parEnc,
+        // The one attack long enough that the page has to say something while
+        // it runs: the counter alone sat still for the whole of it.
+        onProgress: (fraction) {
+          // Not a ProgressThrottle, which the two transfers use: its 0.002
+          // minimum delta would swallow every single-permille step, and on an
+          // attack that reports in tenths of a percent for hours that is every
+          // step there is. The poll is already time-limited at 500 ms, so all
+          // that is left to suppress is two polls reading the same figure.
+          //
+          // Compared against the state rather than a field holding the last
+          // value: the thing compared is then the thing on screen, so _tick
+          // clearing the phase cannot leave a shadow copy saying a figure is
+          // already shown when it no longer is.
+          if (_disposed) return;
+          if (_state case RecoverCalculating(fraction: final shown)
+              when shown == fraction) {
+            return;
+          }
+          _emit(
+            RecoverCalculating(
+              label: l10n.mfHardnestedPhase,
+              fraction: fraction,
+            ),
+          );
+        },
+        isCancelled: () => _disposed,
       );
-      // A null key here means the engine ran and found nothing; only a group
-      // too small to attack (< 2 nonces) is a "collect more" situation.
-      if (key == null) {
-        note = group.length < 2
-            ? l10n.mfNotRecoveredFewNonces(group.length)
-            : l10n.mfNotRecoveredNoKey(group.length);
+      key = result.key;
+      switch (result.outcome) {
+        case HardnestedOutcome.found:
+          break;
+        case HardnestedOutcome.engineBusy:
+          // Not the card's fault and not unknown: two attacks were started at
+          // once, which the serial walk above is supposed to prevent.
+          LogService.error(
+            '[Recover] hardnested refused: another attack is already running',
+          );
+          _hadFailure = true;
+          note = l10n.mfHardnestedFailed;
+        case HardnestedOutcome.engineFault:
+          // The engine's own fault, not an answer about the card. Logged
+          // because an unknown status means this build and the native side
+          // disagree, which nothing else would record.
+          LogService.error(
+            '[Recover] hardnested engine returned an unknown '
+            'status for ${first.sectorName}/${first.keyName}',
+          );
+          _hadFailure = true;
+          note = l10n.mfHardnestedFailed;
+        case HardnestedOutcome.stopped:
+          // The user's own doing, so it is not a failure and says nothing.
+          return;
+        case HardnestedOutcome.outOfMemory:
+          _hadFailure = true;
+          note = l10n.mfHardnestedOutOfMemory;
+        case HardnestedOutcome.noKey:
+          // Ran and found nothing; only a group too small to attack is a
+          // "collect more" situation.
+          note = group.length < 2
+              ? l10n.mfNotRecoveredFewNonces(group.length)
+              : l10n.mfNotRecoveredNoKey(group.length);
       }
     } catch (e, st) {
       // A missing/broken native engine must not abort the whole run and discard
@@ -381,7 +548,16 @@ class RecoverController extends ChangeNotifier {
         ),
       );
 
-  Future<void> _recoverStatic(List<NestedNonce> singles) async {
+  /// [cards] is the number of units `_run` planned for this batch, passed in
+  /// rather than recomputed so the denominator and the ticks cannot drift.
+  Future<void> _recoverStatic(
+    List<NestedNonce> singles, {
+    required int cards,
+  }) async {
+    // Named rather than left under "Recovering keys": generation is the half of
+    // this step that reports nothing - one isolate call covering every card,
+    // with only the device write after it carrying a percentage.
+    _emit(RecoverCalculating(label: l10n.mfGenerating));
     final List<StaticCandidateDict> dicts;
     try {
       dicts = await _staticRecoverer.buildCandidateDicts(singles);
@@ -392,7 +568,7 @@ class RecoverController extends ChangeNotifier {
       // not from any one card, and every card in the batch lost its dictionary.
       // Naming the first one would blame a card that was probably fine.
       _addStaticEntry(note: _staticFailureNote(e));
-      _tick();
+      _tick(cards);
       return;
     }
 
@@ -407,6 +583,11 @@ class RecoverController extends ChangeNotifier {
 
     for (final dict in dicts) {
       if (_disposed) return;
+      // This card's unit, whatever becomes of it. Inside the loop so the
+      // readout advances through the phase rather than jumping by N at the end.
+      // One dict per card - buildStaticDicts groups by cuid - so this ends on
+      // the same total the catch path above accounts for in one go.
+      _tick();
       final body = dict.body;
       if (body == null) {
         // This one card failed; the rest of the batch still has dictionaries.
@@ -482,7 +663,6 @@ class RecoverController extends ChangeNotifier {
         note: _dictGapNote(body),
       );
     }
-    _tick();
   }
 
   /// Names the sector keys the written dictionary cannot recover, so a card
@@ -531,6 +711,9 @@ class RecoverController extends ChangeNotifier {
     required String keyName,
     BigInt? key,
     String? note,
+    // A key found in the dictionary rather than cracked was never planned as a
+    // unit, so it must not advance a counter sized without it.
+    bool counted = true,
   }) {
     final keyHex = key == null ? null : formatMifareKey(key.toInt());
     final isNew = keyHex == null ? null : _storage.registerKey(keyHex);
@@ -546,7 +729,7 @@ class RecoverController extends ChangeNotifier {
         note: note,
       ),
     );
-    _tick();
+    if (counted) _tick();
   }
 
   Future<String> _download(
@@ -574,10 +757,23 @@ class RecoverController extends ChangeNotifier {
     }
   }
 
-  void _tick() {
+  /// Finishes [units] of the run's planned work.
+  ///
+  /// Takes a count so the paths that finish several at once - a static batch
+  /// whose generation threw, losing every card together - say so in one call
+  /// and one rebuild, rather than a loop whose only job is to add N.
+  void _tick([int units = 1]) {
     if (_disposed) return;
-    _doneUnits++;
-    notifyListeners();
+    _doneUnits += units;
+    // The unit that the label and fraction described is over, so they go with
+    // it. Without this a hardnested group that ended at 47% sat there through
+    // the next group's table decompression, which reports nothing. Through
+    // _emit rather than assigning _state, so that stays the only writer.
+    if (_state is RecoverCalculating) {
+      _emit(const RecoverCalculating());
+    } else {
+      notifyListeners();
+    }
   }
 
   void _emit(RecoverState state) {

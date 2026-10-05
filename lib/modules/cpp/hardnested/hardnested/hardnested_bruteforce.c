@@ -48,6 +48,7 @@ THE SOFTWARE.
 */
 
 #include "hardnested_bruteforce.h"
+#include "../qunleashed_hn_progress.h"
 
 #include <inttypes.h>
 #include <stdbool.h>
@@ -225,16 +226,26 @@ static void *
                 hardnested_print_progress(thread_arg->num_acquired_nonces, progress_text, 0.0, 0);
                 break;
             }
-            else if (keys_found)
+            else if (keys_found || qunleashed_hn_aborted())
             {
+                // Checked where the engine already gives up: a stop then costs
+                // one bucket instead of the whole attack, and unwinds through
+                // the same path a found key does.
                 break;
             }
             else
             {
+                const double done = thread_arg->maximum_states
+                                        ? (double)num_keys_tested / (double)(thread_arg->maximum_states)
+                                        : 0.0;
+                // Outside the printing gate on purpose: `silent` is about
+                // stdout, which on a phone is nowhere, and this is the only
+                // progress anything can read.
+                qunleashed_hn_report_permille((uint32_t)(done * 1000.0));
                 if (!thread_arg->silent)
                 {
                     char progress_text[80];
-                    snprintf(progress_text, sizeof(progress_text), "Brute force phase: %6.02f%%  ", 100.0 * (float)num_keys_tested / (float)(thread_arg->maximum_states));
+                    snprintf(progress_text, sizeof(progress_text), "Brute force phase: %6.02f%%  ", 100.0 * done);
                     float remaining_bruteforce = thread_arg->nonces[thread_arg->best_first_bytes[0]].expected_num_brute_force - (float)num_keys_tested / 2;
                     hardnested_print_progress(thread_arg->num_acquired_nonces, progress_text, remaining_bruteforce, 5000);
                 }

@@ -6,6 +6,9 @@ import 'package:flipperlib/flipperlib.dart' hide DateTime;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/tools/mifare/mfkey32_api.dart';
 import 'package:qunleashed/pages/tools/mifare/nested_api.dart';
+import 'package:qunleashed/pages/tools/mifare/existed_keys_storage.dart';
+import 'package:qunleashed/pages/tools/mifare/hardnested_recoverer.dart';
+import 'package:qunleashed/pages/tools/mifare/known_key_filter.dart';
 import 'package:qunleashed/pages/tools/mifare/recover_controller.dart';
 import 'package:qunleashed/pages/tools/mifare/cuid_dict_format.dart';
 import 'package:qunleashed/pages/tools/mifare/nested_models.dart';
@@ -92,6 +95,7 @@ class FakeTagApi implements NestedApi {
 }
 
 void main() {
+  _unitAccountingGroup();
   late FakeRecoverClient client;
   late FakeReaderApi reader;
   late FakeTagApi tag;
@@ -291,7 +295,7 @@ void main() {
     // have corrected it never fires.
     test('a card whose write fails still counts toward the whole', () async {
       final seen = <double>[];
-      upload.failWriteForCuid = 0xe37aa759;
+      upload.refuseWrite = (p) => p.contains('e37aa759');
       final controller = buildWithDicts([
         dictOf(0xe37aa759, 400),
         dictOf(0x11223344, 400),
@@ -333,6 +337,136 @@ void main() {
     });
   });
 
+  // Cracking a key the user already has is the largest avoidable cost in a
+  // run: the nonce logs are never cleared, so every run re-attacks every nonce
+  // ever collected. The expensive paths must not be entered for a key the
+  // dictionary already answers.
+  group('a key the dictionary already holds', () {
+    const log =
+        'Sec 3 key A cuid e37aa759 nt0 db7df8ae ks0 77ff617e par0 1111 dist 0\n';
+    late FakeUploadClient upload;
+
+    setUp(() {
+      upload = FakeUploadClient(log);
+      tag.exists = true;
+    });
+
+    test('is recorded without generating any candidates', () async {
+      final known = BigInt.parse('A0A1A2A3A4A5', radix: 16);
+      final recoverer = FakeStaticRecoverer([dictOf(0xe37aa759, 400)]);
+      final controller = RecoverController(
+        client: upload,
+        mfApi: reader,
+        nestedApi: tag,
+        staticRecoverer: recoverer,
+        knownKeyFilter: (_) => FakeKnownKeys(nested: known),
+      );
+      addTearDown(controller.dispose);
+
+      await controller.start();
+
+      expect(
+        recoverer.askedAbout,
+        0,
+        reason: 'the generator must not be asked about a key already known',
+      );
+      expect(
+        controller.entries.any((e) => e.key == 'A0A1A2A3A4A5'),
+        isTrue,
+        reason: 'the key still has to be reported, just not re-derived',
+      );
+      expect(controller.state, isA<RecoverSaved>());
+      expect((controller.state as RecoverSaved).skippedKnown, 1);
+    });
+
+    test('still runs the attack when the dictionary does not answer', () async {
+      final recoverer = FakeStaticRecoverer([dictOf(0xe37aa759, 400)]);
+      final controller = RecoverController(
+        client: upload,
+        mfApi: reader,
+        nestedApi: tag,
+        staticRecoverer: recoverer,
+        knownKeyFilter: (_) => FakeKnownKeys(),
+      );
+      addTearDown(controller.dispose);
+
+      await controller.start();
+
+      expect(recoverer.askedAbout, 1);
+      expect((controller.state as RecoverSaved).skippedKnown, 0);
+    });
+  });
+
+  // A failed save is the one error whose work is still in memory. Retrying the
+  // whole run would re-download both logs and re-run every attack - a
+  // hardnested one among them - to redo a write of a few kilobytes.
+  group('retrying a failed save', () {
+    const log =
+        'Sec 3 key A cuid e37aa759 nt0 db7df8ae ks0 77ff617e par0 1111 dist 0\n';
+
+    test('writes again without redoing the run', () async {
+      final upload = FakeUploadClient(log)
+        ..refuseWrite = (p) => p == flipperDictUserPath;
+      final controller = RecoverController(
+        client: upload,
+        mfApi: FakeReaderApi(),
+        nestedApi: FakeTagApi(exists: true),
+        staticRecoverer: FakeStaticRecoverer([dictOf(0xe37aa759, 50)]),
+        // A key for the dictionary, so the write this is all about happens.
+        knownKeyFilter: (_) =>
+            FakeKnownKeys(nested: BigInt.parse('A0A1A2A3A4A5', radix: 16)),
+      );
+      addTearDown(controller.dispose);
+
+      await controller.start();
+
+      expect(
+        errorOf(controller),
+        RecoverErrorType.saveFailed,
+        reason: 'told apart from a plain storage error, because work was done',
+      );
+      final readsBefore = upload.reads;
+      final entriesBefore = controller.entries.length;
+
+      upload.refuseWrite = null;
+      await controller.retrySave();
+
+      expect(controller.state, isA<RecoverSaved>());
+      expect(
+        upload.reads,
+        readsBefore,
+        reason: 'the logs and dictionaries must not be fetched a second time',
+      );
+      expect(
+        controller.entries,
+        hasLength(entriesBefore),
+        reason: 'and the results already on screen must survive',
+      );
+    });
+
+    // The footnote under that error points at the copy, and it is the
+    // difference between "tap Retry" and "stop and check the card".
+    test('reports whether the previous keys were copied first', () async {
+      final upload = FakeUploadClient(log)
+        ..refuseWrite = (p) => p == flipperDictUserPath;
+      final controller = RecoverController(
+        client: upload,
+        mfApi: FakeReaderApi(),
+        nestedApi: FakeTagApi(exists: true),
+        staticRecoverer: FakeStaticRecoverer([dictOf(0xe37aa759, 50)]),
+        knownKeyFilter: (_) =>
+            FakeKnownKeys(nested: BigInt.parse('A0A1A2A3A4A5', radix: 16)),
+      );
+      addTearDown(controller.dispose);
+
+      await controller.start();
+
+      expect(errorOf(controller), RecoverErrorType.saveFailed);
+      expect(controller.dictBackupKept, isTrue);
+      expect(controller.dictBackupFailed, isFalse);
+    });
+  });
+
   // The page can be popped while a run is still in flight - Stop is a pop -
   // and a disposed ChangeNotifier that is notified throws.
   test('a run that outlives the page does not notify it', () async {
@@ -363,14 +497,19 @@ class FakeUploadClient extends FakeRecoverClient {
   /// stopped early can be told from one that finished.
   int framesSent = 0;
 
+  /// How many times the logs and dictionaries were read off the device. A retry
+  /// that redid the run would read them again.
+  int reads = 0;
+
   /// Runs after each frame, for a test that wants to pull the page away
   /// mid-upload. Not `onFrame`: `callRpcFrames` takes a parameter by that name
   /// and would shadow it.
   void Function(int framesSoFar)? onFrameSent;
 
-  /// Refuses the write whose path names this cuid, for the case where one card
-  /// fails and the run carries on.
-  int? failWriteForCuid;
+  /// Refuses the writes this answers true for. A predicate rather than a cuid
+  /// because the user dictionary's path carries none, and that is the write a
+  /// scoped retry has to be able to fail.
+  bool Function(String path)? refuseWrite;
 
   /// Slows each frame so the reports clear `ProgressThrottle`'s 150 ms floor.
   /// Without it a run finishes inside one window and the only report that
@@ -390,6 +529,7 @@ class FakeUploadClient extends FakeRecoverClient {
     bool pipelined = true,
   }) async {
     if (request.hasStorageReadRequest()) {
+      reads++;
       final frame = Main()
         ..storageReadResponse = (ReadResponse()
           ..file = (File()..data = utf8.encode(log)));
@@ -426,11 +566,9 @@ class FakeUploadClient extends FakeRecoverClient {
   }) async {
     var refuse = false;
     await body((frame) async {
-      if (failWriteForCuid != null &&
+      if (refuseWrite != null &&
           frame.hasStorageWriteRequest() &&
-          frame.storageWriteRequest.path.contains(
-            failWriteForCuid!.toRadixString(16),
-          )) {
+          refuseWrite!(frame.storageWriteRequest.path)) {
         refuse = true;
         return;
       }
@@ -443,15 +581,72 @@ class FakeUploadClient extends FakeRecoverClient {
   }
 }
 
+/// Answers for whichever keys the test says the dictionary already holds.
+class FakeKnownKeys implements KnownKeyFilter {
+  FakeKnownKeys({this.nested, this.reader});
+
+  final BigInt? nested;
+  final BigInt? reader;
+  int disposed = 0;
+
+  @override
+  BigInt? nestedMatch({required int cuid, required int nt, required int ks}) =>
+      nested;
+
+  @override
+  BigInt? readerMatch({
+    required int uid,
+    required int nt,
+    required int nr,
+    required int ar,
+  }) => reader;
+
+  @override
+  void dispose() => disposed++;
+}
+
 class FakeStaticRecoverer implements StaticEncryptedRecoverer {
-  FakeStaticRecoverer(this.dicts);
+  FakeStaticRecoverer(this.dicts, {this.throws});
 
   final List<StaticCandidateDict> dicts;
+
+  /// Raised instead of answering, for the run-level failure path.
+  final Object? throws;
+
+  /// How many nonces the generator was actually asked about. Zero is the claim
+  /// the dedup makes: the expensive path was never entered.
+  int askedAbout = 0;
 
   @override
   Future<List<StaticCandidateDict>> buildCandidateDicts(
     List<NestedNonce> nonces,
-  ) async => dicts;
+  ) async {
+    askedAbout += nonces.length;
+    if (throws != null) throw throws!;
+    return dicts;
+  }
+}
+
+/// Reports [fractions] in order and then finds nothing, so a test can watch
+/// both what reaches the page while the attack runs and what it is left showing
+/// once the group is over. A repeated value stands in for two polls of the
+/// native channel that read the same permille.
+class FakeHardnested implements HardnestedRecoverer {
+  FakeHardnested(this.fractions);
+
+  final List<double> fractions;
+
+  @override
+  Future<HardnestedResult> recoverKey({
+    required int cuid,
+    required List<int> ntEnc,
+    required List<int> parEnc,
+    void Function(double fraction)? onProgress,
+    bool Function()? isCancelled,
+  }) async {
+    fractions.forEach(onProgress ?? (_) {});
+    return (key: null, outcome: HardnestedOutcome.noKey);
+  }
 }
 
 /// A dictionary of [entries] candidates for one sector key.
@@ -463,4 +658,213 @@ StaticCandidateDict dictOf(int cuid, int entries) {
       keys: Uint64List.fromList(List.generate(entries, (i) => i + 1)),
     );
   return StaticCandidateDict.built(cuid, builder.build());
+}
+
+/// The readout's own arithmetic. Nothing asserted this, and two bugs lived
+/// through it during development: units planned per card but ticked once for
+/// the batch, and keys found in the dictionary ticking a counter sized without
+/// them. Both leave the bar permanently short of its own total.
+void _unitAccountingGroup() {
+  group('the progress counter adds up', () {
+    const twoCards =
+        'Sec 3 key A cuid e37aa759 nt0 db7df8ae ks0 77ff617e par0 1111 dist 0\n'
+        'Sec 3 key B cuid e37aa759 nt0 db7df8ae ks0 77ff617e par0 1111 dist 0\n'
+        'Sec 4 key A cuid 11223344 nt0 aabbccdd ks0 11223344 par0 1111 dist 0\n';
+
+    test('every planned unit is finished by the end of a run', () async {
+      final upload = FakeUploadClient(twoCards);
+      final controller = RecoverController(
+        client: upload,
+        mfApi: FakeReaderApi(),
+        nestedApi: FakeTagApi(exists: true),
+        staticRecoverer: FakeStaticRecoverer([
+          dictOf(0xe37aa759, 50),
+          dictOf(0x11223344, 50),
+        ]),
+        knownKeyFilter: (_) => FakeKnownKeys(),
+      );
+      addTearDown(controller.dispose);
+
+      await controller.start();
+
+      expect(controller.totalUnits, 2, reason: 'two cards, two units');
+      expect(controller.doneUnits, controller.totalUnits);
+    });
+
+    // A key answered by the dictionary was removed from the plan, so it must
+    // not advance the counter either.
+    test('a key skipped as known does not advance the counter', () async {
+      final upload = FakeUploadClient(twoCards);
+      final controller = RecoverController(
+        client: upload,
+        mfApi: FakeReaderApi(),
+        nestedApi: FakeTagApi(exists: true),
+        staticRecoverer: FakeStaticRecoverer([dictOf(0xe37aa759, 50)]),
+        knownKeyFilter: (_) =>
+            FakeKnownKeys(nested: BigInt.parse('A0A1A2A3A4A5', radix: 16)),
+      );
+      addTearDown(controller.dispose);
+
+      await controller.start();
+
+      expect(controller.doneUnits, controller.totalUnits);
+    });
+
+    // The bug the collapsed model exists for: a hardnested group that ended at
+    // 47% used to sit there through the next group's table decompression,
+    // which reports nothing at all.
+    test('a fraction does not survive the group that produced it', () async {
+      // Two hardnested groups: single-sample lines with no `dist`, which is
+      // what separates them from static-encrypted.
+      const hardLog =
+          'Sec 5 key A cuid e37aa759 nt0 db7df8ae ks0 77ff617e par0 1111\n'
+          'Sec 6 key A cuid e37aa759 nt0 aabbccdd ks0 11223344 par0 1111\n';
+      final seen = <RecoverCalculating>[];
+      final controller = RecoverController(
+        client: FakeUploadClient(hardLog),
+        mfApi: FakeReaderApi(),
+        nestedApi: FakeTagApi(exists: true),
+        hardnestedRecoverer: FakeHardnested([0.47]),
+        knownKeyFilter: (_) => FakeKnownKeys(),
+      );
+      addTearDown(controller.dispose);
+      controller.addListener(() {
+        final state = controller.state;
+        if (state is RecoverCalculating) seen.add(state);
+      });
+
+      await controller.start();
+
+      expect(
+        seen.any((s) => s.fraction == 0.47),
+        isTrue,
+        reason: 'the attack has to report while it runs',
+      );
+      expect(
+        seen.last.fraction,
+        isNull,
+        reason: 'and the figure must not outlive the group it measured',
+      );
+    });
+
+    // The native channel is polled on a timer, so most polls read the permille
+    // the last one already reported. Rebuilding on those would be a rebuild
+    // every 500 ms for hours showing the same number.
+    test('a poll that reads the same figure twice rebuilds once', () async {
+      const hardLog =
+          'Sec 5 key A cuid e37aa759 nt0 db7df8ae ks0 77ff617e par0 1111\n';
+      final seen = <double?>[];
+      final controller = RecoverController(
+        client: FakeUploadClient(hardLog),
+        mfApi: FakeReaderApi(),
+        nestedApi: FakeTagApi(exists: true),
+        hardnestedRecoverer: FakeHardnested([0.47, 0.47, 0.61]),
+        knownKeyFilter: (_) => FakeKnownKeys(),
+      );
+      addTearDown(controller.dispose);
+      controller.addListener(() {
+        final state = controller.state;
+        if (state is RecoverCalculating) seen.add(state.fraction);
+      });
+
+      await controller.start();
+
+      expect(
+        seen.where((f) => f == 0.47),
+        hasLength(1),
+        reason: 'the repeated poll must not reach the page a second time',
+      );
+      expect(
+        seen.where((f) => f == 0.61),
+        hasLength(1),
+        reason: 'and a figure that did change still has to',
+      );
+    });
+
+    // A phase that can name itself must also stop naming itself. A state per
+    // phase used to leave its own last reading up after the phase ended - a
+    // hardnested group that finished at 47% sat there through the next group's
+    // table decompression, which reports nothing.
+    test('a label does not outlive the phase it describes', () async {
+      final upload = FakeUploadClient(twoCards);
+      final seen = <RecoverCalculating>[];
+      final controller = RecoverController(
+        client: upload,
+        mfApi: FakeReaderApi(),
+        nestedApi: FakeTagApi(exists: true),
+        staticRecoverer: FakeStaticRecoverer([
+          dictOf(0xe37aa759, 50),
+          dictOf(0x11223344, 50),
+        ]),
+        knownKeyFilter: (_) => FakeKnownKeys(),
+      );
+      addTearDown(controller.dispose);
+      controller.addListener(() {
+        final state = controller.state;
+        if (state is RecoverCalculating) seen.add(state);
+      });
+
+      await controller.start();
+
+      expect(
+        seen.any((s) => s.label != null),
+        isTrue,
+        reason: 'generation has to say what it is doing',
+      );
+      expect(
+        seen.last.label,
+        isNull,
+        reason: 'and stop saying it once the work it named is done',
+      );
+    });
+
+    // Every planned unit has to be accounted for even when the whole batch
+    // failed, or the readout ends a run short of its own total.
+    test('a failed generation still finishes its cards', () async {
+      final upload = FakeUploadClient(twoCards);
+      final controller = RecoverController(
+        client: upload,
+        mfApi: FakeReaderApi(),
+        nestedApi: FakeTagApi(exists: true),
+        staticRecoverer: FakeStaticRecoverer(
+          const [],
+          throws: StateError('engine gone'),
+        ),
+        knownKeyFilter: (_) => FakeKnownKeys(),
+      );
+      addTearDown(controller.dispose);
+
+      await controller.start();
+
+      expect(controller.totalUnits, 2, reason: 'two cards were planned');
+      expect(controller.doneUnits, controller.totalUnits);
+    });
+
+    // The generation step is the one that used to leave a finished hardnested
+    // percentage on screen for minutes.
+    test('candidate generation names itself', () async {
+      final upload = FakeUploadClient(twoCards);
+      final seen = <RecoverState>[];
+      final controller = RecoverController(
+        client: upload,
+        mfApi: FakeReaderApi(),
+        nestedApi: FakeTagApi(exists: true),
+        staticRecoverer: FakeStaticRecoverer([
+          dictOf(0xe37aa759, 50),
+          dictOf(0x11223344, 50),
+        ]),
+        knownKeyFilter: (_) => FakeKnownKeys(),
+      );
+      addTearDown(controller.dispose);
+      controller.addListener(() => seen.add(controller.state));
+
+      await controller.start();
+
+      expect(
+        seen.whereType<RecoverCalculating>().any((s) => s.label != null),
+        isTrue,
+        reason: 'generation has to say what it is doing, not just "recovering"',
+      );
+    });
+  });
 }

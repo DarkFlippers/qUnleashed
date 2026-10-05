@@ -23,6 +23,7 @@
 //-----------------------------------------------------------------------------
 
 #include "hardnested.h"
+#include "qunleashed_hn_progress.h"
 #if defined(_WIN32) && !defined(__MINGW32__)
 #include "pthread_shim.h"  // clang-cl/MSVC ship no <pthread.h>
 #else
@@ -2180,7 +2181,11 @@ int mfnestedhard(uint8_t blockNo, uint8_t keyType, uint8_t *key, uint8_t trgBloc
         pre_XOR_nonces();
         prepare_bf_test_nonces(nonces, best_first_bytes[0]);
 
-        for (uint8_t j = 0; j < NUM_SUMS && !key_found; j++)
+        // Also on abort: a stop inside brute_force leaves key_found false, so
+        // without this the engine walks every remaining Sum(a8) guess - up to
+        // eighteen more rounds of candidate generation - after the user has
+        // already asked it to stop.
+        for (uint8_t j = 0; j < NUM_SUMS && !key_found && !qunleashed_hn_aborted(); j++)
         {
             float expected_brute_force = nonces[best_first_bytes[0]].expected_num_brute_force;
             snprintf(progress_text, sizeof(progress_text), "(%d. guess: Sum(a8) = %" PRIu16 ")", j + 1, sums[nonces[best_first_bytes[0]].sum_a8_guess[j].sum_a8_idx]);
