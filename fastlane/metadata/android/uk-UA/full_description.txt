@@ -1,0 +1,5 @@
+qUnleashed is a Flutter companion app for Flipper Zero focused on custom firmware workflows, especially Unleashed firmware.
+
+It supports BLE connection, firmware release tracking, changelog viewing, update downloads, in-app firmware installation, device information, archive management, file browsing, screen streaming, remote control, CLI access, an apps catalog, MIFARE Classic Mfkey32 recovery, an infrared library, and FlipperMap tools for location metadata found in synced files.
+
+The project is free software and is developed from source in the public repository.
