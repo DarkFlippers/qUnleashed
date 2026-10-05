@@ -228,6 +228,16 @@ static void init_bitflip_bitarrays(void)
         for (uint16_t bitflip = 0x001; bitflip < 0x400; bitflip++)
         {
             bitflip_bitarrays[odd_even][bitflip] = NULL;
+            // Cleared unconditionally, not only on the paths that go on to set
+            // it: free_bitflip_bitarrays frees every entry of this array and
+            // does not NULL what it frees, so an entry left holding a pointer
+            // from the previous attack is a double free on this one. (init_it_all
+            // memsets bitflip_bitarrays and count_bitflip_bitarrays, and not
+            // this one.) Before the skip below, every entry that could ever
+            // hold a pointer was reassigned on every run and the other ~1700
+            // stayed NULL from static zero-initialisation, so the array
+            // happened to be safe. Now one of the 351 can be skipped.
+            bitflip_bitarrays_pointers[odd_even][bitflip] = NULL;
             count_bitflip_bitarrays[odd_even][bitflip] = 1 << 24;
             bitflip_info p = get_bitflip(odd_even, bitflip);
             if (p.input_buffer != NULL)
@@ -236,13 +246,39 @@ static void init_bitflip_bitarrays(void)
                 uint32_t *bitset = (uint32_t *)malloc_bitarray(count);
                 if (bitset == NULL)
                 {
-                    printf("Out of memory error in init_bitflip_statelists(). Aborting...\n");
-                    exit(4);
+                    // qUnleashed: skipped, where upstream called exit(4). This
+                    // one allocation failure is containable: the consumers
+                    // NULL-check bitflip_bitarrays (see the uses around the
+                    // bitflip loops below) and count_bitflip_bitarrays is
+                    // already 1 << 24, which reads as "this table constrains
+                    // nothing". So a table that will not allocate makes the
+                    // attack slower rather than impossible - and on a phone,
+                    // where this loop's 351 allocations come to ~700 MiB and one
+                    // of them fails, slower is the difference between a result
+                    // and a dead app.
+                    printf("Out of memory in init_bitflip_bitarrays(); skipping bitflip %03x\n", bitflip);
+                    continue;
                 }
 
                 bool success = XzDecode(p.input_buffer, p.len, (uint8_t *)bitset, &count);
                 if (!success)
                 {
+                    // Left as upstream wrote it, deliberately, and NOT skipped
+                    // like the allocation above. The two failures are not the
+                    // same kind of thing: the malloc already succeeded here, so
+                    // this is not memory pressure - it means the vendored
+                    // tables.c payload or the XZ decoder is wrong, which is a
+                    // property of the build and affects every table identically.
+                    //
+                    // Skipping it would therefore not degrade the attack, it
+                    // would empty it: init_allbitflips_array starts with every
+                    // bit set and is only ever intersected, so with no bitflip
+                    // tables nothing narrows the state space and mfnestedhard
+                    // walks every Sum(a8) guess and returns 0 - which this
+                    // bridge maps to HardnestedOutcome.noKey, whose own doc
+                    // calls it "an answer about the card". Telling someone their
+                    // card has no recoverable key because the build's tables
+                    // would not decompress is worse than the crash.
                     printf("Failed to decompress states\n");
                     exit(4);
                 }
@@ -290,6 +326,56 @@ static void init_bitflip_bitarrays(void)
     char progress_text[80];
     sprintf(progress_text, "Using %d precalculated bitflip state tables", num_all_effective_bitflips);
     hardnested_print_progress(0, progress_text, (float)(1LL << 47), 0);
+}
+
+// qUnleashed: the engine's fixed peak footprint, for the caller's pre-flight
+// check. See qunleashed_hn_peak_bytes in the bridge, which exports it.
+//
+// Here, in the vendored file, rather than in the bridge: every term below is an
+// allocation on the next few hundred lines, and NUM_PART_SUMS is file-local. A
+// copy kept anywhere else would go stale the first time one of them changes,
+// silently, and the whole value of the figure is that the caller trusts it.
+//
+// Why these five and not others: mfnestedhard calls init_bitflip_bitarrays,
+// init_part_sum_bitarrays, init_sum_bitarrays, init_allbitflips_array and
+// init_nonce_memory back to back before it reads a single nonce, and frees only
+// the bitflip tables partway through (after shrink_key_space). So this sum is
+// what has to be resident at once. The candidate statelists that come after are
+// deliberately not counted - they are allocated once the tables are freed, and
+// so largely reuse that space rather than adding to the peak.
+uint64_t qunleashed_hn_engine_peak_bytes(void)
+{
+    // What malloc_bitarray is asked for everywhere except the bitflip tables,
+    // which carry one extra word of header ahead of the bitarray.
+    const uint64_t bitarray = (uint64_t)sizeof(uint32_t) * (1 << 19);
+    const uint64_t table = (uint64_t)sizeof(uint32_t) * ((1 << 19) + 1);
+
+    // init_bitflip_bitarrays: one table per populated tables.c entry. Walked
+    // rather than counted, so re-vendoring the table set cannot leave it stale.
+    uint64_t total = 0;
+    for (uint16_t bitflip = 0x001; bitflip < 0x400; bitflip++)
+    {
+        if (get_bitflip(EVEN_STATE, bitflip).input_buffer != NULL)
+        {
+            total += table;
+        }
+        if (get_bitflip(ODD_STATE, bitflip).input_buffer != NULL)
+        {
+            total += table;
+        }
+    }
+    // init_nonce_memory: two per possible first byte. The largest term by a
+    // long way - bigger than every bitflip table put together.
+    total += (uint64_t)256 * 2 * bitarray;
+    // init_part_sum_bitarrays: part_sum_a0 and part_sum_a8, both parities.
+    total += (uint64_t)2 * NUM_PART_SUMS * 2 * bitarray;
+    // init_sum_bitarrays: sum_a0 only, both parities. sum_a8_bitarrays is
+    // declared beside it but never allocated there - free_sum_bitarrays frees
+    // only a0 - so counting it would overstate this by 76 MiB.
+    total += (uint64_t)NUM_SUMS * 2 * bitarray;
+    // init_allbitflips_array: one per parity.
+    total += (uint64_t)2 * bitarray;
+    return total;
 }
 
 static void free_bitflip_bitarrays(void)

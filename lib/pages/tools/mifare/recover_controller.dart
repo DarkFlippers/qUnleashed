@@ -65,10 +65,22 @@ class RecoverController extends ChangeNotifier {
 
   late RecoverState _state;
   bool _running = false;
-  // Set from dispose(): the page can be popped (Stop) while _run() is still in
+  // Set from dispose(): the page can be popped while _run() is still in
   // flight. Once true we neither notify the disposed ChangeNotifier nor start
   // any further recovery or device write.
   bool _disposed = false;
+  // Set from stop(): the user asked the run to end but the page is still here.
+  //
+  // Deliberately not the same flag as _disposed, which is the whole point of
+  // this one. Backing out of the page has to abandon the keys - the dictionary
+  // write is a read-modify-write over a client the page no longer owns - while
+  // Stop must keep them, which is the only reason to offer it.
+  //
+  // The two part company in the one place that decides whether the run's work
+  // survives, the _saveKeys() at the end of _run(), and in the reporting path:
+  // _emit and _tick check only _disposed, because a cancelled run still has a
+  // page to report what it managed to. See _stopping.
+  bool _cancelled = false;
   final List<RecoverEntry> _entries = [];
   // Set true once a per-card static-encrypted candidate dictionary is actually
   // written, so the summary can distinguish "candidates saved" from "nothing".
@@ -88,6 +100,69 @@ class RecoverController extends ChangeNotifier {
 
   RecoverState get state => _state;
   bool get running => _running;
+
+  /// True from [stop] until the *next* run clears it.
+  ///
+  /// Outlives the run it stopped, deliberately - nothing needs it cleared on
+  /// the way out, and clearing it there would race the unwind. The page only
+  /// consults it while [canStop], so the stale-true window is never shown.
+  ///
+  /// The page reads it to stop offering Stop a second time: an attack notices
+  /// the request at its next bounded check, which on a hardnested bucket is not
+  /// immediate, and a button that stays live through that reads as one that did
+  /// nothing.
+  bool get cancelled => _cancelled;
+
+  /// Whether there is anything left for [stop] to stop.
+  ///
+  /// Narrower than [running], in two ways, and for the same reason both times: a
+  /// button offered where nothing honours it reads as a button that does
+  /// nothing, which is the failure having a Stop at all is meant to avoid.
+  ///
+  /// Not during the dictionary write. `_running` stays true through it, and
+  /// [retrySave] sets `_running` for an operation that is *nothing but* that
+  /// write - which deliberately ignores [_stopping], because Stop has to keep
+  /// the keys.
+  ///
+  /// And only for the phases that do honour it. Attacks poll it, and the
+  /// candidate upload is cancelled mid-write. The download is the gap: it is
+  /// minutes over BLE and `storageReadChunked` takes no `isCancelled` - unlike
+  /// the write side - so the request runs to completion whatever is asked of
+  /// it. Closing that properly is a flipperlib change; until then the honest
+  /// thing is not to offer the button. `RecoverWaitingForDevice` has nothing
+  /// running to stop in the first place.
+  bool get canStop =>
+      _running &&
+      !_saving &&
+      (_state is RecoverCalculating || _state is RecoverUploading);
+  // Set around the dictionary write, which is the one part of a run that Stop
+  // must not interrupt and cannot usefully be offered during.
+  bool _saving = false;
+
+  /// Asks the run to stop at the next step, keeping every key it has found.
+  ///
+  /// Honoured per step, not instantly, and the step differs by attack: the
+  /// hardnested attack polls [_stopping] through its `isCancelled` callback and
+  /// returns [HardnestedOutcome.stopped]; the reader loop checks once per nonce;
+  /// the weak loop once per batch of four.
+  ///
+  /// The one thing it does interrupt mid-step is the static-encrypted candidate
+  /// upload, which is cancelled in flight - that card's half-written dictionary
+  /// is removed from the device and the card gets a row saying so. No *key* is
+  /// ever lost to it: a candidate dictionary is regenerated from the same log on
+  /// the next run, and _run() still reaches its own dictionary write.
+  void stop() {
+    if (_disposed || _cancelled || !canStop) return;
+    _cancelled = true;
+    notifyListeners();
+  }
+
+  /// Whether the run should wind up: the user asked, or the page is gone.
+  ///
+  /// The check every unit boundary makes. [_emit] and [_tick] deliberately do
+  /// not use it - a cancelled run still has a page to report to, and reporting
+  /// what it managed is the point.
+  bool get _stopping => _disposed || _cancelled;
 
   /// Every recovery result gathered this run, in completion order.
   List<RecoverEntry> get entries => UnmodifiableListView(_entries);
@@ -148,6 +223,9 @@ class RecoverController extends ChangeNotifier {
     _entries.clear();
     _wroteCandidates = false;
     _hadFailure = false;
+    // Cleared here, not in stop(): a Stop from the previous run must not end
+    // this one before it starts.
+    _cancelled = false;
     _totalUnits = 0;
     _doneUnits = 0;
     _skippedKnown = 0;
@@ -291,14 +369,17 @@ class RecoverController extends ChangeNotifier {
     await _recoverReader(readerNonces);
     await _recoverWeak(weak);
     for (final group in hardGroups) {
-      if (_disposed) return;
+      // break, not return: a stopped run still has to reach the write below,
+      // which is the difference between Stop and backing out of the page.
+      if (_stopping) break;
       await _recoverHardnested(group);
     }
-    if (staticSingles.isNotEmpty) {
+    if (!_stopping && staticSingles.isNotEmpty) {
       await _recoverStatic(staticSingles, cards: staticCards);
     }
-    // The user can back out (Stop) mid-run; don't rewrite the user dict (a
-    // read-modify-write over the shared client) after that point.
+    // Backing out of the page is the one case that abandons the keys: the dict
+    // write is a read-modify-write over a client this page no longer owns.
+    // A Stop falls through to it, which is the whole point of having it.
     if (_disposed) return;
 
     await _saveKeys();
@@ -310,6 +391,8 @@ class RecoverController extends ChangeNotifier {
   /// are already in memory, so a failed write of a dictionary measured in
   /// kilobytes should not cost the hours of cracking that produced it.
   Future<void> _saveKeys() async {
+    // Closes the Stop button for the duration: see [canStop].
+    _saving = true;
     _emit(const RecoverUploading());
     final List<String> added;
     try {
@@ -318,6 +401,8 @@ class RecoverController extends ChangeNotifier {
       LogService.error('[Recover] save keys failed: $e\n$st');
       _emit(const RecoverError(RecoverErrorType.saveFailed));
       return;
+    } finally {
+      _saving = false;
     }
 
     _emit(
@@ -326,6 +411,9 @@ class RecoverController extends ChangeNotifier {
         hasCandidates: _wroteCandidates,
         hasFailures: _hadFailure,
         skippedKnown: _skippedKnown,
+        // Still set here: _cancelled is cleared by the next _run(), not on the
+        // way out of this one, precisely so the summary can say so.
+        stopped: _cancelled,
       ),
     );
   }
@@ -355,7 +443,7 @@ class RecoverController extends ChangeNotifier {
 
   Future<void> _recoverReader(List<MfKey32Nonce> nonces) async {
     for (final n in nonces) {
-      if (_disposed) return;
+      if (_stopping) return;
       // Already in a dictionary: record it as known and skip the attack. The
       // row reads the same either way, so the only visible difference is that
       // the run gets there sooner.
@@ -384,7 +472,7 @@ class RecoverController extends ChangeNotifier {
     // Recovery is memory-heavy (~50 MB per isolate); cap concurrency.
     const maxConcurrent = 4;
     for (var i = 0; i < weak.length; i += maxConcurrent) {
-      if (_disposed) return;
+      if (_stopping) return;
       await Future.wait(
         weak.skip(i).take(maxConcurrent).map((n) async {
           final known = _known.nestedMatch(
@@ -422,6 +510,8 @@ class RecoverController extends ChangeNotifier {
     final parEnc = group.map((n) => n.par!).toList(growable: false);
     BigInt? key;
     String? note;
+    // Every outcome below produces the same row; these three are what it says.
+    var counted = true;
     try {
       final result = await _hardnestedRecoverer.recoverKey(
         cuid: first.cuid,
@@ -452,7 +542,7 @@ class RecoverController extends ChangeNotifier {
             ),
           );
         },
-        isCancelled: () => _disposed,
+        isCancelled: () => _stopping,
       );
       key = result.key;
       switch (result.outcome) {
@@ -477,8 +567,21 @@ class RecoverController extends ChangeNotifier {
           _hadFailure = true;
           note = l10n.mfHardnestedFailed;
         case HardnestedOutcome.stopped:
-          // The user's own doing, so it is not a failure and says nothing.
-          return;
+          // The user's own doing, so not a failure - _hadFailure is left alone
+          // and the nonces are still on the card for the next run.
+          //
+          // Clears the phase without _tick(): no unit was finished, so nothing
+          // should claim one, but the label and percentage this attack was
+          // reporting would otherwise sit on screen - at whatever figure Stop
+          // caught it - through the dictionary write that follows.
+          _emit(const RecoverCalculating());
+          // Still reported, via the one row-building call below rather than a
+          // second copy of it. This is the sector the user watched for however
+          // long before pressing Stop; leaving without a row left it missing
+          // from the summary, which reads as though it was never attempted.
+          // counted: false because no unit was finished.
+          note = l10n.mfHardnestedStopped;
+          counted = false;
         case HardnestedOutcome.outOfMemory:
           _hadFailure = true;
           note = l10n.mfHardnestedOutOfMemory;
@@ -509,6 +612,7 @@ class RecoverController extends ChangeNotifier {
       keyName: first.keyName,
       key: key,
       note: note,
+      counted: counted,
     );
   }
 
@@ -582,7 +686,7 @@ class RecoverController extends ChangeNotifier {
     var doneBytes = 0;
 
     for (final dict in dicts) {
-      if (_disposed) return;
+      if (_stopping) return;
       // This card's unit, whatever becomes of it. Inside the loop so the
       // readout advances through the phase rather than jumping by N at the end.
       // One dict per card - buildStaticDicts groups by cuid - so this ends on
@@ -629,15 +733,30 @@ class RecoverController extends ChangeNotifier {
             if (throttle.shouldEmit(overall)) _emit(RecoverUploading(overall));
           },
           // Stop means stop: without this the write runs to completion against
-          // a device the user has walked away from, and the page it was
-          // reporting to is gone. The firmware's stream is closed cleanly, and
-          // the half-written file deleted where the link outlived the cancel.
-          isCancelled: () => _disposed,
+          // a device the user has walked away from, or long after they asked it
+          // to end. The firmware's stream is closed cleanly, and the
+          // half-written file deleted where the link outlived the cancel.
+          isCancelled: () => _stopping,
         );
         _wroteCandidates = true;
       } on FlipperWriteCancelledException {
-        // Already handled: the user asked to stop, and nothing is left to
-        // report to a disposed controller.
+        // Our own cancel coming back, from either flag - and the two want
+        // different things, which this used to miss. On a dispose there is
+        // nothing left to report to. On a Stop the page is still there, and
+        // returning silently is how this card came to vanish from the summary
+        // altogether: no row, _wroteCandidates left false, so even the
+        // "verify these on the device" footnote went missing. The user had
+        // watched that upload run.
+        //
+        // Not a failure, so _hadFailure is left alone - the candidates are
+        // regenerated from the same log on the next run. And still a return:
+        // every card behind this one would be cancelled the same way.
+        if (!_disposed) {
+          // No candidateCount: that row reads "N candidate keys -> <file>",
+          // and the file was deleted on the way out.
+          _addStaticEntry(cuid: dict.cuid, note: l10n.mfCandidatesStopped);
+          notifyListeners();
+        }
         return;
       } catch (e, st) {
         LogService.error('[Recover] static dict write failed: $e\n$st');

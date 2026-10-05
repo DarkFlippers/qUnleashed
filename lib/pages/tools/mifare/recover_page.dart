@@ -53,6 +53,30 @@ class _RecoverPageState extends State<RecoverPage> {
     cancelLabel: context.l10n.mfStopCancel,
   );
 
+  /// Stops the run without leaving the page.
+  ///
+  /// Behind the same confirmation as backing out: those strings ask only
+  /// whether to stop, not what becomes of the keys, so they are honest for
+  /// both. The outcomes are not the same - this keeps what the run has found
+  /// and leaving does not - which is the reason the button exists. Until it
+  /// did, the engine's Stop was reachable only by popping the page, so the only
+  /// way to interrupt an attack was to discard every key it had recovered.
+  ///
+  /// Disabled rather than hidden once asked for: a hardnested bucket can take a
+  /// moment to reach its next check, and a button that vanishes mid-tap reads
+  /// as a misfire.
+  Widget _stopButton(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(top: 12),
+    child: OutlinedButton(
+      onPressed: _controller.cancelled
+          ? null
+          : () async {
+              if (await _confirmAbort()) _controller.stop();
+            },
+      child: Text(context.l10n.mfStopConfirm),
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
@@ -74,6 +98,7 @@ class _RecoverPageState extends State<RecoverPage> {
           padding: const EdgeInsets.all(16),
           children: [
             _StatusBlock(controller: _controller),
+            if (_controller.canStop) _stopButton(context),
             ..._buildGroups(_controller),
           ],
         ),
@@ -340,6 +365,11 @@ class _StatusBlock extends StatelessWidget {
             showPercent: false,
             height: 46,
           ),
+        // First, because it changes what every line under it means: "no new
+        // keys" after a Stop is a statement about two sectors, not twelve.
+        // Without it a part-finished run and a complete one read identically.
+        if (state case RecoverSaved(stopped: true))
+          _Footnote(l10n.mfStoppedEarly(controller.doneUnits, totalUnits)),
         // The run is only half done when candidates were written: the Flipper
         // has to try them against the card itself, and nothing said so. A user
         // who does not know that reads "saved" as "finished".

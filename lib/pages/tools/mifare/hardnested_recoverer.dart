@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:ffi';
+import 'dart:io';
 import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
 
+import '../../../services/logging.dart';
 import 'mifare_native.dart';
 
 /// How an attack ended, which the user needs told apart.
@@ -19,9 +21,14 @@ enum HardnestedOutcome {
   /// Stopped because the caller asked.
   stopped,
 
-  /// The bridge could not allocate its own nonce buffer. Not a verdict on
-  /// whether the device could host the attack: the engine's own allocations
-  /// still call exit(), which nothing here can catch.
+  /// Not enough memory. Either the pre-flight gate refused the attack before
+  /// it started ([hardnestedMemoryVerdict]), or the bridge could not allocate
+  /// its own nonce buffer.
+  ///
+  /// Still not a verdict on the engine's *internal* allocations: those call
+  /// exit(), which nothing here can catch, and on a 64-bit phone they do not
+  /// fail at all - the kernel kills the process instead. The gate exists
+  /// because that is unreachable from here once the attack has begun.
   outOfMemory,
 
   /// Another attack is already running. The engine keeps one channel, so a
@@ -119,6 +126,74 @@ HardnestedResult hardnestedResultFor(int status, int foundKey) =>
 /// how fresh the bar is and how quickly a Stop lands.
 const _pollInterval = Duration(milliseconds: 500);
 
+typedef _BytesNative = Uint64 Function();
+typedef _BytesDart = int Function();
+
+/// How much the requirement adds over the engine's measured peak: an eighth.
+///
+/// Small on purpose. `qunleashed_hn_peak_bytes` is a measurement of five named
+/// allocations rather than an estimate - the note on its definition in
+/// hardnested.c says which, and what it leaves out - so this only has to cover
+/// the part it leaves out, plus the app's own working set alongside it.
+const _memoryMarginDivisor = 8;
+
+/// Bytes an attack needs available before it is worth starting.
+///
+/// One spelling, so the refusal message cannot quote a different number from
+/// the one the judgement used. That had already happened once: the message named
+/// the peak while the comparison used the peak plus the margin, so it read
+/// "needs 702 MiB, has 800 MiB" on a run it had just refused.
+int hardnestedRequiredBytes(int peakBytes) =>
+    peakBytes + peakBytes ~/ _memoryMarginDivisor;
+
+/// Whether both figures are answers at all.
+///
+/// Written once because the verdict and its caller both need it and for
+/// different reasons: the verdict has to go ahead, the caller has to say so.
+bool _figuresUsable(int peakBytes, int availableBytes) =>
+    peakBytes > 0 && availableBytes > 0;
+
+/// Whether an attack whose engine peaks at [peakBytes] should be started on a
+/// device with [availableBytes] going spare. Returns the refusal to hand back,
+/// or null to go ahead.
+///
+/// This exists because the engine's own out-of-memory handling cannot run where
+/// it is needed. It calls `exit()` when an allocation fails - but Android and
+/// iOS hand out address space lazily, so on 64-bit the allocation does not fail:
+/// the kernel kills the process when the pages are first touched, with no return
+/// value anywhere to check. Before the attack starts is the only place left, and
+/// [HardnestedOutcome.outOfMemory] was an outcome that essentially never fired.
+///
+/// Pure, and separate from the lookups, because the whole judgement is the two
+/// comparisons below and testing them must not need a loaded engine.
+@visibleForTesting
+HardnestedResult? hardnestedMemoryVerdict({
+  required int peakBytes,
+  required int availableBytes,
+}) {
+  // Either figure missing means the question could not be asked - no engine, or
+  // a platform with no answer for it. Going ahead is what shipped before this
+  // gate existed; refusing on an absent figure would turn an unasked question
+  // into a failed attack. The caller logs this case; see [_memoryVerdict].
+  if (!_figuresUsable(peakBytes, availableBytes)) return null;
+  if (availableBytes >= hardnestedRequiredBytes(peakBytes)) return null;
+  return (key: null, outcome: HardnestedOutcome.outOfMemory);
+}
+
+/// The one record of why an attack the user asked for never started.
+///
+/// Built here rather than inline so a test can hold it to naming the figure the
+/// judgement actually used - the requirement, not the bare peak.
+@visibleForTesting
+String hardnestedMemoryRefusal({
+  required int peakBytes,
+  required int availableBytes,
+}) =>
+    '[Recover] hardnested not started: needs '
+    '${hardnestedRequiredBytes(peakBytes) >> 20} MiB '
+    '(engine peaks at ${peakBytes >> 20} MiB), '
+    'OS reports ${availableBytes >> 20} MiB available';
+
 class NativeHardnestedRecoverer implements HardnestedRecoverer {
   @override
   Future<HardnestedResult> recoverKey({
@@ -135,6 +210,11 @@ class NativeHardnestedRecoverer implements HardnestedRecoverer {
     if (ntEnc.length < 2) {
       return (key: null, outcome: HardnestedOutcome.noKey);
     }
+
+    // Before anything is allocated, and before the isolate: once the engine is
+    // inside init_bitflip_bitarrays there is nothing left to refuse with.
+    final refusal = _memoryVerdict();
+    if (refusal != null) return refusal;
 
     // Allocated here rather than in the isolate: this side has to read it while
     // the other side is blocked inside the engine. Native memory is
@@ -159,6 +239,109 @@ class NativeHardnestedRecoverer implements HardnestedRecoverer {
       poll.cancel();
       calloc.free(channel);
     }
+  }
+
+  /// The engine's peak, which is the same for the life of the process.
+  ///
+  /// Cached because it is a pure function of the vendored static tables - the
+  /// note on its definition in hardnested.c says so - while this runs once per
+  /// hardnested group, and a run re-attacks every nonce the card's log has ever
+  /// collected. Left null on failure, so the next group retries and the warn
+  /// below still fires rather than being swallowed by a cached miss.
+  ///
+  /// The available figure is deliberately *not* cached beside it: the previous
+  /// group just released ~1.8 GiB and another app may have grown since, so a
+  /// remembered figure would be exactly the stale number this gate exists to
+  /// avoid - refusing a group that would now fit, or admitting one that no
+  /// longer does.
+  static int? _peakBytes;
+  static DynamicLibrary? _library;
+
+  /// Asks the engine what it needs and the OS what it has, then judges.
+  ///
+  /// On the calling isolate, not in the attack's: the figures are a few
+  /// microseconds (the peak makes 2046 lookups into a static table index -
+  /// 0x001 to 0x3ff over both parities - and sums five allocation sizes; the
+  /// other reads a single OS figure), and the answer decides whether to spawn
+  /// at all.
+  ///
+  /// Advisory, so every way of not getting an answer ends in "go ahead" - but
+  /// none of them ends in silence. A gate that quietly switched itself off would
+  /// leave a killed app looking exactly like one with no gate at all.
+  static HardnestedResult? _memoryVerdict() {
+    final int peakBytes;
+    final int availableBytes;
+    try {
+      // Held too: on Windows openNativeLibrary stats the executable's directory
+      // to find the bundled DLL, and doing that per group is the only
+      // filesystem work on this path.
+      final library = _library ??= openHardnestedNativeLibrary();
+      peakBytes = _peakBytes ??= lookupNativeFunction(
+        () => library.lookupFunction<_BytesNative, _BytesDart>(
+          'qunleashed_hn_peak_bytes',
+        ),
+      )();
+      availableBytes = lookupNativeFunction(
+        () => library.lookupFunction<_BytesNative, _BytesDart>(
+          'qunleashed_hn_available_bytes',
+        ),
+      )();
+    } on NativeEngineUnavailable catch (e) {
+      // The decision not to answer is right: the isolate loads the engine too
+      // and reports a missing library as the packaging fault it is, so refusing
+      // here would send the user after a memory problem they do not have.
+      //
+      // Logged all the same, because the case that gets here is not only a
+      // missing library. On Apple the lookup is DynamicLibrary.process(), which
+      // never fails, so a build carrying the engine but *not these two symbols*
+      // lands here - and the isolate then looks up a different, older symbol,
+      // succeeds, and reports nothing. That exact fault has shipped before (see
+      // the note on QUNLEASHED_EXPORT in mfkey32/nested_bridge.c), and without
+      // this line the only trace of a silently disabled gate would be an app
+      // that disappears.
+      LogService.warn(
+        '[Recover] hardnested memory gate skipped, the engine did not '
+        'answer: $e',
+      );
+      return null;
+    } catch (e, st) {
+      // Deliberately broad, and the one place in this file where that is right.
+      // "Could not ask" already has a defined, safe meaning, so an advisory
+      // check must not be the thing that fails the attack: anything escaping
+      // here would otherwise reach _recoverHardnested's catch and be reported
+      // to the user as the attack failing, on a card that was probably fine.
+      LogService.error(
+        '[Recover] hardnested memory gate failed, starting anyway: $e\n$st',
+      );
+      return null;
+    }
+    if (!_figuresUsable(peakBytes, availableBytes)) {
+      // Only where a figure was expected. macOS and Windows answer 0 by design,
+      // so saying this on a desktop would be noise on every single attack.
+      if (Platform.isAndroid || Platform.isIOS) {
+        LogService.warn(
+          '[Recover] hardnested memory gate could not ask '
+          '(engine peak $peakBytes, available $availableBytes); '
+          'starting anyway',
+        );
+      }
+      return null;
+    }
+    final refusal = hardnestedMemoryVerdict(
+      peakBytes: peakBytes,
+      availableBytes: availableBytes,
+    );
+    if (refusal != null) {
+      // warn, not info: this is the whole record of why an attack the user
+      // asked for never ran, and info reaches nothing in a release build.
+      LogService.warn(
+        hardnestedMemoryRefusal(
+          peakBytes: peakBytes,
+          availableBytes: availableBytes,
+        ),
+      );
+    }
+    return refusal;
   }
 
   static HardnestedResult _recoverInIsolate(_HardnestedPayload p) {
