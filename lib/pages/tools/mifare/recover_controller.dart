@@ -65,10 +65,18 @@ class RecoverController extends ChangeNotifier {
 
   late RecoverState _state;
   bool _running = false;
-  // Set from dispose(): the page can be popped (Stop) while _run() is still in
+  // Set from dispose(): the page can be popped while _run() is still in
   // flight. Once true we neither notify the disposed ChangeNotifier nor start
   // any further recovery or device write.
   bool _disposed = false;
+  // Set from stop(): the user asked the run to end but the page is still here.
+  //
+  // Deliberately not the same flag as _disposed, which is the whole point of
+  // this one. Backing out of the page has to abandon the keys - the dictionary
+  // write is a read-modify-write over a client the page no longer owns - while
+  // Stop must keep them, which is the only reason to offer it. The two differ
+  // in exactly one place: the _saveKeys() at the end of _run().
+  bool _cancelled = false;
   final List<RecoverEntry> _entries = [];
   // Set true once a per-card static-encrypted candidate dictionary is actually
   // written, so the summary can distinguish "candidates saved" from "nothing".
@@ -88,6 +96,34 @@ class RecoverController extends ChangeNotifier {
 
   RecoverState get state => _state;
   bool get running => _running;
+
+  /// True once [stop] has been asked for and the run has not unwound yet.
+  ///
+  /// The page reads it to stop offering Stop a second time: an attack notices
+  /// the request at its next bounded check, which on a hardnested bucket is not
+  /// immediate, and a button that stays live through that reads as one that did
+  /// nothing.
+  bool get cancelled => _cancelled;
+
+  /// Asks the run to stop at the next step, keeping everything it has found.
+  ///
+  /// Where the engines honour it: the hardnested attack polls [_stopping]
+  /// through its `isCancelled` callback and returns
+  /// [HardnestedOutcome.stopped]; everything else is checked between units.
+  /// Nothing is interrupted mid-key, so the keys already recovered are intact
+  /// and _run() still reaches its dictionary write.
+  void stop() {
+    if (!_running || _disposed || _cancelled) return;
+    _cancelled = true;
+    notifyListeners();
+  }
+
+  /// Whether the run should wind up: the user asked, or the page is gone.
+  ///
+  /// The check every unit boundary makes. [_emit] and [_tick] deliberately do
+  /// not use it - a cancelled run still has a page to report to, and reporting
+  /// what it managed is the point.
+  bool get _stopping => _disposed || _cancelled;
 
   /// Every recovery result gathered this run, in completion order.
   List<RecoverEntry> get entries => UnmodifiableListView(_entries);
@@ -148,6 +184,9 @@ class RecoverController extends ChangeNotifier {
     _entries.clear();
     _wroteCandidates = false;
     _hadFailure = false;
+    // Cleared here, not in stop(): a Stop from the previous run must not end
+    // this one before it starts.
+    _cancelled = false;
     _totalUnits = 0;
     _doneUnits = 0;
     _skippedKnown = 0;
@@ -291,14 +330,17 @@ class RecoverController extends ChangeNotifier {
     await _recoverReader(readerNonces);
     await _recoverWeak(weak);
     for (final group in hardGroups) {
-      if (_disposed) return;
+      // break, not return: a stopped run still has to reach the write below,
+      // which is the difference between Stop and backing out of the page.
+      if (_stopping) break;
       await _recoverHardnested(group);
     }
-    if (staticSingles.isNotEmpty) {
+    if (!_stopping && staticSingles.isNotEmpty) {
       await _recoverStatic(staticSingles, cards: staticCards);
     }
-    // The user can back out (Stop) mid-run; don't rewrite the user dict (a
-    // read-modify-write over the shared client) after that point.
+    // Backing out of the page is the one case that abandons the keys: the dict
+    // write is a read-modify-write over a client this page no longer owns.
+    // A Stop falls through to it, which is the whole point of having it.
     if (_disposed) return;
 
     await _saveKeys();
@@ -355,7 +397,7 @@ class RecoverController extends ChangeNotifier {
 
   Future<void> _recoverReader(List<MfKey32Nonce> nonces) async {
     for (final n in nonces) {
-      if (_disposed) return;
+      if (_stopping) return;
       // Already in a dictionary: record it as known and skip the attack. The
       // row reads the same either way, so the only visible difference is that
       // the run gets there sooner.
@@ -384,7 +426,7 @@ class RecoverController extends ChangeNotifier {
     // Recovery is memory-heavy (~50 MB per isolate); cap concurrency.
     const maxConcurrent = 4;
     for (var i = 0; i < weak.length; i += maxConcurrent) {
-      if (_disposed) return;
+      if (_stopping) return;
       await Future.wait(
         weak.skip(i).take(maxConcurrent).map((n) async {
           final known = _known.nestedMatch(
@@ -452,7 +494,7 @@ class RecoverController extends ChangeNotifier {
             ),
           );
         },
-        isCancelled: () => _disposed,
+        isCancelled: () => _stopping,
       );
       key = result.key;
       switch (result.outcome) {
@@ -477,7 +519,13 @@ class RecoverController extends ChangeNotifier {
           _hadFailure = true;
           note = l10n.mfHardnestedFailed;
         case HardnestedOutcome.stopped:
-          // The user's own doing, so it is not a failure and says nothing.
+          // The user's own doing, so it is not a failure and records no row.
+          //
+          // Clears the phase without _tick(): no unit was finished, so nothing
+          // should claim one, but the label and percentage this attack was
+          // reporting would otherwise sit on screen - at whatever figure Stop
+          // caught it - through the dictionary write that follows.
+          _emit(const RecoverCalculating());
           return;
         case HardnestedOutcome.outOfMemory:
           _hadFailure = true;
@@ -582,7 +630,7 @@ class RecoverController extends ChangeNotifier {
     var doneBytes = 0;
 
     for (final dict in dicts) {
-      if (_disposed) return;
+      if (_stopping) return;
       // This card's unit, whatever becomes of it. Inside the loop so the
       // readout advances through the phase rather than jumping by N at the end.
       // One dict per card - buildStaticDicts groups by cuid - so this ends on
@@ -632,7 +680,7 @@ class RecoverController extends ChangeNotifier {
           // a device the user has walked away from, and the page it was
           // reporting to is gone. The firmware's stream is closed cleanly, and
           // the half-written file deleted where the link outlived the cancel.
-          isCancelled: () => _disposed,
+          isCancelled: () => _stopping,
         );
         _wroteCandidates = true;
       } on FlipperWriteCancelledException {

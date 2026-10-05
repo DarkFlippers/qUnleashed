@@ -12,10 +12,22 @@
 //-----------------------------------------------------------------------------
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 #include "hardnested.h"  // mfnestedhard
+#include "hardnested/tables.h"  // get_bitflip, for the memory figure below
 #include "qunleashed_hn_progress.h"
+
+// For qunleashed_hn_available_bytes only.
+#if defined(_WIN32)
+#include <windows.h>
+#elif defined(__APPLE__)
+#include <TargetConditionals.h>
+#if TARGET_OS_IPHONE
+#include <os/proc.h>  // os_proc_available_memory
+#endif
+#endif
 
 // Kept identical to qunleashed_mfkey32's copy, which carries the explanation -
 // see lib/modules/cpp/mfkey32/nested_bridge.c. `used` costs nothing in the
@@ -26,6 +38,77 @@
 #else
 #define QUNLEASHED_EXPORT __attribute__((visibility("default"), used))
 #endif
+
+// Bytes the engine holds for an attack's whole duration: one decompressed
+// bitflip state table per entry the vendored table set actually carries, the
+// size init_bitflip_bitarrays() allocates them at.
+//
+// Walked rather than written down. The count is a property of tables.c, which
+// is vendored and will change when it is next updated; a constant here would go
+// quietly wrong, and the whole point of the figure is that the caller trusts it.
+//
+// A floor, not a total: the sum-property bitarrays and the candidate statelists
+// are on top of this, and vary with the nonce set. The caller adds its own
+// margin - see hardnestedMemoryVerdict in hardnested_recoverer.dart.
+QUNLEASHED_EXPORT uint64_t qunleashed_hn_table_bytes(void) {
+  const uint64_t per_table = (uint64_t)sizeof(uint32_t) * ((1u << 19) + 1u);
+  uint64_t tables = 0;
+  for (uint16_t bitflip = 0x001; bitflip < 0x400; bitflip++) {
+    if (get_bitflip(EVEN_STATE, bitflip).input_buffer != NULL) tables++;
+    if (get_bitflip(ODD_STATE, bitflip).input_buffer != NULL) tables++;
+  }
+  return tables * per_table;
+}
+
+// What the OS says is still available, or 0 for "no answer".
+//
+// 0 must be read as "go ahead", never as "none": a gate that refuses on a
+// figure it could not get would block attacks that would have worked, and the
+// behaviour without any gate is what shipped until now.
+//
+// Only the platforms that overcommit are answered, because they are the ones
+// where the engine's own out-of-memory handling never runs - malloc succeeds
+// and the kernel kills the process when XzDecode first touches the pages.
+QUNLEASHED_EXPORT uint64_t qunleashed_hn_available_bytes(void) {
+#if defined(_WIN32)
+  MEMORYSTATUSEX status;
+  status.dwLength = sizeof(status);
+  if (!GlobalMemoryStatusEx(&status)) {
+    return 0;
+  }
+  return (uint64_t)status.ullAvailPhys;
+#elif defined(__APPLE__)
+#if TARGET_OS_IPHONE
+  // What is left of *this process's* allowance, which is the figure iOS kills
+  // against - not a system-wide free count, which would be far too optimistic
+  // on a device that gives an app a fraction of RAM.
+  return (uint64_t)os_proc_available_memory();
+#else
+  // macOS has no per-process allowance to ask about, and a desktop is not where
+  // this fails. "No answer" rather than a guess from vm_stat.
+  return 0;
+#endif
+#elif defined(__linux__)
+  // MemAvailable: the kernel's own estimate of what can be had without
+  // swapping, which is a better question than MemFree. Android is a __linux__
+  // target and is where this matters most.
+  FILE *meminfo = fopen("/proc/meminfo", "r");
+  if (meminfo == NULL) {
+    return 0;
+  }
+  char line[256];
+  unsigned long long kb = 0;
+  while (fgets(line, sizeof(line), meminfo) != NULL) {
+    if (sscanf(line, "MemAvailable: %llu kB", &kb) == 1) {
+      break;
+    }
+  }
+  fclose(meminfo);
+  return (uint64_t)kb * 1024u;
+#else
+  return 0;
+#endif
+}
 
 static void put_be32(uint8_t *p, uint32_t v) {
   p[0] = (uint8_t)(v >> 24);

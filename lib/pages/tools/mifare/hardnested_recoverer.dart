@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
 
+import '../../../services/logging.dart';
 import 'mifare_native.dart';
 
 /// How an attack ended, which the user needs told apart.
@@ -119,6 +120,41 @@ HardnestedResult hardnestedResultFor(int status, int foundKey) =>
 /// how fresh the bar is and how quickly a Stop lands.
 const _pollInterval = Duration(milliseconds: 500);
 
+typedef _BytesNative = Uint64 Function();
+typedef _BytesDart = int Function();
+
+/// Whether an attack needing [tableBytes] should be started on a device with
+/// [availableBytes] going spare. Returns the refusal to hand back, or null to
+/// go ahead.
+///
+/// This exists because the engine's own out-of-memory handling cannot run where
+/// it is needed. It calls `exit()` when an allocation fails - but Android and
+/// iOS overcommit, so the allocation does not fail: the kernel kills the process
+/// when the pages are first touched, with no return value anywhere to check.
+/// Before the attack starts is the only place left to catch it, and
+/// [HardnestedOutcome.outOfMemory] was an outcome that essentially never fired.
+///
+/// Pure, and separate from the lookups, because the whole judgement is in the
+/// two comparisons below and testing them must not need a loaded engine.
+@visibleForTesting
+HardnestedResult? hardnestedMemoryVerdict({
+  required int tableBytes,
+  required int availableBytes,
+}) {
+  // Either figure missing means the question could not be asked - no engine, or
+  // a platform with no answer for it. Going ahead is what shipped before this
+  // gate existed; refusing on an absent figure would turn an unasked question
+  // into a failed attack.
+  if (tableBytes <= 0 || availableBytes <= 0) return null;
+  // The tables are a floor, not the total: the sum-property bitarrays and the
+  // candidate statelists sit on top of them and scale with the nonce set. A
+  // quarter again is a margin, not a measurement, and deliberately a small one.
+  // Being too strict costs an attack that would have finished; being too loose
+  // costs what happens today, which is the app disappearing.
+  if (availableBytes * 4 >= tableBytes * 5) return null;
+  return (key: null, outcome: HardnestedOutcome.outOfMemory);
+}
+
 class NativeHardnestedRecoverer implements HardnestedRecoverer {
   @override
   Future<HardnestedResult> recoverKey({
@@ -135,6 +171,11 @@ class NativeHardnestedRecoverer implements HardnestedRecoverer {
     if (ntEnc.length < 2) {
       return (key: null, outcome: HardnestedOutcome.noKey);
     }
+
+    // Before anything is allocated, and before the isolate: once the engine is
+    // inside init_bitflip_bitarrays there is nothing left to refuse with.
+    final refusal = _memoryVerdict();
+    if (refusal != null) return refusal;
 
     // Allocated here rather than in the isolate: this side has to read it while
     // the other side is blocked inside the engine. Native memory is
@@ -159,6 +200,50 @@ class NativeHardnestedRecoverer implements HardnestedRecoverer {
       poll.cancel();
       calloc.free(channel);
     }
+  }
+
+  /// Asks the engine what it needs and the OS what it has, then judges.
+  ///
+  /// On the calling isolate, not in the attack's: both calls are a few
+  /// microseconds (one walks the 2046-entry table index, the other reads a
+  /// single OS figure), and the answer decides whether to spawn at all.
+  static HardnestedResult? _memoryVerdict() {
+    final int tableBytes;
+    final int availableBytes;
+    try {
+      final library = openHardnestedNativeLibrary();
+      tableBytes = lookupNativeFunction(
+        () => library.lookupFunction<_BytesNative, _BytesDart>(
+          'qunleashed_hn_table_bytes',
+        ),
+      )();
+      availableBytes = lookupNativeFunction(
+        () => library.lookupFunction<_BytesNative, _BytesDart>(
+          'qunleashed_hn_available_bytes',
+        ),
+      )();
+    } on NativeEngineUnavailable {
+      // Not this gate's verdict to give. The isolate loads the engine too and
+      // already reports a packaging fault as one; answering here would report a
+      // build missing its native library as a device short of memory, and send
+      // the user after the wrong thing.
+      return null;
+    }
+    final refusal = hardnestedMemoryVerdict(
+      tableBytes: tableBytes,
+      availableBytes: availableBytes,
+    );
+    if (refusal != null) {
+      // warn, not info: this is the whole record of why an attack the user
+      // asked for never ran, and info reaches nothing in a release build. Both
+      // figures, because which one was wrong is the first question.
+      LogService.warn(
+        '[Recover] hardnested not started: needs at least '
+        '${tableBytes >> 20} MiB for its tables, OS reports '
+        '${availableBytes >> 20} MiB available',
+      );
+    }
+    return refusal;
   }
 
   static HardnestedResult _recoverInIsolate(_HardnestedPayload p) {

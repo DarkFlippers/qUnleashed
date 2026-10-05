@@ -53,6 +53,29 @@ class _RecoverPageState extends State<RecoverPage> {
     cancelLabel: context.l10n.mfStopCancel,
   );
 
+  /// Stops the run without leaving the page.
+  ///
+  /// Behind the same confirmation as backing out, because it answers the same
+  /// question - but it keeps what the run has found, where leaving does not.
+  /// Until this existed, the engine's Stop was reachable only by popping the
+  /// page, so the only way to interrupt an attack was to discard every key it
+  /// had already recovered.
+  ///
+  /// Disabled rather than hidden once asked for: a hardnested bucket can take a
+  /// moment to reach its next check, and a button that vanishes mid-tap reads
+  /// as a misfire.
+  Widget _stopButton(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(top: 12),
+    child: OutlinedButton(
+      onPressed: _controller.cancelled
+          ? null
+          : () async {
+              if (await _confirmAbort()) _controller.stop();
+            },
+      child: Text(context.l10n.mfStopConfirm),
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
@@ -74,6 +97,7 @@ class _RecoverPageState extends State<RecoverPage> {
           padding: const EdgeInsets.all(16),
           children: [
             _StatusBlock(controller: _controller),
+            if (_controller.running) _stopButton(context),
             ..._buildGroups(_controller),
           ],
         ),

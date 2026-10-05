@@ -12,6 +12,7 @@ import 'package:qunleashed/pages/tools/mifare/known_key_filter.dart';
 import 'package:qunleashed/pages/tools/mifare/recover_controller.dart';
 import 'package:qunleashed/pages/tools/mifare/cuid_dict_format.dart';
 import 'package:qunleashed/pages/tools/mifare/nested_models.dart';
+import 'package:qunleashed/pages/tools/mifare/nested_recoverer.dart';
 import 'package:qunleashed/pages/tools/mifare/recover_models.dart';
 import 'package:qunleashed/pages/tools/mifare/static_encrypted_recoverer.dart';
 
@@ -96,6 +97,7 @@ class FakeTagApi implements NestedApi {
 
 void main() {
   _unitAccountingGroup();
+  _stopGroup();
   late FakeRecoverClient client;
   late FakeReaderApi reader;
   late FakeTagApi tag;
@@ -649,6 +651,41 @@ class FakeHardnested implements HardnestedRecoverer {
   }
 }
 
+/// Answers every weak-nested nonce with [key], so a test can get a key into the
+/// run before the step it means to interrupt.
+class FakeNested implements NestedRecoverer {
+  FakeNested(this.key);
+
+  final BigInt key;
+
+  @override
+  Future<BigInt?> recoverKey(NestedNonce nonce) async => key;
+}
+
+/// Calls [onStarted] as the attack begins and then reports [outcome], so a test
+/// can stop the run from inside the step that is running.
+class FakeInterruptingHardnested implements HardnestedRecoverer {
+  FakeInterruptingHardnested({required this.onStarted, required this.outcome});
+
+  final void Function() onStarted;
+  final HardnestedOutcome outcome;
+  int calls = 0;
+
+  @override
+  Future<HardnestedResult> recoverKey({
+    required int cuid,
+    required List<int> ntEnc,
+    required List<int> parEnc,
+    void Function(double fraction)? onProgress,
+    bool Function()? isCancelled,
+  }) async {
+    calls++;
+    onProgress?.call(0.47);
+    onStarted();
+    return (key: null, outcome: outcome);
+  }
+}
+
 /// A dictionary of [entries] candidates for one sector key.
 StaticCandidateDict dictOf(int cuid, int entries) {
   final builder = CuidDictBuilder()
@@ -658,6 +695,120 @@ StaticCandidateDict dictOf(int cuid, int entries) {
       keys: Uint64List.fromList(List.generate(entries, (i) => i + 1)),
     );
   return StaticCandidateDict.built(cuid, builder.build());
+}
+
+/// What Stop does, and the one thing it must not do.
+///
+/// Before it existed, the engine's cancellation was reachable only by popping
+/// the page - which runs dispose() and abandons every key the run had already
+/// recovered. So the whole of Stop is the difference between the two: both end
+/// the run early, and exactly one of them keeps the keys. A `_cancelled` that
+/// drifted into being another name for `_disposed` would pass every test about
+/// stopping and silently undo the reason for it.
+void _stopGroup() {
+  group('Stop', () {
+    // One weak pair (recovered before the hardnested step) and two hardnested
+    // groups, so there is both something to save and a step left to skip.
+    const log =
+        'Sec 1 key A cuid e37aa759 nt0 aaaaaaaa ks0 11111111 par0 1111 '
+        'nt1 bbbbbbbb ks1 22222222 par1 1111 dist 0\n'
+        'Sec 5 key A cuid e37aa759 nt0 db7df8ae ks0 77ff617e par0 1111\n'
+        'Sec 6 key A cuid e37aa759 nt0 aabbccdd ks0 11223344 par0 1111\n';
+    final recovered = BigInt.parse('A0A1A2A3A4A5', radix: 16);
+
+    ({
+      RecoverController controller,
+      FakeUploadClient client,
+      FakeInterruptingHardnested hard,
+    })
+    build({required void Function(RecoverController) onAttackStarted}) {
+      final client = FakeUploadClient(log);
+      late final RecoverController controller;
+      final hard = FakeInterruptingHardnested(
+        onStarted: () => onAttackStarted(controller),
+        outcome: HardnestedOutcome.stopped,
+      );
+      controller = RecoverController(
+        client: client,
+        mfApi: FakeReaderApi(),
+        nestedApi: FakeTagApi(exists: true),
+        nestedRecoverer: FakeNested(recovered),
+        hardnestedRecoverer: hard,
+        knownKeyFilter: (_) => FakeKnownKeys(),
+      );
+      return (controller: controller, client: client, hard: hard);
+    }
+
+    test('ends the run early but still writes what it found', () async {
+      final parts = build(onAttackStarted: (c) => c.stop());
+      addTearDown(parts.controller.dispose);
+
+      await parts.controller.start();
+
+      expect(
+        parts.hard.calls,
+        1,
+        reason: 'the second hardnested group must not be started',
+      );
+      expect(
+        parts.controller.state,
+        isA<RecoverSaved>(),
+        reason: 'a stopped run still reports, rather than looking like a hang',
+      );
+      expect(
+        (parts.controller.state as RecoverSaved).keys,
+        contains('A0A1A2A3A4A5'),
+        reason: 'the key found before Stop is the thing being kept',
+      );
+      expect(
+        parts.client.framesSent,
+        greaterThan(0),
+        reason: 'and it reached the card',
+      );
+    });
+
+    // The other half of the contract. Same run, same moment, but the page goes
+    // instead - and then the dictionary write must not happen at all, because
+    // it is a read-modify-write over a client the page no longer owns.
+    test('backing out of the page writes nothing', () async {
+      final parts = build(onAttackStarted: (c) => c.dispose());
+
+      await parts.controller.start();
+
+      expect(parts.hard.calls, 1);
+      expect(
+        parts.client.framesSent,
+        0,
+        reason: 'a disposed run must not touch the shared client',
+      );
+    });
+
+    test('stop() before a run has started does nothing', () {
+      final parts = build(onAttackStarted: (_) {});
+      addTearDown(parts.controller.dispose);
+
+      parts.controller.stop();
+
+      expect(parts.controller.cancelled, isFalse);
+    });
+
+    // The flag is per-run. A Stop left set would end the next run before it
+    // reached its first attack, with nothing on screen saying why.
+    test('a new run is not already cancelled', () async {
+      final parts = build(onAttackStarted: (c) => c.stop());
+      addTearDown(parts.controller.dispose);
+
+      await parts.controller.start();
+      expect(parts.controller.cancelled, isTrue);
+
+      await parts.controller.start();
+      expect(
+        parts.hard.calls,
+        greaterThan(1),
+        reason: 'the second run has to actually attack',
+      );
+    });
+  });
 }
 
 /// The readout's own arithmetic. Nothing asserted this, and two bugs lived

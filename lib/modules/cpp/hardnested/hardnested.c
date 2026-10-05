@@ -228,6 +228,13 @@ static void init_bitflip_bitarrays(void)
         for (uint16_t bitflip = 0x001; bitflip < 0x400; bitflip++)
         {
             bitflip_bitarrays[odd_even][bitflip] = NULL;
+            // Cleared unconditionally, not only on the paths that go on to set
+            // it: free_bitflip_bitarrays frees every entry of this array and
+            // does not NULL what it frees, so an entry left holding a pointer
+            // from the previous attack is a double free on this one. Before the
+            // two skips below, every entry was reassigned on every run and the
+            // array happened to be safe; now one can be skipped.
+            bitflip_bitarrays_pointers[odd_even][bitflip] = NULL;
             count_bitflip_bitarrays[odd_even][bitflip] = 1 << 24;
             bitflip_info p = get_bitflip(odd_even, bitflip);
             if (p.input_buffer != NULL)
@@ -236,15 +243,27 @@ static void init_bitflip_bitarrays(void)
                 uint32_t *bitset = (uint32_t *)malloc_bitarray(count);
                 if (bitset == NULL)
                 {
-                    printf("Out of memory error in init_bitflip_statelists(). Aborting...\n");
-                    exit(4);
+                    // qUnleashed: skipped, where upstream called exit(4). This
+                    // one allocation failure is containable: the consumers
+                    // NULL-check bitflip_bitarrays (see the uses around the
+                    // bitflip loops below) and count_bitflip_bitarrays is
+                    // already 1 << 24, which reads as "this table constrains
+                    // nothing". So a table that will not allocate makes the
+                    // attack slower rather than impossible - and on a phone,
+                    // where this is the ~700 MiB allocation that fails, slower
+                    // is the difference between a result and a dead app.
+                    printf("Out of memory in init_bitflip_bitarrays(); skipping bitflip %03x\n", bitflip);
+                    continue;
                 }
 
                 bool success = XzDecode(p.input_buffer, p.len, (uint8_t *)bitset, &count);
                 if (!success)
                 {
-                    printf("Failed to decompress states\n");
-                    exit(4);
+                    // Same reasoning as above, plus the buffer has to go back:
+                    // nothing records it, so falling through would leak it.
+                    printf("Failed to decompress bitflip %03x; skipping it\n", bitflip);
+                    free_bitarray(bitset);
+                    continue;
                 }
 
                 bitflip_bitarrays_pointers[odd_even][bitflip] = bitset;
