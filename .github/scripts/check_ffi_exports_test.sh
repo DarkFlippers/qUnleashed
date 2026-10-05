@@ -158,13 +158,22 @@ fi
 # script works out from its own location - so none of them can see that
 # computation being wrong. It was: the first release this guard ran in died on
 # `.github/lib/modules/cpp`, one directory short of the repo root. This case
-# takes the default and expects the names the repo actually exports.
+# takes the default.
+#
+# The stub answers with whatever the repo currently exports, derived the same
+# way the guard derives it. Listing the names here instead would be a second
+# copy of the export list that goes stale the day one is added - which it did,
+# and this case is where it failed. A wrong root still fails: the derivation
+# comes back empty and the guard refuses rather than passing.
 export STUB_ARCHS="arm64"
-export STUB_MAIN_arm64="0000000000000000 T _qunleashed_mfkey32_recover_key
-0000000000000008 T _qunleashed_nested_recover_key
-0000000000000010 T _qunleashed_static_candidates
-0000000000000018 T _qunleashed_rf08s_reduce_pair
-0000000000000020 T _qunleashed_hardnested_recover"
+STUB_MAIN_arm64="$(
+  grep -rhoE '^QUNLEASHED_EXPORT[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]+qunleashed_[A-Za-z0-9_]+' \
+    --include='*.c' "$HERE/../../lib/modules/cpp" |
+    awk '{print "0000000000000000 T _" $NF}' | sort -u
+)"
+# Explicit: the earlier cases happen to have marked it exported already, and
+# this case must not depend on their order.
+export STUB_MAIN_arm64
 export STUB_FRAMEWORK_arm64=""
 if out="$(NM="$STUBS/nm" LIPO="$STUBS/lipo" PATH="$STUBS:$PATH" \
   bash "$SCRIPT" "$BIN" "$BUNDLE" 2>&1)"; then
