@@ -22,15 +22,13 @@ const _kBackgroundColor = Color(0xFF000000);
 const _kForegroundColor = Color(0xFFE0E0E0);
 
 class CliPage extends StatefulWidget {
-  const CliPage({super.key, required this.client, this.links});
+  const CliPage({super.key, required this.client, required this.links});
 
-  /// Supplied by tests only; the app always uses the shared client, which is
-  /// otherwise reached through a singleton no test can replace.
   /// The Flipper the session talks to. Required rather than defaulted: a CLI
   /// opened from one device must not end up on another. ADR 0002.
   final FlipperClient client;
 
-  final LinkService? links;
+  final LinkService links;
 
   @override
   State<CliPage> createState() => _CliPageState();
@@ -38,7 +36,7 @@ class CliPage extends StatefulWidget {
 
 class _CliPageState extends State<CliPage> {
   late final FlipperClient _client = widget.client;
-  late final LinkService _links = widget.links ?? LinkService.instance;
+  late final LinkService _links = widget.links;
   final FocusNode _terminalFocusNode = FocusNode(debugLabel: 'cli-terminal');
 
   late final Terminal _terminal;
@@ -276,12 +274,6 @@ class _CliPageState extends State<CliPage> {
     _channel = null;
     _awaitingInterrupt = false;
     unawaited(guarded('[CLI] close lost channel', channel.close));
-    if (_ready) {
-      _notice(l10n.cliDisconnected);
-      setState(() {
-        _ready = false;
-      });
-    }
   }
 
   void _onChannel(FlipperCliChannel channel) {

@@ -613,6 +613,7 @@ class LinkService extends ChangeNotifier {
     _setActivity(key, LinkActivity.connecting);
     try {
       final channel = await _c.openCli(device);
+      _clearAutoFailure(key);
       if (!identical(_cliHold, hold)) {
         await channel.close();
         return true;
@@ -621,6 +622,7 @@ class LinkService extends ChangeNotifier {
       hold.onChannel(channel);
     } catch (e) {
       LogService.warn('[Link] CLI on ${device.name} failed: $e');
+      _recordAutoFailure(key, device.name, e);
       if (identical(_cliHold, hold)) hold.onFailure(e);
     } finally {
       _setActivity(key, LinkActivity.idle);

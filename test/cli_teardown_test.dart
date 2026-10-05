@@ -5,6 +5,7 @@ import 'package:flipperlib/flipperlib.dart' hide DateTime, File;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/tools/remote/cli/page.dart';
+import 'package:qunleashed/services/connection/link_service.dart';
 import 'package:qunleashed/services/logging.dart';
 import 'package:qunleashed/theme/theme.dart';
 import 'package:xterm/xterm.dart';
@@ -215,7 +216,9 @@ void main() {
     _FakeClient client, {
     String lastOutput = 'doing something long',
   }) async {
-    await tester.pumpWidget(_wrap(CliPage(client: client)));
+    await tester.pumpWidget(
+      _wrap(CliPage(client: client, links: LinkService.instance)),
+    );
     await tester.pump();
 
     client.text.add(lastOutput);
@@ -283,7 +286,9 @@ void main() {
     final client = _FakeClient()..closeRejects = true;
     addTearDown(client.text.close);
 
-    await tester.pumpWidget(_wrap(CliPage(client: client)));
+    await tester.pumpWidget(
+      _wrap(CliPage(client: client, links: LinkService.instance)),
+    );
     // Long enough for _enterCliReady's own delay to elapse, so no timer is
     // left pending when the page goes away.
     await tester.pump(const Duration(milliseconds: 600));
@@ -310,7 +315,9 @@ void main() {
     final client = _FakeClient();
     addTearDown(client.text.close);
 
-    await tester.pumpWidget(_wrap(CliPage(client: client)));
+    await tester.pumpWidget(
+      _wrap(CliPage(client: client, links: LinkService.instance)),
+    );
     await tester.pump(const Duration(milliseconds: 600));
 
     client.writeFailure = _WriteFailure.throwsSynchronously;
@@ -336,7 +343,9 @@ void main() {
   ) async {
     final client = _FakeClient();
     addTearDown(client.text.close);
-    await tester.pumpWidget(_wrap(CliPage(client: client)));
+    await tester.pumpWidget(
+      _wrap(CliPage(client: client, links: LinkService.instance)),
+    );
     await tester.pump(const Duration(milliseconds: 600));
 
     client.writeFailure = _WriteFailure.rejects;
@@ -355,7 +364,9 @@ void main() {
   ) async {
     final client = _FakeClient();
     addTearDown(client.text.close);
-    await tester.pumpWidget(_wrap(CliPage(client: client)));
+    await tester.pumpWidget(
+      _wrap(CliPage(client: client, links: LinkService.instance)),
+    );
     await tester.pump(const Duration(milliseconds: 600));
 
     client.writeFailure = _WriteFailure.throwsSynchronously;
@@ -375,7 +386,9 @@ void main() {
   testWidgets('a failed write leaves a still-live page usable', (tester) async {
     final client = _FakeClient();
     addTearDown(client.text.close);
-    await tester.pumpWidget(_wrap(CliPage(client: client)));
+    await tester.pumpWidget(
+      _wrap(CliPage(client: client, links: LinkService.instance)),
+    );
     await tester.pump(const Duration(milliseconds: 600));
 
     client.writeFailure = _WriteFailure.rejects;
@@ -400,7 +413,9 @@ void main() {
   ) async {
     final client = _FakeClient();
     addTearDown(client.text.close);
-    await tester.pumpWidget(_wrap(CliPage(client: client)));
+    await tester.pumpWidget(
+      _wrap(CliPage(client: client, links: LinkService.instance)),
+    );
     await tester.pump(const Duration(milliseconds: 600));
 
     client.writeFailure = _WriteFailure.rejects;
@@ -420,7 +435,9 @@ void main() {
   ) async {
     final client = _FakeClient();
     addTearDown(client.text.close);
-    await tester.pumpWidget(_wrap(CliPage(client: client)));
+    await tester.pumpWidget(
+      _wrap(CliPage(client: client, links: LinkService.instance)),
+    );
     await tester.pump(const Duration(milliseconds: 600));
 
     await recordingLogs(() async {
@@ -446,7 +463,9 @@ void main() {
   ) async {
     final client = _FakeClient();
     addTearDown(client.text.close);
-    await tester.pumpWidget(_wrap(CliPage(client: client)));
+    await tester.pumpWidget(
+      _wrap(CliPage(client: client, links: LinkService.instance)),
+    );
     await tester.pump(const Duration(milliseconds: 600));
     client.text.add('output worth keeping');
     await tester.pump();
@@ -470,7 +489,9 @@ void main() {
     addTearDown(client.text.close);
 
     await recordingLogs(() async {
-      await tester.pumpWidget(_wrap(CliPage(client: client)));
+      await tester.pumpWidget(
+        _wrap(CliPage(client: client, links: LinkService.instance)),
+      );
       await tester.pump(const Duration(milliseconds: 600));
     });
 
@@ -482,7 +503,9 @@ void main() {
     final client = _FakeClient();
     addTearDown(client.text.close);
     addTearDown(client.connection.close);
-    await tester.pumpWidget(_wrap(CliPage(client: client)));
+    await tester.pumpWidget(
+      _wrap(CliPage(client: client, links: LinkService.instance)),
+    );
     await tester.pump(const Duration(milliseconds: 600));
 
     client.connection.add(
@@ -508,7 +531,9 @@ void main() {
   ) async {
     final client = _FakeClient();
     addTearDown(client.text.close);
-    await tester.pumpWidget(_wrap(CliPage(client: client)));
+    await tester.pumpWidget(
+      _wrap(CliPage(client: client, links: LinkService.instance)),
+    );
     await tester.pump(const Duration(milliseconds: 600));
     client.text.add('doing something long');
     await tester.pump();
@@ -536,7 +561,9 @@ void main() {
   ) async {
     final client = _FakeClient();
     addTearDown(client.text.close);
-    await tester.pumpWidget(_wrap(CliPage(client: client)));
+    await tester.pumpWidget(
+      _wrap(CliPage(client: client, links: LinkService.instance)),
+    );
     await tester.pump(const Duration(milliseconds: 600));
     client.text.add('doing something long');
     await tester.pump();
@@ -566,7 +593,9 @@ void main() {
     client.heldWrite = held;
 
     final logs = await recordingLogs(() async {
-      await tester.pumpWidget(_wrap(CliPage(client: client)));
+      await tester.pumpWidget(
+        _wrap(CliPage(client: client, links: LinkService.instance)),
+      );
       await tester.pump(const Duration(milliseconds: 600));
       await tester.pumpWidget(_wrap(const SizedBox.shrink()));
       await tester.pump();
@@ -588,7 +617,9 @@ void main() {
   ) async {
     final client = _FakeClient();
     addTearDown(client.text.close);
-    await tester.pumpWidget(_wrap(CliPage(client: client)));
+    await tester.pumpWidget(
+      _wrap(CliPage(client: client, links: LinkService.instance)),
+    );
     await tester.pump(const Duration(milliseconds: 600));
     client.text.add('doing something long');
     await tester.pump();
@@ -600,7 +631,9 @@ void main() {
       client
         ..heldWrite = null
         ..startNewSession();
-      await tester.pumpWidget(_wrap(CliPage(client: client)));
+      await tester.pumpWidget(
+        _wrap(CliPage(client: client, links: LinkService.instance)),
+      );
       await tester.pump(const Duration(seconds: 3));
     });
 
