@@ -131,6 +131,7 @@ class LinkService extends ChangeNotifier {
   final Set<String> _cancelled = {};
   bool _bleAutoTried = false;
   AutoConnectFailure? _autoFailure;
+  _CliHold? _cliHold;
   Timer? _usbTimer;
   bool _reconciling = false;
   bool _reconcileAgain = false;
@@ -403,6 +404,22 @@ class LinkService extends ChangeNotifier {
     }
   }
 
+  /// Keeps the CLI of [channel] held across the link: when its Flipper
+  /// returns after the link went away, or another one is plugged in, it is
+  /// taken back in CLI rather than RPC and the new channel goes to
+  /// [onChannel]. [releaseCli] lets it go.
+  void holdCli(
+    FlipperCliChannel channel, {
+    required void Function(FlipperCliChannel channel) onChannel,
+    required void Function(Object error) onFailure,
+  }) {
+    _cliHold = _CliHold(channel, onChannel, onFailure);
+  }
+
+  void releaseCli() {
+    _cliHold = null;
+  }
+
   // ── Events ───────────────────────────────────────────────────────────────
 
   void _onSessions(List<FlipperSessionInfo> sessions) {
@@ -535,6 +552,9 @@ class LinkService extends ChangeNotifier {
       _userDisconnectedKey = null;
     }
 
+    final cli = _cliHold;
+    if (cli != null && !cli.channel.isOpen && await _restoreCli(cli)) return;
+
     final held = _c.sessions.any((s) => s.connected || s.connecting);
     // A Flipper the app is holding comes first and comes back whatever the
     // setting says: the user asked for that link and never let it go. The
@@ -574,6 +594,40 @@ class LinkService extends ChangeNotifier {
     }
   }
 
+  Future<bool> _restoreCli(_CliHold hold) async {
+    final candidates = [
+      for (final device in _usbPresent)
+        if (_userDisconnectedKey != 'usb:${device.id}' &&
+            !_autoTriedUsb.contains(device.id))
+          device,
+    ];
+    if (candidates.isEmpty) return false;
+    final previous = hold.channel.device.id;
+    final device = candidates.firstWhere(
+      (d) => d.id == previous,
+      orElse: () => candidates.first,
+    );
+    _autoTriedUsb.add(device.id);
+    final key = 'usb:${device.id}';
+    LogService.info('[Link] restoring CLI on ${device.name}');
+    _setActivity(key, LinkActivity.connecting);
+    try {
+      final channel = await _c.openCli(device);
+      if (!identical(_cliHold, hold)) {
+        await channel.close();
+        return true;
+      }
+      hold.channel = channel;
+      hold.onChannel(channel);
+    } catch (e) {
+      LogService.warn('[Link] CLI on ${device.name} failed: $e');
+      if (identical(_cliHold, hold)) hold.onFailure(e);
+    } finally {
+      _setActivity(key, LinkActivity.idle);
+    }
+    return true;
+  }
+
   Future<void> _autoConnect(FlipperDevice device, String why) async {
     final key = 'usb:${device.id}';
     LogService.info('[Link] auto-connecting to ${device.name} ($why)');
@@ -611,4 +665,12 @@ class LinkService extends ChangeNotifier {
     _releasedCtrl.close();
     super.dispose();
   }
+}
+
+class _CliHold {
+  _CliHold(this.channel, this.onChannel, this.onFailure);
+
+  FlipperCliChannel channel;
+  final void Function(FlipperCliChannel channel) onChannel;
+  final void Function(Object error) onFailure;
 }

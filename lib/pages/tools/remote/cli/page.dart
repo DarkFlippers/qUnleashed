@@ -14,6 +14,7 @@ import 'package:qunleashed/components/appbar.dart';
 
 import '../../../../components/dialogs/connection_error.dart';
 import '../../../../components/dialogs/connection.dart';
+import '../../../../services/connection/link_service.dart';
 import '../../../../services/guarded.dart';
 import '../../../../services/logging.dart';
 
@@ -21,7 +22,7 @@ const _kBackgroundColor = Color(0xFF000000);
 const _kForegroundColor = Color(0xFFE0E0E0);
 
 class CliPage extends StatefulWidget {
-  const CliPage({super.key, required this.client});
+  const CliPage({super.key, required this.client, this.links});
 
   /// Supplied by tests only; the app always uses the shared client, which is
   /// otherwise reached through a singleton no test can replace.
@@ -29,12 +30,15 @@ class CliPage extends StatefulWidget {
   /// opened from one device must not end up on another. ADR 0002.
   final FlipperClient client;
 
+  final LinkService? links;
+
   @override
   State<CliPage> createState() => _CliPageState();
 }
 
 class _CliPageState extends State<CliPage> {
   late final FlipperClient _client = widget.client;
+  late final LinkService _links = widget.links ?? LinkService.instance;
   final FocusNode _terminalFocusNode = FocusNode(debugLabel: 'cli-terminal');
 
   late final Terminal _terminal;
@@ -46,6 +50,7 @@ class _CliPageState extends State<CliPage> {
 
   bool _ready = false;
   bool _busy = false;
+  bool _entering = false;
   bool _awaitingInterrupt = false;
 
   /// Whether the terminal has already said that a write did not arrive.
@@ -69,7 +74,7 @@ class _CliPageState extends State<CliPage> {
   @override
   void initState() {
     super.initState();
-    _terminal = Terminal(
+    _terminal = _CliTerminal(
       maxLines: 10000,
       onOutput: _onTerminalOutput,
       platform: _platform,
@@ -123,6 +128,7 @@ class _CliPageState extends State<CliPage> {
   void dispose() {
     _textSub?.cancel();
     _connSub?.cancel();
+    _links.releaseCli();
 
     // dispose() cannot be async, so there is nowhere to await either of these
     // and no UI left to report into if they fail. Best effort, logged.
@@ -241,10 +247,50 @@ class _CliPageState extends State<CliPage> {
       unawaited(guarded('[CLI] close after leaving', channel.close));
       return;
     }
-    _channel = channel;
-    _connSub = channel.connection.listen(_onConnectionState);
-    _textSub = channel.text.listen(_onText);
+    _attach(channel);
+    _links.holdCli(
+      channel,
+      onChannel: _onChannel,
+      onFailure: (e) {
+        if (mounted) _notice(l10n.cliStartFailed('$e'));
+      },
+    );
     await _enterCliReady();
+  }
+
+  void _attach(FlipperCliChannel channel) {
+    _channel = channel;
+    _connSub = channel.connection.listen(
+      _onConnectionState,
+      onDone: _onChannelLost,
+    );
+    _textSub = channel.text.listen(_onText);
+  }
+
+  void _onChannelLost() {
+    final channel = _channel;
+    if (!mounted || channel == null) return;
+    unawaited(_textSub?.cancel());
+    _textSub = null;
+    _connSub = null;
+    _channel = null;
+    _awaitingInterrupt = false;
+    unawaited(guarded('[CLI] close lost channel', channel.close));
+    if (_ready) {
+      _notice(l10n.cliDisconnected);
+      setState(() {
+        _ready = false;
+      });
+    }
+  }
+
+  void _onChannel(FlipperCliChannel channel) {
+    if (!mounted) {
+      unawaited(guarded('[CLI] close after leaving', channel.close));
+      return;
+    }
+    _attach(channel);
+    unawaited(_enterCliReady());
   }
 
   Future<void> _showConnectionFailedDialog(
@@ -257,10 +303,11 @@ class _CliPageState extends State<CliPage> {
 
   Future<void> _enterCliReady() async {
     final channel = _channel;
-    if (!mounted || channel == null) return;
-    await Future<void>.delayed(const Duration(milliseconds: 500));
-    if (!mounted) return;
+    if (!mounted || channel == null || _entering) return;
+    _entering = true;
     try {
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      if (!mounted) return;
       await channel.write(_cliNudge);
     } catch (e, st) {
       // Ready is claimed after the nudge lands, not before it is sent. Claimed
@@ -269,6 +316,8 @@ class _CliPageState extends State<CliPage> {
       LogService.error('[CLI] init nudge failed: $e\n$st');
       if (mounted) _notice(l10n.cliStartFailed('$e'));
       return;
+    } finally {
+      _entering = false;
     }
     // The write is a second suspension point, and the page can be backed out
     // of while it is in flight. Without this the setState below throws
@@ -306,6 +355,8 @@ class _CliPageState extends State<CliPage> {
       setState(() {
         _ready = false;
       });
+    } else if (state.cliReady && !_ready && (_channel?.isOpen ?? false)) {
+      unawaited(_enterCliReady());
     }
   }
 
@@ -385,6 +436,16 @@ class _CliPageState extends State<CliPage> {
         );
       },
     );
+  }
+}
+
+class _CliTerminal extends Terminal {
+  _CliTerminal({super.maxLines, super.onOutput, super.platform});
+
+  @override
+  void writeChar(int char) {
+    if (insertMode) insertBlankChars(1);
+    super.writeChar(char);
   }
 }
 
