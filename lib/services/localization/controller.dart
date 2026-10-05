@@ -7,7 +7,16 @@ import 'gen/l10n_generated.dart';
 
 /// Language names written in the language itself, so every entry of the picker
 /// stays readable no matter which language the app currently runs in.
-const Map<String, String> _localeNames = {'en': 'English', 'ru': 'Русский'};
+/// One entry per locale `flutter gen-l10n` generates, which is one per ARB
+/// file. A missing entry falls back to the language tag in [nameOf], so the
+/// picker offers "uk" rather than a language anyone recognises - which is what
+/// it did for the whole of the Ukrainian translation's first day.
+/// `test/locale_names_test.dart` is what notices.
+const Map<String, String> _localeNames = {
+  'en': 'English',
+  'ru': 'Русский',
+  'uk': 'Українська',
+};
 
 class QLocaleController extends ChangeNotifier with WidgetsBindingObserver {
   QLocaleController._() {
