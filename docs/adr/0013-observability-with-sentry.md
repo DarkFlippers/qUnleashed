@@ -1,7 +1,8 @@
 # 0013. Sentry is the second channel, wired into the chokepoints that exist
 
-Status: Proposed (2026-10-01); breadcrumb source settled and the logging
-chokepoints checked against the code (2026-10-02)
+Status: Proposed (2026-10-01); breadcrumb source settled, the logging
+chokepoints checked against the code, and `caught` added as a third level
+(2026-10-02)
 
 Build identity — release, channel, commit — is its own decision,
 [0014](0014-build-identity.md). This one consumes it.
@@ -81,6 +82,7 @@ as it does now.
 |---|---|
 | `_initCore` | Init, after `LogService.initialize()` and the consent read, with its own catch. Sentry saves and calls the `FlutterError.onError` and `PlatformDispatcher.onError` it finds, so `LogService`'s handlers going in first keeps both. One init serves `main()` and `widgetMain()`: `promote` reuses the engine. |
 | `LogService._emit`, kept entries | Sentry Logs, through a `keptSink` hook in the shape of flipperlib's `Log.sink`. **The first of a run only**: one RPC timeout produces hundreds of identical lines, which is why `_remember` coalesces them. That coalescing is not visible from `_emit` today - `_remember` returns `void` and folds silently - so it has to report whether the line was new. One signature, and the hook reads it rather than comparing bodies a second time. |
+| `LogService.caught`, §5 | The same `keptSink`, sent at Sentry's **info** level rather than `warning`. The 48 failures that a release build records nowhere today. |
 | `guarded(what, …)` | An issue, fingerprinted on `what` and the error type — the best grouping key the app has. |
 | `classifyConnectError` | `unknown` becomes an issue; every other kind is a metric and a breadcrumb. The issue list is then exactly the platform strings the classifier does not know yet. |
 | `AppHttp` | Hand-made spans. Nothing instruments `dart:io` `HttpClient`, and the map's tile client is left out: URLs and query strings are always sent, and tile URLs carry the Carto key. |
@@ -147,7 +149,7 @@ Even in a talking build the hook would be awkward in the obvious place.
 `_emit` opens with `if (!keep && !console) return;`, which is #187: five
 sites out of six are dropped, and each used to buy a timestamp first. A
 breadcrumb hook would have to sit above that return and would reinstate the
-stamp, plus a scrub, since a breadcrumb is sent and §5 scrubs everything
+stamp, plus a scrub, since a breadcrumb is sent and §6 scrubs everything
 sent.
 
 flipperlib is the other way round, which is what makes this decision
@@ -170,7 +172,89 @@ What it gives up is app-side commentary before a crash. That is the right
 trade only while the app's `info` sites are genuinely commentary, which is
 exactly the question #103 asks about 48 of them. See the Consequences.
 
-### 5. Privacy is four layers, because no single one covers everything
+### 5. A third level, `caught`, for a failure worth keeping and not worth alerting on
+
+Decided 2026-10-02. This reverses a rule `info`'s own doc states, so the
+reversal is argued rather than asserted.
+
+**Where a log goes today.** `_emit` has two destinations and neither is a file:
+`history`, a 500-entry `ListQueue` in memory, and `debugPrint`. In a release
+build nothing prints, so `error` and `warn` land in that queue and nothing else
+does. The queue dies with the process - which is the FFI case this ADR opens
+with - and with a restart, and the one way out of it is Settings → Log → Copy
+and a human pasting the result somewhere.
+
+**The gap.** 48 `LogService.info` calls sit inside a `catch` (#103). `info` is
+not quiet in a release build, it is absent: `infoOn` is a const and those call
+sites leave the binary. So for 48 failure paths, a release build records
+nothing anywhere - not the history, not the clipboard, and after this ADR, not
+Sentry either.
+
+**The mechanism already exists.** `_emit`'s two axes are independent, and
+`warn` already uses the combination needed: kept in release, printed only in a
+talking build. So the third level is one line.
+
+```dart
+static void caught(String msg) =>
+    _emit('[caught] $msg', keep: true, console: infoOn);
+```
+
+The prefix is what `keptSink` reads to send it as a Sentry log at **info**
+level rather than `warning`, so these are searchable without firing the
+alerting that `warn` is for. It is called `caught` because that is where it
+belongs - inside a catch - and because the distinction from `warn` is the
+audience, not the severity: `warn` is a failure somebody should look at,
+`caught` is a failure somebody may need to read about later.
+
+**The rule, and it is narrow on purpose.** `caught` is for a failure where the
+operation did not do what was asked. Commentary about something merely absent
+stays `info` and stays out of the binary.
+
+The quota is not the reason for the narrowness - the open-source programme
+allows far more logs than this app can produce. The reason is the person
+reading them. Applied to `pages/archive`'s 24 sites, which is the densest
+area:
+
+| | `caught` | stays `info` |
+|---|---|---|
+| `list`, `read`, `write`, `delete`, `mkdir`, `rename`, `appStart` refused | 12 | |
+| `refresh`, `syncCategory`, `sync` failed | 3 | |
+| `$path is unavailable`, `no hardware name` | | expected absence |
+| `md5 check <path> failed`, per file in a sync | | the per-sync summary at `warn` covers it (#194) |
+| `[Map] location stream`, `[StorageCards] watchStorage` | | stream noise, repeats |
+
+Fifteen of twenty-four. The three excluded kinds are also the only chatty ones,
+so the boundedness #110 and #111 argued for is kept rather than traded away.
+
+**What this reverses.** `LogService.info`'s doc says: *"There is no catch-all to
+reach for instead. Pick a level at each site."* `caught` is a catch-all, and
+that rule was right for its reader - a person scrolling five hundred lines on a
+phone, where volume is noise and a wrong level is a line nobody finds. The
+reader is what changed. Gathered and indexed, a surplus line costs nothing to
+skip and a missing one cannot be recovered at all.
+
+The per-site judgment does not disappear, it gets smaller: not "which of five
+levels" but "did an operation fail, or is this commentary".
+
+**The new way to game the ratchet, named before it is used.** Moving a site
+from `info` to `caught` lowers `log_level_budget_test.dart` legitimately - the
+budget counts failures reported only at a level release drops, and `caught` is
+not one. That is the opposite of the anti-pattern CLAUDE.md lists, where the
+number falls because a log was deleted. But it opens the mirror of it: moving
+*commentary* to `caught` would also lower the number, while putting noise in
+front of whoever reads Sentry.
+
+So `caught` gets a ratchet of its own, a ceiling per area, as
+[0004](0004-ratchet-not-lint.md) prescribes for anything the project wants a
+bounded amount of. Five ratchets then, and the fifth is the only one whose
+number is meant to *rise* - once, as the triage lands, and not after.
+
+**This is worth doing before Sentry exists.** `caught` reaches `history`
+immediately, so the 48 become visible in Settings → Log on the next build,
+months before `keptSink` is written. The ADR consumes the work; it does not
+gate it.
+
+### 6. Privacy is four layers, because no single one covers everything
 
 1. **Not collected:** `sendDefaultPii: false`; no screenshots, no view
    hierarchy; print breadcrumbs off, since `LogService` feeds Sentry directly.
@@ -189,7 +273,7 @@ exactly the question #103 asks about 48 of them. See the Consequences.
    are wrapped in `SentryMask` and checked in a recorded replay before replay
    ships.
 
-### 6. `sentry_flutter` 9.30.1, written to move to 10
+### 7. `sentry_flutter` 9.30.1, written to move to 10
 
 9.30.0 is the floor: it fixed a native worker leaked per engine, reported by a
 BLE app with a headless engine — the home widget's shape (sentry-dart#3960).
@@ -205,7 +289,7 @@ Code is written so that 10 is a version bump: no SDK profiling, no
 `enableLogs` or `enableMetrics` flags, `SentryFeedbackForm` rather than
 `SentryFeedbackWidget`.
 
-### 7. Sampling
+### 8. Sampling
 
 Errors, traces, logs and metrics at 100%. Replay records on error only
 (`onErrorSampleRate: 1.0`, `sessionSampleRate: 0`), Android and iOS. Revisited
@@ -262,8 +346,13 @@ carry.
   `infoOn` is false in every release build. A site that is commentary stays
   commentary; a site that is the last word on a failure now loses a second
   reader rather than one. The triage does not change, the stakes do.
-- `_remember` gains a return value, which is the only change this makes to a
-  file outside `lib/services/telemetry/` beyond the two hooks.
+- `_remember` gains a return value, and `LogService` gains `caught` (§5).
+  Those, the two hooks and the flipperlib level pin are the whole of what this
+  changes outside `lib/services/telemetry/`.
+- A fifth ratchet, a ceiling on `caught` per area. It is the only one of the
+  five whose number is meant to rise once and then hold.
+- #103 stops being a parallel debt and becomes part of this: the triage it asks
+  for is what decides which of its 48 sites become `caught`.
 - To verify before the first release that carries it: `crashpad_handler`
   keeping its exec bit on Linux; where the crash database lives, since the
   Linux launcher deletes `/tmp/qunleashed-self-$$` on exit; a JDK on the Windows
@@ -274,6 +363,7 @@ carry.
 | Phase | Scope |
 |---|---|
 | 0 | Sentry project, server-side scrubbing, GitHub integration for the three repositories, alerts |
+| 0a | `caught` and #103's triage. Independent of Sentry - it lands in `history` and on the Log screen on the next build - and done first so no phase ships a silent failure path |
 | 1 | Errors and crashes: dependency, `telemetry/`, consent and Diagnostics, scrubber, `guarded` → issues, CI defines and symbol upload, the import ratchet |
 | 2 | Logs and tracing: `keptSink` and the `_remember` return it needs, flipperlib breadcrumbs in `_flipperlibSink` with the level pin raised, named routes and `SentryNavigatorObserver`, `traced`, `AppHttp` spans, the dartufbt sink |
 | 3 | Metrics, replay with its masks, a "Send to developers" action on the Log screen through `captureFeedback`, the flipperlib observer |
@@ -286,9 +376,15 @@ forced native crash from each of the five platforms, symbolicated.
 No catch site changes. `guarded`, `LogService` and the classifier gain a
 destination; the sites calling them do not move.
 
-`LogService.info` stays where it is and still reaches nothing — not the
-history, not Sentry. The rule in its doc comment, and the budget in
-`test/log_level_budget_test.dart`, apply unchanged.
+`LogService.info` keeps its meaning for every site that stays on it: not the
+history, not Sentry, and absent from a release build altogether. What changes
+is that it is no longer the only place a caught failure can go — §5 adds
+`caught` for the ones where an operation did not do what was asked, and #103's
+triage is what sorts the 48 between them. The budget in
+`test/log_level_budget_test.dart` is unchanged in what it counts; a site
+leaving it for `caught` is a legitimate fall rather than the deletion CLAUDE.md
+warns about, and the new ceiling on `caught` is what keeps that from becoming a
+way to launder commentary.
 
 The 23 unnamed `MaterialPageRoute`s within features stay unnamed. Names are
 given once, in the `AppRoute` registry, which is what the navigator observer
