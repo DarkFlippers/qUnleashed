@@ -124,17 +124,16 @@ class RecoverController extends ChangeNotifier {
   /// write - which deliberately ignores [_stopping], because Stop has to keep
   /// the keys.
   ///
-  /// And only for the phases that do honour it. Attacks poll it, and the
-  /// candidate upload is cancelled mid-write. The download is the gap: it is
-  /// minutes over BLE and `storageReadChunked` takes no `isCancelled` - unlike
-  /// the write side - so the request runs to completion whatever is asked of
-  /// it. Closing that properly is a flipperlib change; until then the honest
-  /// thing is not to offer the button. `RecoverWaitingForDevice` has nothing
-  /// running to stop in the first place.
+  /// And only for the phases that do honour it. Attacks poll it, the candidate
+  /// upload is cancelled mid-write, and the download now frees this run at its
+  /// next frame (flipperlib #13) - so all three are on offer.
+  /// `RecoverWaitingForDevice` is not: there is nothing running to stop yet.
   bool get canStop =>
       _running &&
       !_saving &&
-      (_state is RecoverCalculating || _state is RecoverUploading);
+      (_state is RecoverCalculating ||
+          _state is RecoverUploading ||
+          _state is RecoverDownloading);
   // Set around the dictionary write, which is the one part of a run that Stop
   // must not interrupt and cannot usefully be offered during.
   bool _saving = false;
@@ -288,6 +287,15 @@ class RecoverController extends ChangeNotifier {
               onProgress: (p) => report((p * tagSize).round()),
             )
           : null;
+    } on FlipperCancelledException catch (e) {
+      // Our own Stop, not a fault: the only cancel this read can see is the
+      // one _stopping asked for. Nothing has been attacked yet, so there is
+      // nothing to save and no plan to report progress against - but the page
+      // has to stop saying "Downloading", which is what a bare return would
+      // leave it doing.
+      LogService.warn('[Recover] stopped during download: $e');
+      _emit(const RecoverSaved(keys: [], stopped: true));
+      return;
     } catch (e, st) {
       // The files were confirmed to exist above, so a failure here is a real
       // read error - surface it instead of silently proceeding as if the log
@@ -861,6 +869,12 @@ class RecoverController extends ChangeNotifier {
       expectedSize: expectedSize,
       onProgress: onProgress,
       timeout: const Duration(minutes: 5),
+      // Frees this run at the next frame rather than at the end of the file.
+      // The read itself cannot be stopped - the firmware streams it to the end
+      // and the protocol has no abort - so the response goes on arriving and
+      // the link stays busy for a while after. Worth it: the alternative was a
+      // Stop that did nothing for minutes, so the button was hidden instead.
+      isCancelled: () => _stopping,
     );
     return const Utf8Decoder().convert(bytes);
   }

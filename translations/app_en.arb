@@ -4489,6 +4489,10 @@
   "@mfCandidatesStopped": {
     "description": "Summary row for a card whose candidate-dictionary upload was interrupted by the user pressing Stop. The partial file is removed from the device and the dictionary is rebuilt on the next run."
   },
+  "mfStoppedNothingYet": "Stopped before any key was attempted.",
+  "@mfStoppedNothingYet": {
+    "description": "Headline after the user pressed Stop while the logs were still downloading, so no attack had begun and nothing was recovered."
+  },
   "mfStoppedEarly": "Stopped at {done} of {total} steps.",
   "@mfStoppedEarly": {
     "description": "Footer on the result screen after the user pressed Stop, so a part-finished run is not mistaken for a complete one.",
