@@ -73,12 +73,7 @@ class _RecoverPageState extends State<RecoverPage> {
         body: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            _StatusBlock(
-              state: _controller.state,
-              totalUnits: _controller.totalUnits,
-              doneUnits: _controller.doneUnits,
-              controller: _controller,
-            ),
+            _StatusBlock(controller: _controller),
             ..._buildGroups(_controller),
           ],
         ),
@@ -266,20 +261,13 @@ class _EntryRow extends StatelessWidget {
 }
 
 class _StatusBlock extends StatelessWidget {
-  const _StatusBlock({
-    required this.state,
-    required this.totalUnits,
-    required this.doneUnits,
-    required this.controller,
-  });
+  const _StatusBlock({required this.controller});
 
-  final RecoverState state;
-  final int totalUnits;
-  final int doneUnits;
-
-  /// Read only for the error surface, which needs more of the run than a
-  /// handful of parameters could carry without growing one per footnote.
   final RecoverController controller;
+
+  RecoverState get state => controller.state;
+  int get totalUnits => controller.totalUnits;
+  int get doneUnits => controller.doneUnits;
 
   /// Keys this run derived that are still listed below and not on the device.
   /// A key the dictionary already held is not at risk and does not count.
@@ -301,8 +289,9 @@ class _StatusBlock extends StatelessWidget {
     // animated bar alone reads as a hang rather than as work.
     final (String title, String? barText, double? progress) = switch (state) {
       RecoverWaitingForDevice() => (l10n.mfConnecting, '…', null),
-      RecoverDownloading(:final progress) => _percentRow(
+      RecoverDownloading(:final progress) => (
         l10n.mfDownloading,
+        _percent(progress),
         progress,
       ),
       // The unit counter always shows: it is the only run-level progress there
@@ -310,17 +299,12 @@ class _StatusBlock extends StatelessWidget {
       // replacing it.
       RecoverCalculating(:final label, :final fraction) => (
         label ?? l10n.mfRecovering,
-        switch ((totalUnits > 1, fraction)) {
-          (true, final f?) =>
-            '$doneUnits / $totalUnits · ${(f * 100).round()}%',
-          (true, null) => '$doneUnits / $totalUnits',
-          (false, final f?) => '${(f * 100).round()}%',
-          (false, null) => '…',
-        },
+        _calculatingBar(fraction),
         fraction,
       ),
-      RecoverUploading(:final progress) => _percentRow(
+      RecoverUploading(:final progress) => (
         l10n.mfSyncing,
+        _percent(progress),
         progress,
       ),
       RecoverSaved(:final keys, :final hasCandidates, :final hasFailures) => (
@@ -391,17 +375,22 @@ class _StatusBlock extends StatelessWidget {
     );
   }
 
-  /// A transfer that knows its own size: the bar tracks it and the text reads
-  /// as a percentage. Null before the size is known, which shows as an
-  /// indeterminate bar rather than 0%.
-  static (String, String?, double?) _percentRow(
-    String title,
-    double? progress,
-  ) => (
-    title,
-    progress == null ? '…' : '${(progress * 100).round()}%',
-    progress,
-  );
+  /// The one place a fraction becomes text. Null reads as "working" rather than
+  /// as 0%, which is a different thing to tell someone.
+  static String _percent(double? fraction) =>
+      fraction == null ? '…' : '${(fraction * 100).round()}%';
+
+  /// Whichever pieces of progress exist, joined: the run's unit counter when
+  /// there is more than one unit, and the current unit's own fraction when the
+  /// phase can measure itself. A measurable phase adds to the counter rather
+  /// than replacing it - the counter is the only run-level progress there is.
+  String _calculatingBar(double? fraction) {
+    final parts = [
+      if (totalUnits > 1) '$doneUnits / $totalUnits',
+      if (fraction != null) _percent(fraction),
+    ];
+    return parts.isEmpty ? '…' : parts.join(' · ');
+  }
 
   static String _savedTitle(int newKeys, bool hasCandidates, bool hadFailure) {
     final String base;

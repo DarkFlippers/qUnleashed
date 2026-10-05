@@ -129,8 +129,6 @@ KnownKeyFilter nativeKnownKeyFilter(Iterable<String> keys) {
 class NativeKnownKeyFilter implements KnownKeyFilter {
   NativeKnownKeyFilter._(this._count, this._buffer, this._nested, this._reader);
 
-  /// The buffer already holds every key, and a match is rare - so the BigInt is
-  /// built for the one that hit rather than for all of them up front.
   final int _count;
   final Pointer<Uint64> _buffer;
   final _KnownNestedDart _nested;

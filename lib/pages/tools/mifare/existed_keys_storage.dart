@@ -9,10 +9,15 @@ const flipperDictPath = '/ext/nfc/assets/mf_classic_dict.nfc';
 
 /// Where the user dictionary is copied before it is overwritten.
 ///
-/// Not a temp-and-rename: the firmware's rename cannot replace an existing
-/// file, so that shape would have to delete the original first and would leave
-/// a window where neither copy exists. A copy alongside has no such window, and
-/// the file it leaves behind is one the user can find.
+/// A copy alongside, not a temp-and-rename. Temp-and-rename would in fact be
+/// safe here, and cheaper - one dictionary-sized write instead of two: what
+/// [upload] writes is a strict superset of what is on the card, because
+/// `_userKeys` is seeded from the dictionary and only ever grows, so a crash
+/// between deleting the dictionary and renaming the temp file over it would
+/// leave the superset behind rather than nothing. It is not the shape used
+/// because the firmware's rename has not been tried against an existing target
+/// from this app, and a copy needs nothing tried. Worth revisiting with a
+/// device in hand.
 const flipperDictUserBackupPath =
     '/ext/nfc/assets/mf_classic_dict_user.nfc.bak';
 
@@ -133,6 +138,12 @@ class ExistedKeysStorage {
       flipperDictUserPath,
       utf8.encode('${_userKeys.join('\n')}\n'),
     );
+
+    // The write landed, so the card now holds these keys - fold them into the
+    // loaded set. Without this a second upload() rewrites the whole dictionary
+    // and reports the same keys as newly added a second time; the Retry button
+    // makes that second call reachable.
+    _userDict.addAll(added);
 
     // The write landed, so the copy is only clutter now. Cleared only once the
     // delete returns: a copy still on the card is better described as kept than

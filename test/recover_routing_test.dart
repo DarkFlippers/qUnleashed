@@ -143,7 +143,7 @@ void main() {
 
   group('dedupeWeakNonces', () {
     test('collapses duplicate cuid/sector/key', () {
-      final result = dedupeWeakNonces([
+      final result = dedupeNestedNonces([
         pair(cuid: 5, sector: 1, keyType: NestedKeyType.a),
         pair(cuid: 5, sector: 1, keyType: NestedKeyType.a),
       ]);
@@ -151,7 +151,7 @@ void main() {
     });
 
     test('keeps distinct cards and key types', () {
-      final result = dedupeWeakNonces([
+      final result = dedupeNestedNonces([
         pair(cuid: 5, sector: 1, keyType: NestedKeyType.a),
         pair(cuid: 5, sector: 1, keyType: NestedKeyType.b),
         pair(cuid: 6, sector: 1, keyType: NestedKeyType.a),

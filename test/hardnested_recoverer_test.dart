@@ -5,7 +5,7 @@ void main() {
   group('NativeHardnestedRecoverer input validation', () {
     // These inputs short-circuit to null before any isolate / native call.
     // Too few nonces is a statement about the collection, not a failure of the
-    // attack, so it comes back as noKey without the engine being loaded at all.
+    // attack, and it is answered without the engine being loaded at all.
     test('empty nonces return no key', () async {
       final recoverer = NativeHardnestedRecoverer();
       final result = await recoverer.recoverKey(

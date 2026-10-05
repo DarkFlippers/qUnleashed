@@ -72,13 +72,13 @@ void main() {
     final b = _single(3, NestedKeyType.b);
     final aAgain = _single(3, NestedKeyType.a);
 
-    expect(dedupeStaticSingles([a, b, aAgain]), hasLength(2));
+    expect(dedupeNestedNonces([a, b, aAgain]), hasLength(2));
   });
 
   test('the same sector on two cards is two keys', () {
     final one = _single(3, NestedKeyType.a);
     final other = _single(3, NestedKeyType.a, cuid: 0x11223344);
 
-    expect(dedupeStaticSingles([one, other]), hasLength(2));
+    expect(dedupeNestedNonces([one, other]), hasLength(2));
   });
 }

@@ -23,20 +23,15 @@ List<T> _dedupeBy<T>(Iterable<T> items, String Function(T) keyOf) {
 List<MfKey32Nonce> dedupeReaderNonces(List<MfKey32Nonce> nonces) =>
     _dedupeBy(nonces, (n) => '${n.uid}-${n.sectorName}-${n.keyName}');
 
-/// Collapses two-sample (weak / static-nonce) tag lines that target the same
-/// card/sector/key, keeping the first. Each is independently recoverable, so one
-/// per (cuid, sector, key) suffices.
-List<NestedNonce> dedupeWeakNonces(Iterable<NestedNonce> pairs) =>
-    _dedupeBy(pairs, (n) => '${n.cuid}-${n.sector}-${n.keyType}');
-
-/// Collapses static-encrypted lines targeting the same card/sector/key.
+/// Collapses tag lines that target the same card/sector/key, keeping the first.
 ///
-/// The same sector key read five times is one sector key. `buildStaticDicts`
-/// already collapses them downstream - it files one nonce per (sector, side) -
-/// but anything that counts or reports *before* that point sees the raw lines,
-/// and the logs are never cleared, so repeats are the norm rather than an edge.
-List<NestedNonce> dedupeStaticSingles(Iterable<NestedNonce> singles) =>
-    _dedupeBy(singles, (n) => '${n.cuid}-${n.sector}-${n.keyType}');
+/// Each is independently recoverable, so one per (cuid, sector, key) suffices -
+/// and the same sector key read five times is still one sector key, which is
+/// what anything counting or reporting before the attack needs. The key type is
+/// part of the identity: without it, A and B of one sector collapse into one
+/// and half of every sector is dropped before anything else sees it.
+List<NestedNonce> dedupeNestedNonces(Iterable<NestedNonce> nonces) =>
+    _dedupeBy(nonces, (n) => '${n.cuid}-${n.sector}-${n.keyType}');
 
 /// Splits single-sample nested nonces the way the firmware distinguishes them:
 /// a line that carries a `dist` field is static-encrypted (FM11RF08S); one

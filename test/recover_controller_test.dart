@@ -627,12 +627,14 @@ class FakeStaticRecoverer implements StaticEncryptedRecoverer {
   }
 }
 
-/// Reports a fraction and then finds nothing, so a test can watch what the page
-/// is left showing once the group is over.
+/// Reports [fractions] in order and then finds nothing, so a test can watch
+/// both what reaches the page while the attack runs and what it is left showing
+/// once the group is over. A repeated value stands in for two polls of the
+/// native channel that read the same permille.
 class FakeHardnested implements HardnestedRecoverer {
-  FakeHardnested(this.fraction);
+  FakeHardnested(this.fractions);
 
-  final double fraction;
+  final List<double> fractions;
 
   @override
   Future<HardnestedResult> recoverKey({
@@ -642,7 +644,7 @@ class FakeHardnested implements HardnestedRecoverer {
     void Function(double fraction)? onProgress,
     bool Function()? isCancelled,
   }) async {
-    onProgress?.call(fraction);
+    fractions.forEach(onProgress ?? (_) {});
     return (key: null, outcome: HardnestedOutcome.noKey);
   }
 }
@@ -706,6 +708,77 @@ void _unitAccountingGroup() {
       await controller.start();
 
       expect(controller.doneUnits, controller.totalUnits);
+    });
+
+    // The bug the collapsed model exists for: a hardnested group that ended at
+    // 47% used to sit there through the next group's table decompression,
+    // which reports nothing at all.
+    test('a fraction does not survive the group that produced it', () async {
+      // Two hardnested groups: single-sample lines with no `dist`, which is
+      // what separates them from static-encrypted.
+      const hardLog =
+          'Sec 5 key A cuid e37aa759 nt0 db7df8ae ks0 77ff617e par0 1111\n'
+          'Sec 6 key A cuid e37aa759 nt0 aabbccdd ks0 11223344 par0 1111\n';
+      final seen = <RecoverCalculating>[];
+      final controller = RecoverController(
+        client: FakeUploadClient(hardLog),
+        mfApi: FakeReaderApi(),
+        nestedApi: FakeTagApi(exists: true),
+        hardnestedRecoverer: FakeHardnested([0.47]),
+        knownKeyFilter: (_) => FakeKnownKeys(),
+      );
+      addTearDown(controller.dispose);
+      controller.addListener(() {
+        final state = controller.state;
+        if (state is RecoverCalculating) seen.add(state);
+      });
+
+      await controller.start();
+
+      expect(
+        seen.any((s) => s.fraction == 0.47),
+        isTrue,
+        reason: 'the attack has to report while it runs',
+      );
+      expect(
+        seen.last.fraction,
+        isNull,
+        reason: 'and the figure must not outlive the group it measured',
+      );
+    });
+
+    // The native channel is polled on a timer, so most polls read the permille
+    // the last one already reported. Rebuilding on those would be a rebuild
+    // every 500 ms for hours showing the same number.
+    test('a poll that reads the same figure twice rebuilds once', () async {
+      const hardLog =
+          'Sec 5 key A cuid e37aa759 nt0 db7df8ae ks0 77ff617e par0 1111\n';
+      final seen = <double?>[];
+      final controller = RecoverController(
+        client: FakeUploadClient(hardLog),
+        mfApi: FakeReaderApi(),
+        nestedApi: FakeTagApi(exists: true),
+        hardnestedRecoverer: FakeHardnested([0.47, 0.47, 0.61]),
+        knownKeyFilter: (_) => FakeKnownKeys(),
+      );
+      addTearDown(controller.dispose);
+      controller.addListener(() {
+        final state = controller.state;
+        if (state is RecoverCalculating) seen.add(state.fraction);
+      });
+
+      await controller.start();
+
+      expect(
+        seen.where((f) => f == 0.47),
+        hasLength(1),
+        reason: 'the repeated poll must not reach the page a second time',
+      );
+      expect(
+        seen.where((f) => f == 0.61),
+        hasLength(1),
+        reason: 'and a figure that did change still has to',
+      );
     });
 
     // A phase that can name itself must also stop naming itself. A state per

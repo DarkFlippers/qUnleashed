@@ -49,10 +49,24 @@ static void put_be32(uint8_t *p, uint32_t v) {
 // -1 covers this function's own allocation only. The engine itself still calls
 // exit() when it cannot allocate - from its worker threads as well as from
 // setup - so an out-of-memory inside it takes the app down with nothing anyone
-// can catch. A probe here was tried and removed: a large malloc succeeds under
-// overcommit on every 64-bit target, so it refused nothing and implied a check
-// that was not happening. Surviving that needs the engine's own allocation
-// failures plumbed through, which is its own change.
+// can catch.
+//
+// The size is worth stating, because it is not an unlucky edge: every attack
+// decompresses the whole bitflip state table set - 351 of them (tables.c's
+// bf_zero and bf_one) at 4 * ((1 << 19) + 1) bytes each, allocated in
+// hardnested.c's init_bitflip_bitarrays and freed only at the end - so ~700 MiB
+// is resident for the attack's full duration on every single run.
+//
+// Plumbing the engine's failures through would not save the app on the
+// platforms where it actually dies. Android and iOS overcommit, so malloc there
+// does not return NULL at all: the kernel kills the process when XzDecode first
+// touches the pages, and there is no return value to check. (Windows commits,
+// so there it would help.) A probe here was tried and removed for the same
+// reason - a large malloc succeeds under overcommit, so it refused nothing and
+// implied a check that was not happening. What would help on mobile is a
+// capacity gate in Dart before the isolate starts, measured against the figure
+// the OS reports as available; that is its own change, and the one
+// HardnestedOutcome.outOfMemory is currently waiting for.
 QUNLEASHED_EXPORT int qunleashed_hardnested_recover(
     uint32_t in_cuid,
     const uint32_t *nt_enc,

@@ -10,8 +10,8 @@ import '../../../services/logging.dart';
 import '../../../services/progress_throttle.dart';
 import 'cuid_dict_format.dart';
 import 'existed_keys_storage.dart';
-import 'known_key_filter.dart';
 import 'hardnested_recoverer.dart';
+import 'known_key_filter.dart';
 import 'key_nonce_parser.dart';
 import 'mfkey32_api.dart';
 import 'mfkey32_models.dart';
@@ -85,10 +85,6 @@ class RecoverController extends ChangeNotifier {
   // outlives the isolate that took it.
   KnownKeyFilter _known = const NoKnownKeys();
   int _skippedKnown = 0;
-  // Last fraction shown, so a poll that read the same figure as the one before
-  // does not rebuild the page. The engine's per-bucket reports are already
-  // coalesced in shared memory; this suppresses consecutive equal polls.
-  double? _lastFraction;
 
   RecoverState get state => _state;
   bool get running => _running;
@@ -155,7 +151,6 @@ class RecoverController extends ChangeNotifier {
     _totalUnits = 0;
     _doneUnits = 0;
     _skippedKnown = 0;
-    _lastFraction = null;
 
     if (!_client.isConnected) {
       _emit(const RecoverError(RecoverErrorType.flipperConnection));
@@ -255,7 +250,7 @@ class RecoverController extends ChangeNotifier {
     final tagLog = NestedNonceParser.parse(tagText ?? '');
     final tagNonces = tagLog.nonces;
     if (tagLog.droppedLines > 0) _reportDroppedNonces(tagLog);
-    final weak = dedupeWeakNonces(tagNonces.where((n) => n.hasPair));
+    final weak = dedupeNestedNonces(tagNonces.where((n) => n.hasPair));
     final (allStaticSingles, hardGroups) = splitSingles(
       tagNonces.where((n) => !n.hasPair),
     );
@@ -265,7 +260,7 @@ class RecoverController extends ChangeNotifier {
     final split = splitKnownStatic(
       // Deduped first: without it a card read five times reports five identical
       // skipped rows and counts one sector key as five.
-      dedupeStaticSingles(allStaticSingles),
+      dedupeNestedNonces(allStaticSingles),
       (n) => _known.nestedMatch(
         cuid: n.cuid,
         nt: n.samples[0].nt,
@@ -299,7 +294,9 @@ class RecoverController extends ChangeNotifier {
       if (_disposed) return;
       await _recoverHardnested(group);
     }
-    if (staticSingles.isNotEmpty) await _recoverStatic(staticSingles);
+    if (staticSingles.isNotEmpty) {
+      await _recoverStatic(staticSingles, cards: staticCards);
+    }
     // The user can back out (Stop) mid-run; don't rewrite the user dict (a
     // read-modify-write over the shared client) after that point.
     if (_disposed) return;
@@ -433,8 +430,21 @@ class RecoverController extends ChangeNotifier {
         // The one attack long enough that the page has to say something while
         // it runs: the counter alone sat still for the whole of it.
         onProgress: (fraction) {
-          if (_disposed || fraction == _lastFraction) return;
-          _lastFraction = fraction;
+          // Not a ProgressThrottle, which the two transfers use: its 0.002
+          // minimum delta would swallow every single-permille step, and on an
+          // attack that reports in tenths of a percent for hours that is every
+          // step there is. The poll is already time-limited at 500 ms, so all
+          // that is left to suppress is two polls reading the same figure.
+          //
+          // Compared against the state rather than a field holding the last
+          // value: the thing compared is then the thing on screen, so _tick
+          // clearing the phase cannot leave a shadow copy saying a figure is
+          // already shown when it no longer is.
+          if (_disposed) return;
+          if (_state case RecoverCalculating(fraction: final shown)
+              when shown == fraction) {
+            return;
+          }
           _emit(
             RecoverCalculating(
               label: l10n.mfHardnestedPhase,
@@ -538,10 +548,12 @@ class RecoverController extends ChangeNotifier {
         ),
       );
 
-  Future<void> _recoverStatic(List<NestedNonce> singles) async {
-    // Planned per card above, so every exit from here has to account for the
-    // same number of units or the readout ends short of its own total.
-    final cards = singles.map((n) => n.cuid).toSet().length;
+  /// [cards] is the number of units `_run` planned for this batch, passed in
+  /// rather than recomputed so the denominator and the ticks cannot drift.
+  Future<void> _recoverStatic(
+    List<NestedNonce> singles, {
+    required int cards,
+  }) async {
     // Named rather than left under "Recovering keys": generation is the half of
     // this step that reports nothing - one isolate call covering every card,
     // with only the device write after it carrying a percentage.
@@ -556,9 +568,7 @@ class RecoverController extends ChangeNotifier {
       // not from any one card, and every card in the batch lost its dictionary.
       // Naming the first one would blame a card that was probably fine.
       _addStaticEntry(note: _staticFailureNote(e));
-      for (var i = 0; i < cards; i++) {
-        _tick();
-      }
+      _tick(cards);
       return;
     }
 
@@ -575,6 +585,8 @@ class RecoverController extends ChangeNotifier {
       if (_disposed) return;
       // This card's unit, whatever becomes of it. Inside the loop so the
       // readout advances through the phase rather than jumping by N at the end.
+      // One dict per card - buildStaticDicts groups by cuid - so this ends on
+      // the same total the catch path above accounts for in one go.
       _tick();
       final body = dict.body;
       if (body == null) {
@@ -745,15 +757,23 @@ class RecoverController extends ChangeNotifier {
     }
   }
 
-  void _tick() {
+  /// Finishes [units] of the run's planned work.
+  ///
+  /// Takes a count so the paths that finish several at once - a static batch
+  /// whose generation threw, losing every card together - say so in one call
+  /// and one rebuild, rather than a loop whose only job is to add N.
+  void _tick([int units = 1]) {
     if (_disposed) return;
-    _doneUnits++;
+    _doneUnits += units;
     // The unit that the label and fraction described is over, so they go with
     // it. Without this a hardnested group that ended at 47% sat there through
-    // the next group's table decompression, which reports nothing.
-    _lastFraction = null;
-    if (_state is RecoverCalculating) _state = const RecoverCalculating();
-    notifyListeners();
+    // the next group's table decompression, which reports nothing. Through
+    // _emit rather than assigning _state, so that stays the only writer.
+    if (_state is RecoverCalculating) {
+      _emit(const RecoverCalculating());
+    } else {
+      notifyListeners();
+    }
   }
 
   void _emit(RecoverState state) {
