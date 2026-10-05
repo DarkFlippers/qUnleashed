@@ -38,20 +38,15 @@
 
 // Bytes the engine has resident at once before it looks at a single nonce.
 //
-// The figure itself is computed in hardnested.c, beside the five allocations it
-// sums, because that is the only place it cannot drift from them - see the note
-// there. This is the FFI wrapper, so the export surface stays in the bridge.
+// The FFI wrapper only, so every export stays greppable in this file. What is
+// counted, what is deliberately left out, and why it lives in the vendored file
+// are all on the definition - qunleashed_hn_engine_peak_bytes in hardnested.c -
+// and are not repeated here, because four copies of one figure's rationale is
+// how one of them ends up stale after the next re-vendoring.
 //
-// Bigger than it looks, and the reason this export exists rather than a
-// constant on the Dart side: the bitflip tables (~702 MiB) are not even the
-// largest term. init_nonce_memory's per-first-byte state bitarrays are 1 GiB on
-// their own, and the sum-property arrays add ~150 MiB more. All of it is live
-// together, so the real pre-flight figure is on the order of 1.8 GiB.
-//
-// Not counted, deliberately: the candidate statelists, which are allocated
-// after the bitflip tables are freed and so largely reuse that space rather
-// than raising the peak. The caller still adds a margin for them and for its own
-// working set - see hardnestedMemoryVerdict in hardnested_recoverer.dart.
+// Worth one line, as the reason this is an export rather than a constant on the
+// Dart side: the answer is of the order of 1.8 GiB, and the bitflip tables
+// everyone thinks of are not even the largest term in it.
 QUNLEASHED_EXPORT uint64_t qunleashed_hn_peak_bytes(void) {
   return qunleashed_hn_engine_peak_bytes();
 }
@@ -66,12 +61,27 @@ QUNLEASHED_EXPORT uint64_t qunleashed_hn_peak_bytes(void) {
 // where the engine's own out-of-memory handling never runs - malloc succeeds
 // and the kernel kills the process when XzDecode first touches the pages.
 //
-// So Windows and macOS both answer 0 on purpose. There, malloc returns NULL and
-// the engine's own handling of that works, which is the whole reason this
-// function exists for the others. Windows would also answer the wrong question:
-// ullAvailPhys ignores the pagefile, so a desktop with plenty of commit charge
-// to spare but little free physical RAM would be refused an attack that would
-// have finished.
+// Windows and macOS both answer 0, and that is a gap rather than a conclusion.
+// They commit, so malloc does return NULL there and the engine's exit(4) does
+// fire - but "fires" is not "handled": exit(4) takes the whole app down with no
+// message and nothing in the log. Desktop is in fact the one place the failure
+// is both detectable and still fatal, so a figure for it would turn an app that
+// vanishes into a sentence someone can read.
+//
+// Not attempted here because neither figure can be checked from this machine,
+// and the cost of getting one wrong is refusing an attack that would have
+// finished - on the platforms where it currently works. If it is added:
+// host_statistics64 on macOS, and on Windows the *commit* limit
+// (GetPerformanceInfo), not GlobalMemoryStatusEx's ullAvailPhys, which ignores
+// the pagefile and would refuse a desktop with plenty of commit charge spare.
+//
+// And before anyone replaces this with the device_info_plus already in
+// pubspec.yaml: its availableRamSize is the wrong question on the platform that
+// matters most. On iOS it is vm_stat free_count * page_size - a system-wide
+// count, far too optimistic for a process the OS hands a fraction of RAM -
+// where os_proc_available_memory below is this app's own remaining allowance,
+// which is the figure iOS actually kills against. It would also make the gate
+// an async method-channel hop.
 QUNLEASHED_EXPORT uint64_t qunleashed_hn_available_bytes(void) {
 #if defined(__APPLE__)
 #if TARGET_OS_IPHONE

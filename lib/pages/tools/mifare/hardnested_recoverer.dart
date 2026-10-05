@@ -129,25 +129,29 @@ const _pollInterval = Duration(milliseconds: 500);
 typedef _BytesNative = Uint64 Function();
 typedef _BytesDart = int Function();
 
-/// The margin over the engine's measured peak, as a fraction: an eighth again.
+/// How much the requirement adds over the engine's measured peak: an eighth.
 ///
-/// Small on purpose. [hardnestedPeakBytes] is a measurement of five named
-/// allocations, not an estimate, so this only has to cover what it deliberately
-/// leaves out - the candidate statelists, which are allocated after the bitflip
-/// tables are freed and so largely reuse that space - plus the app's own
-/// working set alongside it.
-const _memoryMarginNumerator = 9;
-const _memoryMarginDenominator = 8;
+/// Small on purpose. `qunleashed_hn_peak_bytes` is a measurement of five named
+/// allocations rather than an estimate - the note on its definition in
+/// hardnested.c says which, and what it leaves out - so this only has to cover
+/// the part it leaves out, plus the app's own working set alongside it.
+const _memoryMarginDivisor = 8;
 
-/// Bytes an attack needs available before it is worth starting: the engine's
-/// peak plus [_memoryMarginNumerator]/[_memoryMarginDenominator].
+/// Bytes an attack needs available before it is worth starting.
 ///
 /// One spelling, so the refusal message cannot quote a different number from
 /// the one the judgement used. That had already happened once: the message named
 /// the peak while the comparison used the peak plus the margin, so it read
 /// "needs 702 MiB, has 800 MiB" on a run it had just refused.
 int hardnestedRequiredBytes(int peakBytes) =>
-    peakBytes * _memoryMarginNumerator ~/ _memoryMarginDenominator;
+    peakBytes + peakBytes ~/ _memoryMarginDivisor;
+
+/// Whether both figures are answers at all.
+///
+/// Written once because the verdict and its caller both need it and for
+/// different reasons: the verdict has to go ahead, the caller has to say so.
+bool _figuresUsable(int peakBytes, int availableBytes) =>
+    peakBytes > 0 && availableBytes > 0;
 
 /// Whether an attack whose engine peaks at [peakBytes] should be started on a
 /// device with [availableBytes] going spare. Returns the refusal to hand back,
@@ -171,7 +175,7 @@ HardnestedResult? hardnestedMemoryVerdict({
   // a platform with no answer for it. Going ahead is what shipped before this
   // gate existed; refusing on an absent figure would turn an unasked question
   // into a failed attack. The caller logs this case; see [_memoryVerdict].
-  if (peakBytes <= 0 || availableBytes <= 0) return null;
+  if (!_figuresUsable(peakBytes, availableBytes)) return null;
   if (availableBytes >= hardnestedRequiredBytes(peakBytes)) return null;
   return (key: null, outcome: HardnestedOutcome.outOfMemory);
 }
@@ -237,12 +241,29 @@ class NativeHardnestedRecoverer implements HardnestedRecoverer {
     }
   }
 
+  /// The engine's peak, which is the same for the life of the process.
+  ///
+  /// Cached because it is a pure function of the vendored static tables - the
+  /// note on its definition in hardnested.c says so - while this runs once per
+  /// hardnested group, and a run re-attacks every nonce the card's log has ever
+  /// collected. Left null on failure, so the next group retries and the warn
+  /// below still fires rather than being swallowed by a cached miss.
+  ///
+  /// The available figure is deliberately *not* cached beside it: the previous
+  /// group just released ~1.8 GiB and another app may have grown since, so a
+  /// remembered figure would be exactly the stale number this gate exists to
+  /// avoid - refusing a group that would now fit, or admitting one that no
+  /// longer does.
+  static int? _peakBytes;
+  static DynamicLibrary? _library;
+
   /// Asks the engine what it needs and the OS what it has, then judges.
   ///
-  /// On the calling isolate, not in the attack's: both calls are a few
-  /// microseconds (one makes 2046 lookups into a static table index - 0x001 to
-  /// 0x3ff over both parities - and sums five allocation sizes; the other reads
-  /// a single OS figure), and the answer decides whether to spawn at all.
+  /// On the calling isolate, not in the attack's: the figures are a few
+  /// microseconds (the peak makes 2046 lookups into a static table index -
+  /// 0x001 to 0x3ff over both parities - and sums five allocation sizes; the
+  /// other reads a single OS figure), and the answer decides whether to spawn
+  /// at all.
   ///
   /// Advisory, so every way of not getting an answer ends in "go ahead" - but
   /// none of them ends in silence. A gate that quietly switched itself off would
@@ -251,8 +272,11 @@ class NativeHardnestedRecoverer implements HardnestedRecoverer {
     final int peakBytes;
     final int availableBytes;
     try {
-      final library = openHardnestedNativeLibrary();
-      peakBytes = lookupNativeFunction(
+      // Held too: on Windows openNativeLibrary stats the executable's directory
+      // to find the bundled DLL, and doing that per group is the only
+      // filesystem work on this path.
+      final library = _library ??= openHardnestedNativeLibrary();
+      peakBytes = _peakBytes ??= lookupNativeFunction(
         () => library.lookupFunction<_BytesNative, _BytesDart>(
           'qunleashed_hn_peak_bytes',
         ),
@@ -291,10 +315,9 @@ class NativeHardnestedRecoverer implements HardnestedRecoverer {
       );
       return null;
     }
-    if (peakBytes <= 0 || availableBytes <= 0) {
-      // Only where a figure was expected. macOS and Windows answer 0 by design
-      // - malloc returns NULL there and the engine's own handling works - so
-      // saying this on a desktop would be noise on every single attack.
+    if (!_figuresUsable(peakBytes, availableBytes)) {
+      // Only where a figure was expected. macOS and Windows answer 0 by design,
+      // so saying this on a desktop would be noise on every single attack.
       if (Platform.isAndroid || Platform.isIOS) {
         LogService.warn(
           '[Recover] hardnested memory gate could not ask '

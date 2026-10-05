@@ -56,7 +56,8 @@ void main() {
     // A copy, not a reading: the suite never loads the engine, so nothing here
     // fails if tables.c is re-vendored. These tests pin the judgement, not the
     // measurement - which is exactly why the measurement is computed in
-    // hardnested.c beside the allocations rather than written down twice.
+    // hardnested.c beside the allocations rather than written down twice. The
+    // note there is the one account of what the figure counts.
     const peak = 1969227132; // what qunleashed_hn_peak_bytes() returned
     final required = hardnestedRequiredBytes(peak);
 

@@ -115,13 +115,26 @@ class RecoverController extends ChangeNotifier {
 
   /// Whether there is anything left for [stop] to stop.
   ///
-  /// Narrower than [running] on purpose. `_running` stays true through the
-  /// dictionary write at the end of a run, and [retrySave] sets it for an
-  /// operation that is *nothing but* that write - and the write deliberately
-  /// does not consult [_stopping], because Stop has to keep the keys. So a
-  /// button gated on `running` alone would appear over the save and do nothing
-  /// when pressed, which is the exact failure offering Stop is meant to avoid.
-  bool get canStop => _running && !_saving;
+  /// Narrower than [running], in two ways, and for the same reason both times: a
+  /// button offered where nothing honours it reads as a button that does
+  /// nothing, which is the failure having a Stop at all is meant to avoid.
+  ///
+  /// Not during the dictionary write. `_running` stays true through it, and
+  /// [retrySave] sets `_running` for an operation that is *nothing but* that
+  /// write - which deliberately ignores [_stopping], because Stop has to keep
+  /// the keys.
+  ///
+  /// And only for the phases that do honour it. Attacks poll it, and the
+  /// candidate upload is cancelled mid-write. The download is the gap: it is
+  /// minutes over BLE and `storageReadChunked` takes no `isCancelled` - unlike
+  /// the write side - so the request runs to completion whatever is asked of
+  /// it. Closing that properly is a flipperlib change; until then the honest
+  /// thing is not to offer the button. `RecoverWaitingForDevice` has nothing
+  /// running to stop in the first place.
+  bool get canStop =>
+      _running &&
+      !_saving &&
+      (_state is RecoverCalculating || _state is RecoverUploading);
   // Set around the dictionary write, which is the one part of a run that Stop
   // must not interrupt and cannot usefully be offered during.
   bool _saving = false;
@@ -139,7 +152,7 @@ class RecoverController extends ChangeNotifier {
   /// ever lost to it: a candidate dictionary is regenerated from the same log on
   /// the next run, and _run() still reaches its own dictionary write.
   void stop() {
-    if (!_running || _disposed || _cancelled) return;
+    if (_disposed || _cancelled || !canStop) return;
     _cancelled = true;
     notifyListeners();
   }
@@ -497,6 +510,8 @@ class RecoverController extends ChangeNotifier {
     final parEnc = group.map((n) => n.par!).toList(growable: false);
     BigInt? key;
     String? note;
+    // Every outcome below produces the same row; these three are what it says.
+    var counted = true;
     try {
       final result = await _hardnestedRecoverer.recoverKey(
         cuid: first.cuid,
@@ -560,21 +575,13 @@ class RecoverController extends ChangeNotifier {
           // reporting would otherwise sit on screen - at whatever figure Stop
           // caught it - through the dictionary write that follows.
           _emit(const RecoverCalculating());
-          // Recorded rather than dropped. This is the sector the user watched
-          // for however long before pressing Stop; returning without a row left
-          // it missing from the summary entirely, which reads as though it was
-          // never attempted.
-          _recordKey(
-            source: RecoverSource.tag,
-            kind: RecoverKind.hardnested,
-            cuid: first.cuid,
-            sectorName: first.sectorName,
-            keyName: first.keyName,
-            key: null,
-            note: l10n.mfHardnestedStopped,
-            counted: false,
-          );
-          return;
+          // Still reported, via the one row-building call below rather than a
+          // second copy of it. This is the sector the user watched for however
+          // long before pressing Stop; leaving without a row left it missing
+          // from the summary, which reads as though it was never attempted.
+          // counted: false because no unit was finished.
+          note = l10n.mfHardnestedStopped;
+          counted = false;
         case HardnestedOutcome.outOfMemory:
           _hadFailure = true;
           note = l10n.mfHardnestedOutOfMemory;
@@ -605,6 +612,7 @@ class RecoverController extends ChangeNotifier {
       keyName: first.keyName,
       key: key,
       note: note,
+      counted: counted,
     );
   }
 

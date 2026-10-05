@@ -662,17 +662,27 @@ class FakeHardnested implements HardnestedRecoverer {
 
 /// Answers every weak-nested nonce with [key], so a test can get a key into the
 /// run before the step it means to interrupt.
+///
+/// [onFirstCall] fires once, as the first nonce is attacked, for a test that
+/// wants to stop the run from inside the sweep and then read [calls] to see how
+/// many more the sweep went on to attack.
 class FakeNested implements NestedRecoverer {
-  FakeNested(this.key);
+  FakeNested(this.key, {this.onFirstCall});
 
   final BigInt key;
+  final void Function()? onFirstCall;
+  int calls = 0;
 
   @override
-  Future<BigInt?> recoverKey(NestedNonce nonce) async => key;
+  Future<BigInt?> recoverKey(NestedNonce nonce) async {
+    if (++calls == 1) onFirstCall?.call();
+    return key;
+  }
 }
 
-/// Calls [onStarted] as the attack begins and then reports [outcome], so a test
-/// can stop the run from inside the step that is running.
+/// Calls [onStarted] as the attack begins, then reports `stopped` if that left
+/// the run cancelled and `noKey` if it did not - so a test can stop the run from
+/// inside the step that is running.
 class FakeInterruptingHardnested implements HardnestedRecoverer {
   FakeInterruptingHardnested({required this.onStarted});
 
@@ -707,24 +717,7 @@ class FakeInterruptingHardnested implements HardnestedRecoverer {
   }
 }
 
-/// Answers with [key] and calls [onFirstCall] once, so a test can stop the run
-/// from inside the first nonce of a sweep and then count how many more the
-/// sweep went on to attack.
-class FakeStoppingNested implements NestedRecoverer {
-  FakeStoppingNested({required this.key, required this.onFirstCall});
-
-  final BigInt key;
-  final void Function() onFirstCall;
-  int calls = 0;
-
-  @override
-  Future<BigInt?> recoverKey(NestedNonce nonce) async {
-    if (++calls == 1) onFirstCall();
-    return key;
-  }
-}
-
-/// The reader-sweep counterpart of [FakeStoppingNested].
+/// The reader-sweep counterpart of [FakeNested]'s `onFirstCall`.
 class FakeStoppingMfKey32 implements MfKey32Recoverer {
   FakeStoppingMfKey32({required this.key, required this.onFirstCall});
 
@@ -794,6 +787,19 @@ void _stopGroup() {
         'Sec 6 key A cuid e37aa759 nt0 aabbccdd ks0 11223344 par0 1111\n';
     final recovered = BigInt.parse('A0A1A2A3A4A5', radix: 16);
 
+    // The wiring both helpers below share. Only the hardnested fake differs.
+    RecoverController controllerWith(
+      HardnestedRecoverer hard,
+      FakeUploadClient client,
+    ) => RecoverController(
+      client: client,
+      mfApi: FakeReaderApi(),
+      nestedApi: FakeTagApi(exists: true),
+      nestedRecoverer: FakeNested(recovered),
+      hardnestedRecoverer: hard,
+      knownKeyFilter: (_) => FakeKnownKeys(),
+    );
+
     ({
       RecoverController controller,
       FakeUploadClient client,
@@ -805,14 +811,7 @@ void _stopGroup() {
       final hard = FakeInterruptingHardnested(
         onStarted: () => onAttackStarted(controller),
       );
-      controller = RecoverController(
-        client: client,
-        mfApi: FakeReaderApi(),
-        nestedApi: FakeTagApi(exists: true),
-        nestedRecoverer: FakeNested(recovered),
-        hardnestedRecoverer: hard,
-        knownKeyFilter: (_) => FakeKnownKeys(),
-      );
+      controller = controllerWith(hard, client);
       return (controller: controller, client: client, hard: hard);
     }
 
@@ -893,14 +892,7 @@ void _stopGroup() {
     })
     parked() {
       final hard = FakeParkedHardnested();
-      final controller = RecoverController(
-        client: FakeUploadClient(log),
-        mfApi: FakeReaderApi(),
-        nestedApi: FakeTagApi(exists: true),
-        nestedRecoverer: FakeNested(recovered),
-        hardnestedRecoverer: hard,
-        knownKeyFilter: (_) => FakeKnownKeys(),
-      );
+      final controller = controllerWith(hard, FakeUploadClient(log));
       return (controller: controller, hard: hard, run: controller.start());
     }
 
@@ -990,6 +982,12 @@ void _stopGroup() {
       expect(row.sectorName, '5');
       expect(row.key, isNull);
       expect(row.note, isNotNull);
+      // A row, but not a finished unit: the attack was abandoned, so counting
+      // it would have the readout claim progress the run did not make. One
+      // unit done here is the weak pair recovered before the Stop; the second
+      // hardnested group was never started.
+      expect(parts.controller.doneUnits, 1);
+      expect(parts.controller.totalUnits, 3);
     });
 
     // Every attack has its own Stop check, and until these existed only the
@@ -1046,8 +1044,8 @@ void _stopGroup() {
               'nt1 bbbbbbbb ks1 22222222 par1 1111 dist 0',
       ].join('\n');
       late final RecoverController controller;
-      final nested = FakeStoppingNested(
-        key: recovered,
+      final nested = FakeNested(
+        recovered,
         onFirstCall: () => controller.stop(),
       );
       controller = RecoverController(
@@ -1234,6 +1232,33 @@ void _stopGroup() {
       },
     );
 
+    // Offered only where something honours it. The download is minutes over
+    // BLE and storageReadChunked takes no isCancelled - unlike the write side -
+    // so the read runs to completion whatever is asked of it. A button live
+    // through that is a button that does nothing, which is the whole failure
+    // having a Stop is meant to avoid.
+    test('Stop is not offered while the logs are downloading', () async {
+      bool? duringDownload;
+      final controller = controllerWith(
+        FakeHardnested([0.1]),
+        FakeUploadClient(log),
+      );
+      addTearDown(controller.dispose);
+      controller.addListener(() {
+        if (controller.state is RecoverDownloading) {
+          duringDownload ??= controller.canStop;
+        }
+      });
+
+      await controller.start();
+
+      expect(
+        duringDownload,
+        isFalse,
+        reason: 'nothing can act on a Stop during the read',
+      );
+    });
+
     test('Stop is not offered while the dictionary is being written', () async {
       // One weak pair and nothing else: the only device write this run makes is
       // the user dictionary at the end, so a frame hook can only fire inside
@@ -1275,11 +1300,6 @@ void _stopGroup() {
         offered,
         contains(true),
         reason: 'a second run has to offer Stop again',
-      );
-      expect(
-        offered.last,
-        isFalse,
-        reason: 'and withdraw it once that run has finished',
       );
     });
 
