@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:ffi';
+import 'dart:io';
 import 'dart:isolate';
 import 'dart:typed_data';
 
@@ -20,9 +21,14 @@ enum HardnestedOutcome {
   /// Stopped because the caller asked.
   stopped,
 
-  /// The bridge could not allocate its own nonce buffer. Not a verdict on
-  /// whether the device could host the attack: the engine's own allocations
-  /// still call exit(), which nothing here can catch.
+  /// Not enough memory. Either the pre-flight gate refused the attack before
+  /// it started ([hardnestedMemoryVerdict]), or the bridge could not allocate
+  /// its own nonce buffer.
+  ///
+  /// Still not a verdict on the engine's *internal* allocations: those call
+  /// exit(), which nothing here can catch, and on a 64-bit phone they do not
+  /// fail at all - the kernel kills the process instead. The gate exists
+  /// because that is unreachable from here once the attack has begun.
   outOfMemory,
 
   /// Another attack is already running. The engine keeps one channel, so a
@@ -123,37 +129,66 @@ const _pollInterval = Duration(milliseconds: 500);
 typedef _BytesNative = Uint64 Function();
 typedef _BytesDart = int Function();
 
-/// Whether an attack needing [tableBytes] should be started on a device with
-/// [availableBytes] going spare. Returns the refusal to hand back, or null to
-/// go ahead.
+/// The margin over the engine's measured peak, as a fraction: an eighth again.
+///
+/// Small on purpose. [hardnestedPeakBytes] is a measurement of five named
+/// allocations, not an estimate, so this only has to cover what it deliberately
+/// leaves out - the candidate statelists, which are allocated after the bitflip
+/// tables are freed and so largely reuse that space - plus the app's own
+/// working set alongside it.
+const _memoryMarginNumerator = 9;
+const _memoryMarginDenominator = 8;
+
+/// Bytes an attack needs available before it is worth starting: the engine's
+/// peak plus [_memoryMarginNumerator]/[_memoryMarginDenominator].
+///
+/// One spelling, so the refusal message cannot quote a different number from
+/// the one the judgement used. That had already happened once: the message named
+/// the peak while the comparison used the peak plus the margin, so it read
+/// "needs 702 MiB, has 800 MiB" on a run it had just refused.
+int hardnestedRequiredBytes(int peakBytes) =>
+    peakBytes * _memoryMarginNumerator ~/ _memoryMarginDenominator;
+
+/// Whether an attack whose engine peaks at [peakBytes] should be started on a
+/// device with [availableBytes] going spare. Returns the refusal to hand back,
+/// or null to go ahead.
 ///
 /// This exists because the engine's own out-of-memory handling cannot run where
 /// it is needed. It calls `exit()` when an allocation fails - but Android and
-/// iOS overcommit, so the allocation does not fail: the kernel kills the process
-/// when the pages are first touched, with no return value anywhere to check.
-/// Before the attack starts is the only place left to catch it, and
+/// iOS hand out address space lazily, so on 64-bit the allocation does not fail:
+/// the kernel kills the process when the pages are first touched, with no return
+/// value anywhere to check. Before the attack starts is the only place left, and
 /// [HardnestedOutcome.outOfMemory] was an outcome that essentially never fired.
 ///
-/// Pure, and separate from the lookups, because the whole judgement is in the
-/// two comparisons below and testing them must not need a loaded engine.
+/// Pure, and separate from the lookups, because the whole judgement is the two
+/// comparisons below and testing them must not need a loaded engine.
 @visibleForTesting
 HardnestedResult? hardnestedMemoryVerdict({
-  required int tableBytes,
+  required int peakBytes,
   required int availableBytes,
 }) {
   // Either figure missing means the question could not be asked - no engine, or
   // a platform with no answer for it. Going ahead is what shipped before this
   // gate existed; refusing on an absent figure would turn an unasked question
-  // into a failed attack.
-  if (tableBytes <= 0 || availableBytes <= 0) return null;
-  // The tables are a floor, not the total: the sum-property bitarrays and the
-  // candidate statelists sit on top of them and scale with the nonce set. A
-  // quarter again is a margin, not a measurement, and deliberately a small one.
-  // Being too strict costs an attack that would have finished; being too loose
-  // costs what happens today, which is the app disappearing.
-  if (availableBytes * 4 >= tableBytes * 5) return null;
+  // into a failed attack. The caller logs this case; see [_memoryVerdict].
+  if (peakBytes <= 0 || availableBytes <= 0) return null;
+  if (availableBytes >= hardnestedRequiredBytes(peakBytes)) return null;
   return (key: null, outcome: HardnestedOutcome.outOfMemory);
 }
+
+/// The one record of why an attack the user asked for never started.
+///
+/// Built here rather than inline so a test can hold it to naming the figure the
+/// judgement actually used - the requirement, not the bare peak.
+@visibleForTesting
+String hardnestedMemoryRefusal({
+  required int peakBytes,
+  required int availableBytes,
+}) =>
+    '[Recover] hardnested not started: needs '
+    '${hardnestedRequiredBytes(peakBytes) >> 20} MiB '
+    '(engine peaks at ${peakBytes >> 20} MiB), '
+    'OS reports ${availableBytes >> 20} MiB available';
 
 class NativeHardnestedRecoverer implements HardnestedRecoverer {
   @override
@@ -205,16 +240,21 @@ class NativeHardnestedRecoverer implements HardnestedRecoverer {
   /// Asks the engine what it needs and the OS what it has, then judges.
   ///
   /// On the calling isolate, not in the attack's: both calls are a few
-  /// microseconds (one walks the 2046-entry table index, the other reads a
-  /// single OS figure), and the answer decides whether to spawn at all.
+  /// microseconds (one makes 2046 lookups into a static table index - 0x001 to
+  /// 0x3ff over both parities - and sums five allocation sizes; the other reads
+  /// a single OS figure), and the answer decides whether to spawn at all.
+  ///
+  /// Advisory, so every way of not getting an answer ends in "go ahead" - but
+  /// none of them ends in silence. A gate that quietly switched itself off would
+  /// leave a killed app looking exactly like one with no gate at all.
   static HardnestedResult? _memoryVerdict() {
-    final int tableBytes;
+    final int peakBytes;
     final int availableBytes;
     try {
       final library = openHardnestedNativeLibrary();
-      tableBytes = lookupNativeFunction(
+      peakBytes = lookupNativeFunction(
         () => library.lookupFunction<_BytesNative, _BytesDart>(
-          'qunleashed_hn_table_bytes',
+          'qunleashed_hn_peak_bytes',
         ),
       )();
       availableBytes = lookupNativeFunction(
@@ -222,25 +262,60 @@ class NativeHardnestedRecoverer implements HardnestedRecoverer {
           'qunleashed_hn_available_bytes',
         ),
       )();
-    } on NativeEngineUnavailable {
-      // Not this gate's verdict to give. The isolate loads the engine too and
-      // already reports a packaging fault as one; answering here would report a
-      // build missing its native library as a device short of memory, and send
-      // the user after the wrong thing.
+    } on NativeEngineUnavailable catch (e) {
+      // The decision not to answer is right: the isolate loads the engine too
+      // and reports a missing library as the packaging fault it is, so refusing
+      // here would send the user after a memory problem they do not have.
+      //
+      // Logged all the same, because the case that gets here is not only a
+      // missing library. On Apple the lookup is DynamicLibrary.process(), which
+      // never fails, so a build carrying the engine but *not these two symbols*
+      // lands here - and the isolate then looks up a different, older symbol,
+      // succeeds, and reports nothing. That exact fault has shipped before (see
+      // the note on QUNLEASHED_EXPORT in mfkey32/nested_bridge.c), and without
+      // this line the only trace of a silently disabled gate would be an app
+      // that disappears.
+      LogService.warn(
+        '[Recover] hardnested memory gate skipped, the engine did not '
+        'answer: $e',
+      );
+      return null;
+    } catch (e, st) {
+      // Deliberately broad, and the one place in this file where that is right.
+      // "Could not ask" already has a defined, safe meaning, so an advisory
+      // check must not be the thing that fails the attack: anything escaping
+      // here would otherwise reach _recoverHardnested's catch and be reported
+      // to the user as the attack failing, on a card that was probably fine.
+      LogService.error(
+        '[Recover] hardnested memory gate failed, starting anyway: $e\n$st',
+      );
+      return null;
+    }
+    if (peakBytes <= 0 || availableBytes <= 0) {
+      // Only where a figure was expected. macOS and Windows answer 0 by design
+      // - malloc returns NULL there and the engine's own handling works - so
+      // saying this on a desktop would be noise on every single attack.
+      if (Platform.isAndroid || Platform.isIOS) {
+        LogService.warn(
+          '[Recover] hardnested memory gate could not ask '
+          '(engine peak $peakBytes, available $availableBytes); '
+          'starting anyway',
+        );
+      }
       return null;
     }
     final refusal = hardnestedMemoryVerdict(
-      tableBytes: tableBytes,
+      peakBytes: peakBytes,
       availableBytes: availableBytes,
     );
     if (refusal != null) {
       // warn, not info: this is the whole record of why an attack the user
-      // asked for never ran, and info reaches nothing in a release build. Both
-      // figures, because which one was wrong is the first question.
+      // asked for never ran, and info reaches nothing in a release build.
       LogService.warn(
-        '[Recover] hardnested not started: needs at least '
-        '${tableBytes >> 20} MiB for its tables, OS reports '
-        '${availableBytes >> 20} MiB available',
+        hardnestedMemoryRefusal(
+          peakBytes: peakBytes,
+          availableBytes: availableBytes,
+        ),
       );
     }
     return refusal;

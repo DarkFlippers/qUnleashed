@@ -4477,9 +4477,29 @@
   "@mfGenerating": {
     "description": "Status title while candidate keys are being computed, before they are written to the device."
   },
-  "mfHardnestedOutOfMemory": "Could not set up the hardnested attack on this device — not enough memory.",
+  "mfHardnestedOutOfMemory": "This device does not have enough free memory for the hardnested attack. Close other apps and try again, or run it from the desktop app.",
   "@mfHardnestedOutOfMemory": {
-    "description": "Note when the bridge could not allocate its own nonce buffer. It does NOT cover the engine running out of memory later, which still terminates the app; see the comment on qunleashed_hardnested_recover."
+    "description": "Note when the hardnested attack could not be run for lack of memory. Covers both the pre-flight check that refuses it before it starts (hardnestedMemoryVerdict) and the bridge failing to allocate its own nonce buffer. It does NOT cover the engine running out of memory once running, which still terminates the app; see the comment on qunleashed_hardnested_recover."
+  },
+  "mfHardnestedStopped": "Stopped before this key was recovered.",
+  "@mfHardnestedStopped": {
+    "description": "Summary row for a sector whose hardnested attack was interrupted by the user pressing Stop. Not a failure - the nonces are kept and the attack can be run again."
+  },
+  "mfCandidatesStopped": "Stopped before the candidate keys were saved.",
+  "@mfCandidatesStopped": {
+    "description": "Summary row for a card whose candidate-dictionary upload was interrupted by the user pressing Stop. The partial file is removed from the device and the dictionary is rebuilt on the next run."
+  },
+  "mfStoppedEarly": "Stopped at {done} of {total} steps.",
+  "@mfStoppedEarly": {
+    "description": "Footer on the result screen after the user pressed Stop, so a part-finished run is not mistaken for a complete one.",
+    "placeholders": {
+      "done": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
   },
   "mfSkippedKnown": "{count, plural, =1{1 sector key was already in your dictionary and was not attacked again} other{{count} sector keys were already in your dictionary and were not attacked again}}",
   "@mfSkippedKnown": {

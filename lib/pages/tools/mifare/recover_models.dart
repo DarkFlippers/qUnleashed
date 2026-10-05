@@ -132,6 +132,7 @@ class RecoverSaved extends RecoverState {
     this.hasCandidates = false,
     this.hasFailures = false,
     this.skippedKnown = 0,
+    this.stopped = false,
   });
 
   /// Keys newly written to the user dictionary this run.
@@ -149,6 +150,16 @@ class RecoverSaved extends RecoverState {
   /// being attacked again. Worth saying: it is the difference between a run
   /// that did nothing and one that had nothing left to do.
   final int skippedKnown;
+
+  /// True when the user pressed Stop, so this run ended before it had attacked
+  /// everything it planned to.
+  ///
+  /// A third thing, and it used to render as the first: "No new keys added" is
+  /// the same sentence whether twelve sectors were attacked and yielded nothing
+  /// or two were attacked and the user stopped. The keys found are kept either
+  /// way - that is what Stop is for - but what was *not* tried has to be said,
+  /// or the next run looks pointless.
+  final bool stopped;
 }
 
 class RecoverError extends RecoverState {

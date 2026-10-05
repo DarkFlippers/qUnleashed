@@ -5,6 +5,8 @@ import 'dart:typed_data';
 import 'package:flipperlib/flipperlib.dart' hide DateTime;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/tools/mifare/mfkey32_api.dart';
+import 'package:qunleashed/pages/tools/mifare/mfkey32_models.dart';
+import 'package:qunleashed/pages/tools/mifare/mfkey32_recoverer.dart';
 import 'package:qunleashed/pages/tools/mifare/nested_api.dart';
 import 'package:qunleashed/pages/tools/mifare/existed_keys_storage.dart';
 import 'package:qunleashed/pages/tools/mifare/hardnested_recoverer.dart';
@@ -491,9 +493,15 @@ void main() {
 /// here would do nothing — the real body runs either way. What it goes through
 /// is `callRpcFramesMulti`, and that is what this fakes.
 class FakeUploadClient extends FakeRecoverClient {
-  FakeUploadClient(this.log);
+  FakeUploadClient(this.log, {this.byPath = const {}});
 
   final String log;
+
+  /// Per-path overrides for the device read, for a test that needs the two logs
+  /// to differ. Without it every read answers [log], which is fine while only
+  /// one log matters but makes a reader nonce impossible to serve - the nested
+  /// parser and the mfkey32 parser do not accept each other's format.
+  final Map<String, String> byPath;
 
   /// Frames the real `storageWriteChunked` handed down, counted so a run that
   /// stopped early can be told from one that finished.
@@ -532,9 +540,10 @@ class FakeUploadClient extends FakeRecoverClient {
   }) async {
     if (request.hasStorageReadRequest()) {
       reads++;
+      final body = byPath[request.storageReadRequest.path] ?? log;
       final frame = Main()
         ..storageReadResponse = (ReadResponse()
-          ..file = (File()..data = utf8.encode(log)));
+          ..file = (File()..data = utf8.encode(body)));
       onFrame?.call(frame);
       return [frame];
     }
@@ -665,11 +674,15 @@ class FakeNested implements NestedRecoverer {
 /// Calls [onStarted] as the attack begins and then reports [outcome], so a test
 /// can stop the run from inside the step that is running.
 class FakeInterruptingHardnested implements HardnestedRecoverer {
-  FakeInterruptingHardnested({required this.onStarted, required this.outcome});
+  FakeInterruptingHardnested({required this.onStarted});
 
   final void Function() onStarted;
-  final HardnestedOutcome outcome;
   int calls = 0;
+
+  /// What `isCancelled` answered when the attack asked, which is the only way
+  /// to see that callback bound to the right flag: a fake that reported
+  /// `stopped` regardless would pass identically with it bound to `_disposed`.
+  bool? sawCancelled;
 
   @override
   Future<HardnestedResult> recoverKey({
@@ -682,7 +695,72 @@ class FakeInterruptingHardnested implements HardnestedRecoverer {
     calls++;
     onProgress?.call(0.47);
     onStarted();
-    return (key: null, outcome: outcome);
+    // Polled after, not before: the callback above is what asks the run to end,
+    // and a real engine would see it at its next bucket.
+    sawCancelled = isCancelled?.call() ?? false;
+    return (
+      key: null,
+      outcome: sawCancelled!
+          ? HardnestedOutcome.stopped
+          : HardnestedOutcome.noKey,
+    );
+  }
+}
+
+/// Answers with [key] and calls [onFirstCall] once, so a test can stop the run
+/// from inside the first nonce of a sweep and then count how many more the
+/// sweep went on to attack.
+class FakeStoppingNested implements NestedRecoverer {
+  FakeStoppingNested({required this.key, required this.onFirstCall});
+
+  final BigInt key;
+  final void Function() onFirstCall;
+  int calls = 0;
+
+  @override
+  Future<BigInt?> recoverKey(NestedNonce nonce) async {
+    if (++calls == 1) onFirstCall();
+    return key;
+  }
+}
+
+/// The reader-sweep counterpart of [FakeStoppingNested].
+class FakeStoppingMfKey32 implements MfKey32Recoverer {
+  FakeStoppingMfKey32({required this.key, required this.onFirstCall});
+
+  final BigInt key;
+  final void Function() onFirstCall;
+  int calls = 0;
+
+  @override
+  Future<BigInt?> bruteforceKey(MfKey32Nonce nonce) async {
+    if (++calls == 1) onFirstCall();
+    return key;
+  }
+}
+
+/// Parks inside the attack until [release] completes, so a test can act on the
+/// controller while a run is genuinely in flight and nothing else is emitting.
+///
+/// The two things that need it both turn on *when* something happens rather
+/// than what: that `stop()` notifies by itself (any later emission would mask a
+/// missing notify) and that `stop()` is inert on a disposed controller (which
+/// needs `_running` still true, or the guard under test is never reached).
+class FakeParkedHardnested implements HardnestedRecoverer {
+  final release = Completer<void>();
+  final parked = Completer<void>();
+
+  @override
+  Future<HardnestedResult> recoverKey({
+    required int cuid,
+    required List<int> ntEnc,
+    required List<int> parEnc,
+    void Function(double fraction)? onProgress,
+    bool Function()? isCancelled,
+  }) async {
+    if (!parked.isCompleted) parked.complete();
+    await release.future;
+    return (key: null, outcome: HardnestedOutcome.stopped);
   }
 }
 
@@ -726,7 +804,6 @@ void _stopGroup() {
       late final RecoverController controller;
       final hard = FakeInterruptingHardnested(
         onStarted: () => onAttackStarted(controller),
-        outcome: HardnestedOutcome.stopped,
       );
       controller = RecoverController(
         client: client,
@@ -765,6 +842,11 @@ void _stopGroup() {
         greaterThan(0),
         reason: 'and it reached the card',
       );
+      expect(
+        (parts.controller.state as RecoverSaved).stopped,
+        isTrue,
+        reason: 'and the summary says so, or it reads as a complete run',
+      );
     });
 
     // The other half of the contract. Same run, same moment, but the page goes
@@ -776,6 +858,16 @@ void _stopGroup() {
       await parts.controller.start();
 
       expect(parts.hard.calls, 1);
+      // The precondition, asserted because without it this test's only claim is
+      // a negative one and it stops testing anything. A mutation that stopped
+      // registering keys at all makes `added` empty, upload() short-circuits
+      // before any write, and framesSent is 0 for a reason with nothing to do
+      // with dispose() - which it did, and this test passed.
+      expect(
+        parts.controller.entries.any((e) => e.key == 'A0A1A2A3A4A5'),
+        isTrue,
+        reason: 'a key has to have been pending when the page went',
+      );
       expect(
         parts.client.framesSent,
         0,
@@ -790,6 +882,405 @@ void _stopGroup() {
       parts.controller.stop();
 
       expect(parts.controller.cancelled, isFalse);
+    });
+
+    /// Starts a run and returns once it is parked inside the attack, so the
+    /// test can act with nothing else emitting.
+    ({
+      RecoverController controller,
+      FakeParkedHardnested hard,
+      Future<void> run,
+    })
+    parked() {
+      final hard = FakeParkedHardnested();
+      final controller = RecoverController(
+        client: FakeUploadClient(log),
+        mfApi: FakeReaderApi(),
+        nestedApi: FakeTagApi(exists: true),
+        nestedRecoverer: FakeNested(recovered),
+        hardnestedRecoverer: hard,
+        knownKeyFilter: (_) => FakeKnownKeys(),
+      );
+      return (controller: controller, hard: hard, run: controller.start());
+    }
+
+    // Reachable because the confirmation dialog is awaited: the page can be
+    // popped while it is open, and the handler then calls stop() on a disposed
+    // controller that is still running. notifyListeners() asserts in that
+    // state, so without the guard this is a debug-build crash out of an async
+    // button callback - which lands in the log as [uncaught] with nothing
+    // naming the operation.
+    test('stop() after the page has gone does nothing', () async {
+      final p = parked();
+      await p.hard.parked.future;
+      expect(p.controller.running, isTrue, reason: 'the guard needs this true');
+
+      p.controller.dispose();
+
+      expect(p.controller.stop, returnsNormally);
+      expect(p.controller.cancelled, isFalse);
+      p.hard.release.complete();
+      await p.run;
+    });
+
+    // The flag exists to be shown, and nothing else shows it: an attack notices
+    // a Stop only at its next bounded check, and a hardnested bucket can be a
+    // long way off. Without this notify the button stays enabled through the
+    // whole of the wait it was pressed to end.
+    //
+    // Asserted while the run is parked, because any later emission would carry
+    // the flag to the page anyway and mask a missing notify - which it did.
+    test('stop() tells the page by itself', () async {
+      final p = parked();
+      addTearDown(p.controller.dispose);
+      await p.hard.parked.future;
+      var fires = 0;
+      p.controller.addListener(() => fires++);
+
+      p.controller.stop();
+
+      expect(fires, 1, reason: 'stop() has to notify on its own');
+      expect(p.controller.cancelled, isTrue);
+      p.hard.release.complete();
+      await p.run;
+    });
+
+    // The readout must not keep showing the figure of the attack that Stop
+    // ended. Asserted on sequence position rather than a count: _emit fires on
+    // every call and _tick emits the same value, so any count is fragile.
+    test('the stopped attack leaves no figure on screen', () async {
+      final seen = <RecoverState>[];
+      final parts = build(onAttackStarted: (c) => c.stop());
+      addTearDown(parts.controller.dispose);
+      parts.controller.addListener(() => seen.add(parts.controller.state));
+
+      await parts.controller.start();
+
+      expect(
+        seen.whereType<RecoverCalculating>().any((s) => s.fraction == 0.47),
+        isTrue,
+        reason: 'the fixture has to have put a figure up to begin with',
+      );
+      final uploadAt = seen.indexWhere((s) => s is RecoverUploading);
+      expect(uploadAt, greaterThan(0), reason: 'the save has to be reached');
+      final lastPhase = seen
+          .take(uploadAt)
+          .whereType<RecoverCalculating>()
+          .last;
+      expect(lastPhase.fraction, isNull);
+      expect(lastPhase.label, isNull);
+    });
+
+    // The sector the user watched for however long before pressing Stop. It
+    // used to be dropped, which reads as though it was never attempted.
+    test('the stopped sector is still reported', () async {
+      final parts = build(onAttackStarted: (c) => c.stop());
+      addTearDown(parts.controller.dispose);
+
+      await parts.controller.start();
+
+      expect(
+        parts.hard.sawCancelled,
+        isTrue,
+        reason: 'the attack has to see the Stop through its own isCancelled',
+      );
+      final row = parts.controller.entries.firstWhere(
+        (e) => e.kind == RecoverKind.hardnested,
+      );
+      expect(row.sectorName, '5');
+      expect(row.key, isNull);
+      expect(row.note, isNotNull);
+    });
+
+    // Every attack has its own Stop check, and until these existed only the
+    // hardnested one was pinned - each of the others could be reverted to
+    // `_disposed` with the whole suite still green. They matter because of this
+    // controller's own premise: the nonce logs are never cleared, so a mature
+    // run re-attacks every nonce ever collected. A reader sweep is the longest
+    // serial stretch of such a run.
+    test('a Stop during the reader sweep ends it', () async {
+      const readerLog =
+          'Sec 1 key A cuid 11111111 nt0 11111111 nr0 11111111 ar0 11111111 '
+          'nt1 22222222 nr1 22222222 ar1 22222222\n'
+          'Sec 2 key A cuid 11111111 nt0 33333333 nr0 33333333 ar0 33333333 '
+          'nt1 44444444 nr1 44444444 ar1 44444444\n'
+          'Sec 3 key A cuid 11111111 nt0 55555555 nr0 55555555 ar0 55555555 '
+          'nt1 66666666 nr1 66666666 ar1 66666666\n';
+      final client = FakeUploadClient('', byPath: {pathNonceLog: readerLog});
+      late final RecoverController controller;
+      final reader = FakeStoppingMfKey32(
+        key: recovered,
+        onFirstCall: () => controller.stop(),
+      );
+      controller = RecoverController(
+        client: client,
+        mfApi: FakeReaderApi(exists: true),
+        nestedApi: FakeTagApi(exists: false),
+        mfRecoverer: reader,
+        knownKeyFilter: (_) => FakeKnownKeys(),
+      );
+      addTearDown(controller.dispose);
+
+      await controller.start();
+
+      expect(
+        reader.calls,
+        1,
+        reason: 'the sweep must not run on through the remaining nonces',
+      );
+      expect(controller.state, isA<RecoverSaved>());
+      expect(
+        (controller.state as RecoverSaved).keys,
+        contains('A0A1A2A3A4A5'),
+        reason: 'the key recovered before the Stop is still kept',
+      );
+    });
+
+    // The weak path is batched four at a time, so its guard is at the batch
+    // boundary - asserting exactly four pins that, rather than just "fewer
+    // than all of them".
+    test('a Stop during the weak sweep ends it at the batch boundary', () async {
+      final pairs = [
+        for (var sector = 1; sector <= 8; sector++)
+          'Sec $sector key A cuid e37aa759 nt0 aaaaaaaa ks0 11111111 par0 1111 '
+              'nt1 bbbbbbbb ks1 22222222 par1 1111 dist 0',
+      ].join('\n');
+      late final RecoverController controller;
+      final nested = FakeStoppingNested(
+        key: recovered,
+        onFirstCall: () => controller.stop(),
+      );
+      controller = RecoverController(
+        client: FakeUploadClient('$pairs\n'),
+        mfApi: FakeReaderApi(),
+        nestedApi: FakeTagApi(exists: true),
+        nestedRecoverer: nested,
+        knownKeyFilter: (_) => FakeKnownKeys(),
+      );
+      addTearDown(controller.dispose);
+
+      await controller.start();
+
+      expect(
+        nested.calls,
+        4,
+        reason: 'the batch in flight finishes; the next one must not start',
+      );
+    });
+
+    // The step a user is most likely to interrupt: the write's own comment
+    // calls it minutes over BLE, and it is the one with a percentage on screen.
+    // A cancelled upload used to return without a row, so the card the user had
+    // watched vanished from the summary - and with _wroteCandidates left false,
+    // so did the "verify these on the device" footnote.
+    test(
+      'a Stop during the candidate upload says which card lost out',
+      () async {
+        const staticLog =
+            'Sec 3 key A cuid e37aa759 nt0 db7df8ae ks0 77ff617e par0 1111 '
+            'dist 0\n';
+        late final RecoverController controller;
+        final client = FakeUploadClient(staticLog)
+          ..frameDelay = const Duration(milliseconds: 1);
+        client.onFrameSent = (frames) {
+          if (frames == 1) controller.stop();
+        };
+        controller = RecoverController(
+          client: client,
+          mfApi: FakeReaderApi(),
+          nestedApi: FakeTagApi(exists: true),
+          staticRecoverer: FakeStaticRecoverer([dictOf(0xe37aa759, 4000)]),
+          knownKeyFilter: (_) => FakeKnownKeys(),
+        );
+        addTearDown(controller.dispose);
+
+        await controller.start();
+
+        expect(controller.state, isA<RecoverSaved>());
+        final row = controller.entries.firstWhere(
+          (e) => e.kind == RecoverKind.staticEncrypted,
+        );
+        expect(
+          row.note,
+          isNotNull,
+          reason: 'the interrupted card has to be named, not dropped',
+        );
+        expect(
+          row.candidateCount,
+          isNull,
+          reason: 'the file it would point at was deleted on the way out',
+        );
+      },
+    );
+
+    // The loop's own guard, which the test above cannot reach: there the
+    // cancelled write throws and the catch returns before the next iteration
+    // ever starts.
+    //
+    // Reaching it needs a card that finishes *without* a write, so the loop
+    // actually comes round again - a dictionary whose generation failed does
+    // that. The Stop then lands on the second card's guard, and that card must
+    // not be uploaded at all: a row saying "stopped before the candidates were
+    // saved" would claim it was attempted.
+    test('a Stop between cards does not start the next one', () async {
+      const twoStatic =
+          'Sec 3 key A cuid e37aa759 nt0 db7df8ae ks0 77ff617e par0 1111 '
+          'dist 0\n'
+          'Sec 4 key A cuid 11223344 nt0 aabbccdd ks0 11223344 par0 1111 '
+          'dist 0\n';
+      final client = FakeUploadClient(twoStatic);
+      final controller = RecoverController(
+        client: client,
+        mfApi: FakeReaderApi(),
+        nestedApi: FakeTagApi(exists: true),
+        staticRecoverer: FakeStaticRecoverer([
+          StaticCandidateDict.failed(0xe37aa759, StateError('no candidates')),
+          dictOf(0x11223344, 20),
+        ]),
+        knownKeyFilter: (_) => FakeKnownKeys(),
+      );
+      addTearDown(controller.dispose);
+      // _tick runs at the top of each iteration, so doneUnits reaching 1 is the
+      // first card starting. That card writes nothing, so the Stop asked for
+      // here is still unspent when the loop comes round to the second.
+      controller.addListener(() {
+        if (controller.doneUnits == 1) controller.stop();
+      });
+
+      await controller.start();
+
+      expect(
+        client.framesSent,
+        0,
+        reason: 'the second dictionary must never be sent',
+      );
+      expect(
+        controller.entries
+            .where((e) => e.kind == RecoverKind.staticEncrypted)
+            .length,
+        1,
+        reason: 'and it gets no row, because it was not attempted',
+      );
+    });
+
+    // The whole static-encrypted batch is skipped by a guard of its own, which
+    // runs after the hardnested groups. Without a fixture carrying both kinds
+    // it was unreachable: a Stop during hardnested would still fall through and
+    // generate every candidate dictionary - minutes of work the user had just
+    // asked to end, and a device write after it.
+    test('a Stop during hardnested skips the static batch', () async {
+      const mixed =
+          'Sec 5 key A cuid e37aa759 nt0 db7df8ae ks0 77ff617e par0 1111\n'
+          'Sec 3 key A cuid 11223344 nt0 aabbccdd ks0 11223344 par0 1111 '
+          'dist 0\n';
+      late final RecoverController controller;
+      final staticRecoverer = FakeStaticRecoverer([dictOf(0x11223344, 20)]);
+      final hard = FakeInterruptingHardnested(
+        onStarted: () => controller.stop(),
+      );
+      final client = FakeUploadClient(mixed);
+      controller = RecoverController(
+        client: client,
+        mfApi: FakeReaderApi(),
+        nestedApi: FakeTagApi(exists: true),
+        hardnestedRecoverer: hard,
+        staticRecoverer: staticRecoverer,
+        knownKeyFilter: (_) => FakeKnownKeys(),
+      );
+      addTearDown(controller.dispose);
+
+      await controller.start();
+
+      expect(hard.calls, 1, reason: 'the fixture has to reach hardnested');
+      expect(
+        staticRecoverer.askedAbout,
+        0,
+        reason: 'candidate generation must not be entered at all',
+      );
+      expect(
+        client.framesSent,
+        0,
+        reason: 'and nothing is written to the card',
+      );
+    });
+
+    // Stop is offered while there is something to stop, and withdrawn for the
+    // one step it must not interrupt. `_running` stays true through the
+    // dictionary write, and retrySave sets it for an operation that is nothing
+    // but that write - so a button gated on `running` alone would sit over the
+    // save and do nothing when pressed, which is the failure offering a Stop
+    // is meant to avoid.
+    test(
+      'Stop is offered during an attack, and not once the run has ended',
+      () async {
+        final p = parked();
+        addTearDown(p.controller.dispose);
+        await p.hard.parked.future;
+
+        expect(
+          p.controller.canStop,
+          isTrue,
+          reason: 'an attack in flight is exactly what Stop is for',
+        );
+
+        p.hard.release.complete();
+        await p.run;
+
+        expect(
+          p.controller.canStop,
+          isFalse,
+          reason: 'and nothing is left to stop once the run has ended',
+        );
+      },
+    );
+
+    test('Stop is not offered while the dictionary is being written', () async {
+      // One weak pair and nothing else: the only device write this run makes is
+      // the user dictionary at the end, so a frame hook can only fire inside
+      // the save. With a static card in the fixture it would also fire during a
+      // candidate upload, where Stop *should* still be on offer.
+      const weakOnly =
+          'Sec 1 key A cuid e37aa759 nt0 aaaaaaaa ks0 11111111 par0 1111 '
+          'nt1 bbbbbbbb ks1 22222222 par1 1111 dist 0';
+      bool? duringSave;
+      final client = FakeUploadClient(weakOnly);
+      final controller = RecoverController(
+        client: client,
+        mfApi: FakeReaderApi(),
+        nestedApi: FakeTagApi(exists: true),
+        nestedRecoverer: FakeNested(recovered),
+        knownKeyFilter: (_) => FakeKnownKeys(),
+      );
+      addTearDown(controller.dispose);
+      client.onFrameSent = (_) => duringSave ??= controller.canStop;
+
+      await controller.start();
+
+      expect(
+        client.framesSent,
+        greaterThan(0),
+        reason: 'the fixture has to actually reach a write',
+      );
+      expect(duringSave, isFalse);
+
+      // The latch has to be released, and this is where that shows: _saving is
+      // an instance field, so one left true would withdraw Stop for the rest of
+      // the page's life - every later run offering a button that never appears.
+      final offered = <bool>[];
+      controller.addListener(() => offered.add(controller.canStop));
+
+      await controller.start();
+
+      expect(
+        offered,
+        contains(true),
+        reason: 'a second run has to offer Stop again',
+      );
+      expect(
+        offered.last,
+        isFalse,
+        reason: 'and withdraw it once that run has finished',
+      );
     });
 
     // The flag is per-run. A Stop left set would end the next run before it

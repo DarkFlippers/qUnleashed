@@ -16,13 +16,10 @@
 #include <stdlib.h>
 
 #include "hardnested.h"  // mfnestedhard
-#include "hardnested/tables.h"  // get_bitflip, for the memory figure below
 #include "qunleashed_hn_progress.h"
 
 // For qunleashed_hn_available_bytes only.
-#if defined(_WIN32)
-#include <windows.h>
-#elif defined(__APPLE__)
+#if defined(__APPLE__)
 #include <TargetConditionals.h>
 #if TARGET_OS_IPHONE
 #include <os/proc.h>  // os_proc_available_memory
@@ -39,25 +36,24 @@
 #define QUNLEASHED_EXPORT __attribute__((visibility("default"), used))
 #endif
 
-// Bytes the engine holds for an attack's whole duration: one decompressed
-// bitflip state table per entry the vendored table set actually carries, the
-// size init_bitflip_bitarrays() allocates them at.
+// Bytes the engine has resident at once before it looks at a single nonce.
 //
-// Walked rather than written down. The count is a property of tables.c, which
-// is vendored and will change when it is next updated; a constant here would go
-// quietly wrong, and the whole point of the figure is that the caller trusts it.
+// The figure itself is computed in hardnested.c, beside the five allocations it
+// sums, because that is the only place it cannot drift from them - see the note
+// there. This is the FFI wrapper, so the export surface stays in the bridge.
 //
-// A floor, not a total: the sum-property bitarrays and the candidate statelists
-// are on top of this, and vary with the nonce set. The caller adds its own
-// margin - see hardnestedMemoryVerdict in hardnested_recoverer.dart.
-QUNLEASHED_EXPORT uint64_t qunleashed_hn_table_bytes(void) {
-  const uint64_t per_table = (uint64_t)sizeof(uint32_t) * ((1u << 19) + 1u);
-  uint64_t tables = 0;
-  for (uint16_t bitflip = 0x001; bitflip < 0x400; bitflip++) {
-    if (get_bitflip(EVEN_STATE, bitflip).input_buffer != NULL) tables++;
-    if (get_bitflip(ODD_STATE, bitflip).input_buffer != NULL) tables++;
-  }
-  return tables * per_table;
+// Bigger than it looks, and the reason this export exists rather than a
+// constant on the Dart side: the bitflip tables (~702 MiB) are not even the
+// largest term. init_nonce_memory's per-first-byte state bitarrays are 1 GiB on
+// their own, and the sum-property arrays add ~150 MiB more. All of it is live
+// together, so the real pre-flight figure is on the order of 1.8 GiB.
+//
+// Not counted, deliberately: the candidate statelists, which are allocated
+// after the bitflip tables are freed and so largely reuse that space rather
+// than raising the peak. The caller still adds a margin for them and for its own
+// working set - see hardnestedMemoryVerdict in hardnested_recoverer.dart.
+QUNLEASHED_EXPORT uint64_t qunleashed_hn_peak_bytes(void) {
+  return qunleashed_hn_engine_peak_bytes();
 }
 
 // What the OS says is still available, or 0 for "no answer".
@@ -69,15 +65,15 @@ QUNLEASHED_EXPORT uint64_t qunleashed_hn_table_bytes(void) {
 // Only the platforms that overcommit are answered, because they are the ones
 // where the engine's own out-of-memory handling never runs - malloc succeeds
 // and the kernel kills the process when XzDecode first touches the pages.
+//
+// So Windows and macOS both answer 0 on purpose. There, malloc returns NULL and
+// the engine's own handling of that works, which is the whole reason this
+// function exists for the others. Windows would also answer the wrong question:
+// ullAvailPhys ignores the pagefile, so a desktop with plenty of commit charge
+// to spare but little free physical RAM would be refused an attack that would
+// have finished.
 QUNLEASHED_EXPORT uint64_t qunleashed_hn_available_bytes(void) {
-#if defined(_WIN32)
-  MEMORYSTATUSEX status;
-  status.dwLength = sizeof(status);
-  if (!GlobalMemoryStatusEx(&status)) {
-    return 0;
-  }
-  return (uint64_t)status.ullAvailPhys;
-#elif defined(__APPLE__)
+#if defined(__APPLE__)
 #if TARGET_OS_IPHONE
   // What is left of *this process's* allowance, which is the figure iOS kills
   // against - not a system-wide free count, which would be far too optimistic
@@ -135,21 +131,28 @@ static void put_be32(uint8_t *p, uint32_t v) {
 // can catch.
 //
 // The size is worth stating, because it is not an unlucky edge: every attack
-// decompresses the whole bitflip state table set - 351 of them (tables.c's
-// bf_zero and bf_one) at 4 * ((1 << 19) + 1) bytes each, allocated in
-// hardnested.c's init_bitflip_bitarrays and freed only at the end - so ~700 MiB
-// is resident for the attack's full duration on every single run.
+// allocates ~1.8 GiB before it reads a single nonce, and holds all of it at
+// once. qunleashed_hn_peak_bytes above is that figure, and the note in
+// hardnested.c says which five allocations it sums. The bitflip state tables
+// (~702 MiB) are only the second largest, and they are the one term freed
+// partway through - the rest stands until the attack ends.
 //
 // Plumbing the engine's failures through would not save the app on the
-// platforms where it actually dies. Android and iOS overcommit, so malloc there
-// does not return NULL at all: the kernel kills the process when XzDecode first
-// touches the pages, and there is no return value to check. (Windows commits,
-// so there it would help.) A probe here was tried and removed for the same
-// reason - a large malloc succeeds under overcommit, so it refused nothing and
-// implied a check that was not happening. What would help on mobile is a
-// capacity gate in Dart before the isolate starts, measured against the figure
-// the OS reports as available; that is its own change, and the one
-// HardnestedOutcome.outOfMemory is currently waiting for.
+// platforms where it actually dies. Android and iOS hand out address space
+// lazily, so on 64-bit malloc does not return NULL: the kernel kills the
+// process when XzDecode first touches the pages, and there is no return value
+// to check. (A 32-bit armeabi-v7a build can still exhaust its ~3 GiB of address
+// space and see NULL; Windows and macOS commit, so there it would help - which
+// is why qunleashed_hn_available_bytes deliberately declines to answer for
+// them.) A probe here was tried and removed for the same reason: a large malloc
+// succeeds under lazy commitment, so it refused nothing and implied a check
+// that was not happening.
+//
+// The mitigation that did work is a capacity gate in Dart before the isolate
+// starts, measured against qunleashed_hn_available_bytes - see
+// hardnestedMemoryVerdict in hardnested_recoverer.dart. It is a pre-flight
+// refusal, not a rescue: once the engine is running, an allocation failure
+// inside it is still an exit() that nothing here can catch.
 QUNLEASHED_EXPORT int qunleashed_hardnested_recover(
     uint32_t in_cuid,
     const uint32_t *nt_enc,
