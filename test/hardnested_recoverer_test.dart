@@ -4,12 +4,17 @@ import 'package:qunleashed/pages/tools/mifare/hardnested_recoverer.dart';
 void main() {
   group('NativeHardnestedRecoverer input validation', () {
     // These inputs short-circuit to null before any isolate / native call.
-    test('empty nonces return null', () async {
+    // Too few nonces is a statement about the collection, not a failure of the
+    // attack, so it comes back as noKey without the engine being loaded at all.
+    test('empty nonces return no key', () async {
       final recoverer = NativeHardnestedRecoverer();
-      expect(
-        await recoverer.recoverKey(cuid: 0x11223344, ntEnc: [], parEnc: []),
-        isNull,
+      final result = await recoverer.recoverKey(
+        cuid: 0x11223344,
+        ntEnc: [],
+        parEnc: [],
       );
+      expect(result.key, isNull);
+      expect(result.outcome, HardnestedOutcome.noKey);
     });
 
     test(
@@ -27,12 +32,15 @@ void main() {
       },
     );
 
-    test('a single nonce returns null (the engine needs a pair)', () async {
+    test('a single nonce returns no key (the engine needs a pair)', () async {
       final recoverer = NativeHardnestedRecoverer();
-      expect(
-        await recoverer.recoverKey(cuid: 0x11223344, ntEnc: [1], parEnc: [0]),
-        isNull,
+      final result = await recoverer.recoverKey(
+        cuid: 0x11223344,
+        ntEnc: [1],
+        parEnc: [0],
       );
+      expect(result.key, isNull);
+      expect(result.outcome, HardnestedOutcome.noKey);
     });
   });
 }

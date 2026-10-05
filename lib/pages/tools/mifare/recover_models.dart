@@ -93,8 +93,26 @@ class RecoverDownloading extends RecoverState {
   final double? progress;
 }
 
+/// Attacking. Carries the run's unit counter, and - when the phase can say so -
+/// how far through the current unit it is.
+///
+/// One state rather than one per phase. A phase of its own drops the unit
+/// counter while it is showing, and leaves its own last reading on screen after
+/// it finishes: a hardnested group that ended at 47% sat there through the next
+/// group's table decompression, which reports nothing. [label] and [fraction]
+/// are cleared by finishing a unit, so staleness cannot outlive the thing it
+/// describes.
 class RecoverCalculating extends RecoverState {
-  const RecoverCalculating();
+  const RecoverCalculating({this.label, this.fraction});
+
+  /// What the current unit is doing, when it is not simply "a key". Null for
+  /// the attacks that are over in about a second.
+  final String? label;
+
+  /// Progress through the current unit, 0..1, when the phase can measure it.
+  /// Only the hardnested brute force can; everything else is either quick or
+  /// measured in whole units.
+  final double? fraction;
 }
 
 class RecoverUploading extends RecoverState {
@@ -113,6 +131,7 @@ class RecoverSaved extends RecoverState {
     required this.keys,
     this.hasCandidates = false,
     this.hasFailures = false,
+    this.skippedKnown = 0,
   });
 
   /// Keys newly written to the user dictionary this run.
@@ -125,6 +144,11 @@ class RecoverSaved extends RecoverState {
   /// dictionary couldn't be generated or written) even though the run otherwise
   /// completed - so the summary avoids a clean "success" headline.
   final bool hasFailures;
+
+  /// Sector keys the dictionary already held, which were recorded without
+  /// being attacked again. Worth saying: it is the difference between a run
+  /// that did nothing and one that had nothing left to do.
+  final int skippedKnown;
 }
 
 class RecoverError extends RecoverState {
@@ -138,4 +162,12 @@ enum RecoverErrorType {
   readWrite,
   flipperConnection,
   recoveryFailed,
+
+  /// Keys were recovered and then could not be written to the device.
+  ///
+  /// Apart from [readWrite] because the two leave the user somewhere
+  /// completely different: that one means nothing happened, this one means the
+  /// work was done and is sitting on screen unsaved. Telling them apart is the
+  /// difference between "try again" and "try again before you close this".
+  saveFailed,
 }

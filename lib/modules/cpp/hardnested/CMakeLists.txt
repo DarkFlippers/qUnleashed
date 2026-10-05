@@ -8,6 +8,7 @@ project(qunleashed_hardnested LANGUAGES C)
 
 add_library(qunleashed_hardnested SHARED
   qunleashed_hardnested_bridge.c
+  qunleashed_hn_progress.c
   hardnested.c
   crapto1.c
   crypto1.c

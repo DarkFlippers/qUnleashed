@@ -5,6 +5,7 @@ import '../../../components/dialogs/confirm.dart';
 import '../../../components/progress_button.dart';
 import '../../../theme/theme.dart';
 import 'cuid_dict_format.dart';
+import 'existed_keys_storage.dart';
 import 'recover_controller.dart';
 import 'recover_models.dart';
 
@@ -76,6 +77,7 @@ class _RecoverPageState extends State<RecoverPage> {
               state: _controller.state,
               totalUnits: _controller.totalUnits,
               doneUnits: _controller.doneUnits,
+              controller: _controller,
             ),
             ..._buildGroups(_controller),
           ],
@@ -268,11 +270,22 @@ class _StatusBlock extends StatelessWidget {
     required this.state,
     required this.totalUnits,
     required this.doneUnits,
+    required this.controller,
   });
 
   final RecoverState state;
   final int totalUnits;
   final int doneUnits;
+
+  /// Read only for the error surface, which needs more of the run than a
+  /// handful of parameters could carry without growing one per footnote.
+  final RecoverController controller;
+
+  /// Keys this run derived that are still listed below and not on the device.
+  /// A key the dictionary already held is not at risk and does not count.
+  /// Computed here rather than on every build, since only an error reads it.
+  int get _recoveredThisRun =>
+      controller.entries.where((e) => e.key != null && e.isNew == true).length;
 
   @override
   Widget build(BuildContext context) {
@@ -292,10 +305,19 @@ class _StatusBlock extends StatelessWidget {
         l10n.mfDownloading,
         progress,
       ),
-      RecoverCalculating() => (
-        l10n.mfRecovering,
-        totalUnits > 1 ? '$doneUnits / $totalUnits' : '…',
-        null,
+      // The unit counter always shows: it is the only run-level progress there
+      // is, and a phase that can measure itself adds a percentage rather than
+      // replacing it.
+      RecoverCalculating(:final label, :final fraction) => (
+        label ?? l10n.mfRecovering,
+        switch ((totalUnits > 1, fraction)) {
+          (true, final f?) =>
+            '$doneUnits / $totalUnits · ${(f * 100).round()}%',
+          (true, null) => '$doneUnits / $totalUnits',
+          (false, final f?) => '${(f * 100).round()}%',
+          (false, null) => '…',
+        },
+        fraction,
       ),
       RecoverUploading(:final progress) => _percentRow(
         l10n.mfSyncing,
@@ -334,6 +356,37 @@ class _StatusBlock extends StatelessWidget {
             showPercent: false,
             height: 46,
           ),
+        // The run is only half done when candidates were written: the Flipper
+        // has to try them against the card itself, and nothing said so. A user
+        // who does not know that reads "saved" as "finished".
+        if (state case RecoverSaved(skippedKnown: final skipped)
+            when skipped > 0)
+          _Footnote(l10n.mfSkippedKnown(skipped)),
+        if (state case RecoverSaved(hasCandidates: true))
+          _Footnote(l10n.mfVerifyOnDevice),
+        if (state case RecoverError(:final errorType)) ...[
+          if (_recoveredThisRun > 0)
+            _Footnote(l10n.mfKeysKept(_recoveredThisRun)),
+          // Only under the error they are about. A copy left by an earlier run
+          // is still on the card, but saying so under an unrelated connection
+          // failure attaches it to the wrong thing.
+          if (errorType == RecoverErrorType.saveFailed) ...[
+            if (controller.dictBackupKept)
+              _Footnote(l10n.mfBackupKept(flipperDictUserBackupPath)),
+            if (controller.dictBackupFailed) _Footnote(l10n.mfBackupLost),
+          ],
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: FilledButton(
+              // A failed save is the one error whose work is still in memory,
+              // so it retries the write alone rather than the whole run.
+              onPressed: errorType == RecoverErrorType.saveFailed
+                  ? controller.retrySave
+                  : controller.start,
+              child: Text(l10n.commonRetry),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -353,7 +406,13 @@ class _StatusBlock extends StatelessWidget {
   static String _savedTitle(int newKeys, bool hasCandidates, bool hadFailure) {
     final String base;
     if (newKeys > 0) {
-      base = l10n.mfKeysAdded(newKeys);
+      // Candidates named alongside the count rather than instead of it. An
+      // `else if` here used to drop them from the headline entirely whenever a
+      // run also found an ordinary key, which is the common case - and the
+      // candidates are the half that still needs the user to do something.
+      base = hasCandidates
+          ? l10n.mfCandidatesAlso(l10n.mfKeysAdded(newKeys))
+          : l10n.mfKeysAdded(newKeys);
     } else if (hasCandidates) {
       base = l10n.mfCandidatesSaved;
     } else if (hadFailure) {
@@ -369,5 +428,26 @@ class _StatusBlock extends StatelessWidget {
     RecoverErrorType.readWrite => l10n.mfErrorStorage,
     RecoverErrorType.flipperConnection => l10n.mfErrorNotConnected,
     RecoverErrorType.recoveryFailed => l10n.mfErrorUnexpected,
+    RecoverErrorType.saveFailed => l10n.mfSaveFailedAfterRecovery,
   };
+}
+
+/// A muted line under the status block: the one place the screen explains what
+/// the user has to do next, rather than what just happened.
+class _Footnote extends StatelessWidget {
+  const _Footnote(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Text(
+        text,
+        textAlign: TextAlign.center,
+        style: TextStyle(color: context.appColors.textMuted, fontSize: 12),
+      ),
+    );
+  }
 }

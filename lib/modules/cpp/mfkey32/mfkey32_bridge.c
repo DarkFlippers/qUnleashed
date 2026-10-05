@@ -55,3 +55,35 @@ QUNLEASHED_EXPORT uint64_t qunleashed_mfkey32_recover_key(
   free(s);
   return key;
 }
+
+// Returns the index of the first key in `keys` that already opens this nonce,
+// or -1.
+//
+// Cracking a key the user already has is the single largest waste in a run: the
+// nonce logs are never cleared, so every run re-attacks every nonce ever
+// collected. One crypto1 pass per candidate is a rounding error next to the
+// 2^19-state lfsr_recovery32 it avoids, which is why the dictionary is tried
+// first rather than afterwards.
+QUNLEASHED_EXPORT int32_t qunleashed_mfkey32_known_key(
+    uint32_t uid,
+    uint32_t nt,
+    uint32_t nr,
+    uint32_t ar,
+    const uint64_t* keys,
+    uint32_t count) {
+  const uint32_t p64 = prng_successor(nt, 64);
+  // Stack state, not crypto1_create: that mallocs per candidate, and this runs
+  // once per dictionary key per nonce. It also removes the allocation-failure
+  // branch, which could only have reported "not known" and abandoned the rest
+  // of the dictionary - the one outcome this must never produce quietly.
+  for (uint32_t i = 0; i < count; i++) {
+    struct Crypto1State s;
+    crypto1_init(&s, keys[i]);
+    crypto1_word(&s, uid ^ nt, 0);
+    crypto1_word(&s, nr, 1);
+    if ((crypto1_word(&s, 0, 0) ^ p64) == ar) {
+      return (int32_t)i;
+    }
+  }
+  return -1;
+}

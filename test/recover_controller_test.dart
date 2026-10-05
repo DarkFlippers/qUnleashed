@@ -6,6 +6,7 @@ import 'package:flipperlib/flipperlib.dart' hide DateTime;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/tools/mifare/mfkey32_api.dart';
 import 'package:qunleashed/pages/tools/mifare/nested_api.dart';
+import 'package:qunleashed/pages/tools/mifare/known_key_filter.dart';
 import 'package:qunleashed/pages/tools/mifare/recover_controller.dart';
 import 'package:qunleashed/pages/tools/mifare/cuid_dict_format.dart';
 import 'package:qunleashed/pages/tools/mifare/nested_models.dart';
@@ -92,6 +93,7 @@ class FakeTagApi implements NestedApi {
 }
 
 void main() {
+  _unitAccountingGroup();
   late FakeRecoverClient client;
   late FakeReaderApi reader;
   late FakeTagApi tag;
@@ -333,6 +335,66 @@ void main() {
     });
   });
 
+  // Cracking a key the user already has is the largest avoidable cost in a
+  // run: the nonce logs are never cleared, so every run re-attacks every nonce
+  // ever collected. The expensive paths must not be entered for a key the
+  // dictionary already answers.
+  group('a key the dictionary already holds', () {
+    const log =
+        'Sec 3 key A cuid e37aa759 nt0 db7df8ae ks0 77ff617e par0 1111 dist 0\n';
+    late FakeUploadClient upload;
+
+    setUp(() {
+      upload = FakeUploadClient(log);
+      tag.exists = true;
+    });
+
+    test('is recorded without generating any candidates', () async {
+      final known = BigInt.parse('A0A1A2A3A4A5', radix: 16);
+      final recoverer = FakeStaticRecoverer([dictOf(0xe37aa759, 400)]);
+      final controller = RecoverController(
+        client: upload,
+        mfApi: reader,
+        nestedApi: tag,
+        staticRecoverer: recoverer,
+        knownKeyFilter: (_) => FakeKnownKeys(nested: known),
+      );
+      addTearDown(controller.dispose);
+
+      await controller.start();
+
+      expect(
+        recoverer.askedAbout,
+        0,
+        reason: 'the generator must not be asked about a key already known',
+      );
+      expect(
+        controller.entries.any((e) => e.key == 'A0A1A2A3A4A5'),
+        isTrue,
+        reason: 'the key still has to be reported, just not re-derived',
+      );
+      expect(controller.state, isA<RecoverSaved>());
+      expect((controller.state as RecoverSaved).skippedKnown, 1);
+    });
+
+    test('still runs the attack when the dictionary does not answer', () async {
+      final recoverer = FakeStaticRecoverer([dictOf(0xe37aa759, 400)]);
+      final controller = RecoverController(
+        client: upload,
+        mfApi: reader,
+        nestedApi: tag,
+        staticRecoverer: recoverer,
+        knownKeyFilter: (_) => FakeKnownKeys(),
+      );
+      addTearDown(controller.dispose);
+
+      await controller.start();
+
+      expect(recoverer.askedAbout, 1);
+      expect((controller.state as RecoverSaved).skippedKnown, 0);
+    });
+  });
+
   // The page can be popped while a run is still in flight - Stop is a pop -
   // and a disposed ChangeNotifier that is notified throws.
   test('a run that outlives the page does not notify it', () async {
@@ -443,15 +505,46 @@ class FakeUploadClient extends FakeRecoverClient {
   }
 }
 
+/// Answers for whichever keys the test says the dictionary already holds.
+class FakeKnownKeys implements KnownKeyFilter {
+  FakeKnownKeys({this.nested, this.reader});
+
+  final BigInt? nested;
+  final BigInt? reader;
+  int disposed = 0;
+
+  @override
+  BigInt? nestedMatch({required int cuid, required int nt, required int ks}) =>
+      nested;
+
+  @override
+  BigInt? readerMatch({
+    required int uid,
+    required int nt,
+    required int nr,
+    required int ar,
+  }) => reader;
+
+  @override
+  void dispose() => disposed++;
+}
+
 class FakeStaticRecoverer implements StaticEncryptedRecoverer {
   FakeStaticRecoverer(this.dicts);
 
   final List<StaticCandidateDict> dicts;
 
+  /// How many nonces the generator was actually asked about. Zero is the claim
+  /// the dedup makes: the expensive path was never entered.
+  int askedAbout = 0;
+
   @override
   Future<List<StaticCandidateDict>> buildCandidateDicts(
     List<NestedNonce> nonces,
-  ) async => dicts;
+  ) async {
+    askedAbout += nonces.length;
+    return dicts;
+  }
 }
 
 /// A dictionary of [entries] candidates for one sector key.
@@ -463,4 +556,83 @@ StaticCandidateDict dictOf(int cuid, int entries) {
       keys: Uint64List.fromList(List.generate(entries, (i) => i + 1)),
     );
   return StaticCandidateDict.built(cuid, builder.build());
+}
+
+/// The readout's own arithmetic. Nothing asserted this, and two bugs lived
+/// through it during development: units planned per card but ticked once for
+/// the batch, and keys found in the dictionary ticking a counter sized without
+/// them. Both leave the bar permanently short of its own total.
+void _unitAccountingGroup() {
+  group('the progress counter adds up', () {
+    const twoCards =
+        'Sec 3 key A cuid e37aa759 nt0 db7df8ae ks0 77ff617e par0 1111 dist 0\n'
+        'Sec 3 key B cuid e37aa759 nt0 db7df8ae ks0 77ff617e par0 1111 dist 0\n'
+        'Sec 4 key A cuid 11223344 nt0 aabbccdd ks0 11223344 par0 1111 dist 0\n';
+
+    test('every planned unit is finished by the end of a run', () async {
+      final upload = FakeUploadClient(twoCards);
+      final controller = RecoverController(
+        client: upload,
+        mfApi: FakeReaderApi(),
+        nestedApi: FakeTagApi(exists: true),
+        staticRecoverer: FakeStaticRecoverer([
+          dictOf(0xe37aa759, 50),
+          dictOf(0x11223344, 50),
+        ]),
+        knownKeyFilter: (_) => FakeKnownKeys(),
+      );
+      addTearDown(controller.dispose);
+
+      await controller.start();
+
+      expect(controller.totalUnits, 2, reason: 'two cards, two units');
+      expect(controller.doneUnits, controller.totalUnits);
+    });
+
+    // A key answered by the dictionary was removed from the plan, so it must
+    // not advance the counter either.
+    test('a key skipped as known does not advance the counter', () async {
+      final upload = FakeUploadClient(twoCards);
+      final controller = RecoverController(
+        client: upload,
+        mfApi: FakeReaderApi(),
+        nestedApi: FakeTagApi(exists: true),
+        staticRecoverer: FakeStaticRecoverer([dictOf(0xe37aa759, 50)]),
+        knownKeyFilter: (_) =>
+            FakeKnownKeys(nested: BigInt.parse('A0A1A2A3A4A5', radix: 16)),
+      );
+      addTearDown(controller.dispose);
+
+      await controller.start();
+
+      expect(controller.doneUnits, controller.totalUnits);
+    });
+
+    // The generation step is the one that used to leave a finished hardnested
+    // percentage on screen for minutes.
+    test('candidate generation names itself', () async {
+      final upload = FakeUploadClient(twoCards);
+      final seen = <RecoverState>[];
+      final controller = RecoverController(
+        client: upload,
+        mfApi: FakeReaderApi(),
+        nestedApi: FakeTagApi(exists: true),
+        staticRecoverer: FakeStaticRecoverer([
+          dictOf(0xe37aa759, 50),
+          dictOf(0x11223344, 50),
+        ]),
+        knownKeyFilter: (_) => FakeKnownKeys(),
+      );
+      addTearDown(controller.dispose);
+      controller.addListener(() => seen.add(controller.state));
+
+      await controller.start();
+
+      expect(
+        seen.whereType<RecoverCalculating>().any((s) => s.label != null),
+        isTrue,
+        reason: 'generation has to say what it is doing, not just "recovering"',
+      );
+    });
+  });
 }

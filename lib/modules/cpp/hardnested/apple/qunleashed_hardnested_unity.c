@@ -15,6 +15,7 @@
 #include "../bucketsort.c"
 #include "../parity.c"
 #include "../hardnested.c"
+#include "../qunleashed_hn_progress.c"
 #include "../qunleashed_hardnested_bridge.c"
 #include "../hardnested/hardnested_bf_core.c"
 #include "../hardnested/hardnested_bitarray_core.c"
