@@ -27,16 +27,6 @@ NestedNonce _single(int sector, NestedKeyType key, {int cuid = 0xAABBCCDD}) =>
 void main() {
   final known = BigInt.parse('A0A1A2A3A4A5', radix: 16);
 
-  test('a sector with both keys known is skipped whole', () {
-    final a = _single(3, NestedKeyType.a);
-    final b = _single(3, NestedKeyType.b);
-
-    final split = splitKnownStatic([a, b], (_) => known);
-
-    expect(split.attack, isEmpty);
-    expect(split.known, {a: known, b: known});
-  });
-
   // The case the rule exists for. Attacking B alone would cost it the
   // cross-filter and make its dictionary larger than attacking both.
   test('a sector with one key known is attacked whole', () {
@@ -73,10 +63,22 @@ void main() {
     expect(split.known, {only: known});
   });
 
-  test('the same sector key read twice is one key', () {
-    final first = _single(3, NestedKeyType.a);
-    final again = _single(3, NestedKeyType.a);
+  // Key A and key B of one sector are two keys, not one. Without the B in
+  // this case, dropping keyType from the dedupe key still passes - which it
+  // did, and the cost downstream is severe: a key-blind dedupe drops one half
+  // of every sector before the sector-at-a-time rule above ever sees it.
+  test('the same sector key read twice is one key, but A and B are two', () {
+    final a = _single(3, NestedKeyType.a);
+    final b = _single(3, NestedKeyType.b);
+    final aAgain = _single(3, NestedKeyType.a);
 
-    expect(dedupeStaticSingles([first, again]), hasLength(1));
+    expect(dedupeStaticSingles([a, b, aAgain]), hasLength(2));
+  });
+
+  test('the same sector on two cards is two keys', () {
+    final one = _single(3, NestedKeyType.a);
+    final other = _single(3, NestedKeyType.a, cuid: 0x11223344);
+
+    expect(dedupeStaticSingles([one, other]), hasLength(2));
   });
 }

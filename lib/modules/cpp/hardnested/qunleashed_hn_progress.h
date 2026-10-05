@@ -40,30 +40,32 @@ typedef struct {
   // short, and inventing a number for them would be worse than an honest
   // "working".
   volatile uint32_t permille;
-  // Set by the caller to ask the attack to stop. Checked in the brute-force
-  // worker loop, where the engine already checks whether another thread found
-  // the key, so a stop there costs at most one bucket. The phases before it -
-  // table decompression, nonce ingestion, candidate generation - do not consult
-  // it, and a Stop during those waits them out.
+  // Set by the caller to ask the attack to stop. Checked in two places: the
+  // brute-force worker loop, where a stop costs at most the bucket in hand, and
+  // the Sum(a8) guess loop that drives it, which would otherwise walk every
+  // remaining guess because an aborted brute force reports no key. A stop is
+  // therefore bounded but not immediate - the phases before the brute force
+  // (table decompression, nonce ingestion, candidate generation) do not consult
+  // it, and a Stop during one of those waits it out.
   volatile uint32_t abort;
   // Set by the engine once the brute force is live, so the caller can tell "no
   // progress yet" from "zero percent".
   volatile uint32_t started;
 } qunleashed_hn_progress;
 
-// Installs the channel for the attack. One attack at a time per process. NULL detaches,
-// which is what every non-Dart caller (the tests, the CLI) gets.
+// Installs the channel for the attack. NULL detaches, which is what a caller
+// that wants neither progress nor cancellation passes.
 //
-// One attack at a time is the *caller's* invariant, not this file's: a second
-// concurrent recover would clobber the first's channel and its abort writes
-// would go nowhere. The Dart side holds it by walking sector keys in series.
+// One attack at a time: the bridge refuses a second channel-bearing attack with
+// -4 rather than letting it take the first one's channel, and the Dart side also
+// walks sector keys in series.
 void qunleashed_hn_set_progress(qunleashed_hn_progress *channel);
 
-// Engine-side helpers. Safe to call with no channel installed.
-// Whether a channel is already installed, so a second attack can be refused
-// rather than silently taking the first one's.
+// Whether a channel is already installed, so the bridge can refuse a second
+// attack rather than let it take the first one's.
 int qunleashed_hn_progress_busy(void);
 
+// Engine-side helpers. Safe to call with no channel installed.
 void qunleashed_hn_report_permille(uint32_t permille);
 int qunleashed_hn_aborted(void);
 

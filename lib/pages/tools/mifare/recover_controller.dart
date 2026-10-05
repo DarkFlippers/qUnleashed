@@ -80,13 +80,14 @@ class RecoverController extends ChangeNotifier {
 
   int _totalUnits = 0;
   int _doneUnits = 0;
-  // Rebuilt per run from the dictionaries this run loaded, and released with
-  // it: it holds native memory, which outlives the isolate that took it.
+  // Rebuilt per run from the dictionaries this run loaded, and released when
+  // the next run replaces it or the page goes: it holds native memory, which
+  // outlives the isolate that took it.
   KnownKeyFilter _known = const NoKnownKeys();
   int _skippedKnown = 0;
-  // Last fraction shown, so a bucket that did not move the bar does not rebuild
-  // the page. The engine reports once per bucket, far more often than 0.1% can
-  // change.
+  // Last fraction shown, so a poll that read the same figure as the one before
+  // does not rebuild the page. The engine's per-bucket reports are already
+  // coalesced in shared memory; this suppresses consecutive equal polls.
   double? _lastFraction;
 
   RecoverState get state => _state;
@@ -108,11 +109,12 @@ class RecoverController extends ChangeNotifier {
   /// [RecoverErrorType.saveFailed].
   bool get dictBackupFailed => _storage.backupFailed;
 
-  /// Units finished so far. A unit runs to completion with no sub-progress, so
-  /// the UI pairs this count with an animated bar rather than a percentage that
-  /// would freeze between units. The one exception is the static-encrypted
-  /// batch, whose device write reports through [RecoverUploading] instead -
-  /// that step is long enough that an unmoving readout reads as a hang.
+  /// Units finished so far. Most units run to completion with no sub-progress,
+  /// so the UI pairs this count with an animated bar rather than a percentage
+  /// that would freeze between them. Two report more: a hardnested unit carries
+  /// a brute-force fraction on [RecoverCalculating], and the static-encrypted
+  /// device write reports through [RecoverUploading]. Both are long enough that
+  /// an unmoving readout reads as a hang.
   int get doneUnits => _doneUnits;
 
   @override
@@ -153,6 +155,7 @@ class RecoverController extends ChangeNotifier {
     _totalUnits = 0;
     _doneUnits = 0;
     _skippedKnown = 0;
+    _lastFraction = null;
 
     if (!_client.isConnected) {
       _emit(const RecoverError(RecoverErrorType.flipperConnection));
@@ -445,6 +448,14 @@ class RecoverController extends ChangeNotifier {
       switch (result.outcome) {
         case HardnestedOutcome.found:
           break;
+        case HardnestedOutcome.engineBusy:
+          // Not the card's fault and not unknown: two attacks were started at
+          // once, which the serial walk above is supposed to prevent.
+          LogService.error(
+            '[Recover] hardnested refused: another attack is already running',
+          );
+          _hadFailure = true;
+          note = l10n.mfHardnestedFailed;
         case HardnestedOutcome.engineFault:
           // The engine's own fault, not an answer about the card. Logged
           // because an unknown status means this build and the native side
@@ -533,9 +544,7 @@ class RecoverController extends ChangeNotifier {
     final cards = singles.map((n) => n.cuid).toSet().length;
     // Named rather than left under "Recovering keys": generation is the half of
     // this step that reports nothing - one isolate call covering every card,
-    // with only the device write after it carrying a percentage. It is also the
-    // exit from a hardnested attack's state, which would otherwise leave its
-    // finished percentage on screen for the whole of this.
+    // with only the device write after it carrying a percentage.
     _emit(RecoverCalculating(label: l10n.mfGenerating));
     final List<StaticCandidateDict> dicts;
     try {

@@ -174,6 +174,15 @@ class ExistedKeysStorage {
       return const Utf8Decoder()
           .convert(bytes)
           .split('\n')
+          // Normalised because a dictionary is a text file people edit. CRLF
+          // leaves a trailing \r, which makes every entry 13 characters and
+          // silently disqualifies the whole file from the known-key check. And
+          // the case has to match what formatMifareKey produces: the filter
+          // accepts either case, so a lowercase entry would be matched as known
+          // while registerKey's exact-string compare called the same key new -
+          // reporting it both ways and writing a second, differently-cased copy
+          // back to the card.
+          .map((line) => line.trim().toUpperCase())
           .where((line) => !line.startsWith('/') && line.isNotEmpty)
           .toList();
     } on FlipperRpcStorageNotExistException {

@@ -6,6 +6,8 @@ import 'package:flipperlib/flipperlib.dart' hide DateTime;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/tools/mifare/mfkey32_api.dart';
 import 'package:qunleashed/pages/tools/mifare/nested_api.dart';
+import 'package:qunleashed/pages/tools/mifare/existed_keys_storage.dart';
+import 'package:qunleashed/pages/tools/mifare/hardnested_recoverer.dart';
 import 'package:qunleashed/pages/tools/mifare/known_key_filter.dart';
 import 'package:qunleashed/pages/tools/mifare/recover_controller.dart';
 import 'package:qunleashed/pages/tools/mifare/cuid_dict_format.dart';
@@ -293,7 +295,7 @@ void main() {
     // have corrected it never fires.
     test('a card whose write fails still counts toward the whole', () async {
       final seen = <double>[];
-      upload.failWriteForCuid = 0xe37aa759;
+      upload.refuseWrite = (p) => p.contains('e37aa759');
       final controller = buildWithDicts([
         dictOf(0xe37aa759, 400),
         dictOf(0x11223344, 400),
@@ -395,6 +397,76 @@ void main() {
     });
   });
 
+  // A failed save is the one error whose work is still in memory. Retrying the
+  // whole run would re-download both logs and re-run every attack - a
+  // hardnested one among them - to redo a write of a few kilobytes.
+  group('retrying a failed save', () {
+    const log =
+        'Sec 3 key A cuid e37aa759 nt0 db7df8ae ks0 77ff617e par0 1111 dist 0\n';
+
+    test('writes again without redoing the run', () async {
+      final upload = FakeUploadClient(log)
+        ..refuseWrite = (p) => p == flipperDictUserPath;
+      final controller = RecoverController(
+        client: upload,
+        mfApi: FakeReaderApi(),
+        nestedApi: FakeTagApi(exists: true),
+        staticRecoverer: FakeStaticRecoverer([dictOf(0xe37aa759, 50)]),
+        // A key for the dictionary, so the write this is all about happens.
+        knownKeyFilter: (_) =>
+            FakeKnownKeys(nested: BigInt.parse('A0A1A2A3A4A5', radix: 16)),
+      );
+      addTearDown(controller.dispose);
+
+      await controller.start();
+
+      expect(
+        errorOf(controller),
+        RecoverErrorType.saveFailed,
+        reason: 'told apart from a plain storage error, because work was done',
+      );
+      final readsBefore = upload.reads;
+      final entriesBefore = controller.entries.length;
+
+      upload.refuseWrite = null;
+      await controller.retrySave();
+
+      expect(controller.state, isA<RecoverSaved>());
+      expect(
+        upload.reads,
+        readsBefore,
+        reason: 'the logs and dictionaries must not be fetched a second time',
+      );
+      expect(
+        controller.entries,
+        hasLength(entriesBefore),
+        reason: 'and the results already on screen must survive',
+      );
+    });
+
+    // The footnote under that error points at the copy, and it is the
+    // difference between "tap Retry" and "stop and check the card".
+    test('reports whether the previous keys were copied first', () async {
+      final upload = FakeUploadClient(log)
+        ..refuseWrite = (p) => p == flipperDictUserPath;
+      final controller = RecoverController(
+        client: upload,
+        mfApi: FakeReaderApi(),
+        nestedApi: FakeTagApi(exists: true),
+        staticRecoverer: FakeStaticRecoverer([dictOf(0xe37aa759, 50)]),
+        knownKeyFilter: (_) =>
+            FakeKnownKeys(nested: BigInt.parse('A0A1A2A3A4A5', radix: 16)),
+      );
+      addTearDown(controller.dispose);
+
+      await controller.start();
+
+      expect(errorOf(controller), RecoverErrorType.saveFailed);
+      expect(controller.dictBackupKept, isTrue);
+      expect(controller.dictBackupFailed, isFalse);
+    });
+  });
+
   // The page can be popped while a run is still in flight - Stop is a pop -
   // and a disposed ChangeNotifier that is notified throws.
   test('a run that outlives the page does not notify it', () async {
@@ -425,14 +497,19 @@ class FakeUploadClient extends FakeRecoverClient {
   /// stopped early can be told from one that finished.
   int framesSent = 0;
 
+  /// How many times the logs and dictionaries were read off the device. A retry
+  /// that redid the run would read them again.
+  int reads = 0;
+
   /// Runs after each frame, for a test that wants to pull the page away
   /// mid-upload. Not `onFrame`: `callRpcFrames` takes a parameter by that name
   /// and would shadow it.
   void Function(int framesSoFar)? onFrameSent;
 
-  /// Refuses the write whose path names this cuid, for the case where one card
-  /// fails and the run carries on.
-  int? failWriteForCuid;
+  /// Refuses the writes this answers true for. A predicate rather than a cuid
+  /// because the user dictionary's path carries none, and that is the write a
+  /// scoped retry has to be able to fail.
+  bool Function(String path)? refuseWrite;
 
   /// Slows each frame so the reports clear `ProgressThrottle`'s 150 ms floor.
   /// Without it a run finishes inside one window and the only report that
@@ -452,6 +529,7 @@ class FakeUploadClient extends FakeRecoverClient {
     bool pipelined = true,
   }) async {
     if (request.hasStorageReadRequest()) {
+      reads++;
       final frame = Main()
         ..storageReadResponse = (ReadResponse()
           ..file = (File()..data = utf8.encode(log)));
@@ -488,11 +566,9 @@ class FakeUploadClient extends FakeRecoverClient {
   }) async {
     var refuse = false;
     await body((frame) async {
-      if (failWriteForCuid != null &&
+      if (refuseWrite != null &&
           frame.hasStorageWriteRequest() &&
-          frame.storageWriteRequest.path.contains(
-            failWriteForCuid!.toRadixString(16),
-          )) {
+          refuseWrite!(frame.storageWriteRequest.path)) {
         refuse = true;
         return;
       }
@@ -530,9 +606,12 @@ class FakeKnownKeys implements KnownKeyFilter {
 }
 
 class FakeStaticRecoverer implements StaticEncryptedRecoverer {
-  FakeStaticRecoverer(this.dicts);
+  FakeStaticRecoverer(this.dicts, {this.throws});
 
   final List<StaticCandidateDict> dicts;
+
+  /// Raised instead of answering, for the run-level failure path.
+  final Object? throws;
 
   /// How many nonces the generator was actually asked about. Zero is the claim
   /// the dedup makes: the expensive path was never entered.
@@ -543,7 +622,28 @@ class FakeStaticRecoverer implements StaticEncryptedRecoverer {
     List<NestedNonce> nonces,
   ) async {
     askedAbout += nonces.length;
+    if (throws != null) throw throws!;
     return dicts;
+  }
+}
+
+/// Reports a fraction and then finds nothing, so a test can watch what the page
+/// is left showing once the group is over.
+class FakeHardnested implements HardnestedRecoverer {
+  FakeHardnested(this.fraction);
+
+  final double fraction;
+
+  @override
+  Future<HardnestedResult> recoverKey({
+    required int cuid,
+    required List<int> ntEnc,
+    required List<int> parEnc,
+    void Function(double fraction)? onProgress,
+    bool Function()? isCancelled,
+  }) async {
+    onProgress?.call(fraction);
+    return (key: null, outcome: HardnestedOutcome.noKey);
   }
 }
 
@@ -605,6 +705,65 @@ void _unitAccountingGroup() {
 
       await controller.start();
 
+      expect(controller.doneUnits, controller.totalUnits);
+    });
+
+    // A phase that can name itself must also stop naming itself. A state per
+    // phase used to leave its own last reading up after the phase ended - a
+    // hardnested group that finished at 47% sat there through the next group's
+    // table decompression, which reports nothing.
+    test('a label does not outlive the phase it describes', () async {
+      final upload = FakeUploadClient(twoCards);
+      final seen = <RecoverCalculating>[];
+      final controller = RecoverController(
+        client: upload,
+        mfApi: FakeReaderApi(),
+        nestedApi: FakeTagApi(exists: true),
+        staticRecoverer: FakeStaticRecoverer([
+          dictOf(0xe37aa759, 50),
+          dictOf(0x11223344, 50),
+        ]),
+        knownKeyFilter: (_) => FakeKnownKeys(),
+      );
+      addTearDown(controller.dispose);
+      controller.addListener(() {
+        final state = controller.state;
+        if (state is RecoverCalculating) seen.add(state);
+      });
+
+      await controller.start();
+
+      expect(
+        seen.any((s) => s.label != null),
+        isTrue,
+        reason: 'generation has to say what it is doing',
+      );
+      expect(
+        seen.last.label,
+        isNull,
+        reason: 'and stop saying it once the work it named is done',
+      );
+    });
+
+    // Every planned unit has to be accounted for even when the whole batch
+    // failed, or the readout ends a run short of its own total.
+    test('a failed generation still finishes its cards', () async {
+      final upload = FakeUploadClient(twoCards);
+      final controller = RecoverController(
+        client: upload,
+        mfApi: FakeReaderApi(),
+        nestedApi: FakeTagApi(exists: true),
+        staticRecoverer: FakeStaticRecoverer(
+          const [],
+          throws: StateError('engine gone'),
+        ),
+        knownKeyFilter: (_) => FakeKnownKeys(),
+      );
+      addTearDown(controller.dispose);
+
+      await controller.start();
+
+      expect(controller.totalUnits, 2, reason: 'two cards were planned');
       expect(controller.doneUnits, controller.totalUnits);
     });
 

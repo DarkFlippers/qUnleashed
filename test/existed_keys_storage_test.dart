@@ -12,6 +12,7 @@ Future<void> _noWrite(String path, List<int> data) async {}
 
 void main() {
   _backupGroup();
+  _normalisationGroup();
   group('ExistedKeysStorage', () {
     test('load rethrows a real user-dict read error (data-loss guard)', () async {
       // A transient (non-missing-file) read failure of the user dict must abort
@@ -173,6 +174,47 @@ void _backupGroup() {
       await storage.upload();
 
       expect(writes, [flipperDictUserPath]);
+    });
+  });
+}
+
+/// The dictionary is a text file people edit. What comes out of it has to match
+/// what the app puts in, or the same key is both "already known" and "new".
+void _normalisationGroup() {
+  group('dictionary lines are normalised', () {
+    test('a lowercase entry is not re-added in upper case', () async {
+      final written = <String>[];
+      final storage = ExistedKeysStorage.withSeams(
+        reader: (path) async => path == flipperDictUserPath
+            ? utf8.encode('a0a1a2a3a4a5\n')
+            : const <int>[],
+        writer: (path, data) async => written.add(utf8.decode(data)),
+      );
+      await storage.load();
+
+      expect(
+        storage.registerKey('A0A1A2A3A4A5'),
+        isFalse,
+        reason: 'the card already has this key, in the other case',
+      );
+      expect(await storage.upload(), isEmpty);
+      expect(
+        written,
+        isEmpty,
+        reason: 'nothing changed, so nothing is written',
+      );
+    });
+
+    test('a CRLF dictionary is still usable', () async {
+      final storage = ExistedKeysStorage.withSeams(
+        reader: (path) async => path == flipperDictUserPath
+            ? utf8.encode('A0A1A2A3A4A5\r\nFFFFFFFFFFFF\r\n')
+            : const <int>[],
+        writer: (path, data) async {},
+      );
+      await storage.load();
+
+      expect(storage.knownKeys, containsAll(['A0A1A2A3A4A5', 'FFFFFFFFFFFF']));
     });
   });
 }

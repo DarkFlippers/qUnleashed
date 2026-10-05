@@ -8,10 +8,6 @@ import 'package:flutter/foundation.dart';
 
 import 'mifare_native.dart';
 
-/// Recovers a hardened-PRNG (hardnested) MIFARE Classic sector key from the
-/// encrypted nonces collected into `.nested.log`. The whole ciphertext-only
-/// attack runs on the app host via the native `qunleashed_hardnested_recover`
-/// (bitflip tables are embedded in the native lib - nothing to bundle/extract).
 /// How an attack ended, which the user needs told apart.
 enum HardnestedOutcome {
   /// A key came back.
@@ -28,6 +24,10 @@ enum HardnestedOutcome {
   /// still call exit(), which nothing here can catch.
   outOfMemory,
 
+  /// Another attack is already running. The engine keeps one channel, so a
+  /// second would take the first one's and send its Stop nowhere.
+  engineBusy,
+
   /// The engine answered something this build does not know. Its own fault
   /// rather than the card's, and said that way.
   engineFault,
@@ -40,6 +40,10 @@ enum HardnestedOutcome {
 /// "no key on this card".
 typedef HardnestedResult = ({BigInt? key, HardnestedOutcome outcome});
 
+/// Recovers a hardened-PRNG (hardnested) MIFARE Classic sector key from the
+/// encrypted nonces collected into `.nested.log`. The whole ciphertext-only
+/// attack runs on the app host via the native `qunleashed_hardnested_recover`
+/// (bitflip tables are embedded in the native lib - nothing to bundle/extract).
 abstract class HardnestedRecoverer {
   /// Recovers the sector key from [ntEnc]/[parEnc] (parallel arrays, one entry
   /// per collected nonce) for card [cuid].
@@ -61,8 +65,9 @@ abstract class HardnestedRecoverer {
   });
 }
 
-/// Mirrors `qunleashed_hn_progress` - three 32-bit words the engine writes and
-/// the caller reads while the attack runs in another isolate. Shared memory
+/// Mirrors `qunleashed_hn_progress` - three 32-bit words, two written by the
+/// engine and read here, one (`abort`) written here and read by the engine,
+/// while the attack runs in another isolate. Shared memory
 /// rather than a callback, because the engine reports from its own worker
 /// threads; see the header for the reasoning.
 final class _HnProgress extends Struct {
@@ -104,6 +109,7 @@ HardnestedResult hardnestedResultFor(int status, int foundKey) =>
       0 => (key: BigInt.from(foundKey), outcome: HardnestedOutcome.found),
       -1 => (key: null, outcome: HardnestedOutcome.outOfMemory),
       -3 => (key: null, outcome: HardnestedOutcome.stopped),
+      -4 => (key: null, outcome: HardnestedOutcome.engineBusy),
       -10 => (key: null, outcome: HardnestedOutcome.noKey),
       _ => (key: null, outcome: HardnestedOutcome.engineFault),
     };
