@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:ffi';
 import 'dart:io';
-import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
@@ -262,7 +261,7 @@ class NativeHardnestedRecoverer implements HardnestedRecoverer {
   /// attack ever ran. Here the enclosing scope holds one variable, so there is
   /// nothing else to drag along.
   static Future<HardnestedResult> _spawnAttack(_HardnestedPayload payload) =>
-      Isolate.run(() => _recoverInIsolate(payload));
+      spawnAttackIsolate(_recoverInIsolate, payload);
 
   /// The engine's peak, which is the same for the life of the process.
   ///

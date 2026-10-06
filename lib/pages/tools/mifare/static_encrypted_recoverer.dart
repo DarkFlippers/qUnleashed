@@ -1,6 +1,5 @@
 import 'dart:collection';
 import 'dart:ffi';
-import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
@@ -204,7 +203,7 @@ class NativeStaticEncryptedRecoverer implements StaticEncryptedRecoverer {
     // Isolate.run hands the result back by ownership transfer rather than
     // copying it, so the assembled bodies cross the boundary for free — a
     // plain SendPort would deep-copy every byte of them.
-    return Isolate.run(() => _buildInIsolate(singles));
+    return spawnAttackIsolate(_buildInIsolate, singles);
   }
 
   static List<StaticCandidateDict> _buildInIsolate(List<StaticNonce> singles) {

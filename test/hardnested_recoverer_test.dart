@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/tools/mifare/hardnested_recoverer.dart';
+import 'package:qunleashed/pages/tools/mifare/mifare_native.dart';
 
 void main() {
   group('NativeHardnestedRecoverer input validation', () {
@@ -59,47 +60,44 @@ void main() {
   // healthy spawn fails *inside* the isolate with NativeEngineUnavailable -
   // a different error, which is exactly what makes the two distinguishable.
   group('the attack isolate', () {
-    test('captures nothing but its payload', () async {
-      // Stands in for the controller's `() => _stopping`: a predicate closing
-      // over something that cannot cross an isolate boundary.
-      final unsendable = Completer<void>();
-      Object? thrown;
-      try {
-        await NativeHardnestedRecoverer().recoverKey(
-          cuid: 0x11223344,
-          ntEnc: const [1, 2],
-          parEnc: const [0, 0],
-          isCancelled: () => unsendable.isCompleted,
-          onProgress: (_) {},
-        );
-      } catch (error) {
-        thrown = error;
-      }
+    test(
+      'captures nothing but its payload',
+      timeout: const Timeout(Duration(seconds: 30)),
+      () async {
+        // Stands in for the controller's `() => _stopping`: a predicate closing
+        // over something that cannot cross an isolate boundary.
+        final unsendable = Completer<void>();
+        Object? thrown;
+        try {
+          await NativeHardnestedRecoverer().recoverKey(
+            cuid: 0x11223344,
+            ntEnc: const [1, 2],
+            parEnc: const [0, 0],
+            isCancelled: () => unsendable.isCompleted,
+            onProgress: (_) {},
+          );
+        } catch (error) {
+          thrown = error;
+        }
 
-      expect(
-        thrown?.toString() ?? '',
-        isNot(contains('unsendable')),
-        reason: 'the spawned closure must not reach the calling scope',
-      );
-    });
-
-    test('a cancelling predicate is honoured without crossing over', () async {
-      // The predicate belongs to this side - it is polled by the timer here,
-      // never sent - so one that answers true must still produce an orderly
-      // result rather than a spawn failure.
-      Object? thrown;
-      try {
-        await NativeHardnestedRecoverer().recoverKey(
-          cuid: 0x11223344,
-          ntEnc: const [1, 2],
-          parEnc: const [0, 0],
-          isCancelled: () => true,
+        // Asserted as a type, not as the absence of a substring. `thrown` is null
+        // when recoverKey returns before spawning at all, and '' satisfies any
+        // isNot(contains(...)) - so "no spawn was attempted" was passing as "the
+        // spawn was clean". Changing the nonce-count guard above from `< 2` to
+        // `< 3` made this fixture return early and the test stayed green.
+        //
+        // NativeEngineUnavailable pins both halves at once: the spawn was reached,
+        // and it failed *inside* the isolate looking for the engine this suite
+        // does not build, rather than at the boundary over an unsendable capture.
+        expect(
+          thrown,
+          isA<NativeEngineUnavailable>(),
+          reason:
+              'the spawn must be reached, and must fail in the isolate '
+              'rather than at the boundary',
         );
-      } catch (error) {
-        thrown = error;
-      }
-      expect(thrown?.toString() ?? '', isNot(contains('unsendable')));
-    });
+      },
+    );
   });
 
   // The engine allocates a fixed set before it reads a single nonce, and holds
