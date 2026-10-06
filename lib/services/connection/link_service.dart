@@ -178,8 +178,11 @@ class LinkService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Set while a DFU repair holds the USB port; nothing connects on its own
-  /// until it is released.
+  /// Whether anything may connect on its own right now.
+  bool get suspended => _suspended;
+
+  /// Set while a DFU repair holds the USB port, and while the app is shutting
+  /// down; nothing connects on its own until it is released.
   set suspended(bool value) {
     if (_suspended == value) return;
     _suspended = value;

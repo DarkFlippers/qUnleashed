@@ -75,11 +75,13 @@ Crowdin exports each language file whole, so an edit made here is not merged wit
 
 - **To correct or add a translation**, work in Crowdin. It reaches this repository automatically, in a pull request opened by the sync.
 - **To add or change an English string**, edit `translations/app_en.arb`. It is uploaded to Crowdin when the change lands on `main`, and translators see it from there.
-- **To have a new language enabled**, open an issue asking for it. Enabling a language is done in Crowdin; once it has translations, the sync adds `translations/app_<code>.arb` on its own and the app offers the locale. The only thing the repository needs is the language's own name in `_localeNames` (`lib/services/localization/controller.dart`) — without it the picker lists the language by its code rather than as `Deutsch`.
+- **To have a new language enabled**, open an issue asking for it. Enabling a language is done in Crowdin; once it has translations, the sync adds `translations/app_<code>.arb` on its own and the app offers the locale. The repository needs nothing further: the picker reads the language's own name from `languageName`, which a translator writes in Crowdin like any other string. A language that skips it is listed by its code, and `translation_completeness_test` says so.
 
 The Google Play listing works the same way: `short_description.txt`, `full_description.txt` and the changelogs are translated on Crowdin, so edit only the `en-US` copies. Screenshots, the icon, `title.txt` and `video.txt` are not on Crowdin and can be changed in any locale.
 
 A CI check enforces all of this, so a pull request that edits a translated file fails rather than being merged and quietly undone.
+
+[`docs/translating.md`](docs/translating.md) is the translator's half of this: placeholders and plural forms, the terms that stay in Latin script, and `languageName`, which is the one string whose translation is the name of the translator's own language. Point a new translator at that rather than at this section.
 
 ### Writing strings
 

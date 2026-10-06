@@ -65,17 +65,37 @@ class _RecoverPageState extends State<RecoverPage> {
   /// Disabled rather than hidden once asked for: a hardnested bucket can take a
   /// moment to reach its next check, and a button that vanishes mid-tap reads
   /// as a misfire.
-  Widget _stopButton(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(top: 12),
-    child: OutlinedButton(
-      onPressed: _controller.cancelled
-          ? null
-          : () async {
-              if (await _confirmAbort()) _controller.stop();
-            },
-      child: Text(context.l10n.mfStopConfirm),
-    ),
-  );
+  /// `danger`, because stopping is the destructive half of a running job -
+  /// matching how [QConfirmDialog] tints the Stop it puts behind this. That is
+  /// the substantive change: an OutlinedButton's default foreground is already
+  /// `colorScheme.primary`, i.e. accent, so what moves here is accent to
+  /// danger, the border (which did come from an un-overridden
+  /// `ColorScheme.outline`), the disabled pair, and the text metrics.
+  Widget _stopButton(BuildContext context) {
+    final colors = context.appColors;
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: OutlinedButton(
+        onPressed: _controller.cancelled
+            ? null
+            : () async {
+                if (await _confirmAbort()) _controller.stop();
+              },
+        style: OutlinedButton.styleFrom(
+          foregroundColor: colors.danger,
+          disabledForegroundColor: colors.textMuted,
+          side: BorderSide(
+            color: _controller.cancelled ? colors.divider : colors.danger,
+          ),
+          padding: const EdgeInsets.symmetric(vertical: 12),
+        ),
+        child: Text(
+          context.l10n.mfStopConfirm,
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -332,11 +352,17 @@ class _StatusBlock extends StatelessWidget {
         _percent(progress),
         progress,
       ),
-      RecoverSaved(:final keys, :final hasCandidates, :final hasFailures) => (
-        _savedTitle(keys.length, hasCandidates, hasFailures),
-        null,
-        null,
-      ),
+      RecoverSaved(
+        :final keys,
+        :final hasCandidates,
+        :final hasFailures,
+        :final stopped,
+      ) =>
+        (
+          _savedTitle(keys.length, hasCandidates, hasFailures, stopped),
+          null,
+          null,
+        ),
       RecoverError(:final errorType) => (_errorText(errorType), null, null),
     };
 
@@ -368,7 +394,9 @@ class _StatusBlock extends StatelessWidget {
         // First, because it changes what every line under it means: "no new
         // keys" after a Stop is a statement about two sectors, not twelve.
         // Without it a part-finished run and a complete one read identically.
-        if (state case RecoverSaved(stopped: true))
+        // Only once a plan exists. A Stop during the download has no steps to
+        // have got through, and the headline already says so.
+        if (state case RecoverSaved(stopped: true) when totalUnits > 0)
           _Footnote(l10n.mfStoppedEarly(controller.doneUnits, totalUnits)),
         // The run is only half done when candidates were written: the Flipper
         // has to try them against the card itself, and nothing said so. A user
@@ -397,7 +425,24 @@ class _StatusBlock extends StatelessWidget {
               onPressed: errorType == RecoverErrorType.saveFailed
                   ? controller.retrySave
                   : controller.start,
-              child: Text(l10n.commonRetry),
+              // Padding and text metrics, to match the app's other buttons.
+              // The two colours are deliberately redundant: buildAppTheme
+              // already sets colorScheme.primary/onPrimary to accent/onAccent
+              // and a FilledButton resolves its defaults to exactly those, so
+              // they change nothing on screen. Named anyway so this reads the
+              // same as the Stop button beside it, where the colours do differ.
+              style: FilledButton.styleFrom(
+                backgroundColor: colors.accent,
+                foregroundColor: colors.onAccent,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+              child: Text(
+                l10n.commonRetry,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
           ),
         ],
@@ -422,8 +467,20 @@ class _StatusBlock extends StatelessWidget {
     return parts.isEmpty ? '…' : parts.join(' · ');
   }
 
-  static String _savedTitle(int newKeys, bool hasCandidates, bool hadFailure) {
+  static String _savedTitle(
+    int newKeys,
+    bool hasCandidates,
+    bool hadFailure,
+    bool stopped,
+  ) {
     final String base;
+    // A Stop that landed before anything was attacked has no count to report
+    // and no plan to report it against - the step footnote below would read
+    // "0 of 0". "No new keys added" would be true and useless: it is the same
+    // sentence a finished run that found nothing shows.
+    if (stopped && newKeys == 0 && !hasCandidates && !hadFailure) {
+      return l10n.mfStoppedNothingYet;
+    }
     if (newKeys > 0) {
       // Candidates named alongside the count rather than instead of it. An
       // `else if` here used to drop them from the headline entirely whenever a

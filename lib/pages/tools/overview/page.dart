@@ -25,10 +25,11 @@ import '../../../services/connection/link_service.dart';
 class ToolsPage extends StatelessWidget {
   const ToolsPage({super.key});
 
-  /// [localBuilds] is on only while builds run on this computer: without a
-  /// deployed SDK and toolchain, or with the build server in charge, the tool
-  /// has nothing to compile a folder or a repo with.
-  static List<ToolGroup> _toolGroups(L10n s, bool localBuilds) => [
+  /// [localReady] is whether this computer can compile right now, which is
+  /// what `ensureReady` enforces - not which backend the catalog is using.
+  /// Flibler has no server path, so pinning the server or a catalog build
+  /// faulting leaves it working; it used to take the entry point with it. #248
+  static List<ToolGroup> _toolGroups(L10n s, bool localReady) => [
     ToolGroup(
       header: ToolCardHeader(
         iconAsset: 'assets/ic/device/flipper.svg',
@@ -60,7 +61,7 @@ class ToolsPage extends StatelessWidget {
         ),
       ],
     ),
-    if (localBuilds)
+    if (AssemblerController.isSupported)
       ToolGroup(
         header: ToolCardHeader(
           iconAsset: 'assets/ic/app/apps.svg',
@@ -72,7 +73,11 @@ class ToolsPage extends StatelessWidget {
             iconAsset: 'assets/ic/fileformat/plugins.svg',
             iconColor: const Color(0xFF4DB6AC),
             title: 'Flibler',
-            description: s.toolFliblerSubtitle,
+            // Not ready is worth saying rather than hiding: the page links to
+            // the assembler settings, and deploying the SDK brings it back.
+            description: localReady
+                ? s.toolFliblerSubtitle
+                : s.toolFliblerNeedsSdk,
             onTap: _openFliblerPage,
             badge: s.toolBadgeBeta,
           ),
@@ -216,7 +221,7 @@ class ToolsPage extends StatelessWidget {
               children: [
                 for (final group in _toolGroups(
                   context.l10n,
-                  AssemblerController.instance.backendChoice.isLocal,
+                  AssemblerController.instance.localReady,
                 ))
                   if (group.items.isNotEmpty)
                     Padding(

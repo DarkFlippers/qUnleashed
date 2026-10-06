@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'app/app.dart';
 import 'app/bootstrap.dart';
 import 'app/routes.dart';
+import 'app/shutdown.dart';
 import 'services/localization/controller.dart';
 import 'services/assembler/controller.dart';
 import 'services/connection/foreground_service.dart';
@@ -68,5 +69,8 @@ Future<void> _runApp(FlipperClient client) async {
   _appRunning = true;
   runApp(QUnleashedApp(client: client));
   bootstrapAmbientServices();
+  // Here and not in _initCore: widgetMain() never reaches _runApp and has no
+  // window to hook, and _initCore must never throw. See AppShutdown.
+  await AppShutdown(client).install();
   await HomeWidgetSettings.instance.sync();
 }

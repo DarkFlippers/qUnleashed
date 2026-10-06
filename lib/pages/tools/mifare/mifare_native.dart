@@ -1,5 +1,6 @@
 import 'dart:ffi';
 import 'dart:io';
+import 'dart:isolate';
 
 /// Opens a bundled qUnleashed native FFI library by its base name (without the
 /// `lib` prefix / platform extension).
@@ -77,3 +78,34 @@ class NativeEngineUnavailable implements Exception {
   @override
   String toString() => 'NativeEngineUnavailable: $cause';
 }
+
+/// The one place a MIFARE attack isolate is spawned.
+///
+/// Here rather than at each recoverer because the hazard is not obvious and has
+/// already shipped once. A Dart closure captures the *context of the scope it is
+/// written in*, not merely the variables it names - so a spawn written inline
+/// beside a sibling closure carries whatever that closure holds. In
+/// `NativeHardnestedRecoverer.recoverKey` the sibling was
+/// `isCancelled: () => _stopping`, which reaches the RecoverController, which
+/// holds a FlipperClient, which holds a Future. Futures cannot cross an isolate
+/// boundary, so every single attack was rejected before any native code ran:
+///
+///   Illegal argument in isolate message: object is unsendable
+///     - Library:'dart:async' Class: _Future
+///     <- Instance of 'FlipperClient'
+///     <- Instance of 'RecoverController'
+///
+/// reported to the user as "the engine failed". Hardnested was not slow; it
+/// never started.
+///
+/// This function's scope holds its two parameters and no sibling closure, so
+/// there is nothing else for the sent closure to drag along. Pass [body] as a
+/// static tear-off and [payload] as something sendable, and add nothing else
+/// here - an extra local with a closure over it would reintroduce the bug for
+/// every caller at once.
+///
+/// The three non-hardnested recoverers are correct today only because their
+/// signatures happen to carry no callbacks. Routing them through here means the
+/// first one that gains an `onProgress` does not have to rediscover this.
+Future<R> spawnAttackIsolate<P, R>(R Function(P) body, P payload) =>
+    Isolate.run(() => body(payload));

@@ -1,5 +1,4 @@
 import 'dart:ffi';
-import 'dart:isolate';
 
 import 'package:ffi/ffi.dart';
 
@@ -49,7 +48,7 @@ class NativeNestedRecoverer implements NestedRecoverer {
       second.nt,
       second.ks,
     );
-    return Isolate.run(() => _recoverInIsolate(payload));
+    return spawnAttackIsolate(_recoverInIsolate, payload);
   }
 
   static BigInt? _recoverInIsolate(_RecoverPayload p) {
