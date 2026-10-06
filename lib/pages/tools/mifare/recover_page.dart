@@ -65,11 +65,12 @@ class _RecoverPageState extends State<RecoverPage> {
   /// Disabled rather than hidden once asked for: a hardnested bucket can take a
   /// moment to reach its next check, and a button that vanishes mid-tap reads
   /// as a misfire.
-  /// Styled the way the app styles a secondary action - tokens from
-  /// [AppColors], never a raw Material default, which is what made it look
-  /// borrowed from another app. `danger` because stopping is the destructive
-  /// half of a running job, matching how [QConfirmDialog] tints the Stop it
-  /// puts behind this.
+  /// `danger`, because stopping is the destructive half of a running job -
+  /// matching how [QConfirmDialog] tints the Stop it puts behind this. That is
+  /// the substantive change: an OutlinedButton's default foreground is already
+  /// `colorScheme.primary`, i.e. accent, so what moves here is accent to
+  /// danger, the border (which did come from an un-overridden
+  /// `ColorScheme.outline`), the disabled pair, and the text metrics.
   Widget _stopButton(BuildContext context) {
     final colors = context.appColors;
     return Padding(
@@ -424,8 +425,12 @@ class _StatusBlock extends StatelessWidget {
               onPressed: errorType == RecoverErrorType.saveFailed
                   ? controller.retrySave
                   : controller.start,
-              // Styled like the rest of the app's primary actions rather than
-              // left on Material's defaults, which ignore the theme entirely.
+              // Padding and text metrics, to match the app's other buttons.
+              // The two colours are deliberately redundant: buildAppTheme
+              // already sets colorScheme.primary/onPrimary to accent/onAccent
+              // and a FilledButton resolves its defaults to exactly those, so
+              // they change nothing on screen. Named anyway so this reads the
+              // same as the Stop button beside it, where the colours do differ.
               style: FilledButton.styleFrom(
                 backgroundColor: colors.accent,
                 foregroundColor: colors.onAccent,
