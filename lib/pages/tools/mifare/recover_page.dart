@@ -65,17 +65,36 @@ class _RecoverPageState extends State<RecoverPage> {
   /// Disabled rather than hidden once asked for: a hardnested bucket can take a
   /// moment to reach its next check, and a button that vanishes mid-tap reads
   /// as a misfire.
-  Widget _stopButton(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(top: 12),
-    child: OutlinedButton(
-      onPressed: _controller.cancelled
-          ? null
-          : () async {
-              if (await _confirmAbort()) _controller.stop();
-            },
-      child: Text(context.l10n.mfStopConfirm),
-    ),
-  );
+  /// Styled the way the app styles a secondary action - tokens from
+  /// [AppColors], never a raw Material default, which is what made it look
+  /// borrowed from another app. `danger` because stopping is the destructive
+  /// half of a running job, matching how [QConfirmDialog] tints the Stop it
+  /// puts behind this.
+  Widget _stopButton(BuildContext context) {
+    final colors = context.appColors;
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: OutlinedButton(
+        onPressed: _controller.cancelled
+            ? null
+            : () async {
+                if (await _confirmAbort()) _controller.stop();
+              },
+        style: OutlinedButton.styleFrom(
+          foregroundColor: colors.danger,
+          disabledForegroundColor: colors.textMuted,
+          side: BorderSide(
+            color: _controller.cancelled ? colors.divider : colors.danger,
+          ),
+          padding: const EdgeInsets.symmetric(vertical: 12),
+        ),
+        child: Text(
+          context.l10n.mfStopConfirm,
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -405,7 +424,20 @@ class _StatusBlock extends StatelessWidget {
               onPressed: errorType == RecoverErrorType.saveFailed
                   ? controller.retrySave
                   : controller.start,
-              child: Text(l10n.commonRetry),
+              // Styled like the rest of the app's primary actions rather than
+              // left on Material's defaults, which ignore the theme entirely.
+              style: FilledButton.styleFrom(
+                backgroundColor: colors.accent,
+                foregroundColor: colors.onAccent,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+              child: Text(
+                l10n.commonRetry,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
           ),
         ],
