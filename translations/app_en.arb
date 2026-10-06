@@ -3473,6 +3473,10 @@
   },
 
   "toolFliblerSubtitle": "Build an app from a folder or repo",
+  "toolFliblerNeedsSdk": "Needs the SDK deployed in the settings",
+  "@toolFliblerNeedsSdk": {
+    "description": "Subtitle on the Flibler tool entry when this computer cannot compile yet, because the SDK or the toolchain is not deployed. Replaces the normal subtitle."
+  },
   "@toolFliblerSubtitle": {
     "description": "Explanation of the Flibler tool."
   },
