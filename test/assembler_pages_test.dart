@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:dartufbt/dartufbt.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -28,6 +30,27 @@ class _StubRemote extends RemoteBuildService {
     sdkVersions: ['unlshd-090 · f7'],
   );
 }
+
+const _fliblerSubtitle = 'Build an app from a folder or repo';
+const _fliblerNeedsSdk = 'Needs the SDK deployed in the settings';
+
+/// A ufbt state this test owns, so the Flibler cases do not depend on whatever
+/// is in the machine's own ~/.ufbt - which is neither deterministic nor the
+/// thing being tested.
+UfbtStatus _ufbtStatus({required bool ready}) => UfbtStatus(
+  stateDir: '',
+  downloadDir: '',
+  toolchainDir: '',
+  sdkDir: '',
+  previousTask: ready ? SdkDeployTask(hwTarget: 'f7') : null,
+  toolchain: UfbtToolchainInfo(
+    archDir: '',
+    version: 'v1',
+    url: '',
+    installedVersion: ready ? 'v1' : null,
+    isDeployed: ready,
+  ),
+);
 
 void _expectOneOf(List<String> labels) {
   final shown = labels
@@ -139,36 +162,60 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('the Flibler tool follows the local toolchain', (tester) async {
+  testWidgets('the Flibler tool stays reachable while this computer can '
+      'compile', (tester) async {
     SharedPreferences.setMockInitialValues(const {});
     final controller = AssemblerController.instance;
     await controller.loadSettings();
-    addTearDown(
-      () => controller.setPreference(AssemblerBackendPreference.auto),
-    );
+    final realStatus = controller.readStatus;
+    controller.readStatus = () => _ufbtStatus(ready: true);
+    controller.refreshStatus();
+    addTearDown(() async {
+      controller.readStatus = realStatus;
+      // setPreference returns early when the value is unchanged, and only a
+      // transition to auto clears the fault flag - so leaving auto set would
+      // leak markLocalFault into whatever runs next against this singleton.
+      await controller.setPreference(AssemblerBackendPreference.server);
+      await controller.setPreference(AssemblerBackendPreference.auto);
+    });
     await tester.binding.setSurfaceSize(const Size(900, 1600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
     await tester.pumpWidget(_wrap(const ToolsPage()));
     await tester.pumpAndSettle();
 
-    // Building a folder or a repo needs a deployed SDK and toolchain here.
-    expect(
-      find.text('Flibler'),
-      controller.localReady ? findsOneWidget : findsNothing,
-    );
+    // Asserted against a driven status rather than against localReady, which
+    // would just restate the implementation and pass either way.
+    expect(controller.localReady, isTrue);
+    expect(find.text('Flibler'), findsOneWidget);
+    expect(find.text(_fliblerSubtitle), findsOneWidget);
+    expect(find.text(_fliblerNeedsSdk), findsNothing);
 
-    // Nothing is compiled on this computer once the server is in charge.
+    // Pinning the server moves the catalog, not Flibler: it has no server
+    // path, and ensureReady never consults the preference. #248
     await controller.setPreference(AssemblerBackendPreference.server);
     await tester.pumpAndSettle();
-    expect(find.text('Flibler'), findsNothing);
+    expect(controller.backendChoice.isLocal, isFalse);
+    expect(find.text('Flibler'), findsOneWidget);
+    expect(find.text(_fliblerSubtitle), findsOneWidget);
 
+    // Same for a catalog build that faulted earlier in the session. #248
     await controller.setPreference(AssemblerBackendPreference.auto);
+    controller.markLocalFault(const FileSystemException('toolchain gone'));
     await tester.pumpAndSettle();
-    expect(
-      find.text('Flibler'),
-      controller.localReady ? findsOneWidget : findsNothing,
-    );
+    expect(controller.localFaulted, isTrue);
+    expect(find.text('Flibler'), findsOneWidget);
+
+    // Without a deployed SDK it cannot build - and says so instead of
+    // vanishing, because deploying one brings it back.
+    await controller.setPreference(AssemblerBackendPreference.auto);
+    controller.readStatus = () => _ufbtStatus(ready: false);
+    controller.refreshStatus();
+    await tester.pumpAndSettle();
+    expect(controller.localReady, isFalse);
+    expect(find.text('Flibler'), findsOneWidget);
+    expect(find.text(_fliblerNeedsSdk), findsOneWidget);
+    expect(find.text(_fliblerSubtitle), findsNothing);
   });
 
   test('a stored server choice survives a reload, nothing else does', () async {

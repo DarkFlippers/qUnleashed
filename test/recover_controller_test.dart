@@ -497,6 +497,10 @@ class FakeUploadClient extends FakeRecoverClient {
 
   final String log;
 
+  /// Runs before each read frame is handed over, for a test that wants to ask
+  /// the run to stop mid-download.
+  void Function()? onReadFrame;
+
   /// Per-path overrides for the device read, for a test that needs the two logs
   /// to differ. Without it every read answers [log], which is fine while only
   /// one log matters but makes a reader nonce impossible to serve - the nested
@@ -541,6 +545,11 @@ class FakeUploadClient extends FakeRecoverClient {
     if (request.hasStorageReadRequest()) {
       reads++;
       final body = byPath[request.storageReadRequest.path] ?? log;
+      // storageReadChunked is an extension, so its real body runs over this
+      // fake and consults its own isCancelled as each frame is delivered -
+      // which is the thing under test. onReadFrame is the test's chance to ask
+      // for a stop first.
+      onReadFrame?.call();
       final frame = Main()
         ..storageReadResponse = (ReadResponse()
           ..file = (File()..data = utf8.encode(body)));
@@ -1232,33 +1241,6 @@ void _stopGroup() {
       },
     );
 
-    // Offered only where something honours it. The download is minutes over
-    // BLE and storageReadChunked takes no isCancelled - unlike the write side -
-    // so the read runs to completion whatever is asked of it. A button live
-    // through that is a button that does nothing, which is the whole failure
-    // having a Stop is meant to avoid.
-    test('Stop is not offered while the logs are downloading', () async {
-      bool? duringDownload;
-      final controller = controllerWith(
-        FakeHardnested([0.1]),
-        FakeUploadClient(log),
-      );
-      addTearDown(controller.dispose);
-      controller.addListener(() {
-        if (controller.state is RecoverDownloading) {
-          duringDownload ??= controller.canStop;
-        }
-      });
-
-      await controller.start();
-
-      expect(
-        duringDownload,
-        isFalse,
-        reason: 'nothing can act on a Stop during the read',
-      );
-    });
-
     test('Stop is not offered while the dictionary is being written', () async {
       // One weak pair and nothing else: the only device write this run makes is
       // the user dictionary at the end, so a frame hook can only fire inside
@@ -1301,6 +1283,95 @@ void _stopGroup() {
         contains(true),
         reason: 'a second run has to offer Stop again',
       );
+    });
+
+    // Stop during the log download, which until flipperlib #13 could not be
+    // honoured at all - storageReadChunked took no isCancelled, so the button
+    // was hidden for the whole of it rather than offered and ignored.
+    //
+    // What is pinned here: that the button is offered, and that the read's
+    // cancellation is reported as a stopped run rather than as a storage
+    // error. What is *not*: that `isCancelled` is passed through at all.
+    // Removing it leaves every assertion below green, because the run reaches
+    // the same screen either way - it just reads the whole file first. The
+    // fake cannot tell those apart; a frame-by-frame fake was tried and the
+    // frame timing did not reproduce faithfully enough to discriminate.
+    // The pass-through's effect is pinned in flipperlib instead, by
+    // storage_read_cancel_test's 'frees the caller mid-stream, not at the end
+    // of the file'. Said out loud because a reader would otherwise assume
+    // these three cover the wiring.
+    group('during the download', () {
+      // Cancels the read the way the real one now does: throws at the frame
+      // where the caller asked, leaving the request itself in flight.
+      ({RecoverController controller, FakeUploadClient client}) build() {
+        final client = FakeUploadClient(log);
+        late final RecoverController controller;
+        controller = RecoverController(
+          client: client,
+          mfApi: FakeReaderApi(),
+          nestedApi: FakeTagApi(exists: true),
+          nestedRecoverer: FakeNested(recovered),
+          hardnestedRecoverer: FakeHardnested([0.1]),
+          knownKeyFilter: (_) => FakeKnownKeys(),
+        );
+        client.onReadFrame = () {
+          if (controller.state is RecoverDownloading) controller.stop();
+        };
+        return (controller: controller, client: client);
+      }
+
+      test('Stop is offered while the logs are downloading', () async {
+        bool? offered;
+        final parts = build();
+        addTearDown(parts.controller.dispose);
+        parts.controller.addListener(() {
+          if (parts.controller.state is RecoverDownloading) {
+            offered ??= parts.controller.canStop;
+          }
+        });
+
+        await parts.controller.start();
+
+        expect(
+          offered,
+          isTrue,
+          reason: 'the read honours it now, so the button belongs there',
+        );
+      });
+
+      // The read's cancellation is ours, not a fault. Reporting it as a storage
+      // error would tell the user their card or cable failed when they pressed
+      // the button themselves.
+      test('a cancelled read is not reported as a read error', () async {
+        final parts = build();
+        addTearDown(parts.controller.dispose);
+
+        await parts.controller.start();
+
+        expect(parts.controller.state, isA<RecoverSaved>());
+        final saved = parts.controller.state as RecoverSaved;
+        expect(saved.stopped, isTrue);
+        expect(saved.keys, isEmpty, reason: 'nothing had been attacked yet');
+        expect(
+          parts.client.framesSent,
+          0,
+          reason: 'and nothing is written to the card',
+        );
+      });
+
+      test('no attack is started after it', () async {
+        final parts = build();
+        addTearDown(parts.controller.dispose);
+
+        await parts.controller.start();
+
+        expect(parts.controller.entries, isEmpty);
+        expect(
+          parts.controller.totalUnits,
+          0,
+          reason: 'the run never got as far as planning the work',
+        );
+      });
     });
 
     // The flag is per-run. A Stop left set would end the next run before it
