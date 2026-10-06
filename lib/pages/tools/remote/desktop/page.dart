@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:qunleashed/components/appbar.dart';
 
 import '../../../../services/guarded.dart';
+import '../../../../components/dialogs/connection.dart';
 import '../../../../components/notification.dart';
+import '../../../../services/connection/link_service.dart';
 import '../../../../services/localization/l10n.dart';
 import '../../../../services/logging.dart';
 import '../../../../theme/theme.dart';
@@ -301,6 +303,27 @@ class _RemoteControlPageState extends State<RemoteControlPage>
     Navigator.of(context).pop();
   }
 
+  void _onConnection() {
+    if (_session.inputAvailable) {
+      unawaited(guarded('[Remote] disconnect', _disconnect));
+    } else {
+      unawaited(
+        guarded('[Remote] connect', () => promptConnectDevice(context)),
+      );
+    }
+  }
+
+  Future<void> _disconnect() async {
+    final client = _session.client;
+    final device = client.connectedDevice ?? client.connectingDevice;
+    if (device == null) return;
+    await LinkService.instance.disconnectDevice(
+      device,
+      id: device.id,
+      link: device.link,
+    );
+  }
+
   Future<void> _openWristRemoteSettings() async {
     Object? startError;
     try {
@@ -439,11 +462,13 @@ class _RemoteControlPageState extends State<RemoteControlPage>
       queue: _session.queue,
       orientation: _session.orientation,
       connected: !_session.isDisconnected,
+      linked: _session.inputAvailable,
       gifState: _gifRecorder.state,
       gifElapsedMs: _gifRecorder.elapsedMs,
       justUnlocked: _session.justUnlocked,
       savingScreenshot: _savingScreenshot,
       onBack: _close,
+      onConnection: _onConnection,
       onCopy: _copyScreenshot,
       onSave: _saveScreenshot,
       onUnlock: _session.unlock,
@@ -494,6 +519,15 @@ class _RemoteControlPageState extends State<RemoteControlPage>
                     icon: const Icon(Icons.arrow_back),
                   ),
                   actions: [
+                    IconButton(
+                      tooltip: _session.inputAvailable
+                          ? context.l10n.pickerDisconnect
+                          : context.l10n.connectSearch,
+                      onPressed: _onConnection,
+                      icon: Icon(
+                        _session.inputAvailable ? Icons.link_off : Icons.search,
+                      ),
+                    ),
                     if (_mediaRemote.supported)
                       IconButton(
                         tooltip: context.l10n.wristRemoteMappingTitle,

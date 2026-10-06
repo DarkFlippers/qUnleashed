@@ -22,11 +22,13 @@ class RemoteWideBody extends StatelessWidget {
     required this.queue,
     required this.orientation,
     required this.connected,
+    required this.linked,
     required this.gifState,
     required this.gifElapsedMs,
     required this.justUnlocked,
     required this.savingScreenshot,
     required this.onBack,
+    required this.onConnection,
     required this.onCopy,
     required this.onSave,
     required this.onUnlock,
@@ -44,11 +46,13 @@ class RemoteWideBody extends StatelessWidget {
   final List<QueuedButton> queue;
   final StreamOrientation orientation;
   final bool connected;
+  final bool linked;
   final GifRecordingState gifState;
   final int gifElapsedMs;
   final bool justUnlocked;
   final bool savingScreenshot;
   final VoidCallback onBack;
+  final VoidCallback onConnection;
   final AsyncCallback onCopy;
   final AsyncCallback onSave;
   final AsyncCallback onUnlock;
@@ -131,7 +135,9 @@ class RemoteWideBody extends StatelessWidget {
                         gifElapsedMs: gifElapsedMs,
                         justUnlocked: justUnlocked,
                         savingScreenshot: savingScreenshot,
+                        linked: linked,
                         onBack: onBack,
+                        onConnection: onConnection,
                         onCopy: onCopy,
                         onSave: onSave,
                         onUnlock: onUnlock,
