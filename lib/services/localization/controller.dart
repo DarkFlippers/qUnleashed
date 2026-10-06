@@ -5,10 +5,6 @@ import '../logging.dart';
 import '../prefs_reader.dart';
 import 'gen/l10n_generated.dart';
 
-/// Language names written in the language itself, so every entry of the picker
-/// stays readable no matter which language the app currently runs in.
-const Map<String, String> _localeNames = {'en': 'English', 'ru': 'Русский'};
-
 class QLocaleController extends ChangeNotifier with WidgetsBindingObserver {
   QLocaleController._() {
     // Plain unit tests never initialize a binding, and a service that only
@@ -46,8 +42,27 @@ class QLocaleController extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  static String nameOf(Locale locale) =>
-      _localeNames[locale.languageCode] ?? locale.toLanguageTag();
+  /// The language's own name, written in that language, so every entry of the
+  /// picker stays readable whichever language the app is running in.
+  ///
+  /// This was a map kept by hand here, which meant a language arriving from
+  /// Crowdin was listed by its code until someone remembered to add it.
+  /// `languageName` is the same answer from the only people who know it, and
+  /// it costs this repository nothing.
+  ///
+  /// `isSupported` is asked first because `lookupL10n` throws for a locale it
+  /// does not know rather than returning null, and this takes any `Locale` a
+  /// caller has. Asking keeps a bare catch out of the count as well.
+  ///
+  /// There is deliberately nothing here for an ARB that left `languageName`
+  /// untranslated: `gen-l10n` inherits the template, so the picker would call
+  /// that language "English", and the only check possible here - comparing
+  /// every name against the English one - would hide it rather than report it.
+  /// `translation_completeness_test` fails on the sync's pull request instead,
+  /// which is both earlier and where the fix is.
+  static String nameOf(Locale locale) => L10n.delegate.isSupported(locale)
+      ? lookupL10n(locale).languageName
+      : locale.toLanguageTag();
 
   Future<void> loadLocale() async {
     final PrefsReader reader;
