@@ -48,7 +48,7 @@ class _SeedPageState extends State<SeedPage> {
     context,
     title: context.l10n.seedStopTitle,
     message: context.l10n.seedStopMessage,
-    confirmLabel: context.l10n.seedStopConfirm,
+    confirmLabel: context.l10n.seedStop,
     cancelLabel: context.l10n.seedStopCancel,
   );
 
@@ -143,10 +143,10 @@ class _CaptureCard extends StatelessWidget {
         // Fix, seed and counter are the three figures the result is read for;
         // the fix is known before the search and is shown from the start so a
         // user can check they opened the right capture.
-        _Row(label: context.l10n.seedFix, value: _hex(capture.fix, 8)),
+        _Row(label: context.l10n.seedFix, value: seedHex(capture.fix, 8)),
         _Row(
           label: context.l10n.seedHops(capture.hops.length),
-          value: capture.hops.map((h) => _hex(h, 8)).join('  '),
+          value: capture.hops.map((h) => seedHex(h, 8)).join('  '),
           wrap: true,
         ),
         if (frequency != null)
@@ -276,12 +276,12 @@ class _ResultCard extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         if (seed != null) ...[
-          _Row(label: l10n.seedFix, value: _hex(capture.fix, 8)),
-          _Row(label: l10n.seedSeed, value: _hex(seed, 8)),
+          _Row(label: l10n.seedFix, value: seedHex(capture.fix, 8)),
+          _Row(label: l10n.seedSeed, value: seedHex(seed, 8)),
           if (counter != null)
             _Row(
               label: l10n.seedCounter,
-              value: _hex(counter, capture.manufacturer.counterDigits),
+              value: seedHex(counter, capture.manufacturer.counterDigits),
             ),
         ],
         // A no-match is the result most likely to be misread as a verdict on
@@ -455,9 +455,6 @@ class _Hint extends StatelessWidget {
     );
   }
 }
-
-String _hex(int value, int digits) =>
-    value.toRadixString(16).toUpperCase().padLeft(digits, '0');
 
 /// What a failed operation is called, in the user's language.
 ///

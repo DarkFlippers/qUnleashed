@@ -75,7 +75,7 @@ class SeedSubFile {
     required int fix,
   }) {
     final label = manufacturer.label.replaceAll(RegExp(r'[^A-Za-z0-9]'), '');
-    return '${label}_${_hex(fix, 8)}.sub';
+    return '${label}_${seedHex(fix, 8)}.sub';
   }
 
   /// Big-endian bytes, space separated and upper case, as the firmware writes
@@ -87,7 +87,4 @@ class SeedSubFile {
           .toUpperCase()
           .padLeft(2, '0'),
   ].join(' ');
-
-  static String _hex(int value, int digits) =>
-      value.toRadixString(16).toUpperCase().padLeft(digits, '0');
 }

@@ -7809,11 +7809,6 @@
     "description": "Body of the stop confirmation."
   },
 
-  "seedStopConfirm": "Stop",
-  "@seedStopConfirm": {
-    "description": "Confirm button of the stop confirmation."
-  },
-
   "seedStopCancel": "Keep Going",
   "@seedStopCancel": {
     "description": "Cancel button of the stop confirmation."

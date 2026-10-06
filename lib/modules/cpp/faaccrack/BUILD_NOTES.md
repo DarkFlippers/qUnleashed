@@ -11,9 +11,10 @@ itself, exactly as `.nested.log` collection does for hardnested.
 
 ## State of this directory
 
-The library builds on every target. **Nothing in `lib/` calls it yet** - the
-Dart binding and the UI are still to come - so it ships, loads and answers, with
-no caller.
+The library builds on every target and the app calls it: `Tools -> Recover
+SubGHz Seeds` reads a capture off the Flipper, recovers the seed here, and
+writes the remote back to `/ext/subghz`. The Dart side is
+`lib/pages/tools/subghz/seed/`.
 
 | | |
 |---|---|
@@ -33,12 +34,14 @@ source arriving under some other name.
 
 ### Remaining work
 
-1. Dart: the FFI binding, a parser for the capture `.txt`, the `.sub` writer and
-   the UI. The progress struct will be the *third* hand-written Dart mirror of
-   the same three words (`_HnProgress` in `hardnested_recoverer.dart` is
-   private, which is why `tool/hn_bench.dart` already has a second); publishing
-   one of them in `mifare_native.dart` is the way not to add a third.
-2. A shared SIMD capability header under `lib/modules/cpp/`. The cascade in
+1. A vector captured from a *real* remote. The ones in the probe were generated
+   from this engine, so they pin drift rather than correctness - they prove mode
+   4 still selects whatever mode 4 selected when they were made.
+2. The progress struct is now the **third** hand-written Dart mirror of the same
+   three words (`_HnProgress` in `hardnested_recoverer.dart` is private, which
+   is why `tool/hn_bench.dart` already carries a second). Publishing one of them
+   in `mifare_native.dart` would retire two of the three.
+3. A shared SIMD capability header under `lib/modules/cpp/`. The cascade in
    `faaccrack.h` re-derives tests that `hardnested/hardnested_bf_core.h` already
    centralises, and that copy carries two quirks this one does not - an
    Apple-clang version guard, and a workaround for clang reporting `__GNUC__` 4

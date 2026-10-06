@@ -38,19 +38,19 @@ enum SeedManufacturer {
   /// the recovery rather than in the display.
   int get counterDigits => protocol == 'Faac SLH' ? 5 : 4;
 
+  /// Spacing and case, which the label is not meaningful in: it is typed into
+  /// the Flipper app's source by hand, and "FAAC SLH" versus "FAAC_SLH" is not
+  /// a difference worth failing a capture over.
+  static final _noise = RegExp(r'[\s_]');
+
+  String get _normalised => label.replaceAll(_noise, '').toLowerCase();
+
   /// The manufacturer the capture file names, or null if it names something
   /// this build has no key for.
-  ///
-  /// Matched case-insensitively and ignoring spaces, because the label is typed
-  /// into the Flipper app's source by hand and "FAAC SLH" versus "FAAC_SLH" is
-  /// not a difference worth failing a capture over.
   static SeedManufacturer? fromLabel(String label) {
-    final wanted = label.replaceAll(RegExp(r'[\s_]'), '').toLowerCase();
+    final wanted = label.replaceAll(_noise, '').toLowerCase();
     for (final manufacturer in SeedManufacturer.values) {
-      final candidate = manufacturer.label
-          .replaceAll(RegExp(r'[\s_]'), '')
-          .toLowerCase();
-      if (candidate == wanted) return manufacturer;
+      if (manufacturer._normalised == wanted) return manufacturer;
     }
     return null;
   }
@@ -68,8 +68,6 @@ class SeedCapture {
     required this.hops,
     required this.manufacturer,
     this.frequencyHz,
-    this.received,
-    this.sourcePath,
   });
 
   /// The fixed code: the top 32 bits of the frame, the same in every hop.
@@ -88,12 +86,6 @@ class SeedCapture {
   /// with the wrong frequency transmits into the void, and guessing 433.92 for
   /// a Genius remote that was captured at 868.35 is exactly that.
   final int? frequencyHz;
-
-  /// When the first hop arrived, as the capturing device's clock had it.
-  final DateTime? received;
-
-  /// Where the file came from on the device, for the UI to name it.
-  final String? sourcePath;
 
   /// Whether this capture carries enough hops for the engine to accept it.
   bool get isSolvable => hops.length >= minHops;
@@ -191,3 +183,29 @@ typedef SeedResult = ({
 /// whole space is conceivable; three put it near 1e-7. One spelling on this
 /// side too, so the page and the file writer cannot draw the line differently.
 const seedHopsConfident = 3;
+
+/// A result with nothing in it but a reason.
+///
+/// One spelling: the controller, the recoverer and the tests each had their own
+/// copy of this record literal, so a field added to [SeedResult] cost six edits
+/// and a missed one was a compile error in a different file each time.
+SeedResult seedResult(
+  SeedOutcome outcome, {
+  int? seed,
+  int? lrkey,
+  int? counter,
+  int? frameHop,
+  int? hopsUsed,
+}) => (
+  outcome: outcome,
+  seed: seed,
+  lrkey: lrkey,
+  counter: counter,
+  frameHop: frameHop,
+  hopsUsed: hopsUsed,
+);
+
+/// A fixed-width upper-case hex word, the way frames are written everywhere in
+/// this feature - the page, the file name and the `.sub` itself.
+String seedHex(int value, int digits) =>
+    value.toRadixString(16).toUpperCase().padLeft(digits, '0');

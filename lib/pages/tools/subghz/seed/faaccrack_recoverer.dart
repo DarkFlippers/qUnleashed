@@ -154,12 +154,13 @@ class NativeFaaccrackRecoverer implements FaaccrackRecoverer {
     void Function(double fraction)? onProgress,
     bool Function()? isCancelled,
   }) async {
-    // Both of these are the user's situation rather than a bug, and the engine
-    // reports either as "bad arguments" - which a caller would show as the
-    // engine being broken. Caught here so the page can say what to do instead.
+    // Defensive only. The window builder already keeps every job inside these
+    // bounds, so reaching this means a caller bypassed it - which is a fault in
+    // this app, and reported as one.
     if (hops.length < SeedCapture.minHops ||
         hops.length > SeedCapture.maxHops) {
-      return _empty(SeedOutcome.engineFault);
+      LogService.error('[Seed] refusing ${hops.length} hops, out of bounds');
+      return seedResult(SeedOutcome.engineFault);
     }
 
     // Allocated on this side: the poll timer has to read it while the other
@@ -174,10 +175,17 @@ class NativeFaaccrackRecoverer implements FaaccrackRecoverer {
       channelAddress: channel.address,
     );
 
+    var lastPermille = -1;
     final poll = Timer.periodic(_pollInterval, (_) {
       if (isCancelled?.call() ?? false) channel.ref.abort = 1;
       if (onProgress == null || channel.ref.started == 0) return;
-      onProgress(channel.ref.permille / 1000);
+      // Only when it moved. Each call becomes a notifyListeners() and a
+      // full-page rebuild, and the sweep publishes far more often than it
+      // changes a thousandth.
+      final permille = channel.ref.permille;
+      if (permille == lastPermille) return;
+      lastPermille = permille;
+      onProgress(permille / 1000);
     });
 
     try {
@@ -207,7 +215,11 @@ class NativeFaaccrackRecoverer implements FaaccrackRecoverer {
   /// platform, and this side needs the figure anyway to estimate the wait. The
   /// bridge answers 0 when it has no answer, which means "pick a default"
   /// rather than "no CPUs".
-  static int _threadCount() {
+  static int? _threads;
+
+  static int _threadCount() => _threads ??= _askThreadCount();
+
+  static int _askThreadCount() {
     try {
       final count = lookupNativeFunction(
         () => openFaaccrackNativeLibrary()
@@ -234,7 +246,7 @@ class NativeFaaccrackRecoverer implements FaaccrackRecoverer {
         'qunleashed_faaccrack_recover',
       ),
     );
-    if (!_layoutMatches(library)) return _empty(SeedOutcome.engineFault);
+    if (!_layoutMatches(library)) return seedResult(SeedOutcome.engineFault);
 
     final hops = calloc<Uint32>(p.hops.length);
     final result = calloc<_FaaccrackResult>();
@@ -261,7 +273,7 @@ class NativeFaaccrackRecoverer implements FaaccrackRecoverer {
           '${p.hops.length} hop(s)',
         );
       }
-      if (!seedResultIsMeaningful(outcome)) return _empty(outcome);
+      if (!seedResultIsMeaningful(outcome)) return seedResult(outcome);
       final found = result.ref;
       return (
         outcome: outcome,
@@ -323,7 +335,11 @@ class NativeFaaccrackRecoverer implements FaaccrackRecoverer {
   /// Worth logging once per run: the difference between the fastest and
   /// slowest is several-fold, so a machine that is unexpectedly slow is
   /// answered by this one string.
-  static String variantName() {
+  static String? _variant;
+
+  static String variantName() => _variant ??= _askVariantName();
+
+  static String _askVariantName() {
     try {
       final name = lookupNativeFunction(
         () => openFaaccrackNativeLibrary()
@@ -341,15 +357,6 @@ class NativeFaaccrackRecoverer implements FaaccrackRecoverer {
     }
   }
 }
-
-SeedResult _empty(SeedOutcome outcome) => (
-  outcome: outcome,
-  seed: null,
-  lrkey: null,
-  counter: null,
-  frameHop: null,
-  hopsUsed: null,
-);
 
 class _SeedPayload {
   const _SeedPayload({

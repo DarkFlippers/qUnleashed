@@ -39,8 +39,6 @@ void main() {
       expect(capture.hops, [0x29389EF7, 0x40101499, 0xA1F9C88F]);
       expect(capture.manufacturer, SeedManufacturer.genius);
       expect(capture.frequencyHz, 868350000);
-      expect(capture.received, DateTime(2026, 10, 6, 21, 14, 33));
-      expect(capture.sourcePath, '/ext/x.txt');
       expect(capture.isSolvable, isTrue);
     });
 
@@ -98,7 +96,6 @@ Hop: 6BD12D54
       final capture = parsed.capture!;
       expect(capture.manufacturer, SeedManufacturer.erreka);
       expect(capture.frequencyHz, isNull);
-      expect(capture.received, isNull);
     });
 
     test('accepts a manufacturer however it is spaced or cased', () {
@@ -118,10 +115,11 @@ Hop: 674875BE
   });
 
   group('a capture longer than the engine takes', () {
-    test('is trimmed rather than refused, and says so', () {
-      // More presses is a *better* capture, not a broken one. Letting it reach
-      // the engine gets "bad arguments", which a caller can only report as
-      // this build being wrong - for a capture that solves if you drop one.
+    test("is kept whole; the limit is the search's, not the file's", () {
+      // More presses is a *better* capture. Trimming here would throw away
+      // hops a shorter window could have used to step over a gap, so the
+      // engine's limit is applied where the windows are built instead - the
+      // parser's job is to say what the file contains.
       final hops = [
         for (var i = 0; i < SeedCapture.maxHops + 3; i++)
           'Hop: ${(0x10000000 + i).toRadixString(16).toUpperCase()}',
@@ -131,8 +129,8 @@ Manufacturer: Genius
 Fix: A0DC9330
 $hops
 ''');
-      expect(parsed.capture!.hops, hasLength(SeedCapture.maxHops));
-      expect(parsed.skipped, contains(contains('using the first')));
+      expect(parsed.capture!.hops, hasLength(SeedCapture.maxHops + 3));
+      expect(parsed.skipped, isEmpty);
     });
   });
 

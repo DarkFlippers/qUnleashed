@@ -84,7 +84,7 @@ void main() {
 
     expect(controller.result!.outcome, SeedOutcome.found);
     expect(controller.result!.seed, 0x789);
-    expect(controller.stage, SeedStage.done);
+    expect(controller.stage, SeedStage.idle);
     expect(recoverer.windows, hasLength(1), reason: 'no need for a subset');
     expect(controller.canSave, isTrue);
   });
@@ -120,7 +120,7 @@ void main() {
     await controller.search();
 
     expect(controller.result!.outcome, SeedOutcome.stopped);
-    expect(controller.stage, SeedStage.done);
+    expect(controller.stage, SeedStage.idle);
   });
 
   test('a missing engine ends the search instead of latching the page', () async {
@@ -135,7 +135,7 @@ void main() {
 
     await controller.search();
 
-    expect(controller.stage, SeedStage.done);
+    expect(controller.stage, SeedStage.idle);
     expect(controller.result!.outcome, SeedOutcome.engineUnavailable);
     expect(controller.canSave, isFalse);
   });
@@ -146,7 +146,7 @@ void main() {
 
     await controller.search();
 
-    expect(controller.stage, SeedStage.done);
+    expect(controller.stage, SeedStage.idle);
     expect(controller.result!.outcome, SeedOutcome.engineFault);
   });
 

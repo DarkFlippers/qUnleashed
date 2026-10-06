@@ -11,7 +11,7 @@ import 'seed_models.dart';
 import 'seed_sub_file.dart';
 
 /// What the page is doing.
-enum SeedStage { browsing, loading, searching, done }
+enum SeedStage { idle, loading, searching }
 
 /// Why something the user asked for did not happen.
 ///
@@ -39,7 +39,7 @@ class SeedController extends ChangeNotifier {
   final FlipperClient _client;
   final FaaccrackRecoverer _recoverer;
 
-  SeedStage _stage = SeedStage.browsing;
+  SeedStage _stage = SeedStage.idle;
   List<SeedCaptureFile> _files = const [];
   SeedCapture? _capture;
   SeedResult? _result;
@@ -92,16 +92,25 @@ class SeedController extends ChangeNotifier {
       _result?.frameHop != null &&
       _capture?.frequencyHz != null;
 
-  /// Lists the captures the device is holding.
+  /// Runs a device operation as one task on this Flipper's session, after
+  /// clearing whatever failed last.
   ///
-  /// As one task on this Flipper's session, like every other device-touching
-  /// controller here: with auto-reconnect on, work that spans minutes would
-  /// otherwise be free to finish against whichever device happens to be live.
-  Future<void> refresh() =>
-      _client.runTask(FlipperRequestPriority.background, _refresh);
+  /// The session binding is what every other device-touching controller here
+  /// does: with auto-reconnect on, work that spans minutes is otherwise free to
+  /// finish against whichever device happens to be live by then. The clearing
+  /// is ADR 0008's rule that a failure is cleared at the start of the operation
+  /// that could replace it - and one wrapper rather than four preludes, because
+  /// the fourth copy was the one that forgot.
+  Future<void> _task(Future<void> Function() body) {
+    _error = null;
+    return _client.runTask(FlipperRequestPriority.background, body);
+  }
+
+  /// Lists the captures the device is holding.
+  Future<void> refresh() => _task(_refresh);
 
   Future<void> _refresh() async {
-    _stage = SeedStage.browsing;
+    _stage = SeedStage.idle;
     _error = null;
     _changed();
     try {
@@ -140,8 +149,7 @@ class SeedController extends ChangeNotifier {
   }
 
   /// Reads one capture and parses it.
-  Future<void> open(SeedCaptureFile file) =>
-      _client.runTask(FlipperRequestPriority.background, () => _open(file));
+  Future<void> open(SeedCaptureFile file) => _task(() => _open(file));
 
   Future<void> _open(SeedCaptureFile file) async {
     _stage = SeedStage.loading;
@@ -175,7 +183,7 @@ class SeedController extends ChangeNotifier {
       LogService.error('[Seed] could not read ${file.path}: $e');
       _error = SeedFailure.readFailed;
     }
-    _stage = _capture == null ? SeedStage.browsing : SeedStage.done;
+    _stage = _capture == null ? SeedStage.idle : SeedStage.idle;
     _changed();
   }
 
@@ -184,7 +192,7 @@ class SeedController extends ChangeNotifier {
   @visibleForTesting
   void debugSetCapture(SeedCapture capture) {
     _capture = capture;
-    _stage = SeedStage.done;
+    _stage = SeedStage.idle;
   }
 
   /// Runs the search over the loaded capture.
@@ -194,10 +202,12 @@ class SeedController extends ChangeNotifier {
   /// decrypted counter to be one from the last - while the presses either side
   /// of the gap are still consecutive among themselves. Without this a user
   /// with a nine-hop capture and one dropped frame is told no seed exists.
-  Future<void> search() =>
-      _client.runTask(FlipperRequestPriority.background, _search);
-
-  Future<void> _search() async {
+  /// Runs the search over the loaded capture.
+  ///
+  /// Not bound to a session, unlike the three operations above: the sweep runs
+  /// in an isolate on this machine and issues no requests, so there would be
+  /// nothing for a session to hold.
+  Future<void> search() async {
     final capture = _capture;
     if (capture == null) return;
 
@@ -217,15 +227,15 @@ class SeedController extends ChangeNotifier {
 
     // Never null by the time it is read: a search that visibly runs and ends
     // with nothing on screen is worse than one that says what happened.
-    var last = _emptyResult(SeedOutcome.engineFault);
+    var last = seedResult(SeedOutcome.engineFault);
     try {
-      for (final window in _windows(capture.hops)) {
+      for (final window in windows(capture.hops)) {
         if (_stopping) {
           // The stop landed between windows rather than inside one, so the
           // engine never saw it and `last` still holds the previous window's
           // answer. Without this the user who pressed Stop is told "no seed
           // matched this capture" and sent to re-record a remote that is fine.
-          last = _emptyResult(SeedOutcome.stopped);
+          last = seedResult(SeedOutcome.stopped);
           break;
         }
         // Each window is a fresh sweep from zero, so the bar has to go back.
@@ -253,46 +263,81 @@ class SeedController extends ChangeNotifier {
       // forever with a dead Stop button, and the only trace is an uncaught
       // zone error naming no operation.
       LogService.error('[Seed] engine unavailable, search did not start: $e');
-      last = _emptyResult(SeedOutcome.engineUnavailable);
+      last = seedResult(SeedOutcome.engineUnavailable);
     } catch (e, st) {
       LogService.error(
         '[Seed] search failed for ${capture.fix.toRadixString(16)}: $e\n$st',
       );
-      last = _emptyResult(SeedOutcome.engineFault);
+      last = seedResult(SeedOutcome.engineFault);
     } finally {
       _result = last;
-      _stage = SeedStage.done;
+      _stage = SeedStage.idle;
       _changed();
     }
   }
 
   /// The hop sets to try, longest first.
   ///
-  /// The whole capture, then every contiguous run one shorter, and so on down
-  /// to the fewest the engine accepts. Longest first because more hops mean a
-  /// stronger answer, and contiguous because non-adjacent hops cannot have
-  /// consecutive counters however many of them there are.
+  /// A capture with one missed press cannot solve *entire* - the acceptance
+  /// test needs every decrypted counter to be one from the last - while the
+  /// presses either side of the gap are still consecutive among themselves. So
+  /// the whole capture is tried first, then shorter runs.
+  ///
+  /// **Prefixes and suffixes only.** A single gap always leaves exactly one run
+  /// before it and one after it, so an interior window - dropping hops from
+  /// *both* ends - can only win when there are two gaps. Enumerating every
+  /// contiguous run instead, as this did at first, spends the budget on those
+  /// two-gap cases and runs out before reaching the one-gap ones: on ten hops
+  /// it tried three interior windows and never tried the runs of six and four
+  /// that a single dropped press actually leaves.
+  ///
+  /// Longest first, because more hops mean a stronger answer, and capped at
+  /// what the engine takes - a capture longer than that is a better capture,
+  /// not a broken one, and the limit belongs here rather than in the parser
+  /// that reads the file.
   @visibleForTesting
-  static List<List<int>> windowsFor(List<int> hops) => _windows(hops);
+  static List<List<int>> windows(List<int> hops) {
+    final longest = hops.length < SeedCapture.maxHops
+        ? hops.length
+        : SeedCapture.maxHops;
+    final found = <List<int>>[];
 
-  static List<List<int>> _windows(List<int> hops) {
-    final windows = <List<int>>[];
-    for (var length = hops.length; length >= SeedCapture.minHops; length--) {
-      for (var start = 0; start + length <= hops.length; start++) {
-        windows.add(hops.sublist(start, start + length));
+    void offer(List<int> window) {
+      if (window.length < SeedCapture.minHops) return;
+      if (found.length >= _maxWindows) return;
+      for (final existing in found) {
+        if (existing.length == window.length &&
+            existing.first == window.first) {
+          return;
+        }
       }
-      // One full pass of a shorter length is already several searches; going
-      // all the way down to pairs on a long capture would be dozens. The
-      // engine sweeps the whole space each time, so this is bounded work the
-      // user is waiting through.
-      if (windows.length >= _maxWindows) break;
+      found.add(window);
     }
-    return windows;
+
+    for (var length = longest; length >= SeedCapture.minHops; length--) {
+      offer(hops.sublist(0, length));
+      offer(hops.sublist(hops.length - length));
+      // Each window is a full sweep of the seed space with the user waiting,
+      // so this is bounded work rather than every possibility.
+      if (found.length >= _maxWindows) break;
+    }
+    return found;
   }
 
-  /// Enough to drop a press or two from a typical capture without turning a
-  /// failed search into a very long one.
-  static const _maxWindows = 8;
+  /// Enough windows to step over a press missed *anywhere* in a capture the
+  /// Flipper-side app can produce, without turning a failed search into a very
+  /// long one.
+  ///
+  /// The arithmetic, because an arbitrary number here would leave the worst
+  /// case uncovered and look fine: a gap at position k leaves runs of k and
+  /// n-k, and the longer of the two is at least n/2 - so the deepest length
+  /// that ever has to be reached is half the capture. Descending from n and
+  /// offering both ends costs 1 + 2*(n - n/2) windows, which for the ten hops
+  /// that app stops at is eleven.
+  ///
+  /// Each one is a full sweep of the seed space with the user watching a bar,
+  /// so this is deliberately a budget and not an exhaustive search.
+  static const _maxWindows = 12;
 
   /// Asks the running search to stop. It lands within a claimed chunk, which is
   /// milliseconds - not the "pressed Stop and the bar kept going" the MIFARE
@@ -306,8 +351,7 @@ class SeedController extends ChangeNotifier {
   ///
   /// Into `/ext/subghz`, so it appears under Sub-GHz -> Saved: a seed shown on
   /// screen and nowhere else leaves the user to do the file work by hand.
-  Future<void> save() =>
-      _client.runTask(FlipperRequestPriority.background, _save);
+  Future<void> save() => _task(_save);
 
   Future<void> _save() async {
     final capture = _capture;
@@ -339,13 +383,3 @@ class SeedController extends ChangeNotifier {
     _changed();
   }
 }
-
-/// A result with nothing in it but a reason.
-SeedResult _emptyResult(SeedOutcome outcome) => (
-  outcome: outcome,
-  seed: null,
-  lrkey: null,
-  counter: null,
-  frameHop: null,
-  hopsUsed: null,
-);

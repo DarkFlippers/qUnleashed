@@ -1,4 +1,3 @@
-import '../../../../services/logging.dart';
 import 'seed_models.dart';
 
 /// Where the Flipper-side capture app writes its files.
@@ -135,50 +134,15 @@ class SeedCaptureFormat {
       skipped.add('file says $declared hops, found ${hops.length}');
     }
 
-    // A capture left collecting through more presses than the engine takes is
-    // a *better* capture, not a broken one - so it is trimmed here, where the
-    // reason can be said, rather than refused by the engine as bad arguments,
-    // which a caller can only report as this build being wrong.
-    //
-    // The first ones are kept because they are the ones the capture app saw
-    // first, and consecutiveness is what matters, not recency.
-    final used = hops.length > SeedCapture.maxHops
-        ? hops.sublist(0, SeedCapture.maxHops)
-        : hops;
-    if (used.length != hops.length) {
-      skipped.add(
-        'capture has ${hops.length} hops; using the first '
-        '${SeedCapture.maxHops}',
-      );
-    }
-
     return (
       capture: SeedCapture(
         fix: fix,
-        hops: List.unmodifiable(used),
+        hops: List.unmodifiable(hops),
         manufacturer: manufacturer,
         frequencyHz: _frequency(fields['Frequency']),
-        received: _timestamp(fields['Received']),
-        sourcePath: path,
       ),
       skipped: skipped,
     );
-  }
-
-  /// Parses and logs what was skipped, for callers that have no UI for it.
-  ///
-  /// `warn`, not `info`: `info` const-folds away in release, so a file whose
-  /// hops were half dropped would reach a user as "no seed found" with nothing
-  /// anywhere saying why.
-  static SeedCapture? parseAndReport(String text, {String? path}) {
-    final result = parse(text, path: path);
-    if (result.skipped.isNotEmpty) {
-      LogService.warn(
-        '[SeedCapture] ${path ?? 'capture'}: skipped '
-        '${result.skipped.length} line(s) - ${result.skipped.join('; ')}',
-      );
-    }
-    return result.capture;
   }
 
   /// A 32-bit hex word, with or without `0x`.
@@ -203,15 +167,5 @@ class SeedCaptureFormat {
     final parsed = int.tryParse(value?.trim() ?? '');
     if (parsed == null || parsed < 1000000 || parsed > 2000000000) return null;
     return parsed;
-  }
-
-  /// `YYYY-MM-DD HH:MM:SS`, as the capture app writes it.
-  ///
-  /// Null on anything else, including a plausible-looking date from a device
-  /// whose clock was never set. It is only used to label a file in a list, so
-  /// an absent timestamp costs a sort order and nothing else.
-  static DateTime? _timestamp(String? value) {
-    if (value == null) return null;
-    return DateTime.tryParse(value.trim().replaceFirst(' ', 'T'));
   }
 }
