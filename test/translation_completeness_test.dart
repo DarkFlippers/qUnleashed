@@ -136,6 +136,41 @@ void main() {
     );
   });
 
+  // `nameOf` reads this one string to label the language in the picker, so a
+  // file without it is a language the app cannot name. Crowdin omits a string
+  // it has no translation for, `gen-l10n` then inherits the template's
+  // "English", and labelling German "English" is worse than labelling it `de` -
+  // so `nameOf` falls back to the tag and this says why it had to.
+  //
+  // Strict rather than budgeted, unlike the check above: an incomplete
+  // translation is wanted, but `languageName` is the one string a translator is
+  // told to do first, and the cost of missing it is every other speaker of that
+  // language seeing a code. The sync's pull request is where this fails, which
+  // is the right place - the fix is in Crowdin either way.
+  test('every language can say its own name', () {
+    expect(
+      english['languageName'],
+      isNotNull,
+      reason: 'the template is what every other file falls back to',
+    );
+
+    final nameless = [
+      for (final file in others)
+        if (!stringsOf(file).containsKey('languageName'))
+          file.uri.pathSegments.last,
+    ];
+
+    expect(
+      nameless,
+      isEmpty,
+      reason:
+          'these languages do not translate languageName, so the picker lists '
+          'them by code instead of by name. Translate it in Crowdin - it is '
+          'the name of that language written in that language, and '
+          'docs/translating.md asks for it first.',
+    );
+  });
+
   test('the budget does not outlive what it covers', () {
     final stale = kUntranslated.difference(untranslated().keys.toSet());
 
