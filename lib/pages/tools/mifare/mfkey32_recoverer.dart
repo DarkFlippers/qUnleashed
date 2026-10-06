@@ -1,5 +1,4 @@
 import 'dart:ffi';
-import 'dart:isolate';
 
 import 'package:ffi/ffi.dart';
 
@@ -46,7 +45,7 @@ class NativeMfKey32Recoverer implements MfKey32Recoverer {
       nonce.nr1,
       nonce.ar1,
     );
-    return Isolate.run(() => _recoverInIsolate(payload));
+    return spawnAttackIsolate(_recoverInIsolate, payload);
   }
 
   static BigInt? _recoverInIsolate(_RecoverPayload p) {
