@@ -12,12 +12,22 @@ import 'recover_models.dart';
 import 'package:flipperlib/flipperlib.dart';
 
 class RecoverPage extends StatefulWidget {
-  const RecoverPage({super.key, required this.client});
+  const RecoverPage({super.key, required this.client, this.createController});
 
   /// The Flipper this run belongs to. Required rather than defaulted: the
   /// route builder is handed a context with a DeviceScope above it, so a
   /// default would only hide which device a recovery ran against. ADR 0002.
   final FlipperClient client;
+
+  /// Builds the controller this page drives.
+  ///
+  /// A seam, and only that: the page still owns what it gets back and disposes
+  /// it. Without one there is no way to reach a finished run in a test, because
+  /// the controller is built here and would bring the four native recoverers
+  /// with it - and the states worth asserting about (a run that was stopped, a
+  /// run that failed) are precisely the ones reached by what those recoverers
+  /// do. ADR 0002.
+  final RecoverController Function(FlipperClient client)? createController;
 
   @override
   State<RecoverPage> createState() => _RecoverPageState();
@@ -29,8 +39,10 @@ class _RecoverPageState extends State<RecoverPage> {
   @override
   void initState() {
     super.initState();
-    _controller = RecoverController(client: widget.client)
-      ..addListener(_onChanged);
+    final build =
+        widget.createController ??
+        (client) => RecoverController(client: client);
+    _controller = build(widget.client)..addListener(_onChanged);
     _controller.start();
   }
 
@@ -396,8 +408,22 @@ class _StatusBlock extends StatelessWidget {
         // Without it a part-finished run and a complete one read identically.
         // Only once a plan exists. A Stop during the download has no steps to
         // have got through, and the headline already says so.
-        if (state case RecoverSaved(stopped: true) when totalUnits > 0)
-          _Footnote(l10n.mfStoppedEarly(controller.doneUnits, totalUnits)),
+        if (state case RecoverSaved(stopped: true)) ...[
+          if (totalUnits > 0)
+            _Footnote(l10n.mfStoppedEarly(controller.doneUnits, totalUnits)),
+          // The way back. A Stop lands in the same terminal state a finished
+          // run does, which offered nothing to press - so the only way to run
+          // again was to leave the page and come back, since that is what
+          // builds a fresh controller and starts it. Nothing in the controller
+          // needed changing: _run() clears _cancelled before it does anything
+          // else, which is what makes a second start safe.
+          //
+          // Restart, never resume. The engine keeps no checkpoint - a stopped
+          // attack frees its candidate statelists and the Sum(a8) guess it was
+          // working through is recorded nowhere - so continuing is not a thing
+          // that can be offered, and a button promising it would lie.
+          _again(context, controller.start),
+        ],
         // The run is only half done when candidates were written: the Flipper
         // has to try them against the card itself, and nothing said so. A user
         // who does not know that reads "saved" as "finished".
@@ -417,33 +443,13 @@ class _StatusBlock extends StatelessWidget {
               _Footnote(l10n.mfBackupKept(flipperDictUserBackupPath)),
             if (controller.dictBackupFailed) _Footnote(l10n.mfBackupLost),
           ],
-          Padding(
-            padding: const EdgeInsets.only(top: 12),
-            child: FilledButton(
-              // A failed save is the one error whose work is still in memory,
-              // so it retries the write alone rather than the whole run.
-              onPressed: errorType == RecoverErrorType.saveFailed
-                  ? controller.retrySave
-                  : controller.start,
-              // Padding and text metrics, to match the app's other buttons.
-              // The two colours are deliberately redundant: buildAppTheme
-              // already sets colorScheme.primary/onPrimary to accent/onAccent
-              // and a FilledButton resolves its defaults to exactly those, so
-              // they change nothing on screen. Named anyway so this reads the
-              // same as the Stop button beside it, where the colours do differ.
-              style: FilledButton.styleFrom(
-                backgroundColor: colors.accent,
-                foregroundColor: colors.onAccent,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-              ),
-              child: Text(
-                l10n.commonRetry,
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
+          // A failed save is the one error whose work is still in memory, so
+          // it retries the write alone rather than the whole run.
+          _again(
+            context,
+            errorType == RecoverErrorType.saveFailed
+                ? controller.retrySave
+                : controller.start,
           ),
         ],
       ],
@@ -510,6 +516,35 @@ class _StatusBlock extends StatelessWidget {
 
 /// A muted line under the status block: the one place the screen explains what
 /// the user has to do next, rather than what just happened.
+/// The button that starts a run over.
+///
+/// One spelling for both the error branch and a stopped run: they offer the
+/// same thing and looked different only because the second one was missing.
+Widget _again(BuildContext context, VoidCallback onPressed) {
+  final colors = context.appColors;
+  return Padding(
+    padding: const EdgeInsets.only(top: 12),
+    child: FilledButton(
+      onPressed: onPressed,
+      // Padding and text metrics, to match the app's other buttons. The two
+      // colours are deliberately redundant: buildAppTheme already sets
+      // colorScheme.primary/onPrimary to accent/onAccent and a FilledButton
+      // resolves its defaults to exactly those, so they change nothing on
+      // screen. Named anyway so this reads the same as the Stop button beside
+      // it, where the colours do differ.
+      style: FilledButton.styleFrom(
+        backgroundColor: colors.accent,
+        foregroundColor: colors.onAccent,
+        padding: const EdgeInsets.symmetric(vertical: 12),
+      ),
+      child: Text(
+        context.l10n.commonRetry,
+        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+      ),
+    ),
+  );
+}
+
 class _Footnote extends StatelessWidget {
   const _Footnote(this.text);
 
