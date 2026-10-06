@@ -68,53 +68,42 @@ THE SOFTWARE.
 // same for AVX2 and 512 bit vectors
 // using larger vectors works but seems to generate more register pressure
 //
-// The width is chosen by what the compiler was told to target, which is how
-// this file gets compiled once per instruction set: the build hands the same
-// source to the toolchain several times with a different -m/arch flag, and the
-// predefined macros below pick both the width and the function names that go
-// with it. Everything in here is written against MAX_BITSLICES rather than a
-// fixed width, so there is nothing else to vary.
-#if defined(__AVX512F__)
-#define MAX_BITSLICES 512
-#elif defined(__AVX2__)
-#define MAX_BITSLICES 256
-#elif defined(__AVX__)
-#define MAX_BITSLICES 256
-#elif defined(__SSE2__)
-#define MAX_BITSLICES 128
-#elif defined(__ARM_NEON) || defined(__aarch64__)
-#define MAX_BITSLICES 128
-#else
-#define MAX_BITSLICES 64
-#endif
+// The width comes from the header, which picks it and the exported function
+// names from the same test - the build compiles this source once per
+// instruction set and the predefined macros do the rest. Everything in here is
+// written against MAX_BITSLICES rather than a fixed width, which is what makes
+// that possible.
+#define MAX_BITSLICES HN_MAX_BITSLICES
 #define VECTOR_SIZE (MAX_BITSLICES / 8)
 
 // Keyed on "cannot compile the vector extensions", not on the compiler being
 // MSVC: clang-cl defines _MSC_VER too, and it is the whole reason the variants
-// below exist. Guarding this on _MSC_VER alone sent every clang-cl variant down
-// the scalar branch, where the width assertion then rejected it.
+// exist. Guarding this on _MSC_VER alone sent every clang-cl variant down the
+// scalar branch, where the width assertion below then rejected it.
 #if defined(_MSC_VER) && !defined(__clang__)
 #include <Windows.h>
 #define atomic_add(num, val) (InterlockedExchangeAdd(num, val) + val)
+#define atomic_add64(num, val) (InterlockedExchangeAdd64((volatile LONG64 *)(num), (LONG64)(val)) + (val))
 // uint64_t, not uint32_t. MSVC cannot compile the vector extensions below, so
 // this variant is scalar - but the scalar word still has to be exactly as wide
-// as MAX_BITSLICES says a block is, and MSVC's branch said 32 while every
-// constant around it said 64. `bs_ones` is built with
-// memset(bytes, 0xff, VECTOR_SIZE), so an assignment through `.value` wrote
-// four of the eight bytes and left the rest as malloc found them, while
-// `results.bytes64[0] == 0` and `get_vector_bit` read all eight. Half of every
-// block was therefore carried through the crypto uninitialised and read back
-// out as if it had been tested. One word, and this variant is both correct and
-// twice as fast; `#error` below so no future instruction set can quietly
-// inherit the same mismatch.
+// as MAX_BITSLICES says a block is, and this branch said 32 while every
+// constant around it said 64.
+//
+// What that cost: `results` starts as a whole-union copy of bs_ones (all 64
+// bits set, :435) and `results.value &=` only ever cleared the low 32. So the
+// `results.bytes64[0] == 0` early-out could never fire - the elimination
+// short-circuit was dead for the entire MSVC build - and the 64-lane scan that
+// follows saw 32 permanently-set phantom lanes per block, calling verify_key()
+// on even-states the crypto had never eliminated. Bounded (p_even_end) and
+// never wrong (verify_key is authoritative), but it is most of why the measured
+// speedup is 67x rather than the 4x the width alone would give.
 #if MAX_BITSLICES != 64
-#error "the MSVC scalar variant is 64 bits wide; build the others with clang-cl"
+#error "MSVC cannot compile the vector extensions, so its variant is the 64-bit scalar one. Remove /arch: from the MSVC compile - the wide variants are built separately with clang-cl."
 #endif
-#pragma pack(push, VECTOR_SIZE)
 typedef uint64_t bitslice_value_t;
-#pragma pack(pop)
 #else
 #define atomic_add __sync_fetch_and_add
+#define atomic_add64 __sync_fetch_and_add
 typedef uint32_t __attribute__((aligned(VECTOR_SIZE))) __attribute__((vector_size(VECTOR_SIZE))) bitslice_value_t;
 #endif
 
@@ -169,26 +158,10 @@ typedef union
 #define BITSLICE_TEST_NONCES HN_TEST_VARIANT
 #define CRACK_STATES_BITSLICED HN_CRACK_VARIANT
 
-// typedefs and declaration of functions:
-typedef uint64_t crack_states_bitsliced_t(uint32_t, uint8_t *, statelist_t *, uint32_t *, uint64_t *, uint32_t, const uint8_t *, noncelist_t *);
-crack_states_bitsliced_t crack_states_bitsliced_AVX512;
-crack_states_bitsliced_t crack_states_bitsliced_AVX2;
-crack_states_bitsliced_t crack_states_bitsliced_AVX;
-crack_states_bitsliced_t crack_states_bitsliced_SSE2;
-crack_states_bitsliced_t crack_states_bitsliced_MMX;
-crack_states_bitsliced_t crack_states_bitsliced_NEON;
-crack_states_bitsliced_t crack_states_bitsliced_NOSIMD;
-crack_states_bitsliced_t crack_states_bitsliced_dispatch;
-
-typedef void bitslice_test_nonces_t(uint32_t, const uint32_t *, const uint8_t *);
-bitslice_test_nonces_t bitslice_test_nonces_AVX512;
-bitslice_test_nonces_t bitslice_test_nonces_AVX2;
-bitslice_test_nonces_t bitslice_test_nonces_AVX;
-bitslice_test_nonces_t bitslice_test_nonces_SSE2;
-bitslice_test_nonces_t bitslice_test_nonces_MMX;
-bitslice_test_nonces_t bitslice_test_nonces_NEON;
-bitslice_test_nonces_t bitslice_test_nonces_NOSIMD;
-bitslice_test_nonces_t bitslice_test_nonces_dispatch;
+// The function-pointer typedefs and the per-variant declarations live in
+// hardnested_bf_dispatch.c, which is the one translation unit that needs them -
+// this source is compiled once per instruction set and defines exactly one
+// pair, named by the header.
 
 #if defined(_WIN32)
 #define malloc_bitslice(x) __builtin_assume_aligned(_aligned_malloc((x), MAX_BITSLICES / 8), MAX_BITSLICES / 8)
@@ -275,7 +248,14 @@ uint64_t CRACK_STATES_BITSLICED(uint32_t cuid, uint8_t *best_first_bytes, statel
     bitslice_t *restrict state_p;
     uint64_t key = -1;
     uint64_t bucket_states_tested = 0;
-#ifdef _MSC_VER
+// The same guard as the typedef above, for the same reason: clang-cl defines
+// _MSC_VER but compiles the VLA perfectly well, and the fixed array costs the
+// wide variants a 73 KB stack frame for an array that only needs
+// ceil(len/MAX_BITSLICES) entries. Only the genuinely-MSVC build needs the
+// substitute. (16384 entries covers the 2^20 worstcase_size at 64 bits wide
+// and more at every wider one; the unbounded case is the bitflip-candidate
+// path, which is pre-existing and not reached from here.)
+#if defined(_MSC_VER) && !defined(__clang__)
     uint32_t bucket_size[16384];
 #else
     uint32_t bucket_size[(p->len[EVEN_STATE] - 1) / MAX_BITSLICES + 1];
@@ -653,7 +633,10 @@ out:
     }
     free(bitsliced_even_states);
     free_bitslice(bitsliced_even_feedback);
-    atomic_add(num_keys_tested, bucket_states_tested);
+    // atomic_add64, not atomic_add: num_keys_tested is a uint64_t and the 32-bit
+    // macro quietly truncated it (MSVC warned C4133/C4244). This is the count
+    // the comment above claims stays honest.
+    atomic_add64(num_keys_tested, bucket_states_tested);
 
 #if defined(DEBUG_BRUTE_FORCE)
     for (uint32_t i = 0; i < MAX_ELIMINATION_STEP; i++)

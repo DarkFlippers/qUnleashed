@@ -2,9 +2,11 @@ cmake_minimum_required(VERSION 3.13)
 project(qunleashed_hardnested LANGUAGES C)
 
 # Host-side hardnested attack. Engine + embedded XZ bitflip tables + minlzlib are
-# vendored from ChameleonUltraGUI (GPL, Proxmark3-derived). Single SIMD variant
-# (baseline SSE2/NEON on GCC/Clang, scalar on MSVC) so it builds with the default
-# toolchain on every platform - no clang-cl required. See BUILD_NOTES.md.
+# vendored from ChameleonUltraGUI (GPL, Proxmark3-derived). Every platform builds
+# one variant with its default toolchain - the compiler's own baseline, which is
+# scalar on MSVC - and x86-64 Windows additionally builds per-ISA variants with
+# clang-cl when it is installed, picked at runtime. clang-cl is optional; without
+# it the build is the baseline one. See BUILD_NOTES.md.
 
 add_library(qunleashed_hardnested SHARED
   qunleashed_hardnested_bridge.c
@@ -96,35 +98,58 @@ endif()
 # before, so nobody's build breaks for want of a component - it is just slow.
 # Install it with the VS "C++ Clang tools for Windows" component, or standalone
 # LLVM.
-if(MSVC)
+# x86-64 only, and keyed on the architecture rather than on MSVC: the variants
+# are an x86 instruction-set story, and a Windows-on-ARM build with clang-cl
+# installed would otherwise be handed /arch:AVX2 for an aarch64 target.
+if(MSVC AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(AMD64|x86_64)$")
+  # VSINSTALLDIR is set only inside a developer command prompt, which a Flutter
+  # build is not - the first hint below was dead, so installing the component
+  # the message recommends did nothing. CMAKE_GENERATOR_INSTANCE is the VS
+  # install root the generator is already using, which is where the component
+  # actually lands.
+  set(HN_PROGRAM_FILES_X86 "ProgramFiles(x86)")
   find_program(HN_CLANG_CL
     NAMES clang-cl
     HINTS
+      "${CMAKE_GENERATOR_INSTANCE}/VC/Tools/Llvm/x64/bin"
+      "${CMAKE_GENERATOR_INSTANCE}/VC/Tools/Llvm/bin"
       "$ENV{VSINSTALLDIR}VC/Tools/Llvm/x64/bin"
       "$ENV{ProgramFiles}/LLVM/bin"
       "$ENV{ProgramW6432}/LLVM/bin"
+      "$ENV{${HN_PROGRAM_FILES_X86}}/LLVM/bin"
   )
 
   if(HN_CLANG_CL)
     message(STATUS "hardnested: building SIMD variants with ${HN_CLANG_CL}")
     set(HN_VARIANT_OBJECTS "")
-    # AVX512 is included because the dispatcher only reaches it on a CPU *and*
-    # an OS that both say so; machines without it never load that object.
+    # No AVX512. It was in this list and is deliberately not any more: nothing
+    # here has measured it, 512-bit lanes waste up to 511 states per bucket in
+    # the padding loop against 63 for the baseline, and client Intel parts
+    # downclock under 512-bit integer work - so preferring it unconditionally,
+    # as the dispatcher would, could be slower than AVX2 on the machines most
+    # likely to run this. tool/hn_bench.dart is what settles it; until someone
+    # runs it on AVX512 hardware, AVX2 is the measured win and this is the
+    # honest list.
     #
-    # No SSE2 in this list: it is the x86-64 baseline, so clang-cl defines
-    # __SSE2__ without being asked and rejects /arch:SSE2 as invalid for a
-    # 64-bit target. The variant it would have built is the one the unflagged
-    # compile already produces, which is why the flagless entry below is the
-    # SSE2 object the dispatcher looks for.
-    foreach(variant AVX512 AVX2 AVX SSE2)
+    # SSE2 gets no /arch: flag - it is the x86-64 baseline, so clang-cl defines
+    # __SSE2__ unasked and rejects /arch:SSE2 for a 64-bit target. The unflagged
+    # compile is therefore exactly the SSE2 object the dispatcher looks for.
+    foreach(variant AVX2 AVX SSE2)
       if("${variant}" STREQUAL "SSE2")
         set(hn_arch_flag "")
       else()
         set(hn_arch_flag "/arch:${variant}")
       endif()
-      set(hn_obj "${CMAKE_CURRENT_BINARY_DIR}/hn_bf_core_${variant}.obj")
+      # $<CONFIG> in the path, because the Flutter Windows build is a
+      # multi-config generator: Debug, Profile and Release share one binary
+      # directory, so without it all three read and write one .obj. Measured:
+      # a Debug build after a Release one did not recompile and linked the /MD
+      # object into a /MDd DLL - two C runtimes, two heaps, and an
+      # _aligned_free that frees from the wrong one.
+      set(hn_obj "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/hn_bf_core_${variant}.obj")
       add_custom_command(
         OUTPUT "${hn_obj}"
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>"
         COMMAND "${HN_CLANG_CL}"
           /nologo /c /O2
           # Must match what CMake gives the rest of this target, or the two
@@ -140,9 +165,20 @@ if(MSVC)
           "/I${CMAKE_CURRENT_SOURCE_DIR}/hardnested"
           "/Fo${hn_obj}"
           "${CMAKE_CURRENT_SOURCE_DIR}/hardnested/hardnested_bf_core.c"
+        # Every header the translation unit reaches, spelled out: a custom
+        # command has no depfile, so what is not listed here is not noticed.
+        # qunleashed_hn_progress.h is the one that matters - it declares the
+        # struct both halves of the library map, so a stale variant object
+        # reads the old field offsets with no link error and the progress bar
+        # or Stop quietly stops working.
         DEPENDS
           "${CMAKE_CURRENT_SOURCE_DIR}/hardnested/hardnested_bf_core.c"
           "${CMAKE_CURRENT_SOURCE_DIR}/hardnested/hardnested_bf_core.h"
+          "${CMAKE_CURRENT_SOURCE_DIR}/hardnested/hardnested_bruteforce.h"
+          "${CMAKE_CURRENT_SOURCE_DIR}/qunleashed_hn_progress.h"
+          "${CMAKE_CURRENT_SOURCE_DIR}/crapto1.h"
+          "${CMAKE_CURRENT_SOURCE_DIR}/parity.h"
+          "${CMAKE_CURRENT_SOURCE_DIR}/ui.h"
           "${CMAKE_CURRENT_SOURCE_DIR}/hn_namespace.h"
         COMMENT "hardnested: compiling the ${variant} brute force"
         VERBATIM
@@ -161,9 +197,14 @@ if(MSVC)
     # second toolchain produced.
     target_compile_definitions(qunleashed_hardnested PRIVATE QUNLEASHED_HN_SIMD_VARIANTS)
   else()
-    message(STATUS
+    # NOTICE, not STATUS: Flutter filters STATUS out of a build, so the old
+    # message reached nobody. The figure is the measured one - 4543 s against
+    # 68 s on the same card and log - not the "~8x" the width difference alone
+    # would predict, because the scalar variant also carried a width bug.
+    message(NOTICE
       "hardnested: clang-cl not found - the brute force will run the scalar "
-      "variant, which is several times slower than AVX2. Install the VS "
-      "\"C++ Clang tools for Windows\" component for the fast build.")
+      "variant, which measured ~67x slower than AVX2 on the same card. Install "
+      "the Visual Studio \"C++ Clang tools for Windows\" component, or LLVM, "
+      "for the fast build.")
   endif()
 endif()

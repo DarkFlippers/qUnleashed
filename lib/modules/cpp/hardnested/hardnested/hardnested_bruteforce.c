@@ -228,9 +228,10 @@ static void *
             }
             else if (keys_found || qunleashed_hn_aborted())
             {
-                // Checked where the engine already gives up: a stop then costs
-                // one bucket instead of the whole attack, and unwinds through
-                // the same path a found key does.
+                // The second of the three abort checks. The core returns at
+                // the next block now, so by here the bucket is already
+                // abandoned; this is what stops the thread taking another one,
+                // and it unwinds through the same path a found key does.
                 break;
             }
             else
@@ -413,6 +414,13 @@ bool brute_force_bs(float *bf_rate, statelist_t *candidates, uint32_t cuid, uint
     bitslice_test_nonces(nonces_to_bruteforce, bf_test_nonce, bf_test_nonce_par);
 
     // count number of states to go
+    // The denominator for the percentage the workers publish - see the header.
+    // Before the bucket counting below, because that can fail and return: a
+    // guess that never gets this far would otherwise leave the *previous*
+    // guess's 100% on the channel while the attack ran on, which is the pinned
+    // bar this whole change exists to remove.
+    qunleashed_hn_set_total(maximum_states);
+
     bucket_count = 0;
     for (statelist_t *p = candidates; p != NULL; p = p->next)
     {
@@ -447,11 +455,6 @@ bool brute_force_bs(float *bf_rate, statelist_t *candidates, uint32_t cuid, uint
         noncelist_t *nonces;
         uint8_t *best_first_bytes;
     } thread_args[1024];
-
-    // The denominator for the percentage the workers publish. Set per guess,
-    // not per attack: each Sum(a8) guess searches a candidate set of its own, so
-    // the bar restarting is the honest reading of a new search starting.
-    qunleashed_hn_set_total(maximum_states);
 
     for (uint32_t i = 0; i < num_brute_force_threads; i++)
     {

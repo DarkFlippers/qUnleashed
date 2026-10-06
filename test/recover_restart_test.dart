@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:qunleashed/pages/tools/mifare/existed_keys_storage.dart';
 import 'package:qunleashed/pages/tools/mifare/recover_controller.dart';
 import 'package:qunleashed/pages/tools/mifare/recover_models.dart';
 import 'package:qunleashed/pages/tools/mifare/recover_page.dart';
@@ -64,9 +65,9 @@ void main() {
         theme: buildAppTheme(Brightness.dark, const Color(0xFFCC241D)),
         home: RecoverPage(
           client: client,
-          // The page owns and disposes what this returns; it only decides what
-          // is built, so the native recoverers stay out of the test.
-          createController: (_) => controller,
+          // The page owns and disposes this; supplying it only keeps the four
+          // native recoverers out of the test.
+          controller: controller,
         ),
       ),
     );
@@ -83,11 +84,22 @@ void main() {
       reason: 'and the Stop has to have skipped the second group',
     );
 
-    final again = find.byType(FilledButton);
+    // By label, not by type. `find.byType(FilledButton)` passed just as well
+    // with the button relabelled "Stop", because the page happens to contain
+    // exactly one FilledButton - which is a fact about the page, not about this
+    // behaviour.
+    final again = find.widgetWithText(FilledButton, 'Run again');
     expect(
       again,
       findsOneWidget,
       reason: 'a stopped run has to offer a way to run it again',
+    );
+    expect(
+      find.widgetWithText(FilledButton, 'Retry'),
+      findsNothing,
+      reason:
+          'and not "Retry", which promises to continue where it left off - '
+          'there is no checkpoint to continue from',
     );
 
     await tester.tap(again);
@@ -102,5 +114,108 @@ void main() {
       3,
       reason: 'pressing it runs both hardnested groups this time',
     );
+    expect(
+      (controller.state as RecoverSaved).stopped,
+      isFalse,
+      reason: 'and the second run finishes rather than inheriting the Stop',
+    );
+  });
+
+  // The other half of the condition. Showing the button on *every* terminal
+  // state passed the whole suite, and a "run again" under a complete recovery
+  // invites someone to throw away a finished run and wait another hour.
+  testWidgets('a run that finished is not offered a restart', (tester) async {
+    final client = FakeUploadClient(log);
+    final hard = FakeInterruptingHardnested(onStarted: () {});
+    final controller = RecoverController(
+      client: client,
+      mfApi: FakeReaderApi(),
+      nestedApi: FakeTagApi(exists: true),
+      nestedRecoverer: FakeNested(BigInt.parse('A0A1A2A3A4A5', radix: 16)),
+      hardnestedRecoverer: hard,
+      knownKeyFilter: (_) => FakeKnownKeys(),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(Brightness.dark, const Color(0xFFCC241D)),
+        home: RecoverPage(client: client, controller: controller),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      (controller.state as RecoverSaved).stopped,
+      isFalse,
+      reason: 'the case has to be a run that ran to the end',
+    );
+    expect(find.byType(FilledButton), findsNothing);
+  });
+
+  // The branch the shared button was extracted from, which nothing had ever
+  // pumped: gutting either arm of its ternary passed the suite, and inverting
+  // them would re-run an entire attack when only the dictionary write failed.
+  testWidgets('a failed save offers a retry that only writes again', (
+    tester,
+  ) async {
+    final client = FakeUploadClient(log)
+      ..refuseWrite = (path) => path == flipperDictUserPath;
+    final hard = FakeInterruptingHardnested(onStarted: () {});
+    final controller = RecoverController(
+      client: client,
+      mfApi: FakeReaderApi(),
+      nestedApi: FakeTagApi(exists: true),
+      nestedRecoverer: FakeNested(BigInt.parse('A0A1A2A3A4A5', radix: 16)),
+      hardnestedRecoverer: hard,
+      knownKeyFilter: (_) => FakeKnownKeys(),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(Brightness.dark, const Color(0xFFCC241D)),
+        home: RecoverPage(client: client, controller: controller),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      controller.state,
+      isA<RecoverError>(),
+      reason: 'the case has to be a run whose save failed',
+    );
+    final attacksBefore = hard.calls;
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Retry'));
+    await tester.pumpAndSettle();
+
+    expect(
+      hard.calls,
+      attacksBefore,
+      reason:
+          'a failed save retries the write alone - the keys are still in '
+          'memory, and re-running the attacks would cost hours for nothing',
+    );
+  });
+
+  // The branch every real user takes. The page builds its own controller when
+  // nothing supplies one, and making that path throw passed all 1275 tests
+  // because the only caller that exercises it is production.
+  testWidgets('builds its own controller when none is supplied', (
+    tester,
+  ) async {
+    final client = FakeUploadClient(log)..connected = false;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(Brightness.dark, const Color(0xFFCC241D)),
+        home: RecoverPage(client: client),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // A disconnected client is the deterministic end of that path, and reaching
+    // it at all is the assertion: the page built a controller and ran it.
+    expect(find.byType(RecoverPage), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }
