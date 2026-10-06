@@ -4451,7 +4451,7 @@
       }
     }
   },
-  "mfKeysKept": "{count, plural, =1{1 key from this run is still listed below} other{{count} keys from this run are still listed below}}",
+  "mfKeysKept": "{count, plural, one{1 key from this run is still listed below} other{{count} keys from this run are still listed below}}",
   "@mfKeysKept": {
     "description": "Shown under an error when the run had already recovered keys before it failed.",
     "placeholders": {
@@ -4514,7 +4514,7 @@
       }
     }
   },
-  "mfSkippedKnown": "{count, plural, =1{1 sector key was already in your dictionary and was not attacked again} other{{count} sector keys were already in your dictionary and were not attacked again}}",
+  "mfSkippedKnown": "{count, plural, one{1 sector key was already in your dictionary and was not attacked again} other{{count} sector keys were already in your dictionary and were not attacked again}}",
   "@mfSkippedKnown": {
     "description": "Summary row explaining work that was skipped because the key was already known.",
     "placeholders": {
