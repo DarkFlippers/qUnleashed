@@ -268,7 +268,10 @@ class _CliPageState extends State<CliPage> {
   void _onChannelLost() {
     final channel = _channel;
     if (!mounted || channel == null) return;
-    unawaited(_textSub?.cancel());
+    final textSub = _textSub;
+    if (textSub != null) {
+      unawaited(guarded('[CLI] cancel text of lost channel', textSub.cancel));
+    }
     _textSub = null;
     _connSub = null;
     _channel = null;
@@ -282,7 +285,7 @@ class _CliPageState extends State<CliPage> {
       return;
     }
     _attach(channel);
-    unawaited(_enterCliReady());
+    unawaited(guarded('[CLI] enter cli on restored channel', _enterCliReady));
   }
 
   Future<void> _showConnectionFailedDialog(
@@ -348,7 +351,7 @@ class _CliPageState extends State<CliPage> {
         _ready = false;
       });
     } else if (state.cliReady && !_ready && (_channel?.isOpen ?? false)) {
-      unawaited(_enterCliReady());
+      unawaited(guarded('[CLI] enter cli after reconnect', _enterCliReady));
     }
   }
 
