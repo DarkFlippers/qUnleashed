@@ -7,7 +7,11 @@
 // call blocks the thread it is made on - polling it from the same isolate would
 // read the channel exactly never.
 //
-// Not committed: a bench, not a test.
+// Kept because the number it produces is the only evidence for what the SIMD
+// work was worth, and because the next person to touch the engine will want to
+// re-measure rather than take 67x on trust. It is a bench, not a test: nothing
+// runs it in CI, it needs a real .nested.log and a built DLL, and it asserts
+// nothing.
 //
 // Usage: dart run tool/hn_bench.dart <dll> <.nested.log> [sector] [budget-s]
 import 'dart:async';
