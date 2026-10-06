@@ -81,6 +81,8 @@ The Google Play listing works the same way: `short_description.txt`, `full_descr
 
 A CI check enforces all of this, so a pull request that edits a translated file fails rather than being merged and quietly undone.
 
+[`docs/translating.md`](docs/translating.md) is the translator's half of this: placeholders and plural forms, the terms that stay in Latin script, and `languageName`, which is the one string whose translation is the name of the translator's own language. Point a new translator at that rather than at this section.
+
 ### Writing strings
 
 - Keep product names untranslated: **qUnleashed**, **Flipper**, **Flipper Zero**, and protocol names such as Sub-GHz, NFC, RFID, iButton.
