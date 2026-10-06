@@ -84,6 +84,28 @@ class _SeedPageState extends State<SeedPage> {
         body: ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            // Before anything else: three operations can fail, and until this
+            // existed each of them left the page looking exactly as it had.
+            if (_controller.error != null) ...[
+              _Banner(_failureText(context, _controller.error!)),
+              const SizedBox(height: 12),
+            ],
+            // A capture that would not parse has no card to hang its reasons
+            // off, and those reasons are the actionable half - "unknown
+            // Manufacturer Nice" tells the user what to do, a red line does
+            // not.
+            if (_controller.capture == null &&
+                _controller.captureWarnings.isNotEmpty) ...[
+              for (final warning in _controller.captureWarnings) _Hint(warning),
+              const SizedBox(height: 12),
+            ],
+            if (_controller.stage == SeedStage.loading) ...[
+              Text(
+                context.l10n.seedLoading,
+                style: TextStyle(fontSize: 13, color: colors.textMuted),
+              ),
+              const SizedBox(height: 12),
+            ],
             if (_controller.capture != null) ...[
               _CaptureCard(controller: _controller),
               const SizedBox(height: 12),
@@ -227,6 +249,10 @@ class _ResultCard extends StatelessWidget {
       SeedOutcome.nothingMatched => (l10n.seedNothingMatched, colors.textMuted),
       SeedOutcome.stopped => (l10n.seedStopped, colors.textMuted),
       SeedOutcome.engineBusy => (l10n.seedEngineBusy, colors.info),
+      SeedOutcome.engineUnavailable => (
+        l10n.seedEngineUnavailable,
+        colors.danger,
+      ),
       SeedOutcome.engineSelfTestFailed => (
         l10n.seedEngineBroken,
         colors.danger,
@@ -265,6 +291,10 @@ class _ResultCard extends StatelessWidget {
           _Hint(l10n.seedNothingMatchedHint),
         if (result.outcome == SeedOutcome.unverified)
           _Hint(l10n.seedUnverifiedHint),
+        // The gate is per process and has no reset, so the only cure for a
+        // stranded one is restarting - which the bare status does not say.
+        if (result.outcome == SeedOutcome.engineBusy)
+          _Hint(l10n.seedEngineBusyHint),
         if (seed != null && hopsUsed != null && hopsUsed < seedHopsConfident)
           _Hint(l10n.seedLowConfidence(hopsUsed)),
         if (result.outcome == SeedOutcome.found && capture.frequencyHz == null)
@@ -428,3 +458,36 @@ class _Hint extends StatelessWidget {
 
 String _hex(int value, int digits) =>
     value.toRadixString(16).toUpperCase().padLeft(digits, '0');
+
+/// What a failed operation is called, in the user's language.
+///
+/// A switch rather than a map so a new [SeedFailure] is a compile error here
+/// rather than a blank banner.
+String _failureText(BuildContext context, SeedFailure failure) =>
+    switch (failure) {
+      SeedFailure.disconnected => context.l10n.seedDisconnected,
+      SeedFailure.unreadableCapture => context.l10n.seedUnreadableCapture,
+      SeedFailure.readFailed => context.l10n.seedReadFailed,
+      SeedFailure.saveFailed => context.l10n.seedSaveFailed,
+    };
+
+/// A failure, said once, where the user is already looking.
+class _Banner extends StatelessWidget {
+  const _Banner(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: colors.card,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: colors.danger),
+      ),
+      child: Text(text, style: TextStyle(fontSize: 13, color: colors.danger)),
+    );
+  }
+}

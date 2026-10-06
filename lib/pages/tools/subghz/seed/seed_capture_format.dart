@@ -84,6 +84,12 @@ class SeedCaptureFormat {
       }
       if (fields.containsKey(key) && fields[key] != value) {
         skipped.add('$key given twice: "${fields[key]}" then "$value"');
+        // A second Fix is two remotes in one file. Keeping the first and
+        // merging both sets of hops produces a capture whose hops are not all
+        // from one remote, which sweeps the whole space and ends on "nothing
+        // matched" - the one answer this feature is careful not to give
+        // wrongly. Refused rather than attacked.
+        if (key == 'Fix') return (capture: null, skipped: skipped);
         continue;
       }
       fields[key] = value;
@@ -129,12 +135,29 @@ class SeedCaptureFormat {
       skipped.add('file says $declared hops, found ${hops.length}');
     }
 
+    // A capture left collecting through more presses than the engine takes is
+    // a *better* capture, not a broken one - so it is trimmed here, where the
+    // reason can be said, rather than refused by the engine as bad arguments,
+    // which a caller can only report as this build being wrong.
+    //
+    // The first ones are kept because they are the ones the capture app saw
+    // first, and consecutiveness is what matters, not recency.
+    final used = hops.length > SeedCapture.maxHops
+        ? hops.sublist(0, SeedCapture.maxHops)
+        : hops;
+    if (used.length != hops.length) {
+      skipped.add(
+        'capture has ${hops.length} hops; using the first '
+        '${SeedCapture.maxHops}',
+      );
+    }
+
     return (
       capture: SeedCapture(
         fix: fix,
-        hops: List.unmodifiable(hops),
+        hops: List.unmodifiable(used),
         manufacturer: manufacturer,
-        frequencyHz: int.tryParse(fields['Frequency'] ?? ''),
+        frequencyHz: _frequency(fields['Frequency']),
         received: _timestamp(fields['Received']),
         sourcePath: path,
       ),
@@ -167,6 +190,19 @@ class SeedCaptureFormat {
     final text = value.trim().replaceFirst(RegExp('^0[xX]'), '');
     if (!RegExp(r'^[0-9A-Fa-f]{1,8}$').hasMatch(text)) return null;
     return int.parse(text, radix: 16);
+  }
+
+  /// Hertz, or null for anything that is not a usable frequency.
+  ///
+  /// `int.tryParse` alone accepts `0` and `-1`, and a `.sub` written with
+  /// either transmits into the void - which is the whole reason this field is
+  /// held as nullable rather than defaulted. The range is deliberately loose:
+  /// the point is to reject a truncated or corrupt line, not to police which
+  /// bands the radio supports.
+  static int? _frequency(String? value) {
+    final parsed = int.tryParse(value?.trim() ?? '');
+    if (parsed == null || parsed < 1000000 || parsed > 2000000000) return null;
+    return parsed;
   }
 
   /// `YYYY-MM-DD HH:MM:SS`, as the capture app writes it.

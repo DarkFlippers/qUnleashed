@@ -234,7 +234,7 @@ class NativeFaaccrackRecoverer implements FaaccrackRecoverer {
         'qunleashed_faaccrack_recover',
       ),
     );
-    _assertLayout(library);
+    if (!_layoutMatches(library)) return _empty(SeedOutcome.engineFault);
 
     final hops = calloc<Uint32>(p.hops.length);
     final result = calloc<_FaaccrackResult>();
@@ -250,6 +250,17 @@ class NativeFaaccrackRecoverer implements FaaccrackRecoverer {
         result,
       );
       final outcome = seedOutcomeFor(status);
+      if (outcome == SeedOutcome.engineFault ||
+          outcome == SeedOutcome.engineSelfTestFailed) {
+        // The raw code, because the outcome collapses several of them. Without
+        // this a report of "The recovery engine failed" cannot be told from a
+        // bad argument, a failed self-test, or a status this build has never
+        // heard of - and the header distinguishes all three deliberately.
+        LogService.error(
+          '[Seed] engine returned status $status for mode ${p.mode} with '
+          '${p.hops.length} hop(s)',
+        );
+      }
       if (!seedResultIsMeaningful(outcome)) return _empty(outcome);
       final found = result.ref;
       return (
@@ -266,7 +277,7 @@ class NativeFaaccrackRecoverer implements FaaccrackRecoverer {
     }
   }
 
-  /// Checks the hand-written mirrors against the sizes the bridge reports.
+  /// Whether the hand-written mirrors agree with the sizes the bridge reports.
   ///
   /// This is the one hole the build cannot cover. `keep.txt` and the compiler
   /// keep the C side honest, and `_Static_assert`s pin the layout for every
@@ -274,31 +285,37 @@ class NativeFaaccrackRecoverer implements FaaccrackRecoverer {
   /// one side only and Dart reads wrong offsets with no compile error, no link
   /// error, and a plausible-looking seed.
   ///
-  /// An assert rather than a thrown error: in release the sizes are whatever
-  /// the shipped library says, and refusing to run then would turn a layout
-  /// mistake into a dead feature for everyone. In debug and in tests it fails
-  /// loudly, which is where it would be introduced.
-  static void _assertLayout(DynamicLibrary library) {
-    assert(() {
-      int sizeFrom(String symbol) => lookupNativeFunction(
-        () => library.lookupFunction<_Uint32Native, _Uint32Dart>(symbol),
-      )();
-      final result = sizeFrom('qunleashed_faaccrack_result_size');
-      final progress = sizeFrom('qunleashed_faaccrack_progress_size');
-      if (result != sizeOf<_FaaccrackResult>()) {
-        throw StateError(
-          'faaccrack_result is $result bytes natively and '
-          '${sizeOf<_FaaccrackResult>()} in Dart - the mirror is stale',
-        );
-      }
-      if (progress != sizeOf<_FaaccrackProgress>()) {
-        throw StateError(
-          'faaccrack_progress is $progress bytes natively and '
-          '${sizeOf<_FaaccrackProgress>()} in Dart - the mirror is stale',
-        );
-      }
-      return true;
-    }());
+  /// Checked in release too, and this is the part worth being deliberate
+  /// about. An assert would make the worst outcome the release one: the status
+  /// is still OK, so the page says "Seed recovered", the user presses Save, and
+  /// a `.sub` with a garbage key is written to their Flipper. Their gate does
+  /// not open and they have no reason to suspect the app. Two FFI calls once
+  /// per isolate is the price of not doing that.
+  ///
+  /// Neither throws nor proceeds: the caller turns a false into an engine
+  /// fault, which says "this build is wrong" rather than handing out a seed.
+  static bool? _layoutOk;
+
+  static bool _layoutMatches(DynamicLibrary library) =>
+      _layoutOk ??= _checkLayout(library);
+
+  static bool _checkLayout(DynamicLibrary library) {
+    int sizeFrom(String symbol) => lookupNativeFunction(
+      () => library.lookupFunction<_Uint32Native, _Uint32Dart>(symbol),
+    )();
+    final result = sizeFrom('qunleashed_faaccrack_result_size');
+    final progress = sizeFrom('qunleashed_faaccrack_progress_size');
+    final ok =
+        result == sizeOf<_FaaccrackResult>() &&
+        progress == sizeOf<_FaaccrackProgress>();
+    if (!ok) {
+      LogService.error(
+        '[Seed] ABI mismatch, refusing to read the result: faaccrack_result is '
+        '$result bytes natively and ${sizeOf<_FaaccrackResult>()} in Dart, '
+        'faaccrack_progress $progress and ${sizeOf<_FaaccrackProgress>()}',
+      );
+    }
+    return ok;
   }
 
   /// Which per-instruction-set variant the dispatcher picked.
@@ -315,7 +332,11 @@ class NativeFaaccrackRecoverer implements FaaccrackRecoverer {
             ),
       )();
       return name.toDartString();
-    } on NativeEngineUnavailable {
+    } on NativeEngineUnavailable catch (e) {
+      // The earliest and cheapest signal that the library is not loadable.
+      // Logged rather than swallowed: the search that follows will fail on the
+      // same thing, and this line is what says so first.
+      LogService.warn('[Seed] engine variant unavailable: $e');
       return 'unavailable';
     }
   }

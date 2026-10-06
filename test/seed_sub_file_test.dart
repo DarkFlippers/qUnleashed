@@ -12,6 +12,21 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/tools/subghz/seed/seed_models.dart';
 import 'package:qunleashed/pages/tools/subghz/seed/seed_sub_file.dart';
 
+/// A recovery that came back verified, which is the only kind that may be
+/// written.
+SeedResult _found({
+  required int seed,
+  required int frameHop,
+  int hopsUsed = 3,
+}) => (
+  outcome: SeedOutcome.found,
+  seed: seed,
+  lrkey: 0,
+  counter: 0,
+  frameHop: frameHop,
+  hopsUsed: hopsUsed,
+);
+
 /// Written by `faaccrack 3 A0DC9330 293AC619 1EECA414 CBCEFBA6 -f 868350000`,
 /// the Genius known-answer vector the native probe also uses.
 const _engineWroteGenius = '''
@@ -31,10 +46,9 @@ void main() {
     test('matches what the engine itself writes', () {
       expect(
         SeedSubFile.render(
+          result: _found(seed: 0x00000789, frameHop: 0xCBCEFBA6),
           manufacturer: SeedManufacturer.genius,
           fix: 0xA0DC9330,
-          frameHop: 0xCBCEFBA6,
-          seed: 0x00000789,
           frequencyHz: 868350000,
         ),
         _engineWroteGenius,
@@ -46,10 +60,9 @@ void main() {
       // below. Getting the halves the wrong way round still produces a
       // plausible file, which is why this is asserted separately.
       final rendered = SeedSubFile.render(
+        result: _found(seed: 0x00000123, frameHop: 0x9ABCDEF0),
         manufacturer: SeedManufacturer.faacSlh,
         fix: 0x12345678,
-        frameHop: 0x9ABCDEF0,
-        seed: 0x00000123,
         frequencyHz: 433920000,
       );
       expect(rendered, contains('Key: 12 34 56 78 9A BC DE F0'));
@@ -61,10 +74,9 @@ void main() {
       // this is the one case where a genuine value looks like an absent one.
       expect(
         SeedSubFile.render(
+          result: _found(seed: 0, frameHop: 0x027AC36E),
           manufacturer: SeedManufacturer.genius,
           fix: 0xA0DC9330,
-          frameHop: 0x027AC36E,
-          seed: 0,
           frequencyHz: 868350000,
         ),
         contains('AllowZeroSeed: true'),
@@ -72,10 +84,9 @@ void main() {
       // KeeLoq reads it back for any manufacturer, so the key would be noise.
       expect(
         SeedSubFile.render(
+          result: _found(seed: 0, frameHop: 0x367AEB49),
           manufacturer: SeedManufacturer.bft,
           fix: 0x200342E2,
-          frameHop: 0x367AEB49,
-          seed: 0,
           frequencyHz: 433920000,
         ),
         isNot(contains('AllowZeroSeed')),
@@ -92,14 +103,62 @@ void main() {
         (SeedManufacturer.erreka, 'KeeLoq'),
       ]) {
         final rendered = SeedSubFile.render(
+          result: _found(seed: 0x99AABBCC, frameHop: 0x55667788),
           manufacturer: manufacturer,
           fix: 0x11223344,
-          frameHop: 0x55667788,
-          seed: 0x99AABBCC,
           frequencyHz: 433920000,
         );
         expect(rendered, contains('Protocol: $protocol'));
         expect(rendered, contains('Manufacture: ${manufacturer.label}'));
+      }
+    });
+  });
+
+  group('refusing to write', () {
+    test('an unverified recovery cannot be rendered', () {
+      // The seed is real and worth showing; the frame did not rebuild, so a
+      // file carrying it would be accepted by the firmware and transmit
+      // nothing. The engine makes this a status rather than a flag so a caller
+      // cannot forget - and this is what stops the renderer handing that
+      // forgettability back.
+      expect(
+        () => SeedSubFile.render(
+          result: (
+            outcome: SeedOutcome.unverified,
+            seed: 0x00000789,
+            lrkey: 0,
+            counter: 0,
+            frameHop: 0xCBCEFBA6,
+            hopsUsed: 3,
+          ),
+          manufacturer: SeedManufacturer.genius,
+          fix: 0xA0DC9330,
+          frequencyHz: 868350000,
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('nor can any outcome that found nothing', () {
+      for (final outcome in SeedOutcome.values) {
+        if (outcome == SeedOutcome.found) continue;
+        expect(
+          () => SeedSubFile.render(
+            result: (
+              outcome: outcome,
+              seed: 1,
+              lrkey: 0,
+              counter: 0,
+              frameHop: 2,
+              hopsUsed: 3,
+            ),
+            manufacturer: SeedManufacturer.genius,
+            fix: 0xA0DC9330,
+            frequencyHz: 868350000,
+          ),
+          throwsArgumentError,
+          reason: '$outcome must not produce a file',
+        );
       }
     });
   });

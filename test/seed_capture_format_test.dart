@@ -117,6 +117,25 @@ Hop: 674875BE
     });
   });
 
+  group('a capture longer than the engine takes', () {
+    test('is trimmed rather than refused, and says so', () {
+      // More presses is a *better* capture, not a broken one. Letting it reach
+      // the engine gets "bad arguments", which a caller can only report as
+      // this build being wrong - for a capture that solves if you drop one.
+      final hops = [
+        for (var i = 0; i < SeedCapture.maxHops + 3; i++)
+          'Hop: ${(0x10000000 + i).toRadixString(16).toUpperCase()}',
+      ].join('\n');
+      final parsed = SeedCaptureFormat.parse('''
+Manufacturer: Genius
+Fix: A0DC9330
+$hops
+''');
+      expect(parsed.capture!.hops, hasLength(SeedCapture.maxHops));
+      expect(parsed.skipped, contains(contains('using the first')));
+    });
+  });
+
   group('what it refuses', () {
     test('a file with no fixed code', () {
       final parsed = SeedCaptureFormat.parse('Hop: 29389EF7\nHop: 40101499\n');
@@ -156,10 +175,32 @@ Protocol: Faac SLH
     });
 
     test('two different fixed codes in one file', () {
-      // Two remotes in range, or a file appended to. Attacking the first
-      // silently would use hops that are not all from one remote.
+      // Two remotes in range, or a file appended to. Keeping the first and
+      // merging both sets of hops produces a capture whose hops are not all
+      // from one remote, which sweeps the whole space and ends on "nothing
+      // matched" - the one answer this feature must not give wrongly.
+      //
+      // This assertion used to be only the `skipped` one, in a group called
+      // "what it refuses", against code that did not refuse.
       final parsed = SeedCaptureFormat.parse('$_capture\nFix: 11111111\n');
+      expect(parsed.capture, isNull);
       expect(parsed.skipped, contains(contains('given twice')));
+    });
+
+    test('a frequency that is not one', () {
+      // int.tryParse alone takes `0` and `-1`, and a .sub written with either
+      // transmits into the void - which is the whole reason the field is held
+      // as nullable rather than defaulted.
+      for (final bad in ['0', '-1', '12', 'nonsense', '']) {
+        final parsed = SeedCaptureFormat.parse(
+          _capture.replaceFirst('Frequency: 868350000', 'Frequency: $bad'),
+        );
+        expect(
+          parsed.capture?.frequencyHz,
+          isNull,
+          reason: '"$bad" is not a frequency',
+        );
+      }
     });
   });
 }

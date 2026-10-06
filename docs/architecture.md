@@ -245,9 +245,17 @@ uncaught-error handlers in `initialize()`.
 **iOS** (`ios/Runner/`): `AppDelegate.swift`, `SceneDelegate.swift` — nothing
 beyond the template.
 
-**Native C/C++**: `lib/modules/cpp/` — `CMakeLists.txt`, `hardnested/`,
-`mfkey32/`, `nfc-tools/` (the last one is a submodule too, from the
-flipperdevices repo). Reached through `ffi ^2.1.3`.
+**Native C/C++**: `lib/modules/cpp/` — `CMakeLists.txt`, `faaccrack/`,
+`hardnested/`, `mfkey32/`, `nfc-tools/` (the last one is a submodule too, from
+the flipperdevices repo). Reached through `ffi ^2.1.3`.
+
+`faaccrack/` is the odd one: its engine is **generated, obfuscated C** whose
+readable source is deliberately not in this repository, so it cannot be read or
+patched here — a change to it is a regeneration from a kit that lives with its
+author. Its `BUILD_NOTES.md` is the account of what that costs and what guards
+it, and it is also the only library whose engine is compiled once per
+instruction set with the winner picked at runtime on every x86 platform rather
+than only on Windows.
 
 Desktop: `linux/`, `macos/`, `windows/` and `web/` directories exist.
 

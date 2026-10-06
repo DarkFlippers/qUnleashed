@@ -7824,16 +7824,6 @@
     "description": "Shown while a search runs."
   },
 
-  "seedEstimate": "About {seconds}s on this device",
-  "@seedEstimate": {
-    "description": "Rough time the search will take.",
-    "placeholders": {
-      "seconds": {
-        "type": "int"
-      }
-    }
-  },
-
   "seedFound": "Seed recovered",
   "@seedFound": {
     "description": "Shown when a search succeeds."
@@ -7917,5 +7907,40 @@
         "type": "int"
       }
     }
+  },
+
+  "seedLoading": "Reading the capture…",
+  "@seedLoading": {
+    "description": "Shown while a capture file is read off the device."
+  },
+
+  "seedDisconnected": "The Flipper is not connected",
+  "@seedDisconnected": {
+    "description": "Shown when the capture list could not be read because the link is down."
+  },
+
+  "seedUnreadableCapture": "This capture cannot be used",
+  "@seedUnreadableCapture": {
+    "description": "Shown when a capture file was read but could not be parsed into a job."
+  },
+
+  "seedReadFailed": "The capture could not be read from the Flipper",
+  "@seedReadFailed": {
+    "description": "Shown when reading a capture file off the device failed."
+  },
+
+  "seedSaveFailed": "The remote could not be saved to the Flipper",
+  "@seedSaveFailed": {
+    "description": "Shown when writing the recovered .sub to the device failed."
+  },
+
+  "seedEngineUnavailable": "The recovery engine is missing from this build",
+  "@seedEngineUnavailable": {
+    "description": "Shown when the native library could not be loaded at all."
+  },
+
+  "seedEngineBusyHint": "If this keeps happening, restart the app: the engine allows one search per run.",
+  "@seedEngineBusyHint": {
+    "description": "Hint under the busy message, naming the only fix."
   }
 }

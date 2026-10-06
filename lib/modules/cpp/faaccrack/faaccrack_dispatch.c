@@ -38,12 +38,24 @@
 #if defined(FAACCRACK_DISPATCH_X86)
 
 static int cpu_has(int leaf, int sub_leaf, int reg_index, int bit) {
+    // CPUID with EAX above the highest supported leaf returns that leaf's data
+    // rather than zeros, so an unguarded leaf-7 read on an older part answers a
+    // different question. The sibling dispatcher carries the same guard for the
+    // same reason; every CPU that could pass the AVX gates also has leaf 7, so
+    // this is belt and braces rather than a case anyone has hit.
 #if defined(_MSC_VER)
     int regs[4];
+    __cpuid(regs, 0);
+    if (regs[0] < leaf) return 0;
     __cpuidex(regs, leaf, sub_leaf);
-    return (regs[reg_index] & (1 << bit)) != 0;
+    // Unsigned, because bit 31 of a signed int is implementation-defined.
+    return ((unsigned)regs[reg_index] & (1u << bit)) != 0;
 #else
     uint32_t regs[4];
+    __asm__ volatile("cpuid"
+                     : "=a"(regs[0]), "=b"(regs[1]), "=c"(regs[2]), "=d"(regs[3])
+                     : "a"(0), "c"(0));
+    if (regs[0] < (uint32_t)leaf) return 0;
     __asm__ volatile("cpuid"
                      : "=a"(regs[0]), "=b"(regs[1]), "=c"(regs[2]), "=d"(regs[3])
                      : "a"(leaf), "c"(sub_leaf));
@@ -80,10 +92,15 @@ static int os_saves_wide_registers(int need_zmm) {
 // Chosen once. The answer cannot change while the process runs, and a search
 // that re-probed would pay for `cpuid` on a path that is otherwise one call.
 //
-// Benign if two threads race here: both compute the same pair, and the gate
-// below is what actually serialises them.
-static faaccrack_search_fn *chosen;
+// Two threads racing here compute the same pair, so the *values* are safe - but
+// their publication is not automatically. `chosen` is what every reader tests
+// for initialisation, so it is written last, after `chosen_name`: a reader that
+// sees a non-null pointer has therefore also seen the name. Without that order
+// a caller can skip initialisation and return a null name, which on the Dart
+// side reaches `toDartString()` and scans from address zero - a segfault, not
+// an exception. The two isolates that touch these are different threads.
 static const char *chosen_name;
+static faaccrack_search_fn *chosen;
 
 // Picks the variant this CPU can run, highest first, and names it.
 //
@@ -94,31 +111,33 @@ static const char *chosen_name;
 static void select_variant(void) {
 #if defined(FAACCRACK_DISPATCH_X86)
     if (cpu_has(7, 0, 1, 16) && os_saves_wide_registers(1)) {  // EBX bit 16: AVX512F
-        chosen = faaccrack_search_AVX512;
         chosen_name = "AVX512";
+        chosen = faaccrack_search_AVX512;
     } else if (cpu_has(7, 0, 1, 5) && os_saves_wide_registers(0)) {  // EBX bit 5: AVX2
-        chosen = faaccrack_search_AVX2;
         chosen_name = "AVX2";
+        chosen = faaccrack_search_AVX2;
     } else if (cpu_has(1, 0, 2, 28) && os_saves_wide_registers(0)) {  // ECX bit 28: AVX
-        chosen = faaccrack_search_AVX;
         chosen_name = "AVX";
+        chosen = faaccrack_search_AVX;
     } else {
         // SSE2 is part of the x86-64 baseline, so this is the floor rather than
         // a fallback - there is no scalar variant to degrade to.
-        chosen = faaccrack_search_SSE2;
         chosen_name = "SSE2";
+        chosen = faaccrack_search_SSE2;
     }
 #else
     // One object, and this translation unit was compiled with the same flags
     // that produced it, so the header's own cascade names it.
-    chosen = FAACCRACK_SEARCH;
     chosen_name = FAACCRACK_VARIANT_NAME;
+    chosen = FAACCRACK_SEARCH;
 #endif
 }
 
 const char *faaccrack_variant_name(void) {
     if (!chosen) select_variant();
-    return chosen_name;
+    // Never null, whatever happens above: this crosses to Dart, where a null
+    // is scanned from address zero rather than reported.
+    return chosen_name ? chosen_name : "unknown";
 }
 
 // One search at a time, for the whole library rather than per variant.

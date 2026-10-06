@@ -17,20 +17,34 @@ class SeedSubFile {
   /// The preset the capture app records and the one these remotes use.
   static const preset = 'FuriHalSubGhzPresetOok650Async';
 
-  /// Renders the file.
+  /// Renders the file for a verified recovery.
   ///
-  /// [frameHop] is the *rebuilt* rolling half, not the captured one: the engine
+  /// Takes the result rather than loose numbers, and refuses anything that is
+  /// not [SeedOutcome.found]. The engine went to the trouble of making that a
+  /// *status* rather than a flag precisely so a caller "cannot get it wrong by
+  /// forgetting" - and a function taking five bare ints with the obligation
+  /// stated only in a doc comment hands that forgettability straight back. The
+  /// product of forgetting is a file the firmware accepts and will not
+  /// transmit, which the user experiences as a gate that does not open.
+  ///
+  /// `frameHop` is the *rebuilt* rolling half, not the captured one: the engine
   /// re-encrypts it from the fixed code and the counter under the recovered
-  /// key, and only reports [SeedOutcome.found] when that reproduces the last
-  /// captured hop. A caller must therefore write this only on that outcome -
-  /// which is why the engine makes it a status rather than a flag.
+  /// key, and only reports found when that reproduces the last captured hop.
   static String render({
+    required SeedResult result,
     required SeedManufacturer manufacturer,
     required int fix,
-    required int frameHop,
-    required int seed,
     required int frequencyHz,
   }) {
+    if (result.outcome != SeedOutcome.found) {
+      throw ArgumentError.value(
+        result.outcome,
+        'result.outcome',
+        'only a verified recovery may be written as a .sub',
+      );
+    }
+    final frameHop = result.frameHop!;
+    final seed = result.seed!;
     final frame = (BigInt.from(fix) << 32) | BigInt.from(frameHop);
     final buffer = StringBuffer()
       ..writeln('Filetype: Flipper SubGhz Key File')

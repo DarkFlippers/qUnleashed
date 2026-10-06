@@ -146,6 +146,15 @@ enum SeedOutcome {
   /// fixed, so a retry is pointless.
   engineSelfTestFailed,
 
+  /// The native library did not load, or an entry point is missing from it.
+  ///
+  /// A packaging fault rather than anything about the remote or this capture,
+  /// and distinct from [engineFault] because the thing to do about it is
+  /// different: nothing the user does will help, and it means the build shipped
+  /// without a component. It has happened here before - the Apple builds once
+  /// shipped with the MIFARE bridges dead-stripped out.
+  engineUnavailable,
+
   /// The engine refused the arguments, or answered something this build does
   /// not know. Its own fault rather than the capture's, and said that way.
   engineFault,
