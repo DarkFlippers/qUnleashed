@@ -37,6 +37,26 @@ jobs:
         with:
           config: crowdin.yml
           upload_sources: true
+          # The CLI keeps a string that has left the source file unless this is
+          # passed, so without it every key ever deleted from app_en.arb stays
+          # in the project: translators work on strings the app does not have,
+          # and the completion percentages this job reports are measured
+          # against a denominator of dead keys. #41.
+          #
+          # Audited before turning it on, as #41 asks, and it found nothing to
+          # delete. On d101d1e the repository holds 1309 ARB strings plus five
+          # in the store listing - one short description, three paragraphs of
+          # the full one, one changelog - and Crowdin reports exactly 1314. So
+          # this is a no-op today, which is the safest moment there will ever
+          # be to enable it and the reason no report-only pass is needed first.
+          #
+          # What keeps it safe afterwards is not this workflow. Deleting a
+          # string discards its translations in every locale, and the run that
+          # would do it happens after a merge - but a key cannot leave
+          # app_en.arb while the Dart still asks for it, because `gen-l10n`
+          # stops generating the getter and `flutter analyze` fails on the
+          # call. A string reaches this flag only once nothing uses it.
+          upload_sources_args: "--delete-obsolete"
           upload_translations: false
           download_translations: false
           create_pull_request: false
