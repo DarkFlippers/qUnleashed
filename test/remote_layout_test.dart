@@ -223,6 +223,7 @@ void main() {
                         justUnlocked: false,
                         savingScreenshot: false,
                         onBack: () {},
+                        onConnection: () {},
                         onCopy: () async {},
                         onSave: () async {},
                         onUnlock: () async {},

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../../../components/icon.dart';
+import '../../../../../services/localization/l10n.dart';
 import '../../../../../theme/theme.dart';
 import '../gif_recorder.dart';
 import '../layout.dart';
@@ -19,7 +20,7 @@ class RemoteActionBar extends StatelessWidget {
     required this.justUnlocked,
     required this.savingScreenshot,
     required this.onBack,
-    this.onConnection,
+    required this.onConnection,
     required this.onCopy,
     required this.onSave,
     required this.onUnlock,
@@ -35,7 +36,7 @@ class RemoteActionBar extends StatelessWidget {
   final bool justUnlocked;
   final bool savingScreenshot;
   final VoidCallback onBack;
-  final VoidCallback? onConnection;
+  final VoidCallback onConnection;
   final AsyncCallback onCopy;
   final AsyncCallback onSave;
   final AsyncCallback onUnlock;
@@ -78,6 +79,7 @@ class RemoteActionBar extends StatelessWidget {
                   scale: scale,
                   width: RemoteActionBarGeometry.pillHeight,
                   icon: Icons.chevron_left_rounded,
+                  tooltip: context.l10n.remoteBack,
                   onTap: onBack,
                 ),
                 SizedBox(width: RemoteActionBarGeometry.pillGap * scale),
@@ -85,6 +87,7 @@ class RemoteActionBar extends StatelessWidget {
                   scale: scale,
                   width: RemoteActionBarGeometry.pillHeight,
                   icon: Icons.search,
+                  tooltip: context.l10n.connectSearch,
                   onTap: onConnection,
                 ),
               ],
@@ -160,6 +163,7 @@ class _Pill extends StatelessWidget {
     required this.scale,
     required this.onTap,
     this.label,
+    this.tooltip,
     this.icon,
     this.asset,
   });
@@ -167,6 +171,7 @@ class _Pill extends StatelessWidget {
   final double width;
   final double scale;
   final String? label;
+  final String? tooltip;
   final VoidCallback? onTap;
   final IconData? icon;
   final String? asset;
@@ -174,7 +179,7 @@ class _Pill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final badge = QIconBadgeStyle.of(context, context.appColors.accent);
-    return GestureDetector(
+    final pill = GestureDetector(
       onTap: onTap,
       child: _Shell(
         width: width,
@@ -217,6 +222,8 @@ class _Pill extends StatelessWidget {
         ),
       ),
     );
+    final message = tooltip;
+    return message == null ? pill : Tooltip(message: message, child: pill);
   }
 }
 

@@ -31,9 +31,11 @@ class RemoteControlPage extends StatefulWidget {
     @visibleForTesting this.mediaRemoteSupported,
   });
 
-  /// The Flipper this session runs on. Required rather than defaulted, so a
-  /// desktop opened from one device cannot end up driving another, and a test
-  /// passes a fake so the wire is observable. ADR 0002.
+  /// The link this session runs on. Required rather than defaulted, so a test
+  /// passes a fake and the wire is observable. ADR 0002.
+  ///
+  /// The session follows the Flipper active on it: switching devices moves the
+  /// screen and the buttons to the new one rather than leaving them on the old.
   final FlipperClient client;
 
   /// Overrides the bridge's `Platform.isAndroid` gate. Wrist Remote is

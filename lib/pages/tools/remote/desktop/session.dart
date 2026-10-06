@@ -321,15 +321,17 @@ class RemoteSession extends ChangeNotifier {
     _inputAvailable = state.connected;
 
     if (!state.connected) {
-      _releaseAll('link lost');
       _isDisconnected = true;
       _pendingFrame = null;
       _pendingRgba = null;
       final prev = _frameImage;
       _frameImage = null;
       _frameNotifier.value = null;
-      _safeNotify();
       prev?.dispose();
+      if (inputChanged) {
+        _releaseAll('link lost', send: false);
+        _safeNotify();
+      }
       return;
     }
 
@@ -339,7 +341,7 @@ class RemoteSession extends ChangeNotifier {
     if (inputChanged) _safeNotify();
     final binding = _binding;
     if (binding != null && !_holds(binding, state.device)) {
-      _releaseAll('device changed');
+      _releaseAll('device changed', send: true);
       unawaited(
         guarded('[Remote] follow device', () async {
           await _stopVisuals();
@@ -607,7 +609,7 @@ class RemoteSession extends ChangeNotifier {
     return sent.future;
   }
 
-  void _releaseAll(String why) {
+  void _releaseAll(String why, {required bool send}) {
     _inputEpoch++;
     for (final held in _held.values) {
       held.longTimer?.cancel();
@@ -617,7 +619,12 @@ class RemoteSession extends ChangeNotifier {
       _queue.clear();
       _safeNotify();
     }
-    unawaited(_chain('release all: $why', _releaseWireDown));
+    unawaited(
+      _chain(
+        'release all: $why',
+        send ? _releaseWireDown : () async => _wireDown.clear(),
+      ),
+    );
   }
 
   Future<void> _releaseWireDown() async {

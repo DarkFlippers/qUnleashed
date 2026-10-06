@@ -335,10 +335,9 @@ void main() {
     );
   });
 
-  // What the user actually sees, rather than a count of RPCs. Note which half
-  // does it: a successful open is not enough, because the indicator tracks
-  // frames arriving rather than RPCs landing - it drives a connection LED, and
-  // lighting it green over a blank screen would say the wrong thing.
+  // Note which half does it: a successful open is not enough, because the
+  // flag tracks frames arriving rather than RPCs landing. The connection LED
+  // follows the link instead, through inputAvailable.
   test(
     'a frame clears the disconnected flag, a successful open does not',
     () async {

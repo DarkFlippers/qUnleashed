@@ -90,13 +90,13 @@ class RemoteActionBarGeometry {
   static const double pillHeight = 50;
   static const double pillGap = 12;
   static const double pillRadius = 9;
-  static const double backWidth = 2 * pillHeight + pillGap;
-  static const double backGap = 24;
+  static const double leadWidth = 2 * pillHeight + pillGap;
+  static const double leadGap = 24;
 
   static const double maxHeight = 68;
 
   static Size designFor(int cells) => Size(
-    backWidth + backGap + cells * pillWidth + (cells - 1) * pillGap,
+    leadWidth + leadGap + cells * pillWidth + (cells - 1) * pillGap,
     pillHeight,
   );
 
