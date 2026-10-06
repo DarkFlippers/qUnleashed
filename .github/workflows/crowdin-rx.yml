@@ -65,6 +65,27 @@ jobs:
             echo "Translation pull request is #${number}."
           fi
 
+      # The Crowdin action runs in a container as root, and it commits and
+      # pushes from there - so it leaves root-owned files behind, objects under
+      # .git among them. The next checkout tries to clean the workspace, cannot
+      # remove them, and gives up having already deleted what it could:
+      #
+      #   ##[warning]Unable to prepare the existing repository. The repository
+      #   will be recreated instead.
+      #   Deleting the contents of '/home/runner/work/qUnleashed/qUnleashed'
+      #   ##[error]File was unable to be removed Error: EACCES: permission
+      #   denied, unlink '.../.git/objects/1c/fafb8e1fa8d8cd...'
+      #
+      # What is left has no .git at all, so every step below that needs one
+      # fails. Three runs died this way - 2026-10-05, and twice on 2026-10-06 -
+      # and none of them looked like a translation problem, because the pull
+      # request is created in the step above and arrives either way. What was
+      # lost is the build that verifies it and the status in its body, which is
+      # what #40 is about.
+      - name: Take the workspace back from the Crowdin container
+        if: steps.pr.outputs.number != ''
+        run: sudo chown -R "$(id -u):$(id -g)" .
+
       # Everything from here builds what the pull request contains, because
       # nothing else will - why is in summarize_l10n_failure.sh's header, with
       # the evidence. See #40.
@@ -183,7 +204,8 @@ jobs:
             } >> "${RUNNER_TEMP}/pr-body.md"
           fi
           cat "${RUNNER_TEMP}/status.md" >> "${RUNNER_TEMP}/pr-body.md"
-          gh pr edit "$NUMBER" --body-file "${RUNNER_TEMP}/pr-body.md"
+          gh pr edit "$NUMBER" --repo "$GITHUB_REPOSITORY" \
+            --body-file "${RUNNER_TEMP}/pr-body.md"
           echo "Refreshed pull request #${NUMBER}."
 
       # Built once above rather than fetched again: this is four Crowdin API
