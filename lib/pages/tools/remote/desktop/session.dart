@@ -322,11 +322,9 @@ class RemoteSession extends ChangeNotifier {
 
     if (!state.connected) {
       _releaseAll('link lost');
-      if (_isDisconnected) {
-        if (inputChanged) _safeNotify();
-        return;
-      }
       _isDisconnected = true;
+      _pendingFrame = null;
+      _pendingRgba = null;
       final prev = _frameImage;
       _frameImage = null;
       _frameNotifier.value = null;
@@ -336,8 +334,8 @@ class RemoteSession extends ChangeNotifier {
     }
 
     // Input availability follows the transport; visual connectivity deliberately
-    // does not. A reconnect while paused can accept wrist inputs, but the LED
-    // stays disconnected until a real framebuffer arrives after resume.
+    // does not. A reconnect while paused can accept wrist inputs, but
+    // [isDisconnected] stays set until a real framebuffer arrives after resume.
     if (inputChanged) _safeNotify();
     final binding = _binding;
     if (binding != null && !_holds(binding, state.device)) {
@@ -391,7 +389,7 @@ class RemoteSession extends ChangeNotifier {
   }
 
   void _onFrame(ScreenFrame frame) {
-    if (_disposed || !_visualsEnabled) return;
+    if (_disposed || !_visualsEnabled || !_inputAvailable) return;
     if (_isDisconnected) {
       _isDisconnected = false;
       _safeNotify();
@@ -451,7 +449,7 @@ class RemoteSession extends ChangeNotifier {
         if (rgba == null) return;
         _pendingRgba = null;
         final image = await createImageFromRgba(rgba);
-        if (_disposed || !_visualsEnabled) {
+        if (_disposed || !_visualsEnabled || !_inputAvailable) {
           image.dispose();
           return;
         }
