@@ -190,13 +190,10 @@ void main() {
     );
   });
 
-  test('a failed open marks the page disconnected without retrying', () async {
+  test('a failed open is not retried', () async {
     final client = _FakeClient()..failCalls = true;
     final session = RemoteSession(client: client);
     addTearDown(session.dispose);
-
-    await Future<void>.delayed(Duration.zero);
-    expect(session.isDisconnected, isTrue);
 
     await Future<void>.delayed(const Duration(milliseconds: 50));
     expect(client.startStreamCalls, 1, reason: 'nothing automatic behind it');
@@ -335,33 +332,29 @@ void main() {
     );
   });
 
-  // Note which half does it: a successful open is not enough, because the
-  // flag tracks frames arriving rather than RPCs landing. The connection LED
-  // follows the link instead, through inputAvailable.
+  // The link says whether the page is connected, not the frames: a drop clears
+  // the screen and stops input at once, and a reconnect restores input before
+  // the first frame lands.
   test(
-    'a frame clears the disconnected flag, a successful open does not',
+    'a drop clears the screen and input, a reconnect restores input',
     () async {
       final client = _FakeClient()..connected = true;
       final session = RemoteSession(client: client);
       addTearDown(session.dispose);
 
       await Future<void>.delayed(Duration.zero);
+      expect(session.inputAvailable, isTrue);
+
+      client.connected = false;
       client.connection.add(_link(connected: false));
       await Future<void>.delayed(Duration.zero);
-      expect(session.isDisconnected, isTrue);
+      expect(session.inputAvailable, isFalse);
+      expect(session.frameListenable.value, isNull);
 
+      client.connected = true;
       client.connection.add(_link(connected: true));
       await Future<void>.delayed(const Duration(milliseconds: 20));
-      expect(
-        session.isDisconnected,
-        isTrue,
-        reason: 'the open having succeeded is not yet evidence frames flow',
-      );
-
-      client.broadcast.add(Main(guiScreenFrame: ScreenFrame()));
-      await Future<void>.delayed(const Duration(milliseconds: 20));
-
-      expect(session.isDisconnected, isFalse);
+      expect(session.inputAvailable, isTrue);
     },
   );
 
@@ -433,16 +426,6 @@ void main() {
       );
     },
   );
-
-  test('an unlocked device does not read as a disconnected one', () async {
-    final client = lockAnswering(CommandStatus.ERROR);
-    final session = RemoteSession(client: client);
-    addTearDown(session.dispose);
-
-    await pumpEventQueue();
-
-    expect(session.isDisconnected, isFalse);
-  });
 
   // The direction of the mapping, which nothing else pins: every assertion
   // around it holds whether ERROR reads as locked or unlocked. Here the device
@@ -523,30 +506,19 @@ void main() {
 
   // A status that is not ERROR still has to surface: swallowing every
   // rejection as "unlocked" would turn a real RPC failure into a lock state.
-  // But it is not a disconnection either - the poll runs last, so the link has
-  // already answered twice by then.
-  test(
-    'a status the firmware refuses is neither unlocked nor a drop',
-    () async {
-      final client = lockAnswering(CommandStatus.ERROR_NOT_IMPLEMENTED);
-      final session = RemoteSession(client: client);
-      addTearDown(session.dispose);
-      await pumpEventQueue();
+  test('a status the firmware refuses is not read as unlocked', () async {
+    final client = lockAnswering(CommandStatus.ERROR_NOT_IMPLEMENTED);
+    final session = RemoteSession(client: client);
+    addTearDown(session.dispose);
+    await pumpEventQueue();
 
-      expect(
-        session.isDisconnected,
-        isFalse,
-        reason: 'the link answered twice',
-      );
+    client.broadcast.add(Main()..desktopStatus = (Status()..locked = false));
+    await pumpEventQueue();
 
-      client.broadcast.add(Main()..desktopStatus = (Status()..locked = false));
-      await pumpEventQueue();
-
-      expect(
-        session.justUnlocked,
-        isFalse,
-        reason: 'no baseline was taken, so there is no transition to report',
-      );
-    },
-  );
+    expect(
+      session.justUnlocked,
+      isFalse,
+      reason: 'no baseline was taken, so there is no transition to report',
+    );
+  });
 }

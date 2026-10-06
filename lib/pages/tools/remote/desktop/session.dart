@@ -65,7 +65,6 @@ class RemoteSession extends ChangeNotifier {
   bool _lockStatusKnown = false;
   bool _justUnlocked = false;
   Timer? _unlockedFlashTimer;
-  bool _isDisconnected = false;
   bool _inputAvailable = false;
   bool _starting = false;
   bool _visualsEnabled = true;
@@ -91,7 +90,6 @@ class RemoteSession extends ChangeNotifier {
   ValueListenable<ui.Image?> get frameListenable => _frameNotifier;
   StreamOrientation get orientation => _orientation;
   bool get justUnlocked => _justUnlocked;
-  bool get isDisconnected => _isDisconnected;
   bool get inputAvailable => _inputAvailable;
 
   /// Whether [button] is already being held down.
@@ -142,8 +140,8 @@ class RemoteSession extends ChangeNotifier {
   /// Exactly one open runs at a time, nominally three RPCs — fewer if the page
   /// goes away or visuals are paused mid-flight. A request arriving during one
   /// is held in [_restartWanted] and run afterwards rather than dropped:
-  /// dropping it left a reconnect with nothing behind it, and since a frame is
-  /// the only thing that clears [_isDisconnected], the page stayed blank.
+  /// dropping it left a reconnect with nothing behind it, and the page stayed
+  /// blank.
   ///
   /// That opens never overlap is what makes a single flag enough. Were they
   /// ever made concurrent — to hide the latency of three sequential round
@@ -232,12 +230,9 @@ class RemoteSession extends ChangeNotifier {
         return;
       }
       if (locked != null) _applyLocked(locked, flash: false);
-    } catch (_) {
+    } catch (e) {
       if (_disposed) return;
-      if (!_isDisconnected) {
-        _isDisconnected = true;
-        _safeNotify();
-      }
+      LogService.warn('[Remote] open failed: $e');
     }
   }
 
@@ -257,17 +252,12 @@ class RemoteSession extends ChangeNotifier {
     _connectionSub?.cancel();
     _pendingFrame = null;
     _pendingRgba = null;
-    // guarded around the whole thing, not just the chain: _chain cannot
+    _chain('release on shutdown', _releaseWireDown);
+    // guarded around the whole thing, not just the chain: _inputChain cannot
     // reject, but a whenComplete callback that throws rejects the future it
     // returns, and this one is dropped.
     unawaited(
-      guarded(
-        '[Remote] shutdown',
-        () => _chain(
-          'release on shutdown',
-          _releaseWireDown,
-        ).whenComplete(_stopRemote),
-      ),
+      guarded('[Remote] shutdown', () => _inputChain.whenComplete(_stopRemote)),
     );
   }
 
@@ -321,7 +311,6 @@ class RemoteSession extends ChangeNotifier {
     _inputAvailable = state.connected;
 
     if (!state.connected) {
-      _isDisconnected = true;
       _pendingFrame = null;
       _pendingRgba = null;
       final prev = _frameImage;
@@ -335,9 +324,6 @@ class RemoteSession extends ChangeNotifier {
       return;
     }
 
-    // Input availability follows the transport; visual connectivity deliberately
-    // does not. A reconnect while paused can accept wrist inputs, but
-    // [isDisconnected] stays set until a real framebuffer arrives after resume.
     if (inputChanged) _safeNotify();
     final binding = _binding;
     if (binding != null && !_holds(binding, state.device)) {
@@ -392,10 +378,6 @@ class RemoteSession extends ChangeNotifier {
 
   void _onFrame(ScreenFrame frame) {
     if (_disposed || !_visualsEnabled || !_inputAvailable) return;
-    if (_isDisconnected) {
-      _isDisconnected = false;
-      _safeNotify();
-    }
     if (_recording) {
       _ingest(decodeFrameSync(frame));
       return;
@@ -469,13 +451,14 @@ class RemoteSession extends ChangeNotifier {
     final item = _enqueue(_animAsset(button));
     final type = long ? InputType.LONG : InputType.SHORT;
     final key = _key(button);
-    return _chain('press ${button.name}', () async {
+    _chain('press ${button.name}', () async {
       await Future.wait([
         _down(key),
         _typed(key, type),
         _up(key, onAnswer: () => _dequeue(item)),
       ]);
     });
+    return _inputChain;
   }
 
   Future<void> beginHold(RemoteButton button) {
@@ -487,11 +470,10 @@ class RemoteSession extends ChangeNotifier {
     state.longTimer = Timer(const Duration(milliseconds: 500), () {
       if (!identical(_held[button], state)) return;
       state.longFired = true;
-      unawaited(
-        _chain('long press ${button.name}', () => _typed(key, InputType.LONG)),
-      );
+      _chain('long press ${button.name}', () => _typed(key, InputType.LONG));
     });
-    return _chain('hold ${button.name}', () => _down(key));
+    _chain('hold ${button.name}', () => _down(key));
+    return _inputChain;
   }
 
   Future<void> endHold(RemoteButton button) {
@@ -499,12 +481,13 @@ class RemoteSession extends ChangeNotifier {
     if (state == null) return _inputChain;
     state.longTimer?.cancel();
     final key = _key(button);
-    return _chain('end hold ${button.name}', () async {
+    _chain('end hold ${button.name}', () async {
       await Future.wait([
         if (!state.longFired) _typed(key, InputType.SHORT),
         _up(key, onAnswer: () => _dequeue(state.item)),
       ]);
     });
+    return _inputChain;
   }
 
   Future<void> unlock() async {
@@ -527,7 +510,7 @@ class RemoteSession extends ChangeNotifier {
   ///
   /// [what] names the button. Most of what fails here arrives without a stack -
   /// flipperlib rejects through a bare completeError - so an entry reading only
-  /// "queued" could not be attributed to any of the five callers.
+  /// "queued" could not be attributed to any of the six callers.
   ///
   /// _sendInput catches and warns for itself, so an ordinary refused PRESS
   /// never reaches guarded. _up is the one that could: see the Future.sync
@@ -535,21 +518,20 @@ class RemoteSession extends ChangeNotifier {
   /// is what makes error the right level for it.
   ///
   /// The predecessor is awaited inside guarded, so _inputChain cannot reject
-  /// and one failed action cannot strand the input queued behind it.
-  Future<void> _chain(String what, Future<void> Function() action) {
+  /// and one failed action cannot strand the input queued behind it. Whoever
+  /// waits on the action waits on _inputChain.
+  void _chain(String what, Future<void> Function() action) {
     final previous = _inputChain;
     // The key goes to the Flipper whose screen is on show, which is the one
     // this session holds - not whichever is active by the time the queue in
     // front of it drains.
     final binding = _binding;
     final epoch = _inputEpoch;
-    final next = guarded('[RemoteInput] $what', () async {
+    _inputChain = guarded('[RemoteInput] $what', () async {
       await previous;
       if (epoch != _inputEpoch) return;
       await (binding == null ? action() : binding.run(action));
     });
-    _inputChain = next;
-    return next;
   }
 
   Future<void> _sendInput(InputKey key, InputType type) async {
@@ -619,11 +601,9 @@ class RemoteSession extends ChangeNotifier {
       _queue.clear();
       _safeNotify();
     }
-    unawaited(
-      _chain(
-        'release all: $why',
-        send ? _releaseWireDown : () async => _wireDown.clear(),
-      ),
+    _chain(
+      'release all: $why',
+      send ? _releaseWireDown : () async => _wireDown.clear(),
     );
   }
 

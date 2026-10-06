@@ -65,12 +65,13 @@ const Map<String, int> kBudget = {
   // `try`/`finally` with no catch underneath it, so a rejection reached the
   // zone while a `_busy` flag was tidied.
   //
-  // The ten left are all already handled, and wrapping them would be a layer
+  // The nine left are all already handled, and wrapping them would be a layer
   // that can never fire:
   //
-  //  * Six go through `_chain`, which *is* `guarded` - `press`, `beginHold`,
-  //    `endHold` and the long-press it queues all hand back a future that
-  //    cannot reject.
+  //  * Five go through `_chain`, which *is* `guarded` - `press`, `beginHold`
+  //    and `endHold` all hand back `_inputChain`, a future that cannot reject.
+  //    The long-press `beginHold` queues was a sixth until `_chain` stopped
+  //    returning a future of its own.
   //  * `_startMediaRemote` and `_stopMediaRemote` each catch their own, and
   //    their comments say why the bridge reports it instead.
   //  * `_holdMediaRemoteButton` only awaits those two hold calls and a delay.
@@ -78,7 +79,7 @@ const Map<String, int> kBudget = {
   //    because the rule reads only the outermost call and that one is
   //    `whenComplete`, which this header lists as something it cannot see
   //    through.
-  'pages/tools': 10,
+  'pages/tools': 9,
   // Read through. Was 23. The favourites and device-name writes were the
   // settings-write shape #202 settled - the control has already applied the
   // choice on screen, so a write that will not persist is worth a line in the

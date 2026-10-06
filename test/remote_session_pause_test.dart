@@ -98,7 +98,7 @@ void main() {
   });
 
   test(
-    'reconnect while paused restores input but not the visual connected flag',
+    'reconnect while paused restores input without restarting the stream',
     () async {
       final client = _PauseFakeClient()..connected = true;
       final session = RemoteSession(client: client);
@@ -114,18 +114,12 @@ void main() {
       client.connection.add(_link(connected: false));
       await Future<void>.delayed(Duration.zero);
       expect(session.inputAvailable, isFalse);
-      expect(session.isDisconnected, isTrue);
 
       client.connected = true;
       client.connection.add(_link(connected: true));
       await Future<void>.delayed(const Duration(milliseconds: 20));
 
       expect(session.inputAvailable, isTrue);
-      expect(
-        session.isDisconnected,
-        isTrue,
-        reason: 'an RPC reconnect is not evidence that framebuffer data flows',
-      );
       expect(
         client.startStreamCalls,
         1,
@@ -135,11 +129,6 @@ void main() {
       await session.resumeVisuals();
       await Future<void>.delayed(const Duration(milliseconds: 20));
       expect(client.startStreamCalls, 2);
-      expect(session.isDisconnected, isTrue);
-
-      client.broadcast.add(Main(guiScreenFrame: ScreenFrame()));
-      await Future<void>.delayed(const Duration(milliseconds: 20));
-      expect(session.isDisconnected, isFalse);
     },
   );
 
