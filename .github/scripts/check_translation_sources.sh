@@ -68,19 +68,10 @@ while IFS= read -r path || [[ -n "$path" ]]; do
   case "$path" in
     # The source of every string. Editing this is how strings are added.
     translations/app_en.arb) ;;
-    fastlane/metadata/android/en-US/*) ;;
     # Everything else under translations/ is Crowdin's, at whatever depth. A
     # narrower pattern would miss app_de.arb moved one directory down, which
     # is just as broken and much harder to see.
     translations/*) offenders+=("$path") ;;
-    # Of the store listing, Crowdin holds only the three texts crowdin.yml
-    # names. The screenshots, the icon, the title and the video URL are kept
-    # here for every locale, so they have to stay editable here.
-    fastlane/metadata/android/*/short_description.txt | \
-      fastlane/metadata/android/*/full_description.txt | \
-      fastlane/metadata/android/*/changelogs/*.txt)
-      offenders+=("$path")
-      ;;
   esac
 done
 
@@ -101,9 +92,5 @@ is reverted by the next sync rather than merged with it.
 
 To correct a translation, change it in Crowdin; it reaches this repository on
 the next sync. To add a language, ask for it to be enabled in Crowdin.
-
-Of the store listing Crowdin holds only short_description.txt,
-full_description.txt and the changelogs. Screenshots, the icon, title.txt and
-video.txt are kept here and can be changed in any locale.
 MESSAGE
 exit 1

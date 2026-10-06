@@ -7,10 +7,9 @@
       - any-glob-to-any-file:
           - "translations/**"
           - "lib/services/localization/**"
-          - "fastlane/metadata/**"
           - "crowdin.yml"
           - "l10n.yaml"
-          - "TRANSLATING.md"
+          - "docs/translating.md"
 
 "area/archive":
   - changed-files:
