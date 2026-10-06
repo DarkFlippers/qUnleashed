@@ -204,11 +204,9 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
     try {
       await _startUpdate();
     } finally {
-      if (mounted) {
-        setState(() => _starting = false);
-      } else {
-        _starting = false;
-      }
+      // Only when still mounted: nothing reads _starting once the State is
+      // gone, and setState after dispose throws.
+      if (mounted) setState(() => _starting = false);
     }
   }
 
@@ -226,19 +224,68 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
 
     final FirmwareSource source;
     if (_isCustom) {
-      final result = await FilePicker.platform.pickFiles(
-        dialogTitle: l10n.fwuPickArchiveTitle,
-        type: FileType.custom,
-        allowedExtensions: const ['tgz', 'gz', 'tar'],
-      );
-      final picked = result?.files.single.path;
-      if (picked == null) return;
+      final FilePickerResult? result;
+      try {
+        result = await FilePicker.platform.pickFiles(
+          dialogTitle: l10n.fwuPickArchiveTitle,
+          type: FileType.custom,
+          allowedExtensions: const ['tgz', 'gz', 'tar'],
+        );
+      } catch (e, st) {
+        // A plugin that is missing or refuses on this platform rejects here,
+        // and this method is reached from a VoidCallback - so without a catch
+        // the rejection is discarded and lands in the log as [uncaught] with
+        // nothing naming it, while on screen the button just flicks back to
+        // enabled and no dialog ever appeared. The archive browser wraps the
+        // same API for the same reason.
+        LogService.error(
+          '[Firmware] the archive picker failed: ${LogService.describe(e, st)}',
+        );
+        if (!mounted) return;
+        QNotification.show(
+          context,
+          message: l10n.fwuAborted('$e'),
+          type: QNotificationType.error,
+        );
+        return;
+      }
+      // Cancelled. Genuinely nothing to report.
+      if (result == null) return;
+      // Separate from the cancel above, because it is not one: a file *was*
+      // chosen and came back without a usable path. `files.single` would also
+      // throw on an empty or multi-element list, which this answers instead of
+      // discarding as above.
+      final files = result.files;
+      final picked = files.length == 1 ? files.single.path : null;
+      if (picked == null) {
+        LogService.warn(
+          '[Firmware] the picker returned ${files.length} file(s) and no '
+          'usable path; nothing was flashed',
+        );
+        if (!mounted) return;
+        QNotification.show(
+          context,
+          message: l10n.fwuAborted('no usable path'),
+          type: QNotificationType.error,
+        );
+        return;
+      }
       // The picker is the one await here that can outlive this widget - the
       // dialog is modal to the OS, not to Flutter, so the page behind it can be
       // navigated away or rebuilt while it is open. Without this the setState
       // below throws "setState() called after dispose()" from an async gap, and
       // the flash starts anyway with nothing on screen to report it.
-      if (!mounted) return;
+      if (!mounted) {
+        // Said out loud: the archive was accepted and is being thrown away. If
+        // the page was merely rebuilt the button is sitting there looking
+        // ready, and "I picked the file and nothing happened" would otherwise
+        // arrive with no line for it anywhere.
+        LogService.warn(
+          '[Firmware] an archive was chosen but the button was gone before the '
+          'flash could start; nothing was written',
+        );
+        return;
+      }
       source = LocalFirmwareSource(picked);
     } else {
       source = RemoteFirmwareSource(

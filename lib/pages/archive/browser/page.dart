@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import '../../../services/localization/l10n.dart';
+import '../../../services/guarded.dart';
 
 import 'dart:typed_data';
 
@@ -109,23 +110,20 @@ class _FileManagerPageState extends State<FileManagerPage> {
   // dismissed separately.
   //
   // Keyed on the path rather than a single bool: opening two *different* files
-  // at once is legitimate, and the controller already reports per-entry progress
-  // for exactly that. A bare flag would have made the second file silently
-  // ignored.
+  // at once is legitimate, and a bare flag would have made the second one
+  // silently ignored. (The controller cannot currently report both - _busyEntry
+  // is a single slot, so two concurrent reads overwrite each other's progress.
+  // That is a separate shortcoming, not a reason to refuse the second open.)
   final Set<String> _opening = {};
 
-  Future<void> _onEntryTap(RemoteEntry e) async {
-    if (_selectionMode) {
-      _toggleSelect(e);
-      return;
-    }
+  /// Opens a non-directory entry in whichever viewer suits it, once.
+  ///
+  /// Both doors come through here. There are two - the row tap and the actions
+  /// sheet's Edit - and Edit used to repeat this dispatch inline and never touch
+  /// [_opening], so "a path is opened once" held on one of them and not the
+  /// other.
+  Future<void> _openFile(RemoteEntry e) async {
     final path = _ctrl.childPath(e.name);
-    if (e.isDir) {
-      // Not guarded: a listing is cheap, it replaces the view rather than
-      // stacking on it, and nothing is downloaded.
-      await _ctrl.open(path);
-      return;
-    }
     if (!_opening.add(path)) return;
     try {
       if (e.extension == 'fap') {
@@ -141,6 +139,22 @@ class _FileManagerPageState extends State<FileManagerPage> {
       // path left in the set cannot wedge a later open of the same file.
       _opening.remove(path);
     }
+  }
+
+  Future<void> _onEntryTap(RemoteEntry e) async {
+    if (_selectionMode) {
+      _toggleSelect(e);
+      return;
+    }
+    if (e.isDir) {
+      // Not guarded: a listing is cheap, it replaces the view rather than
+      // stacking on it, and nothing is downloaded. The key would differ anyway -
+      // open() moves _path synchronously, so a second tap on the same folder
+      // computes a different child path.
+      await _ctrl.open(_ctrl.childPath(e.name));
+      return;
+    }
+    await _openFile(e);
   }
 
   Future<void> _navigateTo(String path) async {
@@ -1337,7 +1351,9 @@ class _FileManagerPageState extends State<FileManagerPage> {
                 selected: _selected.contains(e.name),
                 progress: _ctrl.entryProgress(e.name),
                 autoEdit: e.name == _pendingRenameName,
-                onTap: () => _onEntryTap(e),
+                onTap: () => unawaited(
+                  guarded('[FileManager] open ${e.name}', () => _onEntryTap(e)),
+                ),
                 onLongPress: () => _enterSelection(e),
               );
             },
@@ -1369,7 +1385,9 @@ class _FileManagerPageState extends State<FileManagerPage> {
           selectionMode: _selectionMode,
           selected: _selected.contains(e.name),
           progress: _ctrl.entryProgress(e.name),
-          onTap: () => _onEntryTap(e),
+          onTap: () => unawaited(
+            guarded('[FileManager] open ${e.name}', () => _onEntryTap(e)),
+          ),
           onLongPress: () => _enterSelection(e),
         );
       },
@@ -1412,15 +1430,13 @@ class _FileManagerPageState extends State<FileManagerPage> {
       onEmulate: (cat != null && cat.emulatable)
           ? () => _emulateEntry(e, cat)
           : null,
+      // Through _openFile, so Edit shares the row tap's guard rather than
+      // keeping a second copy of the dispatch.
       onEdit: e.isDir
           ? null
-          : () {
-              if (_isPaintFile(e)) {
-                _openPaintEditor(_ctrl.childPath(e.name));
-              } else {
-                _openTextEditor(e);
-              }
-            },
+          : () => unawaited(
+              guarded('[FileManager] open ${e.name}', () => _openFile(e)),
+            ),
     );
   }
 }
