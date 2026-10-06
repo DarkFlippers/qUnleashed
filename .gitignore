@@ -89,3 +89,10 @@ app.*.map.json
 /android/app/google-services.json
 /ios/Runner/GoogleService-Info.plist
 /macos/Runner/GoogleService-Info.plist
+
+# faaccrack: the engine ships obfuscated (lib/modules/cpp/faaccrack/faaccrack.c
+# is generated). Its readable source and the generator must never be committed -
+# see lib/modules/cpp/faaccrack/BUILD_NOTES.md for where they live.
+faaccrack.orig.c
+cobf.py
+verify_obf.sh
