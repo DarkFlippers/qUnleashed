@@ -37,21 +37,19 @@ import 'package:flutter_test/flutter_test.dart';
 ///
 /// ## Why this has a budget rather than simply failing
 ///
-/// `app_uk.arb` is in the tree and is entirely English *now*, and it cannot be
-/// deleted from here: `check_translation_sources.sh` refuses a hand edit to a
-/// file Crowdin owns, and it is right to - Crowdin exports the whole file, so
-/// the next sync would put it back. Removing it means either disabling
-/// Ukrainian in the Crowdin project until it is worked on, or letting a sync
-/// re-export it once the option above is set.
+/// `app_uk.arb` could not be deleted from here: `check_translation_sources.sh`
+/// refuses a hand edit to a file Crowdin owns, and it is right to - Crowdin
+/// exports the whole file, so the next sync would put it back. Naming it was
+/// what let the suite stay green while saying out loud that the file was not a
+/// translation, and it kept a second one from arriving unnoticed.
 ///
-/// So the known one is named here, and a second cannot appear unnoticed. When
-/// Ukrainian is translated, or the language is disabled, this entry goes and
-/// the list is empty again - which is the only direction it is allowed to move.
-const Set<String> kUntranslated = {
-  // 1293 of 1293 strings are the English source. #141, and the option that
-  // caused it is fixed in crowdin-rx.yml in the same change as this comment.
-  'app_uk.arb',
-};
+/// It emptied the way it was meant to. With `skip_untranslated_strings` set,
+/// the sync stopped exporting English as Ukrainian, and Ukrainian was then
+/// translated - 1303 of 1309 strings, 1.7% of them shared with English. So the
+/// set is empty again, which is the only direction it is allowed to move: an
+/// entry is added only with a reason, and removed only because the file it
+/// named stopped being the English source.
+const Set<String> kUntranslated = <String>{};
 
 void main() {
   final dir = Directory('translations');

@@ -4,6 +4,10 @@
   "@appTitle": {
     "description": "Application name shown in the OS task switcher. Product name, keep untranslated."
   },
+  "languageName": "Русский",
+  "@languageName": {
+    "description": "This language's own name, for the list in Settings -> Language. Translate it as the name of YOUR language written in YOUR language - Deutsch, Русский, Українська - not as a translation of the word \"English\". It is the one entry every language carries a different answer to, and it is what the picker shows for that language whatever the app is currently running in."
+  },
   "settingsLanguageTitle": "Язык",
   "@settingsLanguageTitle": {
     "description": "Title of the language settings screen and of its tile on the Settings screen."
@@ -179,51 +183,6 @@
   "settingsNotificationsSubtitle": "Релизы приложения и прошивки",
   "@settingsNotificationsSubtitle": {
     "description": "Subtitle under the Notifications tile on the Settings screen."
-  },
-  "settingsLogTitle": "Log",
-  "@settingsLogTitle": {
-    "description": "Title of the log screen and of its tile on the Settings screen. The errors and warnings the app recorded, for attaching to a bug report."
-  },
-  "settingsLogSubtitle": "Errors recorded for a bug report",
-  "@settingsLogSubtitle": {
-    "description": "Subtitle under the Log tile on the Settings screen."
-  },
-  "logEmpty": "Nothing recorded yet. Errors and warnings are collected as they happen; open this screen or refresh it to see them.",
-  "@logEmpty": {
-    "description": "Shown on the log screen when the app has recorded nothing. Reassures the user that an empty log means nothing went wrong, not that recording is off."
-  },
-  "logPrivacyCaution": "This log can name files, folders and devices you have used. Read it before sharing it.",
-  "@logPrivacyCaution": {
-    "description": "Shown above the log, before the button that copies it. The log is meant to be pasted into a public bug report, and paths have the account name removed automatically - but a message naming a card, a folder or a Flipper cannot be cleaned up automatically, so the user is told to read it first."
-  },
-  "logClearTitle": "Clear the log?",
-  "@logClearTitle": {
-    "description": "Title of the confirmation asked before emptying the log."
-  },
-  "logClearMessage": "The recorded errors are dropped. Copy them first if you are reporting a problem.",
-  "@logClearMessage": {
-    "description": "Body of the confirmation asked before emptying the log. Clearing is beside Copy and destroys the only record there is."
-  },
-  "commonCopy": "Copy",
-  "@commonCopy": {
-    "description": "Tooltip or label on a button that copies what is shown to the clipboard. Shared across screens."
-  },
-  "commonCopied": "Copied",
-  "@commonCopied": {
-    "description": "Toast shown after something was put on the clipboard. Shared across screens."
-  },
-  "commonCopyFailed": "Could not copy: {error}",
-  "@commonCopyFailed": {
-    "description": "Toast shown when the clipboard refused what was given to it - on Android a payload beyond about a megabyte throws rather than truncating. {error} is the untranslated exception text.",
-    "placeholders": {
-      "error": {
-        "type": "String"
-      }
-    }
-  },
-  "commonRefresh": "Refresh",
-  "@commonRefresh": {
-    "description": "Tooltip on a button that re-reads what is shown. Shared across screens."
   },
   "settingsStorageTitle": "Хранилище",
   "@settingsStorageTitle": {
@@ -1266,28 +1225,6 @@
   "@connectTooManyDevicesBody": {
     "description": "Body of the too many devices error."
   },
-  "fmAutoConnectFailedTitle": "Could not connect to {name} on its own",
-  "@fmAutoConnectFailedTitle": {
-    "description": "Title of the device page hint shown after an automatic connection attempt failed. The body is the same sentence the connection error dialog would have shown.",
-    "placeholders": {
-      "name": {
-        "type": "String"
-      }
-    }
-  },
-  "connectSessionLimitTitle": "All connection slots are in use",
-  "@connectSessionLimitTitle": {
-    "description": "Title of the connection error when the app already holds as many links as it can."
-  },
-  "fmConnectSessionLimitBody": "qUnleashed keeps at most {count} Flippers connected at once. Disconnect one of them in the list, then connect again.",
-  "@fmConnectSessionLimitBody": {
-    "description": "Body of the session limit error. Distinct from the too many devices error, which is the system pairing limit: this one is the app's own cap and is fixed in the picker rather than in system settings.",
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
-  },
   "connectBusyTitle": "Подключение уже выполняется",
   "@connectBusyTitle": {
     "description": "Title of the connection error when another connection attempt is still running."
@@ -1307,19 +1244,6 @@
   "connectUnreachableUsbBody": "Устройство не ответило. Отсоедините и снова подсоедините его, затем подключитесь снова.",
   "@connectUnreachableUsbBody": {
     "description": "Body of the unreachable error over USB."
-  },
-  "connectScanFailed": "Could not finish looking for devices",
-  "@connectScanFailed": {
-    "description": "Toast shown when the device scan in the connection picker fails part-way. The list on screen is short rather than empty, so it needs saying."
-  },
-  "connectDisconnectFailed": "Could not disconnect {name}",
-  "@connectDisconnectFailed": {
-    "description": "Toast shown when letting go of a device failed. The row clears regardless, so the link may still be up.",
-    "placeholders": {
-      "name": {
-        "type": "String"
-      }
-    }
   },
   "connectFailedTitle": "Не удалось подключиться",
   "@connectFailedTitle": {
@@ -1808,10 +1732,6 @@
       }
     }
   },
-  "firmwareChangelogUnstyled": "Couldn''t format this changelog. Showing the original text.",
-  "@firmwareChangelogUnstyled": {
-    "description": "Shown above a changelog whose markdown could not be rendered, so the raw text is displayed instead."
-  },
   "firmwareEmptyChangelog": "Список изменений пуст",
   "@firmwareEmptyChangelog": {
     "description": "Shown when a firmware release has no changelog text."
@@ -1998,10 +1918,6 @@
   "@fwuLabelChecking": {
     "description": "Update button label while the firmware state is being checked. Shown in capitals."
   },
-  "fwuLabelCantCheck": "CAN''T CHECK",
-  "@fwuLabelCantCheck": {
-    "description": "Update button label when the update server could not be reached, so whether an update exists is unknown."
-  },
   "fwuLabelNoUpdate": "НЕТ ОБНОВЛЕНИЙ",
   "@fwuLabelNoUpdate": {
     "description": "Update button label when the installed firmware is already current. Shown in capitals."
@@ -2053,10 +1969,6 @@
   "fwuDescPickInstall": "Выберите локальный архив .tgz для установки",
   "@fwuDescPickInstall": {
     "description": "Explanation when a hand-picked archive will be installed."
-  },
-  "fwuDescCantCheck": "The update server didn''t answer.",
-  "@fwuDescCantCheck": {
-    "description": "Explanation under CAN''T CHECK: the directory fetch failed, so no version could be compared."
   },
   "fwuDescNoServer": "Не удаётся связаться с сервером обновлений",
   "@fwuDescNoServer": {
@@ -2129,10 +2041,6 @@
   "fwuDescWaitingReconnect": "Ожидание переподключения устройства…",
   "@fwuDescWaitingReconnect": {
     "description": "Explanation while the Flipper reboots after an update."
-  },
-  "fwuRecoveryNoReconnect": "Device didn''t reconnect. Power-cycle it and try again.",
-  "@fwuRecoveryNoReconnect": {
-    "description": "Shown when the Flipper does not come back after a recovery flash."
   },
   "fwuDescWillReboot": "Устройство перезагрузится и применит обновление.",
   "@fwuDescWillReboot": {
@@ -2233,10 +2141,6 @@
   "catalogModeNearestApi": "Ближайший API",
   "@catalogModeNearestApi": {
     "description": "Catalog mode: install builds made for the closest firmware API."
-  },
-  "appsCatalogUnreachable": "Could not reach the app catalogue — showing installed apps only",
-  "@appsCatalogUnreachable": {
-    "description": "Toast shown when the catalog could not be fetched and the apps screen falls back to managing installed apps. Tells the user the network was the problem, not their firmware."
   },
   "catalogModeManagerOnly": "Только менеджер",
   "@catalogModeManagerOnly": {
@@ -2920,28 +2824,6 @@
         "type": "String"
       }
     }
-  },
-  "cliWriteFailed": "[not sent: {error}]",
-  "@cliWriteFailed": {
-    "description": "Written into the CLI terminal, in red, when a keystroke or Ctrl-C could not be delivered to the device. Keep it short and bracketed: it sits inline among the device's own output. {error} is the untranslated exception text.",
-    "placeholders": {
-      "error": {
-        "type": "String"
-      }
-    }
-  },
-  "cliStartFailed": "[could not open the CLI session: {error}]",
-  "@cliStartFailed": {
-    "description": "Written into the CLI terminal, in red, when the session could not be opened at all - the initial nudge failed, or the page could not get as far as connecting. The terminal stays black and accepts nothing after this. {error} is the untranslated exception text.",
-    "placeholders": {
-      "error": {
-        "type": "String"
-      }
-    }
-  },
-  "cliDisconnected": "[disconnected]",
-  "@cliDisconnected": {
-    "description": "Written into the CLI terminal, in red, when the device goes away. Explains why the terminal has stopped responding to input."
   },
   "cliSendCtrlC": "Отправить Ctrl+C",
   "@cliSendCtrlC": {
@@ -3991,15 +3873,6 @@
   "@irDownloadFailed": {
     "description": "Toast shown when a remote file could not be fetched."
   },
-  "irLibraryStranded": "Your library is not lost. An interrupted download left it at {path}, and the app could not move it back — it will try again next time it starts.",
-  "@irLibraryStranded": {
-    "description": "Shown in the IRDB dialog when recovery could not move the library back to its usual place. Tells the user their copy still exists, and where, before they decide to download several hundred megabytes again. Deliberately does not promise that downloading again will work: whatever blocks the restore may block the new library from landing too.",
-    "placeholders": {
-      "path": {
-        "type": "String"
-      }
-    }
-  },
   "irLoadFailed": "Не удалось загрузить: {error}",
   "@irLoadFailed": {
     "description": "Shown when the remote list could not be fetched.",
@@ -4127,129 +4000,6 @@
   "remoteControlTitle": "Удалённое управление",
   "@remoteControlTitle": {
     "description": "Title of the screen that mirrors the Flipper screen."
-  },
-  "wristRemoteMappingTitle": "Wrist remote mapping",
-  "@wristRemoteMappingTitle": {
-    "description": "Title and tooltip of the Wrist Remote media gesture mapping dialog."
-  },
-  "wristRemoteMappingIntro": "Choose which Flipper button each media gesture sends. Double-tap rows can be left unassigned for instant single-tap response.",
-  "@wristRemoteMappingIntro": {
-    "description": "Introduction at the top of the Wrist Remote mapping dialog."
-  },
-  "wristRemoteSettingsLoadFailed": "Could not load Wrist Remote settings: {error}",
-  "@wristRemoteSettingsLoadFailed": {
-    "description": "Toast shown when Wrist Remote settings could not be loaded or prepared.",
-    "placeholders": {
-      "error": {
-        "type": "String"
-      }
-    }
-  },
-  "wristRemoteStartFailed": "Could not start Wrist Remote: {error}",
-  "@wristRemoteStartFailed": {
-    "description": "Toast shown when the Wrist Remote setting was saved but Android refused to start the media session behind it.",
-    "placeholders": {
-      "error": {
-        "type": "String"
-      }
-    }
-  },
-  "wristRemoteSessionTitle": "Flipper Remote",
-  "@wristRemoteSessionTitle": {
-    "description": "Now playing title of the placeholder media session Wrist Remote publishes. Shown on the watch, the lock screen and Android Auto. Flipper is a device brand and must not be translated or transliterated."
-  },
-  "wristRemoteSessionSubtitle": "Wrist Remote",
-  "@wristRemoteSessionSubtitle": {
-    "description": "Now playing subtitle of the placeholder media session Wrist Remote publishes, shown under the title. The app name is added separately and is not translated."
-  },
-  "wristRemoteEnabledTitle": "Enable Wrist Remote",
-  "@wristRemoteEnabledTitle": {
-    "description": "Toggle that enables or disables the Android media session used by Wrist Remote."
-  },
-  "wristRemoteEnabledSubtitle": "Off by default. Turn on to route media controls and volume buttons to the Flipper while Remote Control is open.",
-  "@wristRemoteEnabledSubtitle": {
-    "description": "Explanation under the Wrist Remote master enable toggle."
-  },
-  "wristRemoteHoldHelp": "Hold actions keep the selected Flipper button pressed for 1, 2 or 3 seconds. Double taps use a 400 ms gesture window only when the matching double-tap mapping is assigned.",
-  "@wristRemoteHoldHelp": {
-    "description": "Explanation of hold duration and double-tap timing in Wrist Remote."
-  },
-  "wristRemoteVolumeNote": "Note: some bands change Android system volume directly instead of sending Volume +/- to the media session.",
-  "@wristRemoteVolumeNote": {
-    "description": "Compatibility note explaining why wearable volume gestures may not reach Wrist Remote."
-  },
-  "wristRemoteResetDefaults": "Reset defaults",
-  "@wristRemoteResetDefaults": {
-    "description": "Button that restores the default Wrist Remote mappings."
-  },
-  "wristRemoteDone": "Done",
-  "@wristRemoteDone": {
-    "description": "Button that closes the Wrist Remote mapping dialog."
-  },
-  "wristRemoteNotAssigned": "Not assigned",
-  "@wristRemoteNotAssigned": {
-    "description": "Dropdown value for a Wrist Remote gesture that sends no Flipper button."
-  },
-  "wristRemoteTap": "Tap",
-  "@wristRemoteTap": {
-    "description": "Wrist Remote action that sends a short button press."
-  },
-  "wristRemoteHoldSeconds": "Hold {seconds} s",
-  "@wristRemoteHoldSeconds": {
-    "description": "Wrist Remote action that holds a Flipper button for a number of seconds.",
-    "placeholders": {
-      "seconds": {
-        "type": "int"
-      }
-    }
-  },
-  "wristRemotePrevious": "Previous",
-  "@wristRemotePrevious": {
-    "description": "Single Previous media gesture in Wrist Remote."
-  },
-  "wristRemoteDoublePrevious": "Double Previous",
-  "@wristRemoteDoublePrevious": {
-    "description": "Double Previous media gesture in Wrist Remote."
-  },
-  "wristRemotePlayPause": "Play / Pause",
-  "@wristRemotePlayPause": {
-    "description": "Single Play/Pause media gesture in Wrist Remote."
-  },
-  "wristRemoteDoublePlayPause": "Double Play / Pause",
-  "@wristRemoteDoublePlayPause": {
-    "description": "Double Play/Pause media gesture in Wrist Remote."
-  },
-  "wristRemoteNext": "Next",
-  "@wristRemoteNext": {
-    "description": "Single Next media gesture in Wrist Remote."
-  },
-  "wristRemoteDoubleNext": "Double Next",
-  "@wristRemoteDoubleNext": {
-    "description": "Double Next media gesture in Wrist Remote."
-  },
-  "wristRemoteVolumeUp": "Volume +",
-  "@wristRemoteVolumeUp": {
-    "description": "Volume up media gesture in Wrist Remote."
-  },
-  "wristRemoteVolumeDown": "Volume −",
-  "@wristRemoteVolumeDown": {
-    "description": "Volume down media gesture in Wrist Remote."
-  },
-  "wristRemoteButtonUp": "Up",
-  "@wristRemoteButtonUp": {
-    "description": "Flipper Up button in the Wrist Remote mapping dropdown."
-  },
-  "wristRemoteButtonDown": "Down",
-  "@wristRemoteButtonDown": {
-    "description": "Flipper Down button in the Wrist Remote mapping dropdown."
-  },
-  "wristRemoteButtonLeft": "Left",
-  "@wristRemoteButtonLeft": {
-    "description": "Flipper Left button in the Wrist Remote mapping dropdown."
-  },
-  "wristRemoteButtonRight": "Right",
-  "@wristRemoteButtonRight": {
-    "description": "Flipper Right button in the Wrist Remote mapping dropdown."
   },
   "remoteGifSaveFailed": "Не удалось сохранить GIF: {error}",
   "@remoteGifSaveFailed": {
@@ -4848,18 +4598,6 @@
   "fmCreateFolderFailed": "Не удалось создать папку",
   "@fmCreateFolderFailed": {
     "description": "Toast shown when creating a folder failed."
-  },
-  "fmFailedBecause": "{message}: {reason}",
-  "@fmFailedBecause": {
-    "description": "Joins a failure toast to the reason the device gave for it, e.g. 'Delete failed: ERROR_STORAGE_DENIED'. Reorder or repunctuate as the language needs; {message} is already a complete sentence.",
-    "placeholders": {
-      "message": {
-        "type": "String"
-      },
-      "reason": {
-        "type": "String"
-      }
-    }
   },
   "fmUploadFailedCount": "Не удалось отправить файлов: {count} — {error}",
   "@fmUploadFailedCount": {
@@ -5481,10 +5219,6 @@
   "@hexStatusMode": {
     "description": "Status bar label of the insert or overwrite mode."
   },
-  "emuSendFailed": "The Flipper did not take the send",
-  "@emuSendFailed": {
-    "description": "Toast shown when a hold-to-send on the emulate page did not reach the device, usually because the link went quiet."
-  },
   "emuNotConnected": "Устройство не подключено",
   "@emuNotConnected": {
     "description": "Error shown when emulation needs a connected Flipper."
@@ -6038,22 +5772,6 @@
       }
     }
   },
-  "archiveDeleteFailed": "Delete failed",
-  "@archiveDeleteFailed": {
-    "description": "Toast shown when deleting one or more archive keys failed. Followed by the reason, joined with fmFailedBecause."
-  },
-  "archiveRenameFailed": "Rename failed",
-  "@archiveRenameFailed": {
-    "description": "Toast shown when renaming an archive key failed. Followed by the reason, joined with fmFailedBecause."
-  },
-  "archiveDuplicateFailed": "Duplicate failed",
-  "@archiveDuplicateFailed": {
-    "description": "Toast shown when duplicating an archive key failed. Followed by the reason, joined with fmFailedBecause."
-  },
-  "archiveRestoreFailed": "Restore failed",
-  "@archiveRestoreFailed": {
-    "description": "Toast shown when restoring a deleted archive key back to the Flipper failed. Followed by the reason, joined with fmFailedBecause."
-  },
   "archiveDuplicate": "Дублировать",
   "@archiveDuplicate": {
     "description": "Button that makes a copy of the file."
@@ -6245,15 +5963,6 @@
   "paintManifestInvalid": "В манифесте не найдено анимаций",
   "@paintManifestInvalid": {
     "description": "Shown when hand-edited manifest text holds no animation block."
-  },
-  "paintManifestNameless": "{count, plural, one{One block named no animation and was skipped} other{{count} blocks named no animation and were skipped}}",
-  "@paintManifestNameless": {
-    "description": "Shown after applying hand-edited manifest text that held one or more paragraphs of settings with no Name: line. Those settings belong to no animation and are dropped.",
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
   },
   "paintAnimationSettings": "Настройки анимации",
   "@paintAnimationSettings": {
