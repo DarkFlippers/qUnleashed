@@ -49,10 +49,14 @@ Eighteen strings pick a form by a number:
 {count, plural, one{1 frame} other{{count} frames}}
 ```
 
-Keep the structure and the keywords (`plural`, `one`, `other`, `=0`), and use
-the categories your language actually has — Russian, Ukrainian and Polish need
-`few` and `many` where English needs only `one` and `other`. Crowdin shows the
-right set of boxes for your language.
+Keep the structure and the keywords (`plural`, `one`, `other`), and use the
+categories your language actually has — Russian, Ukrainian and Polish need `few`
+and `many` where English needs only `one` and `other`. Crowdin shows the right
+set of boxes for your language.
+
+Do not add an exact-number branch such as `=1` or `=0`. `gen-l10n` folds `=1`
+into `one` and then drops it as overridden, so it costs a build warning and
+shows nothing. The English source carries none, deliberately.
 
 ## Terms to leave alone
 
