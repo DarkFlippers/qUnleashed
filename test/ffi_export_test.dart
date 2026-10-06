@@ -38,6 +38,7 @@ const _bridges = [
   'lib/modules/cpp/mfkey32/mfkey32_bridge.c',
   'lib/modules/cpp/mfkey32/nested_bridge.c',
   'lib/modules/cpp/hardnested/qunleashed_hardnested_bridge.c',
+  'lib/modules/cpp/faaccrack/faaccrack_bridge.c',
 ];
 
 /// The sources the Apple Runner targets must still compile. Dropping one is

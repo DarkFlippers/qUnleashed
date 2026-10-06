@@ -42,6 +42,7 @@ set(PLUGIN_BUNDLED_LIBRARIES
   ${PLUGIN_BUNDLED_LIBRARIES}
   $<TARGET_FILE:qunleashed_mfkey32>
   $<TARGET_FILE:qunleashed_hardnested>
+  $<TARGET_FILE:qunleashed_faaccrack>
   PARENT_SCOPE
 )
 
@@ -49,10 +50,12 @@ set(PLUGIN_BUNDLED_LIBRARIES
 add_dependencies(${BINARY_NAME} flutter_assemble)
 add_dependencies(${BINARY_NAME} qunleashed_mfkey32)
 add_dependencies(${BINARY_NAME} qunleashed_hardnested)
+add_dependencies(${BINARY_NAME} qunleashed_faaccrack)
 
 add_custom_command(TARGET ${BINARY_NAME} POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_if_different
     $<TARGET_FILE:qunleashed_mfkey32>
     $<TARGET_FILE:qunleashed_hardnested>
+    $<TARGET_FILE:qunleashed_faaccrack>
     $<TARGET_FILE_DIR:${BINARY_NAME}>
 )

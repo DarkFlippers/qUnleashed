@@ -11,16 +11,19 @@ itself, exactly as `.nested.log` collection does for hardnested.
 
 ## State of this directory
 
-**Nothing builds the engine yet** - there is no CMakeLists here, no dispatcher,
-no FFI bridge, and nothing in `lib/` references it. Where the sections below
-describe a dispatcher or a bridge, they describe the shape those will take,
-copied from hardnested's, not a build that has run.
+The library builds on every target. **Nothing in `lib/` calls it yet** - the
+Dart binding and the UI are still to come - so it ships, loads and answers, with
+no caller.
 
 | | |
 |---|---|
 | `faaccrack.h` | the ABI. Hand-written, readable, and the canonical account of what the entry point promises |
 | `faaccrack.c` | the engine. **Generated and obfuscated** - see below |
 | `keep.txt` | the names the obfuscator must not rename, read by the regeneration command |
+| `faaccrack_dispatch.c` | picks the variant for this CPU, and holds the one busy gate for the library |
+| `faaccrack_bridge.c` | the five symbols Dart resolves by name |
+| `CMakeLists.txt` | Windows, Linux and Android. Compiles the engine once per instruction set |
+| `apple/` | the CocoaPods pod: a unity forwarder and its podspec, for iOS and macOS |
 | `test/faaccrack_abi_probe.c` | a C probe that calls the entry point; `.github/scripts/check_faaccrack_engine.sh` builds and runs it |
 | `BUILD_NOTES.md` | this: provenance, regeneration, build wiring |
 
@@ -30,28 +33,12 @@ source arriving under some other name.
 
 ### Remaining work
 
-1. **A known-answer vector per mode**, and it is cheaper than it first looked.
-   The sweep walks upward from seed zero, so a synthetic capture built around a
-   *low* seed solves in milliseconds rather than the minutes a real capture
-   needs - which means it belongs in the per-PR script rather than a nightly
-   bench. One fixture closes three gaps at once: the mode numbering, which
-   nothing currently couples to the header; that a real search finds a real
-   seed; and `round_trip_ok` end to end. `lrkey` is the right thing to assert
-   on, being key-derived and therefore mode-specific. Generating it needs the
-   private kit once; the fixture it produces holds no secret, only a fix, hops
-   and the expected answer.
-2. `faaccrack_dispatch.c`, `faaccrack_bridge.c`, `CMakeLists.txt` and the Apple
-   pod. None exist. The dispatcher also has to carry the single process-wide
-   busy gate, because the engine's own is per compiled variant - `faaccrack.h`
-   says why. `test/hardnested_sources_wired_test.dart` should be parameterised
-   over both libraries at that point rather than copied: faaccrack will have the
-   identical "a source in neither build list" problem.
-3. Dart: the FFI binding, a parser for the capture `.txt`, the `.sub` writer and
+1. Dart: the FFI binding, a parser for the capture `.txt`, the `.sub` writer and
    the UI. The progress struct will be the *third* hand-written Dart mirror of
    the same three words (`_HnProgress` in `hardnested_recoverer.dart` is
    private, which is why `tool/hn_bench.dart` already has a second); publishing
    one of them in `mifare_native.dart` is the way not to add a third.
-4. A shared SIMD capability header under `lib/modules/cpp/`. The cascade in
+2. A shared SIMD capability header under `lib/modules/cpp/`. The cascade in
    `faaccrack.h` re-derives tests that `hardnested/hardnested_bf_core.h` already
    centralises, and that copy carries two quirks this one does not - an
    Apple-clang version guard, and a workaround for clang reporting `__GNUC__` 4
@@ -152,6 +139,24 @@ Two traps worth knowing before regenerating:
 * **No Windows toolchain ships a `cc.exe`,** and Python's `subprocess` will not
   start a `cc.bat` - CreateProcess only tries `.exe`. Regenerate on Linux, macOS
   or WSL. The threads note below is a second reason.
+
+### The known-answer vectors
+
+`test/faaccrack_abi_probe.c` carries a capture per mode with the answer it must
+give. They were generated from this engine by scratch tooling that includes the
+readable source textually, so it is not in the repository; what it emitted is a
+fix, three hops, a seed, an `lrkey` and a counter, none of which is secret.
+
+Two things about them. The seeds are deliberately small, because the sweep walks
+upward from zero - each solves in milliseconds, which is what lets a real
+recovery run on every pull request rather than in a nightly bench. And because
+they came from this engine they pin **drift, not correctness**: they prove mode
+4 still selects whatever mode 4 selected when they were made. That is the
+failure being guarded - a renumbering or a bad regeneration - but a vector
+captured from a real Erreka remote would be stronger and is still worth having.
+
+To regenerate them after an engine change, build the generator against the
+readable source and paste its output over the table in the probe.
 
 `verify_obf.sh` builds both sources, runs six searches - one per mode, a second
 Genius run with one fewer hop, and a no-solution case - writes a `.sub` for each

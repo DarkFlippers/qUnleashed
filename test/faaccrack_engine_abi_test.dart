@@ -37,6 +37,8 @@ final _exemptFromKeep = <String, String>{
   'FAACCRACK_SELFTEST_LAST': 'a range bound for callers, not a status',
   'FAACCRACK_VARIANTS': 'expanded by the dispatcher, not by the engine',
   'FAACCRACK_LAYOUT_CHANGED': 'the text of a static assertion',
+  'FAACCRACK_VARIANT_NAME':
+      'the dispatcher names its own variant with it; the engine does not',
   for (final mode in ['FAAC_SLH', 'BFT', 'GENIUS', 'ERREKA'])
     'FAACCRACK_MODE_$mode': 'the engine hard-codes the mode numbers',
 };

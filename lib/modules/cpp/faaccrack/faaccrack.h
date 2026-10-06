@@ -346,16 +346,28 @@ FAACCRACK_VARIANTS(FAACCRACK_DECLARE_VARIANT_)
 // `vector_size` type scalarises for any target, so without this `#error` a
 // fall-through platform would build a library exporting a variant name no
 // dispatcher has an entry for, and ship with no reachable engine.
+// `FAACCRACK_VARIANT_NAME` is the same choice as a string, for a build that
+// compiled only one object - the Apple pod - where the dispatcher cannot name
+// the others without referencing symbols that do not exist.
 #if defined(__AVX512F__)
 #define FAACCRACK_SEARCH faaccrack_search_AVX512
+#define FAACCRACK_VARIANT_NAME "AVX512"
 #elif defined(__AVX2__)
 #define FAACCRACK_SEARCH faaccrack_search_AVX2
+#define FAACCRACK_VARIANT_NAME "AVX2"
 #elif defined(__AVX__)
 #define FAACCRACK_SEARCH faaccrack_search_AVX
-#elif defined(__aarch64__) || defined(__arm64__) || defined(__ARM_NEON)
+#define FAACCRACK_VARIANT_NAME "AVX"
+#elif defined(__aarch64__) || defined(__arm64__) || defined(__ARM_NEON) || \
+    defined(_M_ARM64)
 #define FAACCRACK_SEARCH faaccrack_search_NEON
-#elif defined(__SSE2__)
+#define FAACCRACK_VARIANT_NAME "NEON"
+// `_M_X64` and `_M_IX86_FP` as well as `__SSE2__`, because MSVC compiles the
+// dispatcher and the bridge even where clang-cl compiles the engine, and MSVC
+// does not define the GCC/Clang spelling. SSE2 is unconditional on x86-64.
+#elif defined(__SSE2__) || defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
 #define FAACCRACK_SEARCH faaccrack_search_SSE2
+#define FAACCRACK_VARIANT_NAME "SSE2"
 #else
 #error "faaccrack: no SIMD variant for this target - the engine needs SSE2, AVX, AVX2, AVX-512 or NEON"
 #endif
@@ -392,5 +404,23 @@ FAACCRACK_VARIANTS(FAACCRACK_DECLARE_VARIANT_)
 //
 // An outside caller wants the bridge's entry point, not this one.
 faaccrack_search_fn FAACCRACK_SEARCH;
+
+// ---- the dispatcher --------------------------------------------------------
+
+// The same search, on whichever variant this CPU can run, with one busy gate
+// for the whole library rather than one per compiled variant.
+//
+// `faaccrack_dispatch.c` is the only translation unit the build compiles once,
+// which is why the gate lives there. Everything inside the library calls this
+// rather than FAACCRACK_SEARCH.
+faaccrack_search_fn faaccrack_search;
+
+// Which variant was selected - "AVX2", "NEON" and so on, or "unknown".
+//
+// Worth having because the difference between the fastest and slowest variant
+// is several-fold, so a machine that is unexpectedly slow is answered by this
+// one string. It is not derivable from the result: `lanes` is the lane count
+// the source was compiled with, which is the same for every variant.
+const char *faaccrack_variant_name(void);
 
 #endif  // QUNLEASHED_FAACCRACK_H

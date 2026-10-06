@@ -17,16 +17,21 @@ const faaccrackKeepPath = '$faaccrackDir/keep.txt';
 /// Every file this directory is allowed to contain, and where the engine's
 /// quoted includes resolve.
 ///
-/// A fifth file under `$faaccrackDir` is how the private engine source arrives
-/// in the repository: `.gitignore` names three basenames, which stops nothing
-/// under a fourth name and nothing at all under `git add -f`. The guard is an
-/// allowlist rather than a denylist for that reason - it does not have to
+/// A file under `$faaccrackDir` that is not listed here is how the private
+/// engine source arrives in the repository: `.gitignore` names three basenames,
+/// which stops nothing under a fourth name and nothing at all under
+/// `git add -f`. An allowlist does not have to
 /// predict what the file would be called.
 const faaccrackAllowedFiles = {
   'faaccrack.c',
   'faaccrack.h',
+  'faaccrack_bridge.c',
+  'faaccrack_dispatch.c',
   'keep.txt',
+  'CMakeLists.txt',
   'BUILD_NOTES.md',
+  'apple/qunleashed_faaccrack.podspec',
+  'apple/qunleashed_faaccrack_unity.c',
   'test/faaccrack_abi_probe.c',
 };
 

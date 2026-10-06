@@ -19,13 +19,10 @@
 //
 // What it cannot see:
 //
-//  * Whether a real search finds a real seed, and whether `round_trip_ok` works
-//    end to end. Both need a sweep that solves. The cheap way to get one is a
-//    synthetic capture with a *low* seed, since the sweep walks upward from
-//    zero - which would also pin the mode numbering. ../BUILD_NOTES.md has it
-//    as the next piece of work.
-//  * Whether the four mode numbers still select the manufacturer the header
-//    says they do. The engine compares its own obfuscated literals.
+//  * Whether the mode numbers are *right*, only that they have not changed. The
+//    known-answer vectors below were generated from this same engine, so they
+//    pin drift rather than initial correctness. A vector captured from a real
+//    Erreka remote would be stronger and remains the eventual goal.
 //  * A valid call with `progress == NULL`. The header allows it, but without a
 //    channel there is no way to stop a sweep, so exercising it would mean
 //    waiting out the whole seed space. Only the refusal path is covered below.
@@ -102,6 +99,77 @@ static void probe_selftests(void) {
     check("an abort set beforehand stops it starting", progress.started == 0);
     check("and publishes no progress", progress.permille == 0);
     check("and starts no workers", progress.threads_started == 0);
+}
+
+// ---- a real recovery, per mode ---------------------------------------------
+
+// A capture each mode must still solve, with the answer it must give.
+//
+// Generated from this engine (the generator is scratch tooling that includes
+// the readable source, so it is not in the repository; ../BUILD_NOTES.md says
+// how). Nothing here is secret: a fix and three hops are ciphertext a receiver
+// sees anyway, and `lrkey` is derived from the seed below it.
+//
+// The seeds are deliberately small. The sweep walks upward from zero, so each
+// of these is found in the first block claimed - milliseconds, which is what
+// lets a real recovery run on every pull request instead of in a nightly bench.
+//
+// What this pins that nothing else can: the four mode numbers. The engine
+// compares its own obfuscated literals rather than the header's macros, so
+// renumbering a mode leaves every other guard green while a user attacking
+// Erreka gets BFT's key and is told no seed exists. `lrkey` is key-derived and
+// therefore mode-specific, which is why it is asserted and not just the seed.
+// It is also the only end-to-end check that a search finds a seed at all, and
+// the only one of `round_trip_ok`.
+struct known_answer {
+    uint32_t mode;
+    uint32_t fix;
+    uint32_t hops[3];
+    uint32_t seed;
+    uint64_t lrkey;
+    uint32_t counter;
+    const char *name;
+};
+
+static const struct known_answer known_answers[] = {
+    {1, 0x12345674u, {0xB3EF9ABBu, 0x3F5E4CF5u, 0x698DCAEEu}, 0x00000123u,
+     0xE98257905E0F8621ull, 0x00113u, "FAAC_SLH"},
+    {2, 0x200342E2u, {0x2F62BE4Bu, 0x1895D794u, 0x367AEB49u}, 0x00000456u,
+     0x45963EF292AAA132ull, 0x1236u, "BFT"},
+    {3, 0xA0DC9330u, {0x293AC619u, 0x1EECA414u, 0xCBCEFBA6u}, 0x00000789u,
+     0x558E9CCBC5945217ull, 0x00224u, "Genius"},
+    // Erreka searches a shuffled form of the seed and two of its bits never
+    // reach the cipher, so this is the value the engine reports back.
+    {4, 0x20345678u, {0x4AB86AACu, 0x04C40F30u, 0xA1988133u}, 0x0600A0BCu,
+     0x96928E898CC2353Dull, 0x4323u, "Erreka"},
+};
+
+static void probe_known_answers(void) {
+    for (size_t i = 0; i < sizeof known_answers / sizeof known_answers[0]; i++) {
+        const struct known_answer *want = &known_answers[i];
+        struct faaccrack_progress progress;
+        struct faaccrack_result got;
+        memset(&progress, 0, sizeof progress);
+
+        const int status = FAACCRACK_SEARCH(want->mode, want->fix, want->hops, 3, 2,
+                                            &progress, &got);
+
+        char label[80];
+        snprintf(label, sizeof label, "%s recovers its seed", want->name);
+        check_eq(label, status, FAACCRACK_OK);
+        if (status != FAACCRACK_OK) continue;
+
+        snprintf(label, sizeof label, "%s seed is %08X", want->name, want->seed);
+        check(label, got.seed == want->seed);
+        snprintf(label, sizeof label, "%s derives the right key", want->name);
+        check(label, got.lrkey == want->lrkey);
+        snprintf(label, sizeof label, "%s rebuilds the captured frame", want->name);
+        check(label, got.round_trip_ok == 1);
+        snprintf(label, sizeof label, "%s reports its counter", want->name);
+        check(label, got.counter == want->counter);
+        snprintf(label, sizeof label, "%s says how many hops backed it", want->name);
+        check(label, got.hops_used == 3);
+    }
 }
 
 // ---- argument refusals, against the engine rather than the CLI -------------
@@ -281,6 +349,7 @@ static void probe_stop(void) {
 int main(void) {
     printf("faaccrack ABI probe: %s\n", PROBE_STRINGIFY(FAACCRACK_SEARCH));
     probe_selftests();
+    probe_known_answers();
     probe_refusals();
     probe_stop();
     printf("\n%s (%d checks, %d failed)\n", failures ? "PROBE FAILED" : "PROBE PASSED",
