@@ -20,6 +20,7 @@ import 'widgets/app_version.dart';
 import 'widgets/tool_item_badge.dart';
 import 'widgets/tool_item_text.dart';
 import '../../devices/device_scope.dart';
+import '../../../services/connection/link_service.dart';
 
 class ToolsPage extends StatelessWidget {
   const ToolsPage({super.key});
@@ -275,6 +276,9 @@ Widget _buildRemoteControlPage(BuildContext context) =>
 
 Future<void> _openCliPage(BuildContext context) async {
   final client = DeviceScope.of(context).client;
-  await Navigator.of(context)
-      .push(MaterialPageRoute(builder: (_) => CliPage(client: client)));
+  await Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (_) => CliPage(client: client, links: LinkService.instance),
+    ),
+  );
 }
