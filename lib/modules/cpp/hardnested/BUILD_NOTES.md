@@ -19,16 +19,44 @@ We deliberately chose this over a from-scratch PM3 port: the PM3 engine uses
 GCC/Clang vector extensions MSVC can't compile, which would have forced clang-cl
 on Windows. This fork adds an `#ifdef _MSC_VER` scalar fallback instead.
 
-## Why no clang / how the SIMD works
-`hardnested_bf_core.c` selects the bitslice type by compiler:
-- GCC/Clang: `__attribute__((vector_size))` → baseline SIMD (SSE2 on x86, NEON on
-  ARM). ~4× the scalar path.
-- MSVC (`_MSC_VER`): plain `uint32_t` scalar (32-wide). Compiles cleanly; slower.
+## How the SIMD works
+`hardnested_bf_core.c` is written against `MAX_BITSLICES` and nothing else, so
+the same source is the 64-bit scalar loop or the 256-bit AVX2 one depending only
+on what the compiler was told to target. The width and the exported function
+names are both chosen from the predefined macros (`__AVX2__`, `__SSE2__`, …), in
+`hardnested_bf_core.h`, so the core and the dispatcher cannot disagree.
 
-It is a **single variant** (no per-ISA AVX2 dispatch), so the build is simple and
-portable. Trade-off: Windows-MSVC runs scalar (~8× slower than AVX2), fine for a
-companion app; Linux/macOS/Android get baseline SIMD. Fast AVX2 would require
-clang-cl on Windows and per-ISA object libraries - intentionally not done.
+- GCC/Clang: `__attribute__((vector_size))` → the platform baseline, one object
+  (SSE2 on x86, NEON on ARM).
+- MSVC: cannot compile those vector extensions, so its object is the 64-bit
+  scalar loop.
+- **Windows also builds AVX512/AVX2/AVX/SSE2 objects with clang-cl**, which
+  emits MSVC-ABI objects that link into the DLL MSVC builds.
+  `hardnested_bf_dispatch.c` picks between them at runtime with `cpuid`, and
+  only after `xgetbv` says the OS preserves the wide registers.
+
+clang-cl is **looked up, not required**: without it the build is exactly what
+shipped before, just slow, and CMake says so. Install the VS *"C++ Clang tools
+for Windows"* component (or standalone LLVM) for the fast build.
+
+The dispatcher lives in its own translation unit because the core is now
+compiled several times and only one copy of the function pointers may exist.
+
+### What this replaced
+A single scalar variant on Windows with the dispatch stubbed out -
+`GetSIMDInstr()` returned `SIMD_NONE` unconditionally and the dispatcher
+assigned `crack_states_bitsliced_NOSIMD` whatever the CPU could do. The note
+here called that an intentional trade-off (~8× off AVX2), which it was while no
+other variant compiled.
+
+It also carried a bug: MSVC's `bitslice_value_t` was `uint32_t` while
+`MAX_BITSLICES` was 64 and `VECTOR_SIZE` 8. `bs_ones` is built with
+`memset(bytes, 0xff, VECTOR_SIZE)`, so assigning through `.value` wrote four of
+eight bytes and left the rest as `malloc` found them, while
+`results.bytes64[0] == 0` and `get_vector_bit()` read all eight. Half of every
+block went through the crypto uninitialised and was read back out as though it
+had been tested. The scalar type is `uint64_t` now, and an `#error` guards the
+pairing.
 
 ## Tables
 The ~319 bitflip state tables are **embedded** (XZ-compressed) in

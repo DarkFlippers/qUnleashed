@@ -71,6 +71,63 @@ THE SOFTWARE.
 #define arm_has_neon() (false)
 #endif
 
+// Set by the build for every translation unit when it compiles the per-ISA
+// variants with a second toolchain. Without it the dispatcher is compiled by
+// MSVC, whose own predefined macros say nothing about what the *variants* were
+// built for - so the enum below would not have a name for AVX2 while an object
+// implementing it sat in the same library.
+//
+// Each define is guarded on itself, not on the other: COMPILER_HAS_SIMD_AVX512
+// is otherwise reachable only through the `__GNUC__ >= 5` test above, and clang
+// reports 4 - so on clang-cl, which already defines __x86_64__, a single
+// combined guard left SIMD_AVX512 out of the enum in the variant translation
+// units while the MSVC-compiled dispatcher had it. Every enumerator after it
+// then had a different value in the two halves of one library.
+#if defined(QUNLEASHED_HN_SIMD_VARIANTS)
+#ifndef COMPILER_HAS_SIMD_X86
+#define COMPILER_HAS_SIMD_X86
+#endif
+#ifndef COMPILER_HAS_SIMD_AVX512
+#define COMPILER_HAS_SIMD_AVX512
+#endif
+#endif
+
+// What this translation unit is being compiled as: the variant's exported
+// names and the bitslice width, chosen together from what the compiler was told
+// to target.
+//
+// One cascade, because three places need to agree and two of them had already
+// drifted - the names were picked here and the width in the .c, in a different
+// order, in the same commit. The core now takes MAX_BITSLICES from here, so a
+// variant cannot be named one thing and sized another.
+#if defined(__AVX512F__)
+#define HN_CRACK_VARIANT crack_states_bitsliced_AVX512
+#define HN_TEST_VARIANT bitslice_test_nonces_AVX512
+#define HN_MAX_BITSLICES 512
+#elif defined(__AVX2__)
+#define HN_CRACK_VARIANT crack_states_bitsliced_AVX2
+#define HN_TEST_VARIANT bitslice_test_nonces_AVX2
+#define HN_MAX_BITSLICES 256
+#elif defined(__AVX__)
+#define HN_CRACK_VARIANT crack_states_bitsliced_AVX
+#define HN_TEST_VARIANT bitslice_test_nonces_AVX
+#define HN_MAX_BITSLICES 256
+#elif defined(COMPILER_HAS_SIMD_NEON)
+// The capability macro rather than __ARM_NEON directly: it also covers Apple's
+// __arm64__, which the two hand-rolled cascades this replaced did not.
+#define HN_CRACK_VARIANT crack_states_bitsliced_NEON
+#define HN_TEST_VARIANT bitslice_test_nonces_NEON
+#define HN_MAX_BITSLICES 128
+#elif defined(__SSE2__)
+#define HN_CRACK_VARIANT crack_states_bitsliced_SSE2
+#define HN_TEST_VARIANT bitslice_test_nonces_SSE2
+#define HN_MAX_BITSLICES 128
+#else
+#define HN_CRACK_VARIANT crack_states_bitsliced_NOSIMD
+#define HN_TEST_VARIANT bitslice_test_nonces_NOSIMD
+#define HN_MAX_BITSLICES 64
+#endif
+
 typedef enum
 {
     SIMD_AUTO,

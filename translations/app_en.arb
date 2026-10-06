@@ -4343,6 +4343,7 @@
     "description": "Body of the stop confirmation dialog."
   },
 
+  "mfRunAgain": "Run again",
   "mfStopConfirm": "Stop",
   "@mfStopConfirm": {
     "description": "Button that stops the running key recovery."

@@ -228,9 +228,10 @@ static void *
             }
             else if (keys_found || qunleashed_hn_aborted())
             {
-                // Checked where the engine already gives up: a stop then costs
-                // one bucket instead of the whole attack, and unwinds through
-                // the same path a found key does.
+                // The second of the three abort checks. The core returns at
+                // the next block now, so by here the bucket is already
+                // abandoned; this is what stops the thread taking another one,
+                // and it unwinds through the same path a found key does.
                 break;
             }
             else
@@ -238,10 +239,12 @@ static void *
                 const double done = thread_arg->maximum_states
                                         ? (double)num_keys_tested / (double)(thread_arg->maximum_states)
                                         : 0.0;
-                // Outside the printing gate on purpose: `silent` is about
-                // stdout, which on a phone is nowhere, and this is the only
-                // progress anything can read.
-                qunleashed_hn_report_permille((uint32_t)(done * 1000.0));
+                // The percentage used to be published from here, once a whole
+                // bucket had finished - which on a slow build is tens of
+                // minutes, so an attack reported nothing at all until long
+                // after it looked hung. It is reported from inside the bucket
+                // now (hardnested_bf_core.c), and `done` is left to the printed
+                // line below, which is the engine's own running commentary.
                 if (!thread_arg->silent)
                 {
                     char progress_text[80];
@@ -411,6 +414,13 @@ bool brute_force_bs(float *bf_rate, statelist_t *candidates, uint32_t cuid, uint
     bitslice_test_nonces(nonces_to_bruteforce, bf_test_nonce, bf_test_nonce_par);
 
     // count number of states to go
+    // The denominator for the percentage the workers publish - see the header.
+    // Before the bucket counting below, because that can fail and return: a
+    // guess that never gets this far would otherwise leave the *previous*
+    // guess's 100% on the channel while the attack ran on, which is the pinned
+    // bar this whole change exists to remove.
+    qunleashed_hn_set_total(maximum_states);
+
     bucket_count = 0;
     for (statelist_t *p = candidates; p != NULL; p = p->next)
     {

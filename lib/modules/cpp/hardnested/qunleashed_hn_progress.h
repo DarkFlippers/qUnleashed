@@ -40,16 +40,24 @@ typedef struct {
   // short, and inventing a number for them would be worse than an honest
   // "working".
   volatile uint32_t permille;
-  // Set by the caller to ask the attack to stop. Checked in two places: the
-  // brute-force worker loop, where a stop costs at most the bucket in hand, and
-  // the Sum(a8) guess loop that drives it, which would otherwise walk every
-  // remaining guess because an aborted brute force reports no key. A stop is
-  // therefore bounded but not immediate - the phases before the brute force
-  // (table decompression, nonce ingestion, candidate generation) do not consult
-  // it, and a Stop during one of those waits it out.
+  // Set by the caller to ask the attack to stop. Checked in three places: every
+  // block inside the brute force, so a stop costs one block rather than the
+  // bucket in hand; the bucket loop around it; and the Sum(a8) guess loop that
+  // drives both, which would otherwise walk every remaining guess because an
+  // aborted brute force reports no key. A stop is therefore bounded but not
+  // immediate - the phases before the brute force (table decompression, nonce
+  // ingestion, candidate generation) do not consult it, and a Stop during one of
+  // those waits it out.
+  //
+  // The finest check used to be the bucket boundary, which on the scalar Windows
+  // build meant tens of minutes: the button greyed out and the attack carried
+  // on. The phases outside the brute force are unchanged - a Stop during
+  // candidate generation still waits for it.
   volatile uint32_t abort;
-  // Set by the engine once the brute force is live, so the caller can tell "no
-  // progress yet" from "zero percent".
+  // Set the first time a percentage is published, so the caller can tell "no
+  // progress yet" from "zero percent". qunleashed_hn_set_total publishes a zero
+  // before the workers start, so in practice it is set for the whole of a
+  // brute force and clear for the phases before it.
   volatile uint32_t started;
 } qunleashed_hn_progress;
 
@@ -68,5 +76,24 @@ int qunleashed_hn_progress_busy(void);
 // Engine-side helpers. Safe to call with no channel installed.
 void qunleashed_hn_report_permille(uint32_t permille);
 int qunleashed_hn_aborted(void);
+
+// Declares how many states the brute force about to start will test, and
+// resets the count. Called once per Sum(a8) guess, since each guess searches a
+// candidate set of its own - which is why the bar restarts rather than
+// continuing: it is a new search, and pretending otherwise would be a
+// percentage of nothing in particular.
+void qunleashed_hn_set_total(uint64_t total_states);
+
+// Adds to the tested count and republishes the percentage, when there is a
+// total to divide by - a guess that declared none reports nothing rather than a
+// figure of its own invention.
+//
+// Called from every brute-force worker thread, many times per bucket. That is
+// the point: the engine used to report once per *completed* bucket, and a
+// bucket on a slow build runs for tens of minutes, so the first report of an
+// attack arrived long after the user had decided it was hung. The counter it
+// divided by was advanced at the same bucket boundary, so there was nothing
+// finer to report even if it had asked.
+void qunleashed_hn_add_tested(uint64_t states);
 
 #endif  // QUNLEASHED_HN_PROGRESS_H
