@@ -6,6 +6,11 @@
     "description": "Application name shown in the OS task switcher. Product name, keep untranslated."
   },
 
+  "languageName": "English",
+  "@languageName": {
+    "description": "This language's own name, for the list in Settings -> Language. Translate it as the name of YOUR language written in YOUR language - Deutsch, Русский, Українська - not as a translation of the word \"English\". It is the one entry every language carries a different answer to, and it is what the picker shows for that language whatever the app is currently running in."
+  },
+
   "settingsLanguageTitle": "Language",
   "@settingsLanguageTitle": {
     "description": "Title of the language settings screen and of its tile on the Settings screen."
