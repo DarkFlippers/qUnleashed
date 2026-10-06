@@ -29,6 +29,18 @@ jobs:
           upload_sources: false
           upload_translations: false
           download_translations: true
+          # Without this, Crowdin fills an untranslated string with the source
+          # language - its own words for the option: "strings without approval
+          # are fulfilled with the source language". So a language enabled in
+          # the project but not yet worked on comes back as a complete file of
+          # English, `gen-l10n` generates a locale for it, and the picker offers
+          # a language the app does not speak. #141 shipped exactly that for
+          # Ukrainian: 1293 strings, none of them Ukrainian.
+          #
+          # Not `skip_untranslated_files`, which omits a file that is not
+          # *fully* translated - Russian is 1293 of 1307 keys, so that would
+          # drop it the first time an English string is added.
+          skip_untranslated_strings: true
           localization_branch_name: l10n/crowdin
           create_pull_request: true
           pull_request_title: "New translations from Crowdin"
