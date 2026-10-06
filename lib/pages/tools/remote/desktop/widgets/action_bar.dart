@@ -1,5 +1,3 @@
-import '../../../../../services/localization/l10n.dart';
-
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -7,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../../../components/icon.dart';
+import '../../../../../services/localization/l10n.dart';
 import '../../../../../theme/theme.dart';
 import '../gif_recorder.dart';
 import '../layout.dart';
@@ -21,6 +20,7 @@ class RemoteActionBar extends StatelessWidget {
     required this.justUnlocked,
     required this.savingScreenshot,
     required this.onBack,
+    required this.onConnection,
     required this.onCopy,
     required this.onSave,
     required this.onUnlock,
@@ -36,6 +36,7 @@ class RemoteActionBar extends StatelessWidget {
   final bool justUnlocked;
   final bool savingScreenshot;
   final VoidCallback onBack;
+  final VoidCallback onConnection;
   final AsyncCallback onCopy;
   final AsyncCallback onSave;
   final AsyncCallback onUnlock;
@@ -71,12 +72,25 @@ class RemoteActionBar extends StatelessWidget {
         children: [
           Align(
             alignment: Alignment.centerLeft,
-            child: _Pill(
-              scale: scale,
-              width: RemoteActionBarGeometry.backWidth,
-              icon: Icons.chevron_left_rounded,
-              label: context.l10n.remoteBack,
-              onTap: onBack,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _Pill(
+                  scale: scale,
+                  width: RemoteActionBarGeometry.pillHeight,
+                  icon: Icons.chevron_left_rounded,
+                  tooltip: context.l10n.remoteBack,
+                  onTap: onBack,
+                ),
+                SizedBox(width: RemoteActionBarGeometry.pillGap * scale),
+                _Pill(
+                  scale: scale,
+                  width: RemoteActionBarGeometry.pillHeight,
+                  icon: Icons.search,
+                  tooltip: context.l10n.connectSearch,
+                  onTap: onConnection,
+                ),
+              ],
             ),
           ),
           Align(
@@ -147,15 +161,17 @@ class _Pill extends StatelessWidget {
   const _Pill({
     required this.width,
     required this.scale,
-    required this.label,
     required this.onTap,
+    this.label,
+    this.tooltip,
     this.icon,
     this.asset,
   });
 
   final double width;
   final double scale;
-  final String label;
+  final String? label;
+  final String? tooltip;
   final VoidCallback? onTap;
   final IconData? icon;
   final String? asset;
@@ -163,7 +179,7 @@ class _Pill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final badge = QIconBadgeStyle.of(context, context.appColors.accent);
-    return GestureDetector(
+    final pill = GestureDetector(
       onTap: onTap,
       child: _Shell(
         width: width,
@@ -185,25 +201,29 @@ class _Pill extends StatelessWidget {
               )
             else if (icon != null)
               Icon(icon, size: 22, color: badge.foreground),
-            const SizedBox(width: 8),
-            Flexible(
-              child: Text(
-                label,
-                maxLines: 1,
-                softWrap: false,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 15,
-                  height: 1,
-                  fontWeight: FontWeight.w600,
-                  color: badge.foreground,
+            if (label != null) ...[
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  label!,
+                  maxLines: 1,
+                  softWrap: false,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 15,
+                    height: 1,
+                    fontWeight: FontWeight.w600,
+                    color: badge.foreground,
+                  ),
                 ),
               ),
-            ),
+            ],
           ],
         ),
       ),
     );
+    final message = tooltip;
+    return message == null ? pill : Tooltip(message: message, child: pill);
   }
 }
 

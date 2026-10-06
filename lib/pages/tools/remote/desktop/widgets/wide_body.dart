@@ -27,6 +27,7 @@ class RemoteWideBody extends StatelessWidget {
     required this.justUnlocked,
     required this.savingScreenshot,
     required this.onBack,
+    required this.onConnection,
     required this.onCopy,
     required this.onSave,
     required this.onUnlock,
@@ -49,6 +50,7 @@ class RemoteWideBody extends StatelessWidget {
   final bool justUnlocked;
   final bool savingScreenshot;
   final VoidCallback onBack;
+  final VoidCallback onConnection;
   final AsyncCallback onCopy;
   final AsyncCallback onSave;
   final AsyncCallback onUnlock;
@@ -132,6 +134,7 @@ class RemoteWideBody extends StatelessWidget {
                         justUnlocked: justUnlocked,
                         savingScreenshot: savingScreenshot,
                         onBack: onBack,
+                        onConnection: onConnection,
                         onCopy: onCopy,
                         onSave: onSave,
                         onUnlock: onUnlock,

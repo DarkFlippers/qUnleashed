@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:qunleashed/components/appbar.dart';
 
 import '../../../../services/guarded.dart';
+import '../../../../components/dialogs/connection.dart';
 import '../../../../components/notification.dart';
 import '../../../../services/localization/l10n.dart';
 import '../../../../services/logging.dart';
@@ -30,9 +31,11 @@ class RemoteControlPage extends StatefulWidget {
     @visibleForTesting this.mediaRemoteSupported,
   });
 
-  /// The Flipper this session runs on. Required rather than defaulted, so a
-  /// desktop opened from one device cannot end up driving another, and a test
-  /// passes a fake so the wire is observable. ADR 0002.
+  /// The link this session runs on. Required rather than defaulted, so a test
+  /// passes a fake and the wire is observable. ADR 0002.
+  ///
+  /// The session follows the Flipper active on it: switching devices moves the
+  /// screen and the buttons to the new one rather than leaving them on the old.
   final FlipperClient client;
 
   /// Overrides the bridge's `Platform.isAndroid` gate. Wrist Remote is
@@ -301,6 +304,10 @@ class _RemoteControlPageState extends State<RemoteControlPage>
     Navigator.of(context).pop();
   }
 
+  void _onConnection() => unawaited(
+    guarded('[Remote] connection dialog', () => promptConnectDevice(context)),
+  );
+
   Future<void> _openWristRemoteSettings() async {
     Object? startError;
     try {
@@ -438,12 +445,13 @@ class _RemoteControlPageState extends State<RemoteControlPage>
       frameListenable: _session.frameListenable,
       queue: _session.queue,
       orientation: _session.orientation,
-      connected: !_session.isDisconnected,
+      connected: _session.inputAvailable,
       gifState: _gifRecorder.state,
       gifElapsedMs: _gifRecorder.elapsedMs,
       justUnlocked: _session.justUnlocked,
       savingScreenshot: _savingScreenshot,
       onBack: _close,
+      onConnection: _onConnection,
       onCopy: _copyScreenshot,
       onSave: _saveScreenshot,
       onUnlock: _session.unlock,
@@ -494,12 +502,18 @@ class _RemoteControlPageState extends State<RemoteControlPage>
                     icon: const Icon(Icons.arrow_back),
                   ),
                   actions: [
+                    IconButton(
+                      tooltip: context.l10n.connectSearch,
+                      onPressed: _onConnection,
+                      icon: const Icon(Icons.search),
+                    ),
                     if (_mediaRemote.supported)
                       IconButton(
                         tooltip: context.l10n.wristRemoteMappingTitle,
                         onPressed: _openWristRemoteSettings,
                         icon: const Icon(Icons.watch_outlined),
                       ),
+                    const SizedBox(width: 8),
                   ],
                 ),
           body: SafeArea(
