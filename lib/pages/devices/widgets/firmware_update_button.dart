@@ -160,7 +160,7 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
             progressColor: fillColor,
             progress: isIndeterminate ? null : progress?.value,
             indeterminate: isIndeterminate,
-            onPressed: state.enabled ? _onPressed : null,
+            onPressed: (state.enabled && !_starting) ? _onPressed : null,
             textStyle: ProgressButton.defaultTextStyle.copyWith(
               color: QAppColors.onColorFor(borderColor),
             ),
@@ -182,9 +182,37 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
     );
   }
 
-  Future<void> _onPressed() async {
-    if (_inProgress) return;
+  // True from the moment the handler is entered until the tracker has a state
+  // of its own.
+  //
+  // _inProgress cannot do this job: it is derived from the tracker, which only
+  // learns about an update at _tracker.publish() - and on the custom-archive
+  // branch that is *after* an await on a native file picker. For the picker's
+  // whole lifetime the button stayed enabled and this handler re-entrant, so
+  // two picks ran two concurrent FirmwareInstaller.install calls: interleaved
+  // storageWriteChunked into the same /ext/update/<dir>, and two runUpdate
+  // commands. The remote branch has no such gap, because everything before
+  // publish() there is synchronous.
+  //
+  // Part of the button's enabled condition as well as the handler's guard, so a
+  // second click is refused rather than silently doing nothing.
+  bool _starting = false;
 
+  Future<void> _onPressed() async {
+    if (_inProgress || _starting) return;
+    setState(() => _starting = true);
+    try {
+      await _startUpdate();
+    } finally {
+      if (mounted) {
+        setState(() => _starting = false);
+      } else {
+        _starting = false;
+      }
+    }
+  }
+
+  Future<void> _startUpdate() async {
     if (!widget.client.isConnected && !_dfuPresent) {
       QNotification.show(
         context,
@@ -205,6 +233,12 @@ class _FirmwareUpdateButtonState extends State<FirmwareUpdateButton> {
       );
       final picked = result?.files.single.path;
       if (picked == null) return;
+      // The picker is the one await here that can outlive this widget - the
+      // dialog is modal to the OS, not to Flutter, so the page behind it can be
+      // navigated away or rebuilt while it is open. Without this the setState
+      // below throws "setState() called after dispose()" from an async gap, and
+      // the flash starts anyway with nothing on screen to report it.
+      if (!mounted) return;
       source = LocalFirmwareSource(picked);
     } else {
       source = RemoteFirmwareSource(

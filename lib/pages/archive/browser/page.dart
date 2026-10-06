@@ -102,25 +102,45 @@ class _FileManagerPageState extends State<FileManagerPage> {
     super.dispose();
   }
 
-  void _onEntryTap(RemoteEntry e) {
+  // Which paths are mid-open. Opening a file downloads it and *then* pushes a
+  // route, and neither step cared that the last tap was still running - so on a
+  // desktop, where a double click is one gesture, a heavy file was fetched twice
+  // over and two identical viewers ended up stacked on the navigator, each to be
+  // dismissed separately.
+  //
+  // Keyed on the path rather than a single bool: opening two *different* files
+  // at once is legitimate, and the controller already reports per-entry progress
+  // for exactly that. A bare flag would have made the second file silently
+  // ignored.
+  final Set<String> _opening = {};
+
+  Future<void> _onEntryTap(RemoteEntry e) async {
     if (_selectionMode) {
       _toggleSelect(e);
       return;
     }
+    final path = _ctrl.childPath(e.name);
     if (e.isDir) {
-      _ctrl.open(_ctrl.childPath(e.name));
+      // Not guarded: a listing is cheap, it replaces the view rather than
+      // stacking on it, and nothing is downloaded.
+      await _ctrl.open(path);
       return;
     }
-    final ext = e.extension;
-    if (ext == 'fap') {
-      _launchFap(_ctrl.childPath(e.name));
-      return;
+    if (!_opening.add(path)) return;
+    try {
+      if (e.extension == 'fap') {
+        await _launchFap(path);
+      } else if (_isPaintFile(e)) {
+        await _openPaintEditor(path);
+      } else {
+        await _openTextEditor(e);
+      }
+    } finally {
+      // Not in setState: nothing on screen reads this, and the viewer closing
+      // rebuilds the list anyway. Cleared even once the page has gone, so a
+      // path left in the set cannot wedge a later open of the same file.
+      _opening.remove(path);
     }
-    if (_isPaintFile(e)) {
-      _openPaintEditor(_ctrl.childPath(e.name));
-      return;
-    }
-    _openTextEditor(e);
   }
 
   Future<void> _navigateTo(String path) async {
