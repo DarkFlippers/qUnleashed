@@ -110,7 +110,18 @@ if(MSVC)
     set(HN_VARIANT_OBJECTS "")
     # AVX512 is included because the dispatcher only reaches it on a CPU *and*
     # an OS that both say so; machines without it never load that object.
+    #
+    # No SSE2 in this list: it is the x86-64 baseline, so clang-cl defines
+    # __SSE2__ without being asked and rejects /arch:SSE2 as invalid for a
+    # 64-bit target. The variant it would have built is the one the unflagged
+    # compile already produces, which is why the flagless entry below is the
+    # SSE2 object the dispatcher looks for.
     foreach(variant AVX512 AVX2 AVX SSE2)
+      if("${variant}" STREQUAL "SSE2")
+        set(hn_arch_flag "")
+      else()
+        set(hn_arch_flag "/arch:${variant}")
+      endif()
       set(hn_obj "${CMAKE_CURRENT_BINARY_DIR}/hn_bf_core_${variant}.obj")
       add_custom_command(
         OUTPUT "${hn_obj}"
@@ -119,7 +130,7 @@ if(MSVC)
           # Must match what CMake gives the rest of this target, or the two
           # halves of the library would want different C runtimes.
           $<IF:$<CONFIG:Debug>,/MDd,/MD>
-          "/arch:${variant}"
+          ${hn_arch_flag}
           /DQUNLEASHED_HN_SIMD_VARIANTS
           /D_CRT_SECURE_NO_WARNINGS
           # The same force-include every other source in this target gets, so
