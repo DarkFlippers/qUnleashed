@@ -7,7 +7,6 @@ import 'package:qunleashed/components/appbar.dart';
 import '../../../../services/guarded.dart';
 import '../../../../components/dialogs/connection.dart';
 import '../../../../components/notification.dart';
-import '../../../../services/connection/link_service.dart';
 import '../../../../services/localization/l10n.dart';
 import '../../../../services/logging.dart';
 import '../../../../theme/theme.dart';
@@ -303,26 +302,9 @@ class _RemoteControlPageState extends State<RemoteControlPage>
     Navigator.of(context).pop();
   }
 
-  void _onConnection() {
-    if (_session.inputAvailable) {
-      unawaited(guarded('[Remote] disconnect', _disconnect));
-    } else {
-      unawaited(
-        guarded('[Remote] connect', () => promptConnectDevice(context)),
-      );
-    }
-  }
-
-  Future<void> _disconnect() async {
-    final client = _session.client;
-    final device = client.connectedDevice ?? client.connectingDevice;
-    if (device == null) return;
-    await LinkService.instance.disconnectDevice(
-      device,
-      id: device.id,
-      link: device.link,
-    );
-  }
+  void _onConnection() => unawaited(
+    guarded('[Remote] connection dialog', () => promptConnectDevice(context)),
+  );
 
   Future<void> _openWristRemoteSettings() async {
     Object? startError;
@@ -519,13 +501,9 @@ class _RemoteControlPageState extends State<RemoteControlPage>
                   ),
                   actions: [
                     IconButton(
-                      tooltip: _session.inputAvailable
-                          ? context.l10n.pickerDisconnect
-                          : context.l10n.connectSearch,
+                      tooltip: context.l10n.connectSearch,
                       onPressed: _onConnection,
-                      icon: Icon(
-                        _session.inputAvailable ? Icons.link_off : Icons.search,
-                      ),
+                      icon: const Icon(Icons.search),
                     ),
                     if (_mediaRemote.supported)
                       IconButton(
@@ -533,6 +511,7 @@ class _RemoteControlPageState extends State<RemoteControlPage>
                         onPressed: _openWristRemoteSettings,
                         icon: const Icon(Icons.watch_outlined),
                       ),
+                    const SizedBox(width: 8),
                   ],
                 ),
           body: SafeArea(

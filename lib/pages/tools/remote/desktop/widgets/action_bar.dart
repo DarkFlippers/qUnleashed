@@ -19,7 +19,6 @@ class RemoteActionBar extends StatelessWidget {
     required this.justUnlocked,
     required this.savingScreenshot,
     required this.onBack,
-    this.linked = false,
     this.onConnection,
     required this.onCopy,
     required this.onSave,
@@ -35,7 +34,6 @@ class RemoteActionBar extends StatelessWidget {
   final int gifElapsedMs;
   final bool justUnlocked;
   final bool savingScreenshot;
-  final bool linked;
   final VoidCallback onBack;
   final VoidCallback? onConnection;
   final AsyncCallback onCopy;
@@ -86,7 +84,7 @@ class RemoteActionBar extends StatelessWidget {
                 _Pill(
                   scale: scale,
                   width: RemoteActionBarGeometry.pillHeight,
-                  icon: linked ? Icons.link_off : Icons.search,
+                  icon: Icons.search,
                   onTap: onConnection,
                 ),
               ],

@@ -133,7 +133,6 @@ class RemoteWideBody extends StatelessWidget {
                         gifElapsedMs: gifElapsedMs,
                         justUnlocked: justUnlocked,
                         savingScreenshot: savingScreenshot,
-                        linked: connected,
                         onBack: onBack,
                         onConnection: onConnection,
                         onCopy: onCopy,
