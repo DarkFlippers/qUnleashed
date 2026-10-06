@@ -89,7 +89,11 @@ THE SOFTWARE.
 #endif
 #define VECTOR_SIZE (MAX_BITSLICES / 8)
 
-#ifdef _MSC_VER
+// Keyed on "cannot compile the vector extensions", not on the compiler being
+// MSVC: clang-cl defines _MSC_VER too, and it is the whole reason the variants
+// below exist. Guarding this on _MSC_VER alone sent every clang-cl variant down
+// the scalar branch, where the width assertion then rejected it.
+#if defined(_MSC_VER) && !defined(__clang__)
 #include <Windows.h>
 #define atomic_add(num, val) (InterlockedExchangeAdd(num, val) + val)
 // uint64_t, not uint32_t. MSVC cannot compile the vector extensions below, so
