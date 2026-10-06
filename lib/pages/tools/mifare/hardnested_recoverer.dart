@@ -234,12 +234,35 @@ class NativeHardnestedRecoverer implements HardnestedRecoverer {
     });
 
     try {
-      return await Isolate.run(() => _recoverInIsolate(payload));
+      return await _spawnAttack(payload);
     } finally {
       poll.cancel();
       calloc.free(channel);
     }
   }
+
+  /// Spawns the attack with [payload] as the only thing the sent closure can
+  /// reach.
+  ///
+  /// Its own method, and that is the whole point - do not inline it back into
+  /// [recoverKey]. A closure captures the context of the scope it is written
+  /// in, not merely the variables it mentions, so written inline beside
+  /// `isCancelled` and `onProgress` it also carried them. Those close over the
+  /// RecoverController, which holds a FlipperClient, which holds a Future -
+  /// and a Future cannot cross an isolate boundary. `Isolate.run` therefore
+  /// threw before the engine started, every time:
+  ///
+  ///   Illegal argument in isolate message: object is unsendable
+  ///     - Library:'dart:async' Class: _Future
+  ///     <- Instance of 'FlipperClient'
+  ///     <- Instance of 'RecoverController'
+  ///
+  /// which the caller reported as "the engine failed" - so hardnested looked
+  /// broken rather than un-started, and no progress ever appeared because no
+  /// attack ever ran. Here the enclosing scope holds one variable, so there is
+  /// nothing else to drag along.
+  static Future<HardnestedResult> _spawnAttack(_HardnestedPayload payload) =>
+      Isolate.run(() => _recoverInIsolate(payload));
 
   /// The engine's peak, which is the same for the life of the process.
   ///

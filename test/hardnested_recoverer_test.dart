@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/tools/mifare/hardnested_recoverer.dart';
 
@@ -41,6 +43,62 @@ void main() {
       );
       expect(result.key, isNull);
       expect(result.outcome, HardnestedOutcome.noKey);
+    });
+  });
+
+  // The attack runs in an isolate, so whatever the spawned closure can reach
+  // has to be sendable. It reached too much: written inline beside
+  // `isCancelled`, the closure captured its enclosing scope - and that
+  // predicate closes over the RecoverController, which holds a FlipperClient,
+  // which holds a Future. Isolate.run threw "object is unsendable" before the
+  // engine started, every single time, and the caller reported it as the engine
+  // failing. Hardnested was not slow or wrong; it never ran.
+  //
+  // Needs no device: the spawn is rejected before any native code is reached,
+  // so the failure is visible here. In this suite the engine is absent, so a
+  // healthy spawn fails *inside* the isolate with NativeEngineUnavailable -
+  // a different error, which is exactly what makes the two distinguishable.
+  group('the attack isolate', () {
+    test('captures nothing but its payload', () async {
+      // Stands in for the controller's `() => _stopping`: a predicate closing
+      // over something that cannot cross an isolate boundary.
+      final unsendable = Completer<void>();
+      Object? thrown;
+      try {
+        await NativeHardnestedRecoverer().recoverKey(
+          cuid: 0x11223344,
+          ntEnc: const [1, 2],
+          parEnc: const [0, 0],
+          isCancelled: () => unsendable.isCompleted,
+          onProgress: (_) {},
+        );
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(
+        thrown?.toString() ?? '',
+        isNot(contains('unsendable')),
+        reason: 'the spawned closure must not reach the calling scope',
+      );
+    });
+
+    test('a cancelling predicate is honoured without crossing over', () async {
+      // The predicate belongs to this side - it is polled by the timer here,
+      // never sent - so one that answers true must still produce an orderly
+      // result rather than a spawn failure.
+      Object? thrown;
+      try {
+        await NativeHardnestedRecoverer().recoverKey(
+          cuid: 0x11223344,
+          ntEnc: const [1, 2],
+          parEnc: const [0, 0],
+          isCancelled: () => true,
+        );
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown?.toString() ?? '', isNot(contains('unsendable')));
     });
   });
 
