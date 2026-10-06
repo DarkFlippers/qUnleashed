@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 
 import 'app/app.dart';
 import 'app/bootstrap.dart';
-import 'app/shutdown.dart';
 import 'app/routes.dart';
+import 'app/shutdown.dart';
 import 'services/localization/controller.dart';
 import 'services/assembler/controller.dart';
 import 'services/connection/foreground_service.dart';

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flipperlib/flipperlib.dart';
 import 'package:window_manager/window_manager.dart';
 
+import '../services/connection/link_service.dart';
 import '../services/guarded.dart';
 import '../services/logging.dart';
 
@@ -25,9 +26,24 @@ import '../services/logging.dart';
 /// Desktop only. Android and iOS get no window-close event, their platforms
 /// reclaim resources on process death, and `window_manager` does nothing there.
 class AppShutdown with WindowListener {
-  AppShutdown(this._client);
+  AppShutdown(
+    this._client, {
+    LinkService? links,
+    void Function(int code)? exitProcess,
+  }) : _links = links ?? LinkService.instance,
+       _exit = exitProcess ?? exit;
 
   final FlipperClient _client;
+
+  /// The keeper that reconnects on its own. Taken as a parameter so a test can
+  /// see that it is suspended; the app passes nothing and gets the singleton
+  /// every other caller uses.
+  final LinkService _links;
+
+  /// `dart:io`'s [exit] in the app, a recorder in a test - calling the real one
+  /// there would take the test runner down with it.
+  final void Function(int code) _exit;
+
   bool _closing = false;
 
   static bool get _isDesktop =>
@@ -43,10 +59,17 @@ class AppShutdown with WindowListener {
     if (!_isDesktop) return;
     await guarded('[Shutdown] install the window hook', () async {
       await windowManager.ensureInitialized();
+      // Listener first. `setPreventClose` is applied natively before its reply
+      // comes back, so a channel failure after a successful call would leave
+      // prevent-close on with nothing handling the close it intercepts - a
+      // window that cannot be closed at all, announced by one startup log line
+      // nobody has reason to read until they try to quit. Adding a listener is
+      // a list insertion and cannot fail, so in this order there is no such
+      // gap.
+      windowManager.addListener(this);
       // The window would otherwise close while dispose() was still awaiting a
       // disconnect, which is the whole problem.
       await windowManager.setPreventClose(true);
-      windowManager.addListener(this);
     });
   }
 
@@ -67,16 +90,50 @@ class AppShutdown with WindowListener {
     _closing = true;
     LogService.warn('[Shutdown] releasing the link before exit');
 
-    // Bounded, because the window is already unresponsive by now. A device that
-    // will not answer its disconnect must not hold the app open indefinitely -
-    // better to leak a handle to a process that is about to die than to look
-    // hung. dispose() is best-effort here for the same reason: whatever it
-    // fails to free, process death will.
+    // Before anything disconnects, and load-bearing: the link keeper watches
+    // `sessionsStream` and debounces a reconcile 250 ms behind it. What follows
+    // is not a *user* disconnect, so none of the keeper's own conditions refuse
+    // it - it would open the serial port again in the middle of this teardown,
+    // and the process would then die holding a handle it had just acquired.
+    // Which is the symptom this class exists to remove.
+    _links.suspended = true;
+
+    // disconnectAll is the step that hands the port back, and the one worth a
+    // budget of its own: it tears sessions down one at a time, and each USB
+    // release waits up to two seconds for its isolate to run `port.close()` -
+    // so two links do not fit in the three seconds this used to allow for the
+    // whole of dispose(). Bounded separately also because dispose() calls it
+    // first and then does thirteen other things with no try of its own: a
+    // throw there used to take the controller closes down with it, and a
+    // budget there was already spent before they began.
+    await guarded(
+      '[Shutdown] disconnect every link',
+      () => _client.disconnectAll().timeout(const Duration(seconds: 4)),
+    );
+    // Bounded too, for a different reason: `Future.timeout` cancels nothing, so
+    // a wedged disconnect still holds the client's serialisation lock when this
+    // runs, and dispose() begins by queueing behind it. Without a bound here the
+    // window below would never be destroyed.
     await guarded(
       '[Shutdown] dispose the client',
-      () => _client.dispose().timeout(const Duration(seconds: 3)),
+      () => _client.dispose().timeout(const Duration(seconds: 2)),
     );
 
-    await guarded('[Shutdown] destroy the window', windowManager.destroy);
+    // destroy() does not answer on success: the Windows runner tears the engine
+    // down inside WM_DESTROY, before the channel reply can be delivered, so
+    // Dart stops here and nothing below runs. A reply - or a timeout - both mean
+    // the process is still alive, and `setPreventClose` leaves destroy() as the
+    // only way out: a swallowed one used to leave a window only Task Manager
+    // could close, with `_closing` latched so clicking the X again did nothing,
+    // for ever.
+    await guarded(
+      '[Shutdown] destroy the window',
+      () => windowManager.destroy().timeout(const Duration(seconds: 2)),
+    );
+    // Reached only when the window outlived its own destruction. Nothing is left
+    // to free - dispose() has run, or has had its chance - so taking the process
+    // down is the lesser of that and looking hung.
+    LogService.error('[Shutdown] still running after destroy; exiting');
+    _exit(0);
   }
 }
