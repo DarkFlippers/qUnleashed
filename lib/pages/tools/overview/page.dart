@@ -14,6 +14,7 @@ import '../remote/desktop/page.dart';
 import '../remote/cli/page.dart';
 import '../infrared/categories_page.dart';
 import '../mifare/recover_page.dart';
+import '../subghz/seed/seed_page.dart';
 import '../plotter/page.dart';
 import 'models/tool.dart';
 import 'widgets/app_version.dart';
@@ -96,6 +97,14 @@ class ToolsPage extends StatelessWidget {
           title: s.toolMifare,
           description: s.toolMifareSubtitle,
           routeBuilder: _buildRecoverPage,
+          badge: s.toolBadgeBeta,
+        ),
+        ToolItemModel(
+          iconAsset: 'assets/ic/fileformat/sub.svg',
+          iconColor: const Color(0xFFFF9B34),
+          title: s.toolSeedRecovery,
+          description: s.toolSeedRecoverySubtitle,
+          routeBuilder: _buildSeedPage,
           badge: s.toolBadgeBeta,
         ),
         ToolItemModel(
@@ -247,6 +256,9 @@ class ToolsPage extends StatelessWidget {
 
 Widget _buildRecoverPage(BuildContext context) =>
     RecoverPage(client: DeviceScope.of(context).client);
+
+Widget _buildSeedPage(BuildContext context) =>
+    SeedPage(client: DeviceScope.of(context).client);
 
 Widget _buildPlotterPage(BuildContext context) => const PulsePlotterPage();
 

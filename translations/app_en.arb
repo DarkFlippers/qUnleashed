@@ -7717,5 +7717,205 @@
   "widgetGroupCaption": "Caption",
   "@widgetGroupCaption": {
     "description": "Header of the widget caption switch and size choice."
+  },
+
+  "toolSeedRecovery": "Recover SubGHz Seeds",
+  "@toolSeedRecovery": {
+    "description": "Title of the SubGHz rolling-code seed recovery tool."
+  },
+
+  "toolSeedRecoverySubtitle": "Recover FAAC, Genius, BFT and Erreka remotes",
+  "@toolSeedRecoverySubtitle": {
+    "description": "Subtitle of the SubGHz seed recovery tool."
+  },
+
+  "seedTitle": "Recover SubGHz Seeds",
+  "@seedTitle": {
+    "description": "Title of the seed recovery page."
+  },
+
+  "seedNoCaptures": "No captures on this Flipper",
+  "@seedNoCaptures": {
+    "description": "Shown when the device holds no seed capture files."
+  },
+
+  "seedNoCapturesHint": "Use the Seed Capturer app on the Flipper to record a remote, then come back.",
+  "@seedNoCapturesHint": {
+    "description": "Hint under the empty capture list, naming the app that creates them."
+  },
+
+  "seedCapturesTitle": "Captures",
+  "@seedCapturesTitle": {
+    "description": "Header above the list of capture files."
+  },
+
+  "seedRefresh": "Refresh",
+  "@seedRefresh": {
+    "description": "Button that re-reads the capture list from the device."
+  },
+
+  "seedHops": "{count, plural, one{{count} hop} other{{count} hops}}",
+  "@seedHops": {
+    "description": "How many button presses a capture holds.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+
+  "seedFix": "Fix",
+  "@seedFix": {
+    "description": "Label for the remote's fixed code."
+  },
+
+  "seedSeed": "Seed",
+  "@seedSeed": {
+    "description": "Label for the recovered seed."
+  },
+
+  "seedCounter": "Counter",
+  "@seedCounter": {
+    "description": "Label for the counter inside the last decrypted hop."
+  },
+
+  "seedManufacturer": "Manufacturer",
+  "@seedManufacturer": {
+    "description": "Label for the remote's brand."
+  },
+
+  "seedFrequency": "Frequency",
+  "@seedFrequency": {
+    "description": "Label for the capture's frequency."
+  },
+
+  "seedStart": "Recover Seed",
+  "@seedStart": {
+    "description": "Button that starts the search."
+  },
+
+  "seedStop": "Stop",
+  "@seedStop": {
+    "description": "Button that stops a running search."
+  },
+
+  "seedStopTitle": "Stop Seed Recovery?",
+  "@seedStopTitle": {
+    "description": "Title of the confirmation shown before stopping a search."
+  },
+
+  "seedStopMessage": "The search will stop where it is. Anything already found is kept.",
+  "@seedStopMessage": {
+    "description": "Body of the stop confirmation."
+  },
+
+  "seedStopConfirm": "Stop",
+  "@seedStopConfirm": {
+    "description": "Confirm button of the stop confirmation."
+  },
+
+  "seedStopCancel": "Keep Going",
+  "@seedStopCancel": {
+    "description": "Cancel button of the stop confirmation."
+  },
+
+  "seedSearching": "Searching the seed space…",
+  "@seedSearching": {
+    "description": "Shown while a search runs."
+  },
+
+  "seedEstimate": "About {seconds}s on this device",
+  "@seedEstimate": {
+    "description": "Rough time the search will take.",
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+
+  "seedFound": "Seed recovered",
+  "@seedFound": {
+    "description": "Shown when a search succeeds."
+  },
+
+  "seedUnverified": "Seed found, but the frame could not be rebuilt",
+  "@seedUnverified": {
+    "description": "Shown when a seed was found but re-encrypting did not reproduce the capture."
+  },
+
+  "seedUnverifiedHint": "The seed is shown for reference. The remote cannot be saved as a transmittable file.",
+  "@seedUnverifiedHint": {
+    "description": "Explains why saving is unavailable after an unverified result."
+  },
+
+  "seedNothingMatched": "No seed matched this capture",
+  "@seedNothingMatched": {
+    "description": "Shown when the whole space was swept with no match."
+  },
+
+  "seedNothingMatchedHint": "This does not mean the remote cannot be recovered. Check the brand is right, and that the presses were consecutive with none missed, then capture again.",
+  "@seedNothingMatchedHint": {
+    "description": "Explains what a no-match result actually means and what to do."
+  },
+
+  "seedStopped": "Search stopped",
+  "@seedStopped": {
+    "description": "Shown when the user stopped the search."
+  },
+
+  "seedEngineBusy": "Another recovery is already running",
+  "@seedEngineBusy": {
+    "description": "Shown when the engine refuses a second concurrent search."
+  },
+
+  "seedEngineBroken": "This build of the recovery engine is faulty",
+  "@seedEngineBroken": {
+    "description": "Shown when the engine's own self-tests fail."
+  },
+
+  "seedEngineFault": "The recovery engine failed",
+  "@seedEngineFault": {
+    "description": "Shown when the engine reports a fault."
+  },
+
+  "seedLowConfidence": "Backed by {count} hops. Two hops leave a small chance of a wrong answer; three or more effectively rule it out.",
+  "@seedLowConfidence": {
+    "description": "Warns that a result came from the fewest hops the engine accepts.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+
+  "seedSave": "Save to Flipper",
+  "@seedSave": {
+    "description": "Button that writes the recovered remote to the device."
+  },
+
+  "seedSaved": "Saved to {path}",
+  "@seedSaved": {
+    "description": "Shown after the recovered remote is written.",
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+
+  "seedSaveNoFrequency": "This capture has no frequency, so the remote cannot be saved as a transmittable file.",
+  "@seedSaveNoFrequency": {
+    "description": "Explains why saving is unavailable when the capture carries no frequency."
+  },
+
+  "seedSkippedLines": "{count, plural, one{{count} line could not be read} other{{count} lines could not be read}}",
+  "@seedSkippedLines": {
+    "description": "How many lines of the capture file were skipped.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
   }
 }
