@@ -64,8 +64,6 @@ allows "an ordinary code change" feature/x \
 allows "adding a string to the English source" feature/x \
   translations/app_en.arb lib/pages/x.dart
 
-allows "changing the English store listing" feature/x \
-  fastlane/metadata/android/en-US/full_description.txt
 
 blocks "hand-editing Russian" feature/x \
   translations/app_ru.arb \
@@ -89,23 +87,8 @@ blocks "adding a translation in a subdirectory" feature/x \
   translations/locales/app_de.arb \
   translations/locales/app_de.arb
 
-blocks "hand-editing a translated store listing" feature/x \
-  fastlane/metadata/android/ru-RU/full_description.txt \
-  fastlane/metadata/android/ru-RU/full_description.txt
 
-blocks "hand-editing a translated changelog" feature/x \
-  fastlane/metadata/android/ru-RU/changelogs/1.txt \
-  fastlane/metadata/android/ru-RU/changelogs/1.txt
 
-# crowdin.yml claims three texts per locale and nothing else. The screenshots
-# and the icon have never been Crowdin's, and neither the store title nor the
-# video URL is uploaded - so blocking them would leave no way to change them.
-allows "replacing a translated screenshot" feature/x \
-  fastlane/metadata/android/ru-RU/images/phoneScreenshots/1.png
-
-allows "changing a translated store title" feature/x \
-  fastlane/metadata/android/ru-RU/title.txt \
-  fastlane/metadata/android/ru-RU/video.txt
 
 # The sync itself edits exactly these files; blocking it would stop every
 # translation from ever landing.

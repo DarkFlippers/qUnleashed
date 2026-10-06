@@ -102,10 +102,3 @@ misleads a translator is a defect in this repository, not in the translation.
   where English has it.
 - **Length matters.** A label two or three times the English is likely to be cut
   off on a phone. Where your language has a shorter form, prefer it.
-
-## Store listing
-
-`short_description.txt`, `full_description.txt` and the changelogs under
-`fastlane/metadata/android/` are translated in Crowdin alongside the app.
-`title.txt` is the product name and `video.txt` is a URL; neither is
-translated.

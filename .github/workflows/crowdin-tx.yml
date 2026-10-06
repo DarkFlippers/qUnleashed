@@ -6,7 +6,6 @@ on:
       - main
     paths:
       - "translations/app_en.arb"
-      - "fastlane/metadata/android/en-US/**"
       - "crowdin.yml"
   workflow_dispatch:
 
