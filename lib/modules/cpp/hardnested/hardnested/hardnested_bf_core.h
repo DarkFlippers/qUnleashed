@@ -71,6 +71,41 @@ THE SOFTWARE.
 #define arm_has_neon() (false)
 #endif
 
+// Set by the build for every translation unit when it compiles the per-ISA
+// variants with a second toolchain. Without it the dispatcher is compiled by
+// MSVC, whose own predefined macros say nothing about what the *variants* were
+// built for - so the enum below would not even have a name for AVX2 while
+// four objects implementing it sat in the same library.
+#if defined(QUNLEASHED_HN_SIMD_VARIANTS) && !defined(COMPILER_HAS_SIMD_X86)
+#define COMPILER_HAS_SIMD_X86
+#define COMPILER_HAS_SIMD_AVX512
+#endif
+
+// Which variant the translation unit including this is being compiled as.
+//
+// One source of truth for the names, because two places need to agree on them:
+// the core, which defines the pair, and the dispatcher, which has to be able to
+// name the baseline the same toolchain produced when no variants were built.
+#if defined(__AVX512F__)
+#define HN_CRACK_VARIANT crack_states_bitsliced_AVX512
+#define HN_TEST_VARIANT bitslice_test_nonces_AVX512
+#elif defined(__AVX2__)
+#define HN_CRACK_VARIANT crack_states_bitsliced_AVX2
+#define HN_TEST_VARIANT bitslice_test_nonces_AVX2
+#elif defined(__AVX__)
+#define HN_CRACK_VARIANT crack_states_bitsliced_AVX
+#define HN_TEST_VARIANT bitslice_test_nonces_AVX
+#elif defined(__ARM_NEON) || defined(__aarch64__)
+#define HN_CRACK_VARIANT crack_states_bitsliced_NEON
+#define HN_TEST_VARIANT bitslice_test_nonces_NEON
+#elif defined(__SSE2__)
+#define HN_CRACK_VARIANT crack_states_bitsliced_SSE2
+#define HN_TEST_VARIANT bitslice_test_nonces_SSE2
+#else
+#define HN_CRACK_VARIANT crack_states_bitsliced_NOSIMD
+#define HN_TEST_VARIANT bitslice_test_nonces_NOSIMD
+#endif
+
 typedef enum
 {
     SIMD_AUTO,

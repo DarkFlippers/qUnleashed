@@ -238,10 +238,12 @@ static void *
                 const double done = thread_arg->maximum_states
                                         ? (double)num_keys_tested / (double)(thread_arg->maximum_states)
                                         : 0.0;
-                // Outside the printing gate on purpose: `silent` is about
-                // stdout, which on a phone is nowhere, and this is the only
-                // progress anything can read.
-                qunleashed_hn_report_permille((uint32_t)(done * 1000.0));
+                // The percentage used to be published from here, once a whole
+                // bucket had finished - which on a slow build is tens of
+                // minutes, so an attack reported nothing at all until long
+                // after it looked hung. It is reported from inside the bucket
+                // now (hardnested_bf_core.c), and `done` is left to the printed
+                // line below, which is the engine's own running commentary.
                 if (!thread_arg->silent)
                 {
                     char progress_text[80];
@@ -445,6 +447,11 @@ bool brute_force_bs(float *bf_rate, statelist_t *candidates, uint32_t cuid, uint
         noncelist_t *nonces;
         uint8_t *best_first_bytes;
     } thread_args[1024];
+
+    // The denominator for the percentage the workers publish. Set per guess,
+    // not per attack: each Sum(a8) guess searches a candidate set of its own, so
+    // the bar restarting is the honest reading of a new search starting.
+    qunleashed_hn_set_total(maximum_states);
 
     for (uint32_t i = 0; i < num_brute_force_threads; i++)
     {

@@ -120,9 +120,14 @@ HardnestedResult hardnestedResultFor(int status, int foundKey) =>
       _ => (key: null, outcome: HardnestedOutcome.engineFault),
     };
 
-/// How often the caller looks at the channel. The engine reports once per
-/// brute-force bucket, which is far more often than this, so the interval sets
+/// How often the caller looks at the channel. The engine reports once per block
+/// of the brute force, which is far more often than this, so the interval sets
 /// how fresh the bar is and how quickly a Stop lands.
+///
+/// It used to report once per completed *bucket*, and this comment assumed that
+/// was frequent. It is not: a bucket on the scalar Windows build ran for tens of
+/// minutes, so the first reading of an attack arrived long after anyone watching
+/// had concluded it was hung, and Stop was read on the same boundary.
 const _pollInterval = Duration(milliseconds: 500);
 
 typedef _BytesNative = Uint64 Function();

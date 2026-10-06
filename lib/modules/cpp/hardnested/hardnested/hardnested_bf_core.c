@@ -60,20 +60,54 @@ THE SOFTWARE.
 #include "../crapto1.h"
 #include "../parity.h"
 #include "../ui.h" // PrintAndLogEx
+#include "../qunleashed_hn_progress.h" // in-bucket progress and Stop
 // #include "common.h"
 
 // bitslice type
 // while AVX supports 256 bit vector floating point operations, we need integer operations for boolean logic
 // same for AVX2 and 512 bit vectors
 // using larger vectors works but seems to generate more register pressure
+//
+// The width is chosen by what the compiler was told to target, which is how
+// this file gets compiled once per instruction set: the build hands the same
+// source to the toolchain several times with a different -m/arch flag, and the
+// predefined macros below pick both the width and the function names that go
+// with it. Everything in here is written against MAX_BITSLICES rather than a
+// fixed width, so there is nothing else to vary.
+#if defined(__AVX512F__)
+#define MAX_BITSLICES 512
+#elif defined(__AVX2__)
+#define MAX_BITSLICES 256
+#elif defined(__AVX__)
+#define MAX_BITSLICES 256
+#elif defined(__SSE2__)
+#define MAX_BITSLICES 128
+#elif defined(__ARM_NEON) || defined(__aarch64__)
+#define MAX_BITSLICES 128
+#else
 #define MAX_BITSLICES 64
+#endif
 #define VECTOR_SIZE (MAX_BITSLICES / 8)
 
 #ifdef _MSC_VER
 #include <Windows.h>
 #define atomic_add(num, val) (InterlockedExchangeAdd(num, val) + val)
+// uint64_t, not uint32_t. MSVC cannot compile the vector extensions below, so
+// this variant is scalar - but the scalar word still has to be exactly as wide
+// as MAX_BITSLICES says a block is, and MSVC's branch said 32 while every
+// constant around it said 64. `bs_ones` is built with
+// memset(bytes, 0xff, VECTOR_SIZE), so an assignment through `.value` wrote
+// four of the eight bytes and left the rest as malloc found them, while
+// `results.bytes64[0] == 0` and `get_vector_bit` read all eight. Half of every
+// block was therefore carried through the crypto uninitialised and read back
+// out as if it had been tested. One word, and this variant is both correct and
+// twice as fast; `#error` below so no future instruction set can quietly
+// inherit the same mismatch.
+#if MAX_BITSLICES != 64
+#error "the MSVC scalar variant is 64 bits wide; build the others with clang-cl"
+#endif
 #pragma pack(push, VECTOR_SIZE)
-typedef uint32_t bitslice_value_t;
+typedef uint64_t bitslice_value_t;
 #pragma pack(pop)
 #else
 #define atomic_add __sync_fetch_and_add
@@ -126,9 +160,10 @@ typedef union
 // #define DEBUG_BRUTE_FORCE 1
 
 // this needs to be compiled several times for each instruction set.
-// For each instruction set, define a dedicated function name:
-#define BITSLICE_TEST_NONCES bitslice_test_nonces_NOSIMD
-#define CRACK_STATES_BITSLICED crack_states_bitsliced_NOSIMD
+// For each instruction set, define a dedicated function name - chosen in the
+// header, because the dispatcher has to be able to name the same pair.
+#define BITSLICE_TEST_NONCES HN_TEST_VARIANT
+#define CRACK_STATES_BITSLICED HN_CRACK_VARIANT
 
 // typedefs and declaration of functions:
 typedef uint64_t crack_states_bitsliced_t(uint32_t, uint8_t *, statelist_t *, uint32_t *, uint64_t *, uint32_t, const uint8_t *, noncelist_t *);
@@ -584,6 +619,25 @@ uint64_t CRACK_STATES_BITSLICED(uint32_t cuid, uint8_t *best_first_bytes, statel
             elimination_step = 0;
 #endif
             bucket_states_tested += bucket_size[block_idx];
+            // Reported from inside the bucket, which is the only place it can
+            // usefully be reported from. The engine's own progress call sits at
+            // the end of a whole bucket, and a bucket runs for tens of minutes
+            // on a slow build - so the first percentage of an attack arrived
+            // long after the user had concluded it was hung, and the counter it
+            // divided by was advanced at that same boundary, leaving nothing
+            // finer to report even if it had been asked more often.
+            //
+            // The abort goes with it rather than in a check of its own: Stop
+            // was read at the same bucket boundary, so a stop during a long
+            // bucket greyed the button out and then carried on for the rest of
+            // it. `out` is the unwind two other paths in here already take, and
+            // it still runs the atomic_add below, so the engine's own count
+            // stays honest about what was tested.
+            qunleashed_hn_add_tested(bucket_size[block_idx]);
+            if (qunleashed_hn_aborted())
+            {
+                goto out;
+            }
             // prepare to set new states
             state_p = &states[KEYSTREAM_SIZE];
         }
@@ -604,67 +658,4 @@ out:
     }
 #endif
     return key;
-}
-
-// pointers to functions:
-crack_states_bitsliced_t *crack_states_bitsliced_function_p = &crack_states_bitsliced_dispatch;
-bitslice_test_nonces_t *bitslice_test_nonces_function_p = &bitslice_test_nonces_dispatch;
-
-static SIMDExecInstr intSIMDInstr = SIMD_AUTO;
-
-void SetSIMDInstr(SIMDExecInstr instr)
-{
-    intSIMDInstr = instr;
-
-    crack_states_bitsliced_function_p = &crack_states_bitsliced_dispatch;
-    bitslice_test_nonces_function_p = &bitslice_test_nonces_dispatch;
-}
-
-static SIMDExecInstr GetSIMDInstr(void)
-{
-    SIMDExecInstr instr;
-
-    instr = SIMD_NONE;
-
-    return instr;
-}
-
-SIMDExecInstr GetSIMDInstrAuto(void)
-{
-    SIMDExecInstr instr = intSIMDInstr;
-    if (instr == SIMD_AUTO)
-        return GetSIMDInstr();
-
-    return instr;
-}
-
-// determine the available instruction set at runtime and call the correct function
-uint64_t crack_states_bitsliced_dispatch(uint32_t cuid, uint8_t *best_first_bytes, statelist_t *p,
-                                         uint32_t *keys_found, uint64_t *num_keys_tested,
-                                         uint32_t nonces_to_bruteforce, const uint8_t *bf_test_nonce_2nd_byte,
-                                         noncelist_t *nonces)
-{
-    crack_states_bitsliced_function_p = &crack_states_bitsliced_NOSIMD;
-
-    // call the most optimized function for this CPU
-    return (*crack_states_bitsliced_function_p)(cuid, best_first_bytes, p, keys_found, num_keys_tested, nonces_to_bruteforce, bf_test_nonce_2nd_byte, nonces);
-}
-
-void bitslice_test_nonces_dispatch(uint32_t nonces_to_bruteforce, const uint32_t *bf_test_nonce, const uint8_t *bf_test_nonce_par)
-{
-    bitslice_test_nonces_function_p = &bitslice_test_nonces_NOSIMD;
-
-    // call the most optimized function for this CPU
-    (*bitslice_test_nonces_function_p)(nonces_to_bruteforce, bf_test_nonce, bf_test_nonce_par);
-}
-
-// Entries to dispatched function calls
-uint64_t crack_states_bitsliced(uint32_t cuid, uint8_t *best_first_bytes, statelist_t *p, uint32_t *keys_found, uint64_t *num_keys_tested, uint32_t nonces_to_bruteforce, uint8_t *bf_test_nonce_2nd_byte, noncelist_t *nonces)
-{
-    return (*crack_states_bitsliced_function_p)(cuid, best_first_bytes, p, keys_found, num_keys_tested, nonces_to_bruteforce, bf_test_nonce_2nd_byte, nonces);
-}
-
-void bitslice_test_nonces(uint32_t nonces_to_bruteforce, uint32_t *bf_test_nonce, uint8_t *bf_test_nonce_par)
-{
-    (*bitslice_test_nonces_function_p)(nonces_to_bruteforce, bf_test_nonce, bf_test_nonce_par);
 }
