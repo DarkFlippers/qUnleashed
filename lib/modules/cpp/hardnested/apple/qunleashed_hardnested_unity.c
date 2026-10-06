@@ -18,6 +18,7 @@
 #include "../qunleashed_hn_progress.c"
 #include "../qunleashed_hardnested_bridge.c"
 #include "../hardnested/hardnested_bf_core.c"
+#include "../hardnested/hardnested_bf_dispatch.c"
 #include "../hardnested/hardnested_bitarray_core.c"
 #include "../hardnested/hardnested_bruteforce.c"
 #include "../hardnested/tables.c"

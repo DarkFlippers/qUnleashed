@@ -103,7 +103,6 @@ if(MSVC)
       "$ENV{VSINSTALLDIR}VC/Tools/Llvm/x64/bin"
       "$ENV{ProgramFiles}/LLVM/bin"
       "$ENV{ProgramW6432}/LLVM/bin"
-      "$ENV{ProgramFiles(x86)}/LLVM/bin"
   )
 
   if(HN_CLANG_CL)
