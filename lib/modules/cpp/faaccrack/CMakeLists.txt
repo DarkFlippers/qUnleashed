@@ -71,9 +71,47 @@ endif()
 # They are unreferenced either way; the name just has to be unique.
 
 # Compiles the engine once for `variant`, with `flags`, and adds the object to
-# the library. One function so the three toolchain paths below cannot drift in
-# what they pass.
+# the library.
+#
+# Two mechanisms, because neither one can do both jobs.
+#
+# Where the variants are built by the toolchain's own compiler, an OBJECT
+# library is not a style preference. CMake injects the cross-compilation flags -
+# the target triple, the sysroot, an Android ABI's own -march and -mfpu - and a
+# bare invocation of ${CMAKE_C_COMPILER} never sees them. Leaving them off is how
+# the first Android build of this library compiled host x86-64 objects and died
+# at the link with "faaccrack_NEON.o is incompatible with aarch64linux". The
+# hardnested lib spells a compile out only inside its clang-cl branch; this is
+# what generalising that to every platform cost.
+#
+# On Windows the variants have to come from clang-cl while the rest of the
+# target comes from MSVC, and no CMake target can name a second C compiler - so
+# there the compile is spelled out, and a set FAACCRACK_VARIANT_CC is what says
+# a foreign compiler is in play. Nothing is cross-compiled on that path, which
+# is what makes the absent flags survivable there.
 function(faaccrack_add_variant variant)
+  if(NOT FAACCRACK_VARIANT_CC)
+    add_library(faaccrack_${variant} OBJECT "${FAACCRACK_ENGINE}")
+    target_compile_options(faaccrack_${variant} PRIVATE ${ARGN})
+    target_compile_definitions(faaccrack_${variant}
+      PRIVATE "main=faaccrack_unused_main_${variant}")
+    target_include_directories(faaccrack_${variant} PRIVATE
+      "${CMAKE_CURRENT_SOURCE_DIR}"
+      "${FAACCRACK_SHIM_DIR}"
+    )
+    set_target_properties(faaccrack_${variant} PROPERTIES
+      C_STANDARD 11
+      # Explicit rather than left to default: a toolchain file setting
+      # CMAKE_C_EXTENSIONS OFF would compile this -std=c11, and __STRICT_ANSI__
+      # hides clock_gettime and nanosleep behind glibc's feature-test macros.
+      # The engine calls both.
+      C_EXTENSIONS ON
+      POSITION_INDEPENDENT_CODE ON
+    )
+    target_link_libraries(qunleashed_faaccrack PRIVATE faaccrack_${variant})
+    return()
+  endif()
+
   # $<CONFIG> in the path, because the Flutter Windows build is a
   # multi-config generator: Debug, Profile and Release share one binary
   # directory, so without it all three read and write one object. The
@@ -144,7 +182,7 @@ if(MSVC AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(AMD64|x86_64)$")
   set(FAACCRACK_VARIANT_CC "${FAACCRACK_CLANG_CL}")
   # /MD must match what CMake gives the rest of the target, or the two halves of
   # the library would want different C runtimes.
-  set(faaccrack_common /nologo /c /O2 -w $<IF:$<CONFIG:Debug>,/MDd,/MD>)
+  set(faaccrack_clang_cl /nologo /c /O2 -w $<IF:$<CONFIG:Debug>,/MDd,/MD>)
 
   # No AVX512, for the reason the hardnested lib recorded after shipping it and
   # taking it back out: nothing here has measured it, and client Intel parts
@@ -158,12 +196,15 @@ if(MSVC AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(AMD64|x86_64)$")
   # No /arch:SSE2 entry either: it is the x86-64 baseline, so clang-cl defines
   # __SSE2__ without being asked and rejects the flag as invalid for a 64-bit
   # target. The flagless compile *is* the SSE2 object.
-  faaccrack_add_variant(AVX2 ${faaccrack_common} /arch:AVX2)
-  faaccrack_add_variant(AVX ${faaccrack_common} /arch:AVX)
-  faaccrack_add_variant(SSE2 ${faaccrack_common})
+  faaccrack_add_variant(AVX2 ${faaccrack_clang_cl} /arch:AVX2)
+  faaccrack_add_variant(AVX ${faaccrack_clang_cl} /arch:AVX)
+  faaccrack_add_variant(SSE2 ${faaccrack_clang_cl})
 else()
-  set(FAACCRACK_VARIANT_CC "${CMAKE_C_COMPILER}")
-  set(faaccrack_common -c -O3 -funroll-loops -std=gnu11 -w -fPIC)
+  # FAACCRACK_VARIANT_CC stays unset: these variants are compiled as OBJECT
+  # libraries by the toolchain's own compiler. -c, -fPIC and -std=gnu11 are not
+  # listed because CMake supplies all three - the first from compiling at all,
+  # the other two from the properties the function sets.
+  set(faaccrack_engine_opts -O3 -funroll-loops -w)
 
   if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|i.86|x86)$")
     # Unlike hardnested, which compiles one object at the platform baseline
@@ -171,12 +212,12 @@ else()
     # x86-64 is SSE2, and the engine is several times faster with AVX2 - there
     # is no reason a Linux or Intel-Mac desktop should run the slowest variant
     # when the dispatcher can tell at runtime.
-    faaccrack_add_variant(AVX2 ${faaccrack_common} -mavx2)
-    faaccrack_add_variant(AVX ${faaccrack_common} -mavx)
-    faaccrack_add_variant(SSE2 ${faaccrack_common} -msse2)
+    faaccrack_add_variant(AVX2 ${faaccrack_engine_opts} -mavx2)
+    faaccrack_add_variant(AVX ${faaccrack_engine_opts} -mavx)
+    faaccrack_add_variant(SSE2 ${faaccrack_engine_opts} -msse2)
   else()
     # arm64 and armv7: NEON is the baseline, so one object is already the right
     # one and there is nothing to choose between at runtime.
-    faaccrack_add_variant(NEON ${faaccrack_common})
+    faaccrack_add_variant(NEON ${faaccrack_engine_opts})
   endif()
 endif()
