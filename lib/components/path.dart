@@ -11,9 +11,78 @@ String pathJoin(Iterable<String> parts) {
   return out.join(sep);
 }
 
+/// The characters a name may not carry, written down once.
+///
+/// Two rules read it: [sanitizePathSegment] replaces them for a host path, and
+/// `SeedSubFile.checkBaseName` reports them for a path on the Flipper. They
+/// are the nine Windows reserves, and FatFS rejects the same nine when it
+/// builds a long file name — so the two rules were one set spelled twice, in
+/// two files, with the English ARB sentence spelling it a third time and
+/// nothing checking any of the three against each other. #266
+///
+/// Not every naming rule in the app: the paint editor's `_sanitizeName`
+/// refuses far more and then collapses runs of `_`, which makes it a
+/// different rule rather than a copy of this one.
+///
+/// Order is the order the ARB string listed them in, because
+/// [reservedNameCharsSpelled] is what the user is shown.
+const reservedNameChars = r'\/:*?"<>|';
+
+/// [reservedNameChars] as a list to show a user: `\ / : * ? " < > |`.
+///
+/// Derived rather than typed into a translatable string, so that adding a
+/// tenth character cannot leave the sentence behind.
+///
+/// It lists only the nine. [reservedNameCharsPattern] also refuses the control
+/// range, which this cannot say — a name is refused for a control character
+/// through its own message rather than this list. See `SeedNameProblem`.
+final reservedNameCharsSpelled = reservedNameChars.split('').join(' ');
+
+/// [reservedNameChars] plus the C0 range and DEL, as one character class.
+///
+/// The control range is here rather than only in the device rule because these
+/// segments are machine-supplied — release tags, app folder names, device
+/// names — so a control character in one means something upstream is wrong,
+/// and `_` is the answer that keeps the path writable on every host. Windows
+/// refuses such a name outright; a POSIX host accepts it and then nothing can
+/// comfortably quote it. The device rule already refused them and the eleven
+/// host call sites let them through, which is the half of #266 worth having
+/// on its own.
+///
+/// Built from [reservedNameChars] rather than typed again, escaped per
+/// character so that a `]`, `^` or `$` added to the set needs no thought. A
+/// `-` is the one addition `RegExp.escape` leaves alone, and in a non-final
+/// position it would open a range: `test/reserved_name_chars_test.dart` walks
+/// every code unit below 0x80 against the constant, which is what catches that.
+final reservedNameCharsPattern = RegExp(
+  '[\\x00-\\x1f\\x7f'
+  '${reservedNameChars.split('').map(RegExp.escape).join()}]',
+);
+
+/// Whether [unit] is a character no name may carry and
+/// [reservedNameCharsSpelled] cannot name: a C0 control, or DEL.
+///
+/// [reservedNameCharsPattern] refuses these as well. This exists beside it so
+/// that a rule reporting a problem to a user can tell the two apart and say
+/// something they can act on — "a name cannot contain \ / : * ? " < > |" names
+/// nothing a user who pasted a newline typed.
+///
+/// `test/reserved_name_chars_test.dart` holds the two spellings of the range
+/// to each other, since the pattern writes it as `\x00-\x1f\x7f` and this
+/// writes it in Dart.
+bool isControlNameChar(int unit) => unit <= 0x1f || unit == 0x7f;
+
 /// Replaces the characters Windows rejects in a path segment with `_`.
+///
+/// Not every rule Windows has: a segment of `CON` or `NUL`, or one ending in a
+/// dot, is still refused by the platform and is not touched here.
+///
+/// Trimmed before replacing, not after. A name ending in a newline used to
+/// have it trimmed away, and replacing first would turn it into a trailing `_`
+/// — a different directory from the one an existing install already has, for
+/// the two call sites that derive a persistent per-device folder.
 String sanitizePathSegment(String input) {
-  return input.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_').trim();
+  return input.trim().replaceAll(reservedNameCharsPattern, '_');
 }
 
 /// Resolves an archive entry name under [rootPath]. Returns `null` when the

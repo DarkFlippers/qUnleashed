@@ -7902,9 +7902,9 @@
     "description": "Title of the dialog asking what to call the recovered remote."
   },
 
-  "seedNameHelp": "Saved in {dir}, up to {max} characters.",
+  "seedNameHelp": "Saved in {dir}. Room for {max} letters, fewer if they are not English ones.",
   "@seedNameHelp": {
-    "description": "Helper text under the file name field.",
+    "description": "Helper text under the file name field. The limit is a byte count, so this deliberately does not promise {max} characters - a Cyrillic name hits the refusal at roughly half of it, and a helper that stated the figure flatly would read as a broken rule rather than a smaller budget.",
     "placeholders": {
       "dir": {
         "type": "String"
@@ -7915,9 +7915,9 @@
     }
   },
 
-  "seedNameTooLong": "Use at most {max} characters, which is what the Sub-GHz app can hold.",
+  "seedNameTooLong": "Use a shorter name. The Sub-GHz app holds {max} English letters, and fewer of any other kind.",
   "@seedNameTooLong": {
-    "description": "Shown when the typed file name is longer than the firmware can keep.",
+    "description": "Shown when the typed file name is longer than the firmware can keep. The limit is a byte count, so a Cyrillic or accented letter spends two of it and an emoji four; the second clause is there because a user who hits it at half the stated count would otherwise read this as a bug.",
     "placeholders": {
       "max": {
         "type": "int"
@@ -7925,14 +7925,25 @@
     }
   },
 
-  "seedNameIllegal": "A name cannot contain \\ / : * ? \" < > |",
-  "@seedNameIllegal": {
-    "description": "Shown when the typed file name holds a character the storage cannot carry."
+  "commonNameIllegal": "A name cannot contain {chars}",
+  "@commonNameIllegal": {
+    "description": "Shown when a typed file name holds a character the storage cannot carry. Do not spell the characters out in the translation: {chars} is the list, passed in from the one place the app declares it, so that adding or removing one cannot leave this sentence behind.",
+    "placeholders": {
+      "chars": {
+        "type": "String"
+      }
+    }
   },
 
-  "seedNameDotEdge": "A name cannot start or end with a dot.",
-  "@seedNameDotEdge": {
-    "description": "Shown when the typed file name begins or ends with a period."
+  "commonNameControlChar": "A name cannot contain an invisible character. Paste it somewhere plain, or type it out.",
+  "@commonNameControlChar": {
+    "description": "Shown when a typed file name holds a C0 control character or DEL - a tab, a newline, or similar. Named separately from commonNameIllegal because that sentence lists the characters it refuses, and these have no printable form to list. A keyboard cannot type one; a paste from a spreadsheet or a web page can carry one in.",
+    "placeholders": {}
+  },
+
+  "commonNameDotEdge": "A name cannot start or end with a dot.",
+  "@commonNameDotEdge": {
+    "description": "Shown when a typed file name begins or ends with a period."
   },
 
   "seedReplaceTitle": "Replace File?",

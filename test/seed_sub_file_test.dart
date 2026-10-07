@@ -268,6 +268,44 @@ void main() {
       );
     });
 
+    test('counts the limit in bytes, which is what the buffer holds', () {
+      // `char file_name_tmp[SUBGHZ_MAX_LEN_NAME]` is 64 bytes and the name
+      // travels as UTF-8, so a Cyrillic letter spends two of the budget. The
+      // check used Dart's `length` - UTF-16 code units - so a 63-letter
+      // Cyrillic name passed at 126 bytes and did not survive the first rename
+      // on the device. See `maxBaseNameLength` for what the firmware does with
+      // it.
+      //
+      // Spelled as a round number of two-byte letters rather than computed
+      // from the constant, so that a check "fixed" by dividing the limit by
+      // two, or by counting runes, fails here.
+      expect(
+        SeedSubFile.checkBaseName('я' * 32),
+        SeedNameProblem.tooLong,
+        reason:
+            '32 Cyrillic letters are 64 bytes, which leaves no room for '
+            'the terminator',
+      );
+      expect(
+        SeedSubFile.checkBaseName('я' * 31),
+        isNull,
+        reason: '31 are 62 bytes and fit',
+      );
+      // An emoji is four, and outside the BMP, so it is also the case where
+      // `length` and `runes.length` disagree with each other as well as with
+      // the byte count.
+      expect(SeedSubFile.checkBaseName('🙂' * 16), SeedNameProblem.tooLong);
+      expect(SeedSubFile.checkBaseName('🙂' * 15), isNull);
+    });
+
+    test('accepts a non-ASCII name, which the volume does carry', () {
+      // #266's open question, and the answer is the firmware's - see
+      // `checkBaseName`'s note on `_CODE_PAGE 850`, which is where those facts
+      // live so that they cannot drift between here and there.
+      expect(SeedSubFile.checkBaseName('Ворота'), isNull);
+      expect(SeedSubFile.checkBaseName('Außentor'), isNull);
+    });
+
     test('refuses every character a FAT volume cannot carry', () {
       // Spelled out rather than a sample: a class that quietly stopped
       // matching one of these would let a save fail on the device instead,
@@ -279,13 +317,16 @@ void main() {
           reason: '"$bad" should be refused',
         );
       }
+      // A control character is refused too, but as its own problem: the
+      // message for the nine lists them, and a newline has no printable form
+      // to list. `test/reserved_name_chars_test.dart` walks the whole range.
       expect(
         SeedSubFile.checkBaseName('gate\u0000one'),
-        SeedNameProblem.illegalCharacter,
+        SeedNameProblem.controlCharacter,
       );
       expect(
         SeedSubFile.checkBaseName('gate\nnewline'),
-        SeedNameProblem.illegalCharacter,
+        SeedNameProblem.controlCharacter,
       );
     });
 
