@@ -2,7 +2,18 @@
 
 Status: Proposed (2026-10-01); breadcrumb source settled, the logging
 chokepoints checked against the code, and `caught` added as a third level
-(2026-10-02)
+(2026-10-02); every claim re-read against the tree (2026-10-07), which moved
+the flipperlib pin, the replay mask target, the ratchet arithmetic, the route
+count and what is left of #103
+
+Re-verified 2026-10-07 and still true: the 48 and `pages/archive`'s 24 are
+exactly what `test/log_level_budget_test.dart` counts — it sits at budget in
+every area, with nothing to lower; `sentry_flutter` 9.30.1 is still the latest
+on pub.dev and 10.0 has still not shipped stable, so §7 stands unchanged;
+`jni` 1.0.0 and `path_provider_android` 2.3.1 are what the lockfile holds;
+`enable-swift-package-manager: false` and the `qunleashed_hardnested` pod are
+both still there; and both self-extracting launchers work the way §6 and the
+Consequences describe.
 
 Build identity — release, channel, commit — is its own decision,
 [0014](0014-build-identity.md). This one consumes it.
@@ -82,7 +93,7 @@ as it does now.
 |---|---|
 | `_initCore` | Init, after `LogService.initialize()` and the consent read, with its own catch. Sentry saves and calls the `FlutterError.onError` and `PlatformDispatcher.onError` it finds, so `LogService`'s handlers going in first keeps both. One init serves `main()` and `widgetMain()`: `promote` reuses the engine. |
 | `LogService._emit`, kept entries | Sentry Logs, through a `keptSink` hook in the shape of flipperlib's `Log.sink`. **The first of a run only**: one RPC timeout produces hundreds of identical lines, which is why `_remember` coalesces them. That coalescing is not visible from `_emit` today - `_remember` returns `void` and folds silently - so it has to report whether the line was new. One signature, and the hook reads it rather than comparing bodies a second time. |
-| `LogService.caught`, §5 | The same `keptSink`, sent at Sentry's **info** level rather than `warning`. The 48 failures that a release build records nowhere today. |
+| `LogService.caught`, §5 | The same `keptSink`, sent at Sentry's **info** level rather than `warning`. The 48 failures a release build keeps no record of today, §5. |
 | `guarded(what, …)` | An issue, fingerprinted on `what` and the error type — the best grouping key the app has. |
 | `classifyConnectError` | `unknown` becomes an issue; every other kind is a metric and a breadcrumb. The issue list is then exactly the platform strings the classifier does not know yet. |
 | `AppHttp` | Hand-made spans. Nothing instruments `dart:io` `HttpClient`, and the map's tile client is left out: URLs and query strings are always sent, and tile URLs carry the Carto key. |
@@ -107,18 +118,25 @@ No submodule depends on Sentry. Each says what happened in its own types, and
   reconnecting → reconnected" in front of it.
 
   Two things that is, concretely. `attachFlipperlibSink` pins the level to
-  `error` whenever nothing is printing, which is every release build, and its
-  doc says why: history gets the transport faults and session failures a bug
-  report needs "and none of the traffic below them". Reporting raises that pin;
-  it is a change to a recorded decision rather than a setting that already
-  allows it, and the pin returns when reporting is turned off. And the hook
-  belongs in `_flipperlibSink`, **before** it calls `_emit` - see the section
-  below for why it cannot sit inside `_emit`. Request tracing needs a PR there:
+  `warning` whenever nothing is printing, which is every release build, and
+  its doc says why: history gets the transport faults and session failures a
+  bug report needs, plus the degraded-but-not-broken class a warning is for,
+  and nothing below those. The pin was `error` when this was first written and
+  #232 raised it one step, which narrows the gap this closes rather than
+  changing its shape: `info` is still unreachable in a release build.
+  Reporting raises the pin again, to `info`; it is a change to a recorded
+  decision rather than a setting that already allows it, and the pin returns
+  to `warning` when reporting is turned off. And the hook belongs in
+  `_flipperlibSink`, **before** it calls `_emit` - see the section below for
+  why it cannot sit inside `_emit`. Request tracing needs a PR there:
   a `FlipperRpcObserver` constructor parameter on `FlipperClient`, no-op by
   default ([0002](0002-dependencies-are-passed-in.md)), called **synchronously
   inside `callRpcFrames`** at enqueue, send and completion. Synchronously,
   because a span is found through the caller's zone and the queue worker runs
-  in another one.
+  in another one. `callRpcFramesMulti` is a second door into the same queue -
+  it reaches `_requireSessionFor(priority)` directly rather than through
+  `callRpcFrames` (`client/client.dart:1342`) - so the observer goes in at the
+  session, or in both, or every multi-frame call is untraced.
 - **dartufbt.** No change. `UfbtLogger.addSink` gives the app its events:
   `error` and `critical` go to `LogService.error` — today they reach only the
   Assembler console — and progress `started → finished/failed` becomes a span.
@@ -184,11 +202,21 @@ does. The queue dies with the process - which is the FFI case this ADR opens
 with - and with a restart, and the one way out of it is Settings → Log → Copy
 and a human pasting the result somewhere.
 
-**The gap.** 48 `LogService.info` calls sit inside a `catch` (#103). `info` is
-not quiet in a release build, it is absent: `infoOn` is a const and those call
-sites leave the binary. So for 48 failure paths, a release build records
-nothing anywhere - not the history, not the clipboard, and after this ADR, not
-Sentry either.
+**The gap.** 48 `LogService.info` calls sit inside a `catch` — the figure
+`test/log_level_budget_test.dart` is at today, and the remainder after #107,
+#108, #110, #111 and #115 took it down from the 117 #103 opened with. Those
+sweeps raised the sites that were nobody's second surface, so the 48 left are
+the ones the triage ruled *do* have one: the budget file says so area by area,
+and says "read through" for all of them but `pages/tools`.
+
+Which is the gap, stated precisely. `info` is not quiet in a release build, it
+is absent: `infoOn` is a const and those call sites leave the binary. So for 48
+failure paths the *user* is told and no *record* exists anywhere — not the
+history, not the clipboard, and after this ADR, not Sentry either. A bug report
+about one of them carries a user saying "it failed" and a log with nothing in
+it. That is a narrower claim than the one #103 was opened on, and it is the one
+this section argues from: the reader who is missing is the developer, not the
+user.
 
 **The mechanism already exists.** `_emit`'s two axes are independent, and
 `warn` already uses the combination needed: kept in release, printed only in a
@@ -246,7 +274,9 @@ front of whoever reads Sentry.
 
 So `caught` gets a ratchet of its own, a ceiling per area, as
 [0004](0004-ratchet-not-lint.md) prescribes for anything the project wants a
-bounded amount of. Five ratchets then, and the fifth is the only one whose
+bounded amount of. Five use `test/ratchet.dart` today - `bare_catch`,
+`build_io`, `client_reach`, `log_level` and `unawaited` - so this is the sixth,
+and the import guard in §2 the seventh. The sixth is the only one of them whose
 number is meant to *rise* - once, as the triage lands, and not after.
 
 **This is worth doing before Sentry exists.** `caught` reaches `history`
@@ -268,10 +298,13 @@ gate it.
    their module paths carry `C:\Users\<name>\…` — the Windows launcher
    extracts into `%TEMP%`.
 4. **Replay masks.** `maskAllText` masks text widgets. The hex editor paints
-   card bytes with `TextPainter` (`pages/archive/editor/hex/view.dart`) and the
-   remote-desktop screen is custom-painted, so neither is masked by it; both
-   are wrapped in `SentryMask` and checked in a recorded replay before replay
-   ships.
+   card bytes with `TextPainter` (`pages/archive/editor/hex/view.dart`), and
+   the remote-desktop screen is a `RawImage` fed the `ui.Image` that
+   `remote/desktop/frame_decoder.dart` decodes
+   (`remote/desktop/widgets/screen.dart:151`) — not an `Image` widget, so
+   `maskAllImages` does not reach that one either. Neither surface is masked by
+   anything the SDK does on its own; both are wrapped in `SentryMask` and
+   checked in a recorded replay before replay ships.
 
 ### 7. `sentry_flutter` 9.30.1, written to move to 10
 
@@ -349,10 +382,18 @@ carry.
 - `_remember` gains a return value, and `LogService` gains `caught` (§5).
   Those, the two hooks and the flipperlib level pin are the whole of what this
   changes outside `lib/services/telemetry/`.
-- A fifth ratchet, a ceiling on `caught` per area. It is the only one of the
-  five whose number is meant to rise once and then hold.
-- #103 stops being a parallel debt and becomes part of this: the triage it asks
-  for is what decides which of its 48 sites become `caught`.
+- A sixth ratchet, a ceiling on `caught` per area — seventh counting the
+  import guard above. It is the only one of them whose number is meant to rise
+  once and then hold.
+- #103 stops being a parallel debt and becomes part of this, though less of it
+  is left than its text says: the per-area triage is read through everywhere
+  but `pages/tools`, and what the issue still holds open is the blind spots the
+  ratchet cannot see — the `onError:` closures (#216's moved line and three
+  before it), the bare catches (#118), the one-line wrapper (#119) and the two
+  controllers that disagree about when an error reaches anyone (#114). The
+  decision this section asks of it is therefore a re-ruling of 48 sites already
+  ruled on, for a reader that did not exist when they were ruled, rather than a
+  triage still to be done.
 - To verify before the first release that carries it: `crashpad_handler`
   keeping its exec bit on Linux; where the crash database lives, since the
   Linux launcher deletes `/tmp/qunleashed-self-$$` on exit; a JDK on the Windows
@@ -363,7 +404,7 @@ carry.
 | Phase | Scope |
 |---|---|
 | 0 | Sentry project, server-side scrubbing, GitHub integration for the three repositories, alerts |
-| 0a | `caught` and #103's triage. Independent of Sentry - it lands in `history` and on the Log screen on the next build - and done first so no phase ships a silent failure path |
+| 0a | `caught`, its ratchet, and the re-ruling of the 48 that #103's triage left at `info`. Independent of Sentry - it lands in `history` and on the Log screen on the next build - and done first so no phase ships a failure nothing records |
 | 1 | Errors and crashes: dependency, `telemetry/`, consent and Diagnostics, scrubber, `guarded` → issues, CI defines and symbol upload, the import ratchet |
 | 2 | Logs and tracing: `keptSink` and the `_remember` return it needs, flipperlib breadcrumbs in `_flipperlibSink` with the level pin raised, named routes and `SentryNavigatorObserver`, `traced`, `AppHttp` spans, the dartufbt sink |
 | 3 | Metrics, replay with its masks, a "Send to developers" action on the Log screen through `captureFeedback`, the flipperlib observer |
@@ -386,6 +427,6 @@ leaving it for `caught` is a legitimate fall rather than the deletion CLAUDE.md
 warns about, and the new ceiling on `caught` is what keeps that from becoming a
 way to launder commentary.
 
-The 23 unnamed `MaterialPageRoute`s within features stay unnamed. Names are
-given once, in the `AppRoute` registry, which is what the navigator observer
-needs to build transactions.
+The 25 unnamed `MaterialPageRoute`s within features stay unnamed — 25 today,
+and not one of them passes `settings`. Names are given once, in the `AppRoute`
+registry, which is what the navigator observer needs to build transactions.
