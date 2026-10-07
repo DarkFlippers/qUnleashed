@@ -77,6 +77,32 @@ void main() {
     expect(LogService.history.single, contains('the port went quiet'));
   });
 
+  // The level ADR 0013 adds, and the whole of what makes it worth adding:
+  // it is kept in a build that prints nothing, which is every release build,
+  // where the info it replaces at a call site would not have been there at
+  // all. A test that only checked the prefix would pass on `info` too.
+  test('a caught failure is kept in a build that prints nothing', () {
+    final lines = printed(() => LogService.caught('[Known] save failed'));
+
+    expect(LogService.history.single, contains('[caught] [Known] save failed'));
+    expect(
+      lines.isEmpty,
+      !LogService.infoOn,
+      reason: 'printing follows the build, at info; keeping does not',
+    );
+  });
+
+  // The prefix is load-bearing rather than decoration: ADR 0013 reads it to
+  // send these as a Sentry log at info rather than warning, so they are
+  // searchable without firing the alerting warn is for. A reader of the log
+  // screen needs the same distinction for the same reason.
+  test('a caught failure is not dressed as a warning', () {
+    printed(() => LogService.caught('the rename did not take'));
+
+    expect(LogService.history.single, isNot(contains('[warning]')));
+    expect(LogService.history.single, isNot(contains('[error]')));
+  });
+
   // Anything below a warning runs often enough to churn the buffer, which
   // would cost the failure the context the buffer exists to hold.
   test('the chatty levels are not kept', () {

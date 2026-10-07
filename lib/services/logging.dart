@@ -79,7 +79,8 @@ class LogService {
   static String? _lastKept;
   static int _repeats = 0;
 
-  /// Errors and warnings, oldest first, whether or not anything printed them.
+  /// Errors, warnings and caught failures, oldest first, whether or not
+  /// anything printed them.
   ///
   /// The const guards above compile the chatty levels out of a release build,
   /// which is right — they run per frame. Letting errors go the same way meant
@@ -89,9 +90,12 @@ class LogService {
   /// read. So these two are kept here regardless, bounded, and printed only
   /// when the build is talking.
   ///
-  /// Errors and warnings only. Anything below them fires often enough to churn
-  /// the buffer, which would cost the failure its context — the one thing this
-  /// exists to hold on to.
+  /// Errors, warnings and [caught] only. Anything below them fires often
+  /// enough to churn the buffer, which would cost the failure its context —
+  /// the one thing this exists to hold on to. [caught] is admitted on the
+  /// same terms: it is for an operation that did not do what was asked, which
+  /// is bounded by what the user did, and `test/caught_budget_test.dart`
+  /// holds it to that.
   ///
   /// One entry per message rather than per line, so a stack trace stays a
   /// single event. Many of the app's error sites pass `'$e\n$st'`, and a
@@ -325,16 +329,55 @@ class LogService {
   static void warn(String msg) =>
       _emit('[warning] $msg', keep: true, console: warnOn);
 
+  /// A failure that was caught and handled, kept so somebody can read it later.
+  ///
+  /// The distinction from [warn] is the audience, not the severity. [warn] is a
+  /// failure somebody should look at; this is one somebody may need to read
+  /// about afterwards, and the `[caught]` prefix is what lets a reader - and,
+  /// once ADR 0013 lands, a Sentry log at info rather than warning - tell the
+  /// two apart without the second firing any alerting.
+  ///
+  /// Kept in every build, printed only in a talking one, which is [warn]'s
+  /// combination and why this is one line rather than a mechanism. The point
+  /// is that it survives: [info] does not, because [infoOn] is a const that
+  /// folds to false in an ordinary release build and takes the call site out
+  /// of the binary with it.
+  ///
+  /// **The rule, and it is narrow on purpose.** Use this where an operation
+  /// did not do what was asked. Commentary about something merely absent, a
+  /// reading that repeats, a wait whose own timeout is the answer - those stay
+  /// [info] and stay out of the binary.
+  ///
+  /// The narrowness is not about volume for its own sake. It is about the
+  /// person reading: a surplus line costs nothing to skip, but noise in front
+  /// of them costs attention on every failure after it.
+  ///
+  /// This is deliberately the catch-all [info]'s doc says does not exist, and
+  /// ADR 0013 §5 argues the reversal rather than asserting it. In short: that
+  /// rule was written for somebody scrolling five hundred lines on a phone,
+  /// where a wrong level is a line nobody finds. Gathered and indexed, a
+  /// missing line cannot be recovered at all. The per-site judgement does not
+  /// go away, it gets smaller - not "which of five levels" but "did an
+  /// operation fail, or is this commentary".
+  ///
+  /// `test/caught_budget_test.dart` holds a per-area ceiling, because moving
+  /// *commentary* here would lower `test/log_level_budget_test.dart`
+  /// legitimately while putting noise in front of whoever reads these.
+  static void caught(String msg) =>
+      _emit('[caught] $msg', keep: true, console: infoOn);
+
   /// Running commentary, and the one level that does not survive.
   ///
-  /// Never kept, in any build: [history] holds errors and warnings only, so
-  /// nothing sent here can reach the log screen. On top of that [infoOn] is a
+  /// Never kept, in any build: [history] holds errors, warnings and [caught]
+  /// only, so nothing sent here can reach the log screen. On top of that [infoOn] is a
   /// const that folds to false in an ordinary release build, so the call
   /// usually compiles away — and a build made to talk with `QLOG=true` reaches
   /// only a console that, per [history], a user of a shipped build cannot read.
   ///
   /// Which makes this the right level for saying what the app did, and the
-  /// wrong one for the only report of a failure. That wants [warn] or [error].
+  /// wrong one for the only report of a failure. A failure somebody should
+  /// look at wants [warn] or [error]; one that was handled, where the only
+  /// loss is that nobody can read about it afterwards, wants [caught].
   ///
   /// The rule the triage applies, so the next area need not re-derive it: an
   /// `info` inside a catch stays only when something else keeps a record of
@@ -383,7 +426,10 @@ class LogService {
   /// than one ruled to be commentary; where the ruling was made, it is
   /// written next to the call.
   ///
-  /// There is no catch-all to reach for instead. Pick a level at each site.
+  /// There is one catch-all, and it is not this: [caught], added by ADR 0013
+  /// §5 for a failure that was handled and is worth keeping. It does not
+  /// dissolve the judgement at each site, it narrows it - did an operation
+  /// fail, or is this commentary. Commentary stays here.
   static void info(String msg) {
     if (!infoOn) return;
     _write(msg);
