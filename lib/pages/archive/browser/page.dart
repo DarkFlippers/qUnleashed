@@ -26,6 +26,7 @@ import 'controller.dart';
 import 'columns.dart';
 import 'widgets/file_row.dart';
 import 'widgets/file_table.dart';
+import 'widgets/replace_dialog.dart';
 import '../widgets/actions_sheet.dart';
 import '../../../components/filelist/sync_progress_bar.dart';
 import '../../../components/filelist/empty_view.dart';
@@ -37,11 +38,13 @@ class _ClipEntry {
     required this.remotePath,
     required this.name,
     required this.isDir,
+    required this.size,
   });
 
   final String remotePath;
   final String name;
   final bool isDir;
+  final int size;
 }
 
 class _Clipboard {
@@ -354,22 +357,30 @@ class _FileManagerPageState extends State<FileManagerPage> {
     final destDir = await _pickDestinationDir();
     if (!mounted || destDir == null) return;
 
-    // A single file fills its own row inline; batches use the external bar.
-    if (entries.length == 1 && !entries.single.isDir) {
-      final ok = await _ctrl.downloadEntryTo(entries.single, destDir: destDir);
-      if (!mounted || ok) return;
-      context.showNotification(
-        _because(context.l10n.fmDownloadFailed),
-        type: QNotificationType.error,
-      );
-      return;
-    }
-
     final failures = await _ctrl.downloadEntriesTo(entries, destDir: destDir);
     if (!mounted || failures == 0) return;
+    final single = entries.length == 1 && !entries.single.isDir;
     context.showNotification(
-      _because(context.l10n.fmDownloadFailedCount(failures)),
+      _because(
+        single
+            ? context.l10n.fmDownloadFailed
+            : context.l10n.fmDownloadFailedCount(failures),
+      ),
       type: QNotificationType.error,
+    );
+  }
+
+  Future<ConflictResolution?> _askReplace(
+    String destination,
+    int items,
+    List<FileConflict> conflicts,
+  ) {
+    if (!mounted) return Future.value();
+    return ReplaceFilesDialog.show(
+      context,
+      destination: destination,
+      items: items,
+      conflicts: conflicts,
     );
   }
 
@@ -550,6 +561,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
     remotePath: _ctrl.childPath(e.name),
     name: e.name,
     isDir: e.isDir,
+    size: e.size,
   );
 
   void _setClipboard(List<RemoteEntry> entries, {required bool isCut}) {
@@ -577,6 +589,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
     final cb = _clipboard;
     if (cb == null) return;
     var failures = 0;
+    final toCopy = <_ClipEntry>[];
     for (final item in cb.items) {
       final dest = _ctrl.childPath(item.name);
       // Skip a no-op paste into the item's own source folder.
@@ -584,23 +597,22 @@ class _FileManagerPageState extends State<FileManagerPage> {
         failures++;
         continue;
       }
-      bool ok;
-      if (cb.isCut) {
-        // Try a fast in-place rename first; it can't span storage roots
-        // (e.g. /ext → /int), so fall back to copy-then-delete.
-        ok = await _ctrl.rename(item.remotePath, dest);
-        if (!ok) {
-          ok = await _ctrl.copyEntry(item.remotePath, dest, isDir: item.isDir);
-          if (ok) {
-            ok = await _ctrl.delete(item.remotePath, recursive: item.isDir);
-          }
-        }
-      } else {
-        ok = await _ctrl.copyEntry(item.remotePath, dest, isDir: item.isDir);
-      }
-      if (!ok) failures++;
+      // Try a fast in-place rename first; it can't span storage roots
+      // (e.g. /ext → /int), so fall back to copy-then-delete.
+      if (cb.isCut && await _ctrl.rename(item.remotePath, dest)) continue;
+      toCopy.add(item);
     }
-    setState(() => _clipboard = null);
+    if (toCopy.isNotEmpty) {
+      failures += await _ctrl.copyInto(
+        [
+          for (final item in toCopy)
+            (path: item.remotePath, isDir: item.isDir, size: item.size),
+        ],
+        move: cb.isCut,
+        resolve: _askReplace,
+      );
+    }
+    if (mounted) setState(() => _clipboard = null);
     await _ctrl.refresh();
     if (!mounted) return;
     if (failures == 0) {
@@ -644,19 +656,17 @@ class _FileManagerPageState extends State<FileManagerPage> {
       withReadStream: false,
     );
     if (result == null || result.files.isEmpty) return;
+    await _upload([
+      for (final f in result.files)
+        if (f.path != null) f.path!,
+    ], skipped: result.files.where((f) => f.path == null).length);
+  }
 
-    var failures = 0;
-    for (final f in result.files) {
-      final path = f.path;
-      if (path == null) {
-        failures++;
-        continue;
-      }
-      final ok = await _ctrl.uploadFromLocal(path, targetName: f.name);
-      if (!ok) failures++;
-    }
+  Future<void> _upload(List<String> paths, {int skipped = 0}) async {
+    final result = await _ctrl.uploadLocal(paths, resolve: _askReplace);
     await _ctrl.refresh();
     if (!mounted) return;
+    final failures = result.failed + skipped;
     if (failures > 0) {
       // `lastFailure` rather than `error`, which the refresh above has just
       // nulled - this line rendered "Upload failed for 1 file(s): " with an
@@ -669,7 +679,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
       );
     } else {
       context.showNotification(
-        context.l10n.fmUploaded(result.files.length),
+        context.l10n.fmUploaded(result.files),
         type: QNotificationType.good,
       );
     }
