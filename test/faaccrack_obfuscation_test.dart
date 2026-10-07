@@ -34,7 +34,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'faaccrack_sources.dart';
+import 'native_sources.dart';
 
 /// An integer literal the obfuscator has split into a pair the compiler folds
 /// back at build time, e.g. `(0x775E0CC3^0x775E0EC3)`.
@@ -180,7 +180,7 @@ void main() {
           "engine's readable source, a copy of it, or anything else carrying "
           'the manufacture keys, it must not be committed - see '
           '$faaccrackNotesPath. If it is a legitimate new file, add it to '
-          'faaccrackAllowedFiles in test/faaccrack_sources.dart.',
+          'faaccrackAllowedFiles in test/native_sources.dart.',
     );
   });
 }

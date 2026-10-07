@@ -17,20 +17,11 @@
 import 'dart:async';
 import 'dart:ffi';
 import 'dart:io';
-import 'dart:isolate';
 
 import 'package:ffi/ffi.dart';
 import 'package:qunleashed/pages/tools/mifare/nested_models.dart';
 import 'package:qunleashed/pages/tools/mifare/nested_nonce_parser.dart';
-
-final class HnProgress extends Struct {
-  @Uint32()
-  external int permille;
-  @Uint32()
-  external int abort;
-  @Uint32()
-  external int started;
-}
+import 'package:qunleashed/services/native.dart';
 
 typedef _RecoverNative =
     Int32 Function(
@@ -39,7 +30,7 @@ typedef _RecoverNative =
       Pointer<Uint8> parEnc,
       Uint32 count,
       Pointer<Uint64> foundKey,
-      Pointer<HnProgress> progress,
+      Pointer<NativeProgress> progress,
     );
 typedef _RecoverDart =
     int Function(
@@ -48,7 +39,7 @@ typedef _RecoverDart =
       Pointer<Uint8> parEnc,
       int count,
       Pointer<Uint64> foundKey,
-      Pointer<HnProgress> progress,
+      Pointer<NativeProgress> progress,
     );
 
 typedef _Job = ({
@@ -62,7 +53,8 @@ typedef _Job = ({
 });
 
 /// Runs the attack. Its own function so the spawned closure can reach nothing
-/// but the payload - the same reason the app has `spawnAttackIsolate`.
+/// but the payload - which is the rule `spawnAttackIsolate` exists to keep, and
+/// `_spawn` below goes through it rather than restating it here.
 int _attack(_Job job) {
   final lib = DynamicLibrary.open(job.dll);
   final recover = lib.lookupFunction<_RecoverNative, _RecoverDart>(
@@ -74,11 +66,11 @@ int _attack(_Job job) {
     Pointer<Uint8>.fromAddress(job.parEnc),
     job.count,
     Pointer<Uint64>.fromAddress(job.foundKey),
-    Pointer<HnProgress>.fromAddress(job.progress),
+    Pointer<NativeProgress>.fromAddress(job.progress),
   );
 }
 
-Future<int> _spawn(_Job job) => Isolate.run(() => _attack(job));
+Future<int> _spawn(_Job job) => spawnAttackIsolate(_attack, job);
 
 Future<void> main(List<String> args) async {
   final dllPath = args[0];
@@ -130,7 +122,7 @@ Future<void> main(List<String> args) async {
     parEnc[i] = group[i].par!;
   }
   final foundKey = calloc<Uint64>();
-  final progress = calloc<HnProgress>();
+  final progress = calloc<NativeProgress>();
 
   final started = DateTime.now();
   var lastPermille = -1;

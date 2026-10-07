@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/tools/mifare/hardnested_recoverer.dart';
-import 'package:qunleashed/pages/tools/mifare/mifare_native.dart';
+import 'package:qunleashed/services/native.dart';
 
 void main() {
   group('NativeHardnestedRecoverer input validation', () {

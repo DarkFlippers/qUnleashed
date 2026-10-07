@@ -24,7 +24,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/tools/subghz/seed/faaccrack_recoverer.dart';
 import 'package:qunleashed/pages/tools/subghz/seed/seed_models.dart';
 
-import 'faaccrack_sources.dart';
+import 'native_sources.dart';
 
 /// The two entries in `keep.txt` that the header does not declare: the engine's
 /// own build-time macros. They are the silent case - renamed away, the file

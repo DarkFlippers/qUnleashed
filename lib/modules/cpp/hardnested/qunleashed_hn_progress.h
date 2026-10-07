@@ -1,6 +1,7 @@
 #ifndef QUNLEASHED_HN_PROGRESS_H
 #define QUNLEASHED_HN_PROGRESS_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 // A window into a running hardnested attack, and the way to stop one.
@@ -60,6 +61,32 @@ typedef struct {
   // brute force and clear for the phases before it.
   volatile uint32_t started;
 } qunleashed_hn_progress;
+
+// Every offset, not only the size. Three interchangeable 32-bit words can
+// permute among themselves with the size unchanged, and the Dart mirror in
+// `lib/services/native.dart` is hand-written: swap `permille` with `abort` on
+// one side only and Stop is written into the progress field, so the button does
+// nothing and the bar never moves.
+//
+// This library is the thinly covered one, which is why it has these at all.
+// faaccrack exports its struct sizes and its Dart binding checks them before it
+// reads a result, in release; nothing equivalent exists here. And no CI job on a
+// pull request compiles this header - the only native compile there is
+// faaccrack's engine probe - so these assertions first fire on a local build or
+// a release job. Until then `test/native_struct_mirror_test.dart` is the cover,
+// and it checks that these lines are present and say what they should rather
+// than assuming a compiler read them. See
+// `docs/adr/0015-hand-written-ffi-bindings.md`.
+#define QUNLEASHED_HN_PROGRESS_LAYOUT_CHANGED \
+  "qunleashed_hn_progress layout changed - update the Dart mirror"
+_Static_assert(sizeof(qunleashed_hn_progress) == 12,
+               QUNLEASHED_HN_PROGRESS_LAYOUT_CHANGED);
+_Static_assert(offsetof(qunleashed_hn_progress, permille) == 0,
+               QUNLEASHED_HN_PROGRESS_LAYOUT_CHANGED);
+_Static_assert(offsetof(qunleashed_hn_progress, abort) == 4,
+               QUNLEASHED_HN_PROGRESS_LAYOUT_CHANGED);
+_Static_assert(offsetof(qunleashed_hn_progress, started) == 8,
+               QUNLEASHED_HN_PROGRESS_LAYOUT_CHANGED);
 
 // Installs the channel for the attack. NULL detaches, which is what a caller
 // that wants neither progress nor cancellation passes.

@@ -1,14 +1,21 @@
-// Paths and contents the two faaccrack source guards share.
+// Paths and contents the native source guards share.
 //
 // Not a `_test.dart`: the repo's convention for test scaffolding, alongside
-// `ratchet.dart` and `firmware_fixture.dart`. It exists because the two guards
-// were each spelling the same four paths, and because the set of quoted includes
-// the engine is allowed to have was pinned twice in two different shapes - so
-// adding one meant four edits across three files and only one of them failed
-// with a message that named the problem.
+// `ratchet.dart` and `firmware_fixture.dart`. It exists because the guards were
+// each spelling the same paths, and because the set of quoted includes the
+// engine is allowed to have was pinned twice in two different shapes - so adding
+// one meant four edits across three files and only one of them failed with a
+// message that named the problem.
+//
+// Most of it is faaccrack's, which is the library with an allowlist and a keep
+// list. It stopped being only faaccrack's when a second library's header gained
+// a mirror in the same Dart file: see [nativeBindingPath] and
+// `docs/adr/0015-hand-written-ffi-bindings.md`. A path added here rather than
+// spelled locally is one fewer place a move has to find.
 import 'dart:io';
 
 const faaccrackDir = 'lib/modules/cpp/faaccrack';
+const hardnestedDir = 'lib/modules/cpp/hardnested';
 const faaccrackEnginePath = '$faaccrackDir/faaccrack.c';
 const faaccrackHeaderPath = '$faaccrackDir/faaccrack.h';
 const faaccrackNotesPath = '$faaccrackDir/BUILD_NOTES.md';
@@ -43,18 +50,27 @@ const faaccrackAllowedFiles = {
 /// faaccrack's build will need that directory too.
 const faaccrackQuotedIncludes = {
   'faaccrack.h': faaccrackDir,
-  'pthread_shim.h': 'lib/modules/cpp/hardnested',
+  'pthread_shim.h': hardnestedDir,
 };
 
-/// Where the hand-written Dart mirror of the C structs lives.
+/// Where the hand-written Dart mirror of `faaccrack_result` lives. Its sibling
+/// mirror of `faaccrack_progress` moved to [nativeBindingPath], because
+/// hardnested reads the same words - see
+/// `docs/adr/0015-hand-written-ffi-bindings.md`.
 const faaccrackRecovererPath =
     'lib/pages/tools/subghz/seed/faaccrack_recoverer.dart';
+
+/// The shared Dart mirror of both progress channels, and the plumbing every
+/// native feature loads its library through.
+const nativeBindingPath = 'lib/services/native.dart';
+
+/// The hardnested progress channel, whose struct [nativeBindingPath] mirrors
+/// the first three words of.
+const hardnestedProgressHeaderPath = '$hardnestedDir/qunleashed_hn_progress.h';
 
 /// The engine, the header, the notes and the keep list.
 String faaccrackEngine() => File(faaccrackEnginePath).readAsStringSync();
 String faaccrackHeader() => File(faaccrackHeaderPath).readAsStringSync();
-String faaccrackRecovererSource() =>
-    File(faaccrackRecovererPath).readAsStringSync();
 String faaccrackDispatcherSource() =>
     File('$faaccrackDir/faaccrack_dispatch.c').readAsStringSync();
 String faaccrackCMakeSource() =>

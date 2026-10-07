@@ -7,6 +7,7 @@ import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../../services/logging.dart';
+import '../../../services/native.dart';
 import '../../../services/progress_throttle.dart';
 import 'cuid_dict_format.dart';
 import 'existed_keys_storage.dart';
@@ -16,7 +17,6 @@ import 'key_nonce_parser.dart';
 import 'mfkey32_api.dart';
 import 'mfkey32_models.dart';
 import 'mfkey32_recoverer.dart';
-import 'mifare_native.dart';
 import 'nested_api.dart';
 import 'nested_models.dart';
 import 'nested_nonce_parser.dart';

@@ -2,8 +2,8 @@ import 'dart:ffi';
 
 import 'package:ffi/ffi.dart';
 
+import '../../../services/native.dart';
 import 'mfkey32_models.dart';
-import 'mifare_native.dart';
 
 abstract class MfKey32Recoverer {
   Future<BigInt?> bruteforceKey(MfKey32Nonce nonce);

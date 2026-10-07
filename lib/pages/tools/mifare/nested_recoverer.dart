@@ -2,7 +2,7 @@ import 'dart:ffi';
 
 import 'package:ffi/ffi.dart';
 
-import 'mifare_native.dart';
+import '../../../services/native.dart';
 import 'nested_models.dart';
 
 abstract class NestedRecoverer {
