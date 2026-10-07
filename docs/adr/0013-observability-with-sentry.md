@@ -4,7 +4,8 @@ Status: Proposed (2026-10-01); breadcrumb source settled, the logging
 chokepoints checked against the code, and `caught` added as a third level
 (2026-10-02); every claim re-read against the tree (2026-10-07), which moved
 the flipperlib pin, the replay mask target, the ratchet arithmetic, the route
-count and what is left of #103
+count and what is left of #103; **consent reversed to on by default, sent
+automatically, behind a one-time notice** (2026-10-07)
 
 Re-verified 2026-10-07 and still true: the 48 and `pages/archive`'s 24 are
 exactly what `test/log_level_budget_test.dart` counts — it sits at budget in
@@ -65,22 +66,64 @@ What constrains the shape more than the SDK does:
 
 ## Decision
 
-### 1. Sentry, behind consent, with everything on once consent is given
+### 1. On by default, sent automatically, with one switch that turns it off
 
-One prompt, at first launch and once for existing users after the update.
-**Nothing starts before the answer** — no init, no network.
+Reversed 2026-10-07. This section first said the opposite — one prompt at
+first launch, nothing started before the answer — and the reasoning for the
+reversal is below, in Rejected alternatives, because that is where the
+on-by-default option was written down and declined.
 
-After "yes", every category is on: errors and crashes; performance, logs and
-metrics; replay where the platform has it. Settings → Diagnostics, next to
-Log, has a switch per category. Turning reporting off calls `Sentry.close()`,
-which also shuts the native SDK and the handlers; turning it on starts it
-again.
+**Reporting is on from the first launch and sends by itself.** No prompt, no
+gate, no action by the user to send anything. Errors and crashes, Sentry Logs,
+traces and metrics all go as they happen.
 
-Firebase Test Lab — which Google Play's pre-launch report runs on, and whose
-robots will tap "yes" — never starts it.
+One switch turns it all off: Settings → Diagnostics (the Log row, renamed),
+**Share logs with developers**, on by default. Turning it off calls
+`Sentry.close()`, which also shuts the native SDK and the handlers; turning it
+back on starts it again. One switch and not one per category, because
+"performance" and "metrics" as separate controls are a distinction nobody can
+act on - the same data in a different shape, neither of them the screen - and
+every extra switch is friction that buys no privacy the first one did not.
 
-The Log screen stays. It is still the route for anyone who says no, and the
-history it shows is the same text Sentry receives.
+**Replay is the exception and stays off by default**, a second switch under
+the first, Android and iOS only. It is the only category that records the
+screen, on an app whose screen shows card dumps and Sub-GHz captures, and the
+only one with a cost a user can feel (about +13% CPU and +5% memory on
+Android, +6% CPU on iOS). The stores label it separately too. A screen
+recorder that starts without being asked is a different decision from a crash
+reporter that does, and this ADR only makes the second one.
+
+**A one-time notice on first launch, not a gate.** Shown once at first
+launch, and once more for existing users after the update that carries this.
+It says what is sent, links the privacy policy, and carries two actions:
+**Got it** and **Turn it off**. Reporting is already on while it is on screen
+— that is what makes it a notice and not consent — and the second action is
+there so that turning it off takes one tap at the moment the user is being
+told, rather than a hunt through Settings later.
+
+It does not block. The app is usable behind it and dismissing it is the same
+as **Got it**; it is recorded as shown either way, and never appears again.
+
+There is no onboarding flow in the app to hang this on, so it is a one-time
+sheet of its own, raised from `_runApp` once the first frame is up. Not from
+`_initCore` — that must never throw and has no UI — and not from
+`widgetMain()`, which has no window at all: a headless isolate must never be
+the path that marks the notice shown, or the user would never see it.
+
+This is also what Play's Data safety declaration and the App Store's privacy
+labels need to be true, and it is what makes "on by default" honest rather
+than quiet. Under GDPR it is the ordinary shape for diagnostics taken on
+legitimate interest: nothing identifying (§6), IP storage off, and objecting
+is one tap. The repository has no privacy policy today and needs one before
+the first release that carries this; both stores require the URL anyway.
+
+Firebase Test Lab — which Google Play's pre-launch report runs on — never
+starts it. This matters more now than it did behind a prompt: nothing has to
+tap "yes" for a robot's session to become real events.
+
+The Log screen stays, and so does Copy. It is the route for anyone who turns
+sharing off, and the history it shows is the same text Sentry receives. There
+is no "send this now" button: sending is not something the user does.
 
 ### 2. One folder imports Sentry, and it plugs into what exists
 
@@ -91,7 +134,7 @@ as it does now.
 
 | Chokepoint | What reaches Sentry |
 |---|---|
-| `_initCore` | Init, after `LogService.initialize()` and the consent read, with its own catch. Sentry saves and calls the `FlutterError.onError` and `PlatformDispatcher.onError` it finds, so `LogService`'s handlers going in first keeps both. One init serves `main()` and `widgetMain()`: `promote` reuses the engine. |
+| `_initCore` | Init, after `LogService.initialize()` and the opt-out read, with its own catch. The read is one bool and defaults to on, so a preference store that will not open reports rather than going quiet - the opposite of the consent shape, where a failed read had to mean no. Sentry saves and calls the `FlutterError.onError` and `PlatformDispatcher.onError` it finds, so `LogService`'s handlers going in first keeps both. One init serves `main()` and `widgetMain()`: `promote` reuses the engine. |
 | `LogService._emit`, kept entries | Sentry Logs, through a `keptSink` hook in the shape of flipperlib's `Log.sink`. **The first of a run only**: one RPC timeout produces hundreds of identical lines, which is why `_remember` coalesces them. That coalescing is not visible from `_emit` today - `_remember` returns `void` and folds silently - so it has to report whether the line was new. One signature, and the hook reads it rather than comparing bodies a second time. |
 | `LogService.caught`, §5 | The same `keptSink`, sent at Sentry's **info** level rather than `warning`. The 48 failures a release build keeps no record of today, §5. |
 | `guarded(what, …)` | An issue, fingerprinted on `what` and the error type — the best grouping key the app has. |
@@ -344,9 +387,30 @@ behaviour testable from there.
 **`sentry_logging`.** Neither submodule uses `package:logging`, and
 `LogService` already funnels what does.
 
-**Reporting on by default, before asking.** F-Droid applies the Tracking
-anti-feature unless reporting is opt-in and off by default, IzzyOnDroid is
-stricter for security tools, and these are the users who would notice.
+**Reporting on by default, before asking.** Declined on 2026-10-01, and
+**adopted on 2026-10-07** — §1 now describes it. The argument against it was
+that F-Droid applies the Tracking anti-feature unless reporting is opt-in and
+off by default, that IzzyOnDroid is stricter still for security tools, and
+that these are the users who would notice.
+
+What was wrong with it is that the app is on neither, and nothing schedules
+it: [0014](0014-build-identity.md) names F-Droid once, as one channel a build
+might come from. So the rejection defended a distribution that does not exist
+against a cost that is certain - an opt-in crash reporter on a tool with this
+audience collects from a single-digit share of installs, which is not enough
+reports to find the fault in a BLE stack on a handset nobody on the project
+owns. That is the whole reason for the decision, and trading it away for a
+channel the project has not committed to was the wrong way round.
+
+What the reversal actually costs, stated plainly: if qUnleashed is ever
+published on F-Droid, the Tracking anti-feature applies to it unless the
+default flips back. That is a known price on a decision nobody has taken,
+rather than a surprise.
+
+What stays from the rejection: nothing is collected that identifies a person
+(§6), IP storage is off server-side, the switch is one tap away and the notice
+says it is there, and replay - the only category that records the screen -
+keeps the off-by-default the whole feature used to have.
 
 **Every `LogService.error` as an issue.** No exception object to group on, and
 most of them are expected.
@@ -366,8 +430,12 @@ carry.
   native symbols through `sentry_dart_plugin`; the R8 mapping through the
   Sentry Android Gradle Plugin with auto-install off, which the Dart plugin does
   not cover.
-- Store paperwork: Google Play Data safety, and App Store privacy labels once
-  the app is there.
+- Store paperwork, and more of it than an opt-in build would need: Google
+  Play Data safety declaring crash logs and diagnostics as collected and
+  optional, App Store privacy labels for Crash and Performance Data not linked
+  to identity, and a privacy policy the repository does not have yet. The
+  policy is the blocker of the three - both stores want the URL regardless, and
+  §1's notice links it.
 - Desktop gets no crash-free rate and no offline cache; mobile carries replay's
   overhead (about +13% CPU and +5% memory on Android, +6% CPU on iOS, per
   Sentry's measurements).
@@ -405,7 +473,7 @@ carry.
 |---|---|
 | 0 | Sentry project, server-side scrubbing, GitHub integration for the three repositories, alerts |
 | 0a | `caught`, its ratchet, and the re-ruling of the 48 that #103's triage left at `info`. Independent of Sentry - it lands in `history` and on the Log screen on the next build - and done first so no phase ships a failure nothing records |
-| 1 | Errors and crashes: dependency, `telemetry/`, consent and Diagnostics, scrubber, `guarded` → issues, CI defines and symbol upload, the import ratchet |
+| 1 | Errors and crashes: dependency, `telemetry/`, the Diagnostics switch and the one-time notice, scrubber, `guarded` → issues, CI defines and symbol upload, the import ratchet |
 | 2 | Logs and tracing: `keptSink` and the `_remember` return it needs, flipperlib breadcrumbs in `_flipperlibSink` with the level pin raised, named routes and `SentryNavigatorObserver`, `traced`, `AppHttp` spans, the dartufbt sink |
 | 3 | Metrics, replay with its masks, a "Send to developers" action on the Log screen through `captureFeedback`, the flipperlib observer |
 
