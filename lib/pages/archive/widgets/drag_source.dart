@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:super_clipboard/super_clipboard.dart';
 import 'package:super_drag_and_drop/super_drag_and_drop.dart';
 
+import '../../../components/archive/models/key.dart';
 import '../../../components/path.dart';
 import '../../../services/guarded.dart';
 import '../../../services/localization/l10n.dart';
@@ -31,6 +32,9 @@ class DragFile {
     this.localPath,
     this.load,
   }) : assert(localPath != null || load != null);
+
+  DragFile.archiveKey(ArchiveKey key)
+    : this(id: key.remotePath, name: key.fileName, localPath: key.localPath);
 
   final String id;
   final String name;
@@ -253,6 +257,41 @@ class FileDragSource extends StatelessWidget {
       liftBuilder: (_, _) => _dragImage(_files()),
       dragItemProvider: _item,
       child: DraggableWidget(onDragConfiguration: _configure, child: child),
+    );
+  }
+}
+
+/// A key row that drags out as its local file, alone or with the rest of the
+/// selection it belongs to. A key with no local copy is not draggable.
+class ArchiveKeyDragSource extends StatelessWidget {
+  const ArchiveKeyDragSource({
+    super.key,
+    required this.archiveKey,
+    required this.selected,
+    required this.selection,
+    required this.onDropped,
+    required this.child,
+  });
+
+  final ArchiveKey archiveKey;
+  final bool selected;
+  final List<ArchiveKey> Function() selection;
+  final VoidCallback onDropped;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!archiveKey.inLocal) return child;
+    return FileDragSource(
+      file: DragFile.archiveKey(archiveKey),
+      group: selected
+          ? () => [
+              for (final k in selection())
+                if (k.inLocal) DragFile.archiveKey(k),
+            ]
+          : null,
+      onDropped: selected ? onDropped : null,
+      child: child,
     );
   }
 }

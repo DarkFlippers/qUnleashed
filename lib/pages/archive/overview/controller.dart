@@ -1526,6 +1526,34 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  /// Reads [remotePath] for a receiver outside the app - a favourite app
+  /// dragged elsewhere. Null when the read failed or [onCancel] fired first.
+  Future<List<int>?> exportBytes(
+    String remotePath, {
+    Listenable? onCancel,
+    void Function(double progress)? onProgress,
+  }) async {
+    var cancelled = false;
+    void cancel() => cancelled = true;
+    onCancel?.addListener(cancel);
+    try {
+      return await _client.storageReadChunked(
+        remotePath,
+        onProgress: onProgress,
+        isCancelled: () => cancelled,
+        timeout: const Duration(minutes: 5),
+      );
+    } on FlipperCancelledException {
+      return null;
+    } catch (e) {
+      _lastError = _lastFailure = '$e';
+      LogService.warn('[Archive] read $remotePath failed: $e');
+      return null;
+    } finally {
+      onCancel?.removeListener(cancel);
+    }
+  }
+
   Future<List<int>?> _readRemoteBytes(
     String path, {
     bool logErrors = true,

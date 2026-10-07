@@ -22,6 +22,7 @@ import 'sort.dart';
 import '../../../../components/filelist/table.dart';
 import '../../../../components/filelist/toolbar.dart';
 import '../failure_toast.dart';
+import '../../widgets/drag_source.dart';
 
 /// Lists everything starred — keys of every category plus the favorite apps
 /// read off the device — in the unified table used by the deleted page. Key
@@ -155,6 +156,10 @@ class _FavoritesPageState extends State<FavoritesPage> {
       _selectionMode = false;
       _selected.clear();
     });
+  }
+
+  void _onDropped() {
+    if (mounted) _exitSelection();
   }
 
   void _setAllSelected(List<ArchiveKey> filtered, bool selected) {
@@ -404,40 +409,60 @@ class _FavoritesPageState extends State<FavoritesPage> {
                                 itemBuilder: (_, i) {
                                   if (i >= keys.length) {
                                     final fap = faps[i - keys.length];
-                                    return _FapTableRow(
+                                    return FileDragSource(
                                       key: ValueKey(fap.remotePath),
-                                      favorite: fap,
-                                      cols: cols,
-                                      colors: colors,
-                                      selectionMode: _selectionMode,
-                                      onTap: () => _launchFap(fap),
-                                      onLongPress: () =>
-                                          _showFapActions(context, fap),
+                                      file: DragFile(
+                                        id: fap.remotePath,
+                                        name: fap.fileName,
+                                        load: (progress) => _ctrl.exportBytes(
+                                          fap.remotePath,
+                                          onCancel: progress?.onCancel,
+                                          onProgress: progress?.updateProgress,
+                                        ),
+                                      ),
+                                      child: _FapTableRow(
+                                        favorite: fap,
+                                        cols: cols,
+                                        colors: colors,
+                                        selectionMode: _selectionMode,
+                                        onTap: () => _launchFap(fap),
+                                        onLongPress: () =>
+                                            _showFapActions(context, fap),
+                                      ),
                                     );
                                   }
                                   final key = keys[i];
-                                  return ArchiveTableRow(
+                                  final selected = _selected.contains(
+                                    _keyId(key),
+                                  );
+                                  return ArchiveKeyDragSource(
                                     key: ValueKey(_keyId(key)),
-                                    flipperKey: key,
-                                    cols: cols,
-                                    colors: colors,
-                                    cat: key.category,
-                                    showCategoryIcon: true,
-                                    progress: _ctrl.progressForKey(key),
-                                    selectionMode: _selectionMode,
-                                    selected: _selected.contains(_keyId(key)),
-                                    onTap: () => _selectionMode
-                                        ? _toggleSelect(key)
-                                        : KeyActionsSheet.show(
-                                            context,
-                                            _ctrl,
-                                            key,
-                                            onToggleFavorite: () =>
-                                                _ctrl.toggleFavorite(key),
-                                          ),
-                                    onLongPress: () => _selectionMode
-                                        ? _toggleSelect(key)
-                                        : _enterSelection(key),
+                                    archiveKey: key,
+                                    selected: selected,
+                                    selection: () => _selectedKeys,
+                                    onDropped: _onDropped,
+                                    child: ArchiveTableRow(
+                                      flipperKey: key,
+                                      cols: cols,
+                                      colors: colors,
+                                      cat: key.category,
+                                      showCategoryIcon: true,
+                                      progress: _ctrl.progressForKey(key),
+                                      selectionMode: _selectionMode,
+                                      selected: selected,
+                                      onTap: () => _selectionMode
+                                          ? _toggleSelect(key)
+                                          : KeyActionsSheet.show(
+                                              context,
+                                              _ctrl,
+                                              key,
+                                              onToggleFavorite: () =>
+                                                  _ctrl.toggleFavorite(key),
+                                            ),
+                                      onLongPress: () => _selectionMode
+                                          ? _toggleSelect(key)
+                                          : _enterSelection(key),
+                                    ),
                                   );
                                 },
                               ),
@@ -458,7 +483,6 @@ class _FavoritesPageState extends State<FavoritesPage> {
 /// line up under the same header, with the key-only columns left blank.
 class _FapTableRow extends StatelessWidget {
   const _FapTableRow({
-    super.key,
     required this.favorite,
     required this.cols,
     required this.colors,
