@@ -31,13 +31,14 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
-/// The bridges whose exported symbols Dart resolves at runtime. All three share
-/// the macro, so all three carry the same risk the day one of them stops being
+/// The bridges whose exported symbols Dart resolves at runtime. They all share
+/// the macro, so they all carry the same risk the day one of them stops being
 /// built as a shared library.
 const _bridges = [
   'lib/modules/cpp/mfkey32/mfkey32_bridge.c',
   'lib/modules/cpp/mfkey32/nested_bridge.c',
   'lib/modules/cpp/hardnested/qunleashed_hardnested_bridge.c',
+  'lib/modules/cpp/faaccrack/faaccrack_bridge.c',
 ];
 
 /// The sources the Apple Runner targets must still compile. Dropping one is

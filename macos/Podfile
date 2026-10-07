@@ -34,6 +34,7 @@ target 'Runner' do
   use_frameworks!
   # Host-side hardnested attack FFI lib (see lib/modules/cpp/hardnested).
   pod 'qunleashed_hardnested', :path => '../lib/modules/cpp/hardnested/apple'
+  pod 'qunleashed_faaccrack', :path => '../lib/modules/cpp/faaccrack/apple'
 
   flutter_install_all_macos_pods File.dirname(File.realpath(__FILE__))
   target 'RunnerTests' do

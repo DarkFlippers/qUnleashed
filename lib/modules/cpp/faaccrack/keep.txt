@@ -1,0 +1,58 @@
+# Names the obfuscator must not rename when it generates faaccrack.c.
+#
+# This file is the argument, not a transcript of it: the regeneration command in
+# BUILD_NOTES.md reads it, and test/faaccrack_engine_abi_test.dart holds it to
+# the header and the engine. It used to live inside that document, which meant a
+# human edited prose and separately retyped a 32-name flag - and a wrapped line
+# would have quietly shortened the list the test checked.
+#
+# The rule is "every name faaccrack.h declares that the engine source spells".
+# Names the header owns but the engine never mentions are absent on purpose; the
+# test keeps a reason for each. See BUILD_NOTES.md for why a miss is loud for
+# every name here except the last two.
+
+# Status codes.
+FAACCRACK_OK
+FAACCRACK_BAD_ARGS
+FAACCRACK_STOPPED
+FAACCRACK_BUSY
+FAACCRACK_UNVERIFIED
+FAACCRACK_NOT_FOUND
+FAACCRACK_SELFTEST_NLF
+FAACCRACK_SELFTEST_KEELOQ
+FAACCRACK_SELFTEST_SHUFFLE
+
+# Bounds the engine validates against, so a caller checking the same macros and
+# the engine cannot disagree.
+FAACCRACK_MIN_HOPS
+FAACCRACK_MAX_HOPS
+FAACCRACK_MAX_THREADS
+FAACCRACK_MODE_MIN
+FAACCRACK_MODE_MAX
+
+# The entry point, which is how one source becomes one symbol per instruction
+# set. Losing this is a link error once a dispatcher exists.
+FAACCRACK_SEARCH
+
+# The two structs and every field the engine writes.
+faaccrack_progress
+faaccrack_result
+permille
+abort
+started
+threads_started
+seed
+lrkey
+last_plain
+counter
+frame_plain
+frame_hop
+round_trip_ok
+hops_used
+lanes
+
+# The engine's own build-time knobs, which faaccrack.h does not declare. These
+# are the two whose loss is silent: renamed away, the file still compiles, links
+# and solves while -DVBITS and -DNLF12 stop having any effect.
+VBITS
+NLF12

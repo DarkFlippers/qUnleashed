@@ -35,25 +35,43 @@ CPP_DIR="${QUNLEASHED_CPP_DIR:-$ROOT_DIR/lib/modules/cpp}"
 
 BINARY="${1:-}"
 BUNDLE="${2:-}"
-if [[ -z "$BINARY" || -z "$BUNDLE" ]]; then
-  echo "::error::Usage: ${BASH_SOURCE[0]} <main-executable> <app-bundle-dir>" >&2
-  exit 1
-fi
-if [[ ! -f "$BINARY" ]]; then
-  echo "::error::Main executable not found: $BINARY" >&2
-  exit 1
-fi
-if [[ ! -d "$BUNDLE" ]]; then
-  echo "::error::App bundle not found: $BUNDLE" >&2
-  exit 1
+
+# `--list-symbols` prints the names this guard expects and exits.
+#
+# It exists so check_ffi_exports_test.sh can build its stub from the same
+# derivation rather than a second copy of it. The test used to re-implement the
+# extraction, which is how it came to miss a pointer-returning export that the
+# guard had started finding - the test's own comment warns against keeping a
+# second copy of the export list and then kept one.
+if [[ "$BINARY" == "--list-symbols" ]]; then
+  LIST_ONLY=1
+  BINARY=""
+else
+  LIST_ONLY=0
 fi
 
-for command_name in "$NM" "$LIPO"; do
-  if ! command -v "$command_name" >/dev/null 2>&1; then
-    echo "::error::$command_name is required." >&2
+if ((!LIST_ONLY)) && [[ -z "$BINARY" || -z "$BUNDLE" ]]; then
+  echo "::error::Usage: ${BASH_SOURCE[0]} <main-executable> <app-bundle-dir>" >&2
+  echo "::error::   or: ${BASH_SOURCE[0]} --list-symbols" >&2
+  exit 1
+fi
+if ((!LIST_ONLY)); then
+  if [[ ! -f "$BINARY" ]]; then
+    echo "::error::Main executable not found: $BINARY" >&2
     exit 1
   fi
-done
+  if [[ ! -d "$BUNDLE" ]]; then
+    echo "::error::App bundle not found: $BUNDLE" >&2
+    exit 1
+  fi
+
+  for command_name in "$NM" "$LIPO"; do
+    if ! command -v "$command_name" >/dev/null 2>&1; then
+      echo "::error::$command_name is required." >&2
+      exit 1
+    fi
+  done
+fi
 
 # Read the expected names off the definitions rather than restating them, so an
 # entry point added to either lib is covered the day it is added.
@@ -64,8 +82,12 @@ SYMBOLS=()
 while IFS= read -r symbol; do
   SYMBOLS+=("$symbol")
 done < <(
+  # `.*[^A-Za-z0-9_]` for the return type rather than one identifier: an
+  # export returning a pointer spells it `const char *name(`, which is two
+  # tokens and a star. The single-token version missed exactly those, and
+  # the count check below is what would have caught it.
   find "$CPP_DIR" -name '*.c' -exec sed -nE \
-    's/^QUNLEASHED_EXPORT[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]+(qunleashed_[A-Za-z0-9_]+)\(.*/\1/p' {} + |
+    's/^QUNLEASHED_EXPORT[[:space:]]+.*[^A-Za-z0-9_](qunleashed_[A-Za-z0-9_]+)\(.*/\1/p' {} + |
     sort -u
 )
 
@@ -75,6 +97,26 @@ if ((${#SYMBOLS[@]} == 0)); then
   echo "::error::No QUNLEASHED_EXPORT definitions found under $CPP_DIR." >&2
   echo "::error::The guard can check nothing; fix its sed before trusting a green build." >&2
   exit 1
+fi
+
+# And one that matched *some* of them would be worse, because it looks like it
+# worked. Counting the definitions a different way and comparing is the only
+# thing that notices: the extraction above missed a pointer-returning export
+# for as long as one existed, and the zero check above could not see it.
+DEFINED=$(find "$CPP_DIR" -name '*.c' -exec grep -chE '^QUNLEASHED_EXPORT[[:space:]]' {} + |
+  awk '{ total += $1 } END { print total + 0 }')
+if ((${#SYMBOLS[@]} != DEFINED)); then
+  echo "::error::Found $DEFINED QUNLEASHED_EXPORT definitions but extracted" \
+    "${#SYMBOLS[@]} symbol names. The guard would check only some of them;" \
+    "fix its sed before trusting a green build." >&2
+  printf '::error::extracted: %s\n' "${SYMBOLS[*]}" >&2
+  exit 1
+fi
+
+if ((LIST_ONLY)); then
+  printf '%s
+' "${SYMBOLS[@]}"
+  exit 0
 fi
 
 # The main executable plus every Mach-O the bundle embeds. Non-Mach-O files in

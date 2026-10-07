@@ -66,6 +66,15 @@ DynamicLibrary openMifareNativeLibrary() =>
 DynamicLibrary openHardnestedNativeLibrary() =>
     openNativeLibrary('qunleashed_hardnested');
 
+/// The `qunleashed_faaccrack` library: SubGHz rolling-code seed recovery
+/// (see `lib/modules/cpp/faaccrack`).
+///
+/// Here rather than beside its own recoverer because [openNativeLibrary] is
+/// where the per-platform rules live, and a second copy of them is how one
+/// platform ends up loading a library a different way from the others.
+DynamicLibrary openFaaccrackNativeLibrary() =>
+    openNativeLibrary('qunleashed_faaccrack');
+
 /// A bundled native library, or a symbol in it, could not be loaded.
 ///
 /// Distinct from a failure while running an attack: this one means the build

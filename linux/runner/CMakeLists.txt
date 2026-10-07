@@ -28,10 +28,12 @@ target_link_libraries(${BINARY_NAME} PRIVATE PkgConfig::GTK)
 target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
 add_dependencies(${BINARY_NAME} qunleashed_mfkey32)
 add_dependencies(${BINARY_NAME} qunleashed_hardnested)
+add_dependencies(${BINARY_NAME} qunleashed_faaccrack)
 
 set(PLUGIN_BUNDLED_LIBRARIES
   ${PLUGIN_BUNDLED_LIBRARIES}
   $<TARGET_FILE:qunleashed_mfkey32>
   $<TARGET_FILE:qunleashed_hardnested>
+  $<TARGET_FILE:qunleashed_faaccrack>
   PARENT_SCOPE
 )

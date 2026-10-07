@@ -7717,5 +7717,354 @@
   "widgetGroupCaption": "Caption",
   "@widgetGroupCaption": {
     "description": "Header of the widget caption switch and size choice."
+  },
+
+  "toolSeedRecovery": "Recover SubGHz Seeds",
+  "@toolSeedRecovery": {
+    "description": "Title of the SubGHz rolling-code seed recovery tool."
+  },
+
+  "toolSeedRecoverySubtitle": "Recover FAAC, Genius, BFT and Erreka remotes",
+  "@toolSeedRecoverySubtitle": {
+    "description": "Subtitle of the SubGHz seed recovery tool."
+  },
+
+  "seedTitle": "Recover SubGHz Seeds",
+  "@seedTitle": {
+    "description": "Title of the seed recovery page."
+  },
+
+  "seedNoCaptures": "No captures on this Flipper",
+  "@seedNoCaptures": {
+    "description": "Shown when the device holds no seed capture files."
+  },
+
+  "seedNoCapturesHint": "Use the Seed Capturer app on the Flipper to record a remote, then come back.",
+  "@seedNoCapturesHint": {
+    "description": "Hint under the empty capture list, naming the app that creates them."
+  },
+
+  "seedCapturesTitle": "Captures",
+  "@seedCapturesTitle": {
+    "description": "Header above the list of capture files."
+  },
+
+  "seedRefresh": "Refresh",
+  "@seedRefresh": {
+    "description": "Button that re-reads the capture list from the device."
+  },
+
+  "seedHops": "{count, plural, one{{count} hop} other{{count} hops}}",
+  "@seedHops": {
+    "description": "How many button presses a capture holds.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+
+  "seedFix": "Fix",
+  "@seedFix": {
+    "description": "Label for the remote's fixed code."
+  },
+
+  "seedSeed": "Seed",
+  "@seedSeed": {
+    "description": "Label for the recovered seed."
+  },
+
+  "seedCounter": "Counter",
+  "@seedCounter": {
+    "description": "Label for the counter inside the last decrypted hop."
+  },
+
+  "seedManufacturer": "Manufacturer",
+  "@seedManufacturer": {
+    "description": "Label for the remote's brand."
+  },
+
+  "seedFrequency": "Frequency",
+  "@seedFrequency": {
+    "description": "Label for the capture's frequency."
+  },
+
+  "seedStart": "Recover Seed",
+  "@seedStart": {
+    "description": "Button that starts the search."
+  },
+
+  "seedStop": "Stop",
+  "@seedStop": {
+    "description": "Button that stops a running search."
+  },
+
+  "seedStopTitle": "Stop Seed Recovery?",
+  "@seedStopTitle": {
+    "description": "Title of the confirmation shown before stopping a search."
+  },
+
+  "seedStopMessage": "The search will stop where it is. Anything already found is kept.",
+  "@seedStopMessage": {
+    "description": "Body of the stop confirmation."
+  },
+
+  "seedStopCancel": "Keep Going",
+  "@seedStopCancel": {
+    "description": "Cancel button of the stop confirmation."
+  },
+
+  "seedSearching": "Searching the seed space…",
+  "@seedSearching": {
+    "description": "Shown while a search runs."
+  },
+
+  "seedFound": "Seed recovered",
+  "@seedFound": {
+    "description": "Shown when a search succeeds."
+  },
+
+  "seedUnverified": "Seed found, but the frame could not be rebuilt",
+  "@seedUnverified": {
+    "description": "Shown when a seed was found but re-encrypting did not reproduce the capture."
+  },
+
+  "seedUnverifiedHint": "The seed is shown for reference. The remote cannot be saved as a transmittable file.",
+  "@seedUnverifiedHint": {
+    "description": "Explains why saving is unavailable after an unverified result."
+  },
+
+  "seedNothingMatched": "No seed matched this capture",
+  "@seedNothingMatched": {
+    "description": "Shown when the whole space was swept with no match."
+  },
+
+  "seedNothingMatchedHint": "This does not mean the remote cannot be recovered. Check the brand is right, and that the presses were consecutive with none missed, then capture again.",
+  "@seedNothingMatchedHint": {
+    "description": "Explains what a no-match result actually means and what to do."
+  },
+
+  "seedStopped": "Search stopped",
+  "@seedStopped": {
+    "description": "Shown when the user stopped the search."
+  },
+
+  "seedEngineBusy": "Another recovery is already running",
+  "@seedEngineBusy": {
+    "description": "Shown when the engine refuses a second concurrent search."
+  },
+
+  "seedEngineBroken": "This build of the recovery engine is faulty",
+  "@seedEngineBroken": {
+    "description": "Shown when the engine's own self-tests fail."
+  },
+
+  "seedEngineFault": "The recovery engine failed",
+  "@seedEngineFault": {
+    "description": "Shown when the engine reports a fault."
+  },
+
+  "seedLowConfidence": "Backed by only {count} hops, so it is not offered for transmission: with two a wrong answer is possible, and {needed} or more effectively rule it out. Capture another press or two and try again.",
+  "@seedLowConfidence": {
+    "description": "Explains that a result came from too few hops to be saved, and what to do about it.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "needed": {
+        "type": "int"
+      }
+    }
+  },
+
+  "seedSave": "Save to Flipper",
+  "@seedSave": {
+    "description": "Button that writes the recovered remote to the device."
+  },
+
+  "seedSaved": "Saved to {path}",
+  "@seedSaved": {
+    "description": "Shown after the recovered remote is written.",
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+
+  "seedSaveNoFrequency": "This capture has no frequency, so the remote cannot be saved as a transmittable file.",
+  "@seedSaveNoFrequency": {
+    "description": "Explains why saving is unavailable when the capture carries no frequency."
+  },
+
+  "seedNameTitle": "Name the File",
+  "@seedNameTitle": {
+    "description": "Title of the dialog asking what to call the recovered remote."
+  },
+
+  "seedNameHelp": "Saved in {dir}, up to {max} characters.",
+  "@seedNameHelp": {
+    "description": "Helper text under the file name field.",
+    "placeholders": {
+      "dir": {
+        "type": "String"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+
+  "seedNameTooLong": "Use at most {max} characters, which is what the Sub-GHz app can hold.",
+  "@seedNameTooLong": {
+    "description": "Shown when the typed file name is longer than the firmware can keep.",
+    "placeholders": {
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+
+  "seedNameIllegal": "A name cannot contain \\ / : * ? \" < > |",
+  "@seedNameIllegal": {
+    "description": "Shown when the typed file name holds a character the storage cannot carry."
+  },
+
+  "seedNameDotEdge": "A name cannot start or end with a dot.",
+  "@seedNameDotEdge": {
+    "description": "Shown when the typed file name begins or ends with a period."
+  },
+
+  "seedReplaceTitle": "Replace File?",
+  "@seedReplaceTitle": {
+    "description": "Title of the dialog shown when the chosen file name is already taken."
+  },
+
+  "seedReplaceMessage": "{path} already exists on the Flipper. Saving overwrites it.",
+  "@seedReplaceMessage": {
+    "description": "Body of the confirmation shown before an existing file is overwritten.",
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+
+  "seedReplace": "Replace",
+  "@seedReplace": {
+    "description": "Confirm button that overwrites the existing file."
+  },
+
+  "seedReplaceUnknown": "{path} could not be checked. If a file is already there, saving replaces it.",
+  "@seedReplaceUnknown": {
+    "description": "Body of the overwrite confirmation when the device did not answer whether the file exists.",
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+
+  "seedListFailed": "The capture folder could not be read, so this list may be out of date.",
+  "@seedListFailed": {
+    "description": "Shown when listing the capture folder failed on a connected device."
+  },
+
+  "seedInvalidName": "That file name cannot be used on the Flipper.",
+  "@seedInvalidName": {
+    "description": "Shown when a save was refused because of the name rather than by the device."
+  },
+
+  "seedDeleteCaptureTitle": "Delete the Capture?",
+  "@seedDeleteCaptureTitle": {
+    "description": "Title of the prompt offered after the remote has been saved."
+  },
+
+  "seedDeleteCaptureMessage": "The remote is saved as {path}, so {name} is no longer needed. Deleting it keeps the capture folder to the remotes still to solve.",
+  "@seedDeleteCaptureMessage": {
+    "description": "Body of the prompt offering to remove a capture that has been solved and saved.",
+    "placeholders": {
+      "path": {
+        "type": "String"
+      },
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+
+  "seedDeleteCapture": "Delete Capture",
+  "@seedDeleteCapture": {
+    "description": "Confirm button that removes the solved capture from the device."
+  },
+
+  "seedKeepCapture": "Keep It",
+  "@seedKeepCapture": {
+    "description": "Decline button that leaves the solved capture on the device."
+  },
+
+  "seedDeleteFailed": "The capture could not be deleted. The recovered remote is saved; the capture is still on the device.",
+  "@seedDeleteFailed": {
+    "description": "Banner shown when removing a solved capture fails."
+  },
+
+  "seedRefreshed": "{count, plural, =0{No captures on the device} one{1 capture on the device} other{{count} captures on the device}}",
+  "@seedRefreshed": {
+    "description": "Said after the capture list has been re-read, so the button has a visible result even when nothing changed.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+
+  "seedSkippedLines": "{count, plural, one{{count} line could not be read} other{{count} lines could not be read}}",
+  "@seedSkippedLines": {
+    "description": "How many lines of the capture file were skipped.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+
+  "seedLoading": "Reading the capture…",
+  "@seedLoading": {
+    "description": "Shown while a capture file is read off the device."
+  },
+
+  "seedDisconnected": "The Flipper is not connected",
+  "@seedDisconnected": {
+    "description": "Shown when the capture list could not be read because the link is down."
+  },
+
+  "seedUnreadableCapture": "This capture cannot be used",
+  "@seedUnreadableCapture": {
+    "description": "Shown when a capture file was read but could not be parsed into a job."
+  },
+
+  "seedReadFailed": "The capture could not be read from the Flipper",
+  "@seedReadFailed": {
+    "description": "Shown when reading a capture file off the device failed."
+  },
+
+  "seedSaveFailed": "The remote could not be saved to the Flipper",
+  "@seedSaveFailed": {
+    "description": "Shown when writing the recovered .sub to the device failed."
+  },
+
+  "seedEngineUnavailable": "The recovery engine is missing from this build",
+  "@seedEngineUnavailable": {
+    "description": "Shown when the native library could not be loaded at all."
+  },
+
+  "seedEngineBusyHint": "Wait for the running search to finish, then try again.",
+  "@seedEngineBusyHint": {
+    "description": "Hint under the busy message."
+  },
+
+  "seedEngineBrokenHint": "Nothing you do with this capture will help: the recovery engine in this build is not working. Please report it.",
+  "@seedEngineBrokenHint": {
+    "description": "Hint shown when the engine failed its own checks or is missing from the build."
   }
 }
