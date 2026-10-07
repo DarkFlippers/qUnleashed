@@ -176,7 +176,10 @@ void main() {
       await tester.enterText(find.byType(TextField), 'x' * 70);
       await tester.pump();
 
-      expect(find.textContaining('at most'), findsOneWidget);
+      // The prose rather than the number: the helper text under the field
+      // names the limit too, so `63` appears twice and matching it would pass
+      // whether or not the error ever appeared.
+      expect(find.textContaining('shorter name'), findsOneWidget);
       final save = tester.widget<TextButton>(
         find.widgetWithText(TextButton, 'Save to Flipper'),
       );

@@ -2,7 +2,9 @@ import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../components/dialogs/confirm.dart';
+import '../../../../components/dialogs/name.dart';
 import '../../../../components/notification.dart';
+import '../../../../components/path.dart';
 import '../../../../services/guarded.dart';
 import '../../../../services/localization/l10n.dart';
 import '../../../../theme/theme.dart';
@@ -78,9 +80,20 @@ class _SeedPageState extends State<SeedPage> {
     // under a tap, not a state the user can sit in.
     if (suggested == null) return;
 
-    final chosen = await showDialog<String>(
-      context: context,
-      builder: (_) => _FileNameDialog(initial: suggested),
+    final l10n = context.l10n;
+    final chosen = await QNameDialog.show(
+      context,
+      title: l10n.seedNameTitle,
+      initial: suggested,
+      // The extension is shown and not editable, which is the whole reason the
+      // field holds a base name.
+      suffixText: SeedSubFile.fileExtension,
+      helperText: l10n.seedNameHelp(
+        seedSubGhzDir,
+        SeedSubFile.maxBaseNameLength,
+      ),
+      confirmLabel: l10n.seedSave,
+      validate: (value) => _nameProblem(l10n, value),
     );
     if (chosen == null || !mounted) return;
 
@@ -609,114 +622,29 @@ class _CaptureList extends StatelessWidget {
   }
 }
 
-/// Asks for the name to save under, prefilled and without the extension.
+/// What is wrong with [value] as a name for the recovered remote, in words.
 ///
-/// Stateful because the name is checked as it is typed: a dialog that accepts
-/// anything and fails afterwards would report the problem through
-/// [SeedFailure.saveFailed], which cannot say which character was wrong.
-class _FileNameDialog extends StatefulWidget {
-  const _FileNameDialog({required this.initial});
-
-  final String initial;
-
-  @override
-  State<_FileNameDialog> createState() => _FileNameDialogState();
-}
-
-class _FileNameDialogState extends State<_FileNameDialog> {
-  // Selected, not just filled: the suggestion is the common answer, and the
-  // user who wants their own should not have to clear it first.
-  late final TextEditingController _name =
-      TextEditingController(text: widget.initial)
-        ..selection = TextSelection(
-          baseOffset: 0,
-          extentOffset: widget.initial.length,
-        );
-
-  @override
-  void dispose() {
-    _name.dispose();
-    super.dispose();
-  }
-
-  SeedNameProblem? get _problem => SeedSubFile.checkBaseName(_name.text);
-
-  static String? _messageFor(L10n l10n, SeedNameProblem? problem) =>
-      switch (problem) {
-        null => null,
-        // Nothing is said while the field is empty: the Save button is already
-        // disabled, and an error on a field the user has only just cleared
-        // reads as a complaint about typing.
-        SeedNameProblem.empty => null,
-        SeedNameProblem.tooLong => l10n.seedNameTooLong(
-          SeedSubFile.maxBaseNameLength,
-        ),
-        SeedNameProblem.illegalCharacter => l10n.seedNameIllegal,
-        SeedNameProblem.dotEdge => l10n.seedNameDotEdge,
-      };
-
-  void _submit() {
-    if (_problem != null) return;
-    Navigator.pop(context, _name.text.trim());
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = context.appColors;
-    final l10n = context.l10n;
-    final problem = _problem;
-    final valid = problem == null;
-
-    return AlertDialog(
-      backgroundColor: colors.dialogBackground,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      title: Text(
-        l10n.seedNameTitle,
-        style: TextStyle(color: colors.dialogText),
+/// Lives here rather than in `seed_sub_file.dart` because it is the only part
+/// of the rule that needs an [L10n]: the check itself is a pure function of
+/// the string, and the page is what has a locale. The switch is exhaustive, so
+/// a new [SeedNameProblem] is a compile error here rather than a silently
+/// unexplained refusal.
+String? _nameProblem(L10n l10n, String value) =>
+    switch (SeedSubFile.checkBaseName(value)) {
+      null => null,
+      // Never reached from the dialog, which refuses an empty field itself and
+      // deliberately says nothing about it. Mapped anyway, because the only
+      // other caller of `checkBaseName` is the controller's own re-check and
+      // this switch has to stay total.
+      SeedNameProblem.empty => null,
+      SeedNameProblem.tooLong => l10n.seedNameTooLong(
+        SeedSubFile.maxBaseNameLength,
       ),
-      content: TextField(
-        controller: _name,
-        autofocus: true,
-        // No `maxLength`: it enforces by truncation, which takes the tail off
-        // a pasted name with nothing on screen saying so, and leaves the rule
-        // it would be enforcing unsayable. `checkBaseName` says it instead.
-        onChanged: (_) => setState(() {}),
-        style: TextStyle(color: colors.dialogText),
-        decoration: InputDecoration(
-          // The extension is shown and not editable, which is the whole reason
-          // the field holds a base name: it tells the user what they will get
-          // without inviting them to type it a second time.
-          suffixText: SeedSubFile.fileExtension,
-          suffixStyle: TextStyle(color: colors.dialogMuted),
-          helperText: l10n.seedNameHelp(
-            seedSubGhzDir,
-            SeedSubFile.maxBaseNameLength,
-          ),
-          helperStyle: TextStyle(color: colors.dialogMuted),
-          helperMaxLines: 2,
-          errorText: _messageFor(l10n, problem),
-        ),
-        onSubmitted: (_) => _submit(),
+      SeedNameProblem.illegalCharacter => l10n.seedNameIllegal(
+        reservedNameCharsSpelled,
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: Text(
-            l10n.commonCancel,
-            style: TextStyle(color: colors.textSecondary),
-          ),
-        ),
-        TextButton(
-          onPressed: valid ? _submit : null,
-          child: Text(
-            l10n.seedSave,
-            style: TextStyle(color: valid ? colors.accent : colors.textMuted),
-          ),
-        ),
-      ],
-    );
-  }
-}
+      SeedNameProblem.dotEdge => l10n.seedNameDotEdge,
+    };
 
 class _Card extends StatelessWidget {
   const _Card({required this.children});

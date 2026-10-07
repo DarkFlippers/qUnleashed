@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import '../../../../components/path.dart';
 import 'seed_models.dart';
 
 /// Why a name the user typed cannot be used.
@@ -79,13 +82,19 @@ class SeedSubFile {
   /// that also appends would get `gate.sub.sub`.
   static const fileExtension = '.sub';
 
-  /// The longest base name that survives a rename on the device.
+  /// The longest base name that survives a rename on the device, in **bytes**.
   ///
   /// `SUBGHZ_MAX_LEN_NAME` is 64, and `subghz_scene_save_name.c` copies the
-  /// *extension-less* name into a buffer of exactly that size with `strncpy`.
-  /// So 63 characters and the terminator is what the Sub-GHz app can hold. A
-  /// longer name writes fine over RPC and is then truncated the first time the
-  /// user renames it there, which is a worse surprise than refusing it here.
+  /// *extension-less* name into a `char[64]` with `strncpy`. So 63 bytes and
+  /// the terminator is what the Sub-GHz app can hold. A longer name writes
+  /// fine over RPC and is then truncated the first time the user renames it
+  /// there, which is a worse surprise than refusing it here.
+  ///
+  /// Bytes and not characters, which is not the same count outside the English
+  /// alphabet: the firmware's limit is a buffer, and a name is UTF-8 on the
+  /// wire, so a Cyrillic letter costs two of these and an emoji four. Counting
+  /// Dart's `length` instead let a 63-character Cyrillic name through at 126
+  /// bytes, to be cut in half - mid-character - by that `strncpy`. #266
   static const maxBaseNameLength = 63;
 
   /// The suggested name for a recovery, without the extension.
@@ -118,12 +127,26 @@ class SeedSubFile {
   /// refusing one would be this app inventing a rule the device does not have.
   /// What is refused is what the volume genuinely cannot carry.
   ///
+  /// Non-ASCII is accepted, which #266 asked about and the firmware answers:
+  /// `targets/f7/fatfs/ffconf.h` sets `_LFN_UNICODE 0` and `_CODE_PAGE 850`,
+  /// so FatFS takes the path as OEM bytes and CP850 has a mapping for every
+  /// one of them. A Cyrillic name therefore never *fails* - it writes, and it
+  /// reads back byte-identical over RPC, so this app shows it correctly. What
+  /// it cannot do is render on the Flipper's own screen, where each UTF-8 byte
+  /// becomes a separate CP850 glyph. Refusing it would be a rule the volume
+  /// does not have, and the Flipper's own keyboard cannot type one anyway; the
+  /// length check above is the part that was genuinely wrong.
+  ///
   /// Takes the name *without* the extension; [fileExtension] is added after.
   static SeedNameProblem? checkBaseName(String raw) {
     final name = raw.trim();
     if (name.isEmpty) return SeedNameProblem.empty;
-    if (name.length > maxBaseNameLength) return SeedNameProblem.tooLong;
-    if (_illegalInName.hasMatch(name)) return SeedNameProblem.illegalCharacter;
+    if (utf8.encode(name).length > maxBaseNameLength) {
+      return SeedNameProblem.tooLong;
+    }
+    if (reservedNameCharsPattern.hasMatch(name)) {
+      return SeedNameProblem.illegalCharacter;
+    }
     // FAT32 drops a trailing dot, so a name ending in one is not the name the
     // user will see afterwards; a leading dot hides the file from some browsers,
     // and `.` and `..` are not names at all.
@@ -132,9 +155,6 @@ class SeedSubFile {
     }
     return null;
   }
-
-  /// The characters a FAT volume cannot hold, plus the control range.
-  static final _illegalInName = RegExp(r'[\x00-\x1f\x7f\\/:*?"<>|]');
 
   /// Everything a generated name leaves out. Tidiness, not a storage rule -
   /// [checkBaseName] accepts a space from a user, and "FAAC SLH" has one.

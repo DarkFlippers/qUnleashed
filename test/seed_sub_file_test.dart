@@ -268,6 +268,43 @@ void main() {
       );
     });
 
+    test('counts the limit in bytes, which is what the buffer holds', () {
+      // `char file_name_tmp[SUBGHZ_MAX_LEN_NAME]` is 64 bytes and the name
+      // travels as UTF-8, so a Cyrillic letter spends two of the budget. The
+      // check used Dart's `length` - UTF-16 code units - which let a 63-letter
+      // Cyrillic name through at 126 bytes, to be cut in half mid-character by
+      // that `strncpy` the first time the user renamed it on the device. #266
+      //
+      // Spelled as a round number of two-byte letters rather than computed
+      // from the constant, so that a check "fixed" by dividing the limit by
+      // two, or by counting runes, fails here.
+      expect(
+        SeedSubFile.checkBaseName('я' * 32),
+        SeedNameProblem.tooLong,
+        reason: '32 Cyrillic letters are 64 bytes, one past the buffer',
+      );
+      expect(
+        SeedSubFile.checkBaseName('я' * 31),
+        isNull,
+        reason: '31 are 62 bytes and fit',
+      );
+      // An emoji is four, and outside the BMP, so it is also the case where
+      // `length` and `runes.length` disagree with each other as well as with
+      // the byte count.
+      expect(SeedSubFile.checkBaseName('🙂' * 16), SeedNameProblem.tooLong);
+      expect(SeedSubFile.checkBaseName('🙂' * 15), isNull);
+    });
+
+    test('accepts a non-ASCII name, which the volume does carry', () {
+      // Answering the question #266 held: FatFS here is built `_LFN_UNICODE 0`
+      // with `_CODE_PAGE 850`, and CP850 has a mapping for every byte - so the
+      // write succeeds and reads back byte-identical. It renders as mojibake on
+      // the Flipper's own screen, which is a reason to warn and not a reason
+      // for this app to invent a rule the storage does not have.
+      expect(SeedSubFile.checkBaseName('Ворота'), isNull);
+      expect(SeedSubFile.checkBaseName('Außentor'), isNull);
+    });
+
     test('refuses every character a FAT volume cannot carry', () {
       // Spelled out rather than a sample: a class that quietly stopped
       // matching one of these would let a save fail on the device instead,

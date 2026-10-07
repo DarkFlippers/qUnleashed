@@ -7915,9 +7915,9 @@
     }
   },
 
-  "seedNameTooLong": "Use at most {max} characters, which is what the Sub-GHz app can hold.",
+  "seedNameTooLong": "Use a shorter name. The Sub-GHz app holds {max} characters, and a letter outside the English alphabet counts as more than one.",
   "@seedNameTooLong": {
-    "description": "Shown when the typed file name is longer than the firmware can keep.",
+    "description": "Shown when the typed file name is longer than the firmware can keep. The limit is a byte count, so a Cyrillic or accented letter spends two of it and an emoji four; the second sentence is there because a user who hits it at half the stated count would otherwise read this as a bug.",
     "placeholders": {
       "max": {
         "type": "int"
@@ -7925,9 +7925,15 @@
     }
   },
 
-  "seedNameIllegal": "A name cannot contain \\ / : * ? \" < > |",
+  "seedNameIllegal": "A name cannot contain {chars}",
   "@seedNameIllegal": {
-    "description": "Shown when the typed file name holds a character the storage cannot carry."
+    "description": "Shown when the typed file name holds a character the storage cannot carry. Do not spell the characters out in the translation: {chars} is the list, passed in from the one place the app declares it, so that adding or removing one cannot leave this sentence behind.",
+    "placeholders": {
+      "chars": {
+        "type": "String",
+        "example": "\\ / : * ? \" < > |"
+      }
+    }
   },
 
   "seedNameDotEdge": "A name cannot start or end with a dot.",
