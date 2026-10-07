@@ -69,6 +69,10 @@ class FileIconBadge extends StatefulWidget {
 }
 
 class _FileIconBadgeState extends State<FileIconBadge> {
+  /// Icons already read once, so a badge drawn without a frame to wait for -
+  /// the picture under a drag - shows them straight away.
+  static final Map<String, Uint8List> _loaded = {};
+
   String? _fapAppId;
   Uint8List? _fapIcon;
 
@@ -106,10 +110,11 @@ class _FileIconBadgeState extends State<FileIconBadge> {
     }
     final appId = name.substring(0, name.length - 4);
     _fapAppId = appId;
+    _fapIcon ??= _loaded[appId];
     icon_repo.readFapIcon(appId).then((bytes) {
-      if (mounted && _fapAppId == appId && bytes != null) {
-        setState(() => _fapIcon = bytes);
-      }
+      if (bytes == null) return;
+      _loaded[appId] = bytes;
+      if (mounted && _fapAppId == appId) setState(() => _fapIcon = bytes);
     });
   }
 

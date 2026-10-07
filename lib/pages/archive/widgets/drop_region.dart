@@ -10,6 +10,7 @@ import '../../../services/guarded.dart';
 import '../../../services/logging.dart';
 import '../../../services/storage/paths.dart';
 import '../../../theme/theme.dart';
+import 'drag_source.dart';
 
 /// Accepts files dragged in from other applications and hands them over as
 /// local paths: a dropped path as it is, anything else written to a scratch
@@ -38,8 +39,13 @@ class _FileDropRegionState extends State<FileDropRegion> {
     setState(() => _over = value);
   }
 
+  bool _fromHere(DropSession session) =>
+      session.items.any((item) => isOwnDragItem(item.localData));
+
   DropOperation _onDropOver(DropOverEvent event) {
-    final accept = event.session.allowedOperations.contains(DropOperation.copy);
+    final accept =
+        !_fromHere(event.session) &&
+        event.session.allowedOperations.contains(DropOperation.copy);
     _setOver(accept);
     return accept ? DropOperation.copy : DropOperation.none;
   }
@@ -48,6 +54,7 @@ class _FileDropRegionState extends State<FileDropRegion> {
   // open only until then, and a reader asked afterwards has nothing to read.
   Future<void> _performDrop(PerformDropEvent event) async {
     _setOver(false);
+    if (_fromHere(event.session)) return;
     Future<io.Directory>? scratch;
     final paths = <Future<String?>>[
       for (final item in event.session.items)

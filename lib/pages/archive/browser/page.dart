@@ -27,6 +27,7 @@ import 'columns.dart';
 import 'widgets/file_row.dart';
 import 'widgets/file_table.dart';
 import 'widgets/replace_dialog.dart';
+import '../widgets/drag_source.dart';
 import '../widgets/drop_region.dart';
 import '../widgets/actions_sheet.dart';
 import '../../../components/filelist/sync_progress_bar.dart';
@@ -1443,20 +1444,26 @@ class _FileManagerPageState extends State<FileManagerPage> {
             itemCount: entries.length,
             itemBuilder: (_, i) {
               final e = entries[i];
-              return FileTableRow(
-                key: ValueKey('${e.isDir}:${e.name}'),
-                entry: e,
-                cols: cols,
-                actions: _actionsFor(e),
-                selectionMode: _selectionMode,
-                selected: _selected.contains(e.name),
-                progress: _ctrl.entryProgress(e.name),
-                onCancel: _cancelFor(e),
-                autoEdit: e.name == _pendingRenameName,
-                onTap: () => unawaited(
-                  guarded('[FileManager] open ${e.name}', () => _onEntryTap(e)),
+              return _dragSource(
+                e,
+                FileTableRow(
+                  key: ValueKey('${e.isDir}:${e.name}'),
+                  entry: e,
+                  cols: cols,
+                  actions: _actionsFor(e),
+                  selectionMode: _selectionMode,
+                  selected: _selected.contains(e.name),
+                  progress: _ctrl.entryProgress(e.name),
+                  onCancel: _cancelFor(e),
+                  autoEdit: e.name == _pendingRenameName,
+                  onTap: () => unawaited(
+                    guarded(
+                      '[FileManager] open ${e.name}',
+                      () => _onEntryTap(e),
+                    ),
+                  ),
+                  onLongPress: () => _enterSelection(e),
                 ),
-                onLongPress: () => _enterSelection(e),
               );
             },
           ),
@@ -1480,18 +1487,21 @@ class _FileManagerPageState extends State<FileManagerPage> {
       itemCount: entries.length,
       itemBuilder: (_, i) {
         final e = entries[i];
-        return FileGridTile(
-          key: ValueKey('${e.isDir}:${e.name}'),
-          entry: e,
-          actions: _actionsFor(e),
-          selectionMode: _selectionMode,
-          selected: _selected.contains(e.name),
-          progress: _ctrl.entryProgress(e.name),
-          onCancel: _cancelFor(e),
-          onTap: () => unawaited(
-            guarded('[FileManager] open ${e.name}', () => _onEntryTap(e)),
+        return _dragSource(
+          e,
+          FileGridTile(
+            key: ValueKey('${e.isDir}:${e.name}'),
+            entry: e,
+            actions: _actionsFor(e),
+            selectionMode: _selectionMode,
+            selected: _selected.contains(e.name),
+            progress: _ctrl.entryProgress(e.name),
+            onCancel: _cancelFor(e),
+            onTap: () => unawaited(
+              guarded('[FileManager] open ${e.name}', () => _onEntryTap(e)),
+            ),
+            onLongPress: () => _enterSelection(e),
           ),
-          onLongPress: () => _enterSelection(e),
         );
       },
     );
@@ -1507,6 +1517,43 @@ class _FileManagerPageState extends State<FileManagerPage> {
           ? context.l10n.commonClear
           : context.l10n.fmRefresh,
       onAction: searching ? _stopSearch : _ctrl.refresh,
+    );
+  }
+
+  DragFile _dragFile(RemoteEntry e) {
+    final remotePath = _ctrl.childPath(e.name);
+    return DragFile(
+      id: remotePath,
+      name: e.name,
+      load: (progress) => _ctrl.exportBytes(
+        remotePath,
+        expectedSize: e.size,
+        onCancel: progress?.onCancel,
+        onProgress: progress?.updateProgress,
+      ),
+    );
+  }
+
+  /// Files drag out one at a time, or as the whole selection when the row is
+  /// part of it. Folders and rows still arriving stay put.
+  Widget _dragSource(RemoteEntry e, Widget child) {
+    if (e.isDir || e.pending) return child;
+    final selected = _selectionMode && _selected.contains(e.name);
+    return FileDragSource(
+      key: ValueKey('${e.isDir}:${e.name}'),
+      file: _dragFile(e),
+      group: selected
+          ? () => [
+              for (final s in _selectedEntries)
+                if (!s.isDir && !s.pending) _dragFile(s),
+            ]
+          : null,
+      onDropped: selected
+          ? () {
+              if (mounted) _exitSelection();
+            }
+          : null,
+      child: child,
     );
   }
 

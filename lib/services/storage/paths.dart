@@ -190,6 +190,10 @@ Future<io.Directory> shareCacheDirectory() async {
 /// per drop so two drops cannot overwrite each other's files.
 Future<io.Directory> droppedFilesDirectory() => _transferScratch('dropped');
 
+/// A fresh folder for a file dragged out of the app to be copied into before
+/// another application is handed its path.
+Future<io.Directory> draggedFilesDirectory() => _transferScratch('dragged');
+
 Future<io.Directory> _transferScratch(String kind) async {
   final base = await getTemporaryDirectory();
   final dir = io.Directory(

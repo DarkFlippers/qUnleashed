@@ -924,6 +924,51 @@ class FileManagerController extends ChangeNotifier {
     }
   }
 
+  /// Reads [remotePath] for a receiver outside the app - a drag that landed
+  /// elsewhere - alongside whatever else is running. Null when the read failed
+  /// or [onCancel] fired first.
+  Future<List<int>?> exportBytes(
+    String remotePath, {
+    int expectedSize = 0,
+    Listenable? onCancel,
+    void Function(double progress)? onProgress,
+  }) async {
+    try {
+      return await _transfer(
+        dir: dirname(remotePath),
+        upload: false,
+        batch: false,
+        queued: false,
+        body: (t) async {
+          void cancel() => _cancel(t);
+          onCancel?.addListener(cancel);
+          List<int>? bytes;
+          try {
+            await _runJobs(t, [
+              _Job(
+                item: basename(remotePath),
+                remote: remotePath,
+                size: expectedSize,
+                run: (_, progress) async {
+                  bytes = await _read(t, remotePath, expectedSize, (p) {
+                    progress(p);
+                    onProgress?.call(p);
+                  });
+                  return bytes != null;
+                },
+              ),
+            ], label: l10n.fmDownloadingOf);
+          } finally {
+            onCancel?.removeListener(cancel);
+          }
+          return bytes;
+        },
+      );
+    } on FlipperCancelledException {
+      return null;
+    }
+  }
+
   Future<String?> downloadTo(
     String remotePath, {
     String? localFolder,

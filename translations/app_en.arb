@@ -6262,6 +6262,16 @@
     }
   },
 
+  "fmDragFiles": "{count, plural, one{1 file} other{{count} files}}",
+  "@fmDragFiles": {
+    "description": "Label under the icons while several selected files are dragged out of the app.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+
   "fmConflictTitle": "Replace or Skip Files",
   "@fmConflictTitle": {
     "description": "Title of the dialog shown when files being copied to the Flipper already exist there."
