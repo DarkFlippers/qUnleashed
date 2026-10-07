@@ -35,25 +35,43 @@ CPP_DIR="${QUNLEASHED_CPP_DIR:-$ROOT_DIR/lib/modules/cpp}"
 
 BINARY="${1:-}"
 BUNDLE="${2:-}"
-if [[ -z "$BINARY" || -z "$BUNDLE" ]]; then
-  echo "::error::Usage: ${BASH_SOURCE[0]} <main-executable> <app-bundle-dir>" >&2
-  exit 1
-fi
-if [[ ! -f "$BINARY" ]]; then
-  echo "::error::Main executable not found: $BINARY" >&2
-  exit 1
-fi
-if [[ ! -d "$BUNDLE" ]]; then
-  echo "::error::App bundle not found: $BUNDLE" >&2
-  exit 1
+
+# `--list-symbols` prints the names this guard expects and exits.
+#
+# It exists so check_ffi_exports_test.sh can build its stub from the same
+# derivation rather than a second copy of it. The test used to re-implement the
+# extraction, which is how it came to miss a pointer-returning export that the
+# guard had started finding - the test's own comment warns against keeping a
+# second copy of the export list and then kept one.
+if [[ "$BINARY" == "--list-symbols" ]]; then
+  LIST_ONLY=1
+  BINARY=""
+else
+  LIST_ONLY=0
 fi
 
-for command_name in "$NM" "$LIPO"; do
-  if ! command -v "$command_name" >/dev/null 2>&1; then
-    echo "::error::$command_name is required." >&2
+if ((!LIST_ONLY)) && [[ -z "$BINARY" || -z "$BUNDLE" ]]; then
+  echo "::error::Usage: ${BASH_SOURCE[0]} <main-executable> <app-bundle-dir>" >&2
+  echo "::error::   or: ${BASH_SOURCE[0]} --list-symbols" >&2
+  exit 1
+fi
+if ((!LIST_ONLY)); then
+  if [[ ! -f "$BINARY" ]]; then
+    echo "::error::Main executable not found: $BINARY" >&2
     exit 1
   fi
-done
+  if [[ ! -d "$BUNDLE" ]]; then
+    echo "::error::App bundle not found: $BUNDLE" >&2
+    exit 1
+  fi
+
+  for command_name in "$NM" "$LIPO"; do
+    if ! command -v "$command_name" >/dev/null 2>&1; then
+      echo "::error::$command_name is required." >&2
+      exit 1
+    fi
+  done
+fi
 
 # Read the expected names off the definitions rather than restating them, so an
 # entry point added to either lib is covered the day it is added.
@@ -93,6 +111,12 @@ if ((${#SYMBOLS[@]} != DEFINED)); then
     "fix its sed before trusting a green build." >&2
   printf '::error::extracted: %s\n' "${SYMBOLS[*]}" >&2
   exit 1
+fi
+
+if ((LIST_ONLY)); then
+  printf '%s
+' "${SYMBOLS[@]}"
+  exit 0
 fi
 
 # The main executable plus every Mach-O the bundle embeds. Non-Mach-O files in

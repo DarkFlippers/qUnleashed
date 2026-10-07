@@ -160,16 +160,17 @@ fi
 # `.github/lib/modules/cpp`, one directory short of the repo root. This case
 # takes the default.
 #
-# The stub answers with whatever the repo currently exports, derived the same
-# way the guard derives it. Listing the names here instead would be a second
-# copy of the export list that goes stale the day one is added - which it did,
-# and this case is where it failed. A wrong root still fails: the derivation
-# comes back empty and the guard refuses rather than passing.
+# The stub answers with whatever the repo currently exports, asked of the guard
+# itself rather than derived again here. Listing the names would be a second
+# copy of the export list that goes stale the day one is added - and so, it
+# turned out, is a second copy of the *extraction*: this case re-implemented the
+# guard's pattern, the guard learned to match pointer-returning exports, and
+# this stub kept missing one. A wrong root still fails, because the guard
+# refuses an empty derivation rather than passing.
 export STUB_ARCHS="arm64"
 STUB_MAIN_arm64="$(
-  grep -rhoE '^QUNLEASHED_EXPORT[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]+qunleashed_[A-Za-z0-9_]+' \
-    --include='*.c' "$HERE/../../lib/modules/cpp" |
-    awk '{print "0000000000000000 T _" $NF}' | sort -u
+  bash "$SCRIPT" --list-symbols |
+    awk '{print "0000000000000000 T _" $0}' | sort -u
 )"
 # Explicit: the earlier cases happen to have marked it exported already, and
 # this case must not depend on their order.
