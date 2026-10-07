@@ -15,6 +15,7 @@
 // unreachable from here.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:qunleashed/components/path.dart';
 import 'package:qunleashed/services/localization/l10n.dart';
 import 'package:qunleashed/theme/theme.dart';
 import 'package:qunleashed/pages/tools/subghz/seed/seed_page.dart';
@@ -145,7 +146,14 @@ void main() {
       await tester.enterText(find.byType(TextField), 'bad/name');
       await tester.pump();
 
-      expect(find.textContaining('cannot contain'), findsOneWidget);
+      // The list itself, not just the invariant prose. The whole point of the
+      // `{chars}` placeholder is that the sentence cannot drift from
+      // `reservedNameChars`, and matching only "cannot contain" leaves the
+      // argument unobservable - a hardcoded, wrong list passes it.
+      expect(
+        find.textContaining('cannot contain $reservedNameCharsSpelled'),
+        findsOneWidget,
+      );
       // Disabled rather than merely ignored, so the refusal is visible before
       // the press rather than as a banner after it.
       final save = tester.widget<TextButton>(
@@ -156,6 +164,84 @@ void main() {
       await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
       await tester.pumpAndSettle();
       expect(client.writes, isEmpty);
+    });
+
+    testWidgets('writes under the name that was typed, not the suggestion', (
+      tester,
+    ) async {
+      // The one path the feature exists for, and nothing covered it: every
+      // other test here confirms the suggestion unchanged, so
+      // `_controller.save(suggested)` in place of `save(chosen)` passed the
+      // whole file. Extracting the dialog made this worse rather than better -
+      // `QNameDialog` now has its own suite proving it *returns* the typed
+      // name, and that is not the same as the page using what it returns.
+      //
+      // It also pins the suffix contract end to end: the field holds a base
+      // name, the caller appends `.sub`, and the result is not `gate.sub.sub`.
+      final client = SeedFakeClient();
+      await _openPage(tester, client);
+      await tester.tap(find.text('one.txt'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Recover Seed'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save to Flipper'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField), 'kitchen gate');
+      await tester.pump();
+      await tester.tap(find.widgetWithText(TextButton, 'Save to Flipper'));
+      await tester.pumpAndSettle();
+
+      expect(client.writes.keys, ['/ext/subghz/kitchen gate.sub']);
+    });
+
+    testWidgets('names a dotted name as a dot problem, not a length one', (
+      tester,
+    ) async {
+      // Half the mapping was pinned: sending `tooLong` to the dot sentence
+      // fails the test below, but sending `dotEdge` to the length sentence
+      // passed, because nothing here ever typed a dotted name. An exhaustive
+      // switch buys totality, not a correct pairing.
+      final client = SeedFakeClient();
+      await _openPage(tester, client);
+      await tester.tap(find.text('one.txt'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Recover Seed'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save to Flipper'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField), '.gate');
+      await tester.pump();
+
+      expect(find.textContaining('start or end with a dot'), findsOneWidget);
+      expect(find.textContaining('shorter name'), findsNothing);
+    });
+
+    testWidgets('says something a user can act on about a pasted newline', (
+      tester,
+    ) async {
+      // A control character cannot be listed in the nine, so before this it
+      // was reported with a sentence naming nine characters the user had not
+      // typed. A keyboard cannot produce one; a paste can.
+      final client = SeedFakeClient();
+      await _openPage(tester, client);
+      await tester.tap(find.text('one.txt'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Recover Seed'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Save to Flipper'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField), 'gate\tone');
+      await tester.pump();
+
+      expect(find.textContaining('invisible character'), findsOneWidget);
+      expect(
+        find.textContaining(reservedNameCharsSpelled),
+        findsNothing,
+        reason: 'the nine are not what is wrong with this name',
+      );
     });
 
     testWidgets('a long name is refused, not silently shortened', (

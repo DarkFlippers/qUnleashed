@@ -7,7 +7,20 @@ import 'seed_models.dart';
 ///
 /// An enum rather than a message, so the page can say it in the user's language
 /// and the set stays exhaustive - the same reason `SeedFailure` is one.
-enum SeedNameProblem { empty, tooLong, illegalCharacter, dotEdge }
+enum SeedNameProblem {
+  empty,
+  tooLong,
+
+  /// One of the nine `reservedNameChars`. Separate from [controlCharacter]
+  /// because the message for this one can list what it refuses and the message
+  /// for that one cannot.
+  illegalCharacter,
+
+  /// A C0 control character or DEL, which a paste can carry in and a keyboard
+  /// cannot type.
+  controlCharacter,
+  dotEdge,
+}
 
 /// Where the Flipper keeps transmittable Sub-GHz files. A recovered remote
 /// written anywhere else is a number on a screen; written here it appears under
@@ -93,8 +106,12 @@ class SeedSubFile {
   /// Bytes and not characters, which is not the same count outside the English
   /// alphabet: the firmware's limit is a buffer, and a name is UTF-8 on the
   /// wire, so a Cyrillic letter costs two of these and an emoji four. Counting
-  /// Dart's `length` instead let a 63-character Cyrillic name through at 126
-  /// bytes, to be cut in half - mid-character - by that `strncpy`. #266
+  /// Dart's `length` instead let a 63-letter Cyrillic name through at 126
+  /// bytes, of which the rename keeps 64 and terminates none - `strncpy` with
+  /// `n` equal to the buffer writes no terminator when the source fills it.
+  ///
+  /// Found while answering #266's question about non-ASCII names rather than
+  /// reported by it.
   static const maxBaseNameLength = 63;
 
   /// The suggested name for a recovery, without the extension.
@@ -121,21 +138,25 @@ class SeedSubFile {
   /// What is wrong with [raw] as a base name, or null when nothing is.
   ///
   /// These are the storage layer's rules, not the on-screen keyboard's. The
-  /// Flipper's own text input offers only `a-z`, `A-Z`, `0-9` and `_`
-  /// (`text_input.c`), but a file written over RPC lands on a FAT volume and is
-  /// listed by a browser that is perfectly happy with a space or a dash - so
-  /// refusing one would be this app inventing a rule the device does not have.
-  /// What is refused is what the volume genuinely cannot carry.
+  /// Flipper's own text input offers `a-z`, `A-Z`, `0-9`, `_` and the space
+  /// that its shifted `_` produces (`text_input.c`, `char_to_uppercase`), but
+  /// a file written over RPC lands on a FAT volume and is listed by a browser
+  /// that is perfectly happy with a dash too - so refusing one would be this
+  /// app inventing a rule the device does not have. What is refused is what
+  /// the volume genuinely cannot carry.
   ///
-  /// Non-ASCII is accepted, which #266 asked about and the firmware answers:
-  /// `targets/f7/fatfs/ffconf.h` sets `_LFN_UNICODE 0` and `_CODE_PAGE 850`,
-  /// so FatFS takes the path as OEM bytes and CP850 has a mapping for every
-  /// one of them. A Cyrillic name therefore never *fails* - it writes, and it
-  /// reads back byte-identical over RPC, so this app shows it correctly. What
-  /// it cannot do is render on the Flipper's own screen, where each UTF-8 byte
-  /// becomes a separate CP850 glyph. Refusing it would be a rule the volume
-  /// does not have, and the Flipper's own keyboard cannot type one anyway; the
-  /// length check above is the part that was genuinely wrong.
+  /// Non-ASCII is accepted, which is #266's open question and the firmware
+  /// answers it: `targets/f7/fatfs/ffconf.h` sets `_LFN_UNICODE 0` and
+  /// `_CODE_PAGE 850`, so FatFS takes the path as OEM bytes, and the CP850
+  /// table in `lib/fatfs/option/ccsbcs.c` maps all 128 high bytes with no
+  /// duplicates. Mapping every byte is why such a name never *fails*; the
+  /// table being injective is why it reads back byte-identical over RPC, so
+  /// this app shows it correctly. Change `_CODE_PAGE` and both halves of that
+  /// need re-checking.
+  ///
+  /// What it does not do is render on the Flipper's own screen, which shows
+  /// mojibake. Refusing it would still be a rule the volume does not have, and
+  /// the device's own keyboard cannot type one anyway.
   ///
   /// Takes the name *without* the extension; [fileExtension] is added after.
   static SeedNameProblem? checkBaseName(String raw) {
@@ -143,6 +164,11 @@ class SeedSubFile {
     if (name.isEmpty) return SeedNameProblem.empty;
     if (utf8.encode(name).length > maxBaseNameLength) {
       return SeedNameProblem.tooLong;
+    }
+    // Before the nine, so that by the time `reservedNameCharsPattern` runs the
+    // only thing it can be reporting is a character the message can name.
+    if (name.codeUnits.any(isControlNameChar)) {
+      return SeedNameProblem.controlCharacter;
     }
     if (reservedNameCharsPattern.hasMatch(name)) {
       return SeedNameProblem.illegalCharacter;

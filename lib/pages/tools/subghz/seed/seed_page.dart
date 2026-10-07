@@ -93,7 +93,7 @@ class _SeedPageState extends State<SeedPage> {
         SeedSubFile.maxBaseNameLength,
       ),
       confirmLabel: l10n.seedSave,
-      validate: (value) => _nameProblem(l10n, value),
+      validate: _nameProblem,
     );
     if (chosen == null || !mounted) return;
 
@@ -625,25 +625,25 @@ class _CaptureList extends StatelessWidget {
 /// What is wrong with [value] as a name for the recovered remote, in words.
 ///
 /// Lives here rather than in `seed_sub_file.dart` because it is the only part
-/// of the rule that needs an [L10n]: the check itself is a pure function of
-/// the string, and the page is what has a locale. The switch is exhaustive, so
-/// a new [SeedNameProblem] is a compile error here rather than a silently
-/// unexplained refusal.
-String? _nameProblem(L10n l10n, String value) =>
+/// of the rule that needs strings: the check itself is a pure function of the
+/// string. Reads the global `l10n` rather than taking one, the way
+/// `describeConnectError` does, so it can be passed to [QNameDialog] by name.
+///
+/// The switch is exhaustive, so a new [SeedNameProblem] is a compile error
+/// here rather than a silently unexplained refusal.
+String? _nameProblem(String value) =>
     switch (SeedSubFile.checkBaseName(value)) {
-      null => null,
-      // Never reached from the dialog, which refuses an empty field itself and
-      // deliberately says nothing about it. Mapped anyway, because the only
-      // other caller of `checkBaseName` is the controller's own re-check and
-      // this switch has to stay total.
-      SeedNameProblem.empty => null,
+      // Nothing to say: either the name is fine, or the field is empty - which
+      // the dialog gates itself and deliberately does not complain about.
+      null || SeedNameProblem.empty => null,
       SeedNameProblem.tooLong => l10n.seedNameTooLong(
         SeedSubFile.maxBaseNameLength,
       ),
-      SeedNameProblem.illegalCharacter => l10n.seedNameIllegal(
+      SeedNameProblem.illegalCharacter => l10n.commonNameIllegal(
         reservedNameCharsSpelled,
       ),
-      SeedNameProblem.dotEdge => l10n.seedNameDotEdge,
+      SeedNameProblem.controlCharacter => l10n.commonNameControlChar,
+      SeedNameProblem.dotEdge => l10n.commonNameDotEdge,
     };
 
 class _Card extends StatelessWidget {

@@ -1,12 +1,15 @@
 // The shared name prompt, which is the only one in the app that validates.
 //
 // Before #266 this behaviour lived in a private class inside the seed page, so
-// the only cover it had was the seed page's own save chain - which types
-// nothing and accepts the suggestion. None of what makes the dialog worth
-// extracting was tested: the live check, the disabled confirm, the silence on
-// an empty field, the trimming of the result, the pre-selection.
+// the only cover it had was the seed page's own save chain. That chain did
+// test the live check and the disabled confirm, by typing `bad/name` and 70
+// characters - what it never reached was the silence on an empty field, the
+// trimming of the result, the pre-selection, and the keyboard submit. Those
+// four were untested behaviour in a private class; they would now be untested
+// behaviour in a shared component with seven callers queued behind it, which
+// is why they are here.
 //
-// Each test here is a thing that, if it broke, would hand the caller a name it
+// Each test is a thing that, if it broke, would hand the caller a name it
 // never approved - which for every caller means a file written under it.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -35,8 +38,10 @@ Future<Prompt> open(
   String initial = 'suggested',
   String? Function(String)? validate,
   String? helperText,
+  String? hintText,
   String? suffixText,
   String? confirmLabel,
+  String? cancelLabel,
 }) async {
   late Future<String?> result;
   await tester.pumpWidget(
@@ -55,8 +60,10 @@ Future<Prompt> open(
               initial: initial,
               validate: validate,
               helperText: helperText,
+              hintText: hintText,
               suffixText: suffixText,
               confirmLabel: confirmLabel,
+              cancelLabel: cancelLabel,
             );
           },
           child: const Text('open'),
@@ -69,15 +76,32 @@ Future<Prompt> open(
   return Prompt(result);
 }
 
-/// The confirm button, found by its label rather than by position: the two
-/// actions are both `TextButton`s and swapping them is the mistake worth
-/// catching.
+/// The confirm button, found by its label.
+///
+/// By label and not by position - which means none of these finders can see
+/// the two actions swapped. `_actionOrder` is what covers that.
 Finder confirm([String label = 'OK']) => find.widgetWithText(TextButton, label);
 
 Finder cancel() => find.widgetWithText(TextButton, 'Cancel');
 
 bool enabled(WidgetTester tester, Finder button) =>
     tester.widget<TextButton>(button).onPressed != null;
+
+/// The dialog's action labels left to right, which is the only way to see a
+/// swap.
+///
+/// Scoped to the `AlertDialog`: the button that opens it is a `TextButton`
+/// too, and an unscoped finder picks it up first.
+List<String> actionOrder(WidgetTester tester) => tester
+    .widgetList<TextButton>(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(TextButton),
+      ),
+    )
+    .map((b) => (b.child as Text?)?.data ?? '')
+    .where((label) => label.isNotEmpty)
+    .toList();
 
 /// Refuses anything with a `?` in it, which is the shape every real caller's
 /// rule has: a message, or null.
@@ -117,6 +141,15 @@ void main() {
     expect(
       field.controller!.selection,
       const TextSelection(baseOffset: 0, extentOffset: 'suggested'.length),
+    );
+
+    // And the field holds focus without being tapped. These are one feature,
+    // not two: without `autofocus` the keyboard does not appear, so the user
+    // taps the field, and the tap collapses the selection asserted above - so
+    // dropping it defeats the pre-selection while leaving it measurable.
+    expect(
+      tester.widget<EditableText>(find.byType(EditableText)).focusNode.hasFocus,
+      isTrue,
     );
   });
 
@@ -262,15 +295,56 @@ void main() {
     expect(await prompt.answer, 'gate');
   });
 
-  testWidgets('shows the helper text and the caller label', (tester) async {
+  testWidgets('shows the helper text and both caller labels', (tester) async {
+    // `show` forwards nine parameters by hand, so each is a place one can be
+    // dropped and still compile. `cancelLabel` was the one nothing passed.
     await open(
       tester,
       helperText: 'Saved in /ext/subghz',
       confirmLabel: 'Save to Flipper',
+      cancelLabel: 'Keep Looking',
     );
 
     expect(find.text('Saved in /ext/subghz'), findsOneWidget);
     expect(confirm('Save to Flipper'), findsOneWidget);
     expect(confirm(), findsNothing, reason: 'the default label is replaced');
+    expect(confirm('Keep Looking'), findsOneWidget);
+    expect(cancel(), findsNothing, reason: 'and so is the cancel label');
+  });
+
+  testWidgets('shows the hint inside an empty field', (tester) async {
+    // Not used by the seed page, and the reason the shared dialog has it: all
+    // seven prompts waiting to adopt this pass one, and `helperText` is not a
+    // substitute because it renders underneath rather than inside.
+    await open(tester, initial: '', hintText: 'folder name');
+
+    expect(find.text('folder name'), findsOneWidget);
+  });
+
+  testWidgets('puts Cancel before the confirm action', (tester) async {
+    // Every other finder in this file matches by label, so a swap is invisible
+    // to all of them. Worth one assertion: the confirm writes a file.
+    await open(tester, confirmLabel: 'Save');
+
+    expect(actionOrder(tester), ['Cancel', 'Save']);
+  });
+
+  testWidgets('hands the caller rule the text untrimmed', (tester) async {
+    // The documented contract, so a rule may refuse a surrounding space rather
+    // than silently accept the tidying `show` does on the way out. No current
+    // caller cares, which is exactly why nothing would notice it breaking.
+    final seen = <String>[];
+    await open(
+      tester,
+      validate: (value) {
+        seen.add(value);
+        return null;
+      },
+    );
+
+    await tester.enterText(find.byType(TextField), ' gate ');
+    await tester.pump();
+
+    expect(seen, contains(' gate '));
   });
 }
