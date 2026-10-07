@@ -6252,6 +6252,16 @@
     "description": "Title of the system folder picker opened by Upload folder."
   },
 
+  "fmDropToUpload": "Drop to upload into {path}",
+  "@fmDropToUpload": {
+    "description": "Overlay text while files are dragged over the file manager.",
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+
   "fmConflictTitle": "Replace or Skip Files",
   "@fmConflictTitle": {
     "description": "Title of the dialog shown when files being copied to the Flipper already exist there."

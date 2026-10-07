@@ -27,6 +27,7 @@ import 'columns.dart';
 import 'widgets/file_row.dart';
 import 'widgets/file_table.dart';
 import 'widgets/replace_dialog.dart';
+import '../widgets/drop_region.dart';
 import '../widgets/actions_sheet.dart';
 import '../../../components/filelist/sync_progress_bar.dart';
 import '../../../components/filelist/empty_view.dart';
@@ -708,6 +709,17 @@ class _FileManagerPageState extends State<FileManagerPage> {
     await _upload([dir]);
   }
 
+  Future<void> _uploadDropped(List<String> paths) async {
+    if (!_ctrl.client.isConnected) {
+      context.showNotification(
+        context.l10n.fmNotConnected,
+        type: QNotificationType.error,
+      );
+      return;
+    }
+    await _upload(paths);
+  }
+
   Future<void> _upload(List<String> paths, {int skipped = 0}) async {
     final ({int files, int failed}) result;
     try {
@@ -1082,13 +1094,22 @@ class _FileManagerPageState extends State<FileManagerPage> {
                       const SizedBox(width: 8),
                     ],
             ),
-            body: Column(
-              children: [
-                _buildBreadcrumbs(colors),
-                if (_clipboard != null) _buildClipboardBanner(colors),
-                if (_ctrl.transferLabel != null) _buildTransferBar(colors),
-                Expanded(child: _buildBody(context, entries)),
-              ],
+            body: FileDropRegion(
+              label: context.l10n.fmDropToUpload(_ctrl.path),
+              onFiles: (paths) => unawaited(
+                guarded(
+                  '[FileManager] upload dropped',
+                  () => _uploadDropped(paths),
+                ),
+              ),
+              child: Column(
+                children: [
+                  _buildBreadcrumbs(colors),
+                  if (_clipboard != null) _buildClipboardBanner(colors),
+                  if (_ctrl.transferLabel != null) _buildTransferBar(colors),
+                  Expanded(child: _buildBody(context, entries)),
+                ],
+              ),
             ),
             floatingActionButton: _selectionMode
                 ? null
