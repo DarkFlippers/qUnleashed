@@ -13,3 +13,7 @@
 	path = lib/modules/irondash
 	url = https://github.com/apfxtech/irondash.git
 	branch = qunleashed
+[submodule "lib/modules/extensions"]
+	path = lib/modules/extensions
+	url = https://github.com/apfxtech/super_native_extensions.git
+	branch = qunleashed
