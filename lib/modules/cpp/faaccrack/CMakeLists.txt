@@ -62,11 +62,10 @@ endif()
 #   -w        the engine is machine output; formatting is destroyed, so warnings
 #             about how it reads are noise. It is checked by being run, in
 #             .github/scripts/check_faaccrack_engine.sh.
-#   -Wno-psabi (GCC/Clang, below AVX-512) passing a 512-bit vector by value has
-#             an unstable ABI without avx512f. It cannot matter here - the
-#             vector type never crosses a translation unit - and the warning
-#             fires twice per variant otherwise. Folded into -w above, and named
-#             here because it is the one that looks alarming.
+#             -w also covers -Wpsabi, which fires twice per variant because the
+#             engine passes a 512-bit vector by value on a target without
+#             avx512f. It cannot matter here: the vector type never crosses a
+#             translation unit.
 # Per variant, because the engine is compiled once per instruction set and a
 # single renamed main would be four definitions of one external symbol.
 # They are unreferenced either way; the name just has to be unique.
@@ -75,7 +74,13 @@ endif()
 # the library. One function so the three toolchain paths below cannot drift in
 # what they pass.
 function(faaccrack_add_variant variant)
-  set(object "${CMAKE_CURRENT_BINARY_DIR}/faaccrack_${variant}${CMAKE_C_OUTPUT_EXTENSION}")
+  # $<CONFIG> in the path, because the Flutter Windows build is a
+  # multi-config generator: Debug, Profile and Release share one binary
+  # directory, so without it all three read and write one object. The
+  # hardnested lib measured what that costs - a Debug build after a Release
+  # one did not recompile and linked the /MD object into a /MDd DLL.
+  set(object
+    "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/faaccrack_${variant}${CMAKE_C_OUTPUT_EXTENSION}")
   # Assembled per toolchain rather than from a shared prefix variable: clang-cl
   # wants the path glued to the flag as one argument, and under VERBATIM any
   # quotes written around it are passed through as part of the filename.
@@ -86,6 +91,8 @@ function(faaccrack_add_variant variant)
   endif()
   add_custom_command(
     OUTPUT "${object}"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory
+      "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>"
     COMMAND ${FAACCRACK_VARIANT_CC} ${ARGN}
       "-Dmain=faaccrack_unused_main_${variant}"
       "-I${CMAKE_CURRENT_SOURCE_DIR}"
@@ -100,17 +107,30 @@ function(faaccrack_add_variant variant)
   target_sources(qunleashed_faaccrack PRIVATE "${object}")
 endfunction()
 
-if(MSVC)
+# x86-64 only, and keyed on the architecture rather than on MSVC alone: the
+# variants are an x86 instruction-set story, and a Windows-on-ARM build with
+# clang-cl installed would otherwise be handed /arch:AVX2 for an aarch64 target.
+if(MSVC AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(AMD64|x86_64)$")
   # MSVC cannot compile the engine at all - it has no GCC vector extensions -
   # so clang-cl is required rather than looked up, and the build says which
   # component to install rather than failing with a wall of syntax errors.
   # clang-cl emits MSVC-ABI objects, so they link into the DLL MSVC builds.
+  #
+  # VSINSTALLDIR is set only inside a developer command prompt, which a Flutter
+  # build is not, so that hint is dead on its own - the hardnested lib found
+  # that installing the component the message recommends did nothing.
+  # CMAKE_GENERATOR_INSTANCE is the VS install root the generator is already
+  # using, which is where the component actually lands.
+  set(FAACCRACK_PROGRAM_FILES_X86 "ProgramFiles(x86)")
   find_program(FAACCRACK_CLANG_CL
     NAMES clang-cl
     HINTS
+      "${CMAKE_GENERATOR_INSTANCE}/VC/Tools/Llvm/x64/bin"
+      "${CMAKE_GENERATOR_INSTANCE}/VC/Tools/Llvm/bin"
       "$ENV{VSINSTALLDIR}VC/Tools/Llvm/x64/bin"
       "$ENV{ProgramFiles}/LLVM/bin"
       "$ENV{ProgramW6432}/LLVM/bin"
+      "$ENV{${FAACCRACK_PROGRAM_FILES_X86}}/LLVM/bin"
   )
   if(NOT FAACCRACK_CLANG_CL)
     message(FATAL_ERROR
@@ -126,16 +146,24 @@ if(MSVC)
   # the library would want different C runtimes.
   set(faaccrack_common /nologo /c /O2 -w $<IF:$<CONFIG:Debug>,/MDd,/MD>)
 
-  # No /arch:SSE2 entry: it is the x86-64 baseline, so clang-cl defines __SSE2__
-  # without being asked and rejects the flag as invalid for a 64-bit target. The
-  # flagless compile *is* the SSE2 object.
-  faaccrack_add_variant(AVX512 ${faaccrack_common} /arch:AVX512)
+  # No AVX512, for the reason the hardnested lib recorded after shipping it and
+  # taking it back out: nothing here has measured it, and client Intel parts
+  # downclock under 512-bit integer work - so a dispatcher that prefers it
+  # unconditionally, as this one would, can be slower than AVX2 on the machines
+  # most likely to run it. This engine's inner loop is pure 512-bit bitwise
+  # work, so it is if anything more exposed. AVX2 is the width the engine's
+  # author measured; until someone benches AVX-512 hardware, this is the honest
+  # list.
+  #
+  # No /arch:SSE2 entry either: it is the x86-64 baseline, so clang-cl defines
+  # __SSE2__ without being asked and rejects the flag as invalid for a 64-bit
+  # target. The flagless compile *is* the SSE2 object.
   faaccrack_add_variant(AVX2 ${faaccrack_common} /arch:AVX2)
   faaccrack_add_variant(AVX ${faaccrack_common} /arch:AVX)
   faaccrack_add_variant(SSE2 ${faaccrack_common})
 else()
   set(FAACCRACK_VARIANT_CC "${CMAKE_C_COMPILER}")
-  set(faaccrack_common -c -O3 -funroll-loops -std=c11 -w -fPIC)
+  set(faaccrack_common -c -O3 -funroll-loops -std=gnu11 -w -fPIC)
 
   if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|i.86|x86)$")
     # Unlike hardnested, which compiles one object at the platform baseline
@@ -143,7 +171,6 @@ else()
     # x86-64 is SSE2, and the engine is several times faster with AVX2 - there
     # is no reason a Linux or Intel-Mac desktop should run the slowest variant
     # when the dispatcher can tell at runtime.
-    faaccrack_add_variant(AVX512 ${faaccrack_common} -mavx512f)
     faaccrack_add_variant(AVX2 ${faaccrack_common} -mavx2)
     faaccrack_add_variant(AVX ${faaccrack_common} -mavx)
     faaccrack_add_variant(SSE2 ${faaccrack_common} -msse2)

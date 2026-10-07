@@ -46,9 +46,21 @@ const faaccrackQuotedIncludes = {
   'pthread_shim.h': 'lib/modules/cpp/hardnested',
 };
 
+/// Where the hand-written Dart mirror of the C structs lives.
+const faaccrackRecovererPath =
+    'lib/pages/tools/subghz/seed/faaccrack_recoverer.dart';
+
 /// The engine, the header, the notes and the keep list.
 String faaccrackEngine() => File(faaccrackEnginePath).readAsStringSync();
 String faaccrackHeader() => File(faaccrackHeaderPath).readAsStringSync();
+String faaccrackRecovererSource() =>
+    File(faaccrackRecovererPath).readAsStringSync();
+String faaccrackDispatcherSource() =>
+    File('$faaccrackDir/faaccrack_dispatch.c').readAsStringSync();
+String faaccrackCMakeSource() =>
+    File('$faaccrackDir/CMakeLists.txt').readAsStringSync();
+String faaccrackPodspecSource() =>
+    File('$faaccrackDir/apple/qunleashed_faaccrack.podspec').readAsStringSync();
 
 /// The names the obfuscator is told to leave alone, from `keep.txt`.
 ///

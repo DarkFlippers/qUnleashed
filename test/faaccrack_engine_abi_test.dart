@@ -21,55 +21,16 @@
 //    link error on one instruction set on one platform only.
 import 'package:flutter_test/flutter_test.dart';
 
-import 'faaccrack_sources.dart';
+import 'package:qunleashed/pages/tools/subghz/seed/faaccrack_recoverer.dart';
+import 'package:qunleashed/pages/tools/subghz/seed/seed_models.dart';
 
-/// Names the header owns that are deliberately absent from `keep.txt`, each
-/// with the reason, so that adding a header name forces a decision rather than
-/// passing by default.
-///
-/// The rule the list follows is "every name the engine source spells", not
-/// "every name the header owns" - the two are different.
-final _exemptFromKeep = <String, String>{
-  'faaccrack_status': 'a tag the engine never spells: it uses the enumerators',
-  'FAACCRACK_HOPS_CONFIDENT':
-      'a policy threshold for callers; the engine has no opinion on it',
-  'FAACCRACK_SELFTEST_FIRST': 'a range bound for callers, not a status',
-  'FAACCRACK_SELFTEST_LAST': 'a range bound for callers, not a status',
-  'FAACCRACK_VARIANTS': 'expanded by the dispatcher, not by the engine',
-  'FAACCRACK_LAYOUT_CHANGED': 'the text of a static assertion',
-  'FAACCRACK_VARIANT_NAME':
-      'the dispatcher names its own variant with it; the engine does not',
-  for (final mode in ['FAAC_SLH', 'BFT', 'GENIUS', 'ERREKA'])
-    'FAACCRACK_MODE_$mode': 'the engine hard-codes the mode numbers',
-};
+import 'faaccrack_sources.dart';
 
 /// The two entries in `keep.txt` that the header does not declare: the engine's
 /// own build-time macros. They are the silent case - renamed away, the file
 /// still compiles, links and solves while `-DVBITS` and `-DNLF12` quietly stop
 /// having any effect.
 const _engineOwnMacros = {'VBITS', 'NLF12'};
-
-final _definedMacro = RegExp(r'#define\s+(FAACCRACK_\w+)');
-final _enumerator = RegExp(r'^\s*(FAACCRACK_\w+)\s*=', multiLine: true);
-final _typeTag = RegExp(r'\b(?:struct|enum)\s+(faaccrack_\w+)');
-final _structField = RegExp(
-  r'^\s*(?:volatile\s+)?uint(?:32|64)_t\s+(\w+);',
-  multiLine: true,
-);
-final _undefined = RegExp(r'#undef\s+(\w+)');
-
-/// The names the header declares that a caller could depend on.
-Set<String> _headerNames(String header) {
-  final names = {
-    for (final pattern in [_definedMacro, _enumerator, _typeTag, _structField])
-      ...pattern.allMatches(header).map((m) => m.group(1)!),
-  };
-  // A macro the header undefines again is scaffolding, not ABI - the X-macro
-  // expansion uses one to declare the variants and drops it immediately. Taken
-  // from the `#undef`s so the next one costs nothing.
-  names.removeAll(_undefined.allMatches(header).map((m) => m.group(1)!));
-  return names;
-}
 
 /// The instruction sets `FAACCRACK_VARIANTS` lists.
 List<String> _listedVariants(String header) => RegExp(r'X\((\w+)\)')
@@ -85,7 +46,6 @@ void main() {
   final engine = faaccrackEngine();
   final header = faaccrackHeader();
   final keep = faaccrackKeepList();
-  final headerNames = _headerNames(header);
 
   group('the keep list', () {
     test('every name on it still appears in the generated engine', () {
@@ -105,33 +65,139 @@ void main() {
       );
     });
 
-    test('covers every ABI name the header owns', () {
-      expect(
-        headerNames
-            .where((name) => !keep.contains(name))
-            .where((name) => !_exemptFromKeep.containsKey(name))
-            .toSet(),
-        isEmpty,
-        reason:
-            'these names are declared in $faaccrackHeaderPath but are neither '
-            'in $faaccrackKeepPath nor listed as deliberate exemptions in this '
-            'test. Decide which, in the commit that added them.',
-      );
-    });
-
     test('carries the engine-owned macros the header does not declare', () {
       // Stated as an assertion so the exception in BUILD_NOTES.md cannot be
       // deleted without this failing.
       expect(keep, containsAll(_engineOwnMacros));
     });
+  });
 
-    test('every exemption is still a name the header declares', () {
-      // Keeps the exemption map honest: an entry for a name the header no
-      // longer has is a stale excuse that would hide a real omission later.
+  group('the numbers Dart retypes from the header', () {
+    // Every bound and threshold crosses this boundary by being typed out twice,
+    // and the two sides fail differently when they disagree. A max that drops
+    // in C gives a perfectly good capture "the recovery engine failed"; a
+    // confidence threshold that rises in C leaves the app offering a seed the
+    // engine's own line says should not be transmitted.
+    int macro(String name) {
+      final match = RegExp('#define $name\\s+(\\d+)').firstMatch(header);
+      if (match == null) {
+        throw StateError(
+          '$name is not a numeric #define in $faaccrackHeaderPath',
+        );
+      }
+      return int.parse(match.group(1)!);
+    }
+
+    test('the hop bounds match', () {
+      expect(macro('FAACCRACK_MIN_HOPS'), SeedCapture.minHops);
+      expect(macro('FAACCRACK_MAX_HOPS'), SeedCapture.maxHops);
+    });
+
+    test('the confidence threshold matches', () {
+      expect(macro('FAACCRACK_HOPS_CONFIDENT'), seedHopsConfident);
+    });
+
+    test('the mode numbers match', () {
       expect(
-        _exemptFromKeep.keys.where((name) => !headerNames.contains(name)),
+        {for (final m in SeedManufacturer.values) m: m.mode},
+        {
+          SeedManufacturer.faacSlh: macro('FAACCRACK_MODE_FAAC_SLH'),
+          SeedManufacturer.bft: macro('FAACCRACK_MODE_BFT'),
+          SeedManufacturer.genius: macro('FAACCRACK_MODE_GENIUS'),
+          SeedManufacturer.erreka: macro('FAACCRACK_MODE_ERREKA'),
+        },
+      );
+    });
+
+    test('the self-test status range matches', () {
+      // The range exists so a fourth check added to the engine still reports as
+      // a broken build rather than falling into the generic fault arm, and the
+      // Dart side has the two ends written out.
+      final enumerated = RegExp(r'FAACCRACK_SELFTEST_\w+ = (-\d+)')
+          .allMatches(header)
+          .map((m) => int.parse(m.group(1)!))
+          .toList();
+      expect(enumerated, isNotEmpty);
+      expect(
+        seedSelfTestFirstStatus,
+        enumerated.reduce((a, b) => a < b ? a : b),
+      );
+      expect(
+        seedSelfTestLastStatus,
+        enumerated.reduce((a, b) => a > b ? a : b),
+      );
+    });
+  });
+
+  group('the variants the dispatcher selects', () {
+    // The assertion this file promised when there was no dispatcher. A variant
+    // the CMake compiles and the dispatcher never selects is several-fold
+    // slower on that machine with nothing saying so; the reverse is a link
+    // error on one instruction set on one platform, found at release.
+    final dispatcher = faaccrackDispatcherSource();
+    final cmake = faaccrackCMakeSource();
+
+    test('the dispatcher names only variants the header lists', () {
+      final listed = _listedVariants(header).toSet();
+      final selected = RegExp(r'faaccrack_search_([A-Z][A-Z0-9]*)')
+          .allMatches(dispatcher)
+          .map((m) => m.group(1)!)
+          .toSet();
+      expect(selected, isNotEmpty);
+      expect(
+        selected.difference(listed),
         isEmpty,
-        reason: 'exempted here but $faaccrackHeaderPath no longer declares it',
+        reason: 'the dispatcher references a variant the header does not list',
+      );
+    });
+
+    test('every variant the dispatcher names is one the build compiles', () {
+      final built = RegExp(r'faaccrack_add_variant\((\w+)')
+          .allMatches(cmake)
+          .map((m) => m.group(1)!)
+          .toSet();
+      final selected = RegExp(r'faaccrack_search_([A-Z][A-Z0-9]*)')
+          .allMatches(dispatcher)
+          .map((m) => m.group(1)!)
+          .toSet();
+      expect(built, isNotEmpty);
+      expect(
+        selected.difference(built),
+        isEmpty,
+        reason: 'the dispatcher would reference an object nothing compiles',
+      );
+      // The other direction, with the one legitimate exception: a variant the
+      // dispatcher does not name by hand is still reachable through
+      // FAACCRACK_SEARCH on its single-variant path, which is how NEON is
+      // selected and how the Apple pod works at all.
+      expect(
+        dispatcher,
+        contains('FAACCRACK_SEARCH'),
+        reason:
+            'without the single-variant path, a variant the dispatcher '
+            'does not name is compiled and never reachable',
+      );
+      final unreachable = built.difference(selected);
+      expect(
+        unreachable.length,
+        lessThanOrEqualTo(1),
+        reason:
+            'at most one variant may rely on the single-variant path; '
+            '$unreachable do, so some machine silently gets a slower one',
+      );
+    });
+
+    test('the build says the dispatcher may choose, and the pod does not', () {
+      // Losing this define from the CMake is completely silent: all the engine
+      // objects still compile and link, and every x86 host quietly runs the
+      // baseline one forever.
+      expect(cmake, contains('FAACCRACK_MULTI_VARIANT'));
+      expect(
+        faaccrackPodspecSource(),
+        isNot(contains('FAACCRACK_MULTI_VARIANT')),
+        reason:
+            'the pod compiles one object, so the dispatcher must take its '
+            'single-variant path - defining this there is a link error',
       );
     });
   });

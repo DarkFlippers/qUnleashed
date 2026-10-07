@@ -64,8 +64,12 @@ SYMBOLS=()
 while IFS= read -r symbol; do
   SYMBOLS+=("$symbol")
 done < <(
+  # `.*[^A-Za-z0-9_]` for the return type rather than one identifier: an
+  # export returning a pointer spells it `const char *name(`, which is two
+  # tokens and a star. The single-token version missed exactly those, and
+  # the count check below is what would have caught it.
   find "$CPP_DIR" -name '*.c' -exec sed -nE \
-    's/^QUNLEASHED_EXPORT[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]+(qunleashed_[A-Za-z0-9_]+)\(.*/\1/p' {} + |
+    's/^QUNLEASHED_EXPORT[[:space:]]+.*[^A-Za-z0-9_](qunleashed_[A-Za-z0-9_]+)\(.*/\1/p' {} + |
     sort -u
 )
 
@@ -74,6 +78,20 @@ done < <(
 if ((${#SYMBOLS[@]} == 0)); then
   echo "::error::No QUNLEASHED_EXPORT definitions found under $CPP_DIR." >&2
   echo "::error::The guard can check nothing; fix its sed before trusting a green build." >&2
+  exit 1
+fi
+
+# And one that matched *some* of them would be worse, because it looks like it
+# worked. Counting the definitions a different way and comparing is the only
+# thing that notices: the extraction above missed a pointer-returning export
+# for as long as one existed, and the zero check above could not see it.
+DEFINED=$(find "$CPP_DIR" -name '*.c' -exec grep -chE '^QUNLEASHED_EXPORT[[:space:]]' {} + |
+  awk '{ total += $1 } END { print total + 0 }')
+if ((${#SYMBOLS[@]} != DEFINED)); then
+  echo "::error::Found $DEFINED QUNLEASHED_EXPORT definitions but extracted" \
+    "${#SYMBOLS[@]} symbol names. The guard would check only some of them;" \
+    "fix its sed before trusting a green build." >&2
+  printf '::error::extracted: %s\n' "${SYMBOLS[*]}" >&2
   exit 1
 fi
 

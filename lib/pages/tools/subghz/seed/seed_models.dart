@@ -68,6 +68,7 @@ class SeedCapture {
     required this.hops,
     required this.manufacturer,
     this.frequencyHz,
+    this.preset,
   });
 
   /// The fixed code: the top 32 bits of the frame, the same in every hop.
@@ -86,6 +87,15 @@ class SeedCapture {
   /// with the wrong frequency transmits into the void, and guessing 433.92 for
   /// a Genius remote that was captured at 868.35 is exactly that.
   final int? frequencyHz;
+
+  /// The radio preset the capture was taken with, if the file said.
+  ///
+  /// Read from the file rather than assumed, for the same reason the frequency
+  /// is: the authoritative value is in the capture, and a `.sub` written with
+  /// the wrong one does not transmit. All four protocols are OOK today, so a
+  /// default is harmless - but defaulting is how the frequency bug would have
+  /// happened too.
+  final String? preset;
 
   /// Whether this capture carries enough hops for the engine to accept it.
   bool get isSolvable => hops.length >= minHops;

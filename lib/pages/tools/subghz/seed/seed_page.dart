@@ -154,7 +154,11 @@ class _CaptureCard extends StatelessWidget {
             label: context.l10n.seedFrequency,
             value: '${(frequency / 1000000).toStringAsFixed(2)} MHz',
           ),
-        if (controller.captureWarnings.isNotEmpty)
+        // The reasons, not only the count. A file four of whose nine hops were
+        // dropped may no longer have consecutive ones, so the search will find
+        // nothing for a reason that is not about the remote - and "unreadable
+        // hop: 4010" is the half the user can act on.
+        if (controller.captureWarnings.isNotEmpty) ...[
           Padding(
             padding: const EdgeInsets.only(top: 8),
             child: Text(
@@ -162,6 +166,8 @@ class _CaptureCard extends StatelessWidget {
               style: TextStyle(fontSize: 12, color: colors.info),
             ),
           ),
+          for (final warning in controller.captureWarnings) _Hint(warning),
+        ],
       ],
     );
   }
@@ -215,8 +221,14 @@ class _ActionBlock extends StatelessWidget {
       );
     }
 
+    // Not offered when the engine's own checks failed: they run per search, so
+    // every attempt gives the same answer, and the header says as much.
+    final broken =
+        controller.result?.outcome == SeedOutcome.engineSelfTestFailed;
     return FilledButton(
-      onPressed: controller.capture!.isSolvable ? controller.search : null,
+      onPressed: controller.capture!.isSolvable && !broken
+          ? controller.search
+          : null,
       style: FilledButton.styleFrom(
         backgroundColor: colors.accent,
         foregroundColor: colors.onAccent,
@@ -295,8 +307,11 @@ class _ResultCard extends StatelessWidget {
         // stranded one is restarting - which the bare status does not say.
         if (result.outcome == SeedOutcome.engineBusy)
           _Hint(l10n.seedEngineBusyHint),
+        if (result.outcome == SeedOutcome.engineSelfTestFailed ||
+            result.outcome == SeedOutcome.engineUnavailable)
+          _Hint(l10n.seedEngineBrokenHint),
         if (seed != null && hopsUsed != null && hopsUsed < seedHopsConfident)
-          _Hint(l10n.seedLowConfidence(hopsUsed)),
+          _Hint(l10n.seedLowConfidence(hopsUsed, seedHopsConfident)),
         if (result.outcome == SeedOutcome.found && capture.frequencyHz == null)
           _Hint(l10n.seedSaveNoFrequency),
         if (controller.canSave) ...[

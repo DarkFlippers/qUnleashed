@@ -26,8 +26,9 @@
 //  * A valid call with `progress == NULL`. The header allows it, but without a
 //    channel there is no way to stop a sweep, so exercising it would mean
 //    waiting out the whole seed space. Only the refusal path is covered below.
-//  * Anything about the dispatcher or the per-ISA variant names. This compiles
-//    one variant, whichever the host's flags select.
+//  * The per-instruction-set choice. This links one variant, whichever the
+//    host's flags select, and calls it through the dispatcher - so the
+//    dispatcher's gate is covered and its cpuid cascade is not.
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -59,6 +60,14 @@ static uint64_t PROBE_NOW_MS(void) {
 static int checks;
 static int failures;
 
+// Printed per group, so the script can hold each one to its own figure. A
+// single floor over the total let the known-answer group - the only thing that
+// pins the four mode numbers - be deleted while the count stayed comfortably
+// above it.
+static void group_done(const char *name, int before) {
+    printf("PROBE GROUP %s %d\n", name, checks - before);
+}
+
 static void check(const char *what, int ok) {
     // Counted as well as reported, so the script can refuse a run that somehow
     // asserted nothing. A probe whose checks were all skipped would otherwise
@@ -88,7 +97,7 @@ static void probe_selftests(void) {
     // engine sees this and leaves before claiming a chunk.
     progress.abort = 1;
 
-    const int status = FAACCRACK_SEARCH(FAACCRACK_MODE_FAAC_SLH, UNSOLVABLE_FIX,
+    const int status = faaccrack_search(FAACCRACK_MODE_FAAC_SLH, UNSOLVABLE_FIX,
                                         unsolvable, 2, 1, &progress, &result);
 
     // STOPPED and not SELFTEST_* is the whole assertion: the cipher, the NLF
@@ -151,7 +160,7 @@ static void probe_known_answers(void) {
         struct faaccrack_result got;
         memset(&progress, 0, sizeof progress);
 
-        const int status = FAACCRACK_SEARCH(want->mode, want->fix, want->hops, 3, 2,
+        const int status = faaccrack_search(want->mode, want->fix, want->hops, 3, 2,
                                             &progress, &got);
 
         char label[80];
@@ -167,6 +176,16 @@ static void probe_known_answers(void) {
         check(label, got.round_trip_ok == 1);
         snprintf(label, sizeof label, "%s reports its counter", want->name);
         check(label, got.counter == want->counter);
+        // The rolling half that goes into the .sub. Nothing else asserts its
+        // value, and it is the field a caller writes to the user's device.
+        snprintf(label, sizeof label, "%s rebuilds the captured hop", want->name);
+        check(label, got.frame_hop == want->hops[2]);
+        // The documented evidence that a -DVBITS was not silently dropped by
+        // the obfuscator - BUILD_NOTES calls this the only such evidence, and
+        // until now nothing read it.
+        snprintf(label, sizeof label, "%s reports the compiled lane count",
+                 want->name);
+        check(label, got.lanes == 512);
         snprintf(label, sizeof label, "%s says how many hops backed it", want->name);
         check(label, got.hops_used == 3);
     }
@@ -184,39 +203,39 @@ static void probe_refusals(void) {
     const uint32_t hops[FAACCRACK_MAX_HOPS + 1] = {0};
 
     check_eq("a null result is refused",
-             FAACCRACK_SEARCH(FAACCRACK_MODE_GENIUS, 0, hops, 2, 1, &progress, NULL),
+             faaccrack_search(FAACCRACK_MODE_GENIUS, 0, hops, 2, 1, &progress, NULL),
              FAACCRACK_BAD_ARGS);
     check_eq("zero threads is refused",
-             FAACCRACK_SEARCH(FAACCRACK_MODE_GENIUS, 0, hops, 2, 0, &progress, &result),
+             faaccrack_search(FAACCRACK_MODE_GENIUS, 0, hops, 2, 0, &progress, &result),
              FAACCRACK_BAD_ARGS);
     check_eq("a negative thread count is refused",
-             FAACCRACK_SEARCH(FAACCRACK_MODE_GENIUS, 0, hops, 2, -1, &progress, &result),
+             faaccrack_search(FAACCRACK_MODE_GENIUS, 0, hops, 2, -1, &progress, &result),
              FAACCRACK_BAD_ARGS);
     check_eq("a mode below the first is refused",
-             FAACCRACK_SEARCH(FAACCRACK_MODE_MIN - 1, 0, hops, 2, 1, &progress, &result),
+             faaccrack_search(FAACCRACK_MODE_MIN - 1, 0, hops, 2, 1, &progress, &result),
              FAACCRACK_BAD_ARGS);
     check_eq("a mode past the last is refused",
-             FAACCRACK_SEARCH(FAACCRACK_MODE_MAX + 1, 0, hops, 2, 1, &progress, &result),
+             faaccrack_search(FAACCRACK_MODE_MAX + 1, 0, hops, 2, 1, &progress, &result),
              FAACCRACK_BAD_ARGS);
     check_eq("null hops are refused",
-             FAACCRACK_SEARCH(FAACCRACK_MODE_GENIUS, 0, NULL, 2, 1, &progress, &result),
+             faaccrack_search(FAACCRACK_MODE_GENIUS, 0, NULL, 2, 1, &progress, &result),
              FAACCRACK_BAD_ARGS);
     check_eq("no hops at all is refused",
-             FAACCRACK_SEARCH(FAACCRACK_MODE_GENIUS, 0, hops, 0, 1, &progress, &result),
+             faaccrack_search(FAACCRACK_MODE_GENIUS, 0, hops, 0, 1, &progress, &result),
              FAACCRACK_BAD_ARGS);
     check_eq("one hop is refused",
-             FAACCRACK_SEARCH(FAACCRACK_MODE_GENIUS, 0, hops,
+             faaccrack_search(FAACCRACK_MODE_GENIUS, 0, hops,
                               FAACCRACK_MIN_HOPS - 1, 1, &progress, &result),
              FAACCRACK_BAD_ARGS);
     check_eq("more hops than the engine takes is refused",
-             FAACCRACK_SEARCH(FAACCRACK_MODE_GENIUS, 0, hops,
+             faaccrack_search(FAACCRACK_MODE_GENIUS, 0, hops,
                               FAACCRACK_MAX_HOPS + 1, 1, &progress, &result),
              FAACCRACK_BAD_ARGS);
     // A null channel on a path that returns without sweeping. It shows the null
     // is not dereferenced during validation, which is as much as can be checked
     // cheaply - see the note at the top of this file.
     check_eq("a null progress channel does not crash validation",
-             FAACCRACK_SEARCH(FAACCRACK_MODE_MAX + 1, 0, hops, 2, 1, NULL, &result),
+             faaccrack_search(FAACCRACK_MODE_MAX + 1, 0, hops, 2, 1, NULL, &result),
              FAACCRACK_BAD_ARGS);
 
     // The accepting side of each bound, so the refusals above are known to be
@@ -224,25 +243,25 @@ static void probe_refusals(void) {
     // way - and, since the self-test probe left the gate taken and released,
     // these are also what would fail with BUSY if it had leaked.
     check_eq("the fewest hops allowed is accepted",
-             FAACCRACK_SEARCH(FAACCRACK_MODE_GENIUS, UNSOLVABLE_FIX, hops,
+             faaccrack_search(FAACCRACK_MODE_GENIUS, UNSOLVABLE_FIX, hops,
                               FAACCRACK_MIN_HOPS, 1, &progress, &result),
              FAACCRACK_STOPPED);
     check_eq("the most hops allowed is accepted",
-             FAACCRACK_SEARCH(FAACCRACK_MODE_GENIUS, UNSOLVABLE_FIX, hops,
+             faaccrack_search(FAACCRACK_MODE_GENIUS, UNSOLVABLE_FIX, hops,
                               FAACCRACK_MAX_HOPS, 1, &progress, &result),
              FAACCRACK_STOPPED);
     for (uint32_t mode = FAACCRACK_MODE_MIN; mode <= FAACCRACK_MODE_MAX; mode++) {
         char label[64];
         snprintf(label, sizeof label, "mode %u is accepted", mode);
         check_eq(label,
-                 FAACCRACK_SEARCH(mode, UNSOLVABLE_FIX, hops, 2, 1, &progress, &result),
+                 faaccrack_search(mode, UNSOLVABLE_FIX, hops, 2, 1, &progress, &result),
                  FAACCRACK_STOPPED);
     }
 
     // The result is zeroed before the busy gate, so no path except a null
     // result hands back a previous search's find.
     memset(&result, 0xAB, sizeof result);
-    (void)FAACCRACK_SEARCH(FAACCRACK_MODE_GENIUS, UNSOLVABLE_FIX, hops, 2, 1,
+    (void)faaccrack_search(FAACCRACK_MODE_GENIUS, UNSOLVABLE_FIX, hops, 2, 1,
                            &progress, &result);
     check("a refused search leaves no stale seed behind",
           result.seed == 0 && result.lrkey == 0 && result.round_trip_ok == 0);
@@ -293,7 +312,7 @@ static void *stopper(void *arg) {
     struct faaccrack_result other;
     memset(&other_progress, 0, sizeof other_progress);
     report->concurrent_status =
-        FAACCRACK_SEARCH(FAACCRACK_MODE_GENIUS, UNSOLVABLE_FIX, unsolvable, 2, 1,
+        faaccrack_search(FAACCRACK_MODE_GENIUS, UNSOLVABLE_FIX, unsolvable, 2, 1,
                          &other_progress, &other);
 
     report->channel->abort = 1;
@@ -319,7 +338,7 @@ static void probe_stop(void) {
     // and the count being reported, and a CI runner has few cores to oversubscribe.
     const int asked = 2;
     const uint64_t began = PROBE_NOW_MS();
-    const int status = FAACCRACK_SEARCH(FAACCRACK_MODE_FAAC_SLH, UNSOLVABLE_FIX,
+    const int status = faaccrack_search(FAACCRACK_MODE_FAAC_SLH, UNSOLVABLE_FIX,
                                         unsolvable, 2, asked, &running, &result);
     const uint64_t elapsed = PROBE_NOW_MS() - began;
     pthread_join(stop_thread, 0);
@@ -342,16 +361,21 @@ static void probe_stop(void) {
              FAACCRACK_BUSY);
 }
 
-// Which variant the host's flags selected, so a run says what it tested.
-#define PROBE_STRINGIFY_(x) #x
-#define PROBE_STRINGIFY(x) PROBE_STRINGIFY_(x)
-
 int main(void) {
-    printf("faaccrack ABI probe: %s\n", PROBE_STRINGIFY(FAACCRACK_SEARCH));
+    // The header already carries this choice as a string.
+    printf("faaccrack ABI probe: %s\n", faaccrack_variant_name());
+    int mark = checks;
     probe_selftests();
+    group_done("selftests", mark);
+    mark = checks;
     probe_known_answers();
+    group_done("known-answers", mark);
+    mark = checks;
     probe_refusals();
+    group_done("refusals", mark);
+    mark = checks;
     probe_stop();
+    group_done("stop", mark);
     printf("\n%s (%d checks, %d failed)\n", failures ? "PROBE FAILED" : "PROBE PASSED",
            checks, failures);
     return failures ? 1 : 0;

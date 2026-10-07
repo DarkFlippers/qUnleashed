@@ -11,6 +11,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/tools/subghz/seed/seed_capture_format.dart';
 import 'package:qunleashed/pages/tools/subghz/seed/seed_models.dart';
 
+/// The two lines every capture has to carry, for fixtures that are about
+/// something else.
+const _header = 'Filetype: Flipper SubGhz Seed Capture\nVersion: 1\n';
+
 const _capture = '''
 Filetype: Flipper SubGhz Seed Capture
 Version: 1
@@ -31,7 +35,7 @@ Hop: A1F9C88F
 void main() {
   group('a capture the app wrote', () {
     test('parses every field', () {
-      final parsed = SeedCaptureFormat.parse(_capture, path: '/ext/x.txt');
+      final parsed = SeedCaptureFormat.parse(_capture);
       expect(parsed.skipped, isEmpty);
 
       final capture = parsed.capture!;
@@ -88,6 +92,8 @@ void main() {
 
     test('works without the optional fields', () {
       final parsed = SeedCaptureFormat.parse('''
+Filetype: Flipper SubGhz Seed Capture
+Version: 1
 Manufacturer: Erreka
 Fix: 20345678
 Hop: BA072EA1
@@ -100,16 +106,16 @@ Hop: 6BD12D54
 
     test('accepts a manufacturer however it is spaced or cased', () {
       for (final spelling in ['FAAC SLH', 'faac_slh', 'FaacSlh']) {
-        expect(
-          SeedCaptureFormat.parse('''
+        final parsed = SeedCaptureFormat.parse('''
+Filetype: Flipper SubGhz Seed Capture
+Version: 1
 Manufacturer: $spelling
 Fix: 12345674
 Hop: D6661744
 Hop: 674875BE
-''').capture?.manufacturer,
-          SeedManufacturer.faacSlh,
-          reason: '"$spelling" should resolve',
-        );
+''');
+        expect(parsed.capture, isNotNull, reason: '"$spelling" should resolve');
+        expect(parsed.capture!.manufacturer, SeedManufacturer.faacSlh);
       }
     });
   });
@@ -125,6 +131,8 @@ Hop: 674875BE
           'Hop: ${(0x10000000 + i).toRadixString(16).toUpperCase()}',
       ].join('\n');
       final parsed = SeedCaptureFormat.parse('''
+Filetype: Flipper SubGhz Seed Capture
+Version: 1
 Manufacturer: Genius
 Fix: A0DC9330
 $hops
@@ -136,7 +144,9 @@ $hops
 
   group('what it refuses', () {
     test('a file with no fixed code', () {
-      final parsed = SeedCaptureFormat.parse('Hop: 29389EF7\nHop: 40101499\n');
+      final parsed = SeedCaptureFormat.parse(
+        '${_header}Hop: 29389EF7\nHop: 40101499\n',
+      );
       expect(parsed.capture, isNull);
       expect(parsed.skipped, contains(contains('Fix')));
     });
@@ -154,12 +164,55 @@ $hops
 
     test('a single hop, which cannot be checked against anything', () {
       final parsed = SeedCaptureFormat.parse('''
+Filetype: Flipper SubGhz Seed Capture
+Version: 1
 Manufacturer: Genius
 Fix: A0DC9330
 Hop: 29389EF7
 ''');
       expect(parsed.capture, isNull);
       expect(parsed.skipped, contains(contains('at least 2')));
+    });
+
+    test('a file with no Filetype header at all', () {
+      // Checked only when present before, so a headerless file was accepted
+      // and attacked.
+      final parsed = SeedCaptureFormat.parse(
+        _capture.replaceFirst('Filetype: Flipper SubGhz Seed Capture\n', ''),
+      );
+      expect(parsed.capture, isNull);
+      expect(parsed.skipped, contains(contains('not a seed capture')));
+    });
+
+    test('a version this build does not read', () {
+      // The capture app's own statement that the layout moved. Ignoring it is
+      // how a v2 file parses cleanly under v1 rules and comes back "no seed
+      // matched", sending the user to re-record a remote that was fine.
+      final parsed = SeedCaptureFormat.parse(
+        _capture.replaceFirst('Version: 1', 'Version: 2'),
+      );
+      expect(parsed.capture, isNull);
+      expect(parsed.skipped, contains(contains('version 2')));
+    });
+
+    test('a protocol that disagrees with the manufacturer', () {
+      // The file says both, and this build knows the pairing - a disagreement
+      // is the strongest signal available that the format changed.
+      final parsed = SeedCaptureFormat.parse(
+        _capture.replaceFirst('Protocol: Faac SLH', 'Protocol: KeeLoq'),
+      );
+      expect(parsed.capture, isNull);
+      expect(parsed.skipped, contains(contains('Protocol')));
+    });
+
+    test('a truncated hex word, which is not a short number', () {
+      // `Hop: 2938` would parse as 0x00002938, join the capture and poison it,
+      // and the declared-count check cannot see it because the line is there.
+      final parsed = SeedCaptureFormat.parse(
+        _capture.replaceFirst('Hop: 40101499', 'Hop: 4010'),
+      );
+      expect(parsed.capture!.hops, [0x29389EF7, 0xA1F9C88F]);
+      expect(parsed.skipped, contains(contains('4010')));
     });
 
     test('some other Flipper file that happens to be here', () {
@@ -193,8 +246,17 @@ Protocol: Faac SLH
         final parsed = SeedCaptureFormat.parse(
           _capture.replaceFirst('Frequency: 868350000', 'Frequency: $bad'),
         );
+        // Both halves, and not through `?.`: with the null-aware operator this
+        // passed whenever the whole file was refused, which is a different
+        // behaviour under the same assertion - and this group is called "what
+        // it refuses", so it would have read as covering it.
         expect(
-          parsed.capture?.frequencyHz,
+          parsed.capture,
+          isNotNull,
+          reason: '"$bad" should not refuse the file',
+        );
+        expect(
+          parsed.capture!.frequencyHz,
           isNull,
           reason: '"$bad" is not a frequency',
         );

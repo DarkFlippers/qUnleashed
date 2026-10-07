@@ -110,10 +110,9 @@ static faaccrack_search_fn *chosen;
 // x86 there is no NEON object to refer to.
 static void select_variant(void) {
 #if defined(FAACCRACK_DISPATCH_X86)
-    if (cpu_has(7, 0, 1, 16) && os_saves_wide_registers(1)) {  // EBX bit 16: AVX512F
-        chosen_name = "AVX512";
-        chosen = faaccrack_search_AVX512;
-    } else if (cpu_has(7, 0, 1, 5) && os_saves_wide_registers(0)) {  // EBX bit 5: AVX2
+    // No AVX-512 branch: the build does not produce that object. faaccrack.h
+    // says why, and it is a measured reason rather than an oversight.
+    if (cpu_has(7, 0, 1, 5) && os_saves_wide_registers(0)) {  // EBX bit 5: AVX2
         chosen_name = "AVX2";
         chosen = faaccrack_search_AVX2;
     } else if (cpu_has(1, 0, 2, 28) && os_saves_wide_registers(0)) {  // ECX bit 28: AVX

@@ -61,15 +61,17 @@ void main() {
 
   group('seedResultIsMeaningful', () {
     test('only a find and an unverified find carry a result', () {
+      // Against a literal set, not against the same expression the function
+      // evaluates - that version could not fail for the reason its name gives,
+      // which is the trap CLAUDE.md's last anti-pattern names.
+      //
       // The engine zeroes the struct on every other path, and zero is a legal
-      // seed - so the outcome is the only thing that says it means anything.
-      for (final outcome in SeedOutcome.values) {
-        expect(
-          seedResultIsMeaningful(outcome),
-          outcome == SeedOutcome.found || outcome == SeedOutcome.unverified,
-          reason: '$outcome',
-        );
-      }
+      // seed, so the outcome is the only thing that says it means anything.
+      const carriesAResult = {SeedOutcome.found, SeedOutcome.unverified};
+      expect(
+        SeedOutcome.values.where(seedResultIsMeaningful).toSet(),
+        carriesAResult,
+      );
     });
   });
 

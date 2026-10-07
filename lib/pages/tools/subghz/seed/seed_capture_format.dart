@@ -49,10 +49,11 @@ class SeedCaptureFormat {
   const SeedCaptureFormat._();
 
   static const _fileType = 'Flipper SubGhz Seed Capture';
+  static const _fileVersion = 1;
 
   /// Parses [text]. Returns a null capture when the file cannot be used at all,
   /// with `skipped` saying why.
-  static SeedCaptureParse parse(String text, {String? path}) {
+  static SeedCaptureParse parse(String text) {
     final skipped = <String>[];
     final fields = <String, String>{};
     final hops = <int>[];
@@ -94,9 +95,25 @@ class SeedCaptureFormat {
       fields[key] = value;
     }
 
+    // Required, not merely checked when present: a file with no header at all
+    // was being accepted and attacked.
     final fileType = fields['Filetype'];
-    if (fileType != null && fileType != _fileType) {
-      skipped.add('not a seed capture: Filetype "$fileType"');
+    if (fileType != _fileType) {
+      skipped.add('not a seed capture: Filetype "${fileType ?? ''}"');
+      return (capture: null, skipped: skipped);
+    }
+
+    // The version is the capture app's own statement that the layout changed.
+    // Ignoring it is how a v2 file - a renamed field, a different byte order, a
+    // button split out of the fix - parses cleanly under v1 rules, sweeps the
+    // whole space and comes back "no seed matched this capture", sending the
+    // user to re-record a remote that was never the problem.
+    final version = int.tryParse(fields['Version'] ?? '');
+    if (version != _fileVersion) {
+      skipped.add(
+        'capture is version ${fields['Version'] ?? '?'}, '
+        'this build reads version $_fileVersion',
+      );
       return (capture: null, skipped: skipped);
     }
 
@@ -115,6 +132,16 @@ class SeedCaptureFormat {
       // space and report that no seed exists, which is the one answer a user
       // must not be given wrongly.
       skipped.add('unknown Manufacturer "${fields['Manufacturer'] ?? ''}"');
+      return (capture: null, skipped: skipped);
+    }
+
+    final protocol = fields['Protocol'];
+    if (protocol != null && protocol != manufacturer.protocol) {
+      skipped.add(
+        'file says Protocol "$protocol" for '
+        '${manufacturer.label}, which this build pairs with '
+        '"${manufacturer.protocol}"',
+      );
       return (capture: null, skipped: skipped);
     }
 
@@ -140,6 +167,7 @@ class SeedCaptureFormat {
         hops: List.unmodifiable(hops),
         manufacturer: manufacturer,
         frequencyHz: _frequency(fields['Frequency']),
+        preset: fields['Preset'],
       ),
       skipped: skipped,
     );
@@ -147,12 +175,18 @@ class SeedCaptureFormat {
 
   /// A 32-bit hex word, with or without `0x`.
   ///
-  /// `int.tryParse` on its own would accept a leading sign and silently take
-  /// values too wide to be a frame half, so the shape is checked first.
+  /// Exactly eight digits, because that is what the capture app writes
+  /// (`%08lX`) and because a shorter one is a truncated write rather than a
+  /// small number: `Hop: 2938` would otherwise parse as `0x00002938`, join the
+  /// capture, and poison it - and the declared-count cross-check cannot see it,
+  /// since the line is present.
+  ///
+  /// `int.tryParse` on its own would also accept a leading sign and values too
+  /// wide to be a frame half, so the shape is checked first either way.
   static int? _hex(String? value) {
     if (value == null) return null;
     final text = value.trim().replaceFirst(RegExp('^0[xX]'), '');
-    if (!RegExp(r'^[0-9A-Fa-f]{1,8}$').hasMatch(text)) return null;
+    if (!RegExp(r'^[0-9A-Fa-f]{8}$').hasMatch(text)) return null;
     return int.parse(text, radix: 16);
   }
 

@@ -111,6 +111,12 @@ const _statusNotFound = -10;
 const _statusSelfTestFirst = -22;
 const _statusSelfTestLast = -20;
 
+/// The ends of the self-test range, for the test that holds them to the
+/// header. Exposed rather than duplicated there, so the test cannot pass by
+/// agreeing with itself.
+const seedSelfTestFirstStatus = _statusSelfTestFirst;
+const seedSelfTestLastStatus = _statusSelfTestLast;
+
 /// Maps a native status to an outcome.
 ///
 /// Its own function so the mapping can be tested: everything around it needs a
@@ -154,15 +160,6 @@ class NativeFaaccrackRecoverer implements FaaccrackRecoverer {
     void Function(double fraction)? onProgress,
     bool Function()? isCancelled,
   }) async {
-    // Defensive only. The window builder already keeps every job inside these
-    // bounds, so reaching this means a caller bypassed it - which is a fault in
-    // this app, and reported as one.
-    if (hops.length < SeedCapture.minHops ||
-        hops.length > SeedCapture.maxHops) {
-      LogService.error('[Seed] refusing ${hops.length} hops, out of bounds');
-      return seedResult(SeedOutcome.engineFault);
-    }
-
     // Allocated on this side: the poll timer has to read it while the other
     // isolate is blocked inside the engine. Native memory is process-scoped, so
     // only the address has to cross.
@@ -337,7 +334,17 @@ class NativeFaaccrackRecoverer implements FaaccrackRecoverer {
   /// answered by this one string.
   static String? _variant;
 
-  static String variantName() => _variant ??= _askVariantName();
+  /// Cached only once it is an answer: a first call made before the library is
+  /// loadable would otherwise pin "unavailable" for the life of the process.
+  static String variantName() {
+    final known = _variant;
+    if (known != null) return known;
+    final name = _askVariantName();
+    if (name != _unavailableVariant) _variant = name;
+    return name;
+  }
+
+  static const _unavailableVariant = 'unavailable';
 
   static String _askVariantName() {
     try {
@@ -353,7 +360,7 @@ class NativeFaaccrackRecoverer implements FaaccrackRecoverer {
       // Logged rather than swallowed: the search that follows will fail on the
       // same thing, and this line is what says so first.
       LogService.warn('[Seed] engine variant unavailable: $e');
-      return 'unavailable';
+      return _unavailableVariant;
     }
   }
 }

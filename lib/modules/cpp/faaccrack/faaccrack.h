@@ -1,14 +1,13 @@
 // Seed recovery for FAAC SLH, Genius, BFT and Erreka rolling codes: the ABI
 // between the obfuscated search engine and everything that calls it.
 //
-// Three parties have to agree on this file. One exists: the engine
-// (`faaccrack.c`, which is generated - see BUILD_NOTES.md). The other two, a
-// runtime dispatcher that picks an instruction set and an FFI bridge the app
-// calls, are not written yet, so today the only caller is the engine's own
-// command line. Where this file describes what they will do, it says so.
+// Three parties have to agree on this file: the engine (`faaccrack.c`, which is
+// generated - see BUILD_NOTES.md), the dispatcher that picks an instruction set
+// (`faaccrack_dispatch.c`), and the bridge the app calls
+// (`faaccrack_bridge.c`).
 //
-// Only the engine is obfuscated. This file, and those two when they land, are
-// written by hand and stay readable.
+// Only the engine is obfuscated. The other two are written by hand and stay
+// readable.
 //
 // No Flipper or Dart type, header or assumption appears below - the same header
 // serves the engine's command-line build. `.sub` is named in comments only to
@@ -99,18 +98,13 @@ enum faaccrack_status {
     // The caller set `abort`, either before the call or during the sweep.
     FAACCRACK_STOPPED = -3,
 
-    // A search is already running.
+    // A search is already running. Sequential searches are fine; the
+    // dispatcher releases its gate when each one returns.
     //
-    // The gate is a static inside the engine's translation unit, and the build
-    // compiles that unit once per instruction set, so there is one gate per
-    // compiled variant rather than one per process. Calls into two different
-    // variants would both be admitted; they would not corrupt each other, since
-    // separate translation units mean separate job state, but the single gate a
-    // caller wants belongs in the dispatcher. Until that exists, select one
-    // variant and never call a second.
-    //
-    // It lasts the life of the process and has no reset, so a caller that
-    // somehow loses track of a running search gets this until the app restarts.
+    // The engine has a gate of its own, but it is a static in a translation
+    // unit the build compiles once per instruction set, so there is one per
+    // variant and none for the library. The dispatcher is the only translation
+    // unit compiled once, which is why it owns the real one.
     FAACCRACK_BUSY = -4,
 
     // A seed decrypted every hop to consecutive counters, but re-encrypting the
@@ -240,6 +234,10 @@ struct faaccrack_result {
     // numbering ever drifts. Two seeds differing only in bits the derivation
     // discards share one of these.
     //
+    // Unsigned here and signed in Dart, which has no unsigned 64-bit integer:
+    // a key with the top bit set arrives negative there, so anything formatting
+    // it has to say so rather than printing a minus sign.
+    //
     // First because it is the only 64-bit member, which leaves the eight 32-bit
     // ones packed behind it with no padding.
     uint64_t lrkey;
@@ -271,11 +269,8 @@ struct faaccrack_result {
     // is independent of the capture, so this is the check that the plaintext
     // layout was right for this protocol.
     //
-    // A diagnostic only. It used to be the gate on writing a key file, which
-    // made a user-visible transmit depend on every caller remembering to read a
-    // field that is not on the path it already checks - so the gate is
-    // FAACCRACK_UNVERIFIED now, and a caller that writes a file only on
-    // FAACCRACK_OK cannot get it wrong by forgetting.
+    // A diagnostic. The gate on writing a file is FAACCRACK_OK, so a caller
+    // cannot get this wrong by forgetting to read a field.
     uint32_t round_trip_ok;
 
     // How many hops the acceptance test ran over - an echo of the `nhop` passed
@@ -303,9 +298,27 @@ struct faaccrack_result {
 // loud, and the bridge exports the size so the Dart side can assert against it.
 #define FAACCRACK_LAYOUT_CHANGED "faaccrack layout changed - update the Dart mirror"
 _Static_assert(sizeof(struct faaccrack_progress) == 16, FAACCRACK_LAYOUT_CHANGED);
+_Static_assert(offsetof(struct faaccrack_progress, permille) == 0, FAACCRACK_LAYOUT_CHANGED);
+_Static_assert(offsetof(struct faaccrack_progress, abort) == 4, FAACCRACK_LAYOUT_CHANGED);
+_Static_assert(offsetof(struct faaccrack_progress, started) == 8, FAACCRACK_LAYOUT_CHANGED);
+_Static_assert(offsetof(struct faaccrack_progress, threads_started) == 12,
+               FAACCRACK_LAYOUT_CHANGED);
+
+// Every field, not only the size and a couple of offsets. Six 32-bit fields of
+// one struct could otherwise permute among themselves with every assertion here
+// and every size check on the Dart side still passing - and swapping `seed`
+// with `last_plain`, which the comments above invite by documenting them
+// together, hands a caller a wrong seed under a successful status.
 _Static_assert(sizeof(struct faaccrack_result) == 40, FAACCRACK_LAYOUT_CHANGED);
+_Static_assert(offsetof(struct faaccrack_result, lrkey) == 0, FAACCRACK_LAYOUT_CHANGED);
+_Static_assert(offsetof(struct faaccrack_result, seed) == 8, FAACCRACK_LAYOUT_CHANGED);
+_Static_assert(offsetof(struct faaccrack_result, last_plain) == 12, FAACCRACK_LAYOUT_CHANGED);
+_Static_assert(offsetof(struct faaccrack_result, counter) == 16, FAACCRACK_LAYOUT_CHANGED);
+_Static_assert(offsetof(struct faaccrack_result, frame_plain) == 20, FAACCRACK_LAYOUT_CHANGED);
+_Static_assert(offsetof(struct faaccrack_result, frame_hop) == 24, FAACCRACK_LAYOUT_CHANGED);
 _Static_assert(offsetof(struct faaccrack_result, round_trip_ok) == 28,
                FAACCRACK_LAYOUT_CHANGED);
+_Static_assert(offsetof(struct faaccrack_result, hops_used) == 32, FAACCRACK_LAYOUT_CHANGED);
 _Static_assert(offsetof(struct faaccrack_result, lanes) == 36, FAACCRACK_LAYOUT_CHANGED);
 
 // ---- the entry point -------------------------------------------------------
@@ -320,12 +333,18 @@ typedef int faaccrack_search_fn(uint32_t mode, uint32_t fix, const uint32_t *hop
 // Every instruction set the engine is compiled for, in the order a dispatcher
 // should prefer them.
 //
-// A list rather than five hand-written `extern` declarations, because the
-// dispatcher, the CMake that builds the objects and whatever reports which one
-// ran all need the same set, and a sixth should be one edit in one place. The
-// typedef above only declares the variant the *including* translation unit is
-// compiled as; this is how anything else names them all.
-#define FAACCRACK_VARIANTS(X) X(AVX512) X(AVX2) X(AVX) X(NEON) X(SSE2)
+// A list rather than hand-written `extern` declarations, so the cascade below
+// and this set can be held to each other by a test. The CMake and the
+// dispatcher still name the variants themselves, so adding one is three edits -
+// the list does not change that, it just makes a mismatch loud.
+//
+// No AVX-512, and the reason is measured rather than theoretical: client Intel
+// parts downclock under 512-bit integer work, so a dispatcher preferring it
+// unconditionally can be slower than AVX2 on the machines most likely to run
+// this. The hardnested lib shipped it, took it back out, and wrote that down;
+// this engine's inner loop is pure 512-bit bitwise work, so it is if anything
+// more exposed. AVX2 is the width the engine's author measured.
+#define FAACCRACK_VARIANTS(X) X(AVX2) X(AVX) X(NEON) X(SSE2)
 
 #define FAACCRACK_DECLARE_VARIANT_(v) faaccrack_search_fn faaccrack_search_##v;
 FAACCRACK_VARIANTS(FAACCRACK_DECLARE_VARIANT_)
@@ -341,6 +360,10 @@ FAACCRACK_VARIANTS(FAACCRACK_DECLARE_VARIANT_)
 // `__GNUC__` 4 - so the two should become one shared capability header; see
 // BUILD_NOTES.md for why that hoist is not in this commit.
 //
+// A target with AVX-512 and not AVX2 does not exist, so the absence of an
+// AVX-512 branch costs nothing: -mavx512f implies -mavx2, and such a build
+// names itself AVX2 and runs the AVX2 object.
+//
 // No fallback: the engine is built on vector extensions, so there is nothing to
 // degrade to, and an unsupported target must fail here rather than compile. A
 // `vector_size` type scalarises for any target, so without this `#error` a
@@ -349,10 +372,7 @@ FAACCRACK_VARIANTS(FAACCRACK_DECLARE_VARIANT_)
 // `FAACCRACK_VARIANT_NAME` is the same choice as a string, for a build that
 // compiled only one object - the Apple pod - where the dispatcher cannot name
 // the others without referencing symbols that do not exist.
-#if defined(__AVX512F__)
-#define FAACCRACK_SEARCH faaccrack_search_AVX512
-#define FAACCRACK_VARIANT_NAME "AVX512"
-#elif defined(__AVX2__)
+#if defined(__AVX2__)
 #define FAACCRACK_SEARCH faaccrack_search_AVX2
 #define FAACCRACK_VARIANT_NAME "AVX2"
 #elif defined(__AVX__)

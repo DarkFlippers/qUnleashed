@@ -84,12 +84,20 @@ class SeedController extends ChangeNotifier {
 
   /// Whether the recovered remote can be written as a transmittable file.
   ///
-  /// Three things have to hold, and the frequency is the one that is easy to
-  /// forget: it is not recoverable from a fix and a hop, so a capture without
-  /// it can be solved but not written.
+  /// Four things have to hold. The frequency is the one that is easy to forget:
+  /// it is not recoverable from a fix and a hop, so a capture without it can be
+  /// solved but not written. The hop count is the one that matters most: the
+  /// native header draws the confidence line at [seedHopsConfident] and says an
+  /// answer below it should be shown "rather than offered for transmission", and
+  /// a two-hop false positive is exactly what it calls conceivable.
+  ///
+  /// `round_trip_ok` is not independent protection here. It checks that the
+  /// plaintext layout was right for the protocol, not that the key is right, so
+  /// a wrong seed from too few hops still arrives as a success.
   bool get canSave =>
       _result?.outcome == SeedOutcome.found &&
       _result?.frameHop != null &&
+      (_result?.hopsUsed ?? 0) >= seedHopsConfident &&
       _capture?.frequencyHz != null;
 
   /// Runs a device operation as one task on this Flipper's session, after
@@ -111,7 +119,6 @@ class SeedController extends ChangeNotifier {
 
   Future<void> _refresh() async {
     _stage = SeedStage.idle;
-    _error = null;
     _changed();
     try {
       final batch = await _client.storageList(
@@ -168,7 +175,6 @@ class SeedController extends ChangeNotifier {
       );
       final parsed = SeedCaptureFormat.parse(
         const Utf8Decoder(allowMalformed: true).convert(bytes),
-        path: file.path,
       );
       _captureWarnings = List.unmodifiable(parsed.skipped);
       _capture = parsed.capture;
@@ -183,7 +189,7 @@ class SeedController extends ChangeNotifier {
       LogService.error('[Seed] could not read ${file.path}: $e');
       _error = SeedFailure.readFailed;
     }
-    _stage = _capture == null ? SeedStage.idle : SeedStage.idle;
+    _stage = SeedStage.idle;
     _changed();
   }
 
@@ -195,14 +201,8 @@ class SeedController extends ChangeNotifier {
     _stage = SeedStage.idle;
   }
 
-  /// Runs the search over the loaded capture.
-  ///
-  /// Tries the whole capture first, then contiguous subsets. One missed press
-  /// makes a capture unsolvable *entire* - the acceptance test needs every
-  /// decrypted counter to be one from the last - while the presses either side
-  /// of the gap are still consecutive among themselves. Without this a user
-  /// with a nine-hop capture and one dropped frame is told no seed exists.
-  /// Runs the search over the loaded capture.
+  /// Runs the search over the loaded capture, retrying over the windows a
+  /// missed press can leave - see [windows].
   ///
   /// Not bound to a session, unlike the three operations above: the sweep runs
   /// in an isolate on this machine and issues no requests, so there would be
@@ -276,35 +276,39 @@ class SeedController extends ChangeNotifier {
     }
   }
 
-  /// The hop sets to try, longest first.
+  /// The hop sets to try.
   ///
   /// A capture with one missed press cannot solve *entire* - the acceptance
   /// test needs every decrypted counter to be one from the last - while the
-  /// presses either side of the gap are still consecutive among themselves. So
-  /// the whole capture is tried first, then shorter runs.
+  /// presses either side of the gap are still consecutive among themselves.
   ///
-  /// **Prefixes and suffixes only.** A single gap always leaves exactly one run
-  /// before it and one after it, so an interior window - dropping hops from
-  /// *both* ends - can only win when there are two gaps. Enumerating every
-  /// contiguous run instead, as this did at first, spends the budget on those
-  /// two-gap cases and runs out before reaching the one-gap ones: on ten hops
-  /// it tried three interior windows and never tried the runs of six and four
-  /// that a single dropped press actually leaves.
+  /// Three windows are enough, and that is worth spelling out because the first
+  /// version of this ladder offered twelve. A window solves exactly when its
+  /// hops are consecutive, and a contiguous sub-run of a consecutive run is
+  /// also consecutive - so a *short* window inside a gap-free run always solves
+  /// if a longer one does. Meanwhile a sweep costs the same whatever the hop
+  /// count: the engine scans the whole seed space either way, and extra hops
+  /// only filter the candidates it finds. Length therefore buys confidence, not
+  /// reach.
   ///
-  /// Longest first, because more hops mean a stronger answer, and capped at
-  /// what the engine takes - a capture longer than that is a better capture,
-  /// not a broken one, and the limit belongs here rather than in the parser
-  /// that reads the file.
+  /// So: the whole capture, for the strongest `hops_used` in one sweep; then
+  /// the last [seedHopsConfident] hops, then the first. A single gap at
+  /// position k leaves the suffix solvable when k is at or below n-3 and the
+  /// prefix when k is at least 3, and for any capture of five or more those two
+  /// ranges meet - every single-gap capture is covered in at most three sweeps
+  /// instead of twelve.
+  ///
+  /// Suffix before prefix, which is not cosmetic: the counter and the rebuilt
+  /// frame come from the window's *last* hop, so a prefix that solves first
+  /// writes a remote several presses behind the counter the receiver has
+  /// already seen. That is a `.sub` the firmware accepts and the gate ignores.
   @visibleForTesting
   static List<List<int>> windows(List<int> hops) {
-    final longest = hops.length < SeedCapture.maxHops
-        ? hops.length
-        : SeedCapture.maxHops;
     final found = <List<int>>[];
 
     void offer(List<int> window) {
       if (window.length < SeedCapture.minHops) return;
-      if (found.length >= _maxWindows) return;
+      if (window.length > SeedCapture.maxHops) return;
       for (final existing in found) {
         if (existing.length == window.length &&
             existing.first == window.first) {
@@ -314,30 +318,27 @@ class SeedController extends ChangeNotifier {
       found.add(window);
     }
 
-    for (var length = longest; length >= SeedCapture.minHops; length--) {
-      offer(hops.sublist(0, length));
+    // The freshest end of an over-long capture, for the same counter reason.
+    final longest = hops.length < SeedCapture.maxHops
+        ? hops.length
+        : SeedCapture.maxHops;
+    offer(hops.sublist(hops.length - longest));
+
+    // The confident pair alone leaves a gap uncovered only on a capture short
+    // enough that the two windows cannot meet in the middle - which is
+    // n <= 2*seedHopsConfident - 2, so five windows instead of three for the
+    // shortest captures and three for everything else.
+    final lengths = <int>[
+      seedHopsConfident,
+      if (longest <= 2 * seedHopsConfident - 2) SeedCapture.minHops,
+    ];
+    for (final length in lengths) {
+      if (length >= longest) continue;
       offer(hops.sublist(hops.length - length));
-      // Each window is a full sweep of the seed space with the user waiting,
-      // so this is bounded work rather than every possibility.
-      if (found.length >= _maxWindows) break;
+      offer(hops.sublist(0, length));
     }
     return found;
   }
-
-  /// Enough windows to step over a press missed *anywhere* in a capture the
-  /// Flipper-side app can produce, without turning a failed search into a very
-  /// long one.
-  ///
-  /// The arithmetic, because an arbitrary number here would leave the worst
-  /// case uncovered and look fine: a gap at position k leaves runs of k and
-  /// n-k, and the longer of the two is at least n/2 - so the deepest length
-  /// that ever has to be reached is half the capture. Descending from n and
-  /// offering both ends costs 1 + 2*(n - n/2) windows, which for the ten hops
-  /// that app stops at is eleven.
-  ///
-  /// Each one is a full sweep of the seed space with the user watching a bar,
-  /// so this is deliberately a budget and not an exhaustive search.
-  static const _maxWindows = 12;
 
   /// Asks the running search to stop. It lands within a claimed chunk, which is
   /// milliseconds - not the "pressed Stop and the bar kept going" the MIFARE
@@ -368,6 +369,7 @@ class SeedController extends ChangeNotifier {
       manufacturer: capture.manufacturer,
       fix: capture.fix,
       frequencyHz: capture.frequencyHz!,
+      preset: capture.preset,
     );
 
     try {

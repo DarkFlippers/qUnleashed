@@ -7864,11 +7864,14 @@
     "description": "Shown when the engine reports a fault."
   },
 
-  "seedLowConfidence": "Backed by {count} hops. Two hops leave a small chance of a wrong answer; three or more effectively rule it out.",
+  "seedLowConfidence": "Backed by only {count} hops, so it is not offered for transmission: with two a wrong answer is possible, and {needed} or more effectively rule it out. Capture another press or two and try again.",
   "@seedLowConfidence": {
-    "description": "Warns that a result came from the fewest hops the engine accepts.",
+    "description": "Explains that a result came from too few hops to be saved, and what to do about it.",
     "placeholders": {
       "count": {
+        "type": "int"
+      },
+      "needed": {
         "type": "int"
       }
     }
@@ -7934,8 +7937,13 @@
     "description": "Shown when the native library could not be loaded at all."
   },
 
-  "seedEngineBusyHint": "If this keeps happening, restart the app: the engine allows one search per run.",
+  "seedEngineBusyHint": "Wait for the running search to finish, then try again.",
   "@seedEngineBusyHint": {
-    "description": "Hint under the busy message, naming the only fix."
+    "description": "Hint under the busy message."
+  },
+
+  "seedEngineBrokenHint": "Nothing you do with this capture will help: the recovery engine in this build is not working. Please report it.",
+  "@seedEngineBrokenHint": {
+    "description": "Hint shown when the engine failed its own checks or is missing from the build."
   }
 }

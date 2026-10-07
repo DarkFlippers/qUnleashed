@@ -14,8 +14,8 @@ const seedSubGhzDir = '/ext/subghz';
 class SeedSubFile {
   const SeedSubFile._();
 
-  /// The preset the capture app records and the one these remotes use.
-  static const preset = 'FuriHalSubGhzPresetOok650Async';
+  /// What these remotes use, for a capture whose file did not say.
+  static const defaultPreset = 'FuriHalSubGhzPresetOok650Async';
 
   /// Renders the file for a verified recovery.
   ///
@@ -35,6 +35,7 @@ class SeedSubFile {
     required SeedManufacturer manufacturer,
     required int fix,
     required int frequencyHz,
+    String? preset,
   }) {
     if (result.outcome != SeedOutcome.found) {
       throw ArgumentError.value(
@@ -50,7 +51,7 @@ class SeedSubFile {
       ..writeln('Filetype: Flipper SubGhz Key File')
       ..writeln('Version: 1')
       ..writeln('Frequency: $frequencyHz')
-      ..writeln('Preset: $preset')
+      ..writeln('Preset: ${preset ?? defaultPreset}')
       ..writeln('Protocol: ${manufacturer.protocol}')
       ..writeln('Bit: 64')
       ..writeln('Key: ${_bytes(frame, 8)}')

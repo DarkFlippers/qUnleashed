@@ -30,9 +30,14 @@ SHIM_DIR="$ROOT_DIR/lib/modules/cpp/hardnested"
 CC="${CC:-cc}"
 
 # A probe that asserted nothing would exit 0 and leave this green, so its own
-# count has to clear a floor. Below today's figure, so a check added or removed
-# does not need this edited; far above zero, which is what it is guarding.
-MINIMUM_CHECKS=20
+# counts have to be checked - per group, not as one total. A single floor well
+# below the total let the known-answer group, which is the only thing pinning
+# the four mode numbers, be deleted while the count stayed comfortably above it.
+# The repo already learned this: see the note in test/faaccrack_obfuscation_test.dart
+# about why that file declines to add a count floor.
+#
+# Exact figures, so adding a check is one deliberate edit here.
+EXPECTED_GROUPS="selftests=4 known-answers=32 refusals=17 stop=7"
 
 if ! command -v "$CC" >/dev/null 2>&1; then
   echo "::error::$CC is required to build the faaccrack engine probe." >&2
@@ -56,9 +61,28 @@ for opt in ${FAACCRACK_OPTS:--O3}; do
     -I "$ENGINE_DIR" -I "$SHIM_DIR" \
     -c "$ENGINE_DIR/faaccrack.c" -o "$WORK_DIR/engine.o"
 
+  # The dispatcher and the bridge are hand-written and were compiled by nothing
+  # until a tagged release: the busy gate that is the dispatcher's whole reason
+  # to exist, its publication-order rule, and all five bridge exports. They are
+  # built here, and the probe calls through the dispatcher so its gate is
+  # covered rather than only the engine's per-variant one.
+  #
+  # Without FAACCRACK_MULTI_VARIANT, which is correct: one engine object is
+  # built here, so the dispatcher takes its single-variant path - the same one
+  # the Apple pod uses, and the only one of the two that is otherwise unbuilt
+  # anywhere on a pull request.
+  "$CC" "$opt" -std=gnu11 -Wall -Wextra -Werror \
+    -I "$ENGINE_DIR" -I "$SHIM_DIR" \
+    -c "$ENGINE_DIR/faaccrack_dispatch.c" -o "$WORK_DIR/dispatch.o"
+
+  "$CC" "$opt" -std=gnu11 -Wall -Wextra -Werror \
+    -I "$ENGINE_DIR" -I "$SHIM_DIR" \
+    -c "$ENGINE_DIR/faaccrack_bridge.c" -o "$WORK_DIR/bridge.o"
+
   "$CC" "$opt" -std=gnu11 -Wall -Wextra -Werror \
     -I "$ENGINE_DIR" -I "$SHIM_DIR" \
     "$ENGINE_DIR/test/faaccrack_abi_probe.c" "$WORK_DIR/engine.o" \
+    "$WORK_DIR/dispatch.o" "$WORK_DIR/bridge.o" \
     "${THREAD_LIB[@]}" -o "$WORK_DIR/probe"
 
   # Explicitly, so a failure carries an annotation rather than only aborting
@@ -68,10 +92,14 @@ for opt in ${FAACCRACK_OPTS:--O3}; do
     exit 1
   fi
 
-  ran="$(sed -n 's/^PROBE [A-Z]* (\([0-9]*\) checks.*/\1/p' "$WORK_DIR/probe.log")"
-  if [[ -z "$ran" || "$ran" -lt "$MINIMUM_CHECKS" ]]; then
-    echo "::error::the probe reported ${ran:-no} checks, expected at least" \
-      "$MINIMUM_CHECKS - it did not run what it claims to" >&2
-    exit 1
-  fi
+  for expected in $EXPECTED_GROUPS; do
+    group="${expected%%=*}"
+    want="${expected##*=}"
+    got="$(sed -n "s/^PROBE GROUP $group //p" "$WORK_DIR/probe.log")"
+    if [[ "$got" != "$want" ]]; then
+      echo "::error::the probe ran ${got:-no} checks in the '$group' group," \
+        "expected $want - it did not run what it claims to" >&2
+      exit 1
+    fi
+  done
 done

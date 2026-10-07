@@ -46,14 +46,15 @@ class _FakeRecoverer implements FaaccrackRecoverer {
   }
 }
 
-SeedResult _result(SeedOutcome outcome, {int? seed}) => (
-  outcome: outcome,
-  seed: seed,
-  lrkey: seed == null ? null : 0x1122334455667788,
-  counter: seed == null ? null : 0x123,
-  frameHop: seed == null ? null : 0xAABBCCDD,
-  hopsUsed: seed == null ? null : 3,
-);
+SeedResult _result(SeedOutcome outcome, {int? seed, int hopsUsed = 3}) =>
+    seedResult(
+      outcome,
+      seed: seed,
+      lrkey: seed == null ? null : 0x1122334455667788,
+      counter: seed == null ? null : 0x123,
+      frameHop: seed == null ? null : 0xAABBCCDD,
+      hopsUsed: seed == null ? null : hopsUsed,
+    );
 
 /// A controller with a capture already loaded, so `search()` can be reached
 /// without a device.
