@@ -163,19 +163,19 @@ void main() {
     });
   });
 
-  group('fileName', () {
+  group('baseName', () {
     test('names the remote by its fixed code', () {
       expect(
-        SeedSubFile.fileName(
+        SeedSubFile.baseName(
           manufacturer: SeedManufacturer.genius,
           fix: 0xA0DC9330,
         ),
-        'Genius_A0DC9330.sub',
+        'Genius_A0DC9330',
       );
     });
 
     test('is stable, so re-recovering a remote does not accumulate copies', () {
-      String nameFor(int fix) => SeedSubFile.fileName(
+      String nameFor(int fix) => SeedSubFile.baseName(
         manufacturer: SeedManufacturer.faacSlh,
         fix: fix,
       );
@@ -183,15 +183,134 @@ void main() {
       expect(nameFor(0x12345674), isNot(nameFor(0x12345675)));
     });
 
-    test('leaves nothing in the name a filesystem would object to', () {
-      // "FAAC SLH" has a space in it; the Flipper's storage is happier without.
+    test('leaves the label as one word', () {
+      // Tidiness, not a storage rule: "FAAC SLH" has a space, and a generated
+      // name reads better without it. checkBaseName accepts a space the user
+      // types, which is the rule the device actually has.
       expect(
-        SeedSubFile.fileName(
+        SeedSubFile.baseName(
           manufacturer: SeedManufacturer.faacSlh,
           fix: 0x00000001,
         ),
-        'FAACSLH_00000001.sub',
+        'FAACSLH_00000001',
       );
+    });
+
+    test('carries no extension; pathFor adds it', () {
+      // The dialog offers this and shows the extension as a fixed suffix, so
+      // the two halves have to agree about which one carries the dot.
+      const manufacturer = SeedManufacturer.genius;
+      const fix = 0xA0DC9330;
+      final base = SeedSubFile.baseName(manufacturer: manufacturer, fix: fix);
+      expect(base, isNot(endsWith(SeedSubFile.fileExtension)));
+      expect(SeedSubFile.pathFor(base), endsWith('$base.sub'));
+    });
+
+    test('the suggested name is one the rules accept', () {
+      // Otherwise the dialog opens on a name its own Save button refuses.
+      for (final manufacturer in SeedManufacturer.values) {
+        expect(
+          SeedSubFile.checkBaseName(
+            SeedSubFile.baseName(manufacturer: manufacturer, fix: 0xA0DC9330),
+          ),
+          isNull,
+          reason: '${manufacturer.label} suggests a name it would refuse',
+        );
+      }
+    });
+  });
+
+  group('pathFor', () {
+    test('puts the file where the Sub-GHz app looks', () {
+      expect(SeedSubFile.pathFor('garage'), '/ext/subghz/garage.sub');
+    });
+
+    test('trims, so the path matches the name that was checked', () {
+      // checkBaseName judges the trimmed name. If this did not trim too, a
+      // name with a trailing space would pass the check and then be written to
+      // a different path than the one the collision check asked about.
+      expect(SeedSubFile.pathFor('  garage  '), SeedSubFile.pathFor('garage'));
+    });
+  });
+
+  group('checkBaseName', () {
+    test('accepts what a user would reasonably type', () {
+      for (final name in [
+        'Genius_A0DC9330',
+        'garage',
+        'Gate 2',
+        'front-gate',
+        'v1.2',
+        'a',
+        'x' * SeedSubFile.maxBaseNameLength,
+      ]) {
+        expect(
+          SeedSubFile.checkBaseName(name),
+          isNull,
+          reason: '"$name" should be accepted',
+        );
+      }
+    });
+
+    test('refuses an empty name, including one that is only spaces', () {
+      expect(SeedSubFile.checkBaseName(''), SeedNameProblem.empty);
+      expect(SeedSubFile.checkBaseName('   '), SeedNameProblem.empty);
+    });
+
+    test('refuses what the Sub-GHz app could not hold', () {
+      // Exactly the buffer the firmware strncpy's an extension-less name
+      // into, which leaves no room for the terminator. A longer name writes
+      // fine over RPC and is mangled on the first rename there, which is the
+      // surprise this refusal exists to prevent.
+      expect(
+        SeedSubFile.checkBaseName('x' * (SeedSubFile.maxBaseNameLength + 1)),
+        SeedNameProblem.tooLong,
+      );
+    });
+
+    test('refuses every character a FAT volume cannot carry', () {
+      // Spelled out rather than a sample: a class that quietly stopped
+      // matching one of these would let a save fail on the device instead,
+      // reported as a write failure that names no cause.
+      for (final bad in [r'\', '/', ':', '*', '?', '"', '<', '>', '|']) {
+        expect(
+          SeedSubFile.checkBaseName('gate${bad}1'),
+          SeedNameProblem.illegalCharacter,
+          reason: '"$bad" should be refused',
+        );
+      }
+      expect(
+        SeedSubFile.checkBaseName('gate\u0000one'),
+        SeedNameProblem.illegalCharacter,
+      );
+      expect(
+        SeedSubFile.checkBaseName('gate\nnewline'),
+        SeedNameProblem.illegalCharacter,
+      );
+    });
+
+    test('refuses a leading or trailing dot', () {
+      expect(SeedSubFile.checkBaseName('.hidden'), SeedNameProblem.dotEdge);
+      expect(SeedSubFile.checkBaseName('trailing.'), SeedNameProblem.dotEdge);
+      expect(SeedSubFile.checkBaseName('.'), SeedNameProblem.dotEdge);
+      expect(SeedSubFile.checkBaseName('..'), SeedNameProblem.dotEdge);
+    });
+
+    test('judges the trimmed name, which is the one that gets written', () {
+      // The surrounding spaces are dropped before the check and before the
+      // write, so a name that is legal once trimmed is legal here.
+      expect(SeedSubFile.checkBaseName('  garage  '), isNull);
+      // And one that is not stays refused rather than being trimmed into
+      // legality.
+      expect(SeedSubFile.checkBaseName('  .hidden  '), SeedNameProblem.dotEdge);
+    });
+
+    test('accepts a name that carries the extension, deliberately', () {
+      // It becomes `gate.sub.sub`, which is why the field shows the extension
+      // as a fixed suffix rather than leaving the user to type it. Nothing
+      // refuses it, and this records that as the choice it is: the firmware
+      // lists `gate.sub.sub` perfectly well, it just looks silly.
+      expect(SeedSubFile.checkBaseName('gate.sub'), isNull);
     });
   });
 }

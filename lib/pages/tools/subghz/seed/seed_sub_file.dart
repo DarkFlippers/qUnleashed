@@ -1,5 +1,11 @@
 import 'seed_models.dart';
 
+/// Why a name the user typed cannot be used.
+///
+/// An enum rather than a message, so the page can say it in the user's language
+/// and the set stays exhaustive - the same reason `SeedFailure` is one.
+enum SeedNameProblem { empty, tooLong, illegalCharacter, dotEdge }
+
 /// Where the Flipper keeps transmittable Sub-GHz files. A recovered remote
 /// written anywhere else is a number on a screen; written here it appears under
 /// Sub-GHz -> Saved and can be sent.
@@ -66,18 +72,73 @@ class SeedSubFile {
     return buffer.toString();
   }
 
-  /// A name that says what the file is without colliding with the next one.
+  /// What the firmware recognises a transmittable Sub-GHz file by.
+  ///
+  /// Appended rather than typed: a user who renames the file to `gate` gets one
+  /// the Sub-GHz app does not list, and one who types `gate.sub` into a field
+  /// that also appends would get `gate.sub.sub`.
+  static const fileExtension = '.sub';
+
+  /// The longest base name that survives a rename on the device.
+  ///
+  /// `SUBGHZ_MAX_LEN_NAME` is 64, and `subghz_scene_save_name.c` copies the
+  /// *extension-less* name into a buffer of exactly that size with `strncpy`.
+  /// So 63 characters and the terminator is what the Sub-GHz app can hold. A
+  /// longer name writes fine over RPC and is then truncated the first time the
+  /// user renames it there, which is a worse surprise than refusing it here.
+  static const maxBaseNameLength = 63;
+
+  /// The suggested name for a recovery, without the extension.
   ///
   /// The fixed code is in it because that is what identifies the remote, and
   /// two recoveries of the same remote should land on the same name rather than
   /// accumulating copies.
-  static String fileName({
+  static String baseName({
     required SeedManufacturer manufacturer,
     required int fix,
   }) {
-    final label = manufacturer.label.replaceAll(RegExp(r'[^A-Za-z0-9]'), '');
-    return '${label}_${seedHex(fix, 8)}.sub';
+    final label = manufacturer.label.replaceAll(_outsideLabel, '');
+    return '${label}_${seedHex(fix, 8)}';
   }
+
+  /// Where a file called [raw] is written.
+  ///
+  /// Beside [checkBaseName] because the two have to agree about trimming: the
+  /// check judges the trimmed name, so a path built from the untrimmed one
+  /// would be a different file from the one that was approved.
+  static String pathFor(String raw) =>
+      '$seedSubGhzDir/${raw.trim()}$fileExtension';
+
+  /// What is wrong with [raw] as a base name, or null when nothing is.
+  ///
+  /// These are the storage layer's rules, not the on-screen keyboard's. The
+  /// Flipper's own text input offers only `a-z`, `A-Z`, `0-9` and `_`
+  /// (`text_input.c`), but a file written over RPC lands on a FAT volume and is
+  /// listed by a browser that is perfectly happy with a space or a dash - so
+  /// refusing one would be this app inventing a rule the device does not have.
+  /// What is refused is what the volume genuinely cannot carry.
+  ///
+  /// Takes the name *without* the extension; [fileExtension] is added after.
+  static SeedNameProblem? checkBaseName(String raw) {
+    final name = raw.trim();
+    if (name.isEmpty) return SeedNameProblem.empty;
+    if (name.length > maxBaseNameLength) return SeedNameProblem.tooLong;
+    if (_illegalInName.hasMatch(name)) return SeedNameProblem.illegalCharacter;
+    // FAT32 drops a trailing dot, so a name ending in one is not the name the
+    // user will see afterwards; a leading dot hides the file from some browsers,
+    // and `.` and `..` are not names at all.
+    if (name.startsWith('.') || name.endsWith('.')) {
+      return SeedNameProblem.dotEdge;
+    }
+    return null;
+  }
+
+  /// The characters a FAT volume cannot hold, plus the control range.
+  static final _illegalInName = RegExp(r'[\x00-\x1f\x7f\\/:*?"<>|]');
+
+  /// Everything a generated name leaves out. Tidiness, not a storage rule -
+  /// [checkBaseName] accepts a space from a user, and "FAAC SLH" has one.
+  static final _outsideLabel = RegExp(r'[^A-Za-z0-9]');
 
   /// Big-endian bytes, space separated and upper case, as the firmware writes
   /// them.

@@ -11,7 +11,7 @@ import 'seed_models.dart';
 import 'seed_sub_file.dart';
 
 /// What the page is doing.
-enum SeedStage { idle, loading, searching }
+enum SeedStage { idle, listing, loading, searching }
 
 /// Why something the user asked for did not happen.
 ///
@@ -19,7 +19,17 @@ enum SeedStage { idle, loading, searching }
 /// user's language and so the set is exhaustive - what ADR 0008 asks for where
 /// a failure needs differentiated UI. Each member is a different thing to do
 /// next, which is the test for whether it earns one.
-enum SeedFailure { disconnected, unreadableCapture, readFailed, saveFailed }
+enum SeedFailure {
+  disconnected,
+  unreadableCapture,
+  readFailed,
+  listFailed,
+  invalidName,
+  nameTaken,
+  nameUnchecked,
+  saveFailed,
+  deleteFailed,
+}
 
 /// A capture file the device is holding, before it is read.
 typedef SeedCaptureFile = ({String path, String name, int size});
@@ -48,6 +58,9 @@ class SeedController extends ChangeNotifier {
   SeedFailure? _error;
   String? _savedTo;
   List<String> _captureWarnings = const [];
+  bool _saving = false;
+  SeedCaptureFile? _openedFile;
+  FlipperSessionBinding? _savedBinding;
   bool _disposed = false;
 
   @override
@@ -76,6 +89,23 @@ class SeedController extends ChangeNotifier {
   /// Where the recovered remote was written, once it has been.
   String? get savedTo => _savedTo;
 
+  /// Whether a save is in flight.
+  ///
+  /// [savedTo] cannot answer this: it is set only once the write has landed, so
+  /// between the stat and the last frame it is still null and a second press
+  /// starts a second, independent write of the same file.
+  bool get saving => _saving;
+
+  /// The capture currently open, or null when none is.
+  SeedCaptureFile? get openedFile => _openedFile;
+
+  /// Whether the open capture can be offered for deletion.
+  ///
+  /// Only after it has been written somewhere else. Offering to delete the
+  /// one copy of a capture that has not been solved and saved is offering to
+  /// destroy the only record of a remote the user may not have again.
+  bool get canDeleteCapture => _openedFile != null && _savedTo != null;
+
   /// Lines the capture file had that could not be read. Shown rather than
   /// logged alone: a file half of whose hops were dropped may no longer have
   /// consecutive ones, and the search would then find nothing for a reason that
@@ -97,6 +127,10 @@ class SeedController extends ChangeNotifier {
   bool get canSave =>
       _result?.outcome == SeedOutcome.found &&
       _result?.frameHop != null &&
+      // Checked because `render` dereferences it. Without this the throw
+      // escapes `_save`, escapes `runTask`, and lands in a discarded future as
+      // an `[uncaught]` naming no operation - with the page unchanged.
+      _result?.seed != null &&
       (_result?.hopsUsed ?? 0) >= seedHopsConfident &&
       _capture?.frequencyHz != null;
 
@@ -118,7 +152,10 @@ class SeedController extends ChangeNotifier {
   Future<void> refresh() => _task(_refresh);
 
   Future<void> _refresh() async {
-    _stage = SeedStage.idle;
+    // A stage, so the toolbar can say it is working: the answer is usually
+    // identical to what is already on screen, and without a word of it the
+    // button re-read the folder and looked dead.
+    _stage = SeedStage.listing;
     _changed();
     try {
       final batch = await _client.storageList(
@@ -142,15 +179,24 @@ class SeedController extends ChangeNotifier {
       // without trusting the device's clock to have been set.
       found.sort((a, b) => b.name.compareTo(a.name));
       _files = List.unmodifiable(found);
-    } catch (e) {
-      // A device that has never run the capture app has no such folder, which
-      // is "nothing captured yet". A dropped link is not, and saying so would
-      // send a user to re-record a remote they already captured - so the two
-      // are told apart by asking whether the link is still up, rather than by
-      // reading an error string the firmware does not promise.
-      LogService.warn('[Seed] could not list $seedCaptureDir: $e');
+    } on FlipperRpcStorageNotExistException {
+      // A device that has never run the capture app has no such folder. The
+      // one failure that really is "nothing captured yet", and the firmware
+      // says so by name rather than by an error string.
       _files = const [];
-      if (!_client.isConnected) _error = SeedFailure.disconnected;
+    } catch (e) {
+      // Everything else - an SD not mounted, a busy session, the 20 s timeout
+      // on a congested link - is a question that went unanswered. Reporting it
+      // as an empty folder sends the user to re-record a remote they already
+      // captured, which is exactly what this catch exists to prevent; and the
+      // list is left standing rather than wiped, because the rows on screen
+      // are still the last thing the device actually said.
+      LogService.error('[Seed] could not list $seedCaptureDir: $e');
+      _error = _client.isConnected
+          ? SeedFailure.listFailed
+          : SeedFailure.disconnected;
+    } finally {
+      _stage = SeedStage.idle;
     }
     _changed();
   }
@@ -164,6 +210,7 @@ class SeedController extends ChangeNotifier {
     _result = null;
     _savedTo = null;
     _capture = null;
+    _openedFile = file;
     _captureWarnings = const [];
     _changed();
 
@@ -348,40 +395,167 @@ class SeedController extends ChangeNotifier {
     _changed();
   }
 
+  /// The name to offer for the recovered remote, without the extension.
+  ///
+  /// Null when there is nothing to save, so the page cannot open a name dialog
+  /// for a recovery that [canSave] would refuse.
+  String? get suggestedName {
+    final capture = _capture;
+    if (!canSave || capture == null) return null;
+    return SeedSubFile.baseName(
+      manufacturer: capture.manufacturer,
+      fix: capture.fix,
+    );
+  }
+
   /// Writes the recovered remote to the Flipper as a transmittable `.sub`.
   ///
   /// Into `/ext/subghz`, so it appears under Sub-GHz -> Saved: a seed shown on
   /// screen and nowhere else leaves the user to do the file work by hand.
-  Future<void> save() => _task(_save);
+  ///
+  /// [baseName] comes from the user and carries no extension. Both guards live
+  /// here rather than in the page: the name rules, and - because the write
+  /// opens with CREATE_ALWAYS - whether anything is already there. A caller
+  /// that skipped the second one would silently destroy a `.sub` the user
+  /// recorded by hand, so it cannot be the caller's to skip. The firmware puts
+  /// the same check inside its own save scene (`validator_is_file`).
+  ///
+  /// [replace] is the answer to [SeedFailure.nameTaken] or
+  /// [SeedFailure.nameUnchecked] coming back: the page asks, and calls again.
+  Future<void> save(String baseName, {bool replace = false}) =>
+      _task(() => _save(baseName, replace: replace));
 
-  Future<void> _save() async {
+  Future<void> _save(String baseName, {required bool replace}) async {
     final capture = _capture;
     final result = _result;
     if (!canSave || capture == null || result == null) return;
 
-    final name = SeedSubFile.fileName(
-      manufacturer: capture.manufacturer,
-      fix: capture.fix,
-    );
-    final path = '$seedSubGhzDir/$name';
-    final contents = SeedSubFile.render(
-      result: result,
-      manufacturer: capture.manufacturer,
-      fix: capture.fix,
-      frequencyHz: capture.frequencyHz!,
-      preset: capture.preset,
-    );
+    final problem = SeedSubFile.checkBaseName(baseName);
+    if (problem != null) {
+      // Its own failure, because "the Flipper refused this" is not true and
+      // leaves the user with nothing to change. The rule goes in the log, not
+      // just the name: for a 63-character or non-ASCII name it is not
+      // deducible from the name alone.
+      LogService.error('[Seed] refused "$baseName": ${problem.name}');
+      _error = SeedFailure.invalidName;
+      _changed();
+      return;
+    }
 
+    final path = SeedSubFile.pathFor(baseName);
+    _saving = true;
+    _changed();
     try {
+      if (!replace) {
+        final standing = await _occupant(path);
+        if (standing != null) {
+          _error = standing;
+          return;
+        }
+      }
+      // Inside the try: `render` refuses an outcome that is not `found` and
+      // dereferences the seed and the rebuilt frame. `canSave` covers all
+      // three, but a throw from here would otherwise leave the page untouched.
+      final contents = SeedSubFile.render(
+        result: result,
+        manufacturer: capture.manufacturer,
+        fix: capture.fix,
+        frequencyHz: capture.frequencyHz!,
+        preset: capture.preset,
+      );
       await _client.storageWriteChunked(path, utf8.encode(contents));
       _savedTo = path;
+      // Held so the delete that may follow goes to the Flipper this file was
+      // written to. The two are separate tasks with a confirm dialog between
+      // them, and `runTask` binds whatever session is current when it is
+      // called - which, with auto-reconnect on or a cable swapped meanwhile,
+      // need not be this one.
+      _savedBinding = _client.bindCurrentSession();
     } catch (e) {
       // Otherwise the user presses Save, nothing at all happens, the button is
       // still there, and the remote is not on their Flipper - with no way to
       // tell whether the app refused, the link dropped or the card is full.
       LogService.error('[Seed] could not write $path: $e');
       _error = SeedFailure.saveFailed;
+    } finally {
+      _saving = false;
+      _changed();
     }
+  }
+
+  /// The failure to report when [path] is not free, or null when it is.
+  ///
+  /// A free path is the firmware *refusing* the stat rather than answering an
+  /// empty one, so the ordinary case arrives as an exception and is not worth a
+  /// log line. Any other failure is a different answer again - not "free", but
+  /// "nobody asked" - and it gets its own member, because the page has to say
+  /// something different about it than it would about a file it has seen.
+  Future<SeedFailure?> _occupant(String path) async {
+    try {
+      await _client.storageStat(
+        StatRequest(path: path),
+        timeout: const Duration(seconds: 10),
+      );
+      return SeedFailure.nameTaken;
+    } on FlipperRpcStorageNotExistException {
+      return null;
+    } catch (e) {
+      LogService.warn('[Seed] could not stat $path: $e');
+      return SeedFailure.nameUnchecked;
+    }
+  }
+
+  /// Deletes the capture the recovery came from.
+  ///
+  /// Offered after a save because the capture has then done its job - it is a
+  /// fix and a list of hops, worth keeping only until the remote it describes
+  /// exists as a `.sub`. The Flipper-side app does not clean up after itself,
+  /// so the folder otherwise fills with files whose remotes are already saved.
+  ///
+  /// Refuses while [canDeleteCapture] is false rather than trusting the caller,
+  /// for the same reason [save] re-checks its name: this one deletes the only
+  /// copy of something the user may not be able to capture again.
+  /// Runs under the session the remote was saved over rather than
+  /// [_task]'s "whichever is current", for the reason recorded in [_save].
+  Future<void> deleteCapture() {
+    _error = null;
+    final binding = _savedBinding;
+    if (binding == null) return Future.value();
+    return binding.run(_deleteCapture);
+  }
+
+  Future<void> _deleteCapture() async {
+    final file = _openedFile;
+    if (!canDeleteCapture || file == null) return;
+    if (!(_savedBinding?.isAlive ?? false)) {
+      // The link that carried the save is gone, so this delete would land on
+      // whatever is connected now - a device whose copy of the remote was
+      // never written.
+      LogService.error(
+        '[Seed] not deleting ${file.path}: the link it was saved over is gone',
+      );
+      _error = SeedFailure.deleteFailed;
+      _changed();
+      return;
+    }
+
+    try {
+      await _client.storageDelete(DeleteRequest(path: file.path));
+    } catch (e) {
+      // The remote is already saved, so this is not a lost recovery - but
+      // silence would leave the capture in the list looking undeleted with
+      // nothing saying why. `_openedFile` is left alone so the offer can be
+      // taken again.
+      LogService.error('[Seed] could not delete ${file.path}: $e');
+      _error = SeedFailure.deleteFailed;
+      _changed();
+      return;
+    }
+    // Dropped from the list here rather than by re-listing the folder: the
+    // answer is already known, and a second round trip is the slowest call
+    // this page makes over BLE.
+    _openedFile = null;
+    _files = List.unmodifiable(_files.where((f) => f.path != file.path));
     _changed();
   }
 }

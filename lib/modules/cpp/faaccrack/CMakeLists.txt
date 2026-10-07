@@ -66,52 +66,51 @@ endif()
 #             engine passes a 512-bit vector by value on a target without
 #             avx512f. It cannot matter here: the vector type never crosses a
 #             translation unit.
-# Per variant, because the engine is compiled once per instruction set and a
-# single renamed main would be four definitions of one external symbol.
-# They are unreferenced either way; the name just has to be unique.
+# Renamed per variant, because the engine is compiled once per instruction set
+# and a single name would be as many definitions of one external symbol as
+# there are variants. They are unreferenced either way; the name just has to be
+# unique.
 
-# Compiles the engine once for `variant`, with `flags`, and adds the object to
-# the library.
+# Two ways to compile the engine, because neither one does both jobs.
 #
-# Two mechanisms, because neither one can do both jobs.
+# `faaccrack_add_variant` is the one to reach for. CMake compiles the source as
+# part of the build, which is what supplies the cross-compilation flags - the
+# target triple, the sysroot, an Android ABI's own -march and -mfpu. A bare
+# invocation of the compiler never sees them: that is how the first Android
+# build of this library produced host x86-64 objects and died at the link with
+# "faaccrack_NEON.o is incompatible with aarch64linux".
 #
-# Where the variants are built by the toolchain's own compiler, an OBJECT
-# library is not a style preference. CMake injects the cross-compilation flags -
-# the target triple, the sysroot, an Android ABI's own -march and -mfpu - and a
-# bare invocation of ${CMAKE_C_COMPILER} never sees them. Leaving them off is how
-# the first Android build of this library compiled host x86-64 objects and died
-# at the link with "faaccrack_NEON.o is incompatible with aarch64linux". The
-# hardnested lib spells a compile out only inside its clang-cl branch; this is
-# what generalising that to every platform cost.
-#
-# On Windows the variants have to come from clang-cl while the rest of the
-# target comes from MSVC, and no CMake target can name a second C compiler - so
-# there the compile is spelled out, and a set FAACCRACK_VARIANT_CC is what says
-# a foreign compiler is in play. Nothing is cross-compiled on that path, which
-# is what makes the absent flags survivable there.
+# `faaccrack_add_foreign_variant` spells the compile out, and exists only for
+# Windows, where the variants have to come from clang-cl while the rest of the
+# target comes from MSVC and no CMake target can name a second C compiler. The
+# hardnested lib keeps its own spelled-out compile inside its clang-cl branch
+# for the same reason; generalising this one to every platform is what cost the
+# Android build. Nothing is cross-compiled on that path, which is what makes
+# the absent flags survivable there.
 function(faaccrack_add_variant variant)
-  if(NOT FAACCRACK_VARIANT_CC)
-    add_library(faaccrack_${variant} OBJECT "${FAACCRACK_ENGINE}")
-    target_compile_options(faaccrack_${variant} PRIVATE ${ARGN})
-    target_compile_definitions(faaccrack_${variant}
-      PRIVATE "main=faaccrack_unused_main_${variant}")
-    target_include_directories(faaccrack_${variant} PRIVATE
-      "${CMAKE_CURRENT_SOURCE_DIR}"
-      "${FAACCRACK_SHIM_DIR}"
-    )
-    set_target_properties(faaccrack_${variant} PROPERTIES
-      C_STANDARD 11
-      # Explicit rather than left to default: a toolchain file setting
-      # CMAKE_C_EXTENSIONS OFF would compile this -std=c11, and __STRICT_ANSI__
-      # hides clock_gettime and nanosleep behind glibc's feature-test macros.
-      # The engine calls both.
-      C_EXTENSIONS ON
-      POSITION_INDEPENDENT_CODE ON
-    )
-    target_link_libraries(qunleashed_faaccrack PRIVATE faaccrack_${variant})
-    return()
-  endif()
+  add_library(faaccrack_${variant} OBJECT "${FAACCRACK_ENGINE}")
+  target_compile_options(faaccrack_${variant} PRIVATE ${ARGN})
+  target_compile_definitions(faaccrack_${variant}
+    PRIVATE "main=faaccrack_unused_main_${variant}")
+  target_include_directories(faaccrack_${variant} PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${FAACCRACK_SHIM_DIR}"
+  )
+  set_target_properties(faaccrack_${variant} PROPERTIES
+    C_STANDARD 11
+    # Explicit rather than left to default: a toolchain file setting
+    # CMAKE_C_EXTENSIONS OFF would compile this -std=c11, and __STRICT_ANSI__
+    # hides clock_gettime and nanosleep behind glibc's feature-test macros.
+    # The engine calls both.
+    C_EXTENSIONS ON
+    POSITION_INDEPENDENT_CODE ON
+  )
+  target_link_libraries(qunleashed_faaccrack PRIVATE faaccrack_${variant})
+endfunction()
 
+# Compiles the engine with ${FAACCRACK_CLANG_CL} and adds the object to the
+# library. Only the clang-cl branch below calls this.
+function(faaccrack_add_foreign_variant variant)
   # $<CONFIG> in the path, because the Flutter Windows build is a
   # multi-config generator: Debug, Profile and Release share one binary
   # directory, so without it all three read and write one object. The
@@ -119,23 +118,18 @@ function(faaccrack_add_variant variant)
   # one did not recompile and linked the /MD object into a /MDd DLL.
   set(object
     "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/faaccrack_${variant}${CMAKE_C_OUTPUT_EXTENSION}")
-  # Assembled per toolchain rather than from a shared prefix variable: clang-cl
-  # wants the path glued to the flag as one argument, and under VERBATIM any
-  # quotes written around it are passed through as part of the filename.
-  if(MSVC)
-    set(output_args "/Fo${object}")
-  else()
-    set(output_args -o "${object}")
-  endif()
   add_custom_command(
     OUTPUT "${object}"
     COMMAND "${CMAKE_COMMAND}" -E make_directory
       "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>"
-    COMMAND ${FAACCRACK_VARIANT_CC} ${ARGN}
+    # The path is glued to the flag as one argument: clang-cl wants it that
+    # way, and under VERBATIM any quotes written around it would be passed
+    # through as part of the filename.
+    COMMAND "${FAACCRACK_CLANG_CL}" ${ARGN}
       "-Dmain=faaccrack_unused_main_${variant}"
       "-I${CMAKE_CURRENT_SOURCE_DIR}"
       "-I${FAACCRACK_SHIM_DIR}"
-      ${output_args}
+      "/Fo${object}"
       "${FAACCRACK_ENGINE}"
     DEPENDS "${FAACCRACK_ENGINE}" "${FAACCRACK_HEADER}"
     COMMENT "faaccrack: compiling the ${variant} engine"
@@ -179,7 +173,6 @@ if(MSVC AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(AMD64|x86_64)$")
   endif()
   message(STATUS "faaccrack: building SIMD variants with ${FAACCRACK_CLANG_CL}")
 
-  set(FAACCRACK_VARIANT_CC "${FAACCRACK_CLANG_CL}")
   # /MD must match what CMake gives the rest of the target, or the two halves of
   # the library would want different C runtimes.
   set(faaccrack_clang_cl /nologo /c /O2 -w $<IF:$<CONFIG:Debug>,/MDd,/MD>)
@@ -196,14 +189,13 @@ if(MSVC AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(AMD64|x86_64)$")
   # No /arch:SSE2 entry either: it is the x86-64 baseline, so clang-cl defines
   # __SSE2__ without being asked and rejects the flag as invalid for a 64-bit
   # target. The flagless compile *is* the SSE2 object.
-  faaccrack_add_variant(AVX2 ${faaccrack_clang_cl} /arch:AVX2)
-  faaccrack_add_variant(AVX ${faaccrack_clang_cl} /arch:AVX)
-  faaccrack_add_variant(SSE2 ${faaccrack_clang_cl})
+  faaccrack_add_foreign_variant(AVX2 ${faaccrack_clang_cl} /arch:AVX2)
+  faaccrack_add_foreign_variant(AVX ${faaccrack_clang_cl} /arch:AVX)
+  faaccrack_add_foreign_variant(SSE2 ${faaccrack_clang_cl})
 else()
-  # FAACCRACK_VARIANT_CC stays unset: these variants are compiled as OBJECT
-  # libraries by the toolchain's own compiler. -c, -fPIC and -std=gnu11 are not
-  # listed because CMake supplies all three - the first from compiling at all,
-  # the other two from the properties the function sets.
+  # -c, -fPIC and -std=gnu11 are not listed because CMake supplies all three -
+  # the first from compiling at all, the other two from the properties
+  # faaccrack_add_variant sets.
   set(faaccrack_engine_opts -O3 -funroll-loops -w)
 
   if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|i.86|x86)$")

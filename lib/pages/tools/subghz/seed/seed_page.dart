@@ -2,21 +2,31 @@ import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../components/dialogs/confirm.dart';
+import '../../../../components/notification.dart';
 import '../../../../services/localization/l10n.dart';
 import '../../../../theme/theme.dart';
+import 'faaccrack_recoverer.dart';
 import 'seed_controller.dart';
 import 'seed_models.dart';
+import 'seed_sub_file.dart';
 
 /// Recovers the seed of a FAAC SLH, Genius, BFT or Erreka remote from a capture
 /// the Flipper-side app collected, and writes the result back as a
 /// transmittable `.sub`.
 class SeedPage extends StatefulWidget {
-  const SeedPage({super.key, required this.client});
+  const SeedPage({super.key, required this.client, this.recoverer});
 
   /// The Flipper this run belongs to. Required rather than defaulted: the route
   /// builder is handed a context with a DeviceScope above it, so a default
   /// would only hide which device a recovery ran against. ADR 0002.
   final FlipperClient client;
+
+  /// The engine, for a widget test. Production leaves it null and the
+  /// controller builds the native one; a test passes a fake, because a search
+  /// that comes back `engineUnavailable` never reaches the Save button and the
+  /// whole name-and-delete chain is then unreachable from the page.
+  @visibleForTesting
+  final FaaccrackRecoverer? recoverer;
 
   @override
   State<SeedPage> createState() => _SeedPageState();
@@ -28,8 +38,10 @@ class _SeedPageState extends State<SeedPage> {
   @override
   void initState() {
     super.initState();
-    _controller = SeedController(client: widget.client)
-      ..addListener(_onChanged);
+    _controller = SeedController(
+      client: widget.client,
+      recoverer: widget.recoverer,
+    )..addListener(_onChanged);
     _controller.refresh();
   }
 
@@ -52,7 +64,117 @@ class _SeedPageState extends State<SeedPage> {
     cancelLabel: context.l10n.seedStopCancel,
   );
 
+  /// Names the file, then writes it.
+  ///
+  /// The name is asked for rather than generated silently because the generated
+  /// one says what the remote is and nothing about what it is *for*, and a
+  /// Sub-GHz list is read by its names. The suggestion is the generated name,
+  /// so a user with nothing to add presses Save twice.
+  Future<void> _save() async {
+    final suggested = _controller.suggestedName;
+    // Null exactly when canSave is false, which is also when the button that
+    // calls this is not built - so this is the race where a result changed
+    // under a tap, not a state the user can sit in.
+    if (suggested == null) return;
+
+    final chosen = await showDialog<String>(
+      context: context,
+      builder: (_) => _FileNameDialog(initial: suggested),
+    );
+    if (chosen == null || !mounted) return;
+
+    await _controller.save(chosen);
+    if (!mounted) return;
+
+    // The controller refuses to clobber rather than asking, so the standing
+    // file comes back as a failure and this is the answer to it. Asked once:
+    // a second refusal under `replace` would be a different failure.
+    final blocked = _controller.error;
+    if (blocked == SeedFailure.nameTaken ||
+        blocked == SeedFailure.nameUnchecked) {
+      final replace = await QConfirmDialog.show(
+        context,
+        title: context.l10n.seedReplaceTitle,
+        message: blocked == SeedFailure.nameTaken
+            ? context.l10n.seedReplaceMessage(SeedSubFile.pathFor(chosen))
+            : context.l10n.seedReplaceUnknown(SeedSubFile.pathFor(chosen)),
+        confirmLabel: context.l10n.seedReplace,
+        cancelLabel: context.l10n.commonCancel,
+      );
+      if (!replace || !mounted) return;
+      await _controller.save(chosen, replace: true);
+      if (!mounted) return;
+    }
+
+    if (_said(_controller.error)) return;
+    await _offerToDeleteCapture();
+  }
+
+  /// Says a failure where the user is looking, and reports whether there was
+  /// one.
+  ///
+  /// The banner lives at the top of a scrolling list while the buttons that
+  /// cause these are further down it, so on a phone with a long capture a
+  /// failed save draws off-screen and the press looks like it did not register
+  /// - the shape of #118/#134. The archive pages reach for the same overlay
+  /// for the same reason (`archive/overview/failure_toast.dart`, #110).
+  bool _said(SeedFailure? failure) {
+    if (failure == null) return false;
+    context.showNotification(
+      _failureText(context, failure),
+      type: QNotificationType.error,
+    );
+    return true;
+  }
+
+  /// Offers to remove the capture now that its remote is saved.
+  ///
+  /// Asked rather than done: the capture is the only record of a remote the
+  /// user had to be standing next to, and a wrong guess here cannot be undone
+  /// from this page. Asked rather than left alone because the Flipper-side app
+  /// never cleans up, so the folder fills with captures whose remotes are
+  /// already saved and the list stops saying which ones still need work.
+  Future<void> _offerToDeleteCapture() async {
+    // Only after a save that actually landed; `save` reports its own failure
+    // and leaves savedTo null, and offering to delete the source then would be
+    // offering to delete the only copy. The two nulls below are that same
+    // condition, read again for promotion.
+    final file = _controller.openedFile;
+    final savedTo = _controller.savedTo;
+    if (file == null || savedTo == null) return;
+
+    final remove = await QConfirmDialog.show(
+      context,
+      title: context.l10n.seedDeleteCaptureTitle,
+      message: context.l10n.seedDeleteCaptureMessage(savedTo, file.name),
+      confirmLabel: context.l10n.seedDeleteCapture,
+      cancelLabel: context.l10n.seedKeepCapture,
+    );
+    if (!remove || !mounted) return;
+    await _controller.deleteCapture();
+    if (mounted) _said(_controller.error);
+  }
+
+  /// Re-reads the capture folder and says what it found.
+  ///
+  /// The spinner alone was not an answer: the listing usually returns the same
+  /// folder it returned last time, and quickly, so the icon swaps back before
+  /// anyone sees it and the button still looks dead. The count is the thing
+  /// that is always different from nothing, even when nothing changed.
+  Future<void> _refresh() async {
+    await _controller.refresh();
+    if (!mounted) return;
+    // Only for a listing that answered. A count is an assertion about the
+    // device, and "No captures on the device" after a listing that failed is
+    // the wrong turn the controller's own catch exists to prevent.
+    if (_said(_controller.error)) return;
+    context.showNotification(
+      context.l10n.seedRefreshed(_controller.files.length),
+    );
+  }
+
   bool get _searching => _controller.stage == SeedStage.searching;
+  bool get _listing => _controller.stage == SeedStage.listing;
 
   @override
   Widget build(BuildContext context) {
@@ -74,10 +196,22 @@ class _SeedPageState extends State<SeedPage> {
           foregroundColor: colors.onAccent,
           title: Text(context.l10n.seedTitle),
           actions: [
+            // A spinner in its place while it runs. The folder usually comes
+            // back exactly as it went out, so without this the button did its
+            // whole job and looked broken.
             IconButton(
               tooltip: context.l10n.seedRefresh,
-              onPressed: _searching ? null : _controller.refresh,
-              icon: const Icon(Icons.refresh),
+              onPressed: _searching || _listing ? null : _refresh,
+              icon: _listing
+                  ? SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: colors.onAccent,
+                      ),
+                    )
+                  : const Icon(Icons.refresh),
             ),
           ],
         ),
@@ -112,7 +246,7 @@ class _SeedPageState extends State<SeedPage> {
               _ActionBlock(controller: _controller, confirmStop: _confirmStop),
               const SizedBox(height: 12),
               if (_controller.result != null)
-                _ResultCard(controller: _controller),
+                _ResultCard(controller: _controller, onSave: _save),
               const SizedBox(height: 20),
             ],
             _CaptureList(controller: _controller),
@@ -244,9 +378,10 @@ class _ActionBlock extends StatelessWidget {
 
 /// What came back, and what can be done with it.
 class _ResultCard extends StatelessWidget {
-  const _ResultCard({required this.controller});
+  const _ResultCard({required this.controller, required this.onSave});
 
   final SeedController controller;
+  final VoidCallback onSave;
 
   @override
   Widget build(BuildContext context) {
@@ -316,14 +451,26 @@ class _ResultCard extends StatelessWidget {
           _Hint(l10n.seedSaveNoFrequency),
         if (controller.canSave) ...[
           const SizedBox(height: 12),
-          FilledButton(
-            onPressed: controller.savedTo == null ? controller.save : null,
+          FilledButton.icon(
+            // `saving`, not just `savedTo`: the stat and the write take a
+            // moment, and a second press in that window starts a second
+            // independent write of the same file.
+            onPressed: controller.savedTo == null && !controller.saving
+                ? onSave
+                : null,
             style: FilledButton.styleFrom(
               backgroundColor: colors.accent,
               foregroundColor: colors.onAccent,
-              padding: const EdgeInsets.symmetric(vertical: 12),
+              // Both axes. With only the vertical one the horizontal padding
+              // is overridden to zero, and the label - which is sized by the
+              // text, not the button - draws wider than the pill behind it.
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
             ),
-            child: Text(l10n.seedSave),
+            icon: const Icon(Icons.save_alt, size: 18),
+            label: Text(
+              l10n.seedSave,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            ),
           ),
         ],
         if (controller.savedTo != null)
@@ -385,6 +532,115 @@ class _CaptureList extends StatelessWidget {
                 ? null
                 : () => controller.open(file),
           ),
+      ],
+    );
+  }
+}
+
+/// Asks for the name to save under, prefilled and without the extension.
+///
+/// Stateful because the name is checked as it is typed: a dialog that accepts
+/// anything and fails afterwards would report the problem through
+/// [SeedFailure.saveFailed], which cannot say which character was wrong.
+class _FileNameDialog extends StatefulWidget {
+  const _FileNameDialog({required this.initial});
+
+  final String initial;
+
+  @override
+  State<_FileNameDialog> createState() => _FileNameDialogState();
+}
+
+class _FileNameDialogState extends State<_FileNameDialog> {
+  // Selected, not just filled: the suggestion is the common answer, and the
+  // user who wants their own should not have to clear it first.
+  late final TextEditingController _name =
+      TextEditingController(text: widget.initial)
+        ..selection = TextSelection(
+          baseOffset: 0,
+          extentOffset: widget.initial.length,
+        );
+
+  @override
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  SeedNameProblem? get _problem => SeedSubFile.checkBaseName(_name.text);
+
+  static String? _messageFor(L10n l10n, SeedNameProblem? problem) =>
+      switch (problem) {
+        null => null,
+        // Nothing is said while the field is empty: the Save button is already
+        // disabled, and an error on a field the user has only just cleared
+        // reads as a complaint about typing.
+        SeedNameProblem.empty => null,
+        SeedNameProblem.tooLong => l10n.seedNameTooLong(
+          SeedSubFile.maxBaseNameLength,
+        ),
+        SeedNameProblem.illegalCharacter => l10n.seedNameIllegal,
+        SeedNameProblem.dotEdge => l10n.seedNameDotEdge,
+      };
+
+  void _submit() {
+    if (_problem != null) return;
+    Navigator.pop(context, _name.text.trim());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final l10n = context.l10n;
+    final problem = _problem;
+    final valid = problem == null;
+
+    return AlertDialog(
+      backgroundColor: colors.dialogBackground,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      title: Text(
+        l10n.seedNameTitle,
+        style: TextStyle(color: colors.dialogText),
+      ),
+      content: TextField(
+        controller: _name,
+        autofocus: true,
+        // No `maxLength`: it enforces by truncation, which takes the tail off
+        // a pasted name with nothing on screen saying so, and leaves the rule
+        // it would be enforcing unsayable. `checkBaseName` says it instead.
+        onChanged: (_) => setState(() {}),
+        style: TextStyle(color: colors.dialogText),
+        decoration: InputDecoration(
+          // The extension is shown and not editable, which is the whole reason
+          // the field holds a base name: it tells the user what they will get
+          // without inviting them to type it a second time.
+          suffixText: SeedSubFile.fileExtension,
+          suffixStyle: TextStyle(color: colors.dialogMuted),
+          helperText: l10n.seedNameHelp(
+            seedSubGhzDir,
+            SeedSubFile.maxBaseNameLength,
+          ),
+          helperStyle: TextStyle(color: colors.dialogMuted),
+          helperMaxLines: 2,
+          errorText: _messageFor(l10n, problem),
+        ),
+        onSubmitted: (_) => _submit(),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text(
+            l10n.commonCancel,
+            style: TextStyle(color: colors.textSecondary),
+          ),
+        ),
+        TextButton(
+          onPressed: valid ? _submit : null,
+          child: Text(
+            l10n.seedSave,
+            style: TextStyle(color: valid ? colors.accent : colors.textMuted),
+          ),
+        ),
       ],
     );
   }
@@ -480,7 +736,14 @@ String _failureText(BuildContext context, SeedFailure failure) =>
       SeedFailure.disconnected => context.l10n.seedDisconnected,
       SeedFailure.unreadableCapture => context.l10n.seedUnreadableCapture,
       SeedFailure.readFailed => context.l10n.seedReadFailed,
+      SeedFailure.listFailed => context.l10n.seedListFailed,
+      SeedFailure.invalidName => context.l10n.seedInvalidName,
+      // Both are answered with a prompt rather than shown, so they reach
+      // `_failureText` only if one outlives the flow that asked about it.
+      SeedFailure.nameTaken => context.l10n.seedSaveFailed,
+      SeedFailure.nameUnchecked => context.l10n.seedSaveFailed,
       SeedFailure.saveFailed => context.l10n.seedSaveFailed,
+      SeedFailure.deleteFailed => context.l10n.seedDeleteFailed,
     };
 
 /// A failure, said once, where the user is already looking.
