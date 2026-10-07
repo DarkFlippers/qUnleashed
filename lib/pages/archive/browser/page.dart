@@ -689,6 +689,25 @@ class _FileManagerPageState extends State<FileManagerPage> {
     ], skipped: result.files.where((f) => f.path == null).length);
   }
 
+  Future<void> _uploadFolder() async {
+    String? dir;
+    try {
+      dir = await FilePicker.platform.getDirectoryPath(
+        dialogTitle: context.l10n.fmChooseFolderToUpload,
+      );
+    } catch (e) {
+      if (mounted) {
+        context.showNotification(
+          context.l10n.fmFolderPickUnsupported,
+          type: QNotificationType.error,
+        );
+      }
+      return;
+    }
+    if (!mounted || dir == null) return;
+    await _upload([dir]);
+  }
+
   Future<void> _upload(List<String> paths, {int skipped = 0}) async {
     final ({int files, int failed}) result;
     try {
@@ -916,6 +935,20 @@ class _FileManagerPageState extends State<FileManagerPage> {
               onTap: () {
                 Navigator.of(sheetContext).pop();
                 _uploadFromPath();
+              },
+            ),
+            ListTile(
+              leading: Icon(
+                Icons.drive_folder_upload_outlined,
+                color: colors.textPrimary,
+              ),
+              title: Text(
+                context.l10n.fmUploadFolder,
+                style: TextStyle(color: colors.textPrimary),
+              ),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                _uploadFolder();
               },
             ),
             const SizedBox(height: 8),

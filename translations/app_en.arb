@@ -6242,6 +6242,16 @@
     "description": "Toast shown when the user stopped a download or upload."
   },
 
+  "fmUploadFolder": "Upload folder",
+  "@fmUploadFolder": {
+    "description": "Menu entry that uploads a whole folder from this computer to the Flipper."
+  },
+
+  "fmChooseFolderToUpload": "Choose a folder to upload",
+  "@fmChooseFolderToUpload": {
+    "description": "Title of the system folder picker opened by Upload folder."
+  },
+
   "fmConflictTitle": "Replace or Skip Files",
   "@fmConflictTitle": {
     "description": "Title of the dialog shown when files being copied to the Flipper already exist there."
