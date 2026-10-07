@@ -5,7 +5,8 @@ chokepoints checked against the code, and `caught` added as a third level
 (2026-10-02); every claim re-read against the tree (2026-10-07), which moved
 the flipperlib pin, the replay mask target, the ratchet arithmetic, the route
 count and what is left of #103; **consent reversed to on by default, sent
-automatically, behind a one-time notice** (2026-10-07)
+automatically, behind a one-time notice; replay on with it, and the notice
+carries no policy link because there is no policy** (2026-10-07)
 
 Re-verified 2026-10-07 and still true: the 48 and `pages/archive`'s 24 are
 exactly what `test/log_level_budget_test.dart` counts — it sits at budget in
@@ -85,18 +86,25 @@ back on starts it again. One switch and not one per category, because
 act on - the same data in a different shape, neither of them the screen - and
 every extra switch is friction that buys no privacy the first one did not.
 
-**Replay is the exception and stays off by default**, a second switch under
-the first, Android and iOS only. It is the only category that records the
-screen, on an app whose screen shows card dumps and Sub-GHz captures, and the
-only one with a cost a user can feel (about +13% CPU and +5% memory on
-Android, +6% CPU on iOS). The stores label it separately too. A screen
-recorder that starts without being asked is a different decision from a crash
-reporter that does, and this ADR only makes the second one.
+**Replay is on too**, and keeps a second switch of its own under the first,
+Android and iOS only. Separate because it is the one category whose cost a
+user can feel - §8 is the detail, and the short of it is that buffer mode
+records all the time and only *uploads* on a failure, so about +13% CPU and
++5% memory on Android and +6% CPU on iOS is paid by every session, not by the
+ones that go wrong. Somebody who wants crashes reported and does not want that
+should be able to say so without losing the first switch; that is a real
+choice, where "performance" against "metrics" was not.
+
+Being on by default raises the stakes on the masks in §6 rather than changing
+them, and §6's gate holds: the hex editor and the remote-desktop screen are
+checked in a recorded replay before replay ships at all, and it ships to a
+`dev` build first. An unmasked card dump leaving a device is the one failure
+in this ADR that cannot be taken back.
 
 **A one-time notice on first launch, not a gate.** Shown once at first
 launch, and once more for existing users after the update that carries this.
-It says what is sent, links the privacy policy, and carries two actions:
-**Got it** and **Turn it off**. Reporting is already on while it is on screen
+It says what is sent and what never is, and carries two actions: **Got it**
+and **Turn it off**. Reporting is already on while it is on screen
 — that is what makes it a notice and not consent — and the second action is
 there so that turning it off takes one tap at the moment the user is being
 told, rather than a hunt through Settings later.
@@ -110,12 +118,15 @@ sheet of its own, raised from `_runApp` once the first frame is up. Not from
 `widgetMain()`, which has no window at all: a headless isolate must never be
 the path that marks the notice shown, or the user would never see it.
 
-This is also what Play's Data safety declaration and the App Store's privacy
-labels need to be true, and it is what makes "on by default" honest rather
-than quiet. Under GDPR it is the ordinary shape for diagnostics taken on
-legitimate interest: nothing identifying (§6), IP storage off, and objecting
-is one tap. The repository has no privacy policy today and needs one before
-the first release that carries this; both stores require the URL anyway.
+No policy URL, because the repository has no privacy policy and this
+decision is not going to wait on one being written. The notice carries the
+substance instead - what is collected, what never is, how to stop it - which
+is what Play's Data safety declaration and the App Store's privacy labels have
+to match, and under GDPR is the ordinary shape for diagnostics taken on
+legitimate interest: nothing identifying (§6), IP storage off, objecting one
+tap. A policy is still wanted before store submission, both stores ask for the
+URL regardless, and the notice gains the link when there is one. It is a
+release task, not a gate on this.
 
 Firebase Test Lab — which Google Play's pre-launch report runs on — never
 starts it. This matters more now than it did behind a prompt: nothing has to
@@ -362,14 +373,27 @@ BLE app with a headless engine — the home widget's shape (sentry-dart#3960).
 to 0.14.2 and `path_provider_android` from 2.3.1 to 2.2.23.
 
 Code is written so that 10 is a version bump: no SDK profiling, no
-`enableLogs` or `enableMetrics` flags, `SentryFeedbackForm` rather than
-`SentryFeedbackWidget`.
+`enableLogs` or `enableMetrics` flags. The feedback widgets do not come up at
+all - §1 took the "send to developers" action out, because sending is not
+something the user does.
 
 ### 8. Sampling
 
-Errors, traces, logs and metrics at 100%. Replay records on error only
-(`onErrorSampleRate: 1.0`, `sessionSampleRate: 0`), Android and iOS. Revisited
-after a month of real volume.
+Errors, traces, logs and metrics at 100%. Replay is `onErrorSampleRate: 1.0`
+with `sessionSampleRate: 0`, Android and iOS. Revisited after a month of real
+volume.
+
+**What that means, because the first draft of this section got it wrong.** It
+said "records on error only", which is not a thing a recorder can do - there
+is no recording the past. Buffer mode records *continuously* into an in-memory
+ring buffer holding the last minute of events, a few megabytes of it, and
+uploads that buffer only when an error occurs. So the capture cost is paid all
+the time and only the network and the quota are gated on a failure.
+
+Which is why `sessionSampleRate` stays 0. Raising it would upload whole
+sessions of a screen showing card dumps, for sessions where nothing went
+wrong, and buy nothing the buffered minute before a failure does not already
+carry.
 
 ## Rejected alternatives (and why)
 
@@ -431,14 +455,17 @@ carry.
   Sentry Android Gradle Plugin with auto-install off, which the Dart plugin does
   not cover.
 - Store paperwork, and more of it than an opt-in build would need: Google
-  Play Data safety declaring crash logs and diagnostics as collected and
-  optional, App Store privacy labels for Crash and Performance Data not linked
-  to identity, and a privacy policy the repository does not have yet. The
-  policy is the blocker of the three - both stores want the URL regardless, and
-  §1's notice links it.
-- Desktop gets no crash-free rate and no offline cache; mobile carries replay's
-  overhead (about +13% CPU and +5% memory on Android, +6% CPU on iOS, per
-  Sentry's measurements).
+  Play Data safety declaring crash logs, diagnostics and - because replay is
+  on - screen recordings, as collected and optional; App Store privacy labels
+  for Crash and Performance Data not linked to identity. A privacy policy is
+  wanted before store submission and the repository has none, but §1's notice
+  no longer waits on it: it carries the substance and gains the link when
+  there is one.
+- Desktop gets no crash-free rate and no offline cache. Mobile carries
+  replay's overhead in **every** session rather than the ones that fail, since
+  buffer mode records continuously and only uploads on a failure (§8): about
+  +13% CPU and +5% memory on Android, +6% CPU on iOS, per Sentry's
+  measurements, plus a few megabytes of ring buffer.
 - **#103 gets a second argument.** Its 48 `LogService.info` calls inside a
   catch were left on the grounds that the UI resolves and the cause reaches a
   surface ([0008](0008-swallowed-errors.md)); the count was never the target.
@@ -475,7 +502,7 @@ carry.
 | 0a | `caught`, its ratchet, and the re-ruling of the 48 that #103's triage left at `info`. Independent of Sentry - it lands in `history` and on the Log screen on the next build - and done first so no phase ships a failure nothing records |
 | 1 | Errors and crashes: dependency, `telemetry/`, the Diagnostics switch and the one-time notice, scrubber, `guarded` → issues, CI defines and symbol upload, the import ratchet |
 | 2 | Logs and tracing: `keptSink` and the `_remember` return it needs, flipperlib breadcrumbs in `_flipperlibSink` with the level pin raised, named routes and `SentryNavigatorObserver`, `traced`, `AppHttp` spans, the dartufbt sink |
-| 3 | Metrics, replay with its masks, a "Send to developers" action on the Log screen through `captureFeedback`, the flipperlib observer |
+| 3 | Metrics, replay with its masks - verified in a recorded replay on a `dev` build before it reaches anyone, §1 - and the flipperlib observer |
 
 Phase 1 is done when a `dev` build has delivered one forced Dart error and one
 forced native crash from each of the five platforms, symbolicated.
