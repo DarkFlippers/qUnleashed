@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flipperlib/flipperlib.dart';
@@ -29,16 +30,26 @@ enum SeedFailure {
   nameUnchecked,
   saveFailed,
   deleteFailed,
+
+  /// The rows on screen were listed over a link that has since gone, so none of
+  /// their paths can be acted on. Its own member because the thing to do next
+  /// is to re-list, not to retry - which is what every other member asks for.
+  listingStale,
 }
 
 /// What a stat said about one path.
 ///
-/// Three states and not a bool, because "nobody answered" is neither of the
-/// other two and both callers act differently on it: a save asks before
-/// overwriting, a delete keeps the row it would otherwise drop. The firmware
-/// reports absence by refusing the stat, so this classification is the boundary
-/// ADR 0008 describes - and `flipperlib` has no `storageExists` to do it once
-/// (#268), which is why it lives here for now.
+/// Three states and not a bool, because the two callers want different things
+/// from the third. A save treats "nobody answered" as its own outcome and asks
+/// the user before overwriting on no information. A delete branches on
+/// [present] alone - that is the one that keeps the row - and treats [unknown]
+/// as good enough to drop it, saying so in the log and to the user rather than
+/// reporting a failure a successful delete would not have earned.
+///
+/// The firmware reports absence by refusing the stat, so classifying it is the
+/// boundary ADR 0008 describes. `flipperlib` has no `storageExists` to do it
+/// once, which is why this lives here for now; #268 is the ticket, and
+/// `_pathState` and this enum are what it retires.
 enum _PathState { present, absent, unknown }
 
 /// A capture file the device is holding, before it is read.
@@ -51,7 +62,21 @@ typedef SeedCaptureFile = ({String path, String name, int size});
 /// the client passed in rather than reached for (ADR 0002).
 class SeedController extends ChangeNotifier {
   SeedController({required this._client, FaaccrackRecoverer? recoverer})
-    : _recoverer = recoverer ?? NativeFaaccrackRecoverer();
+    : _recoverer = recoverer ?? NativeFaaccrackRecoverer() {
+    // [canDeleteCaptures] reads the liveness of a session binding, which
+    // changes outside this notifier - so without this the delete icons stayed
+    // enabled after the link dropped, and stayed dead after a reconnect, until
+    // some unrelated rebuild. The two other controllers that hold a binding
+    // across user actions both close this loop the same way.
+    //
+    // The stream is broadcast and an error on it does not end it (CLAUDE.md),
+    // so onError notifies rather than tearing the subscription down: a link
+    // that failed is exactly when the enabled state has changed.
+    _link = _client.connectionStream.listen(
+      (_) => _changed(),
+      onError: (_) => _changed(),
+    );
+  }
 
   /// The Flipper this run belongs to. Passed in rather than reached for, and
   /// required rather than defaulted, so a recovery cannot silently run against
@@ -60,7 +85,6 @@ class SeedController extends ChangeNotifier {
   final FaaccrackRecoverer _recoverer;
 
   SeedStage _stage = SeedStage.idle;
-  List<SeedCaptureFile> _files = const [];
   SeedCapture? _capture;
   SeedResult? _result;
   double _progress = 0;
@@ -70,7 +94,30 @@ class SeedController extends ChangeNotifier {
   List<String> _captureWarnings = const [];
   bool _saving = false;
   SeedCaptureFile? _openedFile;
-  FlipperSessionBinding? _listBinding;
+
+  /// The rows, and the link that named them, as one value.
+  ///
+  /// Together rather than in two fields because the whole point is that they
+  /// agree: a path is only meaningful against the device that listed it. Two
+  /// assignments could drift apart on either of [_refresh]'s failure branches.
+  ({List<SeedCaptureFile> files, FlipperSessionBinding binding})? _listing;
+
+  /// The path a delete is in flight for, so a second tap cannot send a second
+  /// one.
+  ///
+  /// `savedTo` learned this lesson for the write; the delete is the half of
+  /// this page that cannot be undone, and it is now two round trips rather than
+  /// one, so the window is wider.
+  String? _deleting;
+
+  /// Whether the last delete removed a row without being able to confirm it.
+  ///
+  /// Not a [SeedFailure]: nothing failed, and reporting one would tell the user
+  /// a delete that probably worked had not. But the row vanishing is the same
+  /// thing they see for a verified delete, so without this the app would be
+  /// keeping to itself that it acted on an ACK alone.
+  bool _unconfirmed = false;
+  StreamSubscription<dynamic>? _link;
   bool _disposed = false;
 
   @override
@@ -80,6 +127,7 @@ class SeedController extends ChangeNotifier {
     // land. Without this, the notifyListeners() that follows throws inside a
     // future nobody is listening to.
     _disposed = true;
+    _link?.cancel();
     super.dispose();
   }
 
@@ -89,7 +137,7 @@ class SeedController extends ChangeNotifier {
   }
 
   SeedStage get stage => _stage;
-  List<SeedCaptureFile> get files => _files;
+  List<SeedCaptureFile> get files => _listing?.files ?? const [];
   SeedCapture? get capture => _capture;
   SeedResult? get result => _result;
   double get progress => _progress;
@@ -113,9 +161,32 @@ class SeedController extends ChangeNotifier {
   ///
   /// Not a judgement about any one file - that question belongs to the confirm
   /// dialog, which is where the user can read the name. This is only whether
-  /// the rows on screen still name files on a reachable device: a delete sent
-  /// over a link that has since gone would land on whatever is connected now.
-  bool get canDeleteCaptures => _listBinding?.isAlive ?? false;
+  /// the rows on screen were listed over a link that is still there.
+  ///
+  /// A delete under a dead binding would *fail* rather than reach another
+  /// Flipper - flipperlib promises that much - so this is not what stops the
+  /// wrong device being written to. It is what turns an exception naming
+  /// nothing the user can act on into a refusal that names the remedy, which
+  /// is to re-list rather than to retry.
+  bool get canDeleteCaptures => _listing?.binding.isAlive ?? false;
+
+  /// Whether the last delete dropped its row without confirmation.
+  bool get deleteUnconfirmed => _unconfirmed;
+
+  /// Whether a delete is in flight for [file].
+  bool deleting(SeedCaptureFile file) => _deleting == file.path;
+
+  /// Whether the engine is sweeping. The page gates everything that touches the
+  /// device on it, so it is one name rather than three spellings of a compare.
+  bool get searching => _stage == SeedStage.searching;
+
+  /// Whether anything is in flight that a row action must not interleave with.
+  ///
+  /// A read carries a two-minute timeout and a listing twenty seconds, so
+  /// "not searching" was never the whole question: deleting the row that is
+  /// being read ends with the read reporting a failure for a file the list has
+  /// already dropped.
+  bool get busy => _stage != SeedStage.idle || _saving || _deleting != null;
 
   /// Lines the capture file had that could not be read. Shown rather than
   /// logged alone: a file half of whose hops were dropped may no longer have
@@ -189,18 +260,20 @@ class SeedController extends ChangeNotifier {
       // The name carries the timestamp, so sorting by it is sorting by time
       // without trusting the device's clock to have been set.
       found.sort((a, b) => b.name.compareTo(a.name));
-      _files = List.unmodifiable(found);
-      // Held so a delete driven from these rows goes to the Flipper that named
-      // them. `runTask` binds whatever session is current when it is called,
-      // and with auto-reconnect on or a cable swapped meanwhile that need not
-      // be this one - so a path from this listing could name a different
-      // device's file by the time someone taps it.
-      _listBinding = _client.bindCurrentSession();
+      // The rows and the link together. A request made under a dead binding
+      // fails rather than retargeting whatever is connected now - flipperlib
+      // promises that - so holding the binding is what turns "these paths
+      // belong to a Flipper that has gone" into a refusal this page can report
+      // instead of an exception from a delete that was already sent.
+      _listing = (
+        files: List.unmodifiable(found),
+        binding: _client.bindCurrentSession(),
+      );
     } on FlipperRpcStorageNotExistException {
       // A device that has never run the capture app has no such folder. The
       // one failure that really is "nothing captured yet", and the firmware
       // says so by name rather than by an error string.
-      _files = const [];
+      _listing = (files: const [], binding: _client.bindCurrentSession());
     } catch (e) {
       // Everything else - an SD not mounted, a busy session, the 20 s timeout
       // on a congested link - is a question that went unanswered. Reporting it
@@ -506,10 +579,9 @@ class SeedController extends ChangeNotifier {
   /// Absence is the firmware *refusing* the stat rather than answering an empty
   /// one, so the ordinary case arrives as an exception and is not worth a log
   /// line. Anything else is a third answer rather than a second: not "absent",
-  /// but "nobody said", which both callers have to treat differently from
-  /// either. Collapsing it into "absent" is what let a save clobber a file
-  /// before #264, and it would let a delete claim a file is gone on no
-  /// evidence.
+  /// but "nobody said". Before the check existed at all a save clobbered
+  /// silently (#264); folding "nobody said" into "absent" would bring half of
+  /// that back, because the user would never be asked.
   Future<_PathState> _pathState(String path) async {
     try {
       await _client.storageStat(
@@ -528,80 +600,134 @@ class SeedController extends ChangeNotifier {
   /// Deletes [file] from the capture folder.
   ///
   /// Takes the file rather than reading [openedFile], so any row in the list
-  /// can be tidied away and not only the one solved since the page opened. The
-  /// Flipper-side app does not clean up after itself, which is the problem this
-  /// exists for; keying it on this session's save meant every capture taken
-  /// before the feature shipped could never be removed here.
+  /// can be tidied away. Keying it on this session's save left a capture that
+  /// cannot be solved at all - unreadable, nothing matched, too few hops, no
+  /// frequency to write back - with no way to be removed here, and that is the
+  /// set the Flipper-side app fills the folder with.
   ///
   /// Runs under the session that produced the listing rather than [_task]'s
-  /// "whichever is current", for the reason recorded in [_refresh]. Refuses a
-  /// file the listing does not name: the only check worth making here is that
-  /// the device said this path exists, since whether the user wants it gone is
-  /// a question the confirm dialog asked.
+  /// "whichever is current", for the reason recorded in [_refresh].
   Future<void> deleteCapture(SeedCaptureFile file) {
     _error = null;
-    final binding = _listBinding;
-    if (binding == null) return Future.value();
-    return binding.run(() => _deleteCapture(file));
+    _unconfirmed = false;
+    final listing = _listing;
+    if (listing == null) {
+      // Defensive rather than a branch: [_listing] is null only before any
+      // listing has completed, and then there are no rows to delete from. It
+      // says so rather than returning silently, because a future caller that
+      // reaches it would otherwise get nothing at all.
+      LogService.error('[Seed] not deleting ${file.path}: nothing is listed');
+      _error = SeedFailure.deleteFailed;
+      _changed();
+      return Future.value();
+    }
+    return listing.binding.run(() => _deleteCapture(file));
   }
 
   Future<void> _deleteCapture(SeedCaptureFile file) async {
-    if (!_files.any((f) => f.path == file.path)) return;
-    if (!(_listBinding?.isAlive ?? false)) {
-      // The link the listing came over is gone, so this path would be resolved
-      // against whatever is connected now - a device whose capture folder this
-      // list never described.
+    if (!files.any((f) => f.path == file.path)) {
+      // The app refused this, not the device - the list no longer names the
+      // path, which is a different thing from a delete that failed, and the log
+      // is the only place that can tell them apart.
+      LogService.warn('[Seed] not deleting ${file.path}: no row names it');
+      _error = SeedFailure.deleteFailed;
+      _changed();
+      return;
+    }
+    if (_deleting != null) {
+      // A second tap while the first is still in flight. Both would pass the
+      // check above, because the row is only dropped at the end.
+      LogService.warn('[Seed] already deleting $_deleting');
+      return;
+    }
+    if (!canDeleteCaptures) {
+      // The link these paths were listed over has gone. The delete would fail
+      // rather than reach another device, but it would fail as an exception
+      // naming nothing the user can act on; this names it, and the cure is to
+      // re-list rather than to retry.
       LogService.error(
         '[Seed] not deleting ${file.path}: the link it was listed over is gone',
       );
-      _error = SeedFailure.deleteFailed;
+      _error = SeedFailure.listingStale;
       _changed();
       return;
     }
 
+    _deleting = file.path;
+    _changed();
+
+    SeedFailure? sendFailure;
+    var certainlyGone = false;
     try {
       await _client.storageDelete(DeleteRequest(path: file.path));
+    } on FlipperRpcStorageNotExistException {
+      // Already gone. The firmware refuses a delete of a path it does not
+      // hold, and `_refresh`'s catch deliberately leaves rows standing, so a
+      // row routinely outlives the file it names - someone deleting the
+      // capture from the Flipper's own browser is enough. Reporting a failure
+      // here told the user their capture had survived when the one certain
+      // fact was that it had not.
+      LogService.warn('[Seed] ${file.path} was already gone');
+      certainlyGone = true;
     } catch (e) {
-      // Silence would leave the capture in the list looking undeleted with
-      // nothing saying why. The row is left standing, so the delete can be
-      // asked for again.
+      // Not decided yet. A timeout or a dropped link may have carried the
+      // delete and lost only the ACK, so the stat below settles it rather than
+      // this catch asserting a device state it does not know.
       LogService.error('[Seed] could not delete ${file.path}: $e');
-      _error = SeedFailure.deleteFailed;
-      _changed();
-      return;
+      sendFailure = _failureForUnreachable();
     }
 
-    // The ACK is not the same as the file being gone, and this is the one
-    // operation on the page whose mistake is unrecoverable - so it is checked.
-    // A stat of one path, not a re-listing of the folder: the folder is the
-    // slowest call this page makes over BLE, and the question is about this
-    // file.
-    switch (await _pathState(file.path)) {
-      case _PathState.present:
-        // The firmware answered the delete and the file is still there. Saying
-        // nothing would drop the row and leave the folder filling up, with the
-        // list and the device disagreeing until the next refresh.
-        LogService.error(
-          '[Seed] ${file.path} survived a delete the device accepted',
-        );
-        _error = SeedFailure.deleteFailed;
-        _changed();
-        return;
-      case _PathState.unknown:
-        // Nobody answered the stat. That is not evidence against the ACK, and
-        // treating it as a failure would tell the user a delete that worked had
-        // not - so the row goes, with a line in the log.
-        LogService.warn(
-          '[Seed] deleted ${file.path} but could not confirm it is gone',
-        );
-      case _PathState.absent:
-        break;
+    // One question, asked once, whatever the send said: an ACK is not the file
+    // being gone, and a failure is not the file being there. A stat of this
+    // path rather than a re-listing of the folder - the question is about this
+    // file, and this half of the page cannot be undone.
+    if (!certainlyGone) {
+      switch (await _pathState(file.path)) {
+        case _PathState.absent:
+          // Gone, whatever the send reported. A delete whose ACK was lost is
+          // still a delete, and saying it failed would send the user looking
+          // for a capture that is not there.
+          break;
+        case _PathState.present:
+          LogService.error(
+            '[Seed] ${file.path} survived a delete the device accepted',
+          );
+          _error = sendFailure ?? SeedFailure.deleteFailed;
+          _deleting = null;
+          _changed();
+          return;
+        case _PathState.unknown:
+          if (sendFailure != null) {
+            // Nothing landed and nothing could be checked. The row stays.
+            _error = sendFailure;
+            _deleting = null;
+            _changed();
+            return;
+          }
+          // The ACK came back and the device then stopped answering. The row
+          // goes on the strength of the ACK - but the user is told it could
+          // not be confirmed, rather than being shown the clean removal a
+          // verified delete gets.
+          LogService.warn(
+            '[Seed] deleted ${file.path} but could not confirm it is gone',
+          );
+          _unconfirmed = true;
+      }
     }
 
-    // Dropped from the list here rather than by re-listing the folder, for the
-    // same reason the check above is a stat.
     if (_openedFile?.path == file.path) _openedFile = null;
-    _files = List.unmodifiable(_files.where((f) => f.path != file.path));
+    _deleting = null;
+    _listing = (
+      files: List.unmodifiable(files.where((f) => f.path != file.path)),
+      binding: _listing!.binding,
+    );
     _changed();
   }
+
+  /// Which failure a dead or absent link earns.
+  ///
+  /// `_refresh` makes the same distinction, and for the same reason: "not
+  /// connected" has a different thing to do next from "the device refused".
+  SeedFailure _failureForUnreachable() =>
+      _client.isConnected ? SeedFailure.deleteFailed : SeedFailure.disconnected;
 }

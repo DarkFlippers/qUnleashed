@@ -7726,7 +7726,7 @@
 
   "toolSeedRecoverySubtitle": "Recover FAAC, Genius and Erreka remotes",
   "@toolSeedRecoverySubtitle": {
-    "description": "Subtitle of the SubGHz seed recovery tool. BFT is deliberately not listed even though the engine still supports it - the firmware recovers those itself, so advertising it here would send users the long way round. Do not add it back."
+    "description": "Subtitle of the SubGHz seed recovery tool. It names the manufacturers whose SeedManufacturer.advertised is true; BFT is solved but not listed, because the firmware recovers those itself. test/seed_models_test.dart holds this sentence to that field, so a name added or removed here fails."
   },
 
   "seedTitle": "Recover SubGHz Seeds",
@@ -7993,7 +7993,7 @@
     }
   },
 
-  "seedDeleteRowMessage": "Delete {name} from the device? If its remote has not been recovered and saved yet, this capture is the only record of it, and getting another means standing next to the remote again.",
+  "seedDeleteRowMessage": "Delete {name} from the device? A capture is the only record of a remote, and unless its remote has already been recovered and saved, getting another means standing next to that remote again.",
   "@seedDeleteRowMessage": {
     "description": "Body of the prompt shown when a capture is deleted from the list rather than right after a save, where it is not known whether the remote was ever recovered.",
     "placeholders": {
@@ -8014,9 +8014,25 @@
     "description": "Decline button that leaves the solved capture on the device."
   },
 
-  "seedDeleteFailed": "The capture could not be deleted. It is still on the device.",
+  "seedDeleteFailed": "The capture could not be deleted. It may still be on the device.",
   "@seedDeleteFailed": {
-    "description": "Shown when removing a capture fails. Deliberately says nothing about a saved remote: a capture can now be deleted from the list without having been solved this session, so there may not be one."
+    "description": "Shown when removing a capture fails. Says nothing about a saved remote, because a capture can be deleted from the list without having been solved this session. Says \"may\" because a delete that timed out might have landed and lost only its acknowledgement."
+  },
+
+  "seedListingStale": "These captures were listed over a connection that has gone. Pull down to read the folder again.",
+  "@seedListingStale": {
+    "description": "Shown when a delete is refused because the file list belongs to a session that is no longer live. The remedy is to re-list, not to retry."
+  },
+
+  "seedDeleteUnconfirmed": "{name} was removed, but the device did not confirm it. Refresh to be sure.",
+  "@seedDeleteUnconfirmed": {
+    "description": "Neutral notice, not an error: the delete was accepted but the follow-up check went unanswered, so the row was dropped on the acknowledgement alone.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "faac_2026-10-07_14-21.seed"
+      }
+    }
   },
 
   "seedRefreshed": "{count, plural, =0{No captures on the device} one{1 capture on the device} other{{count} captures on the device}}",
