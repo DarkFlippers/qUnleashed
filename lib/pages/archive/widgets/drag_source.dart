@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io' as io;
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
@@ -68,8 +69,6 @@ const _anyFile = SimpleFileFormat(
 );
 
 const double _dragIcon = 48;
-const double _dragFan = 8;
-const int _dragFanMax = 3;
 
 Future<List<int>?> _bytes(DragFile file, WriteProgress? progress) {
   final local = file.localPath;
@@ -175,12 +174,18 @@ Future<TargetedWidgetSnapshot> _blankImage(Offset at) async {
   );
 }
 
-Widget _dragImage(List<DragFile> files) => SnapshotSettings(
-  constraintsTransform: (_) => const BoxConstraints(maxWidth: 140),
-  translation: (rect, dragPosition) =>
-      dragPosition - Offset(rect.center.dx, _dragIcon / 2),
-  child: _DragImage(files: files),
-);
+/// Always drawn in the light theme: the picture travels over other windows
+/// and the desktop, where the dark theme's translucent badges disappear.
+Widget _dragImage(BuildContext context, List<DragFile> files) =>
+    SnapshotSettings(
+      constraintsTransform: (_) => const BoxConstraints(maxWidth: 200),
+      translation: (rect, dragPosition) =>
+          dragPosition - Offset(rect.center.dx, _dragIcon / 2),
+      child: Theme(
+        data: buildAppTheme(Brightness.light, context.appColors.accent),
+        child: _DragImage(files: files),
+      ),
+    );
 
 /// Makes [child] draggable out of the app as [file], together with the rest
 /// of [group] when there is one.
@@ -253,8 +258,8 @@ class FileDragSource extends StatelessWidget {
     return DragItemWidget(
       allowedOperations: () => [DropOperation.copy],
       canAddItemToExistingSession: true,
-      dragBuilder: (_, _) => _dragImage(_files()),
-      liftBuilder: (_, _) => _dragImage(_files()),
+      dragBuilder: (context, _) => _dragImage(context, _files()),
+      liftBuilder: (context, _) => _dragImage(context, _files()),
       dragItemProvider: _item,
       child: DraggableWidget(onDragConfiguration: _configure, child: child),
     );
@@ -296,60 +301,104 @@ class ArchiveKeyDragSource extends StatelessWidget {
   }
 }
 
+/// What rides under the pointer: one file shows its icon and name; several
+/// show one icon per format around a ring, and how many files there are.
 class _DragImage extends StatelessWidget {
   const _DragImage({required this.files});
 
   final List<DragFile> files;
 
+  static const double _gap = 4;
+  static const double _ringGap = 6;
+  static const int _maxKinds = 6;
+
+  RemoteEntry _entry(DragFile file) =>
+      RemoteEntry(name: file.name, size: 0, isDir: false);
+
+  Widget _icon(DragFile file) =>
+      FileIconBadge(entry: _entry(file), size: _dragIcon);
+
+  Widget _label(String text, QAppColors colors) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+    decoration: BoxDecoration(
+      color: colors.card,
+      borderRadius: BorderRadius.circular(6),
+    ),
+    child: Text(
+      text,
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      textAlign: TextAlign.center,
+      style: TextStyle(
+        color: colors.textPrimary,
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+      ),
+    ),
+  );
+
+  /// One icon per format on a ring just wide enough for the squares not to
+  /// touch, whichever way their neighbours lie.
+  Widget _ring(List<DragFile> kinds) {
+    if (kinds.length == 1) return _icon(kinds.single);
+    final n = kinds.length;
+    final radius = _ringRadius(n);
+    final extent = 2 * radius + _dragIcon;
+    return SizedBox(
+      width: extent,
+      height: extent,
+      child: Stack(
+        children: [
+          for (var i = 0; i < n; i++)
+            Positioned(
+              left: radius * (1 + math.cos(_angle(i, n))),
+              top: radius * (1 + math.sin(_angle(i, n))),
+              child: _icon(kinds[i]),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Two squares stay [_ringGap] apart once their centres differ by at least
+  /// `size + gap` along one axis; a chord that leans diagonally has to be
+  /// longer than one that lies flat to manage that.
+  double _ringRadius(int n) {
+    final apart = _dragIcon + _ringGap;
+    var chord = apart;
+    for (var i = 0; i < n; i++) {
+      final lean = (_angle(i, n) + _angle(i + 1, n)) / 2 + math.pi / 2;
+      final flat = math.max(math.cos(lean).abs(), math.sin(lean).abs());
+      chord = math.max(chord, apart / flat);
+    }
+    return chord / (2 * math.sin(math.pi / n));
+  }
+
+  double _angle(int index, int count) =>
+      -math.pi / 2 + 2 * math.pi * index / count;
+
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final fan = files.take(_dragFanMax).toList();
-    final label = files.length == 1
-        ? files.single.name
-        : context.l10n.fmDragFiles(files.length);
+    final Widget picture;
+    final String text;
+    if (files.length == 1) {
+      picture = _icon(files.single);
+      text = files.single.name;
+    } else {
+      final kinds = <String, DragFile>{};
+      for (final file in files) {
+        kinds.putIfAbsent(_entry(file).extension, () => file);
+      }
+      picture = _ring(kinds.values.take(_maxKinds).toList());
+      text = context.l10n.fmDragFiles(files.length);
+    }
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        SizedBox(
-          width: _dragIcon + _dragFan * (fan.length - 1),
-          height: _dragIcon,
-          child: Stack(
-            children: [
-              for (var i = fan.length - 1; i >= 0; i--)
-                Positioned(
-                  left: _dragFan * i,
-                  child: FileIconBadge(
-                    entry: RemoteEntry(
-                      name: fan[i].name,
-                      size: 0,
-                      isDir: false,
-                    ),
-                    size: _dragIcon,
-                  ),
-                ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 4),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-          decoration: BoxDecoration(
-            color: colors.card,
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Text(
-            label,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: colors.textPrimary,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
+        picture,
+        const SizedBox(height: _gap),
+        _label(text, colors),
       ],
     );
   }
