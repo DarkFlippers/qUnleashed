@@ -24,6 +24,10 @@ dependencies:
     path: lib/modules/flipperlib
   dartufbt:
     path: lib/modules/dartufbt
+  super_drag_and_drop:
+    path: lib/modules/extensions/super_drag_and_drop
+  super_clipboard:
+    path: lib/modules/extensions/super_clipboard
   universal_ble: ^2.1.1
   usb_serial: ^0.5.2
   permission_handler: ^11.3.1
@@ -82,6 +86,16 @@ dev_dependencies:
   # because `extension E on T {` and `mixin M on B {` are spelled exactly like
   # a bare `on T {` catch clause, and only an AST can tell them apart.
   analyzer: ^14.4.0
+
+dependency_overrides:
+  super_clipboard:
+    path: lib/modules/extensions/super_clipboard
+  super_native_extensions:
+    path: lib/modules/extensions/super_native_extensions
+  irondash_engine_context:
+    path: lib/modules/irondash/engine_context/dart
+  irondash_message_channel:
+    path: lib/modules/irondash/message_channel/dart
 
 flutter:
   config:
