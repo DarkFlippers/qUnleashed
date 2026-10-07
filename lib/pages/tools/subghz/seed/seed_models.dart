@@ -11,6 +11,13 @@ library;
 /// native probe are what hold the two in step.
 enum SeedManufacturer {
   faacSlh(mode: 1, label: 'FAAC SLH', protocol: 'Faac SLH'),
+
+  /// Supported, but not advertised: `toolSeedRecoverySubtitle` lists the other
+  /// three. The firmware recovers BFT itself, so pointing a user at a search
+  /// that takes minutes would be sending them the long way round - but a
+  /// capture that names BFT still solves here rather than being refused as a
+  /// manufacturer this build has no key for, which is what dropping the value
+  /// would have made it.
   bft(mode: 2, label: 'BFT', protocol: 'KeeLoq'),
   genius(mode: 3, label: 'Genius', protocol: 'Faac SLH'),
   erreka(mode: 4, label: 'Erreka', protocol: 'KeeLoq');
