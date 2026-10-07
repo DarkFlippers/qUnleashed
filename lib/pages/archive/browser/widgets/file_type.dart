@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../components/archive/category.dart';
 import '../../../../services/localization/l10n.dart';
+import '../../../../theme/colors/file_type.dart';
 import '../../../../theme/theme.dart';
 import '../controller.dart';
 
@@ -42,16 +43,16 @@ FileVisual fileVisualFor(RemoteEntry e, QAppColors colors) {
 
   switch (ext) {
     case 'fap':
-      return const FileVisual(
+      return FileVisual(
         asset: '$_kFileFormatIcon/plugins.svg',
-        color: Color(0xFF6366F1),
+        color: FileTypeColor.application.color,
       );
     case 'txt':
     case 'log':
     case 'md':
-      return const FileVisual(
+      return FileVisual(
         icon: Icons.description_outlined,
-        color: Color(0xFF64748B),
+        color: FileTypeColor.text.color,
       );
     case 'json':
     case 'c':
@@ -62,7 +63,7 @@ FileVisual fileVisualFor(RemoteEntry e, QAppColors colors) {
     case 'xml':
     case 'yaml':
     case 'yml':
-      return const FileVisual(icon: Icons.code, color: Color(0xFF0EA5E9));
+      return FileVisual(icon: Icons.code, color: FileTypeColor.code.color);
     case 'png':
     case 'jpg':
     case 'jpeg':
@@ -70,30 +71,33 @@ FileVisual fileVisualFor(RemoteEntry e, QAppColors colors) {
     case 'bmp':
     case 'webp':
     case 'bmf':
-      return const FileVisual(
+      return FileVisual(
         icon: Icons.image_outlined,
-        color: Color(0xFFEC4899),
+        color: FileTypeColor.image.color,
       );
     case 'mp3':
     case 'wav':
     case 'ogg':
     case 'flac':
-      return const FileVisual(icon: Icons.audiotrack, color: Color(0xFFF97316));
+      return FileVisual(
+        icon: Icons.audiotrack,
+        color: FileTypeColor.audio.color,
+      );
     case 'zip':
     case 'tar':
     case 'gz':
     case 'tgz':
     case 'rar':
     case '7z':
-      return const FileVisual(
+      return FileVisual(
         icon: Icons.folder_zip_outlined,
-        color: Color(0xFFA16207),
+        color: FileTypeColor.archive.color,
       );
     case 'bin':
     case 'elf':
     case 'dfu':
     case 'fuf':
-      return const FileVisual(icon: Icons.memory, color: Color(0xFF78716C));
+      return FileVisual(icon: Icons.memory, color: FileTypeColor.binary.color);
     default:
       return FileVisual(
         asset: '$_kFileIcon/default.svg',
