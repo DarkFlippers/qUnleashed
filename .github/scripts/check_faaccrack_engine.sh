@@ -11,6 +11,11 @@
 #   * The engine is machine-generated, so warnings about how it reads are noise;
 #     it is checked by being run. The probe is hand-written and compiled
 #     warnings-as-errors.
+#   * -std=gnu11, which is what the CMake and the Apple podspec give the same
+#     sources. Strict c11 defines __STRICT_ANSI__, and glibc then hides
+#     clock_gettime, nanosleep and the pthread declarations behind it - so the
+#     probe would fail to compile on a Linux runner for a reason that has
+#     nothing to do with the engine.
 #   * -O3 matches the shipped build. FAACCRACK_OPTS overrides it for a
 #     maintainer bisecting a codegen-dependent failure across levels. It is not
 #     a check of the progress channel's `volatile`: the header records a probe
@@ -46,12 +51,12 @@ esac
 for opt in ${FAACCRACK_OPTS:--O3}; do
   echo "--- faaccrack engine probe at $opt ---"
 
-  "$CC" "$opt" -std=c11 -funroll-loops -w \
+  "$CC" "$opt" -std=gnu11 -funroll-loops -w \
     -Dmain=faaccrack_cli_main \
     -I "$ENGINE_DIR" -I "$SHIM_DIR" \
     -c "$ENGINE_DIR/faaccrack.c" -o "$WORK_DIR/engine.o"
 
-  "$CC" "$opt" -std=c11 -Wall -Wextra -Werror \
+  "$CC" "$opt" -std=gnu11 -Wall -Wextra -Werror \
     -I "$ENGINE_DIR" -I "$SHIM_DIR" \
     "$ENGINE_DIR/test/faaccrack_abi_probe.c" "$WORK_DIR/engine.o" \
     "${THREAD_LIB[@]}" -o "$WORK_DIR/probe"
