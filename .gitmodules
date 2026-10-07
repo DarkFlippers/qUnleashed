@@ -9,3 +9,7 @@
 [submodule "lib/modules/dartufbt"]
 	path = lib/modules/dartufbt
 	url = https://github.com/DarkFlippers/dart-ufbt.git
+[submodule "lib/modules/irondash"]
+	path = lib/modules/irondash
+	url = https://github.com/apfxtech/irondash.git
+	branch = qunleashed
