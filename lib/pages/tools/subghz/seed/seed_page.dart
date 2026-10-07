@@ -151,7 +151,31 @@ class _SeedPageState extends State<SeedPage> {
       cancelLabel: context.l10n.seedKeepCapture,
     );
     if (!remove || !mounted) return;
-    await _controller.deleteCapture();
+    await _delete(file);
+  }
+
+  /// Removes a capture the user picked from the list.
+  ///
+  /// Separate from [_offerToDeleteCapture] in its wording and not in its
+  /// effect. That one follows a save, so it can say where the remote went; this
+  /// one may be the only copy of a remote nobody has recovered yet, and the
+  /// message has to carry that rather than a gate keyed on whether this session
+  /// happened to save it - which is what made every capture taken before the
+  /// feature shipped undeletable here.
+  Future<void> _confirmDelete(SeedCaptureFile file) async {
+    final remove = await QConfirmDialog.show(
+      context,
+      title: context.l10n.seedDeleteCaptureTitle,
+      message: context.l10n.seedDeleteRowMessage(file.name),
+      confirmLabel: context.l10n.seedDeleteCapture,
+      cancelLabel: context.l10n.commonCancel,
+    );
+    if (!remove || !mounted) return;
+    await _delete(file);
+  }
+
+  Future<void> _delete(SeedCaptureFile file) async {
+    await _controller.deleteCapture(file);
     if (mounted) _said(_controller.error);
   }
 
@@ -215,42 +239,58 @@ class _SeedPageState extends State<SeedPage> {
             ),
           ],
         ),
-        body: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            // Before anything else: three operations can fail, and until this
-            // existed each of them left the page looking exactly as it had.
-            if (_controller.error != null) ...[
-              _Banner(_failureText(context, _controller.error!)),
-              const SizedBox(height: 12),
+        // Pull to re-list, as fifteen other pages that re-read a device folder
+        // do - including three sibling tool pages. The gesture is its own
+        // acknowledgement, which is most of what the toolbar spinner and the
+        // count toast had to be invented for; the toolbar button stays for the
+        // desktop targets, where there is nothing to pull.
+        body: RefreshIndicator(
+          onRefresh: _refresh,
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            // So the gesture works when the content is shorter than the
+            // viewport, which on this page is the usual case: an empty capture
+            // folder is exactly when someone reaches for a refresh.
+            physics: const AlwaysScrollableScrollPhysics(),
+            children: [
+              // Before anything else: three operations can fail, and until this
+              // existed each of them left the page looking exactly as it had.
+              if (_controller.error != null) ...[
+                _Banner(_failureText(context, _controller.error!)),
+                const SizedBox(height: 12),
+              ],
+              // A capture that would not parse has no card to hang its reasons
+              // off, and those reasons are the actionable half - "unknown
+              // Manufacturer Nice" tells the user what to do, a red line does
+              // not.
+              if (_controller.capture == null &&
+                  _controller.captureWarnings.isNotEmpty) ...[
+                for (final warning in _controller.captureWarnings)
+                  _Hint(warning),
+                const SizedBox(height: 12),
+              ],
+              if (_controller.stage == SeedStage.loading) ...[
+                Text(
+                  context.l10n.seedLoading,
+                  style: TextStyle(fontSize: 13, color: colors.textMuted),
+                ),
+                const SizedBox(height: 12),
+              ],
+              if (_controller.capture != null) ...[
+                _CaptureCard(controller: _controller),
+                const SizedBox(height: 12),
+                _ActionBlock(
+                  controller: _controller,
+                  confirmStop: _confirmStop,
+                ),
+                const SizedBox(height: 12),
+                if (_controller.result != null)
+                  _ResultCard(controller: _controller, onSave: _save),
+                const SizedBox(height: 20),
+              ],
+              _CaptureList(controller: _controller, onDelete: _confirmDelete),
             ],
-            // A capture that would not parse has no card to hang its reasons
-            // off, and those reasons are the actionable half - "unknown
-            // Manufacturer Nice" tells the user what to do, a red line does
-            // not.
-            if (_controller.capture == null &&
-                _controller.captureWarnings.isNotEmpty) ...[
-              for (final warning in _controller.captureWarnings) _Hint(warning),
-              const SizedBox(height: 12),
-            ],
-            if (_controller.stage == SeedStage.loading) ...[
-              Text(
-                context.l10n.seedLoading,
-                style: TextStyle(fontSize: 13, color: colors.textMuted),
-              ),
-              const SizedBox(height: 12),
-            ],
-            if (_controller.capture != null) ...[
-              _CaptureCard(controller: _controller),
-              const SizedBox(height: 12),
-              _ActionBlock(controller: _controller, confirmStop: _confirmStop),
-              const SizedBox(height: 12),
-              if (_controller.result != null)
-                _ResultCard(controller: _controller, onSave: _save),
-              const SizedBox(height: 20),
-            ],
-            _CaptureList(controller: _controller),
-          ],
+          ),
         ),
       ),
     );
@@ -482,14 +522,16 @@ class _ResultCard extends StatelessWidget {
 
 /// The captures the device is holding.
 class _CaptureList extends StatelessWidget {
-  const _CaptureList({required this.controller});
+  const _CaptureList({required this.controller, required this.onDelete});
 
   final SeedController controller;
+  final void Function(SeedCaptureFile file) onDelete;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final l10n = context.l10n;
+    final busy = controller.stage == SeedStage.searching;
 
     if (controller.files.isEmpty) {
       return Column(
@@ -528,9 +570,22 @@ class _CaptureList extends StatelessWidget {
               file.name,
               style: TextStyle(fontSize: 13, color: colors.textPrimary),
             ),
-            onTap: controller.stage == SeedStage.searching
-                ? null
-                : () => controller.open(file),
+            onTap: busy ? null : () => controller.open(file),
+            // On the row, because that is where the full folder is visible and
+            // where a capture whose remote was solved on some earlier run can
+            // be reached at all. Disabled rather than hidden when the listing
+            // was never answered for: a button that vanishes reads as a
+            // feature that is not there.
+            trailing: IconButton(
+              tooltip: l10n.seedDeleteCapture,
+              iconSize: 18,
+              visualDensity: VisualDensity.compact,
+              color: colors.textMuted,
+              onPressed: busy || !controller.canDeleteCaptures
+                  ? null
+                  : () => onDelete(file),
+              icon: const Icon(Icons.delete_outline),
+            ),
           ),
       ],
     );

@@ -262,20 +262,14 @@ void main() {
     });
   });
 
-  group('deleting the solved capture', () {
-    test('is not offered until the remote has been saved', () async {
+  group('deleting a capture', () {
+    test('is offered for any listed file, solved or not', () async {
       final controller = await openedSeedController(SeedFakeClient());
-      expect(controller.canDeleteCapture, isFalse);
-
-      await controller.search();
       expect(
-        controller.canDeleteCapture,
-        isFalse,
-        reason: 'a solved capture is not a saved one',
+        controller.canDeleteCaptures,
+        isTrue,
+        reason: 'a listed capture is deletable whether or not it was solved',
       );
-
-      await controller.save('garage');
-      expect(controller.canDeleteCapture, isTrue);
     });
 
     test('removes the file and drops it from the list', () async {
@@ -283,7 +277,7 @@ void main() {
       final controller = await saveableSeedController(client);
       await controller.save('garage');
 
-      await controller.deleteCapture();
+      await controller.deleteCapture(controller.files.single);
 
       expect(client.calls, contains('delete($seedCaptureDir/one.txt)'));
       expect(client.folder, isEmpty);
@@ -303,39 +297,114 @@ void main() {
       await controller.search();
       await controller.save('garage');
 
-      await controller.deleteCapture();
+      await controller.deleteCapture(
+        controller.files.firstWhere((f) => f.name == 'one.txt'),
+      );
 
       expect(controller.files.map((f) => f.name), ['two.txt']);
     });
 
-    test('does nothing at all when the remote was never saved', () async {
-      // The guard, not the caller: this deletes the only copy of a capture the
-      // user had to be standing next to a remote to take.
+    test('deletes a capture this session never opened or solved', () async {
+      // The point of #269. The offer used to be reachable only from the prompt
+      // that followed a save, so every capture taken before that shipped - and
+      // every one whose remote was recovered on an earlier run - could not be
+      // tidied away here at all, which is the folder-fills-up problem the
+      // feature exists for.
+      final client = SeedFakeClient()
+        ..folder['one.txt'] = seedCaptureFixture
+        ..folder['two.txt'] = seedCaptureFixture;
+      final controller = SeedController(client: client);
+      addTearDown(controller.dispose);
+      await controller.refresh();
+
+      await controller.deleteCapture(
+        controller.files.firstWhere((f) => f.name == 'two.txt'),
+      );
+
+      expect(controller.error, isNull);
+      expect(client.folder.keys, ['one.txt']);
+      expect(controller.files.map((f) => f.name), ['one.txt']);
+    });
+
+    test('survives a re-search of the same capture', () async {
+      // The regression #264 shipped: `search` clears `savedTo`, and while the
+      // delete was gated on it a second search silently took the offer away.
+      // Clearing it is still right - the new result is not the saved one - so
+      // what this pins is that the delete no longer depends on it.
+      final client = SeedFakeClient();
+      final controller = await saveableSeedController(client);
+      await controller.save('garage');
+      await controller.search();
+
+      expect(controller.savedTo, isNull, reason: 'the new result is unsaved');
+      await controller.deleteCapture(controller.files.single);
+
+      expect(controller.error, isNull);
+      expect(client.folder, isEmpty);
+    });
+
+    test('refuses a path the listing does not name', () async {
+      // The guard is "the device said this exists", not "the caller asked
+      // nicely". Whether the user wants it gone was the dialog's question.
       final client = SeedFakeClient();
       final controller = await openedSeedController(client);
-      await controller.search();
       client.calls.clear();
 
-      await controller.deleteCapture();
+      await controller.deleteCapture((
+        path: '$seedCaptureDir/ghost.txt',
+        name: 'ghost.txt',
+        size: 1,
+      ));
 
       expect(client.calls, isEmpty);
       expect(client.folder, contains('one.txt'));
     });
 
     test('says so when the device refuses, and stays retryable', () async {
-      // The remote is already saved, so this is not a lost recovery - but a
-      // capture that silently stays in the list looks undeleted for no stated
-      // reason, and the offer has to survive so it can be taken again.
+      // A capture that silently stays in the list looks undeleted for no
+      // stated reason, and the row has to survive so it can be asked again.
       final client = SeedFakeClient()..deleteThrows = StateError('read only');
       final controller = await saveableSeedController(client);
       await controller.save('garage');
 
-      await controller.deleteCapture();
+      await controller.deleteCapture(controller.files.single);
 
       expect(controller.error, SeedFailure.deleteFailed);
       expect(controller.files.map((f) => f.name), ['one.txt']);
-      expect(controller.openedFile, isNotNull);
-      expect(controller.canDeleteCapture, isTrue);
+      expect(controller.canDeleteCaptures, isTrue);
+    });
+
+    test('says so when the file survives a delete the device took', () async {
+      // An ACK is not the file being gone. Without the stat behind it the row
+      // would vanish while the capture stayed on the device, and the folder
+      // would go on filling up with the list insisting it had not.
+      final client = SeedFakeClient();
+      final controller = await openedSeedController(client);
+      // The fake answers a stat from `existing`, so naming the capture path
+      // there is a device that reports the file after accepting the delete.
+      client.existing.add('$seedCaptureDir/one.txt');
+
+      await controller.deleteCapture(controller.files.single);
+
+      expect(client.calls, contains('delete($seedCaptureDir/one.txt)'));
+      expect(controller.error, SeedFailure.deleteFailed);
+      expect(controller.files.map((f) => f.name), [
+        'one.txt',
+      ], reason: 'the row must not vanish while the device still has the file');
+    });
+
+    test('drops the row when the device will not answer the check', () async {
+      // A stat nobody answered is not evidence against the ACK. Reporting a
+      // failure here would tell the user a delete that worked had not, and
+      // leave a row for a file that is gone.
+      final client = SeedFakeClient();
+      final controller = await openedSeedController(client);
+      client.statThrows = StateError('link busy');
+
+      await controller.deleteCapture(controller.files.single);
+
+      expect(controller.error, isNull);
+      expect(controller.files, isEmpty);
     });
   });
 }
