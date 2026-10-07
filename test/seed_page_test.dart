@@ -183,4 +183,136 @@ void main() {
       expect(save.onPressed, isNull);
     });
   });
+
+  group('the row delete', () {
+    // The row button is the only way to reach a capture that cannot be solved,
+    // so it is also the only way to destroy one. Everything below is about
+    // which file goes and on whose say.
+
+    Future<void> openTwo(WidgetTester tester, SeedFakeClient client) async {
+      client.folder['one.txt'] = seedCaptureFixture;
+      client.folder['two.txt'] = seedCaptureFixture;
+      await _openPage(tester, client);
+    }
+
+    /// The trash icon on the row titled [name].
+    Finder trashOn(String name) => find.descendant(
+      of: find.ancestor(of: find.text(name), matching: find.byType(ListTile)),
+      matching: find.byIcon(Icons.delete_outline),
+    );
+
+    testWidgets('deletes the row it was tapped on, not the first', (
+      tester,
+    ) async {
+      // The controller tests all call deleteCapture(file) directly, so they
+      // cannot see the page handing over the wrong file. With two captures
+      // listed, `files.first` instead of `file` destroys the wrong one and
+      // every one of them still passes.
+      final client = SeedFakeClient();
+      await openTwo(tester, client);
+
+      // Newest first, so two.txt is the top row and one.txt the second.
+      await tester.tap(trashOn('one.txt'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, 'Delete Capture'));
+      await tester.pumpAndSettle();
+
+      expect(client.folder.keys, ['two.txt']);
+      expect(find.text('one.txt'), findsNothing);
+      expect(find.text('two.txt'), findsOneWidget);
+    });
+
+    testWidgets('Cancel leaves the capture alone', (tester) async {
+      // The other half of the one-character guard this file exists for, on the
+      // dialog the row opens - which uses `commonCancel` rather than the
+      // post-save prompt's "Keep It".
+      final client = SeedFakeClient();
+      await openTwo(tester, client);
+
+      await tester.tap(trashOn('one.txt'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('only record of a remote'), findsOneWidget);
+      await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+      await tester.pumpAndSettle();
+
+      expect(client.folder.keys, containsAll(['one.txt', 'two.txt']));
+      expect(find.text('one.txt'), findsOneWidget);
+    });
+
+    testWidgets('the prompt names the file being deleted', (tester) async {
+      // Both dialogs share a title, so the name in the body is the only thing
+      // telling the user which capture they are about to lose.
+      final client = SeedFakeClient();
+      await openTwo(tester, client);
+
+      await tester.tap(trashOn('two.txt'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('two.txt'), findsWidgets);
+    });
+
+    testWidgets('is disabled when the rows outlived their link', (
+      tester,
+    ) async {
+      // A delete sent under a dead binding fails rather than reaching another
+      // Flipper, but the page should not offer it at all - and should say what
+      // to do instead rather than greying out in silence.
+      final client = SeedFakeClient()..connected = false;
+      await openTwo(tester, client);
+
+      final button = tester.widget<IconButton>(
+        find.ancestor(
+          of: trashOn('one.txt'),
+          matching: find.byType(IconButton),
+        ),
+      );
+      expect(button.onPressed, isNull);
+    });
+  });
+
+  group('pull to refresh', () {
+    testWidgets('does not run while a search is going', (tester) async {
+      // A pull used to overwrite SeedStage.searching: the progress bar and
+      // Stop went away while the sweep ran on, Start came back enabled, and
+      // PopScope let the page pop without the stop confirmation. The toolbar
+      // button has always been guarded; a RefreshIndicator cannot be, so the
+      // guard has to live in the handler.
+      final client = SeedFakeClient()..folder['one.txt'] = seedCaptureFixture;
+      final engine = SlowRecoverer.gate();
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: L10n.localizationsDelegates,
+          supportedLocales: L10n.supportedLocales,
+          theme: buildAppTheme(Brightness.dark, const Color(0xFFFF8A00)),
+          home: SeedPage(client: client, recoverer: engine),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('one.txt'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Recover Seed'));
+      await tester.pump();
+
+      expect(find.text('Stop'), findsOneWidget, reason: 'the search is on');
+      client.calls.clear();
+
+      await tester.fling(find.byType(ListView), const Offset(0, 400), 1000);
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+
+      expect(
+        client.calls.where((c) => c.startsWith('list(')),
+        isEmpty,
+        reason: 'the folder must not be re-listed mid-search',
+      );
+      expect(
+        find.text('Stop'),
+        findsOneWidget,
+        reason: 'the search must still be stoppable',
+      );
+
+      engine.finish();
+      await tester.pumpAndSettle();
+    });
+  });
 }

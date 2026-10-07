@@ -10,6 +10,7 @@
 // on the client rather than one of the extensions over it, so a fake that
 // stops at the frame level never gets asked and `storageStat` dies in
 // `noSuchMethod` before reaching any of this.
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flipperlib/flipperlib.dart' hide File;
@@ -65,6 +66,32 @@ class SeedFakeClient implements FlipperClient {
 
   /// Raised instead of accepting a delete, when set.
   Object? deleteThrows;
+
+  /// Connection events the controller listens to.
+  ///
+  /// Broadcast, like the real one, and never closed: the controller subscribes
+  /// for the life of the page so that a binding going dead reaches the widget
+  /// tree. [announceLink] is how a test says the link changed.
+  final _link = StreamController<FlipperConnectionState>.broadcast();
+
+  @override
+  Stream<FlipperConnectionState> get connectionStream => _link.stream;
+
+  /// Pushes a connection event, as a reconnect or a drop would. Only the fact
+  /// of an event matters to this page - it re-reads `isAlive` rather than
+  /// trusting the payload - so the fields are the minimum the type requires.
+  void announceLink() => _link.add(
+    FlipperConnectionState(
+      mode: FlipperMode.rpc,
+      device: null,
+      connected: connected,
+    ),
+  );
+
+  /// Closes the event stream. Not required - the controller cancels its own
+  /// subscription in `dispose` - but a test that builds many controllers can
+  /// call it to keep the analyzer's close-sinks lint honest.
+  void disposeLink() => _link.close();
 
   @override
   bool get isConnected => connected;
@@ -169,6 +196,14 @@ class SeedFakeClient implements FlipperClient {
       final path = request.storageDeleteRequest.path;
       calls.add('delete($path)');
       if (deleteThrows != null) throw deleteThrows!;
+      // Like the firmware: it refuses a delete of a path it does not hold
+      // rather than answering an empty success. A fake that quietly succeeded
+      // made the already-gone case - which the app hits whenever a row
+      // outlives the file it names - untestable.
+      if (!folder.containsKey(path.split('/').last) &&
+          !existing.contains(path)) {
+        throw FlipperRpcStorageNotExistException(Main());
+      }
       folder.remove(path.split('/').last);
       return const [];
     }
@@ -243,6 +278,38 @@ class FoundRecoverer implements FaaccrackRecoverer {
     frameHop: 0x29389EF7,
     hopsUsed: hops.length,
   );
+}
+
+/// An engine that does not answer until the test lets it.
+///
+/// For the states that only exist *while* a search runs - the progress bar, the
+/// Stop button, `PopScope` refusing a pop, and everything the page must not let
+/// happen in that window. A real search in a widget test finishes instantly or
+/// not at all, so neither covers them.
+class SlowRecoverer implements FaaccrackRecoverer {
+  SlowRecoverer._();
+
+  /// A recoverer that blocks until [finish] is called.
+  factory SlowRecoverer.gate() => SlowRecoverer._();
+
+  final _gate = Completer<void>();
+
+  /// Lets the search complete, so the test can settle without a pending timer.
+  void finish() {
+    if (!_gate.isCompleted) _gate.complete();
+  }
+
+  @override
+  Future<SeedResult> recover({
+    required SeedManufacturer manufacturer,
+    required int fix,
+    required List<int> hops,
+    void Function(double fraction)? onProgress,
+    bool Function()? isCancelled,
+  }) async {
+    await _gate.future;
+    return seedResult(SeedOutcome.stopped);
+  }
 }
 
 /// An engine whose answer `canSave` refuses: a seed it could not verify.

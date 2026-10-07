@@ -11,7 +11,16 @@ library;
 /// native probe are what hold the two in step.
 enum SeedManufacturer {
   faacSlh(mode: 1, label: 'FAAC SLH', protocol: 'Faac SLH'),
-  bft(mode: 2, label: 'BFT', protocol: 'KeeLoq'),
+
+  /// Solved here, but not offered here: the firmware recovers BFT itself, so
+  /// pointing a user at a search that takes minutes would send them the long
+  /// way round.
+  ///
+  /// Kept in the enum rather than removed, because [fromLabel] returning null
+  /// makes `SeedCaptureFormat.parse` refuse the whole capture as a manufacturer
+  /// this build has no key for - which would not be true, and would read as a
+  /// broken app rather than a redirection.
+  bft(mode: 2, label: 'BFT', protocol: 'KeeLoq', advertised: false),
   genius(mode: 3, label: 'Genius', protocol: 'Faac SLH'),
   erreka(mode: 4, label: 'Erreka', protocol: 'KeeLoq');
 
@@ -19,6 +28,7 @@ enum SeedManufacturer {
     required this.mode,
     required this.label,
     required this.protocol,
+    this.advertised = true,
   });
 
   /// The engine's mode number.
@@ -31,6 +41,15 @@ enum SeedManufacturer {
   /// The `Protocol` a written `.sub` carries. Two manufacturers share each: a
   /// file says which of them it is through `Manufacture`.
   final String protocol;
+
+  /// Whether the tool offers this one to a user who has captured nothing yet,
+  /// i.e. whether its name belongs in `toolSeedRecoverySubtitle`.
+  ///
+  /// A value rather than a sentence in one ARB string, so the two cannot drift:
+  /// `test/seed_models_test.dart` holds the subtitle to this field in both
+  /// directions. Unadvertised is not unsupported - the search runs exactly the
+  /// same way for a capture that names one.
+  final bool advertised;
 
   /// The counter inside a decrypted hop is 20 bits for the Faac protocols and
   /// 16 for the KeeLoq ones. Only used for formatting - the engine already

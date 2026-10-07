@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../components/dialogs/confirm.dart';
 import '../../../../components/notification.dart';
+import '../../../../services/guarded.dart';
 import '../../../../services/localization/l10n.dart';
 import '../../../../theme/theme.dart';
 import 'faaccrack_recoverer.dart';
@@ -142,17 +143,38 @@ class _SeedPageState extends State<SeedPage> {
     final file = _controller.openedFile;
     final savedTo = _controller.savedTo;
     if (file == null || savedTo == null) return;
+    await _confirmDelete(file, savedTo: savedTo);
+  }
 
+  /// Asks, then deletes [file].
+  ///
+  /// One dialog for both entry points, because the controller has one delete.
+  /// What differs is what can honestly be said: straight after a save the app
+  /// knows where the remote went and can offer to keep the capture instead;
+  /// from a row it knows neither, so the message carries the stake and the
+  /// decline is an ordinary cancel. `seedDeleteFailed` was already merged into
+  /// one string for the same reason.
+  Future<void> _confirmDelete(SeedCaptureFile file, {String? savedTo}) async {
+    final l10n = context.l10n;
     final remove = await QConfirmDialog.show(
       context,
-      title: context.l10n.seedDeleteCaptureTitle,
-      message: context.l10n.seedDeleteCaptureMessage(savedTo, file.name),
-      confirmLabel: context.l10n.seedDeleteCapture,
-      cancelLabel: context.l10n.seedKeepCapture,
+      title: l10n.seedDeleteCaptureTitle,
+      message: savedTo == null
+          ? l10n.seedDeleteRowMessage(file.name)
+          : l10n.seedDeleteCaptureMessage(savedTo, file.name),
+      confirmLabel: l10n.seedDeleteCapture,
+      cancelLabel: savedTo == null ? l10n.commonCancel : l10n.seedKeepCapture,
     );
     if (!remove || !mounted) return;
-    await _controller.deleteCapture();
-    if (mounted) _said(_controller.error);
+    await _controller.deleteCapture(file);
+    if (!mounted) return;
+    if (_said(_controller.error)) return;
+    // Not a failure, so not `_said`: the row has gone and probably is gone, but
+    // the device stopped answering before it could be checked, and the clean
+    // removal the user is looking at is the same one a verified delete gives.
+    if (_controller.deleteUnconfirmed) {
+      context.showNotification(l10n.seedDeleteUnconfirmed(file.name));
+    }
   }
 
   /// Re-reads the capture folder and says what it found.
@@ -162,6 +184,13 @@ class _SeedPageState extends State<SeedPage> {
   /// anyone sees it and the button still looks dead. The count is the thing
   /// that is always different from nothing, even when nothing changed.
   Future<void> _refresh() async {
+    // The gesture and the toolbar button share this, and the gesture cannot be
+    // disabled - a RefreshIndicator fires whatever its child's state - so the
+    // guard the button carries in `onPressed` has to be here too. Without it a
+    // pull during a search overwrote SeedStage.searching: the progress bar and
+    // Stop went away while the sweep ran on, Start came back enabled, and
+    // PopScope let the page be popped without the stop confirmation.
+    if (_searching || _listing) return;
     await _controller.refresh();
     if (!mounted) return;
     // Only for a listing that answered. A count is an assertion about the
@@ -215,42 +244,59 @@ class _SeedPageState extends State<SeedPage> {
             ),
           ],
         ),
-        body: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            // Before anything else: three operations can fail, and until this
-            // existed each of them left the page looking exactly as it had.
-            if (_controller.error != null) ...[
-              _Banner(_failureText(context, _controller.error!)),
-              const SizedBox(height: 12),
+        // Pull to re-list, the way the archive and apps pages do. Flutter's
+        // default drag devices exclude the mouse, so the toolbar button is not
+        // redundant - it is the only way to refresh on the desktop targets.
+        body: RefreshIndicator(
+          // `guarded`, as the two apps pages that pull to refresh do:
+          // RefreshIndicator does not catch a rejected onRefresh, so a throw
+          // would reach the zone as `[uncaught]` naming no operation (#23).
+          onRefresh: () => guarded('[Seed] pull to refresh', _refresh),
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            // So the gesture works when the content is shorter than the
+            // viewport, which on this page is the usual case: an empty capture
+            // folder is exactly when someone reaches for a refresh.
+            physics: const AlwaysScrollableScrollPhysics(),
+            children: [
+              // Before anything else: three operations can fail, and until this
+              // existed each of them left the page looking exactly as it had.
+              if (_controller.error != null) ...[
+                _Banner(_failureText(context, _controller.error!)),
+                const SizedBox(height: 12),
+              ],
+              // A capture that would not parse has no card to hang its reasons
+              // off, and those reasons are the actionable half - "unknown
+              // Manufacturer Nice" tells the user what to do, a red line does
+              // not.
+              if (_controller.capture == null &&
+                  _controller.captureWarnings.isNotEmpty) ...[
+                for (final warning in _controller.captureWarnings)
+                  _Hint(warning),
+                const SizedBox(height: 12),
+              ],
+              if (_controller.stage == SeedStage.loading) ...[
+                Text(
+                  context.l10n.seedLoading,
+                  style: TextStyle(fontSize: 13, color: colors.textMuted),
+                ),
+                const SizedBox(height: 12),
+              ],
+              if (_controller.capture != null) ...[
+                _CaptureCard(controller: _controller),
+                const SizedBox(height: 12),
+                _ActionBlock(
+                  controller: _controller,
+                  confirmStop: _confirmStop,
+                ),
+                const SizedBox(height: 12),
+                if (_controller.result != null)
+                  _ResultCard(controller: _controller, onSave: _save),
+                const SizedBox(height: 20),
+              ],
+              _CaptureList(controller: _controller, onDelete: _confirmDelete),
             ],
-            // A capture that would not parse has no card to hang its reasons
-            // off, and those reasons are the actionable half - "unknown
-            // Manufacturer Nice" tells the user what to do, a red line does
-            // not.
-            if (_controller.capture == null &&
-                _controller.captureWarnings.isNotEmpty) ...[
-              for (final warning in _controller.captureWarnings) _Hint(warning),
-              const SizedBox(height: 12),
-            ],
-            if (_controller.stage == SeedStage.loading) ...[
-              Text(
-                context.l10n.seedLoading,
-                style: TextStyle(fontSize: 13, color: colors.textMuted),
-              ),
-              const SizedBox(height: 12),
-            ],
-            if (_controller.capture != null) ...[
-              _CaptureCard(controller: _controller),
-              const SizedBox(height: 12),
-              _ActionBlock(controller: _controller, confirmStop: _confirmStop),
-              const SizedBox(height: 12),
-              if (_controller.result != null)
-                _ResultCard(controller: _controller, onSave: _save),
-              const SizedBox(height: 20),
-            ],
-            _CaptureList(controller: _controller),
-          ],
+          ),
         ),
       ),
     );
@@ -482,14 +528,19 @@ class _ResultCard extends StatelessWidget {
 
 /// The captures the device is holding.
 class _CaptureList extends StatelessWidget {
-  const _CaptureList({required this.controller});
+  const _CaptureList({required this.controller, required this.onDelete});
 
   final SeedController controller;
+  final void Function(SeedCaptureFile file) onDelete;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final l10n = context.l10n;
+    // Not just "searching": a read carries a two-minute timeout, so deleting
+    // the row being read ended with the read reporting a failure for a file the
+    // list had already dropped.
+    final busy = controller.busy;
 
     if (controller.files.isEmpty) {
       return Column(
@@ -528,9 +579,30 @@ class _CaptureList extends StatelessWidget {
               file.name,
               style: TextStyle(fontSize: 13, color: colors.textPrimary),
             ),
-            onTap: controller.stage == SeedStage.searching
-                ? null
-                : () => controller.open(file),
+            onTap: busy ? null : () => controller.open(file),
+            // On the row, because that is where the whole folder is visible -
+            // and where a capture that cannot be solved at all can be reached,
+            // which the post-save prompt by construction never could.
+            //
+            // Disabled rather than hidden once the link these rows were listed
+            // over has gone: a button that vanishes reads as a feature that is
+            // not there, and the banner says what to do instead.
+            trailing: IconButton(
+              tooltip: l10n.seedDeleteCapture,
+              iconSize: 18,
+              visualDensity: VisualDensity.compact,
+              color: colors.textMuted,
+              onPressed: busy || !controller.canDeleteCaptures
+                  ? null
+                  : () => onDelete(file),
+              icon: controller.deleting(file)
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.delete_outline),
+            ),
           ),
       ],
     );
@@ -744,6 +816,7 @@ String _failureText(BuildContext context, SeedFailure failure) =>
       SeedFailure.nameUnchecked => context.l10n.seedSaveFailed,
       SeedFailure.saveFailed => context.l10n.seedSaveFailed,
       SeedFailure.deleteFailed => context.l10n.seedDeleteFailed,
+      SeedFailure.listingStale => context.l10n.seedListingStale,
     };
 
 /// A failure, said once, where the user is already looking.
