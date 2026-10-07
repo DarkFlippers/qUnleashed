@@ -66,10 +66,17 @@ typedef struct {
 // permute among themselves with the size unchanged, and the Dart mirror in
 // `lib/services/native.dart` is hand-written: swap `permille` with `abort` on
 // one side only and Stop is written into the progress field, so the button does
-// nothing and the bar never moves. Nothing else in the build can see that -
-// unlike faaccrack, this library exports no size for the Dart side to check
-// against, so these assertions and `test/native_struct_mirror_test.dart` are
-// the whole of the guard.
+// nothing and the bar never moves.
+//
+// This library is the thinly covered one, which is why it has these at all.
+// faaccrack exports its struct sizes and its Dart binding checks them before it
+// reads a result, in release; nothing equivalent exists here. And no CI job on a
+// pull request compiles this header - the only native compile there is
+// faaccrack's engine probe - so these assertions first fire on a local build or
+// a release job. Until then `test/native_struct_mirror_test.dart` is the cover,
+// and it checks that these lines are present and say what they should rather
+// than assuming a compiler read them. See
+// `docs/adr/0015-hand-written-ffi-bindings.md`.
 #define QUNLEASHED_HN_PROGRESS_LAYOUT_CHANGED \
   "qunleashed_hn_progress layout changed - update the Dart mirror"
 _Static_assert(sizeof(qunleashed_hn_progress) == 12,

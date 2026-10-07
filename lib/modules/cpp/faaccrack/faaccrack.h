@@ -163,10 +163,10 @@ enum faaccrack_status {
 // `NativeProgress` in lib/services/native.dart declares all four, so under
 // hardnested the last one is slack it never touches.
 //
-// The two C structs stay separate even so - coupling two independent libraries'
-// ABIs to share three words is a worse trade than one Dart declaration with
-// four. What the mirror does couple is the order: this struct has to stay equal
-// to it and hardnested's a prefix of it, so a field added *there* would land on
+// The two C structs stay separate even so; the reasoning and the alternatives
+// are in `docs/adr/0015-hand-written-ffi-bindings.md`. What the shared mirror
+// does couple is the order: this struct has to stay equal to it and
+// hardnested's a prefix of it, so a field added *there* would land on
 // `threads_started` and be read as it. `test/native_struct_mirror_test.dart`
 // refuses both halves of that.
 //

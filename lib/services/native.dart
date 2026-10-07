@@ -49,8 +49,9 @@ DynamicLibrary openNativeLibrary(String base) {
 /// report that as [NativeEngineUnavailable]. `lookupFunction` signals it with a
 /// bare `ArgumentError`, which this codebase cannot tell apart from an FFI
 /// allocation failure or a refused dictionary entry - `_staticFailureNote` in
-/// `recover_controller.dart` says so - so every lookup goes through here and
-/// the caller gets one answer whichever way the build is broken.
+/// `recover_controller.dart` is one example of that collision - so every lookup
+/// goes through here and the caller gets one answer whichever way the build is
+/// broken.
 ///
 /// It has happened: the Apple builds shipped without these symbols at all. See
 /// the note on `QUNLEASHED_EXPORT` in `lib/modules/cpp/mfkey32/nested_bridge.c`.
@@ -64,6 +65,13 @@ F lookupNativeFunction<F extends Function>(F Function() lookup) {
     throw NativeEngineUnavailable(e);
   }
 }
+
+// The libraries this app ships, one opener each.
+//
+// Named here rather than beside the feature that uses each one because
+// [openNativeLibrary] is where the per-platform rules live, and a second copy
+// of them is how one platform ends up loading a library a different way from
+// the others. Knowing a library's base name is not knowing what it does.
 
 /// The `qunleashed_mfkey32` library: mfkey32 + nested/static recovery entry
 /// points (see `lib/modules/cpp/mfkey32`).
@@ -83,8 +91,7 @@ DynamicLibrary openFaaccrackNativeLibrary() =>
 /// A bundled native library, or a symbol in it, could not be loaded.
 ///
 /// Distinct from a failure while running an engine: this one means the build is
-/// missing a component, and nothing the user does with the card or the remote
-/// will help.
+/// missing a component, and nothing the user does will help.
 class NativeEngineUnavailable implements Exception {
   const NativeEngineUnavailable(this.cause);
 
@@ -96,51 +103,71 @@ class NativeEngineUnavailable implements Exception {
 
 /// The window a running native engine reports through, and the way to stop one.
 ///
-/// Shared memory rather than an FFI callback: an engine reports from its own
-/// worker threads, and a callback would have to be marshalled back to the
-/// isolate that owns it. The caller allocates this, hands over the address, and
-/// reads it on a timer while the engine blocks inside another isolate - native
-/// memory is process-scoped, so both see the same words.
+/// Why it is polled shared memory and not an FFI callback, and why the C fields
+/// are `volatile` and not `_Atomic`, is in
+/// `lib/modules/cpp/hardnested/qunleashed_hn_progress.h`, which both headers
+/// treat as the canonical account. What matters on this side: the caller
+/// allocates it, **zeroed** - both headers state that as a requirement, not a
+/// courtesy, which is why every call site uses `calloc` - hands over the
+/// address, and reads it on a timer while the engine blocks in another isolate.
 ///
-/// One declaration for both engines, which is the whole reason it is here.
+/// One Dart declaration for two C structs that stay separate.
 /// `qunleashed_hn_progress` is the first three words; `struct
-/// faaccrack_progress` is all four. The C structs stay separate - coupling two
-/// independent libraries' ABIs to share three words is a worse trade than one
-/// Dart mirror with four - so this is deliberately the *longer* of the two:
+/// faaccrack_progress` is all four, and this mirror is deliberately the longer
+/// of the two. Under hardnested the fourth word is slack the engine *cannot*
+/// reach - it only ever holds a pointer to the three words its own header
+/// declares - so the extra four bytes are allocated and never touched. Under
+/// faaccrack all four are live in the ABI, and the bridge's exported
+/// `qunleashed_faaccrack_progress_size` is checked against `sizeOf` before any
+/// result is read, in release.
 ///
-///  * Under hardnested the fourth word is slack. `calloc` zeroes it, the engine
-///    never writes it, and [threadsStarted] therefore reads 0 - which is why no
-///    hardnested caller may read that field. The engine reads only the twelve
-///    bytes its own header declares, so the extra four are never touched.
-///  * Under faaccrack all four are live, and the bridge's exported
-///    `qunleashed_faaccrack_progress_size` is checked against `sizeOf` at
-///    runtime, in release, before any result is read.
+/// So adding a field here is free for hardnested and an ABI change for
+/// faaccrack. `docs/adr/0015-hand-written-ffi-bindings.md` is the decision and
+/// the alternatives; `test/native_struct_mirror_test.dart` and
+/// `test/native_progress_layout_test.dart` are what hold it.
 ///
-/// Adding a field here is therefore free for hardnested and an ABI change for
-/// faaccrack. `test/native_struct_mirror_test.dart` holds the order and the
-/// widths to both headers, in both directions.
+/// The per-field notes below say what is *shared*. Where the two engines differ
+/// the difference is called out, because `faaccrack.h` is explicit that these
+/// semantics must not be carried across.
 final class NativeProgress extends Struct {
-  /// Engine -> caller. Completion in thousandths, 0..1000, of whichever phase
-  /// the engine says it is reporting. Both headers describe what theirs covers;
-  /// neither claims a figure before [started].
+  /// Engine -> caller. Completion in thousandths, 0..1000. What it is a
+  /// fraction *of* differs - faaccrack's is the seed space handed out,
+  /// hardnested's the brute-force phase only - and neither publishes a figure
+  /// before [started]. Each header says what its own covers.
   @Uint32()
   external int permille;
 
-  /// Caller -> engine. Set non-zero to ask it to stop. Neither engine clears
-  /// it, and neither stops instantly: the grain is one block for hardnested and
-  /// one claimed chunk for faaccrack.
+  /// Caller -> engine. Set non-zero to ask it to stop; neither engine clears
+  /// it, so a channel reused after a stop refuses the next search.
+  ///
+  /// Neither stops instantly, and the two are not comparable. faaccrack reads
+  /// it once per claimed chunk, which is milliseconds. hardnested reads it per
+  /// block *once inside the brute force* and not at all during the phases
+  /// before it - table decompression, nonce ingestion, candidate generation -
+  /// so a stop during one of those waits it out. That has already reached a
+  /// user as a button that greyed out while the attack carried on.
   @Uint32()
   external int abort;
 
-  /// Engine -> caller. Latches when the engine begins publishing, so a caller
+  /// Engine -> caller. Latches once the engine begins publishing, so a caller
   /// can tell "nothing has begun" from "zero percent of something that has".
-  /// Not a liveness signal.
+  /// Not a liveness signal, and not the same moment on both: faaccrack sets it
+  /// before the workers launch, hardnested when a percentage is first
+  /// published - which is after those long early phases.
   @Uint32()
   external int started;
 
-  /// Engine -> caller, **faaccrack only**. Workers that actually started, which
-  /// may be fewer than the count asked for. Reads 0 under hardnested, whose C
-  /// struct ends one word earlier.
+  /// Engine -> caller. Workers that actually started, which may be fewer than
+  /// the count asked for.
+  ///
+  /// Zero means no count has been published, on either engine: hardnested never
+  /// publishes one, and faaccrack publishes at least 1 once the sweep begins -
+  /// it sweeps on the calling thread if no worker could be created. So zero is
+  /// never "zero workers are sweeping", and nothing here has to know which
+  /// engine filled the struct.
+  ///
+  /// No Dart caller reads it yet. It is declared because it is what makes this
+  /// mirror the 16 bytes faaccrack's ABI requires.
   @Uint32()
   external int threadsStarted;
 }
@@ -170,8 +197,10 @@ final class NativeProgress extends Struct {
 /// here - an extra local with a closure over it would reintroduce the bug for
 /// every caller at once.
 ///
-/// Every engine goes through it, including the ones whose signatures carry no
-/// callback today and so cannot reach the hazard yet. That is the point: the
-/// first one to gain an `onProgress` does not have to rediscover it.
+/// Every spawn goes through it, including the recoverers whose signatures carry
+/// no callback today and so cannot reach the hazard yet. That is the point: the
+/// first one to gain an `onProgress` does not have to rediscover it. The one
+/// native caller that does not appear here is `known_key_filter.dart`, which
+/// runs its engine on the calling isolate and spawns nothing.
 Future<R> spawnAttackIsolate<P, R>(R Function(P) body, P payload) =>
     Isolate.run(() => body(payload));

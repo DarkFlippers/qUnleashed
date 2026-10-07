@@ -17,7 +17,6 @@
 import 'dart:async';
 import 'dart:ffi';
 import 'dart:io';
-import 'dart:isolate';
 
 import 'package:ffi/ffi.dart';
 import 'package:qunleashed/pages/tools/mifare/nested_models.dart';
@@ -54,7 +53,8 @@ typedef _Job = ({
 });
 
 /// Runs the attack. Its own function so the spawned closure can reach nothing
-/// but the payload - the same reason the app has `spawnAttackIsolate`.
+/// but the payload - which is the rule `spawnAttackIsolate` exists to keep, and
+/// `_spawn` below goes through it rather than restating it here.
 int _attack(_Job job) {
   final lib = DynamicLibrary.open(job.dll);
   final recover = lib.lookupFunction<_RecoverNative, _RecoverDart>(
@@ -70,7 +70,7 @@ int _attack(_Job job) {
   );
 }
 
-Future<int> _spawn(_Job job) => Isolate.run(() => _attack(job));
+Future<int> _spawn(_Job job) => spawnAttackIsolate(_attack, job);
 
 Future<void> main(List<String> args) async {
   final dllPath = args[0];

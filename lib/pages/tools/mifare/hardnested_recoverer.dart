@@ -210,10 +210,8 @@ class NativeHardnestedRecoverer implements HardnestedRecoverer {
     // the other side is blocked inside the engine. Native memory is
     // process-scoped, so the address is all that has to cross.
     //
-    // Four words where `qunleashed_hn_progress` declares three: the mirror is
-    // shared with faaccrack, whose struct carries one more. The engine reads
-    // only the twelve bytes its own header declares, and `calloc` has already
-    // zeroed the fourth, which nothing on this path reads.
+    // Four words where `qunleashed_hn_progress` declares three - see
+    // [NativeProgress], which is shared with faaccrack.
     final channel = calloc<NativeProgress>();
     final payload = _HardnestedPayload(
       cuid: cuid,

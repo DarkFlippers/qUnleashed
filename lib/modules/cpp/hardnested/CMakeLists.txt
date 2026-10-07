@@ -42,6 +42,10 @@ target_include_directories(qunleashed_hardnested PRIVATE
 
 set_target_properties(qunleashed_hardnested PROPERTIES
   C_STANDARD 11
+  # Required, not preferred: qunleashed_hn_progress.h asserts its own layout
+  # with _Static_assert, so a toolchain that silently decayed to C99 would turn
+  # a layout guard into a compile error with a misleading message.
+  C_STANDARD_REQUIRED ON
   POSITION_INDEPENDENT_CODE ON
 )
 

@@ -31,6 +31,8 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'native_sources.dart';
+
 /// The bridges whose exported symbols Dart resolves at runtime. They all share
 /// the macro, so they all carry the same risk the day one of them stops being
 /// built as a shared library.
@@ -116,6 +118,14 @@ void main() {
     // at each site. What this pins is that the two appear the same number of
     // times per file. It cannot see that a given wrapper encloses a given
     // lookup; a file with one of each, wrongly arranged, would pass.
+    expect(
+      File(nativeBindingPath).existsSync(),
+      isTrue,
+      reason:
+          'the exemption below is a path comparison, so a move that this '
+          'constant did not follow would stop matching silently rather than '
+          'fail here',
+    );
     final offenders = <String>[];
     for (final entity in Directory('lib').listSync(recursive: true)) {
       if (entity is! File || !entity.path.endsWith('.dart')) continue;
@@ -124,9 +134,7 @@ void main() {
       // of its own, governed by its own repository.
       if (normalised.contains('lib/modules/')) continue;
       // The wrapper's own definition is the one bare call there should be.
-      if (normalised.endsWith('lib/services/native.dart')) {
-        continue;
-      }
+      if (normalised.endsWith(nativeBindingPath)) continue;
       final source = entity.readAsStringSync();
       final lookups = '.lookupFunction<'.allMatches(source).length;
       final wrapped = 'lookupNativeFunction('.allMatches(source).length;
