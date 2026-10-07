@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/theme.dart';
+import '../cancel_button.dart';
 
 class SyncProgressBar extends StatelessWidget {
   const SyncProgressBar({
@@ -10,6 +11,7 @@ class SyncProgressBar extends StatelessWidget {
     required this.progress,
     required this.color,
     this.fileProgress,
+    this.onCancel,
   });
 
   final IconData icon;
@@ -17,6 +19,7 @@ class SyncProgressBar extends StatelessWidget {
   final double progress;
   final double? fileProgress;
   final Color color;
+  final VoidCallback? onCancel;
 
   @override
   Widget build(BuildContext context) {
@@ -50,6 +53,11 @@ class SyncProgressBar extends StatelessWidget {
                       : '${(progress * 100).round()}% / '
                             '${(fileProgress! * 100).round()}%',
                   style: TextStyle(color: colors.textMuted, fontSize: 11),
+                ),
+              if (onCancel != null)
+                Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: QCancelButton(onCancel: onCancel, size: 18),
                 ),
             ],
           ),

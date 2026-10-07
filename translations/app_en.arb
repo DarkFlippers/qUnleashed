@@ -6232,6 +6232,16 @@
     "description": "Progress line while the files of a batch transfer are being enumerated."
   },
 
+  "fmCancelling": "Cancelling…",
+  "@fmCancelling": {
+    "description": "Progress line shown after the user asked to stop a transfer, until it stops."
+  },
+
+  "fmTransferCancelled": "Transfer cancelled",
+  "@fmTransferCancelled": {
+    "description": "Toast shown when the user stopped a download or upload."
+  },
+
   "fmConflictTitle": "Replace or Skip Files",
   "@fmConflictTitle": {
     "description": "Title of the dialog shown when files being copied to the Flipper already exist there."

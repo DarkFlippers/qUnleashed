@@ -81,9 +81,11 @@ class _ReplaceFilesDialogState extends State<ReplaceFilesDialog> {
         const ConflictChoice.skip(),
       ),
     ];
-    Navigator.of(context).pop(
-      ConflictResolution(choices: choices, skipIdentical: _skipIdentical),
+    final resolution = ConflictResolution(
+      choices: choices,
+      skipIdentical: _skipIdentical,
     );
+    Navigator.of(context).pop(resolution);
   }
 
   String _folderOf(String relative) {

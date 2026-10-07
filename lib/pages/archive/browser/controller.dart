@@ -1,5 +1,6 @@
 import '../../../services/localization/l10n.dart';
 
+import 'dart:async';
 import 'dart:io' as io;
 
 import 'package:crypto/crypto.dart';
@@ -12,11 +13,20 @@ import '../../../services/storage/paths.dart';
 import '../../../services/logging.dart';
 
 class RemoteEntry {
-  RemoteEntry({required this.name, required this.size, required this.isDir});
+  RemoteEntry({
+    required this.name,
+    required this.size,
+    required this.isDir,
+    this.pending = false,
+  });
 
   final String name;
   final int size;
   final bool isDir;
+
+  /// Still arriving: the row stands for a transfer into this folder and is
+  /// not an entry the Flipper has listed yet.
+  final bool pending;
 
   bool get isHidden => name.startsWith('.');
 
@@ -75,12 +85,11 @@ class ConflictResolution {
 
 /// Asked once per transfer, before anything is written. A null answer skips
 /// every conflict.
-typedef ConflictResolver =
-    Future<ConflictResolution?> Function(
-      String destination,
-      int items,
-      List<FileConflict> conflicts,
-    );
+typedef ConflictResolver = Future<ConflictResolution?> Function(
+  String destination,
+  int items,
+  List<FileConflict> conflicts,
+);
 
 typedef _Listing = Map<String, ({bool isDir, int size})>;
 
@@ -135,8 +144,10 @@ class _Transfer {
 
   final String dir;
   final bool upload;
+  final Map<String, RemoteEntry> pending = {};
   String? label;
   double progress = 0;
+  bool cancelled = false;
   String? busy;
   double busyProgress = 0;
 }
@@ -159,7 +170,9 @@ class FileManagerController extends ChangeNotifier {
   String? _lastFailure;
   List<RemoteEntry> _entries = const [];
   bool _showHidden = true;
-  _Transfer? _current;
+  Future<void> _transfers = Future<void>.value();
+  final Set<_Transfer> _active = {};
+  _Transfer? _batch;
   FileSortMode _sortMode = FileSortMode.type;
   bool _sortAscending = true;
   FileViewMode _viewMode = FileViewMode.list;
@@ -184,17 +197,32 @@ class FileManagerController extends ChangeNotifier {
   String? get lastFailure => _lastFailure;
 
   bool get showHidden => _showHidden;
-  double get transferProgress => _current?.progress ?? 0;
-  String? get transferLabel => _current?.label;
-  bool get transferIsUpload => _current?.upload ?? false;
+  double get transferProgress => _batch?.progress ?? 0;
+  String? get transferLabel => _batch?.label;
+  bool get transferIsUpload => _batch?.upload ?? false;
+  bool get cancelRequested => _batch?.cancelled ?? false;
+
+  void cancelTransfer() => _cancel(_batch);
+
+  void cancelEntry(String name) => _cancel(_onEntry(name));
+
+  bool entryCancelling(String name) => _onEntry(name)?.cancelled ?? false;
 
   /// Inline transfer progress (0..1) for the entry named [name] in the current
   /// directory while a transfer is working on it, or null when idle.
-  double? entryProgress(String name) {
-    final t = _current;
-    return t != null && t.dir == _path && t.busy == name
-        ? t.busyProgress
-        : null;
+  double? entryProgress(String name) => _onEntry(name)?.busyProgress;
+
+  void _cancel(_Transfer? transfer) {
+    if (transfer == null || transfer.cancelled) return;
+    transfer.cancelled = true;
+    _notify();
+  }
+
+  _Transfer? _onEntry(String name) {
+    for (final t in _active) {
+      if (t.dir == _path && t.busy == name) return t;
+    }
+    return null;
   }
 
   FileSortMode get sortMode => _sortMode;
@@ -232,7 +260,14 @@ class FileManagerController extends ChangeNotifier {
 
   List<RemoteEntry> _filtered(bool Function(RemoteEntry) test) {
     final q = _search.trim().toLowerCase();
-    final list = _entries.where((e) {
+    final listed = _entries.map((e) => e.name).toSet();
+    final all = [
+      ..._entries,
+      for (final t in _active)
+        if (t.dir == _path)
+          ...t.pending.values.where((e) => !listed.contains(e.name)),
+    ];
+    final list = all.where((e) {
       if (!_showHidden && e.isHidden) return false;
       if (q.isNotEmpty && !e.name.toLowerCase().contains(q)) return false;
       return test(e);
@@ -326,26 +361,59 @@ class FileManagerController extends ChangeNotifier {
   Future<T> _task<T>(Future<T> Function() body) =>
       _client.runTask(FlipperRequestPriority.background, body);
 
+  /// Runs one transfer. Queued transfers wait for each other and own the
+  /// progress bar; an unqueued one - a file opened or shared - runs alongside
+  /// and shows only on its own row, so a long batch never blocks a tap.
   Future<T> _transfer<T>({
     required String dir,
     required bool upload,
     required bool batch,
+    bool queued = true,
     required Future<T> Function(_Transfer t) body,
-  }) => _task(() async {
-    final t = _Transfer(
-      dir: dir,
-      upload: upload,
-      label: batch ? l10n.fmPreparingTransfer : null,
-    );
-    _current = t;
-    _notify();
-    try {
-      return await body(t);
-    } finally {
-      if (identical(_current, t)) _current = null;
+  }) {
+    Future<T> run() => _task(() async {
+      final t = _Transfer(
+        dir: dir,
+        upload: upload,
+        label: batch ? l10n.fmPreparingTransfer : null,
+      );
+      _active.add(t);
+      if (queued) _batch = t;
       _notify();
+      try {
+        return await body(t);
+      } finally {
+        _active.remove(t);
+        if (identical(_batch, t)) _batch = null;
+        _notify();
+      }
+    });
+    if (!queued) return run();
+    final previous = _transfers;
+    final released = Completer<void>();
+    _transfers = released.future;
+    return previous.then((_) => run()).whenComplete(released.complete);
+  }
+
+  void _throwIfCancelled(_Transfer t, String path) {
+    if (!t.cancelled) return;
+    throw t.upload
+        ? FlipperWriteCancelledException(path)
+        : FlipperReadCancelledException(path);
+  }
+
+  void _track(_Transfer t, String item, {bool? isDir, int size = 0}) {
+    t.busy = item;
+    if (isDir != null) {
+      t.pending[item] = RemoteEntry(
+        name: item,
+        size: size,
+        isDir: isDir,
+        pending: true,
+      );
     }
-  });
+    _notify();
+  }
 
   void _transferFailed(String what, String path, Object e) {
     _error = _lastFailure = '$e';
@@ -357,6 +425,7 @@ class FileManagerController extends ChangeNotifier {
     _Transfer t,
     List<_Job> jobs, {
     required String Function(String name, int index, int total) label,
+    Map<String, bool>? pendingDirs,
     ConflictResolver? resolve,
   }) async {
     final outcome = _Outcome();
@@ -402,6 +471,7 @@ class FileManagerController extends ChangeNotifier {
     if (jobs.length <= 1) t.label = null;
     for (var i = 0; i < jobs.length; i++) {
       final job = jobs[i];
+      _throwIfCancelled(t, job.remote);
       progress.start(job);
       final replacing = job.existingSize != null && !renamed.containsKey(job);
       if (skipped.contains(job) ||
@@ -412,12 +482,15 @@ class FileManagerController extends ChangeNotifier {
         continue;
       }
       final target = renamed[job] ?? job.remote;
+      final row =
+          renamed.containsKey(job) && _relative(t.dir, job.remote) == job.item
+          ? basename(target)
+          : job.item;
       if (jobs.length > 1) {
         t.label = label(basename(target), i + 1, jobs.length);
       }
-      t.busy = job.item;
       t.busyProgress = progress.item;
-      _notify();
+      _track(t, row, isDir: pendingDirs?[job.item], size: progress.itemTotal);
       final ok = await job.run(target, (p) {
         progress.file = p;
         publish();
@@ -478,6 +551,7 @@ class FileManagerController extends ChangeNotifier {
   ) async => parent?[name]?.isDir == true ? _listing(remoteDir) : null;
 
   Future<List<int>?> _read(
+    _Transfer t,
     String remotePath,
     int expectedSize,
     void Function(double progress) onProgress,
@@ -487,7 +561,10 @@ class FileManagerController extends ChangeNotifier {
         remotePath,
         expectedSize: expectedSize,
         onProgress: onProgress,
+        isCancelled: () => t.cancelled,
       );
+    } on FlipperCancelledException {
+      rethrow;
     } catch (e) {
       _transferFailed('read', remotePath, e);
       return null;
@@ -495,6 +572,7 @@ class FileManagerController extends ChangeNotifier {
   }
 
   Future<bool> _write(
+    _Transfer t,
     String remotePath,
     List<int> data,
     void Function(double progress) onProgress,
@@ -504,8 +582,11 @@ class FileManagerController extends ChangeNotifier {
         remotePath,
         data,
         onProgress: onProgress,
+        isCancelled: () => t.cancelled,
       );
       return true;
+    } on FlipperCancelledException {
+      rethrow;
     } catch (e) {
       _transferFailed('write', remotePath, e);
       return false;
@@ -609,14 +690,19 @@ class FileManagerController extends ChangeNotifier {
       upload: true,
       batch: false,
       body: (t) async {
-        final outcome = await _runJobs(t, [
-          _Job(
-            item: name,
-            remote: remotePath,
-            size: data.length,
-            run: (target, onProgress) => _write(target, data, onProgress),
-          ),
-        ], label: l10n.fmUploadingOf);
+        final outcome = await _runJobs(
+          t,
+          [
+            _Job(
+              item: name,
+              remote: remotePath,
+              size: data.length,
+              run: (target, onProgress) => _write(t, target, data, onProgress),
+            ),
+          ],
+          label: l10n.fmUploadingOf,
+          pendingDirs: {name: false},
+        );
         return outcome.failed.isEmpty;
       },
     );
@@ -689,18 +775,25 @@ class FileManagerController extends ChangeNotifier {
         final here = await _listing(dir);
         final dirs = <String>[];
         final jobs = <_Job>[];
+        final isDir = <String, bool>{};
         final unlisted = <String>{};
         for (final source in sources) {
+          _throwIfCancelled(t, source.path);
           final name = basename(source.path);
           final dest = _join(dir, name);
+          isDir[name] = source.isDir;
           if (!source.isDir) {
-            jobs.add(_copyJob(source.path, dest, source.size, name, here, move));
+            jobs.add(
+              _copyJob(t, source.path, dest, source.size, name, here, move),
+            );
             continue;
           }
+          if (sources.length == 1) _track(t, name, isDir: true);
           final existing = await _existingDir(here, name, dest);
           final itemDirs = <String>[];
           final itemJobs = <_Job>[];
           final listed = await _planCopy(
+            t,
             source.path,
             dest,
             itemDirs,
@@ -717,12 +810,14 @@ class FileManagerController extends ChangeNotifier {
           }
         }
         for (final d in dirs) {
+          _throwIfCancelled(t, d);
           await _mkdirQuietly(d);
         }
         final outcome = await _runJobs(
           t,
           jobs,
           label: l10n.fmCopyingOf,
+          pendingDirs: isDir,
           resolve: resolve,
         );
         var failures = unlisted.length + outcome.failedItems.length;
@@ -743,6 +838,7 @@ class FileManagerController extends ChangeNotifier {
   }
 
   Future<bool> _planCopy(
+    _Transfer t,
     String fromDir,
     String toDir,
     List<String> dirs,
@@ -759,11 +855,13 @@ class FileManagerController extends ChangeNotifier {
       );
       for (final r in batch.items) {
         for (final f in r.file) {
+          _throwIfCancelled(t, fromDir);
           final from = _join(fromDir, f.name);
           final to = _join(toDir, f.name);
           if (f.type == File_FileType.DIR) {
             final child = await _existingDir(existing, f.name, to);
             final listed = await _planCopy(
+              t,
               from,
               to,
               dirs,
@@ -774,11 +872,13 @@ class FileManagerController extends ChangeNotifier {
             );
             if (!listed) return false;
           } else {
-            jobs.add(_copyJob(from, to, f.size, item, existing, move));
+            jobs.add(_copyJob(t, from, to, f.size, item, existing, move));
           }
         }
       }
       return true;
+    } on FlipperCancelledException {
+      rethrow;
     } catch (e) {
       _transferFailed('list', fromDir, e);
       return false;
@@ -786,6 +886,7 @@ class FileManagerController extends ChangeNotifier {
   }
 
   _Job _copyJob(
+    _Transfer t,
     String from,
     String to,
     int size,
@@ -799,9 +900,9 @@ class FileManagerController extends ChangeNotifier {
     existing: existing,
     sourceMd5: () => _remoteMd5(from),
     run: (target, onProgress) async {
-      final bytes = await _read(from, size, (p) => onProgress(p / 2));
+      final bytes = await _read(t, from, size, (p) => onProgress(p / 2));
       if (bytes == null) return false;
-      if (!await _write(target, bytes, (p) => onProgress(0.5 + p / 2))) {
+      if (!await _write(t, target, bytes, (p) => onProgress(0.5 + p / 2))) {
         return false;
       }
       return !move || await delete(from);
@@ -831,6 +932,7 @@ class FileManagerController extends ChangeNotifier {
     dir: dirname(remotePath),
     upload: false,
     batch: false,
+    queued: false,
     body: (t) async {
       String? saved;
       await _runJobs(t, [
@@ -839,7 +941,7 @@ class FileManagerController extends ChangeNotifier {
           remote: remotePath,
           size: expectedSize,
           run: (_, onProgress) async {
-            final bytes = await _read(remotePath, expectedSize, onProgress);
+            final bytes = await _read(t, remotePath, expectedSize, onProgress);
             if (bytes == null) return false;
             saved = await _saveLocal(remotePath, bytes, () async {
               final dir = localFolder ?? await _defaultDownloadDir(remotePath);
@@ -868,15 +970,18 @@ class FileManagerController extends ChangeNotifier {
       dir: dir,
       upload: false,
       batch: entries.length > 1,
+      queued: entries.length != 1 || entries.single.isDir,
       body: (t) async {
         final sep = io.Platform.pathSeparator;
+        if (entries.length == 1) _track(t, entries.single.name);
         final jobs = <_Job>[];
         for (final e in entries) {
           final remote = _join(dir, e.name);
           final local = '$destDir$sep${e.name}';
+          _throwIfCancelled(t, remote);
           final plan = <(String, String, int)>[];
           if (e.isDir) {
-            await _planDownload(remote, local, plan);
+            await _planDownload(t, remote, local, plan);
           } else {
             plan.add((remote, local, e.size));
           }
@@ -887,7 +992,7 @@ class FileManagerController extends ChangeNotifier {
                 remote: from,
                 size: size,
                 run: (_, onProgress) async {
-                  final bytes = await _read(from, size, onProgress);
+                  final bytes = await _read(t, from, size, onProgress);
                   if (bytes == null) return false;
                   return await _saveLocal(from, bytes, () async => to) != null;
                 },
@@ -904,6 +1009,7 @@ class FileManagerController extends ChangeNotifier {
   /// Recursively lists [remoteDir], creating local directories (so empty
   /// folders survive) and appending every file to [out] as (remote, local, size).
   Future<void> _planDownload(
+    _Transfer t,
     String remoteDir,
     String localDir,
     List<(String, String, int)> out,
@@ -917,15 +1023,18 @@ class FileManagerController extends ChangeNotifier {
       );
       for (final r in batch.items) {
         for (final f in r.file) {
+          _throwIfCancelled(t, remoteDir);
           final childRemote = _join(remoteDir, f.name);
           final childLocal = '$localDir$sep${f.name}';
           if (f.type == File_FileType.DIR) {
-            await _planDownload(childRemote, childLocal, out);
+            await _planDownload(t, childRemote, childLocal, out);
           } else {
             out.add((childRemote, childLocal, f.size));
           }
         }
       }
+    } on FlipperCancelledException {
+      rethrow;
     } catch (e) {
       _transferFailed('list', remoteDir, e);
     }
@@ -947,14 +1056,19 @@ class FileManagerController extends ChangeNotifier {
         final here = await _listing(dir);
         final dirs = <String>[];
         final jobs = <_Job>[];
+        final isDir = <String, bool>{};
         var missing = 0;
         for (final local in localPaths) {
+          _throwIfCancelled(t, local);
           final name = basename(_normalize(local.replaceAll('\\', '/')));
           final remote = _join(dir, name);
           switch (await io.FileSystemEntity.type(local)) {
             case io.FileSystemEntityType.directory:
+              isDir[name] = true;
+              if (localPaths.length == 1) _track(t, name, isDir: true);
               final existing = await _existingDir(here, name, remote);
               await _planUpload(
+                t,
                 io.Directory(local),
                 remote,
                 dirs,
@@ -963,8 +1077,9 @@ class FileManagerController extends ChangeNotifier {
                 existing,
               );
             case io.FileSystemEntityType.file:
+              isDir[name] = false;
               final size = await io.File(local).length();
-              jobs.add(_uploadJob(local, remote, size, name, here));
+              jobs.add(_uploadJob(t, local, remote, size, name, here));
             default:
               _error = _lastFailure = l10n.fmLocalNotFound(local);
               _notify();
@@ -972,12 +1087,14 @@ class FileManagerController extends ChangeNotifier {
           }
         }
         for (final d in dirs) {
+          _throwIfCancelled(t, d);
           await _mkdirQuietly(d);
         }
         final outcome = await _runJobs(
           t,
           jobs,
           label: l10n.fmUploadingOf,
+          pendingDirs: isDir,
           resolve: resolve,
         );
         return (
@@ -989,6 +1106,7 @@ class FileManagerController extends ChangeNotifier {
   }
 
   Future<void> _planUpload(
+    _Transfer t,
     io.Directory localDir,
     String remoteDir,
     List<String> dirs,
@@ -998,19 +1116,21 @@ class FileManagerController extends ChangeNotifier {
   ) async {
     dirs.add(remoteDir);
     await for (final entity in localDir.list(followLinks: false)) {
+      _throwIfCancelled(t, remoteDir);
       final name = basename(entity.path.replaceAll('\\', '/'));
       final remote = _join(remoteDir, name);
       if (entity is io.Directory) {
         final child = await _existingDir(existing, name, remote);
-        await _planUpload(entity, remote, dirs, jobs, item, child);
+        await _planUpload(t, entity, remote, dirs, jobs, item, child);
       } else if (entity is io.File) {
         final size = await entity.length();
-        jobs.add(_uploadJob(entity.path, remote, size, item, existing));
+        jobs.add(_uploadJob(t, entity.path, remote, size, item, existing));
       }
     }
   }
 
   _Job _uploadJob(
+    _Transfer t,
     String local,
     String remote,
     int size,
@@ -1037,7 +1157,7 @@ class FileManagerController extends ChangeNotifier {
         _transferFailed('read local', local, e);
         return false;
       }
-      return _write(target, bytes, onProgress);
+      return _write(t, target, bytes, onProgress);
     },
   );
 
@@ -1082,6 +1202,8 @@ class _BatchProgress {
   _Job? _job;
   double file = 0;
 
+  int get itemTotal => _itemTotals[_job?.item] ?? 0;
+
   double get overall {
     final size = _job?.size ?? 0;
     if (_total > 0) return ((_done + size * file) / _total).clamp(0.0, 1.0);
@@ -1092,7 +1214,7 @@ class _BatchProgress {
   double get item {
     final job = _job;
     if (job == null) return 0;
-    final total = _itemTotals[job.item] ?? 0;
+    final total = itemTotal;
     if (total <= 0) return file.clamp(0.0, 1.0);
     final done = _itemDone[job.item] ?? 0;
     return ((done + job.size * file) / total).clamp(0.0, 1.0);

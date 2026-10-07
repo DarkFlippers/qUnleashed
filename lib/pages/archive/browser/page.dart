@@ -114,9 +114,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
   //
   // Keyed on the path rather than a single bool: opening two *different* files
   // at once is legitimate, and a bare flag would have made the second one
-  // silently ignored. (The controller cannot currently report both - _busyEntry
-  // is a single slot, so two concurrent reads overwrite each other's progress.
-  // That is a separate shortcoming, not a reason to refuse the second open.)
+  // silently ignored.
   final Set<String> _opening = {};
 
   /// Opens a non-directory entry in whichever viewer suits it, once.
@@ -206,7 +204,10 @@ class _FileManagerPageState extends State<FileManagerPage> {
   }
 
   void _selectAll() {
-    final all = _ctrl.entries.map((e) => e.name).toSet();
+    final all = _ctrl.entries
+        .where((e) => !e.pending)
+        .map((e) => e.name)
+        .toSet();
     setState(() {
       if (_selected.length == all.length) {
         _selected.clear();
@@ -357,7 +358,13 @@ class _FileManagerPageState extends State<FileManagerPage> {
     final destDir = await _pickDestinationDir();
     if (!mounted || destDir == null) return;
 
-    final failures = await _ctrl.downloadEntriesTo(entries, destDir: destDir);
+    final int failures;
+    try {
+      failures = await _ctrl.downloadEntriesTo(entries, destDir: destDir);
+    } on FlipperCancelledException {
+      if (mounted) _notifyCancelled();
+      return;
+    }
     if (!mounted || failures == 0) return;
     final single = entries.length == 1 && !entries.single.isDir;
     context.showNotification(
@@ -367,6 +374,13 @@ class _FileManagerPageState extends State<FileManagerPage> {
             : context.l10n.fmDownloadFailedCount(failures),
       ),
       type: QNotificationType.error,
+    );
+  }
+
+  void _notifyCancelled() {
+    context.showNotification(
+      context.l10n.fmTransferCancelled,
+      type: QNotificationType.warning,
     );
   }
 
@@ -544,7 +558,13 @@ class _FileManagerPageState extends State<FileManagerPage> {
 
   Future<void> _createEmptyFile() async {
     final name = _uniqueName('new.txt');
-    final ok = await _ctrl.writeBytes(_ctrl.childPath(name), const <int>[]);
+    final bool ok;
+    try {
+      ok = await _ctrl.writeBytes(_ctrl.childPath(name), const <int>[]);
+    } on FlipperCancelledException {
+      if (mounted) _notifyCancelled();
+      return;
+    }
     if (!mounted) return;
     if (!ok) {
       context.showNotification(
@@ -602,20 +622,27 @@ class _FileManagerPageState extends State<FileManagerPage> {
       if (cb.isCut && await _ctrl.rename(item.remotePath, dest)) continue;
       toCopy.add(item);
     }
+    var cancelled = false;
     if (toCopy.isNotEmpty) {
-      failures += await _ctrl.copyInto(
-        [
-          for (final item in toCopy)
-            (path: item.remotePath, isDir: item.isDir, size: item.size),
-        ],
-        move: cb.isCut,
-        resolve: _askReplace,
-      );
+      try {
+        failures += await _ctrl.copyInto(
+          [
+            for (final item in toCopy)
+              (path: item.remotePath, isDir: item.isDir, size: item.size),
+          ],
+          move: cb.isCut,
+          resolve: _askReplace,
+        );
+      } on FlipperCancelledException {
+        cancelled = true;
+      }
     }
     if (mounted) setState(() => _clipboard = null);
     await _ctrl.refresh();
     if (!mounted) return;
-    if (failures == 0) {
+    if (cancelled) {
+      _notifyCancelled();
+    } else if (failures == 0) {
       context.showNotification(
         cb.isCut
             ? context.l10n.fmMovedMany(cb.items.length)
@@ -663,7 +690,14 @@ class _FileManagerPageState extends State<FileManagerPage> {
   }
 
   Future<void> _upload(List<String> paths, {int skipped = 0}) async {
-    final result = await _ctrl.uploadLocal(paths, resolve: _askReplace);
+    final ({int files, int failed}) result;
+    try {
+      result = await _ctrl.uploadLocal(paths, resolve: _askReplace);
+    } on FlipperCancelledException {
+      await _ctrl.refresh();
+      if (mounted) _notifyCancelled();
+      return;
+    }
     await _ctrl.refresh();
     if (!mounted) return;
     final failures = result.failed + skipped;
@@ -1222,12 +1256,15 @@ class _FileManagerPageState extends State<FileManagerPage> {
   }
 
   Widget _buildTransferBar(QAppColors colors) {
-    final progress = _ctrl.transferProgress;
+    final cancelling = _ctrl.cancelRequested;
     return SyncProgressBar(
-      icon: Icons.download_rounded,
-      label: _ctrl.transferLabel!,
-      progress: progress,
+      icon: _ctrl.transferIsUpload
+          ? Icons.upload_rounded
+          : Icons.download_rounded,
+      label: cancelling ? context.l10n.fmCancelling : _ctrl.transferLabel!,
+      progress: _ctrl.transferProgress,
       color: colors.accent,
+      onCancel: cancelling ? null : _ctrl.cancelTransfer,
     );
   }
 
@@ -1360,6 +1397,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
                 selectionMode: _selectionMode,
                 selected: _selected.contains(e.name),
                 progress: _ctrl.entryProgress(e.name),
+                onCancel: _cancelFor(e),
                 autoEdit: e.name == _pendingRenameName,
                 onTap: () => unawaited(
                   guarded('[FileManager] open ${e.name}', () => _onEntryTap(e)),
@@ -1395,6 +1433,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
           selectionMode: _selectionMode,
           selected: _selected.contains(e.name),
           progress: _ctrl.entryProgress(e.name),
+          onCancel: _cancelFor(e),
           onTap: () => unawaited(
             guarded('[FileManager] open ${e.name}', () => _onEntryTap(e)),
           ),
@@ -1415,6 +1454,13 @@ class _FileManagerPageState extends State<FileManagerPage> {
           : context.l10n.fmRefresh,
       onAction: searching ? _stopSearch : _ctrl.refresh,
     );
+  }
+
+  VoidCallback? _cancelFor(RemoteEntry e) {
+    if (_ctrl.entryProgress(e.name) == null || _ctrl.entryCancelling(e.name)) {
+      return null;
+    }
+    return () => _ctrl.cancelEntry(e.name);
   }
 
   FileEntryActions _actionsFor(RemoteEntry e) {

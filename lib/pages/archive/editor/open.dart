@@ -1,3 +1,4 @@
+import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
 import '../../../services/localization/l10n.dart';
@@ -39,7 +40,18 @@ Future<bool> openRemoteFileInEditor(
   String? Function()? failureReason,
   VoidCallback? onRun,
 }) async {
-  final localPath = await download();
+  final String? localPath;
+  try {
+    localPath = await download();
+  } on FlipperCancelledException {
+    if (context.mounted) {
+      context.showNotification(
+        l10n.fmTransferCancelled,
+        type: QNotificationType.warning,
+      );
+    }
+    return false;
+  }
   if (!context.mounted) return false;
   if (localPath == null) {
     final reason = failureReason?.call();
@@ -51,12 +63,22 @@ Future<bool> openRemoteFileInEditor(
     );
     return false;
   }
+  var cancelled = false;
   return openLocalFileInEditor(
     context,
     localPath: localPath,
     title: basename(remotePath),
-    onSave: upload,
-    onSaveFailureReason: failureReason,
+    onSave: (bytes) async {
+      cancelled = false;
+      try {
+        return await upload(bytes);
+      } on FlipperCancelledException {
+        cancelled = true;
+        return false;
+      }
+    },
+    onSaveFailureReason: () =>
+        cancelled ? l10n.fmTransferCancelled : failureReason?.call(),
     onRun: onRun,
   );
 }
