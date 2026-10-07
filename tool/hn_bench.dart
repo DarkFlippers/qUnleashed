@@ -22,15 +22,7 @@ import 'dart:isolate';
 import 'package:ffi/ffi.dart';
 import 'package:qunleashed/pages/tools/mifare/nested_models.dart';
 import 'package:qunleashed/pages/tools/mifare/nested_nonce_parser.dart';
-
-final class HnProgress extends Struct {
-  @Uint32()
-  external int permille;
-  @Uint32()
-  external int abort;
-  @Uint32()
-  external int started;
-}
+import 'package:qunleashed/services/native.dart';
 
 typedef _RecoverNative =
     Int32 Function(
@@ -39,7 +31,7 @@ typedef _RecoverNative =
       Pointer<Uint8> parEnc,
       Uint32 count,
       Pointer<Uint64> foundKey,
-      Pointer<HnProgress> progress,
+      Pointer<NativeProgress> progress,
     );
 typedef _RecoverDart =
     int Function(
@@ -48,7 +40,7 @@ typedef _RecoverDart =
       Pointer<Uint8> parEnc,
       int count,
       Pointer<Uint64> foundKey,
-      Pointer<HnProgress> progress,
+      Pointer<NativeProgress> progress,
     );
 
 typedef _Job = ({
@@ -74,7 +66,7 @@ int _attack(_Job job) {
     Pointer<Uint8>.fromAddress(job.parEnc),
     job.count,
     Pointer<Uint64>.fromAddress(job.foundKey),
-    Pointer<HnProgress>.fromAddress(job.progress),
+    Pointer<NativeProgress>.fromAddress(job.progress),
   );
 }
 
@@ -130,7 +122,7 @@ Future<void> main(List<String> args) async {
     parEnc[i] = group[i].par!;
   }
   final foundKey = calloc<Uint64>();
-  final progress = calloc<HnProgress>();
+  final progress = calloc<NativeProgress>();
 
   final started = DateTime.now();
   var lastPermille = -1;

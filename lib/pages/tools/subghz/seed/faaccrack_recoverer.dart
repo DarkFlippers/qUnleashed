@@ -6,7 +6,7 @@ import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../../../services/logging.dart';
-import '../../mifare/mifare_native.dart';
+import '../../../../services/native.dart';
 import 'seed_models.dart';
 
 /// Recovers the seed of a FAAC SLH, Genius, BFT or Erreka remote from a capture.
@@ -28,23 +28,6 @@ abstract class FaaccrackRecoverer {
     void Function(double fraction)? onProgress,
     bool Function()? isCancelled,
   });
-}
-
-/// Mirrors `struct faaccrack_progress`. Four 32-bit words, three written by the
-/// engine and one by this side, while the search runs in another isolate.
-///
-/// A second declaration of the same shape as `_HnProgress` in
-/// `hardnested_recoverer.dart` rather than a reuse, because that one is private
-/// to its file. `faaccrackProgressSize` below is what keeps both honest.
-final class _FaaccrackProgress extends Struct {
-  @Uint32()
-  external int permille;
-  @Uint32()
-  external int abort;
-  @Uint32()
-  external int started;
-  @Uint32()
-  external int threadsStarted;
 }
 
 /// Mirrors `struct faaccrack_result`. The 64-bit key comes first so the eight
@@ -77,7 +60,7 @@ typedef _RecoverNative = Int32 Function(
   Pointer<Uint32> hops,
   Uint32 nhop,
   Int32 threads,
-  Pointer<_FaaccrackProgress> progress,
+  Pointer<NativeProgress> progress,
   Pointer<_FaaccrackResult> result,
 );
 
@@ -87,7 +70,7 @@ typedef _RecoverDart = int Function(
   Pointer<Uint32> hops,
   int nhop,
   int threads,
-  Pointer<_FaaccrackProgress> progress,
+  Pointer<NativeProgress> progress,
   Pointer<_FaaccrackResult> result,
 );
 
@@ -163,7 +146,7 @@ class NativeFaaccrackRecoverer implements FaaccrackRecoverer {
     // Allocated on this side: the poll timer has to read it while the other
     // isolate is blocked inside the engine. Native memory is process-scoped, so
     // only the address has to cross.
-    final channel = calloc<_FaaccrackProgress>();
+    final channel = calloc<NativeProgress>();
     final payload = _SeedPayload(
       mode: manufacturer.mode,
       fix: fix,
@@ -202,7 +185,7 @@ class NativeFaaccrackRecoverer implements FaaccrackRecoverer {
   /// whatever that closes over. In the MIFARE recoverer that reached a
   /// FlipperClient holding a Future, which cannot cross an isolate boundary, so
   /// every attack was rejected before any native code ran. The note on
-  /// `spawnAttackIsolate` in mifare_native.dart is the full account.
+  /// `spawnAttackIsolate` in services/native.dart is the full account.
   static Future<SeedResult> _spawnSearch(_SeedPayload payload) =>
       spawnAttackIsolate(_searchInIsolate, payload);
 
@@ -255,7 +238,7 @@ class NativeFaaccrackRecoverer implements FaaccrackRecoverer {
         hops,
         p.hops.length,
         p.threads,
-        Pointer<_FaaccrackProgress>.fromAddress(p.channelAddress),
+        Pointer<NativeProgress>.fromAddress(p.channelAddress),
         result,
       );
       final outcome = seedOutcomeFor(status);
@@ -316,12 +299,12 @@ class NativeFaaccrackRecoverer implements FaaccrackRecoverer {
     final progress = sizeFrom('qunleashed_faaccrack_progress_size');
     final ok =
         result == sizeOf<_FaaccrackResult>() &&
-        progress == sizeOf<_FaaccrackProgress>();
+        progress == sizeOf<NativeProgress>();
     if (!ok) {
       LogService.error(
         '[Seed] ABI mismatch, refusing to read the result: faaccrack_result is '
         '$result bytes natively and ${sizeOf<_FaaccrackResult>()} in Dart, '
-        'faaccrack_progress $progress and ${sizeOf<_FaaccrackProgress>()}',
+        'faaccrack_progress $progress and ${sizeOf<NativeProgress>()}',
       );
     }
     return ok;

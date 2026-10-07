@@ -159,11 +159,18 @@ enum faaccrack_status {
 // `qunleashed_hn_progress.h` in the hardnested lib is the canonical account of
 // why this is polled shared memory rather than an FFI callback, and why the
 // fields are `volatile` rather than `_Atomic`. Three of the four fields are the
-// same words, so its Dart binding (`_HnProgress` in
-// lib/pages/tools/mifare/hardnested_recoverer.dart) is a working model for
-// this one's.
+// same words, and the app reads both channels through one hand-written mirror:
+// `NativeProgress` in lib/services/native.dart declares all four, so under
+// hardnested the last one is slack it never touches.
 //
-// What differs, and is therefore documented here:
+// The two C structs stay separate even so - coupling two independent libraries'
+// ABIs to share three words is a worse trade than one Dart declaration with
+// four. What the mirror does couple is the order: this struct has to stay equal
+// to it and hardnested's a prefix of it, so a field added *there* would land on
+// `threads_started` and be read as it. `test/native_struct_mirror_test.dart`
+// refuses both halves of that.
+//
+// What differs between the two channels, and is therefore documented here:
 //
 //  * `threads_started`, which that channel has no equivalent of.
 //  * `abort` is read once per claimed chunk, where that engine reads its own at

@@ -37,11 +37,7 @@ source arriving under some other name.
 1. A vector captured from a *real* remote. The ones in the probe were generated
    from this engine, so they pin drift rather than correctness - they prove mode
    4 still selects whatever mode 4 selected when they were made.
-2. The progress struct is now the **third** hand-written Dart mirror of the same
-   three words (`_HnProgress` in `hardnested_recoverer.dart` is private, which
-   is why `tool/hn_bench.dart` already carries a second). Publishing one of them
-   in `mifare_native.dart` would retire two of the three.
-3. A shared SIMD capability header under `lib/modules/cpp/`. The cascade in
+2. A shared SIMD capability header under `lib/modules/cpp/`. The cascade in
    `faaccrack.h` re-derives tests that `hardnested/hardnested_bf_core.h` already
    centralises, and that copy carries two quirks this one does not - an
    Apple-clang version guard, and a workaround for clang reporting `__GNUC__` 4

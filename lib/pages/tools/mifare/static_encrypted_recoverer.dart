@@ -4,8 +4,8 @@ import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
+import '../../../services/native.dart';
 import 'cuid_dict_format.dart';
-import 'mifare_native.dart';
 import 'nested_models.dart';
 
 /// Per-CUID candidate dictionary produced for the static-encrypted /

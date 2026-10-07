@@ -1,6 +1,7 @@
 #ifndef QUNLEASHED_HN_PROGRESS_H
 #define QUNLEASHED_HN_PROGRESS_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 // A window into a running hardnested attack, and the way to stop one.
@@ -60,6 +61,25 @@ typedef struct {
   // brute force and clear for the phases before it.
   volatile uint32_t started;
 } qunleashed_hn_progress;
+
+// Every offset, not only the size. Three interchangeable 32-bit words can
+// permute among themselves with the size unchanged, and the Dart mirror in
+// `lib/services/native.dart` is hand-written: swap `permille` with `abort` on
+// one side only and Stop is written into the progress field, so the button does
+// nothing and the bar never moves. Nothing else in the build can see that -
+// unlike faaccrack, this library exports no size for the Dart side to check
+// against, so these assertions and `test/native_struct_mirror_test.dart` are
+// the whole of the guard.
+#define QUNLEASHED_HN_PROGRESS_LAYOUT_CHANGED \
+  "qunleashed_hn_progress layout changed - update the Dart mirror"
+_Static_assert(sizeof(qunleashed_hn_progress) == 12,
+               QUNLEASHED_HN_PROGRESS_LAYOUT_CHANGED);
+_Static_assert(offsetof(qunleashed_hn_progress, permille) == 0,
+               QUNLEASHED_HN_PROGRESS_LAYOUT_CHANGED);
+_Static_assert(offsetof(qunleashed_hn_progress, abort) == 4,
+               QUNLEASHED_HN_PROGRESS_LAYOUT_CHANGED);
+_Static_assert(offsetof(qunleashed_hn_progress, started) == 8,
+               QUNLEASHED_HN_PROGRESS_LAYOUT_CHANGED);
 
 // Installs the channel for the attack. NULL detaches, which is what a caller
 // that wants neither progress nor cancellation passes.

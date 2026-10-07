@@ -1,3 +1,12 @@
+// The plumbing every native feature in this app needs: loading a bundled
+// library, looking a symbol up in it, spawning the isolate the call blocks in,
+// and the shared memory a running engine reports through.
+//
+// Outside any feature folder on purpose. It lived in `pages/tools/mifare/` for
+// as long as MIFARE key recovery was the only caller, and then SubGHz seed
+// recovery imported it from a sibling tool's folder, which is how its own prose
+// came to describe half of its callers. Whatever is added here addresses *a*
+// native engine, not one of them.
 import 'dart:ffi';
 import 'dart:io';
 import 'dart:isolate';
@@ -7,7 +16,7 @@ import 'dart:isolate';
 ///
 /// Raises [NativeEngineUnavailable] when the library is missing or the platform
 /// has no build of it, so that a packaging fault can be told apart from an
-/// attack that ran and failed.
+/// engine that ran and failed.
 DynamicLibrary openNativeLibrary(String base) {
   try {
     if (Platform.isAndroid || Platform.isLinux) {
@@ -68,17 +77,14 @@ DynamicLibrary openHardnestedNativeLibrary() =>
 
 /// The `qunleashed_faaccrack` library: SubGHz rolling-code seed recovery
 /// (see `lib/modules/cpp/faaccrack`).
-///
-/// Here rather than beside its own recoverer because [openNativeLibrary] is
-/// where the per-platform rules live, and a second copy of them is how one
-/// platform ends up loading a library a different way from the others.
 DynamicLibrary openFaaccrackNativeLibrary() =>
     openNativeLibrary('qunleashed_faaccrack');
 
 /// A bundled native library, or a symbol in it, could not be loaded.
 ///
-/// Distinct from a failure while running an attack: this one means the build
-/// is missing a component, and nothing the user does with the card will help.
+/// Distinct from a failure while running an engine: this one means the build is
+/// missing a component, and nothing the user does with the card or the remote
+/// will help.
 class NativeEngineUnavailable implements Exception {
   const NativeEngineUnavailable(this.cause);
 
@@ -88,7 +94,58 @@ class NativeEngineUnavailable implements Exception {
   String toString() => 'NativeEngineUnavailable: $cause';
 }
 
-/// The one place a MIFARE attack isolate is spawned.
+/// The window a running native engine reports through, and the way to stop one.
+///
+/// Shared memory rather than an FFI callback: an engine reports from its own
+/// worker threads, and a callback would have to be marshalled back to the
+/// isolate that owns it. The caller allocates this, hands over the address, and
+/// reads it on a timer while the engine blocks inside another isolate - native
+/// memory is process-scoped, so both see the same words.
+///
+/// One declaration for both engines, which is the whole reason it is here.
+/// `qunleashed_hn_progress` is the first three words; `struct
+/// faaccrack_progress` is all four. The C structs stay separate - coupling two
+/// independent libraries' ABIs to share three words is a worse trade than one
+/// Dart mirror with four - so this is deliberately the *longer* of the two:
+///
+///  * Under hardnested the fourth word is slack. `calloc` zeroes it, the engine
+///    never writes it, and [threadsStarted] therefore reads 0 - which is why no
+///    hardnested caller may read that field. The engine reads only the twelve
+///    bytes its own header declares, so the extra four are never touched.
+///  * Under faaccrack all four are live, and the bridge's exported
+///    `qunleashed_faaccrack_progress_size` is checked against `sizeOf` at
+///    runtime, in release, before any result is read.
+///
+/// Adding a field here is therefore free for hardnested and an ABI change for
+/// faaccrack. `test/native_struct_mirror_test.dart` holds the order and the
+/// widths to both headers, in both directions.
+final class NativeProgress extends Struct {
+  /// Engine -> caller. Completion in thousandths, 0..1000, of whichever phase
+  /// the engine says it is reporting. Both headers describe what theirs covers;
+  /// neither claims a figure before [started].
+  @Uint32()
+  external int permille;
+
+  /// Caller -> engine. Set non-zero to ask it to stop. Neither engine clears
+  /// it, and neither stops instantly: the grain is one block for hardnested and
+  /// one claimed chunk for faaccrack.
+  @Uint32()
+  external int abort;
+
+  /// Engine -> caller. Latches when the engine begins publishing, so a caller
+  /// can tell "nothing has begun" from "zero percent of something that has".
+  /// Not a liveness signal.
+  @Uint32()
+  external int started;
+
+  /// Engine -> caller, **faaccrack only**. Workers that actually started, which
+  /// may be fewer than the count asked for. Reads 0 under hardnested, whose C
+  /// struct ends one word earlier.
+  @Uint32()
+  external int threadsStarted;
+}
+
+/// The one place a native engine's isolate is spawned.
 ///
 /// Here rather than at each recoverer because the hazard is not obvious and has
 /// already shipped once. A Dart closure captures the *context of the scope it is
@@ -113,8 +170,8 @@ class NativeEngineUnavailable implements Exception {
 /// here - an extra local with a closure over it would reintroduce the bug for
 /// every caller at once.
 ///
-/// The three non-hardnested recoverers are correct today only because their
-/// signatures happen to carry no callbacks. Routing them through here means the
-/// first one that gains an `onProgress` does not have to rediscover this.
+/// Every engine goes through it, including the ones whose signatures carry no
+/// callback today and so cannot reach the hazard yet. That is the point: the
+/// first one to gain an `onProgress` does not have to rediscover it.
 Future<R> spawnAttackIsolate<P, R>(R Function(P) body, P payload) =>
     Isolate.run(() => body(payload));

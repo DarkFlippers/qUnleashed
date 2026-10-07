@@ -14,10 +14,10 @@
 // injectable APIs for that reason and this controller does not yet.
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:qunleashed/pages/tools/mifare/mifare_native.dart';
 import 'package:qunleashed/pages/tools/subghz/seed/faaccrack_recoverer.dart';
 import 'package:qunleashed/pages/tools/subghz/seed/seed_controller.dart';
 import 'package:qunleashed/pages/tools/subghz/seed/seed_models.dart';
+import 'package:qunleashed/services/native.dart';
 
 /// An engine that answers however the test needs, and records what it was asked.
 class _FakeRecoverer implements FaaccrackRecoverer {

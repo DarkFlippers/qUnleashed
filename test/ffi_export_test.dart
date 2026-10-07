@@ -124,7 +124,7 @@ void main() {
       // of its own, governed by its own repository.
       if (normalised.contains('lib/modules/')) continue;
       // The wrapper's own definition is the one bare call there should be.
-      if (normalised.endsWith('lib/pages/tools/mifare/mifare_native.dart')) {
+      if (normalised.endsWith('lib/services/native.dart')) {
         continue;
       }
       final source = entity.readAsStringSync();
@@ -138,7 +138,7 @@ void main() {
       offenders,
       isEmpty,
       reason:
-          'Wrap each lookup in lookupNativeFunction from mifare_native.dart, so '
+          'Wrap each lookup in lookupNativeFunction from services/native.dart, so '
           'a missing symbol raises NativeEngineUnavailable rather than an '
           'ArgumentError nothing can attribute.',
     );

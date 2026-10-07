@@ -18,7 +18,7 @@ import 'dart:ffi';
 
 import 'package:ffi/ffi.dart';
 
-import 'mifare_native.dart';
+import '../../../services/native.dart';
 
 typedef _KnownNestedNative = Int32 Function(
   Uint32,

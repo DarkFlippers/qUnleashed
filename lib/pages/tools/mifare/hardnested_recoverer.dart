@@ -7,7 +7,7 @@ import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../../services/logging.dart';
-import 'mifare_native.dart';
+import '../../../services/native.dart';
 
 /// How an attack ended, which the user needs told apart.
 enum HardnestedOutcome {
@@ -71,27 +71,13 @@ abstract class HardnestedRecoverer {
   });
 }
 
-/// Mirrors `qunleashed_hn_progress` - three 32-bit words, two written by the
-/// engine and read here, one (`abort`) written here and read by the engine,
-/// while the attack runs in another isolate. Shared memory
-/// rather than a callback, because the engine reports from its own worker
-/// threads; see the header for the reasoning.
-final class _HnProgress extends Struct {
-  @Uint32()
-  external int permille;
-  @Uint32()
-  external int abort;
-  @Uint32()
-  external int started;
-}
-
 typedef _RecoverNative = Int32 Function(
   Uint32 cuid,
   Pointer<Uint32> ntEnc,
   Pointer<Uint8> parEnc,
   Uint32 count,
   Pointer<Uint64> found,
-  Pointer<_HnProgress> progress,
+  Pointer<NativeProgress> progress,
 );
 
 typedef _RecoverDart = int Function(
@@ -100,7 +86,7 @@ typedef _RecoverDart = int Function(
   Pointer<Uint8> parEnc,
   int count,
   Pointer<Uint64> found,
-  Pointer<_HnProgress> progress,
+  Pointer<NativeProgress> progress,
 );
 
 /// Maps the bridge's status to an outcome.
@@ -223,7 +209,12 @@ class NativeHardnestedRecoverer implements HardnestedRecoverer {
     // Allocated here rather than in the isolate: this side has to read it while
     // the other side is blocked inside the engine. Native memory is
     // process-scoped, so the address is all that has to cross.
-    final channel = calloc<_HnProgress>();
+    //
+    // Four words where `qunleashed_hn_progress` declares three: the mirror is
+    // shared with faaccrack, whose struct carries one more. The engine reads
+    // only the twelve bytes its own header declares, and `calloc` has already
+    // zeroed the fourth, which nothing on this path reads.
+    final channel = calloc<NativeProgress>();
     final payload = _HardnestedPayload(
       cuid: cuid,
       ntEnc: Uint32List.fromList(ntEnc),
@@ -391,7 +382,7 @@ class NativeHardnestedRecoverer implements HardnestedRecoverer {
         parPtr,
         count,
         found,
-        Pointer<_HnProgress>.fromAddress(p.channelAddress),
+        Pointer<NativeProgress>.fromAddress(p.channelAddress),
       );
       return hardnestedResultFor(result, found.value);
     } finally {

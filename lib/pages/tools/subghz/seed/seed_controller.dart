@@ -4,7 +4,7 @@ import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../../../services/logging.dart';
-import '../../mifare/mifare_native.dart';
+import '../../../../services/native.dart';
 import 'faaccrack_recoverer.dart';
 import 'seed_capture_format.dart';
 import 'seed_models.dart';
