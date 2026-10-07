@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../components/archive/category.dart';
 import '../../../../services/localization/l10n.dart';
 import '../../../../theme/theme.dart';
 import '../controller.dart';
@@ -19,47 +20,27 @@ class FileVisual {
 const _kFileIcon = 'assets/ic/file';
 const _kFileFormatIcon = 'assets/ic/fileformat';
 
-/// Resolves the right icon + accent color for a directory entry, recognizing
-/// Flipper file formats (.sub/.nfc/.ir/.rfid/.ibtn/.bad) as well as common
-/// generic file types.
+/// The archive category a file in the browser is drawn as, or null for a
+/// file that is not one. A `.txt` is a text file here, not a Bad USB script:
+/// the category claims the extension only inside its own folder.
+ArchiveCategory? _categoryOf(String ext) => switch (ext) {
+  'bad' || 'badusb' || 'u2f' => ArchiveCategory.badusb,
+  'txt' => null,
+  _ => ArchiveCategory.fromExtension(ext),
+};
+
+/// Resolves the icon and accent color for a directory entry: a Flipper file
+/// format takes its category's, everything else a generic type's.
 FileVisual fileVisualFor(RemoteEntry e, QAppColors colors) {
   if (e.isDir) {
     return FileVisual(asset: '$_kFileIcon/folder.svg', color: colors.accent);
   }
 
-  switch (_ext(e.name)) {
-    case 'sub':
-      return const FileVisual(
-        asset: '$_kFileFormatIcon/sub.svg',
-        color: Color(0xFF9C6ADE),
-      );
-    case 'nfc':
-      return const FileVisual(
-        asset: '$_kFileFormatIcon/nfc.svg',
-        color: Color(0xFF3B82F6),
-      );
-    case 'ir':
-      return const FileVisual(
-        asset: '$_kFileFormatIcon/ir.svg',
-        color: Color(0xFF14B8A6),
-      );
-    case 'rfid':
-      return const FileVisual(
-        asset: '$_kFileFormatIcon/rfid.svg',
-        color: Color(0xFF22C55E),
-      );
-    case 'ibtn':
-      return const FileVisual(
-        asset: '$_kFileFormatIcon/ibutton.svg',
-        color: Color(0xFFF59E0B),
-      );
-    case 'bad':
-    case 'badusb':
-    case 'u2f':
-      return const FileVisual(
-        asset: '$_kFileFormatIcon/badusb.svg',
-        color: Color(0xFFEF4444),
-      );
+  final ext = _ext(e.name);
+  final cat = _categoryOf(ext);
+  if (cat != null) return FileVisual(asset: cat.asset, color: cat.color);
+
+  switch (ext) {
     case 'fap':
       return const FileVisual(
         asset: '$_kFileFormatIcon/plugins.svg',
@@ -73,7 +54,6 @@ FileVisual fileVisualFor(RemoteEntry e, QAppColors colors) {
         color: Color(0xFF64748B),
       );
     case 'json':
-    case 'js':
     case 'c':
     case 'h':
     case 'cpp':
