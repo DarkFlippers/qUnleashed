@@ -99,8 +99,8 @@ Future<void> shareRemoteFile(
       remotePath,
       expectedSize: expectedSize,
     );
-  } on FlipperCancelledException {
-    if (context.mounted) {
+  } on FlipperCancelledException catch (e) {
+    if (context.mounted && controller.cancelAcknowledged(e)) {
       context.showNotification(
         l10n.fmTransferCancelled,
         type: QNotificationType.warning,

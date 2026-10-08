@@ -38,17 +38,19 @@ Future<bool> openRemoteFileInEditor(
   /// it: the one failure the user sees is whichever of the two just ran, and
   /// the controller keeps the reason for either. #110.
   String? Function()? failureReason,
+
+  /// What to say when [download] or [upload] ended in that cancel; null says
+  /// nothing.
+  String? Function(FlipperCancelledException cancel)? cancelledMessage,
   VoidCallback? onRun,
 }) async {
   final String? localPath;
   try {
     localPath = await download();
-  } on FlipperCancelledException {
-    if (context.mounted) {
-      context.showNotification(
-        l10n.fmTransferCancelled,
-        type: QNotificationType.warning,
-      );
+  } on FlipperCancelledException catch (e) {
+    final message = cancelledMessage?.call(e);
+    if (context.mounted && message != null) {
+      context.showNotification(message, type: QNotificationType.warning);
     }
     return false;
   }
@@ -63,22 +65,26 @@ Future<bool> openRemoteFileInEditor(
     );
     return false;
   }
-  var cancelled = false;
+  FlipperCancelledException? cancelled;
   return openLocalFileInEditor(
     context,
     localPath: localPath,
     title: basename(remotePath),
     onSave: (bytes) async {
-      cancelled = false;
+      cancelled = null;
       try {
         return await upload(bytes);
-      } on FlipperCancelledException {
-        cancelled = true;
+      } on FlipperCancelledException catch (e) {
+        cancelled = e;
         return false;
       }
     },
-    onSaveFailureReason: () =>
-        cancelled ? l10n.fmTransferCancelled : failureReason?.call(),
+    onSaveFailureReason: () {
+      final cancel = cancelled;
+      return cancel != null
+          ? cancelledMessage?.call(cancel)
+          : failureReason?.call();
+    },
     onRun: onRun,
   );
 }

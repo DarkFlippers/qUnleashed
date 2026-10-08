@@ -162,7 +162,12 @@ class FileManagerController extends ChangeNotifier {
   FileManagerController({required this._client, String initialPath = '/ext'})
     : _path = initialPath;
 
+  /// How long a cancelled read is given to stop arriving before the firmware
+  /// is taken not to know about cancelling at all.
+  static const _cancelAcknowledgement = Duration(seconds: 8);
+
   final FlipperClient _client;
+  final _unacknowledged = Expando<bool>();
   bool _disposed = false;
   String _path;
   bool _loading = false;
@@ -201,6 +206,15 @@ class FileManagerController extends ChangeNotifier {
   String? get transferLabel => _batch?.label;
   bool get transferIsUpload => _batch?.upload ?? false;
   bool get cancelRequested => _batch?.cancelled ?? false;
+
+  /// Whether the Flipper actually stopped the transfer that threw [e]. False
+  /// when it went on sending past [_cancelAcknowledgement]: the transfer is
+  /// then dropped from the screen without a word, since the firmware will
+  /// finish it regardless and "cancelled" would be a lie. Asked of the
+  /// exception rather than kept in a field, because transfers run side by
+  /// side and each ends in its own cancel.
+  bool cancelAcknowledged(FlipperCancelledException e) =>
+      _unacknowledged[e] != true;
 
   void cancelTransfer() => _cancel(_batch);
 
@@ -563,7 +577,11 @@ class FileManagerController extends ChangeNotifier {
         onProgress: onProgress,
         isCancelled: () => t.cancelled,
       );
-    } on FlipperCancelledException {
+    } on FlipperReadCancelledException catch (e) {
+      final drained = await e.drained
+          .then((_) => true)
+          .timeout(_cancelAcknowledgement, onTimeout: () => false);
+      if (!drained) _unacknowledged[e] = true;
       rethrow;
     } catch (e) {
       _transferFailed('read', remotePath, e);

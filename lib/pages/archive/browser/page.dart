@@ -289,6 +289,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
       download: () => _ctrl.downloadTo(remotePath, expectedSize: e.size),
       upload: (bytes) => _ctrl.writeBytes(remotePath, bytes),
       failureReason: () => _ctrl.lastFailure,
+      cancelledMessage: _cancelledMessage,
       onRun: e.extension == 'js'
           ? () => _emulateEntry(e, ArchiveCategory.javascript)
           : null,
@@ -363,8 +364,8 @@ class _FileManagerPageState extends State<FileManagerPage> {
     final int failures;
     try {
       failures = await _ctrl.downloadEntriesTo(entries, destDir: destDir);
-    } on FlipperCancelledException {
-      if (mounted) _notifyCancelled();
+    } on FlipperCancelledException catch (e) {
+      if (mounted) _notifyCancelled(e);
       return;
     }
     if (!mounted || failures == 0) return;
@@ -379,12 +380,16 @@ class _FileManagerPageState extends State<FileManagerPage> {
     );
   }
 
-  void _notifyCancelled() {
-    context.showNotification(
-      context.l10n.fmTransferCancelled,
-      type: QNotificationType.warning,
-    );
+  void _notifyCancelled(FlipperCancelledException e) {
+    final message = _cancelledMessage(e);
+    if (message == null) return;
+    context.showNotification(message, type: QNotificationType.warning);
   }
+
+  /// Null when the firmware never acknowledged the cancel: the transfer
+  /// leaves the screen, but nothing claims it stopped.
+  String? _cancelledMessage(FlipperCancelledException e) =>
+      _ctrl.cancelAcknowledged(e) ? context.l10n.fmTransferCancelled : null;
 
   Future<ConflictResolution?> _askReplace(
     String destination,
@@ -563,8 +568,8 @@ class _FileManagerPageState extends State<FileManagerPage> {
     final bool ok;
     try {
       ok = await _ctrl.writeBytes(_ctrl.childPath(name), const <int>[]);
-    } on FlipperCancelledException {
-      if (mounted) _notifyCancelled();
+    } on FlipperCancelledException catch (e) {
+      if (mounted) _notifyCancelled(e);
       return;
     }
     if (!mounted) return;
@@ -624,7 +629,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
       if (cb.isCut && await _ctrl.rename(item.remotePath, dest)) continue;
       toCopy.add(item);
     }
-    var cancelled = false;
+    FlipperCancelledException? cancelled;
     if (toCopy.isNotEmpty) {
       try {
         failures += await _ctrl.copyInto(
@@ -635,15 +640,15 @@ class _FileManagerPageState extends State<FileManagerPage> {
           move: cb.isCut,
           resolve: _askReplace,
         );
-      } on FlipperCancelledException {
-        cancelled = true;
+      } on FlipperCancelledException catch (e) {
+        cancelled = e;
       }
     }
     if (mounted) setState(() => _clipboard = null);
     await _ctrl.refresh();
     if (!mounted) return;
-    if (cancelled) {
-      _notifyCancelled();
+    if (cancelled != null) {
+      _notifyCancelled(cancelled);
     } else if (failures == 0) {
       context.showNotification(
         cb.isCut
@@ -725,9 +730,9 @@ class _FileManagerPageState extends State<FileManagerPage> {
     final ({int files, int failed}) result;
     try {
       result = await _ctrl.uploadLocal(paths, resolve: _askReplace);
-    } on FlipperCancelledException {
+    } on FlipperCancelledException catch (e) {
       await _ctrl.refresh();
-      if (mounted) _notifyCancelled();
+      if (mounted) _notifyCancelled(e);
       return;
     }
     await _ctrl.refresh();
