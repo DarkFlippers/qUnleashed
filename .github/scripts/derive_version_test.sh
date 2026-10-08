@@ -103,8 +103,14 @@ run_env() {
   cat "$out" "$step"
 }
 
+# The three commit defines are pinned empty wherever a test asserts the whole
+# args string, so these keep checking the shape they were written for rather
+# than the SHA this checkout happens to sit on. NOCOMMITS expands to the three
+# pins; the cases below that do pass a commit say so explicitly.
+NOCOMMITS=(QU_COMMIT= QU_COMMIT_FLIPPERLIB= QU_COMMIT_DARTUFBT=)
+
 body=""
-if ! body="$(run_env GITHUB_REF_NAME=beta-0.11.2)"; then fail "a plain run exited non-zero"; fi
+if ! body="$(run_env "${NOCOMMITS[@]}" GITHUB_REF_NAME=beta-0.11.2)"; then fail "a plain run exited non-zero"; fi
 
 has() { grep -qxF -- "$2" <<<"$body" && pass "$1" || fail "$1 (missing: $2)"; }
 has "appends, does not truncate"  "PRE_EXISTING=1"
@@ -114,11 +120,42 @@ has "publishes the step outputs"  "version_name=0.11.2"
 has "build args carry name+number" \
   "QUNLEASHED_FLUTTER_BUILD_ARGS=--build-name=0.11.2 --build-number=11002 --dart-define=QUNLEASHED_RELEASE_TAG=beta-0.11.2"
 
-if ! body="$(run_env GITHUB_REF_NAME=beta-0.11.2 QU_BUILD_SERVER_URL=https://b QU_BUILD_SERVER_KEY=k QU_CARTO_KEY=c)"; then
+if ! body="$(run_env "${NOCOMMITS[@]}" GITHUB_REF_NAME=beta-0.11.2 QU_BUILD_SERVER_URL=https://b QU_BUILD_SERVER_KEY=k QU_CARTO_KEY=c)"; then
   fail "a run with every secret exited non-zero"
 fi
 has "folds in every secret" \
   "QUNLEASHED_FLUTTER_BUILD_ARGS=--build-name=0.11.2 --build-number=11002 --dart-define=QUNLEASHED_RELEASE_TAG=beta-0.11.2 --dart-define=QU_BUILD_SERVER_URL=https://b --dart-define=QU_BUILD_SERVER_KEY=k --dart-define=QU_CARTO_KEY=c"
+
+# ADR 0014 §3: a build has to be able to name the commit it came from, and all
+# three of them, because a fault can be in a submodule. Pinned rather than read
+# from this checkout so the assertion does not move with HEAD.
+if ! body="$(run_env GITHUB_REF_NAME=beta-0.11.2 QU_COMMIT=aaaaaaa1 QU_COMMIT_FLIPPERLIB=bbbbbbb2 QU_COMMIT_DARTUFBT=ccccccc3)"; then
+  fail "a run with the three commits exited non-zero"
+fi
+has "carries all three commits"   "QUNLEASHED_FLUTTER_BUILD_ARGS=--build-name=0.11.2 --build-number=11002 --dart-define=QUNLEASHED_RELEASE_TAG=beta-0.11.2 --dart-define=QU_COMMIT=aaaaaaa1 --dart-define=QU_COMMIT_FLIPPERLIB=bbbbbbb2 --dart-define=QU_COMMIT_DARTUFBT=ccccccc3"
+
+# A desktop job need not have the submodules checked out, and must still build.
+# The app's own commit is the one that matters; the others are then absent
+# rather than empty, which is what String.fromEnvironment reads as "unknown".
+if ! body="$(run_env GITHUB_REF_NAME=beta-0.11.2 QU_COMMIT=aaaaaaa1 QU_COMMIT_FLIPPERLIB= QU_COMMIT_DARTUFBT=)"; then
+  fail "a run with no submodule commits exited non-zero"
+fi
+has "a submodule commit is optional"   "QUNLEASHED_FLUTTER_BUILD_ARGS=--build-name=0.11.2 --build-number=11002 --dart-define=QUNLEASHED_RELEASE_TAG=beta-0.11.2 --dart-define=QU_COMMIT=aaaaaaa1"
+
+# Unset means "work it out from the checkout", which is the path every build job
+# takes. It must produce a real SHA rather than nothing - the warning branch is
+# for a checkout that has no git at all.
+if ! body="$(run_env GITHUB_REF_NAME=beta-0.11.2)"; then
+  fail "a run resolving its own commit exited non-zero"
+elif grep -qE -- "--dart-define=QU_COMMIT=[0-9a-f]{40}" <<<"$body"; then
+  pass "an unset commit is resolved from the checkout"
+else
+  fail "an unset commit was not resolved from the checkout"
+fi
+
+# A commit carrying whitespace would truncate every argument after it, the same
+# hazard the secrets are guarded for.
+refutes "a commit with a space" run_env GITHUB_REF_NAME=beta-0.11.2 QU_COMMIT="a b"
 
 # A URL without a key authenticates nothing, so neither is passed.
 if ! body="$(run_env GITHUB_REF_NAME=beta-0.11.2 QU_BUILD_SERVER_URL=https://b)"; then

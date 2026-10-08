@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../components/appbar.dart';
 import '../../../components/clipboard.dart';
 import '../../../components/dialogs/confirm.dart';
+import '../../../services/build_identity.dart';
 import '../../../services/localization/l10n.dart';
 import '../../../services/logging.dart';
 import '../../../theme/theme.dart';
@@ -32,7 +33,20 @@ class _LogSettingsPageState extends State<LogSettingsPage> {
   // Blank line between entries: an entry is a whole message, so joined with
   // one newline a stack trace's last frame sits flush against the next
   // timestamp and the paste reads as one run-on block.
-  Future<void> _copy() => copyTextToClipboard(context, _entries.join('\n\n'));
+  //
+  // Opened with the build it came from (ADR 0014 §3). A log pasted into
+  // an issue otherwise says nothing about which binary produced it, and the
+  // version alone does not identify one: the build number is derived from
+  // the version today, so the commit is what separates two builds of
+  // 0.14.1.
+  Future<void> _copy() async {
+    final stamp = await BuildIdentity.resolve();
+    if (!mounted) return;
+    await copyTextToClipboard(
+      context,
+      '${stamp.header}\n\n${_entries.join('\n\n')}',
+    );
+  }
 
   Future<void> _clear() async {
     // Confirmed, unlike the Flibler console's clear, because this button sits

@@ -19,6 +19,14 @@
 # QU_BUILD_SERVER_URL and QU_BUILD_SERVER_KEY are folded into the Flutter build
 # arguments only when both are set, since a URL without a key authenticates
 # nothing. QU_CARTO_KEY is independent.
+#
+# The three commits are resolved from git rather than passed in, so that one
+# step produces them for every build job instead of each job repeating a
+# `git rev-parse` - ADR 0014 §4 asks this script to be the one place a trigger
+# becomes a build identity. Each is overridable by an environment variable of
+# the same name, which is how the tests pin them; set one to the empty string
+# and that define is left out. A shallow checkout still resolves HEAD, so no
+# job needs `fetch-depth: 0` for this (§6's build number is what will).
 set -Eeuo pipefail
 
 print_only=0
@@ -70,7 +78,25 @@ fi
 # it - or add one. Failing here beats shipping a release missing a key. This
 # guards one producer of a string transport that cannot carry whitespace at all;
 # see the issue on replacing that transport.
-for name in QU_BUILD_SERVER_URL QU_BUILD_SERVER_KEY QU_CARTO_KEY; do
+# Resolved from the checkout unless the caller said otherwise. `-` and not `:-`
+# on purpose: an unset variable means "work it out", an empty one means "leave
+# it out", and the tests need the second to assert the shape without a commit.
+commit="${QU_COMMIT-$(git rev-parse HEAD 2>/dev/null || true)}"
+commit_flipperlib="${QU_COMMIT_FLIPPERLIB-$(
+  git -C lib/modules/flipperlib rev-parse HEAD 2>/dev/null || true
+)}"
+commit_dartufbt="${QU_COMMIT_DARTUFBT-$(
+  git -C lib/modules/dartufbt rev-parse HEAD 2>/dev/null || true
+)}"
+
+# A submodule that is not checked out is worth saying out loud rather than
+# shipping a build that cannot name what it was built from. Not fatal: a
+# desktop job that does not touch either one should still build.
+if [[ -z "$commit" ]]; then
+  echo "::warning::No commit resolved. The build will not say which commit it is." >&2
+fi
+
+for name in QU_BUILD_SERVER_URL QU_BUILD_SERVER_KEY QU_CARTO_KEY             QU_COMMIT QU_COMMIT_FLIPPERLIB QU_COMMIT_DARTUFBT; do
   if [[ "${!name:-}" =~ [[:space:]] ]]; then
     echo "::error::$name contains whitespace, which would corrupt the build arguments." >&2
     exit 1
@@ -85,6 +111,15 @@ if [[ -n "${QU_BUILD_SERVER_URL:-}" && -n "${QU_BUILD_SERVER_KEY:-}" ]]; then
 fi
 if [[ -n "${QU_CARTO_KEY:-}" ]]; then
   args+=(--dart-define=QU_CARTO_KEY="$QU_CARTO_KEY")
+fi
+if [[ -n "$commit" ]]; then
+  args+=(--dart-define=QU_COMMIT="$commit")
+fi
+if [[ -n "$commit_flipperlib" ]]; then
+  args+=(--dart-define=QU_COMMIT_FLIPPERLIB="$commit_flipperlib")
+fi
+if [[ -n "$commit_dartufbt" ]]; then
+  args+=(--dart-define=QU_COMMIT_DARTUFBT="$commit_dartufbt")
 fi
 
 {
@@ -104,3 +139,4 @@ fi
 
 echo "Version name: $version_name" >&2
 echo "Version code: $version_code" >&2
+echo "Commit: ${commit:-<none>}" >&2

@@ -3543,7 +3543,7 @@
 
   "appVersionLine": "qUnleashed for {platform} v{version}{suffix}",
   "@appVersionLine": {
-    "description": "Version line at the bottom of the tools screen. {platform} is the OS name, {suffix} is an optional build type in brackets.",
+    "description": "Version line at the bottom of the tools screen; tapping it copies the whole line. {platform} is the OS name. {version} is the version and build number, like 0.14.1+14001. {suffix} is the channel and the short commit in brackets, like ' (dev · abc1234)'; neither is translated.",
     "placeholders": {
       "platform": {
         "type": "String"
