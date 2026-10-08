@@ -6237,6 +6237,11 @@
     "description": "Progress line shown after the user asked to stop a transfer, until it stops."
   },
 
+  "fmDownloadBusy": "Wait for the current download to finish",
+  "@fmDownloadBusy": {
+    "description": "Toast when a file larger than one frame is asked for while another download is still running; downloads do not queue."
+  },
+
   "fmTransferCancelled": "Transfer cancelled",
   "@fmTransferCancelled": {
     "description": "Toast shown when the user stopped a download or upload."

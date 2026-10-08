@@ -166,9 +166,15 @@ class FileManagerController extends ChangeNotifier {
   /// is taken not to know about cancelling at all.
   static const _cancelAcknowledgement = Duration(seconds: 8);
 
+  /// The most the firmware puts in one frame of a read answer. A file this
+  /// small arrives whole in that frame and may be fetched beside anything;
+  /// anything larger is a download of its own, and only one runs at a time.
+  static const _oneFrame = 512;
+
   final FlipperClient _client;
   final _unacknowledged = Expando<bool>();
   final Map<String, Future<String?>> _downloads = {};
+  bool _downloading = false;
   bool _disposed = false;
   String _path;
   bool _loading = false;
@@ -216,6 +222,15 @@ class FileManagerController extends ChangeNotifier {
   /// side and each ends in its own cancel.
   bool cancelAcknowledged(FlipperCancelledException e) =>
       _unacknowledged[e] != true;
+
+  /// Whether [entries] may be downloaded now: always when each is a file of
+  /// one frame, otherwise only while no other download is running. There is
+  /// no queue - what cannot start now does not start.
+  bool canDownload(Iterable<RemoteEntry> entries) =>
+      !_downloading || !_large(entries);
+
+  bool _large(Iterable<RemoteEntry> entries) =>
+      entries.any((e) => e.isDir || e.size > _oneFrame);
 
   void cancelTransfer() => _cancel(_batch);
 
@@ -408,6 +423,20 @@ class FileManagerController extends ChangeNotifier {
     final released = Completer<void>();
     _transfers = released.future;
     return previous.then((_) => run()).whenComplete(released.complete);
+  }
+
+  /// Runs [download], and while it lasts refuses every other one that is
+  /// [large] - the page asks [canDownload] first, so this only ever meets a
+  /// second one by mistake.
+  Future<T> _download<T>(bool large, Future<T> Function() download) {
+    if (!large) return download();
+    if (_downloading) throw StateError('A download is already running');
+    _downloading = true;
+    _notify();
+    return download().whenComplete(() {
+      _downloading = false;
+      _notify();
+    });
   }
 
   void _throwIfCancelled(_Transfer t, String path) {
@@ -953,36 +982,38 @@ class FileManagerController extends ChangeNotifier {
     void Function(double progress)? onProgress,
   }) async {
     try {
-      return await _transfer(
-        dir: dirname(remotePath),
-        upload: false,
-        batch: false,
-        queued: false,
-        body: (t) async {
-          void cancel() => _cancel(t);
-          onCancel?.addListener(cancel);
-          List<int>? bytes;
-          try {
-            await _runJobs(t, [
-              _Job(
-                item: basename(remotePath),
-                remote: remotePath,
-                size: expectedSize,
-                run: (_, progress) async {
-                  bytes = await _read(t, remotePath, expectedSize, (p) {
-                    progress(p);
-                    onProgress?.call(p);
-                  });
-                  return bytes != null;
-                },
-              ),
-            ], label: l10n.fmDownloadingOf);
-          } finally {
-            onCancel?.removeListener(cancel);
-          }
-          return bytes;
-        },
-      );
+      return await _download(expectedSize > _oneFrame, () {
+        return _transfer(
+          dir: dirname(remotePath),
+          upload: false,
+          batch: false,
+          queued: false,
+          body: (t) async {
+            void cancel() => _cancel(t);
+            onCancel?.addListener(cancel);
+            List<int>? bytes;
+            try {
+              await _runJobs(t, [
+                _Job(
+                  item: basename(remotePath),
+                  remote: remotePath,
+                  size: expectedSize,
+                  run: (_, progress) async {
+                    bytes = await _read(t, remotePath, expectedSize, (p) {
+                      progress(p);
+                      onProgress?.call(p);
+                    });
+                    return bytes != null;
+                  },
+                ),
+              ], label: l10n.fmDownloadingOf);
+            } finally {
+              onCancel?.removeListener(cancel);
+            }
+            return bytes;
+          },
+        );
+      });
     } on FlipperCancelledException {
       return null;
     }
@@ -992,8 +1023,10 @@ class FileManagerController extends ChangeNotifier {
   /// on its way joins that download: both would write the one cache file, and
   /// either could read it while the other truncates it.
   Future<String?> downloadTo(String remotePath, {int expectedSize = 0}) =>
-      _downloads[remotePath] ??= _downloadToCache(remotePath, expectedSize)
-          .whenComplete(() {
+      _downloads[remotePath] ??=
+          _download(expectedSize > _oneFrame, () {
+            return _downloadToCache(remotePath, expectedSize);
+          }).whenComplete(() {
             // A block, not an arrow: remove() hands back this very future,
             // and whenComplete would then wait on it - on itself - forever.
             _downloads.remove(remotePath);
@@ -1044,6 +1077,17 @@ class FileManagerController extends ChangeNotifier {
     required String destDir,
   }) {
     final dir = _path;
+    return _download(
+      _large(entries),
+      () => _downloadEntries(entries, dir, destDir),
+    );
+  }
+
+  Future<int> _downloadEntries(
+    List<RemoteEntry> entries,
+    String dir,
+    String destDir,
+  ) {
     return _transfer(
       dir: dir,
       upload: false,

@@ -282,6 +282,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
   }
 
   Future<void> _openTextEditor(RemoteEntry e) async {
+    if (!_mayDownload([e])) return;
     final remotePath = _ctrl.childPath(e.name);
     await openRemoteFileInEditor(
       context,
@@ -358,8 +359,9 @@ class _FileManagerPageState extends State<FileManagerPage> {
       );
       return;
     }
+    if (!_mayDownload(entries)) return;
     final destDir = await _pickDestinationDir();
-    if (!mounted || destDir == null) return;
+    if (!mounted || destDir == null || !_mayDownload(entries)) return;
 
     final int failures;
     try {
@@ -378,6 +380,17 @@ class _FileManagerPageState extends State<FileManagerPage> {
       ),
       type: QNotificationType.error,
     );
+  }
+
+  /// Whether [entries] may be downloaded now; if not, says why. Another
+  /// download of more than one frame is running, and there is no queue.
+  bool _mayDownload(Iterable<RemoteEntry> entries) {
+    if (_ctrl.canDownload(entries)) return true;
+    context.showNotification(
+      context.l10n.fmDownloadBusy,
+      type: QNotificationType.warning,
+    );
+    return false;
   }
 
   void _notifyCancelled(FlipperCancelledException e) {
@@ -1544,6 +1557,8 @@ class _FileManagerPageState extends State<FileManagerPage> {
   Widget _dragSource(RemoteEntry e, Widget child) {
     if (e.isDir || e.pending) return child;
     final selected = _selectionMode && _selected.contains(e.name);
+    final draggable = _ctrl.canDownload(selected ? _selectedEntries : [e]);
+    if (!draggable) return child;
     return FileDragSource(
       key: ValueKey('${e.isDir}:${e.name}'),
       file: _dragFile(e),
@@ -1576,13 +1591,16 @@ class _FileManagerPageState extends State<FileManagerPage> {
       onDelete: () => _deleteEntry(e, recursive: e.isDir),
       onShare: e.isDir
           ? null
-          : () => shareRemoteFile(
-              context,
-              _ctrl,
-              _ctrl.childPath(e.name),
-              displayName: e.name,
-              expectedSize: e.size,
-            ),
+          : () async {
+              if (!_mayDownload([e])) return;
+              await shareRemoteFile(
+                context,
+                _ctrl,
+                _ctrl.childPath(e.name),
+                displayName: e.name,
+                expectedSize: e.size,
+              );
+            },
       onCopy: () => _copyEntry(e),
       onCut: () => _cutEntry(e),
       onDownload: () => _downloadEntries([e]),
