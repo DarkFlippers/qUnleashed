@@ -5,6 +5,7 @@
 #   derive_version.sh                    # write to $GITHUB_ENV and $GITHUB_OUTPUT
 #   derive_version.sh -- <tag>           # ... for an explicit tag
 #   derive_version.sh --print [--] <tag> # write "<name> <code>" to stdout instead
+#   derive_version.sh --print-channel …  # write "dev" or "release" instead
 #
 # Pass a caller-supplied tag after `--`. The release workflow does, because on a
 # tag push `${{ inputs.tag }}` expands to an empty argument and on a dispatch it
@@ -30,10 +31,12 @@
 set -Eeuo pipefail
 
 print_only=0
+print_channel=0
 case "${1:-}" in
   --print) print_only=1; shift ;;
+  --print-channel) print_channel=1; shift ;;
   --) shift ;;
-  --*) echo "Usage: $0 [--print] [--] [tag]" >&2; exit 2 ;;
+  --*) echo "Usage: $0 [--print|--print-channel] [--] [tag]" >&2; exit 2 ;;
 esac
 if [[ "${1:-}" == "--" ]]; then shift; fi
 
@@ -63,6 +66,29 @@ if (( version_code <= 0 )); then
   exit 1
 fi
 
+# Which of the two published channels this build is, decided by the trigger.
+#
+# `QU_CHANNEL` wins when the caller sets it, which is how the workflow that
+# builds a push to `main` says `dev` without there being a tag to read. Until
+# that workflow exists the tag prefix decides, which is ADR 0014 §1's interim
+# rule and the same test the publish job used to make for itself.
+#
+# Two values here and never `local`: the script only runs in CI, and `local` is
+# what the app reads when nothing passed a define at all.
+channel="${QU_CHANNEL:-}"
+if [[ -z "$channel" ]]; then
+  if [[ "$tag" == dev-* ]]; then channel=dev; else channel=release; fi
+fi
+if [[ "$channel" != dev && "$channel" != release ]]; then
+  echo "::error::QU_CHANNEL must be dev or release, not '$channel'." >&2
+  exit 1
+fi
+
+if (( print_channel )); then
+  printf '%s\n' "$channel"
+  exit 0
+fi
+
 if (( print_only )); then
   printf '%s %s\n' "$version_name" "$version_code"
   exit 0
@@ -73,11 +99,6 @@ if [[ -z "${GITHUB_ENV:-}" ]]; then
   exit 1
 fi
 
-# The build scripts re-split QUNLEASHED_FLUTTER_BUILD_ARGS on whitespace, so a
-# secret carrying a newline or a space would silently drop every argument after
-# it - or add one. Failing here beats shipping a release missing a key. This
-# guards one producer of a string transport that cannot carry whitespace at all;
-# see the issue on replacing that transport.
 # Resolved from the checkout unless the caller said otherwise. `-` and not `:-`
 # on purpose: an unset variable means "work it out", an empty one means "leave
 # it out", and the tests need the second to assert the shape without a commit.
@@ -89,14 +110,20 @@ commit_dartufbt="${QU_COMMIT_DARTUFBT-$(
   git -C lib/modules/dartufbt rev-parse HEAD 2>/dev/null || true
 )}"
 
-# A submodule that is not checked out is worth saying out loud rather than
-# shipping a build that cannot name what it was built from. Not fatal: a
-# desktop job that does not touch either one should still build.
+# A checkout with no commit to name is worth saying out loud rather than
+# shipping a build that cannot say what it is. Not fatal: a submodule a given
+# job does not touch is absent rather than wrong.
 if [[ -z "$commit" ]]; then
   echo "::warning::No commit resolved. The build will not say which commit it is." >&2
 fi
 
-for name in QU_BUILD_SERVER_URL QU_BUILD_SERVER_KEY QU_CARTO_KEY             QU_COMMIT QU_COMMIT_FLIPPERLIB QU_COMMIT_DARTUFBT; do
+# The build scripts re-split QUNLEASHED_FLUTTER_BUILD_ARGS on whitespace, so a
+# secret carrying a newline or a space would silently drop every argument after
+# it - or add one. Failing here beats shipping a release missing a key. This
+# guards one producer of a string transport that cannot carry whitespace at all;
+# see the issue on replacing that transport.
+for name in QU_BUILD_SERVER_URL QU_BUILD_SERVER_KEY QU_CARTO_KEY \
+            QU_COMMIT QU_COMMIT_FLIPPERLIB QU_COMMIT_DARTUFBT QU_CHANNEL; do
   if [[ "${!name:-}" =~ [[:space:]] ]]; then
     echo "::error::$name contains whitespace, which would corrupt the build arguments." >&2
     exit 1
@@ -104,7 +131,7 @@ for name in QU_BUILD_SERVER_URL QU_BUILD_SERVER_KEY QU_CARTO_KEY             QU_
 done
 
 args=(--build-name="$version_name" --build-number="$version_code")
-args+=(--dart-define=QUNLEASHED_RELEASE_TAG="$tag")
+args+=(--dart-define=QU_CHANNEL="$channel")
 if [[ -n "${QU_BUILD_SERVER_URL:-}" && -n "${QU_BUILD_SERVER_KEY:-}" ]]; then
   args+=(--dart-define=QU_BUILD_SERVER_URL="$QU_BUILD_SERVER_URL")
   args+=(--dart-define=QU_BUILD_SERVER_KEY="$QU_BUILD_SERVER_KEY")
@@ -125,6 +152,7 @@ fi
 {
   echo "QUNLEASHED_VERSION_NAME=$version_name"
   echo "QUNLEASHED_VERSION_CODE=$version_code"
+  echo "QUNLEASHED_CHANNEL=$channel"
   echo "QUNLEASHED_FLUTTER_BUILD_ARGS=${args[*]}"
 } >> "$GITHUB_ENV"
 
@@ -134,9 +162,11 @@ if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
   {
     echo "version_name=$version_name"
     echo "version_code=$version_code"
+    echo "channel=$channel"
   } >> "$GITHUB_OUTPUT"
 fi
 
 echo "Version name: $version_name" >&2
 echo "Version code: $version_code" >&2
+echo "Channel: $channel" >&2
 echo "Commit: ${commit:-<none>}" >&2

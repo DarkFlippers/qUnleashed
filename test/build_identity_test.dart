@@ -63,16 +63,68 @@ void main() {
     });
   });
 
-  group('line', () {
-    test('runs widest to narrowest', () {
-      expect(stamp().line, '0.14.1+14001 · dev · abc1234');
+  // The suffix 0014 §2 keeps everywhere a person reads the version, and drops
+  // from the two fields a store validates. A build carrying `-dev` in
+  // CFBundleShortVersionString fails App Store validation, which is why this
+  // is a separate getter from versionWithBuild rather than the only form.
+  group('displayVersion', () {
+    test('a dev build says so', () {
+      expect(stamp(channel: 'dev').displayVersion, '0.14.1-dev');
     });
 
-    // A local `flutter run` has no commit. Dropping it reads as a local build;
-    // writing `unknown` beside `local` says the same thing twice and reads as
-    // broken.
-    test('drops a commit it does not have', () {
-      expect(stamp(channel: 'local', commit: '').line, '0.14.1+14001 · local');
+    // A bare version already means released, and `-release` is noise on the
+    // one build most people are running.
+    test('a release says nothing', () {
+      expect(stamp(channel: 'release').displayVersion, '0.14.1');
+    });
+
+    test('a local build says so too', () {
+      expect(stamp(channel: 'local').displayVersion, '0.14.1-local');
+    });
+
+    test('says unknown when the platform would not answer', () {
+      expect(stamp(version: '', channel: 'dev').displayVersion, 'unknown');
+    });
+  });
+
+  group('line', () {
+    test('runs widest to narrowest', () {
+      expect(stamp().line, '0.14.1-dev · 14001 · abc1234');
+    });
+
+    // The channel is in the version, not a field of its own: `0.14.1-dev · dev`
+    // says it twice.
+    test('does not name the channel twice', () {
+      expect(stamp().line, isNot(contains('· dev ·')));
+    });
+
+    // A local `flutter run` has no commit and often no build number. Dropping
+    // them reads as a local build; writing `unknown` twice reads as broken.
+    test('drops what it does not have', () {
+      expect(
+        stamp(channel: 'local', commit: '', build: '').line,
+        '0.14.1-local',
+      );
+    });
+  });
+
+  // 0014 §5. Set explicitly because the SDK's default begins with the bundle
+  // ID, which differs per platform and would split one build into five
+  // releases.
+  group('sentryRelease', () {
+    test('carries the suffix and the build number', () {
+      expect(stamp().sentryRelease, 'qunleashed@0.14.1-dev+14001');
+    });
+
+    test('a release build has no suffix', () {
+      expect(
+        stamp(channel: 'release').sentryRelease,
+        'qunleashed@0.14.1+14001',
+      );
+    });
+
+    test('drops a build number it does not have', () {
+      expect(stamp(build: '').sentryRelease, 'qunleashed@0.14.1-dev');
     });
   });
 
@@ -81,7 +133,7 @@ void main() {
     // a build that does not touch flipperlib or dartufbt still has to copy a
     // log that identifies itself.
     test('is one line when no submodule commit is known', () {
-      expect(stamp().header, 'qUnleashed 0.14.1+14001 · dev · abc1234');
+      expect(stamp().header, 'qUnleashed 0.14.1-dev · 14001 · abc1234');
     });
 
     test('puts the submodules on a second line', () {
@@ -90,7 +142,7 @@ void main() {
           flipperlibCommit: 'd2d8f7cc5691306',
           dartufbtCommit: 'c66737ce0cf9',
         ).header,
-        'qUnleashed 0.14.1+14001 · dev · abc1234\n'
+        'qUnleashed 0.14.1-dev · 14001 · abc1234\n'
         'flipperlib d2d8f7c · dartufbt c66737c',
       );
     });
@@ -98,43 +150,21 @@ void main() {
     test('names only the submodule it knows about', () {
       expect(
         stamp(flipperlibCommit: 'd2d8f7cc5691306').header,
-        'qUnleashed 0.14.1+14001 · dev · abc1234\nflipperlib d2d8f7c',
+        'qUnleashed 0.14.1-dev · 14001 · abc1234\nflipperlib d2d8f7c',
       );
     });
   });
 
-  // Three channels and no more: every build comes off main, `dev` is the
-  // automatic one, `release` is cut by hand in GitHub, `local` is a tree
-  // nobody else has. ADR 0014 §1.
-  group('channelFromTag', () {
-    test('a dev tag is the automatic channel', () {
-      expect(BuildIdentity.channelFromTag('dev-0.14.1'), 'dev');
-    });
-
-    // The prefixes this repository has actually tagged - alpha- (22), beta-
-    // (22), wip- (5) - were every one of them cut by hand, so every one of them
-    // is a release. Reading the prefix back out would report the tagging
-    // convention of the day rather than how the build was made, and the
-    // convention has already changed three times.
-    test('every hand-cut tag is a release, whatever it was called', () {
-      expect(BuildIdentity.channelFromTag('beta-0.11.2'), 'release');
-      expect(BuildIdentity.channelFromTag('alpha-0.8.4'), 'release');
-      expect(BuildIdentity.channelFromTag('wip-0.3.6'), 'release');
-      expect(BuildIdentity.channelFromTag('0.12.1'), 'release');
-      expect(BuildIdentity.channelFromTag('v0.6.1'), 'release');
-    });
-
-    // `dev` is a prefix and not a substring: a hand-cut `0.14.1-dev-notes`
-    // would otherwise claim to be an automatic build.
-    test('dev has to be the prefix', () {
-      expect(BuildIdentity.channelFromTag('predev-0.1.0'), 'release');
-    });
-
-    // Not null, because "which build is this" has an answer for a developer's
-    // own run, and it is the answer most worth saying: a report from `local`
-    // cannot be reproduced from anything in the repository.
-    test('no tag is a local build', () {
-      expect(BuildIdentity.channelFromTag(''), 'local');
-    });
+  // The channel is compiled in from the trigger, so under `flutter test` -
+  // which passes no define - it is the one value CI never sends. That is the
+  // whole assertion available here, and it is worth making: the default is
+  // what a developer's own run reports, and a wrong default would have every
+  // local build claiming to be a release.
+  //
+  // The two CI values are covered where they are decided, in
+  // .github/scripts/derive_version_test.sh, because a --dart-define cannot be
+  // set from inside a test.
+  test('an untold build is local', () {
+    expect(BuildIdentity.channel, BuildIdentity.localChannel);
   });
 }

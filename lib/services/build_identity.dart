@@ -1,4 +1,7 @@
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:package_info_plus/package_info_plus.dart';
+
+import 'logging.dart';
 
 /// What a build says it is: version, build number, channel and the commits it
 /// was built from.
@@ -29,8 +32,16 @@ class BuildStamp {
   /// instead of it.
   final String build;
 
-  /// `dev`, `beta`, `release`, or `local` for a build cut from no tag.
+  /// `dev`, `release`, or `local` for a build nothing told.
+  ///
+  /// Three values and no more. Every build comes off `main`; `dev` is what the
+  /// automatic builds are, `release` is what somebody cuts by hand, and `local`
+  /// is a tree nobody else has. CI only ever says the first two.
   final String channel;
+
+  bool get isDev => channel == BuildIdentity.devChannel;
+
+  bool get isLocal => channel == BuildIdentity.localChannel;
 
   /// The app's commit as a full SHA, or empty in a build nothing told.
   final String commit;
@@ -51,23 +62,58 @@ class BuildStamp {
 
   String get shortCommit => short(commit);
 
+  /// The version with the channel said in it: `0.14.1-dev`, `0.14.1`,
+  /// `0.14.1-local`.
+  ///
+  /// This is the form for anything a person reads, and it is **not** what goes
+  /// into `CFBundleShortVersionString`, which takes digits and periods and at
+  /// most three integers - a build carrying `-dev` there fails App Store
+  /// validation. 0014 §2 is the whole argument; the short of it is that the
+  /// rule governs one field, so the suffix is kept everywhere else.
+  ///
+  /// A release says nothing, because a bare version already means "released"
+  /// and a `-release` suffix is noise on the one build most people have.
+  String get displayVersion {
+    if (version.isEmpty) return 'unknown';
+    if (isDev) return '$version-dev';
+    if (isLocal) return '$version-local';
+    return version;
+  }
+
   /// `0.14.1+14001`, or just the version with no build number, or `unknown`
-  /// with neither.
+  /// with neither. The numeric form, for anything that compares versions.
   String get versionWithBuild {
     if (version.isEmpty) return 'unknown';
     return build.isEmpty ? version : '$version+$build';
   }
 
-  /// One line naming this binary: `0.14.1+14001 · dev · abc1234`.
+  /// One line naming this binary: `0.14.1-dev · 14001 · abc1234`.
   ///
   /// Widest to narrowest, so the part a reader almost always wants is first and
-  /// the part that disambiguates is last. A missing commit is dropped rather
-  /// than written as `unknown`: a local build has none, and a line saying so
-  /// twice over reads as broken rather than as local.
+  /// the part that disambiguates is last. The channel is in the version rather
+  /// than a field of its own - `0.14.1-dev · dev · abc1234` says it twice.
+  ///
+  /// A missing commit or build number is dropped rather than written as
+  /// `unknown`: a local build has no commit, and a line saying so twice over
+  /// reads as broken rather than as local.
   String get line {
-    final parts = <String>[versionWithBuild, channel];
-    if (shortCommit.isNotEmpty) parts.add(shortCommit);
+    final parts = <String>[
+      displayVersion,
+      if (build.isNotEmpty) build,
+      if (shortCommit.isNotEmpty) shortCommit,
+    ];
     return parts.join(' · ');
+  }
+
+  /// The Sentry release, `qunleashed@0.14.1-dev+14001` — 0014 §5.
+  ///
+  /// Set explicitly rather than left to the SDK, whose default begins with the
+  /// bundle ID and would split one build into five releases, one per platform.
+  /// The suffix is what keeps a dev build and the shipped version from reading
+  /// alike in a release list, which is the list most often read.
+  String get sentryRelease {
+    final suffix = build.isEmpty ? '' : '+$build';
+    return 'qunleashed@$displayVersion$suffix';
   }
 
   /// What a copied log opens with, so a paste into an issue identifies itself.
@@ -109,47 +155,57 @@ abstract final class BuildIdentity {
     'QU_COMMIT_DARTUFBT',
   );
 
-  /// The tag the build was cut from, when it was cut from one.
+  static const String devChannel = 'dev';
+  static const String releaseChannel = 'release';
+  static const String localChannel = 'local';
+
+  /// Which channel built this, decided by the trigger and compiled in.
   ///
-  /// 0014 §1 replaces this with a compiled-in `QU_CHANNEL`, which is the same
-  /// value without a regex in front of it. Until then [channelFromTag] parses
-  /// it, here rather than in whichever widget happens to display it.
-  static const String _releaseTag = String.fromEnvironment(
-    'QUNLEASHED_RELEASE_TAG',
+  /// From the trigger and not from the tag, which is 0014 §1 and matters more
+  /// than it sounds. A push to `main` has no tag at all, so a dev build cannot
+  /// derive this - and in this repository the prefix could not carry it even
+  /// where there is one: every tag so far is `dev-*`, including the ones that
+  /// were releases. `derive_version.sh` is the single place that turns a
+  /// trigger into the answer.
+  ///
+  /// Defaults to [localChannel], which is the one value CI never sends: a
+  /// build with no define is a developer's own run. Not null, because "which
+  /// build is this" has an answer there too, and it is the answer most worth
+  /// saying out loud - a report from `local` cannot be reproduced from
+  /// anything in the repository.
+  static const String channel = String.fromEnvironment(
+    'QU_CHANNEL',
+    defaultValue: localChannel,
   );
 
-  /// Which of the three channels [tag] names: `dev`, `release` or `local`.
+  /// The version and build number, read once and then remembered.
   ///
-  /// Three and not more. Every build comes off `main`; `dev` is what the
-  /// automatic builds are, `release` is what somebody cuts by hand in GitHub,
-  /// and `local` is a tree nobody else has. That is the whole set, and 0014 §1
-  /// says the same: `dev-*` is `dev`, anything else is `release`.
+  /// Remembered because this crosses a platform channel and three surfaces want
+  /// it. The failure is handled here rather than at each of them: a channel
+  /// that does not answer must not cost the About screen, and must not cost the
+  /// init of the thing whose job is to report failures.
   ///
-  /// So the historical prefixes collapse rather than survive. `beta-0.11.2`,
-  /// `alpha-0.8.4` and `wip-0.3.6` were all cut by hand, so all three are
-  /// `release` — reading the prefix back out would be reporting the tagging
-  /// convention of the day rather than how the build was made. What tells two
-  /// builds apart is the version and the commit, not the word in front of the
-  /// tag.
+  /// Which is also why it is only the version that can go missing. The channel
+  /// and the three commits are `String.fromEnvironment` constants, so they are
+  /// in the binary whether or not anything answers.
   ///
-  /// `local` is a value and not null because "which build is this" has an
-  /// answer for a developer's own run, and it is the answer most worth saying
-  /// out loud: a report that arrives from `local` cannot be reproduced from
-  /// anything in the repository.
-  static String channelFromTag(String tag) {
-    if (tag.isEmpty) return 'local';
-    return tag.startsWith('dev-') ? 'dev' : 'release';
-  }
+  /// **The value is cached, not the future**, and that distinction is
+  /// load-bearing. A `static final Future` is captured by the zone that created
+  /// it, so a continuation added from a different zone is queued on a zone
+  /// nobody is running any more and never fires. One zone is the normal case
+  /// and the bug is invisible there; two of them is every widget test, each
+  /// with its own `FakeAsync`, and the symptom was an `await` here that simply
+  /// never returned in whichever test did not happen to run first.
+  static Future<BuildStamp> resolve() async => _cached ??= await _read();
 
-  /// The version and build number, resolved once and cached.
-  ///
-  /// Cached because this crosses a platform channel and three surfaces want it.
-  /// The failure is handled here rather than at each of them: a channel that
-  /// does not answer must not cost the About screen, and must not cost the init
-  /// of the thing whose job is to report failures.
-  static Future<BuildStamp> resolve() => _stamp;
+  static BuildStamp? _cached;
 
-  static final Future<BuildStamp> _stamp = _read();
+  /// Forgets the cached value, so a test can read it again.
+  ///
+  /// Needed because the cache outlives a test: without this the second test to
+  /// ask would be served a value read under the first one's mocks.
+  @visibleForTesting
+  static void debugForget() => _cached = null;
 
   static Future<BuildStamp> _read() async {
     var version = '';
@@ -158,16 +214,19 @@ abstract final class BuildIdentity {
       final info = await PackageInfo.fromPlatform();
       version = info.version;
       build = info.buildNumber;
-    } catch (_) {
-      // Deliberately silent, and deliberately not a LogService call: this can
-      // run before logging is up, and an unknown version is a worse line on the
-      // About screen rather than a failure anybody can act on. What is left is
-      // still useful - the commit is compiled in and does not come from here.
+    } catch (e) {
+      // `caught` and not `warn`: the operation did not do what was asked, and
+      // nobody needs alerting - what is left is still useful, since the commit
+      // and the channel are compiled in and do not come from here. But it is
+      // worth being readable afterwards, because it is the one thing that
+      // makes every surface say `unknown`, and a reader looking at that line
+      // would otherwise have nothing to explain it.
+      LogService.caught('[Build] version unavailable: $e');
     }
     return BuildStamp(
       version: version,
       build: build,
-      channel: channelFromTag(_releaseTag),
+      channel: channel,
       commit: commit,
       flipperlibCommit: flipperlibCommit,
       dartufbtCommit: dartufbtCommit,

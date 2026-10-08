@@ -301,14 +301,20 @@ jobs:
           pattern: release-assets-*
           merge-multiple: true
 
+      # The channel comes from derive_version.sh rather than a `dev-*` test of
+      # this job's own. There were three readers of the tag prefix and they did
+      # not have to agree; ADR 0014 §4 makes the script the only one. It also
+      # means a push to `main`, which has no tag to test, resolves the same way
+      # the build jobs do.
       - name: Resolve release channel
         id: channel
         shell: bash
         run: |
           tag="${GITHUB_REF_NAME}"
+          channel="$(.github/scripts/derive_version.sh --print-channel -- "$tag")"
           release_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${tag}"
           data="{\"type\":\"app\",\"url\":\"${release_url}\"}"
-          if [[ "$tag" == dev-* ]]; then
+          if [[ "$channel" == dev ]]; then
             {
               echo "prerelease=true"
               echo "make_latest=false"

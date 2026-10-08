@@ -118,13 +118,13 @@ has "writes the version name"     "QUNLEASHED_VERSION_NAME=0.11.2"
 has "writes the version code"     "QUNLEASHED_VERSION_CODE=11002"
 has "publishes the step outputs"  "version_name=0.11.2"
 has "build args carry name+number" \
-  "QUNLEASHED_FLUTTER_BUILD_ARGS=--build-name=0.11.2 --build-number=11002 --dart-define=QUNLEASHED_RELEASE_TAG=beta-0.11.2"
+  "QUNLEASHED_FLUTTER_BUILD_ARGS=--build-name=0.11.2 --build-number=11002 --dart-define=QU_CHANNEL=release"
 
 if ! body="$(run_env "${NOCOMMITS[@]}" GITHUB_REF_NAME=beta-0.11.2 QU_BUILD_SERVER_URL=https://b QU_BUILD_SERVER_KEY=k QU_CARTO_KEY=c)"; then
   fail "a run with every secret exited non-zero"
 fi
 has "folds in every secret" \
-  "QUNLEASHED_FLUTTER_BUILD_ARGS=--build-name=0.11.2 --build-number=11002 --dart-define=QUNLEASHED_RELEASE_TAG=beta-0.11.2 --dart-define=QU_BUILD_SERVER_URL=https://b --dart-define=QU_BUILD_SERVER_KEY=k --dart-define=QU_CARTO_KEY=c"
+  "QUNLEASHED_FLUTTER_BUILD_ARGS=--build-name=0.11.2 --build-number=11002 --dart-define=QU_CHANNEL=release --dart-define=QU_BUILD_SERVER_URL=https://b --dart-define=QU_BUILD_SERVER_KEY=k --dart-define=QU_CARTO_KEY=c"
 
 # ADR 0014 §3: a build has to be able to name the commit it came from, and all
 # three of them, because a fault can be in a submodule. Pinned rather than read
@@ -132,7 +132,7 @@ has "folds in every secret" \
 if ! body="$(run_env GITHUB_REF_NAME=beta-0.11.2 QU_COMMIT=aaaaaaa1 QU_COMMIT_FLIPPERLIB=bbbbbbb2 QU_COMMIT_DARTUFBT=ccccccc3)"; then
   fail "a run with the three commits exited non-zero"
 fi
-has "carries all three commits"   "QUNLEASHED_FLUTTER_BUILD_ARGS=--build-name=0.11.2 --build-number=11002 --dart-define=QUNLEASHED_RELEASE_TAG=beta-0.11.2 --dart-define=QU_COMMIT=aaaaaaa1 --dart-define=QU_COMMIT_FLIPPERLIB=bbbbbbb2 --dart-define=QU_COMMIT_DARTUFBT=ccccccc3"
+has "carries all three commits"   "QUNLEASHED_FLUTTER_BUILD_ARGS=--build-name=0.11.2 --build-number=11002 --dart-define=QU_CHANNEL=release --dart-define=QU_COMMIT=aaaaaaa1 --dart-define=QU_COMMIT_FLIPPERLIB=bbbbbbb2 --dart-define=QU_COMMIT_DARTUFBT=ccccccc3"
 
 # A desktop job need not have the submodules checked out, and must still build.
 # The app's own commit is the one that matters; the others are then absent
@@ -140,7 +140,7 @@ has "carries all three commits"   "QUNLEASHED_FLUTTER_BUILD_ARGS=--build-name=0.
 if ! body="$(run_env GITHUB_REF_NAME=beta-0.11.2 QU_COMMIT=aaaaaaa1 QU_COMMIT_FLIPPERLIB= QU_COMMIT_DARTUFBT=)"; then
   fail "a run with no submodule commits exited non-zero"
 fi
-has "a submodule commit is optional"   "QUNLEASHED_FLUTTER_BUILD_ARGS=--build-name=0.11.2 --build-number=11002 --dart-define=QUNLEASHED_RELEASE_TAG=beta-0.11.2 --dart-define=QU_COMMIT=aaaaaaa1"
+has "a submodule commit is optional"   "QUNLEASHED_FLUTTER_BUILD_ARGS=--build-name=0.11.2 --build-number=11002 --dart-define=QU_CHANNEL=release --dart-define=QU_COMMIT=aaaaaaa1"
 
 # Unset means "work it out from the checkout", which is the path every build job
 # takes. It must produce a real SHA rather than nothing - the warning branch is
@@ -156,6 +156,48 @@ fi
 # A commit carrying whitespace would truncate every argument after it, the same
 # hazard the secrets are guarded for.
 refutes "a commit with a space" run_env GITHUB_REF_NAME=beta-0.11.2 QU_COMMIT="a b"
+
+# --- the channel ------------------------------------------------------------
+#
+# ADR 0014 §1. This is the field three readers used to derive for themselves,
+# and the one a push to `main` cannot derive at all, because there is no tag.
+
+echo "derive_version.sh --print-channel"
+
+channel() {
+  local label="$1" want="$2"; shift 2
+  local got
+  if ! got="$(run "$@" bash "$DERIVE" --print-channel)"; then got="<rejected>"; fi
+  [[ "$got" == "$want" ]] && pass "$label -> $got" || fail "$label -> $got (want $want)"
+}
+
+channel "a dev tag"             dev     GITHUB_REF_NAME=dev-0.14.1
+channel "a bare tag"            release GITHUB_REF_NAME=0.15.0
+# beta- and alpha- were cut by hand, so they are releases however they sorted
+# on the releases page at the time.
+channel "a beta tag"            release GITHUB_REF_NAME=beta-0.11.2
+channel "an alpha tag"          release GITHUB_REF_NAME=alpha-0.8.4
+
+# The whole point of the variable: a push to `main` has no tag to read, so the
+# workflow says what the build is and the prefix rule is never consulted. The
+# tag here would say `release` on its own.
+channel "an explicit dev wins"  dev     GITHUB_REF_NAME=0.15.0 QU_CHANNEL=dev
+channel "an explicit release"   release GITHUB_REF_NAME=dev-0.14.1 QU_CHANNEL=release
+
+# A typo must not ship a build labelled with it, and `local` is the app's own
+# default for a build nothing told - never something CI produces.
+refutes "an unknown channel" run GITHUB_REF_NAME=0.15.0 QU_CHANNEL=nightly bash "$DERIVE" --print-channel
+refutes "local from CI"      run GITHUB_REF_NAME=0.15.0 QU_CHANNEL=local bash "$DERIVE" --print-channel
+
+# The channel reaches the build the same way the version does, and the publish
+# job reads it from the step output rather than testing the prefix again.
+if ! body="$(run_env "${NOCOMMITS[@]}" GITHUB_REF_NAME=dev-0.14.1)"; then
+  fail "a dev run exited non-zero"
+fi
+has "writes the channel"          "QUNLEASHED_CHANNEL=dev"
+has "publishes it as an output"   "channel=dev"
+has "compiles it into the build" \
+  "QUNLEASHED_FLUTTER_BUILD_ARGS=--build-name=0.14.1 --build-number=14001 --dart-define=QU_CHANNEL=dev"
 
 # A URL without a key authenticates nothing, so neither is passed.
 if ! body="$(run_env GITHUB_REF_NAME=beta-0.11.2 QU_BUILD_SERVER_URL=https://b)"; then

@@ -29,19 +29,21 @@ class AppVersionLabel extends StatelessWidget {
     return Platform.operatingSystem;
   }
 
-  /// `qUnleashed for Android v0.14.1+14001 (dev · abc1234)`.
+  /// `qUnleashed for Android v0.14.1-dev (14001 · abc1234)`.
   ///
   /// Built from the existing one-line format rather than a new string, so the
-  /// twelve translations of it keep working: the channel and the commit go in
-  /// the suffix the format already has a slot for.
+  /// translations of it keep working: the version takes the channel suffix the
+  /// way 0014 §2 spells it, and the build number and commit go in the slot the
+  /// format already has for a bracketed suffix.
   static String _versionText(BuildStamp stamp) {
-    final detail = stamp.shortCommit.isEmpty
-        ? stamp.channel
-        : '${stamp.channel} · ${stamp.shortCommit}';
+    final detail = [
+      if (stamp.build.isNotEmpty) stamp.build,
+      if (stamp.shortCommit.isNotEmpty) stamp.shortCommit,
+    ].join(' · ');
     return l10n.appVersionLine(
       _platformName,
-      stamp.versionWithBuild,
-      ' ($detail)',
+      stamp.displayVersion,
+      detail.isEmpty ? '' : ' ($detail)',
     );
   }
 
