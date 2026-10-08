@@ -332,24 +332,24 @@ class _FileTableRowState extends State<FileTableRow> {
     );
   }
 
+  Widget _spinner(QAppColors colors) => _slot(
+    SizedBox(
+      width: 14,
+      height: 14,
+      child: CircularProgressIndicator(strokeWidth: 2, color: colors.accent),
+    ),
+  );
+
   Widget _trailing(QAppColors colors) {
-    if (_renaming) {
-      return _slot(
-        SizedBox(
-          width: 14,
-          height: 14,
-          child: CircularProgressIndicator(
-            strokeWidth: 2,
-            color: colors.accent,
-          ),
-        ),
-      );
-    }
+    if (_renaming) return _spinner(colors);
     if (_editing) {
       return _iconBtn(Icons.check_rounded, colors.accent, _commitEdit);
     }
-    if (widget.progress != null && widget.onCancel != null) {
-      return _slot(QCancelButton(onCancel: widget.onCancel));
+    if (widget.progress != null) {
+      final cancel = widget.onCancel;
+      return cancel == null
+          ? _spinner(colors)
+          : _slot(QCancelButton(onCancel: cancel));
     }
     if (widget.selectionMode || widget.entry.pending) {
       return const SizedBox(width: kFileTrailingWidth);

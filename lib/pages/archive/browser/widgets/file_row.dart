@@ -276,11 +276,20 @@ class FileGridTile extends StatelessWidget {
               ),
             ),
           ),
-          if (progress != null && onCancel != null)
+          if (progress != null)
             Positioned(
               top: 6,
               right: 6,
-              child: QCancelButton(onCancel: onCancel),
+              child: onCancel == null
+                  ? SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: colors.accent,
+                      ),
+                    )
+                  : QCancelButton(onCancel: onCancel),
             ),
         ],
       ),
