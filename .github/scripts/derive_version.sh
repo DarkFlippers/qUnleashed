@@ -1,21 +1,32 @@
 #!/usr/bin/env bash
-# Derives the app version from the release tag, so no two jobs can disagree
-# about what a tag means.
+# Turns a trigger into a build identity, so no two jobs can disagree about what
+# a build is. ADR 0014 §4.
 #
 #   derive_version.sh                    # write to $GITHUB_ENV and $GITHUB_OUTPUT
 #   derive_version.sh -- <tag>           # ... for an explicit tag
 #   derive_version.sh --print [--] <tag> # write "<name> <code>" to stdout instead
 #   derive_version.sh --print-channel …  # write "dev" or "release" instead
 #
+# **The version comes from `pubspec.yaml`, not from the tag** (§2). It used to
+# come from the tag, and that made a dev build impossible: a push to `main` has
+# no tag, so there was nothing to read and this script refused to run. Pubspec
+# on `main` holds the version being built *toward*, every dev build in a cycle
+# is named it, and they are told apart by the build number and the commit.
+#
+# The tag is still read, for two things. It picks the channel, and it is checked
+# against pubspec - see the two guards below. `QU_PUBSPEC` overrides which file
+# is read, which is how the tests feed a version without rewriting the repo's.
+#
 # Pass a caller-supplied tag after `--`. The release workflow does, because on a
 # tag push `${{ inputs.tag }}` expands to an empty argument and on a dispatch it
 # is whatever an operator typed - without the separator, a tag of `--print`
 # would take the print arm, write nothing to $GITHUB_ENV and exit 0, and the
-# build would silently fall back to the pubspec version with no dart-defines.
+# build would go out with no dart-defines at all.
 #
-# An empty or absent tag falls back to $GITHUB_REF_NAME. --print exists for the
-# tests; jobs consume the values through the environment or the step output, so
-# nothing in the workflow depends on this script's stdout.
+# With no argument the ref is used, but only when it names a tag
+# (`GITHUB_REF_TYPE`); a branch is a dev build and has no tag to check. --print
+# exists for the tests; jobs consume the values through the environment or the
+# step output, so nothing in the workflow depends on this script's stdout.
 #
 # QU_BUILD_SERVER_URL and QU_BUILD_SERVER_KEY are folded into the Flutter build
 # arguments only when both are set, since a URL without a key authenticates
@@ -40,14 +51,28 @@ case "${1:-}" in
 esac
 if [[ "${1:-}" == "--" ]]; then shift; fi
 
-tag="${1:-${GITHUB_REF_NAME:-}}"
-if [[ -z "$tag" ]]; then
-  echo "::error::No tag given and GITHUB_REF_NAME is unset." >&2
+# An explicit argument wins; otherwise the ref, but only when it is a tag. A
+# branch name is not a tag that failed to parse, it is a dev build, and the
+# difference is the whole of what makes §2 work.
+tag="${1:-}"
+if [[ -z "$tag" && "${GITHUB_REF_TYPE:-}" == tag ]]; then
+  tag="${GITHUB_REF_NAME:-}"
+fi
+
+pubspec="${QU_PUBSPEC:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/pubspec.yaml}"
+if [[ ! -f "$pubspec" ]]; then
+  echo "::error::No pubspec.yaml at $pubspec." >&2
   exit 1
 fi
 
-if [[ ! "$tag" =~ ([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
-  echo "::error::Tag must contain a semantic version like 0.6.1, alpha-0.6.1, or beta-0.6.1." >&2
+# The name only: pubspec holds `0.14.1+14001` and the build number after the
+# `+` is not read. It is derived below, and once §6 lands it will not live in
+# pubspec at all - so trusting it here would bake in the thing being replaced.
+pubspec_version="$(
+  sed -nE 's/^version:[[:space:]]*([^+[:space:]]+).*$/\1/p' "$pubspec" | head -n 1
+)"
+if [[ ! "$pubspec_version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+  echo "::error::pubspec.yaml version must be major.minor.patch, not '$pubspec_version'." >&2
   exit 1
 fi
 
@@ -66,6 +91,50 @@ if (( version_code <= 0 )); then
   exit 1
 fi
 
+# --- guard one: a release tag has to agree with pubspec ----------------------
+#
+# Satisfied by construction under §2, because pubspec already holds the version
+# being released - which is the point of holding the next one rather than the
+# last. It would have failed the release of 2026-10-01, when `dev-0.13.0`
+# pointed at a commit whose pubspec still said 0.12.1, because the old
+# sync-version wrote the version *after* publishing.
+if [[ -n "$tag" ]]; then
+  if [[ ! "$tag" =~ ([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+    echo "::error::Tag must contain a semantic version like 0.6.1, alpha-0.6.1, or beta-0.6.1." >&2
+    exit 1
+  fi
+  tag_version="$((10#${BASH_REMATCH[1]})).$((10#${BASH_REMATCH[2]})).$((10#${BASH_REMATCH[3]}))"
+  if [[ "$tag_version" != "$version_name" ]]; then
+    echo "::error::Tag $tag names $tag_version but pubspec.yaml says $version_name. Bump pubspec in a commit of its own, or tag the version it holds." >&2
+    exit 1
+  fi
+fi
+
+# --- guard two: a version that has gone out cannot be built again ------------
+#
+# This is what replaces the automatic bump. Choosing patch against minor against
+# major is a decision, so pubspec moves in a deliberate commit and CI never
+# picks a digit; what CI can settle is whether the digit was moved at all.
+#
+# Without this, releasing 0.15.0 and forgetting to bump means the next dev build
+# is named 0.15.0 too - and TestFlight refuses it, because that short version has
+# been released. Days later, far from the commit, reported as a store problem.
+#
+# "Has gone out" means a tag names it. Building that tag is the one case where
+# the match is expected, so it is allowed; anything else is the hole above.
+# QU_SKIP_PUBLISHED_GUARD exists for the tests, which cannot create tags in the
+# repository they run against.
+if [[ -z "${QU_SKIP_PUBLISHED_GUARD:-}" ]]; then
+  while IFS= read -r published; do
+    [[ -z "$published" ]] && continue
+    [[ "$published" == "$tag" ]] && continue
+    if [[ "$published" =~ (^|[^0-9])${version_name//./\\.}([^0-9]|$) ]]; then
+      echo "::error::Version $version_name has already been published as $published. Open the next cycle by bumping pubspec.yaml." >&2
+      exit 1
+    fi
+  done < <(git tag --list 2>/dev/null || true)
+fi
+
 # Which of the two published channels this build is, decided by the trigger.
 #
 # `QU_CHANNEL` wins when the caller sets it, which is how the workflow that
@@ -75,9 +144,13 @@ fi
 #
 # Two values here and never `local`: the script only runs in CI, and `local` is
 # what the app reads when nothing passed a define at all.
+#
+# No tag means a branch build, which is a dev build by definition - a release is
+# something somebody cuts, and cutting it makes a tag. With a tag the prefix
+# decides, which is §1's interim rule.
 channel="${QU_CHANNEL:-}"
 if [[ -z "$channel" ]]; then
-  if [[ "$tag" == dev-* ]]; then channel=dev; else channel=release; fi
+  if [[ -z "$tag" || "$tag" == dev-* ]]; then channel=dev; else channel=release; fi
 fi
 if [[ "$channel" != dev && "$channel" != release ]]; then
   echo "::error::QU_CHANNEL must be dev or release, not '$channel'." >&2
