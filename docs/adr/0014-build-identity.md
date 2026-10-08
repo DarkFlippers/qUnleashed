@@ -28,8 +28,9 @@ holds the previous one.
 
 **Three places read the tag, and they do not agree.** `derive_version.sh`
 takes the version; the publish job treats `dev-*` as a prerelease and anything
-else as latest; `AppVersionLabel` has its own regex for the prefix. Every tag
-so far is `dev-*` or `beta-*`, so `beta-*` has been what GitHub calls latest.
+else as latest; `AppVersionLabel` has its own regex for the prefix. Of 56 tags, 22 are
+`alpha-`, 22 `beta-`, 7 `dev-` and 5 `wip-`, so everything but the
+seven `dev-*` has been what GitHub calls latest.
 
 **No build carries its commit.** Nothing in the binary, the About screen or a
 copied log says which commit it was built from.
@@ -83,10 +84,10 @@ validates:
 | Where | What it says |
 |---|---|
 | `--build-name` → `CFBundleShortVersionString` | `0.15.0` — digits and periods, always |
-| `--build-number` → `CFBundleVersion` | `107810` |
-| The version line on the Tools screen | `0.15.0-dev (107810 · abc1234)` |
-| The head of a copied log | `qUnleashed 0.15.0-dev · 107810 · abc1234` |
-| The Sentry release (§5) | `qunleashed@0.15.0-dev+107810` |
+| `--build-number` → `CFBundleVersion` | `108080` |
+| The version line on the Tools screen | `0.15.0-dev (108080 · abc1234)` |
+| The head of a copied log | `qUnleashed 0.15.0-dev · 108080 · abc1234` |
+| The Sentry release (§5) | `qunleashed@0.15.0-dev+108080` |
 
 So a dev build is explicit about being one wherever that helps somebody, and
 the platform never sees the suffix. The channel (§1) and the build number (§6)
@@ -98,7 +99,7 @@ guard below hold rather than fail:
 - `pubspec.yaml` on `main` holds the version being built **toward**. Moving it
   is a commit somebody makes on purpose — see "the bump is a decision" below.
 - Every dev build in a cycle is named that version. They are told apart by
-  their build number and their commit, not by their name - `0.15.0 (107810,
+  their build number and their commit, not by their name - `0.15.0 (108080,
   abc1234)` and `0.15.0 (107930, def5678)` are two different binaries and say
   so.
 - A release tag equals the pubspec version at its commit, or the build fails.
@@ -165,7 +166,7 @@ The `-dev` on a dev build is §2's suffix, and it reverses a rejection further
 down (2026-10-08). The rejection was not wrong about the mechanics - a unique
 build number already makes a release unique, and `environment` already carries
 the channel - it just weighed the wrong thing. In a release list,
-`qunleashed@0.15.0+107810` against `qunleashed@0.15.0+107811` says nothing
+`qunleashed@0.15.0+108080` against `qunleashed@0.15.0+108081` says nothing
 until each one's environment is opened, and that list is the one most often
 read. With the suffix a dev build and the shipped `0.15.0` never look alike.
 It costs nothing, since Sentry's release is a free-form string.
@@ -188,17 +189,19 @@ slot = 0            for a dev build
 slot = run_attempt  for a release build (1, 2, … 9)
 ```
 
-At 781 commits that is **107810** for a dev build and **107811** for the
-release of the same commit. Every code ever shipped is below 13000, so the
-floor clears them with room to spare, and the 2 100 000 000 ceiling Android
-imposes is 210 million commits away.
+At 808 commits that is **108080** for a dev build and **108081** for the
+release of the same commit. The floor clears every code ever shipped with room
+to spare, and the 2 100 000 000 ceiling Android imposes is 210 million commits
+away.
 
 Why each piece:
 
 - **`100000 +`** clears every historical code in one step, so nothing has to
-  remember what the highest shipped number was. (That floor is why the earlier
-  draft of this section said "above 12001"; it is 13000 now, and would have
-  gone stale again at every release. Not depending on it is the point.)
+  remember what the highest shipped number was. Earlier drafts of this section
+  quoted that high-water mark — "above 12001", then "below 13000" — and it was
+  wrong again by the time this was written, because 0.14.1 shipped as 14001 in
+  the meantime. Not depending on it is the whole point; the Migration section
+  names the figure once, where it is actually load-bearing.
 - **`× 10`** leaves ten slots per commit, which is what lets two builds of one
   commit differ. A bare commit count cannot do that, and a release is
   frequently tagged at a commit a dev build has already been made from.
@@ -304,10 +307,18 @@ have caught the state the tree is in right now.
 Nothing has to be renumbered: every code ever shipped is at or below 14001 and
 §6's floor of 100000 clears it.
 
-Note that every tag so far is `dev-*`, including the ones that were releases.
-§1's channel comes from the trigger once a push to `main` is what makes a dev
-build, which is also what stops a hand-cut release inheriting the word `dev`
-from the only prefix this repository has ever used.
+The prefix history matters for one reason. Of 56 tags, 22 are `alpha-`, 22
+`beta-`, 7 `dev-` and 5 `wip-`, and `dev-` was how a dev build was made before
+`main` built on its own — so the prefix has never reliably meant the channel.
+Now that `dev` is the name of the single rolling prerelease (§7), a `dev-*` tag
+would collide with it outright: it would resolve to the dev channel, delete and
+recreate that prerelease, and leave its own tag with no release and no assets.
+So `derive_version.sh` refuses a `dev-*` tag, and §1's channel comes from the
+trigger rather than from any prefix.
+
+The cost is that the seven versions already published under `dev-*` can never
+be rebuilt. That is acceptable: they are published, and the guard in §2 exempts
+only the tag being rebuilt, which from now on is the version itself.
 
 The prefix convention outlives the scheme that needed it. `dev-*` and `beta-*`
 still pick the channel until a push to `main` is what makes a dev build, and

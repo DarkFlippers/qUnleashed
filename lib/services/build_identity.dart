@@ -1,7 +1,48 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:package_info_plus/package_info_plus.dart';
 
 import 'logging.dart';
+
+/// Which of the three channels produced a build.
+///
+/// Every build comes off `main`: [dev] is what the automatic builds are,
+/// [release] is what somebody cuts by hand, and [local] is a tree nobody else
+/// has. CI only ever says the first two.
+///
+/// An enum and not a `String`, because the failure direction of a bare one runs
+/// the wrong way. `channel` arrives from a `String.fromEnvironment`, which can
+/// hold anything; with a string, `isDev` and `isLocal` were both false for
+/// anything unexpected, so a typo - `QU_CHANNEL=prod`, or `Dev` with a capital
+/// - rendered the *bare* version and a Sentry release of `qunleashed@0.14.1`.
+/// A developer's own tree would have impersonated a shipped build, which is the
+/// opposite of what 0014 §1 defaults to `local` for. The shell guard does not
+/// help: it only runs in CI.
+enum BuildChannel {
+  dev,
+  release,
+  local;
+
+  /// Anything unrecognised is [local], and says so out loud.
+  ///
+  /// `local` rather than `release` because a define nobody expected is not a
+  /// release, and because a report that arrives from `local` cannot be
+  /// reproduced from anything in the repository - which is the honest reading
+  /// of a build whose channel nobody can account for.
+  static BuildChannel parse(String raw) {
+    for (final channel in values) {
+      if (channel.name == raw) return channel;
+    }
+    // Not `warn`: nothing is broken for the user, and the compiled-in default
+    // is already the cautious one. But a CI build demoting itself to `local`
+    // would be baffling without a line saying why.
+    if (raw.isNotEmpty) {
+      LogService.caught('[Build] unknown channel "$raw", reading it as local');
+    }
+    return local;
+  }
+}
 
 /// What a build says it is: version, build number, channel and the commits it
 /// was built from.
@@ -18,30 +59,32 @@ class BuildStamp {
     required this.commit,
     required this.flipperlibCommit,
     required this.dartufbtCommit,
-  });
+    // Both come from one platform call, so one without the other is not a
+    // state [BuildIdentity] produces - and it is the state the three
+    // human-readable getters disagree about, since `versionWithBuild` drops
+    // the number while `line` and `sentryRelease` keep it. Asserting the
+    // dependency is cheaper than picking which of the three was right.
+  }) : assert(
+         version != '' || build == '',
+         'a build number without a version is not a producible state',
+       );
 
   /// `0.14.1`, or empty if the platform would not say.
   final String version;
 
-  /// `14001`, or empty if the platform would not say.
+  /// `108080`, or empty if the platform would not say.
   ///
-  /// Under the formula in place today this is derived from [version], so every
-  /// build of one version carries the same number. 0014 §6 is what turns it
-  /// into a counter; until then [commit] is the only thing that tells two
-  /// builds apart, which is why the commit is shown beside this rather than
-  /// instead of it.
+  /// A counter, and nothing else: 0014 §6 makes it `100000 + commits × 10 +
+  /// slot`, decoupled from [version] because §2 gives every dev build in a
+  /// cycle the same name. So this orders builds and [commit] identifies the
+  /// tree they came from, and both are worth quoting in a report.
   final String build;
 
-  /// `dev`, `release`, or `local` for a build nothing told.
-  ///
-  /// Three values and no more. Every build comes off `main`; `dev` is what the
-  /// automatic builds are, `release` is what somebody cuts by hand, and `local`
-  /// is a tree nobody else has. CI only ever says the first two.
-  final String channel;
+  final BuildChannel channel;
 
-  bool get isDev => channel == BuildIdentity.devChannel;
+  bool get isDev => channel == BuildChannel.dev;
 
-  bool get isLocal => channel == BuildIdentity.localChannel;
+  bool get isLocal => channel == BuildChannel.local;
 
   /// The app's commit as a full SHA, or empty in a build nothing told.
   final String commit;
@@ -73,11 +116,18 @@ class BuildStamp {
   ///
   /// A release says nothing, because a bare version already means "released"
   /// and a `-release` suffix is noise on the one build most people have.
+  ///
+  /// The suffix survives an unknown version. Only [version] crosses a platform
+  /// channel; the channel is a compiled-in constant and cannot have failed, so
+  /// `unknown-dev` keeps the half that is still true. Collapsing both to
+  /// `unknown` threw away a fact nobody had lost.
   String get displayVersion {
-    if (version.isEmpty) return 'unknown';
-    if (isDev) return '$version-dev';
-    if (isLocal) return '$version-local';
-    return version;
+    final name = version.isEmpty ? 'unknown' : version;
+    return switch (channel) {
+      BuildChannel.dev => '$name-dev',
+      BuildChannel.local => '$name-local',
+      BuildChannel.release => name,
+    };
   }
 
   /// `0.14.1+14001`, or just the version with no build number, or `unknown`
@@ -155,57 +205,81 @@ abstract final class BuildIdentity {
     'QU_COMMIT_DARTUFBT',
   );
 
-  static const String devChannel = 'dev';
-  static const String releaseChannel = 'release';
-  static const String localChannel = 'local';
-
-  /// Which channel built this, decided by the trigger and compiled in.
+  /// The raw channel define, before [BuildChannel.parse] classifies it.
   ///
   /// From the trigger and not from the tag, which is 0014 §1 and matters more
-  /// than it sounds. A push to `main` has no tag at all, so a dev build cannot
-  /// derive this - and in this repository the prefix could not carry it even
-  /// where there is one: every tag so far is `dev-*`, including the ones that
-  /// were releases. `derive_version.sh` is the single place that turns a
-  /// trigger into the answer.
+  /// than it sounds: a push to `main` has no tag at all, so a dev build has
+  /// nothing to derive a channel from. `derive_version.sh` is the single place
+  /// that turns a trigger into the answer.
   ///
-  /// Defaults to [localChannel], which is the one value CI never sends: a
-  /// build with no define is a developer's own run. Not null, because "which
-  /// build is this" has an answer there too, and it is the answer most worth
-  /// saying out loud - a report from `local` cannot be reproduced from
-  /// anything in the repository.
-  static const String channel = String.fromEnvironment(
+  /// Defaults to `local`, which is the one value CI never sends: a build with
+  /// no define is a developer's own run. Worth saying out loud rather than
+  /// left blank, because a report that arrives from `local` cannot be
+  /// reproduced from anything in the repository.
+  static const String channelName = String.fromEnvironment(
     'QU_CHANNEL',
-    defaultValue: localChannel,
+    defaultValue: 'local',
   );
 
   /// The version and build number, read once and then remembered.
   ///
-  /// Remembered because this crosses a platform channel and three surfaces want
-  /// it. The failure is handled here rather than at each of them: a channel
-  /// that does not answer must not cost the About screen, and must not cost the
-  /// init of the thing whose job is to report failures.
+  /// Remembered because this crosses a platform channel and two surfaces want
+  /// it today - the Tools line and the head of a copied log - with every Sentry
+  /// event joining them once 0013 lands. The failure is handled here rather
+  /// than at each of them: a channel that does not answer must not cost the
+  /// About screen, and must not cost the Sentry init that 0013 puts in
+  /// `_initCore`, which may never throw. Nothing calls this from `_initCore`
+  /// yet, so that last constraint is anticipated rather than in force.
   ///
   /// Which is also why it is only the version that can go missing. The channel
   /// and the three commits are `String.fromEnvironment` constants, so they are
   /// in the binary whether or not anything answers.
   ///
   /// **The value is cached, not the future**, and that distinction is
-  /// load-bearing. A `static final Future` is captured by the zone that created
-  /// it, so a continuation added from a different zone is queued on a zone
-  /// nobody is running any more and never fires. One zone is the normal case
-  /// and the bug is invisible there; two of them is every widget test, each
-  /// with its own `FakeAsync`, and the symptom was an `await` here that simply
-  /// never returned in whichever test did not happen to run first.
-  static Future<BuildStamp> resolve() async => _cached ??= await _read();
+  /// load-bearing. A `static final Future` created during one test is completed
+  /// by that test's `FakeAsync`; if it is still pending when the test ends, the
+  /// clock that would have completed it is gone and every later `await` of it
+  /// hangs. One zone is the normal case and the bug is invisible there; every
+  /// widget test has its own, and the symptom was an `await` here that never
+  /// returned in whichever test did not happen to run first. Handing out an
+  /// already-completed future is fine - `then` registers its callback in
+  /// whatever zone is current when it is called - which is why caching the
+  /// arrived value works and caching the future did not.
+  ///
+  /// Single-flight through [_inFlight], because `_cached ??= await …` tests the
+  /// cache *before* the await: two callers racing - the Tools screen opening
+  /// while the log screen copies - would both cross the channel, and on failure
+  /// both log. `_remember` folds two consecutive identical bodies into `(2×)`,
+  /// which reads to whoever gets the bug report as the app having failed twice.
+  /// A `Completer` is safe where a `static final Future` is not: it is created
+  /// inside the first caller's zone and does not outlive the value.
+  static Future<BuildStamp> resolve() async {
+    final cached = _cached;
+    if (cached != null) return cached;
+    final pending = _inFlight;
+    if (pending != null) return pending.future;
+
+    final completer = Completer<BuildStamp>();
+    _inFlight = completer;
+    final stamp = await _read();
+    _cached = stamp;
+    _inFlight = null;
+    completer.complete(stamp);
+    return stamp;
+  }
 
   static BuildStamp? _cached;
+  static Completer<BuildStamp>? _inFlight;
 
   /// Forgets the cached value, so a test can read it again.
   ///
   /// Needed because the cache outlives a test: without this the second test to
   /// ask would be served a value read under the first one's mocks.
   @visibleForTesting
-  static void debugForget() => _cached = null;
+  static void debugForget() {
+    _cached = null;
+    _inFlight = null;
+  }
 
   static Future<BuildStamp> _read() async {
     var version = '';
@@ -214,19 +288,29 @@ abstract final class BuildIdentity {
       final info = await PackageInfo.fromPlatform();
       version = info.version;
       build = info.buildNumber;
-    } catch (e) {
+    } catch (e, st) {
       // `caught` and not `warn`: the operation did not do what was asked, and
       // nobody needs alerting - what is left is still useful, since the commit
       // and the channel are compiled in and do not come from here. But it is
       // worth being readable afterwards, because it is the one thing that
       // makes every surface say `unknown`, and a reader looking at that line
       // would otherwise have nothing to explain it.
-      LogService.caught('[Build] version unavailable: $e');
+      //
+      // With the trace, through the house helper, because four different bugs
+      // print almost identically here: a MissingPluginException from the
+      // headless isolate a home-screen widget starts, a PlatformException from
+      // the channel, and a TypeError or a cast failure from inside
+      // package_info_plus' own parsing. The isolate one is the case that only
+      // ever reproduces on a path CI does not cover, so losing its frames is
+      // losing the only account of it.
+      LogService.caught(
+        '[Build] version unavailable: ${LogService.describe(e, st)}',
+      );
     }
     return BuildStamp(
       version: version,
       build: build,
-      channel: channel,
+      channel: BuildChannel.parse(channelName),
       commit: commit,
       flipperlibCommit: flipperlibCommit,
       dartufbtCommit: dartufbtCommit,

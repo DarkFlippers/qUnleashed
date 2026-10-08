@@ -4,6 +4,7 @@ import '../../../components/appbar.dart';
 import '../../../components/clipboard.dart';
 import '../../../components/dialogs/confirm.dart';
 import '../../../services/build_identity.dart';
+import '../../../services/guarded.dart';
 import '../../../services/localization/l10n.dart';
 import '../../../services/logging.dart';
 import '../../../theme/theme.dart';
@@ -34,17 +35,24 @@ class _LogSettingsPageState extends State<LogSettingsPage> {
   // one newline a stack trace's last frame sits flush against the next
   // timestamp and the paste reads as one run-on block.
   //
-  // Opened with the build it came from (ADR 0014 §3). A log pasted into
-  // an issue otherwise says nothing about which binary produced it, and the
-  // version alone does not identify one: the build number is derived from
-  // the version today, so the commit is what separates two builds of
-  // 0.14.1.
+  // Opened with the build it came from (ADR 0014 §3). A log pasted into an
+  // issue otherwise says nothing about which binary produced it, and the
+  // version alone does not identify one: the number orders builds (§6) and the
+  // commit names the tree, and a dev build's name carries neither.
+  //
+  // History is re-read *after* the await, not reused from the page's snapshot.
+  // The first resolve of a session is what produces the `[caught] [Build]
+  // version unavailable` line, so a paste built from the earlier snapshot would
+  // show a header reading `unknown-dev` with the one line explaining why
+  // guaranteed to be missing from it - a report that cannot name its own build
+  // and gives no reason.
   Future<void> _copy() async {
     final stamp = await BuildIdentity.resolve();
     if (!mounted) return;
+    final entries = LogService.history;
     await copyTextToClipboard(
       context,
-      '${stamp.header}\n\n${_entries.join('\n\n')}',
+      '${stamp.header}\n\n${entries.join('\n\n')}',
     );
   }
 
@@ -83,7 +91,14 @@ class _LogSettingsPageState extends State<LogSettingsPage> {
           ),
           QPageAppBarAction(
             tooltip: context.l10n.commonCopy,
-            onPressed: _entries.isEmpty ? null : _copy,
+            // `guarded`, because the slot is a VoidCallback and the future
+            // would otherwise be dropped. `resolve()` cannot reject today, so
+            // this is not a live bare-unawaited violation - but depending on
+            // that is how one gets added later, landing as `[uncaught]` with
+            // nothing naming the operation. CLAUDE.md, #23.
+            onPressed: _entries.isEmpty
+                ? null
+                : () => guarded('[Logs] copying the log', _copy),
             icon: const Icon(Icons.copy_all_outlined),
           ),
           QPageAppBarAction(

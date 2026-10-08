@@ -6,15 +6,22 @@
 // thing it exists for - and nothing else in the app would fail if it did.
 //
 // Every case builds its own BuildStamp rather than reading BuildIdentity's
-// compiled-in constants, which are empty under `flutter test` and cannot be set
-// from here. That is why the formatting takes parameters.
+// compiled-in constants, whose three commits are empty under `flutter test` and
+// whose channel falls back to `local`, and which cannot be set from here. That
+// is why the formatting takes parameters.
+//
+// The producer side - that `derive_version.sh` emits the define this file's
+// subject reads - is covered by `test/dart_define_keys_test.dart`, because a
+// renamed key would leave both this suite and the shell suite green while every
+// CI build reported `local`.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/services/build_identity.dart';
+import 'package:qunleashed/services/logging.dart';
 
 BuildStamp stamp({
   String version = '0.14.1',
   String build = '14001',
-  String channel = 'dev',
+  BuildChannel channel = BuildChannel.dev,
   String commit = 'abc1234def5678',
   String flipperlibCommit = '',
   String dartufbtCommit = '',
@@ -69,21 +76,29 @@ void main() {
   // is a separate getter from versionWithBuild rather than the only form.
   group('displayVersion', () {
     test('a dev build says so', () {
-      expect(stamp(channel: 'dev').displayVersion, '0.14.1-dev');
+      expect(stamp(channel: BuildChannel.dev).displayVersion, '0.14.1-dev');
     });
 
     // A bare version already means released, and `-release` is noise on the
     // one build most people are running.
     test('a release says nothing', () {
-      expect(stamp(channel: 'release').displayVersion, '0.14.1');
+      expect(stamp(channel: BuildChannel.release).displayVersion, '0.14.1');
     });
 
     test('a local build says so too', () {
-      expect(stamp(channel: 'local').displayVersion, '0.14.1-local');
+      expect(stamp(channel: BuildChannel.local).displayVersion, '0.14.1-local');
     });
 
-    test('says unknown when the platform would not answer', () {
-      expect(stamp(version: '', channel: 'dev').displayVersion, 'unknown');
+    // `build: ''` as well, because the two come from one platform call and the
+    // constructor asserts they go missing together. The first draft of this
+    // test left the default build number in place and the assert caught it,
+    // which is what the assert is for.
+    test('keeps the channel when the version is unknown', () {
+      expect(
+        stamp(version: '', build: '', channel: BuildChannel.dev).displayVersion,
+        'unknown-dev',
+        reason: 'only the version failed; the channel is compiled in',
+      );
     });
   });
 
@@ -102,7 +117,7 @@ void main() {
     // them reads as a local build; writing `unknown` twice reads as broken.
     test('drops what it does not have', () {
       expect(
-        stamp(channel: 'local', commit: '', build: '').line,
+        stamp(channel: BuildChannel.local, commit: '', build: '').line,
         '0.14.1-local',
       );
     });
@@ -118,7 +133,7 @@ void main() {
 
     test('a release build has no suffix', () {
       expect(
-        stamp(channel: 'release').sentryRelease,
+        stamp(channel: BuildChannel.release).sentryRelease,
         'qunleashed@0.14.1+14001',
       );
     });
@@ -155,16 +170,54 @@ void main() {
     });
   });
 
-  // The channel is compiled in from the trigger, so under `flutter test` -
-  // which passes no define - it is the one value CI never sends. That is the
-  // whole assertion available here, and it is worth making: the default is
-  // what a developer's own run reports, and a wrong default would have every
-  // local build claiming to be a release.
-  //
-  // The two CI values are covered where they are decided, in
-  // .github/scripts/derive_version_test.sh, because a --dart-define cannot be
-  // set from inside a test.
+  // Classification, which is where the failure direction lives. A bare String
+  // channel made `isDev` and `isLocal` both false for anything unexpected, so a
+  // typo rendered the bare version and a Sentry release with no suffix - a
+  // developer's tree impersonating a shipped build. The shell guard cannot help
+  // here; it only runs in CI.
+  group('BuildChannel.parse', () {
+    test('reads the three it knows', () {
+      expect(BuildChannel.parse('dev'), BuildChannel.dev);
+      expect(BuildChannel.parse('release'), BuildChannel.release);
+      expect(BuildChannel.parse('local'), BuildChannel.local);
+    });
+
+    test('anything else is local, not release', () {
+      for (final raw in ['prod', 'Dev', 'DEV', 'dev ', '']) {
+        expect(
+          BuildChannel.parse(raw),
+          BuildChannel.local,
+          reason: '"$raw" must not be read as a release',
+        );
+      }
+    });
+
+    // An unexpected value is worth a line: a CI build demoting itself to
+    // `local` is baffling otherwise. An empty one is not - that is the ordinary
+    // absence of a define, which is every `flutter run`.
+    test(
+      'says so for a value it did not expect, and not for an absent one',
+      () {
+        LogService.clearHistory();
+        BuildChannel.parse('prod');
+        expect(
+          LogService.history.single,
+          contains('[caught] [Build] unknown channel'),
+        );
+
+        LogService.clearHistory();
+        BuildChannel.parse('');
+        expect(LogService.history, isEmpty);
+        LogService.clearHistory();
+      },
+    );
+  });
+
+  // Under `flutter test` no define is passed, so this reads the one value CI
+  // never sends. Worth asserting because it is what a developer's own run
+  // reports, and a wrong default would have every local build claiming to be a
+  // release.
   test('an untold build is local', () {
-    expect(BuildIdentity.channel, BuildIdentity.localChannel);
+    expect(BuildChannel.parse(BuildIdentity.channelName), BuildChannel.local);
   });
 }

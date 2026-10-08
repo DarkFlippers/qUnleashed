@@ -87,7 +87,7 @@ class LogService {
   /// every catch handler in the app reported nowhere in exactly the builds
   /// people run, and there is no second channel: no crash reporting, and the
   /// console `debugPrint` reaches is not one a user of a shipped build can
-  /// read. So these two are kept here regardless, bounded, and printed only
+  /// read. So all three are kept here regardless, bounded, and printed only
   /// when the build is talking.
   ///
   /// Errors, warnings and [caught] only. Anything below them fires often
@@ -337,11 +337,15 @@ class LogService {
   /// once ADR 0013 lands, a Sentry log at info rather than warning - tell the
   /// two apart without the second firing any alerting.
   ///
-  /// Kept in every build, printed only in a talking one, which is [warn]'s
-  /// combination and why this is one line rather than a mechanism. The point
-  /// is that it survives: [info] does not, because [infoOn] is a const that
-  /// folds to false in an ordinary release build and takes the call site out
-  /// of the binary with it.
+  /// Kept like [warn], printed like [info]: `keep: true` with
+  /// `console: infoOn`, which is why this is one line rather than a mechanism.
+  /// Not quite warn's combination, and the difference is deliberate — in a
+  /// build made to talk at `QLOG_LEVEL=warn` a warning prints and these do
+  /// not, because the console is not the surface they are for.
+  ///
+  /// The keeping is the point. [info] does not survive: [infoOn] is a const
+  /// that folds to false in an ordinary release build and takes the call site
+  /// out of the binary with it.
   ///
   /// **The rule, and it is narrow on purpose.** Use this where an operation
   /// did not do what was asked. Commentary about something merely absent, a

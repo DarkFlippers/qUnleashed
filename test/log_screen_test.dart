@@ -26,11 +26,12 @@ void quietly(void Function() body) {
 
 /// Answers `PackageInfo.fromPlatform()`, which copying now needs.
 ///
-/// Without this the channel is unmocked and the copy never lands: the build
-/// identity that goes at the head of the text is resolved behind an await, and
-/// the test settles before a reply that is not coming. Mocking it also means
-/// the header carries a real version rather than `unknown`, so the assertion
-/// below is about the format rather than about the absence of one.
+/// Without this the platform channel is unmocked and the copy never lands: the
+/// build identity that goes at the head of the text is resolved behind an
+/// await, and the test settles before a reply that is not coming. Mocking it
+/// also means the header carries a real version rather than `unknown`, so the
+/// assertion below can be about the format rather than about the absence of
+/// one.
 const _packageInfoChannel = MethodChannel(
   'dev.fluttercommunity.plus/package_info',
 );
@@ -131,11 +132,16 @@ void main() {
           'into the next timestamp',
     );
     // ADR 0014 §3: a log pasted into an issue has to say which build produced
-    // it. There is no PackageInfo under a widget test, so the version reads as
-    // unknown - what is asserted is that the line is there and comes first.
+    // it. Asserted against the mocked version rather than on the brand word
+    // alone - `startsWith('qUnleashed ')` passed on `qUnleashed unknown`, so
+    // the header losing its identity entirely, which is the regression §3 is
+    // about, stayed green.
+    //
+    // `-local` because no `--dart-define` reaches a widget test, which is the
+    // channel default and is asserted in build_identity_test.
     expect(
       copied,
-      startsWith('qUnleashed '),
+      startsWith('qUnleashed 0.14.1-local · 14001'),
       reason: 'the build identity opens the paste, before any entry',
     );
   });

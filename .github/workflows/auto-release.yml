@@ -18,7 +18,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Version tag to build as, e.g. beta-0.13.0. Nothing is published."
+        description: "Tag to build as. It must name the version pubspec.yaml holds, and may not use the dev- prefix. Nothing is published."
         required: true
         type: string
 
@@ -74,6 +74,15 @@ jobs:
     if: ${{ github.server_url == 'https://github.com' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # The identity the binaries were actually built with, for `publish` to
+    # quote. It must not re-derive it: on a release the slot is
+    # GITHUB_RUN_ATTEMPT, so re-running only the failed `publish` job would
+    # increment it and announce a build number no artifact in the release
+    # carries.
+    outputs:
+      version-name: ${{ steps.version.outputs.version_name }}
+      version-code: ${{ steps.version.outputs.version_code }}
+      channel: ${{ steps.version.outputs.channel }}
 
     steps:
       - name: Checkout
@@ -322,12 +331,12 @@ jobs:
     timeout-minutes: 15
 
     steps:
+      # A default checkout is enough: the only thing this job asks the script
+      # for is `--print-channel`, which is decided by the trigger and returns
+      # before anything reads git. The version and number come from the build
+      # job's outputs.
       - name: Checkout
         uses: actions/checkout@v7
-        with:
-          # This job derives the version for itself, for the notification body
-          # and the release title, so it needs what derive_version.sh needs.
-          fetch-depth: 0
 
       - name: Download release assets
         uses: actions/download-artifact@v4
@@ -341,12 +350,25 @@ jobs:
       # not have to agree; ADR 0014 §4 makes the script the only one. It also
       # means a push to `main`, which has no tag to test, resolves the same way
       # the build jobs do.
+      # The version and number come from the job that built the binaries, not
+      # from a fresh derivation here: on a release the slot is the run attempt,
+      # so re-running only this job would quote a number no artifact carries.
+      # The channel is derived, because it depends on the trigger alone and
+      # cannot drift between jobs.
       - name: Resolve release channel
         id: channel
         shell: bash
+        env:
+          VERSION: ${{ needs.build-android-linux.outputs.version-name }}
+          NUMBER: ${{ needs.build-android-linux.outputs.version-code }}
         run: |
           channel="$(.github/scripts/derive_version.sh --print-channel)"
-          read -r version number < <(.github/scripts/derive_version.sh --print)
+          version="$VERSION"
+          number="$NUMBER"
+          if [[ -z "$version" || -z "$number" ]]; then
+            echo "::error::The build job published no version; refusing to name a release after a guess." >&2
+            exit 1
+          fi
 
           # A dev build goes to one rolling prerelease tagged `dev`: one tag,
           # one link to bookmark, no history (ADR 0014 §7). A release goes to
@@ -395,23 +417,42 @@ jobs:
             } >> "$GITHUB_OUTPUT"
           fi
 
-      # The rolling prerelease is replaced rather than added to. Its assets are
-      # named for the version and the build number, so an updated release would
-      # accumulate one set per build instead of carrying the newest - and §7
-      # asks for no history. `--cleanup-tag` takes the tag with it, so the step
-      # below recreates it at this commit; without that the tag would stay on
-      # whichever commit first created it.
-      #
-      # `|| true` because the first dev build ever has nothing to delete, and
-      # that is not a failure.
-      - name: Clear the previous dev prerelease
-        if: ${{ steps.channel.outputs.release_tag == 'dev' }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release delete dev --cleanup-tag --yes || true
-
       - name: Write SHA256SUMS
         run: .github/scripts/checksums.sh dist
+
+      # The rolling prerelease is replaced rather than updated, and the reason is
+      # the tag rather than the assets: `action-gh-release` uses an existing tag
+      # as-is and will not move it, so an updated `dev` release would keep
+      # pointing at whichever commit first created it while carrying the new
+      # binaries. Its "Source code (zip)" and anything resolving `dev` to a SHA
+      # would then describe a different build from the one attached - the worst
+      # outcome available to a change whose whole point is that a report names a
+      # build. `--cleanup-tag` takes the tag, and the publish step recreates it
+      # here.
+      #
+      # Only "not found" is tolerated. `|| true` covered the first dev build
+      # ever and swallowed everything else with it: a 5xx, a secondary rate
+      # limit, or a later permissions tightening would leave the old release in
+      # place, and the publish step would then update it and inherit the stale
+      # tag - green, with no annotation anywhere.
+      #
+      # After SHA256SUMS, so a run that cannot even assemble its assets fails
+      # with the previous prerelease still standing rather than leaving the
+      # bookmarked link 404ing until the next green build.
+      - name: Clear the previous dev prerelease
+        if: ${{ steps.channel.outputs.release_tag == 'dev' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if out="$(gh release delete dev --cleanup-tag --yes 2>&1)"; then
+            echo "$out"
+          elif grep -qiE 'release not found|HTTP 404' <<<"$out"; then
+            echo "No dev prerelease to clear."
+          else
+            echo "::error::Could not clear the dev prerelease: $out"
+            exit 1
+          fi
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
@@ -466,7 +507,12 @@ jobs:
     # push are covered: a release that did not publish is the obvious case, and
     # a dev build that did not is how a rolling prerelease silently goes stale
     # while `main` moves on.
-    if: ${{ always() && github.event_name == 'push' }}
+    # `!cancelled()` and not `always()`. `always()` runs on a cancelled run too,
+    # and every push to `main` now shares one concurrency group with
+    # cancel-in-progress - so a burst of commits would end with a failing job
+    # and an error annotation on each superseded run, which is the opposite of
+    # what the comment on that group says.
+    if: ${{ !cancelled() && github.event_name == 'push' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

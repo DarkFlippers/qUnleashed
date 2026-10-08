@@ -1,14 +1,19 @@
 #!/usr/bin/env bash
-# Covers derive_version.sh. auto-release.yml only runs on a tag push, so without
-# this a regression would not surface until a release was already being cut.
+# Covers derive_version.sh, which now turns every trigger into a build
+# identity: a push to `main` as well as a release tag.
 #
-# Both modes are exercised, because the mode the build jobs use is the one that
-# writes $GITHUB_ENV, and every consumer of those variables reads them with a
-# `${VAR:-}` default or String.fromEnvironment - so a wrong name does not fail a
-# build, it ships one built at the wrong version.
+# A regression surfaces on the next merge rather than at the next release, now
+# that `main` builds - but a wrong *value* still ships silently, because every
+# consumer reads these variables with a `${VAR:-}` default or
+# String.fromEnvironment. Nothing fails; a build just goes out claiming to be
+# something it is not. That is why both modes are exercised and why the
+# env-mode assertions pin the whole argument string literally.
 #
 # Every invocation runs under `env -i` so the developer's own QU_* secrets and
-# GITHUB_REF_NAME cannot change a result.
+# GITHUB_REF_NAME cannot change a result, and the assertions that read git use
+# a fixture repository rather than this checkout - `ci.yml` clones shallow and
+# with no tags, so borrowing the ambient history was red in CI and green
+# locally.
 set -Eeuo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -48,10 +53,43 @@ pubspec_with() {
   printf '%s' "$file"
 }
 
-# The published-version guard reads `git tag` from whatever repository the suite
-# runs in, which the tests cannot control. Every assertion about shape waives
-# it; the two about the guard itself pass their own tags instead.
+# Every assertion about shape waives the published-version guard, which reads
+# `git tag`. The assertions about the guard, and about the commit count, build a
+# repository of their own with `fixture_repo` instead.
 NOGUARD=QU_SKIP_PUBLISHED_GUARD=1
+
+# A repository with $1 commits and the tags named after it, echoing its path.
+#
+# Owned rather than borrowed. These used to read the qUnleashed checkout's own
+# tags and commits, which failed two ways at once: `ci.yml` checks out shallow
+# and with no tags, so the guard assertion was red in CI and the exemption
+# beside it passed vacuously - with no tags the loop never runs, so deleting the
+# "building the tag that published it is allowed" branch would not have been
+# caught. That branch is what lets a failed release job be re-run.
+fixture_repo() {
+  local commits="$1"; shift
+  local dir
+  dir="$(mktemp -d "$TMP/repo-XXXXXX")"
+  (
+    cd "$dir"
+    git init -q .
+    git config user.email t@example.com
+    git config user.name Test
+    local i
+    for (( i = 0; i < commits; i++ )); do
+      git commit -q --allow-empty -m "commit $i"
+    done
+    local tag
+    for tag in "$@"; do git tag "$tag"; done
+  ) >/dev/null 2>&1
+  printf '%s' "$dir"
+}
+
+# A repository that has published 0.14.1, 0.10.10 and 0.11.0, built once
+# because several assertions share it. The prefixes are the ones this project
+# has used, including a `dev-` one, so the boundary cases below are checked
+# against tag text that really occurs.
+PUBLISHED_REPO="$(fixture_repo 3 beta-0.14.1 beta-0.10.10 dev-0.11.0)"
 
 # --- --print mode -----------------------------------------------------------
 
@@ -160,8 +198,9 @@ refute_number "a count that is not a number" QU_COMMIT_COUNT=lots
 echo "derive_version.sh tag guard"
 
 # Tag shapes the regex has to accept. This repository has tagged alpha- (22),
-# beta- (22), wip- (5) and dev- (4); bare and v- are accepted too. Each agrees
-# with the pubspec beside it, so each is a release that may be built.
+# beta- (22), dev- (7) and wip- (5); bare and v- are accepted too. Each agrees
+# with the pubspec beside it, so each is a release that may be built - except
+# dev-, which is refused outright now (see below).
 agrees() {
   local tag="$1" pv="$2" got file
   file="$(pubspec_with "$pv")"
@@ -173,31 +212,106 @@ agrees() {
 agrees "alpha-0.8.4" "0.8.4"
 agrees "beta-0.11.2" "0.11.2"
 agrees "wip-0.3.6"   "0.3.6"
-agrees "dev-0.12.1"  "0.12.1"
 agrees "0.12.1"      "0.12.1"
 agrees "v0.6.1"      "0.6.1"
+
+# A dev- tag is refused, and this is the assertion that matters most in the
+# file. `dev` is the rolling prerelease now, so mapping the prefix to the dev
+# channel would make a pushed dev-0.15.0 delete and recreate that prerelease,
+# leave its own tag with no release and no assets, label the binaries a dev
+# build and take slot 0 - colliding with the dev build already made from that
+# commit. Every job would have succeeded. Seven of this repository's tags are
+# dev-, so it is the shape habit reaches for.
+file="$(pubspec_with 0.15.0)"
+refutes "a dev- tag"   run "$NOGUARD" "$COUNT" QU_PUBSPEC="$file" bash "$DERIVE" --print -- dev-0.15.0
+
+# Anchored, which 0014's Consequences asked for: unanchored, a release
+# candidate matched the release's version and built claiming to be it.
+refutes "a release candidate suffix"   run "$NOGUARD" "$COUNT" QU_PUBSPEC="$file" bash "$DERIVE" --print -- beta-0.15.0-rc1
+refutes "a fourth component"   run "$NOGUARD" "$COUNT" QU_PUBSPEC="$file" bash "$DERIVE" --print -- 0.15.0.1
+refutes "anything after the patch"   run "$NOGUARD" "$COUNT" QU_PUBSPEC="$file" bash "$DERIVE" --print -- 0.15.0-hotfix
 
 # Guard one. It would have failed the release of 2026-10-01, where the tag said
 # 0.13.0 and the commit's pubspec still said 0.12.1.
 file="$(pubspec_with 0.12.1)"
 refutes "a tag that disagrees with pubspec" \
-  run "$NOGUARD" "$COUNT" QU_PUBSPEC="$file" bash "$DERIVE" --print -- dev-0.13.0
+  run "$NOGUARD" "$COUNT" QU_PUBSPEC="$file" bash "$DERIVE" --print -- beta-0.13.0
 refutes "a tag with no version in it" \
   run "$NOGUARD" "$COUNT" QU_PUBSPEC="$file" bash "$DERIVE" --print -- no-version-here
 
 # Guard two, and the reason the automatic bump could be dropped: a version that
-# has gone out cannot be built again. The repository the suite runs in has
-# tagged dev-0.14.1, which is what makes this assertable without creating one.
+# has gone out cannot be built again. Against the owned fixture, which has
+# published 0.14.1, 0.10.10 and 0.11.0.
+in_repo() { run "$COUNT" QU_REPO_ROOT="$PUBLISHED_REPO" "$@"; }
+
 file="$(pubspec_with 0.14.1)"
 refutes "a version already published" \
-  run "$COUNT" QU_PUBSPEC="$file" GITHUB_REF_TYPE=branch GITHUB_REF_NAME=main \
+  in_repo QU_PUBSPEC="$file" GITHUB_REF_TYPE=branch GITHUB_REF_NAME=main \
   bash "$DERIVE" --print
 
 # Building the tag that published it is the one case where the match is
 # expected, so it is allowed - otherwise re-running a release job would fail.
-got="$(run "$COUNT" QU_PUBSPEC="$file" bash "$DERIVE" --print -- dev-0.14.1 || true)"
-[[ "$got" == "0.14.1 108080" ]] && pass "rebuilding the tag that published it" \
-  || fail "rebuilding dev-0.14.1 -> '$got'"
+# Against the repository's own tags this passed vacuously: with none fetched
+# the loop never ran, so deleting this branch of the guard would not have been
+# caught, and that branch is what lets a failed release be rebuilt.
+got="$(in_repo QU_PUBSPEC="$file" QU_COMMIT=aaaaaaa1 bash "$DERIVE" --print -- beta-0.14.1 || true)"
+[[ "$got" == "0.14.1 108081" ]] && pass "rebuilding the tag that published it" \
+  || fail "rebuilding beta-0.14.1 -> '$got'"
+
+# The exemption is exact tag equality, so a *differently* tagged build of a
+# published version is refused. Deliberate, and pinned here because it was
+# accidental before anyone said so: going forward a release tag is the version
+# itself, so the tag being rebuilt and the tag that published it are the same
+# string. What this costs is that the seven historical `dev-*` versions can
+# never be rebuilt - which is moot, since a `dev-*` tag is refused outright.
+refutes "the same version under a different tag" \
+  in_repo QU_PUBSPEC="$file" QU_COMMIT=aaaaaaa1 bash "$DERIVE" --print -- 0.14.1
+
+# The boundaries on the version match. A false positive here hard-blocks every
+# build of a legitimate new version, with an error telling the operator to bump
+# a pubspec they just bumped.
+got="$(in_repo QU_PUBSPEC="$(pubspec_with 0.10.1)" GITHUB_REF_TYPE=branch \
+  GITHUB_REF_NAME=main bash "$DERIVE" --print || true)"
+[[ "$got" == "0.10.1 108080" ]] && pass "0.10.1 is not blocked by beta-0.10.10" \
+  || fail "0.10.1 against beta-0.10.10 -> '$got'"
+
+got="$(in_repo QU_PUBSPEC="$(pubspec_with 0.1.1)" GITHUB_REF_TYPE=branch \
+  GITHUB_REF_NAME=main bash "$DERIVE" --print || true)"
+[[ "$got" == "0.1.1 108080" ]] && pass "0.1.1 is not blocked by dev-0.11.0" \
+  || fail "0.1.1 against dev-0.11.0 -> '$got'"
+
+# The guard has to be able to fail. Swallowing the read would make "no tag
+# names this version" and "I could not read the tags" the same answer, and the
+# second is the hole it exists to close.
+refutes "a repository whose tags cannot be read" \
+  run "$COUNT" QU_REPO_ROOT="$TMP/not-a-repo" QU_PUBSPEC="$file" \
+  GITHUB_REF_TYPE=branch GITHUB_REF_NAME=main bash "$DERIVE" --print
+
+# --- the commit count, derived rather than pinned ----------------------------
+#
+# Every assertion above pins QU_COMMIT_COUNT, so without these the formula's
+# input is never exercised: neither `git rev-list --count` nor the refusal that
+# stops a shallow checkout producing a plausible wrong number.
+THREE_REPO="$(fixture_repo 3)"
+got="$(run QU_REPO_ROOT="$THREE_REPO" QU_PUBSPEC="$(pubspec_with 0.15.0)" \
+  GITHUB_REF_TYPE=branch GITHUB_REF_NAME=main bash "$DERIVE" --print || true)"
+[[ "$got" == "0.15.0 100030" ]] && pass "the count comes from the repository" \
+  || fail "a derived count -> '$got' (want '0.15.0 100030')"
+
+SHALLOW_REPO="$TMP/shallow"
+git clone -q --depth 1 "file://$THREE_REPO" "$SHALLOW_REPO" >/dev/null 2>&1
+refutes "a shallow checkout" \
+  run QU_REPO_ROOT="$SHALLOW_REPO" QU_PUBSPEC="$(pubspec_with 0.15.0)" \
+  GITHUB_REF_TYPE=branch GITHUB_REF_NAME=main bash "$DERIVE" --print
+
+# The default pubspec path, which every other assertion overrides - so a moved
+# script or a wrong `../..` would fail all five build jobs with the suite green.
+want="$(sed -nE '/^version:/{s/^version:[[:space:]]*([^+[:space:]]+).*$/\1/p;q}' \
+  "$HERE/../../pubspec.yaml")"
+got="$(run "$NOGUARD" "$COUNT" GITHUB_REF_TYPE=branch GITHUB_REF_NAME=main \
+  bash "$DERIVE" --print || true)"
+[[ "$got" == "$want 108080" ]] && pass "the default pubspec path resolves" \
+  || fail "the default pubspec -> '$got' (want '$want 108080')"
 
 # --- how the tag reaches the script -----------------------------------------
 
@@ -245,11 +359,16 @@ run_env() {
   cat "$out" "$step"
 }
 
-# The three commit defines are pinned empty wherever a test asserts the whole
-# args string, so these keep checking the shape they were written for rather
-# than the SHA this checkout happens to sit on. NOCOMMITS expands to the three
-# pins; the cases below that do pass a commit say so explicitly.
-NOCOMMITS=(QU_COMMIT= QU_COMMIT_FLIPPERLIB= QU_COMMIT_DARTUFBT=)
+# The commit defines are pinned wherever a test asserts the whole args string,
+# so these keep checking the shape they were written for rather than the SHA
+# this checkout happens to sit on.
+#
+# The app's own commit is pinned to a value rather than to empty: a release
+# build with no commit is fatal now - only the commit ties a store binary to a
+# tree - so an empty one is no longer a usable fixture for an assertion about
+# argument shape. The submodules stay empty, which is the ordinary state of a
+# desktop job.
+PINNED=(QU_COMMIT=aaaaaaa1 QU_COMMIT_FLIPPERLIB= QU_COMMIT_DARTUFBT=)
 
 # Every run below asserts the shape of what reaches a build, not the guards, so
 # each one is given a pubspec to read and the published-version check waived.
@@ -258,7 +377,7 @@ NOCOMMITS=(QU_COMMIT= QU_COMMIT_FLIPPERLIB= QU_COMMIT_DARTUFBT=)
 BASE=("$NOGUARD" "$COUNT" QU_PUBSPEC="$(pubspec_with 0.11.2)")
 
 body=""
-if ! body="$(run_env "${BASE[@]}" "${NOCOMMITS[@]}" GITHUB_REF_TYPE=tag GITHUB_REF_NAME=beta-0.11.2)"; then fail "a plain run exited non-zero"; fi
+if ! body="$(run_env "${BASE[@]}" "${PINNED[@]}" GITHUB_REF_TYPE=tag GITHUB_REF_NAME=beta-0.11.2)"; then fail "a plain run exited non-zero"; fi
 
 has() { grep -qxF -- "$2" <<<"$body" && pass "$1" || fail "$1 (missing: $2)"; }
 has "appends, does not truncate"  "PRE_EXISTING=1"
@@ -266,13 +385,13 @@ has "writes the version name"     "QUNLEASHED_VERSION_NAME=0.11.2"
 has "writes the version code"     "QUNLEASHED_VERSION_CODE=108081"
 has "publishes the step outputs"  "version_name=0.11.2"
 has "build args carry name+number" \
-  "QUNLEASHED_FLUTTER_BUILD_ARGS=--build-name=0.11.2 --build-number=108081 --dart-define=QU_CHANNEL=release"
+  "QUNLEASHED_FLUTTER_BUILD_ARGS=--build-name=0.11.2 --build-number=108081 --dart-define=QU_CHANNEL=release --dart-define=QU_COMMIT=aaaaaaa1"
 
-if ! body="$(run_env "${BASE[@]}" "${NOCOMMITS[@]}" GITHUB_REF_TYPE=tag GITHUB_REF_NAME=beta-0.11.2 QU_BUILD_SERVER_URL=https://b QU_BUILD_SERVER_KEY=k QU_CARTO_KEY=c)"; then
+if ! body="$(run_env "${BASE[@]}" "${PINNED[@]}" GITHUB_REF_TYPE=tag GITHUB_REF_NAME=beta-0.11.2 QU_BUILD_SERVER_URL=https://b QU_BUILD_SERVER_KEY=k QU_CARTO_KEY=c)"; then
   fail "a run with every secret exited non-zero"
 fi
 has "folds in every secret" \
-  "QUNLEASHED_FLUTTER_BUILD_ARGS=--build-name=0.11.2 --build-number=108081 --dart-define=QU_CHANNEL=release --dart-define=QU_BUILD_SERVER_URL=https://b --dart-define=QU_BUILD_SERVER_KEY=k --dart-define=QU_CARTO_KEY=c"
+  "QUNLEASHED_FLUTTER_BUILD_ARGS=--build-name=0.11.2 --build-number=108081 --dart-define=QU_CHANNEL=release --dart-define=QU_BUILD_SERVER_URL=https://b --dart-define=QU_BUILD_SERVER_KEY=k --dart-define=QU_CARTO_KEY=c --dart-define=QU_COMMIT=aaaaaaa1"
 
 # ADR 0014 §3: a build has to be able to name the commit it came from, and all
 # three of them, because a fault can be in a submodule. Pinned rather than read
@@ -282,6 +401,17 @@ if ! body="$(run_env "${BASE[@]}" GITHUB_REF_TYPE=tag GITHUB_REF_NAME=beta-0.11.
 fi
 has "carries all three commits"   "QUNLEASHED_FLUTTER_BUILD_ARGS=--build-name=0.11.2 --build-number=108081 --dart-define=QU_CHANNEL=release --dart-define=QU_COMMIT=aaaaaaa1 --dart-define=QU_COMMIT_FLIPPERLIB=bbbbbbb2 --dart-define=QU_COMMIT_DARTUFBT=ccccccc3"
 
+# Only the commit ties a store build to a tree, so a release without one fails
+# rather than warning. A dev build warns and goes on: it is disposable, and the
+# channel and version still identify it well enough to throw away.
+refutes "a release with no commit" \
+  run_env "${BASE[@]}" QU_COMMIT= GITHUB_REF_TYPE=tag GITHUB_REF_NAME=beta-0.11.2
+if ! body="$(run_env "${BASE[@]}" QU_COMMIT= GITHUB_REF_TYPE=branch GITHUB_REF_NAME=main)"; then
+  fail "a dev build with no commit must still build"
+else
+  pass "a dev build with no commit still builds"
+fi
+
 # A desktop job need not have the submodules checked out, and must still build.
 # The app's own commit is the one that matters; the others are then absent
 # rather than empty, which is what String.fromEnvironment reads as "unknown".
@@ -290,15 +420,19 @@ if ! body="$(run_env "${BASE[@]}" GITHUB_REF_TYPE=tag GITHUB_REF_NAME=beta-0.11.
 fi
 has "a submodule commit is optional"   "QUNLEASHED_FLUTTER_BUILD_ARGS=--build-name=0.11.2 --build-number=108081 --dart-define=QU_CHANNEL=release --dart-define=QU_COMMIT=aaaaaaa1"
 
-# Unset means "work it out from the checkout", which is the path every build job
-# takes. It must produce a real SHA rather than nothing - the warning branch is
-# for a checkout that has no git at all.
-if ! body="$(run_env "${BASE[@]}" GITHUB_REF_TYPE=tag GITHUB_REF_NAME=beta-0.11.2)"; then
+# Unset means "work it out from the repository", which is the path every build
+# job takes. It must produce a real SHA rather than nothing.
+#
+# Against the fixture, not this checkout: `ci.yml` clones shallow and with no
+# tags, so an assertion that borrowed the ambient repository's history was red
+# in CI and green locally - which is the worst way round.
+if ! body="$(run_env "${BASE[@]}" QU_REPO_ROOT="$THREE_REPO" \
+    GITHUB_REF_TYPE=tag GITHUB_REF_NAME=beta-0.11.2)"; then
   fail "a run resolving its own commit exited non-zero"
 elif grep -qE -- "--dart-define=QU_COMMIT=[0-9a-f]{40}" <<<"$body"; then
-  pass "an unset commit is resolved from the checkout"
+  pass "an unset commit is resolved from the repository"
 else
-  fail "an unset commit was not resolved from the checkout"
+  fail "an unset commit was not resolved from the repository"
 fi
 
 # A commit carrying whitespace would truncate every argument after it, the same
@@ -322,7 +456,6 @@ channel() {
   [[ "$got" == "$want" ]] && pass "$label -> $got" || fail "$label -> $got (want $want)"
 }
 
-channel "a dev tag"    dev     GITHUB_REF_TYPE=tag GITHUB_REF_NAME=dev-0.14.1
 channel "a bare tag"   release GITHUB_REF_TYPE=tag GITHUB_REF_NAME=0.15.0
 # beta- and alpha- were cut by hand, so they are releases however they sorted
 # on the releases page at the time.
@@ -338,7 +471,14 @@ channel "a branch"     dev     GITHUB_REF_TYPE=branch GITHUB_REF_NAME=main
 channel "an explicit dev wins" dev \
   GITHUB_REF_TYPE=tag GITHUB_REF_NAME=0.15.0 QU_CHANNEL=dev
 channel "an explicit release"  release \
-  GITHUB_REF_TYPE=tag GITHUB_REF_NAME=dev-0.14.1 QU_CHANNEL=release
+  GITHUB_REF_TYPE=branch GITHUB_REF_NAME=main QU_CHANNEL=release
+
+# And the override does not reopen the dev- hole: a tag whose prefix collides
+# with the rolling prerelease's name is refused before the channel is read at
+# all, because the publish job would still be handed that tag.
+refutes "a dev- tag even with an override" \
+  run GITHUB_REF_TYPE=tag GITHUB_REF_NAME=dev-0.15.0 QU_CHANNEL=release \
+  bash "$DERIVE" --print-channel
 
 # A typo must not ship a build labelled with it, and `local` is the app's own
 # default for a build nothing told - never something CI produces.
@@ -348,13 +488,19 @@ refutes "local from CI"      run GITHUB_REF_TYPE=branch GITHUB_REF_NAME=main QU_
 # The channel reaches the build the same way the version does, and the publish
 # job reads it from the step output rather than testing the prefix again.
 if ! body="$(run_env "$NOGUARD" "$COUNT" QU_PUBSPEC="$(pubspec_with 0.14.1)" \
-    "${NOCOMMITS[@]}" GITHUB_REF_TYPE=tag GITHUB_REF_NAME=dev-0.14.1)"; then
+    "${PINNED[@]}" GITHUB_REF_TYPE=branch GITHUB_REF_NAME=main)"; then
   fail "a dev run exited non-zero"
 fi
 has "writes the channel"          "QUNLEASHED_CHANNEL=dev"
 has "publishes it as an output"   "channel=dev"
 has "compiles it into the build" \
-  "QUNLEASHED_FLUTTER_BUILD_ARGS=--build-name=0.14.1 --build-number=108080 --dart-define=QU_CHANNEL=dev"
+  "QUNLEASHED_FLUTTER_BUILD_ARGS=--build-name=0.14.1 --build-number=108080 --dart-define=QU_CHANNEL=dev --dart-define=QU_COMMIT=aaaaaaa1"
+# The asset name carries the suffix and the number, so a sideloaded dev APK is
+# not byte-identical to the release of the same cycle - the one place §2's
+# suffix was missing. --build-name above is unaffected, which is what keeps the
+# store-validated fields numeric.
+has "names the assets apart from a release" \
+  "QUNLEASHED_VERSION_NAME=0.14.1-dev.108080"
 
 # A URL without a key authenticates nothing, so neither is passed.
 if ! body="$(run_env "${BASE[@]}" GITHUB_REF_TYPE=tag GITHUB_REF_NAME=beta-0.11.2 QU_BUILD_SERVER_URL=https://b)"; then

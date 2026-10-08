@@ -37,8 +37,12 @@
 # `git rev-parse` - ADR 0014 §4 asks this script to be the one place a trigger
 # becomes a build identity. Each is overridable by an environment variable of
 # the same name, which is how the tests pin them; set one to the empty string
-# and that define is left out. A shallow checkout still resolves HEAD, so no
-# job needs `fetch-depth: 0` for this (§6's build number is what will).
+# and that define is left out.
+#
+# **Every job that runs this needs `fetch-depth: 0`.** The build number counts
+# commits (§6) and the published-version guard reads every tag, and a default
+# checkout has neither. The script refuses to guess rather than produce a
+# plausible wrong number - see the shallow check below.
 set -Eeuo pipefail
 
 print_only=0
@@ -65,17 +69,40 @@ fi
 # nothing else: `--print-channel` is a property of how the build was started.
 # The publish job asks for exactly that and nothing more.
 #
-# `QU_CHANNEL` wins when the caller sets it, which is how the workflow that
-# builds a push to `main` says `dev`. Otherwise no tag means a branch build,
-# which is a dev build by definition - a release is something somebody cuts,
-# and cutting it makes a tag - and with a tag the prefix decides, which is ADR
-# 0014 §1's interim rule.
+# No tag means a branch build, which is a dev build by definition: a release is
+# something somebody cuts, and cutting it makes a tag. A tag is a release.
+#
+# `QU_CHANNEL` overrides the inference, for a caller that knows better than the
+# trigger. Nothing in CI sets it today; the tests pin it, and the validation
+# below is what stops a typo shipping as a channel.
 #
 # Two values here and never `local`: the script only runs in CI, and `local` is
 # what the app reads when nothing passed a define at all.
+#
+# `dev-*` is refused rather than mapped to the dev channel, which is what §1's
+# interim rule turns into once a push to `main` builds. Seven of this
+# repository's 56 tags are `dev-*` - it was how a dev build was made before
+# `main` built on its own - and `dev` is now the name of the single rolling
+# prerelease (§7). Mapping the prefix would make those two meanings collide,
+# silently and expensively: a pushed `dev-0.15.0` would resolve to the dev
+# channel, the publish job would delete and recreate the rolling `dev` release,
+# the pushed tag would get no release and no assets, the binaries would call
+# themselves a dev build, and the build number would take slot 0 - the same
+# number as the dev build already made from that commit, which is the collision
+# §6's slot exists to prevent. Every job would have succeeded.
+#
+# Unconditional, before QU_CHANNEL is consulted: an override that let the tag
+# through would still hand the publish job a tag whose prefix collides with the
+# rolling prerelease's name. The rolling tag itself is `dev`, not
+# `dev-something`, so nothing legitimate is caught by this.
+if [[ "$tag" == dev-* ]]; then
+  echo "::error::The tag $tag uses the dev- prefix, which is no longer a channel: a dev build comes from a push to main, and 'dev' is the rolling prerelease. Tag the version itself." >&2
+  exit 1
+fi
+
 channel="${QU_CHANNEL:-}"
 if [[ -z "$channel" ]]; then
-  if [[ -z "$tag" || "$tag" == dev-* ]]; then channel=dev; else channel=release; fi
+  if [[ -z "$tag" ]]; then channel=dev; else channel=release; fi
 fi
 if [[ "$channel" != dev && "$channel" != release ]]; then
   echo "::error::QU_CHANNEL must be dev or release, not '$channel'." >&2
@@ -87,17 +114,32 @@ if (( print_channel )); then
   exit 0
 fi
 
-pubspec="${QU_PUBSPEC:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/pubspec.yaml}"
+# The repository being built, found from this script rather than from the
+# caller's cwd. Every `git` read below goes through it: a step with a
+# `working-directory:`, or a checkout at a non-default `path:`, otherwise makes
+# them answer about the wrong tree or not at all.
+#
+# QU_REPO_ROOT is how the tests point the tag and commit-count reads at a
+# fixture repository of their own instead of this one's history.
+repo_root="${QU_REPO_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+pubspec="${QU_PUBSPEC:-$repo_root/pubspec.yaml}"
 if [[ ! -f "$pubspec" ]]; then
   echo "::error::No pubspec.yaml at $pubspec." >&2
   exit 1
 fi
 
-# The name only: pubspec holds `0.14.1+14001` and the build number after the
-# `+` is not read. It is derived below, and once §6 lands it will not live in
-# pubspec at all - so trusting it here would bake in the thing being replaced.
+# The name only. The build number is a counter now (§6) and does not live in
+# pubspec at all, so the `[^+]` is here to ignore a stale `+` left in the file
+# rather than to skip a number worth reading.
+# Quitting on the first match rather than `| head -n 1`: under `pipefail`, head
+# closing the pipe early makes sed die of SIGPIPE and the whole script exit 141
+# with nothing printed. Not reachable at pubspec's size, but it is a silent exit
+# waiting for a longer file.
+#
+# The quit has to hang off an address - `s/…/…/{p;q}` is not valid sed, and the
+# first attempt at this wrote exactly that and rejected every version.
 pubspec_version="$(
-  sed -nE 's/^version:[[:space:]]*([^+[:space:]]+).*$/\1/p' "$pubspec" | head -n 1
+  sed -nE '/^version:/{s/^version:[[:space:]]*([^+[:space:]]+).*$/\1/p;q}' "$pubspec"
 )"
 if [[ ! "$pubspec_version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
   echo "::error::pubspec.yaml version must be major.minor.patch, not '$pubspec_version'." >&2
@@ -125,12 +167,18 @@ fi
 # last. It would have failed the release of 2026-10-01, when `dev-0.13.0`
 # pointed at a commit whose pubspec still said 0.12.1, because the old
 # sync-version wrote the version *after* publishing.
+# Anchored, which 0014's Consequences asked for and the first draft of this
+# rewrite still did not do. Unanchored, `beta-0.14.0-rc1` matched `0.14.0` and
+# built as it - a release candidate silently claiming the identity of the
+# release, published under its name, with the published-version guard waving it
+# through because the tag it matched was its own.
 if [[ -n "$tag" ]]; then
-  if [[ ! "$tag" =~ ([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
-    echo "::error::Tag must contain a semantic version like 0.6.1, alpha-0.6.1, or beta-0.6.1." >&2
+  if [[ ! "$tag" =~ ^([A-Za-z][A-Za-z0-9]*-)?v?([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+    echo "::error::Tag must be a semantic version with an optional prefix - 0.6.1, v0.6.1, alpha-0.6.1 - and nothing after the patch number. Got '$tag'." >&2
     exit 1
   fi
-  tag_version="$((10#${BASH_REMATCH[1]})).$((10#${BASH_REMATCH[2]})).$((10#${BASH_REMATCH[3]}))"
+  # Group 1 is the optional prefix, so the components start at 2.
+  tag_version="$((10#${BASH_REMATCH[2]})).$((10#${BASH_REMATCH[3]})).$((10#${BASH_REMATCH[4]}))"
   if [[ "$tag_version" != "$version_name" ]]; then
     echo "::error::Tag $tag names $tag_version but pubspec.yaml says $version_name. Bump pubspec in a commit of its own, or tag the version it holds." >&2
     exit 1
@@ -148,10 +196,26 @@ fi
 # been released. Days later, far from the commit, reported as a store problem.
 #
 # "Has gone out" means a tag names it. Building that tag is the one case where
-# the match is expected, so it is allowed; anything else is the hole above.
-# QU_SKIP_PUBLISHED_GUARD exists for the tests, which cannot create tags in the
-# repository they run against.
+# the match is expected, so it is allowed; anything else is the hole above. The
+# `[^0-9]` boundaries are what keep 0.10.1 from being blocked by an existing
+# beta-0.10.10 - a false positive here hard-blocks every build of a legitimate
+# new version, with an error telling the operator to bump a pubspec they just
+# bumped.
+#
+# QU_SKIP_PUBLISHED_GUARD waives it for the tests that are about something else.
+# The tests that are about the guard build a repository of their own rather than
+# borrowing this one's tags.
+#
+# The read has to be able to fail. Swallowing it would make "no tag names this
+# version" and "I could not read the tags" the same answer, and the second one
+# is the whole hole this guard exists to close: on a checkout without tags it
+# would wave through exactly the release it is meant to stop. There is nothing
+# to fall back to, so it is fatal.
 if [[ -z "${QU_SKIP_PUBLISHED_GUARD:-}" ]]; then
+  if ! published_tags="$(git -C "$repo_root" tag --list)"; then
+    echo "::error::Could not read the tags, so the published-version guard cannot run. Use fetch-depth: 0." >&2
+    exit 1
+  fi
   while IFS= read -r published; do
     [[ -z "$published" ]] && continue
     [[ "$published" == "$tag" ]] && continue
@@ -159,16 +223,9 @@ if [[ -z "${QU_SKIP_PUBLISHED_GUARD:-}" ]]; then
       echo "::error::Version $version_name has already been published as $published. Open the next cycle by bumping pubspec.yaml." >&2
       exit 1
     fi
-  done < <(git tag --list 2>/dev/null || true)
+  done <<< "$published_tags"
 fi
 
-# Which of the two published channels this build is, decided by the trigger.
-#
-# `QU_CHANNEL` wins when the caller sets it, which is how the workflow that
-# builds a push to `main` says `dev` without there being a tag to read. Until
-# that workflow exists the tag prefix decides, which is ADR 0014 §1's interim
-# rule and the same test the publish job used to make for itself.
-#
 # --- the build number is a counter, and means nothing else -------------------
 #
 #   100000 + <commits on main> × 10 + slot      (§6)
@@ -192,7 +249,7 @@ if [[ -z "$commit_count" ]]; then
   # A shallow checkout answers 1, which is not an error anything else would
   # notice: it produces a plausible number that collides with every other
   # shallow build. Fail instead - `fetch-depth: 0` is the fix, and §6 says so.
-  if [[ "$(git rev-parse --is-shallow-repository 2>/dev/null || echo true)" != false ]]; then
+  if [[ "$(git -C "$repo_root" rev-parse --is-shallow-repository 2>/dev/null || echo true)" != false ]]; then
     echo "::error::This checkout is shallow or not a repository, so the commit count would be wrong. Use fetch-depth: 0." >&2
     exit 1
   fi
@@ -200,7 +257,7 @@ if [[ -z "$commit_count" ]]; then
   # are the same commit, and counting HEAD is what makes the number
   # recomputable from any checkout - any commit can state the number it would
   # build as, which is the property §6 asks for.
-  commit_count="$(git rev-list --count HEAD)"
+  commit_count="$(git -C "$repo_root" rev-list --count HEAD)"
 fi
 if [[ ! "$commit_count" =~ ^[0-9]+$ ]] || (( commit_count == 0 )); then
   echo "::error::Commit count must be a positive integer, not '$commit_count'." >&2
@@ -241,20 +298,40 @@ fi
 # Resolved from the checkout unless the caller said otherwise. `-` and not `:-`
 # on purpose: an unset variable means "work it out", an empty one means "leave
 # it out", and the tests need the second to assert the shape without a commit.
-commit="${QU_COMMIT-$(git rev-parse HEAD 2>/dev/null || true)}"
+#
+# Resolved against the repository root rather than the caller's cwd, like
+# $pubspec above. Relative paths looked right and were not: a step with a
+# `working-directory:`, or a checkout at a non-default `path:`, made all three
+# `git -C` calls fail into empty strings, and the build then shipped with no
+# submodule commits and nothing said about it.
+commit="${QU_COMMIT-$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || true)}"
 commit_flipperlib="${QU_COMMIT_FLIPPERLIB-$(
-  git -C lib/modules/flipperlib rev-parse HEAD 2>/dev/null || true
+  git -C "$repo_root/lib/modules/flipperlib" rev-parse HEAD 2>/dev/null || true
 )}"
 commit_dartufbt="${QU_COMMIT_DARTUFBT-$(
-  git -C lib/modules/dartufbt rev-parse HEAD 2>/dev/null || true
+  git -C "$repo_root/lib/modules/dartufbt" rev-parse HEAD 2>/dev/null || true
 )}"
 
-# A checkout with no commit to name is worth saying out loud rather than
-# shipping a build that cannot say what it is. Not fatal: a submodule a given
-# job does not touch is absent rather than wrong.
+# A build that cannot name its commit is useless to the thing this ADR is for,
+# and for a release it is worse than useless - §6's counter orders builds but
+# only the commit ties a store binary to a tree. So a release fails and a dev
+# build warns.
 if [[ -z "$commit" ]]; then
+  if [[ "$channel" == release ]]; then
+    echo "::error::No commit resolved, so a release would not say which commit it is." >&2
+    exit 1
+  fi
   echo "::warning::No commit resolved. The build will not say which commit it is." >&2
 fi
+
+# A submodule that is checked out but unreadable is a different thing from one
+# the job did not ask for, and only the first is a problem worth naming.
+for module in flipperlib dartufbt; do
+  resolved="commit_$module"
+  if [[ -z "${!resolved}" && -d "$repo_root/lib/modules/$module/.git" ]]; then
+    echo "::warning::lib/modules/$module is checked out but its commit could not be read." >&2
+  fi
+done
 
 # The build scripts re-split QUNLEASHED_FLUTTER_BUILD_ARGS on whitespace, so a
 # secret carrying a newline or a space would silently drop every argument after
@@ -288,8 +365,27 @@ if [[ -n "$commit_dartufbt" ]]; then
   args+=(--dart-define=QU_COMMIT_DARTUFBT="$commit_dartufbt")
 fi
 
+# The display form, and only because this variable's one consumer is the asset
+# filenames - `--build-name` comes from the build args above, so the two fields
+# a store validates never see the suffix (§2).
+#
+# Without it a dev build and the release of the same cycle produce byte-identical
+# filenames, `qunleashed_0.15.0_android_universal.apk` both, and identical
+# entries in two different SHA256SUMS: a sideloaded dev APK is indistinguishable
+# from the shipped version once it is on disk. §2 keeps the suffix "everywhere a
+# person reads the version", and a downloaded filename was the one place left
+# out. The build number goes in too, so two dev builds of one cycle differ.
+# Dots and dashes only, never a `+`: the fallback in each build script matches
+# `[0-9A-Za-z._-]+` and android.sh truncates at the first `+`, so a plus here
+# would read as a separator rather than as part of the name.
+if [[ "$channel" == dev ]]; then
+  asset_version="$version_name-dev.$version_code"
+else
+  asset_version="$version_name"
+fi
+
 {
-  echo "QUNLEASHED_VERSION_NAME=$version_name"
+  echo "QUNLEASHED_VERSION_NAME=$asset_version"
   echo "QUNLEASHED_VERSION_CODE=$version_code"
   echo "QUNLEASHED_CHANNEL=$channel"
   echo "QUNLEASHED_FLUTTER_BUILD_ARGS=${args[*]}"

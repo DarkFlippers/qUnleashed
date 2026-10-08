@@ -9,7 +9,7 @@ publish_to: 'none'
 # that has already been published.
 #
 # No build number. §6 derives it from the commit count, so one here would be a
-# number that means nothing; the four build scripts that fall back to reading
+# number that means nothing; the build scripts that fall back to reading
 # this line stop at the `+` and are unaffected either way.
 version: 0.15.0
 
