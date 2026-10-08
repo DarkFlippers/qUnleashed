@@ -168,6 +168,7 @@ class FileManagerController extends ChangeNotifier {
 
   final FlipperClient _client;
   final _unacknowledged = Expando<bool>();
+  final Map<String, Future<String?>> _downloads = {};
   bool _disposed = false;
   String _path;
   bool _loading = false;
@@ -987,36 +988,50 @@ class FileManagerController extends ChangeNotifier {
     }
   }
 
-  Future<String?> downloadTo(
-    String remotePath, {
-    String? localFolder,
-    int expectedSize = 0,
-  }) => _transfer(
-    dir: dirname(remotePath),
-    upload: false,
-    batch: false,
-    queued: false,
-    body: (t) async {
-      String? saved;
-      await _runJobs(t, [
-        _Job(
-          item: basename(remotePath),
-          remote: remotePath,
-          size: expectedSize,
-          run: (_, onProgress) async {
-            final bytes = await _read(t, remotePath, expectedSize, onProgress);
-            if (bytes == null) return false;
-            saved = await _saveLocal(remotePath, bytes, () async {
-              final dir = localFolder ?? await _defaultDownloadDir(remotePath);
-              return '$dir${io.Platform.pathSeparator}${basename(remotePath)}';
-            });
-            return saved != null;
-          },
-        ),
-      ], label: l10n.fmDownloadingOf);
-      return saved;
-    },
-  );
+  /// Downloads [remotePath] into the share cache. A call for a path already
+  /// on its way joins that download: both would write the one cache file, and
+  /// either could read it while the other truncates it.
+  Future<String?> downloadTo(String remotePath, {int expectedSize = 0}) =>
+      _downloads[remotePath] ??= _downloadToCache(remotePath, expectedSize)
+          .whenComplete(() {
+            // A block, not an arrow: remove() hands back this very future,
+            // and whenComplete would then wait on it - on itself - forever.
+            _downloads.remove(remotePath);
+          });
+
+  Future<String?> _downloadToCache(String remotePath, int expectedSize) =>
+      _transfer(
+        dir: dirname(remotePath),
+        upload: false,
+        batch: false,
+        queued: false,
+        body: (t) async {
+          String? saved;
+          await _runJobs(t, [
+            _Job(
+              item: basename(remotePath),
+              remote: remotePath,
+              size: expectedSize,
+              run: (_, onProgress) async {
+                final bytes = await _read(
+                  t,
+                  remotePath,
+                  expectedSize,
+                  onProgress,
+                );
+                if (bytes == null) return false;
+                saved = await _saveLocal(remotePath, bytes, () async {
+                  final dir = await _defaultDownloadDir(remotePath);
+                  final sep = io.Platform.pathSeparator;
+                  return '$dir$sep${basename(remotePath)}';
+                });
+                return saved != null;
+              },
+            ),
+          ], label: l10n.fmDownloadingOf);
+          return saved;
+        },
+      );
 
   /// Downloads [entries] from the current directory into [destDir] (files and
   /// whole directory trees, recreated recursively). A first pass enumerates the
