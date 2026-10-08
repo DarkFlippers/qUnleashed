@@ -11,9 +11,9 @@
 	url = https://github.com/DarkFlippers/dart-ufbt.git
 [submodule "lib/modules/irondash"]
 	path = lib/modules/irondash
-	url = https://github.com/apfxtech/irondash.git
+	url = https://github.com/DarkFlippers/irondash.git
 	branch = qunleashed
 [submodule "lib/modules/extensions"]
 	path = lib/modules/extensions
-	url = https://github.com/apfxtech/super_native_extensions.git
+	url = https://github.com/DarkFlippers/super_native_extensions.git
 	branch = qunleashed
