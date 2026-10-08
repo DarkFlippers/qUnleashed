@@ -59,6 +59,34 @@ if [[ -z "$tag" && "${GITHUB_REF_TYPE:-}" == tag ]]; then
   tag="${GITHUB_REF_NAME:-}"
 fi
 
+# --- the channel, decided by the trigger alone -------------------------------
+#
+# Before the version, and before anything reads pubspec, because it depends on
+# nothing else: `--print-channel` is a property of how the build was started.
+# The publish job asks for exactly that and nothing more.
+#
+# `QU_CHANNEL` wins when the caller sets it, which is how the workflow that
+# builds a push to `main` says `dev`. Otherwise no tag means a branch build,
+# which is a dev build by definition - a release is something somebody cuts,
+# and cutting it makes a tag - and with a tag the prefix decides, which is ADR
+# 0014 §1's interim rule.
+#
+# Two values here and never `local`: the script only runs in CI, and `local` is
+# what the app reads when nothing passed a define at all.
+channel="${QU_CHANNEL:-}"
+if [[ -z "$channel" ]]; then
+  if [[ -z "$tag" || "$tag" == dev-* ]]; then channel=dev; else channel=release; fi
+fi
+if [[ "$channel" != dev && "$channel" != release ]]; then
+  echo "::error::QU_CHANNEL must be dev or release, not '$channel'." >&2
+  exit 1
+fi
+
+if (( print_channel )); then
+  printf '%s\n' "$channel"
+  exit 0
+fi
+
 pubspec="${QU_PUBSPEC:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/pubspec.yaml}"
 if [[ ! -f "$pubspec" ]]; then
   echo "::error::No pubspec.yaml at $pubspec." >&2
@@ -84,10 +112,9 @@ major=$((10#${BASH_REMATCH[1]}))
 minor=$((10#${BASH_REMATCH[2]}))
 patch=$((10#${BASH_REMATCH[3]}))
 version_name="${major}.${minor}.${patch}"
-version_code=$((major * 1000000 + minor * 1000 + patch))
 
-if (( version_code <= 0 )); then
-  echo "::error::Derived version code must be greater than zero." >&2
+if (( major == 0 && minor == 0 && patch == 0 )); then
+  echo "::error::pubspec.yaml version must be greater than 0.0.0." >&2
   exit 1
 fi
 
@@ -142,24 +169,63 @@ fi
 # that workflow exists the tag prefix decides, which is ADR 0014 §1's interim
 # rule and the same test the publish job used to make for itself.
 #
-# Two values here and never `local`: the script only runs in CI, and `local` is
-# what the app reads when nothing passed a define at all.
+# --- the build number is a counter, and means nothing else -------------------
 #
-# No tag means a branch build, which is a dev build by definition - a release is
-# something somebody cuts, and cutting it makes a tag. With a tag the prefix
-# decides, which is §1's interim rule.
-channel="${QU_CHANNEL:-}"
-if [[ -z "$channel" ]]; then
-  if [[ -z "$tag" || "$tag" == dev-* ]]; then channel=dev; else channel=release; fi
+#   100000 + <commits on main> × 10 + slot      (§6)
+#
+# The name and the number are decoupled, because §2 makes every dev build in a
+# cycle share one name - so the name carries no ordering at all and the number
+# has to carry every bit of it. The old formula derived the number *from* the
+# name (major × 1e6 + minor × 1e3 + patch), which hands every dev build in a
+# cycle the same number: it fails on the second build of a cycle rather than
+# after a thousand commits. Its component arithmetic is gone, and with it the
+# overflow that let 0.1.1000 and 0.2.0 produce one number.
+#
+# `100000 +` clears every number ever shipped in one step - the highest is
+# 14001 - so nothing has to remember what the high-water mark was. `× 10`
+# leaves ten slots per commit, which is what lets two builds of one commit
+# differ; a release is frequently tagged at a commit a dev build already came
+# from. The ceiling Android imposes is 2 100 000 000, which is 210 million
+# commits away.
+commit_count="${QU_COMMIT_COUNT:-}"
+if [[ -z "$commit_count" ]]; then
+  # A shallow checkout answers 1, which is not an error anything else would
+  # notice: it produces a plausible number that collides with every other
+  # shallow build. Fail instead - `fetch-depth: 0` is the fix, and §6 says so.
+  if [[ "$(git rev-parse --is-shallow-repository 2>/dev/null || echo true)" != false ]]; then
+    echo "::error::This checkout is shallow or not a repository, so the commit count would be wrong. Use fetch-depth: 0." >&2
+    exit 1
+  fi
+  # HEAD and not an explicit `main`: every build comes off main, so in CI they
+  # are the same commit, and counting HEAD is what makes the number
+  # recomputable from any checkout - any commit can state the number it would
+  # build as, which is the property §6 asks for.
+  commit_count="$(git rev-list --count HEAD)"
 fi
-if [[ "$channel" != dev && "$channel" != release ]]; then
-  echo "::error::QU_CHANNEL must be dev or release, not '$channel'." >&2
+if [[ ! "$commit_count" =~ ^[0-9]+$ ]] || (( commit_count == 0 )); then
+  echo "::error::Commit count must be a positive integer, not '$commit_count'." >&2
   exit 1
 fi
 
-if (( print_channel )); then
-  printf '%s\n' "$channel"
-  exit 0
+# A dev build takes slot 0 and a re-run collides with itself, deliberately: it
+# is disposable, the rolling prerelease is overwritten anyway, and the fix for
+# wanting a new one is another commit. A release takes the attempt number, so
+# re-running a failed release job produces a number the store has not already
+# refused.
+if [[ "$channel" == dev ]]; then
+  slot="${QU_BUILD_SLOT:-0}"
+else
+  slot="${QU_BUILD_SLOT:-${GITHUB_RUN_ATTEMPT:-1}}"
+fi
+if [[ ! "$slot" =~ ^[0-9]$ ]]; then
+  echo "::error::Build slot must be a single digit, not '$slot'. A tenth attempt needs a new commit." >&2
+  exit 1
+fi
+
+version_code=$((100000 + commit_count * 10 + slot))
+if (( version_code > 2100000000 )); then
+  echo "::error::Build number $version_code is above the 2100000000 Android allows." >&2
+  exit 1
 fi
 
 if (( print_only )); then
