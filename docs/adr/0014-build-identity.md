@@ -1,7 +1,16 @@
 # 0014. A build says what it is: version, channel and commit
 
 Status: Proposed (2026-10-01); the version is SemVer and §6 is settled
-(2026-10-05)
+(2026-10-05); the `-dev` suffix is kept wherever a person reads the version
+and dropped only from the two fields a store validates, and the automatic
+version bump is replaced by two guards (2026-10-08)
+
+Written against three needs, stated in that order of certainty: release builds
+cut on SemVer when the team decides, dev builds published automatically from
+every commit on `main` (and later to the stores), and an executable that can
+say which version and which commit it is. §2 is what makes the second possible
+at all - until the version comes from `pubspec.yaml`, a push to `main` has no
+tag to derive one from and `derive_version.sh` refuses to run.
 
 Written for [0013](0013-observability-with-sentry.md), which needs every
 event to name the binary it came from. The CI this is shaped for — a dev build
@@ -57,18 +66,37 @@ The version name means what SemVer says it means. While the app is pre-1.0,
 that is: minor for a release, patch for a fix to one. `0.14.1` is "0.14.0 with
 a fix", not "one commit after 0.14.0".
 
-**SemVer's own answer for a dev build cannot be used.** A pre-release is
+**SemVer's own answer cannot go in the field iOS reads.** A pre-release is
 `0.15.0-dev.23`, which sorts below `0.15.0` - exactly the right meaning, and
-illegal on iOS, where the short version string is one to three integers and
-nothing else. So the fact that a build is a dev build lives in the channel
-(§1) and the build number (§6), never in the name.
+illegal in `CFBundleShortVersionString`, which may hold digits and periods and
+at most three integers. A build carrying it fails validation with the rule
+quoted back: *the value '1.13.1-dev' in the Info.plist file must be a
+period-separated list of at most three non-negative integers*. A fourth
+integer trips the same check. Android would take it; iOS and macOS will not,
+and that is the binding constraint.
+
+**But that rule governs one field, and this decision first over-generalised
+it** to "never in the name at all" (corrected 2026-10-08). The suffix is kept
+everywhere a person reads the version and dropped from the one place a store
+validates:
+
+| Where | What it says |
+|---|---|
+| `--build-name` → `CFBundleShortVersionString` | `0.15.0` — digits and periods, always |
+| `--build-number` → `CFBundleVersion` | `107810` |
+| The version line on the Tools screen | `0.15.0-dev (107810 · abc1234)` |
+| The head of a copied log | `qUnleashed 0.15.0-dev · 107810 · abc1234` |
+| The Sentry release (§5) | `qunleashed@0.15.0-dev+107810` |
+
+So a dev build is explicit about being one wherever that helps somebody, and
+the platform never sees the suffix. The channel (§1) and the build number (§6)
+still carry it for anything that has to compare versions numerically.
 
 What follows is the ordinary shape for a mobile app, and it is what makes the
 guard below hold rather than fail:
 
-- `pubspec.yaml` on `main` holds the version being built **toward**. After
-  releasing 0.14.0, CI sets it to 0.15.0; a fix series is a hand edit to
-  0.14.1.
+- `pubspec.yaml` on `main` holds the version being built **toward**. Moving it
+  is a commit somebody makes on purpose — see "the bump is a decision" below.
 - Every dev build in a cycle is named that version. They are told apart by
   their build number and their commit, not by their name - `0.15.0 (107810,
   abc1234)` and `0.15.0 (107930, def5678)` are two different binaries and say
@@ -76,6 +104,29 @@ guard below hold rather than fail:
 - A release tag equals the pubspec version at its commit, or the build fails.
   Under this scheme that is satisfied by construction, because pubspec already
   holds the version being released.
+- **A build whose version has already been released fails too.** That is the
+  second guard, and the next section is why it is needed.
+
+**The bump is a decision, so it is not automated** (corrected 2026-10-08).
+This section first said CI sets pubspec to 0.15.0 after releasing 0.14.0. That
+guesses: a release is as often a patch, and occasionally a major, and no rule
+over the previous version knows which. Choosing is the work; writing one line
+is not.
+
+So moving pubspec is a commit — "open the 0.16.0 cycle" — reviewable like any
+other, and CI never picks a digit. What CI does instead is refuse to build a
+version that has already shipped.
+
+That check exists because dropping the automatic bump opens a real hole:
+release 0.15.0, forget to bump, and the next dev build is named 0.15.0 as
+well. TestFlight then refuses it, because that short version has been
+released - days later, far from the commit that caused it, and reported as a
+store problem rather than a versioning one. The check turns that into a red
+build on the commit itself.
+
+Which leaves CI automating the two things a rule can actually settle - a tag
+that disagrees with pubspec, and a version that has already gone out - and
+leaves the choice of digit to the person making it.
 
 That last point is why the guard is written this way round. It would have
 failed the release of 2026-10-01: `dev-0.13.0` points at `9ff711f`, where
@@ -104,11 +155,20 @@ identity: version, build number, channel, commit, Sentry release name. Every
 job reads its outputs — the publish job's `dev-*` check and
 `AppVersionLabel`'s regex go — and its tests cover each.
 
-### 5. The Sentry release is `qunleashed@<version>+<build number>`
+### 5. The Sentry release is `qunleashed@<version>[-dev]+<build number>`
 
 Set explicitly, never left to the SDK, whose default starts with the
 application ID or bundle ID and would split one release into five platforms.
 `dist` is the build number.
+
+The `-dev` on a dev build is §2's suffix, and it reverses a rejection further
+down (2026-10-08). The rejection was not wrong about the mechanics - a unique
+build number already makes a release unique, and `environment` already carries
+the channel - it just weighed the wrong thing. In a release list,
+`qunleashed@0.15.0+107810` against `qunleashed@0.15.0+107811` says nothing
+until each one's environment is opened, and that list is the one most often
+read. With the suffix a dev build and the shipped `0.15.0` never look alike.
+It costs nothing, since Sentry's release is a free-form string.
 
 ### 6. The build number is `100000 + commit count × 10 + slot`
 
@@ -182,10 +242,14 @@ chooses are unchanged.
 would be wrong as soon as it was promoted, and a Play track cannot be read at
 runtime to correct it.
 
-**The channel or the commit inside the version string.** Apple refuses
-anything but integers there. This also rules out SemVer's own pre-release
-form, `0.15.0-dev.23`, which would otherwise be the right way to say it - see
-§2.
+**The channel or the commit inside the version string Apple reads.** It
+refuses anything but digits and periods there, so SemVer's own pre-release
+form - `0.15.0-dev.23`, which would otherwise be exactly the right way to say
+it - cannot go in `CFBundleShortVersionString`.
+
+What this first concluded from that, and got wrong, is that the suffix cannot
+appear anywhere. It can appear in every field a person reads; §2 now says
+where, and only the two platform fields stay numeric.
 
 **Patch as a count of commits since the last release.** It reads well -
 `0.14.178` is "178 commits in" - and works with the old formula untouched,
@@ -199,13 +263,17 @@ two builds of one commit sharing a number.
 TestFlight closes a version once it has shipped.
 
 **The channel as a semver prerelease in the Sentry release name**
-(`0.14.0-dev+…`). A unique build number already makes the release unique, and
-`environment` already carries the channel.
+(`0.14.0-dev+…`). Declined on the grounds that a unique build number already
+makes the release unique and `environment` already carries the channel —
+**adopted on 2026-10-08**, because that reasoning weighed uniqueness when the
+thing that matters is reading a release list at a glance. §5 has it.
 
 ## Consequences
 
-- `sync-version` changes from "set to the released version" to "bump to the
-  next one".
+- `sync-version` **goes.** It set pubspec to the version just released, which
+  is the thing §2 reverses, and nothing takes its place: the bump is a commit
+  now. What replaces it is a check that a build's version is not one already
+  published.
 - `AppVersionLabel` reads `QU_CHANNEL` and stops parsing the tag.
 - `sentry_dart_plugin`'s default release, which is read from pubspec, becomes
   right. It is still passed explicitly.
@@ -225,11 +293,21 @@ Existing tags and releases stay as they are. The first release after this
 lands is the first under the new rule, and pubspec is bumped to the version
 after it.
 
-Concretely from where the tree is now: `dev-0.13.0` shipped with code 13000
-and pubspec says `0.13.0+13000`. Landing this sets pubspec to the version being
-built toward - `0.14.0` - and from then on a push to `main` builds `0.14.0`
-with a number from §6, which at 781 commits starts at 107810. Nothing has to
-be renumbered, because the floor was chosen to clear 13000.
+Concretely from where the tree is now, 2026-10-08: the newest tag is
+`dev-0.14.1` and pubspec says `0.14.1+14001`, so pubspec already names a
+version that has gone out. Landing this is therefore one commit that opens the
+next cycle — `0.15.0`, or `0.14.2` if the next release is meant to be a fix —
+and from then on a push to `main` builds that version with a number from §6,
+which at 808 commits starts at 108080. The second guard in §2 is what would
+have caught the state the tree is in right now.
+
+Nothing has to be renumbered: every code ever shipped is at or below 14001 and
+§6's floor of 100000 clears it.
+
+Note that every tag so far is `dev-*`, including the ones that were releases.
+§1's channel comes from the trigger once a push to `main` is what makes a dev
+build, which is also what stops a hand-cut release inheriting the word `dev`
+from the only prefix this repository has ever used.
 
 The prefix convention outlives the scheme that needed it. `dev-*` and `beta-*`
 still pick the channel until a push to `main` is what makes a dev build, and
