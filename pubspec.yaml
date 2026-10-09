@@ -11,7 +11,7 @@ publish_to: 'none'
 # No build number. §6 derives it from the commit count, so one here would be a
 # number that means nothing; the build scripts that fall back to reading
 # this line stop at the `+` and are unaffected either way.
-version: 0.15.0
+version: 0.16.0
 
 environment:
   # What this actually builds on, rather than a wider window.
