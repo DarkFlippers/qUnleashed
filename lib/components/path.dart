@@ -20,11 +20,11 @@ String pathJoin(Iterable<String> parts) {
 /// twice, in two files, with the English ARB sentence spelling it a third
 /// time and nothing checking any of the three against each other. #266
 ///
-/// "Cannot carry" is two firmware mechanisms rather than one, which matters
-/// only to a reader tracing a refusal back: `create_name` in `lib/fatfs/ff.c`
-/// rejects seven of the nine plus DEL, while `/` and `\` break the segment
-/// instead of being rejected — and `path_contains_only_ascii` refuses eight
-/// of them above that, before FatFS is reached. See [isNonAsciiNameChar].
+/// "Cannot carry" is the volume's rule here: `create_name` in
+/// `lib/fatfs/ff.c` rejects seven of the nine plus DEL, while `/` and `\`
+/// break the segment instead of being rejected. The RPC layer above it
+/// refuses eight of them too, which is [isNonAsciiNameChar]'s subject rather
+/// than this one's.
 ///
 /// Not every naming rule in the app: the paint editor's `_sanitizeName`
 /// refuses far more and then collapses runs of `_`, which makes it a
@@ -95,30 +95,30 @@ bool isControlNameChar(int unit) => unit <= 0x1f || unit == 0x7f;
 /// Only the charset half is new here; the nine were already refused.
 ///
 /// `rpc_storage.c` calls it and answers `ERROR_STORAGE_INVALID_NAME` for a
-/// Write (`:434`), a Mkdir (`:569`), a Rename (`:641`, on `new_path` only -
-/// so a name that reached the card by other means can be renamed *away*
-/// from) and a TarExtract (`:713`, on `out_path` only). Two read paths use it
-/// to drop rather than to fail: the List filter (`:242`), so such a file is
-/// not listed at all, and `rpc_system_storage_is_dir_is_empty` (`:500`),
-/// which makes a directory holding nothing else report itself empty. A Stat
-/// does *not* check - it goes straight to `storage_common_stat` - so one of
-/// these paths does stat successfully. #282
+/// Write, a Mkdir, a Rename (on `new_path` only - so a name that reached the
+/// card by other means can be renamed *away* from) and a TarExtract (on
+/// `out_path` only). Two read paths use it to drop rather than to fail: the
+/// List filter, so such a file is not listed at all, and
+/// `rpc_system_storage_is_dir_is_empty`, which makes a directory holding
+/// nothing else report itself empty. A Stat does *not* check - it goes
+/// straight to `storage_common_stat` - so one of these paths does stat
+/// successfully. #282
+///
+/// Function names and not line numbers, here and below: the firmware is not
+/// vendored and not a submodule, so a `:NNN` cannot be checked by anything in
+/// CI and is wrong at the next release while still reading as precise.
 ///
 /// A code unit rather than a byte, which is the same test: a string has a
 /// code unit above `0x7f` exactly when its UTF-8 has a byte above `0x7f`.
 /// Both halves of a surrogate pair are above it, so an emoji is caught by
-/// either spelling.
+/// either spelling. Nothing can hand either predicate a value above `0xffff`,
+/// because the only caller walks `codeUnits` and those are UTF-16.
 ///
 /// What this is *not* about is FatFS, which would take such a name: the
 /// firmware sets `_LFN_UNICODE 0` and `_CODE_PAGE 850`, and the CP850 table
 /// in `lib/fatfs/option/ccsbcs.c` maps all 128 high bytes injectively, so the
 /// volume both accepts one and reads it back unchanged. The refusal is the RPC
 /// layer's, one above the volume, and it is the only layer this app talks to.
-///
-/// This describes the *device's* rule. The app honours it on one surface:
-/// `SeedSubFile.checkBaseName` is the only caller. The archive browser's
-/// rename and mkdir prompts still send a typed name straight to RPC, so they
-/// hit the refusal rather than reporting it. That is #277, not this.
 bool isNonAsciiNameChar(int unit) => unit > 0x7f;
 
 /// Replaces the characters Windows rejects in a path segment with `_`.

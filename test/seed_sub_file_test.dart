@@ -8,8 +8,6 @@
 //
 // What it cannot see: whether the firmware accepts the file. That needs a
 // Flipper and a receiver.
-import 'dart:convert';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/tools/subghz/seed/seed_models.dart';
 import 'package:qunleashed/pages/tools/subghz/seed/seed_sub_file.dart';
@@ -270,82 +268,51 @@ void main() {
       );
     });
 
-    test('reports a non-ASCII name as that, not as a length', () {
-      // The byte budget and the ASCII rule used to be one subject: the limit
-      // is a buffer, a Cyrillic letter is two bytes, so a long Cyrillic name
-      // came back `tooLong` and the user was told to shorten something that
-      // was never going to be accepted at any length. Both of these are over
-      // the budget as well as outside ASCII, and only one of the two answers
-      // is a fix the user can carry out.
-      expect(SeedSubFile.checkBaseName('я' * 32), SeedNameProblem.nonAscii);
-      expect(SeedSubFile.checkBaseName('🙂' * 16), SeedNameProblem.nonAscii);
-      // And one that is comfortably inside the budget, so the refusal cannot
-      // be the length check in disguise.
-      expect(SeedSubFile.checkBaseName('Ворота'), SeedNameProblem.nonAscii);
-      expect(SeedSubFile.checkBaseName('Außentor'), SeedNameProblem.nonAscii);
-      // One high character in an otherwise ASCII name - a non-breaking space,
-      // which is the shape a paste from a web page arrives in. Written as an
-      // escape below rather than as the character, because an invisible
-      // literal leaves a reader unable to see what is asserted.
-      expect(
-        SeedSubFile.checkBaseName('gate\u00a0one'),
-        SeedNameProblem.nonAscii,
-      );
-    });
-
-    test('reports a non-ASCII name before a dotted or illegal one', () {
-      // The remaining precedence pairs, which the exhaustive switch does not
-      // buy: a name can break two rules and only one message is shown, so the
-      // first check decides what the user is told. `.Ворота` reported as
-      // `dotEdge` sends them to delete the dot, after which the name is
-      // refused again - the same dead end this change exists to remove, one
-      // problem over.
-      expect(SeedSubFile.checkBaseName('.Ворота'), SeedNameProblem.nonAscii);
-      expect(SeedSubFile.checkBaseName('Ворота?'), SeedNameProblem.nonAscii);
-      // The other way round: a control character outranks it, because that
-      // message names something the user cannot see and this one does not.
-      expect(
-        SeedSubFile.checkBaseName('gate\nЯ'),
-        SeedNameProblem.controlCharacter,
-      );
-    });
-
-    test('judges the name after trimming, so invisible padding is not '
-        'reported as a non-ASCII character', () {
-      // `trim()` removes NBSP, ideographic space, BOM and NEL, so these reach
-      // the check as plain `garage` and `pathFor` trims identically. Checking
-      // `raw` instead would refuse a name that looks pure ASCII on screen,
-      // naming a character that is both invisible and about to be removed.
-      for (final padded in [
-        '\u00a0garage\u00a0',
-        '\u3000garage',
-        '\ufeffgarage',
-        '\u0085garage',
+    test('reports the rule whose fix the next refusal would not undo', () {
+      // One table, because this is one invariant: when a name breaks two
+      // rules, the message shown has to be the one the user can act on.
+      //
+      // The budget and the ASCII rule used to be the same subject - the limit
+      // is a buffer and a Cyrillic letter is two bytes - so a long Cyrillic
+      // name came back `tooLong`, sending the user to shorten something that
+      // was never going to be accepted at any length. `.Ворота` reported as
+      // `dotEdge` is the same dead end one problem over.
+      //
+      // A control character outranks even this, because its message names
+      // something the user cannot see and this one does not.
+      for (final (name, problem) in [
+        // Over the budget as well as outside ASCII. The rows this file has to
+        // carry, because no other test can make that pairing.
+        ('я' * 32, SeedNameProblem.nonAscii),
+        ('🙂' * 16, SeedNameProblem.nonAscii),
+        // Comfortably inside it, so the refusal cannot be the length check in
+        // disguise.
+        ('Ворота', SeedNameProblem.nonAscii),
+        // Also dotted, also one of the nine.
+        ('.Ворота', SeedNameProblem.nonAscii),
+        ('Ворота?', SeedNameProblem.nonAscii),
+        // One high character in an otherwise ASCII name - a non-breaking
+        // space, which is the shape a paste from a web page arrives in.
+        // Written as an escape, because an invisible literal leaves a reader
+        // unable to see what is asserted.
+        ('gate\u00a0one', SeedNameProblem.nonAscii),
+        ('gate\nЯ', SeedNameProblem.controlCharacter),
       ]) {
-        expect(SeedSubFile.checkBaseName(padded), isNull, reason: padded);
+        expect(SeedSubFile.checkBaseName(name), problem, reason: name);
       }
-      expect(
-        SeedSubFile.pathFor('\u00a0garage\u00a0'),
-        '/ext/subghz/garage.sub',
-      );
     });
 
     test('holds the budget to the buffer the firmware copies into', () {
-      // `SUBGHZ_MAX_LEN_NAME` is 64 and `subghz_scene_save_name.c:73`
-      // strncpy's the extension-less name into a `char[64]`, so 63 is the
-      // longest name that keeps its terminator. Pinned as a literal, because
-      // every other length assertion here is written in terms of the constant
-      // and follows it wherever it moves - including to 64, which is the exact
-      // off-by-one that writes fine over RPC and is then mangled by the first
-      // rename on the device.
+      // `SUBGHZ_MAX_LEN_NAME` is 64 and `subghz_scene_save_name.c` strncpy's
+      // the extension-less name into a `char[64]`, so 63 is the longest name
+      // that keeps its terminator. Pinned as a literal, because every other
+      // length assertion here is written in terms of the constant and follows
+      // it wherever it moves - including to 64, the exact off-by-one that
+      // writes fine over RPC and is mangled by the first rename on the device.
       //
-      // This is what covers the budget. The *spelling* - bytes rather than
-      // characters - cannot be covered through `checkBaseName` at all now that
-      // non-ASCII is refused ahead of it, because for every name reaching the
-      // length check the two counts are equal by construction. See
-      // `maxBaseNameLength`, which says why it stays in bytes regardless.
+      // Only the value. The byte-versus-character spelling cannot be covered
+      // through `checkBaseName` at all; see `maxBaseNameLength` for why.
       expect(SeedSubFile.maxBaseNameLength, 63);
-      expect(utf8.encode('x' * 63).length, 63);
     });
 
     test('refuses every character a FAT volume cannot carry', () {
@@ -386,6 +353,18 @@ void main() {
       // And one that is not stays refused rather than being trimmed into
       // legality.
       expect(SeedSubFile.checkBaseName('  .hidden  '), SeedNameProblem.dotEdge);
+      // Dart's `trim` reaches past the ASCII space, so these arrive at the
+      // check as plain `garage` too. Judging `raw` instead would refuse a name
+      // that looks pure ASCII on screen, naming a character that is both
+      // invisible and about to be removed anyway.
+      for (final padded in [
+        '\u00a0garage\u00a0',
+        '\u3000garage',
+        '\ufeffgarage',
+        '\u0085garage',
+      ]) {
+        expect(SeedSubFile.checkBaseName(padded), isNull, reason: padded);
+      }
     });
 
     test('accepts a name that carries the extension, deliberately', () {

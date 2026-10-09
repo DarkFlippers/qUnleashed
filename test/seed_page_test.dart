@@ -39,11 +39,12 @@ Future<void> _openPage(WidgetTester tester, SeedFakeClient client) async {
   await tester.pumpAndSettle();
 }
 
-/// Walks capture -> recover -> Save -> accept the suggested name.
-Future<void> _recoverAndPressSave(
-  WidgetTester tester,
-  SeedFakeClient client,
-) async {
+/// Walks capture -> recover -> Save, stopping with the name dialog open.
+///
+/// The route into that dialog was written out six times in this file. Split
+/// out so that a change to it - a renamed button, an extra confirm, a
+/// different fixture - is one edit rather than six.
+Future<void> _openNameDialog(WidgetTester tester, SeedFakeClient client) async {
   await _openPage(tester, client);
 
   await tester.tap(find.text('one.txt'));
@@ -54,8 +55,15 @@ Future<void> _recoverAndPressSave(
 
   await tester.tap(find.text('Save to Flipper'));
   await tester.pumpAndSettle();
+}
 
-  // The name dialog, taking the suggestion unchanged.
+/// [_openNameDialog], then accept the suggested name unchanged.
+Future<void> _recoverAndPressSave(
+  WidgetTester tester,
+  SeedFakeClient client,
+) async {
+  await _openNameDialog(tester, client);
+
   expect(find.text('Name the File'), findsOneWidget);
   await tester.tap(find.widgetWithText(TextButton, 'Save to Flipper'));
   await tester.pumpAndSettle();
@@ -227,14 +235,7 @@ void main() {
         // gap existed here. `Ворота` is well inside the 63 budget, so a length
         // sentence appearing would mean the arms are crossed rather than that
         // the name is long.
-        final client = SeedFakeClient();
-        await _openPage(tester, client);
-        await tester.tap(find.text('one.txt'));
-        await tester.pumpAndSettle();
-        await tester.tap(find.text('Recover Seed'));
-        await tester.pumpAndSettle();
-        await tester.tap(find.text('Save to Flipper'));
-        await tester.pumpAndSettle();
+        await _openNameDialog(tester, SeedFakeClient());
 
         await tester.enterText(find.byType(TextField), 'Ворота');
         await tester.pump();

@@ -110,17 +110,12 @@ class SeedSubFile {
   /// fine over RPC and is then truncated the first time the user renames it
   /// there, which is a worse surprise than refusing it here.
   ///
-  /// Counted in bytes, because the firmware's limit is a buffer. Since #282
-  /// that spelling is **unobservable**: every name reaching the length check
-  /// is ASCII, where one character is one byte, so `utf8.encode(name).length`
-  /// and `name.length` cannot disagree. No test can tell them apart through
-  /// [checkBaseName], and one that claims to is lying - what is pinned
-  /// instead is this constant's value, which is the thing a wrong edit
-  /// reaches a device through.
-  ///
-  /// It stays in bytes anyway, as insurance: relaxing the ASCII rule would
-  /// make the two differ again, and `length` got that wrong once already,
-  /// letting a 63-letter Cyrillic name through at 126 bytes.
+  /// Counted in bytes, which no accepted name can now distinguish from
+  /// characters - [checkBaseName] refuses everything outside ASCII first, so
+  /// nothing observes the difference and no test can pin it. Kept in bytes
+  /// because relaxing the ASCII rule would make the two differ again, and
+  /// `length` got that wrong once at 126 bytes. What is pinned is this
+  /// constant's value, which is what a wrong edit reaches a device through.
   ///
   /// Found while answering #266's question about non-ASCII names rather than
   /// reported by it.
@@ -168,12 +163,8 @@ class SeedSubFile {
   ///   whether it can be written - see the comment on the check itself.
   ///
   /// Non-ASCII is refused, which was #266's open question and #282 is the
-  /// answer. It is the RPC layer's rule and not the volume's:
-  /// `path_contains_only_ascii` refuses the name and `rpc_storage.c` turns
-  /// that into `ERROR_STORAGE_INVALID_NAME` for a Write, so the FAT volume
-  /// underneath - which would have taken the name, see `isNonAsciiNameChar` -
-  /// never sees it. This check accepting one bought nothing except a write
-  /// that failed afterwards, saying only that it had failed.
+  /// answer. Accepting one bought nothing except a write that failed
+  /// afterwards, saying only that it had failed.
   ///
   /// Takes the name *without* the extension; [fileExtension] is added after.
   static SeedNameProblem? checkBaseName(String raw) {

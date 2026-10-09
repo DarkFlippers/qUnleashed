@@ -8087,7 +8087,7 @@
 
   "seedNameHelp": "Saved in {dir}. Room for {max} characters.",
   "@seedNameHelp": {
-    "description": "Helper text under the file name field. TRANSLATORS: {dir} is a path and is not translated; {max} is an exact figure, currently 63, so choose the grammatical case for 'characters' to match a plain number. It may be promised flatly because the name is refused outside ASCII, where one character is one byte, so the firmware's byte budget and this character count are the same. This sentence used to warn that a non-English name fits less; it no longer does, because such a name is now refused outright and the field says so on the first keystroke, which is a clearer place for the warning than a helper nobody rereads.",
+    "description": "Helper text under the file name field. TRANSLATORS: {dir} is a path and is not translated; {max} is an exact figure, currently 63, so choose the grammatical case for 'characters' to match a plain number. This sentence used to warn that a non-English name fits fewer; it no longer needs to, because such a name is refused outright now and the field says so on the first keystroke.",
     "placeholders": {
       "dir": {
         "type": "String"
@@ -8100,7 +8100,7 @@
 
   "seedNameTooLong": "Use a shorter name. The Sub-GHz app holds {max} characters.",
   "@seedNameTooLong": {
-    "description": "Shown when the typed file name is longer than the firmware can keep. TRANSLATORS: {max} is an exact figure, currently 63 - render it as a plain number and choose the grammatical case for 'characters' to match, as there is no plural form on this placeholder. It is exact rather than hedged because a name outside ASCII is refused by commonNameNonAscii before this check runs, and in ASCII one character is one byte; the firmware's buffer is 64 and {max} is one less, leaving room for the terminator.",
+    "description": "Shown when the typed file name is longer than the Sub-GHz app can keep. TRANSLATORS: {max} is an exact figure, currently 63 - render it as a plain number and choose the grammatical case for 'characters' to match, as there is no plural form on this placeholder. Why it is exact rather than hedged is recorded on SeedSubFile.maxBaseNameLength.",
     "placeholders": {
       "max": {
         "type": "int"

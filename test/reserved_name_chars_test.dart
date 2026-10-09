@@ -59,6 +59,16 @@ const _legal = [
   ';',
 ];
 
+/// Characters outside ASCII, which the host rule keeps and the device rule
+/// refuses. One list, because the two tests that use it assert *opposite*
+/// answers on it - a character added to only one copy leaves the half it was
+/// added for untested.
+const _nonAscii = ['я', 'Ї', 'ß', '漢', '🙂'];
+
+/// `U+00a0`, the way every `reason` in this file spells a code unit. Decimal
+/// is unreadable for the thing being asserted here.
+String _u(int unit) => 'U+${unit.toRadixString(16).padLeft(4, '0')}';
+
 /// A string from the English ARB, read as text.
 ///
 /// The ARB and not the generated class, because the assertion is about what
@@ -101,8 +111,8 @@ void main() {
           reservedNameCharsPattern.hasMatch(char),
           reserved,
           reason: reserved
-              ? 'U+${unit.toRadixString(16).padLeft(4, '0')} must be refused'
-              : '"$char" (U+${unit.toRadixString(16).padLeft(4, '0')}) is a '
+              ? '${_u(unit)} must be refused'
+              : '"$char" (${_u(unit)}) is a '
                     'legal character and must not be refused',
         );
       }
@@ -120,7 +130,7 @@ void main() {
         expect(
           reservedNameCharsPattern.hasMatch(char),
           isControlNameChar(unit),
-          reason: 'U+${unit.toRadixString(16).padLeft(4, '0')}',
+          reason: _u(unit),
         );
       }
     });
@@ -135,7 +145,7 @@ void main() {
       //
       // The device's refusal is `isNonAsciiNameChar` instead, applied by
       // `checkBaseName` alone. #282
-      for (final char in ['я', 'Ї', 'ß', '漢', '🙂']) {
+      for (final char in _nonAscii) {
         expect(reservedNameCharsPattern.hasMatch(char), isFalse, reason: char);
       }
     });
@@ -158,9 +168,9 @@ void main() {
             'character rather than the one about English letters',
       );
       expect(isNonAsciiNameChar(0x80), isTrue);
-      for (var unit = 0; unit < 0x80; unit++) {
-        expect(isNonAsciiNameChar(unit), isFalse, reason: 'U+$unit');
-      }
+      // No loop under these three: the partition test below walks every code
+      // unit and is strictly stronger. These name the boundary for a reader
+      // and fail readably; that is their whole job.
     });
 
     test('catches both halves of a surrogate pair', () {
@@ -173,48 +183,34 @@ void main() {
       expect('🙂'.codeUnits.every(isNonAsciiNameChar), isTrue);
     });
 
-    test('does not overlap the control range', () {
-      // The two predicates split the refused characters between two messages.
-      // An overlap would make which message appears depend on the order the
-      // checks run in, which is not something a reader of `checkBaseName`
-      // should have to work out.
+    test('partitions every code unit with the control rule', () {
+      // One assertion in two halves, over the whole UTF-16 range because that
+      // is what `codeUnits` can produce and nothing can hand either predicate
+      // more.
       //
-      // Exhaustive below 0x100, because both predicates are defined by
-      // boundaries that live there and 0x7f is the only value where they can
-      // be made to overlap at all - a sparse sweep that strides past it tests
-      // everything except the case this name describes. Sparse above, where
-      // the answer cannot vary without one of the boundary tests failing
-      // first.
-      for (var unit = 0; unit < 0x100; unit++) {
-        expect(
-          isControlNameChar(unit) && isNonAsciiNameChar(unit),
-          isFalse,
-          reason: 'U+${unit.toRadixString(16).padLeft(4, '0')}',
-        );
-      }
-      for (var unit = 0x100; unit <= 0x10ffff; unit += 0x40) {
-        expect(
-          isControlNameChar(unit) && isNonAsciiNameChar(unit),
-          isFalse,
-          reason: 'U+${unit.toRadixString(16)}',
-        );
-      }
-    });
-
-    test('covers every code unit between the two predicates', () {
-      // Together they must account for everything the device refuses on
-      // charset grounds, with no gap: the firmware's `path_contains_only_ascii`
-      // accepts exactly 0x20-0x7e, so every other code unit has to be caught
-      // by one of the two or `checkBaseName` lets through a name the RPC layer
-      // will refuse. A gap here is the whole bug #282 was.
+      // No gap: the firmware's `path_contains_only_ascii` accepts exactly
+      // 0x20-0x7e, so every other code unit must be caught by one of the two
+      // or `checkBaseName` passes a name the RPC layer will refuse. A gap here
+      // is the whole of #282.
+      //
+      // No overlap: the two decide which of two messages the user is shown, so
+      // a code unit matching both would make that depend on the order the
+      // checks happen to run in. 0x7f is the only value where it could, which
+      // is why this walks every unit rather than striding - a sparse sweep
+      // skips the one case the rule exists for.
+      final gaps = <String>[];
+      final overlaps = <String>[];
       for (var unit = 0; unit <= 0xffff; unit++) {
-        final accepted = unit >= 0x20 && unit <= 0x7e;
-        expect(
-          isControlNameChar(unit) || isNonAsciiNameChar(unit),
-          !accepted,
-          reason: 'U+${unit.toRadixString(16).padLeft(4, '0')}',
-        );
+        final refused = isControlNameChar(unit) || isNonAsciiNameChar(unit);
+        if (refused == (unit >= 0x20 && unit <= 0x7e)) gaps.add(_u(unit));
+        if (isControlNameChar(unit) && isNonAsciiNameChar(unit)) {
+          overlaps.add(_u(unit));
+        }
       }
+      // Collected rather than asserted per unit, so a failure names every
+      // offending code unit instead of aborting on the first.
+      expect(gaps, isEmpty, reason: 'judged wrongly against 0x20-0x7e');
+      expect(overlaps, isEmpty, reason: 'claimed by both predicates');
     });
   });
 
@@ -313,7 +309,7 @@ void main() {
           refused,
           reservedNameCharsPattern.hasMatch(char),
           reason:
-              '"$char" (U+${unit.toRadixString(16).padLeft(4, '0')}) is '
+              '"$char" (${_u(unit)}) is '
               'judged differently by the two rules',
         );
       }
@@ -327,7 +323,7 @@ void main() {
       // with `_` at every `sanitizePathSegment` call site - two of which
       // derive a persistent per-device folder, so the rename would strand an
       // existing install. #282
-      for (final char in ['я', 'Ї', 'ß', '漢', '🙂']) {
+      for (final char in _nonAscii) {
         expect(
           SeedSubFile.checkBaseName('gate${char}1'),
           SeedNameProblem.nonAscii,
