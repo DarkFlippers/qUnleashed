@@ -17,6 +17,7 @@ import '../settings/store.dart';
 /// three would be a task of its own.
 class DiagnosticsSettings extends PrefsBackedSettings {
   static const String _shareLogsKey = 'diagnostics.share_logs';
+  static const String _noticeShownKey = 'diagnostics.notice_shown';
 
   /// On, and the direction of that default is the decision rather than a
   /// convenience. §1: an opt-in crash reporter on a tool with this audience
@@ -26,12 +27,28 @@ class DiagnosticsSettings extends PrefsBackedSettings {
   static const bool _defaultShareLogs = true;
 
   bool _shareLogs = _defaultShareLogs;
+  bool _noticeShown = false;
 
   bool get shareLogs => _shareLogs;
+
+  /// Whether §1's one-time notice has been put in front of this user.
+  ///
+  /// False on a fresh install, and false for everyone already running the app
+  /// when this shipped - which is exactly §1's "once more for existing users
+  /// after the update that carries this", with no second flag and no version
+  /// comparison. The key is written the first time the notice is raised and
+  /// never read again after that.
+  ///
+  /// Defaults to false, so a store that will not open means the notice is
+  /// shown again rather than skipped. The direction is deliberate and it is
+  /// the opposite of [shareLogs]'s: being told twice is a nuisance, never
+  /// being told is the failure that matters.
+  bool get noticeShown => _noticeShown;
 
   @override
   void readFrom(PrefsReader reader) {
     _shareLogs = reader.or(_shareLogsKey, _defaultShareLogs);
+    _noticeShown = reader.or(_noticeShownKey, false);
     reader.report('[Diagnostics]');
   }
 
@@ -56,7 +73,10 @@ class DiagnosticsSettings extends PrefsBackedSettings {
   }
 
   @override
-  void resetFields() => _shareLogs = _defaultShareLogs;
+  void resetFields() {
+    _shareLogs = _defaultShareLogs;
+    _noticeShown = false;
+  }
 
   /// Applies the choice to this object and persists it, in that order.
   ///
@@ -76,6 +96,26 @@ class DiagnosticsSettings extends PrefsBackedSettings {
     await persistSetting(
       'share logs with developers',
       (prefs) => prefs.setBool(_shareLogsKey, value),
+    );
+  }
+
+  /// Records that the notice has been seen, so it never appears again.
+  ///
+  /// Called when it is raised rather than when it is answered. §1: the app is
+  /// usable behind it and dismissing it is the same as **Got it**, so there is
+  /// no answer to wait for - and a notice that only counts as shown once
+  /// somebody taps a button is a notice that comes back forever for anyone who
+  /// swipes it away.
+  ///
+  /// No listeners are notified. Nothing on screen is drawn from this, and the
+  /// one thing that reads it has already read it by the time this runs -
+  /// notifying would rebuild the tree underneath a sheet that is opening.
+  Future<void> markNoticeShown() async {
+    if (_noticeShown) return;
+    _noticeShown = true;
+    await persistSetting(
+      'the diagnostics notice has been shown',
+      (prefs) => prefs.setBool(_noticeShownKey, true),
     );
   }
 }

@@ -17,6 +17,9 @@ import '../pages/devices/controllers/device.dart';
 import '../pages/devices/device_scope.dart';
 import '../pages/devices/models/connection_state.dart';
 import '../pages/devices/page.dart';
+import '../pages/option/diagnostics_notice.dart';
+import '../pages/option/diagnostics_scope.dart';
+import '../services/guarded.dart';
 import '../services/home_widget/service.dart';
 import '../services/localization/l10n.dart';
 import '../services/notifications/push_intent.dart';
@@ -69,6 +72,19 @@ class _AppShellState extends State<AppShell> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _onWidgetPickRequest();
       _onPushTap();
+      // ADR 0013 §1's one-time notice, raised here because here is the first
+      // frame on the one entry point that has a window: `_initCore` must never
+      // throw and has no UI, and `widgetMain()`'s headless isolate never
+      // reaches this widget at all. A notice marked shown there would be a
+      // notice the user never saw.
+      //
+      // `guarded` because a post-frame callback is a void slot: the future
+      // would otherwise be dropped and a rejection would land as `[uncaught]`
+      // naming nothing. #23.
+      guarded(
+        '[Diagnostics] raising the sharing notice',
+        () => showDiagnosticsNoticeIfDue(context, DiagnosticsScope.of(context)),
+      );
     });
   }
 

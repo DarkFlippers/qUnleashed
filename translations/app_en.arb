@@ -251,6 +251,26 @@
     "description": "Explains the switch above it. Two facts, in the order a user asks them: that sending needs no action from them, and what is never included. The second half matters because this app handles card dumps, keys and radio captures, and the user has no way to verify the claim themselves."
   },
 
+  "diagnosticsNoticeTitle": "Failures are shared with the developers",
+  "@diagnosticsNoticeTitle": {
+    "description": "Heading of the one-time notice shown on the first launch, and once more for people already using the app when sharing was added. States the fact rather than asking a question, because reporting is already on while the notice is on screen - it is a notice, not a consent prompt."
+  },
+
+  "diagnosticsNoticeBody": "When something goes wrong, the error and the crash are sent by themselves, with the app version and the build it came from. Card data, keys, captures and your location are never sent. You can turn this off now or at any time in Settings \u2192 Diagnostics.",
+  "@diagnosticsNoticeBody": {
+    "description": "Body of the one-time notice. Three things in the order a user asks them: what is sent, what never is, and how to stop it. No link to a privacy policy, because the project has none yet; the text carries the substance instead."
+  },
+
+  "diagnosticsNoticeTurnOff": "Turn it off",
+  "@diagnosticsNoticeTurnOff": {
+    "description": "The dismissing action on the one-time notice that also turns sharing off. Present so that opting out costs one tap at the moment the user is being told, rather than a hunt through Settings afterwards."
+  },
+
+  "commonGotIt": "Got it",
+  "@commonGotIt": {
+    "description": "Acknowledging action on a notice that tells the user something rather than asking them. Distinct from OK, which answers a question."
+  },
+
   "logEmpty": "Nothing recorded yet. Errors and warnings are collected as they happen; open this screen or refresh it to see them.",
   "@logEmpty": {
     "description": "Shown on the log screen when the app has recorded nothing. Reassures the user that an empty log means nothing went wrong, not that recording is off."

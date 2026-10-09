@@ -59,6 +59,32 @@ Future<void> guarded(
   }
 });
 
+/// A second reader for what [guarded] catches, installed by whoever has one.
+///
+/// [what] is the label the call site passed, [verb] says whether it was the
+/// task or its failure handler that threw, and the error and stack are the
+/// originals rather than the formatted line - a crash reporter wants the
+/// exception object to group on, not a string.
+typedef GuardedFailureSink = void Function(
+  String what,
+  String verb,
+  Object error,
+  StackTrace stack,
+);
+
+/// Where [guarded]'s failures go besides the log, or nowhere.
+///
+/// Null until something installs one. `lib/services/telemetry/` does, when
+/// reporting is on, and clears it again when it is turned off - which is the
+/// direction ADR 0013 §2 asks for: this file knows there may be a second
+/// reader, and nothing about who it is. The alternative was importing the SDK
+/// here, which §2 and `test/sentry_import_guard_test.dart` both forbid.
+///
+/// A plain mutable static rather than a list of listeners. There is one
+/// consumer and no use for a second; a list would be a registry nobody
+/// deregisters from.
+GuardedFailureSink? guardedFailureSink;
+
 /// Writes one failure down without letting it cost the never-rejects contract.
 ///
 /// `'$error'` calls `toString()` on an arbitrary object, and one that throws is
@@ -72,6 +98,12 @@ Future<void> guarded(
 /// through a bare `completeError(error)`, which yields `StackTrace.empty`, so
 /// appending unconditionally would end those entries with a blank line and
 /// nothing after it.
+///
+/// [guardedFailureSink] runs after the log and in a `try` of its own, for the
+/// same contract: a sink that throws must cost neither the log line above it
+/// nor the future the queues are promised cannot reject. It runs second so
+/// that the local record is written even if the remote one is what breaks —
+/// the log is the surface somebody can actually open.
 void _record(String what, String verb, Object error, StackTrace stack) {
   try {
     final trace = stack.toString();
@@ -80,5 +112,14 @@ void _record(String what, String verb, Object error, StackTrace stack) {
     );
   } catch (_) {
     LogService.error('$what $verb: an error whose toString() threw');
+  }
+  final sink = guardedFailureSink;
+  if (sink == null) return;
+  try {
+    sink(what, verb, error, stack);
+  } catch (e) {
+    // Not `describe`: that reads the stack of the sink's own failure, and the
+    // one thing worth saying here is which sink broke on which operation.
+    LogService.warn('[Telemetry] the guarded sink threw on "$what": $e');
   }
 }

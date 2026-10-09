@@ -205,6 +205,81 @@ void main() {
       expect(LogService.history.single, contains('(3×)'));
     },
   );
+
+  group('the second reader', () {
+    tearDown(() => guardedFailureSink = null);
+
+    test('is optional: with none installed nothing changes', () async {
+      guardedFailureSink = null;
+      await guarded('[Test] no sink', boom);
+      expect(LogService.history, hasLength(1));
+    });
+
+    test('is handed the error object, not the formatted line', () async {
+      // A crash reporter groups on the exception. Handing it the string would
+      // make every failure in the app one issue with a different title.
+      final sink = _RecordingSink();
+      guardedFailureSink = sink.call;
+
+      await guarded('[Test] sunk', boom);
+
+      expect(sink.calls, ['[Test] sunk failed']);
+      expect(sink.errors.single, isA<StateError>());
+    });
+
+    test('hears about a failure handler that threw, separately', () async {
+      final sink = _RecordingSink();
+      guardedFailureSink = sink.call;
+
+      await guarded(
+        '[Test] sunk',
+        boom,
+        onFailure: (_) => throw StateError('and the handler too'),
+      );
+
+      expect(sink.calls, [
+        '[Test] sunk failed',
+        '[Test] sunk failure handler threw',
+      ]);
+    });
+
+    test('a sink that throws costs neither the log nor the contract', () async {
+      // The whole reason the call is in a `try` of its own. A reporter that
+      // breaks must not strand the queue chaining on this future, and must not
+      // take the local record - the surface somebody can actually open - with
+      // it.
+      guardedFailureSink = (_, _, _, _) => throw StateError('sink is broken');
+
+      await expectLater(guarded('[Test] sunk', boom), completes);
+
+      expect(
+        LogService.history.where((e) => e.contains('[Test] sunk failed')),
+        hasLength(1),
+        reason: 'the log line is written before the sink runs',
+      );
+      expect(
+        LogService.history.where((e) => e.contains('the guarded sink threw')),
+        hasLength(1),
+        reason: 'and the broken sink is itself reported',
+      );
+    });
+  });
+}
+
+/// The second reader, recorded instead of sent.
+///
+/// `Telemetry` installs one of these when reporting is on. What matters here
+/// is the contract [guarded] offers it, which is the same never-rejects
+/// contract the queues depend on - so these cover what happens when the sink
+/// is absent, when it is present, and when it is the thing that breaks.
+class _RecordingSink {
+  final List<String> calls = [];
+  final List<Object> errors = [];
+
+  void call(String what, String verb, Object error, StackTrace stack) {
+    calls.add('$what $verb');
+    errors.add(error);
+  }
 }
 
 /// An exception whose own toString() fails, which is the case that would

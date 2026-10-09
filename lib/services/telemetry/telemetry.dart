@@ -1,6 +1,7 @@
 import 'package:sentry_flutter/sentry_flutter.dart';
 
 import '../build_identity.dart';
+import '../guarded.dart';
 import '../logging.dart';
 import 'scrub.dart';
 import 'settings.dart';
@@ -146,6 +147,7 @@ class Telemetry {
     try {
       await SentryFlutter.init((options) => _configure(options, plan));
       await _tag(plan);
+      guardedFailureSink = _reportGuarded;
       _running = true;
       settings.addListener(_reconcile);
     } catch (e, st) {
@@ -161,6 +163,7 @@ class Telemetry {
   Future<void> stop() async {
     if (!_running) return;
     _running = false;
+    guardedFailureSink = null;
     settings.removeListener(_reconcile);
     try {
       await Sentry.close();
@@ -169,6 +172,46 @@ class Telemetry {
         '[Telemetry] shutdown failed: ${LogService.describe(e, st)}',
       );
     }
+  }
+
+  /// Turns one `guarded()` failure into an issue.
+  ///
+  /// §2: `guarded` is one of the four chokepoints that already see every
+  /// failure the app records, which is why this hooks it rather than adding
+  /// `captureException` to several hundred catch sites.
+  ///
+  /// **Fingerprinted on the label and the error type**, which is the best
+  /// grouping key the app has. Sentry's default would group on the stack, and
+  /// every one of these shares a stack: `guarded`'s own `catchError`. So
+  /// without this, one issue would hold every dropped future in the app. With
+  /// it, "[Archive] syncing the category" failing with a `TimeoutException` is
+  /// one issue and the same label failing with a `PlatformException` is
+  /// another, which is the split somebody triaging would make by hand.
+  ///
+  /// The label is scrubbed. Every one is a literal at its call site today, so
+  /// there is nothing in one to redact - but it is interpolated at a handful
+  /// of them, and a label is the one field here that becomes an issue *title*.
+  ///
+  /// Nothing is awaited. `_record` is synchronous and must stay that way, and
+  /// the SDK queues the send itself; `_guard` is what keeps a rejected capture
+  /// from reaching the zone as an unlabelled `[uncaught]`.
+  void _reportGuarded(
+    String what,
+    String verb,
+    Object error,
+    StackTrace stack,
+  ) {
+    final label = Scrub.outbound(what);
+    _guard(
+      () => Sentry.captureException(
+        error,
+        stackTrace: stack,
+        withScope: (scope) {
+          scope.fingerprint = [label, error.runtimeType.toString()];
+          scope.setContexts('guarded', {'what': label, 'verb': verb});
+        },
+      ),
+    );
   }
 
   /// Follows the switch after the first start.
