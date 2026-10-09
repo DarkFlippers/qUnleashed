@@ -5,13 +5,11 @@ Status: Accepted (2026-10-09). Proposed 2026-10-01; the version is SemVer and
 version and dropped only from the two fields a store validates, and the
 automatic version bump replaced by two guards, 2026-10-08.
 
-Implemented except for the parts that are really
-[0013](0013-observability-with-sentry.md)'s: §5's Sentry release name, the
-release-name output §4 asks `derive_version.sh` for, §1's `installerStore`
-tag and §3's Sentry tags. `sentry_flutter` is a dependency and every build
-links it, but nothing initialises it, so none of those four has anywhere to go
-yet. Nothing uploads to TestFlight or a Play track either; the identity those
-jobs would need is in place.
+Implemented except for the four parts that are really
+[0013](0013-observability-with-sentry.md)'s and wait on its wiring: §5's
+Sentry release name, the release-name output §4 asks `derive_version.sh` for,
+§1's `installerStore` tag and §3's Sentry tags. Store uploads are not built
+yet either; the identity those jobs would need is in place.
 
 Written against three needs, stated in that order of certainty: release builds
 cut on SemVer when the team decides, dev builds published automatically from
@@ -26,10 +24,9 @@ unasked, the four steps of a release, and what each refusal means. This file is
 the decision and the argument; that one is the terminal.
 
 Written for [0013](0013-observability-with-sentry.md), which needs every
-event to name the binary it came from. The CI this is shaped for was a dev
-build on every push to `main`, uploaded to TestFlight and the Play internal
-track. Half of it exists now: the push-to-`main` build does, the store uploads
-do not. This decision is what kept it from having to change twice.
+event to name the binary it came from, and for a CI that builds a dev build on
+every push to `main` and uploads it to TestFlight and the Play internal track.
+The push-to-`main` build exists; the store uploads do not.
 
 ## Context
 
@@ -67,11 +64,9 @@ copied log says which commit it was built from.
 A push to `main` builds `dev`; a release tag builds `release`. A stable binary
 is rebuilt from its tag, not promoted from a dev one.
 
-That is what happens now. The interim rule this section first carried —
-"until per-commit builds exist, the tag prefix decides: `dev-*` is `dev`,
-`beta-*` is `release`" — is gone with the world it described. A push to `main`
-builds, so a `dev-*` tag is refused outright rather than mapped: `dev` is the
-rolling prerelease's own tag name, and the two would collide.
+A `dev-*` tag is refused outright rather than mapped to the dev channel:
+`dev` is the rolling prerelease's own tag name (§7), and the two would
+collide.
 
 The channel is compiled in (`QU_CHANNEL`) and becomes Sentry's `environment`.
 Where the build is actually running — TestFlight, App Store, Play, F-Droid, a

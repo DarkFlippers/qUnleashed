@@ -41,18 +41,22 @@ CompilationUnit parseUnit(String source, {String? path}) {
   return parsed.unit;
 }
 
-/// Dart under `lib/` that git can see, tracked or not.
+/// Paths matching [pathspec] that git can see, tracked or not.
 ///
 /// git rather than a directory walk: submodule contents under lib/modules are
 /// gitlinks rather than tracked files, so flipperlib and dartufbt drop out
-/// without being named, and generated l10n is gitignored so it drops out too.
-/// The same reasoning as check_format.sh.
+/// without being named, and anything gitignored drops out too. The same
+/// reasoning as check_format.sh.
 ///
 /// `--others --exclude-standard` as well as the index, because a file that has
 /// not been added yet is exactly the one its author is about to run this
 /// against. Without it a local run before `git add` is a false green - which is
 /// how the formatting check on the first ratchet came to be missed.
-List<String> dartFilesUnderLib() {
+///
+/// Takes the pathspec because `test/local_defines_test.dart` wants the same
+/// question asked of a different glob, and had a verbatim copy of this
+/// function until it did. The pathspec is the only part that differs.
+List<String> gitVisibleFiles(String pathspec) {
   final result = Process.runSync('git', [
     'ls-files',
     '-z',
@@ -60,7 +64,7 @@ List<String> dartFilesUnderLib() {
     '--others',
     '--exclude-standard',
     '--',
-    'lib/*.dart',
+    pathspec,
   ]);
   expect(result.exitCode, 0, reason: 'git ls-files failed: ${result.stderr}');
   return (result.stdout as String)
@@ -68,6 +72,9 @@ List<String> dartFilesUnderLib() {
       .where((path) => path.isNotEmpty)
       .toList();
 }
+
+/// Dart under `lib/` that git can see, tracked or not.
+List<String> dartFilesUnderLib() => gitVisibleFiles('lib/*.dart');
 
 /// The budget bucket a file belongs to.
 ///

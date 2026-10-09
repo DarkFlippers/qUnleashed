@@ -1,8 +1,6 @@
 {
   "_comment": "Copy to dart-defines.local.json, fill in, and pass it with --dart-define-from-file. That copy is gitignored; this template is not, so never put a real value here. docs/releasing.md explains each key and where to get it.",
-  "_comment_sentry": "QU_SENTRY_DSN does nothing yet: no code reads it and no workflow passes it, because ADR 0013's wiring has not landed. The key is here because the name is settled.",
 
-  "QU_SENTRY_DSN": "",
   "QU_CHANNEL": "local",
 
   "QU_CARTO_KEY": "",

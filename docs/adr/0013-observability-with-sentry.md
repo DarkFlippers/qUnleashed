@@ -1,24 +1,9 @@
 # 0013. Sentry is the second channel, wired into the chokepoints that exist
 
-Status: Proposed (2026-10-01); breadcrumb source settled, the logging
-chokepoints checked against the code, and `caught` added as a third level
-(2026-10-02); every claim re-read against the tree (2026-10-07), which moved
-the flipperlib pin, the replay mask target, the ratchet arithmetic, the route
-count and what is left of #103; **consent reversed to on by default, sent
-automatically, behind a one-time notice; replay on with it, and the notice
-carries no policy link because there is no policy** (2026-10-07)
-
-Checked against the tree on 2026-10-07, and still true: the 48 and
-`pages/archive`'s 24 are exactly what `test/log_level_budget_test.dart`
-counts — it sits at budget in every area, with nothing to lower;
-`enable-swift-package-manager: false` is set; and both self-extracting
-launchers work the way §6 and the Consequences describe.
-
-Three things that check found have since changed, and §7 is the current
-account of all of them: 10.0 had not shipped and now has; the lockfile held
-`jni` 1.0.0 and `path_provider_android` 2.3.1 and now holds 0.14.2 and
-2.2.23; and the `qunleashed_hardnested` pod was read as an obstacle to Swift
-Package Manager, which it probably is not.
+Status: Proposed. Reporting is **on by default and sent automatically**,
+behind a one-time notice that carries no policy link because there is no
+policy; replay is on with it. Facts last checked against the tree 2026-10-09;
+git holds how the decision got here.
 
 Build identity — release, channel, commit — is its own decision,
 [0014](0014-build-identity.md). This one consumes it.
@@ -38,9 +23,8 @@ are native code behind `dart:ffi`. A fault there ends the process, and the
 history it would have been written to goes with it.
 
 The project is in Sentry's open-source programme, which bills as a Sponsored
-Business plan. Its quotas are far above what the app produces; §8 states them
-as measured, rather than the approximation this paragraph carried while the
-org was still being set up.
+Business plan. Its quotas are far above what the app produces — §8 has the
+figures.
 
 One SDK, `sentry_flutter`, covers all five shipped platforms:
 
@@ -371,34 +355,18 @@ gate it.
 9.30.0 is the floor: it fixed a native worker leaked per engine, reported by a
 BLE app with a headless engine — the home widget's shape (sentry-dart#3960).
 
-**10.0 has shipped since this was written** (checked 2026-10-09; it said "at
-RC"), and the reason to stay on 9 is narrower than it was. Every floor 10
-raises is already met here: Flutter 3.47.1 against its 3.44, Dart 3.13.1
+**10.0 has shipped**, and the reason to stay on 9 is narrower than it was.
+Every floor 10 raises is already met here: Flutter 3.47.1 against its 3.44,
+Dart 3.13.1
 against 3.12, Android `minSdk` 29 against API 26, iOS 15.0 and macOS 12.0
 against 15 and 12. Nothing in the app is below the bar.
 
 What is left is Swift Package Manager, which 10 requires because it drops
-CocoaPods for the native Cocoa SDK. The repository turns SPM off in two
-places: `flutter: config: enable-swift-package-manager: false` in
-`pubspec.yaml`, with nothing beside it saying why, and
-`swift-package-manager: "false"` on the `build-macos` job alone.
-
-The reason is in neither — it is in the input that second one sets, in
-`.github/actions/setup-flutter/action.yml`, which describes the flag as
-*"belt and braces at the runner level until one macOS release confirms the
-project key holds"*. So this is not an old decision nobody remembers. It is a
-deliberate hold, waiting on one Apple release to prove the project-level key
-does what it says.
-
-That hold is what blocks 10, and it outranks the local macOS pod the first
-draft of this section worried about: `qunleashed_hardnested` is probably not an
-obstacle at all, since 10's own migration notes say other plugins may still
-require CocoaPods and the two coexist.
-
-So the pin stands on one ground rather than three: SPM is off on purpose,
-pending a verification nobody has done yet, and flipping it changes the iOS and
-macOS builds — neither verifiable from the machine this is written on. Whoever
-clears that hold clears the way to 10, and then 10 is a version bump.
+CocoaPods for the native Cocoa SDK, and which this repository turns off on
+purpose — a hold waiting on one Apple release to prove the project-level key
+holds. #283 has the two places it is set, the comment that records why, and the
+exit test; it needs a Mac, which is why it is not a commit here. Whoever clears
+that hold clears the way to 10, and then 10 is a version bump.
 
 9.30.1 pins `jni` to 0.14.2 exactly. Measured rather than predicted
 (2026-10-09): the lockfile moves `jni` from 1.0.0 to 0.14.2 and
@@ -423,9 +391,7 @@ volume.
 only defensible with the headroom to pay for it. `dark-flippers` is on a
 Sponsored Business plan: 5M errors, 1B spans, 5 TB logs, 5 TB metrics, 105K
 replays (100K plus a 5K/month credit running to 2027-01-23), 10 GB
-attachments. The Context above approximated these while the org was being
-set up; these are the measured figures, and nothing in this section changes
-against them.
+attachments. Nothing in this section changes against them.
 
 **Pay-as-you-go is capped at $0**, which matters more than the quotas do. Going
 over does not produce a bill, it drops events - so the risk of reporting by
@@ -435,9 +401,8 @@ shipped, and it is why the ceilings above are worth stating rather than
 trusting.
 
 **The org is on Sentry's EU region** (`de.sentry.io`), so events are stored in
-the EU. §1 argues on-by-default partly on GDPR's legitimate-interest footing;
-this strengthens that rather than changing it, and it is the kind of fact a
-store questionnaire asks for.
+the EU — which §1's legitimate-interest footing rests easier on, and which a
+store questionnaire will ask about.
 
 **What that means, since "on error" invites the wrong reading.** It is not
 "records on error only" - there is no recording the past. Buffer mode
@@ -497,10 +462,7 @@ most of them are expected.
 
 **Profiling.** Alpha, iOS and macOS only, and removed in 10.
 
-**10.0 now.** Rejected when it was an RC. It has shipped since, and every
-floor it raises is already met here, so what is left is the Swift Package
-Manager hold — a packaging migration this decision should still not carry,
-for the reason §7 gives. The rejection stands; its grounds have narrowed.
+**10.0 now.** Behind the Swift Package Manager hold — §7.
 
 ## Consequences
 

@@ -90,15 +90,12 @@ app.*.map.json
 /ios/Runner/GoogleService-Info.plist
 /macos/Runner/GoogleService-Info.plist
 
-# The dart-defines a local build wants, which CI passes from its own secrets.
-# See docs/releasing.md.
+# Local build defines, which may hold QU_CARTO_KEY and QU_BUILD_SERVER_KEY.
+# See docs/releasing.md. Every name but the template, because those are real
+# secrets and the filename is a free choice.
 #
-# Every dart-defines*.json but the template, rather than the one filename the
-# runbook suggests: this is where somebody puts QU_CARTO_KEY and
-# QU_BUILD_SERVER_KEY, which unlike the DSN are real secrets, and
-# `dart-defines.json` or `dart-defines.prod.json` are names a person reaches
-# for without thinking. test/local_defines_test.dart is the second half of
-# this, because an ignore rule does nothing against `git add -f`.
+# test/local_defines_test.dart is the other half: an ignore rule does nothing
+# against `git add -f`.
 /dart-defines*.json
 !/dart-defines.local.example.json
 

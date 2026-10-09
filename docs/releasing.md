@@ -83,8 +83,9 @@ green again.
 
 ## When CI refuses
 
-Five refusals, with their text. Each is `derive_version.sh` saying the build
-would not have been what it claimed.
+Four refusals, with their text. The fifth, a version already published, has
+its own section above because it is the one you will meet routinely. Each is
+`derive_version.sh` saying the build would not have been what it claimed.
 
 ### The tag does not match pubspec
 
@@ -97,10 +98,6 @@ You tagged a version the commit does not hold. Either tag `0.16.0`, or push a
 pubspec bump to `main` first and tag that commit. Do not tag a commit whose
 pubspec you have not updated — that is the shape that broke the release of
 2026-10-01.
-
-### The version has already been published
-
-See the section above. Bump `pubspec.yaml`.
 
 ### The tag uses the `dev-` prefix
 
@@ -175,39 +172,29 @@ flutter run --dart-define-from-file=dart-defines.local.json
 ```
 
 `dart-defines.local.json` is gitignored; the `.example.` file beside it is not,
-so never put a real value in the template.
+so never put a real value in the template. It is one of five gitignored
+local-config files a fresh clone needs, and the only one that fails silently;
+#284 is giving all five one document and a stub script.
 
 | Key | What it is | Where it comes from |
 |---|---|---|
-| `QU_SENTRY_DSN` | **nothing reads it yet** — see below | Sentry → Project → Settings → Client Keys (DSN) |
 | `QU_CHANNEL` | `local`, and leave it that way | — |
 | `QU_CARTO_KEY` | basemap tiles | the `QU_CARTO_KEY` repo secret |
 | `QU_BUILD_SERVER_KEY` | the Flibler build server | its repo secret |
 | `QU_BUILD_SERVER_URL` | only to point at a different server; it has a public default | — |
 | `QLOG`, `QLOG_LEVEL` | make a build talk | see `LogService` |
 
-**`QU_SENTRY_DSN` does nothing today.** The key is here because the project
-and the DSN exist and the name is settled, but no code reads it and no
-workflow passes it — ADR 0013's wiring has not landed. Filling it in will not
-make a crash reach Sentry yet. This paragraph goes when it does.
-
 **`QU_CHANNEL` stays `local`.** Setting it to `dev` or `release` makes your own
 tree report as a build somebody could otherwise go and look at. `local` is the
 compiled-in default for exactly that reason — see `BuildIdentity.channelName`
-in `lib/services/build_identity.dart`, which is where the default lives;
-0014 §1 covers where the value comes from in CI, not this.
+in `lib/services/build_identity.dart`.
 
 ### The auth token is not one of these
 
 `SENTRY_AUTH_TOKEN` must **never** be a `--dart-define`: a define is compiled
-into the binary, and anyone with the APK could read it out. It will be read
-from the environment at build time instead, by `sentry_dart_plugin`, and only
-when uploading debug files or creating a release. That plugin is not installed
-yet either, so this is how it will work rather than how it works.
-
-If you need it locally — which is only for testing symbol upload, never for
-checking that an error arrives — put it in `~/.sentryclirc` or a user-level
-environment variable. Not in the repository, and not in the file above.
+into the binary, and anyone with the APK could read it out. It belongs in the
+environment — `~/.sentryclirc` or a user-level variable — and is only needed
+for uploading debug files, never for checking that an error arrives.
 
 ## What is not automated yet
 
