@@ -5,6 +5,7 @@ import 'package:sentry_flutter/sentry_flutter.dart';
 
 import '../build_identity.dart';
 import '../guarded.dart';
+import '../http/app_http.dart';
 import '../logging.dart';
 import 'scrub.dart';
 import 'settings.dart';
@@ -187,6 +188,7 @@ class Telemetry {
       guardedFailureSink = _reportGuarded;
       LogService.keptSink = _reportKept;
       LogService.breadcrumbSink = _dropCrumb;
+      AppHttp.exchangeSink = _recordExchange;
       // Re-pinned after the hook is installed, not before: the pin is derived
       // from whether the hook is there. §3.
       LogService.attachFlipperlibSink();
@@ -208,6 +210,7 @@ class Telemetry {
     guardedFailureSink = null;
     LogService.keptSink = null;
     LogService.breadcrumbSink = null;
+    AppHttp.exchangeSink = null;
     // And the library goes quiet again, back to the keep threshold. The cost
     // of `info` only exists while somebody is listening.
     LogService.attachFlipperlibSink();
@@ -285,6 +288,54 @@ class Telemetry {
         KeptLevel.caught => logger.info(text),
       };
     });
+  }
+
+  /// Records one finished HTTP exchange as a span.
+  ///
+  /// §2: hand-made, because nothing instruments `dart:io`'s `HttpClient` and
+  /// the map's tile client is deliberately outside `AppHttp` - tile URLs carry
+  /// the Carto key, and a span description is sent.
+  ///
+  /// Built after the fact with explicit timestamps, so the span is timed as if
+  /// it had been opened before the request. That is what keeps `AppHttp` free
+  /// of the SDK.
+  ///
+  /// **The query string goes.** `Scrub.outbound` would take it out anyway, but
+  /// it is dropped here before the description is built, so a URL cannot
+  /// arrive whole in a field the scrubber does not walk. The host and path
+  /// stay: which endpoint was slow is the entire point.
+  ///
+  /// Nothing is recorded when there is no active transaction, which is the
+  /// ordinary case for a fetch that happens before the first screen is up:
+  /// `getSpan()` returns null and a span with no sampled parent would be
+  /// discarded anyway.
+  void _recordExchange(HttpExchange exchange) {
+    final parent = Sentry.getSpan();
+    if (parent == null) return;
+
+    final target = exchange.uri.replace(query: '', fragment: '');
+    final span = parent.startChild(
+      'http.client',
+      description: '${exchange.method} $target',
+      startTimestamp: exchange.startedAt.toUtc(),
+    );
+    final status = exchange.status;
+    if (status != null) span.setData('http.response.status_code', status);
+    span.setData('http.request.method', exchange.method);
+    if (!exchange.ok) {
+      span.throwable = exchange.error;
+    }
+    _guard(
+      () => span.finish(
+        status: status == null
+            // No response at all: a refused connection, a DNS failure, a
+            // timeout before headers. `SpanStatus.unknown()` rather than
+            // `internalError`, which would claim to know it was the server.
+            ? (exchange.ok ? SpanStatus.ok() : SpanStatus.unknown())
+            : SpanStatus.fromHttpStatusCode(status),
+        endTimestamp: exchange.endedAt.toUtc(),
+      ),
+    );
   }
 
   /// Records one flipperlib line as a breadcrumb.
