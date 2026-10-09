@@ -1,9 +1,15 @@
 # 0014. A build says what it is: version, channel and commit
 
-Status: Proposed (2026-10-01); the version is SemVer and §6 is settled
-(2026-10-05); the `-dev` suffix is kept wherever a person reads the version
-and dropped only from the two fields a store validates, and the automatic
-version bump is replaced by two guards (2026-10-08)
+Status: Accepted (2026-10-09). Proposed 2026-10-01; the version is SemVer and
+§6 settled 2026-10-05; the `-dev` suffix kept wherever a person reads the
+version and dropped only from the two fields a store validates, and the
+automatic version bump replaced by two guards, 2026-10-08.
+
+Implemented except §5, which is the Sentry release name and belongs to the
+commit that wires Sentry up — [0013](0013-observability-with-sentry.md), not
+yet landed. §1's `installerStore` tag and §3's Sentry tags are the same story.
+Nothing uploads to TestFlight or a Play track yet; the identity those jobs
+would need is in place.
 
 Written against three needs, stated in that order of certainty: release builds
 cut on SemVer when the team decides, dev builds published automatically from
