@@ -8085,9 +8085,9 @@
     "description": "Title of the dialog asking what to call the recovered remote."
   },
 
-  "seedNameHelp": "Saved in {dir}. Room for {max} letters, fewer if they are not English ones.",
+  "seedNameHelp": "Saved in {dir}. Room for {max} characters.",
   "@seedNameHelp": {
-    "description": "Helper text under the file name field. The limit is a byte count, so this deliberately does not promise {max} characters - a Cyrillic name hits the refusal at roughly half of it, and a helper that stated the figure flatly would read as a broken rule rather than a smaller budget.",
+    "description": "Helper text under the file name field. TRANSLATORS: {dir} is a path and is not translated; {max} is an exact figure, currently 63, so choose the grammatical case for 'characters' to match a plain number. This sentence used to warn that a non-English name fits fewer; it no longer needs to, because such a name is refused outright now and the field says so on the first keystroke.",
     "placeholders": {
       "dir": {
         "type": "String"
@@ -8098,9 +8098,9 @@
     }
   },
 
-  "seedNameTooLong": "Use a shorter name. The Sub-GHz app holds {max} English letters, and fewer of any other kind.",
+  "seedNameTooLong": "Use a shorter name. The Sub-GHz app holds {max} characters.",
   "@seedNameTooLong": {
-    "description": "Shown when the typed file name is longer than the firmware can keep. The limit is a byte count, so a Cyrillic or accented letter spends two of it and an emoji four; the second clause is there because a user who hits it at half the stated count would otherwise read this as a bug.",
+    "description": "Shown when the typed file name is longer than the Sub-GHz app can keep. TRANSLATORS: {max} is an exact figure, currently 63 - render it as a plain number and choose the grammatical case for 'characters' to match, as there is no plural form on this placeholder. Why it is exact rather than hedged is recorded on SeedSubFile.maxBaseNameLength.",
     "placeholders": {
       "max": {
         "type": "int"
@@ -8121,6 +8121,12 @@
   "commonNameControlChar": "A name cannot contain an invisible character. Paste it somewhere plain, or type it out.",
   "@commonNameControlChar": {
     "description": "Shown when a typed file name holds a C0 control character or DEL - a tab, a newline, or similar. Named separately from commonNameIllegal because that sentence lists the characters it refuses, and these have no printable form to list. A keyboard cannot type one; a paste from a spreadsheet or a web page can carry one in.",
+    "placeholders": {}
+  },
+
+  "commonNameNonAscii": "The Flipper only accepts English letters, digits and basic punctuation in a name.",
+  "@commonNameNonAscii": {
+    "description": "Shown when a typed file name holds a character outside ASCII. TRANSLATORS: 'English letters' means the unaccented Latin A-Z and a-z, and nothing else - German ß, Cyrillic я and an emoji are all refused, so do not render this as 'letters of the English language' in a way that leaves accented Latin sounding acceptable. 'Basic punctuation' is deliberately vague rather than a list: most ASCII punctuation is fine, and the nine characters that are not are refused by their own message, commonNameIllegal, which carries the list. Say that the Flipper refuses the name, not that the name is invalid - the same name is perfectly fine on the phone, and it is the device that will not carry it.",
     "placeholders": {}
   },
 

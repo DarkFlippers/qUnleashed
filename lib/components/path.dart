@@ -15,10 +15,16 @@ String pathJoin(Iterable<String> parts) {
 ///
 /// Two rules read it: [sanitizePathSegment] replaces them for a host path, and
 /// `SeedSubFile.checkBaseName` reports them for a path on the Flipper. They
-/// are the nine Windows reserves, and FatFS rejects the same nine when it
-/// builds a long file name — so the two rules were one set spelled twice, in
-/// two files, with the English ARB sentence spelling it a third time and
-/// nothing checking any of the three against each other. #266
+/// are the nine Windows reserves, and a single path segment cannot carry any
+/// of them on the Flipper either — so the two rules were one set spelled
+/// twice, in two files, with the English ARB sentence spelling it a third
+/// time and nothing checking any of the three against each other. #266
+///
+/// "Cannot carry" is the volume's rule here: `create_name` in
+/// `lib/fatfs/ff.c` rejects seven of the nine plus DEL, while `/` and `\`
+/// break the segment instead of being rejected. The RPC layer above it
+/// refuses eight of them too, which is [isNonAsciiNameChar]'s subject rather
+/// than this one's.
 ///
 /// Not every naming rule in the app: the paint editor's `_sanitizeName`
 /// refuses far more and then collapses runs of `_`, which makes it a
@@ -71,6 +77,49 @@ final reservedNameCharsPattern = RegExp(
 /// to each other, since the pattern writes it as `\x00-\x1f\x7f` and this
 /// writes it in Dart.
 bool isControlNameChar(int unit) => unit <= 0x1f || unit == 0x7f;
+
+/// Whether [unit] is outside ASCII, which a path on the **Flipper** may not
+/// carry and a path on the host may.
+///
+/// Not part of [reservedNameCharsPattern], and deliberately not applied by
+/// [sanitizePathSegment]: a host filename holds a Cyrillic letter perfectly
+/// well, and replacing one with `_` would mangle names this app has no reason
+/// to touch. The device is the one with the rule.
+///
+/// The rule is `path_contains_only_ascii` in the firmware's
+/// `lib/toolbox/path.c`, which takes the segment after the last `/` and
+/// refuses any byte outside `0x20`-`0x7e` — **and** the eight characters
+/// `\<>*|":?`, which is [reservedNameChars] minus the `/` it has already
+/// split on. So that one function owns both halves of what a name may not
+/// carry, and the nine are refused at this layer as well as by the volume.
+/// Only the charset half is new here; the nine were already refused.
+///
+/// `rpc_storage.c` calls it and answers `ERROR_STORAGE_INVALID_NAME` for a
+/// Write, a Mkdir, a Rename (on `new_path` only - so a name that reached the
+/// card by other means can be renamed *away* from) and a TarExtract (on
+/// `out_path` only). Two read paths use it to drop rather than to fail: the
+/// List filter, so such a file is not listed at all, and
+/// `rpc_system_storage_is_dir_is_empty`, which makes a directory holding
+/// nothing else report itself empty. A Stat does *not* check - it goes
+/// straight to `storage_common_stat` - so one of these paths does stat
+/// successfully. #282
+///
+/// Function names and not line numbers, here and below: the firmware is not
+/// vendored and not a submodule, so a `:NNN` cannot be checked by anything in
+/// CI and is wrong at the next release while still reading as precise.
+///
+/// A code unit rather than a byte, which is the same test: a string has a
+/// code unit above `0x7f` exactly when its UTF-8 has a byte above `0x7f`.
+/// Both halves of a surrogate pair are above it, so an emoji is caught by
+/// either spelling. Nothing can hand either predicate a value above `0xffff`,
+/// because the only caller walks `codeUnits` and those are UTF-16.
+///
+/// What this is *not* about is FatFS, which would take such a name: the
+/// firmware sets `_LFN_UNICODE 0` and `_CODE_PAGE 850`, and the CP850 table
+/// in `lib/fatfs/option/ccsbcs.c` maps all 128 high bytes injectively, so the
+/// volume both accepts one and reads it back unchanged. The refusal is the RPC
+/// layer's, one above the volume, and it is the only layer this app talks to.
+bool isNonAsciiNameChar(int unit) => unit > 0x7f;
 
 /// Replaces the characters Windows rejects in a path segment with `_`.
 ///
