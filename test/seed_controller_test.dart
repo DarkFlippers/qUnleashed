@@ -9,7 +9,10 @@
 //
 // What it stops short of is the other half: a window below seedHopsConfident
 // buys reach the app cannot use, because canSave refuses the answer. Two tests
-// below hold the ladder to that line from either side.
+// hold that line, and not symmetrically - 'synthesises no window the app would
+// refuse to save' pins the exclusion, while 'covers every over-wide gap that
+// leaves a confident run' pins that the exclusion costs no reach above the
+// line. Only the first fails if the rung comes back.
 //
 // What it cannot see: whether the engine agrees. The windows are offered to it
 // in order; whether a given window solves is the native probe's business.
@@ -43,9 +46,22 @@ void main() {
       //
       // "Confident" is the bound, not minHops: a run of two is reachable only
       // by a window the app would then refuse to save, so the ladder stopped
-      // offering one (#288). The test below pins that exclusion, and this one
-      // would still pass if the rung came back - so the two go together.
-      for (var n = SeedCapture.minHops; n <= SeedCapture.maxHops; n++) {
+      // offering one (#288).
+      //
+      // What that skips, exactly: n=3 either side, and n=4 with the break in
+      // the middle - the only cases where both runs are under
+      // seedHopsConfident. For every n of five or more the same pairs are
+      // asserted as before, and each assertion is now stronger, since a
+      // two-hop window no longer counts as covering a run. The loop therefore
+      // asserts nothing at all for n=3, which is why what those captures
+      // *do* is pinned end to end in seed_search_test.dart instead, by 'a
+      // break the confident ladder cannot step over ends in "nothing
+      // matched"'.
+      //
+      // This test would also pass with the rung restored - adding windows
+      // cannot make an `any` fail - so it does not guard the exclusion.
+      // 'synthesises no window the app would refuse to save' does.
+      for (var n = SeedCapture.minHops; n <= SeedCapture.maxHops + 6; n++) {
         final hops = List.generate(n, (i) => i);
         final offered = SeedController.windows(hops);
         for (var gap = 1; gap < n; gap++) {
@@ -112,13 +128,46 @@ void main() {
       ]);
     });
 
+    test('and none below the confidence line on an over-long capture', () {
+      // Above maxHops the first window is the trimmed tail rather than the
+      // capture itself, so the test above cannot simply run further. The
+      // exclusion still has to hold here: a capture of 20 hops is a supported
+      // input the parser keeps whole.
+      for (var n = SeedCapture.maxHops + 1; n <= SeedCapture.maxHops + 6; n++) {
+        final offered = SeedController.windows(List.generate(n, (i) => i));
+        for (final window in offered) {
+          expect(
+            window.length,
+            greaterThanOrEqualTo(seedHopsConfident),
+            reason: 'n=$n offered $window',
+          );
+        }
+      }
+    });
+
+    test('offers the prefix even when its first hop recurs', () {
+      // A capture whose first hop value appears again where the suffix window
+      // starts. The ladder used to carry a de-duplication check keyed on the
+      // first hop's *value*, which discarded the prefix here - a run that may
+      // be the only gap-free one in the capture, dropped silently, for a value
+      // collision that says nothing about position. A repeated hop further
+      // back is exactly what the parser now deliberately keeps (#289), so the
+      // shape is reachable rather than hypothetical.
+      final offered = SeedController.windows([9, 1, 2, 3, 4, 9, 6, 7]);
+      expect(offered, [
+        [9, 1, 2, 3, 4, 9, 6, 7],
+        [9, 6, 7],
+        [9, 1, 2],
+      ]);
+    });
+
     test('three sweeps at most, whatever the capture', () {
       // Three is the whole point: the first version of this ladder offered
       // twelve, and twelve sweeps of a 2^32 space is the user watching a bar
       // for minutes to be told nothing matched. A sweep that finds nothing
       // measured seventeen seconds on a current phone, so each rung is a real
       // wait rather than a rounding error.
-      for (var n = SeedCapture.minHops; n <= SeedCapture.maxHops; n++) {
+      for (var n = SeedCapture.minHops; n <= SeedCapture.maxHops + 6; n++) {
         final count = SeedController.windows(List.generate(n, (i) => i)).length;
         expect(count, lessThanOrEqualTo(3), reason: 'n=$n offered $count');
       }

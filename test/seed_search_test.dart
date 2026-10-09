@@ -107,7 +107,56 @@ void main() {
 
     expect(controller.result!.outcome, SeedOutcome.found);
     expect(recoverer.windows.first, [1, 2, 3, 4]);
-    expect(recoverer.windows[1], hasLength(3));
+    // The suffix, spelled out: `hasLength(3)` passed equally for the prefix,
+    // which is the one ordering the ladder's doc calls not cosmetic.
+    expect(recoverer.windows[1], [2, 3, 4]);
+  });
+
+  test('a break the confident ladder cannot step over ends in "nothing matched"', () async {
+    // #288. A capture whose only surviving runs are two hops long is not
+    // solvable by anything this side may offer, so the answer is no answer -
+    // not an unconfirmed one bought with two more whole-space sweeps. The exact
+    // window list is the end-to-end half of `synthesises no window the app
+    // would refuse to save`: a restored rung fails here too.
+    final recoverer = _FakeRecoverer(
+      (hops, call) => _result(SeedOutcome.nothingMatched),
+    );
+    final controller = _controllerWith(recoverer, [1, 2, 3, 4]);
+
+    await controller.search();
+
+    expect(controller.result!.outcome, SeedOutcome.nothingMatched);
+    expect(recoverer.windows, [
+      [1, 2, 3, 4],
+      [2, 3, 4],
+      [1, 2, 3],
+    ]);
+    expect(controller.canSave, isFalse);
+  });
+
+  test('a two-hop capture is searched, and its answer cannot be saved', () async {
+    // The other side of #288: the engine's documented minimum is the user's own
+    // data, so it is swept - once, with nothing invented below it. The answer
+    // comes back with two hops behind it, which `canSave` declines and the page
+    // shows as unconfirmed. That clause of `canSave` has no other test: every
+    // other fixture here answers with three.
+    final recoverer = _FakeRecoverer(
+      (hops, call) =>
+          _result(SeedOutcome.found, seed: 0x789, hopsUsed: hops.length),
+    );
+    final controller = _controllerWith(recoverer, [1, 2]);
+
+    await controller.search();
+
+    expect(recoverer.windows, [
+      [1, 2],
+    ]);
+    expect(controller.result!.seed, 0x789);
+    expect(
+      controller.canSave,
+      isFalse,
+      reason: 'two hops is below the confidence line',
+    );
   });
 
   test('a stop between windows is a stop, not "nothing matched"', () async {

@@ -100,6 +100,24 @@ void main() {
       expect(parsed.skipped, isNot(contains(contains('file says'))));
     });
 
+    test('a capture of nothing but one press repeated is refused', () {
+      // The only case where the drop changes the shape of the return rather
+      // than the hops: two lines in, one hop left, which is below the engine's
+      // minimum. Both remarks are kept - "only 1 hop(s)" alone would read as a
+      // parser bug on a file that plainly has two `Hop:` lines.
+      final parsed = SeedCaptureFormat.parse(
+        _capture
+            .replaceFirst('Hops: 3', 'Hops: 2')
+            .replaceFirst('Hop: 40101499\nHop: A1F9C88F\n', '')
+            .replaceFirst('Hop: 29389EF7', 'Hop: 29389EF7\nHop: 29389EF7'),
+      );
+      expect(parsed.capture, isNull);
+      expect(parsed.skipped, [
+        contains('repeated hop: "29389EF7"'),
+        contains('only 1 hop(s)'),
+      ]);
+    });
+
     test('keeps a hop that repeats one further back', () {
       // Not a repeated write but a direction break: counters that go up and
       // come back down. The engine has to see it and refuse - the probe pins
@@ -127,7 +145,7 @@ void main() {
         _capture.replaceFirst('Hops: 3', 'Hops: 9'),
       );
       expect(parsed.capture, isNotNull);
-      expect(parsed.skipped, contains(contains('says 9 hops, found 3')));
+      expect(parsed.skipped, contains(contains('says 9 hop lines, read 3')));
     });
 
     test('ignores comments, blank lines and unknown fields', () {
@@ -261,6 +279,10 @@ Hop: 29389EF7
       );
       expect(parsed.capture!.hops, [0x29389EF7, 0xA1F9C88F]);
       expect(parsed.skipped, contains(contains('4010')));
+      // The other half of what the hop-line counter means: a line that did not
+      // parse is not a hop line read, so this *is* the truncated write the
+      // declared count exists to catch - where a dropped duplicate is not.
+      expect(parsed.skipped, contains(contains('says 3 hop lines, read 2')));
     });
 
     test('some other Flipper file that happens to be here', () {

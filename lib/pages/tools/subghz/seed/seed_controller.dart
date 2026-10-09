@@ -188,10 +188,15 @@ class SeedController extends ChangeNotifier {
   /// already dropped.
   bool get busy => _stage != SeedStage.idle || _saving || _deleting != null;
 
-  /// Lines the capture file had that could not be read. Shown rather than
-  /// logged alone: a file half of whose hops were dropped can be left with a
-  /// gap wider than [SeedCapture.maxCounterGap], and the search would then find
-  /// nothing for a reason that is not about the remote.
+  /// What the parser had to say about the capture file, if anything.
+  ///
+  /// Two classes, and the page shows both the same way. A line that could not
+  /// be read is a fault in the file: a capture half of whose hops were dropped
+  /// can be left with a gap wider than [SeedCapture.maxCounterGap], and the
+  /// search would then find nothing for a reason that is not about the remote.
+  /// A hop dropped for repeating the one before it is not a fault - the capture
+  /// is better off without it - and is shown because the hop count on screen
+  /// would otherwise disagree with the file for no visible reason.
   List<String> get captureWarnings => _captureWarnings;
 
   /// Whether the recovered remote can be written as a transmittable file.
@@ -435,19 +440,23 @@ class SeedController extends ChangeNotifier {
   ///
   /// So: the whole capture, for the strongest `hops_used` in one sweep; then
   /// the last [seedHopsConfident] hops, then the first. A single over-wide gap
-  /// at position k leaves the suffix solvable when k is at or below n-3 and the
-  /// prefix when k is at least 3, and for any capture of five or more those two
-  /// ranges meet.
+  /// at position k leaves the suffix solvable while k is at or below
+  /// n - [seedHopsConfident], and the prefix while k is at least
+  /// [seedHopsConfident] - so the two ranges meet, and every position is
+  /// covered, once n reaches 2 * [seedHopsConfident] - 1. Written against the
+  /// constant rather than as numbers, because the native header says moving the
+  /// confidence line is one edit here and one there.
   ///
   /// Nothing shorter than [seedHopsConfident] is synthesised, and the whole
   /// capture is the one exception - that is the user's own data and the engine's
   /// documented minimum, so it is searched whatever its length. What this
-  /// declines to do is *invent* a sub-confident window: it would cost two more
-  /// whole-space sweeps, seventeen seconds each on a current phone, to reach an
-  /// answer [canSave] refuses as unconfirmed - at the hop count where the
-  /// engine's own false-positive estimate is worst. The shape it used to reach
-  /// and nothing else does is an over-wide gap inside a three- or four-hop
-  /// capture. #288
+  /// declines to do is *invent* a sub-confident window. It would cost two more
+  /// whole-space sweeps - `BUILD_NOTES.md` measures one at about 17 seconds on
+  /// a 2026 flagship phone, and warns that a mid-range one may differ - to
+  /// reach an answer [canSave] refuses as unconfirmed, at the hop count the
+  /// native header says a false positive is merely "conceivable" at. The shape
+  /// it used to reach and nothing else does is an over-wide gap in a three-hop
+  /// capture, or in the middle of a four-hop one. #288
   ///
   /// Suffix before prefix, which is not cosmetic: the counter and the rebuilt
   /// frame come from the window's *last* hop, so a prefix that solves first
@@ -457,15 +466,18 @@ class SeedController extends ChangeNotifier {
   static List<List<int>> windows(List<int> hops) {
     final found = <List<int>>[];
 
+    // The bounds are the engine's, and a window outside them is a caller fault
+    // rather than something to sweep for. Nothing here de-duplicates: with the
+    // sub-confident rung gone the three offers below are distinct by
+    // construction - the guard that gates the pair makes the capture longer
+    // than either, and the pair itself differs by where it starts. A check on
+    // the first hop's *value* used to stand here, which after the rung went
+    // could no longer suppress a repeat and could still drop the prefix of a
+    // capture whose first hop recurs - the one shape the parser deliberately
+    // keeps.
     void offer(List<int> window) {
       if (window.length < SeedCapture.minHops) return;
       if (window.length > SeedCapture.maxHops) return;
-      for (final existing in found) {
-        if (existing.length == window.length &&
-            existing.first == window.first) {
-          return;
-        }
-      }
       found.add(window);
     }
 

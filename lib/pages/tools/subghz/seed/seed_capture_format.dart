@@ -19,8 +19,8 @@ const seedCaptureExtension = '.txt';
 /// can be left with a gap wider than [SeedCapture.maxCounterGap] and the search
 /// will then find nothing for a reason that has nothing to do with their
 /// remote. A hop dropped for repeating the one before it is reported the same
-/// way, and for the opposite reason: the capture is now solvable where it was
-/// not.
+/// way, though it is not a fault in the file and does not make the capture
+/// worse - the comment at that drop says why it is still worth showing.
 typedef SeedCaptureParse = ({SeedCapture? capture, List<String> skipped});
 
 /// Reads the capture files the `seed_capturer` app writes.
@@ -90,17 +90,23 @@ class SeedCaptureFormat {
         hopLines++;
         if (hops.isNotEmpty && hops.last == hop) {
           // The engine refuses a step of zero: the same frame twice is a break
-          // in the counter march, not a small one. So a capture that keeps a
-          // repeated press cannot solve as a whole, and the window ladder
-          // cannot rescue it either - no contiguous window excludes an
-          // *interior* duplicate. Left in, it sweeps the whole space once per
-          // window and ends on "no seed matched", which sends the user to
-          // record the same file again.
+          // in the counter march, not a small one. The probe's `the same hop
+          // twice` vector pins that refusal, and says there what produces it -
+          // a capture app that wrote one press twice.
           //
-          // Dropping it changes nothing else: two identical hops carry one
-          // press between them, so no step between distinct hops moves and no
-          // gap can widen. Named rather than silent, because a capture app
-          // writing every press twice is worth seeing. #289
+          // So a capture that keeps the repeat cannot solve as a whole, which
+          // costs the first sweep in every case. It costs the *answer* when
+          // neither side of the repeat keeps [seedHopsConfident] hops, because
+          // then no window the ladder offers avoids it: a three-hop capture, or
+          // a four-hop one with the repeat in the middle. The user then sees
+          // "no seed matched" and a hint that sends them to record the same
+          // file again.
+          //
+          // Dropping it changes nothing else: two identical hops are the same
+          // counter, so they are one press however far apart the lines sit, and
+          // no step between distinct hops moves. Named rather than silent,
+          // because a capture app writing every press twice is worth seeing.
+          // #289
           skipped.add('repeated hop: "$value"');
           continue;
         }
@@ -181,10 +187,18 @@ class SeedCaptureFormat {
     // The declared count is a cross-check, not the source of truth: the `Hop`
     // lines are. A mismatch means the file was truncated mid-write, which is
     // worth saying because the hops that survived can be left with a gap too
-    // wide for the engine to tolerate.
+    // wide for the engine to tolerate - or that a line did not parse, which is
+    // named on its own line above as well. Two messages for one fault there,
+    // which is the lesser evil: counting an unparseable line as present would
+    // hide a truncated final hop, and that is the case `_hex` refuses short
+    // words for.
+    //
+    // Both numbers are hop *lines*, said so because the card beside them counts
+    // hops kept - a deduplicated file would otherwise read "3 hops" under "found
+    // 4".
     final declared = int.tryParse(fields['Hops'] ?? '');
     if (declared != null && declared != hopLines) {
-      skipped.add('file says $declared hops, found $hopLines');
+      skipped.add('file says $declared hop lines, read $hopLines');
     }
 
     return (
