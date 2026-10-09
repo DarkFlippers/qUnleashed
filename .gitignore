@@ -91,8 +91,16 @@ app.*.map.json
 /macos/Runner/GoogleService-Info.plist
 
 # The dart-defines a local build wants, which CI passes from its own secrets.
-# See docs/releasing.md. The committed file beside it is the template.
-/dart-defines.local.json
+# See docs/releasing.md.
+#
+# Every dart-defines*.json but the template, rather than the one filename the
+# runbook suggests: this is where somebody puts QU_CARTO_KEY and
+# QU_BUILD_SERVER_KEY, which unlike the DSN are real secrets, and
+# `dart-defines.json` or `dart-defines.prod.json` are names a person reaches
+# for without thinking. test/local_defines_test.dart is the second half of
+# this, because an ignore rule does nothing against `git add -f`.
+/dart-defines*.json
+!/dart-defines.local.example.json
 
 # faaccrack: the engine ships obfuscated (lib/modules/cpp/faaccrack/faaccrack.c
 # is generated). Its readable source and the generator must never be committed -
