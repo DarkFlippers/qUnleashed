@@ -297,7 +297,28 @@ class FirmwareInstaller {
     }
   }
 
+  /// Timed as its own operation — ADR 0013 §2 names DFU separately from the
+  /// install it is reached from.
+  ///
+  /// It arrives as a **child span** of `firmware.install`, because `traced`
+  /// starts a transaction only when nothing else is tracing. That is the shape
+  /// worth having: a DFU recovery is always inside an install, and the two
+  /// durations answer different questions - "was the install slow" and "was it
+  /// slow because it fell back to DFU".
+  ///
+  /// `trace.failed()` for the same reason as its caller: every fault here
+  /// returns an [UpdateError] rather than throwing.
   static Future<UpdateState> _installViaDfu(
+    List<_UpdateFile> files,
+    void Function(UpdateState) onState,
+  ) => traced('firmware.dfu', (trace) async {
+    final state = await _dfu(files, onState);
+    trace.note('outcome', state.runtimeType.toString());
+    if (state is UpdateError) trace.failed();
+    return state;
+  });
+
+  static Future<UpdateState> _dfu(
     List<_UpdateFile> files,
     void Function(UpdateState) onState,
   ) async {

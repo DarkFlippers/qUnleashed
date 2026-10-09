@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 import '../../../services/logging.dart';
 import '../../../services/native.dart';
 import '../../../services/progress_throttle.dart';
+import '../../../services/telemetry/traced.dart';
 import 'cuid_dict_format.dart';
 import 'existed_keys_storage.dart';
 import 'hardnested_recoverer.dart';
@@ -204,11 +205,32 @@ class RecoverController extends ChangeNotifier {
   Future<void> start() =>
       _client.runTask(FlipperRequestPriority.background, _start);
 
+  /// Timed as one operation — ADR 0013 §2 names MIFARE recovery, and §6
+  /// draws the line on what may be said about it: **duration and attack kind
+  /// only, never keys or UIDs**.
+  ///
+  /// So what is attached is three facts, none of them about the card: which of
+  /// the two nonce sources existed, and how many units of work the run had.
+  /// Not the UID, not a key, not a dictionary filename, and not the error text
+  /// - which is a localised string that can name a file.
+  ///
+  /// Inside the `_running` guard rather than around `start()`, so a second
+  /// Start while one is running is not recorded as a recovery that took no
+  /// time. The cost of that is the queue wait, which on a run measured in
+  /// minutes of cracking is noise.
   Future<void> _start() async {
     if (_running) return;
     _running = true;
     try {
-      await _run();
+      await traced('mifare.recover', (trace) async {
+        await _run(trace);
+        trace.note('units', _totalUnits);
+        // `_hadFailure` is set by the per-unit paths, which report themselves
+        // and carry on - so the run can finish having recovered nothing. A
+        // transaction that said `ok` for that would be the lie `failed()`
+        // exists to prevent.
+        if (_hadFailure) trace.failed('a recovery unit failed');
+      });
     } catch (e, st) {
       LogService.error('[Recover] Unexpected failure: $e\n$st');
       _emit(const RecoverError(RecoverErrorType.recoveryFailed));
@@ -218,7 +240,7 @@ class RecoverController extends ChangeNotifier {
     }
   }
 
-  Future<void> _run() async {
+  Future<void> _run(TraceScope trace) async {
     _entries.clear();
     _wroteCandidates = false;
     _hadFailure = false;
@@ -249,8 +271,15 @@ class RecoverController extends ChangeNotifier {
       _emit(const RecoverError(RecoverErrorType.flipperConnection));
       return;
     }
+    // The attack kind, which is what §6 allows: a reader log feeds mfkey32,
+    // a tag log feeds nested and hardnested. Two bools rather than a name,
+    // because a run can have both.
+    trace.note('mfkey32', hasReaderLog);
+    trace.note('nested', hasTagLog);
+
     if (!hasReaderLog && !hasTagLog) {
       _emit(const RecoverError(RecoverErrorType.notFoundFile));
+      trace.failed('no nonce log on the device');
       return;
     }
 

@@ -9,6 +9,7 @@ import '../../../components/path.dart';
 import '../../../services/progress_throttle.dart';
 import '../../../services/storage/paths.dart';
 import '../../../services/logging.dart';
+import '../../../services/telemetry/traced.dart';
 
 class RemoteEntry {
   RemoteEntry({required this.name, required this.size, required this.isDir});
@@ -268,31 +269,62 @@ class FileManagerController extends ChangeNotifier {
     }
   }
 
-  Future<bool> writeBytes(String remotePath, List<int> data) async {
-    _transferLabel = l10n.fmUploading(basename(remotePath));
-    _transferProgress = 0;
-    _notify();
-    final throttle = ProgressThrottle();
-    try {
-      await _client.storageWriteChunked(
-        remotePath,
-        data,
-        onProgress: (p) {
-          _transferProgress = p;
-          if (throttle.shouldEmit(p)) _notify();
-        },
-      );
-      return true;
-    } catch (e) {
-      _error = _lastFailure = '$e';
-      LogService.info('[FileManager] write $remotePath failed: $e');
-      return false;
-    } finally {
-      _transferLabel = null;
-      _transferProgress = 0;
-      _notify();
-    }
-  }
+  /// Timed as one operation — ADR 0013 §2 names file transfer, and names
+  /// counting the restarts with it.
+  ///
+  /// **A restart shows as progress going backwards.** `autoReconnect` is on,
+  /// and when the link drops `client/api/storage.dart` waits for the session
+  /// and starts the upload again from offset 0 - **exactly once**, because the
+  /// firmware opens the file with CREATE_ALWAYS so a restart from zero is
+  /// safe. It drives `onProgress` from `offset / total`, so the fall-back is
+  /// visible here; within an attempt progress only rises. The restart is not
+  /// announced through the callback, so this is the only signal on the app's
+  /// side, and `test/transfer_restart_count_test.dart` drives the real library
+  /// rather than trusting that reading.
+  ///
+  /// Counted before the controller's own notify throttle, which is what makes
+  /// it reliable: `ProgressThrottle` usually swallows the backwards step, so
+  /// anything watching `transferProgress` would miss it.
+  ///
+  /// `trace.failed()` because this catches and answers `false`; without it a
+  /// refused write would arrive as a successful transfer.
+  ///
+  /// The path is noted and the scrubber earns its keep on it: `/ext/nfc/Office
+  /// badge.nfc` arrives with the filename replaced, leaving the directory and
+  /// the extension - which is the half worth having, since it says what kind
+  /// of thing was being written and not whose card it was.
+  Future<bool> writeBytes(String remotePath, List<int> data) =>
+      traced('file.transfer', (trace) async {
+        trace.note('path', remotePath);
+        trace.note('bytes', data.length);
+        _transferLabel = l10n.fmUploading(basename(remotePath));
+        _transferProgress = 0;
+        _notify();
+        final throttle = ProgressThrottle();
+        var highWater = 0.0;
+        try {
+          await _client.storageWriteChunked(
+            remotePath,
+            data,
+            onProgress: (p) {
+              if (p < highWater) trace.count('restarts');
+              highWater = p;
+              _transferProgress = p;
+              if (throttle.shouldEmit(p)) _notify();
+            },
+          );
+          return true;
+        } catch (e) {
+          _error = _lastFailure = '$e';
+          trace.failed('$e');
+          LogService.info('[FileManager] write $remotePath failed: $e');
+          return false;
+        } finally {
+          _transferLabel = null;
+          _transferProgress = 0;
+          _notify();
+        }
+      });
 
   Future<bool> delete(String remotePath, {bool recursive = false}) async {
     try {

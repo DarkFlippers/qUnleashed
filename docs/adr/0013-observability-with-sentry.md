@@ -17,15 +17,14 @@ notice are on screen; `guarded` failures arrive as issues, fingerprinted;
 §6.2's scrubber runs on everything sent; and CI passes the DSN and uploads
 debug files under the release name `derive_version.sh` derives.
 
-**Phase 2 is built apart from four call sites.** Sentry Logs take
-`LogService`'s kept entries through `keptSink`, with `caught` at info as §5
-asks; flipperlib's commentary is breadcrumbs and the level pin rises to `info`
-while somebody is listening; the registry's routes are named and
-`SentryNavigatorObserver` turns them into transactions; `tracesSampleRate` is
-1.0 per §8; every `AppHttp` request is a span; and a ufbt `error` or `critical`
-now reaches the log rather than only the Assembler console. What is left is
-`traced` at four of the six operations §2 names - file transfer, app install,
-DFU and MIFARE recovery - each the same one-line wrap at its own entry point.
+**Phase 2 is built.** Sentry Logs take `LogService`'s kept entries through
+`keptSink`, with `caught` at info as §5 asks; flipperlib's commentary is
+breadcrumbs and the level pin rises to `info` while somebody is listening; the
+registry's routes are named and `SentryNavigatorObserver` turns them into
+transactions; `tracesSampleRate` is 1.0 per §8; every `AppHttp` request is a
+span; a ufbt `error` or `critical` now reaches the log rather than only the
+Assembler console; and `traced` covers all six operations §2 names, plus the
+ufbt job.
 
 Phase 3 is untouched: no metrics, and replay is off, which is where §6.4's gate
 still stands.
@@ -177,12 +176,27 @@ waits on: connect, firmware install, file transfer (counting restarts — an
 upload restarts after auto-reconnect), app install, DFU and MIFARE recovery
 (duration and attack kind only, never keys or UIDs).
 
-**Wired so far: connect and firmware install.** The other four are the same
-one-line wrap at their own entry point and are not done; each is independent,
-so a missing one is a missing span rather than a gap that misleads. `traced`
-starts its own transaction rather than a child span, because
-`SentryNavigatorObserver` finishes a screen's transaction seconds after the
-route settles and a two-minute install would have nothing left to attach to.
+All six are wired, plus the ufbt job. `traced` starts its own transaction
+rather than a child span, because `SentryNavigatorObserver` finishes a
+screen's transaction seconds after the route settles and a two-minute install
+would have nothing left to attach to. DFU is the exception that proves the
+rule: it is always reached from inside an install, so it arrives as a child
+span of `firmware.install` and the two durations answer different questions -
+"was the install slow" and "was it slow because it fell back to DFU".
+
+**The restart count is a measured claim, not an assumed one.**
+`client/api/storage.dart` restarts an interrupted upload from offset 0, once,
+and drives `onProgress` from `offset / total` - so a restart is a fall-back in
+progress. `test/transfer_restart_count_test.dart` drives the real library
+through a fake that drops the link mid-stream rather than trusting that
+reading. It is counted before the controller's own notify throttle, which
+usually swallows the backwards step.
+
+**What is deliberately not attached**, because §6 governs this more than the
+types do: a build alias, an app alias and a MIFARE card's UID or keys. The
+first two are the user's own names for things and no pattern in `Scrub`
+recognises one; the third is what §6 names outright. What the recovery reports
+is which nonce sources existed and how many units of work the run had.
 
 It gained `trace.failed()`, which §2 did not anticipate: several of these
 return a failure instead of raising one - `FirmwareInstaller.install` is

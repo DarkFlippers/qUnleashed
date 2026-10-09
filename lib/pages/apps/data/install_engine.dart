@@ -21,6 +21,7 @@ import 'models/category.dart';
 import 'models/detail.dart';
 import 'models/manifest.dart';
 import '../../../services/logging.dart';
+import '../../../services/telemetry/traced.dart';
 
 enum AppActionType { install, update, delete }
 
@@ -220,6 +221,20 @@ class InstallEngine extends ChangeNotifier {
     if (token.isStale) throw const _DeviceChangedException();
   }
 
+  /// Timed as one operation — ADR 0013 §2 names app install.
+  ///
+  /// Timed from **outside** `_enqueueTask`, so the span covers the wait in the
+  /// queue as well as the install. Installing three apps at once is exactly
+  /// the case where the two differ, and the user is waiting for both.
+  ///
+  /// `traced` goes after the two early returns: neither is an install, and
+  /// recording them would put nil-duration operations around every real one.
+  ///
+  /// The alias is **not** attached. It names a third-party app the user chose
+  /// to install, which is a fact about them rather than about the app, and no
+  /// pattern in `Scrub` recognises one. `update` against `install` is the
+  /// distinction worth having, because an update also has to remove what was
+  /// there.
   Future<bool> installOrUpdate(
     AppCard app, {
     AppCategory? category,
@@ -235,10 +250,17 @@ class InstallEngine extends ChangeNotifier {
       stage: AppActionStage.queued,
     );
     notifyListeners();
-    return _enqueueTask(
-      app.alias,
-      () => _performInstall(app, category: category, detail: detail),
-    );
+    return traced('app.install', (trace) async {
+      trace.note('update', wasInstalled);
+      final ok = await _enqueueTask(
+        app.alias,
+        () => _performInstall(app, category: category, detail: detail),
+      );
+      // `_performInstall` reports a failure by answering false, so without
+      // this every refused install would arrive as a successful operation.
+      if (!ok) trace.failed();
+      return ok;
+    });
   }
 
   Future<bool> _performInstall(
