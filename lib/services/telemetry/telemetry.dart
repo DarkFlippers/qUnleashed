@@ -1,4 +1,5 @@
 import 'package:flipperlib/flipperlib.dart' show FlipperLogLevel;
+import 'package:flutter/widgets.dart' show NavigatorObserver;
 import 'package:path_provider/path_provider.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
@@ -111,6 +112,33 @@ class Telemetry {
   /// Whether the SDK is up. False in every build without a DSN, which is
   /// every local build by default.
   bool get running => _running;
+
+  /// What `MaterialApp.navigatorObservers` is given.
+  ///
+  /// Empty in a build with no DSN, so an app nobody is reporting from carries
+  /// no observer at all. In a build that has one, the observer is created once
+  /// here and lives for the process - the list is read when `MaterialApp`
+  /// builds, which is before the user can reach the Diagnostics switch, so it
+  /// cannot be rebuilt on a toggle. Turning reporting off closes the hub
+  /// instead, and the observer's calls become no-ops; that is the one piece of
+  /// this that keeps an object alive while switched off, and it holds no data.
+  ///
+  /// A `NavigatorObserver` rather than the SDK's own type, so `app.dart` takes
+  /// a Flutter type and nothing above this folder names Sentry.
+  late final List<NavigatorObserver> navigatorObservers = configured
+      ? [
+          SentryNavigatorObserver(
+            // A trace per screen rather than one per process. The default is
+            // one trace for the whole session, which on a phone app that stays
+            // open for days puts every span and breadcrumb under a single id -
+            // readable for a web page load, useless here.
+            enableNewTraceOnNavigation: true,
+          ),
+        ]
+      : const [];
+
+  /// Whether a DSN was compiled in. Says nothing about the switch.
+  static bool get configured => dsn.isNotEmpty;
 
   /// Brings the SDK up if it should be, and **never throws**.
   ///
@@ -396,6 +424,23 @@ class Telemetry {
     // default in this major and configured differently in 10 - which is the
     // one line §7's "10 is a version bump" now costs, and it says so.
     options.enableLogs = true;
+
+    // §8: everything at 100%, revisited after a month of real volume. The
+    // plan has the headroom and pay-as-you-go is capped at $0, so going over
+    // drops events rather than producing a bill.
+    //
+    // This is also what makes the navigator observer do anything:
+    // `isTracingEnabled()` is false while the rate is null, and a span with no
+    // sampled transaction over it is discarded.
+    options.tracesSampleRate = 1.0;
+
+    // Off, and not because it is unwanted. Frame timings need
+    // `SentryWidgetsFlutterBinding`, and `_initCore` installs Flutter's own -
+    // swapping it would mean `main.dart` importing the SDK, which §2's import
+    // rule forbids, and installing Sentry's binding in a build that reports
+    // nothing is the thing 0013's Consequences asks to verify first. Left
+    // false so the SDK does not warn about a binding it was never given.
+    options.enableFramesTracking = false;
 
     // §3: or their frames are folded away as third-party, which is the
     // opposite of true - a fault in either is this project's to fix.

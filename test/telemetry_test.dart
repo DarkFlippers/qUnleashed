@@ -92,6 +92,29 @@ void main() {
     });
   });
 
+  group('the navigator observer', () {
+    test('a build with no DSN carries none at all', () {
+      // `Telemetry.dsn` is a `String.fromEnvironment`, and no --dart-define
+      // reaches a test - so this is the shape every test run and every local
+      // build has, and it is the one worth pinning: an app nobody is
+      // reporting from should not be watching its own navigation.
+      expect(Telemetry.configured, isFalse);
+      expect(
+        Telemetry(settings: DiagnosticsSettings()).navigatorObservers,
+        isEmpty,
+      );
+    });
+
+    test('the same list every time it is read', () {
+      // `MaterialApp` is rebuilt on every theme and locale change and reads
+      // this on each build. A fresh observer per accent colour would start a
+      // new trace on each, which is why the field is `late final` rather than
+      // a getter that builds one.
+      final telemetry = Telemetry(settings: DiagnosticsSettings());
+      expect(telemetry.navigatorObservers, same(telemetry.navigatorObservers));
+    });
+  });
+
   group('where undelivered crashes are kept', () {
     test('the plan carries the path it was given', () {
       final plan = TelemetryPlan(
