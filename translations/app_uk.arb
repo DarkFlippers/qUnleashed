@@ -5087,15 +5087,6 @@
       }
     }
   },
-  "fmUploading": "Вивантаження {name}",
-  "@fmUploading": {
-    "description": "Progress line while a file is written to the Flipper.",
-    "placeholders": {
-      "name": {
-        "type": "String"
-      }
-    }
-  },
   "fmDownloadingOf": "Завантаження {name}  ({index}/{total})",
   "@fmDownloadingOf": {
     "description": "Progress line while one of several files is downloaded.",
