@@ -110,13 +110,17 @@ class SeedSubFile {
   /// fine over RPC and is then truncated the first time the user renames it
   /// there, which is a worse surprise than refusing it here.
   ///
-  /// Bytes and not characters, because the firmware's limit is a buffer. No
-  /// name [checkBaseName] accepts can make the two counts differ - it refuses
-  /// everything outside ASCII, where one character is one byte - so the
-  /// spelling is what keeps this correct rather than what makes it correct
-  /// today. If the ASCII rule is ever relaxed, this needs no thought; counting
-  /// Dart's `length` instead would, and got it wrong once already, letting a
-  /// 63-letter Cyrillic name through at 126 bytes.
+  /// Counted in bytes, because the firmware's limit is a buffer. Since #282
+  /// that spelling is **unobservable**: every name reaching the length check
+  /// is ASCII, where one character is one byte, so `utf8.encode(name).length`
+  /// and `name.length` cannot disagree. No test can tell them apart through
+  /// [checkBaseName], and one that claims to is lying - what is pinned
+  /// instead is this constant's value, which is the thing a wrong edit
+  /// reaches a device through.
+  ///
+  /// It stays in bytes anyway, as insurance: relaxing the ASCII rule would
+  /// make the two differ again, and `length` got that wrong once already,
+  /// letting a 63-letter Cyrillic name through at 126 bytes.
   ///
   /// Found while answering #266's question about non-ASCII names rather than
   /// reported by it.
@@ -150,9 +154,18 @@ class SeedSubFile {
   /// that its shifted `_` produces (`text_input.c`, `char_to_uppercase`), but
   /// a file written over RPC lands on a FAT volume and is listed by a browser
   /// that is perfectly happy with a dash too - so refusing one would be this
-  /// app inventing a rule the device does not have. What is refused is what
-  /// the device genuinely refuses, which is not always the volume: the ASCII
-  /// rule below is the RPC layer's and the volume would have taken the name.
+  /// app inventing a rule the device does not have.
+  ///
+  /// Three layers own the refusals below, and it is worth keeping them apart
+  /// because they are re-derived every time someone asks whether a rule is
+  /// too strict:
+  ///
+  /// - the **volume**: the nine, which `create_name` refuses or splits on.
+  /// - the **RPC layer**: the nine again, and everything outside ASCII, which
+  ///   is `path_contains_only_ascii`. See `isNonAsciiNameChar`.
+  /// - **this app**: [SeedNameProblem.dotEdge] alone, which both layers below
+  ///   would accept. It is kept on how the name is *browsed* rather than on
+  ///   whether it can be written - see the comment on the check itself.
   ///
   /// Non-ASCII is refused, which was #266's open question and #282 is the
   /// answer. It is the RPC layer's rule and not the volume's:
@@ -182,9 +195,19 @@ class SeedSubFile {
     if (reservedNameCharsPattern.hasMatch(name)) {
       return SeedNameProblem.illegalCharacter;
     }
-    // FAT32 drops a trailing dot, so a name ending in one is not the name the
-    // user will see afterwards; a leading dot hides the file from some browsers,
-    // and `.` and `..` are not names at all.
+    // A leading dot hides the file from the Flipper's own browser:
+    // `browser_filter_by_name` in `file_browser_worker.c` skips any name
+    // starting with one while `hide_dot_files` is set, and `.gate` + `.sub`
+    // still starts with a dot. So the file writes, and then the user cannot
+    // find what they just saved - which is worse than being told no.
+    //
+    // The trailing dot is refused for a weaker reason, kept deliberately:
+    // nothing downstream minds it, because [fileExtension] is appended after
+    // this runs, so `gate.` reaches the volume as `gate..sub` and FatFS's
+    // snip-trailing-dots loop never fires. `.` and `..` likewise arrive as
+    // `..sub` and `...sub`, which are ordinary names. What is left is that a
+    // name ending in a dot reads as a mistake and costs the user nothing to
+    // fix, and that the rule is one sentence rather than two.
     if (name.startsWith('.') || name.endsWith('.')) {
       return SeedNameProblem.dotEdge;
     }

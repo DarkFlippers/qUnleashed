@@ -8087,7 +8087,7 @@
 
   "seedNameHelp": "Saved in {dir}. Room for {max} characters.",
   "@seedNameHelp": {
-    "description": "Helper text under the file name field. {max} may be promised flatly: the name is refused outside ASCII, where one character is one byte, so the firmware's byte budget and this character count are the same number. Before that refusal existed this sentence had to hedge, because a Cyrillic name hit the limit at roughly half the figure.",
+    "description": "Helper text under the file name field. TRANSLATORS: {dir} is a path and is not translated; {max} is an exact figure, currently 63, so choose the grammatical case for 'characters' to match a plain number. It may be promised flatly because the name is refused outside ASCII, where one character is one byte, so the firmware's byte budget and this character count are the same. This sentence used to warn that a non-English name fits less; it no longer does, because such a name is now refused outright and the field says so on the first keystroke, which is a clearer place for the warning than a helper nobody rereads.",
     "placeholders": {
       "dir": {
         "type": "String"
@@ -8100,7 +8100,7 @@
 
   "seedNameTooLong": "Use a shorter name. The Sub-GHz app holds {max} characters.",
   "@seedNameTooLong": {
-    "description": "Shown when the typed file name is longer than the firmware can keep. {max} is exact rather than hedged: a name outside ASCII is refused by commonNameNonAscii before this check runs, and in ASCII one character is one byte, so the firmware's buffer size is a character count too.",
+    "description": "Shown when the typed file name is longer than the firmware can keep. TRANSLATORS: {max} is an exact figure, currently 63 - render it as a plain number and choose the grammatical case for 'characters' to match, as there is no plural form on this placeholder. It is exact rather than hedged because a name outside ASCII is refused by commonNameNonAscii before this check runs, and in ASCII one character is one byte; the firmware's buffer is 64 and {max} is one less, leaving room for the terminator.",
     "placeholders": {
       "max": {
         "type": "int"
@@ -8124,9 +8124,9 @@
     "placeholders": {}
   },
 
-  "commonNameNonAscii": "The Flipper only accepts English letters, digits and punctuation in a name.",
+  "commonNameNonAscii": "The Flipper only accepts English letters, digits and basic punctuation in a name.",
   "@commonNameNonAscii": {
-    "description": "Shown when a typed file name holds a character outside ASCII - a Cyrillic or accented letter, an emoji. Named separately from commonNameIllegal because that sentence lists nine specific characters, none of which is the one the user typed, and separately from commonNameControlChar because this character is visible. Says the Flipper refuses it rather than that it is invalid, because the same name is perfectly fine on the phone: the firmware's RPC layer is what will not carry it.",
+    "description": "Shown when a typed file name holds a character outside ASCII. TRANSLATORS: 'English letters' means the unaccented Latin A-Z and a-z, and nothing else - German ß, Cyrillic я and an emoji are all refused, so do not render this as 'letters of the English language' in a way that leaves accented Latin sounding acceptable. 'Basic punctuation' is deliberately vague rather than a list: most ASCII punctuation is fine, and the nine characters that are not are refused by their own message, commonNameIllegal, which carries the list. Say that the Flipper refuses the name, not that the name is invalid - the same name is perfectly fine on the phone, and it is the device that will not carry it.",
     "placeholders": {}
   },
 

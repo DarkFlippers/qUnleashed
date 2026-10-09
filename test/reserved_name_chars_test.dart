@@ -164,12 +164,13 @@ void main() {
     });
 
     test('catches both halves of a surrogate pair', () {
-      // An emoji is two code units, neither of which is the character itself.
-      // A check written over `runes` would see one value above 0x7f and a
-      // check written over `codeUnits` sees two - this is the assertion that
-      // either spelling has to satisfy.
+      // An emoji is two code units, neither of which is the character itself,
+      // and `checkBaseName` walks `codeUnits` - so this is the spelling the
+      // implementation actually depends on. A `runes` assertion beside it
+      // would pass for any threshold between 0x7f and 0x1f641 and so pins
+      // nothing; it is deliberately not here.
+      expect('🙂'.codeUnits, hasLength(2));
       expect('🙂'.codeUnits.every(isNonAsciiNameChar), isTrue);
-      expect('🙂'.runes.every(isNonAsciiNameChar), isTrue);
     });
 
     test('does not overlap the control range', () {
@@ -177,11 +178,41 @@ void main() {
       // An overlap would make which message appears depend on the order the
       // checks run in, which is not something a reader of `checkBaseName`
       // should have to work out.
-      for (var unit = 0; unit <= 0x10ffff; unit += 0x40) {
+      //
+      // Exhaustive below 0x100, because both predicates are defined by
+      // boundaries that live there and 0x7f is the only value where they can
+      // be made to overlap at all - a sparse sweep that strides past it tests
+      // everything except the case this name describes. Sparse above, where
+      // the answer cannot vary without one of the boundary tests failing
+      // first.
+      for (var unit = 0; unit < 0x100; unit++) {
+        expect(
+          isControlNameChar(unit) && isNonAsciiNameChar(unit),
+          isFalse,
+          reason: 'U+${unit.toRadixString(16).padLeft(4, '0')}',
+        );
+      }
+      for (var unit = 0x100; unit <= 0x10ffff; unit += 0x40) {
         expect(
           isControlNameChar(unit) && isNonAsciiNameChar(unit),
           isFalse,
           reason: 'U+${unit.toRadixString(16)}',
+        );
+      }
+    });
+
+    test('covers every code unit between the two predicates', () {
+      // Together they must account for everything the device refuses on
+      // charset grounds, with no gap: the firmware's `path_contains_only_ascii`
+      // accepts exactly 0x20-0x7e, so every other code unit has to be caught
+      // by one of the two or `checkBaseName` lets through a name the RPC layer
+      // will refuse. A gap here is the whole bug #282 was.
+      for (var unit = 0; unit <= 0xffff; unit++) {
+        final accepted = unit >= 0x20 && unit <= 0x7e;
+        expect(
+          isControlNameChar(unit) || isNonAsciiNameChar(unit),
+          !accepted,
+          reason: 'U+${unit.toRadixString(16).padLeft(4, '0')}',
         );
       }
     });
@@ -293,7 +324,9 @@ void main() {
       // rather than left to the reader: the firmware's RPC layer refuses the
       // name and a host filesystem does not. Asserting both halves, because a
       // "fix" that shared the refusal would quietly start replacing these
-      // with `_` on eleven host call sites. #282
+      // with `_` at every `sanitizePathSegment` call site - two of which
+      // derive a persistent per-device folder, so the rename would strand an
+      // existing install. #282
       for (final char in ['я', 'Ї', 'ß', '漢', '🙂']) {
         expect(
           SeedSubFile.checkBaseName('gate${char}1'),

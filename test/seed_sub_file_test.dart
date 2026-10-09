@@ -283,21 +283,69 @@ void main() {
       // be the length check in disguise.
       expect(SeedSubFile.checkBaseName('Ворота'), SeedNameProblem.nonAscii);
       expect(SeedSubFile.checkBaseName('Außentor'), SeedNameProblem.nonAscii);
-      // One high character in an otherwise ASCII name, which is the shape a
-      // paste or an autocorrected apostrophe arrives in.
-      expect(SeedSubFile.checkBaseName('gate one'), SeedNameProblem.nonAscii);
+      // One high character in an otherwise ASCII name - a non-breaking space,
+      // which is the shape a paste from a web page arrives in. Written as an
+      // escape below rather than as the character, because an invisible
+      // literal leaves a reader unable to see what is asserted.
+      expect(
+        SeedSubFile.checkBaseName('gate\u00a0one'),
+        SeedNameProblem.nonAscii,
+      );
     });
 
-    test('counts the limit in bytes, which is what the buffer holds', () {
-      // `char file_name_tmp[SUBGHZ_MAX_LEN_NAME]` is 64 bytes, so the budget
-      // is a byte count and not a character count. No accepted name can tell
-      // the two apart now that everything outside ASCII is refused - which is
-      // the point of asserting it here rather than deleting the subject:
-      // `maxBaseNameLength` stays in bytes so that relaxing the ASCII rule
-      // needs no second thought, and this says that out loud.
-      final name = 'x' * SeedSubFile.maxBaseNameLength;
-      expect(utf8.encode(name).length, SeedSubFile.maxBaseNameLength);
-      expect(SeedSubFile.checkBaseName(name), isNull);
+    test('reports a non-ASCII name before a dotted or illegal one', () {
+      // The remaining precedence pairs, which the exhaustive switch does not
+      // buy: a name can break two rules and only one message is shown, so the
+      // first check decides what the user is told. `.Ворота` reported as
+      // `dotEdge` sends them to delete the dot, after which the name is
+      // refused again - the same dead end this change exists to remove, one
+      // problem over.
+      expect(SeedSubFile.checkBaseName('.Ворота'), SeedNameProblem.nonAscii);
+      expect(SeedSubFile.checkBaseName('Ворота?'), SeedNameProblem.nonAscii);
+      // The other way round: a control character outranks it, because that
+      // message names something the user cannot see and this one does not.
+      expect(
+        SeedSubFile.checkBaseName('gate\nЯ'),
+        SeedNameProblem.controlCharacter,
+      );
+    });
+
+    test('judges the name after trimming, so invisible padding is not '
+        'reported as a non-ASCII character', () {
+      // `trim()` removes NBSP, ideographic space, BOM and NEL, so these reach
+      // the check as plain `garage` and `pathFor` trims identically. Checking
+      // `raw` instead would refuse a name that looks pure ASCII on screen,
+      // naming a character that is both invisible and about to be removed.
+      for (final padded in [
+        '\u00a0garage\u00a0',
+        '\u3000garage',
+        '\ufeffgarage',
+        '\u0085garage',
+      ]) {
+        expect(SeedSubFile.checkBaseName(padded), isNull, reason: padded);
+      }
+      expect(
+        SeedSubFile.pathFor('\u00a0garage\u00a0'),
+        '/ext/subghz/garage.sub',
+      );
+    });
+
+    test('holds the budget to the buffer the firmware copies into', () {
+      // `SUBGHZ_MAX_LEN_NAME` is 64 and `subghz_scene_save_name.c:73`
+      // strncpy's the extension-less name into a `char[64]`, so 63 is the
+      // longest name that keeps its terminator. Pinned as a literal, because
+      // every other length assertion here is written in terms of the constant
+      // and follows it wherever it moves - including to 64, which is the exact
+      // off-by-one that writes fine over RPC and is then mangled by the first
+      // rename on the device.
+      //
+      // This is what covers the budget. The *spelling* - bytes rather than
+      // characters - cannot be covered through `checkBaseName` at all now that
+      // non-ASCII is refused ahead of it, because for every name reaching the
+      // length check the two counts are equal by construction. See
+      // `maxBaseNameLength`, which says why it stays in bytes regardless.
+      expect(SeedSubFile.maxBaseNameLength, 63);
+      expect(utf8.encode('x' * 63).length, 63);
     });
 
     test('refuses every character a FAT volume cannot carry', () {

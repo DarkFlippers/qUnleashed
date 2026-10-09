@@ -218,6 +218,37 @@ void main() {
       expect(find.textContaining('shorter name'), findsNothing);
     });
 
+    testWidgets(
+      'names a Cyrillic name as a charset problem, not a length one',
+      (tester) async {
+        // The pairing for the arm added in #282. The switch being exhaustive
+        // says every problem has *a* sentence, not that it has the right one -
+        // which is what the dot test above was written to catch, and the same
+        // gap existed here. `Ворота` is well inside the 63 budget, so a length
+        // sentence appearing would mean the arms are crossed rather than that
+        // the name is long.
+        final client = SeedFakeClient();
+        await _openPage(tester, client);
+        await tester.tap(find.text('one.txt'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Recover Seed'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Save to Flipper'));
+        await tester.pumpAndSettle();
+
+        await tester.enterText(find.byType(TextField), 'Ворота');
+        await tester.pump();
+
+        expect(find.textContaining('English letters'), findsOneWidget);
+        expect(find.textContaining('shorter name'), findsNothing);
+        expect(
+          find.textContaining(reservedNameCharsSpelled),
+          findsNothing,
+          reason: 'the nine are not what is wrong with this name',
+        );
+      },
+    );
+
     testWidgets('says something a user can act on about a pasted newline', (
       tester,
     ) async {

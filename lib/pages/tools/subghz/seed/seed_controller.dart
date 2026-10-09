@@ -522,10 +522,12 @@ class SeedController extends ChangeNotifier {
 
     final problem = SeedSubFile.checkBaseName(baseName);
     if (problem != null) {
-      // Its own failure, because "the Flipper refused this" is not true and
-      // leaves the user with nothing to change. The rule goes in the log, not
-      // just the name: for a 63-character or non-ASCII name it is not
-      // deducible from the name alone.
+      // Its own failure rather than a write that fails, so the user is told
+      // which rule and can act on it. For the non-ASCII arm the Flipper would
+      // have refused the name too - the point is that it answers only
+      // `ERROR_STORAGE_INVALID_NAME`, which names no character. The rule goes
+      // in the log as well as the name: for a 63-character or non-ASCII name
+      // it is not deducible from the name alone.
       LogService.error('[Seed] refused "$baseName": ${problem.name}');
       _error = SeedFailure.invalidName;
       _changed();
