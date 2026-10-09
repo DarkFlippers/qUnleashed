@@ -19,6 +19,13 @@ enum SeedNameProblem {
   /// A C0 control character or DEL, which a paste can carry in and a keyboard
   /// cannot type.
   controlCharacter,
+
+  /// Anything outside ASCII. Its own problem rather than [illegalCharacter]
+  /// because that message lists nine characters, none of which is the one the
+  /// user typed, and the fix is different: there is no escaping or quoting
+  /// that gets a Cyrillic letter onto the device, the name has to be written
+  /// in ASCII. See `isNonAsciiNameChar`.
+  nonAscii,
   dotEdge,
 }
 
@@ -103,12 +110,13 @@ class SeedSubFile {
   /// fine over RPC and is then truncated the first time the user renames it
   /// there, which is a worse surprise than refusing it here.
   ///
-  /// Bytes and not characters, which is not the same count outside the English
-  /// alphabet: the firmware's limit is a buffer, and a name is UTF-8 on the
-  /// wire, so a Cyrillic letter costs two of these and an emoji four. Counting
-  /// Dart's `length` instead let a 63-letter Cyrillic name through at 126
-  /// bytes, of which the rename keeps 64 and terminates none - `strncpy` with
-  /// `n` equal to the buffer writes no terminator when the source fills it.
+  /// Bytes and not characters, because the firmware's limit is a buffer. No
+  /// name [checkBaseName] accepts can make the two counts differ - it refuses
+  /// everything outside ASCII, where one character is one byte - so the
+  /// spelling is what keeps this correct rather than what makes it correct
+  /// today. If the ASCII rule is ever relaxed, this needs no thought; counting
+  /// Dart's `length` instead would, and got it wrong once already, letting a
+  /// 63-letter Cyrillic name through at 126 bytes.
   ///
   /// Found while answering #266's question about non-ASCII names rather than
   /// reported by it.
@@ -143,32 +151,33 @@ class SeedSubFile {
   /// a file written over RPC lands on a FAT volume and is listed by a browser
   /// that is perfectly happy with a dash too - so refusing one would be this
   /// app inventing a rule the device does not have. What is refused is what
-  /// the volume genuinely cannot carry.
+  /// the device genuinely refuses, which is not always the volume: the ASCII
+  /// rule below is the RPC layer's and the volume would have taken the name.
   ///
-  /// Non-ASCII is accepted, which is #266's open question and the firmware
-  /// answers it: `targets/f7/fatfs/ffconf.h` sets `_LFN_UNICODE 0` and
-  /// `_CODE_PAGE 850`, so FatFS takes the path as OEM bytes, and the CP850
-  /// table in `lib/fatfs/option/ccsbcs.c` maps all 128 high bytes with no
-  /// duplicates. Mapping every byte is why such a name never *fails*; the
-  /// table being injective is why it reads back byte-identical over RPC, so
-  /// this app shows it correctly. Change `_CODE_PAGE` and both halves of that
-  /// need re-checking.
-  ///
-  /// What it does not do is render on the Flipper's own screen, which shows
-  /// mojibake. Refusing it would still be a rule the volume does not have, and
-  /// the device's own keyboard cannot type one anyway.
+  /// Non-ASCII is refused, which was #266's open question and #282 is the
+  /// answer. It is the RPC layer's rule and not the volume's:
+  /// `path_contains_only_ascii` refuses the name and `rpc_storage.c` turns
+  /// that into `ERROR_STORAGE_INVALID_NAME` for a Write, so the FAT volume
+  /// underneath - which would have taken the name, see `isNonAsciiNameChar` -
+  /// never sees it. This check accepting one bought nothing except a write
+  /// that failed afterwards, saying only that it had failed.
   ///
   /// Takes the name *without* the extension; [fileExtension] is added after.
   static SeedNameProblem? checkBaseName(String raw) {
     final name = raw.trim();
     if (name.isEmpty) return SeedNameProblem.empty;
-    if (utf8.encode(name).length > maxBaseNameLength) {
-      return SeedNameProblem.tooLong;
-    }
-    // Before the nine, so that by the time `reservedNameCharsPattern` runs the
-    // only thing it can be reporting is a character the message can name.
+    // Every character rule before the length one. A name that breaks both gets
+    // the message it can act on: shortening a Cyrillic name is work that ends
+    // in the same refusal, and "use ASCII" is the whole fix either way.
+    //
+    // Control characters before the nine, so that by the time
+    // `reservedNameCharsPattern` runs the only thing it can be reporting is a
+    // character the message can name.
     if (name.codeUnits.any(isControlNameChar)) {
       return SeedNameProblem.controlCharacter;
+    }
+    if (name.codeUnits.any(isNonAsciiNameChar)) {
+      return SeedNameProblem.nonAscii;
     }
     if (reservedNameCharsPattern.hasMatch(name)) {
       return SeedNameProblem.illegalCharacter;
@@ -178,6 +187,9 @@ class SeedSubFile {
     // and `.` and `..` are not names at all.
     if (name.startsWith('.') || name.endsWith('.')) {
       return SeedNameProblem.dotEdge;
+    }
+    if (utf8.encode(name).length > maxBaseNameLength) {
+      return SeedNameProblem.tooLong;
     }
     return null;
   }

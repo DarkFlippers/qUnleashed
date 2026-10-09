@@ -8085,9 +8085,9 @@
     "description": "Title of the dialog asking what to call the recovered remote."
   },
 
-  "seedNameHelp": "Saved in {dir}. Room for {max} letters, fewer if they are not English ones.",
+  "seedNameHelp": "Saved in {dir}. Room for {max} characters.",
   "@seedNameHelp": {
-    "description": "Helper text under the file name field. The limit is a byte count, so this deliberately does not promise {max} characters - a Cyrillic name hits the refusal at roughly half of it, and a helper that stated the figure flatly would read as a broken rule rather than a smaller budget.",
+    "description": "Helper text under the file name field. {max} may be promised flatly: the name is refused outside ASCII, where one character is one byte, so the firmware's byte budget and this character count are the same number. Before that refusal existed this sentence had to hedge, because a Cyrillic name hit the limit at roughly half the figure.",
     "placeholders": {
       "dir": {
         "type": "String"
@@ -8098,9 +8098,9 @@
     }
   },
 
-  "seedNameTooLong": "Use a shorter name. The Sub-GHz app holds {max} English letters, and fewer of any other kind.",
+  "seedNameTooLong": "Use a shorter name. The Sub-GHz app holds {max} characters.",
   "@seedNameTooLong": {
-    "description": "Shown when the typed file name is longer than the firmware can keep. The limit is a byte count, so a Cyrillic or accented letter spends two of it and an emoji four; the second clause is there because a user who hits it at half the stated count would otherwise read this as a bug.",
+    "description": "Shown when the typed file name is longer than the firmware can keep. {max} is exact rather than hedged: a name outside ASCII is refused by commonNameNonAscii before this check runs, and in ASCII one character is one byte, so the firmware's buffer size is a character count too.",
     "placeholders": {
       "max": {
         "type": "int"
@@ -8121,6 +8121,12 @@
   "commonNameControlChar": "A name cannot contain an invisible character. Paste it somewhere plain, or type it out.",
   "@commonNameControlChar": {
     "description": "Shown when a typed file name holds a C0 control character or DEL - a tab, a newline, or similar. Named separately from commonNameIllegal because that sentence lists the characters it refuses, and these have no printable form to list. A keyboard cannot type one; a paste from a spreadsheet or a web page can carry one in.",
+    "placeholders": {}
+  },
+
+  "commonNameNonAscii": "The Flipper only accepts English letters, digits and punctuation in a name.",
+  "@commonNameNonAscii": {
+    "description": "Shown when a typed file name holds a character outside ASCII - a Cyrillic or accented letter, an emoji. Named separately from commonNameIllegal because that sentence lists nine specific characters, none of which is the one the user typed, and separately from commonNameControlChar because this character is visible. Says the Flipper refuses it rather than that it is invalid, because the same name is perfectly fine on the phone: the firmware's RPC layer is what will not carry it.",
     "placeholders": {}
   },
 

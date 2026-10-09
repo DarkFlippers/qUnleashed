@@ -125,12 +125,64 @@ void main() {
       }
     });
 
-    test('leaves non-ASCII alone', () {
-      // The storage carries it - see `checkBaseName`'s note on `_CODE_PAGE
-      // 850` - so a pattern that started matching it would be refusing names
-      // that work, in the two locales this app is translated into.
+    test('leaves non-ASCII alone, which the host rule needs and the device '
+        'rule does not', () {
+      // The pattern serves both rules, and only one of them refuses a Cyrillic
+      // letter. A host filename holds one perfectly well, and this pattern is
+      // what `sanitizePathSegment` replaces with `_` - so a pattern that
+      // started matching would mangle names on the phone that were never a
+      // problem there, in both locales this app is translated into.
+      //
+      // The device's refusal is `isNonAsciiNameChar` instead, applied by
+      // `checkBaseName` alone. #282
       for (final char in ['я', 'Ї', 'ß', '漢', '🙂']) {
         expect(reservedNameCharsPattern.hasMatch(char), isFalse, reason: char);
+      }
+    });
+  });
+
+  group('isNonAsciiNameChar', () {
+    test('is every code unit above 0x7f and none below', () {
+      // The boundary rather than a sample of letters, because the firmware's
+      // `path_contains_only_ascii` draws it at `> '~'` - and `0x7f` itself is
+      // on the refused side there, reached by `isControlNameChar` here. An
+      // off-by-one that moved this to `>= 0x7f` or `> 0x80` would leave every
+      // other test in this file green.
+      expect(isNonAsciiNameChar(0x7e), isFalse);
+      expect(
+        isNonAsciiNameChar(0x7f),
+        isFalse,
+        reason:
+            'DEL is the control '
+            "rule's, so that the user gets the message about an invisible "
+            'character rather than the one about English letters',
+      );
+      expect(isNonAsciiNameChar(0x80), isTrue);
+      for (var unit = 0; unit < 0x80; unit++) {
+        expect(isNonAsciiNameChar(unit), isFalse, reason: 'U+$unit');
+      }
+    });
+
+    test('catches both halves of a surrogate pair', () {
+      // An emoji is two code units, neither of which is the character itself.
+      // A check written over `runes` would see one value above 0x7f and a
+      // check written over `codeUnits` sees two - this is the assertion that
+      // either spelling has to satisfy.
+      expect('🙂'.codeUnits.every(isNonAsciiNameChar), isTrue);
+      expect('🙂'.runes.every(isNonAsciiNameChar), isTrue);
+    });
+
+    test('does not overlap the control range', () {
+      // The two predicates split the refused characters between two messages.
+      // An overlap would make which message appears depend on the order the
+      // checks run in, which is not something a reader of `checkBaseName`
+      // should have to work out.
+      for (var unit = 0; unit <= 0x10ffff; unit += 0x40) {
+        expect(
+          isControlNameChar(unit) && isNonAsciiNameChar(unit),
+          isFalse,
+          reason: 'U+${unit.toRadixString(16)}',
+        );
       }
     });
   });
@@ -232,6 +284,26 @@ void main() {
           reason:
               '"$char" (U+${unit.toRadixString(16).padLeft(4, '0')}) is '
               'judged differently by the two rules',
+        );
+      }
+    });
+
+    test('parts company with the host rule above ASCII, on purpose', () {
+      // The one place the two rules are *meant* to disagree, so it is pinned
+      // rather than left to the reader: the firmware's RPC layer refuses the
+      // name and a host filesystem does not. Asserting both halves, because a
+      // "fix" that shared the refusal would quietly start replacing these
+      // with `_` on eleven host call sites. #282
+      for (final char in ['я', 'Ї', 'ß', '漢', '🙂']) {
+        expect(
+          SeedSubFile.checkBaseName('gate${char}1'),
+          SeedNameProblem.nonAscii,
+          reason: '"$char" must be refused for the device',
+        );
+        expect(
+          sanitizePathSegment('gate${char}1'),
+          'gate${char}1',
+          reason: '"$char" must survive into a host file name',
         );
       }
     });

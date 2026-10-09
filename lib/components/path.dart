@@ -72,6 +72,34 @@ final reservedNameCharsPattern = RegExp(
 /// writes it in Dart.
 bool isControlNameChar(int unit) => unit <= 0x1f || unit == 0x7f;
 
+/// Whether [unit] is outside ASCII, which a path on the **Flipper** may not
+/// carry and a path on the host may.
+///
+/// Not part of [reservedNameCharsPattern], and deliberately not applied by
+/// [sanitizePathSegment]: a host filename holds a Cyrillic letter perfectly
+/// well, and replacing one with `_` would mangle names this app has no reason
+/// to touch. The device is the one with the rule.
+///
+/// The rule is `path_contains_only_ascii` in the firmware's
+/// `lib/toolbox/path.c`, which refuses any byte of the last path segment
+/// outside `0x20`-`0x7e`. `rpc_storage.c` calls it on the path of a Write, a
+/// Rename, a Mkdir and a TarExtract and answers
+/// `ERROR_STORAGE_INVALID_NAME`, and on each name a List or Stat would
+/// return, which it drops instead. So a non-ASCII name cannot be written over
+/// RPC, and would not be listed if it were. #282
+///
+/// A code unit rather than a byte, which is the same test: a string has a
+/// code unit above `0x7f` exactly when its UTF-8 has a byte above `0x7f`.
+/// Both halves of a surrogate pair are above it, so an emoji is caught by
+/// either spelling.
+///
+/// What this is *not* about is FatFS, which would take such a name: the
+/// firmware sets `_LFN_UNICODE 0` and `_CODE_PAGE 850`, and the CP850 table
+/// in `lib/fatfs/option/ccsbcs.c` maps all 128 high bytes injectively, so the
+/// volume both accepts one and reads it back unchanged. The refusal is the RPC
+/// layer's, one above the volume, and it is the only layer this app talks to.
+bool isNonAsciiNameChar(int unit) => unit > 0x7f;
+
 /// Replaces the characters Windows rejects in a path segment with `_`.
 ///
 /// Not every rule Windows has: a segment of `CON` or `NUL`, or one ending in a

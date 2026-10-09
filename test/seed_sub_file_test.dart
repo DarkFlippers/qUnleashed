@@ -8,6 +8,8 @@
 //
 // What it cannot see: whether the firmware accepts the file. That needs a
 // Flipper and a receiver.
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/tools/subghz/seed/seed_models.dart';
 import 'package:qunleashed/pages/tools/subghz/seed/seed_sub_file.dart';
@@ -268,42 +270,34 @@ void main() {
       );
     });
 
-    test('counts the limit in bytes, which is what the buffer holds', () {
-      // `char file_name_tmp[SUBGHZ_MAX_LEN_NAME]` is 64 bytes and the name
-      // travels as UTF-8, so a Cyrillic letter spends two of the budget. The
-      // check used Dart's `length` - UTF-16 code units - so a 63-letter
-      // Cyrillic name passed at 126 bytes and did not survive the first rename
-      // on the device. See `maxBaseNameLength` for what the firmware does with
-      // it.
-      //
-      // Spelled as a round number of two-byte letters rather than computed
-      // from the constant, so that a check "fixed" by dividing the limit by
-      // two, or by counting runes, fails here.
-      expect(
-        SeedSubFile.checkBaseName('я' * 32),
-        SeedNameProblem.tooLong,
-        reason:
-            '32 Cyrillic letters are 64 bytes, which leaves no room for '
-            'the terminator',
-      );
-      expect(
-        SeedSubFile.checkBaseName('я' * 31),
-        isNull,
-        reason: '31 are 62 bytes and fit',
-      );
-      // An emoji is four, and outside the BMP, so it is also the case where
-      // `length` and `runes.length` disagree with each other as well as with
-      // the byte count.
-      expect(SeedSubFile.checkBaseName('🙂' * 16), SeedNameProblem.tooLong);
-      expect(SeedSubFile.checkBaseName('🙂' * 15), isNull);
+    test('reports a non-ASCII name as that, not as a length', () {
+      // The byte budget and the ASCII rule used to be one subject: the limit
+      // is a buffer, a Cyrillic letter is two bytes, so a long Cyrillic name
+      // came back `tooLong` and the user was told to shorten something that
+      // was never going to be accepted at any length. Both of these are over
+      // the budget as well as outside ASCII, and only one of the two answers
+      // is a fix the user can carry out.
+      expect(SeedSubFile.checkBaseName('я' * 32), SeedNameProblem.nonAscii);
+      expect(SeedSubFile.checkBaseName('🙂' * 16), SeedNameProblem.nonAscii);
+      // And one that is comfortably inside the budget, so the refusal cannot
+      // be the length check in disguise.
+      expect(SeedSubFile.checkBaseName('Ворота'), SeedNameProblem.nonAscii);
+      expect(SeedSubFile.checkBaseName('Außentor'), SeedNameProblem.nonAscii);
+      // One high character in an otherwise ASCII name, which is the shape a
+      // paste or an autocorrected apostrophe arrives in.
+      expect(SeedSubFile.checkBaseName('gate one'), SeedNameProblem.nonAscii);
     });
 
-    test('accepts a non-ASCII name, which the volume does carry', () {
-      // #266's open question, and the answer is the firmware's - see
-      // `checkBaseName`'s note on `_CODE_PAGE 850`, which is where those facts
-      // live so that they cannot drift between here and there.
-      expect(SeedSubFile.checkBaseName('Ворота'), isNull);
-      expect(SeedSubFile.checkBaseName('Außentor'), isNull);
+    test('counts the limit in bytes, which is what the buffer holds', () {
+      // `char file_name_tmp[SUBGHZ_MAX_LEN_NAME]` is 64 bytes, so the budget
+      // is a byte count and not a character count. No accepted name can tell
+      // the two apart now that everything outside ASCII is refused - which is
+      // the point of asserting it here rather than deleting the subject:
+      // `maxBaseNameLength` stays in bytes so that relaxing the ASCII rule
+      // needs no second thought, and this says that out loud.
+      final name = 'x' * SeedSubFile.maxBaseNameLength;
+      expect(utf8.encode(name).length, SeedSubFile.maxBaseNameLength);
+      expect(SeedSubFile.checkBaseName(name), isNull);
     });
 
     test('refuses every character a FAT volume cannot carry', () {

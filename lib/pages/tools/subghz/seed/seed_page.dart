@@ -643,6 +643,7 @@ String? _nameProblem(String value) =>
         reservedNameCharsSpelled,
       ),
       SeedNameProblem.controlCharacter => l10n.commonNameControlChar,
+      SeedNameProblem.nonAscii => l10n.commonNameNonAscii,
       SeedNameProblem.dotEdge => l10n.commonNameDotEdge,
     };
 
