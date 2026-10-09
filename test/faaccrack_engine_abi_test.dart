@@ -93,6 +93,14 @@ void main() {
       expect(macro('FAACCRACK_MAX_HOPS'), SeedCapture.maxHops);
     });
 
+    test('the counter gap the engine tolerates matches', () {
+      // Nothing on this side branches on this one, which is why it is pinned
+      // here rather than left to prose: what drifts is the wording and the
+      // derived figures written against the limit. `FAACCRACK_MAX_COUNTER_GAP`
+      // says why it exists.
+      expect(macro('FAACCRACK_MAX_COUNTER_GAP'), SeedCapture.maxCounterGap);
+    });
+
     test('the confidence threshold matches', () {
       expect(macro('FAACCRACK_HOPS_CONFIDENT'), seedHopsConfident);
     });

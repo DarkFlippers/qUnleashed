@@ -1,7 +1,7 @@
 # faaccrack (SubGHz rolling-code seed recovery)
 
 Recovers the per-installation **seed** of a FAAC SLH, Genius, BFT or Erreka
-remote from a fixed code and two or more consecutive hops, so the remote can be
+remote from a fixed code and two or more hops of the same remote, so it can be
 rebuilt as a transmittable `.sub` rather than replayed. CPU only, no GPU, no
 server. See DarkFlippers/qUnleashed#142.
 
@@ -157,6 +157,34 @@ captured from a real Erreka remote would be stronger and is still worth having.
 To regenerate them after an engine change, build the generator against the
 readable source and paste its output over the table in the probe.
 
+The probe's `gaps` group is the same idea for the acceptance test's tolerance:
+five captures that must solve and three that must be refused, one per clause of
+the test. The probe says which and why, row by row, and that list is not
+repeated here for the reason the ABI section below gives.
+
+What this document knows and the probe cannot show is the price. A capture that
+solves costs milliseconds, because its seed is in the first block the sweep
+claims. A capture that must be **refused** has no cheap form: rejecting one
+means sweeping the whole seed space, which measured 16 seconds at 32 threads, 35
+at 8 and over two minutes at the two threads the probe asks for. So the refusals
+are not run to completion - each is stopped as soon as `permille` leaves zero,
+which is proof the sweep went past the seed in question and refused it. That
+lands at about 110 ms per refusal at two threads, and makes the check
+machine-independent: a slow runner takes longer to get there and the assertion
+is just as sharp. A wall-clock budget was tried first and was worse on both
+counts - 3 seconds of sleeping per optimisation level, and a runner slow enough
+could pass it without proving anything.
+
+The zigzag is the row that matters most and the one that nearly was not written:
+the claim that the single-direction rule buys back some of what the wide step
+costs rests on it, and a regeneration that dropped the direction half while
+keeping the width test passes every other check in this repository. Four mutants
+were run against the readable source to establish that the group fails for the
+reasons it claims, each failing only its own rows - the direction half dropped,
+a step of zero accepted, the limit moved to 17, and the result taken from the
+first hop instead of the last. The last of those fails every row that solves, in
+both groups.
+
 `verify_obf.sh` builds both sources, runs six searches - one per mode, a second
 Genius run with one fewer hop, and a no-solution case - writes a `.sub` for each
 and diffs everything with timings normalised out. A mismatch fails the script, so
@@ -185,8 +213,9 @@ mode-specific.
 It recovers the **seed**, not the manufacture key. Both keys are compiled in,
 from the Flipper keystore, for four manufacturers only. A target using any other
 manufacture key yields no seed - and the engine cannot tell that apart from a
-capture with a missed press, or from the wrong mode being passed. `faaccrack.h`
-spells out what the caller must therefore not say to the user.
+capture with a gap in it wider than `FAACCRACK_MAX_COUNTER_GAP`, or from the
+wrong mode being passed. `faaccrack.h` spells out what the caller must therefore
+not say to the user.
 
 ## Threads
 

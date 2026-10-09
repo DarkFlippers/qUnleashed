@@ -22,10 +22,12 @@ FAACCRACK_SELFTEST_NLF
 FAACCRACK_SELFTEST_KEELOQ
 FAACCRACK_SELFTEST_SHUFFLE
 
-# Bounds the engine validates against, so a caller checking the same macros and
-# the engine cannot disagree.
+# Bounds the engine enforces - the hop counts and the mode range when it
+# validates arguments, the counter gap when it accepts a candidate - so a caller
+# checking the same macros and the engine cannot disagree.
 FAACCRACK_MIN_HOPS
 FAACCRACK_MAX_HOPS
+FAACCRACK_MAX_COUNTER_GAP
 FAACCRACK_MAX_THREADS
 FAACCRACK_MODE_MIN
 FAACCRACK_MODE_MAX

@@ -8022,7 +8022,7 @@
     "description": "Shown when the whole space was swept with no match."
   },
 
-  "seedNothingMatchedHint": "This does not mean the remote cannot be recovered. Check the brand is right, and that the presses were consecutive with none missed, then capture again.",
+  "seedNothingMatchedHint": "This does not mean the remote cannot be recovered. This app has keys for four makers only, so check the brand is right. A few missed presses are fine, but more presses help - press the remote several times near the Flipper and capture again.",
   "@seedNothingMatchedHint": {
     "description": "Explains what a no-match result actually means and what to do."
   },
@@ -8047,7 +8047,7 @@
     "description": "Shown when the engine reports a fault."
   },
 
-  "seedLowConfidence": "Backed by only {count} hops, so it is not offered for transmission: with two a wrong answer is possible, and {needed} or more effectively rule it out. Capture another press or two and try again.",
+  "seedLowConfidence": "Backed by only {count} hops, so it is not offered for transmission: with two, a wrong answer is as likely as a right one. {needed} or more makes it unlikely, though never impossible. Capture another press or two and try again.",
   "@seedLowConfidence": {
     "description": "Explains that a result came from too few hops to be saved, and what to do about it.",
     "placeholders": {
