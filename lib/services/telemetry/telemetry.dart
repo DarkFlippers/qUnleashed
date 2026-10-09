@@ -156,6 +156,7 @@ class Telemetry {
       await SentryFlutter.init((options) => _configure(options, plan));
       await _tag(plan);
       guardedFailureSink = _reportGuarded;
+      LogService.keptSink = _reportKept;
       _running = true;
       settings.addListener(_reconcile);
     } catch (e, st) {
@@ -172,6 +173,7 @@ class Telemetry {
     if (!_running) return;
     _running = false;
     guardedFailureSink = null;
+    LogService.keptSink = null;
     settings.removeListener(_reconcile);
     try {
       await Sentry.close();
@@ -214,6 +216,38 @@ class Telemetry {
       );
       return null;
     }
+  }
+
+  /// Forwards one kept log line to Sentry Logs.
+  ///
+  /// §2's second chokepoint. `LogService` already funnels every error and
+  /// warning the app records, and §5's `caught` adds the 48 failure paths a
+  /// release build kept no record of - so this is where all three arrive,
+  /// rather than at several hundred call sites.
+  ///
+  /// `caught` goes at Sentry's **info** level rather than `warning`, which is
+  /// §5's whole point: these are searchable without firing the alerting that
+  /// `warn` is for. The mapping is exhaustive over [KeptLevel] on purpose, so
+  /// a fourth level cannot be added without deciding where it lands.
+  ///
+  /// `LogService` passes a body with absolute paths already out of it, which
+  /// is all the sink does; §6.2's rest runs here, because this is the point it
+  /// leaves the device.
+  ///
+  /// Nothing is awaited. `_emit` is synchronous and must stay that way - it is
+  /// called from inside error handlers - and the SDK batches its own sends;
+  /// `_guard` is what keeps a rejected send from reaching the zone as an
+  /// unlabelled `[uncaught]`.
+  void _reportKept(KeptLevel level, String body) {
+    final text = Scrub.outbound(body);
+    _guard(() async {
+      final logger = Sentry.logger;
+      await switch (level) {
+        KeptLevel.error => logger.error(text),
+        KeptLevel.warning => logger.warn(text),
+        KeptLevel.caught => logger.info(text),
+      };
+    });
   }
 
   /// Turns one `guarded()` failure into an issue.
@@ -309,6 +343,11 @@ class Telemetry {
 
     // §6.2. Every event passes through the scrubber before it leaves.
     options.beforeSend = (event, hint) => scrubEvent(event);
+
+    // Sentry Logs, which §2 feeds from `LogService`'s kept entries. Off by
+    // default in this major and configured differently in 10 - which is the
+    // one line §7's "10 is a version bump" now costs, and it says so.
+    options.enableLogs = true;
 
     // §3: or their frames are folded away as third-party, which is the
     // opposite of true - a fault in either is this project's to fix.

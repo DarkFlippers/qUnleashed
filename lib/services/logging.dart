@@ -9,6 +9,35 @@ import 'package:universal_ble/universal_ble.dart';
 
 import 'telemetry/scrub.dart';
 
+/// The three levels that reach [LogService.history], and so the only ones a
+/// second reader can be told about.
+///
+/// Not every level: `info`, `debug` and `trace` are `keep: false` and
+/// const-fold out of a release build, so there is nothing to forward and no
+/// value in a name for it. This is the vocabulary of what is *kept*, which is
+/// why it is three and not six.
+enum KeptLevel {
+  /// Something failed and somebody should look at it.
+  error,
+
+  /// Degraded but not broken.
+  warning,
+
+  /// Caught, handled, and worth reading about afterwards rather than being
+  /// alerted on. [LogService.caught] has the argument.
+  caught,
+}
+
+/// A second reader for the lines [LogService] keeps.
+///
+/// Shaped like flipperlib's `Log.sink` on purpose - a level and a body - so
+/// the two hooks this app installs read the same way.
+///
+/// The body is already stamped-free and already had absolute paths redacted;
+/// anything sending it off the device must still put it through
+/// `Scrub.outbound`, which is the sink's job and not this file's.
+typedef KeptLogSink = void Function(KeptLevel level, String body);
+
 class LogService {
   /// Whether anything is logged at all. Follows the build type unless
   /// `--dart-define=QLOG=true|false` says otherwise, so a debug run can stay
@@ -120,17 +149,61 @@ class LogService {
   /// leftover frame, and an ordinary directory listing is hundreds of frames.
   /// Unchecked, that single failure would evict the whole buffer, including
   /// the timeout that explains it.
-  static void _remember(String stamped, String body) {
+  ///
+  /// **Returns whether the line was new**, which is what [keptSink] needs and
+  /// what this used to fold away silently. The coalescing is invisible from
+  /// [_emit] otherwise, so a sink would have to compare bodies a second time -
+  /// and would get it wrong, because the comparison is against the last *kept*
+  /// body and not against the last line emitted.
+  static bool _remember(String stamped, String body) {
     if (body == _lastKept && _history.isNotEmpty) {
       _repeats += 1;
       _history.removeLast();
       _history.addLast('$stamped  (${_repeats + 1}×)');
-      return;
+      return false;
     }
     _lastKept = body;
     _repeats = 0;
     _history.addLast(stamped);
     if (_history.length > historyLimit) _history.removeFirst();
+    return true;
+  }
+
+  /// Where kept lines go besides [history], or nowhere.
+  ///
+  /// Null until something installs one. `lib/services/telemetry/` does, when
+  /// reporting is on, and clears it again when it is turned off - the same
+  /// one-way shape `guardedFailureSink` uses, and for the same reason: this
+  /// file knows there may be a second reader and nothing about who it is.
+  static KeptLogSink? keptSink;
+
+  /// Whether [_announce] is already running.
+  ///
+  /// A sink that fails is reported with [LogService.error], which re-enters
+  /// [_emit] and would call the sink again - and if that call fails the same
+  /// way, forever. Reporting the first failure and dropping the rest is the
+  /// only termination there is: the alternative is a stack overflow in the
+  /// logger, on a path that exists because something was already broken.
+  static bool _announcing = false;
+
+  /// Hands one kept line to [keptSink] without letting it cost the line.
+  ///
+  /// [history] is written before this runs. The local record is the surface
+  /// somebody can actually open, so a remote reader that throws must not take
+  /// it with them.
+  static void _announce(KeptLevel level, String body) {
+    final sink = keptSink;
+    if (sink == null || _announcing) return;
+    _announcing = true;
+    try {
+      sink(level, body);
+    } catch (e) {
+      // Not `describe`: the useful fact is which line the sink broke on, not
+      // where inside the sink it happened.
+      error('[Telemetry] the kept-log sink threw on "$body": $e');
+    } finally {
+      _announcing = false;
+    }
   }
 
   /// Drops everything [history] holds.
@@ -278,7 +351,7 @@ class LogService {
         // the only full record; it is still not worth printing twice.)
         _emit(
           '[error] [flutter]$where ${details.exceptionAsString()}$stack',
-          keep: true,
+          level: KeptLevel.error,
           console: false,
         );
       } catch (_) {
@@ -292,7 +365,11 @@ class LogService {
       try {
         // console: false, as above. Returning unhandled means the zone or the
         // engine reports this itself, so printing here says it twice.
-        _emit('[error] [uncaught] $e\n$st', keep: true, console: false);
+        _emit(
+          '[error] [uncaught] $e\n$st',
+          level: KeptLevel.error,
+          console: false,
+        );
       } catch (_) {
         // Nothing upstream catches this: in the root zone the engine gets the
         // throw, and a guarded zone re-dispatches it without end.
@@ -325,10 +402,10 @@ class LogService {
   }
 
   static void error(String msg) =>
-      _emit('[error] $msg', keep: true, console: errorOn);
+      _emit('[error] $msg', level: KeptLevel.error, console: errorOn);
 
   static void warn(String msg) =>
-      _emit('[warning] $msg', keep: true, console: warnOn);
+      _emit('[warning] $msg', level: KeptLevel.warning, console: warnOn);
 
   /// A failure that was caught and handled, kept so somebody can read it later.
   ///
@@ -357,7 +434,7 @@ class LogService {
   /// keeps it honest, because moving *commentary* here would lower
   /// `test/log_level_budget_test.dart` as legitimately as a real failure does.
   static void caught(String msg) =>
-      _emit('[caught] $msg', keep: true, console: infoOn);
+      _emit('[caught] $msg', level: KeptLevel.caught, console: infoOn);
 
   /// Running commentary, and the one level that does not survive.
   ///
@@ -464,10 +541,25 @@ class LogService {
   /// unreachable for as long as it did.
   static const FlipperLogLevel _keptFrom = FlipperLogLevel.warning;
 
+  /// The library's own levels, mapped onto the three this app keeps.
+  ///
+  /// Null below [_keptFrom], which is what decides whether the line is kept at
+  /// all. `error` and `warning` are the only two at or above it, so the
+  /// fall-through is unreachable rather than lossy - but it is written as a
+  /// level rather than an assert, because raising [_keptFrom]'s neighbour is
+  /// the kind of change that should degrade to "kept as a warning" instead of
+  /// throwing inside the logger.
+  static KeptLevel? _keptLevelFor(FlipperLogLevel severity) {
+    if (severity.index < _keptFrom.index) return null;
+    return severity == FlipperLogLevel.error
+        ? KeptLevel.error
+        : KeptLevel.warning;
+  }
+
   static void _flipperlibSink(FlipperLogLevel severity, String message) {
     _emit(
       '[${severity.name}] $message',
-      keep: severity.index >= _keptFrom.index,
+      level: _keptLevelFor(severity),
       console: printing,
     );
   }
@@ -481,7 +573,7 @@ class LogService {
   // const guard or is installed only in a talking build, so the two agree
   // today; saying it this way stops an ungated caller ever making a quiet
   // build print.
-  static void _write(String msg) => _emit(msg, keep: false, console: printing);
+  static void _write(String msg) => _emit(msg, console: printing);
 
   /// What a message says about the user's own files, folders and devices — a
   /// card called `Office badge.nfc`, a Flipper's name, a card's UID inside a
@@ -538,8 +630,7 @@ class LogService {
   /// ordinary entry points - and it is the one the skip in [_emit] exists
   /// for, because package:logging and universal_ble keep feeding it.
   @visibleForTesting
-  static void debugEmitUnheard(String msg) =>
-      _emit(msg, keep: false, console: false);
+  static void debugEmitUnheard(String msg) => _emit(msg, console: false);
 
   static String _two(int value) => value < 10 ? '0$value' : '$value';
 
@@ -576,16 +667,28 @@ class LogService {
   /// printing the path they are debugging rather than `~`. The trade is that
   /// a path still reaches logcat, which is not the surface with a copy button
   /// on it.
-  static void _emit(String msg, {required bool keep, required bool console}) {
+  /// Writes one line to the two destinations that exist, plus [keptSink].
+  ///
+  /// [level] replaced a `required bool keep`. The two carried the same fact -
+  /// a line is kept if and only if it has one of [KeptLevel]'s three levels -
+  /// and the level is what [keptSink] needs, so a second parameter beside the
+  /// bool would have been a redundancy inviting `keep: true, level: null`.
+  /// Null means not kept, which is `info`, `debug`, `trace` and everything
+  /// [_write] forwards.
+  static void _emit(String msg, {KeptLevel? level, required bool console}) {
     // Nobody is listening, so there is nothing to stamp. This is the whole of
     // _write's cost in a build that prints nothing: package:logging and
     // universal_ble keep handing lines to a sink that drops them, and every
     // one of them used to buy a timestamp first.
-    if (!keep && !console) return;
+    if (level == null && !console) return;
     final ts = _stamp(DateTime.now());
-    if (keep) {
+    if (level != null) {
       final kept = _redact(msg);
-      _remember('[$ts] $kept', kept);
+      // Only the first of a run is announced. One RPC timeout produces
+      // hundreds of identical lines, which is why _remember coalesces them -
+      // forwarding each would send the same hundreds to a remote reader that
+      // has no coalescing at all.
+      if (_remember('[$ts] $kept', kept)) _announce(level, kept);
     }
     if (!console) return;
     for (final line in msg.split('\n')) {

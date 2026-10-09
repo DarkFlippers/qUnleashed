@@ -393,10 +393,14 @@ entirely** — 2.3.1 depends on `jni: ^1.0.0` and `jni_flutter: ^1.0.1`, and
 analyzer and the suite are green across the downgrade. 10 changes that
 constraint, so the move also undoes this.
 
-Code is written so that 10 is a version bump: no SDK profiling, no
-`enableLogs` or `enableMetrics` flags. The feedback widgets do not come up at
-all - §1 took the "send to developers" action out, because sending is not
-something the user does.
+Code is written so that 10 is close to a version bump: no SDK profiling, and
+no `enableMetrics`. It is not quite free any more - phase 2 sets
+`options.enableLogs = true`, which this major needs and 10 configures
+differently, so the move has that one line to revisit. One line with a comment
+pointing here is the whole delta, which is a different thing from the rewrite
+this section was written to avoid. The feedback widgets do not come up at all -
+§1 took the "send to developers" action out, because sending is not something
+the user does.
 
 ### 8. Sampling
 
