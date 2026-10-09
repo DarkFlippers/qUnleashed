@@ -348,9 +348,9 @@ class _CaptureCard extends StatelessWidget {
             value: '${(frequency / 1000000).toStringAsFixed(2)} MHz',
           ),
         // The reasons, not only the count. A file four of whose nine hops were
-        // dropped may no longer have consecutive ones, so the search will find
-        // nothing for a reason that is not about the remote - and "unreadable
-        // hop: 4010" is the half the user can act on.
+        // dropped can be left with a gap too wide for the engine to tolerate,
+        // so the search will find nothing for a reason that is not about the
+        // remote - and "unreadable hop: 4010" is the half the user can act on.
         if (controller.captureWarnings.isNotEmpty) ...[
           Padding(
             padding: const EdgeInsets.only(top: 8),
@@ -643,6 +643,7 @@ String? _nameProblem(String value) =>
         reservedNameCharsSpelled,
       ),
       SeedNameProblem.controlCharacter => l10n.commonNameControlChar,
+      SeedNameProblem.nonAscii => l10n.commonNameNonAscii,
       SeedNameProblem.dotEdge => l10n.commonNameDotEdge,
     };
 

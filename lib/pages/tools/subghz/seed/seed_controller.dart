@@ -189,9 +189,9 @@ class SeedController extends ChangeNotifier {
   bool get busy => _stage != SeedStage.idle || _saving || _deleting != null;
 
   /// Lines the capture file had that could not be read. Shown rather than
-  /// logged alone: a file half of whose hops were dropped may no longer have
-  /// consecutive ones, and the search would then find nothing for a reason that
-  /// is not about the remote.
+  /// logged alone: a file half of whose hops were dropped can be left with a
+  /// gap wider than [SeedCapture.maxCounterGap], and the search would then find
+  /// nothing for a reason that is not about the remote.
   List<String> get captureWarnings => _captureWarnings;
 
   /// Whether the recovered remote can be written as a transmittable file.
@@ -415,24 +415,30 @@ class SeedController extends ChangeNotifier {
 
   /// The hop sets to try.
   ///
-  /// A capture with one missed press cannot solve *entire* - the acceptance
-  /// test needs every decrypted counter to be one from the last - while the
-  /// presses either side of the gap are still consecutive among themselves.
+  /// The engine tolerates a counter step up to [SeedCapture.maxCounterGap], so
+  /// the ordinary missed press now solves on the first sweep and this ladder is
+  /// the fallback rather than the mechanism. What still needs it is one shape: a
+  /// gap wider than that, from a remote worked for a while out of range or a
+  /// capture whose unreadable lines were dropped.
+  ///
+  /// It does not cover a capture whose counters do not run in one direction -
+  /// the same frame twice, or a 16-bit counter that wrapped. A sub-run is not
+  /// guaranteed to exclude the break, and nothing here can see where it is.
   ///
   /// Three windows are enough, and that is worth spelling out because the first
   /// version of this ladder offered twelve. A window solves exactly when its
-  /// hops are consecutive, and a contiguous sub-run of a consecutive run is
-  /// also consecutive - so a *short* window inside a gap-free run always solves
-  /// if a longer one does. Meanwhile a sweep costs the same whatever the hop
-  /// count: the engine scans the whole seed space either way, and extra hops
-  /// only filter the candidates it finds. Length therefore buys confidence, not
+  /// own hops are within the tolerance, and a contiguous sub-run of such a run
+  /// is too - so a *short* window inside a solvable run always solves if a
+  /// longer one does. Meanwhile a sweep costs the same whatever the hop count:
+  /// the engine scans the whole seed space either way, and extra hops only
+  /// filter the candidates it finds. Length therefore buys confidence, not
   /// reach.
   ///
   /// So: the whole capture, for the strongest `hops_used` in one sweep; then
-  /// the last [seedHopsConfident] hops, then the first. A single gap at
-  /// position k leaves the suffix solvable when k is at or below n-3 and the
+  /// the last [seedHopsConfident] hops, then the first. A single over-wide gap
+  /// at position k leaves the suffix solvable when k is at or below n-3 and the
   /// prefix when k is at least 3, and for any capture of five or more those two
-  /// ranges meet - every single-gap capture is covered in at most three sweeps
+  /// ranges meet - every such capture is covered in at most three sweeps
   /// instead of twelve.
   ///
   /// Suffix before prefix, which is not cosmetic: the counter and the rebuilt
@@ -522,10 +528,12 @@ class SeedController extends ChangeNotifier {
 
     final problem = SeedSubFile.checkBaseName(baseName);
     if (problem != null) {
-      // Its own failure, because "the Flipper refused this" is not true and
-      // leaves the user with nothing to change. The rule goes in the log, not
-      // just the name: for a 63-character or non-ASCII name it is not
-      // deducible from the name alone.
+      // Its own failure rather than a write that fails, so the user is told
+      // which rule and can act on it. For the non-ASCII arm the Flipper would
+      // have refused the name too - the point is that it answers only
+      // `ERROR_STORAGE_INVALID_NAME`, which names no character. The rule goes
+      // in the log as well as the name: for a 63-character or non-ASCII name
+      // it is not deducible from the name alone.
       LogService.error('[Seed] refused "$baseName": ${problem.name}');
       _error = SeedFailure.invalidName;
       _changed();

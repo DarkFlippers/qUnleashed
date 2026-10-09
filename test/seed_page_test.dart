@@ -39,11 +39,12 @@ Future<void> _openPage(WidgetTester tester, SeedFakeClient client) async {
   await tester.pumpAndSettle();
 }
 
-/// Walks capture -> recover -> Save -> accept the suggested name.
-Future<void> _recoverAndPressSave(
-  WidgetTester tester,
-  SeedFakeClient client,
-) async {
+/// Walks capture -> recover -> Save, stopping with the name dialog open.
+///
+/// The route into that dialog was written out six times in this file. Split
+/// out so that a change to it - a renamed button, an extra confirm, a
+/// different fixture - is one edit rather than six.
+Future<void> _openNameDialog(WidgetTester tester, SeedFakeClient client) async {
   await _openPage(tester, client);
 
   await tester.tap(find.text('one.txt'));
@@ -54,8 +55,15 @@ Future<void> _recoverAndPressSave(
 
   await tester.tap(find.text('Save to Flipper'));
   await tester.pumpAndSettle();
+}
 
-  // The name dialog, taking the suggestion unchanged.
+/// [_openNameDialog], then accept the suggested name unchanged.
+Future<void> _recoverAndPressSave(
+  WidgetTester tester,
+  SeedFakeClient client,
+) async {
+  await _openNameDialog(tester, client);
+
   expect(find.text('Name the File'), findsOneWidget);
   await tester.tap(find.widgetWithText(TextButton, 'Save to Flipper'));
   await tester.pumpAndSettle();
@@ -217,6 +225,30 @@ void main() {
       expect(find.textContaining('start or end with a dot'), findsOneWidget);
       expect(find.textContaining('shorter name'), findsNothing);
     });
+
+    testWidgets(
+      'names a Cyrillic name as a charset problem, not a length one',
+      (tester) async {
+        // The pairing for the arm added in #282. The switch being exhaustive
+        // says every problem has *a* sentence, not that it has the right one -
+        // which is what the dot test above was written to catch, and the same
+        // gap existed here. `Ворота` is well inside the 63 budget, so a length
+        // sentence appearing would mean the arms are crossed rather than that
+        // the name is long.
+        await _openNameDialog(tester, SeedFakeClient());
+
+        await tester.enterText(find.byType(TextField), 'Ворота');
+        await tester.pump();
+
+        expect(find.textContaining('English letters'), findsOneWidget);
+        expect(find.textContaining('shorter name'), findsNothing);
+        expect(
+          find.textContaining(reservedNameCharsSpelled),
+          findsNothing,
+          reason: 'the nine are not what is wrong with this name',
+        );
+      },
+    );
 
     testWidgets('says something a user can act on about a pasted newline', (
       tester,

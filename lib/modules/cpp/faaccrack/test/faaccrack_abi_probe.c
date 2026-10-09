@@ -5,8 +5,15 @@
 // (`verify_obf.sh`, see ../BUILD_NOTES.md) cannot live in this repository - it
 // needs the readable source - and it drives the *command line* anyway, which is
 // not the path the app uses. Everything below exercises `FAACCRACK_SEARCH`
-// directly, needs no CMake, no dispatcher, no Dart and no private source, and
-// finishes in well under a second.
+// directly, and needs no CMake, no dispatcher, no Dart and no private source.
+//
+// Every assertion about a capture that *solves* costs milliseconds. A capture
+// the engine must *refuse* has no cheap form - it sweeps the whole seed space -
+// so the three refusals are stopped as soon as the engine's own progress counter
+// proves they went past the seed in question. The whole file then runs in about
+// 700 ms on a developer machine, bounded at five seconds per refusal against an
+// engine that publishes no progress at all. The group that does it explains why
+// that bound is the assertion rather than a timeout.
 //
 // The assertion that earns the file is the first one. A call with valid
 // arguments and `abort` already set runs the engine's three internal
@@ -57,6 +64,20 @@ static uint64_t PROBE_NOW_MS(void) {
 
 #include "faaccrack.h"
 
+// The lane count this build of the engine should report.
+//
+// `lanes` is the only runtime evidence a -DVBITS took effect, and the shipped
+// library no longer takes the engine's own default: every x86 variant is
+// compiled at its hardware width (CMakeLists.txt says why). So the figure has
+// to come from the build rather than be written here, or this assertion would
+// fail on the library it is meant to describe and pass on an engine whose
+// retuning knob had been renamed away.
+//
+// The default below is the engine's own, for a build that passes no -DVBITS.
+#ifndef EXPECT_LANES
+#define EXPECT_LANES 512
+#endif
+
 static int checks;
 static int failures;
 
@@ -82,8 +103,18 @@ static void check_eq(const char *what, int got, int want) {
     check(what, got == want);
 }
 
-// A fix with hops whose counters cannot be consecutive, so the sweep runs the
-// whole space and can be interrupted rather than finishing first.
+// A fix with hops that no seed resolves to counters the acceptance test will
+// take, so the sweep runs the whole space and can be interrupted rather than
+// finishing first.
+//
+// What that takes is now a weaker statement than it was. These two hops used to
+// have to miss a step of exactly plus or minus one; they now have to miss every
+// step from 1 to FAACCRACK_MAX_COUNTER_GAP, in either direction - a target 16
+// times wider per candidate seed, and at two hops there is no direction clause
+// to help. It still holds, but the margin behind this fixture shrank when the
+// tolerance landed. If a future widening breaks it, the symptom is the stop
+// group going green for the wrong reason - a solved capture rather than an
+// interrupted sweep - which `permille < 1000` catches.
 #define UNSOLVABLE_FIX 0xA0DC9330u
 static const uint32_t unsolvable[2] = {0x29389EF7u, 0x40101499u};
 
@@ -181,13 +212,207 @@ static void probe_known_answers(void) {
         snprintf(label, sizeof label, "%s rebuilds the captured hop", want->name);
         check(label, got.frame_hop == want->hops[2]);
         // The documented evidence that a -DVBITS was not silently dropped by
-        // the obfuscator - BUILD_NOTES calls this the only such evidence, and
-        // until now nothing read it.
+        // the obfuscator - BUILD_NOTES calls this the only such evidence. It
+        // does more work now that the shipped variants each pass a width: a
+        // renamed VBITS leaves the engine compiling, linking and solving at its
+        // own default, which is no longer the number the build asked for.
         snprintf(label, sizeof label, "%s reports the compiled lane count",
                  want->name);
-        check(label, got.lanes == 512);
+        check(label, got.lanes == EXPECT_LANES);
         snprintf(label, sizeof label, "%s says how many hops backed it", want->name);
         check(label, got.hops_used == 3);
+    }
+}
+
+// ---- the gap tolerance -----------------------------------------------------
+
+// Captures of one remote whose recovered counters are not adjacent -
+// FAACCRACK_MAX_COUNTER_GAP is what lets these solve entire, rather than only
+// over whichever window of the capture the caller guessed at.
+//
+// Same provenance as the table above and the same small seeds: generated from
+// this engine, found in the first block the sweep claims, nothing secret. The
+// counter asserted is the *last* hop's, which is the one a `.sub` is written
+// from, so a tolerance that silently dropped a hop would show up here.
+//
+// Five rows, because the test has that many things to get wrong. Gaps inside
+// the limit; a gap of exactly the limit, which pins the edge from below; a
+// capture at FAACCRACK_MIN_HOPS, the last rung of the caller's window ladder
+// and the only vector in this file that solves on two hops; one handed over in
+// reverse, which pins the second of the two direction flags, since every other
+// vector here runs upward and a regeneration that lost the reverse case would
+// otherwise tell a user with a backwards capture that no seed exists - that row
+// is also where the header's warning is checked, because it reports the counter
+// of the *oldest* press; and a BFT capture, whose step is compared under a
+// 16-bit CNT_MASK against 20 bits for Faac and Genius, which is a second path
+// through the same test rather than a second manufacturer.
+struct gapped_answer {
+    uint32_t mode;
+    uint32_t fix;
+    uint32_t hops[3];
+    uint32_t nhop;
+    uint32_t seed;
+    uint32_t counter;
+    const char *name;
+};
+
+static const struct gapped_answer gapped_answers[] = {
+    // Steps of nine then seven - eight presses missing, then six.
+    {3, 0xA0DC9330u, {0x293AC619u, 0xC3174969u, 0x56687900u}, 3, 0x00000789u,
+     0x00232u, "a gapped capture"},
+    // Steps of exactly the limit, twice.
+    {3, 0xA0DC9330u, {0x293AC619u, 0x56687900u, 0xBDC2C0C1u}, 3, 0x00000789u,
+     0x00242u, "a gap of exactly the limit"},
+    // The two ends of the row above. At two hops the direction half of the test
+    // is vacuous - any pair runs one way - so this pins the step magnitude and
+    // `hops_used`, not the direction.
+    {3, 0xA0DC9330u, {0x293AC619u, 0x56687900u}, 2, 0x00000789u, 0x00232u,
+     "a gapped two-hop capture"},
+    // The Genius row of the known-answer table, backwards. Solves, and reports
+    // 0x00222 where the forward order reports 0x00224: two presses behind the
+    // counter the receiver has already seen.
+    {3, 0xA0DC9330u, {0xCBCEFBA6u, 0x1EECA414u, 0x293AC619u}, 3, 0x00000789u,
+     0x00222u, "a capture in reverse"},
+    // Steps of nine then seven again, on the narrow counter.
+    {2, 0x200342E2u, {0x2F62BE4Bu, 0xDEF96F59u, 0x34CD15E7u}, 3, 0x00000456u,
+     0x1244u, "a gapped BFT capture"},
+};
+
+// Captures the test must *refuse*, one per clause of it. Hops only: the fix and
+// the mode come from `gapped_answers[0]` at the call site, because what makes
+// these cheap is that they are the same remote the rows above solve for - its
+// seed is in the first block the sweep claims, so an engine that wrongly
+// accepted would answer in milliseconds. Spelling the fix again here would let
+// a regenerated table leave these three pointed at a remote nothing else uses,
+// where all six checks would still pass.
+//
+//  * a step one press past the limit - the step-too-wide half of the test;
+//  * counters that go up and then back down, every step adjacent. The one shape
+//    the old pairwise test accepted and this one does not, so it is the only
+//    check that the direction clause exists at all: every other refusal here is
+//    rejected on width alone, and a regeneration that dropped the direction
+//    half would otherwise pass this entire file;
+//  * the same hop twice, so a step of zero - the other half, which is what a
+//    capture app that wrote one press twice would produce.
+struct refused_capture {
+    uint32_t hops[3];
+    const char *name;
+};
+
+static const struct refused_capture refused_captures[] = {
+    {{0x293AC619u, 0xAAA0F389u, 0xB811F847u}, "a gap one press past the limit"},
+    {{0x293AC619u, 0x1EECA414u, 0x293AC619u}, "counters that reverse"},
+    {{0x293AC619u, 0x293AC619u, 0x1EECA414u}, "the same hop twice"},
+};
+
+// Watches a sweep that is *supposed* not to finish, and stops it as soon as it
+// has gone far enough to prove the point.
+//
+// Far enough is one thousandth of the seed space, because the seed these
+// captures would wrongly solve for sits in the first block claimed - so a sweep
+// that has published any progress at all has already been past it and refused
+// it. That is the whole assertion, and taking it from the engine's own counter
+// rather than from a wall-clock budget is what makes it machine-independent: a
+// slow runner takes longer to get there and the check is just as sharp, where a
+// timed budget on a slow enough runner passes without proving anything.
+//
+// `deadline_ms` is only a backstop against an engine that publishes nothing at
+// all - a wedged sweep would otherwise hang CI rather than fail it - and
+// reaching it is a failure, not a pass.
+//
+// Separate from `stopper` below, which waits on `threads_started` instead and
+// makes assertions of its own about the stop landing.
+struct sweep_watch {
+    struct faaccrack_progress *channel;
+    unsigned deadline_ms;
+    // Caller -> watcher: the search returned, so there is nothing left to stop.
+    // Set before the join. Without it an engine that wrongly solved in
+    // milliseconds would leave this thread polling until the backstop.
+    volatile int search_returned;
+    int reached;   // progress was published, which is the assertion
+    int gave_up;   // the backstop fired first
+};
+
+static void *stop_once_swept(void *arg) {
+    struct sweep_watch *w = arg;
+    const uint64_t deadline = PROBE_NOW_MS() + w->deadline_ms;
+    for (;;) {
+        if (w->channel->permille >= 1) {
+            w->reached = 1;
+            break;
+        }
+        if (w->search_returned) break;
+        if (PROBE_NOW_MS() > deadline) {
+            w->gave_up = 1;
+            break;
+        }
+        PROBE_SLEEP_MS(1);
+    }
+    w->channel->abort = 1;
+    return NULL;
+}
+
+static void probe_gaps(void) {
+    for (size_t i = 0; i < sizeof gapped_answers / sizeof gapped_answers[0]; i++) {
+        const struct gapped_answer *want = &gapped_answers[i];
+        struct faaccrack_progress progress;
+        struct faaccrack_result got;
+        memset(&progress, 0, sizeof progress);
+
+        const int status = faaccrack_search(want->mode, want->fix, want->hops,
+                                            want->nhop, 2, &progress, &got);
+
+        char label[96];
+        snprintf(label, sizeof label, "%s solves", want->name);
+        check_eq(label, status, FAACCRACK_OK);
+        if (status != FAACCRACK_OK) continue;
+
+        snprintf(label, sizeof label, "%s gives the right seed", want->name);
+        check(label, got.seed == want->seed);
+        snprintf(label, sizeof label, "%s reports the last counter", want->name);
+        check(label, got.counter == want->counter);
+        snprintf(label, sizeof label, "%s rebuilds the captured frame", want->name);
+        check(label, got.round_trip_ok == 1);
+        snprintf(label, sizeof label, "%s used every hop it was given", want->name);
+        check(label, got.hops_used == want->nhop);
+    }
+
+    // A refusal costs what a rejection costs - the whole seed space, which is
+    // minutes at the two threads asked for below - so each is stopped as soon as
+    // the engine's own counter says it has swept past the seed these captures
+    // would wrongly solve for. `stop_once_swept` has the reasoning.
+    for (size_t i = 0; i < sizeof refused_captures / sizeof refused_captures[0];
+         i++) {
+        const struct refused_capture *want = &refused_captures[i];
+        struct faaccrack_progress running;
+        struct faaccrack_result result;
+        memset(&running, 0, sizeof running);
+        struct sweep_watch watch = {&running, 5000u, 0, 0, 0};
+
+        pthread_t watcher;
+        if (pthread_create(&watcher, 0, stop_once_swept, &watch) != 0) {
+            check("the watcher thread starts", 0);
+            return;
+        }
+        // The fix and the mode of the row these were generated against, so the
+        // table cannot be regenerated out from under them. Mode 3 arrives here
+        // as the table's own literal, which is deliberate: the engine
+        // hard-codes the four numbers, so a macro would still pass after a
+        // renumbering had sent another manufacturer's key.
+        const int status =
+            faaccrack_search(gapped_answers[0].mode, gapped_answers[0].fix,
+                             want->hops, 3, 2, &running, &result);
+        watch.search_returned = 1;
+        pthread_join(watcher, 0);
+
+        char label[96];
+        snprintf(label, sizeof label, "%s is swept past and refused", want->name);
+        check(label, watch.reached && !watch.gave_up);
+        // Pairs with the progress. An engine that wrongly accepted answers OK
+        // from the first block, before any progress is published, so the two
+        // together are what make this neither vacuous nor timing-dependent.
+        snprintf(label, sizeof label, "%s ends as stopped, not solved", want->name);
+        check_eq(label, status, FAACCRACK_STOPPED);
     }
 }
 
@@ -302,9 +527,13 @@ static void *stopper(void *arg) {
     // Then let it run a little. Without this the abort arrives while the
     // workers are claiming their first chunk, which proves the flag is read but
     // not that it is read *again* - and reading it once is exactly the bug this
-    // engine was written to avoid. `permille` is no use as the signal: it is
-    // integer thousandths of 65536 chunks, so it stays 0 for the first sixty-odd
-    // and waiting for it to move would cost most of a second.
+    // engine was written to avoid.
+    //
+    // A fixed wait rather than waiting for `permille` to move, because this
+    // group wants the abort to land *early* - the assertion below is that a stop
+    // arrives in under two seconds. The gaps group does wait on `permille` and
+    // measures it at about 110 ms at these two threads, so the two are different
+    // needs rather than a premise that changed.
     PROBE_SLEEP_MS(25);
 
     // While that sweep is in flight, a second search must be turned away.
@@ -370,6 +599,9 @@ int main(void) {
     mark = checks;
     probe_known_answers();
     group_done("known-answers", mark);
+    mark = checks;
+    probe_gaps();
+    group_done("gaps", mark);
     mark = checks;
     probe_refusals();
     group_done("refusals", mark);

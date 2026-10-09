@@ -2,6 +2,7 @@ import '../../../services/localization/l10n.dart';
 
 import 'dart:io' as io;
 
+import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -92,10 +93,21 @@ Future<void> shareRemoteFile(
   String? displayName,
   int expectedSize = 0,
 }) async {
-  final localPath = await controller.downloadTo(
-    remotePath,
-    expectedSize: expectedSize,
-  );
+  final String? localPath;
+  try {
+    localPath = await controller.downloadTo(
+      remotePath,
+      expectedSize: expectedSize,
+    );
+  } on FlipperCancelledException catch (e) {
+    if (context.mounted && controller.cancelAcknowledged(e)) {
+      context.showNotification(
+        l10n.fmTransferCancelled,
+        type: QNotificationType.warning,
+      );
+    }
+    return;
+  }
   if (!context.mounted) return;
   if (localPath == null) {
     context.showNotification(

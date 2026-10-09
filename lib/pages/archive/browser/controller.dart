@@ -1,7 +1,9 @@
 import '../../../services/localization/l10n.dart';
 
+import 'dart:async';
 import 'dart:io' as io;
 
+import 'package:crypto/crypto.dart';
 import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/foundation.dart';
 
@@ -12,11 +14,20 @@ import '../../../services/logging.dart';
 import '../../../services/telemetry/traced.dart';
 
 class RemoteEntry {
-  RemoteEntry({required this.name, required this.size, required this.isDir});
+  RemoteEntry({
+    required this.name,
+    required this.size,
+    required this.isDir,
+    this.pending = false,
+  });
 
   final String name;
   final int size;
   final bool isDir;
+
+  /// Still arriving: the row stands for a transfer into this folder and is
+  /// not an entry the Flipper has listed yet.
+  final bool pending;
 
   bool get isHidden => name.startsWith('.');
 
@@ -24,6 +35,122 @@ class RemoteEntry {
     final dot = name.lastIndexOf('.');
     return dot < 0 ? '' : name.substring(dot + 1).toLowerCase();
   }
+}
+
+/// A file about to be written over one that is already in the destination.
+class FileConflict {
+  const FileConflict({
+    required this.name,
+    required this.size,
+    required this.existingSize,
+    required this.siblings,
+  });
+
+  /// Path relative to the destination folder of the transfer.
+  final String name;
+  final int size;
+  final int existingSize;
+
+  /// Names already present in the folder the file lands in, so a new name can
+  /// be checked before it is tried.
+  final Set<String> siblings;
+}
+
+enum ConflictAction { skip, replace, rename }
+
+class ConflictChoice {
+  const ConflictChoice.skip() : action = ConflictAction.skip, newName = null;
+  const ConflictChoice.replace()
+    : action = ConflictAction.replace,
+      newName = null;
+  const ConflictChoice.rename(String name)
+    : action = ConflictAction.rename,
+      newName = name;
+
+  final ConflictAction action;
+  final String? newName;
+}
+
+class ConflictResolution {
+  const ConflictResolution({
+    required this.choices,
+    required this.skipIdentical,
+  });
+
+  /// One per conflict, in the order they were asked.
+  final List<ConflictChoice> choices;
+
+  /// Leave a file alone when its checksum matches the one being written.
+  final bool skipIdentical;
+}
+
+/// Asked once per transfer, before anything is written. A null answer skips
+/// every conflict.
+typedef ConflictResolver = Future<ConflictResolution?> Function(
+  String destination,
+  int items,
+  List<FileConflict> conflicts,
+);
+
+typedef _Listing = Map<String, ({bool isDir, int size})>;
+
+class _Job {
+  _Job({
+    required this.item,
+    required this.remote,
+    required this.size,
+    required this.run,
+    this.existing,
+    this.sourceMd5,
+  });
+
+  /// The entry of the destination folder this file belongs to: the file
+  /// itself, or the top-level folder it sits under.
+  final String item;
+  final String remote;
+  final int size;
+  final _Listing? existing;
+  final Future<String?> Function()? sourceMd5;
+  final Future<bool> Function(
+    String target,
+    void Function(double progress) onProgress,
+  )
+  run;
+
+  int? get existingSize {
+    final hit = existing?[basename(remote)];
+    return hit == null || hit.isDir ? null : hit.size;
+  }
+}
+
+class _Outcome {
+  final failed = <String>[];
+  final skipped = <String>[];
+  final failedItems = <String>{};
+  final skippedItems = <String>{};
+
+  void fail(_Job job) {
+    failed.add(job.remote);
+    failedItems.add(job.item);
+  }
+
+  void skip(_Job job) {
+    skipped.add(job.remote);
+    skippedItems.add(job.item);
+  }
+}
+
+class _Transfer {
+  _Transfer({required this.dir, required this.upload, this.label});
+
+  final String dir;
+  final bool upload;
+  final Map<String, RemoteEntry> pending = {};
+  String? label;
+  double progress = 0;
+  bool cancelled = false;
+  String? busy;
+  double busyProgress = 0;
 }
 
 /// How directory contents are ordered. Folders are always grouped ahead of
@@ -36,7 +163,19 @@ class FileManagerController extends ChangeNotifier {
   FileManagerController({required this._client, String initialPath = '/ext'})
     : _path = initialPath;
 
+  /// How long a cancelled read is given to stop arriving before the firmware
+  /// is taken not to know about cancelling at all.
+  static const _cancelAcknowledgement = Duration(seconds: 8);
+
+  /// The most the firmware puts in one frame of a read answer. A file this
+  /// small arrives whole in that frame and may be fetched beside anything;
+  /// anything larger is a download of its own, and only one runs at a time.
+  static const _oneFrame = 512;
+
   final FlipperClient _client;
+  final _unacknowledged = Expando<bool>();
+  final Map<String, Future<String?>> _downloads = {};
+  bool _downloading = false;
   bool _disposed = false;
   String _path;
   bool _loading = false;
@@ -44,10 +183,9 @@ class FileManagerController extends ChangeNotifier {
   String? _lastFailure;
   List<RemoteEntry> _entries = const [];
   bool _showHidden = true;
-  double _transferProgress = 0;
-  String? _transferLabel;
-  String? _busyEntry;
-  double _busyEntryProgress = 0;
+  Future<void> _transfers = Future<void>.value();
+  final Set<_Transfer> _active = {};
+  _Transfer? _batch;
   FileSortMode _sortMode = FileSortMode.type;
   bool _sortAscending = true;
   FileViewMode _viewMode = FileViewMode.list;
@@ -72,21 +210,59 @@ class FileManagerController extends ChangeNotifier {
   String? get lastFailure => _lastFailure;
 
   bool get showHidden => _showHidden;
-  double get transferProgress => _transferProgress;
-  String? get transferLabel => _transferLabel;
+  double get transferProgress => _batch?.progress ?? 0;
+  String? get transferLabel => _batch?.label;
+  bool get transferIsUpload => _batch?.upload ?? false;
+  bool get cancelRequested => _batch?.cancelled ?? false;
+
+  /// Whether the Flipper actually stopped the transfer that threw [e]. False
+  /// when it went on sending past [_cancelAcknowledgement]: the transfer is
+  /// then dropped from the screen without a word, since the firmware will
+  /// finish it regardless and "cancelled" would be a lie. Asked of the
+  /// exception rather than kept in a field, because transfers run side by
+  /// side and each ends in its own cancel.
+  bool cancelAcknowledged(FlipperCancelledException e) =>
+      _unacknowledged[e] != true;
+
+  /// Whether [entries] may be downloaded now: always when each is a file of
+  /// one frame, otherwise only while no other download is running. There is
+  /// no queue - what cannot start now does not start.
+  bool canDownload(Iterable<RemoteEntry> entries) =>
+      !_downloading || !_large(entries);
+
+  bool _large(Iterable<RemoteEntry> entries) =>
+      entries.any((e) => e.isDir || e.size > _oneFrame);
+
+  void cancelTransfer() => _cancel(_batch);
+
+  void cancelEntry(String name) => _cancel(_onEntry(name));
+
+  bool entryCancelling(String name) => _onEntry(name)?.cancelled ?? false;
 
   /// Inline transfer progress (0..1) for the entry named [name] in the current
-  /// directory while a single-file action is downloading it, or null when idle.
-  double? entryProgress(String name) =>
-      _busyEntry == name ? _busyEntryProgress : null;
+  /// directory while a transfer is working on it, or null when idle.
+  double? entryProgress(String name) => _onEntry(name)?.busyProgress;
+
+  void _cancel(_Transfer? transfer) {
+    if (transfer == null || transfer.cancelled) return;
+    transfer.cancelled = true;
+    _notify();
+  }
+
+  _Transfer? _onEntry(String name) {
+    for (final t in _active) {
+      if (t.dir == _path && t.busy == name) return t;
+    }
+    return null;
+  }
+
   FileSortMode get sortMode => _sortMode;
   bool get sortAscending => _sortAscending;
   FileViewMode get viewMode => _viewMode;
-  String get search => _search;
   bool get isSearching => _search.trim().isNotEmpty;
 
   /// The storage root (`/ext`, `/int`, …) that the current path lives under.
-  String get storageRoot {
+  String get _storageRoot {
     final trimmed = _path.startsWith('/') ? _path.substring(1) : _path;
     final slash = trimmed.indexOf('/');
     final first = slash < 0 ? trimmed : trimmed.substring(0, slash);
@@ -115,7 +291,14 @@ class FileManagerController extends ChangeNotifier {
 
   List<RemoteEntry> _filtered(bool Function(RemoteEntry) test) {
     final q = _search.trim().toLowerCase();
-    final list = _entries.where((e) {
+    final listed = _entries.map((e) => e.name).toSet();
+    final all = [
+      ..._entries,
+      for (final t in _active)
+        if (t.dir == _path)
+          ...t.pending.values.where((e) => !listed.contains(e.name)),
+    ];
+    final list = all.where((e) {
       if (!_showHidden && e.isHidden) return false;
       if (q.isNotEmpty && !e.name.toLowerCase().contains(q)) return false;
       return test(e);
@@ -124,15 +307,13 @@ class FileManagerController extends ChangeNotifier {
   }
 
   /// Directories in the current folder, filtered + sorted.
-  List<RemoteEntry> get folders => _filtered((e) => e.isDir);
+  List<RemoteEntry> get _folders => _filtered((e) => e.isDir);
 
   /// Files in the current folder, filtered + sorted.
-  List<RemoteEntry> get files => _filtered((e) => !e.isDir);
+  List<RemoteEntry> get _files => _filtered((e) => !e.isDir);
 
-  /// Folders followed by files. Retained for callers that want a flat list.
-  List<RemoteEntry> get entries => [...folders, ...files];
-
-  bool get isEmptyAfterFilter => folders.isEmpty && files.isEmpty;
+  /// Folders followed by files.
+  List<RemoteEntry> get entries => [..._folders, ..._files];
 
   bool get canGoUp => _path.length > 1 && _path != '/';
 
@@ -143,12 +324,6 @@ class FileManagerController extends ChangeNotifier {
       _sortMode = mode;
       _sortAscending = true;
     }
-    _notify();
-  }
-
-  void setViewMode(FileViewMode mode) {
-    if (_viewMode == mode) return;
-    _viewMode = mode;
     _notify();
   }
 
@@ -192,9 +367,16 @@ class FileManagerController extends ChangeNotifier {
     await open(parent);
   }
 
-  String childPath(String name) {
-    if (_path.endsWith('/')) return '$_path$name';
-    return '$_path/$name';
+  String childPath(String name) => _join(_path, name);
+
+  String _join(String dir, String name) =>
+      dir.endsWith('/') ? '$dir$name' : '$dir/$name';
+
+  String _relative(String dir, String remotePath) {
+    final prefix = _join(dir, '');
+    return remotePath.startsWith(prefix)
+        ? remotePath.substring(prefix.length)
+        : basename(remotePath);
   }
 
   /// Runs [body] as one task, bound to the Flipper it starts against.
@@ -210,13 +392,338 @@ class FileManagerController extends ChangeNotifier {
   Future<T> _task<T>(Future<T> Function() body) =>
       _client.runTask(FlipperRequestPriority.background, body);
 
+  /// Runs one transfer. Queued transfers wait for each other and own the
+  /// progress bar; an unqueued one - a file opened or shared - runs alongside
+  /// and shows only on its own row, so a long batch never blocks a tap.
+  Future<T> _transfer<T>({
+    required String dir,
+    required bool upload,
+    required bool batch,
+    bool queued = true,
+    required Future<T> Function(_Transfer t) body,
+  }) {
+    Future<T> run() => _task(() async {
+      final t = _Transfer(
+        dir: dir,
+        upload: upload,
+        label: batch ? l10n.fmPreparingTransfer : null,
+      );
+      _active.add(t);
+      if (queued) _batch = t;
+      _notify();
+      try {
+        return await body(t);
+      } finally {
+        _active.remove(t);
+        if (identical(_batch, t)) _batch = null;
+        _notify();
+      }
+    });
+    if (!queued) return run();
+    final previous = _transfers;
+    final released = Completer<void>();
+    _transfers = released.future;
+    return previous.then((_) => run()).whenComplete(released.complete);
+  }
+
+  /// Runs [download], and while it lasts refuses every other one that is
+  /// [large] - the page asks [canDownload] first, so this only ever meets a
+  /// second one by mistake.
+  Future<T> _download<T>(bool large, Future<T> Function() download) {
+    if (!large) return download();
+    if (_downloading) throw StateError('A download is already running');
+    _downloading = true;
+    _notify();
+    return download().whenComplete(() {
+      _downloading = false;
+      _notify();
+    });
+  }
+
+  void _throwIfCancelled(_Transfer t, String path) {
+    if (!t.cancelled) return;
+    throw t.upload
+        ? FlipperWriteCancelledException(path)
+        : FlipperReadCancelledException(path);
+  }
+
+  void _track(_Transfer t, String item, {bool? isDir, int size = 0}) {
+    t.busy = item;
+    if (isDir != null) {
+      t.pending[item] = RemoteEntry(
+        name: item,
+        size: size,
+        isDir: isDir,
+        pending: true,
+      );
+    }
+    _notify();
+  }
+
+  void _transferFailed(String what, String path, Object e) {
+    _error = _lastFailure = '$e';
+    LogService.warn('[FileManager] $what $path failed: $e');
+    _notify();
+  }
+
+  Future<_Outcome> _runJobs(
+    _Transfer t,
+    List<_Job> jobs, {
+    required String Function(String name, int index, int total) label,
+    Map<String, bool>? pendingDirs,
+    ConflictResolver? resolve,
+  }) async {
+    final outcome = _Outcome();
+    final skipped = <_Job>{};
+    final renamed = <_Job, String>{};
+    var skipIdentical = false;
+    final conflicts = jobs.where((job) => job.existingSize != null).toList();
+    if (conflicts.isNotEmpty && resolve != null) {
+      final answer = await resolve(t.dir, jobs.length, [
+        for (final c in conflicts)
+          FileConflict(
+            name: _relative(t.dir, c.remote),
+            size: c.size,
+            existingSize: c.existingSize!,
+            siblings: c.existing!.keys.toSet(),
+          ),
+      ]);
+      for (var i = 0; i < conflicts.length; i++) {
+        final choice = answer?.choices[i] ?? const ConflictChoice.skip();
+        switch (choice.action) {
+          case ConflictAction.skip:
+            skipped.add(conflicts[i]);
+          case ConflictAction.replace:
+            break;
+          case ConflictAction.rename:
+            renamed[conflicts[i]] = _join(
+              dirname(conflicts[i].remote),
+              choice.newName!,
+            );
+        }
+      }
+      skipIdentical = answer?.skipIdentical ?? false;
+    }
+
+    final progress = _BatchProgress(jobs);
+    final throttle = ProgressThrottle();
+    void publish() {
+      t.progress = progress.overall;
+      t.busyProgress = progress.item;
+      if (throttle.shouldEmit(t.progress)) _notify();
+    }
+
+    if (jobs.length <= 1) t.label = null;
+    for (var i = 0; i < jobs.length; i++) {
+      final job = jobs[i];
+      _throwIfCancelled(t, job.remote);
+      progress.start(job);
+      final replacing = job.existingSize != null && !renamed.containsKey(job);
+      if (skipped.contains(job) ||
+          (replacing && skipIdentical && await _sameContent(job))) {
+        outcome.skip(job);
+        progress.finish();
+        publish();
+        continue;
+      }
+      final target = renamed[job] ?? job.remote;
+      final row =
+          renamed.containsKey(job) && _relative(t.dir, job.remote) == job.item
+          ? basename(target)
+          : job.item;
+      if (jobs.length > 1) {
+        t.label = label(basename(target), i + 1, jobs.length);
+      }
+      t.busyProgress = progress.item;
+      _track(t, row, isDir: pendingDirs?[job.item], size: progress.itemTotal);
+      final ok = await job.run(target, (p) {
+        progress.file = p;
+        publish();
+      });
+      if (!ok) outcome.fail(job);
+      progress.finish();
+      publish();
+    }
+    return outcome;
+  }
+
+  Future<bool> _sameContent(_Job job) async {
+    final source = await job.sourceMd5?.call();
+    if (source == null) return false;
+    final existing = await _remoteMd5(job.remote);
+    return existing != null && existing == source.toLowerCase();
+  }
+
+  Future<String?> _remoteMd5(String remotePath) async {
+    try {
+      final batch = await _client.storageMd5sum(
+        Md5sumRequest(path: remotePath),
+        timeout: const Duration(seconds: 15),
+      );
+      final sum = batch.items.isEmpty
+          ? ''
+          : batch.items.first.md5sum.trim().toLowerCase();
+      return sum.isEmpty ? null : sum;
+    } catch (e) {
+      LogService.warn('[FileManager] md5 $remotePath failed: $e');
+      return null;
+    }
+  }
+
+  Future<_Listing> _listing(String remoteDir) async {
+    try {
+      final batch = await _client.storageList(
+        ListRequest(path: remoteDir),
+        timeout: const Duration(seconds: 30),
+      );
+      return {
+        for (final r in batch.items)
+          for (final f in r.file)
+            f.name: (isDir: f.type == File_FileType.DIR, size: f.size),
+      };
+    } catch (e) {
+      LogService.warn('[FileManager] list $remoteDir failed: $e');
+      return const {};
+    }
+  }
+
+  /// The listing of [remoteDir] when [parent] already has a folder named
+  /// [name] there, so files under it can be checked for conflicts.
+  Future<_Listing?> _existingDir(
+    _Listing? parent,
+    String name,
+    String remoteDir,
+  ) async => parent?[name]?.isDir == true ? _listing(remoteDir) : null;
+
+  Future<List<int>?> _read(
+    _Transfer t,
+    String remotePath,
+    int expectedSize,
+    void Function(double progress) onProgress,
+  ) async {
+    try {
+      return await _client.storageReadChunked(
+        remotePath,
+        expectedSize: expectedSize,
+        onProgress: onProgress,
+        isCancelled: () => t.cancelled,
+      );
+    } on FlipperReadCancelledException catch (e) {
+      final drained = await e.drained
+          .then((_) => true)
+          .timeout(_cancelAcknowledgement, onTimeout: () => false);
+      if (!drained) _unacknowledged[e] = true;
+      rethrow;
+    } catch (e) {
+      _transferFailed('read', remotePath, e);
+      return null;
+    }
+  }
+
+  /// Timed as one operation — ADR 0013 §2 names file transfer, and names
+  /// counting the restarts with it.
+  ///
+  /// Here rather than on `writeBytes`, because every write in the batching
+  /// architecture comes through this one method - a single upload, the write
+  /// half of a copy, and each file of a move. One wrap covers all three, where
+  /// the earlier placement on `writeBytes` covered only the first.
+  ///
+  /// **A restart shows as progress going backwards.** `autoReconnect` is on,
+  /// and when the link drops `client/api/storage.dart` waits for the session
+  /// and starts the upload again from offset 0 - **exactly once**, because the
+  /// firmware opens the file with CREATE_ALWAYS so a restart from zero is
+  /// safe. It drives `onProgress` from `offset / total`, so the fall-back is
+  /// visible here; within an attempt progress only rises. The restart is not
+  /// announced through the callback, so this is the only signal on the app's
+  /// side, and `test/transfer_restart_count_test.dart` drives the real library
+  /// rather than trusting that reading.
+  ///
+  /// Counted at the callback, before anything the caller does with the value.
+  /// The progress a *screen* sees is throttled and reset between jobs, so
+  /// nothing watching it could tell a restart from an ordinary finish - which
+  /// is the wrong-reason pass that test records having been fixed. It also
+  /// under-counts when the drop lands before the first `onProgress` of the
+  /// first attempt, since the high-water mark is still zero.
+  ///
+  /// The path is noted and the scrubber earns its keep on it: `/ext/nfc/Office
+  /// badge.nfc` arrives with the filename replaced, leaving the directory and
+  /// the extension - which is the half worth having, since it says what kind
+  /// of thing was being written and not whose card it was.
+  Future<bool> _write(
+    _Transfer t,
+    String remotePath,
+    List<int> data,
+    void Function(double progress) onProgress,
+  ) => traced('file.transfer', (trace) async {
+    trace.note('path', remotePath);
+    trace.note('bytes', data.length);
+    var highWater = 0.0;
+    try {
+      await _client.storageWriteChunked(
+        remotePath,
+        data,
+        onProgress: (p) {
+          if (p < highWater) trace.count('restarts');
+          highWater = p;
+          onProgress(p);
+        },
+        isCancelled: () => t.cancelled,
+      );
+      return true;
+    } on FlipperCancelledException {
+      // Noted and rethrown. A cancel is the user's own decision rather than a
+      // fault, but `traced` has only two verdicts and a throw is one of them -
+      // so the span says `internal_error` and this field is what tells a
+      // reader it was asked for.
+      trace.note('cancelled', true);
+      rethrow;
+    } catch (e) {
+      // `trace.failed()` because this catches and answers `false`; without it
+      // a refused write would arrive as a successful transfer.
+      trace.failed('$e');
+      _transferFailed('write', remotePath, e);
+      return false;
+    }
+  });
+
+  Future<String?> _saveLocal(
+    String remotePath,
+    List<int> bytes,
+    Future<String> Function() localPath,
+  ) async {
+    try {
+      final file = io.File(await localPath());
+      await file.parent.create(recursive: true);
+      await file.writeAsBytes(bytes, flush: true);
+      return file.path;
+    } catch (e) {
+      // The half after the device: a folder that cannot be made or a disk
+      // with no room threw out of here into callers with no catch, so opening
+      // a file in the editor on a full phone produced an unlabelled
+      // [uncaught] and an editor that never opened. #110.
+      _transferFailed('save', remotePath, e);
+      return null;
+    }
+  }
+
+  Future<void> _mkdirQuietly(String remotePath) async {
+    try {
+      await _client.storageMkdir(
+        MkdirRequest(path: remotePath),
+        timeout: const Duration(seconds: 15),
+      );
+    } catch (_) {
+      // Destination directory may already exist; keep going.
+    }
+  }
+
   Future<void> refresh() => _task(_refresh);
 
   Future<void> _refresh() async {
     // Internal storage (`/int`) holds mostly dot-prefixed system files, so
     // reveal hidden entries automatically when first entering that root. The
     // user can still toggle them off afterwards.
-    final root = storageRoot;
+    final root = _storageRoot;
     if (root != _lastRoot) {
       _lastRoot = root;
       if (root == '/int') _showHidden = true;
@@ -269,73 +776,30 @@ class FileManagerController extends ChangeNotifier {
     }
   }
 
-  /// Timed as one operation — ADR 0013 §2 names file transfer, and names
-  /// counting the restarts with it.
-  ///
-  /// **A restart shows as progress going backwards.** `autoReconnect` is on,
-  /// and when the link drops `client/api/storage.dart` waits for the session
-  /// and starts the upload again from offset 0 - **exactly once**, because the
-  /// firmware opens the file with CREATE_ALWAYS so a restart from zero is
-  /// safe. It drives `onProgress` from `offset / total`, so the fall-back is
-  /// visible here; within an attempt progress only rises. The restart is not
-  /// announced through the callback, so this is the only signal on the app's
-  /// side, and `test/transfer_restart_count_test.dart` drives the real library
-  /// rather than trusting that reading.
-  ///
-  /// Counted at the callback, not from anything watching `transferProgress`.
-  /// That field is reset to 0 in this method's own `finally`, so a listener
-  /// sees a fall to zero on **every** upload and cannot tell a restart from an
-  /// ordinary finish - which is the wrong-reason pass
-  /// `transfer_restart_count_test.dart` records having been fixed.
-  ///
-  /// `ProgressThrottle` is not the reason: its gate is `(progress - _last).abs()
-  /// >= minDelta`, with no direction in it, so a fall from 0.6 to 0.05 emits.
-  /// This comment claimed it swallowed the step, which it does only when the
-  /// link drops inside the first fraction of a percent.
-  ///
-  /// The heuristic also under-counts when the drop lands before the first
-  /// `onProgress` of the first attempt, since the high-water mark is still
-  /// zero.
-  ///
-  /// `trace.failed()` because this catches and answers `false`; without it a
-  /// refused write would arrive as a successful transfer.
-  ///
-  /// The path is noted and the scrubber earns its keep on it: `/ext/nfc/Office
-  /// badge.nfc` arrives with the filename replaced, leaving the directory and
-  /// the extension - which is the half worth having, since it says what kind
-  /// of thing was being written and not whose card it was.
-  Future<bool> writeBytes(String remotePath, List<int> data) =>
-      traced('file.transfer', (trace) async {
-        trace.note('path', remotePath);
-        trace.note('bytes', data.length);
-        _transferLabel = l10n.fmUploading(basename(remotePath));
-        _transferProgress = 0;
-        _notify();
-        final throttle = ProgressThrottle();
-        var highWater = 0.0;
-        try {
-          await _client.storageWriteChunked(
-            remotePath,
-            data,
-            onProgress: (p) {
-              if (p < highWater) trace.count('restarts');
-              highWater = p;
-              _transferProgress = p;
-              if (throttle.shouldEmit(p)) _notify();
-            },
-          );
-          return true;
-        } catch (e) {
-          _error = _lastFailure = '$e';
-          trace.failed('$e');
-          LogService.info('[FileManager] write $remotePath failed: $e');
-          return false;
-        } finally {
-          _transferLabel = null;
-          _transferProgress = 0;
-          _notify();
-        }
-      });
+  Future<bool> writeBytes(String remotePath, List<int> data) {
+    final name = basename(remotePath);
+    return _transfer(
+      dir: dirname(remotePath),
+      upload: true,
+      batch: false,
+      body: (t) async {
+        final outcome = await _runJobs(
+          t,
+          [
+            _Job(
+              item: name,
+              remote: remotePath,
+              size: data.length,
+              run: (target, onProgress) => _write(t, target, data, onProgress),
+            ),
+          ],
+          label: l10n.fmUploadingOf,
+          pendingDirs: {name: false},
+        );
+        return outcome.failed.isEmpty;
+      },
+    );
+  }
 
   Future<bool> delete(String remotePath, {bool recursive = false}) async {
     try {
@@ -387,67 +851,156 @@ class FileManagerController extends ChangeNotifier {
     }
   }
 
-  Future<bool> copy(String fromPath, String toPath) =>
-      _task(() => _copy(fromPath, toPath));
-
-  Future<bool> _copy(String fromPath, String toPath) async {
-    final bytes = await readBytes(fromPath);
-    if (bytes == null) return false;
-    return writeBytes(toPath, bytes);
-  }
-
-  /// Copies a file or, for directories, the whole tree (creating folders and
-  /// streaming each file). Returns false on the first failure.
-  Future<bool> copyEntry(
-    String fromPath,
-    String toPath, {
-    required bool isDir,
+  /// Copies [sources] - files and whole folders from anywhere on the Flipper -
+  /// into the current directory, deleting each source afterwards when [move].
+  /// Returns the number of sources that did not arrive whole.
+  Future<int> copyInto(
+    List<({String path, bool isDir, int size})> sources, {
+    required bool move,
+    ConflictResolver? resolve,
   }) {
-    return isDir ? copyRecursive(fromPath, toPath) : copy(fromPath, toPath);
+    final dir = _path;
+    return _transfer(
+      dir: dir,
+      upload: true,
+      batch: sources.length > 1,
+      body: (t) async {
+        final here = await _listing(dir);
+        final dirs = <String>[];
+        final jobs = <_Job>[];
+        final isDir = <String, bool>{};
+        final unlisted = <String>{};
+        for (final source in sources) {
+          _throwIfCancelled(t, source.path);
+          final name = basename(source.path);
+          final dest = _join(dir, name);
+          isDir[name] = source.isDir;
+          if (!source.isDir) {
+            jobs.add(
+              _copyJob(t, source.path, dest, source.size, name, here, move),
+            );
+            continue;
+          }
+          if (sources.length == 1) _track(t, name, isDir: true);
+          final existing = await _existingDir(here, name, dest);
+          final itemDirs = <String>[];
+          final itemJobs = <_Job>[];
+          final listed = await _planCopy(
+            t,
+            source.path,
+            dest,
+            itemDirs,
+            itemJobs,
+            name,
+            existing,
+            move,
+          );
+          if (listed) {
+            dirs.addAll(itemDirs);
+            jobs.addAll(itemJobs);
+          } else {
+            unlisted.add(name);
+          }
+        }
+        for (final d in dirs) {
+          _throwIfCancelled(t, d);
+          await _mkdirQuietly(d);
+        }
+        final outcome = await _runJobs(
+          t,
+          jobs,
+          label: l10n.fmCopyingOf,
+          pendingDirs: isDir,
+          resolve: resolve,
+        );
+        var failures = unlisted.length + outcome.failedItems.length;
+        if (!move) return failures;
+        for (final source in sources) {
+          final name = basename(source.path);
+          if (!source.isDir ||
+              unlisted.contains(name) ||
+              outcome.failedItems.contains(name) ||
+              outcome.skippedItems.contains(name)) {
+            continue;
+          }
+          if (!await delete(source.path, recursive: true)) failures++;
+        }
+        return failures;
+      },
+    );
   }
 
-  Future<bool> copyRecursive(String fromPath, String toPath) =>
-      _task(() => _copyRecursive(fromPath, toPath));
-
-  Future<bool> _copyRecursive(String fromPath, String toPath) async {
-    try {
-      await _client.storageMkdir(
-        MkdirRequest(path: toPath),
-        timeout: const Duration(seconds: 15),
-      );
-    } catch (_) {
-      // Destination directory may already exist; keep going.
-    }
+  Future<bool> _planCopy(
+    _Transfer t,
+    String fromDir,
+    String toDir,
+    List<String> dirs,
+    List<_Job> jobs,
+    String item,
+    _Listing? existing,
+    bool move,
+  ) async {
+    dirs.add(toDir);
     try {
       final batch = await _client.storageList(
-        ListRequest(path: fromPath),
+        ListRequest(path: fromDir),
         timeout: const Duration(seconds: 30),
       );
       for (final r in batch.items) {
         for (final f in r.file) {
-          final childFrom = fromPath.endsWith('/')
-              ? '$fromPath${f.name}'
-              : '$fromPath/${f.name}';
-          final childTo = toPath.endsWith('/')
-              ? '$toPath${f.name}'
-              : '$toPath/${f.name}';
+          _throwIfCancelled(t, fromDir);
+          final from = _join(fromDir, f.name);
+          final to = _join(toDir, f.name);
           if (f.type == File_FileType.DIR) {
-            if (!await copyRecursive(childFrom, childTo)) return false;
+            final child = await _existingDir(existing, f.name, to);
+            final listed = await _planCopy(
+              t,
+              from,
+              to,
+              dirs,
+              jobs,
+              item,
+              child,
+              move,
+            );
+            if (!listed) return false;
           } else {
-            final bytes = await readBytes(childFrom);
-            if (bytes == null) return false;
-            if (!await writeBytes(childTo, bytes)) return false;
+            jobs.add(_copyJob(t, from, to, f.size, item, existing, move));
           }
         }
       }
       return true;
+    } on FlipperCancelledException {
+      rethrow;
     } catch (e) {
-      _error = _lastFailure = '$e';
-      LogService.info('[FileManager] copyRecursive $fromPath failed: $e');
-      _notify();
+      _transferFailed('list', fromDir, e);
       return false;
     }
   }
+
+  _Job _copyJob(
+    _Transfer t,
+    String from,
+    String to,
+    int size,
+    String item,
+    _Listing? existing,
+    bool move,
+  ) => _Job(
+    item: item,
+    remote: to,
+    size: size,
+    existing: existing,
+    sourceMd5: () => _remoteMd5(from),
+    run: (target, onProgress) async {
+      final bytes = await _read(t, from, size, (p) => onProgress(p / 2));
+      if (bytes == null) return false;
+      if (!await _write(t, target, bytes, (p) => onProgress(0.5 + p / 2))) {
+        return false;
+      }
+      return !move || await delete(from);
+    },
+  );
 
   Future<bool> rename(String oldPath, String newPath) async {
     try {
@@ -464,106 +1017,99 @@ class FileManagerController extends ChangeNotifier {
     }
   }
 
-  Future<String?> downloadTo(
+  /// Reads [remotePath] for a receiver outside the app - a drag that landed
+  /// elsewhere - alongside whatever else is running. Null when the read failed
+  /// or [onCancel] fired first.
+  Future<List<int>?> exportBytes(
     String remotePath, {
-    String? localFolder,
     int expectedSize = 0,
-  }) => _task(
-    () => _downloadTo(
-      remotePath,
-      localFolder: localFolder,
-      expectedSize: expectedSize,
-    ),
-  );
-
-  Future<String?> _downloadTo(
-    String remotePath, {
-    String? localFolder,
-    int expectedSize = 0,
+    Listenable? onCancel,
+    void Function(double progress)? onProgress,
   }) async {
-    final bytes = await _readEntryWithProgress(remotePath, expectedSize);
-    if (bytes == null) return null;
     try {
-      final dir = io.Directory(
-        localFolder ?? await _defaultDownloadDir(remotePath),
-      );
-      await dir.create(recursive: true);
-      final sep = io.Platform.pathSeparator;
-      final file = io.File('${dir.path}$sep${basename(remotePath)}');
-      await file.writeAsBytes(bytes, flush: true);
-      return file.path;
-    } catch (e) {
-      // The half after the device, which `_downloadEntryTo` next door has
-      // guarded all along and this one did not: a folder that cannot be made
-      // or a disk with no room threw out of here into callers with no catch,
-      // so opening a file in the editor on a full phone produced an
-      // unlabelled [uncaught] and an editor that never opened. #110.
-      _error = _lastFailure = '$e';
-      LogService.warn('[FileManager] save $remotePath failed: $e');
-      _notify();
+      return await _download(expectedSize > _oneFrame, () {
+        return _transfer(
+          dir: dirname(remotePath),
+          upload: false,
+          batch: false,
+          queued: false,
+          body: (t) async {
+            void cancel() => _cancel(t);
+            onCancel?.addListener(cancel);
+            List<int>? bytes;
+            try {
+              await _runJobs(t, [
+                _Job(
+                  item: basename(remotePath),
+                  remote: remotePath,
+                  size: expectedSize,
+                  run: (_, progress) async {
+                    bytes = await _read(t, remotePath, expectedSize, (p) {
+                      progress(p);
+                      onProgress?.call(p);
+                    });
+                    return bytes != null;
+                  },
+                ),
+              ], label: l10n.fmDownloadingOf);
+            } finally {
+              onCancel?.removeListener(cancel);
+            }
+            return bytes;
+          },
+        );
+      });
+    } on FlipperCancelledException {
       return null;
     }
   }
 
-  /// Downloads a single [entry] from the current directory into [destDir],
-  /// publishing inline per-entry progress so its file row renders a fill (used
-  /// when exactly one file is downloaded). Returns false on failure.
-  Future<bool> downloadEntryTo(RemoteEntry entry, {required String destDir}) =>
-      _task(() => _downloadEntryTo(entry, destDir: destDir));
+  /// Downloads [remotePath] into the share cache. A call for a path already
+  /// on its way joins that download: both would write the one cache file, and
+  /// either could read it while the other truncates it.
+  Future<String?> downloadTo(String remotePath, {int expectedSize = 0}) =>
+      _downloads[remotePath] ??=
+          _download(expectedSize > _oneFrame, () {
+            return _downloadToCache(remotePath, expectedSize);
+          }).whenComplete(() {
+            // A block, not an arrow: remove() hands back this very future,
+            // and whenComplete would then wait on it - on itself - forever.
+            _downloads.remove(remotePath);
+          });
 
-  Future<bool> _downloadEntryTo(
-    RemoteEntry entry, {
-    required String destDir,
-  }) async {
-    final sep = io.Platform.pathSeparator;
-    final remote = childPath(entry.name);
-    final local = '$destDir$sep${entry.name}';
-    final bytes = await _readEntryWithProgress(remote, entry.size);
-    if (bytes == null) return false;
-    try {
-      final file = io.File(local);
-      await file.parent.create(recursive: true);
-      await file.writeAsBytes(bytes, flush: true);
-      return true;
-    } catch (e) {
-      _error = _lastFailure = '$e';
-      LogService.info('[FileManager] download $remote failed: $e');
-      _notify();
-      return false;
-    }
-  }
-
-  /// Streams [remotePath] into memory while publishing inline per-entry progress
-  /// (keyed by the entry's basename). Returns null on failure.
-  Future<List<int>?> _readEntryWithProgress(
-    String remotePath,
-    int expectedSize,
-  ) async {
-    _busyEntry = basename(remotePath);
-    _busyEntryProgress = 0;
-    _notify();
-    final throttle = ProgressThrottle();
-    try {
-      return await _client.storageReadChunked(
-        remotePath,
-        expectedSize: expectedSize,
-        onProgress: (p) {
-          _busyEntryProgress = p.clamp(0.0, 1.0);
-          if (throttle.shouldEmit(_busyEntryProgress)) _notify();
+  Future<String?> _downloadToCache(String remotePath, int expectedSize) =>
+      _transfer(
+        dir: dirname(remotePath),
+        upload: false,
+        batch: false,
+        queued: false,
+        body: (t) async {
+          String? saved;
+          await _runJobs(t, [
+            _Job(
+              item: basename(remotePath),
+              remote: remotePath,
+              size: expectedSize,
+              run: (_, onProgress) async {
+                final bytes = await _read(
+                  t,
+                  remotePath,
+                  expectedSize,
+                  onProgress,
+                );
+                if (bytes == null) return false;
+                saved = await _saveLocal(remotePath, bytes, () async {
+                  final dir = await _defaultDownloadDir(remotePath);
+                  final sep = io.Platform.pathSeparator;
+                  return '$dir$sep${basename(remotePath)}';
+                });
+                return saved != null;
+              },
+            ),
+          ], label: l10n.fmDownloadingOf);
+          return saved;
         },
-        timeout: const Duration(minutes: 5),
       );
-    } catch (e) {
-      _error = _lastFailure = '$e';
-      LogService.info('[FileManager] read $remotePath failed: $e');
-      _notify();
-      return null;
-    } finally {
-      _busyEntry = null;
-      _busyEntryProgress = 0;
-      _notify();
-    }
-  }
 
   /// Downloads [entries] from the current directory into [destDir] (files and
   /// whole directory trees, recreated recursively). A first pass enumerates the
@@ -574,80 +1120,63 @@ class FileManagerController extends ChangeNotifier {
   Future<int> downloadEntriesTo(
     List<RemoteEntry> entries, {
     required String destDir,
-  }) => _task(() => _downloadEntriesTo(entries, destDir: destDir));
+  }) {
+    final dir = _path;
+    return _download(
+      _large(entries),
+      () => _downloadEntries(entries, dir, destDir),
+    );
+  }
 
-  Future<int> _downloadEntriesTo(
-    List<RemoteEntry> entries, {
-    required String destDir,
-  }) async {
-    final sep = io.Platform.pathSeparator;
-    final plan = <(String remote, String local, int size)>[];
-    for (final e in entries) {
-      final remote = childPath(e.name);
-      final local = '$destDir$sep${e.name}';
-      if (e.isDir) {
-        await _planDir(remote, local, plan);
-      } else {
-        plan.add((remote, local, e.size));
-      }
-    }
-
-    final totalFiles = plan.length;
-    if (totalFiles == 0) return 0;
-    final totalBytes = plan.fold<int>(0, (s, p) => s + p.$3);
-
-    _transferProgress = 0;
-    _notify();
-
-    final throttle = ProgressThrottle();
-    void publish(double p) {
-      _transferProgress = p.clamp(0.0, 1.0);
-      if (throttle.shouldEmit(_transferProgress)) _notify();
-    }
-
-    var doneBytes = 0;
-    var doneFiles = 0;
-    var failures = 0;
-    try {
-      for (final (remote, local, size) in plan) {
-        _transferLabel = l10n.fmDownloadingOf(
-          basename(remote),
-          doneFiles + 1,
-          totalFiles,
-        );
-        _notify();
-        final base = doneBytes;
-        final bytes = await _readForDownload(remote, size, (p) {
-          if (totalBytes > 0) {
-            publish((base + size * p) / totalBytes);
+  Future<int> _downloadEntries(
+    List<RemoteEntry> entries,
+    String dir,
+    String destDir,
+  ) {
+    return _transfer(
+      dir: dir,
+      upload: false,
+      batch: entries.length > 1,
+      queued: entries.length != 1 || entries.single.isDir,
+      body: (t) async {
+        final sep = io.Platform.pathSeparator;
+        if (entries.length == 1) _track(t, entries.single.name);
+        final jobs = <_Job>[];
+        for (final e in entries) {
+          final remote = _join(dir, e.name);
+          final local = '$destDir$sep${e.name}';
+          _throwIfCancelled(t, remote);
+          final plan = <(String, String, int)>[];
+          if (e.isDir) {
+            await _planDownload(t, remote, local, plan);
           } else {
-            publish((doneFiles + p) / totalFiles);
+            plan.add((remote, local, e.size));
           }
-        });
-        if (bytes == null) {
-          failures++;
-        } else {
-          final file = io.File(local);
-          await file.parent.create(recursive: true);
-          await file.writeAsBytes(bytes, flush: true);
+          for (final (from, to, size) in plan) {
+            jobs.add(
+              _Job(
+                item: e.name,
+                remote: from,
+                size: size,
+                run: (_, onProgress) async {
+                  final bytes = await _read(t, from, size, onProgress);
+                  if (bytes == null) return false;
+                  return await _saveLocal(from, bytes, () async => to) != null;
+                },
+              ),
+            );
+          }
         }
-        doneBytes += size;
-        doneFiles++;
-        publish(
-          totalBytes > 0 ? doneBytes / totalBytes : doneFiles / totalFiles,
-        );
-      }
-    } finally {
-      _transferLabel = null;
-      _transferProgress = 0;
-      _notify();
-    }
-    return failures;
+        final outcome = await _runJobs(t, jobs, label: l10n.fmDownloadingOf);
+        return outcome.failed.length;
+      },
+    );
   }
 
   /// Recursively lists [remoteDir], creating local directories (so empty
   /// folders survive) and appending every file to [out] as (remote, local, size).
-  Future<void> _planDir(
+  Future<void> _planDownload(
+    _Transfer t,
     String remoteDir,
     String localDir,
     List<(String, String, int)> out,
@@ -661,59 +1190,143 @@ class FileManagerController extends ChangeNotifier {
       );
       for (final r in batch.items) {
         for (final f in r.file) {
-          final childRemote = remoteDir.endsWith('/')
-              ? '$remoteDir${f.name}'
-              : '$remoteDir/${f.name}';
+          _throwIfCancelled(t, remoteDir);
+          final childRemote = _join(remoteDir, f.name);
           final childLocal = '$localDir$sep${f.name}';
           if (f.type == File_FileType.DIR) {
-            await _planDir(childRemote, childLocal, out);
+            await _planDownload(t, childRemote, childLocal, out);
           } else {
             out.add((childRemote, childLocal, f.size));
           }
         }
       }
+    } on FlipperCancelledException {
+      rethrow;
     } catch (e) {
-      _error = _lastFailure = '$e';
-      LogService.info('[FileManager] list $remoteDir failed: $e');
-      _notify();
+      _transferFailed('list', remoteDir, e);
     }
   }
 
-  /// Streams [remotePath] into memory, forwarding byte-level [onProgress].
-  /// Returns null on failure (matching [readBytes] error handling).
-  Future<List<int>?> _readForDownload(
-    String remotePath,
-    int expectedSize,
-    void Function(double progress) onProgress,
+  /// Uploads [localPaths] - files and whole folders from this computer - into
+  /// the current directory. Returns how many files were written and how many
+  /// could not be.
+  Future<({int files, int failed})> uploadLocal(
+    List<String> localPaths, {
+    ConflictResolver? resolve,
+  }) {
+    final dir = _path;
+    return _transfer(
+      dir: dir,
+      upload: true,
+      batch: localPaths.length > 1,
+      body: (t) async {
+        final here = await _listing(dir);
+        final dirs = <String>[];
+        final jobs = <_Job>[];
+        final isDir = <String, bool>{};
+        var missing = 0;
+        for (final local in localPaths) {
+          _throwIfCancelled(t, local);
+          final name = basename(_normalize(local.replaceAll('\\', '/')));
+          final remote = _join(dir, name);
+          switch (await io.FileSystemEntity.type(local)) {
+            case io.FileSystemEntityType.directory:
+              isDir[name] = true;
+              if (localPaths.length == 1) _track(t, name, isDir: true);
+              final existing = await _existingDir(here, name, remote);
+              await _planUpload(
+                t,
+                io.Directory(local),
+                remote,
+                dirs,
+                jobs,
+                name,
+                existing,
+              );
+            case io.FileSystemEntityType.file:
+              isDir[name] = false;
+              final size = await io.File(local).length();
+              jobs.add(_uploadJob(t, local, remote, size, name, here));
+            default:
+              _error = _lastFailure = l10n.fmLocalNotFound(local);
+              _notify();
+              missing++;
+          }
+        }
+        for (final d in dirs) {
+          _throwIfCancelled(t, d);
+          await _mkdirQuietly(d);
+        }
+        final outcome = await _runJobs(
+          t,
+          jobs,
+          label: l10n.fmUploadingOf,
+          pendingDirs: isDir,
+          resolve: resolve,
+        );
+        return (
+          files: jobs.length - outcome.skipped.length,
+          failed: outcome.failed.length + missing,
+        );
+      },
+    );
+  }
+
+  Future<void> _planUpload(
+    _Transfer t,
+    io.Directory localDir,
+    String remoteDir,
+    List<String> dirs,
+    List<_Job> jobs,
+    String item,
+    _Listing? existing,
   ) async {
-    try {
-      return await _client.storageReadChunked(
-        remotePath,
-        expectedSize: expectedSize,
-        onProgress: onProgress,
-      );
-    } catch (e) {
-      _error = _lastFailure = '$e';
-      LogService.info('[FileManager] read $remotePath failed: $e');
-      _notify();
-      return null;
+    dirs.add(remoteDir);
+    await for (final entity in localDir.list(followLinks: false)) {
+      _throwIfCancelled(t, remoteDir);
+      final name = basename(entity.path.replaceAll('\\', '/'));
+      final remote = _join(remoteDir, name);
+      if (entity is io.Directory) {
+        final child = await _existingDir(existing, name, remote);
+        await _planUpload(t, entity, remote, dirs, jobs, item, child);
+      } else if (entity is io.File) {
+        final size = await entity.length();
+        jobs.add(_uploadJob(t, entity.path, remote, size, item, existing));
+      }
     }
   }
 
-  Future<bool> uploadFromLocal(String localPath, {String? targetName}) =>
-      _task(() => _uploadFromLocal(localPath, targetName: targetName));
-
-  Future<bool> _uploadFromLocal(String localPath, {String? targetName}) async {
-    final file = io.File(localPath);
-    if (!await file.exists()) {
-      _error = _lastFailure = l10n.fmLocalNotFound(localPath);
-      _notify();
-      return false;
-    }
-    final bytes = await file.readAsBytes();
-    final name = targetName ?? basename(localPath.replaceAll('\\', '/'));
-    return writeBytes(childPath(name), bytes);
-  }
+  _Job _uploadJob(
+    _Transfer t,
+    String local,
+    String remote,
+    int size,
+    String item,
+    _Listing? existing,
+  ) => _Job(
+    item: item,
+    remote: remote,
+    size: size,
+    existing: existing,
+    sourceMd5: () async {
+      try {
+        return md5.convert(await io.File(local).readAsBytes()).toString();
+      } catch (e) {
+        LogService.warn('[FileManager] md5 $local failed: $e');
+        return null;
+      }
+    },
+    run: (target, onProgress) async {
+      final List<int> bytes;
+      try {
+        bytes = await io.File(local).readAsBytes();
+      } catch (e) {
+        _transferFailed('read local', local, e);
+        return false;
+      }
+      return _write(t, target, bytes, onProgress);
+    },
+  );
 
   Future<String> _defaultDownloadDir(String remotePath) async {
     final sep = io.Platform.pathSeparator;
@@ -734,5 +1347,57 @@ class FileManagerController extends ChangeNotifier {
       p = p.substring(0, p.length - 1);
     }
     return p;
+  }
+}
+
+/// Byte-weighted progress over a batch, and over the entry of the destination
+/// folder the current file belongs to.
+class _BatchProgress {
+  _BatchProgress(List<_Job> jobs) : _count = jobs.length {
+    for (final job in jobs) {
+      _total += job.size;
+      _itemTotals[job.item] = (_itemTotals[job.item] ?? 0) + job.size;
+    }
+  }
+
+  final int _count;
+  int _total = 0;
+  final _itemTotals = <String, int>{};
+  final _itemDone = <String, int>{};
+  int _done = 0;
+  int _doneCount = 0;
+  _Job? _job;
+  double file = 0;
+
+  int get itemTotal => _itemTotals[_job?.item] ?? 0;
+
+  double get overall {
+    final size = _job?.size ?? 0;
+    if (_total > 0) return ((_done + size * file) / _total).clamp(0.0, 1.0);
+    if (_count == 0) return 0;
+    return ((_doneCount + file) / _count).clamp(0.0, 1.0);
+  }
+
+  double get item {
+    final job = _job;
+    if (job == null) return 0;
+    final total = itemTotal;
+    if (total <= 0) return file.clamp(0.0, 1.0);
+    final done = _itemDone[job.item] ?? 0;
+    return ((done + job.size * file) / total).clamp(0.0, 1.0);
+  }
+
+  void start(_Job job) {
+    _job = job;
+    file = 0;
+  }
+
+  void finish() {
+    final job = _job;
+    if (job == null) return;
+    _done += job.size;
+    _doneCount++;
+    _itemDone[job.item] = (_itemDone[job.item] ?? 0) + job.size;
+    file = 0;
   }
 }

@@ -90,9 +90,12 @@ void main() {
     expect(controller.canSave, isTrue);
   });
 
-  test('a capture with a missed press solves on a shorter window', () async {
-    // The whole point of the retry: the full set cannot solve because the
-    // counters are not all adjacent, while a run either side of the gap can.
+  test('a capture the engine will not solve whole falls back to a window', () async {
+    // The whole point of the retry. The engine tolerates a counter step up to
+    // SeedCapture.maxCounterGap, so this is the capture with a gap wider than
+    // that - or counters that do not run one way - where a run on one side of
+    // the break still solves. The fake decides which window solves, so what is
+    // pinned here is the fallback, not the engine's rule.
     final recoverer = _FakeRecoverer(
       (hops, call) => hops.length == 4
           ? _result(SeedOutcome.nothingMatched)

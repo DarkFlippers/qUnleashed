@@ -95,9 +95,13 @@ class SeedCapture {
 
   /// The rolling halves, in the order they were received.
   ///
-  /// Order is load-bearing and not a presentation detail: the engine accepts a
-  /// seed only if consecutive hops decrypt to consecutive counters, so a
-  /// reordered list does not solve.
+  /// Order is load-bearing and not a presentation detail. The engine accepts a
+  /// seed only if the hops decrypt to counters running in one direction, so a
+  /// list shuffled out of that order does not solve. A list in exact reverse
+  /// does solve, which is the worse case: every per-hop figure the engine
+  /// reports - the counter and the rebuilt frame among them - comes from the
+  /// *last* hop in this list, so the remote written from it sits several presses
+  /// behind the counter the receiver has already seen.
   final List<int> hops;
 
   final SeedManufacturer manufacturer;
@@ -126,6 +130,15 @@ class SeedCapture {
   /// which is a fault in this app.
   static const minHops = 2;
   static const maxHops = 16;
+
+  /// Matches `FAACCRACK_MAX_COUNTER_GAP`: the widest counter step between two
+  /// kept hops the engine still accepts.
+  ///
+  /// Nothing on this side branches on it - no counter is known here until the
+  /// seed is, and `SeedController.windows` offers the same windows whatever it
+  /// says. The native macro's comment says why it exists anyway, and
+  /// `test/faaccrack_engine_abi_test.dart` pins the two together.
+  static const maxCounterGap = 16;
 }
 
 /// How a recovery ended.
@@ -147,9 +160,11 @@ enum SeedOutcome {
   /// The whole space was swept and nothing matched.
   ///
   /// **Not a verdict on the remote.** For a supported manufacturer with hops
-  /// that really are consecutive, a seed exists and an exhaustive sweep finds
+  /// from one remote and no gap in them wider than
+  /// [SeedCapture.maxCounterGap], a seed exists and an exhaustive sweep finds
   /// it - so this means the brand is one this build has no key for, the wrong
-  /// one was chosen, the hops came from two remotes, or a press was missed.
+  /// one was chosen, the hops came from two remotes, or enough presses were
+  /// missed in one place to exceed that gap.
   /// Deliberately not named `noSeed`: the hardnested recoverer's equivalent is
   /// documented as "an answer about the card", which is true there and would
   /// send a user away from a capture they could fix here.
@@ -209,8 +224,9 @@ typedef SeedResult = ({
 });
 
 /// Matches `FAACCRACK_HOPS_CONFIDENT`. With two hops a false positive over the
-/// whole space is conceivable; three put it near 1e-7. One spelling on this
-/// side too, so the page and the file writer cannot draw the line differently.
+/// whole space is conceivable; three put it at order 1e-5, and the native header
+/// carries that arithmetic. One spelling on this side too, so the page and the
+/// file writer cannot draw the line differently.
 const seedHopsConfident = 3;
 
 /// A result with nothing in it but a reason.

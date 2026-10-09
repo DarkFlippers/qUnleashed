@@ -1,3 +1,4 @@
+import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
 import '../../../services/localization/l10n.dart';
@@ -37,9 +38,22 @@ Future<bool> openRemoteFileInEditor(
   /// it: the one failure the user sees is whichever of the two just ran, and
   /// the controller keeps the reason for either. #110.
   String? Function()? failureReason,
+
+  /// What to say when [download] or [upload] ended in that cancel; null says
+  /// nothing.
+  String? Function(FlipperCancelledException cancel)? cancelledMessage,
   VoidCallback? onRun,
 }) async {
-  final localPath = await download();
+  final String? localPath;
+  try {
+    localPath = await download();
+  } on FlipperCancelledException catch (e) {
+    final message = cancelledMessage?.call(e);
+    if (context.mounted && message != null) {
+      context.showNotification(message, type: QNotificationType.warning);
+    }
+    return false;
+  }
   if (!context.mounted) return false;
   if (localPath == null) {
     final reason = failureReason?.call();
@@ -51,12 +65,26 @@ Future<bool> openRemoteFileInEditor(
     );
     return false;
   }
+  FlipperCancelledException? cancelled;
   return openLocalFileInEditor(
     context,
     localPath: localPath,
     title: basename(remotePath),
-    onSave: upload,
-    onSaveFailureReason: failureReason,
+    onSave: (bytes) async {
+      cancelled = null;
+      try {
+        return await upload(bytes);
+      } on FlipperCancelledException catch (e) {
+        cancelled = e;
+        return false;
+      }
+    },
+    onSaveFailureReason: () {
+      final cancel = cancelled;
+      return cancel != null
+          ? cancelledMessage?.call(cancel)
+          : failureReason?.call();
+    },
     onRun: onRun,
   );
 }

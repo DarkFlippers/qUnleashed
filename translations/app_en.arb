@@ -6209,16 +6209,6 @@
     }
   },
 
-  "fmUploading": "Uploading {name}",
-  "@fmUploading": {
-    "description": "Progress line while a file is written to the Flipper.",
-    "placeholders": {
-      "name": {
-        "type": "String"
-      }
-    }
-  },
-
   "fmDownloadingOf": "Downloading {name}  ({index}/{total})",
   "@fmDownloadingOf": {
     "description": "Progress line while one of several files is downloaded.",
@@ -6233,6 +6223,199 @@
         "type": "int"
       }
     }
+  },
+
+  "fmUploadingOf": "Uploading {name}  ({index}/{total})",
+  "@fmUploadingOf": {
+    "description": "Progress line while one of several files is written to the Flipper.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "index": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+
+  "fmCopyingOf": "Copying {name}  ({index}/{total})",
+  "@fmCopyingOf": {
+    "description": "Progress line while one of several files is copied within the Flipper.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "index": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+
+  "fmPreparingTransfer": "Preparing…",
+  "@fmPreparingTransfer": {
+    "description": "Progress line while the files of a batch transfer are being enumerated."
+  },
+
+  "fmCancelling": "Cancelling…",
+  "@fmCancelling": {
+    "description": "Progress line shown after the user asked to stop a transfer, until it stops."
+  },
+
+  "fmDownloadBusy": "Wait for the current download to finish",
+  "@fmDownloadBusy": {
+    "description": "Toast when a file larger than one frame is asked for while another download is still running; downloads do not queue."
+  },
+
+  "fmTransferCancelled": "Transfer cancelled",
+  "@fmTransferCancelled": {
+    "description": "Toast shown when the user stopped a download or upload."
+  },
+
+  "fmUploadFolder": "Upload folder",
+  "@fmUploadFolder": {
+    "description": "Menu entry that uploads a whole folder from this computer to the Flipper."
+  },
+
+  "fmChooseFolderToUpload": "Choose a folder to upload",
+  "@fmChooseFolderToUpload": {
+    "description": "Title of the system folder picker opened by Upload folder."
+  },
+
+  "fmDropToUpload": "Drop to upload into {path}",
+  "@fmDropToUpload": {
+    "description": "Overlay text while files are dragged over the file manager.",
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+
+  "fmDragFiles": "{count, plural, one{1 file} other{{count} files}}",
+  "@fmDragFiles": {
+    "description": "Label under the icons while several selected files are dragged out of the app.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+
+  "fmConflictTitle": "Replace or Skip Files",
+  "@fmConflictTitle": {
+    "description": "Title of the dialog shown when files being copied to the Flipper already exist there."
+  },
+
+  "fmConflictCopying": "{count, plural, one{Copying 1 item to {path}} other{Copying {count} items to {path}}}",
+  "@fmConflictCopying": {
+    "description": "Subtitle of the replace-or-skip dialog: how many files the copy holds and where they go.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+
+  "fmConflictSummary": "{count, plural, one{The destination already has a file with this name} other{The destination has {count} files with the same names}}",
+  "@fmConflictSummary": {
+    "description": "Headline of the replace-or-skip dialog.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+
+  "fmConflictIndex": "{index} of {total}",
+  "@fmConflictIndex": {
+    "description": "Which conflicting file the replace-or-skip dialog is asking about.",
+    "placeholders": {
+      "index": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+
+  "fmConflictSource": "Copying: {size}",
+  "@fmConflictSource": {
+    "description": "Size of the file being copied, in the replace-or-skip dialog.",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+
+  "fmConflictExisting": "On Flipper: {size}",
+  "@fmConflictExisting": {
+    "description": "Size of the file already on the Flipper, in the replace-or-skip dialog.",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+
+  "fmConflictReplace": "Replace",
+  "@fmConflictReplace": {
+    "description": "Replace-or-skip dialog button for the one file shown."
+  },
+
+  "fmConflictSkip": "Skip",
+  "@fmConflictSkip": {
+    "description": "Replace-or-skip dialog button for the one file shown."
+  },
+
+  "fmConflictBack": "Back",
+  "@fmConflictBack": {
+    "description": "Replace-or-skip dialog button that closes the new-name field without renaming."
+  },
+
+  "fmConflictReplaceAll": "Replace all",
+  "@fmConflictReplaceAll": {
+    "description": "Replace-or-skip dialog button when the choice applies to every remaining conflict."
+  },
+
+  "fmConflictSkipAll": "Skip all",
+  "@fmConflictSkipAll": {
+    "description": "Replace-or-skip dialog button when the choice applies to every remaining conflict."
+  },
+
+  "fmConflictRenameTaken": "A file with this name already exists",
+  "@fmConflictRenameTaken": {
+    "description": "Error under the new-name field of the replace-or-skip dialog."
+  },
+
+  "fmConflictRenameInvalid": "Enter a valid file name",
+  "@fmConflictRenameInvalid": {
+    "description": "Error under the new-name field of the replace-or-skip dialog when the name is empty or contains a slash."
+  },
+
+  "fmConflictForAll": "Apply to all {count}",
+  "@fmConflictForAll": {
+    "description": "Checkbox in the replace-or-skip dialog applying one choice to every remaining conflict.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+
+  "fmConflictMd5": "Compare checksum",
+  "@fmConflictMd5": {
+    "description": "Checkbox in the replace-or-skip dialog: files with the same checksum are left as they are."
   },
 
   "fmLocalNotFound": "Local file not found: {path}",
@@ -7869,7 +8052,7 @@
     "description": "Shown when the whole space was swept with no match."
   },
 
-  "seedNothingMatchedHint": "This does not mean the remote cannot be recovered. Check the brand is right, and that the presses were consecutive with none missed, then capture again.",
+  "seedNothingMatchedHint": "This does not mean the remote cannot be recovered. This app has keys for four makers only, so check the brand is right. A few missed presses are fine, but more presses help - press the remote several times near the Flipper and capture again.",
   "@seedNothingMatchedHint": {
     "description": "Explains what a no-match result actually means and what to do."
   },
@@ -7894,7 +8077,7 @@
     "description": "Shown when the engine reports a fault."
   },
 
-  "seedLowConfidence": "Backed by only {count} hops, so it is not offered for transmission: with two a wrong answer is possible, and {needed} or more effectively rule it out. Capture another press or two and try again.",
+  "seedLowConfidence": "Backed by only {count} hops, so it is not offered for transmission: with two, a wrong answer is as likely as a right one. {needed} or more makes it unlikely, though never impossible. Capture another press or two and try again.",
   "@seedLowConfidence": {
     "description": "Explains that a result came from too few hops to be saved, and what to do about it.",
     "placeholders": {
@@ -7932,9 +8115,9 @@
     "description": "Title of the dialog asking what to call the recovered remote."
   },
 
-  "seedNameHelp": "Saved in {dir}. Room for {max} letters, fewer if they are not English ones.",
+  "seedNameHelp": "Saved in {dir}. Room for {max} characters.",
   "@seedNameHelp": {
-    "description": "Helper text under the file name field. The limit is a byte count, so this deliberately does not promise {max} characters - a Cyrillic name hits the refusal at roughly half of it, and a helper that stated the figure flatly would read as a broken rule rather than a smaller budget.",
+    "description": "Helper text under the file name field. TRANSLATORS: {dir} is a path and is not translated; {max} is an exact figure, currently 63, so choose the grammatical case for 'characters' to match a plain number. This sentence used to warn that a non-English name fits fewer; it no longer needs to, because such a name is refused outright now and the field says so on the first keystroke.",
     "placeholders": {
       "dir": {
         "type": "String"
@@ -7945,9 +8128,9 @@
     }
   },
 
-  "seedNameTooLong": "Use a shorter name. The Sub-GHz app holds {max} English letters, and fewer of any other kind.",
+  "seedNameTooLong": "Use a shorter name. The Sub-GHz app holds {max} characters.",
   "@seedNameTooLong": {
-    "description": "Shown when the typed file name is longer than the firmware can keep. The limit is a byte count, so a Cyrillic or accented letter spends two of it and an emoji four; the second clause is there because a user who hits it at half the stated count would otherwise read this as a bug.",
+    "description": "Shown when the typed file name is longer than the Sub-GHz app can keep. TRANSLATORS: {max} is an exact figure, currently 63 - render it as a plain number and choose the grammatical case for 'characters' to match, as there is no plural form on this placeholder. Why it is exact rather than hedged is recorded on SeedSubFile.maxBaseNameLength.",
     "placeholders": {
       "max": {
         "type": "int"
@@ -7968,6 +8151,12 @@
   "commonNameControlChar": "A name cannot contain an invisible character. Paste it somewhere plain, or type it out.",
   "@commonNameControlChar": {
     "description": "Shown when a typed file name holds a C0 control character or DEL - a tab, a newline, or similar. Named separately from commonNameIllegal because that sentence lists the characters it refuses, and these have no printable form to list. A keyboard cannot type one; a paste from a spreadsheet or a web page can carry one in.",
+    "placeholders": {}
+  },
+
+  "commonNameNonAscii": "The Flipper only accepts English letters, digits and basic punctuation in a name.",
+  "@commonNameNonAscii": {
+    "description": "Shown when a typed file name holds a character outside ASCII. TRANSLATORS: 'English letters' means the unaccented Latin A-Z and a-z, and nothing else - German ß, Cyrillic я and an emoji are all refused, so do not render this as 'letters of the English language' in a way that leaves accented Latin sounding acceptable. 'Basic punctuation' is deliberately vague rather than a list: most ASCII punctuation is fine, and the nine characters that are not are refused by their own message, commonNameIllegal, which carries the list. Say that the Flipper refuses the name, not that the name is invalid - the same name is perfectly fine on the phone, and it is the device that will not carry it.",
     "placeholders": {}
   },
 

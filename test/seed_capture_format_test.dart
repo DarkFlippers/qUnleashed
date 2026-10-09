@@ -47,8 +47,10 @@ void main() {
     });
 
     test('keeps the hops in the order they were received', () {
-      // Not presentation: the engine accepts a seed only if consecutive hops
-      // decrypt to consecutive counters, so a reordered list does not solve.
+      // Not presentation: the engine accepts only counters running in one
+      // direction, so a shuffled list does not solve and an exact reversal
+      // solves with the wrong counter. See `SeedCapture.hops`; the native probe
+      // pins both.
       final capture = SeedCaptureFormat.parse(_capture).capture!;
       expect(capture.hops.first, 0x29389EF7);
       expect(capture.hops.last, 0xA1F9C88F);
@@ -72,9 +74,9 @@ void main() {
     });
 
     test('says so when the declared count and the hops disagree', () {
-      // A truncated write. Worth reporting because the hops that survived may
-      // no longer be consecutive, and the search would then find nothing for a
-      // reason that is not about the remote.
+      // A truncated write. Worth reporting because the hops that survived can
+      // be left with a gap wider than the engine tolerates, and the search
+      // would then find nothing for a reason that is not about the remote.
       final parsed = SeedCaptureFormat.parse(
         _capture.replaceFirst('Hops: 3', 'Hops: 9'),
       );

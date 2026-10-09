@@ -26,6 +26,9 @@ import 'controller.dart';
 import 'columns.dart';
 import 'widgets/file_row.dart';
 import 'widgets/file_table.dart';
+import 'widgets/replace_dialog.dart';
+import '../widgets/drag_source.dart';
+import '../widgets/drop_region.dart';
 import '../widgets/actions_sheet.dart';
 import '../../../components/filelist/sync_progress_bar.dart';
 import '../../../components/filelist/empty_view.dart';
@@ -37,11 +40,13 @@ class _ClipEntry {
     required this.remotePath,
     required this.name,
     required this.isDir,
+    required this.size,
   });
 
   final String remotePath;
   final String name;
   final bool isDir;
+  final int size;
 }
 
 class _Clipboard {
@@ -111,9 +116,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
   //
   // Keyed on the path rather than a single bool: opening two *different* files
   // at once is legitimate, and a bare flag would have made the second one
-  // silently ignored. (The controller cannot currently report both - _busyEntry
-  // is a single slot, so two concurrent reads overwrite each other's progress.
-  // That is a separate shortcoming, not a reason to refuse the second open.)
+  // silently ignored.
   final Set<String> _opening = {};
 
   /// Opens a non-directory entry in whichever viewer suits it, once.
@@ -203,7 +206,10 @@ class _FileManagerPageState extends State<FileManagerPage> {
   }
 
   void _selectAll() {
-    final all = _ctrl.entries.map((e) => e.name).toSet();
+    final all = _ctrl.entries
+        .where((e) => !e.pending)
+        .map((e) => e.name)
+        .toSet();
     setState(() {
       if (_selected.length == all.length) {
         _selected.clear();
@@ -276,6 +282,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
   }
 
   Future<void> _openTextEditor(RemoteEntry e) async {
+    if (!_mayDownload([e])) return;
     final remotePath = _ctrl.childPath(e.name);
     await openRemoteFileInEditor(
       context,
@@ -283,6 +290,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
       download: () => _ctrl.downloadTo(remotePath, expectedSize: e.size),
       upload: (bytes) => _ctrl.writeBytes(remotePath, bytes),
       failureReason: () => _ctrl.lastFailure,
+      cancelledMessage: _cancelledMessage,
       onRun: e.extension == 'js'
           ? () => _emulateEntry(e, ArchiveCategory.javascript)
           : null,
@@ -351,25 +359,62 @@ class _FileManagerPageState extends State<FileManagerPage> {
       );
       return;
     }
+    if (!_mayDownload(entries)) return;
     final destDir = await _pickDestinationDir();
-    if (!mounted || destDir == null) return;
+    if (!mounted || destDir == null || !_mayDownload(entries)) return;
 
-    // A single file fills its own row inline; batches use the external bar.
-    if (entries.length == 1 && !entries.single.isDir) {
-      final ok = await _ctrl.downloadEntryTo(entries.single, destDir: destDir);
-      if (!mounted || ok) return;
-      context.showNotification(
-        _because(context.l10n.fmDownloadFailed),
-        type: QNotificationType.error,
-      );
+    final int failures;
+    try {
+      failures = await _ctrl.downloadEntriesTo(entries, destDir: destDir);
+    } on FlipperCancelledException catch (e) {
+      if (mounted) _notifyCancelled(e);
       return;
     }
-
-    final failures = await _ctrl.downloadEntriesTo(entries, destDir: destDir);
     if (!mounted || failures == 0) return;
+    final single = entries.length == 1 && !entries.single.isDir;
     context.showNotification(
-      _because(context.l10n.fmDownloadFailedCount(failures)),
+      _because(
+        single
+            ? context.l10n.fmDownloadFailed
+            : context.l10n.fmDownloadFailedCount(failures),
+      ),
       type: QNotificationType.error,
+    );
+  }
+
+  /// Whether [entries] may be downloaded now; if not, says why. Another
+  /// download of more than one frame is running, and there is no queue.
+  bool _mayDownload(Iterable<RemoteEntry> entries) {
+    if (_ctrl.canDownload(entries)) return true;
+    context.showNotification(
+      context.l10n.fmDownloadBusy,
+      type: QNotificationType.warning,
+    );
+    return false;
+  }
+
+  void _notifyCancelled(FlipperCancelledException e) {
+    final message = _cancelledMessage(e);
+    if (message == null) return;
+    context.showNotification(message, type: QNotificationType.warning);
+  }
+
+  /// Null when the firmware never acknowledged the cancel: the transfer
+  /// leaves the screen, but nothing claims it stopped.
+  String? _cancelledMessage(FlipperCancelledException e) =>
+      _ctrl.cancelAcknowledged(e) ? context.l10n.fmTransferCancelled : null;
+
+  Future<ConflictResolution?> _askReplace(
+    String destination,
+    int items,
+    List<FileConflict> conflicts,
+  ) {
+    if (!mounted) return Future.value();
+    return ReplaceFilesDialog.show(
+      context,
+      destination: destination,
+      items: items,
+      conflicts: conflicts,
     );
   }
 
@@ -533,7 +578,13 @@ class _FileManagerPageState extends State<FileManagerPage> {
 
   Future<void> _createEmptyFile() async {
     final name = _uniqueName('new.txt');
-    final ok = await _ctrl.writeBytes(_ctrl.childPath(name), const <int>[]);
+    final bool ok;
+    try {
+      ok = await _ctrl.writeBytes(_ctrl.childPath(name), const <int>[]);
+    } on FlipperCancelledException catch (e) {
+      if (mounted) _notifyCancelled(e);
+      return;
+    }
     if (!mounted) return;
     if (!ok) {
       context.showNotification(
@@ -550,6 +601,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
     remotePath: _ctrl.childPath(e.name),
     name: e.name,
     isDir: e.isDir,
+    size: e.size,
   );
 
   void _setClipboard(List<RemoteEntry> entries, {required bool isCut}) {
@@ -577,6 +629,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
     final cb = _clipboard;
     if (cb == null) return;
     var failures = 0;
+    final toCopy = <_ClipEntry>[];
     for (final item in cb.items) {
       final dest = _ctrl.childPath(item.name);
       // Skip a no-op paste into the item's own source folder.
@@ -584,26 +637,32 @@ class _FileManagerPageState extends State<FileManagerPage> {
         failures++;
         continue;
       }
-      bool ok;
-      if (cb.isCut) {
-        // Try a fast in-place rename first; it can't span storage roots
-        // (e.g. /ext → /int), so fall back to copy-then-delete.
-        ok = await _ctrl.rename(item.remotePath, dest);
-        if (!ok) {
-          ok = await _ctrl.copyEntry(item.remotePath, dest, isDir: item.isDir);
-          if (ok) {
-            ok = await _ctrl.delete(item.remotePath, recursive: item.isDir);
-          }
-        }
-      } else {
-        ok = await _ctrl.copyEntry(item.remotePath, dest, isDir: item.isDir);
-      }
-      if (!ok) failures++;
+      // Try a fast in-place rename first; it can't span storage roots
+      // (e.g. /ext → /int), so fall back to copy-then-delete.
+      if (cb.isCut && await _ctrl.rename(item.remotePath, dest)) continue;
+      toCopy.add(item);
     }
-    setState(() => _clipboard = null);
+    FlipperCancelledException? cancelled;
+    if (toCopy.isNotEmpty) {
+      try {
+        failures += await _ctrl.copyInto(
+          [
+            for (final item in toCopy)
+              (path: item.remotePath, isDir: item.isDir, size: item.size),
+          ],
+          move: cb.isCut,
+          resolve: _askReplace,
+        );
+      } on FlipperCancelledException catch (e) {
+        cancelled = e;
+      }
+    }
+    if (mounted) setState(() => _clipboard = null);
     await _ctrl.refresh();
     if (!mounted) return;
-    if (failures == 0) {
+    if (cancelled != null) {
+      _notifyCancelled(cancelled);
+    } else if (failures == 0) {
       context.showNotification(
         cb.isCut
             ? context.l10n.fmMovedMany(cb.items.length)
@@ -644,19 +703,54 @@ class _FileManagerPageState extends State<FileManagerPage> {
       withReadStream: false,
     );
     if (result == null || result.files.isEmpty) return;
+    await _upload([
+      for (final f in result.files)
+        if (f.path != null) f.path!,
+    ], skipped: result.files.where((f) => f.path == null).length);
+  }
 
-    var failures = 0;
-    for (final f in result.files) {
-      final path = f.path;
-      if (path == null) {
-        failures++;
-        continue;
+  Future<void> _uploadFolder() async {
+    String? dir;
+    try {
+      dir = await FilePicker.platform.getDirectoryPath(
+        dialogTitle: context.l10n.fmChooseFolderToUpload,
+      );
+    } catch (e) {
+      if (mounted) {
+        context.showNotification(
+          context.l10n.fmFolderPickUnsupported,
+          type: QNotificationType.error,
+        );
       }
-      final ok = await _ctrl.uploadFromLocal(path, targetName: f.name);
-      if (!ok) failures++;
+      return;
+    }
+    if (!mounted || dir == null) return;
+    await _upload([dir]);
+  }
+
+  Future<void> _uploadDropped(List<String> paths) async {
+    if (!_ctrl.client.isConnected) {
+      context.showNotification(
+        context.l10n.fmNotConnected,
+        type: QNotificationType.error,
+      );
+      return;
+    }
+    await _upload(paths);
+  }
+
+  Future<void> _upload(List<String> paths, {int skipped = 0}) async {
+    final ({int files, int failed}) result;
+    try {
+      result = await _ctrl.uploadLocal(paths, resolve: _askReplace);
+    } on FlipperCancelledException catch (e) {
+      await _ctrl.refresh();
+      if (mounted) _notifyCancelled(e);
+      return;
     }
     await _ctrl.refresh();
     if (!mounted) return;
+    final failures = result.failed + skipped;
     if (failures > 0) {
       // `lastFailure` rather than `error`, which the refresh above has just
       // nulled - this line rendered "Upload failed for 1 file(s): " with an
@@ -669,7 +763,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
       );
     } else {
       context.showNotification(
-        context.l10n.fmUploaded(result.files.length),
+        context.l10n.fmUploaded(result.files),
         type: QNotificationType.good,
       );
     }
@@ -874,6 +968,20 @@ class _FileManagerPageState extends State<FileManagerPage> {
                 _uploadFromPath();
               },
             ),
+            ListTile(
+              leading: Icon(
+                Icons.drive_folder_upload_outlined,
+                color: colors.textPrimary,
+              ),
+              title: Text(
+                context.l10n.fmUploadFolder,
+                style: TextStyle(color: colors.textPrimary),
+              ),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                _uploadFolder();
+              },
+            ),
             const SizedBox(height: 8),
           ],
         ),
@@ -1005,13 +1113,22 @@ class _FileManagerPageState extends State<FileManagerPage> {
                       const SizedBox(width: 8),
                     ],
             ),
-            body: Column(
-              children: [
-                _buildBreadcrumbs(colors),
-                if (_clipboard != null) _buildClipboardBanner(colors),
-                if (_ctrl.transferLabel != null) _buildTransferBar(colors),
-                Expanded(child: _buildBody(context, entries)),
-              ],
+            body: FileDropRegion(
+              label: context.l10n.fmDropToUpload(_ctrl.path),
+              onFiles: (paths) => unawaited(
+                guarded(
+                  '[FileManager] upload dropped',
+                  () => _uploadDropped(paths),
+                ),
+              ),
+              child: Column(
+                children: [
+                  _buildBreadcrumbs(colors),
+                  if (_clipboard != null) _buildClipboardBanner(colors),
+                  if (_ctrl.transferLabel != null) _buildTransferBar(colors),
+                  Expanded(child: _buildBody(context, entries)),
+                ],
+              ),
             ),
             floatingActionButton: _selectionMode
                 ? null
@@ -1212,12 +1329,15 @@ class _FileManagerPageState extends State<FileManagerPage> {
   }
 
   Widget _buildTransferBar(QAppColors colors) {
-    final progress = _ctrl.transferProgress;
+    final cancelling = _ctrl.cancelRequested;
     return SyncProgressBar(
-      icon: Icons.download_rounded,
-      label: _ctrl.transferLabel!,
-      progress: progress,
+      icon: _ctrl.transferIsUpload
+          ? Icons.upload_rounded
+          : Icons.download_rounded,
+      label: cancelling ? context.l10n.fmCancelling : _ctrl.transferLabel!,
+      progress: _ctrl.transferProgress,
       color: colors.accent,
+      onCancel: cancelling ? null : _ctrl.cancelTransfer,
     );
   }
 
@@ -1342,19 +1462,26 @@ class _FileManagerPageState extends State<FileManagerPage> {
             itemCount: entries.length,
             itemBuilder: (_, i) {
               final e = entries[i];
-              return FileTableRow(
-                key: ValueKey('${e.isDir}:${e.name}'),
-                entry: e,
-                cols: cols,
-                actions: _actionsFor(e),
-                selectionMode: _selectionMode,
-                selected: _selected.contains(e.name),
-                progress: _ctrl.entryProgress(e.name),
-                autoEdit: e.name == _pendingRenameName,
-                onTap: () => unawaited(
-                  guarded('[FileManager] open ${e.name}', () => _onEntryTap(e)),
+              return _dragSource(
+                e,
+                FileTableRow(
+                  key: ValueKey('${e.isDir}:${e.name}'),
+                  entry: e,
+                  cols: cols,
+                  actions: _actionsFor(e),
+                  selectionMode: _selectionMode,
+                  selected: _selected.contains(e.name),
+                  progress: _ctrl.entryProgress(e.name),
+                  onCancel: _cancelFor(e),
+                  autoEdit: e.name == _pendingRenameName,
+                  onTap: () => unawaited(
+                    guarded(
+                      '[FileManager] open ${e.name}',
+                      () => _onEntryTap(e),
+                    ),
+                  ),
+                  onLongPress: () => _enterSelection(e),
                 ),
-                onLongPress: () => _enterSelection(e),
               );
             },
           ),
@@ -1378,17 +1505,21 @@ class _FileManagerPageState extends State<FileManagerPage> {
       itemCount: entries.length,
       itemBuilder: (_, i) {
         final e = entries[i];
-        return FileGridTile(
-          key: ValueKey('${e.isDir}:${e.name}'),
-          entry: e,
-          actions: _actionsFor(e),
-          selectionMode: _selectionMode,
-          selected: _selected.contains(e.name),
-          progress: _ctrl.entryProgress(e.name),
-          onTap: () => unawaited(
-            guarded('[FileManager] open ${e.name}', () => _onEntryTap(e)),
+        return _dragSource(
+          e,
+          FileGridTile(
+            key: ValueKey('${e.isDir}:${e.name}'),
+            entry: e,
+            actions: _actionsFor(e),
+            selectionMode: _selectionMode,
+            selected: _selected.contains(e.name),
+            progress: _ctrl.entryProgress(e.name),
+            onCancel: _cancelFor(e),
+            onTap: () => unawaited(
+              guarded('[FileManager] open ${e.name}', () => _onEntryTap(e)),
+            ),
+            onLongPress: () => _enterSelection(e),
           ),
-          onLongPress: () => _enterSelection(e),
         );
       },
     );
@@ -1407,6 +1538,52 @@ class _FileManagerPageState extends State<FileManagerPage> {
     );
   }
 
+  DragFile _dragFile(RemoteEntry e) {
+    final remotePath = _ctrl.childPath(e.name);
+    return DragFile(
+      id: remotePath,
+      name: e.name,
+      load: (progress) => _ctrl.exportBytes(
+        remotePath,
+        expectedSize: e.size,
+        onCancel: progress?.onCancel,
+        onProgress: progress?.updateProgress,
+      ),
+    );
+  }
+
+  /// Files drag out one at a time, or as the whole selection when the row is
+  /// part of it. Folders and rows still arriving stay put.
+  Widget _dragSource(RemoteEntry e, Widget child) {
+    if (e.isDir || e.pending) return child;
+    final selected = _selectionMode && _selected.contains(e.name);
+    final draggable = _ctrl.canDownload(selected ? _selectedEntries : [e]);
+    if (!draggable) return child;
+    return FileDragSource(
+      key: ValueKey('${e.isDir}:${e.name}'),
+      file: _dragFile(e),
+      group: selected
+          ? () => [
+              for (final s in _selectedEntries)
+                if (!s.isDir && !s.pending) _dragFile(s),
+            ]
+          : null,
+      onDropped: selected
+          ? () {
+              if (mounted) _exitSelection();
+            }
+          : null,
+      child: child,
+    );
+  }
+
+  VoidCallback? _cancelFor(RemoteEntry e) {
+    if (_ctrl.entryProgress(e.name) == null || _ctrl.entryCancelling(e.name)) {
+      return null;
+    }
+    return () => _ctrl.cancelEntry(e.name);
+  }
+
   FileEntryActions _actionsFor(RemoteEntry e) {
     final cat = e.isDir ? null : ArchiveCategory.fromExtension(e.extension);
     return FileEntryActions(
@@ -1414,13 +1591,16 @@ class _FileManagerPageState extends State<FileManagerPage> {
       onDelete: () => _deleteEntry(e, recursive: e.isDir),
       onShare: e.isDir
           ? null
-          : () => shareRemoteFile(
-              context,
-              _ctrl,
-              _ctrl.childPath(e.name),
-              displayName: e.name,
-              expectedSize: e.size,
-            ),
+          : () async {
+              if (!_mayDownload([e])) return;
+              await shareRemoteFile(
+                context,
+                _ctrl,
+                _ctrl.childPath(e.name),
+                displayName: e.name,
+                expectedSize: e.size,
+              );
+            },
       onCopy: () => _copyEntry(e),
       onCut: () => _cutEntry(e),
       onDownload: () => _downloadEntries([e]),

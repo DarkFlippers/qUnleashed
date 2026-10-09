@@ -15,9 +15,10 @@ const seedCaptureExtension = '.txt';
 /// A parsed capture, and what had to be skipped to get it.
 ///
 /// `skipped` is surfaced rather than swallowed: a file half of whose hops did
-/// not parse is one a user should be told about, because the remaining hops may
-/// no longer be consecutive and the search will then find nothing for a reason
-/// that has nothing to do with their remote.
+/// not parse is one a user should be told about, because the hops that remain
+/// can be left with a gap wider than [SeedCapture.maxCounterGap] and the search
+/// will then find nothing for a reason that has nothing to do with their
+/// remote.
 typedef SeedCaptureParse = ({SeedCapture? capture, List<String> skipped});
 
 /// Reads the capture files the `seed_capturer` app writes.
@@ -155,7 +156,8 @@ class SeedCaptureFormat {
 
     // The declared count is a cross-check, not the source of truth: the `Hop`
     // lines are. A mismatch means the file was truncated mid-write, which is
-    // worth saying because the hops that survived may not be consecutive.
+    // worth saying because the hops that survived can be left with a gap too
+    // wide for the engine to tolerate.
     final declared = int.tryParse(fields['Hops'] ?? '');
     if (declared != null && declared != hops.length) {
       skipped.add('file says $declared hops, found ${hops.length}');

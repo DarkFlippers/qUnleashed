@@ -33,6 +33,10 @@ dependencies:
     path: lib/modules/flipperlib
   dartufbt:
     path: lib/modules/dartufbt
+  super_drag_and_drop:
+    path: lib/modules/extensions/super_drag_and_drop
+  super_clipboard:
+    path: lib/modules/extensions/super_clipboard
   universal_ble: ^2.1.1
   usb_serial: ^0.5.2
   permission_handler: ^11.3.1
@@ -106,6 +110,16 @@ dev_dependencies:
   # Plugin with auto-install off, which is its own change in `android/` and is
   # not here yet. ADR 0013 Consequences.
   sentry_dart_plugin: ^3.4.0
+
+dependency_overrides:
+  super_clipboard:
+    path: lib/modules/extensions/super_clipboard
+  super_native_extensions:
+    path: lib/modules/extensions/super_native_extensions
+  irondash_engine_context:
+    path: lib/modules/irondash/engine_context/dart
+  irondash_message_channel:
+    path: lib/modules/irondash/message_channel/dart
 
 # How `sentry_dart_plugin` uploads. The org and project are not secrets; the
 # token is, and is read from the environment (`SENTRY_AUTH_TOKEN`) rather than

@@ -1,7 +1,7 @@
 # faaccrack (SubGHz rolling-code seed recovery)
 
 Recovers the per-installation **seed** of a FAAC SLH, Genius, BFT or Erreka
-remote from a fixed code and two or more consecutive hops, so the remote can be
+remote from a fixed code and two or more hops of the same remote, so it can be
 rebuilt as a transmittable `.sub` rather than replayed. CPU only, no GPU, no
 server. See DarkFlippers/qUnleashed#142.
 
@@ -157,6 +157,34 @@ captured from a real Erreka remote would be stronger and is still worth having.
 To regenerate them after an engine change, build the generator against the
 readable source and paste its output over the table in the probe.
 
+The probe's `gaps` group is the same idea for the acceptance test's tolerance:
+five captures that must solve and three that must be refused, one per clause of
+the test. The probe says which and why, row by row, and that list is not
+repeated here for the reason the ABI section below gives.
+
+What this document knows and the probe cannot show is the price. A capture that
+solves costs milliseconds, because its seed is in the first block the sweep
+claims. A capture that must be **refused** has no cheap form: rejecting one
+means sweeping the whole seed space, which measured 16 seconds at 32 threads, 35
+at 8 and over two minutes at the two threads the probe asks for. So the refusals
+are not run to completion - each is stopped as soon as `permille` leaves zero,
+which is proof the sweep went past the seed in question and refused it. That
+lands at about 110 ms per refusal at two threads, and makes the check
+machine-independent: a slow runner takes longer to get there and the assertion
+is just as sharp. A wall-clock budget was tried first and was worse on both
+counts - 3 seconds of sleeping per optimisation level, and a runner slow enough
+could pass it without proving anything.
+
+The zigzag is the row that matters most and the one that nearly was not written:
+the claim that the single-direction rule buys back some of what the wide step
+costs rests on it, and a regeneration that dropped the direction half while
+keeping the width test passes every other check in this repository. Four mutants
+were run against the readable source to establish that the group fails for the
+reasons it claims, each failing only its own rows - the direction half dropped,
+a step of zero accepted, the limit moved to 17, and the result taken from the
+first hop instead of the last. The last of those fails every row that solves, in
+both groups.
+
 `verify_obf.sh` builds both sources, runs six searches - one per mode, a second
 Genius run with one fewer hop, and a no-solution case - writes a `.sub` for each
 and diffs everything with timings normalised out. A mismatch fails the script, so
@@ -185,8 +213,9 @@ mode-specific.
 It recovers the **seed**, not the manufacture key. Both keys are compiled in,
 from the Flipper keystore, for four manufacturers only. A target using any other
 manufacture key yields no seed - and the engine cannot tell that apart from a
-capture with a missed press, or from the wrong mode being passed. `faaccrack.h`
-spells out what the caller must therefore not say to the user.
+capture with a gap in it wider than `FAACCRACK_MAX_COUNTER_GAP`, or from the
+wrong mode being passed. `faaccrack.h` spells out what the caller must therefore
+not say to the user.
 
 ## Threads
 
@@ -251,16 +280,85 @@ The library objects compile with `main` renamed away, so the shipped
 `.dll`/`.so` exports the variant entries and the bridge and no `main`. The probe
 script does the same, which is the first evidence the trick works.
 
-## Retuning
+## Tuning: VBITS is the hardware vector width
 
-`-DVBITS=256` or `-DVBITS=1024` changes the lane count, `-DNLF12=1` selects a
-12-operation NLF network instead of the 15-operation one. Both were measured by
-the author and both were *slower* on the hardware he had: the short NLF by ~25%
-(two gate levels deeper, and this loop is latency-bound), narrower vectors by
-~40% (the op count per lane-block is fixed, so you get fewer lanes for it).
+`-DVBITS` changes the lane count and `-DNLF12=1` selects a 12-operation NLF
+network instead of the 15-operation one. The author measured both as *slower* on
+the hardware he had - the short NLF by ~25% (two gate levels deeper, and this
+loop is latency-bound), narrower vectors by ~40% (the op count per lane-block is
+fixed, so you get fewer lanes for it) - and recorded neither the machine, the
+compiler nor the date.
 
-He did not record the machine, the compiler or the date, and nothing here
-re-measures them. Treat both figures as the reason the defaults are the defaults,
-not as numbers to plan against. They are knobs for hardware that schedules
-differently, not suggestions - and check `lanes` in the result if you use one,
-because the `--keep` note above explains how `-DVBITS` can be silently ignored.
+**His NLF figure holds. His VBITS figure does not hold on x86.** Measured on a
+Ryzen 9 3950X under WSL, gcc 9.4, `-O3 -funroll-loops`, whole-space sweep at 16
+threads. Every cell was checked to still find a seed at `0xFFFFFF00` - the last
+block the sweep claims - so none of these is faster by covering less:
+
+| ISA | VBITS 128 | 256 | 512 (engine default) | 1024 |
+|---|---|---|---|---|
+| SSE2 | **10.9 s** | 16.7 s | 19.6 s | 26.6 s |
+| AVX | 7.4 s | **4.3 s** | 17.7 s | 14.2 s |
+| AVX2 | 7.4 s | **4.3 s** | 17.6 s | 15.1 s |
+
+`-DNLF12=1` measured 23.5 s against the default width's 17.6 s, which agrees
+with him.
+
+**The optimum is the native register width in every row**, and that is the
+mechanism rather than a coincidence: the engine holds the 32-bit state as 32
+bit-planes of `VBITS` lanes, so 512 on a 256-bit machine needs two registers per
+plane - 64 live vectors against the 16 the ISA has, and it spills. The author's
+~40% was most likely measured where the default *was* the native width.
+
+So `CMakeLists.txt` compiles each x86 variant at its own width: 256 for AVX and
+AVX2, 128 for SSE2. On this machine that is 4.1x off the default for the two the
+dispatcher actually picks on a modern desktop, and 1.8x for the baseline.
+
+### What is deliberately left alone
+
+**NEON, and it was measured.** The prediction was 128, by the rule above: NEON
+is 128 bits, so the default is four registers per plane. The prediction was
+wrong, which is why the variant still passes no `-DVBITS`.
+
+On a Pixel 10 Pro XL (Tensor G5, arm64-v8a, 8 threads, the committed engine
+cross-compiled with NDK r28c clang at `-O3 -funroll-loops`), whole-space sweep,
+one run each:
+
+| VBITS | sweep |
+|---|---|
+| 128 | 18.0 s |
+| 256 | 17.3 s |
+| default (512) | 17.5 s |
+
+Within about 4%, which for single runs is noise. The end-of-space seed is still
+found at 256, so the widths are all covering the space.
+
+Why the x86 result does not transfer: **aarch64 has 32 architectural vector
+registers against x86's 16**, so the spill pressure that drives the desktop win
+is far weaker, and this core appears to be bound by something other than
+register traffic. The generated code still varies threefold in size (77 KB at
+128 lanes against 231 KB at the default) while the runtime does not move, which
+fits that reading.
+
+So the knob is live on ARM and worth nothing there. One device is not every
+device - a 4-core mid-range phone may answer differently - but it is enough to
+stop guessing a number into the build most users run. For scale: this phone
+sweeps the whole space in 17 seconds at 8 threads, about what an untuned
+16-thread desktop manages.
+
+**The Apple pod.** `apple/qunleashed_faaccrack.podspec` passes one `OTHER_CFLAGS`
+for every architecture, so a per-arch width means an arch-conditional there, and
+nobody can confirm an Xcode xcconfig key took effect from this side. An
+`OTHER_CFLAGS[arch=...]` that is silently ignored is exactly the failure this
+document warns about elsewhere. Intel Macs therefore keep the baseline penalty
+until someone with a Mac can set it and read `lanes` back from a real run.
+
+### Checking a width took effect
+
+`lanes` in the result is the only runtime evidence, and it now carries weight it
+did not before: the probe asserts the engine reports the width the build asked
+for (`-DEXPECT_LANES` in `.github/scripts/check_faaccrack_engine.sh`), so a
+`-DVBITS` that fails to apply - or a `VBITS` renamed by the obfuscator, the
+silent case the `--keep` note describes - fails CI rather than quietly costing
+several times the search time. Verified both ways: each x86 variant compiled
+from the committed engine reports its own width and passes, and the same AVX2
+object built without the flag reports 512 and fails.

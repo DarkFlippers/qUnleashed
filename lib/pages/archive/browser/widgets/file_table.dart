@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../../../components/cancel_button.dart';
 import '../../../../theme/theme.dart';
 import '../../../../components/filelist/progress_fill.dart';
 import '../columns.dart';
@@ -124,6 +125,7 @@ class FileTableRow extends StatefulWidget {
     this.selected = false,
     this.autoEdit = false,
     this.progress,
+    this.onCancel,
   });
 
   final RemoteEntry entry;
@@ -135,6 +137,7 @@ class FileTableRow extends StatefulWidget {
   final bool selected;
   final bool autoEdit;
   final double? progress;
+  final VoidCallback? onCancel;
 
   @override
   State<FileTableRow> createState() => _FileTableRowState();
@@ -210,7 +213,7 @@ class _FileTableRowState extends State<FileTableRow> {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final blocked = _editing || _renaming;
+    final blocked = _editing || _renaming || widget.entry.pending;
 
     return MouseRegion(
       onEnter: _isDesktop ? (_) => setState(() => _hovered = true) : null,
@@ -274,7 +277,7 @@ class _FileTableRowState extends State<FileTableRow> {
 
   Widget _cell(QAppColors colors, FileCol col) {
     if (col.width == 0) return _nameCell(colors);
-    final muted = widget.entry.isHidden;
+    final muted = widget.entry.isHidden || widget.entry.pending;
     return Align(
       alignment: col.right ? Alignment.centerRight : Alignment.centerLeft,
       child: Text(
@@ -290,7 +293,7 @@ class _FileTableRowState extends State<FileTableRow> {
   }
 
   Widget _nameCell(QAppColors colors) {
-    final muted = widget.entry.isHidden;
+    final muted = widget.entry.isHidden || widget.entry.pending;
     return Row(
       children: [
         FileIconBadge(entry: widget.entry, size: 28, muted: muted),
@@ -329,23 +332,26 @@ class _FileTableRowState extends State<FileTableRow> {
     );
   }
 
+  Widget _spinner(QAppColors colors) => _slot(
+    SizedBox(
+      width: 14,
+      height: 14,
+      child: CircularProgressIndicator(strokeWidth: 2, color: colors.accent),
+    ),
+  );
+
   Widget _trailing(QAppColors colors) {
-    if (_renaming) {
-      return _slot(
-        SizedBox(
-          width: 14,
-          height: 14,
-          child: CircularProgressIndicator(
-            strokeWidth: 2,
-            color: colors.accent,
-          ),
-        ),
-      );
-    }
+    if (_renaming) return _spinner(colors);
     if (_editing) {
       return _iconBtn(Icons.check_rounded, colors.accent, _commitEdit);
     }
-    if (widget.selectionMode) {
+    if (widget.progress != null) {
+      final cancel = widget.onCancel;
+      return cancel == null
+          ? _spinner(colors)
+          : _slot(QCancelButton(onCancel: cancel));
+    }
+    if (widget.selectionMode || widget.entry.pending) {
       return const SizedBox(width: kFileTrailingWidth);
     }
     if (widget.entry.isDir && !(_isDesktop && _hovered)) {

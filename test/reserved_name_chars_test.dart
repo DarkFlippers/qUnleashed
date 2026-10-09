@@ -59,6 +59,16 @@ const _legal = [
   ';',
 ];
 
+/// Characters outside ASCII, which the host rule keeps and the device rule
+/// refuses. One list, because the two tests that use it assert *opposite*
+/// answers on it - a character added to only one copy leaves the half it was
+/// added for untested.
+const _nonAscii = ['я', 'Ї', 'ß', '漢', '🙂'];
+
+/// `U+00a0`, the way every `reason` in this file spells a code unit. Decimal
+/// is unreadable for the thing being asserted here.
+String _u(int unit) => 'U+${unit.toRadixString(16).padLeft(4, '0')}';
+
 /// A string from the English ARB, read as text.
 ///
 /// The ARB and not the generated class, because the assertion is about what
@@ -101,8 +111,8 @@ void main() {
           reservedNameCharsPattern.hasMatch(char),
           reserved,
           reason: reserved
-              ? 'U+${unit.toRadixString(16).padLeft(4, '0')} must be refused'
-              : '"$char" (U+${unit.toRadixString(16).padLeft(4, '0')}) is a '
+              ? '${_u(unit)} must be refused'
+              : '"$char" (${_u(unit)}) is a '
                     'legal character and must not be refused',
         );
       }
@@ -120,18 +130,87 @@ void main() {
         expect(
           reservedNameCharsPattern.hasMatch(char),
           isControlNameChar(unit),
-          reason: 'U+${unit.toRadixString(16).padLeft(4, '0')}',
+          reason: _u(unit),
         );
       }
     });
 
-    test('leaves non-ASCII alone', () {
-      // The storage carries it - see `checkBaseName`'s note on `_CODE_PAGE
-      // 850` - so a pattern that started matching it would be refusing names
-      // that work, in the two locales this app is translated into.
-      for (final char in ['я', 'Ї', 'ß', '漢', '🙂']) {
+    test('leaves non-ASCII alone, which the host rule needs and the device '
+        'rule does not', () {
+      // The pattern serves both rules, and only one of them refuses a Cyrillic
+      // letter. A host filename holds one perfectly well, and this pattern is
+      // what `sanitizePathSegment` replaces with `_` - so a pattern that
+      // started matching would mangle names on the phone that were never a
+      // problem there, in both locales this app is translated into.
+      //
+      // The device's refusal is `isNonAsciiNameChar` instead, applied by
+      // `checkBaseName` alone. #282
+      for (final char in _nonAscii) {
         expect(reservedNameCharsPattern.hasMatch(char), isFalse, reason: char);
       }
+    });
+  });
+
+  group('isNonAsciiNameChar', () {
+    test('is every code unit above 0x7f and none below', () {
+      // The boundary rather than a sample of letters, because the firmware's
+      // `path_contains_only_ascii` draws it at `> '~'` - and `0x7f` itself is
+      // on the refused side there, reached by `isControlNameChar` here. An
+      // off-by-one that moved this to `>= 0x7f` or `> 0x80` would leave every
+      // other test in this file green.
+      expect(isNonAsciiNameChar(0x7e), isFalse);
+      expect(
+        isNonAsciiNameChar(0x7f),
+        isFalse,
+        reason:
+            'DEL is the control '
+            "rule's, so that the user gets the message about an invisible "
+            'character rather than the one about English letters',
+      );
+      expect(isNonAsciiNameChar(0x80), isTrue);
+      // No loop under these three: the partition test below walks every code
+      // unit and is strictly stronger. These name the boundary for a reader
+      // and fail readably; that is their whole job.
+    });
+
+    test('catches both halves of a surrogate pair', () {
+      // An emoji is two code units, neither of which is the character itself,
+      // and `checkBaseName` walks `codeUnits` - so this is the spelling the
+      // implementation actually depends on. A `runes` assertion beside it
+      // would pass for any threshold between 0x7f and 0x1f641 and so pins
+      // nothing; it is deliberately not here.
+      expect('🙂'.codeUnits, hasLength(2));
+      expect('🙂'.codeUnits.every(isNonAsciiNameChar), isTrue);
+    });
+
+    test('partitions every code unit with the control rule', () {
+      // One assertion in two halves, over the whole UTF-16 range because that
+      // is what `codeUnits` can produce and nothing can hand either predicate
+      // more.
+      //
+      // No gap: the firmware's `path_contains_only_ascii` accepts exactly
+      // 0x20-0x7e, so every other code unit must be caught by one of the two
+      // or `checkBaseName` passes a name the RPC layer will refuse. A gap here
+      // is the whole of #282.
+      //
+      // No overlap: the two decide which of two messages the user is shown, so
+      // a code unit matching both would make that depend on the order the
+      // checks happen to run in. 0x7f is the only value where it could, which
+      // is why this walks every unit rather than striding - a sparse sweep
+      // skips the one case the rule exists for.
+      final gaps = <String>[];
+      final overlaps = <String>[];
+      for (var unit = 0; unit <= 0xffff; unit++) {
+        final refused = isControlNameChar(unit) || isNonAsciiNameChar(unit);
+        if (refused == (unit >= 0x20 && unit <= 0x7e)) gaps.add(_u(unit));
+        if (isControlNameChar(unit) && isNonAsciiNameChar(unit)) {
+          overlaps.add(_u(unit));
+        }
+      }
+      // Collected rather than asserted per unit, so a failure names every
+      // offending code unit instead of aborting on the first.
+      expect(gaps, isEmpty, reason: 'judged wrongly against 0x20-0x7e');
+      expect(overlaps, isEmpty, reason: 'claimed by both predicates');
     });
   });
 
@@ -230,8 +309,30 @@ void main() {
           refused,
           reservedNameCharsPattern.hasMatch(char),
           reason:
-              '"$char" (U+${unit.toRadixString(16).padLeft(4, '0')}) is '
+              '"$char" (${_u(unit)}) is '
               'judged differently by the two rules',
+        );
+      }
+    });
+
+    test('parts company with the host rule above ASCII, on purpose', () {
+      // The one place the two rules are *meant* to disagree, so it is pinned
+      // rather than left to the reader: the firmware's RPC layer refuses the
+      // name and a host filesystem does not. Asserting both halves, because a
+      // "fix" that shared the refusal would quietly start replacing these
+      // with `_` at every `sanitizePathSegment` call site - two of which
+      // derive a persistent per-device folder, so the rename would strand an
+      // existing install. #282
+      for (final char in _nonAscii) {
+        expect(
+          SeedSubFile.checkBaseName('gate${char}1'),
+          SeedNameProblem.nonAscii,
+          reason: '"$char" must be refused for the device',
+        );
+        expect(
+          sanitizePathSegment('gate${char}1'),
+          'gate${char}1',
+          reason: '"$char" must survive into a host file name',
         );
       }
     });

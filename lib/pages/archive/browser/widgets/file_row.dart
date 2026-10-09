@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../../services/localization/l10n.dart';
+import '../../../../components/cancel_button.dart';
 import '../../../../components/cardlist.dart';
 import '../../../../components/format.dart';
 import '../../../../components/icon.dart';
@@ -68,6 +69,10 @@ class FileIconBadge extends StatefulWidget {
 }
 
 class _FileIconBadgeState extends State<FileIconBadge> {
+  /// Icons already read once, so a badge drawn without a frame to wait for -
+  /// the picture under a drag - shows them straight away.
+  static final Map<String, Uint8List> _loaded = {};
+
   String? _fapAppId;
   Uint8List? _fapIcon;
 
@@ -105,10 +110,11 @@ class _FileIconBadgeState extends State<FileIconBadge> {
     }
     final appId = name.substring(0, name.length - 4);
     _fapAppId = appId;
+    _fapIcon ??= _loaded[appId];
     icon_repo.readFapIcon(appId).then((bytes) {
-      if (mounted && _fapAppId == appId && bytes != null) {
-        setState(() => _fapIcon = bytes);
-      }
+      if (bytes == null) return;
+      _loaded[appId] = bytes;
+      if (mounted && _fapAppId == appId) setState(() => _fapIcon = bytes);
     });
   }
 
@@ -190,6 +196,7 @@ class FileGridTile extends StatelessWidget {
     this.selectionMode = false,
     this.selected = false,
     this.progress,
+    this.onCancel,
   });
 
   final RemoteEntry entry;
@@ -199,6 +206,7 @@ class FileGridTile extends StatelessWidget {
   final bool selectionMode;
   final bool selected;
   final double? progress;
+  final VoidCallback? onCancel;
 
   void _showActionsSheet(BuildContext context) {
     FileActionsSheet.show(context, entry: entry, actions: actions);
@@ -207,7 +215,7 @@ class FileGridTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    final muted = entry.isHidden;
+    final muted = entry.isHidden || entry.pending;
     final radius = GroupedCardCorners.of(context);
 
     return Material(
@@ -222,9 +230,11 @@ class FileGridTile extends StatelessWidget {
         children: [
           ProgressFill(progress: progress),
           InkWell(
-            onTap: onTap,
-            onLongPress: onLongPress,
-            onSecondaryTap: () => _showActionsSheet(context),
+            onTap: entry.pending ? null : onTap,
+            onLongPress: entry.pending ? null : onLongPress,
+            onSecondaryTap: entry.pending
+                ? null
+                : () => _showActionsSheet(context),
             borderRadius: radius,
             child: Padding(
               // Fixed top inset + fixed name height → the icon always sits at
@@ -266,6 +276,21 @@ class FileGridTile extends StatelessWidget {
               ),
             ),
           ),
+          if (progress != null)
+            Positioned(
+              top: 6,
+              right: 6,
+              child: onCancel == null
+                  ? SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: colors.accent,
+                      ),
+                    )
+                  : QCancelButton(onCancel: onCancel),
+            ),
         ],
       ),
     );

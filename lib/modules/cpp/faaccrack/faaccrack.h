@@ -44,12 +44,54 @@
 #define FAACCRACK_MIN_HOPS 2
 #define FAACCRACK_MAX_HOPS 16
 
+// The largest counter step between two supplied hops that still verifies.
+//
+// The acceptance test needs the decrypted counters to march in one direction,
+// but not to be adjacent: a capture that missed a few presses still solves
+// entire, so long as no single step between the hops it did keep exceeds this.
+// A step of zero is not a step - the same frame supplied twice is refused like
+// any other break in the march.
+//
+// A macro so that this file, the engine and the caller spell the figure once.
+// No caller branches on it: the app's window ladder offers the same windows
+// whatever this says. What it buys is that the figure the documentation and the
+// user-facing wording are written against is pinned to the one the engine
+// enforces - `test/faaccrack_engine_abi_test.dart` fails when they part - so a
+// drop from MMX that moves it cannot leave the comments written against it, or
+// the figures derived from it below, describing a limit that is no longer in
+// force. The user-facing wording deliberately names no number, so it needs no
+// tripwire.
+//
+// **What it cost.** Per pair of hops the old test accepted two counter steps
+// (plus or minus one); this one accepts sixteen magnitudes with the direction
+// fixed once for the whole capture. Accepted counter sequences therefore go
+// from 2^(n-1) to 2*16^(n-1) - a factor of 2*8^(n-1), so sixteen times more at
+// two hops and a hundred and twenty-eight times more at three. The two rules
+// are *not* nested: the single direction rejects the counter that walks back
+// and forth, which the old per-pair test took, while the wide step takes gaps
+// the old test refused. The direction clause is real tightening and does not
+// pay for the step.
+#define FAACCRACK_MAX_COUNTER_GAP 16
+
 // Hops below which an answer should be shown as unconfirmed rather than offered
 // for transmission: with two, a false positive over the whole 2^32 space is
-// conceivable, and three put it near 1e-7.
+// conceivable.
 //
-// A macro because the CLI, the bridge and the UI all have to draw the line in
-// the same place.
+// Three used to put it near 1e-7, under the adjacency rule. With
+// FAACCRACK_MAX_COUNTER_GAP in force read it as order 1e-5 - that macro carries
+// the arithmetic.
+//
+// The line stays at three anyway, deliberately. One in roughly a hundred
+// thousand recoveries handing back a remote that does not open the gate is a
+// cost a user can see and retry; requiring four hops would refuse to write a
+// file for the three-hop captures that are the common case, which is a cost
+// every user pays.
+//
+// Whose call that is: this repository's, not MMX's. No translation unit of the
+// engine reads this macro - it is not in `keep.txt` and the generated source
+// does not spell it - so it is policy living in a hand-written header, and its
+// only consumer is `SeedController.canSave` through `seedHopsConfident`. Moving
+// it is one edit here and one there, with no engine drop involved.
 #define FAACCRACK_HOPS_CONFIDENT 3
 
 // Workers the engine will start. More is accepted and silently clamped, which
@@ -107,7 +149,7 @@ enum faaccrack_status {
     // unit compiled once, which is why it owns the real one.
     FAACCRACK_BUSY = -4,
 
-    // A seed decrypted every hop to consecutive counters, but re-encrypting the
+    // A seed decrypted every hop to ordered counters, but re-encrypting the
     // rebuilt frame did not reproduce the last captured hop.
     //
     // Its own status rather than a flag, because the thing a caller must not do
@@ -119,16 +161,18 @@ enum faaccrack_status {
     // The whole space was swept and nothing matched.
     //
     // **Not a verdict on the remote.** For one of the four supported
-    // manufacturers, with hops that really are consecutive, a seed exists and
-    // an exhaustive sweep finds it. So this always means one of: the remote is
-    // a brand this engine has no key for, the wrong mode was passed, the hops
-    // came from two different remotes, a press was missed so the counters are
-    // not adjacent, or the capture was mis-parsed. The engine cannot tell those
-    // apart, so a caller must not render it as "unrecoverable".
+    // manufacturers, with hops from one remote and no gap in them wider than
+    // FAACCRACK_MAX_COUNTER_GAP, a seed exists and an exhaustive sweep finds it.
+    // So this always means one of: the remote is a brand this engine has no key
+    // for, the wrong mode was passed, the hops came from two different remotes,
+    // enough presses were missed in one place to exceed that gap, or the capture
+    // was mis-parsed. The engine cannot tell those apart, so a caller must not
+    // render it as "unrecoverable".
     //
-    // The useful move is to retry over contiguous subsets of the capture, which
-    // drops a missed press instead of letting it poison every hop; `hops_used`
-    // says how many backed the answer that came out.
+    // The useful move is still to retry over contiguous subsets of the capture,
+    // which is what drops a gap too wide to tolerate instead of letting it
+    // poison every hop; `hops_used` says how many backed the answer that came
+    // out.
     FAACCRACK_NOT_FOUND = -10,
 
     // One of the engine's three startup checks failed, and which one is the
@@ -399,9 +443,10 @@ FAACCRACK_VARIANTS(FAACCRACK_DECLARE_VARIANT_)
 #error "faaccrack: no SIMD variant for this target - the engine needs SSE2, AVX, AVX2, AVX-512 or NEON"
 #endif
 
-// Searches the whole seed space for a seed that decrypts every hop to
-// consecutive counters under the manufacture key `mode` selects. Returns a
-// `faaccrack_status`.
+// Searches the whole seed space for a seed that decrypts every hop to counters
+// running in one direction, no two of them further apart than
+// FAACCRACK_MAX_COUNTER_GAP, under the manufacture key `mode` selects. Returns
+// a `faaccrack_status`.
 //
 // `fix` is the remote's fixed code exactly as captured: the top 32 bits of the
 // 64-bit frame, not part of the search space. Its layout differs by protocol -
@@ -412,13 +457,23 @@ FAACCRACK_VARIANTS(FAACCRACK_DECLARE_VARIANT_)
 // before `fix` and `hops` line up with the halves quoted here; the Flipper-side
 // capture app does that already.
 //
-// `hops` must be *consecutive presses in the order they were sent*, and `nhop`
-// in FAACCRACK_MIN_HOPS..FAACCRACK_MAX_HOPS. The acceptance test requires each
-// decrypted counter to be one away from the previous, which is what makes a
-// false positive essentially impossible - and also what makes a capture with
-// one missed press unsolvable as a whole rather than merely weaker. A caller
-// holding more hops than the maximum, or a capture that will not solve entire,
-// should try contiguous subsets.
+// `hops` must be *presses of one remote in the order they were sent*, and
+// `nhop` in FAACCRACK_MIN_HOPS..FAACCRACK_MAX_HOPS. The acceptance test requires
+// the decrypted counters to run in one direction with no step wider than
+// FAACCRACK_MAX_COUNTER_GAP, so a capture that missed a few presses still solves
+// as a whole. A caller holding more hops than the maximum, or a capture with a
+// wider gap than that in it, should try contiguous subsets.
+//
+// That test is what keeps a false positive unlikely rather than impossible, and
+// the tolerance did weaken it - by the factor under FAACCRACK_MAX_COUNTER_GAP,
+// which is also why the confidence threshold's estimate moved.
+//
+// Order still matters even though both directions verify. Every *per-hop* field
+// of `result` - `last_plain`, `counter`, `frame_plain`, `frame_hop` and the
+// round trip - is taken from the last hop supplied, so a capture handed over
+// oldest-last solves and then describes a remote several presses behind the
+// counter the receiver has already seen: a file the firmware accepts and the
+// gate ignores. `seed` and `lrkey` do not depend on the order.
 //
 // `threads` must be at least 1 and is clamped to FAACCRACK_MAX_THREADS. The
 // engine never asks the OS how many CPUs there are: that is a different call on

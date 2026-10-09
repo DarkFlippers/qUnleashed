@@ -186,6 +186,27 @@ Future<io.Directory> shareCacheDirectory() async {
   return dir;
 }
 
+/// A fresh folder for files another application dropped onto this one, one
+/// per drop so two drops cannot overwrite each other's files.
+Future<io.Directory> droppedFilesDirectory() => _transferScratch('dropped');
+
+/// A fresh folder for a file dragged out of the app to be copied into before
+/// another application is handed its path.
+Future<io.Directory> draggedFilesDirectory() => _transferScratch('dragged');
+
+Future<io.Directory> _transferScratch(String kind) async {
+  final base = await getTemporaryDirectory();
+  final dir = io.Directory(
+    pathJoin([
+      base.path,
+      'qunleashed_$kind',
+      '${DateTime.now().microsecondsSinceEpoch}',
+    ]),
+  );
+  await dir.create(recursive: true);
+  return dir;
+}
+
 Future<io.Directory> appScreenshotsDirectory() async {
   final root = await appDocumentsDirectory();
   final dir = io.Directory(pathJoin([root.path, kScreenshotsFolderName]));

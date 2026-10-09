@@ -23,6 +23,7 @@ import '../../../../components/filelist/table.dart';
 import '../../../../components/filelist/toolbar.dart';
 import '../failure_toast.dart';
 import 'bulk_save.dart';
+import '../../widgets/drag_source.dart';
 
 class CategoryPage extends StatefulWidget {
   const CategoryPage({
@@ -153,6 +154,10 @@ class _CategoryPageState extends State<CategoryPage> {
       _selectionMode = false;
       _selected.clear();
     });
+  }
+
+  void _onDropped() {
+    if (mounted) _exitSelection();
   }
 
   void _setAllSelected(List<ArchiveKey> filtered, bool selected) {
@@ -455,21 +460,28 @@ class _CategoryPageState extends State<CategoryPage> {
                         itemCount: filtered.length,
                         itemBuilder: (_, i) {
                           final key = filtered[i];
-                          return ArchiveTableRow(
+                          final selected = _selected.contains(_keyId(key));
+                          return ArchiveKeyDragSource(
                             key: ValueKey(_keyId(key)),
-                            flipperKey: key,
-                            cols: visibleCols,
-                            colors: colors,
-                            cat: _cat,
-                            progress: _ctrl.progressForKey(key),
-                            selectionMode: _selectionMode,
-                            selected: _selected.contains(_keyId(key)),
-                            onTap: () => _selectionMode
-                                ? _toggleSelect(key)
-                                : _showKeyActions(context, key),
-                            onLongPress: () => _selectionMode
-                                ? _toggleSelect(key)
-                                : _enterSelection(key),
+                            archiveKey: key,
+                            selected: selected,
+                            selection: () => _selectedKeys,
+                            onDropped: _onDropped,
+                            child: ArchiveTableRow(
+                              flipperKey: key,
+                              cols: visibleCols,
+                              colors: colors,
+                              cat: _cat,
+                              progress: _ctrl.progressForKey(key),
+                              selectionMode: _selectionMode,
+                              selected: selected,
+                              onTap: () => _selectionMode
+                                  ? _toggleSelect(key)
+                                  : _showKeyActions(context, key),
+                              onLongPress: () => _selectionMode
+                                  ? _toggleSelect(key)
+                                  : _enterSelection(key),
+                            ),
                           );
                         },
                       ),
