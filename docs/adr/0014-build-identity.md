@@ -12,6 +12,11 @@ say which version and which commit it is. §2 is what makes the second possible
 at all - until the version comes from `pubspec.yaml`, a push to `main` has no
 tag to derive one from and `derive_version.sh` refuses to run.
 
+**What a maintainer has to do about any of this is
+[`docs/releasing.md`](../releasing.md)**, which is the runbook: what CI does
+unasked, the four steps of a release, and what each refusal means. This file is
+the decision and the argument; that one is the terminal.
+
 Written for [0013](0013-observability-with-sentry.md), which needs every
 event to name the binary it came from. The CI this is shaped for — a dev build
 on every push to `main`, uploaded to TestFlight and the Play internal track —

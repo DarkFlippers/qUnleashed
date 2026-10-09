@@ -23,6 +23,13 @@ generated protobuf and the platform folders, which CI then rejects.
 There is **no code generation**. No `build_runner`, nothing to run before the
 code compiles.
 
+**The version is not yours to pick.** `pubspec.yaml` holds the version being
+built *toward*, every push to `main` publishes a dev build from it, and CI
+refuses a build whose version has already been released or whose tag disagrees
+with pubspec. [`docs/releasing.md`](docs/releasing.md) is the runbook and
+[0014](docs/adr/0014-build-identity.md) the decision; do not bump the version
+or cut a tag without reading the first one.
+
 Submodules (`lib/modules/flipperlib`, `lib/modules/dartufbt`) are separate
 repositories in the same organisation. A change there is a PR in that
 repository plus a submodule bump here.
