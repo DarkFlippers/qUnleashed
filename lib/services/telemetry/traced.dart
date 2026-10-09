@@ -53,7 +53,16 @@ class _SpanScope implements TraceScope {
 
   @override
   void note(String key, Object? value) {
-    _span.setData(key, value is String ? Scrub.outbound(value) : value);
+    // Numbers and bools go through untouched: neither can carry a filename,
+    // and rewriting one into a string would change what the operation means.
+    // **Everything else is stringified and scrubbed**, which the earlier
+    // `value is String` test did not do - a list, a map or an exception object
+    // went to `setData` whole, and `scrubTransaction` had not been written, so
+    // there was no layer underneath.
+    _span.setData(
+      key,
+      value is num || value is bool ? value : Scrub.outbound('$value'),
+    );
   }
 
   @override
@@ -109,12 +118,17 @@ Future<T> traced<T>(
   Future<T> Function(TraceScope trace) body, {
   String? description,
 }) async {
+  // Scrubbed once, before the branch. It used to be scrubbed only on the
+  // parentless side, so whether a description was redacted depended on
+  // whether something else happened to be tracing - a trap rather than a
+  // rule. No call site passes one today, which is why it was not visible.
+  final clean = description == null ? null : Scrub.outbound(description);
   final parent = Sentry.getSpan();
   final span = parent == null
       ? Sentry.startTransaction(operation, operation, bindToScope: true)
-      : parent.startChild(operation, description: description);
-  if (description != null && parent == null) {
-    span.setData('description', Scrub.outbound(description));
+      : parent.startChild(operation, description: clean);
+  if (clean != null && parent == null) {
+    span.setData('description', clean);
   }
 
   final scope = _SpanScope(span);

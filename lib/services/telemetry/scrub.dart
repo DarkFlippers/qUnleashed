@@ -25,7 +25,13 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 /// hand them a log about `<redacted>` failing to read `<redacted>`. So the
 /// history stays readable and the copy that travels is the one that pays.
 abstract final class Scrub {
-  /// Home directories, longest first, replaced with `~` wherever they appear.
+  /// Home directories replaced with `~` wherever they appear.
+  ///
+  /// Not sorted, unlike [_deviceNames]. Order does not matter here because
+  /// each pattern is anchored against continuing a name, so a home that is a
+  /// prefix of another cannot leave the remainder behind - the anchor carries
+  /// what sorting would. This used to say "longest first", which a reader
+  /// would reasonably have taken for a guarantee.
   ///
   /// The log is something a user copies into a public issue, and absolute
   /// paths are the one category that leaks every time it fires: the IR
@@ -143,6 +149,76 @@ abstract final class Scrub {
     r'(\.[A-Za-z0-9]{1,8})(?![A-Za-z0-9])',
   );
 
+  /// The extensions the Flipper stores, for [_bareFile].
+  ///
+  /// An allow-list rather than `\.[a-z]+`, because these patterns match a
+  /// filename with **no directory in front of it** - so anything looser would
+  /// also rewrite `main.dart`, `pubspec.yaml` and every sentence ending in a
+  /// word with a dot in it.
+  ///
+  /// **`txt` and `log` are deliberately absent**, though the Flipper stores
+  /// both. They are too ordinary to claim bare: `CMakeLists.txt` is not a
+  /// card, and a bare `.log` is more often a host file than a nonce log. The
+  /// instances that matter - `/ext/nfc/.mfkey32.log` and its siblings - are
+  /// written with their path, and [_flipperFile] takes any extension once a
+  /// `/ext` or `/int` directory is in front of it.
+  ///
+  /// Only these two rules consult the list; [_flipperFile] does not, because
+  /// the directory is the evidence there.
+  static const List<String> _flipperExtensions = [
+    'nfc',
+    'sub',
+    'ir',
+    'rfid',
+    'ibtn',
+    'picopass',
+    'nfcdict',
+    'keys',
+    'fap',
+    'fal',
+    'fim',
+    'u2f',
+  ];
+
+  /// A Flipper file named without its directory, **in quotes**.
+  ///
+  /// The quotes are what make a multi-word name safe to match: they delimit
+  /// the stem, so spaces inside it cannot run backwards across the sentence.
+  /// `[Seed] refused "Garage gate.sub"` is the shape this is for.
+  static final RegExp _quotedFile = RegExp(
+    '(["\\x27])([^"\\x27/\\n]{1,64}?)\\.(${_flipperExtensions.join('|')})\\1',
+    caseSensitive: false,
+  );
+
+  /// A Flipper file named without its directory and without quotes.
+  ///
+  /// [_flipperFile] requires the `/ext` or `/int` prefix, which is how
+  /// `[Archive] restore Office badge.nfc failed` went out with the name
+  /// intact - the directory case working is what made the gap easy to miss.
+  ///
+  /// **No spaces in the stem, unlike the other two rules**, and that is a
+  /// deliberate under-reach. A bare unquoted name has nothing delimiting its
+  /// start: allowing spaces made `listing /ext/nfc failed, see notes.txt`
+  /// match from `failed,` onwards and swallow the clause. There is no pattern
+  /// that tells a multi-word filename from the prose in front of it.
+  ///
+  /// So a multi-word unquoted basename loses its last word and keeps the
+  /// rest - `restore Office badge.nfc` becomes `restore Office <name>.nfc`.
+  /// That is a partial redaction, chosen over destroying the message: the
+  /// outbound log exists to be read, and a filename is lower-value than the
+  /// keys and UIDs the hex rule takes. Quote the name at the call site and it
+  /// is covered in full.
+  static final RegExp _bareFile = RegExp(
+    // A backslash ends the stem as well as a slash: without it the rule
+    // swallowed the `~` that [paths] had just left behind, so
+    // `~\\dict.nfc` came out as `<name>.nfc` and the message lost the one
+    // marker saying a home directory had been there.
+    '(?<![-\\w/.])([^\\s/\\\\"\\x27<>,;:]{1,64}?)'
+    '\\.(${_flipperExtensions.join('|')})'
+    '(?![-\\w])',
+    caseSensitive: false,
+  );
+
   /// A long hex run: a card dump, a key, a UID, a block.
   ///
   /// Eight is the floor because a 4-byte MIFARE UID is exactly eight
@@ -171,7 +247,15 @@ abstract final class Scrub {
   /// that durations and percentages are written with.
   static final RegExp _coordinate = RegExp(r'-?\d{1,3}\.\d{4,}');
 
-  /// Flipper names the app has seen, longest first.
+  /// Flipper names the app has seen, longest first, as anchored patterns.
+  ///
+  /// **Anchored**, which they were not. `replaceAll(name, '<device>')` on a
+  /// bare substring corrupts every message containing it: a Flipper called
+  /// `Zero`, `Data`, `File` or `Time` turned `FileSystemException` into
+  /// `<device>SystemException`. [_resolveHomes] goes to the same trouble for
+  /// the same reason, and the four-character floor below even cites that
+  /// argument - it just was not applied here. The cost fell on the reports
+  /// that had already failed.
   ///
   /// A learned set rather than a pattern, because a device name is arbitrary
   /// text and nothing distinguishes one from any other word. People name a
@@ -183,6 +267,7 @@ abstract final class Scrub {
   /// answers, and the messages worth scrubbing are the ones produced after
   /// that.
   static final List<String> _deviceNames = [];
+  static final List<RegExp> _devicePatterns = [];
 
   /// Remembers [name] so [outbound] takes it out of what it sends.
   ///
@@ -199,11 +284,25 @@ abstract final class Scrub {
     _deviceNames
       ..add(trimmed)
       ..sort((a, b) => b.length.compareTo(a.length));
+    _devicePatterns
+      ..clear()
+      ..addAll(_deviceNames.map(_anchored));
   }
+
+  /// [text] as a pattern that cannot match inside a longer word.
+  ///
+  /// The same anchoring [_resolveHomes] uses, as a named function so the two
+  /// rules cannot drift - the device names being the one unanchored rule in a
+  /// file whose others all anchor is how a `<device>SystemException` happened.
+  static RegExp _anchored(String text) =>
+      RegExp('(?<![A-Za-z0-9_])${RegExp.escape(text)}(?![A-Za-z0-9_])');
 
   /// Forgets the learned names, so one test does not inherit another's.
   @visibleForTesting
-  static void debugForgetDeviceNames() => _deviceNames.clear();
+  static void debugForgetDeviceNames() {
+    _deviceNames.clear();
+    _devicePatterns.clear();
+  }
 
   /// [msg] made fit to leave the device.
   ///
@@ -218,8 +317,17 @@ abstract final class Scrub {
     var out = paths(msg);
     out = out.replaceAllMapped(_query, (m) => '${m[1]}?<query>');
     out = out.replaceAllMapped(_flipperFile, (m) => '${m[1]}<name>${m[3]}');
-    for (final name in _deviceNames) {
-      out = out.replaceAll(name, '<device>');
+    // After the path rule, which has already replaced the stems it owns - so
+    // these only ever see a filename nobody named a directory for. Quoted
+    // first: it is the stricter match, and running it second would find
+    // nothing left to quote.
+    out = out.replaceAllMapped(
+      _quotedFile,
+      (m) => '${m[1]}<name>.${m[3]}${m[1]}',
+    );
+    out = out.replaceAllMapped(_bareFile, (m) => '<name>.${m[2]}');
+    for (final pattern in _devicePatterns) {
+      out = out.replaceAll(pattern, '<device>');
     }
     out = out.replaceAll(_coordinate, '<coord>');
     out = out.replaceAll(_hex, '<hex>');

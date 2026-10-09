@@ -135,7 +135,8 @@ void main() {
     });
     await Sentry.close();
 
-    expect(sent.single.data['path'], r'~\card.nfc');
+    // Both rules land: the home becomes `~`, and the filename goes too.
+    expect(sent.single.data['path'], r'~\<name>.nfc');
     expect(sent.single.data['bytes'], 4096);
   });
 

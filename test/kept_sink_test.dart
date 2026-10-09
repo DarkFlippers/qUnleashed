@@ -199,6 +199,39 @@ void main() {
       expect(calls, 1);
     });
 
+    test('that fails asynchronously does not loop either', () async {
+      // The shape the **shipped** sink has, and the one `_announcing` does not
+      // cover. `Telemetry._reportKept` hands its work to `_guard` and returns,
+      // so the failure arrives a microtask later - by which time `_announcing`
+      // is back to false. The report is itself a kept line, so it calls the
+      // sink again, which fails again.
+      //
+      // The synchronous test above passes on a mechanism no real sink
+      // exercises, which is CLAUDE.md's "trusting that a test fails for the
+      // reason its name says". This one drives the real shape, and
+      // deliberately does not rely on `_remember` coalescing to stop it: the
+      // interleaved line moves `_lastKept`, which is exactly what breaks that
+      // brake in production, where BLE warnings arrive throughout.
+      var calls = 0;
+      LogService.keptSink = (_, _) {
+        calls += 1;
+        Future<void>.error(StateError('send refused')).catchError((Object _) {
+          LogService.error('[Telemetry] a kept log line was not sent: boom');
+        });
+      };
+
+      quietly(() => LogService.error('[CLI] write failed'));
+      await pumpEventQueue();
+      quietly(() => LogService.warn('[BLE] something else entirely'));
+      await pumpEventQueue();
+
+      expect(
+        calls,
+        lessThan(10),
+        reason: 'a self-sustaining chain would run until the test timed out',
+      );
+    });
+
     test('is tried again on the next line, so the guard does not latch', () {
       var calls = 0;
       LogService.keptSink = (_, _) {

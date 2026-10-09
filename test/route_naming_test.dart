@@ -95,12 +95,38 @@ void main() {
     expect(spy.arrived, contains('appSettings'));
   });
 
-  test('every route can be named, and no two share a name', () {
-    // The names are `AppRoute`'s own, so this is really a check that the enum
-    // has no duplicate-looking members and that nothing is blank - a blank
-    // name reads to an observer exactly like an unnamed route.
-    final names = AppRoute.values.map((r) => r.name).toList();
-    expect(names, everyElement(isNotEmpty));
-    expect(names.toSet(), hasLength(names.length));
+  testWidgets('every registered route lands with its own name', (tester) async {
+    // Replaces an assertion that `AppRoute.values.map((r) => r.name)` held no
+    // blanks and no duplicates - which Dart guarantees, so it passed with the
+    // whole naming feature deleted. This drives each route through
+    // `openRoute` instead, which is what would catch one registered without
+    // settings.
+    final spy = _Spy();
+    for (final route in AppRoute.values) {
+      registerRoute(route, (_, _) => const Scaffold());
+    }
+
+    late BuildContext ctx;
+    await tester.pumpWidget(
+      MaterialApp(
+        navigatorObservers: [spy],
+        home: Builder(
+          builder: (context) {
+            ctx = context;
+            return const Scaffold();
+          },
+        ),
+      ),
+    );
+
+    for (final route in AppRoute.values) {
+      push(ctx, route);
+      await tester.pumpAndSettle();
+    }
+
+    expect(
+      spy.arrived.where((name) => name != null).toSet(),
+      containsAll(AppRoute.values.map((r) => r.name)),
+    );
   });
 }

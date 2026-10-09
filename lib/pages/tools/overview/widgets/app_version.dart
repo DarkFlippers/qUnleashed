@@ -6,6 +6,7 @@ import '../../../../components/clipboard.dart';
 import '../../../../services/build_identity.dart';
 import '../../../../services/localization/l10n.dart';
 import '../../../../theme/theme.dart';
+import '../../../../services/guarded.dart';
 
 /// The line at the foot of the Tools screen that says which binary this is.
 ///
@@ -90,7 +91,14 @@ class _AppVersionLabelState extends State<AppVersionLabel> {
           // nothing: the doc above says tapping it is the point, and a screen
           // reader had no way to find that out.
           child: GestureDetector(
-            onTap: () => copyTextToClipboard(context, text),
+            // `guarded`, because the slot is a VoidCallback and the future would
+            // otherwise be dropped - landing as `[uncaught]` with nothing naming the
+            // operation. The three other copies of this call in the diff are wrapped
+            // the same way; this one was missed. CLAUDE.md, #23.
+            onTap: () => guarded(
+              '[About] copying the build identity',
+              () => copyTextToClipboard(context, text),
+            ),
             child: Semantics(
               button: true,
               label: context.l10n.commonCopy,

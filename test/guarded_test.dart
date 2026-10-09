@@ -185,7 +185,9 @@ void main() {
 
     expect(
       LogService.history.single,
-      contains('[Test] nasty failed: an error whose toString() threw'),
+      contains(
+        '[Test] nasty failed: a _ExplodingOnToString whose toString() threw',
+      ),
     );
   });
 

@@ -111,7 +111,22 @@ void _record(String what, String verb, Object error, StackTrace stack) {
       trace.isEmpty ? '$what $verb: $error' : '$what $verb: $error\n$trace',
     );
   } catch (_) {
-    LogService.error('$what $verb: an error whose toString() threw');
+    // `runtimeType`, not the object: interpolating the object is what threw.
+    // The type names the culprit, which "an error" does not.
+    //
+    // And a second try, because this block also covers a `LogService.error`
+    // that throws - in which case calling it again would throw again, escape
+    // the `catchError` callback and reject the future four queues are promised
+    // cannot reject. That is the exact loss the doc above says this guard
+    // exists to prevent.
+    try {
+      LogService.error(
+        '$what $verb: a ${error.runtimeType} whose toString() threw',
+      );
+    } catch (_) {
+      // The logger itself is gone. Nothing can be written, and the contract
+      // that this never rejects outranks the line.
+    }
   }
   final sink = guardedFailureSink;
   if (sink == null) return;
@@ -120,6 +135,11 @@ void _record(String what, String verb, Object error, StackTrace stack) {
   } catch (e) {
     // Not `describe`: that reads the stack of the sink's own failure, and the
     // one thing worth saying here is which sink broke on which operation.
-    LogService.warn('[Telemetry] the guarded sink threw on "$what": $e');
+    // `$what` only: it is already a String, so this cannot be the thing that
+    // throws. The error is named by type for the reason the fallback above
+    // gives.
+    LogService.warn(
+      '[Telemetry] the guarded sink threw on "$what": ${e.runtimeType}',
+    );
   }
 }

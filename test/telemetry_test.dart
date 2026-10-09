@@ -94,23 +94,41 @@ void main() {
 
   group('the navigator observer', () {
     test('a build with no DSN carries none at all', () {
-      // `Telemetry.dsn` is a `String.fromEnvironment`, and no --dart-define
-      // reaches a test - so this is the shape every test run and every local
-      // build has, and it is the one worth pinning: an app nobody is
-      // reporting from should not be watching its own navigation.
-      expect(Telemetry.configured, isFalse);
+      // An app nobody is reporting from should not be watching its own
+      // navigation.
+      final telemetry = Telemetry(settings: DiagnosticsSettings(), dsn: '');
+      expect(telemetry.configured, isFalse);
+      expect(telemetry.navigatorObservers, isEmpty);
+    });
+
+    test('a configured build carries one', () {
+      // This is what the previous version of this file could not assert, and
+      // its absence is why the one below passed for the wrong reason: with no
+      // DSN the list is `const []`, const lists are canonicalized, and
+      // `same()` therefore held even with the `late final` replaced by a
+      // plain getter. The mechanism the test named was removable without
+      // failing it.
+      final telemetry = Telemetry(
+        settings: DiagnosticsSettings(),
+        dsn: 'https://key@o1.ingest.de.sentry.io/2',
+      );
+      expect(telemetry.configured, isTrue);
+      expect(telemetry.navigatorObservers, hasLength(1));
       expect(
-        Telemetry(settings: DiagnosticsSettings()).navigatorObservers,
-        isEmpty,
+        telemetry.navigatorObservers.single,
+        isA<SentryNavigatorObserver>(),
       );
     });
 
-    test('the same list every time it is read', () {
+    test('and builds it once, however often the list is read', () {
       // `MaterialApp` is rebuilt on every theme and locale change and reads
-      // this on each build. A fresh observer per accent colour would start a
-      // new trace on each, which is why the field is `late final` rather than
-      // a getter that builds one.
-      final telemetry = Telemetry(settings: DiagnosticsSettings());
+      // this each time. A fresh observer per accent colour would start a new
+      // trace on each, which is what `late final` prevents - and with a real
+      // DSN the list is not const, so `same()` now means something.
+      final telemetry = Telemetry(
+        settings: DiagnosticsSettings(),
+        dsn: 'https://key@o1.ingest.de.sentry.io/2',
+      );
       expect(telemetry.navigatorObservers, same(telemetry.navigatorObservers));
     });
   });
@@ -240,8 +258,8 @@ void main() {
         message: SentryMessage(r'could not open C:\Users\Myte\dict.nfc'),
       );
       expect(
-        scrubEvent(event)?.message?.formatted,
-        r'could not open ~\dict.nfc',
+        scrubEvent(event).message?.formatted,
+        r'could not open ~\<name>.nfc',
       );
     });
 
@@ -258,7 +276,7 @@ void main() {
           ),
         ],
       );
-      expect(scrubEvent(event)?.exceptions?.map((e) => e.value), [
+      expect(scrubEvent(event).exceptions?.map((e) => e.value), [
         r"path = '~\a'",
         r"path = '~\b'",
       ]);
@@ -276,7 +294,7 @@ void main() {
           ),
         ],
       );
-      final crumb = scrubEvent(event)!.breadcrumbs!.single;
+      final crumb = scrubEvent(event).breadcrumbs!.single;
       expect(crumb.message, r'read ~\log.txt');
       expect(crumb.data?['path'], r'~\log.txt');
       // Left alone rather than stringified: a scrubber that rewrites types is

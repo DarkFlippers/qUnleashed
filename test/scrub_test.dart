@@ -86,9 +86,11 @@ void main() {
     });
 
     test('a sentence after a directory is not read as a filename', () {
-      // The name may hold spaces, so the clause separators are what bound it.
-      // Without them `nfc failed, see notes` reads as one filename and the
-      // whole sentence disappears into `<name>.txt`.
+      // The directory rule allows spaces in the stem, so the clause
+      // separators are what bound it: without them `nfc failed, see notes`
+      // reads as one filename and the whole sentence disappears into
+      // `<name>.txt`. `.txt` is also off the bare-name allow-list, so nothing
+      // here is touched at all.
       expect(
         Scrub.outbound('listing /ext/nfc failed, see notes.txt'),
         'listing /ext/nfc failed, see notes.txt',
@@ -99,6 +101,57 @@ void main() {
       // The rule is about the Flipper's two filesystems, not about every
       // slash in every message. `paths()` handles the host's own.
       expect(Scrub.outbound('/usr/lib/libusb.so'), '/usr/lib/libusb.so');
+    });
+  });
+
+  // These are the shapes a review found going out intact. Every one is a real
+  // message from `lib/`, not an invented string.
+  group('a filename with no directory in front of it', () {
+    test('a bare name goes', () {
+      // lib/pages/archive/overview/controller.dart logs `key.fileName`, which
+      // is `'$name.$extension'` with no path. The /ext rule needs the
+      // directory, so this went out whole.
+      expect(
+        Scrub.outbound('[Archive] restore badge.nfc failed: timeout'),
+        '[Archive] restore <name>.nfc failed: timeout',
+      );
+    });
+
+    test('a quoted multi-word name goes in full', () {
+      // lib/pages/tools/subghz/seed/seed_controller.dart logs a name the user
+      // just typed, in quotes - which is what makes the spaces safe to match.
+      expect(
+        Scrub.outbound('[Seed] refused "Garage gate.sub": tooLong'),
+        '[Seed] refused "<name>.sub": tooLong',
+      );
+    });
+
+    test('an unquoted multi-word name keeps everything but its last word', () {
+      // The documented under-reach. Nothing delimits the start of a bare
+      // multi-word name, and allowing spaces made the rule swallow whole
+      // clauses - so this leaks one word rather than destroying the message.
+      expect(
+        Scrub.outbound('[Archive] restore Office badge.nfc failed'),
+        '[Archive] restore Office <name>.nfc failed',
+      );
+    });
+
+    test('a source file is not a card', () {
+      // Why the extensions are an allow-list: `\.[a-z]+` would rewrite every
+      // one of these, and they appear in stack traces constantly.
+      for (final line in const [
+        'thrown from main.dart',
+        'see pubspec.yaml',
+        'package:qunleashed/services/logging.dart',
+        'CMakeLists.txt',
+      ]) {
+        expect(Scrub.outbound(line), line, reason: line);
+      }
+    });
+
+    test('a word that merely ends in an extension is not a file', () {
+      // Anchored on both sides, so it cannot take half a token.
+      expect(Scrub.outbound('v2.ir-blaster'), 'v2.ir-blaster');
     });
   });
 
@@ -190,6 +243,29 @@ void main() {
       expect(
         Scrub.outbound('[BLE] Ace and Facebook'),
         '[BLE] Ace and Facebook',
+      );
+    });
+
+    test('a common four-letter name does not corrupt every message', () {
+      // The replacement was an unanchored `replaceAll`, so a Flipper called
+      // `File` turned `FileSystemException` into `<device>SystemException` -
+      // degrading exactly the reports that had already failed. The home
+      // patterns are anchored for this reason, and the four-character floor's
+      // own comment cites that argument without having applied it.
+      Scrub.rememberDeviceName('File');
+      expect(
+        Scrub.outbound('[Archive] FileSystemException on File'),
+        '[Archive] FileSystemException on <device>',
+      );
+    });
+
+    test('a name is still taken when punctuation surrounds it', () {
+      // The anchor excludes word characters only, so quotes and brackets do
+      // not hide a name from it.
+      Scrub.rememberDeviceName('Mykhailo');
+      expect(
+        Scrub.outbound('[BLE] connect to "Mykhailo" failed'),
+        '[BLE] connect to "<device>" failed',
       );
     });
 

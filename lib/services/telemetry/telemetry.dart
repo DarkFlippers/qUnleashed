@@ -26,7 +26,7 @@ class TelemetryPlan {
     required BuildStamp stamp,
     this.nativeDatabasePath,
   }) : release = stamp.sentryRelease,
-       dist = stamp.build,
+       dist = stamp.build.isEmpty ? null : stamp.build,
        environment = stamp.channel.name,
        commit = stamp.commit,
        flipperlibCommit = stamp.flipperlibCommit,
@@ -42,7 +42,15 @@ class TelemetryPlan {
 
   /// 0014 §5, and empty when the platform would not say what version this is.
   final String release;
-  final String dist;
+
+  /// The build number, or **null** when the platform would not say.
+  ///
+  /// Nullable for the reason [tags] gives about an empty tag: `SentryOptions`
+  /// takes `String?` here, so unset and empty are different on the wire, and
+  /// `dist: ""` would group every report from an affected build under a
+  /// distribution named empty string. ADR 0009.
+  final String? dist;
+
   final String environment;
 
   final String commit;
@@ -61,7 +69,11 @@ class TelemetryPlan {
   /// user's answer. Neither is reported as a failure, which is why [why]
   /// exists separately — the one line in the log is for someone wondering why
   /// a build they expected to report is silent.
-  bool get enabled => dsn.isNotEmpty && shareLogs;
+  ///
+  /// Derived from [why] rather than restating the condition. Written twice,
+  /// a third reason added to [why] would leave this silently wrong - and
+  /// nothing in `lib/` reads it, so nothing would have failed.
+  bool get enabled => why == null;
 
   /// Why nothing is being sent, or null when something is.
   String? get why {
@@ -94,21 +106,87 @@ class TelemetryPlan {
 /// and replay each arrive with their own phase, and nothing here enables them:
 /// `tracesSampleRate` is left unset, so `SentryOptions.isTracingEnabled()` is
 /// false and the automatic instrumentation samples nothing.
-class Telemetry {
-  Telemetry({required this.settings});
+/// How the SDK is brought up. `SentryFlutter.init` unless a test says
+/// otherwise.
+typedef SentryInit = Future<void> Function(
+  void Function(SentryFlutterOptions) configure,
+);
 
-  /// The project to report to, or empty in a build nobody gave one.
+/// How it is shut down. `Sentry.close` unless a test says otherwise.
+typedef SentryShutdown = Future<void> Function();
+
+class Telemetry {
+  /// Follows [settings] from construction, not from a successful [start].
+  ///
+  /// The listener used to go on inside `start()`'s success block and come off
+  /// in `stop()`, which made the switch **one-way, once, per process**: the
+  /// §1 notice's **Turn it off** called `stop()`, which removed the listener,
+  /// so turning it back on afterwards did nothing at all - and a launch whose
+  /// stored answer was already off returned before registering anything, so
+  /// the same was true for the whole session. The row showed on, the
+  /// preference persisted as on, and nothing reported until a restart.
+  ///
+  /// Registering here instead means the listener's lifetime is the object's.
+  /// `_running` carries whether the SDK is up; it must not also carry whether
+  /// anybody is watching the switch.
+  Telemetry({
+    required this.settings,
+    String? dsn,
+    SentryInit? init,
+    SentryShutdown? shutdown,
+  }) : dsn = dsn ?? compiledDsn,
+       _init = init ?? SentryFlutter.init,
+       _shutdown = shutdown ?? Sentry.close {
+    settings.addListener(_reconcile);
+  }
+
+  /// The project a shipped build reports to, or empty in a build nobody gave
+  /// one.
   ///
   /// Compiled in rather than read from a file, for the reason 0014 gives about
   /// the build identity: this has to work with no network, no filesystem and
   /// in the headless isolate a home-screen widget starts.
-  static const String dsn = String.fromEnvironment('QU_SENTRY_DSN');
+  static const String compiledDsn = String.fromEnvironment('QU_SENTRY_DSN');
+
+  /// The project this instance reports to.
+  ///
+  /// Overridable because [compiledDsn] is a `String.fromEnvironment`, and no
+  /// `--dart-define` reaches `flutter test` - so without a seam `start()`,
+  /// `stop()` and `_reconcile` can never execute in a test, which is how a
+  /// one-way privacy switch shipped unnoticed. ADR 0002 prefers the parameter
+  /// anyway.
+  final String dsn;
 
   /// The switch this follows, exposed because the settings screen needs the
   /// same object: one owner for the value, one place that reacts to it.
   final DiagnosticsSettings settings;
 
+  /// Both are seams for one reason: `SentryFlutter.init` and `Sentry.close`
+  /// are statics that bring a native layer up and down, so without them
+  /// `start()`, `stop()` and `_reconcile` cannot run in a test at all - and
+  /// that is how a privacy switch that only worked once per process, an init
+  /// failure that left reporting on and unstoppable, and a shutdown failure
+  /// that claimed success all shipped unnoticed in the same branch.
+  ///
+  /// A test's `init` is handed the same configure callback the SDK would get,
+  /// so the options block is checkable too rather than taken on trust.
+  final SentryInit _init;
+  final SentryShutdown _shutdown;
+
   bool _running = false;
+
+  /// Whether a start or a stop is in flight.
+  ///
+  /// `start()` awaits `settings.load()`, and a successful read calls
+  /// `notifyListeners()` - which reaches [_reconcile], which compares the
+  /// setting against `_running`. `_running` is still false at that point, so
+  /// without this flag `_reconcile` starts a **second** `start()` on top of
+  /// the first and the SDK is initialised twice. The `if (_running) return`
+  /// guard cannot catch it, because the flag it reads is set at the end of the
+  /// thing it is trying to guard.
+  ///
+  /// Found by the first test ever written against `start()`.
+  bool _settling = false;
 
   /// Whether the SDK is up. False in every build without a DSN, which is
   /// every local build by default.
@@ -138,8 +216,8 @@ class Telemetry {
         ]
       : const [];
 
-  /// Whether a DSN was compiled in. Says nothing about the switch.
-  static bool get configured => dsn.isNotEmpty;
+  /// Whether this instance has a DSN at all. Says nothing about the switch.
+  bool get configured => dsn.isNotEmpty;
 
   /// Brings the SDK up if it should be, and **never throws**.
   ///
@@ -162,41 +240,101 @@ class Telemetry {
   /// promoted into the full app rather than replaced, so the SDK that came up
   /// in the headless isolate is the one the app then uses.
   Future<void> start() async {
-    if (_running) return;
-    // Never gated on `loaded`. A preference store that will not open leaves
-    // the switch at its default, which is on - DiagnosticsSettings.onLoadFailed
-    // has the argument for why that direction is right now that this is not
-    // consent.
-    await settings.load();
-    final plan = TelemetryPlan(
-      dsn: dsn,
-      shareLogs: settings.shareLogs,
-      stamp: await BuildIdentity.resolve(),
-      nativeDatabasePath: await _nativeDatabasePath(),
-    );
-    final why = plan.why;
-    if (why != null) {
-      // `caught` rather than `warn`: nothing is broken and nobody needs
-      // alerting, but a dev build that was supposed to be reporting and is
-      // not would otherwise be silent about it in the one place anyone looks.
-      LogService.caught('[Telemetry] not reporting: $why');
-      return;
-    }
+    if (_running || _settling) return;
+    _settling = true;
+    _settlingToward = true;
     try {
-      await SentryFlutter.init((options) => _configure(options, plan));
-      await _tag(plan);
-      guardedFailureSink = _reportGuarded;
-      LogService.keptSink = _reportKept;
-      LogService.breadcrumbSink = _dropCrumb;
-      AppHttp.exchangeSink = _recordExchange;
-      // Re-pinned after the hook is installed, not before: the pin is derived
-      // from whether the hook is there. §3.
-      LogService.attachFlipperlibSink();
+      // Never gated on `loaded`. A preference store that will not open leaves
+      // the switch at its default, which is on -
+      // DiagnosticsSettings.onLoadFailed has the argument for why that
+      // direction is right now that this is not consent.
+      await settings.load();
+      final plan = TelemetryPlan(
+        dsn: dsn,
+        shareLogs: settings.shareLogs,
+        stamp: await BuildIdentity.resolve(),
+        nativeDatabasePath: await _nativeDatabasePath(),
+      );
+      final why = plan.why;
+      if (why != null) {
+        // `caught` rather than `warn`: nothing is broken and nobody needs
+        // alerting, but a dev build that was supposed to be reporting and is
+        // not would otherwise be silent about it in the one place anyone
+        // looks.
+        LogService.caught('[Telemetry] not reporting: $why');
+        return;
+      }
+      await _init((options) => _configure(options, plan));
       _running = true;
-      settings.addListener(_reconcile);
+      _wireSinks(on: true);
+      await _tag(plan);
     } catch (e, st) {
-      LogService.warn('[Telemetry] init failed: ${LogService.describe(e, st)}');
+      // `error`, not `warn`: a reporting feature that failed to come up is not
+      // degraded-but-fine, and the line has to survive a release build.
+      LogService.error(
+        '[Telemetry] init failed: ${LogService.describe(e, st)}',
+      );
+      // And then put it back. `Sentry.init` enables the hub *before* it runs
+      // its integrations, and `_callIntegrations` has no per-integration
+      // catch - so a native integration that throws leaves a live hub holding
+      // the DSN. Without this, `_running` would be false, `stop()` would
+      // return at its own guard, and the user would have no way to turn
+      // reporting off for the rest of the session. That is the one promise §1
+      // makes about that switch.
+      //
+      // `_tearDown` and not `stop()`: `stop()` is a transition, and a
+      // transition nested inside this one ends by reconciling against the
+      // value *it* was aiming at - which is false, while the switch still says
+      // true. That restarted the init that had just failed, and the init
+      // failed again, forever. The teardown itself is what is wanted here, not
+      // the bookkeeping around it.
+      _running = true;
+      await _tearDown();
+    } finally {
+      _settling = false;
+      _settleAgainIfTheSwitchMoved();
     }
+  }
+
+  /// What the transition in flight is aiming at, so a toggle during it is not
+  /// lost.
+  bool _settlingToward = false;
+
+  /// Runs one more reconcile when the switch moved **during** a transition.
+  ///
+  /// [_reconcile] declines to act while [_settling], so without this a toggle
+  /// mid-flight would be dropped - the user's last word on a privacy switch,
+  /// lost to a race. Called from both transitions' `finally`.
+  ///
+  /// Compares the setting against [_settlingToward], the value the transition
+  /// set out to reach, **not** against `_running`. The first version compared
+  /// against `_running` and hung: `start()` returns early and leaves
+  /// `_running` false when there is no DSN or the switch is off, so the two
+  /// disagreed forever and it re-reconciled in a loop until the test timed
+  /// out. Against the attempted value this fires only when the switch
+  /// genuinely moved, and each run picks up the newer value - so it
+  /// terminates.
+  void _settleAgainIfTheSwitchMoved() {
+    if (settings.shareLogs == _settlingToward) return;
+    _reconcile();
+  }
+
+  /// Puts the four hooks on or takes them off, in one place.
+  ///
+  /// One list rather than two mirrored ones, because adding a fifth sink meant
+  /// remembering two methods - and the ordering constraint below was stated in
+  /// a comment on only one of them.
+  ///
+  /// `attachFlipperlibSink()` runs **last** either way: the level the library
+  /// is pinned at is derived from whether `breadcrumbSink` is set, so
+  /// re-deriving it before the assignment would leave the pin at `warning`
+  /// going up, and at `info` coming down. §3.
+  void _wireSinks({required bool on}) {
+    guardedFailureSink = on ? _reportGuarded : null;
+    LogService.keptSink = on ? _reportKept : null;
+    LogService.breadcrumbSink = on ? _dropCrumb : null;
+    AppHttp.exchangeSink = on ? _recordExchange : null;
+    LogService.attachFlipperlibSink();
   }
 
   /// Shuts the SDK down, the handlers with it, and **never throws**.
@@ -205,23 +343,50 @@ class Telemetry {
   /// stops the native crash handler and not only the Dart side - which is the
   /// whole of what §1 promises that switch does.
   Future<void> stop() async {
-    if (!_running) return;
+    if (!_running || _settling) return;
+    _settling = true;
+    _settlingToward = false;
+    try {
+      await _tearDown();
+    } finally {
+      _settling = false;
+      _settleAgainIfTheSwitchMoved();
+    }
+  }
+
+  /// Closes the SDK and takes the hooks off. **Never throws.**
+  ///
+  /// The body of [stop] without any of its bookkeeping, so `start()`'s own
+  /// recovery can use it without starting a nested transition.
+  ///
+  /// `_running` is left **true** when the close fails, on purpose: the native
+  /// handler may still be up, so saying otherwise would make the switch claim
+  /// something that did not happen - and would make [_reconcile] refuse to try
+  /// again, since it compares the setting against that flag. The user asked
+  /// for reporting to stop; if it did not, that has to be visible rather than
+  /// asserted.
+  Future<void> _tearDown() async {
+    try {
+      await _shutdown();
+    } catch (e, st) {
+      // `_running` is left **true** on purpose. The native handler may still
+      // be up, so saying otherwise would make the switch claim something that
+      // did not happen - and would make `_reconcile` refuse to try again,
+      // since it compares the setting against this flag. The user asked for
+      // reporting to stop; if it did not, that has to be visible rather than
+      // asserted.
+      LogService.error(
+        '[Telemetry] shutdown failed, reporting may still be running: '
+        '${LogService.describe(e, st)}',
+      );
+      return;
+    }
     _running = false;
-    guardedFailureSink = null;
-    LogService.keptSink = null;
-    LogService.breadcrumbSink = null;
-    AppHttp.exchangeSink = null;
     // And the library goes quiet again, back to the keep threshold. The cost
     // of `info` only exists while somebody is listening.
-    LogService.attachFlipperlibSink();
-    settings.removeListener(_reconcile);
-    try {
-      await Sentry.close();
-    } catch (e, st) {
-      LogService.warn(
-        '[Telemetry] shutdown failed: ${LogService.describe(e, st)}',
-      );
-    }
+    _wireSinks(on: false);
+    // The listener stays. Its lifetime is this object's - see the constructor
+    // for the switch that only worked once because this used to remove it.
   }
 
   /// Where sentry-native keeps its crash database, or null to leave its
@@ -280,7 +445,7 @@ class Telemetry {
   /// unlabelled `[uncaught]`.
   void _reportKept(KeptLevel level, String body) {
     final text = Scrub.outbound(body);
-    _guard(() async {
+    _guard('a kept log line was not sent', () async {
       final logger = Sentry.logger;
       await switch (level) {
         KeptLevel.error => logger.error(text),
@@ -313,29 +478,58 @@ class Telemetry {
     final parent = Sentry.getSpan();
     if (parent == null) return;
 
-    final target = exchange.uri.replace(query: '', fragment: '');
+    // `removeQuery` rather than `replace(query: '')`: Dart treats an empty
+    // string as a component that is present, so that spelling leaves every
+    // description ending in a dangling `?#`.
+    final target = exchange.uri.removeFragment().replace(queryParameters: null);
     final span = parent.startChild(
       'http.client',
-      description: '${exchange.method} $target',
+      description: Scrub.outbound('${exchange.method} $target'),
       startTimestamp: exchange.startedAt.toUtc(),
     );
     final status = exchange.status;
     if (status != null) span.setData('http.response.status_code', status);
     span.setData('http.request.method', exchange.method);
-    if (!exchange.ok) {
-      span.throwable = exchange.error;
-    }
+    span.throwable = exchange.error;
     _guard(
+      'an HTTP span was not recorded',
       () => span.finish(
-        status: status == null
-            // No response at all: a refused connection, a DNS failure, a
-            // timeout before headers. `SpanStatus.unknown()` rather than
-            // `internalError`, which would claim to know it was the server.
-            ? (exchange.ok ? SpanStatus.ok() : SpanStatus.unknown())
-            : SpanStatus.fromHttpStatusCode(status),
+        status: _verdict(exchange),
         endTimestamp: exchange.endedAt.toUtc(),
       ),
     );
+  }
+
+  /// Whether the exchange worked, from the exchange's own answer.
+  ///
+  /// **`ok` outranks `status`**, which is the whole of this method. Reading the
+  /// code first got two common cases backwards:
+  ///
+  ///  * A `304 Not Modified` is a success - `getJsonCached` serves the cached
+  ///    copy and returns normally - but `SpanStatus.ok()` spans 200-299 only,
+  ///    nothing in `fromHttpStatusCode`'s chain covers 300-399, and it falls
+  ///    through to `unknownError()`. Every revalidated feed fetch past its TTL
+  ///    was arriving in Sentry as a failed span.
+  ///  * A failure *after* the headers - an idle-stall timeout, a decode
+  ///    failure - has `status: 200` with an error set, because `noteStatus` runs
+  ///    as soon as the response arrives and the body is read afterwards.
+  ///    `fromHttpStatusCode(200)` says `ok`, so a stalled firmware download
+  ///    was a successful span carrying an exception.
+  ///
+  /// The status code is still consulted, but only to say *how* a failure
+  /// failed, and only above 400. `unknown()` and not `internalError()` for the
+  /// rest: a refused connection or a DNS failure is not a claim about the
+  /// server.
+  static SpanStatus _verdict(HttpExchange exchange) {
+    final status = exchange.status;
+    if (exchange.ok) return const SpanStatus.ok();
+    if (status != null && status >= 400) {
+      return SpanStatus.fromHttpStatusCode(
+        status,
+        fallback: const SpanStatus.internalError(),
+      );
+    }
+    return const SpanStatus.unknown();
   }
 
   /// Records one flipperlib line as a breadcrumb.
@@ -359,7 +553,7 @@ class Telemetry {
       category: 'flipperlib',
       level: _crumbLevel(severity),
     );
-    _guard(() => Sentry.addBreadcrumb(crumb));
+    _guard('a breadcrumb was not added', () => Sentry.addBreadcrumb(crumb));
   }
 
   /// flipperlib's five levels onto Sentry's.
@@ -406,6 +600,7 @@ class Telemetry {
   ) {
     final label = Scrub.outbound(what);
     _guard(
+      'a guarded failure was not captured',
       () => Sentry.captureException(
         error,
         stackTrace: stack,
@@ -424,21 +619,50 @@ class Telemetry {
   /// Sentry. The guard is `_running` against the setting rather than a flag of
   /// its own, so a notify that changed something else cannot restart the SDK.
   void _reconcile() {
+    // A transition in flight will re-check at its own end, so acting here
+    // would start a second one on top of it - see [_settling].
+    if (_settling) return;
     if (settings.shareLogs == _running) return;
     // `guarded` and not `unawaited`: a ChangeNotifier listener is a void
     // callback, and both of these are already no-throw - but a bare
     // `unawaited` here is the shape CLAUDE.md and #23 are about.
-    _guard(settings.shareLogs ? start : stop);
+    _guard('following the switch failed', settings.shareLogs ? start : stop);
   }
 
+  /// Whether a reporting failure is already being written down.
+  ///
+  /// `LogService._announcing` does not cover this. That flag is held around a
+  /// *synchronous* call to the sink, and none of the sinks below throws
+  /// synchronously - each hands its work to this method and returns, so the
+  /// failure arrives a microtask later, after the flag is back to false.
+  ///
+  /// What that allows, without this second flag: a send rejects, the handler
+  /// writes `LogService.error`, which is a kept line, which calls the kept
+  /// sink, which sends, which rejects. One failure in, one failure out, for as
+  /// long as the network stays broken. The only brake would be `_remember`
+  /// folding an identical body - and that stops the moment any other kept
+  /// line interleaves and moves `_lastKept`, which on this app means any BLE
+  /// warning. CLAUDE.md names leaning on that coalescing as an anti-pattern,
+  /// and termination is not something to lean on it for.
+  bool _reportingAFailure = false;
+
   /// `guarded` without the import, which would be circular: `guarded` logs
-  /// through `LogService`, and this file is what `LogService` will eventually
-  /// report *through*. Same contract - the returned future never rejects.
-  void _guard(Future<void> Function() task) {
+  /// through `LogService`, and this file is what `LogService` reports
+  /// *through*. Same contract - the returned future never rejects.
+  ///
+  /// [what] is the operation, because one message for five callers is a
+  /// message that cannot say which part of reporting broke. A failed Sentry
+  /// log send used to arrive in the log as a problem with the Diagnostics
+  /// switch.
+  void _guard(String what, Future<void> Function() task) {
     Future.sync(task).catchError((Object e, StackTrace st) {
-      LogService.error(
-        '[Telemetry] following the switch failed: ${LogService.describe(e, st)}',
-      );
+      if (_reportingAFailure) return;
+      _reportingAFailure = true;
+      try {
+        LogService.error('[Telemetry] $what: ${LogService.describe(e, st)}');
+      } finally {
+        _reportingAFailure = false;
+      }
     });
   }
 
@@ -469,7 +693,20 @@ class Telemetry {
     options.enablePrintBreadcrumbs = false;
 
     // §6.2. Every event passes through the scrubber before it leaves.
+    //
+    // Three hooks, not one, because sentry 9 routes the three event classes
+    // separately and §6.2's "runs before every event, breadcrumb, log and
+    // transaction" was only true of the first. A log reaches
+    // `beforeSendLog` and nothing else (`log_capture_pipeline.dart`); a
+    // transaction reaches `beforeSendTransaction` and falls to `beforeSend`
+    // only when that is unset. So without the other two, the Logs channel -
+    // the highest-volume outbound channel in the feature - was held by a
+    // single `Scrub.outbound` call in `_reportKept`, and span text by
+    // per-call-site discipline.
     options.beforeSend = (event, hint) => scrubEvent(event);
+    options.beforeSendTransaction = (transaction, hint) =>
+        scrubTransaction(transaction);
+    options.beforeSendLog = (log) => scrubLog(log);
 
     // Sentry Logs, which §2 feeds from `LogService`'s kept entries. Off by
     // default in this major and configured differently in 10 - which is the
@@ -535,7 +772,62 @@ class Telemetry {
 /// is left alone rather than walked: nothing the app puts in a breadcrumb has
 /// one today, and a recursive walk over arbitrary JSON is a cost paid on every
 /// event for a case that does not exist.
-SentryEvent? scrubEvent(SentryEvent event) {
+///
+/// Returns non-null, and the type says so. `beforeSend` reads null as "drop
+/// this event", which would lose exactly the failures nobody has seen
+/// before - so "never drops" is worth being a fact the compiler holds rather
+/// than a sentence.
+/// Takes the account name out of a transaction's spans, as well as its own
+/// fields.
+///
+/// A transaction *is* a [SentryEvent], so [scrubEvent] covers its message and
+/// breadcrumbs - but not `spans`, which is where every `traced` fact and every
+/// HTTP description lives. With `tracesSampleRate` at 1.0 (§8) that is a
+/// sampled event class carrying free text, so §6.2 has to reach it.
+///
+/// `TraceScope.note` and `_recordExchange` both scrub at the source too. This
+/// is the layer, not the only line: §6 is four layers for the reason the
+/// section opens with, and a call site that forgets is exactly what a layer is
+/// for.
+SentryTransaction scrubTransaction(SentryTransaction transaction) {
+  scrubEvent(transaction);
+  for (final span in transaction.spans) {
+    // On the context, not the span: `SentrySpan` exposes `description` only
+    // through `context`, where it is mutable.
+    final description = span.context.description;
+    if (description != null) {
+      span.context.description = Scrub.outbound(description);
+    }
+    _scrubStringValues(span.data);
+  }
+  return transaction;
+}
+
+/// Takes the account name out of one Sentry log line.
+///
+/// The body arrives from `_reportKept`, which has already scrubbed it. This is
+/// the second line: the Logs channel does not pass through [scrubEvent] at
+/// all, so without this a refactor of that one call could un-redact the
+/// channel with nothing failing.
+SentryLog scrubLog(SentryLog log) {
+  log.body = Scrub.outbound(log.body);
+  return log;
+}
+
+/// Scrubs the string values of [data] in place, leaving everything else.
+///
+/// Shared by the breadcrumb and span walks. A number or a bool cannot carry a
+/// filename, and rewriting one into a string would change what the event
+/// means.
+void _scrubStringValues(Map<String, dynamic>? data) {
+  if (data == null) return;
+  for (final key in data.keys) {
+    final value = data[key];
+    if (value is String) data[key] = Scrub.outbound(value);
+  }
+}
+
+SentryEvent scrubEvent(SentryEvent event) {
   final message = event.message;
   if (message != null) {
     message.formatted = Scrub.outbound(message.formatted);
@@ -549,12 +841,7 @@ SentryEvent? scrubEvent(SentryEvent event) {
   for (final crumb in event.breadcrumbs ?? const <Breadcrumb>[]) {
     final text = crumb.message;
     if (text != null) crumb.message = Scrub.outbound(text);
-    final data = crumb.data;
-    if (data == null) continue;
-    for (final key in data.keys) {
-      final value = data[key];
-      if (value is String) data[key] = Scrub.outbound(value);
-    }
+    _scrubStringValues(crumb.data);
   }
 
   return event;

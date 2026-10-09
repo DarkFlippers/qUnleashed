@@ -107,15 +107,22 @@ class AppHttp {
 
     final startedAt = DateTime.now();
     int? status;
+    final T ok;
     try {
       final value = await exchange((s) => status = s);
-      _report(sink, method, uri, startedAt, status, null);
-      return value;
+      // Reported **outside** the try, below. Inside it, a throw from the
+      // reporter would be caught here, re-reported as the exchange's own
+      // failure and rethrown - turning a successful request into an exception
+      // the caller never expected, which is the one thing `_report`'s own doc
+      // says must not happen.
+      ok = value;
     } catch (e) {
       final code = e is AppHttpException ? e.statusCode : status;
       _report(sink, method, uri, startedAt, code, e);
       rethrow;
     }
+    _report(sink, method, uri, startedAt, status, null);
+    return ok;
   }
 
   static void _ignoreStatus(int status) {}

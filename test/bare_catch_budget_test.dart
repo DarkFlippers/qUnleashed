@@ -77,7 +77,15 @@ const Map<String, int> kBudget = {
   // `logging.dart` that cannot report a failure to report, and the temp file
   // a failed cache write tries to clean up, which its own rethrow already
   // covers.
-  'services': 8,
+  //
+  // Then a sixth, `guarded.dart`'s innermost fallback, which is the same kind
+  // as the two in `logging.dart`: it wraps the `LogService.error` that reports
+  // an error whose `toString()` threw, so reaching it means the logger itself
+  // is gone and there is nowhere left to write. Without it that second throw
+  // escapes the `catchError` callback and rejects the future four queues are
+  // promised cannot reject - losing the whole chain rather than one line,
+  // which is the loss `guarded`'s own doc says the guard exists to prevent.
+  'services': 9,
   // Was 12. Five went: a display that would not come up and said nothing
   // while the screen sat blank, a preview that failed the same way, a draft
   // folder left behind by "save as" and listed beside its own copy, and a

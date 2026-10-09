@@ -94,6 +94,24 @@ void main() {
     });
   });
 
+  test('the exemption covers the folder and not its parent', () {
+    // The only direction this guard can widen in silently. Narrowing it so it
+    // matches nothing fails loudly and the test below catches that - but
+    // widening `lib/services/telemetry/` to `lib/services/` would exempt the
+    // SDK across every service while every assertion here stayed green.
+    const sentry = "import 'package:sentry/sentry.dart';";
+    expect(
+      _sentryImportsIn(parseUnit(sentry), 'lib/services/x.dart'),
+      hasLength(1),
+      reason: 'a service outside the folder is still counted',
+    );
+    expect(
+      _sentryImportsIn(parseUnit(sentry), '${telemetryDir}x.dart'),
+      isEmpty,
+      reason: 'and the folder itself is still exempt',
+    );
+  });
+
   test('the folder it allows is the folder that exists', () {
     // Renaming the folder without renaming it here would turn the guard into
     // a guard over nothing: every file would be outside the exemption, the
