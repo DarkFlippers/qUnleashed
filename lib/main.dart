@@ -93,7 +93,7 @@ Future<void> _runApp(AppCore core) async {
   if (_appRunning) return;
   _appRunning = true;
   final client = core.client;
-  runApp(QUnleashedApp(client: client));
+  runApp(QUnleashedApp(client: client, diagnostics: core.telemetry.settings));
   bootstrapAmbientServices();
   // Here and not in _initCore: widgetMain() never reaches _runApp and has no
   // window to hook, and _initCore must never throw. See AppShutdown.

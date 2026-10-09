@@ -1,32 +1,41 @@
 import 'package:flutter/material.dart';
 
 import '../../../components/appbar.dart';
+import '../../../components/cardlist.dart';
 import '../../../components/clipboard.dart';
 import '../../../components/dialogs/confirm.dart';
 import '../../../services/build_identity.dart';
 import '../../../services/guarded.dart';
 import '../../../services/localization/l10n.dart';
 import '../../../services/logging.dart';
+import '../../../services/telemetry/settings.dart';
 import '../../../theme/theme.dart';
+import '../diagnostics_scope.dart';
 
-/// Reads back what [LogService] kept.
+/// The reporting switch, and the log it is the remote half of.
 ///
-/// The half of #89 that makes the rest of it worth anything. Errors survive a
-/// release build now, but a buffer nobody can open is the same as no buffer —
-/// and the app has no crash reporting, so this screen is the only route from
-/// "it failed" to something a bug report can carry.
+/// Was the Log screen, renamed by ADR 0013 §1 when it gained the switch. The
+/// two belong on one screen because they are the same thing from its two ends:
+/// the log is what this device kept, and sharing is whether anyone else ever
+/// sees it. Somebody who turns the switch off has not lost the route from "it
+/// failed" to a bug report — it is the rest of this screen, and Copy still
+/// hands them the same text Sentry would have received.
 ///
-/// A snapshot, deliberately. The list is read when the page opens and on the
-/// refresh action, not streamed: someone reading a failure does not want the
+/// The log half is #89's. Errors survive a release build, but a buffer nobody
+/// can open is the same as no buffer.
+///
+/// The list is a snapshot, deliberately: read when the page opens and on the
+/// refresh action, not streamed. Someone reading a failure does not want the
 /// lines moving under them, and the one thing they came to do is copy it.
-class LogSettingsPage extends StatefulWidget {
-  const LogSettingsPage({super.key});
+class DiagnosticsSettingsPage extends StatefulWidget {
+  const DiagnosticsSettingsPage({super.key});
 
   @override
-  State<LogSettingsPage> createState() => _LogSettingsPageState();
+  State<DiagnosticsSettingsPage> createState() =>
+      _DiagnosticsSettingsPageState();
 }
 
-class _LogSettingsPageState extends State<LogSettingsPage> {
+class _DiagnosticsSettingsPageState extends State<DiagnosticsSettingsPage> {
   List<String> _entries = LogService.history;
 
   void _reload() => setState(() => _entries = LogService.history);
@@ -80,7 +89,7 @@ class _LogSettingsPageState extends State<LogSettingsPage> {
     return Scaffold(
       backgroundColor: colors.background,
       appBar: AppBar(
-        title: Text(context.l10n.settingsLogTitle),
+        title: Text(context.l10n.settingsDiagnosticsTitle),
         backgroundColor: colors.background,
         surfaceTintColor: colors.transparent,
         actions: [
@@ -108,14 +117,100 @@ class _LogSettingsPageState extends State<LogSettingsPage> {
           ),
         ],
       ),
-      body: _entries.isEmpty
-          ? _empty(colors)
-          : Column(
-              children: [
-                _caution(colors),
-                Expanded(child: _list(colors)),
-              ],
-            ),
+      body: Column(
+        children: [
+          _shareSwitch(context),
+          if (_entries.isEmpty)
+            Expanded(child: _empty(colors))
+          else ...[
+            _caution(colors),
+            Expanded(child: _list(colors)),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// The one switch §1 asks for: on by default, sending by itself.
+  ///
+  /// Read through the scope rather than held in this page's state, so the row
+  /// redraws when anything else changes it — the one-time notice's **Turn it
+  /// off** being the case that matters, since that is dismissed over whatever
+  /// screen is showing.
+  ///
+  /// Nothing here starts or stops the SDK. `Telemetry` listens to the same
+  /// object, which is what keeps this file out of §2's import rule and keeps
+  /// the switch testable without the SDK at all.
+  Widget _shareSwitch(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: GroupedCardList<DiagnosticsSettings>(
+        items: [DiagnosticsScope.of(context)],
+        onTap: (settings) =>
+            () => _toggleShare(settings),
+        itemBuilder: _shareTile,
+      ),
+    );
+  }
+
+  /// `guarded` for the same reason the Copy action uses it: the slots here are
+  /// a [VoidCallback] and a `ValueChanged<bool>`, so the future would
+  /// otherwise be dropped and a rejection would land as `[uncaught]` naming
+  /// nothing. `setShareLogs` persists through `persistSetting`, which does not
+  /// reject - CLAUDE.md and #23 are about not depending on that.
+  ///
+  /// Named for the state being moved *to*, so the log line reads as the thing
+  /// that failed rather than as the thing that was true before it.
+  void _toggleShare(DiagnosticsSettings settings) {
+    final next = !settings.shareLogs;
+    guarded(
+      '[Diagnostics] turning sharing ${next ? 'on' : 'off'}',
+      () => settings.setShareLogs(next),
+    );
+  }
+
+  Widget _shareTile(BuildContext context, DiagnosticsSettings settings) {
+    final colors = context.appColors;
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                context.l10n.diagnosticsShareTitle,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: colors.textPrimary,
+                  fontSize: 14,
+                  height: 1.2,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                context.l10n.diagnosticsShareSubtitle,
+                maxLines: 4,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: colors.textMuted,
+                  fontSize: 12,
+                  height: 1.2,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        Switch(
+          value: settings.shareLogs,
+          activeThumbColor: colors.accent,
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          onChanged: (_) => _toggleShare(settings),
+        ),
+      ],
     );
   }
 

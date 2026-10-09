@@ -3,10 +3,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/app/app.dart';
 import 'package:qunleashed/pages/devices/controllers/device.dart';
 import 'package:qunleashed/pages/devices/device_scope.dart';
+import 'package:qunleashed/pages/option/diagnostics_scope.dart';
+import 'package:qunleashed/services/telemetry/settings.dart';
 
 import 'firmware_fixture.dart';
 
-/// That a pushed route can reach the device — ADR 0011.
+/// That a pushed route can reach the scopes — ADR 0011.
 ///
 /// `DeviceScope` used to be mounted by `AppShell`, which is
 /// `MaterialApp.home`: route `/` inside the Navigator. A route pushed on top
@@ -18,6 +20,11 @@ import 'firmware_fixture.dart';
 /// Navigator. The two cases below are the before and after of that: the first
 /// is what the app does, the second is what it used to do, kept so the
 /// difference is a test rather than a paragraph.
+///
+/// `DiagnosticsScope` is checked in the same place and for the same reason.
+/// ADR 0013 §1 puts the reporting switch on the settings screen, which is
+/// reached by a push through the `AppRoute` registry - so it is one of the 25
+/// that the first shape above would have left outside.
 ///
 /// Both end with [closeDevice]. `mountedDevice` builds a real
 /// `DeviceController`, which starts a DFU detector that polls on a one-second
@@ -36,13 +43,26 @@ void main() {
     return context.dependOnInheritedWidgetOfExactType<DeviceScope>()?.notifier;
   }
 
+  /// The reporting switch found at [key]'s context, or null if there is no
+  /// scope.
+  DiagnosticsSettings? switchReachedFrom(GlobalKey key) {
+    final context = key.currentContext;
+    if (context == null) return null;
+    return context
+        .dependOnInheritedWidgetOfExactType<DiagnosticsScope>()
+        ?.notifier;
+  }
+
   testWidgets('a route pushed over the app is inside the scope', (
     tester,
   ) async {
     final (device, client) = mountedDevice();
     final key = GlobalKey();
+    final diagnostics = DiagnosticsSettings();
 
-    await tester.pumpWidget(QUnleashedApp(client: client, device: device));
+    await tester.pumpWidget(
+      QUnleashedApp(client: client, diagnostics: diagnostics, device: device),
+    );
     await tester.pump();
 
     final navigator = tester.state<NavigatorState>(find.byType(Navigator));
@@ -52,12 +72,18 @@ void main() {
     // Read before the tree goes, asserted after: `closeDevice` has to run
     // whatever this says, or a failure here is reported as a pending timer.
     final reached = reachedFrom(key);
+    final reachedSwitch = switchReachedFrom(key);
     await closeDevice(tester, device);
 
     expect(
       reached,
       same(device),
       reason: 'the same controller the shell reads, not a second one',
+    );
+    expect(
+      reachedSwitch,
+      same(diagnostics),
+      reason: 'the same switch Telemetry follows, not a second one',
     );
   });
 

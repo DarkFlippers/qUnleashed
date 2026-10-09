@@ -231,14 +231,24 @@
     "description": "Subtitle under the Notifications tile on the Settings screen."
   },
 
-  "settingsLogTitle": "Log",
-  "@settingsLogTitle": {
-    "description": "Title of the log screen and of its tile on the Settings screen. The errors and warnings the app recorded, for attaching to a bug report."
+  "settingsDiagnosticsTitle": "Diagnostics",
+  "@settingsDiagnosticsTitle": {
+    "description": "Title of the Diagnostics screen and of its tile on the Settings screen. Holds the switch for sharing failures with the developers, and below it the log of errors and warnings this device recorded. Was called \"Log\" before the switch was added."
   },
 
-  "settingsLogSubtitle": "Errors recorded for a bug report",
-  "@settingsLogSubtitle": {
-    "description": "Subtitle under the Log tile on the Settings screen."
+  "settingsDiagnosticsSubtitle": "Share what fails, and read the log",
+  "@settingsDiagnosticsSubtitle": {
+    "description": "Subtitle under the Diagnostics tile on the Settings screen. Names both halves of the screen: the sharing switch and the recorded log."
+  },
+
+  "diagnosticsShareTitle": "Share logs with developers",
+  "@diagnosticsShareTitle": {
+    "description": "Label of the switch that decides whether errors and crashes are sent to the developers. On by default. Phrased as what the user gets rather than as the name of a service, because the service is an implementation detail that may change."
+  },
+
+  "diagnosticsShareSubtitle": "Errors and crashes are sent automatically so they can be fixed. No card data, keys or captures are ever sent.",
+  "@diagnosticsShareSubtitle": {
+    "description": "Explains the switch above it. Two facts, in the order a user asks them: that sending needs no action from them, and what is never included. The second half matters because this app handles card dumps, keys and radio captures, and the user has no way to verify the claim themselves."
   },
 
   "logEmpty": "Nothing recorded yet. Errors and warnings are collected as they happen; open this screen or refresh it to see them.",
