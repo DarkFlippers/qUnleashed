@@ -383,6 +383,25 @@ Errors, traces, logs and metrics at 100%. Replay is `onErrorSampleRate: 1.0`
 with `sessionSampleRate: 0`, Android and iOS. Revisited after a month of real
 volume.
 
+**Checked against the actual plan, 2026-10-09**, because 100% of everything is
+only defensible with the headroom to pay for it. `dark-flippers` is on a
+Sponsored Business plan: 5M errors, 1B spans, 5 TB logs, 5 TB metrics, 105K
+replays (100K plus a 5K/month credit running to 2027-01-23), 10 GB
+attachments. That is the allowance this section assumed when it was written,
+so nothing here changes.
+
+**Pay-as-you-go is capped at $0**, which matters more than the quotas do. Going
+over does not produce a bill, it drops events - so the risk of reporting by
+default is losing data at the end of a bad month, never a surprise invoice.
+That is the right direction for a decision nobody can take back once it has
+shipped, and it is why the ceilings above are worth stating rather than
+trusting.
+
+**The org is on Sentry's EU region** (`de.sentry.io`), so events are stored in
+the EU. §1 argues on-by-default partly on GDPR's legitimate-interest footing;
+this strengthens that rather than changing it, and it is the kind of fact a
+store questionnaire asks for.
+
 **What that means, because the first draft of this section got it wrong.** It
 said "records on error only", which is not a thing a recorder can do - there
 is no recording the past. Buffer mode records *continuously* into an in-memory

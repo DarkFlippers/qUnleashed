@@ -152,6 +152,46 @@ A dev build is the opposite: re-running one produces the same number on
 purpose. It is disposable, and the fix for wanting a fresh one is another
 commit.
 
+## Building locally with the things CI has
+
+CI passes a set of `--dart-define`s from its own secrets — the Sentry DSN, the
+map key, the build server. A local build gets none of them unless you say so,
+which is usually right: `flutter run` works without any of it.
+
+When you do want them — to check that a crash actually reaches Sentry, say —
+copy the template and fill in what you need:
+
+```bash
+cp dart-defines.local.example.json dart-defines.local.json
+flutter run --dart-define-from-file=dart-defines.local.json
+```
+
+`dart-defines.local.json` is gitignored; the `.example.` file beside it is not,
+so never put a real value in the template.
+
+| Key | What it is | Where it comes from |
+|---|---|---|
+| `QU_SENTRY_DSN` | where the app reports to | Sentry → Project → Settings → Client Keys (DSN) |
+| `QU_CHANNEL` | `local`, and leave it that way | — |
+| `QU_CARTO_KEY` | basemap tiles | the `QU_CARTO_KEY` repo secret |
+| `QU_BUILD_SERVER_URL` / `_KEY` | the Flibler build server | their repo secrets |
+| `QLOG`, `QLOG_LEVEL` | make a build talk | see `LogService` |
+
+**`QU_CHANNEL` stays `local`.** Setting it to `dev` or `release` makes your own
+tree report as a build somebody could otherwise go and look at — which is the
+one thing 0014 §1 defaults it to `local` to prevent.
+
+### The auth token is not one of these
+
+`SENTRY_AUTH_TOKEN` must **never** be a `--dart-define`: a define is compiled
+into the binary, and anyone with the APK could read it out. It is read from the
+environment at build time instead, by `sentry_dart_plugin`, and only when
+uploading debug files or creating a release.
+
+If you need it locally — which is only for testing symbol upload, never for
+checking that an error arrives — put it in `~/.sentryclirc` or a user-level
+environment variable. Not in the repository, and not in the file above.
+
 ## What is not automated yet
 
 Honest list, so nobody waits for something that is not coming.
