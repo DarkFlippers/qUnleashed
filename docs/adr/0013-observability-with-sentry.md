@@ -17,10 +17,23 @@ notice are on screen; `guarded` failures arrive as issues, fingerprinted;
 §6.2's scrubber runs on everything sent; and CI passes the DSN and uploads
 debug files under the release name `derive_version.sh` derives.
 
+**Phase 2 is built apart from four call sites.** Sentry Logs take
+`LogService`'s kept entries through `keptSink`, with `caught` at info as §5
+asks; flipperlib's commentary is breadcrumbs and the level pin rises to `info`
+while somebody is listening; the registry's routes are named and
+`SentryNavigatorObserver` turns them into transactions; `tracesSampleRate` is
+1.0 per §8; every `AppHttp` request is a span; and a ufbt `error` or `critical`
+now reaches the log rather than only the Assembler console. What is left is
+`traced` at four of the six operations §2 names - file transfer, app install,
+DFU and MIFARE recovery - each the same one-line wrap at its own entry point.
+
+Phase 3 is untouched: no metrics, and replay is off, which is where §6.4's gate
+still stands.
+
 Owed and not in the phase table: the Android R8 mapping, which wants the Sentry
 Android Gradle Plugin, and §3's submodule commits as release commits rather
-than event tags. Phases 2 and 3 are untouched. Facts last checked against the
-tree 2026-10-09; git holds how the decision got here.
+than event tags. Facts last checked against the tree 2026-10-09; git holds how
+the decision got here.
 
 Build identity — release, channel, commit — is its own decision,
 [0014](0014-build-identity.md). This one consumes it.
