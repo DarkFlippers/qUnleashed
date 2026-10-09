@@ -96,6 +96,31 @@ dev_dependencies:
   # because `extension E on T {` and `mixin M on B {` are spelled exactly like
   # a bare `on T {` catch clause, and only an AST can tell them apart.
   analyzer: ^14.4.0
+  # Uploads debug information so a stack trace in Sentry names functions and
+  # lines rather than addresses: dSYMs, PDBs, Android and Linux native symbols,
+  # and the Dart symbol map. A dev dependency because it is a build-time tool
+  # and nothing in `lib/` imports it - the import ratchet counts it as the SDK
+  # either way, which is correct.
+  #
+  # It does **not** cover the R8 mapping. That wants the Sentry Android Gradle
+  # Plugin with auto-install off, which is its own change in `android/` and is
+  # not here yet. ADR 0013 Consequences.
+  sentry_dart_plugin: ^3.4.0
+
+# How `sentry_dart_plugin` uploads. The org and project are not secrets; the
+# token is, and is read from the environment (`SENTRY_AUTH_TOKEN`) rather than
+# from here - see docs/releasing.md.
+#
+# `release` is left out on purpose. The plugin would otherwise derive it from
+# this file's `version`, which carries no channel and no build number, and
+# every dev build of a cycle would upload under the same name. CI passes the
+# one `derive_version.sh` produces instead, which is the string
+# `BuildStamp.sentryRelease` makes the events carry. 0014 §5.
+sentry:
+  upload_debug_symbols: true
+  upload_source_maps: false
+  org: dark-flippers
+  project: qunleashed
 
 flutter:
   config:

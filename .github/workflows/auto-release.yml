@@ -133,6 +133,7 @@ jobs:
           QU_BUILD_SERVER_URL: ${{ secrets.QU_BUILD_SERVER_URL }}
           QU_BUILD_SERVER_KEY: ${{ secrets.QU_BUILD_SERVER_KEY }}
           QU_CARTO_KEY: ${{ secrets.QU_CARTO_KEY }}
+          QU_SENTRY_DSN: ${{ secrets.QU_SENTRY_DSN }}
           RELEASE_TAG: ${{ inputs.tag }}
         run: .github/scripts/derive_version.sh -- "$RELEASE_TAG"
 
@@ -186,6 +187,37 @@ jobs:
       - name: Build Linux single-file executable
         run: .github/scripts/build/linux.sh
 
+      - name: Upload debug symbols to Sentry
+        shell: bash
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+        # continue-on-error because this runs after the build and produces
+        # nothing a user downloads. A fault at Sentry must not throw away a
+        # release that is already built; the symbols can be re-uploaded from
+        # the same commit afterwards.
+        continue-on-error: true
+        # The token is read from the environment and never compiled in: a
+        # --dart-define lands in the binary, and anyone with the APK could read
+        # it out. The DSN is the one that ships.
+        #
+        # The release name comes from SENTRY_RELEASE, which derive_version.sh
+        # wrote to GITHUB_ENV and the plugin reads from the environment ahead of
+        # both its own argument and the pubspec - so there is no flag here to
+        # drift from that line.
+        #
+        # The absent-token check is in the script rather than in `if:`, because
+        # a step's own `env:` is not in scope for its `if:` - the expression
+        # would read an empty `env.SENTRY_AUTH_TOKEN` and skip the step on every
+        # run, including the ones that have the secret. A fork and a dispatch
+        # run by somebody without the secret both have to be able to build; the
+        # release is not gated on symbolication.
+        run: |
+          if [ -z "${SENTRY_AUTH_TOKEN:-}" ]; then
+            echo "::notice::SENTRY_AUTH_TOKEN is not set, so no debug symbols were uploaded. Stack traces from this build will not be symbolicated."
+            exit 0
+          fi
+          dart run sentry_dart_plugin
+
       - name: Upload Android and Linux release assets
         uses: actions/upload-artifact@v4
         with:
@@ -232,6 +264,7 @@ jobs:
           QU_BUILD_SERVER_URL: ${{ secrets.QU_BUILD_SERVER_URL }}
           QU_BUILD_SERVER_KEY: ${{ secrets.QU_BUILD_SERVER_KEY }}
           QU_CARTO_KEY: ${{ secrets.QU_CARTO_KEY }}
+          QU_SENTRY_DSN: ${{ secrets.QU_SENTRY_DSN }}
           RELEASE_TAG: ${{ inputs.tag }}
         run: .github/scripts/derive_version.sh -- "$RELEASE_TAG"
 
@@ -243,6 +276,37 @@ jobs:
           # options, so this define reaches the plugin compile through MSBuild/CMake.
           _CL_: /D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS
         run: ./.github/scripts/build/windows.ps1
+
+      - name: Upload debug symbols to Sentry
+        shell: bash
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+        # continue-on-error because this runs after the build and produces
+        # nothing a user downloads. A fault at Sentry must not throw away a
+        # release that is already built; the symbols can be re-uploaded from
+        # the same commit afterwards.
+        continue-on-error: true
+        # The token is read from the environment and never compiled in: a
+        # --dart-define lands in the binary, and anyone with the APK could read
+        # it out. The DSN is the one that ships.
+        #
+        # The release name comes from SENTRY_RELEASE, which derive_version.sh
+        # wrote to GITHUB_ENV and the plugin reads from the environment ahead of
+        # both its own argument and the pubspec - so there is no flag here to
+        # drift from that line.
+        #
+        # The absent-token check is in the script rather than in `if:`, because
+        # a step's own `env:` is not in scope for its `if:` - the expression
+        # would read an empty `env.SENTRY_AUTH_TOKEN` and skip the step on every
+        # run, including the ones that have the secret. A fork and a dispatch
+        # run by somebody without the secret both have to be able to build; the
+        # release is not gated on symbolication.
+        run: |
+          if [ -z "${SENTRY_AUTH_TOKEN:-}" ]; then
+            echo "::notice::SENTRY_AUTH_TOKEN is not set, so no debug symbols were uploaded. Stack traces from this build will not be symbolicated."
+            exit 0
+          fi
+          dart run sentry_dart_plugin
 
       - name: Upload Windows release asset
         uses: actions/upload-artifact@v4
@@ -301,6 +365,7 @@ jobs:
           QU_BUILD_SERVER_URL: ${{ secrets.QU_BUILD_SERVER_URL }}
           QU_BUILD_SERVER_KEY: ${{ secrets.QU_BUILD_SERVER_KEY }}
           QU_CARTO_KEY: ${{ secrets.QU_CARTO_KEY }}
+          QU_SENTRY_DSN: ${{ secrets.QU_SENTRY_DSN }}
           RELEASE_TAG: ${{ inputs.tag }}
         run: .github/scripts/derive_version.sh -- "$RELEASE_TAG"
 
@@ -312,6 +377,37 @@ jobs:
 
       - name: Build iOS release IPA
         run: .github/scripts/build/ios.sh
+
+      - name: Upload debug symbols to Sentry
+        shell: bash
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+        # continue-on-error because this runs after the build and produces
+        # nothing a user downloads. A fault at Sentry must not throw away a
+        # release that is already built; the symbols can be re-uploaded from
+        # the same commit afterwards.
+        continue-on-error: true
+        # The token is read from the environment and never compiled in: a
+        # --dart-define lands in the binary, and anyone with the APK could read
+        # it out. The DSN is the one that ships.
+        #
+        # The release name comes from SENTRY_RELEASE, which derive_version.sh
+        # wrote to GITHUB_ENV and the plugin reads from the environment ahead of
+        # both its own argument and the pubspec - so there is no flag here to
+        # drift from that line.
+        #
+        # The absent-token check is in the script rather than in `if:`, because
+        # a step's own `env:` is not in scope for its `if:` - the expression
+        # would read an empty `env.SENTRY_AUTH_TOKEN` and skip the step on every
+        # run, including the ones that have the secret. A fork and a dispatch
+        # run by somebody without the secret both have to be able to build; the
+        # release is not gated on symbolication.
+        run: |
+          if [ -z "${SENTRY_AUTH_TOKEN:-}" ]; then
+            echo "::notice::SENTRY_AUTH_TOKEN is not set, so no debug symbols were uploaded. Stack traces from this build will not be symbolicated."
+            exit 0
+          fi
+          dart run sentry_dart_plugin
 
       - name: Upload macOS and iOS release assets
         uses: actions/upload-artifact@v4

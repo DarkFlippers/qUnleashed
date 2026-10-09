@@ -4,15 +4,21 @@ Status: Accepted (2026-10-09). Reporting is **on by default and sent
 automatically**, behind a one-time notice that carries no policy link because
 there is no policy; replay is on with it, behind §6.4's gate.
 
-Phase 1 is partly built. `lib/services/telemetry/` exists and is the only
-place in `lib/` importing the SDK, held by
-`test/sentry_import_guard_test.dart`; `Telemetry.start` runs in `_initCore` on
-both entry points, reads `QU_SENTRY_DSN`, sets 0014 §5's release name, §3's
-tags and §6.1's options, and puts §6.2's scrubber in front of every event. Not
-yet: §6.2's patterns beyond the home directory, the Diagnostics switch and the
-one-time notice on screen, `guarded` becoming issues, and the CI defines and
-symbol upload. Phases 2 and 3 are untouched. Facts last checked against the
-tree 2026-10-09; git holds how the decision got here.
+Phase 1 is built, apart from one thing it names and two it does not.
+`lib/services/telemetry/` is the only place in `lib/` importing the SDK, held
+by `test/sentry_import_guard_test.dart`; `Telemetry.start` runs in `_initCore`
+on both entry points and never throws; the Diagnostics switch and the one-time
+notice are on screen; `guarded` failures arrive as issues, fingerprinted;
+and CI passes the DSN and uploads debug files under the release name
+`derive_version.sh` derives.
+
+Still open in phase 1: **§6.2's patterns beyond the home directory**, which is
+what phase 3's replay is gated on. Not in the phase table but owed to it: the
+Android R8 mapping, which wants the Sentry Android Gradle Plugin, and §3's
+submodule commits as release commits rather than event tags. Phases 2 and 3 are
+untouched, and nothing here has been seen to deliver an event yet - that is
+phase 1's own definition of done, below. Facts last checked against the tree
+2026-10-09; git holds how the decision got here.
 
 Build identity — release, channel, commit — is its own decision,
 [0014](0014-build-identity.md). This one consumes it.

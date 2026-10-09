@@ -337,7 +337,8 @@ done
 # guards one producer of a string transport that cannot carry whitespace at all;
 # see the issue on replacing that transport.
 for name in QU_BUILD_SERVER_URL QU_BUILD_SERVER_KEY QU_CARTO_KEY \
-            QU_COMMIT QU_COMMIT_FLIPPERLIB QU_COMMIT_DARTUFBT QU_CHANNEL; do
+            QU_SENTRY_DSN QU_COMMIT QU_COMMIT_FLIPPERLIB \
+            QU_COMMIT_DARTUFBT QU_CHANNEL; do
   if [[ "${!name:-}" =~ [[:space:]] ]]; then
     echo "::error::$name contains whitespace, which would corrupt the build arguments." >&2
     exit 1
@@ -352,6 +353,13 @@ if [[ -n "${QU_BUILD_SERVER_URL:-}" && -n "${QU_BUILD_SERVER_KEY:-}" ]]; then
 fi
 if [[ -n "${QU_CARTO_KEY:-}" ]]; then
   args+=(--dart-define=QU_CARTO_KEY="$QU_CARTO_KEY")
+fi
+# A DSN identifies a project and authorises nothing but writing to it, so it is
+# a define like the rest. SENTRY_AUTH_TOKEN is not and must never be: a define
+# is compiled into the binary. The upload step reads that one from the
+# environment. ADR 0013.
+if [[ -n "${QU_SENTRY_DSN:-}" ]]; then
+  args+=(--dart-define=QU_SENTRY_DSN="$QU_SENTRY_DSN")
 fi
 if [[ -n "$commit" ]]; then
   args+=(--dart-define=QU_COMMIT="$commit")
@@ -385,11 +393,36 @@ else
   asset_version="$version_name"
 fi
 
+# What Sentry calls this build. 0014 §5, and the one string the upload step
+# and the app itself both have to produce: the app formats it in
+# `BuildStamp.sentryRelease`, and if the two ever disagree the symbols land
+# under a release name no event carries.
+#
+# `SENTRY_RELEASE` and not `QUNLEASHED_SENTRY_RELEASE`, which is the only one of
+# these that breaks the prefix. It is the name `sentry_dart_plugin` and
+# `sentry-cli` both read from the environment, and in the plugin it outranks
+# both its argument and the pubspec - so writing it to GITHUB_ENV is the whole
+# wiring, with no flag on the upload step to drift from this line. The prefix
+# exists to mark what this script owns; this value is owned by the tool that
+# consumes it.
+#
+# The suffix follows §2 rather than the asset name's: a `+` is correct here -
+# Sentry's release is a free-form string - where the asset name cannot carry
+# one. So this is `qunleashed@0.15.0-dev+108080` against the asset's
+# `0.15.0-dev.108080`, deliberately, and not a second spelling of the same
+# thing.
+if [[ "$channel" == release ]]; then
+  sentry_release="qunleashed@$version_name+$version_code"
+else
+  sentry_release="qunleashed@$version_name-$channel+$version_code"
+fi
+
 {
   echo "QUNLEASHED_VERSION_NAME=$version_name"
   echo "QUNLEASHED_ASSET_VERSION=$asset_version"
   echo "QUNLEASHED_VERSION_CODE=$version_code"
   echo "QUNLEASHED_CHANNEL=$channel"
+  echo "SENTRY_RELEASE=$sentry_release"
   echo "QUNLEASHED_FLUTTER_BUILD_ARGS=${args[*]}"
 } >> "$GITHUB_ENV"
 
@@ -400,6 +433,7 @@ if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
     echo "version_name=$version_name"
     echo "version_code=$version_code"
     echo "channel=$channel"
+    echo "sentry_release=$sentry_release"
   } >> "$GITHUB_OUTPUT"
 fi
 

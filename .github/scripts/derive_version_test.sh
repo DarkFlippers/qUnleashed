@@ -393,11 +393,36 @@ has "publishes the step outputs"  "version_name=0.11.2"
 has "build args carry name+number" \
   "QUNLEASHED_FLUTTER_BUILD_ARGS=--build-name=0.11.2 --build-number=108081 --dart-define=QU_CHANNEL=release --dart-define=QU_COMMIT=aaaaaaa1"
 
-if ! body="$(run_env "${BASE[@]}" "${PINNED[@]}" GITHUB_REF_TYPE=tag GITHUB_REF_NAME=beta-0.11.2 QU_BUILD_SERVER_URL=https://b QU_BUILD_SERVER_KEY=k QU_CARTO_KEY=c)"; then
+if ! body="$(run_env "${BASE[@]}" "${PINNED[@]}" GITHUB_REF_TYPE=tag GITHUB_REF_NAME=beta-0.11.2 QU_BUILD_SERVER_URL=https://b QU_BUILD_SERVER_KEY=k QU_CARTO_KEY=c QU_SENTRY_DSN=https://k@o1.ingest.de.sentry.io/2)"; then
   fail "a run with every secret exited non-zero"
 fi
 has "folds in every secret" \
-  "QUNLEASHED_FLUTTER_BUILD_ARGS=--build-name=0.11.2 --build-number=108081 --dart-define=QU_CHANNEL=release --dart-define=QU_BUILD_SERVER_URL=https://b --dart-define=QU_BUILD_SERVER_KEY=k --dart-define=QU_CARTO_KEY=c --dart-define=QU_COMMIT=aaaaaaa1"
+  "QUNLEASHED_FLUTTER_BUILD_ARGS=--build-name=0.11.2 --build-number=108081 --dart-define=QU_CHANNEL=release --dart-define=QU_BUILD_SERVER_URL=https://b --dart-define=QU_BUILD_SERVER_KEY=k --dart-define=QU_CARTO_KEY=c --dart-define=QU_SENTRY_DSN=https://k@o1.ingest.de.sentry.io/2 --dart-define=QU_COMMIT=aaaaaaa1"
+
+# ADR 0014 §5, and the string that has to match `BuildStamp.sentryRelease`
+# exactly: the symbols are uploaded under this name and the events carry that
+# one, so a disagreement puts the two in different releases and symbolication
+# silently stops working.
+#
+# Asserted per channel rather than once, because the suffix is the part that
+# differs and the release case is the one with no suffix at all.
+# Named without the QUNLEASHED_ prefix every sibling carries, because that is
+# the name `sentry_dart_plugin` reads from the environment - and in the plugin
+# the environment outranks its own argument, so this line is the whole wiring.
+has "names the Sentry release" \
+  "SENTRY_RELEASE=qunleashed@0.11.2+108081"
+has "and publishes it as an output" "sentry_release=qunleashed@0.11.2+108081"
+
+if ! body="$(run_env "${BASE[@]}" "${PINNED[@]}" GITHUB_REF_TYPE=branch GITHUB_REF_NAME=main)"; then
+  fail "a dev run exited non-zero"
+fi
+has "a dev build's release says dev" \
+  "SENTRY_RELEASE=qunleashed@0.11.2-dev+108080"
+# The asset name carries the same two facts and cannot carry a `+`, so the two
+# spellings differ on purpose. Pinned together so nobody "fixes" one into the
+# other.
+has "and the asset name is the other spelling" \
+  "QUNLEASHED_ASSET_VERSION=0.11.2-dev.108080"
 
 # ADR 0014 §3: a build has to be able to name the commit it came from, and all
 # three of them, because a fault can be in a submodule. Pinned rather than read
