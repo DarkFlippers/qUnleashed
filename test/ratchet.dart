@@ -171,3 +171,23 @@ void expectWithinBudget({
 
   expect(drift.over, isEmpty, reason: '$why\n${offending.join('\n')}');
 }
+
+/// Whether [node] is a call on `LogService`, however it was imported.
+///
+/// Shared because two ratchets ask it and a third would — the log-level budget
+/// and the `caught` budget had byte-identical copies. The prefixed form is why
+/// it is worth sharing: one `import '.../logging.dart' as log;` would zero out
+/// a whole file's contribution to whichever copy had not been taught about it,
+/// and nobody adding that import would connect it to a ratchet.
+///
+/// The visitors stay with their own tests, as this file's header says. They
+/// differ — one tracks catch depth and one does not — and only the predicate
+/// is common.
+bool isLogServiceCall(MethodInvocation node) {
+  final target = node.target;
+  if (target is SimpleIdentifier) return target.name == 'LogService';
+  if (target is PrefixedIdentifier) {
+    return target.identifier.name == 'LogService';
+  }
+  return false;
+}

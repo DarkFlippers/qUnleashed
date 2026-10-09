@@ -7,10 +7,8 @@
 // for, and no test elsewhere would fail.
 //
 // Each case passes its own `BuildStamp` rather than mocking the platform
-// channel. `package_info_plus` caches its answer in a static of its own, so a
-// per-test channel mock exercises the plugin's cache and not this widget - the
-// first draft of this file did that, and two cases read the previous one's
-// version.
+// channel: `package_info_plus` caches its answer in a static of its own, so a
+// per-test channel mock exercises the plugin's cache and not this widget.
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';

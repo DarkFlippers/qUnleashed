@@ -11,6 +11,16 @@ on:
       - main
     tags:
       - "*"
+    # Every push to `main` now builds five platforms, so a push that cannot
+    # change a binary should not pay for it. Deliberately narrow: anything that
+    # might reach the app - translations among them, since they are compiled in
+    # - is left out of this list.
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+      - ".github/ISSUE_TEMPLATE/**"
+      - "fastlane/**"
+      - LICENSE
   # Builds every platform without publishing anything, so a change to the build
   # path can be tried without cutting a release. It does NOT exercise publishing:
   # artifact merging, SHA256SUMS, the release globs and the push notification all
@@ -48,9 +58,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
-          # The dispatch check below runs derive_version.sh, which counts
-          # commits and reads tags.
-          fetch-depth: 0
+          # Only the dispatch check below reads history, and this job is the one
+          # thing on the critical path before the builds - so a push pays for a
+          # full clone it never looks at.
+          fetch-depth: ${{ github.event_name == 'workflow_dispatch' && 0 || 1 }}
 
       - name: Cancel outside github.com
         if: ${{ github.server_url != 'https://github.com' }}

@@ -339,34 +339,22 @@ class LogService {
   ///
   /// Kept like [warn], printed like [info]: `keep: true` with
   /// `console: infoOn`, which is why this is one line rather than a mechanism.
-  /// Not quite warn's combination, and the difference is deliberate — in a
-  /// build made to talk at `QLOG_LEVEL=warn` a warning prints and these do
-  /// not, because the console is not the surface they are for.
-  ///
-  /// The keeping is the point. [info] does not survive: [infoOn] is a const
-  /// that folds to false in an ordinary release build and takes the call site
-  /// out of the binary with it.
+  /// The difference from warn's combination is deliberate — in a build made to
+  /// talk at `QLOG_LEVEL=warn` a warning prints and these do not, because the
+  /// console is not the surface they are for. The keeping is the point: [info]
+  /// does not survive, since [infoOn] folds to false in an ordinary release
+  /// build and takes the call site out of the binary with it.
   ///
   /// **The rule, and it is narrow on purpose.** Use this where an operation
   /// did not do what was asked. Commentary about something merely absent, a
   /// reading that repeats, a wait whose own timeout is the answer - those stay
-  /// [info] and stay out of the binary.
+  /// [info]. The narrowness is about the person reading: noise in front of
+  /// them costs attention on every failure after it.
   ///
-  /// The narrowness is not about volume for its own sake. It is about the
-  /// person reading: a surplus line costs nothing to skip, but noise in front
-  /// of them costs attention on every failure after it.
-  ///
-  /// This is deliberately the catch-all [info]'s doc says does not exist, and
-  /// ADR 0013 §5 argues the reversal rather than asserting it. In short: that
-  /// rule was written for somebody scrolling five hundred lines on a phone,
-  /// where a wrong level is a line nobody finds. Gathered and indexed, a
-  /// missing line cannot be recovered at all. The per-site judgement does not
-  /// go away, it gets smaller - not "which of five levels" but "did an
-  /// operation fail, or is this commentary".
-  ///
-  /// `test/caught_budget_test.dart` holds a per-area ceiling, because moving
-  /// *commentary* here would lower `test/log_level_budget_test.dart`
-  /// legitimately while putting noise in front of whoever reads these.
+  /// It is the catch-all [info]'s doc used to say did not exist. ADR 0013 §5
+  /// argues that reversal; `test/caught_budget_test.dart` is the ceiling that
+  /// keeps it honest, because moving *commentary* here would lower
+  /// `test/log_level_budget_test.dart` as legitimately as a real failure does.
   static void caught(String msg) =>
       _emit('[caught] $msg', keep: true, console: infoOn);
 
@@ -430,10 +418,8 @@ class LogService {
   /// than one ruled to be commentary; where the ruling was made, it is
   /// written next to the call.
   ///
-  /// There is one catch-all, and it is not this: [caught], added by ADR 0013
-  /// §5 for a failure that was handled and is worth keeping. It does not
-  /// dissolve the judgement at each site, it narrows it - did an operation
-  /// fail, or is this commentary. Commentary stays here.
+  /// There is one catch-all, and it is not this: see [caught]. Commentary
+  /// stays here.
   static void info(String msg) {
     if (!infoOn) return;
     _write(msg);

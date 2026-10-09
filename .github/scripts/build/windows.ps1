@@ -6,7 +6,13 @@ $ErrorActionPreference = "Stop"
 
 $RootDir = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
 $AppName = "qunleashed"
-$VersionName = $env:QUNLEASHED_VERSION_NAME
+# The asset version, which carries the channel suffix and build number on a dev
+# build so its filenames differ from the release of the same cycle. Falls back
+# to the numeric name, then to pubspec.
+$VersionName = $env:QUNLEASHED_ASSET_VERSION
+if ([string]::IsNullOrWhiteSpace($VersionName)) {
+    $VersionName = $env:QUNLEASHED_VERSION_NAME
+}
 if ([string]::IsNullOrWhiteSpace($VersionName)) {
     $pubspecPath = Join-Path $RootDir "pubspec.yaml"
     $versionLine = Get-Content -Path $pubspecPath | Where-Object { $_ -match '^version:\s*([0-9A-Za-z._-]+)' } | Select-Object -First 1
@@ -15,7 +21,7 @@ if ([string]::IsNullOrWhiteSpace($VersionName)) {
     }
 }
 if ([string]::IsNullOrWhiteSpace($VersionName)) {
-    throw "App version not found. Set QUNLEASHED_VERSION_NAME or pubspec.yaml version."
+    throw "App version not found. Set QUNLEASHED_ASSET_VERSION or pubspec.yaml version."
 }
 $DistDir = Join-Path $RootDir "dist"
 $OutFile = Join-Path $DistDir "$AppName`_$VersionName`_windows_x64.exe"

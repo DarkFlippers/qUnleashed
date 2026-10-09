@@ -41,11 +41,8 @@ refutes() {
 # a tag has to supply one of these.
 #
 # mktemp and not a counter. Every call site is inside `$(...)`, so a counter
-# would be incremented in a subshell and lost - every call would hand back the
-# same path and the last writer would win. That is not a hypothetical: the first
-# draft did it, and the shape it produced was a later fixture quietly rewriting
-# the one `BASE` had captured, which showed up as an unrelated assertion failing
-# on a guard it was not testing.
+# would be incremented in a subshell and lost - every call would hand back
+# the same path and the last writer would win.
 pubspec_with() {
   local file
   file="$(mktemp "$TMP/pubspec-XXXXXX.yaml")"
@@ -53,10 +50,13 @@ pubspec_with() {
   printf '%s' "$file"
 }
 
-# Every assertion about shape waives the published-version guard, which reads
-# `git tag`. The assertions about the guard, and about the commit count, build a
-# repository of their own with `fixture_repo` instead.
-NOGUARD=QU_SKIP_PUBLISHED_GUARD=1
+# The published-version guard reads `git tag`, and there is no way to switch it
+# off - a skip-the-guard lever in shipped CI code was its own hazard. So every
+# assertion runs the guard for real, against a repository with no tags, and
+# passes it by construction. NOTAGS is that repository; the guard's own
+# assertions use PUBLISHED_REPO, which has some.
+#
+# Defined after fixture_repo and before its first use.
 
 # A repository with $1 commits and the tags named after it, echoing its path.
 #
@@ -90,6 +90,7 @@ fixture_repo() {
 # has used, including a `dev-` one, so the boundary cases below are checked
 # against tag text that really occurs.
 PUBLISHED_REPO="$(fixture_repo 3 beta-0.14.1 beta-0.10.10 dev-0.11.0)"
+NOTAGS=QU_REPO_ROOT="$(fixture_repo 1)"
 
 # --- --print mode -----------------------------------------------------------
 
@@ -103,7 +104,7 @@ COUNT=QU_COMMIT_COUNT=808
 ok() {
   local pv="$1" want="$2" got file
   file="$(pubspec_with "$pv")"
-  if ! got="$(run "$NOGUARD" "$COUNT" QU_PUBSPEC="$file" GITHUB_REF_TYPE=branch \
+  if ! got="$(run "$NOTAGS" "$COUNT" QU_PUBSPEC="$file" GITHUB_REF_TYPE=branch \
       GITHUB_REF_NAME=main bash "$DERIVE" --print)"; then got="<rejected>"; fi
   [[ "$got" == "$want 108080" ]] && pass "pubspec $pv -> $got" \
     || fail "pubspec $pv -> $got (want '$want 108080')"
@@ -128,7 +129,7 @@ ok "0.11.2+99999"  "0.11.2"
 refute_pubspec() {
   local label="$1" pv="$2" file
   file="$(pubspec_with "$pv")"
-  refutes "$label" run "$NOGUARD" "$COUNT" QU_PUBSPEC="$file" \
+  refutes "$label" run "$NOTAGS" "$COUNT" QU_PUBSPEC="$file" \
     GITHUB_REF_TYPE=branch GITHUB_REF_NAME=main bash "$DERIVE" --print
 }
 refute_pubspec "a pubspec with no version" "not-a-version"
@@ -136,7 +137,7 @@ refute_pubspec "a two-part version"        "1.2"
 refute_pubspec "a four-part version"       "1.2.3.4"
 refute_pubspec "a zero version"            "0.0.0"
 refutes "an unknown flag"   run bash "$DERIVE" --bogus
-refutes "a missing pubspec" run "$NOGUARD" "$COUNT" QU_PUBSPEC="$TMP/nope.yaml" \
+refutes "a missing pubspec" run "$NOTAGS" "$COUNT" QU_PUBSPEC="$TMP/nope.yaml" \
   GITHUB_REF_TYPE=branch GITHUB_REF_NAME=main bash "$DERIVE" --print
 
 # --- the build number -------------------------------------------------------
@@ -150,7 +151,7 @@ echo "derive_version.sh build number"
 number() {
   local label="$1" want="$2" got
   shift 2
-  if ! got="$(run "$NOGUARD" QU_PUBSPEC="$(pubspec_with 0.15.0)" "$@" \
+  if ! got="$(run "$NOTAGS" QU_PUBSPEC="$(pubspec_with 0.15.0)" "$@" \
       bash "$DERIVE" --print)"; then got="<rejected>"; fi
   [[ "$got" == "0.15.0 $want" ]] && pass "$label -> $got" \
     || fail "$label -> $got (want '0.15.0 $want')"
@@ -184,12 +185,12 @@ number "a dev re-run collides"      108080 \
 
 refute_number() {
   local label="$1"; shift
-  refutes "$label" run "$NOGUARD" QU_PUBSPEC="$(pubspec_with 0.15.0)" "$@" \
+  refutes "$label" run "$NOTAGS" QU_PUBSPEC="$(pubspec_with 0.15.0)" "$@" \
     GITHUB_REF_TYPE=branch GITHUB_REF_NAME=main bash "$DERIVE" --print
 }
 # Ten slots per commit and no more. A tenth attempt wants a new commit rather
 # than a number that has run into the next one's.
-refute_number "a tenth attempt" QU_COMMIT_COUNT=808 QU_CHANNEL=release QU_BUILD_SLOT=10
+refute_number "a tenth attempt" QU_COMMIT_COUNT=808 QU_CHANNEL=release GITHUB_RUN_ATTEMPT=10
 refute_number "a count of zero" QU_COMMIT_COUNT=0
 refute_number "a count that is not a number" QU_COMMIT_COUNT=lots
 
@@ -204,7 +205,7 @@ echo "derive_version.sh tag guard"
 agrees() {
   local tag="$1" pv="$2" got file
   file="$(pubspec_with "$pv")"
-  if ! got="$(run "$NOGUARD" "$COUNT" QU_PUBSPEC="$file" bash "$DERIVE" --print -- "$tag")"
+  if ! got="$(run "$NOTAGS" "$COUNT" QU_PUBSPEC="$file" bash "$DERIVE" --print -- "$tag")"
   then got="<rejected>"; fi
   [[ "$got" == "$pv "* ]] && pass "$tag agrees with $pv" \
     || fail "$tag against $pv -> $got"
@@ -223,21 +224,21 @@ agrees "v0.6.1"      "0.6.1"
 # commit. Every job would have succeeded. Seven of this repository's tags are
 # dev-, so it is the shape habit reaches for.
 file="$(pubspec_with 0.15.0)"
-refutes "a dev- tag"   run "$NOGUARD" "$COUNT" QU_PUBSPEC="$file" bash "$DERIVE" --print -- dev-0.15.0
+refutes "a dev- tag"   run "$NOTAGS" "$COUNT" QU_PUBSPEC="$file" bash "$DERIVE" --print -- dev-0.15.0
 
 # Anchored, which 0014's Consequences asked for: unanchored, a release
 # candidate matched the release's version and built claiming to be it.
-refutes "a release candidate suffix"   run "$NOGUARD" "$COUNT" QU_PUBSPEC="$file" bash "$DERIVE" --print -- beta-0.15.0-rc1
-refutes "a fourth component"   run "$NOGUARD" "$COUNT" QU_PUBSPEC="$file" bash "$DERIVE" --print -- 0.15.0.1
-refutes "anything after the patch"   run "$NOGUARD" "$COUNT" QU_PUBSPEC="$file" bash "$DERIVE" --print -- 0.15.0-hotfix
+refutes "a release candidate suffix"   run "$NOTAGS" "$COUNT" QU_PUBSPEC="$file" bash "$DERIVE" --print -- beta-0.15.0-rc1
+refutes "a fourth component"   run "$NOTAGS" "$COUNT" QU_PUBSPEC="$file" bash "$DERIVE" --print -- 0.15.0.1
+refutes "anything after the patch"   run "$NOTAGS" "$COUNT" QU_PUBSPEC="$file" bash "$DERIVE" --print -- 0.15.0-hotfix
 
 # Guard one. It would have failed the release of 2026-10-01, where the tag said
 # 0.13.0 and the commit's pubspec still said 0.12.1.
 file="$(pubspec_with 0.12.1)"
 refutes "a tag that disagrees with pubspec" \
-  run "$NOGUARD" "$COUNT" QU_PUBSPEC="$file" bash "$DERIVE" --print -- beta-0.13.0
+  run "$NOTAGS" "$COUNT" QU_PUBSPEC="$file" bash "$DERIVE" --print -- beta-0.13.0
 refutes "a tag with no version in it" \
-  run "$NOGUARD" "$COUNT" QU_PUBSPEC="$file" bash "$DERIVE" --print -- no-version-here
+  run "$NOTAGS" "$COUNT" QU_PUBSPEC="$file" bash "$DERIVE" --print -- no-version-here
 
 # Guard two, and the reason the automatic bump could be dropped: a version that
 # has gone out cannot be built again. Against the owned fixture, which has
@@ -306,9 +307,15 @@ refutes "a shallow checkout" \
 
 # The default pubspec path, which every other assertion overrides - so a moved
 # script or a wrong `../..` would fail all five build jobs with the suite green.
+#
+# The one case that cannot borrow a fixture repository, because QU_REPO_ROOT
+# moves the default pubspec path with it, and that path is what is under test.
+# So the guard runs against this repository and passes because the version it
+# holds is unpublished - which the branch would already be failing CI over if
+# it were not.
 want="$(sed -nE '/^version:/{s/^version:[[:space:]]*([^+[:space:]]+).*$/\1/p;q}' \
   "$HERE/../../pubspec.yaml")"
-got="$(run "$NOGUARD" "$COUNT" GITHUB_REF_TYPE=branch GITHUB_REF_NAME=main \
+got="$(run "$COUNT" GITHUB_REF_TYPE=branch GITHUB_REF_NAME=main \
   bash "$DERIVE" --print || true)"
 [[ "$got" == "$want 108080" ]] && pass "the default pubspec path resolves" \
   || fail "the default pubspec -> '$got' (want '$want 108080')"
@@ -319,30 +326,29 @@ got="$(run "$NOGUARD" "$COUNT" GITHUB_REF_TYPE=branch GITHUB_REF_NAME=main \
 # consumes it is load-bearing.
 file="$(pubspec_with 0.11.2)"
 refutes "a tag of --print is not read as a flag" \
-  run "$NOGUARD" "$COUNT" QU_PUBSPEC="$file" bash "$DERIVE" --print -- --print
+  run "$NOTAGS" "$COUNT" QU_PUBSPEC="$file" bash "$DERIVE" --print -- --print
 
 # `-- ""` is the tag-push shape: an empty argument after the separator. It has
 # to fall back to the ref rather than be read as a tag.
-got="$(run "$NOGUARD" "$COUNT" QU_PUBSPEC="$file" GITHUB_REF_TYPE=tag \
+got="$(run "$NOTAGS" "$COUNT" QU_PUBSPEC="$file" GITHUB_REF_TYPE=tag \
   GITHUB_REF_NAME=beta-0.11.2 bash "$DERIVE" --print -- "" || true)"
 [[ "$got" == "0.11.2 108081" ]] && pass "-- with an empty tag falls back" \
   || fail "-- empty tag -> '$got'"
 
-got="$(run "$NOGUARD" "$COUNT" QU_PUBSPEC="$file" GITHUB_REF_TYPE=tag \
+got="$(run "$NOTAGS" "$COUNT" QU_PUBSPEC="$file" GITHUB_REF_TYPE=tag \
   GITHUB_REF_NAME=beta-0.11.2 bash "$DERIVE" --print || true)"
 [[ "$got" == "0.11.2 108081" ]] && pass "--print reads GITHUB_REF_NAME" \
   || fail "--print GITHUB_REF_NAME fallback -> '$got'"
 
-# A branch ref is not a tag that failed to parse. It used to be fatal - the
-# version had nowhere else to come from - and it is now the ordinary case.
-got="$(run "$NOGUARD" "$COUNT" QU_PUBSPEC="$file" GITHUB_REF_TYPE=branch \
+# A branch ref is not a tag that failed to parse; it is the ordinary case.
+got="$(run "$NOTAGS" "$COUNT" QU_PUBSPEC="$file" GITHUB_REF_TYPE=branch \
   GITHUB_REF_NAME=main bash "$DERIVE" --print || true)"
 [[ "$got" == "0.11.2 108080" ]] && pass "a branch ref builds rather than failing" \
   || fail "a branch ref -> '$got'"
 
 # And a ref the trigger did not call a tag must not be checked as one, however
 # much it looks like one: GITHUB_REF_TYPE is what decides.
-got="$(run "$NOGUARD" "$COUNT" QU_PUBSPEC="$file" GITHUB_REF_TYPE=branch \
+got="$(run "$NOTAGS" "$COUNT" QU_PUBSPEC="$file" GITHUB_REF_TYPE=branch \
   GITHUB_REF_NAME=release/0.99.0 bash "$DERIVE" --print || true)"
 [[ "$got" == "0.11.2 108080" ]] && pass "a branch named like a tag is still a branch" \
   || fail "a tag-shaped branch -> '$got'"
@@ -374,7 +380,7 @@ PINNED=(QU_COMMIT=aaaaaaa1 QU_COMMIT_FLIPPERLIB= QU_COMMIT_DARTUFBT=)
 # each one is given a pubspec to read and the published-version check waived.
 # `GITHUB_REF_TYPE=tag` goes with each ref as well: without it a tag-shaped ref
 # is a branch, which is the right default and the wrong fixture here.
-BASE=("$NOGUARD" "$COUNT" QU_PUBSPEC="$(pubspec_with 0.11.2)")
+BASE=("$NOTAGS" "$COUNT" QU_PUBSPEC="$(pubspec_with 0.11.2)")
 
 body=""
 if ! body="$(run_env "${BASE[@]}" "${PINNED[@]}" GITHUB_REF_TYPE=tag GITHUB_REF_NAME=beta-0.11.2)"; then fail "a plain run exited non-zero"; fi
@@ -487,7 +493,7 @@ refutes "local from CI"      run GITHUB_REF_TYPE=branch GITHUB_REF_NAME=main QU_
 
 # The channel reaches the build the same way the version does, and the publish
 # job reads it from the step output rather than testing the prefix again.
-if ! body="$(run_env "$NOGUARD" "$COUNT" QU_PUBSPEC="$(pubspec_with 0.14.1)" \
+if ! body="$(run_env "$NOTAGS" "$COUNT" QU_PUBSPEC="$(pubspec_with 0.14.1)" \
     "${PINNED[@]}" GITHUB_REF_TYPE=branch GITHUB_REF_NAME=main)"; then
   fail "a dev run exited non-zero"
 fi
@@ -497,10 +503,11 @@ has "compiles it into the build" \
   "QUNLEASHED_FLUTTER_BUILD_ARGS=--build-name=0.14.1 --build-number=108080 --dart-define=QU_CHANNEL=dev --dart-define=QU_COMMIT=aaaaaaa1"
 # The asset name carries the suffix and the number, so a sideloaded dev APK is
 # not byte-identical to the release of the same cycle - the one place §2's
-# suffix was missing. --build-name above is unaffected, which is what keeps the
-# store-validated fields numeric.
+# suffix was missing. Its own variable, so the numeric name every other
+# consumer reads is unchanged and --build-name stays store-valid.
 has "names the assets apart from a release" \
-  "QUNLEASHED_VERSION_NAME=0.14.1-dev.108080"
+  "QUNLEASHED_ASSET_VERSION=0.14.1-dev.108080"
+has "and leaves the numeric name numeric" "QUNLEASHED_VERSION_NAME=0.14.1"
 
 # A URL without a key authenticates nothing, so neither is passed.
 if ! body="$(run_env "${BASE[@]}" GITHUB_REF_TYPE=tag GITHUB_REF_NAME=beta-0.11.2 QU_BUILD_SERVER_URL=https://b)"; then
@@ -520,7 +527,7 @@ refutes "a missing GITHUB_ENV"    run "${BASE[@]}" GITHUB_REF_TYPE=tag GITHUB_RE
 # version regex would reject. The argument has to win, and it has to reach
 # $GITHUB_ENV - the push path only ever exercises the fallback.
 out="$TMP/env"; step="$TMP/out"; : > "$out"; : > "$step"
-if run "$NOGUARD" "$COUNT" QU_PUBSPEC="$(pubspec_with 0.13.0)" \
+if run "$NOTAGS" "$COUNT" QU_PUBSPEC="$(pubspec_with 0.13.0)" \
      GITHUB_ENV="$out" GITHUB_OUTPUT="$step" GITHUB_REF_NAME=main \
      bash "$DERIVE" -- beta-0.13.0 >/dev/null; then
   body="$(cat "$out" "$step")"

@@ -211,24 +211,12 @@ class _CatchSiteVisitor extends RecursiveAstVisitor<void> {
 
   @override
   void visitMethodInvocation(MethodInvocation node) {
-    if (_depth > 0 && node.methodName.name == 'info' && _isLogService(node)) {
+    if (_depth > 0 &&
+        node.methodName.name == 'info' &&
+        isLogServiceCall(node)) {
       lines.add(unit.lineInfo.getLocation(node.offset).lineNumber);
     }
     super.visitMethodInvocation(node);
-  }
-
-  /// Whether [node]'s receiver is `LogService`, however it was imported.
-  ///
-  /// The prefixed form matters: one `import '.../logging.dart' as log;` would
-  /// otherwise zero out a whole file's contribution, and nobody adding that
-  /// import would connect it to this test.
-  static bool _isLogService(MethodInvocation node) {
-    final target = node.target;
-    if (target is SimpleIdentifier) return target.name == 'LogService';
-    if (target is PrefixedIdentifier) {
-      return target.identifier.name == 'LogService';
-    }
-    return false;
   }
 }
 

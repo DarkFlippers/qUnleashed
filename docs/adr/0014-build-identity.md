@@ -288,7 +288,18 @@ thing that matters is reading a release list at a glance. §5 has it.
   produce one code. Its regex should still be anchored: `beta-0.14.0-rc1`
   currently builds as `0.14.0`, silently claiming the identity of a release it
   is not.
-- `fetch-depth: 0` on every job that derives a version.
+- `fetch-depth: 0` on every job that derives a version — the three build jobs
+  and `publish`. `guard` takes it only on a dispatch, which is the one trigger
+  whose check reads history.
+- A push to `main` now builds five platforms, so the trigger carries a
+  `paths-ignore` for documentation and store metadata. Translations are **not**
+  in it: they are compiled in, so a translation-only push changes the binary.
+- Not taken, and worth knowing about: the identity could be derived once in
+  `guard` and passed to the build jobs as outputs, saving three full-history
+  clones per push. Declined because the drift it would prevent does not exist —
+  all three jobs check out the same commit, read the same pubspec and tags, and
+  see the same run attempt, so they agree by construction — and because it
+  moves release plumbing for a clone that is cheap beside a 500-second build.
 
 ## Migration: what happens to legacy code
 

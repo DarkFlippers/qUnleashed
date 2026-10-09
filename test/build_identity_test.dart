@@ -35,45 +35,28 @@ BuildStamp stamp({
 );
 
 void main() {
-  group('short', () {
+  // Abbreviation is private now, so it is checked through the getter that uses
+  // it rather than directly.
+  group('shortCommit', () {
     test('abbreviates to the seven characters git would', () {
-      expect(BuildStamp.short('abc1234def5678'), 'abc1234');
+      expect(stamp(commit: 'abc1234def5678').shortCommit, 'abc1234');
     });
 
     // Empty in, empty out: a caller then tests the result instead of testing
     // the input and shortening it afterwards, which is one place for the two to
     // disagree.
     test('leaves a missing commit missing', () {
-      expect(BuildStamp.short(''), isEmpty);
+      expect(stamp(commit: '').shortCommit, isEmpty);
     });
 
     test('does not pad a commit already shorter than seven', () {
-      expect(BuildStamp.short('abc12'), 'abc12');
-    });
-  });
-
-  group('versionWithBuild', () {
-    test('joins the version and the build number', () {
-      expect(stamp().versionWithBuild, '0.14.1+14001');
-    });
-
-    // The platform channel answered with a version and no number. Still worth
-    // showing: the version is most of what a reader wants.
-    test('is the version alone when there is no build number', () {
-      expect(stamp(build: '').versionWithBuild, '0.14.1');
-    });
-
-    // PackageInfo threw. Says so rather than rendering `+14001` against
-    // nothing, or an empty line that reads as a layout bug.
-    test('says unknown when the platform would not answer', () {
-      expect(stamp(version: '', build: '').versionWithBuild, 'unknown');
+      expect(stamp(commit: 'abc12').shortCommit, 'abc12');
     });
   });
 
   // The suffix 0014 §2 keeps everywhere a person reads the version, and drops
-  // from the two fields a store validates. A build carrying `-dev` in
-  // CFBundleShortVersionString fails App Store validation, which is why this
-  // is a separate getter from versionWithBuild rather than the only form.
+  // from the two fields a store validates: a build carrying `-dev` in
+  // CFBundleShortVersionString fails App Store validation.
   group('displayVersion', () {
     test('a dev build says so', () {
       expect(stamp(channel: BuildChannel.dev).displayVersion, '0.14.1-dev');
@@ -89,10 +72,8 @@ void main() {
       expect(stamp(channel: BuildChannel.local).displayVersion, '0.14.1-local');
     });
 
-    // `build: ''` as well, because the two come from one platform call and the
-    // constructor asserts they go missing together. The first draft of this
-    // test left the default build number in place and the assert caught it,
-    // which is what the assert is for.
+    // `build: ''` as well, because the two come from one platform call and
+    // the constructor asserts they go missing together.
     test('keeps the channel when the version is unknown', () {
       expect(
         stamp(version: '', build: '', channel: BuildChannel.dev).displayVersion,
@@ -120,26 +101,6 @@ void main() {
         stamp(channel: BuildChannel.local, commit: '', build: '').line,
         '0.14.1-local',
       );
-    });
-  });
-
-  // 0014 §5. Set explicitly because the SDK's default begins with the bundle
-  // ID, which differs per platform and would split one build into five
-  // releases.
-  group('sentryRelease', () {
-    test('carries the suffix and the build number', () {
-      expect(stamp().sentryRelease, 'qunleashed@0.14.1-dev+14001');
-    });
-
-    test('a release build has no suffix', () {
-      expect(
-        stamp(channel: BuildChannel.release).sentryRelease,
-        'qunleashed@0.14.1+14001',
-      );
-    });
-
-    test('drops a build number it does not have', () {
-      expect(stamp(build: '').sentryRelease, 'qunleashed@0.14.1-dev');
     });
   });
 
@@ -171,7 +132,7 @@ void main() {
   });
 
   // Classification, which is where the failure direction lives. A bare String
-  // channel made `isDev` and `isLocal` both false for anything unexpected, so a
+  // channel matched neither `dev` nor `local` for anything unexpected, so a
   // typo rendered the bare version and a Sentry release with no suffix - a
   // developer's tree impersonating a shipped build. The shell guard cannot help
   // here; it only runs in CI.

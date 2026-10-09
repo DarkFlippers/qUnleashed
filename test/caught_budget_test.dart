@@ -1,31 +1,24 @@
 // A ceiling on `LogService.caught`, the level ADR 0013 §5 adds.
 //
-// The sixth ratchet, and the only one whose number is meant to *rise* - once,
-// as §5's re-ruling of the 48 `info`-in-a-catch sites lands, and not after.
-// Every other budget in `test/` counts something the project wants less of;
-// this one counts something it wants a bounded amount of, which is why the
-// failure message below asks a different question.
+// Unlike every other budget here, this number is meant to *rise* - once, as
+// §5's re-ruling of the `info`-in-a-catch sites lands, and not after. It counts
+// something the project wants a bounded amount of rather than less of, which is
+// why the failure message asks a different question.
 //
-// It exists because `caught` opens a way to lower another ratchet by making
-// the code worse, and that way is the mirror image of the one
-// `bare_catch_budget_test.dart` closed. `log_level_budget_test.dart` counts
-// failures reported only at a level a release build drops. Moving a genuine
-// failure from `info` to `caught` lowers it legitimately - the failure now
-// survives. Moving *commentary* lowers it exactly as much and puts noise in
-// front of whoever reads a bug report, in a 500-entry buffer whose whole
-// purpose is to still hold the failure's context when someone goes looking.
-// CLAUDE.md lists "deleting a counted LogService.info to make the ratchet go
-// green" as an anti-pattern; this is the same trade with a different lever,
-// and without a number on it nothing would notice.
+// It exists because `caught` is a legitimate way to lower
+// `log_level_budget_test.dart`: moving a genuine failure off `info` makes that
+// failure survive a release build. Moving *commentary* lowers it by exactly as
+// much and puts noise in a 500-entry buffer whose purpose is to still hold a
+// failure's context when someone goes looking. CLAUDE.md lists the deletion
+// version of that trade as an anti-pattern; this is the same trade with a
+// different lever, and without a number nothing would notice.
 //
-// The rule a new entry has to pass is the one on `LogService.caught`: an
-// operation did not do what was asked. A reading that repeats, a wait whose own
-// timeout is the answer, and commentary about something merely absent all stay
-// `info`.
+// The rule a new entry passes is the one on `LogService.caught`: an operation
+// did not do what was asked.
 //
-// What it cannot see, which is the same blind spot every per-file syntactic
-// ratchet here has: a `caught` reached through a one-line wrapper, or inside an
-// `onError:` closure rather than a catch clause. #103 holds those.
+// Blind spots, shared with every per-file syntactic ratchet here: a `caught`
+// behind a one-line wrapper, or inside an `onError:` closure rather than a
+// catch clause. #103 holds those.
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -62,25 +55,10 @@ class _CaughtVisitor extends RecursiveAstVisitor<void> {
 
   @override
   void visitMethodInvocation(MethodInvocation node) {
-    if (node.methodName.name == 'caught' && _isLogService(node)) {
+    if (node.methodName.name == 'caught' && isLogServiceCall(node)) {
       lines.add(unit.lineInfo.getLocation(node.offset).lineNumber);
     }
     super.visitMethodInvocation(node);
-  }
-
-  /// Whether [node]'s receiver is `LogService`, however it was imported.
-  ///
-  /// The prefixed form matters for the same reason it does in the log budget:
-  /// one `import '.../logging.dart' as log;` would otherwise zero out a whole
-  /// file's contribution, and nobody adding that import would connect it to
-  /// this test.
-  static bool _isLogService(MethodInvocation node) {
-    final target = node.target;
-    if (target is SimpleIdentifier) return target.name == 'LogService';
-    if (target is PrefixedIdentifier) {
-      return target.identifier.name == 'LogService';
-    }
-    return false;
   }
 }
 

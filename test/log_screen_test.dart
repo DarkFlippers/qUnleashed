@@ -117,9 +117,9 @@ void main() {
     await tester.pumpWidget(wrap(const LogSettingsPage()));
     await tester.pump();
     await tester.tap(find.byIcon(Icons.copy_all_outlined));
-    // Settled rather than pumped once: copying now awaits the build identity
-    // it puts at the head of the text, so the clipboard write is a microtask
-    // later than it used to be.
+    // Settled rather than pumped once: copying awaits the build identity it
+    // puts at the head of the text, so the clipboard write is a microtask
+    // behind the tap.
     await tester.pumpAndSettle();
 
     expect(copied, contains('first failure'));

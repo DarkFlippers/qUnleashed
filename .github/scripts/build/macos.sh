@@ -4,7 +4,10 @@ set -Eeuo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 APP_NAME="qUnleashed"
 FILE_NAME="qunleashed"
-VERSION_NAME="${QUNLEASHED_VERSION_NAME:-}"
+# The asset version, which carries the channel suffix and build number on a
+# dev build so its filenames differ from the release of the same cycle.
+# Falls back to the numeric name, then to pubspec.
+VERSION_NAME="${QUNLEASHED_ASSET_VERSION:-${QUNLEASHED_VERSION_NAME:-}}"
 DIST_DIR="$ROOT_DIR/dist"
 BUILD_APP="$ROOT_DIR/build/macos/Build/Products/Release/$APP_NAME.app"
 BACKGROUND_SOURCE="$ROOT_DIR/assets/img/bg.jpg"
@@ -20,7 +23,7 @@ if [[ -z "$VERSION_NAME" ]]; then
 fi
 
 if [[ -z "$VERSION_NAME" ]]; then
-  echo "App version not found. Set QUNLEASHED_VERSION_NAME or pubspec.yaml version." >&2
+  echo "App version not found. Set QUNLEASHED_ASSET_VERSION or pubspec.yaml version." >&2
   exit 1
 fi
 

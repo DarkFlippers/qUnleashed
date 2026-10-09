@@ -136,8 +136,7 @@ fi
 # with nothing printed. Not reachable at pubspec's size, but it is a silent exit
 # waiting for a longer file.
 #
-# The quit has to hang off an address - `s/…/…/{p;q}` is not valid sed, and the
-# first attempt at this wrote exactly that and rejected every version.
+# The quit has to hang off an address: `s/…/…/{p;q}` is not valid sed.
 pubspec_version="$(
   sed -nE '/^version:/{s/^version:[[:space:]]*([^+[:space:]]+).*$/\1/p;q}' "$pubspec"
 )"
@@ -167,11 +166,11 @@ fi
 # last. It would have failed the release of 2026-10-01, when `dev-0.13.0`
 # pointed at a commit whose pubspec still said 0.12.1, because the old
 # sync-version wrote the version *after* publishing.
-# Anchored, which 0014's Consequences asked for and the first draft of this
-# rewrite still did not do. Unanchored, `beta-0.14.0-rc1` matched `0.14.0` and
-# built as it - a release candidate silently claiming the identity of the
-# release, published under its name, with the published-version guard waving it
-# through because the tag it matched was its own.
+# Anchored, which 0014's Consequences asks for. Unanchored,
+# `beta-0.14.0-rc1` matched `0.14.0` and built as it - a release candidate
+# claiming the identity of the release, published under its name, with the
+# published-version guard waving it through because the tag it matched was
+# its own.
 if [[ -n "$tag" ]]; then
   if [[ ! "$tag" =~ ^([A-Za-z][A-Za-z0-9]*-)?v?([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
     echo "::error::Tag must be a semantic version with an optional prefix - 0.6.1, v0.6.1, alpha-0.6.1 - and nothing after the patch number. Got '$tag'." >&2
@@ -202,29 +201,29 @@ fi
 # new version, with an error telling the operator to bump a pubspec they just
 # bumped.
 #
-# QU_SKIP_PUBLISHED_GUARD waives it for the tests that are about something else.
-# The tests that are about the guard build a repository of their own rather than
-# borrowing this one's tags.
-#
 # The read has to be able to fail. Swallowing it would make "no tag names this
 # version" and "I could not read the tags" the same answer, and the second one
 # is the whole hole this guard exists to close: on a checkout without tags it
 # would wave through exactly the release it is meant to stop. There is nothing
 # to fall back to, so it is fatal.
-if [[ -z "${QU_SKIP_PUBLISHED_GUARD:-}" ]]; then
-  if ! published_tags="$(git -C "$repo_root" tag --list)"; then
-    echo "::error::Could not read the tags, so the published-version guard cannot run. Use fetch-depth: 0." >&2
+#
+# There is no way to switch this off. An earlier draft had one, for tests that
+# were about something else, and a skip-the-guard lever in shipped CI code is
+# its own hazard - anything exporting it turns off the check that replaced the
+# automatic version bump, with no signal. The tests point QU_REPO_ROOT at a
+# fixture repository instead, so the guard always runs.
+if ! published_tags="$(git -C "$repo_root" tag --list)"; then
+  echo "::error::Could not read the tags, so the published-version guard cannot run. Use fetch-depth: 0." >&2
+  exit 1
+fi
+while IFS= read -r published; do
+  [[ -z "$published" ]] && continue
+  [[ "$published" == "$tag" ]] && continue
+  if [[ "$published" =~ (^|[^0-9])${version_name//./\\.}([^0-9]|$) ]]; then
+    echo "::error::Version $version_name has already been published as $published. Open the next cycle by bumping pubspec.yaml." >&2
     exit 1
   fi
-  while IFS= read -r published; do
-    [[ -z "$published" ]] && continue
-    [[ "$published" == "$tag" ]] && continue
-    if [[ "$published" =~ (^|[^0-9])${version_name//./\\.}([^0-9]|$) ]]; then
-      echo "::error::Version $version_name has already been published as $published. Open the next cycle by bumping pubspec.yaml." >&2
-      exit 1
-    fi
-  done <<< "$published_tags"
-fi
+done <<< "$published_tags"
 
 # --- the build number is a counter, and means nothing else -------------------
 #
@@ -235,8 +234,7 @@ fi
 # has to carry every bit of it. The old formula derived the number *from* the
 # name (major × 1e6 + minor × 1e3 + patch), which hands every dev build in a
 # cycle the same number: it fails on the second build of a cycle rather than
-# after a thousand commits. Its component arithmetic is gone, and with it the
-# overflow that let 0.1.1000 and 0.2.0 produce one number.
+# after a thousand commits.
 #
 # `100000 +` clears every number ever shipped in one step - the highest is
 # 14001 - so nothing has to remember what the high-water mark was. `× 10`
@@ -270,9 +268,9 @@ fi
 # re-running a failed release job produces a number the store has not already
 # refused.
 if [[ "$channel" == dev ]]; then
-  slot="${QU_BUILD_SLOT:-0}"
+  slot=0
 else
-  slot="${QU_BUILD_SLOT:-${GITHUB_RUN_ATTEMPT:-1}}"
+  slot="${GITHUB_RUN_ATTEMPT:-1}"
 fi
 if [[ ! "$slot" =~ ^[0-9]$ ]]; then
   echo "::error::Build slot must be a single digit, not '$slot'. A tenth attempt needs a new commit." >&2
@@ -365,19 +363,22 @@ if [[ -n "$commit_dartufbt" ]]; then
   args+=(--dart-define=QU_COMMIT_DARTUFBT="$commit_dartufbt")
 fi
 
-# The display form, and only because this variable's one consumer is the asset
-# filenames - `--build-name` comes from the build args above, so the two fields
-# a store validates never see the suffix (§2).
+# What the asset filenames are named after. Its own variable rather than an
+# overload of QUNLEASHED_VERSION_NAME, which stays numeric - the pubspec
+# fallback in each build script expects a numeric version, so anyone adding a
+# consumer would assume one.
 #
-# Without it a dev build and the release of the same cycle produce byte-identical
-# filenames, `qunleashed_0.15.0_android_universal.apk` both, and identical
-# entries in two different SHA256SUMS: a sideloaded dev APK is indistinguishable
-# from the shipped version once it is on disk. §2 keeps the suffix "everywhere a
-# person reads the version", and a downloaded filename was the one place left
-# out. The build number goes in too, so two dev builds of one cycle differ.
-# Dots and dashes only, never a `+`: the fallback in each build script matches
-# `[0-9A-Za-z._-]+` and android.sh truncates at the first `+`, so a plus here
-# would read as a separator rather than as part of the name.
+# It exists because without the suffix a dev build and the release of the same
+# cycle produce byte-identical filenames - `qunleashed_0.15.0_android_universal
+# .apk` both - and identical entries in two different SHA256SUMS, so a
+# sideloaded dev APK is indistinguishable from the shipped version once it is
+# on disk. §2 keeps the suffix wherever a person reads the version, and a
+# downloaded filename was the one place left out. The build number goes in too,
+# so two dev builds of one cycle differ.
+#
+# Dots and dashes only, never a `+`: each build script's fallback matches
+# `[0-9A-Za-z._-]+` and android.sh truncates at the first `+`, so a plus would
+# read as a separator rather than as part of the name.
 if [[ "$channel" == dev ]]; then
   asset_version="$version_name-dev.$version_code"
 else
@@ -385,7 +386,8 @@ else
 fi
 
 {
-  echo "QUNLEASHED_VERSION_NAME=$asset_version"
+  echo "QUNLEASHED_VERSION_NAME=$version_name"
+  echo "QUNLEASHED_ASSET_VERSION=$asset_version"
   echo "QUNLEASHED_VERSION_CODE=$version_code"
   echo "QUNLEASHED_CHANNEL=$channel"
   echo "QUNLEASHED_FLUTTER_BUILD_ARGS=${args[*]}"
