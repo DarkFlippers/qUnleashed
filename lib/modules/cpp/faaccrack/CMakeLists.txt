@@ -54,6 +54,28 @@ endif()
 
 # --- the per-ISA engine objects ----------------------------------------------
 #
+# Every x86 variant carries a -DVBITS equal to its *hardware* vector width,
+# which is not the engine's default and is worth several times the search time.
+#
+# The engine holds the 32-bit KeeLoq state as 32 bit-planes of VBITS lanes, so
+# the default 512 needs two registers per plane on a 256-bit machine - 64 live
+# vectors against the 16 the ISA has, and it spills. Measured on a Ryzen 9 3950X
+# (gcc 9.4, -O3 -funroll-loops), whole-space sweep at 16 threads, each cell
+# checked to still find a seed in the last block the sweep claims:
+#
+#            VBITS=128   256     512 (default)   1024
+#   SSE2       10.9 s   16.7 s      19.6 s      26.6 s
+#   AVX         7.4 s    4.3 s      17.7 s      14.2 s
+#   AVX2        7.4 s    4.3 s      17.6 s      15.1 s
+#
+# The optimum is the native width in every row. BUILD_NOTES.md has the rest,
+# including why NEON is left at the default for now and what the author measured
+# on hardware he did not record.
+#
+# `lanes` in the result is the only runtime evidence a -DVBITS took effect, and
+# the probe asserts it - see the EXPECT_LANES note in
+# .github/scripts/check_faaccrack_engine.sh.
+#
 # Flags shared by every variant:
 #
 #   -Dmain=   the engine still carries the command-line entry point that keeps
@@ -189,9 +211,9 @@ if(MSVC AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(AMD64|x86_64)$")
   # No /arch:SSE2 entry either: it is the x86-64 baseline, so clang-cl defines
   # __SSE2__ without being asked and rejects the flag as invalid for a 64-bit
   # target. The flagless compile *is* the SSE2 object.
-  faaccrack_add_foreign_variant(AVX2 ${faaccrack_clang_cl} /arch:AVX2)
-  faaccrack_add_foreign_variant(AVX ${faaccrack_clang_cl} /arch:AVX)
-  faaccrack_add_foreign_variant(SSE2 ${faaccrack_clang_cl})
+  faaccrack_add_foreign_variant(AVX2 ${faaccrack_clang_cl} /arch:AVX2 /DVBITS=256)
+  faaccrack_add_foreign_variant(AVX ${faaccrack_clang_cl} /arch:AVX /DVBITS=256)
+  faaccrack_add_foreign_variant(SSE2 ${faaccrack_clang_cl} /DVBITS=128)
 else()
   # -c, -fPIC and -std=gnu11 are not listed because CMake supplies all three -
   # the first from compiling at all, the other two from the properties
@@ -204,12 +226,18 @@ else()
     # x86-64 is SSE2, and the engine is several times faster with AVX2 - there
     # is no reason a Linux or Intel-Mac desktop should run the slowest variant
     # when the dispatcher can tell at runtime.
-    faaccrack_add_variant(AVX2 ${faaccrack_engine_opts} -mavx2)
-    faaccrack_add_variant(AVX ${faaccrack_engine_opts} -mavx)
-    faaccrack_add_variant(SSE2 ${faaccrack_engine_opts} -msse2)
+    faaccrack_add_variant(AVX2 ${faaccrack_engine_opts} -mavx2 -DVBITS=256)
+    faaccrack_add_variant(AVX ${faaccrack_engine_opts} -mavx -DVBITS=256)
+    faaccrack_add_variant(SSE2 ${faaccrack_engine_opts} -msse2 -DVBITS=128)
   else()
     # arm64 and armv7: NEON is the baseline, so one object is already the right
     # one and there is nothing to choose between at runtime.
+    #
+    # No -DVBITS here, and this one *was* measured: on a Pixel 10 Pro XL the
+    # whole-space sweep was 18.0 s at 128 lanes, 17.3 s at 256 and 17.5 s at the
+    # default - within noise, against 4.1x on x86. aarch64 has 32 vector
+    # registers to x86's 16, so the spilling that drives the desktop win barely
+    # applies. BUILD_NOTES.md has the table.
     faaccrack_add_variant(NEON ${faaccrack_engine_opts})
   endif()
 endif()

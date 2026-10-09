@@ -20,6 +20,14 @@
 #     maintainer bisecting a codegen-dependent failure across levels. It is not
 #     a check of the progress channel's `volatile`: the header records a probe
 #     with that qualifier stripped still stopping promptly at -O3.
+#   * -DVBITS=128 and -DEXPECT_LANES to match. No -m flags are passed here, so
+#     on x86 this compiles the SSE2 variant - and the shipped SSE2 object is
+#     built at 128 lanes, its hardware width, which the CMake explains and
+#     measures. The probe asserts the engine reports the width the build asked
+#     for, so the two numbers have to move together: they are one edit, here.
+#     On a non-x86 runner this is still the right pair, because 128 is also
+#     NEON's width - what differs is that the shipped NEON object does not pass
+#     the flag yet.
 set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -57,7 +65,7 @@ for opt in ${FAACCRACK_OPTS:--O3}; do
   echo "--- faaccrack engine probe at $opt ---"
 
   "$CC" "$opt" -std=gnu11 -funroll-loops -w \
-    -Dmain=faaccrack_cli_main \
+    -Dmain=faaccrack_cli_main -DVBITS=128 \
     -I "$ENGINE_DIR" -I "$SHIM_DIR" \
     -c "$ENGINE_DIR/faaccrack.c" -o "$WORK_DIR/engine.o"
 
@@ -79,7 +87,7 @@ for opt in ${FAACCRACK_OPTS:--O3}; do
     -I "$ENGINE_DIR" -I "$SHIM_DIR" \
     -c "$ENGINE_DIR/faaccrack_bridge.c" -o "$WORK_DIR/bridge.o"
 
-  "$CC" "$opt" -std=gnu11 -Wall -Wextra -Werror \
+  "$CC" "$opt" -std=gnu11 -Wall -Wextra -Werror -DEXPECT_LANES=128 \
     -I "$ENGINE_DIR" -I "$SHIM_DIR" \
     "$ENGINE_DIR/test/faaccrack_abi_probe.c" "$WORK_DIR/engine.o" \
     "$WORK_DIR/dispatch.o" "$WORK_DIR/bridge.o" \

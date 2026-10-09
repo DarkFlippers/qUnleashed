@@ -280,16 +280,85 @@ The library objects compile with `main` renamed away, so the shipped
 `.dll`/`.so` exports the variant entries and the bridge and no `main`. The probe
 script does the same, which is the first evidence the trick works.
 
-## Retuning
+## Tuning: VBITS is the hardware vector width
 
-`-DVBITS=256` or `-DVBITS=1024` changes the lane count, `-DNLF12=1` selects a
-12-operation NLF network instead of the 15-operation one. Both were measured by
-the author and both were *slower* on the hardware he had: the short NLF by ~25%
-(two gate levels deeper, and this loop is latency-bound), narrower vectors by
-~40% (the op count per lane-block is fixed, so you get fewer lanes for it).
+`-DVBITS` changes the lane count and `-DNLF12=1` selects a 12-operation NLF
+network instead of the 15-operation one. The author measured both as *slower* on
+the hardware he had - the short NLF by ~25% (two gate levels deeper, and this
+loop is latency-bound), narrower vectors by ~40% (the op count per lane-block is
+fixed, so you get fewer lanes for it) - and recorded neither the machine, the
+compiler nor the date.
 
-He did not record the machine, the compiler or the date, and nothing here
-re-measures them. Treat both figures as the reason the defaults are the defaults,
-not as numbers to plan against. They are knobs for hardware that schedules
-differently, not suggestions - and check `lanes` in the result if you use one,
-because the `--keep` note above explains how `-DVBITS` can be silently ignored.
+**His NLF figure holds. His VBITS figure does not hold on x86.** Measured on a
+Ryzen 9 3950X under WSL, gcc 9.4, `-O3 -funroll-loops`, whole-space sweep at 16
+threads. Every cell was checked to still find a seed at `0xFFFFFF00` - the last
+block the sweep claims - so none of these is faster by covering less:
+
+| ISA | VBITS 128 | 256 | 512 (engine default) | 1024 |
+|---|---|---|---|---|
+| SSE2 | **10.9 s** | 16.7 s | 19.6 s | 26.6 s |
+| AVX | 7.4 s | **4.3 s** | 17.7 s | 14.2 s |
+| AVX2 | 7.4 s | **4.3 s** | 17.6 s | 15.1 s |
+
+`-DNLF12=1` measured 23.5 s against the default width's 17.6 s, which agrees
+with him.
+
+**The optimum is the native register width in every row**, and that is the
+mechanism rather than a coincidence: the engine holds the 32-bit state as 32
+bit-planes of `VBITS` lanes, so 512 on a 256-bit machine needs two registers per
+plane - 64 live vectors against the 16 the ISA has, and it spills. The author's
+~40% was most likely measured where the default *was* the native width.
+
+So `CMakeLists.txt` compiles each x86 variant at its own width: 256 for AVX and
+AVX2, 128 for SSE2. On this machine that is 4.1x off the default for the two the
+dispatcher actually picks on a modern desktop, and 1.8x for the baseline.
+
+### What is deliberately left alone
+
+**NEON, and it was measured.** The prediction was 128, by the rule above: NEON
+is 128 bits, so the default is four registers per plane. The prediction was
+wrong, which is why the variant still passes no `-DVBITS`.
+
+On a Pixel 10 Pro XL (Tensor G5, arm64-v8a, 8 threads, the committed engine
+cross-compiled with NDK r28c clang at `-O3 -funroll-loops`), whole-space sweep,
+one run each:
+
+| VBITS | sweep |
+|---|---|
+| 128 | 18.0 s |
+| 256 | 17.3 s |
+| default (512) | 17.5 s |
+
+Within about 4%, which for single runs is noise. The end-of-space seed is still
+found at 256, so the widths are all covering the space.
+
+Why the x86 result does not transfer: **aarch64 has 32 architectural vector
+registers against x86's 16**, so the spill pressure that drives the desktop win
+is far weaker, and this core appears to be bound by something other than
+register traffic. The generated code still varies threefold in size (77 KB at
+128 lanes against 231 KB at the default) while the runtime does not move, which
+fits that reading.
+
+So the knob is live on ARM and worth nothing there. One device is not every
+device - a 4-core mid-range phone may answer differently - but it is enough to
+stop guessing a number into the build most users run. For scale: this phone
+sweeps the whole space in 17 seconds at 8 threads, about what an untuned
+16-thread desktop manages.
+
+**The Apple pod.** `apple/qunleashed_faaccrack.podspec` passes one `OTHER_CFLAGS`
+for every architecture, so a per-arch width means an arch-conditional there, and
+nobody can confirm an Xcode xcconfig key took effect from this side. An
+`OTHER_CFLAGS[arch=...]` that is silently ignored is exactly the failure this
+document warns about elsewhere. Intel Macs therefore keep the baseline penalty
+until someone with a Mac can set it and read `lanes` back from a real run.
+
+### Checking a width took effect
+
+`lanes` in the result is the only runtime evidence, and it now carries weight it
+did not before: the probe asserts the engine reports the width the build asked
+for (`-DEXPECT_LANES` in `.github/scripts/check_faaccrack_engine.sh`), so a
+`-DVBITS` that fails to apply - or a `VBITS` renamed by the obfuscator, the
+silent case the `--keep` note describes - fails CI rather than quietly costing
+several times the search time. Verified both ways: each x86 variant compiled
+from the committed engine reports its own width and passes, and the same AVX2
+object built without the flag reports 512 and fails.
