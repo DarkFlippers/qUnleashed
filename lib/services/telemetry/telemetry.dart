@@ -1,3 +1,4 @@
+import 'package:flipperlib/flipperlib.dart' show FlipperLogLevel;
 import 'package:path_provider/path_provider.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
@@ -157,6 +158,10 @@ class Telemetry {
       await _tag(plan);
       guardedFailureSink = _reportGuarded;
       LogService.keptSink = _reportKept;
+      LogService.breadcrumbSink = _dropCrumb;
+      // Re-pinned after the hook is installed, not before: the pin is derived
+      // from whether the hook is there. §3.
+      LogService.attachFlipperlibSink();
       _running = true;
       settings.addListener(_reconcile);
     } catch (e, st) {
@@ -174,6 +179,10 @@ class Telemetry {
     _running = false;
     guardedFailureSink = null;
     LogService.keptSink = null;
+    LogService.breadcrumbSink = null;
+    // And the library goes quiet again, back to the keep threshold. The cost
+    // of `info` only exists while somebody is listening.
+    LogService.attachFlipperlibSink();
     settings.removeListener(_reconcile);
     try {
       await Sentry.close();
@@ -249,6 +258,45 @@ class Telemetry {
       };
     });
   }
+
+  /// Records one flipperlib line as a breadcrumb.
+  ///
+  /// §4: the one source of breadcrumbs, because the library's `Log.level` is
+  /// a runtime check where the app's own `info` is a `const` that folds out of
+  /// a release build. What this buys is the sequence in front of a crash -
+  /// "link lost -> reconnecting -> reconnected" - which the app cannot produce
+  /// about itself without printing everything.
+  ///
+  /// `category: 'flipperlib'`, so these are distinguishable in the event from
+  /// whatever the SDK's own integrations add.
+  ///
+  /// Synchronous, unlike the other two sinks. `Sentry.addBreadcrumb` returns a
+  /// future, but a breadcrumb is a write into the scope's ring buffer rather
+  /// than a send - and `_guard` is still what stops a rejection reaching the
+  /// zone.
+  void _dropCrumb(FlipperLogLevel severity, String body) {
+    final crumb = Breadcrumb(
+      message: Scrub.outbound(body),
+      category: 'flipperlib',
+      level: _crumbLevel(severity),
+    );
+    _guard(() => Sentry.addBreadcrumb(crumb));
+  }
+
+  /// flipperlib's five levels onto Sentry's.
+  ///
+  /// `debug` and `trace` collapse onto Sentry's `debug`, which is the floor
+  /// worth having - and neither is reachable here anyway while the pin is
+  /// `info`. Exhaustive rather than defaulted, so a sixth level in the library
+  /// is a compile error here instead of an unlabelled breadcrumb.
+  static SentryLevel _crumbLevel(FlipperLogLevel severity) =>
+      switch (severity) {
+        FlipperLogLevel.error => SentryLevel.error,
+        FlipperLogLevel.warning => SentryLevel.warning,
+        FlipperLogLevel.info => SentryLevel.info,
+        FlipperLogLevel.debug => SentryLevel.debug,
+        FlipperLogLevel.trace => SentryLevel.debug,
+      };
 
   /// Turns one `guarded()` failure into an issue.
   ///

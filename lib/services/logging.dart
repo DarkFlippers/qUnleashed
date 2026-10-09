@@ -38,6 +38,21 @@ enum KeptLevel {
 /// `Scrub.outbound`, which is the sink's job and not this file's.
 typedef KeptLogSink = void Function(KeptLevel level, String body);
 
+/// A reader for flipperlib's running commentary, at the library's own levels.
+///
+/// Separate from [KeptLogSink] because the two carry different things.
+/// [KeptLogSink] gets the three levels this app *keeps* - a record of a
+/// failure. This gets everything the library says, including the `info` lines
+/// nothing keeps, because the value of a breadcrumb is the sequence and not
+/// the severity: "link lost -> reconnecting -> reconnected" in front of a
+/// crash is worth more than any one of those lines on its own.
+///
+/// ADR 0013 §4 argues why flipperlib is the only source. The app's own `info`
+/// is a `const` guard that folds out of a release build, so making it reachable
+/// would mean a release build that prints everything to the platform log -
+/// which is not a trade worth making for commentary.
+typedef BreadcrumbSink = void Function(FlipperLogLevel severity, String body);
+
 class LogService {
   /// Whether anything is logged at all. Follows the build type unless
   /// `--dart-define=QLOG=true|false` says otherwise, so a debug run can stay
@@ -177,6 +192,16 @@ class LogService {
   /// file knows there may be a second reader and nothing about who it is.
   static KeptLogSink? keptSink;
 
+  /// Where flipperlib's commentary goes, or nowhere.
+  ///
+  /// Installed by `lib/services/telemetry/` while reporting is on, like
+  /// [keptSink] and `guardedFailureSink`, and cleared with them.
+  ///
+  /// Setting this is not enough on its own: the library's own `Log.level` has
+  /// to admit `info` as well, which is [attachFlipperlibSink]'s business. Both
+  /// gates, the same mistake the pin made once already.
+  static BreadcrumbSink? breadcrumbSink;
+
   /// Whether [_announce] is already running.
   ///
   /// A sink that fails is reported with [LogService.error], which re-enters
@@ -282,10 +307,47 @@ class LogService {
   /// is bounded by what the submodule chooses to warn about, which is its own
   /// review's problem; `Log.error` outnumbers `Log.warn` there by more than an
   /// order of magnitude.
-  @visibleForTesting
+  ///
+  /// **A third pin, `info`, when [breadcrumbSink] is installed.** ADR 0013 §3:
+  /// raising it is a change to a recorded decision rather than a setting that
+  /// already allowed it, which is why it is spelled out here. The library's
+  /// `Log.level` is a mutable static checked at runtime - only `debug` and
+  /// `trace` sit behind a `const` - so raising it in a release build genuinely
+  /// produces lines, where the same move on the app's side produces nothing
+  /// without recompiling.
+  ///
+  /// Nothing is *kept* that was not kept before: [_keptLevelFor] still cuts at
+  /// [_keptFrom], so `info` reaches the breadcrumb hook and is dropped. What
+  /// changes is only what the library bothers to say, and only while somebody
+  /// is listening - [Telemetry.stop] calls this again and the pin returns.
+  ///
+  /// Call it again after changing [breadcrumbSink]; it is idempotent.
+  ///
+  /// No longer `@visibleForTesting`. It was, because [initialize] was the only
+  /// caller and a test wanting the sink without the platform calls was the only
+  /// other reason to reach it. `Telemetry` is a second real caller now: the pin
+  /// is derived from whether [breadcrumbSink] is set, so turning reporting on
+  /// or off has to re-derive it.
   static void attachFlipperlibSink() {
-    Log.level = printing ? _flipperLevel : _keptFrom;
+    Log.level = _flipperlibPin;
     Log.sink = _flipperlibSink;
+  }
+
+  /// The level the library is held at: the chattiest of the reasons to want
+  /// lines.
+  ///
+  /// **Chattiest means the lowest index.** `FlipperLogLevel` runs
+  /// `trace, debug, info, warning, error`, and `Log` admits a severity at or
+  /// above the pin - so `info` admits more than `warning`, and comparing these
+  /// the intuitive way round gets it backwards.
+  ///
+  /// A talking build wins outright, because QLOG asked for its levels
+  /// explicitly and a breadcrumb reader going away must not take them with it.
+  /// Otherwise breadcrumbs beat the bare keep threshold, because they are the
+  /// only reason `info` is wanted at all.
+  static FlipperLogLevel get _flipperlibPin {
+    if (printing) return _flipperLevel;
+    return breadcrumbSink == null ? _keptFrom : FlipperLogLevel.info;
   }
 
   /// Routes what nothing else catches into [history].
@@ -556,7 +618,46 @@ class LogService {
         : KeptLevel.warning;
   }
 
+  /// Whether [_dropCrumb] is already running, for [_announce]'s reason: a
+  /// breadcrumb sink that throws is reported with [error], which cannot be
+  /// allowed to re-enter it.
+  static bool _crumbing = false;
+
+  /// Hands one library line to [breadcrumbSink] without letting it cost the
+  /// line.
+  ///
+  /// Redacted here rather than at the sink, because [_emit] redacts what it
+  /// keeps and a breadcrumb that skipped it would be the one place an absolute
+  /// path left the device unredacted. The rest of §6.2 runs at the sink, which
+  /// is where it leaves.
+  static void _dropCrumb(FlipperLogLevel severity, String message) {
+    final sink = breadcrumbSink;
+    if (sink == null || _crumbing) return;
+    _crumbing = true;
+    try {
+      sink(severity, _redact(message));
+    } catch (e) {
+      error('[Telemetry] the breadcrumb sink threw on "$message": $e');
+    } finally {
+      _crumbing = false;
+    }
+  }
+
+  /// §4: the hook goes **before** [_emit], not inside it.
+  ///
+  /// Inside, it would have to sit above `_emit`'s `if (!keep && !console)
+  /// return` - which is #187, where five call sites out of six are dropped -
+  /// and would reinstate the timestamp that return exists to avoid, for the
+  /// app's own traffic as well as the library's.
+  ///
+  /// Every severity becomes a breadcrumb, not only `info`. §4 names `info`
+  /// because that is the level the change *unlocks*; the point of a breadcrumb
+  /// is the sequence, and a timeline with the warnings cut out of it is a
+  /// worse timeline. Warnings and errors reach Sentry as Logs too, which is a
+  /// separate stream - having them in the event itself is what makes the event
+  /// readable without cross-referencing.
   static void _flipperlibSink(FlipperLogLevel severity, String message) {
+    _dropCrumb(severity, message);
     _emit(
       '[${severity.name}] $message',
       level: _keptLevelFor(severity),

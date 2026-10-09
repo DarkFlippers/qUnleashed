@@ -218,4 +218,160 @@ void main() {
     quietly(() => LogService.error('[CLI] write failed'));
     expect(LogService.history, hasLength(1));
   });
+
+  // ADR 0013 §4: flipperlib is the only source of breadcrumbs, because its
+  // `Log.level` is a runtime check where the app's own `info` is a const that
+  // folds out of a release build.
+  group('breadcrumbs', () {
+    late List<String> crumbs;
+    late List<FlipperLogLevel> crumbLevels;
+
+    setUp(() {
+      crumbs = [];
+      crumbLevels = [];
+      LogService.breadcrumbSink = (severity, body) {
+        crumbLevels.add(severity);
+        crumbs.add(body);
+      };
+      LogService.attachFlipperlibSink();
+    });
+
+    tearDown(() {
+      LogService.breadcrumbSink = null;
+      Log.sink = null;
+      Log.level = FlipperLogLevel.info;
+    });
+
+    test('the library\'s info arrives, and is still not kept', () {
+      // The whole of what §4 unlocks. `info` was unreachable at the library's
+      // gate while the pin was `warning`; it now reaches the hook and is
+      // dropped by `_keptLevelFor` exactly as before, so nothing new enters
+      // the history.
+      quietly(() => Log.info('reconnecting'));
+
+      expect(crumbs, ['reconnecting']);
+      expect(crumbLevels, [FlipperLogLevel.info]);
+      expect(LogService.history, isEmpty, reason: 'a breadcrumb is not kept');
+      expect(sink.levels, isEmpty, reason: 'and reaches no Sentry log');
+    });
+
+    test('a warning is both a breadcrumb and a kept line', () {
+      // Not only `info`. The value of a breadcrumb is the sequence, and a
+      // timeline with the warnings cut out of it is a worse timeline - the
+      // Logs stream is separate, so the event would otherwise need
+      // cross-referencing to read.
+      quietly(() => Log.warn('[BLE] link carries only payload=20 of 411'));
+
+      expect(crumbs, hasLength(1));
+      expect(crumbLevels, [FlipperLogLevel.warning]);
+      expect(sink.levels, [KeptLevel.warning]);
+    });
+
+    test('the sequence is what arrives, in order', () {
+      quietly(() {
+        Log.info('link lost');
+        Log.info('reconnecting');
+        Log.info('reconnected');
+      });
+      expect(crumbs, ['link lost', 'reconnecting', 'reconnected']);
+    });
+
+    test('every repeat arrives, unlike a kept line', () {
+      // `_remember`'s fold is about a 500-entry buffer somebody reads. A
+      // breadcrumb ring is the timeline, and collapsing "reconnecting" five
+      // times into one would misstate what happened.
+      quietly(() {
+        for (var i = 0; i < 3; i++) {
+          Log.info('reconnecting');
+        }
+      });
+      expect(crumbs, hasLength(3));
+    });
+
+    test('absolute paths are out of it before it leaves this file', () {
+      // The one place a path could otherwise escape unredacted: `_emit`
+      // redacts what it keeps, and a breadcrumb does not go through the kept
+      // branch at all.
+      Scrub.debugUseHomes([r'C:\Users\Myte']);
+      addTearDown(() => Scrub.debugUseHomes(null));
+      quietly(() => Log.info(r'cache at C:\Users\Myte\flipper'));
+      expect(crumbs.single, r'cache at ~\flipper');
+    });
+
+    test('a sink that throws costs neither the line nor the process', () {
+      var calls = 0;
+      LogService.breadcrumbSink = (_, _) {
+        calls += 1;
+        throw StateError('crumbs are broken');
+      };
+      LogService.attachFlipperlibSink();
+
+      quietly(() => Log.warn('[BLE] degraded'));
+
+      expect(calls, 1, reason: 'the report must not re-enter the sink');
+      expect(
+        LogService.history.any((l) => l.contains('[BLE] degraded')),
+        isTrue,
+        reason: 'the kept line survives a broken breadcrumb reader',
+      );
+      expect(
+        LogService.history.any((l) => l.contains('breadcrumb sink threw')),
+        isTrue,
+      );
+    });
+  });
+
+  group('the level the library is pinned at', () {
+    tearDown(() {
+      LogService.breadcrumbSink = null;
+      Log.sink = null;
+      Log.level = FlipperLogLevel.info;
+    });
+
+    // `FlipperLogLevel` runs trace..error and `Log` admits a severity at or
+    // above the pin, so a *lower* pin is chattier. Every comparison below is
+    // that way round.
+    test('is the keep threshold with no breadcrumb reader', () {
+      LogService.breadcrumbSink = null;
+      LogService.attachFlipperlibSink();
+      // Only meaningful in a quiet build; a talking one is pinned by QLOG and
+      // that case is asserted below.
+      if (!LogService.printing) {
+        expect(Log.level, FlipperLogLevel.warning);
+      }
+    });
+
+    test('rises to info when one is installed, and falls again', () {
+      LogService.breadcrumbSink = (_, _) {};
+      LogService.attachFlipperlibSink();
+      if (!LogService.printing) {
+        expect(Log.level, FlipperLogLevel.info);
+      }
+
+      LogService.breadcrumbSink = null;
+      LogService.attachFlipperlibSink();
+      if (!LogService.printing) {
+        expect(
+          Log.level,
+          FlipperLogLevel.warning,
+          reason: 'the cost of info exists only while somebody is listening',
+        );
+      }
+    });
+
+    test('a talking build is never lowered by turning reporting off', () {
+      // QLOG asked for the chatty levels explicitly, and a breadcrumb reader
+      // going away must not take them with it. CI runs this file with QLOG
+      // both ways, so one of the two branches is live each time.
+      LogService.breadcrumbSink = null;
+      LogService.attachFlipperlibSink();
+      if (LogService.printing) {
+        expect(
+          Log.level.index,
+          lessThanOrEqualTo(FlipperLogLevel.info.index),
+          reason: 'at least as chatty as info, which is a lower index',
+        );
+      }
+    });
+  });
 }
