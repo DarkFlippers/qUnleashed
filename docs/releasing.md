@@ -56,6 +56,13 @@ Four steps. The version is the only decision.
 2. **Create the release in GitHub** with the tag set to the bare version —
    `0.16.0`. **No `dev-` prefix** (see the refusals below). A `v` prefix or any
    other letter prefix is accepted.
+
+   **Do not tag a commit whose changes are all docs.** `paths-ignore` sits on
+   the same `on.push` key as `tags`, so it may be in scope for a tag push too -
+   and a filtered push produces no run at all, which `assert-published` cannot
+   catch because there is nothing for it to check. #291 is settling whether
+   this actually fires; until it does, tag a commit that touches something
+   buildable.
 3. **CI builds and publishes it.** All five platforms, a real release rather
    than a prerelease, marked latest, with generated notes, `SHA256SUMS`, and a
    push notification to `app_release`. The rolling `dev` prerelease is left

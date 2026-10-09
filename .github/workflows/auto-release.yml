@@ -15,6 +15,11 @@ on:
     # change a binary should not pay for it. Deliberately narrow: anything that
     # might reach the app - translations among them, since they are compiled in
     # - is left out of this list.
+    #
+    # This key also carries `tags`, so the filter may be in scope for a release
+    # tag as well - and a filtered push produces no run, which
+    # `assert-published` cannot catch. #291 is settling it; `docs/releasing.md`
+    # warns against tagging a docs-only commit in the meantime.
     paths-ignore:
       - "docs/**"
       - "**/*.md"
