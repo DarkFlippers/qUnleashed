@@ -9,7 +9,8 @@ terminal open.
 
 1. **`pubspec.yaml` holds the version being built *toward*, not the last one
    released.** During the 0.16.0 cycle it says `0.16.0`, and every dev build is
-   named that.
+   named that. The versions in this file are illustrative; `pubspec.yaml` is
+   what the current cycle actually is.
 2. **Moving it is a commit somebody makes on purpose.** CI never picks a digit,
    because patch against minor against major is a decision no rule over the
    previous version can make. What CI does is refuse a build whose version is
@@ -22,9 +23,11 @@ terminal open.
    cut; `local` is anybody's own `flutter run`. The channel comes from the
    trigger, never from the tag's prefix.
 
-A build says which of these it is on the Tools screen and at the head of a
-copied log: `qUnleashed for Android v0.16.0-dev (108170 · abc1234)`. Tapping
-that line copies it. A release shows no suffix.
+A build says which of these it is in two places, in two formats. The Tools
+screen reads `qUnleashed for Android v0.16.0-dev (108170 · abc1234)`, and
+tapping it copies the line. A copied log opens with
+`qUnleashed 0.16.0-dev · 108170 · abc1234`, plus a second line naming the
+submodule commits when there are any. A release shows no suffix in either.
 
 ## What happens without you
 
@@ -38,8 +41,9 @@ You do nothing for this. Two things worth knowing:
 - A burst of commits builds only the newest. The older runs are cancelled, and
   that is deliberate — a dev build is disposable and the rolling release would
   have been overwritten anyway.
-- Pushes that only touch `docs/`, `**/*.md`, `fastlane/` or `LICENSE` do not
-  build. **Translations are not in that list**, because they are compiled in.
+- Pushes that only touch `docs/`, `**/*.md`, `.github/ISSUE_TEMPLATE/`,
+  `fastlane/` or `LICENSE` do not build. **Translations are not in that
+  list**, because they are compiled in.
 
 ## Cutting a release
 
@@ -79,7 +83,7 @@ green again.
 
 ## When CI refuses
 
-Four refusals, with their text. Each is `derive_version.sh` saying the build
+Five refusals, with their text. Each is `derive_version.sh` saying the build
 would not have been what it claimed.
 
 ### The tag does not match pubspec
@@ -142,11 +146,15 @@ other shallow build. The script refuses rather than produce one.
 slot in the build number, so the retry produces a number the stores have not
 already refused — `100031` becomes `100032`.
 
-Re-run the **whole workflow**, not just the failed job. Re-running `publish`
-alone reuses the artifacts from the first attempt, and only the identity
-derived by the build job is quoted in the release, so the two would still
-agree — but a half-re-run has no other advantage and the whole run is cheap
-against the confusion.
+Re-running `publish` alone is safe: it reuses the artifacts from the first
+attempt, and the version and number it quotes come from the build job's
+outputs rather than from a fresh derivation, so the release cannot describe a
+build nobody made. That is the cheap option when the failure was in publishing
+itself.
+
+Re-run the **whole workflow** when the failure was in a build, or when you do
+not know which it was — the binaries then get the new slot as well as the
+release text.
 
 A dev build is the opposite: re-running one produces the same number on
 purpose. It is disposable, and the fix for wanting a fresh one is another
@@ -154,12 +162,12 @@ commit.
 
 ## Building locally with the things CI has
 
-CI passes a set of `--dart-define`s from its own secrets — the Sentry DSN, the
-map key, the build server. A local build gets none of them unless you say so,
-which is usually right: `flutter run` works without any of it.
+CI passes a set of `--dart-define`s from its own secrets — the map key, the
+build server — plus the build identity `derive_version.sh` derives. A local
+build gets none of them unless you say so, which is usually right:
+`flutter run` works without any of it.
 
-When you do want them — to check that a crash actually reaches Sentry, say —
-copy the template and fill in what you need:
+When you do want them, copy the template and fill in what you need:
 
 ```bash
 cp dart-defines.local.example.json dart-defines.local.json
@@ -171,22 +179,31 @@ so never put a real value in the template.
 
 | Key | What it is | Where it comes from |
 |---|---|---|
-| `QU_SENTRY_DSN` | where the app reports to | Sentry → Project → Settings → Client Keys (DSN) |
+| `QU_SENTRY_DSN` | **nothing reads it yet** — see below | Sentry → Project → Settings → Client Keys (DSN) |
 | `QU_CHANNEL` | `local`, and leave it that way | — |
 | `QU_CARTO_KEY` | basemap tiles | the `QU_CARTO_KEY` repo secret |
-| `QU_BUILD_SERVER_URL` / `_KEY` | the Flibler build server | their repo secrets |
+| `QU_BUILD_SERVER_KEY` | the Flibler build server | its repo secret |
+| `QU_BUILD_SERVER_URL` | only to point at a different server; it has a public default | — |
 | `QLOG`, `QLOG_LEVEL` | make a build talk | see `LogService` |
 
+**`QU_SENTRY_DSN` does nothing today.** The key is here because the project
+and the DSN exist and the name is settled, but no code reads it and no
+workflow passes it — ADR 0013's wiring has not landed. Filling it in will not
+make a crash reach Sentry yet. This paragraph goes when it does.
+
 **`QU_CHANNEL` stays `local`.** Setting it to `dev` or `release` makes your own
-tree report as a build somebody could otherwise go and look at — which is the
-one thing 0014 §1 defaults it to `local` to prevent.
+tree report as a build somebody could otherwise go and look at. `local` is the
+compiled-in default for exactly that reason — see `BuildIdentity.channelName`
+in `lib/services/build_identity.dart`, which is where the default lives;
+0014 §1 covers where the value comes from in CI, not this.
 
 ### The auth token is not one of these
 
 `SENTRY_AUTH_TOKEN` must **never** be a `--dart-define`: a define is compiled
-into the binary, and anyone with the APK could read it out. It is read from the
-environment at build time instead, by `sentry_dart_plugin`, and only when
-uploading debug files or creating a release.
+into the binary, and anyone with the APK could read it out. It will be read
+from the environment at build time instead, by `sentry_dart_plugin`, and only
+when uploading debug files or creating a release. That plugin is not installed
+yet either, so this is how it will work rather than how it works.
 
 If you need it locally — which is only for testing symbol upload, never for
 checking that an error arrives — put it in `~/.sentryclirc` or a user-level
@@ -200,7 +217,7 @@ Honest list, so nobody waits for something that is not coming.
 |---|---|
 | Store uploads | Nothing uploads to TestFlight or the Play internal track. The ADR is shaped for it; the jobs do not exist. |
 | The version bump after a release | Deliberately manual (fact 2). A bot could open the PR; none does. |
-| Anything Sentry | `release`, `dist`, `environment` and the commit tags are all [ADR 0013](adr/0013-observability-with-sentry.md), which has not landed. The build already carries every value they need. |
+| Anything Sentry | `sentry_flutter` is a dependency and every build links it, but nothing initialises it: no DSN is read, no `release`, `dist` or `environment` is set, no commit tags are sent. That wiring is [ADR 0013](adr/0013-observability-with-sentry.md), which has not landed. The build already carries every value it will need. |
 | `installerStore` | 0014 §1 wants the actual install source — TestFlight, Play, a sideload — read at runtime and reported. Not read anywhere yet. |
 
 ## Where each piece lives

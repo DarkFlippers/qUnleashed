@@ -8,14 +8,17 @@ count and what is left of #103; **consent reversed to on by default, sent
 automatically, behind a one-time notice; replay on with it, and the notice
 carries no policy link because there is no policy** (2026-10-07)
 
-Re-verified 2026-10-07 and still true: the 48 and `pages/archive`'s 24 are
-exactly what `test/log_level_budget_test.dart` counts — it sits at budget in
-every area, with nothing to lower; `sentry_flutter` 9.30.1 is still the latest
-on pub.dev and 10.0 has still not shipped stable, so §7 stands unchanged;
-`jni` 1.0.0 and `path_provider_android` 2.3.1 are what the lockfile holds;
-`enable-swift-package-manager: false` and the `qunleashed_hardnested` pod are
-both still there; and both self-extracting launchers work the way §6 and the
-Consequences describe.
+Checked against the tree on 2026-10-07, and still true: the 48 and
+`pages/archive`'s 24 are exactly what `test/log_level_budget_test.dart`
+counts — it sits at budget in every area, with nothing to lower;
+`enable-swift-package-manager: false` is set; and both self-extracting
+launchers work the way §6 and the Consequences describe.
+
+Three things that check found have since changed, and §7 is the current
+account of all of them: 10.0 had not shipped and now has; the lockfile held
+`jni` 1.0.0 and `path_provider_android` 2.3.1 and now holds 0.14.2 and
+2.2.23; and the `qunleashed_hardnested` pod was read as an obstacle to Swift
+Package Manager, which it probably is not.
 
 Build identity — release, channel, commit — is its own decision,
 [0014](0014-build-identity.md). This one consumes it.
@@ -34,9 +37,12 @@ including the `nfc-tools` submodule), libusb in the DFU path and libserialport
 are native code behind `dart:ffi`. A fault there ends the process, and the
 history it would have been written to goes with it.
 
-The project is in Sentry's open-source programme, whose quotas (5M errors, 1B
-spans, 100K replays, 5 TB logs, at the time of writing) are far above what the
-app produces. One SDK, `sentry_flutter`, covers all five shipped platforms:
+The project is in Sentry's open-source programme, which bills as a Sponsored
+Business plan. Its quotas are far above what the app produces; §8 states them
+as measured, rather than the approximation this paragraph carried while the
+org was still being set up.
+
+One SDK, `sentry_flutter`, covers all five shipped platforms:
 
 | | Dart errors | Native crashes | ANR / hangs | Crash-free rate | Replay |
 |---|---|---|---|---|---|
@@ -373,13 +379,16 @@ against 15 and 12. Nothing in the app is below the bar.
 
 What is left is Swift Package Manager, which 10 requires because it drops
 CocoaPods for the native Cocoa SDK. The repository turns SPM off in two
-places, and the reason is recorded in the second:
-`flutter: config: enable-swift-package-manager: false` in `pubspec.yaml`, and
-`swift-package-manager: "false"` on the `build-macos` job alone — whose own
-comment calls it *"belt and braces at the runner level until one macOS release
-confirms the project key holds"*. So this is not an old decision nobody
-remembers. It is a deliberate hold, waiting on one Apple release to prove the
-project-level key does what it says.
+places: `flutter: config: enable-swift-package-manager: false` in
+`pubspec.yaml`, with nothing beside it saying why, and
+`swift-package-manager: "false"` on the `build-macos` job alone.
+
+The reason is in neither — it is in the input that second one sets, in
+`.github/actions/setup-flutter/action.yml`, which describes the flag as
+*"belt and braces at the runner level until one macOS release confirms the
+project key holds"*. So this is not an old decision nobody remembers. It is a
+deliberate hold, waiting on one Apple release to prove the project-level key
+does what it says.
 
 That hold is what blocks 10, and it outranks the local macOS pod the first
 draft of this section worried about: `qunleashed_hardnested` is probably not an
@@ -414,8 +423,9 @@ volume.
 only defensible with the headroom to pay for it. `dark-flippers` is on a
 Sponsored Business plan: 5M errors, 1B spans, 5 TB logs, 5 TB metrics, 105K
 replays (100K plus a 5K/month credit running to 2027-01-23), 10 GB
-attachments. That is the allowance this section assumed when it was written,
-so nothing here changes.
+attachments. The Context above approximated these while the org was being
+set up; these are the measured figures, and nothing in this section changes
+against them.
 
 **Pay-as-you-go is capped at $0**, which matters more than the quotas do. Going
 over does not produce a bill, it drops events - so the risk of reporting by
@@ -429,10 +439,10 @@ the EU. §1 argues on-by-default partly on GDPR's legitimate-interest footing;
 this strengthens that rather than changing it, and it is the kind of fact a
 store questionnaire asks for.
 
-**What that means, because the first draft of this section got it wrong.** It
-said "records on error only", which is not a thing a recorder can do - there
-is no recording the past. Buffer mode records *continuously* into an in-memory
-ring buffer holding the last minute of events, a few megabytes of it, and
+**What that means, since "on error" invites the wrong reading.** It is not
+"records on error only" - there is no recording the past. Buffer mode
+records *continuously* into an in-memory ring buffer holding the last
+minute of events, a few megabytes of it, and
 uploads that buffer only when an error occurs. So the capture cost is paid all
 the time and only the network and the quota are gated on a failure.
 
@@ -487,8 +497,10 @@ most of them are expected.
 
 **Profiling.** Alpha, iOS and macOS only, and removed in 10.
 
-**10.0 now.** An RC, behind a packaging migration this decision should not
-carry.
+**10.0 now.** Rejected when it was an RC. It has shipped since, and every
+floor it raises is already met here, so what is left is the Swift Package
+Manager hold — a packaging migration this decision should still not carry,
+for the reason §7 gives. The rejection stands; its grounds have narrowed.
 
 ## Consequences
 
