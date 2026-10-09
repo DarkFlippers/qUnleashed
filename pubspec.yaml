@@ -72,6 +72,11 @@ dependencies:
   firebase_messaging: ^16.4.1
   shared_preferences: ^2.5.5
   flutter_foreground_task: ^9.2.2
+  # Pinned exactly, and 9.30.0 is the floor: it fixed a native worker leaked
+  # per engine, reported by a BLE app with a headless engine - the home
+  # widget's shape (sentry-dart#3960). 10.0 requires Swift Package Manager,
+  # which this repository does not use, so moving is its own task. ADR 0013 §7.
+  sentry_flutter: 9.30.1
 
 dev_dependencies:
   flutter_test:

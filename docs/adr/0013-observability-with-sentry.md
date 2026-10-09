@@ -365,12 +365,33 @@ gate it.
 9.30.0 is the floor: it fixed a native worker leaked per engine, reported by a
 BLE app with a headless engine — the home widget's shape (sentry-dart#3960).
 
-10.0 is at RC and requires Swift Package Manager. This repository builds with
-`enable-swift-package-manager: false`, and macOS links a local pod,
-`qunleashed_hardnested`. Moving is its own task.
+**10.0 has shipped since this was written** (checked 2026-10-09; it said "at
+RC"), and the reason to stay on 9 is narrower than it was. Every floor 10
+raises is already met here: Flutter 3.47.1 against its 3.44, Dart 3.13.1
+against 3.12, Android `minSdk` 29 against API 26, iOS 15.0 and macOS 12.0
+against 15 and 12. Nothing in the app is below the bar.
 
-9.30.1 pins `jni` to 0.14.2 exactly, so the lockfile moves `jni` from 1.0.0
-to 0.14.2 and `path_provider_android` from 2.3.1 to 2.2.23.
+What is left is Swift Package Manager, which 10 requires because it drops
+CocoaPods for the native Cocoa SDK. This repository sets
+`enable-swift-package-manager: false` with no recorded reason, and that is now
+an opt-out of Flutter's own default rather than a default — 3.44 turns SPM on
+and migrates a project on the next run. The local macOS pod,
+`qunleashed_hardnested`, is probably not the obstacle it looks like: 10's own
+migration notes say other plugins may still require CocoaPods, so the two
+coexist.
+
+So the pin stands for now, on one honest ground rather than the three it used
+to have: flipping SPM changes the iOS and macOS builds, and neither can be
+verified from the machine this is being written on. It is a task for whoever
+next has a Mac in front of them, and then 10 is a version bump.
+
+9.30.1 pins `jni` to 0.14.2 exactly. Measured rather than predicted
+(2026-10-09): the lockfile moves `jni` from 1.0.0 to 0.14.2 and
+`path_provider_android` from 2.3.1 to 2.2.23, **and drops `jni_flutter`
+entirely** — 2.3.1 depends on `jni: ^1.0.0` and `jni_flutter: ^1.0.1`, and
+2.2.23 on neither. Nothing in this repository imports `package:jni`, and the
+analyzer and the suite are green across the downgrade. 10 changes that
+constraint, so the move also undoes this.
 
 Code is written so that 10 is a version bump: no SDK profiling, no
 `enableLogs` or `enableMetrics` flags. The feedback widgets do not come up at
