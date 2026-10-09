@@ -1,11 +1,11 @@
 // The parts of the seed recovery flow that do not need a device or an engine.
 //
-// The subset retry is the reason this file exists. A capture with one missed
-// press cannot solve *entire* - the acceptance test needs every decrypted
-// counter to be one from the last - while the presses either side of the gap
-// are still consecutive among themselves. Without the retry a user with a
-// nine-hop capture and one dropped frame is told no seed exists, which is the
-// one answer that must not be given wrongly.
+// The subset retry is the reason this file exists. The engine tolerates a
+// counter step up to SeedCapture.maxCounterGap, so one dropped frame now solves
+// on the first sweep - but a longer run of missed presses still does not, while
+// the presses either side of it are within the tolerance among themselves.
+// Without the retry a user holding such a capture is told no seed exists, which
+// is the one answer that must not be given wrongly.
 //
 // What it cannot see: whether the engine agrees. The windows are offered to it
 // in order; whether a given window solves is the native probe's business.

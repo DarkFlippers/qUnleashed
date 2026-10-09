@@ -37,7 +37,7 @@ CC="${CC:-cc}"
 # about why that file declines to add a count floor.
 #
 # Exact figures, so adding a check is one deliberate edit here.
-EXPECTED_GROUPS="selftests=4 known-answers=32 refusals=17 stop=7"
+EXPECTED_GROUPS="selftests=4 known-answers=32 gaps=31 refusals=17 stop=7"
 
 if ! command -v "$CC" >/dev/null 2>&1; then
   echo "::error::$CC is required to build the faaccrack engine probe." >&2
