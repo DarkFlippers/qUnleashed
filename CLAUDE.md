@@ -65,8 +65,9 @@ Legacy, kept deliberately, not to be imitated:
   [0005](docs/adr/0005-tolerant-decoding.md)
 - **Sentinel values for absence** — `sha256: ''`, `timestamp: 0`. Absence is
   `null`. [0009](docs/adr/0009-absence-is-null.md)
-- **`LogService.info` as the last word on a failure.** `info` is `keep: false`
-  and const-folds away in release, so nothing reaches the in-app log.
+- **`LogService.info` as the last word on a failure.** `info` passes no
+  [KeptLevel] to `_emit` and const-folds away in release, so nothing reaches
+  the in-app log.
   `test/log_level_budget_test.dart` ratchets the count per directory.
 - **A bare `unawaited(f())`.** The future still rejects, and with no listener
   the rejection reaches the zone — so it lands in the log as `[uncaught]` with

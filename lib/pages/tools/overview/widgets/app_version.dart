@@ -20,7 +20,7 @@ import '../../../../services/guarded.dart';
 /// retypes a SHA off a phone screen, and the alternative is a report that says
 /// "latest".
 ///
-/// Stateful only to hold the future. Created in [State.initState] rather than
+/// Stateful only to hold the future. Held in a `late final` field rather than
 /// in `build`, because a fresh future per build resets the [FutureBuilder] to
 /// `waiting` and collapses the line for a frame — and because a platform call
 /// from `build` is the `#135/#136` shape CLAUDE.md lists, which
@@ -58,7 +58,11 @@ class _AppVersionLabelState extends State<AppVersionLabel> {
     return Platform.operatingSystem;
   }
 
-  /// `qUnleashed for Android v0.14.1-dev (14001 · abc1234)`.
+  /// `qUnleashed for Android v0.16.0-dev (108080 · abc1234)`.
+  ///
+  /// The number is six digits because 0014 §6 floors it at 100000 - the old
+  /// formula's high-water mark was 14001, which is why the floor exists, and
+  /// this example used to quote it.
   ///
   /// Built from the existing one-line format rather than a new string, so the
   /// translations of it keep working: the version takes the channel suffix the

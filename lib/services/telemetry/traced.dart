@@ -99,8 +99,15 @@ class _SpanScope implements TraceScope {
 /// dropped. A transaction of its own also matches what these are: a unit of
 /// work the user started, not part of a screen load.
 ///
-/// A child span *is* created when something else is already tracing — nested
-/// `traced` calls, which is how "install" can contain "transfer".
+/// A child span *is* created when something else is already tracing, which is
+/// how "install" can contain "transfer".
+///
+/// "Already tracing" means the hub's scope, not this call stack:
+/// `Sentry.getSpan()` reads the span bound by `bindToScope: true`, which is
+/// process-global. So a `file.transfer` that merely *overlaps* a
+/// `firmware.install` becomes its child even though neither called the other.
+/// Nesting is the ordinary case and the one worth having; concurrency is what
+/// actually decides.
 ///
 /// ## It does not change what the caller sees
 ///

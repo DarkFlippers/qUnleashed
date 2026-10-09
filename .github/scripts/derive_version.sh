@@ -201,11 +201,13 @@ fi
 # new version, with an error telling the operator to bump a pubspec they just
 # bumped.
 #
-# The read has to be able to fail. Swallowing it would make "no tag names this
-# version" and "I could not read the tags" the same answer, and the second one
-# is the whole hole this guard exists to close: on a checkout without tags it
-# would wave through exactly the release it is meant to stop. There is nothing
-# to fall back to, so it is fatal.
+# The read has to be able to fail, and what it actually catches is narrower
+# than it looks: `git tag --list` exits 0 with empty output when a repository
+# simply has no tags, so "no tag names this version" and "there are no tags"
+# are already the same answer here. What this turns from silence into a failure
+# is the case where the path is not a repository at all. The shallow-checkout
+# hole is closed separately, further down, and after this guard runs. There is
+# nothing to fall back to either way, so it is fatal.
 #
 # There is no way to switch this off. An earlier draft had one, for tests that
 # were about something else, and a skip-the-guard lever in shipped CI code is

@@ -282,9 +282,20 @@ class FileManagerController extends ChangeNotifier {
   /// side, and `test/transfer_restart_count_test.dart` drives the real library
   /// rather than trusting that reading.
   ///
-  /// Counted before the controller's own notify throttle, which is what makes
-  /// it reliable: `ProgressThrottle` usually swallows the backwards step, so
-  /// anything watching `transferProgress` would miss it.
+  /// Counted at the callback, not from anything watching `transferProgress`.
+  /// That field is reset to 0 in this method's own `finally`, so a listener
+  /// sees a fall to zero on **every** upload and cannot tell a restart from an
+  /// ordinary finish - which is the wrong-reason pass
+  /// `transfer_restart_count_test.dart` records having been fixed.
+  ///
+  /// `ProgressThrottle` is not the reason: its gate is `(progress - _last).abs()
+  /// >= minDelta`, with no direction in it, so a fall from 0.6 to 0.05 emits.
+  /// This comment claimed it swallowed the step, which it does only when the
+  /// link drops inside the first fraction of a percent.
+  ///
+  /// The heuristic also under-counts when the drop lands before the first
+  /// `onProgress` of the first attempt, since the high-water mark is still
+  /// zero.
   ///
   /// `trace.failed()` because this catches and answers `false`; without it a
   /// refused write would arrive as a successful transfer.

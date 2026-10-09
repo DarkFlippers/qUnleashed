@@ -52,8 +52,10 @@ class BuildStamp {
     required this.commit,
     required this.flipperlibCommit,
     required this.dartufbtCommit,
-    // One platform call fills both or neither, so a number without a version
-    // is not a state [BuildIdentity] produces.
+    // A number without a version is not a state [BuildIdentity] produces.
+    // One-directional on purpose: version-without-build **is** live, which
+    // `sentryRelease` and `line` both branch on. This used to say "fills both
+    // or neither", which the rest of the class does not assume.
   }) : assert(
          version != '' || build == '',
          'a build number without a version is not a producible state',
@@ -202,8 +204,10 @@ abstract final class BuildIdentity {
   /// Remembered because this crosses a platform channel and two surfaces want
   /// it. The failure is handled here rather than at each of them: a channel
   /// that does not answer must not cost the About screen, and must not cost
-  /// the Sentry init 0013 puts in `_initCore`, which may never throw. Nothing
-  /// calls this from `_initCore` yet, so that constraint is anticipated.
+  /// the Sentry init 0013 puts in `_initCore`, which may never throw.
+  /// `Telemetry.start` is that caller now, so the constraint is live rather
+  /// than anticipated - and it awaits this inside its own try for that reason,
+  /// because the assert below can throw in a debug build.
   ///
   /// Only the version can go missing. The channel and the three commits are
   /// `String.fromEnvironment` constants, in the binary whether or not anything

@@ -54,8 +54,9 @@ void registerRoute(AppRoute route, AppRouteBuilder builder) {
 /// observer needs in order to say which screen a transaction belongs to, and
 /// ADR 0013 puts the names here rather than at the push sites: the 25
 /// `MaterialPageRoute`s inside features stay unnamed, because naming them
-/// would be 25 strings to keep in step with nothing enforcing it, where this
-/// is derived from the enum and cannot drift.
+/// would be 24 strings to keep in step with nothing enforcing it, where this
+/// is derived from the enum and cannot drift. (24, not the 25 this said:
+/// replacing the Log screen with Diagnostics moved it.)
 Future<T?> openRoute<T>(
   BuildContext context,
   AppRoute route, {

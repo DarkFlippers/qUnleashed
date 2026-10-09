@@ -2,7 +2,12 @@
 
 Status: Accepted (2026-10-09). Reporting is **on by default and sent
 automatically**, behind a one-time notice that carries no policy link because
-there is no policy; replay is on with it, behind §6.4's gate.
+there is no policy.
+
+**Replay is decided on and not built.** §1 is the decision - on, with a second
+switch of its own - and phase 3 is where it lands, behind §6.4's gate. Both
+sample rates are at zero in the shipped options today. The two halves of that
+sentence were written four lines apart and read as a contradiction.
 
 Phase 1 is built and **an event has been seen to arrive**: a forced Dart
 error from a local Windows build reached `dark-flippers` as
@@ -132,10 +137,11 @@ It does not block. The app is usable behind it and dismissing it is the same
 as **Got it**; it is recorded as shown either way, and never appears again.
 
 There is no onboarding flow in the app to hang this on, so it is a one-time
-sheet of its own, raised from `_runApp` once the first frame is up. Not from
-`_initCore` — that must never throw and has no UI — and not from
-`widgetMain()`, which has no window at all: a headless isolate must never be
-the path that marks the notice shown, or the user would never see it.
+sheet of its own, raised from `AppShell`'s first frame - which is on the
+`_runApp` path and nowhere else. Not from `_initCore` — that must never throw
+and has no UI — and not from `widgetMain()`, which has no window at all: a
+headless isolate must never be the path that marks the notice shown, or the
+user would never see it.
 
 No policy URL, because the repository has no privacy policy and this
 decision is not going to wait on one being written. The notice carries the
@@ -265,7 +271,7 @@ everything to the platform log. That is not a trade worth making for
 commentary.
 
 Even in a talking build the hook would be awkward in the obvious place.
-`_emit` opens with `if (!keep && !console) return;`, which is #187: five
+`_emit` opens with `if (level == null && !console) return;`, which is #187: five
 sites out of six are dropped, and each used to buy a timestamp first. A
 breadcrumb hook would have to sit above that return and would reinstate the
 stamp, plus a scrub, since a breadcrumb is sent and §6 scrubs everything
@@ -325,7 +331,7 @@ talking build. So the third level is one line.
 
 ```dart
 static void caught(String msg) =>
-    _emit('[caught] $msg', keep: true, console: infoOn);
+    _emit('[caught] $msg', level: KeptLevel.caught, console: infoOn);
 ```
 
 The prefix is what `keptSink` reads to send it as a Sentry log at **info**
@@ -604,9 +610,12 @@ most of them are expected.
   `nativeDatabasePath` now points at the application support directory, with
   the SDK's default as the fallback when `path_provider` will not answer: a
   report in an awkward place beats no report.
-- Still to verify before the first release that carries it: `crashpad_handler`
-  keeping its exec bit on Linux, and `SentryWidgetsFlutterBinding` doing
-  nothing while reporting is off.
+- Still to verify before the first release that carries it:
+  `crashpad_handler` keeping its exec bit on Linux. The
+  `SentryWidgetsFlutterBinding` half of this item is moot - nothing installs
+  it, because `_initCore` installs Flutter's own and swapping it would mean
+  `main.dart` importing the SDK, which §2 forbids. `enableFramesTracking` is
+  false for that reason, which is recorded at the option.
 
 ## Rollout
 

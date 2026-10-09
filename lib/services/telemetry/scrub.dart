@@ -231,9 +231,15 @@ abstract final class Scrub {
   /// path exists for. The price is that an all-numeric UID survives; a UID is
   /// pseudonymous where a key is not, so that is the right side to err on.
   ///
-  /// Boundaries rather than `\b`, because `\b` treats the `-` in
-  /// `a1b2c3d4-e5f6` as a boundary and would match each half of something that
-  /// is one value.
+  /// Boundaries rather than `\b`, and the reason is the **underscore**:
+  /// `\b` treats `_` as a word character, so `_a1b2c3d4` would match nothing,
+  /// while these lookarounds exclude only `[0-9A-Za-z]` and catch it.
+  ///
+  /// This used to claim the reason was the hyphen in `a1b2c3d4-e5f6`, which is
+  /// wrong twice: `-` is a boundary for these lookarounds too, so the halves
+  /// are still matched separately - and `\b` would have matched only the
+  /// first half anyway, because the second is four characters and under the
+  /// floor. Nothing currently keeps a hyphenated pair together.
   static final RegExp _hex = RegExp(
     r'(?<![0-9A-Za-z])(?=[0-9A-Fa-f]{8,}(?![0-9A-Za-z]))'
     r'[0-9A-Fa-f]*[A-Fa-f][0-9A-Fa-f]*',

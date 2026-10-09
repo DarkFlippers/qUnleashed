@@ -90,19 +90,19 @@ app.*.map.json
 /ios/Runner/GoogleService-Info.plist
 /macos/Runner/GoogleService-Info.plist
 
+# The native crash database, which sentry-native writes beside the executable
+# unless told otherwise - so a `flutter run` from here creates it in the repo
+# root. It holds an installation id and any crash not yet sent. Ignored as well
+# as redirected (see Telemetry._nativeDatabasePath), because the default
+# applies to any build made before that landed.
+/.sentry-native/
+
 # Local build defines, which may hold QU_CARTO_KEY and QU_BUILD_SERVER_KEY.
 # See docs/releasing.md. Every name but the template, because those are real
 # secrets and the filename is a free choice.
 #
 # test/local_defines_test.dart is the other half: an ignore rule does nothing
 # against `git add -f`.
-# The native crash database, which sentry-native writes beside the executable
-# unless told otherwise - so a `flutter run` from here creates it in the repo
-# root. It holds an installation id and any crash not yet sent. Ignored as well
-# as redirected (see Telemetry._configure), because the default applies to any
-# build made before that landed.
-/.sentry-native/
-
 /dart-defines*.json
 !/dart-defines.local.example.json
 

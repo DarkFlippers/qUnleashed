@@ -12,10 +12,10 @@ import 'telemetry/scrub.dart';
 /// The three levels that reach [LogService.history], and so the only ones a
 /// second reader can be told about.
 ///
-/// Not every level: `info`, `debug` and `trace` are `keep: false` and
-/// const-fold out of a release build, so there is nothing to forward and no
-/// value in a name for it. This is the vocabulary of what is *kept*, which is
-/// why it is three and not six.
+/// Not every level: `info`, `debug` and `trace` pass no level to `_emit` at
+/// all and const-fold out of a release build, so there is nothing to forward
+/// and no value in a name for it. This is the vocabulary of what is *kept*,
+/// which is why it is three and not six.
 enum KeptLevel {
   /// Something failed and somebody should look at it.
   error,
@@ -333,8 +333,14 @@ class LogService {
     Log.sink = _flipperlibSink;
   }
 
-  /// The level the library is held at: the chattiest of the reasons to want
-  /// lines.
+  /// The level the library is held at: the **first** of the reasons that
+  /// applies, talking build first.
+  ///
+  /// A priority, not a minimum, and this said "the chattiest" - which the body
+  /// contradicts two paragraphs down. With `QLOG_LEVEL=error` and a breadcrumb
+  /// sink installed the pin is `error`, strictly less chatty than the `info`
+  /// the breadcrumb reason wants. That is deliberate: QLOG asked for its
+  /// levels explicitly.
   ///
   /// **Chattiest means the lowest index.** `FlipperLogLevel` runs
   /// `trace, debug, info, warning, error`, and `Log` admits a severity at or
@@ -477,7 +483,7 @@ class LogService {
   /// once ADR 0013 lands, a Sentry log at info rather than warning - tell the
   /// two apart without the second firing any alerting.
   ///
-  /// Kept like [warn], printed like [info]: `keep: true` with
+  /// Kept like [warn], printed like [info]: a [KeptLevel] with
   /// `console: infoOn`, which is why this is one line rather than a mechanism.
   /// The difference from warn's combination is deliberate — in a build made to
   /// talk at `QLOG_LEVEL=warn` a warning prints and these do not, because the
@@ -606,8 +612,10 @@ class LogService {
   /// The library's own levels, mapped onto the three this app keeps.
   ///
   /// Null below [_keptFrom], which is what decides whether the line is kept at
-  /// all. `error` and `warning` are the only two at or above it, so the
-  /// fall-through is unreachable rather than lossy - but it is written as a
+  /// all. `error` and `warning` are the only two at or above it, so no level
+  /// *other than* `warning` can reach the else arm - which is itself the
+  /// ordinary path for every `Log.warn`, and was described here as
+  /// "unreachable" when only the third case is. It is written as a
   /// level rather than an assert, because raising [_keptFrom]'s neighbour is
   /// the kind of change that should degrade to "kept as a warning" instead of
   /// throwing inside the logger.
@@ -618,9 +626,19 @@ class LogService {
         : KeptLevel.warning;
   }
 
-  /// Whether [_dropCrumb] is already running, for [_announce]'s reason: a
-  /// breadcrumb sink that throws is reported with [error], which cannot be
-  /// allowed to re-enter it.
+  /// Whether [_dropCrumb] is already running.
+  ///
+  /// Symmetry with [_announcing] rather than a live hazard: a breadcrumb sink
+  /// that throws is reported with [error], and that reaches [_announce] - the
+  /// *kept* sink - because `_emit` never calls this one. Only
+  /// [_flipperlibSink] does, driven by the library's own `Log`. So the causal
+  /// chain [_announcing] guards against does not exist here, and this said it
+  /// did.
+  ///
+  /// Kept anyway, and separate from [_announcing] on purpose. Sharing one flag
+  /// would be a behaviour change: a failing breadcrumb sink's report currently
+  /// does reach Sentry Logs through the kept sink, and one flag would suppress
+  /// it.
   static bool _crumbing = false;
 
   /// Hands one library line to [breadcrumbSink] without letting it cost the
@@ -645,8 +663,9 @@ class LogService {
 
   /// §4: the hook goes **before** [_emit], not inside it.
   ///
-  /// Inside, it would have to sit above `_emit`'s `if (!keep && !console)
-  /// return` - which is #187, where five call sites out of six are dropped -
+  /// Inside, it would have to sit above `_emit`'s `if (level == null &&
+  /// !console) return` - which is #187, where five call sites out of six are
+  /// dropped -
   /// and would reinstate the timestamp that return exists to avoid, for the
   /// app's own traffic as well as the library's.
   ///
@@ -759,8 +778,6 @@ class LogService {
     return '${_two(wall.hour)}:${_two(wall.minute)}:${_two(wall.second)}';
   }
 
-  /// Stamps [msg], keeps it in [history] if [keep], prints it if [console].
-  ///
   /// Only what is kept is redacted. The history is the only thing the log
   /// screen offers to copy, and everything else — five times as many trace,
   /// debug and info sites as ones that keep — would be paying a scan per home

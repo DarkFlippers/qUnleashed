@@ -229,8 +229,10 @@ installs the uncaught-error handlers in `initialize()`.
 `package:sentry*`, which `test/sentry_import_guard_test.dart` holds at zero
 everywhere else. `Telemetry.start` is awaited in `_initCore` on both entry
 points and never throws; it sends nothing unless a DSN was compiled in and the
-Diagnostics switch is on. `telemetry/scrub.dart` owns the redaction
-`LogService` applies at its sink, and the same function runs in `beforeSend`.
+Diagnostics switch is on. `telemetry/scrub.dart` owns two levels of redaction: `Scrub.paths` runs at
+`LogService`'s sink, where the log stays readable for the person whose device
+it is, and `Scrub.outbound` adds filenames, hex runs, coordinates, query
+strings and learned device names on everything that leaves.
 ADR 0013.
 
 ## 9. Models and serialization

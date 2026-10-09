@@ -5,11 +5,12 @@ Status: Accepted (2026-10-09). Proposed 2026-10-01; the version is SemVer and
 version and dropped only from the two fields a store validates, and the
 automatic version bump replaced by two guards, 2026-10-08.
 
-Implemented except for the four parts that are really
-[0013](0013-observability-with-sentry.md)'s and wait on its wiring: §5's
-Sentry release name, the release-name output §4 asks `derive_version.sh` for,
-§1's `installerStore` tag and §3's Sentry tags. Store uploads are not built
-yet either; the identity those jobs would need is in place.
+Implemented, apart from `installerStore`. The three parts that waited on
+[0013](0013-observability-with-sentry.md)'s wiring landed with it: §5's Sentry
+release name is `BuildStamp.sentryRelease`, §4's release-name output is the
+script's `SENTRY_RELEASE`, and §3's Sentry tags are `TelemetryPlan.tags`.
+§1's `installerStore` is still read nowhere. Store uploads are not built
+either; the identity those jobs would need is in place.
 
 Written against three needs, stated in that order of certainty: release builds
 cut on SemVer when the team decides, dev builds published automatically from
@@ -290,8 +291,12 @@ thing that matters is reading a release list at a glance. §5 has it.
   now. What replaces it is a check that a build's version is not one already
   published.
 - `AppVersionLabel` reads `QU_CHANNEL` and stops parsing the tag.
-- `sentry_dart_plugin`'s default release, which is read from pubspec, becomes
-  right. It is still passed explicitly.
+- `sentry_dart_plugin` takes the release from `SENTRY_RELEASE` in the
+  environment, which outranks both its own argument and the pubspec. It is
+  **not** passed as a flag, and the pubspec default is deliberately not relied
+  on: that one carries no channel and no build number, so every dev build of a
+  cycle would upload under one name. `pubspec.yaml`'s `sentry:` block says the
+  same.
 - Tagging two channels at one version is no longer a hazard: §6's slot gives
   them different numbers. What remains is that they would share a *name*, so
   the channel on the About screen is what tells them apart.
@@ -300,7 +305,9 @@ thing that matters is reading a release list at a glance. §5 has it.
   produce one code. Its regex should still be anchored: `beta-0.14.0-rc1`
   currently builds as `0.14.0`, silently claiming the identity of a release it
   is not.
-- `fetch-depth: 0` on every job that derives a version — the three build jobs
+- `fetch-depth: 0` on every job that reads git for a version — the three build
+  jobs. `publish` takes a bare checkout and is right to: `--print-channel`
+  returns before anything touches git
   and `publish`. `guard` takes it only on a dispatch, which is the one trigger
   whose check reads history.
 - A push to `main` now builds five platforms, so the trigger carries a

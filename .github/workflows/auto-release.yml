@@ -59,8 +59,9 @@ jobs:
         uses: actions/checkout@v7
         with:
           # Only the dispatch check below reads history, and this job is the one
-          # thing on the critical path before the builds - so a push pays for a
-          # full clone it never looks at.
+          # thing on the critical path before the builds - so without the
+          # expression a push would pay for a full clone it never looks at.
+          # It gets depth 1.
           fetch-depth: ${{ github.event_name == 'workflow_dispatch' && 0 || 1 }}
 
       - name: Cancel outside github.com

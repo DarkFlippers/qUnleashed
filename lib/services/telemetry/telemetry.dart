@@ -102,10 +102,15 @@ class TelemetryPlan {
 /// Everything above keeps calling `LogService`, `guarded` and the connection
 /// classifier; this turns what they already record into events.
 ///
-/// Phase 1 of the rollout, which is errors and crashes. Tracing, Sentry Logs
-/// and replay each arrive with their own phase, and nothing here enables them:
-/// `tracesSampleRate` is left unset, so `SentryOptions.isTracingEnabled()` is
-/// false and the automatic instrumentation samples nothing.
+/// Phases 1 and 2 of the rollout: errors, crashes, Sentry Logs, breadcrumbs
+/// and tracing. Replay is phase 3 and nothing here enables it - both of its
+/// sample rates are left at the SDK's zero, which §6.4's gate is what stands
+/// in front of.
+///
+/// This paragraph said the opposite until phase 2 landed and made it false.
+/// ADR 0013's own status block is the current account of what is built; this
+/// one is here so a reader of the class knows which phases its options
+/// belong to.
 /// How the SDK is brought up. `SentryFlutter.init` unless a test says
 /// otherwise.
 typedef SentryInit = Future<void> Function(
@@ -195,12 +200,19 @@ class Telemetry {
   /// What `MaterialApp.navigatorObservers` is given.
   ///
   /// Empty in a build with no DSN, so an app nobody is reporting from carries
-  /// no observer at all. In a build that has one, the observer is created once
-  /// here and lives for the process - the list is read when `MaterialApp`
-  /// builds, which is before the user can reach the Diagnostics switch, so it
-  /// cannot be rebuilt on a toggle. Turning reporting off closes the hub
-  /// instead, and the observer's calls become no-ops; that is the one piece of
-  /// this that keeps an object alive while switched off, and it holds no data.
+  /// no observer at all.
+  ///
+  /// `late final` is what makes it one observer for the process, and that is
+  /// the reason that matters: `MaterialApp` is rebuilt on every theme and
+  /// locale change and reads this list each time, so a getter that built one
+  /// would start a new trace on every accent colour. This used to say the list
+  /// was read before the user could reach the Diagnostics switch, which is
+  /// true and is not what protects it - `app.dart` had the right reason on the
+  /// same field.
+  ///
+  /// Turning reporting off closes the hub rather than removing the observer,
+  /// and its calls become no-ops; that is the one piece of this that keeps an
+  /// object alive while switched off, and it holds no data.
   ///
   /// A `NavigatorObserver` rather than the SDK's own type, so `app.dart` takes
   /// a Flutter type and nothing above this folder names Sentry.
@@ -426,9 +438,14 @@ class Telemetry {
   /// Forwards one kept log line to Sentry Logs.
   ///
   /// §2's second chokepoint. `LogService` already funnels every error and
-  /// warning the app records, and §5's `caught` adds the 48 failure paths a
-  /// release build kept no record of - so this is where all three arrive,
-  /// rather than at several hundred call sites.
+  /// warning the app records, and §5's `caught` is the level that **will**
+  /// carry the 48 failure paths a release build keeps no record of - so this
+  /// is where all three arrive, rather than at several hundred call sites.
+  ///
+  /// Future tense on purpose: none of the 48 has moved yet.
+  /// `log_level_budget_test.dart` is still at 48 and `caught_budget_test.dart`
+  /// at four, all four of them new sites rather than re-ruled ones. §5's
+  /// re-ruling is phase 0a and is not done.
   ///
   /// `caught` goes at Sentry's **info** level rather than `warning`, which is
   /// §5's whole point: these are searchable without firing the alerting that
@@ -576,6 +593,7 @@ class Telemetry {
   /// §2: `guarded` is one of the four chokepoints that already see every
   /// failure the app records, which is why this hooks it rather than adding
   /// `captureException` to several hundred catch sites.
+  ///
   ///
   /// **Fingerprinted on the label and the error type**, which is the best
   /// grouping key the app has. Sentry's default would group on the stack, and
