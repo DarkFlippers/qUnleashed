@@ -233,12 +233,11 @@ else()
     # arm64 and armv7: NEON is the baseline, so one object is already the right
     # one and there is nothing to choose between at runtime.
     #
-    # No -DVBITS here, deliberately. NEON is 128 bits, so by the rule above this
-    # is the variant with the most to gain - the default is four registers per
-    # plane - and it is also the one nothing in this change measured. A number
-    # guessed into a mobile build is a number nobody checks: the win is real on
-    # x86 because it was measured there. BUILD_NOTES.md carries the prediction
-    # and what a device run would have to show.
+    # No -DVBITS here, and this one *was* measured: on a Pixel 10 Pro XL the
+    # whole-space sweep was 18.0 s at 128 lanes, 17.3 s at 256 and 17.5 s at the
+    # default - within noise, against 4.1x on x86. aarch64 has 32 vector
+    # registers to x86's 16, so the spilling that drives the desktop win barely
+    # applies. BUILD_NOTES.md has the table.
     faaccrack_add_variant(NEON ${faaccrack_engine_opts})
   endif()
 endif()

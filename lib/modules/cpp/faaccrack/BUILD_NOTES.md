@@ -315,13 +315,35 @@ dispatcher actually picks on a modern desktop, and 1.8x for the baseline.
 
 ### What is deliberately left alone
 
-**NEON.** It is 128 bits, so by the rule above it has the most to gain - the
-default is four registers per plane - and it is the one variant nothing here has
-measured. Android and iOS are also where recovery hurts most, which is the
-argument for measuring rather than for guessing: a number nobody checked, in the
-build most users run, is worse than a default that is merely slow. The
-prediction is 128. A device run needs to show the whole-space sweep time at 128
-against the default, and that the end-of-space seed is still found.
+**NEON, and it was measured.** The prediction was 128, by the rule above: NEON
+is 128 bits, so the default is four registers per plane. The prediction was
+wrong, which is why the variant still passes no `-DVBITS`.
+
+On a Pixel 10 Pro XL (Tensor G5, arm64-v8a, 8 threads, the committed engine
+cross-compiled with NDK r28c clang at `-O3 -funroll-loops`), whole-space sweep,
+one run each:
+
+| VBITS | sweep |
+|---|---|
+| 128 | 18.0 s |
+| 256 | 17.3 s |
+| default (512) | 17.5 s |
+
+Within about 4%, which for single runs is noise. The end-of-space seed is still
+found at 256, so the widths are all covering the space.
+
+Why the x86 result does not transfer: **aarch64 has 32 architectural vector
+registers against x86's 16**, so the spill pressure that drives the desktop win
+is far weaker, and this core appears to be bound by something other than
+register traffic. The generated code still varies threefold in size (77 KB at
+128 lanes against 231 KB at the default) while the runtime does not move, which
+fits that reading.
+
+So the knob is live on ARM and worth nothing there. One device is not every
+device - a 4-core mid-range phone may answer differently - but it is enough to
+stop guessing a number into the build most users run. For scale: this phone
+sweeps the whole space in 17 seconds at 8 threads, about what an untuned
+16-thread desktop manages.
 
 **The Apple pod.** `apple/qunleashed_faaccrack.podspec` passes one `OTHER_CFLAGS`
 for every architecture, so a per-arch width means an arch-conditional there, and
