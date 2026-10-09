@@ -27,17 +27,22 @@ import 'ratchet.dart';
 
 /// What each area may record at `caught`.
 ///
-/// Two sites, both in `build_identity.dart`, and both the shape the level is
-/// for - an operation that did not do what was asked, where what is left still
-/// works:
+/// Three sites, all in `lib/services`, and all the shape the level is for - an
+/// operation that did not do what was asked, where what is left still works:
 ///
 ///  * the version could not be read, so every surface says `unknown` and
 ///    nothing else would ever say why;
 ///  * the channel define held something `BuildChannel` does not know, so the
-///    build reads as `local` when CI meant otherwise.
+///    build reads as `local` when CI meant otherwise;
+///  * reporting is not running, because no DSN was compiled in or the switch
+///    is off. The only site of the three that is a *refusal* rather than a
+///    fault, and it earns the level for the same reason: both causes are
+///    ordinary - every local build has no DSN - so nobody is to be alerted,
+///    and a dev build that was supposed to be reporting and is silent has
+///    nowhere else to say so.
 ///
 /// §5's re-ruling of #103's 48 sites is what raises these, once.
-const Map<String, int> kBudget = {'services': 2};
+const Map<String, int> kBudget = {'services': 3};
 
 const String kAdr = 'docs/adr/0013-observability-with-sentry.md';
 

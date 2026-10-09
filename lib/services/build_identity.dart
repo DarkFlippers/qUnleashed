@@ -111,6 +111,28 @@ class BuildStamp {
     };
   }
 
+  /// What Sentry calls this build: `qunleashed@0.15.0-dev+108080`.
+  ///
+  /// 0014 §5. Set explicitly and never left to the SDK, whose default starts
+  /// with the application or bundle ID and would split one release into five
+  /// platforms. The `-dev` comes from [displayVersion], so a dev build and the
+  /// shipped version of the same cycle never look alike in a release list.
+  ///
+  /// `+` and the build number are dropped when the platform would not say what
+  /// the number is, rather than written as `+`. A release name is a key: one
+  /// ending in a separator with nothing after it groups every unversioned
+  /// build of a channel together under a name that reads as truncated.
+  ///
+  /// Here rather than in `telemetry/` because 0014 §4 asks for one place that
+  /// turns a trigger into an identity, and because this is the half of that
+  /// place which lives in Dart - `derive_version.sh` will write the same string
+  /// for the symbol upload, and `test/build_identity_test.dart` pins the format
+  /// both of them have to produce.
+  String get sentryRelease {
+    final name = 'qunleashed@$displayVersion';
+    return build.isEmpty ? name : '$name+$build';
+  }
+
   /// One line naming this binary: `0.14.1-dev · 14001 · abc1234`.
   ///
   /// Widest to narrowest, so the part a reader almost always wants is first.

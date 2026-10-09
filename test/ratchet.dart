@@ -1,4 +1,4 @@
-// The machinery four ratchets share.
+// The machinery the ratchets share.
 //
 // A ratchet counts something the project wants less of, per area, and fails
 // when a number rises. `test/log_level_budget_test.dart` was the first and
@@ -10,10 +10,15 @@
 // its own visitor and its own budget - what they share is how a file list is
 // obtained, how a path becomes an area, and how two maps are compared.
 //
-// The fourth, `unawaited_budget_test.dart`, was the first whose budget went in
-// before its sweep rather than after - deliberately, so the figure could not
-// climb while the sweep ran. That sweep is done, so all four now mean the same
-// thing: what is left has been read and kept.
+// Seven of them now, and they do not all mean the same thing. Four -
+// `bare_catch`, `build_io`, `client_reach` and `log_level` - count legacy that
+// a sweep is draining. `unawaited` was the first whose budget went in before
+// its sweep rather than after, deliberately, so the figure could not climb
+// while the sweep ran; that sweep is done. `caught` is the only one meant to
+// *rise*, once, as ADR 0013 §5's re-ruling lands. And
+// `sentry_import_guard_test.dart` has no legacy at all: its budget is empty
+// everywhere, because the dependency arrived with the folder allowed to hold
+// it.
 import 'dart:io';
 
 import 'package:analyzer/dart/analysis/utilities.dart';

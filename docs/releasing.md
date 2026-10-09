@@ -179,10 +179,17 @@ local-config files a fresh clone needs, and the only one that fails silently;
 | Key | What it is | Where it comes from |
 |---|---|---|
 | `QU_CHANNEL` | `local`, and leave it that way | — |
+| `QU_SENTRY_DSN` | the project errors are reported to | Sentry → Project → Settings → Client Keys (DSN) |
 | `QU_CARTO_KEY` | basemap tiles | the `QU_CARTO_KEY` repo secret |
 | `QU_BUILD_SERVER_KEY` | the Flibler build server | its repo secret |
 | `QU_BUILD_SERVER_URL` | only to point at a different server; it has a public default | — |
 | `QLOG`, `QLOG_LEVEL` | make a build talk | see `LogService` |
+
+**The DSN is public, and the auth token is not.** A DSN identifies a project
+and authorises nothing but writing to it, which is why it is compiled into
+every shipped binary and why it is safe in a file on your disk. Leave it empty
+and the app says `[Telemetry] not reporting: no DSN was compiled in` once, in
+the log, and sends nothing. The token is the next section.
 
 **`QU_CHANNEL` stays `local`.** Setting it to `dev` or `release` makes your own
 tree report as a build somebody could otherwise go and look at. `local` is the

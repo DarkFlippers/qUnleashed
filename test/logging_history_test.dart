@@ -4,6 +4,7 @@ import 'package:flipperlib/flipperlib.dart' show FlipperLogLevel, Log;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/services/logging.dart';
+import 'package:qunleashed/services/telemetry/scrub.dart';
 
 /// What `debugPrint` received while [body] ran.
 ///
@@ -396,10 +397,10 @@ void main() {
   // that reads Platform.environment passes vacuously wherever it is unusual -
   // which is exactly where the bug was.
   group('redaction', () {
-    tearDown(() => LogService.debugUseHomes(null));
+    tearDown(() => Scrub.debugUseHomes(null));
 
     test('a home directory is replaced wherever it appears', () {
-      LogService.debugUseHomes([r'C:\Users\Myte']);
+      Scrub.debugUseHomes([r'C:\Users\Myte']);
 
       printed(
         () => LogService.error(r'could not clear C:\Users\Myte\Docs\x.ir'),
@@ -414,7 +415,7 @@ void main() {
     // and the drive behind a scheme - and the entries carrying stacks are the
     // ones most likely to be pasted into an issue.
     test('a Windows home is replaced in a stack frame URI too', () {
-      LogService.debugUseHomes([r'C:\Users\Myte']);
+      Scrub.debugUseHomes([r'C:\Users\Myte']);
 
       printed(
         () => LogService.error(
@@ -428,7 +429,7 @@ void main() {
     // A HOME of /root is ordinary in a container. Replacing it blind rewrote
     // /rootfs to ~fs and corrupted messages that had no path in them at all.
     test('a home that prefixes an unrelated word is left alone', () {
-      LogService.debugUseHomes(['/root']);
+      Scrub.debugUseHomes(['/root']);
 
       printed(() => LogService.error('mounting /rootfs failed'));
 
@@ -436,7 +437,7 @@ void main() {
     });
 
     test('and is still replaced when it is a real path', () {
-      LogService.debugUseHomes(['/root']);
+      Scrub.debugUseHomes(['/root']);
 
       printed(() => LogService.error('could not clear /root/x.ir'));
 
@@ -447,16 +448,16 @@ void main() {
     // Behaviour cannot show the duplicate — replacing the same thing twice
     // gives the same answer — so the count is the only way to see it.
     test('the same home twice is not scanned for twice', () {
-      LogService.debugUseHomes([r'C:\Users\Myte']);
-      final once = LogService.debugHomePatternCount;
+      Scrub.debugUseHomes([r'C:\Users\Myte']);
+      final once = Scrub.debugHomePatternCount;
 
-      LogService.debugUseHomes([r'C:\Users\Myte', r'C:\Users\Myte']);
+      Scrub.debugUseHomes([r'C:\Users\Myte', r'C:\Users\Myte']);
 
-      expect(LogService.debugHomePatternCount, once);
+      expect(Scrub.debugHomePatternCount, once);
     });
 
     test('a home too short to be one is ignored', () {
-      LogService.debugUseHomes(['/x']);
+      Scrub.debugUseHomes(['/x']);
 
       printed(() => LogService.error('reading /x/y'));
 
@@ -476,7 +477,7 @@ void main() {
     // kept, so paying a scan for it buys nothing - and a developer's console
     // should print the path they are debugging.
     test('what is only printed keeps its path', () {
-      LogService.debugUseHomes(['/root']);
+      Scrub.debugUseHomes(['/root']);
 
       final lines = printed(() => LogService.info('reading /root/x.ir'));
 

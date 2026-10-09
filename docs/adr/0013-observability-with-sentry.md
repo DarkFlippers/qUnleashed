@@ -1,9 +1,18 @@
 # 0013. Sentry is the second channel, wired into the chokepoints that exist
 
-Status: Proposed. Reporting is **on by default and sent automatically**,
-behind a one-time notice that carries no policy link because there is no
-policy; replay is on with it. Facts last checked against the tree 2026-10-09;
-git holds how the decision got here.
+Status: Accepted (2026-10-09). Reporting is **on by default and sent
+automatically**, behind a one-time notice that carries no policy link because
+there is no policy; replay is on with it, behind §6.4's gate.
+
+Phase 1 is partly built. `lib/services/telemetry/` exists and is the only
+place in `lib/` importing the SDK, held by
+`test/sentry_import_guard_test.dart`; `Telemetry.start` runs in `_initCore` on
+both entry points, reads `QU_SENTRY_DSN`, sets 0014 §5's release name, §3's
+tags and §6.1's options, and puts §6.2's scrubber in front of every event. Not
+yet: §6.2's patterns beyond the home directory, the Diagnostics switch and the
+one-time notice on screen, `guarded` becoming issues, and the CI defines and
+symbol upload. Phases 2 and 3 are untouched. Facts last checked against the
+tree 2026-10-09; git holds how the decision got here.
 
 Build identity — release, channel, commit — is its own decision,
 [0014](0014-build-identity.md). This one consumes it.
@@ -453,9 +462,15 @@ default flips back. That is a known price on a decision nobody has taken,
 rather than a surprise.
 
 What stays from the rejection: nothing is collected that identifies a person
-(§6), IP storage is off server-side, the switch is one tap away and the notice
-says it is there, and replay - the only category that records the screen -
-keeps the off-by-default the whole feature used to have.
+(§6), IP storage is off server-side, and the switch is one tap away with the
+notice saying it is there.
+
+What does **not** stay is replay's default. An earlier draft of this paragraph
+kept replay opt-in as the concession, which contradicted §1 - replay is on,
+with a second switch of its own. §1 is the decision; this is the consequence
+of it, which is that the one category recording the screen is also on by
+default, and §6.4's gate is the only thing between it and a card dump leaving
+a device. That gate is therefore load-bearing rather than cautious.
 
 **Every `LogService.error` as an issue.** No exception object to group on, and
 most of them are expected.

@@ -83,6 +83,39 @@ void main() {
     });
   });
 
+  // 0014 §5, and the format `derive_version.sh` has to produce for the symbol
+  // upload. One release name per binary: the SDK's default would start with
+  // the application or bundle ID and split one release into five platforms.
+  group('sentryRelease', () {
+    test('names the product, the version and the build', () {
+      expect(stamp().sentryRelease, 'qunleashed@0.14.1-dev+14001');
+    });
+
+    test('a release is the bare version, as everywhere else', () {
+      expect(
+        stamp(channel: BuildChannel.release).sentryRelease,
+        'qunleashed@0.14.1+14001',
+      );
+    });
+
+    test("a developer's tree is never mistaken for a shipped build", () {
+      expect(
+        stamp(channel: BuildChannel.local).sentryRelease,
+        'qunleashed@0.14.1-local+14001',
+      );
+    });
+
+    // Not `qunleashed@unknown-dev+`. A release name is a key, and one ending
+    // in a separator with nothing after it reads as truncated while quietly
+    // grouping every unversioned build of the channel under one name.
+    test('drops the separator with the number it would have carried', () {
+      expect(
+        stamp(version: '', build: '').sentryRelease,
+        'qunleashed@unknown-dev',
+      );
+    });
+  });
+
   group('line', () {
     test('runs widest to narrowest', () {
       expect(stamp().line, '0.14.1-dev · 14001 · abc1234');

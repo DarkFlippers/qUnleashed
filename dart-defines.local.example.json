@@ -3,6 +3,8 @@
 
   "QU_CHANNEL": "local",
 
+  "QU_SENTRY_DSN": "",
+
   "QU_CARTO_KEY": "",
   "QU_BUILD_SERVER_URL": "",
   "QU_BUILD_SERVER_KEY": "",
