@@ -164,6 +164,19 @@ waits on: connect, firmware install, file transfer (counting restarts — an
 upload restarts after auto-reconnect), app install, DFU and MIFARE recovery
 (duration and attack kind only, never keys or UIDs).
 
+**Wired so far: connect and firmware install.** The other four are the same
+one-line wrap at their own entry point and are not done; each is independent,
+so a missing one is a missing span rather than a gap that misleads. `traced`
+starts its own transaction rather than a child span, because
+`SentryNavigatorObserver` finishes a screen's transaction seconds after the
+route settles and a two-minute install would have nothing left to attach to.
+
+It gained `trace.failed()`, which §2 did not anticipate: several of these
+return a failure instead of raising one - `FirmwareInstaller.install` is
+documented as never throwing - so without it every failed install would arrive
+as a successful transaction. A real duration with a false verdict is worse than
+no transaction at all.
+
 What is **not** an issue: an ordinary `LogService.error`. It carries a string,
 not the exception, and many are expected — a timeout, a dropped link. Those
 are logs, linked to the trace and the session they happened in.

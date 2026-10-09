@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import '../guarded.dart';
 import '../logging.dart';
+import '../telemetry/traced.dart';
 import 'device_settings.dart';
 import 'known_devices.dart';
 
@@ -289,43 +290,65 @@ class LinkService extends ChangeNotifier {
   /// A remembered BLE device is dialled straight by its address: the platform
   /// resolves it without discovery, so asking first whether it is in range
   /// would only delay the connect that answers the same question.
+  ///
+  /// Timed as one operation — ADR 0013 §2 names connect first, because "it
+  /// took ages to connect" is the bug report this app gets most and nothing
+  /// until now could say over which transport or how long. The transport is
+  /// attached because it is the one fact that splits the answer; the device id
+  /// is not, and a name least of all.
+  ///
+  /// [traced] goes **after** the early return. A caller that asks twice while
+  /// the first attempt is running is not a second connect, and recording it as
+  /// a nil-duration one would put a cloud of empty operations around every
+  /// real one.
   Future<void> connect(LinkEntry entry) async {
     if (entry.busy || entry.session == LinkSession.active) return;
-    _forgiveUserDisconnect(entry.key);
-    if (entry.held) {
-      await _c.activateById(entry.id, link: entry.link);
-      return;
-    }
-    if (entry.isUsb) {
-      final device = entry.device;
-      if (device == null) return;
-      await _open(device, entry.key);
-      return;
-    }
-    _setActivity(entry.key, LinkActivity.connecting);
-    try {
-      await _c.connectBleAddress(entry.id, name: entry.name);
-      await _c.switchToRpcMode();
-    } catch (e) {
-      if (_cancelled.contains(entry.key)) return;
-      if (classifyConnectError(e) ==
-          FlipperConnectErrorKind.deviceUnreachable) {
-        _heardBle.remove(entry.id);
+    return traced('device.connect', (trace) async {
+      trace.note('link', entry.link.name);
+      trace.note('held', entry.held);
+      _forgiveUserDisconnect(entry.key);
+      if (entry.held) {
+        await _c.activateById(entry.id, link: entry.link);
+        return;
       }
-      rethrow;
-    } finally {
-      _cancelled.remove(entry.key);
-      _setActivity(entry.key, LinkActivity.idle);
-    }
+      if (entry.isUsb) {
+        final device = entry.device;
+        if (device == null) return;
+        await _open(device, entry.key);
+        return;
+      }
+      _setActivity(entry.key, LinkActivity.connecting);
+      try {
+        await _c.connectBleAddress(entry.id, name: entry.name);
+        await _c.switchToRpcMode();
+      } catch (e) {
+        if (_cancelled.contains(entry.key)) return;
+        if (classifyConnectError(e) ==
+            FlipperConnectErrorKind.deviceUnreachable) {
+          _heardBle.remove(entry.id);
+        }
+        rethrow;
+      } finally {
+        _cancelled.remove(entry.key);
+        _setActivity(entry.key, LinkActivity.idle);
+      }
+    });
   }
 
   /// Connects to a device the search found. Throws on failure.
+  ///
+  /// Timed like [connect], and separately: reaching a device the search just
+  /// found is a different thing from dialling a remembered one, and lumping
+  /// them under one name would hide which of the two is slow.
   Future<void> connectDevice(FlipperDevice device) async {
-    final key = '${device.link.name}:${device.id}';
-    _forgiveUserDisconnect(key);
-    await _open(device, key);
-    if (device.isBle) _heardBle.add(device.id);
-    notifyListeners();
+    return traced('device.connect.discovered', (trace) async {
+      trace.note('link', device.link.name);
+      final key = '${device.link.name}:${device.id}';
+      _forgiveUserDisconnect(key);
+      await _open(device, key);
+      if (device.isBle) _heardBle.add(device.id);
+      notifyListeners();
+    });
   }
 
   Future<void> _open(FlipperDevice device, String key) async {
