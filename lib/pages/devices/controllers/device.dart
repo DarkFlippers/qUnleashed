@@ -7,6 +7,7 @@ import '../../../services/connection/device_info_watch.dart';
 import '../../../services/connection/known_devices.dart';
 import '../../../services/connection/link_service.dart';
 import '../../../services/logging.dart';
+import '../../../services/telemetry/scrub.dart';
 import '../../../theme/theme.dart';
 import '../models/connection_state.dart';
 import '../models/device_info.dart';
@@ -214,6 +215,12 @@ class DeviceController extends ChangeNotifier {
           hardwareName != null &&
           hardwareName.isNotEmpty) {
         _knownDevices.updateName(connected, hardwareName);
+        // The one place the app learns what the user called their Flipper, so
+        // the one place that can tell the scrubber. People name a Flipper
+        // after themselves, and a device name is arbitrary text - nothing in
+        // a message distinguishes one from any other word, so it has to be
+        // learned rather than matched. ADR 0013 §6.2.
+        Scrub.rememberDeviceName(hardwareName);
       }
       _notify();
     }, onError: (e) => LogService.info('[DeviceController] info stream: $e'));

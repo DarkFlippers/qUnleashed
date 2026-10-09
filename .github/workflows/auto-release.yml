@@ -249,6 +249,20 @@ jobs:
           # The script refuses to guess rather than produce one.
           fetch-depth: 0
 
+      # Windows needs one too, and not for Gradle. `sentry_flutter` pins `jni`
+      # to 0.14.2, whose Windows CMake target calls `find_package(JNI)` - so
+      # without a JDK the configure step fails with "Could NOT find JNI
+      # (missing: JAVA_INCLUDE_PATH JAVA_INCLUDE_PATH2 JVM)" before anything is
+      # compiled. The runner image happens to ship one, but an image default is
+      # not something a build should rest on, and this pins the same version the
+      # Android job does. ADR 0013 Consequences listed "a JDK on the Windows
+      # runner" as a thing to verify: it is required, and this is it.
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
       - name: Set up Flutter
         uses: ./.github/actions/setup-flutter
 

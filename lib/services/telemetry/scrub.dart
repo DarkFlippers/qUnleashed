@@ -98,20 +98,131 @@ abstract final class Scrub {
     return out;
   }
 
+  /// Everything after a `?` in a URL.
+  ///
+  /// The host and the path stay, because which endpoint failed is the whole
+  /// value of the line. The query goes because the map's tile URLs carry
+  /// `QU_CARTO_KEY` in it - a paid key, in a message produced by every tile
+  /// that will not load.
+  ///
+  /// Stops at whitespace and at the quote characters a message wraps a URL in,
+  /// so a URL mentioned mid-sentence does not swallow the rest of the
+  /// sentence.
+  static final RegExp _query = RegExp(
+    r'(\bhttps?://[^\s"\x27<>?]*)\?[^\s"\x27<>]*',
+  );
+
+  /// A *file* under `/ext` or `/int`: the directories, then the name, then the
+  /// extension.
+  ///
+  /// The Flipper's two filesystems. The directory says what kind of thing
+  /// failed - `/ext/nfc`, `/ext/subghz` - and that is diagnostic; the filename
+  /// is the user's own and is often the whole leak: a card called
+  /// `Office badge.nfc`, a dictionary named after a UID, a `.sub` named after
+  /// a gate.
+  ///
+  /// Three things make this tighter than it looks.
+  ///
+  /// The extension is **required**, not optional, which is what tells a file
+  /// from a directory. Every format the Flipper stores has one, and matching a
+  /// bare `/ext/subghz` would replace the diagnostic half and keep nothing.
+  ///
+  /// The name may contain **spaces**, because real ones do - `Office
+  /// badge.nfc`. An earlier version excluded whitespace and so matched only up
+  /// to the space, leaving a last segment with no dot in it and redacting
+  /// nothing at all. That is the kind of failure that looks like it works.
+  ///
+  /// Since the name may hold spaces, the clause separators are what bound it:
+  /// `,;:` and the quotes. Without them `listing /ext/nfc failed, see
+  /// notes.txt` would read `nfc failed, see notes` as one filename and eat the
+  /// sentence. Directory segments exclude whitespace as well, so a prefix
+  /// cannot run across prose to find a later extension.
+  static final RegExp _flipperFile = RegExp(
+    r'(/(?:ext|int)(?:/[^/\s"\x27<>,;:]+)*?/)'
+    r'([^/\n"\x27<>,;:]{1,64}?)'
+    r'(\.[A-Za-z0-9]{1,8})(?![A-Za-z0-9])',
+  );
+
+  /// A long hex run: a card dump, a key, a UID, a block.
+  ///
+  /// Eight is the floor because a 4-byte MIFARE UID is exactly eight
+  /// characters, and a UID is the one identifier the user cannot change.
+  ///
+  /// **At least one `A-F` is required**, which is what keeps this off ordinary
+  /// numbers. Without it the pattern matches any run of eight digits, and a
+  /// message naming a timestamp, a byte count or a build number would come out
+  /// as `<hex>` - over-redaction that costs the readability the whole outbound
+  /// path exists for. The price is that an all-numeric UID survives; a UID is
+  /// pseudonymous where a key is not, so that is the right side to err on.
+  ///
+  /// Boundaries rather than `\b`, because `\b` treats the `-` in
+  /// `a1b2c3d4-e5f6` as a boundary and would match each half of something that
+  /// is one value.
+  static final RegExp _hex = RegExp(
+    r'(?<![0-9A-Za-z])(?=[0-9A-Fa-f]{8,}(?![0-9A-Za-z]))'
+    r'[0-9A-Fa-f]*[A-Fa-f][0-9A-Fa-f]*',
+  );
+
+  /// A decimal with four or more places, which is what a coordinate is.
+  ///
+  /// Sub-GHz captures and the map both carry them. Four places is about 11
+  /// metres, so nothing with fewer is locating anybody; it also keeps this off
+  /// a version (`0.15.0` has none) and off the one- and two-place decimals
+  /// that durations and percentages are written with.
+  static final RegExp _coordinate = RegExp(r'-?\d{1,3}\.\d{4,}');
+
+  /// Flipper names the app has seen, longest first.
+  ///
+  /// A learned set rather than a pattern, because a device name is arbitrary
+  /// text and nothing distinguishes one from any other word. People name a
+  /// Flipper after themselves, so this is the field most likely to carry a
+  /// person's name out of the device.
+  ///
+  /// Fed from where the app learns the name, not from here. Mutable process
+  /// state, which is what it has to be: the name is not known until a device
+  /// answers, and the messages worth scrubbing are the ones produced after
+  /// that.
+  static final List<String> _deviceNames = [];
+
+  /// Remembers [name] so [outbound] takes it out of what it sends.
+  ///
+  /// Ignores anything under four characters. A two- or three-letter name would
+  /// match inside unrelated words and corrupt every message carrying one,
+  /// which is the failure the home-directory anchoring exists to prevent -
+  /// and a name that short identifies nobody.
+  ///
+  /// Longest first, so a name that is a prefix of another does not leave the
+  /// remainder behind.
+  static void rememberDeviceName(String name) {
+    final trimmed = name.trim();
+    if (trimmed.length < 4 || _deviceNames.contains(trimmed)) return;
+    _deviceNames
+      ..add(trimmed)
+      ..sort((a, b) => b.length.compareTo(a.length));
+  }
+
+  /// Forgets the learned names, so one test does not inherit another's.
+  @visibleForTesting
+  static void debugForgetDeviceNames() => _deviceNames.clear();
+
   /// [msg] made fit to leave the device.
   ///
-  /// Everything [paths] does, and — once §6's remaining patterns land — known
-  /// Flipper names, filenames under `/ext` and `/int` with the extension kept,
-  /// long hex runs, coordinates and URL query strings. **Those are not here
-  /// yet**: today this is [paths] under a second name, and the name exists so
-  /// that every outbound call site is already routed through the one function
-  /// that will grow them, rather than being found again afterwards.
+  /// §6.2's whole list. The order is load-bearing in one place: [_hex] runs
+  /// last, because it would otherwise eat pieces of a path or a name before
+  /// the pattern that knows what they are gets to look at them.
   ///
-  /// What that means for what has shipped: an error reaching Sentry today
-  /// carries whatever the message said, minus the account name. That is the
-  /// same exposure the Log screen's Copy button has had since #89, to a
-  /// smaller audience. Replay and metrics - the categories that could carry a
-  /// card dump rather than a sentence about one - are phase 3 and are gated on
-  /// this being finished (§6.4).
-  static String outbound(String msg) => paths(msg);
+  /// Every rule replaces rather than drops. A scrubber that returned null on
+  /// something it did not recognise would lose exactly the failures nobody has
+  /// seen before, and `beforeSend` reads null as "drop this event".
+  static String outbound(String msg) {
+    var out = paths(msg);
+    out = out.replaceAllMapped(_query, (m) => '${m[1]}?<query>');
+    out = out.replaceAllMapped(_flipperFile, (m) => '${m[1]}<name>${m[3]}');
+    for (final name in _deviceNames) {
+      out = out.replaceAll(name, '<device>');
+    }
+    out = out.replaceAll(_coordinate, '<coord>');
+    out = out.replaceAll(_hex, '<hex>');
+    return out;
+  }
 }

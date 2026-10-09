@@ -52,16 +52,28 @@ add_subdirectory(${FLUTTER_MANAGED_DIR})
 # Application build; see runner/CMakeLists.txt.
 add_subdirectory("runner")
 
-
-# Generated plugin build rules, which manage building the plugins and adding
-# them to the application.
-include(flutter/generated_plugins.cmake)
-
-
-# === Installation ===
+# === Where the install step puts things ===
 # Support files are copied into place next to the executable, so that it can
 # run in place. This is done instead of making a separate bundle (as on Linux)
 # so that building and running from within Visual Studio will work.
+#
+# Moved **above** the plugins, which is the one line of this file that is not
+# Flutter's own. Flutter's template has this block after
+# `generated_plugins.cmake`, and the guard reads
+# `CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT` - a variable CMake clears as
+# soon as anything touches the prefix. `sentry_flutter` builds sentry-native,
+# which includes `GNUInstallDirs`, and that is enough to clear it: the guard
+# then reads false, Flutter's override is skipped, and the prefix stays at the
+# Windows default of `C:/Program Files/qunleashed`. Everything compiles and the
+# install step fails trying to write there - `cmake_install.cmake` names the
+# path, so the symptom is three screens of MSB3073 and the cause is one cache
+# line (`CMAKE_INSTALL_PREFIX:PATH=C:/Program Files/qunleashed`).
+#
+# Evaluating it here, before any plugin is configured, restores the guard's
+# intent rather than removing it: an operator passing `-DCMAKE_INSTALL_PREFIX`
+# is still honoured. `BUILD_BUNDLE_DIR` reads the `runner` target, added just
+# above, and is a generator expression either way - so nothing about when it
+# resolves has changed.
 set(BUILD_BUNDLE_DIR "$<TARGET_FILE_DIR:${BINARY_NAME}>")
 # Make the "install" step default, as it's required to run.
 set(CMAKE_VS_INCLUDE_INSTALL_TO_DEFAULT_BUILD 1)
@@ -69,6 +81,13 @@ if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
   set(CMAKE_INSTALL_PREFIX "${BUILD_BUNDLE_DIR}" CACHE PATH "..." FORCE)
 endif()
 
+
+# Generated plugin build rules, which manage building the plugins and adding
+# them to the application.
+include(flutter/generated_plugins.cmake)
+
+
+# === Installation ===
 set(INSTALL_BUNDLE_DATA_DIR "${CMAKE_INSTALL_PREFIX}/data")
 set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}")
 

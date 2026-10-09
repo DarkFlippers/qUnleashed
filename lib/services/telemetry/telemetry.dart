@@ -1,3 +1,4 @@
+import 'package:path_provider/path_provider.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
 import '../build_identity.dart';
@@ -20,6 +21,7 @@ class TelemetryPlan {
     required this.dsn,
     required this.shareLogs,
     required BuildStamp stamp,
+    this.nativeDatabasePath,
   }) : release = stamp.sentryRelease,
        dist = stamp.build,
        environment = stamp.channel.name,
@@ -43,6 +45,11 @@ class TelemetryPlan {
   final String commit;
   final String flipperlibCommit;
   final String dartufbtCommit;
+
+  /// Where the native SDK keeps undelivered crashes, or null for its own
+  /// default. `Telemetry._nativeDatabasePath` has why that default is wrong
+  /// here.
+  final String? nativeDatabasePath;
 
   /// Whether anything is sent at all.
   ///
@@ -135,6 +142,7 @@ class Telemetry {
       dsn: dsn,
       shareLogs: settings.shareLogs,
       stamp: await BuildIdentity.resolve(),
+      nativeDatabasePath: await _nativeDatabasePath(),
     );
     final why = plan.why;
     if (why != null) {
@@ -171,6 +179,40 @@ class Telemetry {
       LogService.warn(
         '[Telemetry] shutdown failed: ${LogService.describe(e, st)}',
       );
+    }
+  }
+
+  /// Where sentry-native keeps its crash database, or null to leave its
+  /// default.
+  ///
+  /// Desktop only, and the default is **beside the executable** - so a
+  /// `flutter run` writes `.sentry-native/` into the repository, and a shipped
+  /// Windows build writes it wherever the user happened to launch from, which
+  /// may not be writable.
+  ///
+  /// Linux is the one where the default loses data rather than merely being
+  /// untidy. The launcher is self-extracting and deletes
+  /// `/tmp/qunleashed-self-$$` when the process ends, so a database beside the
+  /// executable goes with it - taking any crash that had not been sent yet,
+  /// which on a platform with no offline cache is exactly the crash that
+  /// mattered. 0013's Consequences asked where this lived; here is the answer
+  /// and the fix.
+  ///
+  /// Carries its own catch, because `_initCore` must never throw and
+  /// `getApplicationSupportDirectory` crosses a platform channel - on a
+  /// platform where `path_provider` is not registered it raises
+  /// `MissingPluginException`, and the headless isolate a home-screen widget
+  /// starts is exactly where that has bitten before.
+  static Future<String?> _nativeDatabasePath() async {
+    try {
+      final support = await getApplicationSupportDirectory();
+      return '${support.path}/sentry-native';
+    } catch (e, st) {
+      LogService.caught(
+        '[Telemetry] no crash database path, using the default beside the '
+        'executable: ${LogService.describe(e, st)}',
+      );
+      return null;
     }
   }
 
@@ -243,6 +285,9 @@ class Telemetry {
   void _configure(SentryFlutterOptions options, TelemetryPlan plan) {
     options.dsn = plan.dsn;
     options.release = plan.release;
+    // Null leaves the SDK's own default, which is the right fallback: a crash
+    // report in an awkward place beats no crash report.
+    options.nativeDatabasePath = plan.nativeDatabasePath;
     options.dist = plan.dist;
     options.environment = plan.environment;
 

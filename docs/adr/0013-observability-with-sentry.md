@@ -4,21 +4,23 @@ Status: Accepted (2026-10-09). Reporting is **on by default and sent
 automatically**, behind a one-time notice that carries no policy link because
 there is no policy; replay is on with it, behind §6.4's gate.
 
-Phase 1 is built, apart from one thing it names and two it does not.
+Phase 1 is built and **an event has been seen to arrive**: a forced Dart
+error from a local Windows build reached `dark-flippers` as
+`qunleashed@0.15.0-local` in environment `local`, through the `guarded` hook,
+carrying the operation's label. One of the five platforms, so the phase is not
+done - but the path exists rather than merely compiling.
+
 `lib/services/telemetry/` is the only place in `lib/` importing the SDK, held
 by `test/sentry_import_guard_test.dart`; `Telemetry.start` runs in `_initCore`
 on both entry points and never throws; the Diagnostics switch and the one-time
 notice are on screen; `guarded` failures arrive as issues, fingerprinted;
-and CI passes the DSN and uploads debug files under the release name
-`derive_version.sh` derives.
+§6.2's scrubber runs on everything sent; and CI passes the DSN and uploads
+debug files under the release name `derive_version.sh` derives.
 
-Still open in phase 1: **§6.2's patterns beyond the home directory**, which is
-what phase 3's replay is gated on. Not in the phase table but owed to it: the
-Android R8 mapping, which wants the Sentry Android Gradle Plugin, and §3's
-submodule commits as release commits rather than event tags. Phases 2 and 3 are
-untouched, and nothing here has been seen to deliver an event yet - that is
-phase 1's own definition of done, below. Facts last checked against the tree
-2026-10-09; git holds how the decision got here.
+Owed and not in the phase table: the Android R8 mapping, which wants the Sentry
+Android Gradle Plugin, and §3's submodule commits as release commits rather
+than event tags. Phases 2 and 3 are untouched. Facts last checked against the
+tree 2026-10-09; git holds how the decision got here.
 
 Build identity — release, channel, commit — is its own decision,
 [0014](0014-build-identity.md). This one consumes it.
@@ -530,10 +532,37 @@ most of them are expected.
   decision this section asks of it is therefore a re-ruling of 48 sites already
   ruled on, for a reader that did not exist when they were ruled, rather than a
   triage still to be done.
-- To verify before the first release that carries it: `crashpad_handler`
-  keeping its exec bit on Linux; where the crash database lives, since the
-  Linux launcher deletes `/tmp/qunleashed-self-$$` on exit; a JDK on the Windows
-  runner; `SentryWidgetsFlutterBinding` doing nothing while reporting is off.
+- **A JDK is required on the Windows runner**, not merely to be verified.
+  `sentry_flutter` pins `jni` to 0.14.2, whose Windows CMake target calls
+  `find_package(JNI)`; without one the configure step fails before anything
+  compiles. The job pins Temurin 17, as the Android one does.
+- **`windows/CMakeLists.txt` had to move one block.** sentry-native includes
+  `GNUInstallDirs`, which clears
+  `CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT` - and Flutter's template reads
+  that flag *after* the plugins are configured, so its own override was skipped
+  and the install step tried to write the bundle to `C:/Program Files`.
+  Evaluating the block before the plugins fixes it and keeps the guard's
+  intent. Verified by a clean configure: the prefix is Flutter's bundle dir
+  again, and `sentry.dll`, `crashpad_handler.exe` and `crashpad_wer.dll` ship
+  beside the executable.
+- **IP storage is on, and §6.3 says it should not be.** Measured on the first
+  real event, which carried `user.geo: UA, Brovary` - city-level, derived from
+  the address the event came from, with `sendDefaultPii: false` set. It is a
+  project setting ("Prevent Storing of IP Addresses") and nothing in the client
+  can turn it off, so it is the one item in §6 that cannot land as a commit.
+- **The native crash database lives beside the executable by default**, which
+  was asked about here and is now answered: a `flutter run` wrote
+  `.sentry-native/` - an installation id and any unsent crash - into the
+  repository root. On Linux that default loses the data rather than merely
+  misplacing it, because the self-extracting launcher deletes
+  `/tmp/qunleashed-self-$$` when the process ends, taking with it exactly the
+  crash that had not been sent on a platform with no offline cache.
+  `nativeDatabasePath` now points at the application support directory, with
+  the SDK's default as the fallback when `path_provider` will not answer: a
+  report in an awkward place beats no report.
+- Still to verify before the first release that carries it: `crashpad_handler`
+  keeping its exec bit on Linux, and `SentryWidgetsFlutterBinding` doing
+  nothing while reporting is off.
 
 ## Rollout
 

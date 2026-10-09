@@ -92,6 +92,25 @@ void main() {
     });
   });
 
+  group('where undelivered crashes are kept', () {
+    test('the plan carries the path it was given', () {
+      final plan = TelemetryPlan(
+        dsn: 'https://key@o1.ingest.de.sentry.io/2',
+        shareLogs: true,
+        stamp: _stamp(),
+        nativeDatabasePath: '/support/sentry-native',
+      );
+      expect(plan.nativeDatabasePath, '/support/sentry-native');
+    });
+
+    test('null is a producible state, and means the SDK default', () {
+      // The fallback when `getApplicationSupportDirectory` will not answer. A
+      // crash report in an awkward place beats no crash report, so this is
+      // null rather than a guess at a path.
+      expect(_plan().nativeDatabasePath, isNull);
+    });
+  });
+
   group('the tags 0014 §3 asks for', () {
     test('three commits when all three are known', () {
       final plan = _plan(
