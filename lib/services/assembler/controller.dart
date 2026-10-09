@@ -8,6 +8,7 @@ import '../settings/persist.dart';
 
 import '../logging.dart';
 import '../prefs_reader.dart';
+import '../telemetry/traced.dart';
 import 'backend_mode.dart';
 import 'remote_build_service.dart';
 
@@ -329,33 +330,64 @@ class AssemblerController extends ChangeNotifier {
 
   String? get buildAlias => _buildAlias;
 
+  /// Timed as one operation — ADR 0013 §3 asks for the ufbt job to become a
+  /// span, and this is the one place a build runs.
+  ///
+  /// [alias] is deliberately **not** attached. It is the user's own name for
+  /// their project, and no pattern in `Scrub` recognises one - so there is
+  /// nothing between it and a report. The operation name is enough to answer
+  /// "are builds slow".
+  ///
+  /// `traced` goes inside the busy check, so a rejected call is not recorded
+  /// as a build that took no time.
   Future<T> runBuild<T>(String alias, Future<T> Function() action) async {
     if (busy) {
       throw StateError('Assembler is busy: ${_job.name}');
     }
-    _job = AssemblerJob.build;
-    _buildAlias = alias;
-    _progress = null;
-    notifyListeners();
-    try {
-      return await action();
-    } finally {
-      _job = AssemblerJob.none;
-      _buildAlias = null;
+    return traced('assembler.build', (trace) async {
+      _job = AssemblerJob.build;
+      _buildAlias = alias;
       _progress = null;
       notifyListeners();
-    }
+      try {
+        return await action();
+      } finally {
+        _job = AssemblerJob.none;
+        _buildAlias = null;
+        _progress = null;
+        notifyListeners();
+      }
+    });
   }
 
+  /// Timed per job, so install, update and the rest are told apart rather
+  /// than lumped under one name.
+  ///
+  /// `trace.failed()` because this catches its own failure and answers
+  /// `false`: without it a failed SDK install would arrive as a successful
+  /// operation. The same reason `FirmwareInstaller.install` needs it.
   Future<bool> _run(AssemblerJob job, Future<bool> Function() action) async {
     if (busy || !isSupported) return false;
+    return traced(
+      'assembler.${job.name}',
+      (trace) => _runJob(job, action, trace),
+    );
+  }
+
+  Future<bool> _runJob(
+    AssemblerJob job,
+    Future<bool> Function() action,
+    TraceScope trace,
+  ) async {
     _job = job;
     _progress = null;
     notifyListeners();
     var ok = false;
     try {
       ok = await action();
+      if (!ok) trace.failed();
     } catch (e) {
+      trace.failed('$e');
       _logger.error('Failed to run operation: $e');
     } finally {
       _job = AssemblerJob.none;
@@ -383,6 +415,17 @@ class AssemblerController extends ChangeNotifier {
             event.level,
           ),
         );
+        // ADR 0013 §3: `error` and `critical` reached only the Assembler
+        // console, which is a screen in one feature and nothing a bug report
+        // can carry. They go to the history now, like every other failure the
+        // app records - and from there to Sentry while reporting is on.
+        //
+        // `warning` and below stay where they are. The console is a build log
+        // and most of its traffic is ordinary toolchain chatter; admitting it
+        // would churn the 500-entry buffer the failure's own context lives in.
+        if (event.level.severity >= UfbtLogLevel.error.severity) {
+          LogService.error('[Assembler] ${event.formatted}');
+        }
       case UfbtBuildEvent():
         for (final line in event.formatted.split('\n')) {
           _append(AssemblerLine(line, AssemblerLineKind.build));
