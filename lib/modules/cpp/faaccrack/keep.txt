@@ -53,8 +53,13 @@ round_trip_ok
 hops_used
 lanes
 
-# The engine's own build-time knobs, which faaccrack.h does not declare. These
-# are the two whose loss is silent: renamed away, the file still compiles, links
-# and solves while -DVBITS and -DNLF12 stop having any effect.
+# The engine's own build-time knobs, which faaccrack.h does not declare. Renamed
+# away, the file still compiles, links and solves while -DVBITS and -DNLF12 stop
+# having any effect.
+#
+# VBITS is no longer the silent half of that pair: every shipped x86 variant now
+# passes a width that is not the engine's default, and the probe asserts the
+# engine reports the one the build asked for. NLF12 still is - nothing observes
+# which NLF network was compiled.
 VBITS
 NLF12

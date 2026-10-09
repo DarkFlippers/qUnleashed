@@ -64,6 +64,20 @@ static uint64_t PROBE_NOW_MS(void) {
 
 #include "faaccrack.h"
 
+// The lane count this build of the engine should report.
+//
+// `lanes` is the only runtime evidence a -DVBITS took effect, and the shipped
+// library no longer takes the engine's own default: every x86 variant is
+// compiled at its hardware width (CMakeLists.txt says why). So the figure has
+// to come from the build rather than be written here, or this assertion would
+// fail on the library it is meant to describe and pass on an engine whose
+// retuning knob had been renamed away.
+//
+// The default below is the engine's own, for a build that passes no -DVBITS.
+#ifndef EXPECT_LANES
+#define EXPECT_LANES 512
+#endif
+
 static int checks;
 static int failures;
 
@@ -198,11 +212,13 @@ static void probe_known_answers(void) {
         snprintf(label, sizeof label, "%s rebuilds the captured hop", want->name);
         check(label, got.frame_hop == want->hops[2]);
         // The documented evidence that a -DVBITS was not silently dropped by
-        // the obfuscator - BUILD_NOTES calls this the only such evidence, and
-        // until now nothing read it.
+        // the obfuscator - BUILD_NOTES calls this the only such evidence. It
+        // does more work now that the shipped variants each pass a width: a
+        // renamed VBITS leaves the engine compiling, linking and solving at its
+        // own default, which is no longer the number the build asked for.
         snprintf(label, sizeof label, "%s reports the compiled lane count",
                  want->name);
-        check(label, got.lanes == 512);
+        check(label, got.lanes == EXPECT_LANES);
         snprintf(label, sizeof label, "%s says how many hops backed it", want->name);
         check(label, got.hops_used == 3);
     }
