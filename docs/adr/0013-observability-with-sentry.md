@@ -372,18 +372,24 @@ against 3.12, Android `minSdk` 29 against API 26, iOS 15.0 and macOS 12.0
 against 15 and 12. Nothing in the app is below the bar.
 
 What is left is Swift Package Manager, which 10 requires because it drops
-CocoaPods for the native Cocoa SDK. This repository sets
-`enable-swift-package-manager: false` with no recorded reason, and that is now
-an opt-out of Flutter's own default rather than a default — 3.44 turns SPM on
-and migrates a project on the next run. The local macOS pod,
-`qunleashed_hardnested`, is probably not the obstacle it looks like: 10's own
-migration notes say other plugins may still require CocoaPods, so the two
-coexist.
+CocoaPods for the native Cocoa SDK. The repository turns SPM off in two
+places, and the reason is recorded in the second:
+`flutter: config: enable-swift-package-manager: false` in `pubspec.yaml`, and
+`swift-package-manager: "false"` on the `build-macos` job alone — whose own
+comment calls it *"belt and braces at the runner level until one macOS release
+confirms the project key holds"*. So this is not an old decision nobody
+remembers. It is a deliberate hold, waiting on one Apple release to prove the
+project-level key does what it says.
 
-So the pin stands for now, on one honest ground rather than the three it used
-to have: flipping SPM changes the iOS and macOS builds, and neither can be
-verified from the machine this is being written on. It is a task for whoever
-next has a Mac in front of them, and then 10 is a version bump.
+That hold is what blocks 10, and it outranks the local macOS pod the first
+draft of this section worried about: `qunleashed_hardnested` is probably not an
+obstacle at all, since 10's own migration notes say other plugins may still
+require CocoaPods and the two coexist.
+
+So the pin stands on one ground rather than three: SPM is off on purpose,
+pending a verification nobody has done yet, and flipping it changes the iOS and
+macOS builds — neither verifiable from the machine this is written on. Whoever
+clears that hold clears the way to 10, and then 10 is a version bump.
 
 9.30.1 pins `jni` to 0.14.2 exactly. Measured rather than predicted
 (2026-10-09): the lockfile moves `jni` from 1.0.0 to 0.14.2 and
