@@ -18,7 +18,9 @@ const seedCaptureExtension = '.txt';
 /// not parse is one a user should be told about, because the hops that remain
 /// can be left with a gap wider than [SeedCapture.maxCounterGap] and the search
 /// will then find nothing for a reason that has nothing to do with their
-/// remote.
+/// remote. A hop dropped for repeating the one before it is reported the same
+/// way, and for the opposite reason: the capture is now solvable where it was
+/// not.
 typedef SeedCaptureParse = ({SeedCapture? capture, List<String> skipped});
 
 /// Reads the capture files the `seed_capturer` app writes.
@@ -58,6 +60,11 @@ class SeedCaptureFormat {
     final skipped = <String>[];
     final fields = <String, String>{};
     final hops = <int>[];
+    // Hop lines that parsed, duplicates included. The declared-count
+    // cross-check below compares against this rather than against the hops
+    // kept, so a file with a repeated press is not also reported as a
+    // truncated write - those are different faults with different advice.
+    var hopLines = 0;
 
     for (final raw in text.split('\n')) {
       final line = raw.trim();
@@ -78,9 +85,26 @@ class SeedCaptureFormat {
         final hop = _hex(value);
         if (hop == null) {
           skipped.add('unreadable hop: "$value"');
-        } else {
-          hops.add(hop);
+          continue;
         }
+        hopLines++;
+        if (hops.isNotEmpty && hops.last == hop) {
+          // The engine refuses a step of zero: the same frame twice is a break
+          // in the counter march, not a small one. So a capture that keeps a
+          // repeated press cannot solve as a whole, and the window ladder
+          // cannot rescue it either - no contiguous window excludes an
+          // *interior* duplicate. Left in, it sweeps the whole space once per
+          // window and ends on "no seed matched", which sends the user to
+          // record the same file again.
+          //
+          // Dropping it changes nothing else: two identical hops carry one
+          // press between them, so no step between distinct hops moves and no
+          // gap can widen. Named rather than silent, because a capture app
+          // writing every press twice is worth seeing. #289
+          skipped.add('repeated hop: "$value"');
+          continue;
+        }
+        hops.add(hop);
         continue;
       }
       if (fields.containsKey(key) && fields[key] != value) {
@@ -159,8 +183,8 @@ class SeedCaptureFormat {
     // worth saying because the hops that survived can be left with a gap too
     // wide for the engine to tolerate.
     final declared = int.tryParse(fields['Hops'] ?? '');
-    if (declared != null && declared != hops.length) {
-      skipped.add('file says $declared hops, found ${hops.length}');
+    if (declared != null && declared != hopLines) {
+      skipped.add('file says $declared hops, found $hopLines');
     }
 
     return (

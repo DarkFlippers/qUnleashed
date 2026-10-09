@@ -425,21 +425,29 @@ class SeedController extends ChangeNotifier {
   /// the same frame twice, or a 16-bit counter that wrapped. A sub-run is not
   /// guaranteed to exclude the break, and nothing here can see where it is.
   ///
-  /// Three windows are enough, and that is worth spelling out because the first
-  /// version of this ladder offered twelve. A window solves exactly when its
-  /// own hops are within the tolerance, and a contiguous sub-run of such a run
-  /// is too - so a *short* window inside a solvable run always solves if a
-  /// longer one does. Meanwhile a sweep costs the same whatever the hop count:
-  /// the engine scans the whole seed space either way, and extra hops only
-  /// filter the candidates it finds. Length therefore buys confidence, not
-  /// reach.
+  /// Three windows, and that is worth spelling out because the first version of
+  /// this ladder offered twelve. A window solves exactly when its own hops are
+  /// within the tolerance, and a contiguous sub-run of such a run is too - so a
+  /// *short* window inside a solvable run always solves if a longer one does.
+  /// Meanwhile a sweep costs the same whatever the hop count: the engine scans
+  /// the whole seed space either way, and extra hops only filter the candidates
+  /// it finds. Length therefore buys confidence, not reach.
   ///
   /// So: the whole capture, for the strongest `hops_used` in one sweep; then
   /// the last [seedHopsConfident] hops, then the first. A single over-wide gap
   /// at position k leaves the suffix solvable when k is at or below n-3 and the
   /// prefix when k is at least 3, and for any capture of five or more those two
-  /// ranges meet - every such capture is covered in at most three sweeps
-  /// instead of twelve.
+  /// ranges meet.
+  ///
+  /// Nothing shorter than [seedHopsConfident] is synthesised, and the whole
+  /// capture is the one exception - that is the user's own data and the engine's
+  /// documented minimum, so it is searched whatever its length. What this
+  /// declines to do is *invent* a sub-confident window: it would cost two more
+  /// whole-space sweeps, seventeen seconds each on a current phone, to reach an
+  /// answer [canSave] refuses as unconfirmed - at the hop count where the
+  /// engine's own false-positive estimate is worst. The shape it used to reach
+  /// and nothing else does is an over-wide gap inside a three- or four-hop
+  /// capture. #288
   ///
   /// Suffix before prefix, which is not cosmetic: the counter and the rebuilt
   /// frame come from the window's *last* hop, so a prefix that solves first
@@ -467,18 +475,12 @@ class SeedController extends ChangeNotifier {
         : SeedCapture.maxHops;
     offer(hops.sublist(hops.length - longest));
 
-    // The confident pair alone leaves a gap uncovered only on a capture short
-    // enough that the two windows cannot meet in the middle - which is
-    // n <= 2*seedHopsConfident - 2, so five windows instead of three for the
-    // shortest captures and three for everything else.
-    final lengths = <int>[
-      seedHopsConfident,
-      if (longest <= 2 * seedHopsConfident - 2) SeedCapture.minHops,
-    ];
-    for (final length in lengths) {
-      if (length >= longest) continue;
-      offer(hops.sublist(hops.length - length));
-      offer(hops.sublist(0, length));
+    // The freshest confident window, then the oldest. On a capture short enough
+    // that the two cannot meet in the middle these leave an over-wide gap
+    // uncovered, which is the exchange the doc comment above describes.
+    if (seedHopsConfident < longest) {
+      offer(hops.sublist(hops.length - seedHopsConfident));
+      offer(hops.sublist(0, seedHopsConfident));
     }
     return found;
   }

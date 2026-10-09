@@ -73,6 +73,52 @@ void main() {
       expect(parsed.skipped, contains(contains('ZZZZ')));
     });
 
+    test('drops a hop that repeats the one before it', () {
+      // The engine refuses a step of zero, so a capture keeping the repeat
+      // cannot solve as a whole - and no contiguous window excludes an
+      // interior duplicate, so the retry ladder cannot rescue it either. The
+      // user would sweep the whole space three times to be told nothing
+      // matched.
+      final parsed = SeedCaptureFormat.parse(
+        _capture
+            .replaceFirst('Hops: 3', 'Hops: 4')
+            .replaceFirst('Hop: 40101499', 'Hop: 40101499\nHop: 40101499'),
+      );
+      expect(parsed.capture!.hops, [0x29389EF7, 0x40101499, 0xA1F9C88F]);
+      expect(parsed.skipped, [contains('repeated hop: "40101499"')]);
+    });
+
+    test('a repeated hop is not also reported as a truncated write', () {
+      // Two different faults with two different pieces of advice. The declared
+      // count is checked against the hop lines that parsed, so dropping a
+      // duplicate does not make the file look cut short.
+      final parsed = SeedCaptureFormat.parse(
+        _capture
+            .replaceFirst('Hops: 3', 'Hops: 4')
+            .replaceFirst('Hop: 40101499', 'Hop: 40101499\nHop: 40101499'),
+      );
+      expect(parsed.skipped, isNot(contains(contains('file says'))));
+    });
+
+    test('keeps a hop that repeats one further back', () {
+      // Not a repeated write but a direction break: counters that go up and
+      // come back down. The engine has to see it and refuse - the probe pins
+      // that case - so the parser must not quietly make the capture look
+      // solvable.
+      final parsed = SeedCaptureFormat.parse(
+        _capture
+            .replaceFirst('Hops: 3', 'Hops: 4')
+            .replaceFirst('Hop: A1F9C88F', 'Hop: A1F9C88F\nHop: 29389EF7'),
+      );
+      expect(parsed.capture!.hops, [
+        0x29389EF7,
+        0x40101499,
+        0xA1F9C88F,
+        0x29389EF7,
+      ]);
+      expect(parsed.skipped, isEmpty);
+    });
+
     test('says so when the declared count and the hops disagree', () {
       // A truncated write. Worth reporting because the hops that survived can
       // be left with a gap wider than the engine tolerates, and the search
