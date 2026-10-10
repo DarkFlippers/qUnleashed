@@ -146,7 +146,9 @@ jobs:
           QU_BUILD_SERVER_URL: ${{ secrets.QU_BUILD_SERVER_URL }}
           QU_BUILD_SERVER_KEY: ${{ secrets.QU_BUILD_SERVER_KEY }}
           QU_CARTO_KEY: ${{ secrets.QU_CARTO_KEY }}
-          QU_SENTRY_DSN: ${{ secrets.QU_SENTRY_DSN }}
+          # The env name is the dart-define `build_identity.dart` reads;
+          # the secret sits with SENTRY_AUTH_TOKEN. They differ on purpose.
+          QU_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           RELEASE_TAG: ${{ inputs.tag }}
         run: .github/scripts/derive_version.sh -- "$RELEASE_TAG"
 
@@ -272,7 +274,9 @@ jobs:
           QU_BUILD_SERVER_URL: ${{ secrets.QU_BUILD_SERVER_URL }}
           QU_BUILD_SERVER_KEY: ${{ secrets.QU_BUILD_SERVER_KEY }}
           QU_CARTO_KEY: ${{ secrets.QU_CARTO_KEY }}
-          QU_SENTRY_DSN: ${{ secrets.QU_SENTRY_DSN }}
+          # The env name is the dart-define `build_identity.dart` reads;
+          # the secret sits with SENTRY_AUTH_TOKEN. They differ on purpose.
+          QU_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           RELEASE_TAG: ${{ inputs.tag }}
         run: .github/scripts/derive_version.sh -- "$RELEASE_TAG"
 
@@ -350,7 +354,9 @@ jobs:
           QU_BUILD_SERVER_URL: ${{ secrets.QU_BUILD_SERVER_URL }}
           QU_BUILD_SERVER_KEY: ${{ secrets.QU_BUILD_SERVER_KEY }}
           QU_CARTO_KEY: ${{ secrets.QU_CARTO_KEY }}
-          QU_SENTRY_DSN: ${{ secrets.QU_SENTRY_DSN }}
+          # The env name is the dart-define `build_identity.dart` reads;
+          # the secret sits with SENTRY_AUTH_TOKEN. They differ on purpose.
+          QU_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           RELEASE_TAG: ${{ inputs.tag }}
         run: .github/scripts/derive_version.sh -- "$RELEASE_TAG"
 
