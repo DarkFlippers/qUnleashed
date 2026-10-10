@@ -541,6 +541,17 @@ jobs:
               awk '!/^- Version: /' "$changelog"
             fi
           } >"$body_path"
+          # An EMPTY body_path file is a successful read as far as the
+          # release action is concerned, so it would publish an empty body
+          # rather than falling back to `body`. The one-liner is always written
+          # above, so empty here means something went wrong that nothing else
+          # would report - and a release page with no body is the failure this
+          # whole block exists to avoid.
+          if [[ ! -s "$body_path" ]]; then
+            echo "::error::The release body came out empty. Refusing to publish a release page with nothing on it." >&2
+            exit 1
+          fi
+
           echo "body_path=$body_path" >> "$GITHUB_OUTPUT"
           echo "Release body: $notes note(s) from CHANGELOG.md."
 
