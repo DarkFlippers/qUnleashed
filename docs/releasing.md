@@ -94,6 +94,59 @@ one.
 So make the bump the first commit after the release. One line, and `main` is
 green again.
 
+**Reset `CHANGELOG.md` in the same commit.** Its notes have shipped, and the
+guard below refuses a version line that disagrees with pubspec - so the two
+move together or `main` is red either way:
+
+```markdown
+## Main changes
+- Version: 0.17.0
+## Other changes
+```
+
+## The changelog
+
+`CHANGELOG.md` is the release notes, and it holds **one** set: everything
+since the last stable release, accumulating across the dev builds in between.
+There is no "changes since 0.14.1" line, because a dev build is not a
+predecessor anybody installed on purpose - the question the file answers is
+"what is new since the last release", and the answer runs until the next one.
+
+Write the entry **in the pull request that makes the change**, not at release
+time. A release should be a tag on notes that are already written;
+reconstructing six weeks of them from commit messages is how 0.12.1 ended up
+with none at all.
+
+The shape, which `check_changelog.sh` enforces:
+
+```markdown
+## Main changes
+- Version: 0.16.0
+- Tools: **A headline in bold** - what it does, and what it cost
+  (by @mishamyte | PR #264 | Closes #142)
+## Other changes
+- Fixed: the smaller ones, same shape (by @apfxtech)
+```
+
+- **Two sections.** `## Main changes` is what somebody would install the build
+  for; `## Other changes` is everything else. `Main` bolds its headline.
+- **`- ` bullets**, never `* `, and every bullet opens with an area and a
+  colon - `Tools:`, `Archive:`, `Connection:`, `Fixed:`.
+- **Every bullet credits somebody**, last on the line:
+  `(by @user)`, plus `| PR #1` when there is one and `| Closes #2` or
+  `| Fixes #2` when it closed an issue. Several are allowed - `PR #260, #261`.
+  A change pushed straight to `main` has no pull request to cite and carries
+  just the author. The form is unleashed-firmware's, which also uses
+  `(OFW PR 4462 | by @kormax)` for something taken from upstream.
+- **One author per bullet.** Two people's work is two bullets; that is what
+  makes the credit worth reading.
+
+What the guard does **not** check is whether a pull request added an entry at
+all. Most should not - a CI fix, a Crowdin sync, a submodule bump or a
+test-only branch has nothing a user would read - and a gate that is wrong that
+often needs a bypass label, which then gets used without being read. Judgement
+stays with the author and the review.
+
 ## When CI refuses
 
 Four refusals, with their text. The fifth, a version already published, has
@@ -254,6 +307,7 @@ Honest list, so nobody waits for something that is not coming.
 |---|---|
 | Store uploads | Nothing uploads to TestFlight or the Play internal track. The ADR is shaped for it; the jobs do not exist. |
 | The version bump after a release | Deliberately manual (fact 2). A bot could open the PR; none does. |
+| The changelog reset after a release | Same commit as the bump, so same answer. A bot cannot write the version line without picking the next version, which is the one thing fact 2 keeps for a person. |
 | The R8 mapping | `sentry_dart_plugin` uploads dSYMs, PDBs and native symbols, but not Android's R8 mapping — that wants the Sentry Android Gradle Plugin, which is a change in `android/` that has not been made. Until it is, an obfuscated Android Dart trace is less readable than the other four platforms'. |
 | Release commits in the submodules | Each Sentry release gets the app's commits automatically. [ADR 0013](adr/0013-observability-with-sentry.md) §3 wants flipperlib's and dartufbt's too, so a suspect commit can be found in a submodule; they go as event tags today, not as release commits. |
 | `installerStore` | 0014 §1 wants the actual install source — TestFlight, Play, a sideload — read at runtime and reported. Not read anywhere yet. |
@@ -264,6 +318,7 @@ Honest list, so nobody waits for something that is not coming.
 |---|---|
 | `.github/scripts/derive_version.sh` | The one place a trigger becomes a build identity: version, number, channel, three commits. Everything above is this script. |
 | `.github/scripts/derive_version_test.sh` | Its tests. Run it directly; it needs no Flutter. |
+| `.github/scripts/check_changelog.sh` | The changelog's shape, including that its version line agrees with pubspec. Its tests are beside it. |
 | `.github/workflows/auto-release.yml` | The triggers, the five builds, the publish job and the rolling prerelease. |
 | `lib/services/build_identity.dart` | How the app reads what was compiled in, and formats it for a person. |
 | `pubspec.yaml` | The version. Nothing else about the identity lives here — the build number is derived. |

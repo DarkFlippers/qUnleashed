@@ -51,6 +51,15 @@ jobs:
       - name: Test the translation source guard
         run: .github/scripts/check_translation_sources_test.sh
 
+      # The release notes are hand-written and, until this guard, nothing read
+      # them - which is how the file came to name 0.15.0 while 0.16.0-dev was
+      # the published build. The check is on the shape, not the prose.
+      - name: Test the changelog guard
+        run: .github/scripts/check_changelog_test.sh
+
+      - name: Check the changelog
+        run: .github/scripts/check_changelog.sh
+
       # Why: the probe's own header. The only thing anywhere that runs the
       # generated engine, and it needs no Flutter.
       - name: Check the SubGHz seed-recovery engine
@@ -168,3 +177,7 @@ jobs:
 
       - name: Test the release version derivation
         run: .github/scripts/derive_version_test.sh
+
+      # Pure bash too, and it uses mktemp, which is where BSD and GNU differ.
+      - name: Test the changelog guard
+        run: .github/scripts/check_changelog_test.sh
