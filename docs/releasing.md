@@ -11,10 +11,13 @@ terminal open.
    released.** During the 0.16.0 cycle it says `0.16.0`, and every dev build is
    named that. The versions in this file are illustrative; `pubspec.yaml` is
    what the current cycle actually is.
-2. **Moving it is a commit somebody makes on purpose.** CI never picks a digit,
+2. **Moving it is a commit somebody makes on purpose.** CI *proposes* a digit
+   after a release - a minor, in a draft pull request - and never lands one,
    because patch against minor against major is a decision no rule over the
-   previous version can make. What CI does is refuse a build whose version is
-   wrong (below).
+   previous version can make. The eight released transitions since 0.11.0 are
+   four patches and four minors, so the proposal is a coin flip and the draft
+   is there to make you look at it. What CI also does is refuse a build whose
+   version is wrong (below).
 3. **The build number is a counter and means nothing else:**
    `100000 + commits on main × 10 + slot`, where the slot is `0` for a dev
    build and the run attempt for a release. It carries all the ordering,
@@ -42,8 +45,14 @@ prerelease tagged `dev`.** One tag, one link to bookmark, no history — the
 assets are overwritten each time. A push notification goes to the `app_dev`
 topic.
 
-You do nothing for this. Two things worth knowing:
+You do nothing for this. Three things worth knowing:
 
+- **Its notes are the whole changelog**, re-published every time, because the
+  `dev` release is deleted and recreated on each push. That is the shape the
+  accumulating changelog is for — the page answers "what is new since the last
+  release you installed on purpose" — but nothing on it marks what is new in
+  *this* dev build. The build number and the commit on the first line are what
+  tell two dev builds apart.
 - A burst of commits builds only the newest. The older runs are cancelled, and
   that is deliberate — a dev build is disposable and the rolling release would
   have been overwritten anyway.
@@ -70,11 +79,14 @@ Four steps. The version is the only decision.
    this actually fires; until it does, tag a commit that touches something
    buildable.
 3. **CI builds and publishes it.** All five platforms, a real release rather
-   than a prerelease, marked latest, with generated notes, `SHA256SUMS`, and a
-   push notification to `app_release`. The rolling `dev` prerelease is left
-   alone.
-4. **Open the next cycle immediately.** Bump `pubspec.yaml` to the next version
-   and push it to `main`. This is not optional — see below.
+   than a prerelease, marked latest, with **`CHANGELOG.md` as the release
+   notes**, `SHA256SUMS`, and a push notification to `app_release`. The rolling
+   `dev` prerelease is left alone. Check the changelog *before* tagging: it is
+   the release body, and no check runs on a tag push — `ci.yml` triggers on a
+   push to `main` and on pull requests only.
+4. **Open the next cycle immediately.** The release run opens a draft pull
+   request that bumps `pubspec.yaml` and resets the changelog; set the version
+   and merge it. This is not optional — see below.
 
 ## Immediately after a release: open the next cycle
 
@@ -91,8 +103,134 @@ dev build named after a released version is refused by TestFlight days later,
 far from the commit, and reported as a store problem rather than a versioning
 one.
 
-So make the bump the first commit after the release. One line, and `main` is
-green again.
+**The release run opens a pull request that does both of these**, bumping
+pubspec to the next minor and resetting the changelog - see
+[The bot that opens the next cycle](#the-bot-that-opens-the-next-cycle).
+Read it, change the version if this cycle is a patch or a major, merge. That is
+the whole release-day job, and `main` is green on the merge.
+
+By hand, if the bot is ever not what you want: make the bump the first commit
+after the release, and **reset `CHANGELOG.md` in the same commit.** Its notes
+have shipped, and `check_changelog.sh` refuses a version line that disagrees
+with pubspec - so the two move together or `main` is red either way:
+
+```markdown
+## Main changes
+- Version: 0.17.0
+## Other changes
+```
+
+## The changelog
+
+`CHANGELOG.md` is the release notes, and it holds **one** set: everything
+since the last stable release, accumulating across the dev builds in between.
+There is no "changes since 0.14.1" line, because a dev build is not a
+predecessor anybody installed on purpose - the question the file answers is
+"what is new since the last release", and the answer runs until the next one.
+
+Write the entry **in the pull request that makes the change**, not at release
+time. A release should be a tag on notes that are already written;
+reconstructing six weeks of them from commit messages is how 0.12.1 ended up
+with none at all.
+
+The shape, which `check_changelog.sh` enforces:
+
+```markdown
+## Main changes
+- Version: 0.16.0
+- Tools: **A headline in bold** - what it does, and what it cost (by @mishamyte | PR #264 | Closes #142)
+## Other changes
+- Fixed: the smaller ones, same shape (by @apfxtech)
+```
+
+**A bullet is one line, however long.** The credit has to be the last thing on
+it, so a bullet wrapped across two lines fails with "no well-formed credit" -
+the guard reads line by line and cannot see a continuation.
+
+- **Two sections.** `## Main changes` is what somebody would install the build
+  for; `## Other changes` is everything else. `Main` bolds its headline.
+- **`- ` bullets**, never `* `, and every bullet opens with an area and a
+  colon - `Tools:`, `Archive:`, `Connection:`, `Fixed:`.
+- **Every bullet credits somebody**, last on the line:
+  `(by @user)`, plus `| PR #1` when there is one and `| Closes #2` or
+  `| Fixes #2` when it closed an issue. Several are allowed - `PR #260, #261`.
+  A change pushed straight to `main` has no pull request to cite and carries
+  just the author. The form is unleashed-firmware's, which also uses
+  `(OFW PR 4462 | by @kormax)` for something taken from upstream.
+- **One author per bullet**, and the guard enforces it: `(by @a, @b)` and
+  `(by @a | and @b)` are both refused. Two people's work is two bullets, which
+  is what makes the credit worth reading.
+- **Areas may carry a hyphen, a dot, a plus or a space** - `Sub-GHz:`,
+  `Pixel Draw:` - but must start with a letter.
+
+What the guard does **not** check is whether a pull request added an entry at
+all. Most should not - a CI fix, a Crowdin sync, a submodule bump or a
+test-only branch has nothing a user would read - and a gate that is wrong that
+often needs a bypass label, which then gets used without being read. Judgement
+stays with the author and the review.
+
+## The bot that opens the next cycle
+
+`open-next-cycle` in `auto-release.yml` runs after a release publishes, and
+only for a release. It does four things:
+
+1. Reads the version that was just published, from the build job's own output
+   rather than a fresh derivation.
+2. Computes **the next minor** - 0.16.0 becomes 0.17.0 - and writes it to
+   `pubspec.yaml`, leaving every other line alone. **That digit is a guess**:
+   four of the eight released transitions since 0.11.0 were patches. It is
+   proposed because one of the two has to be, not because it is usually right.
+3. Resets `CHANGELOG.md` to its three-line skeleton, in the same commit,
+   because `check_changelog.sh` refuses a changelog whose version line
+   disagrees with pubspec.
+4. Pushes `chore/open-<version>` and opens a **draft** pull request assigned
+   to you, titled "Open the 0.17.0 cycle - confirm the digit". A draft cannot
+   be merged by reflex, which is the minimum friction that makes the choice
+   real on the one day somebody wants `main` green in a hurry.
+
+**It does not push to `main`,** and the first of these three reasons is the one
+that decides it:
+
+- The version is a person's call (fact 2). A minor bump is what this project
+  almost always opens, so that is what gets proposed - but a proposal in a
+  pull request can be changed to a patch or a major before it lands, and a
+  commit pushed straight to `main` cannot.
+- `main` is branch-protected, so a push would need a bypass or a personal
+  token, granted to the workflow that holds the signing keys.
+- A push can race a merge and half-apply, leaving the release published and
+  the cycle unopened - the state it exists to clear.
+
+So the release-day job is: read the pull request, change the version if this
+cycle is not a minor, merge. `main` is green again on the merge.
+
+Two things worth knowing:
+
+- **The pull request carries no checks.** GitHub starts no workflow for an
+  event the repository's own `GITHUB_TOKEN` caused. The release run therefore
+  runs `check_changelog.sh` against the files before committing them, so the
+  *changelog* is verified even though the pull request shows nothing — nothing
+  re-runs `derive_version.sh`, so the pull request is not proven to unblock
+  `main`. Closing and reopening it by hand starts the checks for free; a
+  personal access token or a GitHub App token would do it automatically, at the
+  cost of a credential in the release workflow.
+- **`gh pr create` needs one repository setting**: Settings → Actions → "Allow
+  GitHub Actions to create and approve pull requests". It is on for this
+  repository; without it the step fails with "GitHub Actions is not permitted
+  to create or approve pull requests" and leaves a pushed branch and no pull
+  request.
+- **Re-running a failed release re-runs this job.** It reuses an open pull
+  request rather than opening a second one, and its push is *not* forced - so a
+  version you edited on that branch survives the re-run. Once that pull request
+  has merged a re-run fails this job on purpose: `main` is already unblocked,
+  so the red is cosmetic.
+- **It refuses rather than discarding a late note.** The release published the
+  changelog as it stood at the tag, and this job works on `main`. A bullet
+  merged while the five builds were running belongs to neither, so rather than
+  reset over it the job stops and asks you to open the cycle by hand. Holding
+  merges until the release run finishes avoids it entirely.
+
+`open_next_cycle.sh` is the file-writing half and is tested on its own,
+including that what it writes satisfies `check_changelog.sh`.
 
 ## When CI refuses
 
@@ -253,7 +391,7 @@ Honest list, so nobody waits for something that is not coming.
 | | |
 |---|---|
 | Store uploads | Nothing uploads to TestFlight or the Play internal track. The ADR is shaped for it; the jobs do not exist. |
-| The version bump after a release | Deliberately manual (fact 2). A bot could open the PR; none does. |
+| The *decision* in the version bump after a release | `open-next-cycle` proposes a minor bump and opens the pull request; which digit moves is still a person's call (fact 2). |
 | The R8 mapping | `sentry_dart_plugin` uploads dSYMs, PDBs and native symbols, but not Android's R8 mapping — that wants the Sentry Android Gradle Plugin, which is a change in `android/` that has not been made. Until it is, an obfuscated Android Dart trace is less readable than the other four platforms'. |
 | Release commits in the submodules | Each Sentry release gets the app's commits automatically. [ADR 0013](adr/0013-observability-with-sentry.md) §3 wants flipperlib's and dartufbt's too, so a suspect commit can be found in a submodule; they go as event tags today, not as release commits. |
 | `installerStore` | 0014 §1 wants the actual install source — TestFlight, Play, a sideload — read at runtime and reported. Not read anywhere yet. |
@@ -264,6 +402,8 @@ Honest list, so nobody waits for something that is not coming.
 |---|---|
 | `.github/scripts/derive_version.sh` | The one place a trigger becomes a build identity: version, number, channel, three commits. Everything above is this script. |
 | `.github/scripts/derive_version_test.sh` | Its tests. Run it directly; it needs no Flutter. |
-| `.github/workflows/auto-release.yml` | The triggers, the five builds, the publish job and the rolling prerelease. |
+| `.github/scripts/check_changelog.sh` | The changelog's shape, including that its version line agrees with pubspec. Its tests are beside it. |
+| `.github/scripts/open_next_cycle.sh` | The pubspec bump and changelog reset the release-day pull request carries. Its tests are beside it. |
+| `.github/workflows/auto-release.yml` | The triggers, the five builds, the publish job, the rolling prerelease and the cycle opener. |
 | `lib/services/build_identity.dart` | How the app reads what was compiled in, and formats it for a person. |
 | `pubspec.yaml` | The version. Nothing else about the identity lives here — the build number is derived. |

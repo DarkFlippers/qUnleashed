@@ -129,8 +129,18 @@ over the previous version knows which. Choosing is the work; writing one line
 is not.
 
 So moving pubspec is a commit — "open the 0.16.0 cycle" — reviewable like any
-other, and CI never picks a digit. What CI does instead is refuse to build a
+other, and CI never lands a digit. What CI does instead is refuse to build a
 version that has already shipped.
+
+**Corrected 2026-10-11:** CI now *proposes* one. `open-next-cycle` opens a
+draft pull request after a release, bumping pubspec to the next minor and
+resetting `CHANGELOG.md`, because publishing leaves `main` refusing every push
+until both move and `check_changelog.sh` refuses them moving separately. The
+paragraph above is unchanged and is exactly why that pull request is a draft
+titled "confirm the digit": the eight released transitions since 0.11.0 are
+four patches — 0.11.1, 0.11.2, 0.12.1, 0.14.1 — and four minors, so the
+proposal is a coin flip. CI writes the line, which this section calls not the
+work; choosing remains the work and remains a person's.
 
 That check exists because dropping the automatic bump opens a real hole:
 release 0.15.0, forget to bump, and the next dev build is named 0.15.0 as

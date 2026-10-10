@@ -396,6 +396,9 @@ jobs:
 
   publish:
     name: Publish GitHub release
+    outputs:
+      channel: ${{ steps.channel.outputs.channel }}
+      version: ${{ steps.channel.outputs.version }}
     needs:
       - build-android-linux
       - build-macos
@@ -463,15 +466,28 @@ jobs:
 
           {
             echo "release_tag=$release_tag"
+            echo "channel=$channel"
             echo "version=$version"
             echo "number=$number"
             echo "data=$data"
           } >> "$GITHUB_OUTPUT"
 
+          # Has anybody written a note yet? A cycle opens with a skeleton
+          # holding its version line and nothing else, so counting bullets
+          # that are not the version line is the question "are there notes".
+          # awk rather than grep because a file with no matches is the normal
+          # case here, and `grep -c` exits 1 on it.
+          changelog="$GITHUB_WORKSPACE/CHANGELOG.md"
+          notes=0
+          if [[ -f "$changelog" ]]; then
+            notes="$(awk '/^- / && !/^- Version: /' "$changelog" | wc -l | tr -d '[:space:]')"
+          fi
+
           if [[ "$channel" == dev ]]; then
             # The name carries the version, since the tag no longer can - every
             # dev build is tagged `dev`, and §2 gives them all one version name
             # too, so the build number and the commit are what tell them apart.
+            body="version: $version-dev ($number) | commit: ${GITHUB_SHA:0:7}"
             {
               echo "release_name=Development build $version-dev ($number)"
               echo "prerelease=true"
@@ -479,23 +495,65 @@ jobs:
               # Notes are generated from the previous tag, and the previous
               # `dev` tag is the one this build is replacing - so they would
               # describe the gap between two dev builds and get shorter the
-              # more often the build runs. The body below says what matters.
+              # more often the build runs. The body says what matters.
               echo "generate_notes=false"
               echo "topic=app_dev"
               echo "title=New qUnleashed app dev build"
-              echo "body=version: $version-dev ($number) | commit: ${GITHUB_SHA:0:7}"
+              echo "body=$body"
             } >> "$GITHUB_OUTPUT"
           else
+            body="version: $version ($number)"
+            # Generated notes list the pull requests since the previous tag,
+            # which against curated prose carrying a credit per bullet is the
+            # same information worse - and with 172 of them since the last
+            # stable release, very much longer. Off, unconditionally: a release
+            # with nothing written is a mistake to name, not one to paper over
+            # with a list that reads like notes.
+            (( notes )) ||
+              echo "::warning::No notes in CHANGELOG.md, so $version publishes with only its version line."
             {
               echo "release_name=${GITHUB_REF_NAME}"
               echo "prerelease=false"
               echo "make_latest=true"
-              echo "generate_notes=true"
+              echo "generate_notes=false"
               echo "topic=app_release"
               echo "title=New qUnleashed app released"
-              echo "body=version: $version ($number)"
+              echo "body=$body"
             } >> "$GITHUB_OUTPUT"
           fi
+
+          # The release page gets the one-liner and, under it, the changelog -
+          # which is the whole point of keeping the file: it accumulates until
+          # a stable release, so a dev build publishes everything new since
+          # the last one anybody installed on purpose.
+          #
+          # The one-liner stays either way. A build from the first day of a
+          # cycle has nothing written yet, and a release page whose entire body
+          # is "## Main changes" reads as a broken build rather than a new one.
+          #
+          # `body` keeps the one-liner alone, because the push notification
+          # sends it to a phone.
+          body_path="$RUNNER_TEMP/release-body.md"
+          {
+            printf '%s\n' "$body"
+            if (( notes )); then
+              printf '\n'
+              awk '!/^- Version: /' "$changelog"
+            fi
+          } >"$body_path"
+          # An EMPTY body_path file is a successful read as far as the
+          # release action is concerned, so it would publish an empty body
+          # rather than falling back to `body`. The one-liner is always written
+          # above, so empty here means something went wrong that nothing else
+          # would report - and a release page with no body is the failure this
+          # whole block exists to avoid.
+          if [[ ! -s "$body_path" ]]; then
+            echo "::error::The release body came out empty. Refusing to publish a release page with nothing on it." >&2
+            exit 1
+          fi
+
+          echo "body_path=$body_path" >> "$GITHUB_OUTPUT"
+          echo "Release body: $notes note(s) from CHANGELOG.md."
 
       - name: Write SHA256SUMS
         run: .github/scripts/checksums.sh dist
@@ -540,6 +598,7 @@ jobs:
           tag_name: ${{ steps.channel.outputs.release_tag }}
           name: ${{ steps.channel.outputs.release_name }}
           body: ${{ steps.channel.outputs.body }}
+          body_path: ${{ steps.channel.outputs.body_path }}
           prerelease: ${{ steps.channel.outputs.prerelease }}
           make_latest: ${{ steps.channel.outputs.make_latest }}
           generate_release_notes: ${{ steps.channel.outputs.generate_notes }}
@@ -601,3 +660,167 @@ jobs:
         run: |
           echo "::error::Push finished without publishing (publish: ${{ needs.publish.result }})."
           exit 1
+
+  # Publishing a release breaks `main` on purpose: until pubspec names a
+  # version that has not been published, every push fails with "Version 0.16.0
+  # has already been published". Two files have to move to clear it, and
+  # `check_changelog.sh` refuses a changelog whose version line disagrees with
+  # pubspec, so they move together.
+  #
+  # This opens a pull request; it does not push to `main`. Three reasons, and
+  # the first is the one that decides it:
+  #
+  #  - the version is a person's call (0014 §2). A minor bump is what this
+  #    project almost always opens, so that is what gets proposed - but a
+  #    proposal in a pull request can be changed to 0.17.0 or 1.0.0 before it
+  #    lands, and a commit pushed straight to `main` cannot.
+  #  - `main` is branch-protected, so pushing would need a bypass or a personal
+  #    token, granted to the workflow that holds the signing keys.
+  #  - a push can race a merge and half-apply, leaving the release published
+  #    and the cycle unopened - the exact state this exists to clear.
+  open-next-cycle:
+    name: Open the next cycle
+    needs: publish
+    if: ${{ needs.publish.outputs.channel == 'release' }}
+    permissions:
+      contents: write
+      pull-requests: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      # `main`, not the tag this run was started from: that is where the bump
+      # has to land, and a release is a tag push so the default ref is wrong.
+      - name: Checkout main
+        uses: actions/checkout@v7
+        with:
+          ref: main
+
+      # The release published the changelog as it stood at the tag, and this
+      # job works on `main`. Five platform builds take the better part of an
+      # hour, so a bullet merged in between was published in no release and
+      # would then be deleted by the reset - silently, because replacing the
+      # file conflicts with nothing. Refuse instead: `main` stays red, which it
+      # already was, and nobody's credited note is thrown away.
+      - name: Refuse to reset notes that landed after the tag
+        shell: bash
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          git fetch --depth=1 origin "+refs/tags/$TAG:refs/tags/$TAG"
+          if ! git diff --quiet "$TAG" HEAD -- CHANGELOG.md; then
+            echo "::error::CHANGELOG.md on main differs from tag $TAG, so notes landed after the release was cut. They would be lost by the reset - open the next cycle by hand, carrying them over."
+            exit 1
+          fi
+
+      - name: Write the bump and reset the changelog
+        id: cycle
+        shell: bash
+        env:
+          RELEASED: ${{ needs.publish.outputs.version }}
+        run: |
+          next="$(.github/scripts/open_next_cycle.sh "$RELEASED")"
+          echo "next=$next" >> "$GITHUB_OUTPUT"
+          echo "Opening the $next cycle, released $RELEASED."
+
+      # The pull request below carries no checks of its own: GitHub starts no
+      # workflow for an event caused by the repository's own GITHUB_TOKEN. So
+      # the guard runs here, against the files that are about to be committed,
+      # rather than being first trusted after somebody merges them.
+      - name: Check what it wrote
+        run: .github/scripts/check_changelog.sh
+
+      # The commit and pull request bodies go through files. Inlining them as
+      # `-m "..."` across several lines carries the continuation's own
+      # indentation into the message - two leading spaces on the body's first
+      # line, invisible here and permanent in the commit.
+      - name: Open the pull request
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEXT: ${{ steps.cycle.outputs.next }}
+          RELEASED: ${{ needs.publish.outputs.version }}
+        run: |
+          branch="chore/open-$NEXT"
+
+          cat >"$RUNNER_TEMP/commit-msg.txt" <<EOF
+          Open the $NEXT cycle
+
+          $RELEASED has been released, so every push to main fails until
+          pubspec names a version that has not been. The changelog's notes
+          shipped with it and go back to a skeleton; the guard refuses the two
+          disagreeing, so they move together.
+
+          The version is a minor bump by default, which is what this project
+          almost always opens. Change it here if this cycle is a patch or a
+          major - ADR 0014 keeps that digit for a person, and this is the pull
+          request where it is still a proposal.
+          EOF
+
+          cat >"$RUNNER_TEMP/pr-body.md" <<EOF
+          $RELEASED is out, so \`main\` is red until pubspec names a version that
+          has not been published. This bumps it to **$NEXT** and resets
+          \`CHANGELOG.md\` to its skeleton, in one commit because
+          \`check_changelog.sh\` refuses the two disagreeing.
+
+          **The version is a default, not a decision.** A minor bump is what
+          this project almost always opens; if $RELEASED should be followed by a
+          patch or a major, change the two lines before merging.
+          [ADR 0014](https://github.com/DarkFlippers/qUnleashed/blob/main/docs/adr/0014-build-identity.md)
+          §2 keeps that digit for a person, which is why this is a draft pull
+          request rather than a push to \`main\`: since 0.11.0 the releases have
+          gone four minors and four patches, so a minor is a coin flip, not a
+          safe guess.
+
+          This carries no checks: GitHub starts no workflow for an event the
+          repository's own token caused. The release run checked the changelog
+          against the committed files before opening this.
+
+          Opened by the release run for $RELEASED.
+          EOF
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add pubspec.yaml CHANGELOG.md
+          git commit -F "$RUNNER_TEMP/commit-msg.txt"
+
+          # Checked before anything is pushed, so an open proposal is never
+          # rewritten. This job's one invitation is "change the version before
+          # merging", and the only place to accept it is this branch.
+          existing="$(gh pr list --head "$branch" --state open --json number --jq '.[0].number // empty')"
+          if [[ -n "$existing" ]]; then
+            echo "::notice::Pull request #$existing already opens the $NEXT cycle; leaving it alone."
+            exit 0
+          fi
+
+          # No --force. A re-run of the release would otherwise regenerate the
+          # default minor bump and overwrite a reviewer's edit on this branch,
+          # leaving the pull request open and silently carrying the bot's digit
+          # again. --force-with-lease is not the fix: the job fetches only
+          # `main`, so there is no remote-tracking ref to lease against and the
+          # push is rejected as stale - and fetching the branch first in the
+          # same run makes the lease vacuous and overwrites the commit anyway.
+          # Both were reproduced before settling on this.
+          #
+          # A rejection here means a branch already opens this cycle, which is
+          # not a failure: the content is derived from the released version, so
+          # every attempt writes the same thing.
+          git push origin "$branch" ||
+            echo "::notice::$branch already opens this cycle; leaving it as it stands."
+
+          gh pr create \
+            --base main \
+            --head "$branch" \
+            --title "Open the $NEXT cycle - confirm the digit" \
+            --body-file "$RUNNER_TEMP/pr-body.md" \
+            --assignee mishamyte \
+            --draft \
+            --milestone "Release preparation" ||
+            gh pr create \
+              --base main \
+              --head "$branch" \
+              --title "Open the $NEXT cycle - confirm the digit" \
+              --body-file "$RUNNER_TEMP/pr-body.md" \
+              --assignee mishamyte \
+              --draft
