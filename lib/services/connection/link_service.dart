@@ -314,7 +314,7 @@ class LinkService extends ChangeNotifier {
       if (entry.isUsb) {
         final device = entry.device;
         if (device == null) return;
-        await _open(device, entry.key);
+        await _open(device, entry.key, trace: trace);
         return;
       }
       _setActivity(entry.key, LinkActivity.connecting);
@@ -322,7 +322,7 @@ class LinkService extends ChangeNotifier {
         await _c.connectBleAddress(entry.id, name: entry.name);
         await _c.switchToRpcMode();
       } catch (e) {
-        if (_cancelled.contains(entry.key)) return;
+        if (_cancelledAndSaidSo(entry.key, trace)) return;
         if (classifyConnectError(e) ==
             FlipperConnectErrorKind.deviceUnreachable) {
           _heardBle.remove(entry.id);
@@ -345,19 +345,42 @@ class LinkService extends ChangeNotifier {
       trace.note('link', device.link.name);
       final key = '${device.link.name}:${device.id}';
       _forgiveUserDisconnect(key);
-      await _open(device, key);
+      await _open(device, key, trace: trace);
       if (device.isBle) _heardBle.add(device.id);
       notifyListeners();
     });
   }
 
-  Future<void> _open(FlipperDevice device, String key) async {
+  /// Whether [key] was cancelled, and if so says so on [trace].
+  ///
+  /// The swallow itself is right - a Disconnect pressed mid-dial is not a
+  /// fault - and that is what made it a lie once the dial was traced: the body
+  /// returned normally, so the span read `ok` and carried the whole duration of
+  /// an attempt the user gave up on. Attempts are given up on *because* they
+  /// are hanging, so every one of them landed in the tail of the distribution
+  /// the operation exists to measure.
+  ///
+  /// One method for the two places that swallow a cancel, so the word a
+  /// dashboard filters on is written once.
+  bool _cancelledAndSaidSo(String key, TraceScope trace) {
+    if (!_cancelled.contains(key)) return false;
+    trace.cancelled();
+    return true;
+  }
+
+  /// [trace] is the caller's span: all three callers run inside one, and this
+  /// is where a cancel is known.
+  Future<void> _open(
+    FlipperDevice device,
+    String key, {
+    required TraceScope trace,
+  }) async {
     _setActivity(key, LinkActivity.connecting);
     try {
       await _c.connect(device);
       await _c.switchToRpcMode();
     } catch (e) {
-      if (_cancelled.contains(key)) return;
+      if (_cancelledAndSaidSo(key, trace)) return;
       rethrow;
     } finally {
       _cancelled.remove(key);
@@ -609,25 +632,19 @@ class LinkService extends ChangeNotifier {
     final last = _known.lastDevice;
     if (last == null || _userDisconnectedKey == 'ble:${last.id}') return;
     _bleAutoTried = true;
-    LogService.info('[Link] auto-connecting to ${last.name}');
-    // Traced like the USB path above and under the same name: both are the app
-    // reconnecting by itself, and `link` is what splits the answer. The device
-    // name is deliberately not attached - [connect] says why.
-    try {
-      await traced('device.connect.auto', (trace) async {
-        // This whole branch is the `autoConnectBle` one, and `last` is a
-        // `KnownDevice`, which carries no link of its own - so the enum
-        // rather than a bare 'ble' that could drift from the USB path's.
-        trace.note('link', FlipperLink.ble.name);
-        trace.note('trigger', 'remembered');
+    // The branch `autoConnectBle` governs, which is **on** by default - so in a
+    // default build this is the auto path with the traffic. `last` is a
+    // [KnownDevice] and carries no link of its own, hence the enum.
+    await _autoDial(
+      key: 'ble:${last.id}',
+      name: last.name,
+      link: FlipperLink.ble,
+      trigger: 'remembered',
+      dial: (_) async {
         await _c.connectBleAddress(last.id, name: last.name);
         await _c.switchToRpcMode();
-      });
-      _clearAutoFailure('ble:${last.id}');
-    } catch (e) {
-      LogService.warn('[Link] auto-connect to ${last.name} failed: $e');
-      _recordAutoFailure('ble:${last.id}', last.name, e);
-    }
+      },
+    );
   }
 
   Future<bool> _restoreCli(_CliHold hold) async {
@@ -666,36 +683,72 @@ class LinkService extends ChangeNotifier {
     return true;
   }
 
-  /// Timed separately from [connect], for the reason
-  /// [connectDevice] gives about the search: a link the app formed by itself
-  /// when a cable appeared is not the same operation as one a user asked for,
-  /// and one name over both would hide which of them is slow.
+  /// Says what is being dialled, times it, and remembers a failure for the
+  /// device page. The shape both auto paths share.
   ///
-  /// It is also the common one. `autoReconnect` is on by default, so most
-  /// connects in the wild arrive here - which is why this had to be traced at
-  /// all: a validation run found `device.connect` producing nothing for a
-  /// session that had plainly connected.
+  /// Timed separately from [connect], for the reason [connectDevice] gives
+  /// about the search: a link the app re-formed on its own is not the same
+  /// operation as one a user asked for, and one name over both would hide
+  /// which of them is slow.
+  ///
+  /// Traced at all because a validation run found `device.connect` producing
+  /// nothing for a session that had plainly connected: both auto paths bypass
+  /// it. [trigger] is what tells them apart afterwards, and it is a note rather
+  /// than a fourth name because three values at this volume are a dimension,
+  /// not three operations. Worth knowing when adding a fifth connect path:
+  /// `device.connect` and `device.connect.discovered` split on *how the device
+  /// was found*, while this one splits on *who asked* - two axes under one
+  /// prefix, which is a wart this did not want to make worse by renaming a
+  /// transaction that is already in use.
+  ///
+  /// One method rather than the same twenty lines twice, which is also what
+  /// removes a drift: the BLE caller had to hand-write its own `link` note,
+  /// because a [KnownDevice] carries no link, and carried a comment about that
+  /// note drifting from this one's.
   ///
   /// [traced] goes **inside** the `try`, so the failure still reaches the catch
   /// below. It rethrows rather than swallowing - its own doc says a `traced`
   /// that swallowed would break the thing it reports on - and marks the
   /// operation failed on the way past, so the span carries the error status and
-  /// `_recordAutoFailure` still runs.
-  Future<void> _autoConnect(FlipperDevice device, String why) async {
-    final key = 'usb:${device.id}';
-    LogService.info('[Link] auto-connecting to ${device.name} ($why)');
+  /// [_recordAutoFailure] still runs.
+  Future<void> _autoDial({
+    required String key,
+    required String name,
+    required FlipperLink link,
+    required String trigger,
+    required Future<void> Function(TraceScope trace) dial,
+  }) async {
+    LogService.info('[Link] auto-connecting to $name ($trigger)');
     try {
       await traced('device.connect.auto', (trace) async {
-        trace.note('link', device.link.name);
-        // `why` is one of two literals from the caller, not user text.
-        trace.note('trigger', why);
-        await _open(device, key);
+        trace.note('link', link.name);
+        // One of three literals from the two callers, not user text.
+        trace.note('trigger', trigger);
+        await dial(trace);
       });
       _clearAutoFailure(key);
     } catch (e) {
-      LogService.warn('[Link] auto-connect to ${device.name} failed: $e');
-      _recordAutoFailure(key, device.name, e);
+      LogService.warn('[Link] auto-connect to $name failed: $e');
+      _recordAutoFailure(key, name, e);
     }
+  }
+
+  /// The USB half: a cable that appeared, or one the app is holding.
+  ///
+  /// `autoConnectUsb` is **off** by default, so this fires either for a link
+  /// the app is holding ([_holdUsbIds], a cable the user connected over and
+  /// never released) or for a user who turned the setting on. Not flipperlib's
+  /// `autoReconnect`, which recovers a dropped session in place and never
+  /// reaches here.
+  Future<void> _autoConnect(FlipperDevice device, String why) async {
+    final key = 'usb:${device.id}';
+    await _autoDial(
+      key: key,
+      name: device.name,
+      link: device.link,
+      trigger: why,
+      dial: (trace) => _open(device, key, trace: trace),
+    );
   }
 
   Future<void> _refreshUsb() async {

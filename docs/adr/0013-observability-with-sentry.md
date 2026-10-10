@@ -588,6 +588,17 @@ most of them are expected.
   wanted before store submission and the repository has none, but §1's notice
   no longer waits on it: it carries the substance and gains the link when
   there is one.
+- **Kept log lines are batched, and only the desktop exit drains them.**
+  Sentry buffers logs five seconds behind the line that produced them
+  (`defaultFlushTimeout`), the only public drain is `Sentry.close()`, and
+  nothing in sentry 9.30.1 - or 10.0.0-rc.1 - lets the app shorten that window:
+  `TelemetryBufferConfig` is unexported and `SentryOptions` still carries the
+  `flushTimeoutMillis` TODO. `AppShutdown` closes the SDK before the window
+  goes, so a desktop quit gets its last lines out. Nothing else does: a mobile
+  exit has no hook worth hanging it off (`paused` comes back, `detached` is not
+  reliably delivered), and the headless isolate `widgetMain()` starts never
+  reaches `_runApp`, so it has no flush on any platform. Issues are unbatched
+  and unaffected.
 - Desktop gets no crash-free rate and no offline cache. Mobile carries
   replay's overhead in **every** session rather than the ones that fail, since
   buffer mode records continuously and only uploads on a failure (§8): about

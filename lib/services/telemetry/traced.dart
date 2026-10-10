@@ -37,6 +37,18 @@ abstract interface class TraceScope {
   /// [why] is attached as `failure`, so the kinds can be told apart without
   /// opening each one. It is scrubbed, like any other string.
   void failed([String? why]);
+
+  /// Says the user called the operation off.
+  ///
+  /// Separate from [failed] because the status is what a dashboard filters on,
+  /// and `internal_error` is reserved for "some invariant was broken" - a
+  /// Disconnect pressed mid-dial is not that. Sentry has `cancelled` (499) for
+  /// exactly this, and without it an alert on a failed connect fires every
+  /// time somebody changes their mind.
+  ///
+  /// Still not `ok`: the operation did not do what was asked, so its duration
+  /// has to stay out of the success distribution.
+  void cancelled();
 }
 
 /// The one implementation.
@@ -74,14 +86,25 @@ class _SpanScope implements TraceScope {
 
   @override
   void failed([String? why]) {
-    _failed = true;
+    _verdict = const SpanStatus.internalError();
     if (why != null) note('failure', why);
   }
 
-  /// Read by [traced] after the body returns, so a `failed()` call is not
-  /// undone by the `ok` it would otherwise set.
-  bool get didFail => _failed;
-  bool _failed = false;
+  @override
+  void cancelled() {
+    _verdict = const SpanStatus.cancelled();
+    note('failure', 'cancelled');
+  }
+
+  /// What the body said about itself, read by [traced] after it returns so a
+  /// verdict is not undone by the `ok` it would otherwise set.
+  ///
+  /// One field rather than a bool, because there are now two ways for a body
+  /// to return normally and have failed, and they must not be reported with
+  /// the same status: `internal_error` means an invariant broke, and an alert
+  /// on it should not fire because somebody pressed Disconnect.
+  SpanStatus? get verdict => _verdict;
+  SpanStatus? _verdict;
 }
 
 /// Times [body] as one operation a user waited on, and reports it.
@@ -143,9 +166,7 @@ Future<T> traced<T>(
     final value = await body(scope);
     // The body's own verdict wins over "it returned normally", which is what
     // `failed()` exists for.
-    span.status = scope.didFail
-        ? const SpanStatus.internalError()
-        : const SpanStatus.ok();
+    span.status = scope.verdict ?? const SpanStatus.ok();
     return value;
   } catch (e) {
     // `internalError` and the throwable, so the transaction is searchable

@@ -28,6 +28,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'kept_lines.dart';
 import 'quiet_log.dart';
+import 'telemetry_sinks.dart';
 
 /// Which seam each case reads, and why they are not all the same one.
 ///
@@ -114,14 +115,7 @@ void main() {
     settings = DiagnosticsSettings();
   });
 
-  tearDown(() {
-    guardedFailureSink = null;
-    LogService.keptSink = null;
-    LogService.breadcrumbSink = null;
-    AppHttp.exchangeSink = null;
-    Log.sink = null;
-    Log.level = FlipperLogLevel.info;
-  });
+  tearDown(resetTelemetrySinks);
 
   Telemetry build({String dsn = 'https://key@o1.ingest.de.sentry.io/2'}) =>
       Telemetry(

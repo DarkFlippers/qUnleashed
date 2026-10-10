@@ -169,7 +169,7 @@ class Telemetry {
   /// promoted into the full app rather than replaced, so the SDK that came up
   /// in the headless isolate is the one the app then uses.
   Future<void> start() async {
-    if (_running || _settling) return;
+    if (_running || _settling || _closedForExit) return;
     _settling = true;
     _settlingToward = true;
     try {
@@ -283,6 +283,56 @@ class Telemetry {
     }
   }
 
+  /// Whether [closeForExit] has run. One-way, for the reason it gives.
+  bool _closedForExit = false;
+
+  /// Drains what is buffered, closes the SDK, and does not let it come back.
+  ///
+  /// For a process that is ending. [stop] is what the Diagnostics switch
+  /// calls and it is the wrong thing here: its `finally` reconciles against
+  /// that switch, which is still **on** - so a stop nobody asked for is
+  /// followed immediately by a fresh `SentryFlutter.init`, native layer
+  /// included, racing the window's own destruction. The first version of
+  /// `AppShutdown`'s flush called `stop()` and did exactly that.
+  ///
+  /// The latch is what makes it one-way, and it is the point rather than
+  /// bookkeeping. [_reconcile] is where it earns its keep: a successful close
+  /// leaves `_running` false against a switch that still says on, which is
+  /// exactly the disagreement that listener acts on. The check in [start] is
+  /// for a caller that does not exist yet - today's two are `_initCore`, long
+  /// before any window hook, and that listener. Nothing clears it, because
+  /// nothing left in this process should want to.
+  ///
+  /// Two things it does **not** cover, both milliseconds wide on a process
+  /// that is ending. A quit while `start()` is still inside `settings.load()`
+  /// finds `_running` false and drains nothing - there is nothing buffered
+  /// that early either. And unlike [stop] this does not stand off for
+  /// `_settling`: a transition that has already passed `_init` can finish
+  /// behind this and leave the SDK up for the rest of the exit. The latch
+  /// means nothing starts a *new* one.
+  Future<void> closeForExit() async {
+    _closedForExit = true;
+    if (!_running || !_keptSinceStart) return;
+    await _tearDown();
+  }
+
+  /// Whether a kept line has been handed to the SDK since it came up.
+  ///
+  /// The gate on [closeForExit], and not a micro-optimisation: on Windows and
+  /// Linux `NativeSdkIntegration.close()` is a **synchronous** FFI call into
+  /// `sentry_close()`, which flushes and joins sentry-native's transport
+  /// worker under its own two-second shutdown timeout. A synchronous call
+  /// cannot be interrupted by `Future.timeout` - the timer cannot even fire
+  /// while it runs - so the caller's budget does not bound it. Paying that on
+  /// every quit to drain a batcher that is provably empty is the wrong trade,
+  /// and skipping it leaves the exit exactly as it was before the flush
+  /// existed.
+  ///
+  /// Only kept lines can be waiting: transactions are not batched
+  /// (`traceLifecycle` is `static`, so `finish` sends), breadcrumbs ride on
+  /// the next event, and no metrics are emitted.
+  bool _keptSinceStart = false;
+
   /// Closes the SDK and takes the hooks off. **Never throws.**
   ///
   /// The body of [stop] without any of its bookkeeping, so `start()`'s own
@@ -379,6 +429,9 @@ class Telemetry {
   /// `_guard` is what keeps a rejected send from reaching the zone as an
   /// unlabelled `[uncaught]`.
   void _reportKept(KeptLevel level, String body) {
+    // The one thing that can leave something in the batcher, so the one thing
+    // that makes the exit flush worth paying for. See [closeForExit].
+    _keptSinceStart = true;
     final text = Scrub.outbound(body);
     _guard('a kept log line was not sent', () async {
       final logger = Sentry.logger;
@@ -572,6 +625,9 @@ class Telemetry {
     // A transition in flight will re-check at its own end, so acting here
     // would start a second one on top of it - see [_settling].
     if (_settling) return;
+    // And nothing comes back up once the process is on its way out, whatever
+    // the switch says - see [closeForExit].
+    if (_closedForExit) return;
     if (settings.shareLogs == _running) return;
     // `guarded` and not `unawaited`: a ChangeNotifier listener is a void
     // callback, and both of these are already no-throw - but a bare
