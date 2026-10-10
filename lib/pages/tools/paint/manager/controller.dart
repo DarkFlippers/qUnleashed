@@ -175,7 +175,7 @@ class ProjectManagerController extends ChangeNotifier {
       // the page takes it on the next notification. Nothing clears it in
       // between, which is what #114 was about.
       _error = '$e';
-      LogService.info('[PixelDraw] loadAll failed: $e');
+      LogService.caught('[PixelDraw] loadAll failed: $e');
     } finally {
       _loading = false;
       _notify();
@@ -340,7 +340,7 @@ class ProjectManagerController extends ChangeNotifier {
       );
     } catch (e) {
       _error = l10n.paintSendFailed('$e');
-      LogService.info('[PixelDraw] send failed: $e');
+      LogService.caught('[PixelDraw] send failed: $e');
     } finally {
       _sending = false;
       _sendProgress = null;

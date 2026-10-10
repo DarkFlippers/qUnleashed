@@ -455,10 +455,11 @@ class FlipperNetworkResponder {
     } on FlipperWriteCancelledException {
       await _sendHttpError(id, ErrorCode.FILE_ERROR);
     } catch (error) {
-      // Stays at info: the line below tells the device, with a code it maps
-      // from the same exception, so the failure is reported to the thing
-      // that asked for it.
-      LogService.info('[Network] http failed on $id: $error');
+      // The line below tells the device, with a code it maps from the same
+      // exception. §5 is about the reader that is not the device: one of these
+      // per request the Flipper makes is bounded by what the user is browsing,
+      // unlike the relay reply below, which runs per frame and stays at `info`.
+      LogService.caught('[Network] http failed on $id: $error');
       await _sendHttpError(id, _errorFor(error));
     }
   }

@@ -27,27 +27,33 @@ import 'ratchet.dart';
 
 /// What each area may record at `caught`.
 ///
-/// Four sites, all in `lib/services`, and all the shape the level is for - an
-/// operation that did not do what was asked, where what is left still works:
+/// §5's re-ruling has landed, which is the one rise this ratchet was ever
+/// meant to have. 23 of the 42 `LogService.info`-inside-a-catch sites moved;
+/// the other 19 stayed, each on a volume argument its own comment makes.
 ///
-///  * the version could not be read, so every surface says `unknown` and
-///    nothing else would ever say why;
-///  * the channel define held something `BuildChannel` does not know, so the
-///    build reads as `local` when CI meant otherwise;
-///  * reporting is not running, because no DSN was compiled in or the switch
-///    is off. The only site of the four that is a *refusal* rather than a
-///    fault, and it earns the level for the same reason: both causes are
-///    ordinary - every local build has no DSN - so nobody is to be alerted,
-///    and a dev build that was supposed to be reporting and is silent has
-///    nowhere else to say so;
-///  * the application support directory could not be resolved, so the native
-///    crash database falls back to sitting beside the executable. Reporting
-///    still works and nothing is on fire, but on Linux that fallback is where
-///    an unsent crash goes to be deleted - so somebody reading a report about
-///    a crash that never arrived needs this line to exist.
+/// `services` is 6: the two `build_identity.dart` sites and the two in
+/// `telemetry.dart` that were here before, plus a launcher refusing a
+/// home-widget pin and an HTTP request the network responder could not carry.
+/// The relay reply beside that second one runs per frame and stayed at `info`,
+/// which is the distinction the level is for.
 ///
-/// §5's re-ruling of #103's 48 sites is what raises these, once.
-const Map<String, int> kBudget = {'services': 4};
+/// `pages/archive` is 16 — every `list`, `read`, `write`, `delete`, `mkdir`,
+/// `rename` and `appStart` the user asked for, plus `refresh`, `sync` and
+/// `syncCategory`. Two sites in that area did **not** move: the per-node
+/// `list` of a whole-SD walk, and the per-file `md5 check`, which §5 excludes
+/// by name because the per-sync summary at `warn` already covers it (#194).
+///
+/// `pages/tools` is 5: the IR library's download, delete and search, and the
+/// pixel editor's load and send. The two Dolphin walks stayed — one entry per
+/// folder wants a tally at the caller, not a level here.
+///
+/// `pages/apps` is absent on purpose. All six of its sites are one-per-app
+/// loops or a cancel the user asked for, so none of them moved.
+const Map<String, int> kBudget = {
+  'services': 6,
+  'pages/archive': 16,
+  'pages/tools': 5,
+};
 
 const String kAdr = 'docs/adr/0013-observability-with-sentry.md';
 

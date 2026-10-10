@@ -62,128 +62,28 @@ import 'ratchet.dart';
 /// is which - so each entry that differs says so itself. Someone editing this
 /// map to get CI green reads the line they are changing, not this paragraph.
 const Map<String, int> kBudget = {
-  // Read through site by site; a new one wants justifying against the rule in
-  // [LogService.info] rather than absorbing into the figure.
+  // §5's re-ruling has landed: 23 of the 42 sites moved to `caught`, which is
+  // kept in every build. What is left is 19, and each one stayed for a reason
+  // its own comment at the site states - not because nobody looked.
   //
-  // 24 until the connection work in #127 rewrote the area around it - aaf1650
-  // took three out and 5af8518 put two back, and the run has been printing
-  // "down from 24" ever since. Lowered here rather than left: a budget above
-  // what the tree holds lets two sites back in silently, which is the one
-  // direction this is meant to stop.
-  // Was 22. Five went from `connection/device_info_watch.dart`, and each was
-  // the last word on a field of the device screen for the whole session: the
-  // info snapshot behind every identifying field, the protobuf version, the
-  // device clock, the SD card figure, and the clock the user asked the app to
-  // set on connect. A field that never arrives renders as a blank, and a
-  // blank says nothing about why.
+  // Every remaining site is one of three kinds, and none of them is the last
+  // word on an operation the user asked for:
   //
-  // The four left in that file are the readings that repeat: the battery
-  // poll runs every five seconds for as long as the Flipper is connected, so
-  // the first of them is not the last word on anything and a line per tick
-  // would push the rest of the log screen out.
+  //  * a poll - `watchInfo`'s battery and SD reads run every few seconds for
+  //    as long as a Flipper is connected, and the GPS responder sends one per
+  //    fix;
+  //  * one entry per item of a loop - a manifest per installed app, an app per
+  //    scan, a folder per Dolphin walk - where the useful record is a tally at
+  //    the batch boundary, which is what #194 added at `warn`;
+  //  * not a failure at all - a permission prompt an engine with no activity
+  //    cannot raise, and an install the user cancelled.
   //
-  // Four rather than three because the SD card read is both shapes in one
-  // function, and splitting them turned one counted site into two - the read
-  // that fills the figure in, now a warn, and the refresh behind every
-  // storage operation, which leaves the last good figure on screen and stays
-  // here. A number that goes 8 -> 4 rather than 8 -> 3 for a reason worth
-  // having.
-  //
-  // Then five from `emulate/service.dart`. Four of them sit above an
-  // `EmulateResult.fail`, which is a category rather than a cause: the page
-  // renders "could not open the app" for a firmware that refused, a link
-  // that went and a file that is not there alike, so the difference between
-  // them existed only here. The fifth is an appExit the Flipper refused,
-  // which leaves the app running and turns the *next* emulate into "device
-  // busy" - a symptom one step removed from its cause.
-  //
-  // The two left there repeat or are already answered: the reload before a
-  // press tries four times in under a second, and its giving up is a warn at
-  // the end of the loop rather than four lines through it; and the wait for
-  // APP_CLOSED has a five-second timeout that answers the case it is for.
-  //
-  // Then one from `home_widget/cold_link.dart`, and with it the area is read
-  // through. It is the only way a home-screen widget reaches a Flipper, it
-  // runs in the headless isolate where there is no UI to put a failure in,
-  // and the widget draws the same "no device" face whether the dial failed
-  // or nothing was remembered to dial.
-  //
-  // The twelve left each say in place why they stay, and they are four
-  // shapes. Readings that repeat: the battery poll, the SD card refresh, the
-  // four reload retries, a GPS fix per second, and the reply path for every
-  // relayed network frame. Failures already reported to whoever asked: an
-  // HTTP error the device is sent a code for, a pin refusal the sheet renders
-  // as "not supported here". Waits whose own timeout is the answer: APP_CLOSED.
-  // And one whose catch is the documented path rather than a failure - the
-  // permission prompts, which need an activity a widget engine does not have
-  // and which the service comes up without.
-  // Was 12, and the twelfth did not go: #216 moved `emulate/service.dart`'s
-  // APP_CLOSED line out of a `catch` clause and into the `.catchError` the
-  // handler now attaches at creation. The line is still there and still
-  // `info`, so the hazard is unchanged - it has moved into the `onError:`
-  // blind spot this header already lists. Closing that hole would count three
-  // pre-existing sites too and belongs with #103 rather than with the change
-  // that exposed it.
-  'services': 11,
-  // Was 30, and a ceiling rather than a verdict: what remained wrote its error
-  // into a controller field the widgets read only in states the failure itself
-  // prevents, so the second surface mostly was not one. #110 was that defect,
-  // and it is fixed - both controllers now keep the reason in a field a
-  // refresh does not clear, and the pages render it.
-  //
-  // Five went with it, the ones whose surface arrived at the same time: a
-  // rename, a duplicate, a delete, and a restore on each of its two paths.
-  // Each is once per action the user took, which is the shape that earns a
-  // warn - the level was the reason a bug report about any of them had
-  // nothing in it.
-  //
-  // Then one more, and the area is read through. The bulk download in a
-  // category page logged one line per file, so a hundred keys against a full
-  // disk filled the log screen from a single tap - which is the only reason
-  // #111 declined to record the cause at all. It is one entry for the
-  // selection now, at warn, carrying the count and the first failure.
-  //
-  // The twenty-four left are three shapes, and the two conversions that
-  // happened without moving the number belong to the first of them.
-  //
-  // Reported somewhere the user can see, so the log is commentary: every
-  // operation in `browser/controller.dart` - twelve of them - hands a bool or
-  // a null back to a page that now renders the reason; the launch of a
-  // favourited app and the text editor's read do the same, and each says so
-  // in place. A refresh and a category refresh write the panel and the empty
-  // view. A save or a read inside a sync is folded into the summary the user
-  // is shown at the end of it.
-  //
-  // Repeats, with the bounded record now living at the caller: the recursive
-  // listing behind a refresh is one node of a walk over a whole SD card, and
-  // #109 made that walk report upward - so the folder count and the fact that
-  // what is in them was left alone go out once per walk, at warn, while this
-  // stays as the per-directory detail a talking build can name a path with.
-  // The md5 check beside it is not a failure at all; it falls back to
-  // downloading the file again.
-  //
-  // What is left after those is the sync path's own catches, which end in a
-  // status the page renders.
-  'pages/archive': 24,
-  // Read through. The six left are the per-item loops, which want recording
-  // once per batch rather than a level here - the same deferral archive made.
-  // The failures raised out of it want a failed state too: #112.
+  // The two that would otherwise qualify are the per-node `list` of a
+  // whole-SD walk and the per-file `md5 check`; §5 excludes both by name.
+  'services': 9,
+  'pages/archive': 2,
   'pages/apps': 6,
-  // At budget, not done. What is left is rendered - the settings dialog for
-  // download and delete, the page's error view for a failed search, the
-  // pixel-draw page for two of its four - or is a per-item walk. The two
-  // controllers disagree about when an error reaches anyone (#114), and the
-  // area's bare catches are invisible here by construction.
-  'pages/tools': 7,
-  // Empty of what this counts. Both sites the slice meant to keep turned out
-  // to rest on a flipperlib record that does not cover them - the alert's
-  // firmware-status path, and the two StateErrors establishLocked never sees.
-  // What silence is left is out of reach by construction: an onError closure
-  // in the same file, a one-line wrapper (#119), and bare catches (#118).
-  'pages/devices': 0,
-  // Empty. All three were the connection picker; #120 has the surface they
-  // want, which that file already imports for its connect path.
-  'components': 0,
+  'pages/tools': 2,
 };
 
 const String kIssue = 'https://github.com/DarkFlippers/qUnleashed/issues/103';

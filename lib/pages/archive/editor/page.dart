@@ -113,11 +113,13 @@ class _TextEditorPageState extends State<TextEditorPage> {
     try {
       bytes = await Future(() => io.File(widget.localPath).readAsBytesSync());
     } catch (e) {
-      // Stays at info: the panel below renders the reason now. A file that is
-      // gone and one the platform will not hand over used to read the same on
-      // screen, and the difference lived only in a release build's silence.
+      // The panel below renders the reason. A file that is gone and one the
+      // platform will not hand over used to read the same on screen, and the
+      // difference lived only in a release build's silence - which §5 is the
+      // answer to: `caught` survives a release build and reaches the second
+      // reader.
       reason = '$e';
-      LogService.info('[TextEditor] read ${widget.localPath} failed: $e');
+      LogService.caught('[TextEditor] read ${widget.localPath} failed: $e');
     }
     if (!mounted) return;
     final binary = bytes != null && looksBinary(bytes);

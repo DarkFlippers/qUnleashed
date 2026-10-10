@@ -755,7 +755,7 @@ class FileManagerController extends ChangeNotifier {
       // listing it describes is on screen.
       _error = '$e';
       _entries = const [];
-      LogService.info('[FileManager] list $_path failed: $e');
+      LogService.caught('[FileManager] list $_path failed: $e');
     } finally {
       _loading = false;
       _notify();
@@ -770,7 +770,7 @@ class FileManagerController extends ChangeNotifier {
       );
     } catch (e) {
       _error = _lastFailure = '$e';
-      LogService.info('[FileManager] read $remotePath failed: $e');
+      LogService.caught('[FileManager] read $remotePath failed: $e');
       _notify();
       return null;
     }
@@ -810,7 +810,7 @@ class FileManagerController extends ChangeNotifier {
       return true;
     } catch (e) {
       _error = _lastFailure = '$e';
-      LogService.info('[FileManager] delete $remotePath failed: $e');
+      LogService.caught('[FileManager] delete $remotePath failed: $e');
       _notify();
       return false;
     }
@@ -826,7 +826,7 @@ class FileManagerController extends ChangeNotifier {
       return true;
     } catch (e) {
       _error = _lastFailure = '$e';
-      LogService.info('[FileManager] mkdir $target failed: $e');
+      LogService.caught('[FileManager] mkdir $target failed: $e');
       _notify();
       return false;
     }
@@ -845,7 +845,7 @@ class FileManagerController extends ChangeNotifier {
       rethrow;
     } catch (e) {
       _error = _lastFailure = '$e';
-      LogService.info('[FileManager] appStart $remotePath failed: $e');
+      LogService.caught('[FileManager] appStart $remotePath failed: $e');
       _notify();
       return false;
     }
@@ -1011,7 +1011,7 @@ class FileManagerController extends ChangeNotifier {
       return true;
     } catch (e) {
       _error = _lastFailure = '$e';
-      LogService.info('[FileManager] rename $oldPath failed: $e');
+      LogService.caught('[FileManager] rename $oldPath failed: $e');
       _notify();
       return false;
     }

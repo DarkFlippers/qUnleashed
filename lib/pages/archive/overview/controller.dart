@@ -285,7 +285,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
       );
     } catch (e) {
       _lastError = '$e';
-      LogService.info('[Archive] device metadata failed: $e');
+      LogService.caught('[Archive] device metadata failed: $e');
       notifyListeners();
       return false;
     }
@@ -532,10 +532,11 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
       );
       return true;
     } catch (e) {
-      // Stays at info: the toast at the call site renders the reason now,
-      // which is the surface this was standing in for.
+      // The toast at the call site renders the reason, which is the surface
+      // this used to stand in for - and §5 is why that is no longer enough on
+      // its own: the reader who was missing is the developer.
       _lastError = _lastFailure = '$e';
-      LogService.info('[Archive] launch ${fav.remotePath} failed: $e');
+      LogService.caught('[Archive] launch ${fav.remotePath} failed: $e');
       return false;
     }
   }
@@ -840,7 +841,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
         _syncStatus = ArchiveSyncStatus.idle;
       }
       _lastError = '$e';
-      LogService.info('[Archive] refresh failed: $e');
+      LogService.caught('[Archive] refresh failed: $e');
     } finally {
       _loading = false;
       notifyListeners();
@@ -870,7 +871,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
       await _parseMetaForCategory(cat);
     } catch (e) {
       _lastError = '$e';
-      LogService.info('[Archive] _refreshCategory $cat failed: $e');
+      LogService.caught('[Archive] _refreshCategory $cat failed: $e');
     }
   }
 
@@ -908,7 +909,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
     } catch (e) {
       _syncStatus = ArchiveSyncStatus.idle;
       _lastError = '$e';
-      LogService.info('[Archive] syncCategory $category failed: $e');
+      LogService.caught('[Archive] syncCategory $category failed: $e');
     } finally {
       _syncing = false;
       _syncProgress = null;
@@ -1187,7 +1188,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
     } catch (e) {
       _syncStatus = ArchiveSyncStatus.idle;
       _lastError = '$e';
-      LogService.info('[Archive] sync failed: $e');
+      LogService.caught('[Archive] sync failed: $e');
     } finally {
       _syncing = false;
       _syncProgress = null;
@@ -1432,7 +1433,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
       return true;
     } catch (e) {
       _lastReadError = l10n.archiveSaveFailed(key.fileName, '$e');
-      LogService.info('[Archive] ${_lastReadError!}');
+      LogService.caught('[Archive] ${_lastReadError!}');
       return false;
     }
   }
@@ -1490,10 +1491,12 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
       );
       return true;
     } catch (e) {
-      // Stays at info: the editor renders the reason beside its own message
-      // now, which is the surface this was standing in for.
+      // The editor renders the reason beside its own message, which is the
+      // surface this used to stand in for. §5: that covers the user and not
+      // the developer, and a write the device refused is the second reader's
+      // business too.
       _lastError = _lastFailure = '$e';
-      LogService.info('[Archive] write ${k.remotePath} failed: $e');
+      LogService.caught('[Archive] write ${k.remotePath} failed: $e');
       return false;
     } finally {
       _busyPath = null;
@@ -1570,7 +1573,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
     } catch (e) {
       _lastReadError = l10n.archiveReadFailed(path, '$e');
       if (logErrors) {
-        LogService.info('[Archive] ${_lastReadError!}');
+        LogService.caught('[Archive] ${_lastReadError!}');
       }
       return null;
     }
