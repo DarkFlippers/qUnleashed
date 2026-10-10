@@ -134,10 +134,16 @@ class SeedCapture {
   /// Matches `FAACCRACK_MAX_COUNTER_GAP`: the widest counter step between two
   /// kept hops the engine still accepts.
   ///
-  /// Nothing on this side branches on it - no counter is known here until the
-  /// seed is, and `SeedController.windows` offers the same windows whatever it
-  /// says. The native macro's comment says why it exists anyway, and
-  /// `test/faaccrack_engine_abi_test.dart` pins the two together.
+  /// A capture left with a wider step than this does not solve, and the search
+  /// then finds nothing for a reason that is not about the user's remote -
+  /// which is why a dropped line is reported rather than swallowed, and why
+  /// [SeedOutcome.nothingMatched] must not be read as a verdict. The other
+  /// places that consequence matters point here for it.
+  ///
+  /// Nothing on this side branches on the number itself - no counter is known
+  /// here until the seed is, and `SeedController.windows` offers the same
+  /// windows whatever it says. The native macro's comment says why it exists
+  /// anyway, and `test/faaccrack_engine_abi_test.dart` pins the two together.
   static const maxCounterGap = 16;
 }
 

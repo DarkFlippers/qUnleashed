@@ -188,15 +188,12 @@ class SeedController extends ChangeNotifier {
   /// already dropped.
   bool get busy => _stage != SeedStage.idle || _saving || _deleting != null;
 
-  /// What the parser had to say about the capture file, if anything.
+  /// What the parser had to say about the capture file, if anything - faults in
+  /// the file and hops dropped deliberately, in one list. [SeedCaptureParse]
+  /// has the two classes and why each is reported.
   ///
-  /// Two classes, and the page shows both the same way. A line that could not
-  /// be read is a fault in the file: a capture half of whose hops were dropped
-  /// can be left with a gap wider than [SeedCapture.maxCounterGap], and the
-  /// search would then find nothing for a reason that is not about the remote.
-  /// A hop dropped for repeating the one before it is not a fault - the capture
-  /// is better off without it - and is shown because the hop count on screen
-  /// would otherwise disagree with the file for no visible reason.
+  /// Shown rather than logged alone, because every entry is either something
+  /// the user can act on or a reason the screen disagrees with their file.
   List<String> get captureWarnings => _captureWarnings;
 
   /// Whether the recovered remote can be written as a transmittable file.
@@ -447,16 +444,13 @@ class SeedController extends ChangeNotifier {
   /// constant rather than as numbers, because the native header says moving the
   /// confidence line is one edit here and one there.
   ///
-  /// Nothing shorter than [seedHopsConfident] is synthesised, and the whole
-  /// capture is the one exception - that is the user's own data and the engine's
-  /// documented minimum, so it is searched whatever its length. What this
-  /// declines to do is *invent* a sub-confident window. It would cost two more
-  /// whole-space sweeps - `BUILD_NOTES.md` measures one at about 17 seconds on
-  /// a 2026 flagship phone, and warns that a mid-range one may differ - to
-  /// reach an answer [canSave] refuses as unconfirmed, at the hop count the
-  /// native header says a false positive is merely "conceivable" at. The shape
-  /// it used to reach and nothing else does is an over-wide gap in a three-hop
-  /// capture, or in the middle of a four-hop one. #288
+  /// What this declines to do is *invent* a sub-confident window. The whole
+  /// capture is searched whatever its length - that is the user's own data and
+  /// the engine's documented minimum - but a shorter one would cost two more
+  /// whole-space sweeps (`BUILD_NOTES.md` measures one at about 17 seconds on a
+  /// 2026 flagship phone, and warns a mid-range one may differ) to reach an
+  /// answer [canSave] refuses as unconfirmed, at the hop count the native
+  /// header says a false positive is merely "conceivable" at. #288
   ///
   /// Suffix before prefix, which is not cosmetic: the counter and the rebuilt
   /// frame come from the window's *last* hop, so a prefix that solves first
@@ -464,35 +458,41 @@ class SeedController extends ChangeNotifier {
   /// already seen. That is a `.sub` the firmware accepts and the gate ignores.
   @visibleForTesting
   static List<List<int>> windows(List<int> hops) {
-    final found = <List<int>>[];
-
-    // The bounds are the engine's, and a window outside them is a caller fault
-    // rather than something to sweep for. Nothing here de-duplicates: with the
-    // sub-confident rung gone the three offers below are distinct by
-    // construction - the guard that gates the pair makes the capture longer
-    // than either, and the pair itself differs by where it starts. A check on
-    // the first hop's *value* used to stand here, which after the rung went
-    // could no longer suppress a repeat and could still drop the prefix of a
-    // capture whose first hop recurs - the one shape the parser deliberately
-    // keeps.
-    void offer(List<int> window) {
-      if (window.length < SeedCapture.minHops) return;
-      if (window.length > SeedCapture.maxHops) return;
-      found.add(window);
-    }
+    // The engine's own minimum, and the parser refuses a shorter capture before
+    // it reaches here - so this is a caller fault rather than something to
+    // sweep for.
+    if (hops.length < SeedCapture.minHops) return const [];
 
     // The freshest end of an over-long capture, for the same counter reason.
     final longest = hops.length < SeedCapture.maxHops
         ? hops.length
         : SeedCapture.maxHops;
-    offer(hops.sublist(hops.length - longest));
 
-    // The freshest confident window, then the oldest. On a capture short enough
-    // that the two cannot meet in the middle these leave an over-wide gap
-    // uncovered, which is the exchange the doc comment above describes.
-    if (seedHopsConfident < longest) {
-      offer(hops.sublist(hops.length - seedHopsConfident));
-      offer(hops.sublist(0, seedHopsConfident));
+    // Then the freshest confident window, then the oldest. On a capture short
+    // enough that the two cannot meet in the middle these leave an over-wide
+    // gap uncovered, which is the exchange the doc comment above describes.
+    final offered = [
+      hops.sublist(hops.length - longest),
+      if (seedHopsConfident < longest) ...[
+        hops.sublist(hops.length - seedHopsConfident),
+        hops.sublist(0, seedHopsConfident),
+      ],
+    ];
+
+    // Identical *hops*, not identical ranges. The three above always start at
+    // different offsets, but the engine is handed values, and the suffix and
+    // the prefix carry the same ones whenever the capture repeats with a period
+    // that divides its length - which the parser allows, since it drops only a
+    // repeat of the hop before it. Each duplicate left in costs a second sweep
+    // of the whole seed space for an answer already known.
+    //
+    // Compared whole, which is the fix to what used to stand here: a check on
+    // the first hop's *value* alone could drop the prefix of any capture whose
+    // first hop recurred, and 'offers the prefix even when its first hop
+    // recurs' is what pins that.
+    final found = <List<int>>[];
+    for (final window in offered) {
+      if (!found.any((kept) => listEquals(kept, window))) found.add(window);
     }
     return found;
   }

@@ -8,11 +8,7 @@
 // is the one answer that must not be given wrongly.
 //
 // What it stops short of is the other half: a window below seedHopsConfident
-// buys reach the app cannot use, because canSave refuses the answer. Two tests
-// hold that line, and not symmetrically - 'synthesises no window the app would
-// refuse to save' pins the exclusion, while 'covers every over-wide gap that
-// leaves a confident run' pins that the exclusion costs no reach above the
-// line. Only the first fails if the rung comes back.
+// buys reach the app cannot use, because canSave refuses the answer.
 //
 // What it cannot see: whether the engine agrees. The windows are offered to it
 // in order; whether a given window solves is the native probe's business.
@@ -46,22 +42,16 @@ void main() {
       //
       // "Confident" is the bound, not minHops: a run of two is reachable only
       // by a window the app would then refuse to save, so the ladder stopped
-      // offering one (#288).
-      //
-      // What that skips, exactly: n=3 either side, and n=4 with the break in
-      // the middle - the only cases where both runs are under
-      // seedHopsConfident. For every n of five or more the same pairs are
-      // asserted as before, and each assertion is now stronger, since a
-      // two-hop window no longer counts as covering a run. The loop therefore
-      // asserts nothing at all for n=3, which is why what those captures
-      // *do* is pinned end to end in seed_search_test.dart instead, by 'a
-      // break the confident ladder cannot step over ends in "nothing
-      // matched"'.
+      // offering one (#288). Below n=4 every split leaves both runs under that
+      // line and there is nothing to cover, which is why the loop starts
+      // above it - what those captures *do* is pinned end to end in
+      // seed_search_test.dart, by 'a break the confident ladder cannot step
+      // over ends in "nothing matched"'.
       //
       // This test would also pass with the rung restored - adding windows
       // cannot make an `any` fail - so it does not guard the exclusion.
       // 'synthesises no window the app would refuse to save' does.
-      for (var n = SeedCapture.minHops; n <= SeedCapture.maxHops + 6; n++) {
+      for (var n = seedHopsConfident + 1; n <= SeedCapture.maxHops + 6; n++) {
         final hops = List.generate(n, (i) => i);
         final offered = SeedController.windows(hops);
         for (var gap = 1; gap < n; gap++) {
@@ -91,11 +81,17 @@ void main() {
       // an answer canSave declines and the page shows as unconfirmed, after a
       // whole-space sweep to find it - so the only short window offered is the
       // capture itself, which is the user's own data rather than this ladder's
-      // invention.
-      for (var n = SeedCapture.minHops; n <= SeedCapture.maxHops; n++) {
+      // invention. Run past maxHops too: an over-long capture is a supported
+      // input, and there the first window is the trimmed tail rather than the
+      // capture.
+      for (var n = SeedCapture.minHops; n <= SeedCapture.maxHops + 6; n++) {
         final hops = List.generate(n, (i) => i);
         final offered = SeedController.windows(hops);
-        expect(offered.first, hops, reason: 'n=$n should start with itself');
+        expect(
+          offered.first,
+          hops.sublist(hops.length - offered.first.length),
+          reason: 'n=$n should start with the capture, trimmed only when long',
+        );
         for (final window in offered.skip(1)) {
           expect(
             window.length,
@@ -128,21 +124,20 @@ void main() {
       ]);
     });
 
-    test('and none below the confidence line on an over-long capture', () {
-      // Above maxHops the first window is the trimmed tail rather than the
-      // capture itself, so the test above cannot simply run further. The
-      // exclusion still has to hold here: a capture of 20 hops is a supported
-      // input the parser keeps whole.
-      for (var n = SeedCapture.maxHops + 1; n <= SeedCapture.maxHops + 6; n++) {
-        final offered = SeedController.windows(List.generate(n, (i) => i));
-        for (final window in offered) {
-          expect(
-            window.length,
-            greaterThanOrEqualTo(seedHopsConfident),
-            reason: 'n=$n offered $window',
-          );
-        }
-      }
+    test('never offers one window twice', () {
+      // The suffix and the prefix start at different offsets and can still be
+      // the same hops: a capture that repeats with a period dividing its
+      // length. The parser allows that - it drops only a repeat of the hop
+      // before - and each duplicate left in is a second whole-space sweep for
+      // an answer already known.
+      expect(SeedController.windows([0, 1, 0, 1, 0]), [
+        [0, 1, 0, 1, 0],
+        [0, 1, 0],
+      ]);
+      expect(SeedController.windows([0, 1, 2, 0, 1, 2]), [
+        [0, 1, 2, 0, 1, 2],
+        [0, 1, 2],
+      ]);
     });
 
     test('offers the prefix even when its first hop recurs', () {

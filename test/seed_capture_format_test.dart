@@ -74,30 +74,20 @@ void main() {
     });
 
     test('drops a hop that repeats the one before it', () {
-      // The engine refuses a step of zero, so a capture keeping the repeat
-      // cannot solve as a whole - and no contiguous window excludes an
-      // interior duplicate, so the retry ladder cannot rescue it either. The
-      // user would sweep the whole space three times to be told nothing
-      // matched.
+      // The engine refuses a step of zero, so the whole-capture sweep is lost
+      // in every case - and the answer with it whenever neither side of the
+      // repeat keeps enough hops for a window, which is this four-hop fixture
+      // with the repeat in the middle.
       final parsed = SeedCaptureFormat.parse(
         _capture
             .replaceFirst('Hops: 3', 'Hops: 4')
             .replaceFirst('Hop: 40101499', 'Hop: 40101499\nHop: 40101499'),
       );
       expect(parsed.capture!.hops, [0x29389EF7, 0x40101499, 0xA1F9C88F]);
+      // An exact list, not `contains`: that is what proves the drop did not
+      // also fire the truncated-write message. Counting hop *lines* is what
+      // keeps those two faults apart, and they carry different advice.
       expect(parsed.skipped, [contains('repeated hop: "40101499"')]);
-    });
-
-    test('a repeated hop is not also reported as a truncated write', () {
-      // Two different faults with two different pieces of advice. The declared
-      // count is checked against the hop lines that parsed, so dropping a
-      // duplicate does not make the file look cut short.
-      final parsed = SeedCaptureFormat.parse(
-        _capture
-            .replaceFirst('Hops: 3', 'Hops: 4')
-            .replaceFirst('Hop: 40101499', 'Hop: 40101499\nHop: 40101499'),
-      );
-      expect(parsed.skipped, isNot(contains(contains('file says'))));
     });
 
     test('a capture of nothing but one press repeated is refused', () {
@@ -105,12 +95,13 @@ void main() {
       // than the hops: two lines in, one hop left, which is below the engine's
       // minimum. Both remarks are kept - "only 1 hop(s)" alone would read as a
       // parser bug on a file that plainly has two `Hop:` lines.
-      final parsed = SeedCaptureFormat.parse(
-        _capture
-            .replaceFirst('Hops: 3', 'Hops: 2')
-            .replaceFirst('Hop: 40101499\nHop: A1F9C88F\n', '')
-            .replaceFirst('Hop: 29389EF7', 'Hop: 29389EF7\nHop: 29389EF7'),
-      );
+      final parsed = SeedCaptureFormat.parse('''
+${_header}Manufacturer: Genius
+Fix: A0DC9330
+Hops: 2
+Hop: 29389EF7
+Hop: 29389EF7
+''');
       expect(parsed.capture, isNull);
       expect(parsed.skipped, [
         contains('repeated hop: "29389EF7"'),
