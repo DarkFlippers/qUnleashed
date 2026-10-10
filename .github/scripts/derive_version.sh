@@ -137,8 +137,16 @@ fi
 # waiting for a longer file.
 #
 # The quit has to hang off an address: `s/…/…/{p;q}` is not valid sed.
+# And `q` gets its own line because BSD sed - which is the sed on the macOS
+# runners - ends `q` at a newline and nothing else, so `;q}` is read as a quit
+# with `}` as its argument: `extra characters at the end of q command`, which
+# is how the macOS and iOS dev build died on the first script it ran. GNU sed
+# accepts both forms, so the one-liner passed every local run and every test.
 pubspec_version="$(
-  sed -nE '/^version:/{s/^version:[[:space:]]*([^+[:space:]]+).*$/\1/p;q}' "$pubspec"
+  sed -nE '/^version:/{
+    s/^version:[[:space:]]*([^+[:space:]]+).*$/\1/p
+    q
+  }' "$pubspec"
 )"
 if [[ ! "$pubspec_version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
   echo "::error::pubspec.yaml version must be major.minor.patch, not '$pubspec_version'." >&2
