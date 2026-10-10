@@ -42,7 +42,7 @@ version_of() {
 echo "the version it proposes"
 d="$(fixture 0.16.0)"
 got="$(bash "$OPEN" 0.16.0 "$d/pubspec.yaml" "$d/CHANGELOG.md")"
-[[ "$got" == 0.17.0" " || "$got" == 0.17.0 ]] &&
+[[ "$got" == 0.17.0 ]] &&
   pass "0.16.0 -> 0.17.0 is printed" || fail "printed '$got', wanted 0.17.0"
 [[ "$(version_of "$d")" == 0.17.0 ]] &&
   pass "pubspec holds 0.17.0" || fail "pubspec holds '$(version_of "$d")'"

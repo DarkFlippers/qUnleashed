@@ -88,10 +88,20 @@ refuses "a version line with a 'changes since' clause" \
   "$PUBSPEC" "and nothing else"
 refuses "no version line at all" \
   "$(changelog_with "${GOOD/- Version: 0.16.0$NL/}")" "$PUBSPEC" \
-  "must open with"
+  "must carry a line"
 refuses "a two-part version" \
   "$(changelog_with "${GOOD/- Version: 0.16.0/- Version: 0.16}")" \
   "$(pubspec_with 0.16.0)" "and nothing else"
+
+echo
+# `Sub-GHz` is this project's own spelling and the class had no hyphen, so the
+# first person to write it as an area got told the line must read what it
+# already read. The credit-only bullet passed because `(` is not whitespace.
+accepts "a hyphenated area" "$(changelog_with '## Main changes
+- Version: 0.16.0
+- Sub-GHz: a hyphenated area (by @mishamyte | PR #264)
+## Other changes
+- Pixel Draw: a space in the area (by @apfxtech)')" "$PUBSPEC"
 
 echo
 echo "the credit, which was the point of adopting this"
@@ -108,6 +118,17 @@ refuses "a PR number that is not a number" \
 refuses "a Closes with no number" \
   "$(changelog_with "${GOOD/Closes #142/Closes}")" "$PUBSPEC" \
   "no well-formed credit"
+# docs/releasing.md states one author per bullet, and the regex used to accept
+# three spellings of two. Mutation it catches: putting the `(, @name)*` and
+# `| and @name` arms back.
+refuses "two authors in one credit"   "$(changelog_with "${GOOD/(by @apfxtech)/(by @apfxtech, @mishamyte)}")" "$PUBSPEC"   "no well-formed credit"
+refuses "a second author after a pipe"   "$(changelog_with "${GOOD/(by @apfxtech)/(by @apfxtech | and @mishamyte)}")" "$PUBSPEC"   "no well-formed credit"
+refuses "a handle that is only punctuation"   "$(changelog_with "${GOOD/(by @apfxtech)/(by @-----)}")" "$PUBSPEC"   "no well-formed credit"
+refuses "a bullet whose body is only its credit"   "$(changelog_with '## Main changes
+- Version: 0.16.0
+- Tools: (by @mishamyte)
+## Other changes
+- Fixed: fine (by @apfxtech)')" "$PUBSPEC" "<Area>: <what changed>"
 refuses "a credit that is not last on the line" \
   "$(changelog_with "${GOOD/ (by @apfxtech)/ (by @apfxtech) and more text}")" \
   "$PUBSPEC" "no well-formed credit"

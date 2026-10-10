@@ -71,7 +71,7 @@ fi
 
 version_line="$(grep -m1 '^- Version: ' "$changelog" || true)"
 if [[ -z "$version_line" ]]; then
-  complain "CHANGELOG.md must open with '- Version: <major.minor.patch>'."
+  complain "CHANGELOG.md must carry a line '- Version: <major.minor.patch>'."
 elif [[ ! "$version_line" =~ ^-\ Version:\ ([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
   complain "Version line must be '- Version: <major.minor.patch>' and nothing else, not '${version_line}'."
 else
@@ -105,7 +105,10 @@ fi
 # the point of adopting this from unleashed-firmware. Grouped citations are
 # allowed (`PR #260, #261`) since one bullet often merges several changes.
 
-attribution='\((by @[A-Za-z0-9_-]+(, @[A-Za-z0-9_-]+)*|OFW PR [0-9]+ \| by @[A-Za-z0-9_-]+)( \| (and )?@[A-Za-z0-9_-]+)?( \| PR #[0-9]+(, #[0-9]+)*)?( \| (Closes|Fixes) #[0-9]+(, #[0-9]+)*)?\)$'
+handle='@[A-Za-z0-9][A-Za-z0-9_-]*'
+prs="( \| PR #[0-9]+(, #[0-9]+)*)?"
+issues="( \| (Closes|Fixes) #[0-9]+(, #[0-9]+)*)?"
+attribution="\((by $handle|OFW PR [0-9]+ \| by $handle)$prs$issues\)\$"
 
 while IFS= read -r numbered; do
   line_no="${numbered%%:*}"
@@ -114,7 +117,7 @@ while IFS= read -r numbered; do
   # The version line is the one bullet that is a fact rather than a change.
   [[ "$line" == "- Version: "* ]] && continue
 
-  if [[ ! "$line" =~ ^-\ [A-Za-z][A-Za-z0-9/\ ]*:\ [^[:space:]] ]]; then
+  if [[ ! "$line" =~ ^-\ [A-Za-z][A-Za-z0-9/.+\ -]*:\ [^\([:space:]] ]]; then
     complain "Line $line_no must read '- <Area>: <what changed>': $line"
     continue
   fi

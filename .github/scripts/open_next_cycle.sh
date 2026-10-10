@@ -9,14 +9,19 @@
 #
 #   open_next_cycle.sh <released-version> [pubspec] [changelog]
 #
-# **The next version is a minor bump by default, and that is a default rather
-# than a rule.** ADR 0014 §2 keeps the digit for a person, because patch
-# against minor against major is a decision no rule over the previous version
-# can make. What this script does is propose the cycle this project almost
-# always opens - 0.10.x aside, every version since has been a minor - and the
-# workflow puts it in a pull request precisely so the proposal can be changed
-# before it lands. Run it again with a different version, or edit the two
-# lines; nothing downstream depends on the number this picked.
+# **The next version is a minor bump by default, and the default is a guess.**
+# ADR 0014 §2 keeps the digit for a person, because patch against minor against
+# major is a decision no rule over the previous version can make - and the tags
+# bear that out rather than contradicting it. The eight released transitions
+# since 0.11.0 are four patches and four minors: 0.11.1, 0.11.2, 0.12.1 and
+# 0.14.1 against 0.12.0, 0.13.0, 0.14.0 and 0.15.0.
+#
+# So this proposes a minor because one of the two has to be proposed, not
+# because it is usually right. Two things follow, and they are the reason the
+# workflow does what it does: the pull request is opened as a **draft**, so the
+# digit cannot be merged by reflex on the one day somebody wants `main` green
+# in a hurry; and nothing downstream depends on the number this picked, so
+# editing the two lines in that pull request is the whole correction.
 #
 # It refuses to run unless pubspec still holds the released version. Opening
 # the 0.17.0 cycle over a pubspec that already says 0.17.0 would mean the bump
