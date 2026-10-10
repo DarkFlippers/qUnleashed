@@ -117,6 +117,19 @@ refuses "a cycle that is already open" "refusing to bump a second time" \
   0.16.0 "$d/pubspec.yaml" "$d/CHANGELOG.md"
 
 echo
+echo "it rewrites the first version line and no other"
+d="$(mktemp -d "$TMP/two-XXXXXX")"
+printf 'name: q\nversion: 0.16.0\nfoo: bar\nversion: 9.9.9\n' >"$d/pubspec.yaml"
+printf '## Main changes\n- Version: 0.16.0\n## Other changes\n' >"$d/CHANGELOG.md"
+bash "$OPEN" 0.16.0 "$d/pubspec.yaml" "$d/CHANGELOG.md" >/dev/null
+if grep -q '^version: 0.17.0$' "$d/pubspec.yaml" &&
+  grep -q '^version: 9.9.9$' "$d/pubspec.yaml"; then
+  pass "the second version line is left as it was"
+else
+  fail "both lines moved: $(grep -n '^version:' "$d/pubspec.yaml" | paste -sd' ' -)"
+fi
+
+echo
 echo "it leaves the rest of pubspec alone"
 d="$(fixture 0.16.0)"
 bash "$OPEN" 0.16.0 "$d/pubspec.yaml" "$d/CHANGELOG.md" >/dev/null

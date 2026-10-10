@@ -44,6 +44,16 @@ for f in "$changelog" "$pubspec"; do
   fi
 done
 
+# --- line endings, before anything anchored is tried -----------------------
+
+# `tr`/`cmp` rather than `grep $'\r'`, because MSYS grep opens the file in text
+# mode and strips the CR before matching - so on the author's own Windows
+# checkout the grep form finds nothing and only the runners complain, which is
+# the wrong way round. `cmp` compares bytes everywhere.
+if ! tr -d '\r' <"$changelog" | cmp -s - "$changelog"; then
+  complain "CHANGELOG.md has CRLF line endings. Every check below is anchored, so on a Linux or macOS runner they fail naming something else. Save it as LF - .gitattributes asks for it."
+fi
+
 # --- the two sections, once each, in order ----------------------------------
 
 main_at="$(grep -n '^## Main changes$' "$changelog" | cut -d: -f1 || true)"
@@ -69,13 +79,21 @@ fi
 # No "changes since" clause: the file accumulates until a stable release, so
 # there is no single predecessor to name.
 
+version_lines="$(grep -c '^- Version: ' "$changelog" || true)"
 version_line="$(grep -m1 '^- Version: ' "$changelog" || true)"
+if [[ "$version_lines" -gt 1 ]]; then
+  complain "CHANGELOG.md carries $version_lines '- Version:' lines and must carry exactly one. Two is what a merge conflict leaves behind."
+fi
 if [[ -z "$version_line" ]]; then
   complain "CHANGELOG.md must carry a line '- Version: <major.minor.patch>'."
 elif [[ ! "$version_line" =~ ^-\ Version:\ ([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
   complain "Version line must be '- Version: <major.minor.patch>' and nothing else, not '${version_line}'."
 else
   changelog_version="${BASH_REMATCH[1]}"
+  # derive_version.sh's reader, verbatim: the `q` takes the first `version:`
+  # and nothing else, and it sits on its own line because BSD sed ends `q` at a
+  # `;` or a newline and `}` is neither. Without the `q` the last line in the
+  # file would win, which no test would notice.
   pubspec_version="$(
     sed -nE '/^version:/{
       s/^version:[[:space:]]*([^+[:space:]]+).*$/\1/p

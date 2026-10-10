@@ -26,6 +26,11 @@
 # It refuses to run unless pubspec still holds the released version. Opening
 # the 0.17.0 cycle over a pubspec that already says 0.17.0 would mean the bump
 # happened by hand and this is a second, conflicting attempt.
+#
+# The changelog reset here is unconditional, and deliberately so: whether a
+# note landed after the release was cut is a question only the caller can
+# answer, because only it knows the tag. `open-next-cycle` compares `main`
+# against the tag and refuses before it ever reaches this script.
 set -Eeuo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -73,7 +78,9 @@ fi
 tmp="$(mktemp "${TMPDIR:-/tmp}/pubspec-XXXXXX")"
 trap 'rm -f "$tmp"' EXIT
 # `-v v=`, not `-v next=`: `next` is an awk keyword and gawk refuses it as a
-# variable name outright.
+# variable name outright. `!seen` is what keeps this to the FIRST `version:`
+# line, matching the reader above - without it every one is rewritten, which is
+# how a pubspec with a commented-out version would lose both.
 awk -v v="$next" '
   !seen && /^version:/ { print "version: " v; seen = 1; next }
   { print }

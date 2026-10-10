@@ -35,6 +35,15 @@ changelog_with() {
   printf '%s' "$f"
 }
 
+# The same, with every line ending CRLF. Written byte by byte rather than by
+# substituting into a here-string, because the fault under test is the bytes.
+changelog_crlf() {
+  local f
+  f="$(mktemp "$TMP/crlf-XXXXXX")"
+  printf '%s\n' "$1" | sed 's/$/\r/' >"$f"
+  printf '%s' "$f"
+}
+
 # Asserts the guard accepts. Output is shown on failure, since a gate that
 # refuses a good file is the mode a developer meets first.
 accepts() {
@@ -89,6 +98,29 @@ refuses "a version line with a 'changes since' clause" \
 refuses "no version line at all" \
   "$(changelog_with "${GOOD/- Version: 0.16.0$NL/}")" "$PUBSPEC" \
   "must carry a line"
+# Mutation it catches: `grep -m1` without a count check. Two version lines is
+# what a merge conflict resolution leaves behind, and version drift is the one
+# thing this guard exists to catch.
+refuses "two version lines" \
+  "$(changelog_with '## Main changes
+- Version: 0.16.0
+- Tools: a thing (by @mishamyte)
+- Version: 9.9.9
+## Other changes
+- Fixed: ok (by @apfxtech)')" "$PUBSPEC" "must carry exactly one"
+
+# Mutation it catches: dropping the CR check. Every pattern below it is
+# anchored, so a CRLF file fails on a runner with four errors that name
+# headings, bullets and credits - and none of them says "line endings".
+refuses "a CRLF changelog" \
+  "$(changelog_crlf "$GOOD")" "$PUBSPEC" "CRLF line endings"
+
+# Mutation it catches: dropping the `q` from the pubspec reader, which would
+# make the LAST version line win. Survived the whole suite before this case.
+refuses "a pubspec whose first version line is not its last" \
+  "$(changelog_with "$GOOD")" "$(pubspec_with '9.9.9
+version: 0.16.0')" "says 0.16.0 and pubspec.yaml says 9.9.9"
+
 refuses "a two-part version" \
   "$(changelog_with "${GOOD/- Version: 0.16.0/- Version: 0.16}")" \
   "$(pubspec_with 0.16.0)" "and nothing else"
@@ -169,8 +201,29 @@ refuses "an area with nothing after the colon" \
 - Archive:
 ## Other changes
 - Tools: a thing (by @mishamyte)')" "$PUBSPEC" "<Area>: <what changed>"
-refuses "trailing whitespace" \
-  "$(changelog_with "${GOOD/(by @apfxtech)/(by @apfxtech) }")" "$PUBSPEC" \
+# A standalone fixture, not a substitution: `${GOOD/## Other changes/...}` is
+# parsed as `${GOOD/#...}`, the anchor-at-start form, so it quietly substitutes
+# nothing - the same trap two earlier fixtures in this file fell into. The space
+# sits on a heading line, so the bullet loop never sees it and the only fault
+# reported is the one this case names.
+#
+# Built by printf rather than written out, because a trailing space does not
+# survive being saved - an editor strips it, and so did the tooling that wrote
+# this file, which is how this case spent two revisions testing nothing. The
+# space is a line of its own, which no other check looks at: not a heading, not
+# a bullet, not the version line. Two earlier versions of this case did not
+# isolate - a space after a credit breaks the `)$` anchor, and a space after a
+# heading breaks the heading match - so each caught its mutation by collateral
+# damage rather than by the rule it names. Verified by disabling only the
+# whitespace complaint: this case is the one that fails, and it fails saying so.
+changelog_trailing_space() {
+  local f
+  f="$(mktemp "$TMP/trail-XXXXXX")"
+  printf '## Main changes\n- Version: 0.16.0\n- Tools: a thing (by @mishamyte)\n## Other changes\n- Fixed: ok (by @apfxtech)\n%s\n' \
+    ' ' >"$f"
+  printf '%s' "$f"
+}
+refuses "trailing whitespace" "$(changelog_trailing_space)" "$PUBSPEC" \
   "Trailing whitespace"
 
 echo
