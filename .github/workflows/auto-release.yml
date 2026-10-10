@@ -146,7 +146,10 @@ jobs:
           QU_BUILD_SERVER_URL: ${{ secrets.QU_BUILD_SERVER_URL }}
           QU_BUILD_SERVER_KEY: ${{ secrets.QU_BUILD_SERVER_KEY }}
           QU_CARTO_KEY: ${{ secrets.QU_CARTO_KEY }}
-          QU_SENTRY_DSN: ${{ secrets.QU_SENTRY_DSN }}
+          # `secrets.SENTRY_DSN`, not `QU_SENTRY_DSN`: the secret is named
+          # for Sentry, the env var for the dart-define that
+          # `Telemetry.compiledDsn` reads. docs/releasing.md says so too.
+          QU_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           RELEASE_TAG: ${{ inputs.tag }}
         run: .github/scripts/derive_version.sh -- "$RELEASE_TAG"
 
@@ -192,10 +195,16 @@ jobs:
       - name: Verify Android APKs
         run: .github/scripts/verify_apks.sh dist
 
+      # The last two are sentry-native's, which sentry_flutter builds from
+      # source during the Flutter build: libcurl is its Linux transport
+      # (`find_package(CURL REQUIRED)`, which is where this job stopped), and
+      # crashpad takes zlib from the system on everything but MSVC. The runner
+      # image ships zlib, but an image default is not something a build should
+      # rest on - the same argument as the Windows JDK below. ADR 0013.
       - name: Install Linux build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libayatana-appindicator3-dev
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libayatana-appindicator3-dev libcurl4-openssl-dev zlib1g-dev
 
       - name: Build Linux single-file executable
         run: .github/scripts/build/linux.sh
@@ -268,7 +277,10 @@ jobs:
           QU_BUILD_SERVER_URL: ${{ secrets.QU_BUILD_SERVER_URL }}
           QU_BUILD_SERVER_KEY: ${{ secrets.QU_BUILD_SERVER_KEY }}
           QU_CARTO_KEY: ${{ secrets.QU_CARTO_KEY }}
-          QU_SENTRY_DSN: ${{ secrets.QU_SENTRY_DSN }}
+          # `secrets.SENTRY_DSN`, not `QU_SENTRY_DSN`: the secret is named
+          # for Sentry, the env var for the dart-define that
+          # `Telemetry.compiledDsn` reads. docs/releasing.md says so too.
+          QU_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           RELEASE_TAG: ${{ inputs.tag }}
         run: .github/scripts/derive_version.sh -- "$RELEASE_TAG"
 
@@ -346,7 +358,10 @@ jobs:
           QU_BUILD_SERVER_URL: ${{ secrets.QU_BUILD_SERVER_URL }}
           QU_BUILD_SERVER_KEY: ${{ secrets.QU_BUILD_SERVER_KEY }}
           QU_CARTO_KEY: ${{ secrets.QU_CARTO_KEY }}
-          QU_SENTRY_DSN: ${{ secrets.QU_SENTRY_DSN }}
+          # `secrets.SENTRY_DSN`, not `QU_SENTRY_DSN`: the secret is named
+          # for Sentry, the env var for the dart-define that
+          # `Telemetry.compiledDsn` reads. docs/releasing.md says so too.
+          QU_SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           RELEASE_TAG: ${{ inputs.tag }}
         run: .github/scripts/derive_version.sh -- "$RELEASE_TAG"
 

@@ -632,6 +632,13 @@ most of them are expected.
   `sentry_flutter` pins `jni` to 0.14.2, whose Windows CMake target calls
   `find_package(JNI)`; without one the configure step fails before anything
   compiles. The job pins Temurin 17, as the Android one does.
+- **The Linux runner needs libcurl and zlib headers.** `sentry_flutter`
+  builds sentry-native from source during `flutter build linux`, where libcurl
+  is its transport (`find_package(CURL REQUIRED)`) and crashpad takes zlib from
+  the system on everything but MSVC. Without the first the CMake configure
+  stops at `Could NOT find CURL` before anything compiles, which is how the
+  first dev build after this merged lost Linux. `auto-release.yml`'s apt list
+  is the authority; the image ships zlib, but that is not something to rest on.
 - **`windows/CMakeLists.txt` had to move one block.** sentry-native includes
   `GNUInstallDirs`, which clears
   `CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT` - and Flutter's template reads

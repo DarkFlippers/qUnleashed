@@ -192,7 +192,7 @@ local-config files a fresh clone needs, and the only one that fails silently;
 | Key | What it is | Where it comes from |
 |---|---|---|
 | `QU_CHANNEL` | `local`, and leave it that way | — |
-| `QU_SENTRY_DSN` | the project errors are reported to | Sentry → Project → Settings → Client Keys (DSN) |
+| `QU_SENTRY_DSN` | the project errors are reported to | Sentry → Project → Settings → Client Keys (DSN), and the `SENTRY_DSN` repo secret |
 | `QU_CARTO_KEY` | basemap tiles | the `QU_CARTO_KEY` repo secret |
 | `QU_BUILD_SERVER_KEY` | the Flibler build server | its repo secret |
 | `QU_BUILD_SERVER_URL` | only to point at a different server; it has a public default | — |
@@ -220,6 +220,18 @@ In CI it is a repository secret, read by the `Upload debug symbols to Sentry`
 step in each of the three build jobs. A run without it builds and publishes
 normally and says so in the log; the traces from that build are just not
 symbolicated. That is deliberate — a fork has to be able to build.
+
+**The DSN's secret is `SENTRY_DSN`, and the define it becomes is
+`QU_SENTRY_DSN`.** The two spellings are not a typo: the secret is named for
+Sentry, beside `SENTRY_AUTH_TOKEN`, and the define is named for this app,
+beside `QU_CARTO_KEY`. The three `Derive the build identity` steps map one to
+the other. Nothing reads `secrets.QU_SENTRY_DSN` — a build wired to that name
+compiles with the define empty, publishes green, and reports nothing, which is
+what happened on the first push to `main` after ADR 0013 merged. The script
+now says `::warning::No DSN` on a `dev` or `release` build rather than
+omitting the define in silence. `SENTRY_ORG` and `SENTRY_PROJECT` exist as
+secrets but are read by nothing — `pubspec.yaml`'s `sentry:` block supplies
+both to `sentry_dart_plugin`.
 
 ### Checking that reporting works
 
