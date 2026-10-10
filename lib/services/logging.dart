@@ -1,4 +1,3 @@
-import 'dart:collection';
 import 'dart:ui' as ui;
 
 import 'package:flipperlib/flipperlib.dart' show FlipperLogLevel, Log;
@@ -7,10 +6,8 @@ import 'package:logger/logger.dart' as pretty_logging;
 import 'package:logging/logging.dart' as logging;
 import 'package:universal_ble/universal_ble.dart';
 
-import 'telemetry/scrub.dart';
-
-/// The three levels that reach [LogService.history], and so the only ones a
-/// second reader can be told about.
+/// The three levels `LogService` forwards, and so the only ones a reader can
+/// be told about.
 ///
 /// Not every level: `info`, `debug` and `trace` pass no level to `_emit` at
 /// all and const-fold out of a release build, so there is nothing to forward
@@ -112,79 +109,42 @@ class LogService {
   /// a session should produce, and even with stack traces attached that is on
   /// the order of a megabyte at worst.
   ///
-  /// Not `MemoryOutput` from package:logger, which is already a dependency and
-  /// does exactly this: it only sees what goes through a `Logger` instance,
-  /// where this file is wired the other way round and captures that package's
-  /// output instead. Its default filter also wraps the check in `assert`, so
-  /// it drops everything in a release build — the bug being fixed here,
-  /// shipped.
-  static const int historyLimit = 500;
-
-  static final ListQueue<String> _history = ListQueue<String>(historyLimit);
+  /// The last body forwarded, so a run of identical lines is sent once.
+  ///
+  /// All that is left of the 500-entry buffer this file used to keep. ADR 0013
+  /// §1 makes Sentry the only channel, so there is nothing to hold a history
+  /// *for* - but the fold has to survive, because one timed-out multi-frame
+  /// RPC produces an `[RPC] rx unmatched frame` per leftover frame and an
+  /// ordinary directory listing is hundreds of frames. Without this, that one
+  /// failure would send hundreds of identical lines to a reader that has no
+  /// coalescing of its own.
   static String? _lastKept;
-  static int _repeats = 0;
 
-  /// Errors, warnings and caught failures, oldest first, whether or not
-  /// anything printed them.
+  /// Forgets which line went out last, so [_isNewLine] starts fresh.
   ///
-  /// The const guards above compile the chatty levels out of a release build,
-  /// which is right — they run per frame. Letting errors go the same way meant
-  /// every catch handler in the app reported nowhere in exactly the builds
-  /// people run, and there is no second channel: no crash reporting, and the
-  /// console `debugPrint` reaches is not one a user of a shipped build can
-  /// read. So all three are kept here regardless, bounded, and printed only
-  /// when the build is talking.
-  ///
-  /// Errors, warnings and [caught] only. Anything below them fires often
-  /// enough to churn the buffer, which would cost the failure its context —
-  /// the one thing this exists to hold on to. [caught] is admitted on the
-  /// same terms: it is for an operation that did not do what was asked, which
-  /// is bounded by what the user did, and `test/caught_budget_test.dart`
-  /// holds it to that.
-  ///
-  /// One entry per message rather than per line, so a stack trace stays a
-  /// single event. Many of the app's error sites pass `'$e\n$st'`, and a
-  /// Dart stack trace runs to thirty frames or so — split by line, this would
-  /// hold about sixteen failures.
-  ///
-  /// Not everything in the app can reach it. The DFU recovery runs in a
-  /// spawned isolate and statics are isolate-local, so its own logging goes
-  /// nowhere; what is recorded is the failure it reports back over its port.
-  /// A reader should not take this for a complete account of a session.
-  ///
-  /// What arrives from flipperlib is its warnings and errors, in either build —
-  /// see [attachFlipperlibSink] for why both, and for how long that was not
-  /// true of a quiet one.
-  static List<String> get history => List.unmodifiable(_history);
+  /// The fold is the one piece of state in this file that outlives a test: a
+  /// second test logging the body a first one already logged gets no sink call
+  /// at all, and reads as a sink that was never installed. The buffer used to
+  /// carry this reset along with everything else it cleared; with the buffer
+  /// gone this is what is left of it, and `test/flutter_test_config.dart` runs
+  /// it before every test in the suite rather than each file remembering to.
+  @visibleForTesting
+  static void debugForgetLastKept() => _lastKept = null;
 
-  /// Keeps [stamped], unless [body] repeats what was kept last — in which case
-  /// the entry already there gains a count instead of a neighbour.
+  /// Whether [body] is worth forwarding, or repeats the line before it.
   ///
-  /// One timed-out multi-frame RPC produces an `[RPC] rx unmatched frame` per
-  /// leftover frame, and an ordinary directory listing is hundreds of frames.
-  /// Unchecked, that single failure would evict the whole buffer, including
-  /// the timeout that explains it.
-  ///
-  /// **Returns whether the line was new**, which is what [keptSink] needs and
-  /// what this used to fold away silently. The coalescing is invisible from
-  /// [_emit] otherwise, so a sink would have to compare bodies a second time -
-  /// and would get it wrong, because the comparison is against the last *kept*
-  /// body and not against the last line emitted.
-  static bool _remember(String stamped, String body) {
-    if (body == _lastKept && _history.isNotEmpty) {
-      _repeats += 1;
-      _history.removeLast();
-      _history.addLast('$stamped  (${_repeats + 1}×)');
-      return false;
-    }
+  /// The comparison is against the last *forwarded* body, not the last line
+  /// emitted, so an interleaved `info` does not break a run. That is the same
+  /// comparison the old buffer made when it folded a repeat into a `(N×)`
+  /// count; what is gone is the count, which was a display detail of a screen
+  /// that no longer exists.
+  static bool _isNewLine(String body) {
+    if (body == _lastKept) return false;
     _lastKept = body;
-    _repeats = 0;
-    _history.addLast(stamped);
-    if (_history.length > historyLimit) _history.removeFirst();
     return true;
   }
 
-  /// Where kept lines go besides [history], or nowhere.
+  /// Where kept lines go, and the only place they go.
   ///
   /// Null until something installs one. `lib/services/telemetry/` does, when
   /// reporting is on, and clears it again when it is turned off - the same
@@ -204,18 +164,21 @@ class LogService {
 
   /// Whether [_announce] is already running.
   ///
-  /// A sink that fails is reported with [LogService.error], which re-enters
-  /// [_emit] and would call the sink again - and if that call fails the same
-  /// way, forever. Reporting the first failure and dropping the rest is the
-  /// only termination there is: the alternative is a stack overflow in the
-  /// logger, on a path that exists because something was already broken.
+  /// **For a sink that logs, not one that throws.** A throw is caught in
+  /// [_announce] and reported straight to `debugPrint`, which cannot come back
+  /// round. A sink that *logs* can: `Telemetry._reportKept` reports its own
+  /// send failures through [LogService.error], which re-enters [_emit], which
+  /// calls the sink, which logs again - and the only termination is dropping
+  /// the re-entrant line, because the alternative is a stack overflow in the
+  /// logger on a path that exists because something was already broken.
   static bool _announcing = false;
 
-  /// Hands one kept line to [keptSink] without letting it cost the line.
+  /// Hands one kept line to [keptSink] without letting it cost the process.
   ///
-  /// [history] is written before this runs. The local record is the surface
-  /// somebody can actually open, so a remote reader that throws must not take
-  /// it with them.
+  /// There is no local record behind this any more, so a sink that throws
+  /// loses the line - which is why the failure is itself reported rather than
+  /// swallowed, and why [_announcing] exists to stop that report becoming the
+  /// next failure.
   static void _announce(KeptLevel level, String body) {
     final sink = keptSink;
     if (sink == null || _announcing) return;
@@ -223,22 +186,26 @@ class LogService {
     try {
       sink(level, body);
     } catch (e) {
+      // **Straight to `debugPrint`, not through [error].** Routing it through
+      // this file's own levels puts it back into [_emit], which calls
+      // [_announce] again - and [_announcing] is still true, so the report is
+      // dropped on the floor. With the history gone there is nothing else
+      // holding it, so a broken sink would be a reporting feature that
+      // silently does nothing, which is the one outcome this catch exists to
+      // prevent.
+      //
+      // Unconditional, unlike every other print in this file: `printing` is a
+      // const that is false in a release build, and this is the one line whose
+      // whole purpose is to survive there. `debugPrint` still reaches the
+      // platform log - `adb logcat`, Console.app - which is the only surface
+      // left once the sink itself is the thing that is broken.
+      //
       // Not `describe`: the useful fact is which line the sink broke on, not
       // where inside the sink it happened.
-      error('[Telemetry] the kept-log sink threw on "$body": $e');
+      debugPrint('[LogService] the kept-log sink threw on "$body": $e');
     } finally {
       _announcing = false;
     }
-  }
-
-  /// Drops everything [history] holds.
-  ///
-  /// Not test-only: the log screen offers it, because a log is copied into a
-  /// bug report and then wants emptying before reproducing the next one.
-  static void clearHistory() {
-    _history.clear();
-    _lastKept = null;
-    _repeats = 0;
   }
 
   static bool _initialized = false;
@@ -507,7 +474,7 @@ class LogService {
   /// Running commentary, and the one level that does not survive.
   ///
   /// Never kept, in any build: [history] holds errors, warnings and [caught]
-  /// only, so nothing sent here can reach the log screen. On top of that [infoOn] is a
+  /// only, so nothing sent here is kept. On top of that [infoOn] is a
   /// const that folds to false in an ordinary release build, so the call
   /// usually compiles away — and a build made to talk with `QLOG=true` reaches
   /// only a console that, per [history], a user of a shipped build cannot read.
@@ -644,16 +611,16 @@ class LogService {
   /// Hands one library line to [breadcrumbSink] without letting it cost the
   /// line.
   ///
-  /// Redacted here rather than at the sink, because [_emit] redacts what it
-  /// keeps and a breadcrumb that skipped it would be the one place an absolute
-  /// path left the device unredacted. The rest of §6.2 runs at the sink, which
-  /// is where it leaves.
+  /// Not redacted here: the sink scrubs what it sends, as it does for every
+  /// other channel. This used to redact first, because `_emit` redacted what
+  /// it kept and a breadcrumb skipped that path - there is nothing to skip any
+  /// more.
   static void _dropCrumb(FlipperLogLevel severity, String message) {
     final sink = breadcrumbSink;
     if (sink == null || _crumbing) return;
     _crumbing = true;
     try {
-      sink(severity, _redact(message));
+      sink(severity, message);
     } catch (e) {
       error('[Telemetry] the breadcrumb sink threw on "$message": $e');
     } finally {
@@ -694,20 +661,6 @@ class LogService {
   // today; saying it this way stops an ungated caller ever making a quiet
   // build print.
   static void _write(String msg) => _emit(msg, console: printing);
-
-  /// What a message says about the user's own files, folders and devices — a
-  /// card called `Office badge.nfc`, a Flipper's name, a card's UID inside a
-  /// dictionary filename — is not distinguishable from any other text, which
-  /// is why the log screen says what the log can contain and shows it to the
-  /// user before offering to copy it. Absolute paths are the exception, and
-  /// [Scrub.paths] is where they go.
-  ///
-  /// The patterns moved to `telemetry/scrub.dart` with ADR 0013 §6, which asks
-  /// for one scrubber for every destination rather than one per destination.
-  /// The *call* stays here, at the sink, for the reason it was here to begin
-  /// with: a home directory is a name to anyone but its owner, in every build,
-  /// so nothing unredacted should enter [history] in the first place.
-  static String _redact(String msg) => Scrub.paths(msg);
 
   /// How long a cached zone offset is trusted before it is read again.
   static Duration _zoneOffsetTtl = const Duration(minutes: 1);
@@ -799,16 +752,16 @@ class LogService {
     // universal_ble keep handing lines to a sink that drops them, and every
     // one of them used to buy a timestamp first.
     if (level == null && !console) return;
-    final ts = _stamp(DateTime.now());
-    if (level != null) {
-      final kept = _redact(msg);
-      // Only the first of a run is announced. One RPC timeout produces
-      // hundreds of identical lines, which is why _remember coalesces them -
-      // forwarding each would send the same hundreds to a remote reader that
-      // has no coalescing at all.
-      if (_remember('[$ts] $kept', kept)) _announce(level, kept);
-    }
+    // Only the first of a run is forwarded. One RPC timeout produces hundreds
+    // of identical lines, and the reader at the other end has no coalescing of
+    // its own.
+    //
+    // Not redacted here. Everything that leaves goes through the sink, which
+    // scrubs it; the console is the developer's own machine and wants the real
+    // path.
+    if (level != null && _isNewLine(msg)) _announce(level, msg);
     if (!console) return;
+    final ts = _stamp(DateTime.now());
     for (final line in msg.split('\n')) {
       debugPrint('[$ts] $line');
     }

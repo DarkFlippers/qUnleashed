@@ -1,12 +1,21 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/services/logging.dart';
 
-/// The `hh:mm:ss` every kept line carries, and what it costs to produce.
+import 'kept_lines.dart';
+import 'quiet_log.dart';
+
+/// The `hh:mm:ss` every printed line carries, and what it costs to produce.
 ///
 /// Reading an hour off a local `DateTime` forces a timezone lookup, and that
 /// lookup was most of what a log line cost - 6676 ns against 260 ns for the
 /// shape here, per line, and worse under AOT. #116 measured it; this pins the
 /// behaviour that makes the cheaper shape safe to keep.
+///
+/// **The console is the only place a stamp exists now.** ADR 0013 §1 took the
+/// on-screen log away and the reader that replaced it stamps events at ingest,
+/// so the audience for this is one person watching a terminal - which is also
+/// why only a printing build pays for it at all, and why the groups below that
+/// count lookups are meaningful only in that build.
 String _two(int v) => v < 10 ? '0$v' : '$v';
 
 String wallClock(DateTime at) =>
@@ -15,38 +24,44 @@ String wallClock(DateTime at) =>
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  setUp(recordKeptLines);
+
   setUp(() {
-    LogService.clearHistory();
+    clearKeptLines();
     LogService.debugResetZoneOffset();
     addTearDown(LogService.debugResetZoneOffset);
   });
 
-  String? lastStamp() => LogService.history.isEmpty
-      ? null
-      : LogService.history.last.substring(1, 9);
+  /// The `hh:mm:ss` off the front of the last line printed.
+  ///
+  /// These used to read it off the last *kept* line. The kept body carries no
+  /// stamp at all now - `logging_kept_test.dart` asserts that it does not -
+  /// so the console is where the property lives and `printed` is how to see it.
+  String? stampOf(List<String> lines) =>
+      lines.isEmpty ? null : lines.last.substring(1, 9);
 
   group('the stamp', () {
     // The whole point of the cache is that it cannot be seen here: a line has
     // to read as the clock on the wall, offset or no offset.
     test('is the local wall clock, not UTC', () {
       final before = DateTime.now();
-      LogService.warn('something happened');
+      final lines = printed(() => LogService.warn('something happened'));
       final after = DateTime.now();
 
       expect(
-        lastStamp(),
+        stampOf(lines),
         anyOf(wallClock(before), wallClock(after)),
         reason: 'the second may tick between the two reads',
       );
     });
 
     test('is still the wall clock on a line taken from the cache', () {
-      LogService.warn('first');
+      printed(() => LogService.warn('first'));
       final before = DateTime.now();
-      LogService.warn('second');
+      final lines = printed(() => LogService.warn('second'));
       final after = DateTime.now();
 
-      expect(lastStamp(), anyOf(wallClock(before), wallClock(after)));
+      expect(stampOf(lines), anyOf(wallClock(before), wallClock(after)));
     });
   });
 
@@ -73,9 +88,11 @@ void main() {
 
   group('the zone offset', () {
     test('is read once, not once per line', () {
-      LogService.warn('one');
-      LogService.warn('two');
-      LogService.warn('three');
+      quietly(() {
+        LogService.warn('one');
+        LogService.warn('two');
+        LogService.warn('three');
+      });
 
       expect(LogService.debugZoneLookups, 1);
     });
@@ -84,8 +101,10 @@ void main() {
     test('is read again once its window has passed', () {
       LogService.debugResetZoneOffset(ttl: Duration.zero);
 
-      LogService.warn('one');
-      LogService.warn('two');
+      quietly(() {
+        LogService.warn('one');
+        LogService.warn('two');
+      });
 
       expect(LogService.debugZoneLookups, 2);
     });
@@ -96,18 +115,20 @@ void main() {
     // to, and in a build that prints nothing it keeps neither. Every one of
     // those used to buy a timestamp first.
     test('costs no zone lookup', () {
-      LogService.debugEmitUnheard('chatter');
+      quietly(() => LogService.debugEmitUnheard('chatter'));
 
       expect(LogService.debugZoneLookups, 0);
-      expect(LogService.history, isEmpty);
+      expect(keptLines, isEmpty);
     });
 
     test('is the only kind that is skipped', () {
-      LogService.debugEmitUnheard('chatter');
-      LogService.warn('a real failure');
+      quietly(() {
+        LogService.debugEmitUnheard('chatter');
+        LogService.warn('a real failure');
+      });
 
       expect(LogService.debugZoneLookups, 1);
-      expect(LogService.history, hasLength(1));
+      expect(keptLines, hasLength(1));
     });
   });
 }

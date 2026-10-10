@@ -3,8 +3,9 @@
 // `lib/services/telemetry/` installs one of these to turn kept lines into
 // Sentry Logs. What this file holds is the contract `LogService` offers it,
 // which has three parts worth tests: which levels arrive and as what, that a
-// repeated line arrives **once**, and that a sink which fails costs neither
-// the local record nor the process.
+// repeated line arrives **once**, and that a sink which fails neither takes
+// the process down nor goes unreported - there is no local record left for it
+// to fall back on.
 import 'package:flipperlib/flipperlib.dart' show FlipperLogLevel, Log;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/services/logging.dart';
@@ -26,15 +27,11 @@ void main() {
   late _Sink sink;
 
   setUp(() {
-    LogService.clearHistory();
     sink = _Sink();
     LogService.keptSink = sink.call;
   });
 
-  tearDown(() {
-    LogService.keptSink = null;
-    LogService.clearHistory();
-  });
+  tearDown(() => LogService.keptSink = null);
 
   group('which levels reach it', () {
     test('error arrives as error', () {
@@ -99,18 +96,20 @@ void main() {
   group('a repeated line', () {
     test('arrives once, however many times it is logged', () {
       // One timed-out multi-frame RPC produces an `rx unmatched frame` per
-      // leftover frame, and a directory listing is hundreds of frames.
-      // `_remember` folds those into one history entry; a sink told about each
-      // of them would send hundreds to a reader with no coalescing at all.
+      // leftover frame, and a directory listing is hundreds of frames. The
+      // reader at the other end has no coalescing of its own, so the fold is
+      // the only thing standing between one failure and hundreds of sends.
+      //
+      // The old buffer rendered the repeats as a `(5×)` suffix and this used
+      // to assert that too; with no buffer there is only the count of sends,
+      // which is the half that mattered.
       quietly(() {
         for (var i = 0; i < 5; i++) {
           LogService.error('[RPC] rx unmatched frame');
         }
       });
       expect(sink.bodies, hasLength(1));
-      // And the history agrees, so the two cannot drift: the fold is the same
-      // decision in both places.
-      expect(LogService.history.single, contains('(5×)'));
+      expect(sink.bodies.single, '[error] [RPC] rx unmatched frame');
     });
 
     test('a different line after a run of repeats arrives', () {
@@ -135,54 +134,93 @@ void main() {
   });
 
   group('the body it is handed', () {
-    test('has absolute paths already out of it', () {
+    test('is raw, because the sink is what scrubs', () {
+      // This used to arrive with the account name already out of it, because
+      // `_emit` redacted what it kept. Nothing is kept now, so there is no
+      // reason for this file to scrub on the way past - and one reason not to:
+      // the console is a developer's own machine and wants the real path.
+      //
+      // `Telemetry._reportKept` runs `Scrub.outbound` before it sends, which
+      // `telemetry_lifecycle_test.dart` and `scrub_test.dart` cover between
+      // them.
       Scrub.debugUseHomes([r'C:\Users\Myte']);
       addTearDown(() => Scrub.debugUseHomes(null));
       quietly(() => LogService.error(r'could not open C:\Users\Myte\x.ir'));
-      expect(sink.bodies.single, r'[error] could not open ~\x.ir');
+      expect(sink.bodies.single, r'[error] could not open C:\Users\Myte\x.ir');
     });
 
     test('carries no timestamp, because the reader stamps its own', () {
       quietly(() => LogService.error('plain'));
       expect(sink.bodies.single, '[error] plain');
-      // The history entry does carry one, which is the difference.
-      expect(LogService.history.single, startsWith('['));
-      expect(LogService.history.single, contains('[error] plain'));
+      // The level prefix is part of the body and the stamp is not. The stamp
+      // now exists only on the console, which `log_timestamp_test.dart`
+      // asserts - this used to compare against a history entry that carried
+      // one.
+      expect(sink.bodies.single, startsWith('[error] '));
+      expect(RegExp(r'^\[\d\d:').hasMatch(sink.bodies.single), isFalse);
     });
   });
 
   group('a sink that fails', () {
-    test('does not cost the line it failed on', () {
+    test('is reported to the console, because nothing else is left', () {
+      // This used to assert the history still held the line while the sink
+      // failed. There is no history: a throw here loses the line outright,
+      // which is why the failure has to reach *somewhere*.
+      //
+      // And it cannot reach it through `LogService.error`, which is what this
+      // catch used to call: that re-enters `_emit`, which calls `_announce`,
+      // where `_announcing` is still true - so the report was dropped and a
+      // broken sink was invisible. It goes straight to `debugPrint` now, which
+      // survives a release build.
       LogService.keptSink = (_, _) => throw StateError('sink is broken');
-      quietly(() => LogService.error('[CLI] write failed'));
 
-      // Two entries and in this order. Matching the first one by substring
-      // does not work: the report quotes the body it failed on, so a filter
-      // for the original line finds both and `hasLength(1)` fails for a
-      // reason that has nothing to do with the behaviour.
-      expect(LogService.history, hasLength(2));
+      final lines = printed(() => LogService.error('[CLI] write failed'));
+
       expect(
-        LogService.history.first,
-        endsWith('[error] [CLI] write failed'),
-        reason: 'history is written before the sink runs',
+        lines.where((l) => l.contains('the kept-log sink threw')),
+        hasLength(1),
       );
       expect(
-        LogService.history.last,
-        contains('kept-log sink threw'),
-        reason: 'and the broken sink is itself reported',
+        lines.firstWhere((l) => l.contains('the kept-log sink threw')),
+        contains('[CLI] write failed'),
+        reason: 'the report names the line it lost',
       );
     });
 
-    test('does not recurse, because the report would re-enter it', () {
-      // Reporting a broken sink goes through LogService.error, which re-enters
-      // _emit. Without the reentrancy guard this is unbounded: the report
-      // calls the sink, the sink throws, that is reported, and so on until the
-      // stack goes. The test that catches it is the one that would not
-      // terminate at all without the fix.
+    test('is not re-entered by the report, however it is reported', () {
+      // Two mechanisms hold this and only one of them is visible here. The
+      // report goes to `debugPrint` rather than through `error`, so a throwing
+      // sink cannot come back round even with `_announcing` deleted; the test
+      // below, where the sink *logs* instead of throwing, is the one that
+      // fails without the guard.
+      //
+      // Kept anyway, because a future report that went back through `error`
+      // would be caught by this and by nothing else - and because a sink is
+      // far likelier to throw than to log.
       var calls = 0;
       LogService.keptSink = (_, _) {
         calls += 1;
         throw StateError('always broken');
+      };
+      quietly(() => LogService.error('[CLI] write failed'));
+      expect(calls, 1);
+    });
+
+    test('that logs instead of throwing does not recurse either', () {
+      // The shape `_announcing` actually exists for, and the shipped one:
+      // `Telemetry._reportKept` logs its own failures. Without the guard the
+      // sink's line re-enters `_emit`, which calls the sink again - verified
+      // by deleting the guard, which takes this to 2.
+      //
+      // Two, not a hang, and the reason is worth knowing: the fold stops it,
+      // because this sink logs the *same* body every time and the second one
+      // is folded away. A real sink whose message carries the error text would
+      // not be stopped there, so the fold is not a substitute for the guard -
+      // it is only what keeps the mutation cheap to run.
+      var calls = 0;
+      LogService.keptSink = (_, _) {
+        calls += 1;
+        LogService.error('[Telemetry] a kept log line was not sent');
       };
       quietly(() => LogService.error('[CLI] write failed'));
       expect(calls, 1);
@@ -235,10 +273,15 @@ void main() {
     });
   });
 
-  test('no sink installed changes nothing', () {
+  test('no sink installed is not an error', () {
+    // Every local build and every build with reporting off. There is nothing
+    // left to observe once the sink is gone - which is the point of the
+    // assertion: logging must not throw just because nobody is listening.
     LogService.keptSink = null;
-    quietly(() => LogService.error('[CLI] write failed'));
-    expect(LogService.history, hasLength(1));
+    expect(
+      () => quietly(() => LogService.error('[CLI] write failed')),
+      returnsNormally,
+    );
   });
 
   // ADR 0013 §4: flipperlib is the only source of breadcrumbs, because its
@@ -273,7 +316,7 @@ void main() {
 
       expect(crumbs, ['reconnecting']);
       expect(crumbLevels, [FlipperLogLevel.info]);
-      expect(LogService.history, isEmpty, reason: 'a breadcrumb is not kept');
+      expect(sink.bodies, isEmpty, reason: 'a breadcrumb is not kept');
       expect(sink.levels, isEmpty, reason: 'and reaches no Sentry log');
     });
 
@@ -310,14 +353,17 @@ void main() {
       expect(crumbs, hasLength(3));
     });
 
-    test('absolute paths are out of it before it leaves this file', () {
-      // The one place a path could otherwise escape unredacted: `_emit`
-      // redacts what it keeps, and a breadcrumb does not go through the kept
-      // branch at all.
+    test('carries absolute paths, because the sink is what scrubs', () {
+      // This used to be redacted here, on the grounds that a breadcrumb skips
+      // the kept branch and so skipped the redaction with it. Both channels
+      // scrub in the sink now - `Telemetry._dropCrumb` runs `Scrub.outbound`
+      // before it builds the `Breadcrumb`, and `beforeSend` runs it again over
+      // the crumbs attached to an event - which leaves one rule to read
+      // instead of two, and leaves the console honest.
       Scrub.debugUseHomes([r'C:\Users\Myte']);
       addTearDown(() => Scrub.debugUseHomes(null));
       quietly(() => Log.info(r'cache at C:\Users\Myte\flipper'));
-      expect(crumbs.single, r'cache at ~\flipper');
+      expect(crumbs.single, r'cache at C:\Users\Myte\flipper');
     });
 
     test('a sink that throws costs neither the line nor the process', () {
@@ -332,12 +378,12 @@ void main() {
 
       expect(calls, 1, reason: 'the report must not re-enter the sink');
       expect(
-        LogService.history.any((l) => l.contains('[BLE] degraded')),
+        sink.bodies.any((l) => l.contains('[BLE] degraded')),
         isTrue,
         reason: 'the kept line survives a broken breadcrumb reader',
       );
       expect(
-        LogService.history.any((l) => l.contains('breadcrumb sink threw')),
+        sink.bodies.any((l) => l.contains('breadcrumb sink threw')),
         isTrue,
       );
     });

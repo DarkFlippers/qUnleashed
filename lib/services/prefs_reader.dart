@@ -40,7 +40,7 @@ class PrefsReader {
   ///
   /// Call it after the last read. The level is fixed here rather than passed
   /// in, for the reason `guarded` fixes its own: a per-site level choice is
-  /// the drift this exists to close, and a tally the log screen never keeps
+  /// the drift this exists to close, and a tally nothing ever keeps
   /// is not a tally. Only [tag] varies, because what differs between callers
   /// is which store is talking, not how bad it is.
   ///

@@ -4,10 +4,10 @@ import 'logging.dart';
 ///
 /// For a future nobody is waiting on. There is no caller to hand the failure
 /// back to and no UI path it can take, so the log is the only place it can
-/// land. A rejection with *no* handler at all does reach [LogService.history],
-/// through the uncaught handlers #89 installed — but only as `[uncaught]`,
-/// with nothing saying which operation it was. Catching buys the label; what
-/// catching and then logging at `info` bought was nothing at all.
+/// land. A rejection with *no* handler at all is still recorded, through the
+/// uncaught handlers #89 installed — but only as `[uncaught]`, with nothing
+/// saying which operation it was. Catching buys the label; what catching and
+/// then logging at `info` bought was nothing at all.
 ///
 /// The returned future completes when [task] settles and **never rejects**.
 /// The queues that call this depend on that: they chain the next operation

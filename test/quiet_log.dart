@@ -44,3 +44,24 @@ List<String> printed(void Function() body) {
   }
   return lines;
 }
+
+/// [printed], for a [body] that has to be awaited.
+///
+/// Not [printed] with an `async` body passed to it: that returns the moment
+/// the first `await` inside suspends, `debugPrint` is restored, and the lines
+/// the rest of the call prints go to the real console and come back as an
+/// empty list - a test that then asserts `isEmpty` passes for the wrong
+/// reason.
+Future<List<String>> printedAsync(Future<void> Function() body) async {
+  final lines = <String>[];
+  final previous = debugPrint;
+  debugPrint = (String? message, {int? wrapWidth}) {
+    if (message != null) lines.add(message);
+  };
+  try {
+    await body();
+  } finally {
+    debugPrint = previous;
+  }
+  return lines;
+}

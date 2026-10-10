@@ -80,7 +80,7 @@ class QAppThemeController extends ChangeNotifier with WidgetsBindingObserver {
       // appears, or a widget engine whose link keeper never comes up.
       //
       // installUncaughtHandlers would still keep the error, but `history` is
-      // in memory and there is no log screen to read it from, so the record
+      // in memory and nothing reads a local log any more, so the record
       // dies with the process. Caught, it survives into a session someone
       // can look at. #124.
       LogService.warn('[AppTheme] load failed: ${LogService.describe(e, st)}');

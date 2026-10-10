@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/components/open_url.dart';
-import 'package:qunleashed/services/logging.dart';
+
+import 'kept_lines.dart';
 
 /// Opening a link, and what it says when nothing opens.
 ///
@@ -17,6 +18,8 @@ const _url = 'https://example.invalid/help';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUp(recordKeptLines);
 
   late int logBase;
 
@@ -33,8 +36,8 @@ void main() {
   }
 
   setUp(() {
-    LogService.clearHistory();
-    logBase = LogService.history.length;
+    clearKeptLines();
+    logBase = keptLines.length;
     addTearDown(() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(_channel, null);
@@ -42,7 +45,7 @@ void main() {
   });
 
   Iterable<String> lines(String fragment) =>
-      LogService.history.skip(logBase).where((l) => l.contains(fragment));
+      keptLines.skip(logBase).where((l) => l.contains(fragment));
 
   /// Taps a link from a real tree, because `openUrl` takes a context.
   ///

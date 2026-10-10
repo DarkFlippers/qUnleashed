@@ -11,19 +11,21 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 /// SDK, so `LogService` can call it without the app growing a vendor
 /// dependency outside this folder.
 ///
-/// Two levels, because the two readers want different things.
+/// One level, and it used to be two.
 ///
-/// [paths] runs at the sink, on everything kept, as it has since #89: a home
-/// directory is noise to the person reading the log on their own phone and a
-/// name to anyone else, so there is no build in which keeping it is right.
-/// Nothing unredacted ever enters the history.
+/// The split existed because the app kept its own on-screen log: scrubbing a
+/// Flipper's name and a card filename at the sink would have handed the user a
+/// log about `<redacted>` failing to read `<redacted>`, so [outbound]'s
+/// aggressive patterns were held back for what left the device while a milder
+/// `paths` ran on what stayed.
 ///
-/// [outbound] runs on what leaves the device. The difference matters because
-/// the aggressive patterns §6 asks for - a Flipper's name, a card filename,
-/// a long hex run - are the very words that make an on-screen log useful to
-/// the user debugging their own device. Scrubbing those at the sink would
-/// hand them a log about `<redacted>` failing to read `<redacted>`. So the
-/// history stays readable and the copy that travels is the one that pays.
+/// ADR 0013 §1 removed the local log, so there is no "what stayed" any more.
+/// Everything `LogService` forwards leaves, which means everything pays - and
+/// the two-level distinction became a seam with one side.
+///
+/// The console is the exception, and it is not this function's business: a
+/// talking build prints the real path, because that build is a developer's own
+/// machine.
 abstract final class Scrub {
   /// Home directories replaced with `~` wherever they appear.
   ///
@@ -96,7 +98,11 @@ abstract final class Scrub {
   static int get debugHomePatternCount => _homes.length;
 
   /// [msg] with the account name out of every path in it.
-  static String paths(String msg) {
+  ///
+  /// Private now. It was the public first level of a two-level scrubber; with
+  /// the local log gone, the only entry point is [outbound], and a second
+  /// public one would be an invitation to send something half-scrubbed.
+  static String _paths(String msg) {
     var out = msg;
     for (final home in _homes) {
       out = out.replaceAll(home, '~');
@@ -320,7 +326,7 @@ abstract final class Scrub {
   /// something it did not recognise would lose exactly the failures nobody has
   /// seen before, and `beforeSend` reads null as "drop this event".
   static String outbound(String msg) {
-    var out = paths(msg);
+    var out = _paths(msg);
     out = out.replaceAllMapped(_query, (m) => '${m[1]}?<query>');
     out = out.replaceAllMapped(_flipperFile, (m) => '${m[1]}<name>${m[3]}');
     // After the path rule, which has already replaced the stems it owns - so

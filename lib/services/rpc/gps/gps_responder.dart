@@ -279,8 +279,8 @@ class FlipperGpsResponder {
       );
     } catch (error) {
       // Stays at info: one of these goes out per fix, for as long as the
-      // device is asking. A link that has gone would put a line up every
-      // second and push the rest of the log screen out.
+      // device is asking. A link that has gone would be a report a second,
+      // which buries every other failure in the channel it shares.
       LogService.info('[GPS] failed to send location: $error');
     }
   }

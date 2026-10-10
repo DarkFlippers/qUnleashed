@@ -16,7 +16,8 @@
 // CI build reported `local`.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/services/build_identity.dart';
-import 'package:qunleashed/services/logging.dart';
+
+import 'kept_lines.dart';
 
 BuildStamp stamp({
   String version = '0.14.1',
@@ -35,6 +36,8 @@ BuildStamp stamp({
 );
 
 void main() {
+  setUp(recordKeptLines);
+
   // Abbreviation is private now, so it is checked through the getter that uses
   // it rather than directly.
   group('shortCommit', () {
@@ -137,32 +140,11 @@ void main() {
     });
   });
 
-  group('header', () {
-    // One line when neither submodule said anything, which is the desktop jobs:
-    // a build that does not touch flipperlib or dartufbt still has to copy a
-    // log that identifies itself.
-    test('is one line when no submodule commit is known', () {
-      expect(stamp().header, 'qUnleashed 0.14.1-dev · 14001 · abc1234');
-    });
-
-    test('puts the submodules on a second line', () {
-      expect(
-        stamp(
-          flipperlibCommit: 'd2d8f7cc5691306',
-          dartufbtCommit: 'c66737ce0cf9',
-        ).header,
-        'qUnleashed 0.14.1-dev · 14001 · abc1234\n'
-        'flipperlib d2d8f7c · dartufbt c66737c',
-      );
-    });
-
-    test('names only the submodule it knows about', () {
-      expect(
-        stamp(flipperlibCommit: 'd2d8f7cc5691306').header,
-        'qUnleashed 0.14.1-dev · 14001 · abc1234\nflipperlib d2d8f7c',
-      );
-    });
-  });
+  // A `header` group stood here, over the first line of a copied log. The log
+  // and its copy button are gone with ADR 0013 §1, and the submodule commits
+  // it rendered are asserted where they are now read - `telemetry_test.dart`,
+  // over the `TelemetryPlan.tags` that go out on every event, and in full
+  // rather than shortened to seven characters.
 
   // Classification, which is where the failure direction lives. A bare String
   // channel matched neither `dev` nor `local` for anything unexpected, so a
@@ -192,17 +174,14 @@ void main() {
     test(
       'says so for a value it did not expect, and not for an absent one',
       () {
-        LogService.clearHistory();
+        clearKeptLines();
         BuildChannel.parse('prod');
-        expect(
-          LogService.history.single,
-          contains('[caught] [Build] unknown channel'),
-        );
+        expect(keptLines.single, contains('[caught] [Build] unknown channel'));
 
-        LogService.clearHistory();
+        clearKeptLines();
         BuildChannel.parse('');
-        expect(LogService.history, isEmpty);
-        LogService.clearHistory();
+        expect(keptLines, isEmpty);
+        clearKeptLines();
       },
     );
   });

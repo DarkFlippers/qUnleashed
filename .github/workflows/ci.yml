@@ -143,5 +143,5 @@ jobs:
           --test-randomize-ordering-seed=random
           --dart-define=QLOG=false
           --dart-define=QLOG_EXPECT_QUIET=true
-          test/logging_history_test.dart
+          test/logging_kept_test.dart
           test/kept_sink_test.dart

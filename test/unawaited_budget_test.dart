@@ -3,7 +3,7 @@
 // `unawaited(f())` says "I have decided not to await this". In Dart that is the
 // same statement as "I have decided this cannot fail": the future still
 // rejects, and with no listener the rejection goes to the zone. #89's uncaught
-// handlers do put it in `LogService.history`, but as `[uncaught]` with nothing
+// handlers do put it in `keptLines`, but as `[uncaught]` with nothing
 // saying which operation it was - so a bug report has a stack and no subject.
 //
 // Worse, it is also how a failure escapes the catch that was written for it.
@@ -50,6 +50,8 @@
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'kept_lines.dart';
 
 import 'ratchet.dart';
 
@@ -207,6 +209,8 @@ List<int> unawaitedLines(CompilationUnit unit) {
 List<int> linesIn(String source) => unawaitedLines(parseUnit(source));
 
 void main() {
+  setUp(recordKeptLines);
+
   group('the rule', () {
     test('counts a future dropped with no handler', () {
       expect(linesIn('void f() { unawaited(g()); }'), hasLength(1));

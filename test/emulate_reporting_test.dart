@@ -1,7 +1,8 @@
 import 'package:flipperlib/flipperlib.dart' hide DateTime, File;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/services/emulate/service.dart';
-import 'package:qunleashed/services/logging.dart';
+
+import 'kept_lines.dart';
 
 import 'fake_app_client.dart';
 
@@ -13,6 +14,8 @@ import 'fake_app_client.dart';
 /// existed only at a level a release build drops, so a bug report about an
 /// emulation that would not start arrived with nothing in it. #103, ADR 0008.
 void main() {
+  setUp(recordKeptLines);
+
   late FakeAppClient client;
   late EmulateService service;
   late int logBase;
@@ -20,13 +23,13 @@ void main() {
   setUp(() {
     client = FakeAppClient();
     service = EmulateService(client: client);
-    LogService.clearHistory();
-    logBase = LogService.history.length;
+    clearKeptLines();
+    logBase = keptLines.length;
     addTearDown(client.close);
   });
 
   Iterable<String> lines(String fragment) =>
-      LogService.history.skip(logBase).where((l) => l.contains(fragment));
+      keptLines.skip(logBase).where((l) => l.contains(fragment));
 
   group('a run the user is told failed', () {
     test('says why the app would not start', () async {
@@ -98,7 +101,7 @@ void main() {
       await service.sendPress();
       await service.sendRelease();
       client.loadThrows = StateError('file missing');
-      LogService.clearHistory();
+      clearKeptLines();
 
       await service.sendPress();
 
@@ -114,7 +117,7 @@ void main() {
       await service.sendPress();
       await service.sendRelease();
       client.loadThrows = StateError('file missing');
-      LogService.clearHistory();
+      clearKeptLines();
 
       await service.sendPress();
 
@@ -125,7 +128,7 @@ void main() {
       await service.start(key());
       await service.sendPress();
       await service.sendRelease();
-      LogService.clearHistory();
+      clearKeptLines();
 
       await service.sendPress();
 
@@ -140,7 +143,7 @@ void main() {
     test('is reported when the exit is refused', () async {
       await service.start(key());
       client.exitThrows = StateError('no response');
-      LogService.clearHistory();
+      clearKeptLines();
 
       await service.stop();
 
@@ -149,7 +152,7 @@ void main() {
 
     test('says nothing when the exit goes through', () async {
       await service.start(key());
-      LogService.clearHistory();
+      clearKeptLines();
 
       await service.stop();
 

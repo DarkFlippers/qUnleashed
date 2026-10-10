@@ -5,9 +5,10 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/services/assembler/controller.dart';
 import 'package:qunleashed/services/localization/controller.dart';
-import 'package:qunleashed/services/logging.dart';
 import 'package:qunleashed/theme/theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'kept_lines.dart';
 
 import 'unopenable_prefs.dart';
 
@@ -26,8 +27,10 @@ import 'unopenable_prefs.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  setUp(recordKeptLines);
+
   setUp(() {
-    LogService.clearHistory();
+    clearKeptLines();
     SharedPreferences.setMockInitialValues(const {});
   });
 
@@ -40,7 +43,7 @@ void main() {
       await theme.loadThemeMode();
 
       expect(theme.themeMode, QThemeMode.light);
-      expect(LogService.history, isEmpty);
+      expect(keptLines, isEmpty);
     });
 
     test('a store that will not open leaves what it had and says so', () async {
@@ -50,7 +53,7 @@ void main() {
       await expectLater(theme.loadThemeMode(), completes);
 
       expect(theme.themeMode, before);
-      final kept = LogService.history
+      final kept = keptLines
           .where((l) => l.contains('[AppTheme] load failed'))
           .toList();
       expect(kept, hasLength(1));
@@ -68,9 +71,7 @@ void main() {
       await theme.loadThemeMode();
 
       expect(theme.themeMode, before);
-      final kept = LogService.history
-          .where((l) => l.contains('[AppTheme]'))
-          .toList();
+      final kept = keptLines.where((l) => l.contains('[AppTheme]')).toList();
       expect(kept, hasLength(1));
       expect(kept.single, contains('theme.mode'));
     });
@@ -86,7 +87,7 @@ void main() {
       await locale.loadLocale();
 
       expect(locale.locale, const Locale('ru'));
-      expect(LogService.history, isEmpty);
+      expect(keptLines, isEmpty);
     });
 
     test('a store that will not open leaves what it had and says so', () async {
@@ -95,7 +96,7 @@ void main() {
       await expectLater(locale.loadLocale(), completes);
 
       expect(locale.locale, isNull, reason: 'still following the system');
-      final kept = LogService.history
+      final kept = keptLines
           .where((l) => l.contains('[Locale] load failed'))
           .toList();
       expect(kept, hasLength(1));
@@ -108,9 +109,7 @@ void main() {
       await locale.loadLocale();
 
       expect(locale.locale, isNull);
-      final kept = LogService.history
-          .where((l) => l.contains('[Locale]'))
-          .toList();
+      final kept = keptLines.where((l) => l.contains('[Locale]')).toList();
       expect(kept, hasLength(1));
       expect(kept.single, contains('locale.code'));
     });
@@ -149,7 +148,7 @@ void main() {
 
       expect(assembler.customIndexUrl, 'https://index.example/idx.json');
       expect(assembler.preference, AssemblerBackendPreference.server);
-      expect(LogService.history, isEmpty);
+      expect(keptLines, isEmpty);
     });
 
     test('a store that will not open leaves what it had and says so', () async {
@@ -170,7 +169,7 @@ void main() {
         before,
         reason: 'nothing was touched',
       );
-      final kept = LogService.history
+      final kept = keptLines
           .where((l) => l.contains('[Assembler] load failed'))
           .toList();
       expect(kept, hasLength(1));
@@ -189,7 +188,7 @@ void main() {
 
         await expectLater(assembler.loadSettings(), completes);
 
-        final kept = LogService.history
+        final kept = keptLines
             .where((l) => l.contains('[Assembler] status failed'))
             .toList();
         expect(kept, hasLength(1));
@@ -213,9 +212,7 @@ void main() {
         'https://index.example/idx.json',
         reason: 'the good key still landed',
       );
-      final kept = LogService.history
-          .where((l) => l.contains('[Assembler]'))
-          .toList();
+      final kept = keptLines.where((l) => l.contains('[Assembler]')).toList();
       expect(kept, hasLength(1));
       expect(kept.single, contains('ignored 2'));
       expect(

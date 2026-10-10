@@ -66,9 +66,10 @@ Legacy, kept deliberately, not to be imitated:
 - **Sentinel values for absence** — `sha256: ''`, `timestamp: 0`. Absence is
   `null`. [0009](docs/adr/0009-absence-is-null.md)
 - **`LogService.info` as the last word on a failure.** `info` passes no
-  [KeptLevel] to `_emit` and const-folds away in release, so nothing reaches
-  the in-app log.
-  `test/log_level_budget_test.dart` ratchets the count per directory.
+  `KeptLevel` to `_emit` and const-folds away in release, so the failure is
+  reported nowhere at all. `caught` is the level for one worth keeping and not
+  worth alerting on. `test/log_level_budget_test.dart` ratchets the count per
+  directory.
 - **A bare `unawaited(f())`.** The future still rejects, and with no listener
   the rejection reaches the zone — so it lands in the log as `[uncaught]` with
   nothing saying which operation it was, and a `try` around the call site never

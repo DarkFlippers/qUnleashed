@@ -1,8 +1,9 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:qunleashed/services/logging.dart';
 import 'package:qunleashed/services/storage/paths.dart';
+
+import 'kept_lines.dart';
 
 /// The two walks behind Settings → Storage.
 ///
@@ -16,20 +17,22 @@ import 'package:qunleashed/services/storage/paths.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  setUp(recordKeptLines);
+
   late Directory root;
   late int logBase;
 
   setUp(() {
     root = Directory.systemTemp.createTempSync('storage_walk_test');
-    LogService.clearHistory();
-    logBase = LogService.history.length;
+    clearKeptLines();
+    logBase = keptLines.length;
     addTearDown(() {
       if (root.existsSync()) root.deleteSync(recursive: true);
     });
   });
 
   bool said(String fragment) =>
-      LogService.history.skip(logBase).any((l) => l.contains(fragment));
+      keptLines.skip(logBase).any((l) => l.contains(fragment));
 
   File write(String name, int bytes) {
     final file = File('${root.path}${Platform.pathSeparator}$name')

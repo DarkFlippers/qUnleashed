@@ -1,7 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/services/connection/device_settings.dart';
-import 'package:qunleashed/services/logging.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'kept_lines.dart';
 
 import 'unopenable_prefs.dart';
 
@@ -9,6 +10,8 @@ import 'unopenable_prefs.dart';
 /// `settings_store_loads_test.dart` for the shape and the other two.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUp(recordKeptLines);
 
   final settings = DeviceSettings.instance;
 
@@ -29,7 +32,7 @@ void main() {
   late Map<String, Object?> defaults;
 
   setUp(() {
-    LogService.clearHistory();
+    clearKeptLines();
     SharedPreferences.setMockInitialValues(const {});
     settings.reset();
     defaults = snapshot();
@@ -43,14 +46,14 @@ void main() {
     expect(settings.autoConnectUsb, isTrue);
     expect(settings.autoConnectBle, isFalse);
     expect(settings.syncTimeOnStart, isFalse);
-    expect(LogService.history, isEmpty, reason: 'a clean read says nothing');
+    expect(keptLines, isEmpty, reason: 'a clean read says nothing');
   });
 
   test('nothing stored is the documented default, not an error', () async {
     await settings.load();
 
     expect(snapshot(), defaults);
-    expect(LogService.history, isEmpty);
+    expect(keptLines, isEmpty);
   });
 
   test('a load notifies', () async {
@@ -95,7 +98,7 @@ void main() {
         );
       }
       expect(settings.loaded, isTrue, reason: 'one key, not the read');
-      final kept = LogService.history
+      final kept = keptLines
           .where((l) => l.contains('[DeviceSettings]'))
           .toList();
       expect(kept, hasLength(1));
@@ -114,7 +117,7 @@ void main() {
 
     await settings.load();
 
-    final kept = LogService.history
+    final kept = keptLines
         .where((l) => l.contains('[DeviceSettings]'))
         .toList();
     expect(kept, hasLength(1));
@@ -143,7 +146,7 @@ void main() {
 
     expect(snapshot(), defaults, reason: 'auto-connect still runs on these');
     expect(settings.loaded, isFalse);
-    final kept = LogService.history
+    final kept = keptLines
         .where((l) => l.contains('[DeviceSettings] load failed'))
         .toList();
     expect(kept, hasLength(1), reason: 'labelled, not an anonymous [uncaught]');

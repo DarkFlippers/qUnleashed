@@ -6,9 +6,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/tools/remote/cli/page.dart';
 import 'package:qunleashed/services/connection/link_service.dart';
-import 'package:qunleashed/services/logging.dart';
 import 'package:qunleashed/theme/theme.dart';
 import 'package:xterm/xterm.dart';
+
+import 'kept_lines.dart';
 
 import 'quiet_device_title.dart';
 
@@ -183,7 +184,7 @@ Widget _wrap(Widget child) => MaterialApp(
 /// Restored inline rather than through addTearDown, which flutter_test rejects
 /// as changing a debug variable.
 ///
-/// For asserting a failure *was* recorded, read LogService.history instead:
+/// For asserting a failure *was* recorded, read keptLines instead:
 /// what prints follows the build, so these assertions failed outright under
 /// --dart-define=QLOG=false, and they could not tell a handler logging at info
 /// - which a release build compiles away - from one logging at error. The
@@ -205,6 +206,8 @@ Future<List<String>> recordingLogs(Future<void> Function() body) async {
 }
 
 void main() {
+  setUp(recordKeptLines);
+
   /// Opens the page, lets the device say [lastOutput], then disposes it.
   ///
   /// An unhandled rejection during dispose fails the test outright, which is
@@ -236,12 +239,12 @@ void main() {
       ..writeFailure = _WriteFailure.throwsSynchronously;
     addTearDown(client.text.close);
 
-    LogService.clearHistory();
+    clearKeptLines();
     await recordingLogs(() => openThenDispose(tester, client));
 
     expect(client.writeCalls, 1);
     expect(
-      LogService.history.where((l) => l.contains('ctrl-c on dispose failed')),
+      keptLines.where((l) => l.contains('ctrl-c on dispose failed')),
       isNotEmpty,
       reason: 'the handler ran, rather than the failure merely not surfacing',
     );
@@ -257,12 +260,12 @@ void main() {
     final client = _FakeClient()..writeFailure = _WriteFailure.rejects;
     addTearDown(client.text.close);
 
-    LogService.clearHistory();
+    clearKeptLines();
     await recordingLogs(() => openThenDispose(tester, client));
 
     expect(client.writeCalls, 1);
     expect(
-      LogService.history.where((l) => l.contains('ctrl-c on dispose failed')),
+      keptLines.where((l) => l.contains('ctrl-c on dispose failed')),
       isNotEmpty,
     );
   });
@@ -293,7 +296,7 @@ void main() {
     // left pending when the page goes away.
     await tester.pump(const Duration(milliseconds: 600));
 
-    LogService.clearHistory();
+    clearKeptLines();
     await recordingLogs(() async {
       await tester.pumpWidget(_wrap(const SizedBox.shrink()));
       await tester.pump(const Duration(milliseconds: 50));
@@ -301,7 +304,7 @@ void main() {
 
     expect(client.closeCalls, 1);
     expect(
-      LogService.history.where((l) => l.contains('leaving cli mode failed')),
+      keptLines.where((l) => l.contains('leaving cli mode failed')),
       isNotEmpty,
     );
   });
@@ -322,17 +325,14 @@ void main() {
 
     client.writeFailure = _WriteFailure.throwsSynchronously;
     final before = client.writeCalls;
-    LogService.clearHistory();
+    clearKeptLines();
     await recordingLogs(() async {
       await tester.tap(find.byIcon(Icons.stop_circle_outlined));
       await tester.pump();
     });
 
     expect(client.writeCalls, before + 1, reason: 'the button is live');
-    expect(
-      LogService.history.where((l) => l.contains('ctrl-c failed')),
-      isNotEmpty,
-    );
+    expect(keptLines.where((l) => l.contains('ctrl-c failed')), isNotEmpty);
   });
   // #80. A keystroke that never reached the device drew nothing at all, and
   // the only other evidence was a log line - since #89 kept in a buffer, but

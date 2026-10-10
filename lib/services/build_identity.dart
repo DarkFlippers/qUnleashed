@@ -146,21 +146,11 @@ class BuildStamp {
     if (shortCommit.isNotEmpty) shortCommit,
   ].join(' · ');
 
-  /// What a copied log opens with, so a paste into an issue identifies itself.
-  ///
-  /// `qUnleashed` spelled out, because this text leaves the app and lands
-  /// somewhere with no idea what produced it. The submodules go on a second
-  /// line, and only when there are any.
-  String get header {
-    final modules = <String>[
-      if (flipperlibCommit.isNotEmpty) 'flipperlib ${_short(flipperlibCommit)}',
-      if (dartufbtCommit.isNotEmpty) 'dartufbt ${_short(dartufbtCommit)}',
-    ];
-    return [
-      'qUnleashed $line',
-      if (modules.isNotEmpty) modules.join(' · '),
-    ].join('\n');
-  }
+  // `header` stood here: the first line of a copied log, with the submodule
+  // commits under it. ADR 0013 §1 took the copy button away with the log, and
+  // the two commits it existed to surface go out as `TelemetryPlan.tags` on
+  // every event instead - so nothing is lost by it going, and a reader looking
+  // for the submodule revision should look there.
 }
 
 /// Reads the build's identity once and hands out the [BuildStamp].

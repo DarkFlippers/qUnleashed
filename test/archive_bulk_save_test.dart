@@ -4,7 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/components/archive/category.dart';
 import 'package:qunleashed/components/archive/models/key.dart';
 import 'package:qunleashed/pages/archive/overview/category/bulk_save.dart';
-import 'package:qunleashed/services/logging.dart';
+
+import 'kept_lines.dart';
 
 /// Saving a selection of keys to a folder the user picked, and what it says
 /// when some of them do not land.
@@ -25,6 +26,8 @@ ArchiveKey key(String name, {String? localPath}) => ArchiveKey(
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  setUp(recordKeptLines);
+
   late io.Directory source;
   late io.Directory dest;
   late int logBase;
@@ -38,8 +41,8 @@ void main() {
   setUp(() {
     source = io.Directory.systemTemp.createTempSync('bulk_save_src');
     dest = io.Directory.systemTemp.createTempSync('bulk_save_dst');
-    LogService.clearHistory();
-    logBase = LogService.history.length;
+    clearKeptLines();
+    logBase = keptLines.length;
     addTearDown(() {
       if (source.existsSync()) source.deleteSync(recursive: true);
       if (dest.existsSync()) dest.deleteSync(recursive: true);
@@ -47,7 +50,7 @@ void main() {
   });
 
   Iterable<String> lines(String fragment) =>
-      LogService.history.skip(logBase).where((l) => l.contains(fragment));
+      keptLines.skip(logBase).where((l) => l.contains(fragment));
 
   group('a selection that did not all land', () {
     test('is reported once, however many files failed', () async {

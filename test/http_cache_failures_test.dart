@@ -4,7 +4,8 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/services/http/app_http.dart';
-import 'package:qunleashed/services/logging.dart';
+
+import 'kept_lines.dart';
 
 /// What the JSON cache says when it cannot do its job.
 ///
@@ -39,6 +40,8 @@ class FakeServer {
 }
 
 void main() {
+  setUp(recordKeptLines);
+
   late Directory cacheDir;
   late FakeServer server;
   late int logBase;
@@ -47,8 +50,8 @@ void main() {
     cacheDir = Directory.systemTemp.createTempSync('http_cache_failures');
     AppHttp.jsonCacheDirectory = cacheDir;
     server = await FakeServer.start();
-    LogService.clearHistory();
-    logBase = LogService.history.length;
+    clearKeptLines();
+    logBase = keptLines.length;
   });
 
   tearDown(() async {
@@ -58,7 +61,7 @@ void main() {
   });
 
   bool said(String fragment) =>
-      LogService.history.skip(logBase).any((l) => l.contains(fragment));
+      keptLines.skip(logBase).any((l) => l.contains(fragment));
 
   /// The cache file names for [uri], which are keyed by its digest.
   String keyOf(Uri uri) =>
@@ -111,7 +114,7 @@ void main() {
       await AppHttp.getJsonCached(server.uri);
 
       expect(
-        LogService.history.skip(logBase).where((l) => l.contains('unreadable')),
+        keptLines.skip(logBase).where((l) => l.contains('unreadable')),
         hasLength(1),
       );
     });

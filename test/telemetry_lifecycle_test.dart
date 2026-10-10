@@ -26,6 +26,29 @@ import 'package:qunleashed/services/telemetry/telemetry.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'quiet_log.dart';
+
+/// Why this file reads the console and not `LogService.keptSink`.
+///
+/// Every other logging test observes what reporting *sends*, through the
+/// recorder in `kept_lines.dart`. This one cannot, for two reasons that both
+/// come down to it being the file that owns that static:
+///
+///  * [anySinkInstalled] asserts on whether the hook is set at all, so a
+///    recorder sitting in it makes "nothing was installed" unobservable - and
+///    the no-DSN and switch-off cases are exactly the ones that must install
+///    nothing;
+///  * `Telemetry.stop()` clears all four hooks, so a recorder is gone by the
+///    time the close failure is logged, and `may still be running` reaches
+///    nobody.
+///
+/// Which is not a gap: none of the lines asserted on here *can* be reported.
+/// They say reporting is off, has no DSN, or could not be shut down, and the
+/// console is the only channel left in all three cases. `hasLength(printing)`
+/// rather than `hasLength(1)` so the file still means something if it is ever
+/// added to CI's quiet job.
+int get onConsole => LogService.printing ? 1 : 0;
+
 /// A stand-in for the SDK's own lifecycle.
 class _FakeSdk {
   int inits = 0;
@@ -76,7 +99,6 @@ void main() {
 
   setUp(() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
-    LogService.clearHistory();
     sdk = _FakeSdk();
     settings = DiagnosticsSettings();
   });
@@ -88,7 +110,6 @@ void main() {
     AppHttp.exchangeSink = null;
     Log.sink = null;
     Log.level = FlipperLogLevel.info;
-    LogService.clearHistory();
   });
 
   Telemetry build({String dsn = 'https://key@o1.ingest.de.sentry.io/2'}) =>
@@ -124,15 +145,12 @@ void main() {
 
     test('a build with no DSN installs nothing and says why once', () async {
       final telemetry = build(dsn: '');
-      await telemetry.start();
+      final lines = await printedAsync(telemetry.start);
 
       expect(sdk.inits, 0);
       expect(telemetry.running, isFalse);
       expect(anySinkInstalled, isFalse);
-      expect(
-        LogService.history.where((l) => l.contains('no DSN')),
-        hasLength(1),
-      );
+      expect(lines.where((l) => l.contains('no DSN')), hasLength(onConsole));
     });
 
     test('the switch being off installs nothing', () async {
@@ -140,14 +158,11 @@ void main() {
         'diagnostics.share_logs': false,
       });
       final telemetry = build();
-      await telemetry.start();
+      final lines = await printedAsync(telemetry.start);
 
       expect(sdk.inits, 0);
       expect(anySinkInstalled, isFalse);
-      expect(
-        LogService.history.where((l) => l.contains('Settings')),
-        hasLength(1),
-      );
+      expect(lines.where((l) => l.contains('Settings')), hasLength(onConsole));
     });
 
     test('§6 and §8 reach the options', () async {
@@ -187,14 +202,14 @@ void main() {
       sdk.initThrows = StateError('native integration refused');
       final telemetry = build();
 
-      await telemetry.start();
+      final lines = await printedAsync(telemetry.start);
 
       expect(telemetry.running, isFalse);
       expect(sdk.closes, 1, reason: 'the live hub was closed');
       expect(anySinkInstalled, isFalse);
       expect(
-        LogService.history.where((l) => l.contains('[Telemetry] init failed')),
-        hasLength(1),
+        lines.where((l) => l.contains('[Telemetry] init failed')),
+        hasLength(onConsole),
       );
     });
 
@@ -228,12 +243,12 @@ void main() {
         await telemetry.start();
         sdk.closeThrows = StateError('close refused');
 
-        await telemetry.stop();
+        final lines = await printedAsync(telemetry.stop);
 
         expect(telemetry.running, isTrue);
         expect(
-          LogService.history.where((l) => l.contains('may still be running')),
-          hasLength(1),
+          lines.where((l) => l.contains('may still be running')),
+          hasLength(onConsole),
         );
       },
     );

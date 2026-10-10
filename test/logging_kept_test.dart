@@ -1,16 +1,27 @@
+// Which lines `LogService` keeps, and from where — #89 and ADR 0013 §5.
+//
+// This was `logging_history_test.dart`, over a 500-entry buffer in memory.
+// ADR 0013 §1's amendment removed the buffer: a kept line is forwarded to
+// `keptSink` and nothing holds it, so what is left to test is which calls
+// become kept lines at all - the three levels, the flipperlib bridge, and the
+// four failure paths nobody wrote a handler for.
+//
+// `kept_sink_test.dart` is the other half, over the contract the sink is
+// offered. This file installs the recorder from `kept_lines.dart` and reads
+// what came through it.
 import 'dart:ui';
 
 import 'package:flipperlib/flipperlib.dart' show FlipperLogLevel, Log;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/services/logging.dart';
-import 'package:qunleashed/services/telemetry/scrub.dart';
+
+import 'kept_lines.dart';
 
 import 'quiet_log.dart';
 
 void main() {
-  setUp(LogService.clearHistory);
-  tearDown(LogService.clearHistory);
+  setUp(recordKeptLines);
 
   // The whole point of #89. LogService.enabled is a const that follows the
   // build type, and every guard derived from it folds — so in a shipped build
@@ -48,7 +59,7 @@ void main() {
   test('an error is kept whether or not the build prints anything', () {
     final lines = printed(() => LogService.error('a transport fault'));
 
-    expect(LogService.history.single, contains('a transport fault'));
+    expect(keptLines.single, contains('a transport fault'));
     expect(
       lines.isEmpty,
       !LogService.errorOn,
@@ -59,7 +70,7 @@ void main() {
   test('a warning is kept too', () {
     printed(() => LogService.warn('the port went quiet'));
 
-    expect(LogService.history.single, contains('the port went quiet'));
+    expect(keptLines.single, contains('the port went quiet'));
   });
 
   // The level ADR 0013 adds, and the whole of what makes it worth adding:
@@ -69,7 +80,7 @@ void main() {
   test('a caught failure is kept in a build that prints nothing', () {
     final lines = printed(() => LogService.caught('[Known] save failed'));
 
-    expect(LogService.history.single, contains('[caught] [Known] save failed'));
+    expect(keptLines.single, contains('[caught] [Known] save failed'));
     expect(
       lines.isEmpty,
       !LogService.infoOn,
@@ -84,8 +95,8 @@ void main() {
   test('a caught failure is not dressed as a warning', () {
     printed(() => LogService.caught('the rename did not take'));
 
-    expect(LogService.history.single, isNot(contains('[warning]')));
-    expect(LogService.history.single, isNot(contains('[error]')));
+    expect(keptLines.single, isNot(contains('[warning]')));
+    expect(keptLines.single, isNot(contains('[error]')));
   });
 
   // Anything below a warning runs often enough to churn the buffer, which
@@ -97,29 +108,37 @@ void main() {
       LogService.trace('byte');
     });
 
-    expect(LogService.history, isEmpty);
+    expect(keptLines, isEmpty);
   });
 
-  // One entry, not one per frame. Thirteen of the app's error sites pass
-  // '$e\n$st' and a Dart stack trace runs to thirty frames or so, so splitting
-  // by line would leave room for about sixteen failures - and one deep trace
-  // could evict everything that led up to it.
-  test('a message with a stack trace is one entry, stamped once', () {
-    printed(() => LogService.error('failed: boom\nframe one\nframe two'));
-
-    expect(LogService.history, hasLength(1));
-    expect(LogService.history.single, contains('frame two'));
-    expect(
-      RegExp(r'\[\d\d:\d\d:\d\d\]').allMatches(LogService.history.single),
-      hasLength(1),
-      reason: 'the time belongs to the failure, not to every frame of it',
+  // One send, not one per frame. Thirteen of the app's error sites pass
+  // '$e\n$st' and a Dart stack trace runs to thirty frames or so, so a reader
+  // told about each line would get thirty Sentry logs for one failure, with
+  // the message that explains it indistinguishable from the trace under it.
+  test('a message with a stack trace is one kept line, not one per frame', () {
+    final lines = printed(
+      () => LogService.error('failed: boom\nframe one\nframe two'),
     );
+
+    expect(keptLines, hasLength(1));
+    expect(keptLines.single, contains('frame two'));
+    expect(
+      RegExp(r'\[\d\d:\d\d:\d\d\]').allMatches(keptLines.single),
+      isEmpty,
+      reason: 'the reader stamps its own; the stamp belongs to the console',
+    );
+
+    // Where the console goes the other way, deliberately: somebody scrolling a
+    // terminal wants the time on the line in front of them, so every frame
+    // carries it there. `log_timestamp_test.dart` is where that is pinned.
+    expect(lines, hasLength(LogService.printing ? 3 : 0));
   });
 
   // One timed-out multi-frame RPC logs an unmatched frame per leftover frame,
-  // and a directory listing is hundreds of frames. Unchecked, that single
-  // failure evicts the buffer including the timeout that explains it.
-  test('a message repeating itself is counted, not accumulated', () {
+  // and a directory listing is hundreds of frames. The reader at the other end
+  // has no coalescing of its own, so unchecked that single fault is 400 sends,
+  // and the quota it burns is gone before the next fault arrives.
+  test('a message repeating itself is sent once', () {
     printed(() {
       LogService.error('the timeout that explains everything');
       for (var i = 0; i < 400; i++) {
@@ -127,12 +146,17 @@ void main() {
       }
     });
 
-    expect(LogService.history, hasLength(2));
-    expect(LogService.history.first, contains('the timeout'));
-    expect(LogService.history.last, contains('400×'));
+    expect(keptLines, hasLength(2));
+    expect(keptLines.first, contains('the timeout'));
+    expect(keptLines.last, contains('rx unmatched frame'));
+    // The buffer rendered the repeats as a `400×` suffix, because somebody was
+    // going to read the list and the count was the useful part. Nothing renders
+    // it now - the fold drops the repeats outright and how many there were is
+    // not recoverable, which is the price of the buffer going.
+    expect(keptLines.last, isNot(contains('×')));
   });
 
-  test('a different message after a run of repeats starts a new entry', () {
+  test('a different message between two runs breaks the fold', () {
     printed(() {
       LogService.error('same');
       LogService.error('same');
@@ -140,33 +164,19 @@ void main() {
       LogService.error('same');
     });
 
-    expect(LogService.history, hasLength(3));
-    expect(LogService.history[0], contains('2×'));
-    expect(LogService.history[1], contains('different'));
-    expect(LogService.history[2], isNot(contains('×')));
+    // Four logs, three sends. The fold is consecutive-only, and the other
+    // reading - remembering every body ever sent - would drop the *second*
+    // occurrence of a failure entirely, which is the one that says it is not a
+    // one-off.
+    expect(keptLines, ['[error] same', '[error] different', '[error] same']);
   });
 
-  test('the oldest messages go when the buffer is full', () {
-    printed(() {
-      for (var i = 0; i <= LogService.historyLimit; i++) {
-        LogService.error('failure $i');
-      }
-    });
-
-    expect(LogService.history, hasLength(LogService.historyLimit));
-    expect(LogService.history.first, contains('failure 1'));
-    expect(
-      LogService.history.last,
-      contains('failure ${LogService.historyLimit}'),
-      reason: 'oldest first, so a reader ends at the most recent',
-    );
-  });
-
-  test('the history cannot be written through', () {
-    printed(() => LogService.error('boom'));
-
-    expect(() => LogService.history.add('forged'), throwsUnsupportedError);
-  });
+  // Two tests stood here and are gone with the thing they were about: that a
+  // full buffer dropped its oldest entry, and that the buffer could not be
+  // written through. ADR 0013 §1 removed the buffer, so there is no capacity
+  // to overflow and no view to protect. What replaced them is the forwarding
+  // these assert on either side - a line reaches the sink, and a repeat does
+  // not.
 
   group('flipperlib', () {
     setUp(LogService.attachFlipperlibSink);
@@ -181,7 +191,7 @@ void main() {
     test('an error from the library is kept', () {
       printed(() => Log.error('[Transport] fault: port closed'));
 
-      expect(LogService.history.single, contains('port closed'));
+      expect(keptLines.single, contains('port closed'));
     });
 
     // Why warnings are kept at all is on [attachFlipperlibSink] and not
@@ -193,7 +203,7 @@ void main() {
     test('a warning from the library is kept', () {
       printed(() => Log.warn('[BLE] link carries only payload=20 of 411'));
 
-      expect(LogService.history.single, contains('payload=20'));
+      expect(keptLines.single, contains('payload=20'));
     });
 
     test('the chatty levels from the library are not', () {
@@ -203,7 +213,7 @@ void main() {
         Log.trace('byte');
       });
 
-      expect(LogService.history, isEmpty);
+      expect(keptLines, isEmpty);
     });
   });
 
@@ -244,7 +254,7 @@ void main() {
         ),
       );
 
-      expect(LogService.history.single, contains('a build blew up'));
+      expect(keptLines.single, contains('a build blew up'));
       expect(
         lines.where((l) => l.contains('[error] [flutter]')),
         isEmpty,
@@ -272,7 +282,7 @@ void main() {
       );
 
       expect(presented, 1);
-      expect(LogService.history.single, contains('boom'));
+      expect(keptLines.single, contains('boom'));
     });
     // reportError has no try/catch of its own and exceptionAsString() calls
     // toString() on whatever it was given. Recording before the chained
@@ -290,11 +300,7 @@ void main() {
       );
 
       expect(presented, 1, reason: 'the dump still happened');
-      expect(
-        LogService.history,
-        isEmpty,
-        reason: 'and nothing half-formed was kept',
-      );
+      expect(keptLines, isEmpty, reason: 'and nothing half-formed was kept');
     });
 
     test('a framework error carries where it was thrown', () {
@@ -307,7 +313,7 @@ void main() {
         ),
       );
 
-      expect(LogService.history.single, contains('building MyWidget'));
+      expect(keptLines.single, contains('building MyWidget'));
     });
 
     // Silent is the framework's own word for "expected here, do not dump it",
@@ -319,7 +325,7 @@ void main() {
         ),
       );
 
-      expect(LogService.history, isEmpty);
+      expect(keptLines, isEmpty);
     });
 
     test('a missing stack does not leave the word null in the entry', () {
@@ -329,7 +335,7 @@ void main() {
         ),
       );
 
-      expect(LogService.history.single, isNot(endsWith('null')));
+      expect(keptLines.single, isNot(endsWith('null')));
     });
 
     // The other half, which had no coverage at all: a rejected future nobody
@@ -350,14 +356,15 @@ void main() {
         );
       });
 
-      expect(LogService.history.single, contains('nobody awaited this'));
+      expect(keptLines.single, contains('nobody awaited this'));
       expect(chained, 1, reason: 'whatever was there still runs');
       expect(handled, isFalse, reason: 'still unhandled, nothing suppressed');
     });
 
-    // A second install wraps the wrappers, and _remember then coalesces the
-    // pair into a count rather than duplicating - so the log would read as the
-    // app having failed twice, which is worse than a duplicate.
+    // A second install wraps the wrappers, so one framework error runs the
+    // recording twice. The fold is what makes that survivable - without it the
+    // reader shows the app failing twice, and a duplicate failure is read as a
+    // worse bug than the one that happened.
     test('installing twice does not make one failure look like two', () {
       LogService.installUncaughtHandlers();
 
@@ -367,113 +374,7 @@ void main() {
         ),
       );
 
-      expect(LogService.history, hasLength(1));
-      expect(LogService.history.single, isNot(contains('2×')));
-    });
-  });
-
-  // The log became something a user copies into a public issue, and every
-  // absolute path in it starts with the account name. It is the only category
-  // that can be taken out mechanically.
-  //
-  // Driven through the seam rather than the real environment: the cases worth
-  // pinning are all about environments this machine does not have, and a test
-  // that reads Platform.environment passes vacuously wherever it is unusual -
-  // which is exactly where the bug was.
-  group('redaction', () {
-    tearDown(() => Scrub.debugUseHomes(null));
-
-    test('a home directory is replaced wherever it appears', () {
-      Scrub.debugUseHomes([r'C:\Users\Myte']);
-
-      printed(
-        () => LogService.error(r'could not clear C:\Users\Myte\Docs\x.ir'),
-      );
-
-      expect(LogService.history.single, isNot(contains('Myte')));
-      expect(LogService.history.single, contains('~'));
-    });
-
-    // The case the first version missed. A FileSystemException prints the
-    // native path, but a stack frame prints a URI with the separators flipped
-    // and the drive behind a scheme - and the entries carrying stacks are the
-    // ones most likely to be pasted into an issue.
-    test('a Windows home is replaced in a stack frame URI too', () {
-      Scrub.debugUseHomes([r'C:\Users\Myte']);
-
-      printed(
-        () => LogService.error(
-          'boom\n#0 main (file:///C:/Users/Myte/app/main.dart:7:20)',
-        ),
-      );
-
-      expect(LogService.history.single, isNot(contains('Myte')));
-    });
-
-    // A HOME of /root is ordinary in a container. Replacing it blind rewrote
-    // /rootfs to ~fs and corrupted messages that had no path in them at all.
-    test('a home that prefixes an unrelated word is left alone', () {
-      Scrub.debugUseHomes(['/root']);
-
-      printed(() => LogService.error('mounting /rootfs failed'));
-
-      expect(LogService.history.single, contains('/rootfs'));
-    });
-
-    test('and is still replaced when it is a real path', () {
-      Scrub.debugUseHomes(['/root']);
-
-      printed(() => LogService.error('could not clear /root/x.ir'));
-
-      expect(LogService.history.single, contains('~/x.ir'));
-    });
-
-    // On Windows under Git Bash both environment keys hold the same string.
-    // Behaviour cannot show the duplicate — replacing the same thing twice
-    // gives the same answer — so the count is the only way to see it.
-    test('the same home twice is not scanned for twice', () {
-      Scrub.debugUseHomes([r'C:\Users\Myte']);
-      final once = Scrub.debugHomePatternCount;
-
-      Scrub.debugUseHomes([r'C:\Users\Myte', r'C:\Users\Myte']);
-
-      expect(Scrub.debugHomePatternCount, once);
-    });
-
-    test('a home too short to be one is ignored', () {
-      Scrub.debugUseHomes(['/x']);
-
-      printed(() => LogService.error('reading /x/y'));
-
-      expect(LogService.history.single, contains('/x/y'));
-    });
-
-    test('a message with no path in it is left alone', () {
-      printed(() => LogService.error('[RPC] rx unmatched frame cmdId=7'));
-
-      expect(
-        LogService.history.single,
-        contains('[RPC] rx unmatched frame cmdId=7'),
-      );
-    });
-
-    // Only what can be copied is redacted. Everything below a warning is not
-    // kept, so paying a scan for it buys nothing - and a developer's console
-    // should print the path they are debugging.
-    test('what is only printed keeps its path', () {
-      Scrub.debugUseHomes(['/root']);
-
-      final lines = printed(() => LogService.info('reading /root/x.ir'));
-
-      expect(
-        LogService.history,
-        isEmpty,
-        reason: 'nothing to copy, so no cost',
-      );
-      // Printed unredacted in a build that prints, and not printed at all in
-      // one that does not — so the check follows the build rather than
-      // pinning whichever one CI happens to be running.
-      expect(lines.join().contains('/root/x.ir'), LogService.printing);
+      expect(keptLines, hasLength(1));
     });
   });
 

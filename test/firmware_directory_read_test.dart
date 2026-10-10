@@ -2,6 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/devices/firmware/directory.dart';
 import 'package:qunleashed/pages/devices/firmware/repository.dart';
 
+import 'kept_lines.dart';
+
 import 'firmware_fixture.dart';
 
 /// What survives a directory feed that changed shape — #133.
@@ -17,6 +19,8 @@ import 'firmware_fixture.dart';
 /// level, and whether it has been said already all belong to `FirmwareParser`,
 /// so those cases are at the bottom, through a real fetch.
 void main() {
+  setUp(recordKeptLines);
+
   // resetFirmwareState reaches the theme controller, which reads
   // WidgetsBinding.instance in its constructor.
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -745,7 +749,7 @@ void main() {
       expect(read(feed([])).said, isEmpty);
       final nulled = read(<String, dynamic>{'channels': null});
       expect(nulled.directory.channels, isEmpty);
-      // Not `LogService.history`: the reader has no path to it, so that
+      // Not `keptLines`: the reader has no path to it, so that
       // assertion could only ever restate what setUp had already cleared.
       expect(nulled.said, isEmpty);
     });

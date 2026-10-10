@@ -6,8 +6,9 @@ import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flipperlib/src/transport/transport.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/archive/map/controller.dart';
-import 'package:qunleashed/services/logging.dart';
 import 'package:qunleashed/services/storage/paths.dart';
+
+import 'kept_lines.dart';
 
 /// Moving a pin on the map, and what it says when only half of it moved.
 ///
@@ -100,6 +101,8 @@ class _WritingFlipper implements FlipperClient {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  setUp(recordKeptLines);
+
   late io.Directory root;
   late io.File local;
   late int logBase;
@@ -111,8 +114,8 @@ void main() {
     debugUseDocumentsRoot(root);
     local = io.File('${root.path}${io.Platform.pathSeparator}gate.sub')
       ..writeAsStringSync(_sub);
-    LogService.clearHistory();
-    logBase = LogService.history.length;
+    clearKeptLines();
+    logBase = keptLines.length;
     addTearDown(() {
       debugUseDocumentsRoot(null);
       if (root.existsSync()) root.deleteSync(recursive: true);
@@ -120,7 +123,7 @@ void main() {
   });
 
   Iterable<String> lines(String fragment) =>
-      LogService.history.skip(logBase).where((l) => l.contains(fragment));
+      keptLines.skip(logBase).where((l) => l.contains(fragment));
 
   Future<bool> move(_WritingFlipper client, {String? remotePath}) =>
       MapToolController(client: client).writeCoordinates(

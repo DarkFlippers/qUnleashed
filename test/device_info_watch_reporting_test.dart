@@ -6,8 +6,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:protobuf/protobuf.dart' show GeneratedMessage;
 import 'package:qunleashed/services/connection/device_info_watch.dart';
 import 'package:qunleashed/services/connection/device_settings.dart';
-import 'package:qunleashed/services/logging.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'kept_lines.dart';
 
 /// What the background info collector writes down when the device will not
 /// answer, and what it deliberately does not.
@@ -194,6 +195,8 @@ class _SilentFlipper implements FlipperClient {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  setUp(recordKeptLines);
+
   /// The lines the burst left behind, keyed by the outcome it ran with.
   final logs = <bool, List<String>>{};
 
@@ -208,8 +211,8 @@ void main() {
     // and that setting is the last thing the burst reads.
     SharedPreferences.setMockInitialValues({'device.sync_time_on_start': true});
     DeviceSettings.instance.reset();
-    LogService.clearHistory();
-    final base = LogService.history.length;
+    clearKeptLines();
+    final base = keptLines.length;
     final client = _SilentFlipper(answers: answers);
     DeviceInfoWatchService.instance.start(client);
     // The burst carries two 300 ms waits and a two-second one, all
@@ -221,7 +224,7 @@ void main() {
     await Future<void>.delayed(const Duration(seconds: 2));
     DeviceInfoWatchService.instance.stop();
     await client.mutations.close();
-    return logs[answers] = LogService.history.skip(base).toList();
+    return logs[answers] = keptLines.skip(base).toList();
   }
 
   tearDownAll(() {
@@ -294,7 +297,7 @@ void main() {
     // that has gone would push the rest of the log screen out.
     //
     // Asserted as an absence because that is all an `info` is: it is
-    // `keep: false`, so nothing sent there reaches [LogService.history] in
+    // `keep: false`, so nothing sent there reaches [keptLines] in
     // any build. Which is the whole of #103, and why the count lives in a
     // ratchet rather than here.
     test('is every battery reading', () async {

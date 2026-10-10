@@ -222,18 +222,20 @@ future that **never rejects** (queues chain the next operation with
 it) and logs at a fixed `error` level.
 
 `lib/services/logging.dart` holds `LogService`: `error`, `warn` and `caught`
-are kept in a bounded in-memory buffer, `info`/`debug`/`trace` are not; it
-installs the uncaught-error handlers in `initialize()`.
+are forwarded to `keptSink`, `info`/`debug`/`trace` are not; it installs the
+uncaught-error handlers in `initialize()`. There is no buffer behind the sink -
+ADR 0013 §1's amendment removed it - so a build with no DSN, or with the
+Diagnostics switch off, keeps no record of a failure at all beyond the
+console.
 
 `lib/services/telemetry/` is the only directory in `lib/` that may import
 `package:sentry*`, which `test/sentry_import_guard_test.dart` holds at zero
 everywhere else. `Telemetry.start` is awaited in `_initCore` on both entry
 points and never throws; it sends nothing unless a DSN was compiled in and the
-Diagnostics switch is on. `telemetry/scrub.dart` owns two levels of redaction: `Scrub.paths` runs at
-`LogService`'s sink, where the log stays readable for the person whose device
-it is, and `Scrub.outbound` adds filenames, hex runs, coordinates, query
-strings and learned device names on everything that leaves.
-ADR 0013.
+Diagnostics switch is on. `telemetry/scrub.dart` owns one level of redaction,
+`Scrub.outbound`: home directories, filenames, hex runs, coordinates, query
+strings and learned device names, taken out of everything that leaves. It runs
+in the sinks and not in `_emit`, so the console keeps the real path. ADR 0013.
 
 ## 9. Models and serialization
 
@@ -275,9 +277,9 @@ Desktop: `linux/`, `macos/`, `windows/` and `web/` directories exist.
 - `flutter test` on `main`: **689 passed, 4 skipped**, no failures.
 - CI (`.github/workflows/ci.yml`) runs format → analyze → test; Flutter is
   pinned to `3.47.1` in `.github/actions/setup-flutter/action.yml:19`.
-- Two order dependencies are known and reproduce on `main` as well:
-  `test/logging_history_test.dart:223` and `test/flibler_project_test.dart:103`
-  (issue #139). `flutter test` does not randomize order by default, so CI is
+- Two order dependencies are known and reproduce on `main` as well: one in
+  `test/logging_kept_test.dart`'s uncaught-handler group and
+  `test/flibler_project_test.dart:103` (issue #139). `flutter test` does not randomize order by default, so CI is
   green.
 - There is no mutation testing in the repository; it has been run ad hoc from
   scripts kept outside it.

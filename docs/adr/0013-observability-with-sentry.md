@@ -157,9 +157,40 @@ Firebase Test Lab — which Google Play's pre-launch report runs on — never
 starts it. This matters more now than it did behind a prompt: nothing has to
 tap "yes" for a robot's session to become real events.
 
-The Log screen stays, and so does Copy. It is the route for anyone who turns
-sharing off, and the history it shows is the same text Sentry receives. There
-is no "send this now" button: sending is not something the user does.
+~~The Log screen stays, and so does Copy. It is the route for anyone who turns
+sharing off, and the history it shows is the same text Sentry receives.~~
+There is no "send this now" button: sending is not something the user does.
+
+**Amended 2026-10-10: the Log screen goes, and so does the history behind
+it.** The struck sentence was wrong, and wrong in a way worth leaving visible
+rather than editing out, because it is the kind of wrong that ships: it kept a
+whole mechanism alive on the strength of a reader nobody had checked for.
+
+Sentry is *the* channel, not a second one. The in-memory history was built
+because there was no other, and keeping it alongside Sentry means two
+mechanisms with two scrub levels, two notions of what a repeat is, and 172
+test assertions pinning the one that no longer has a consumer. The route it
+preserved - a user notices, opens Settings, copies, pastes into an issue - is
+the route this ADR exists to replace. Preserving it "for anyone who turns
+sharing off" is preserving the manual fallback for the 1% who opted out, at
+the cost of the 99% path being the simpler one.
+
+What this costs, stated plainly because it is real: **no DSN means no
+diagnostics.** In a build with no `QU_SENTRY_DSN`, or with the switch off,
+nothing records a failure that the screen in front of the user does not already
+name. A developer still has the console. A user has the screen and nothing
+else, and if they want to report something they describe it in words. That is
+the accepted price.
+
+What replaces it, so the trade is readable:
+
+| Was | Is |
+|---|---|
+| `LogService.history`, a 500-entry `ListQueue` | nothing; `keptSink` forwards and returns |
+| `_remember`'s fold, rendered as `(400×)` | `_isNewLine`, which drops the repeat and renders nothing |
+| Diagnostics' log list, Copy, Clear, caution | the share switch, alone |
+| `Scrub`'s two levels - on-screen and outbound | `Scrub.outbound`, the only one left |
+| `BuildStamp.header`, the copied log's first line | `TelemetryPlan.tags`, on every event |
 
 ### 2. One folder imports Sentry, and it plugs into what exists
 
@@ -171,7 +202,7 @@ as it does now.
 | Chokepoint | What reaches Sentry |
 |---|---|
 | `_initCore` | Init, after `LogService.initialize()` and the opt-out read, with its own catch. The read is one bool and defaults to on, so a preference store that will not open reports rather than going quiet - the opposite of the consent shape, where a failed read had to mean no. Sentry saves and calls the `FlutterError.onError` and `PlatformDispatcher.onError` it finds, so `LogService`'s handlers going in first keeps both. One init serves `main()` and `widgetMain()`: `promote` reuses the engine. |
-| `LogService._emit`, kept entries | Sentry Logs, through a `keptSink` hook in the shape of flipperlib's `Log.sink`. **The first of a run only**: one RPC timeout produces hundreds of identical lines, which is why `_remember` coalesces them. That coalescing is not visible from `_emit` today - `_remember` returns `void` and folds silently - so it has to report whether the line was new. One signature, and the hook reads it rather than comparing bodies a second time. |
+| `LogService._emit`, kept entries | Sentry Logs, through a `keptSink` hook in the shape of flipperlib's `Log.sink`. **The first of a run only**: one RPC timeout produces hundreds of identical lines, which is why the fold coalesces them. That coalescing was not visible from `_emit` - `_remember` returned `void` and folded silently - so it has to report whether the line was new. With the buffer gone under §1's amendment the fold *is* that answer, and `_isNewLine` is all that is left of it. |
 | `LogService.caught`, §5 | The same `keptSink`, sent at Sentry's **info** level rather than `warning`. The 48 failures a release build keeps no record of today, §5. |
 | `guarded(what, …)` | An issue, fingerprinted on `what` and the error type — the best grouping key the app has. |
 | `classifyConnectError` | `unknown` becomes an issue; every other kind is a metric and a breadcrumb. The issue list is then exactly the platform strings the classifier does not know yet. |
@@ -398,8 +429,11 @@ gate it.
 2. **One scrubber, client-side.** `_redact` moves to `telemetry/scrub.dart`
    and gains known Flipper names, file names under `/ext` and `/int` (the
    extension survives), long hex runs, coordinates and URL query strings. It
-   runs before every event, breadcrumb, log and transaction is sent, and on the
-   Log screen's Copy.
+   runs before every event, breadcrumb, log and transaction is sent - which,
+   since the amendment to §1, is the only place it runs. It is applied in the
+   sinks rather than in `_emit`, so the console keeps the real path: a
+   developer reading their own terminal is not the threat model, and
+   `<redacted>` there is a worse terminal for no gain.
 3. **Server-side rules for the same patterns,** and "Prevent storing IP
    addresses" on. Native crashes do not pass through Dart's `beforeSend`, and
    their module paths carry `C:\Users\<name>\…` — the Windows launcher
@@ -567,7 +601,8 @@ most of them are expected.
   `infoOn` is false in every release build. A site that is commentary stays
   commentary; a site that is the last word on a failure now loses a second
   reader rather than one. The triage does not change, the stakes do.
-- `_remember` gains a return value, and `LogService` gains `caught` (§5).
+- `_remember` becomes `_isNewLine`, which returns whether to forward, and
+  `LogService` gains `caught` (§5).
   Those, the two hooks and the flipperlib level pin are the whole of what this
   changes outside `lib/services/telemetry/`.
 - A sixth ratchet, a ceiling on `caught` per area — seventh counting the
@@ -622,7 +657,7 @@ most of them are expected.
 | Phase | Scope |
 |---|---|
 | 0 | Sentry project, server-side scrubbing, GitHub integration for the three repositories, alerts |
-| 0a | `caught`, its ratchet, and the re-ruling of the 48 that #103's triage left at `info`. Independent of Sentry - it lands in `history` and on the Log screen on the next build - and done first so no phase ships a failure nothing records |
+| 0a | `caught`, its ratchet, and the re-ruling of the 42 that remained of §5's 48 by the time it ran. Done first so no phase ships a failure nothing records. It was scheduled as independent of Sentry, on the grounds that `caught` reached the history without it; §1's amendment removed the history, so it is not independent any more and shipped in the same PR as 1 and 2 |
 | 1 | Errors and crashes: dependency, `telemetry/`, the Diagnostics switch and the one-time notice, scrubber, `guarded` → issues, CI defines and symbol upload, the import ratchet |
 | 2 | Logs and tracing: `keptSink` and the `_remember` return it needs, flipperlib breadcrumbs in `_flipperlibSink` with the level pin raised, named routes and `SentryNavigatorObserver`, `traced`, `AppHttp` spans, the dartufbt sink |
 | 3 | Metrics, replay with its masks - verified in a recorded replay on a `dev` build before it reaches anyone, §1 - and the flipperlib observer |

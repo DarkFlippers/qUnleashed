@@ -3,8 +3,9 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/apps/data/models/card.dart';
 import 'package:qunleashed/pages/apps/icons/icon_resolver.dart';
-import 'package:qunleashed/services/logging.dart';
 import 'package:qunleashed/services/storage/paths.dart';
+
+import 'kept_lines.dart';
 
 /// Fetching the catalogue's app icons, and what it says when it cannot.
 ///
@@ -32,14 +33,16 @@ AppCard card(String alias, String icon) => AppCard.fromJson({
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  setUp(recordKeptLines);
+
   late Directory root;
   late int logBase;
 
   setUp(() {
     root = Directory.systemTemp.createTempSync('icon_resolver_test');
     debugUseDocumentsRoot(root);
-    LogService.clearHistory();
-    logBase = LogService.history.length;
+    clearKeptLines();
+    logBase = keptLines.length;
     addTearDown(() {
       debugUseDocumentsRoot(null);
       if (root.existsSync()) root.deleteSync(recursive: true);
@@ -47,10 +50,10 @@ void main() {
   });
 
   bool said(String fragment) =>
-      LogService.history.skip(logBase).any((l) => l.contains(fragment));
+      keptLines.skip(logBase).any((l) => l.contains(fragment));
 
   Iterable<String> lines(String fragment) =>
-      LogService.history.skip(logBase).where((l) => l.contains(fragment));
+      keptLines.skip(logBase).where((l) => l.contains(fragment));
 
   /// Lets the queue drain. Every address below is unroutable, so each attempt
   /// ends in a connection failure rather than a wait.

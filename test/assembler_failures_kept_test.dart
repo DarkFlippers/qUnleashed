@@ -2,7 +2,7 @@
 //
 // The console is a screen in one feature. Before this, an `error` or
 // `critical` from dartufbt went there and nowhere else: not to
-// `LogService.history`, so not to a copied log, so not to a bug report, and
+// `keptLines`, so not to a copied log, so not to a bug report, and
 // after 0013 not to Sentry either. A toolchain that will not install is
 // exactly the failure somebody files an issue about.
 //
@@ -12,25 +12,24 @@
 import 'package:dartufbt/dartufbt.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/services/assembler/controller.dart';
-import 'package:qunleashed/services/logging.dart';
+
+import 'kept_lines.dart';
 
 import 'quiet_log.dart';
 
 void main() {
+  setUp(recordKeptLines);
+
   late UfbtLogger logger;
 
   setUp(() {
-    LogService.clearHistory();
+    clearKeptLines();
     logger = AssemblerController.instance.logger;
   });
 
-  tearDown(LogService.clearHistory);
-
   List<String> keptFrom(void Function() emit) {
     quietly(emit);
-    return LogService.history
-        .where((line) => line.contains('[Assembler]'))
-        .toList();
+    return keptLines.where((line) => line.contains('[Assembler]')).toList();
   }
 
   test('an error is kept, labelled', () {

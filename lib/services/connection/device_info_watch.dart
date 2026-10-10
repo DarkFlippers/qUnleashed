@@ -302,8 +302,8 @@ class DeviceInfoWatchService {
           } catch (e) {
             // Stays at info, here and below: this is the poll, once every
             // five seconds for as long as the Flipper is connected. A link
-            // that has gone would fill the log screen with one line per tick
-            // and push out what a reader came for.
+            // that has gone would be one report per tick for as long as it
+            // lasts, and bury what a reader came for.
             LogService.info('[watchInfo] battery full: $e');
             if (!alive()) break;
           }

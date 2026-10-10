@@ -160,7 +160,8 @@ class _StorageSettingsPageState extends State<StorageSettingsPage> {
   /// directorySize guards its own walk but opens with an exists() outside that
   /// guard, so a directory the OS refuses throws - and a future started and
   /// not awaited takes its failure to the zone. At error level, so it survives
-  /// into a release build and the log screen rather than vanishing.
+  /// into a release build and reaches the reporting channel rather than
+  /// const-folding away.
   ///
   /// The catch covers the sizing only. Around the setState as well it would
   /// swallow a build-phase error and report it as a failed directory.

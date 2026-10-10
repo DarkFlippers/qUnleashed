@@ -19,90 +19,10 @@ void main() {
     Scrub.debugForgetDeviceNames();
   });
 
-  group('the sink keeps the message readable', () {
-    test(
-      'only the account name goes, because the log is read on the phone',
-      () {
-        // paths() is what runs at the sink. A user debugging their own device
-        // needs the filename, the UID and the coordinates; handing them a log
-        // about `<name>` failing to read `<hex>` would be useless.
-        expect(
-          Scrub.paths(
-            r'read C:\Users\Myte\x failed: /ext/nfc/Office badge.nfc',
-          ),
-          r'read ~\x failed: /ext/nfc/Office badge.nfc',
-        );
-      },
-    );
-  });
-
-  group('URL query strings', () {
-    test('the key in a tile URL goes, the endpoint stays', () {
-      expect(
-        Scrub.outbound(
-          'GET https://tiles.carto.com/light/3/4/5.png?api_key=abcdef12 failed',
-        ),
-        'GET https://tiles.carto.com/light/3/4/5.png?<query> failed',
-      );
-    });
-
-    test('a URL with no query is untouched', () {
-      expect(
-        Scrub.outbound('GET https://update.flipperzero.one/firmware.json'),
-        'GET https://update.flipperzero.one/firmware.json',
-      );
-    });
-
-    test('a question mark in prose is not a query string', () {
-      expect(Scrub.outbound('is it connected?'), 'is it connected?');
-    });
-  });
-
-  group('filenames on the Flipper', () {
-    test('the name goes, the directory and the extension stay', () {
-      expect(
-        Scrub.outbound('/ext/nfc/Office badge.nfc could not be read'),
-        '/ext/nfc/<name>.nfc could not be read',
-      );
-    });
-
-    test('a directory keeps its name, because that is the diagnostic half', () {
-      // `/ext/nfc` with `nfc` replaced throws away the one part worth reading.
-      expect(
-        Scrub.outbound('listing /ext/subghz failed'),
-        'listing /ext/subghz failed',
-      );
-    });
-
-    test('nested directories survive down to the file', () {
-      expect(
-        Scrub.outbound('/ext/subghz/Gates/front gate.sub'),
-        '/ext/subghz/Gates/<name>.sub',
-      );
-    });
-
-    test('/int is covered as well as /ext', () {
-      expect(Scrub.outbound('/int/Secret.nfc'), '/int/<name>.nfc');
-    });
-
-    test('a sentence after a directory is not read as a filename', () {
-      // The directory rule allows spaces in the stem, so the clause
-      // separators are what bound it: without them `nfc failed, see notes`
-      // reads as one filename and the whole sentence disappears into
-      // `<name>.txt`. `.txt` is also off the bare-name allow-list, so nothing
-      // here is touched at all.
-      expect(
-        Scrub.outbound('listing /ext/nfc failed, see notes.txt'),
-        'listing /ext/nfc failed, see notes.txt',
-      );
-    });
-
-    test('a path somewhere else is left alone', () {
-      // The rule is about the Flipper's two filesystems, not about every
-      // slash in every message. `paths()` handles the host's own.
-      expect(Scrub.outbound('/usr/lib/libusb.so'), '/usr/lib/libusb.so');
-    });
-  });
+  // A group stood here asserting that the *sink* level left filenames, UIDs
+  // and coordinates alone, so the on-screen log stayed readable for the person
+  // whose device it was. ADR 0013 §1 removed that log, so there is one level
+  // now and everything pays - which is what the rest of this file covers.
 
   // These are the shapes a review found going out intact. Every one is a real
   // message from `lib/`, not an invented string.
@@ -279,6 +199,75 @@ void main() {
       Scrub.rememberDeviceName('Zero');
       Scrub.rememberDeviceName('Zero');
       expect(Scrub.outbound('Zero Zero'), '<device> <device>');
+    });
+  });
+
+  // The home directory, which is every absolute path's first component and the
+  // one category that can be taken out mechanically. These tests were in
+  // `logging_kept_test.dart` until ADR §1 took the local log away: they used
+  // to drive `LogService.error` and read the entry it kept, because that was
+  // the thing a user copied into an issue. The rule did not move, so they now
+  // drive the rule.
+  //
+  // Through the seam rather than the real environment: the cases worth pinning
+  // are all about environments this machine does not have, and a test that
+  // reads `Platform.environment` passes vacuously wherever it is unusual -
+  // which is exactly where the bug was.
+  group('home directories', () {
+    test('one is replaced wherever it appears', () {
+      Scrub.debugUseHomes([r'C:\Users\Myte']);
+
+      final out = Scrub.outbound(r'could not clear C:\Users\Myte\Docs\x.ir');
+
+      expect(out, isNot(contains('Myte')));
+      expect(out, contains('~'));
+    });
+
+    // The case the first version missed. A FileSystemException prints the
+    // native path, but a stack frame prints a URI with the separators flipped
+    // and the drive behind a scheme - and the messages carrying stacks are the
+    // ones most worth reporting.
+    test('a Windows home is replaced in a stack frame URI too', () {
+      Scrub.debugUseHomes([r'C:\Users\Myte']);
+
+      expect(
+        Scrub.outbound(
+          'boom\n#0 main (file:///C:/Users/Myte/app/main.dart:7:20)',
+        ),
+        isNot(contains('Myte')),
+      );
+    });
+
+    // A HOME of /root is ordinary in a container. Replacing it blind rewrote
+    // /rootfs to ~fs and corrupted messages that had no path in them at all.
+    test('one that prefixes an unrelated word is left alone', () {
+      Scrub.debugUseHomes(['/root']);
+
+      expect(Scrub.outbound('mounting /rootfs failed'), contains('/rootfs'));
+    });
+
+    test('and is still replaced when it is a real path', () {
+      Scrub.debugUseHomes(['/root']);
+
+      expect(Scrub.outbound('could not clear /root/x.ir'), contains('~/x.ir'));
+    });
+
+    // On Windows under Git Bash both environment keys hold the same string.
+    // Behaviour cannot show the duplicate - replacing the same thing twice
+    // gives the same answer - so the count is the only way to see it.
+    test('the same home twice is not scanned for twice', () {
+      Scrub.debugUseHomes([r'C:\Users\Myte']);
+      final once = Scrub.debugHomePatternCount;
+
+      Scrub.debugUseHomes([r'C:\Users\Myte', r'C:\Users\Myte']);
+
+      expect(Scrub.debugHomePatternCount, once);
+    });
+
+    test('one too short to be a home is ignored', () {
+      Scrub.debugUseHomes(['/x']);
+
+      expect(Scrub.outbound('reading /x/y'), contains('/x/y'));
     });
   });
 

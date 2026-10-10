@@ -3,8 +3,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:protobuf/protobuf.dart' show GeneratedMessage;
 import 'package:qunleashed/services/connection/known_devices.dart';
 import 'package:qunleashed/services/home_widget/cold_link.dart';
-import 'package:qunleashed/services/logging.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'kept_lines.dart';
 
 /// The only way a home-screen widget reaches a Flipper, and what it says when
 /// it cannot.
@@ -91,6 +92,8 @@ FlipperDevice _ble(String id) => FlipperDevice(
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  setUp(recordKeptLines);
+
   late int logBase;
 
   /// Remembers one BLE device, which is what a cold start dials.
@@ -105,17 +108,17 @@ void main() {
   }
 
   setUp(() {
-    LogService.clearHistory();
-    logBase = LogService.history.length;
+    clearKeptLines();
+    logBase = keptLines.length;
   });
 
   Iterable<String> lines(String fragment) =>
-      LogService.history.skip(logBase).where((l) => l.contains(fragment));
+      keptLines.skip(logBase).where((l) => l.contains(fragment));
 
   group('a widget that could not reach its Flipper', () {
     test('says so, where the false it returns does not', () async {
       await remember('B1');
-      LogService.clearHistory();
+      clearKeptLines();
 
       final up = await ColdLink.instance.ensureConnected(
         _ColdFlipper(dialThrows: StateError('bond gone')),
@@ -127,7 +130,7 @@ void main() {
 
     test('says what the radio said', () async {
       await remember('B1');
-      LogService.clearHistory();
+      clearKeptLines();
 
       await ColdLink.instance.ensureConnected(
         _ColdFlipper(dialThrows: StateError('bond gone')),
@@ -140,7 +143,7 @@ void main() {
   group('nothing to say', () {
     test('when the Flipper answers', () async {
       await remember('B1');
-      LogService.clearHistory();
+      clearKeptLines();
 
       expect(await ColdLink.instance.ensureConnected(_ColdFlipper()), isTrue);
       expect(lines('[ColdLink]'), isEmpty);
@@ -155,7 +158,7 @@ void main() {
       for (final device in [...known.devices]) {
         await known.forget(device);
       }
-      LogService.clearHistory();
+      clearKeptLines();
 
       final up = await ColdLink.instance.ensureConnected(
         _ColdFlipper(dialThrows: StateError('bond gone')),
@@ -167,7 +170,7 @@ void main() {
 
     test('when the link is already up', () async {
       await remember('B1');
-      LogService.clearHistory();
+      clearKeptLines();
 
       final client = _ColdFlipper(dialThrows: StateError('bond gone'))
         ..connected = true;

@@ -20,8 +20,9 @@ import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flipperlib/src/transport/transport.dart' as flipper;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/archive/browser/controller.dart';
-import 'package:qunleashed/services/logging.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
+
+import 'kept_lines.dart';
 
 import 'sentry_capture.dart';
 
@@ -110,12 +111,14 @@ class _DroppingFlipper implements FlipperClient {
 }
 
 void main() {
+  setUp(recordKeptLines);
+
   late _DroppingFlipper client;
   late FileManagerController ctrl;
   late List<SentryTransaction> sent;
 
   setUp(() async {
-    LogService.clearHistory();
+    clearKeptLines();
     client = _DroppingFlipper();
     ctrl = FileManagerController(client: client, initialPath: '/ext');
     sent = await captureTransactions();
@@ -123,7 +126,7 @@ void main() {
 
   tearDown(() async {
     await Sentry.close();
-    LogService.clearHistory();
+    clearKeptLines();
   });
 
   Future<bool> write(int bytes) =>

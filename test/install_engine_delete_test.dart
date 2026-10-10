@@ -8,8 +8,9 @@ import 'package:qunleashed/pages/apps/data/catalog_api.dart';
 import 'package:qunleashed/pages/apps/data/catalog_context.dart';
 import 'package:qunleashed/pages/apps/data/install_engine.dart';
 import 'package:qunleashed/pages/apps/data/manifest_registry.dart';
-import 'package:qunleashed/services/logging.dart';
 import 'package:qunleashed/services/storage/paths.dart';
+
+import 'kept_lines.dart';
 
 /// Removing a file from the Flipper, and what it says when the file stays.
 ///
@@ -83,6 +84,8 @@ class _DeletingFlipper implements FlipperClient {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  setUp(recordKeptLines);
+
   late _DeletingFlipper client;
   late InstallEngine engine;
   late io.Directory root;
@@ -128,12 +131,12 @@ void main() {
         required List<int> fapBytes,
       }) async {},
     );
-    LogService.clearHistory();
-    logBase = LogService.history.length;
+    clearKeptLines();
+    logBase = keptLines.length;
   });
 
   Iterable<String> lines(String fragment) =>
-      LogService.history.skip(logBase).where((l) => l.contains(fragment));
+      keptLines.skip(logBase).where((l) => l.contains(fragment));
 
   Future<bool> uninstall() =>
       engine.deleteInstalled(alias: 'tool', fapPath: _fapPath);

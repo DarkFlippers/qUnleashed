@@ -26,7 +26,7 @@ An independent reviewer made two corrections worth keeping:
 - The metric "28 singletons" does not cover the two *known* breakages. In
   `flibler_project_test.dart` the culprit is `SharedPreferences.getInstance()`
   — and that test already injects its controller. In
-  `logging_history_test.dart` it is `FlutterError.onError`. So counting
+  `logging_kept_test.dart` it is `FlutterError.onError`. So counting
   `static final instance` declarations measures the wrong thing.
 - 27 of the 28 have a private constructor, so a second instance is impossible
   by construction, and injection gives that up.

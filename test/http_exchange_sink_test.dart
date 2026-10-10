@@ -9,7 +9,8 @@ import 'dart:io' as io;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/services/http/app_http.dart';
-import 'package:qunleashed/services/logging.dart';
+
+import 'kept_lines.dart';
 
 /// A server that answers whatever the test tells it to.
 class _Server {
@@ -37,17 +38,19 @@ Future<Uri> serving(Future<void> Function(io.HttpRequest req) handle) async {
 }
 
 void main() {
+  setUp(recordKeptLines);
+
   late List<HttpExchange> seen;
 
   setUp(() {
     seen = [];
     AppHttp.exchangeSink = seen.add;
-    LogService.clearHistory();
+    clearKeptLines();
   });
 
   tearDown(() {
     AppHttp.exchangeSink = null;
-    LogService.clearHistory();
+    clearKeptLines();
   });
 
   test('a successful getJson is reported once, with its status', () async {
@@ -181,7 +184,7 @@ void main() {
 
     expect(value, {'ok': 1});
     expect(
-      LogService.history.where((l) => l.contains('exchange sink threw')),
+      keptLines.where((l) => l.contains('exchange sink threw')),
       hasLength(1),
       reason: 'swallowed silently, this would be a dead reporting feature',
     );

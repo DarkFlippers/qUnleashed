@@ -8,9 +8,14 @@ import '../../../../services/logging.dart';
 /// A lift out of the page for one reason: the failure record has to be one
 /// entry per selection rather than one per file. A hundred keys against a
 /// full disk fail for the same reason a hundred times, and a line each would
-/// fill the log screen from a single tap - which is why #111 declined to
+/// be a hundred reports from a single tap - which is why #111 declined to
 /// record this at all. The count already reaches the user in the toast the
 /// caller shows; what never reached anyone was the cause.
+///
+/// The fold in `LogService` would collapse them anyway, and deliberately does
+/// not close this: it is consecutive-only, so one interleaved BLE warning
+/// re-opens it mid-run. Aggregating at the call site is the version that
+/// holds.
 ///
 /// Returns how many landed, so the caller can render its own message.
 Future<int> saveKeysInto(List<ArchiveKey> keys, String dir) async {
