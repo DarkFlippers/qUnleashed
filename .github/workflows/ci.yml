@@ -145,3 +145,26 @@ jobs:
           --dart-define=QLOG_EXPECT_QUIET=true
           test/logging_kept_test.dart
           test/kept_sink_test.dart
+
+  # `derive_version.sh` runs first in every one of the five build jobs, so a
+  # fault in it is an outage of whichever platforms share the cause. It is the
+  # only script in the repository that runs on all three runner OSes, and until
+  # this job existed it was only ever tested under GNU userland: the job above
+  # is ubuntu-only, so a BSD-only sed form shipped, passed every assertion, and
+  # killed the macOS and iOS dev build on the first push to main after it
+  # merged. The suite is pure bash and builds its own fixture repositories, so
+  # running it here costs a runner boot and nothing else.
+  #
+  # Only this suite. `checksums_test.sh` calls `sha256sum`, which macOS has
+  # not got, and the other suites cover scripts no macOS job runs.
+  scripts-bsd:
+    name: Test the release scripts on BSD userland
+    runs-on: macos-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Test the release version derivation
+        run: .github/scripts/derive_version_test.sh
