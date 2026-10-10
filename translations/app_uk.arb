@@ -184,29 +184,37 @@
   "@settingsNotificationsSubtitle": {
     "description": "Subtitle under the Notifications tile on the Settings screen."
   },
-  "settingsLogTitle": "Журнал",
-  "@settingsLogTitle": {
-    "description": "Title of the log screen and of its tile on the Settings screen. The errors and warnings the app recorded, for attaching to a bug report."
+  "settingsDiagnosticsTitle": "Діагностика",
+  "@settingsDiagnosticsTitle": {
+    "description": "Title of the Diagnostics screen and of its tile on the Settings screen. Holds the switch for sharing failures with the developers, and below it the log of errors and warnings this device recorded. Was called \"Log\" before the switch was added."
   },
-  "settingsLogSubtitle": "Помилки, записані для звіту про проблему",
-  "@settingsLogSubtitle": {
-    "description": "Subtitle under the Log tile on the Settings screen."
+  "settingsDiagnosticsSubtitle": "Надсилання збоїв і читання журналу",
+  "@settingsDiagnosticsSubtitle": {
+    "description": "Subtitle under the Diagnostics tile on the Settings screen. Names both halves of the screen: the sharing switch and the recorded log."
   },
-  "logEmpty": "Поки нічого не записано. Помилки та попередження збираються в міру появи; відкрийте цей екран або оновіть його, щоб їх побачити.",
-  "@logEmpty": {
-    "description": "Shown on the log screen when the app has recorded nothing. Reassures the user that an empty log means nothing went wrong, not that recording is off."
+  "diagnosticsShareTitle": "Надсилати журнали розробникам",
+  "@diagnosticsShareTitle": {
+    "description": "Label of the switch that decides whether errors and crashes are sent to the developers. On by default. Phrased as what the user gets rather than as the name of a service, because the service is an implementation detail that may change."
   },
-  "logPrivacyCaution": "У цьому журналі можуть бути назви файлів, тек і пристроїв, якими ви користувалися. Прочитайте його, перш ніж надсилати.",
-  "@logPrivacyCaution": {
-    "description": "Shown above the log, before the button that copies it. The log is meant to be pasted into a public bug report, and paths have the account name removed automatically - but a message naming a card, a folder or a Flipper cannot be cleaned up automatically, so the user is told to read it first."
+  "diagnosticsShareSubtitle": "Помилки та збої надсилаються автоматично, щоб їх можна було виправити. Дані карток, ключі та захвати не надсилаються ніколи.",
+  "@diagnosticsShareSubtitle": {
+    "description": "Explains the switch above it. Two facts, in the order a user asks them: that sending needs no action from them, and what is never included. The second half matters because this app handles card dumps, keys and radio captures, and the user has no way to verify the claim themselves."
   },
-  "logClearTitle": "Очистити журнал?",
-  "@logClearTitle": {
-    "description": "Title of the confirmation asked before emptying the log."
+  "diagnosticsNoticeTitle": "Збої надсилаються розробникам",
+  "@diagnosticsNoticeTitle": {
+    "description": "Heading of the one-time notice shown on the first launch, and once more for people already using the app when sharing was added. States the fact rather than asking a question, because reporting is already on while the notice is on screen - it is a notice, not a consent prompt."
   },
-  "logClearMessage": "Записані помилки буде втрачено. Спершу скопіюйте їх, якщо повідомляєте про проблему.",
-  "@logClearMessage": {
-    "description": "Body of the confirmation asked before emptying the log. Clearing is beside Copy and destroys the only record there is."
+  "diagnosticsNoticeBody": "Коли щось іде не так, помилка та збій надсилаються самі, разом із версією застосунку та збіркою, з якої він походить. Дані карток, ключі, захвати та ваше місцеположення не надсилаються ніколи. Ви можете вимкнути це зараз або будь-коли в Налаштування → Діагностика.",
+  "@diagnosticsNoticeBody": {
+    "description": "Body of the one-time notice. Three things in the order a user asks them: what is sent, what never is, and how to stop it. No link to a privacy policy, because the project has none yet; the text carries the substance instead."
+  },
+  "diagnosticsNoticeTurnOff": "Вимкнути",
+  "@diagnosticsNoticeTurnOff": {
+    "description": "The dismissing action on the one-time notice that also turns sharing off. Present so that opting out costs one tap at the moment the user is being told, rather than a hunt through Settings afterwards."
+  },
+  "commonGotIt": "Зрозуміло",
+  "@commonGotIt": {
+    "description": "Acknowledging action on a notice that tells the user something rather than asking them. Distinct from OK, which answers a question."
   },
   "commonCopy": "Копіювати",
   "@commonCopy": {
@@ -1377,6 +1385,10 @@
   "@fapBadgeBroken": {
     "description": "Short badge on an app that cannot be read or has a bad manifest. Kept very short, it sits on a small chip."
   },
+  "fapBadgeHardware": "HW",
+  "@fapBadgeHardware": {
+    "description": "Short badge on an app built for different Flipper hardware. Kept very short, it sits on a small chip."
+  },
   "fapBadgeOldApi": "СТАРИЙ API",
   "@fapBadgeOldApi": {
     "description": "Short badge on an app built for an older firmware API. Kept very short, it sits on a small chip."
@@ -1659,6 +1671,15 @@
   "infoSdCard": "SD-карта (Зайнято/Усього)",
   "@infoSdCard": {
     "description": "Device info row: how much of the SD card is in use."
+  },
+  "deviceHeroFirmware": "прош. {version}",
+  "@deviceHeroFirmware": {
+    "description": "Compact line under the device picture showing the firmware version. \"fw\" is an abbreviation of firmware.",
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
   },
   "deviceHeroBuilt": "зібрано {date}",
   "@deviceHeroBuilt": {
@@ -2861,7 +2882,7 @@
   "@toolsGroupFileUtils": {
     "description": "Heading of the tool group that works on saved files."
   },
-  "toolMifare": "Відновити ключі MIFARE",
+  "toolMifare": "Відновлення ключів MIFARE",
   "@toolMifare": {
     "description": "Tool that recovers card keys from Flipper log files. MIFARE is a card technology name."
   },
@@ -2903,7 +2924,7 @@
   },
   "appVersionLine": "qUnleashed для {platform} v{version}{suffix}",
   "@appVersionLine": {
-    "description": "Version line at the bottom of the tools screen. {platform} is the OS name, {suffix} is an optional build type in brackets.",
+    "description": "Version line at the bottom of the tools screen; tapping it copies the whole line. {platform} is the OS name. {version} is the version with its channel suffix, like '0.15.0-dev'. {suffix} is the build number and short commit in brackets, like ' (108080 · abc1234)'. Neither {version} nor {suffix} is translated.",
     "placeholders": {
       "platform": {
         "type": "String"
@@ -3579,6 +3600,7 @@
   "@mfStopMessage": {
     "description": "Body of the stop confirmation dialog."
   },
+  "mfRunAgain": "Запустити знову",
   "mfStopConfirm": "Зупинити",
   "@mfStopConfirm": {
     "description": "Button that stops the running key recovery."
@@ -3673,6 +3695,16 @@
       }
     }
   },
+  "mfKeysKept": "{count, plural, one{{count} ключ із цього запуску досі показано нижче} few{{count} ключі із цього запуску досі показано нижче} many{{count} ключів із цього запуску досі показано нижче} other{{count} ключа із цього запуску досі показано нижче}}",
+  "@mfKeysKept": {
+    "description": "Shown under an error when the run had already recovered keys before it failed.",
+    "placeholders": {
+      "count": {
+        "type": "num",
+        "format": "compact"
+      }
+    }
+  },
   "mfSaveFailedAfterRecovery": "Знайдені ключі не вдалося зберегти на пристрій. Вони перелічені нижче — скопіюйте їх, перш ніж залишити цей екран.",
   "@mfSaveFailedAfterRecovery": {
     "description": "Error shown when recovery succeeded but writing the user dictionary failed. Distinct from a plain read/write error because work was done and is at risk of being lost."
@@ -3723,6 +3755,16 @@
       },
       "total": {
         "type": "int"
+      }
+    }
+  },
+  "mfSkippedKnown": "{count, plural, one{{count} ключ сектора вже був у вашому словнику, тому його не атакували повторно} few{{count} ключі сектора вже були у вашому словнику, тому їх не атакували повторно} many{{count} ключів сектора вже були у вашому словнику, тому їх не атакували повторно} other{{count} ключа сектора вже було у вашому словнику, тому їх не атакували повторно}}",
+  "@mfSkippedKnown": {
+    "description": "Summary row explaining work that was skipped because the key was already known.",
+    "placeholders": {
+      "count": {
+        "type": "num",
+        "format": "compact"
       }
     }
   },
@@ -4214,6 +4256,14 @@
         "type": "String"
       }
     }
+  },
+  "wristRemoteSessionTitle": "Flipper Remote",
+  "@wristRemoteSessionTitle": {
+    "description": "Now playing title of the placeholder media session Wrist Remote publishes. Shown on the watch, the lock screen and Android Auto. Flipper is a device brand and must not be translated or transliterated."
+  },
+  "wristRemoteSessionSubtitle": "Wrist Remote",
+  "@wristRemoteSessionSubtitle": {
+    "description": "Now playing subtitle of the placeholder media session Wrist Remote publishes, shown under the title. The app name is added separately and is not translated."
   },
   "wristRemoteEnabledTitle": "Увімкнути Wrist Remote",
   "@wristRemoteEnabledTitle": {
@@ -5101,6 +5151,174 @@
         "type": "int"
       }
     }
+  },
+  "fmUploadingOf": "Вивантаження {name}  ({index}/{total})",
+  "@fmUploadingOf": {
+    "description": "Progress line while one of several files is written to the Flipper.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "index": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "fmCopyingOf": "Копіювання {name}  ({index}/{total})",
+  "@fmCopyingOf": {
+    "description": "Progress line while one of several files is copied within the Flipper.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "index": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "fmPreparingTransfer": "Підготовка…",
+  "@fmPreparingTransfer": {
+    "description": "Progress line while the files of a batch transfer are being enumerated."
+  },
+  "fmCancelling": "Скасування…",
+  "@fmCancelling": {
+    "description": "Progress line shown after the user asked to stop a transfer, until it stops."
+  },
+  "fmDownloadBusy": "Дочекайтеся завершення поточного завантаження",
+  "@fmDownloadBusy": {
+    "description": "Toast when a file larger than one frame is asked for while another download is still running; downloads do not queue."
+  },
+  "fmTransferCancelled": "Передавання скасовано",
+  "@fmTransferCancelled": {
+    "description": "Toast shown when the user stopped a download or upload."
+  },
+  "fmUploadFolder": "Вивантажити теку",
+  "@fmUploadFolder": {
+    "description": "Menu entry that uploads a whole folder from this computer to the Flipper."
+  },
+  "fmChooseFolderToUpload": "Виберіть теку для вивантаження",
+  "@fmChooseFolderToUpload": {
+    "description": "Title of the system folder picker opened by Upload folder."
+  },
+  "fmDropToUpload": "Відпустіть, щоб вивантажити до {path}",
+  "@fmDropToUpload": {
+    "description": "Overlay text while files are dragged over the file manager.",
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "fmDragFiles": "{count, plural, one{{count} файл} few{{count} файли} many{{count} файлів} other{{count} файла}}",
+  "@fmDragFiles": {
+    "description": "Label under the icons while several selected files are dragged out of the app.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "fmConflictTitle": "Замінити або пропустити файли",
+  "@fmConflictTitle": {
+    "description": "Title of the dialog shown when files being copied to the Flipper already exist there."
+  },
+  "fmConflictCopying": "{count, plural, one{Копіювання {count} елемента до {path}} few{Копіювання {count} елементів до {path}} many{Копіювання {count} елементів до {path}} other{Копіювання {count} елемента до {path}}}",
+  "@fmConflictCopying": {
+    "description": "Subtitle of the replace-or-skip dialog: how many files the copy holds and where they go.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "fmConflictSummary": "{count, plural, one{У цільовій теці вже є файл із такою назвою} few{У цільовій теці є {count} файли з такими самими назвами} many{У цільовій теці є {count} файлів з такими самими назвами} other{У цільовій теці є {count} файла з такими самими назвами}}",
+  "@fmConflictSummary": {
+    "description": "Headline of the replace-or-skip dialog.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "fmConflictIndex": "{index} з {total}",
+  "@fmConflictIndex": {
+    "description": "Which conflicting file the replace-or-skip dialog is asking about.",
+    "placeholders": {
+      "index": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "fmConflictSource": "Копіюється: {size}",
+  "@fmConflictSource": {
+    "description": "Size of the file being copied, in the replace-or-skip dialog.",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "fmConflictExisting": "На Flipper: {size}",
+  "@fmConflictExisting": {
+    "description": "Size of the file already on the Flipper, in the replace-or-skip dialog.",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "fmConflictReplace": "Замінити",
+  "@fmConflictReplace": {
+    "description": "Replace-or-skip dialog button for the one file shown."
+  },
+  "fmConflictSkip": "Пропустити",
+  "@fmConflictSkip": {
+    "description": "Replace-or-skip dialog button for the one file shown."
+  },
+  "fmConflictBack": "Назад",
+  "@fmConflictBack": {
+    "description": "Replace-or-skip dialog button that closes the new-name field without renaming."
+  },
+  "fmConflictReplaceAll": "Замінити всі",
+  "@fmConflictReplaceAll": {
+    "description": "Replace-or-skip dialog button when the choice applies to every remaining conflict."
+  },
+  "fmConflictSkipAll": "Пропустити всі",
+  "@fmConflictSkipAll": {
+    "description": "Replace-or-skip dialog button when the choice applies to every remaining conflict."
+  },
+  "fmConflictRenameTaken": "Файл із такою назвою вже існує",
+  "@fmConflictRenameTaken": {
+    "description": "Error under the new-name field of the replace-or-skip dialog."
+  },
+  "fmConflictRenameInvalid": "Введіть коректну назву файлу",
+  "@fmConflictRenameInvalid": {
+    "description": "Error under the new-name field of the replace-or-skip dialog when the name is empty or contains a slash."
+  },
+  "fmConflictForAll": "Застосувати до всіх {count}",
+  "@fmConflictForAll": {
+    "description": "Checkbox in the replace-or-skip dialog applying one choice to every remaining conflict.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "fmConflictMd5": "Порівнювати контрольну суму",
+  "@fmConflictMd5": {
+    "description": "Checkbox in the replace-or-skip dialog: files with the same checksum are left as they are."
   },
   "fmLocalNotFound": "Локальний файл не знайдено: {path}",
   "@fmLocalNotFound": {
@@ -6376,5 +6594,335 @@
   "widgetGroupCaption": "Підпис",
   "@widgetGroupCaption": {
     "description": "Header of the widget caption switch and size choice."
+  },
+  "toolSeedRecovery": "Відновлення seed Sub-GHz",
+  "@toolSeedRecovery": {
+    "description": "Title of the SubGHz rolling-code seed recovery tool."
+  },
+  "toolSeedRecoverySubtitle": "Відновлення пультів FAAC, Genius та Erreka",
+  "@toolSeedRecoverySubtitle": {
+    "description": "Subtitle of the SubGHz seed recovery tool. It names the manufacturers whose SeedManufacturer.advertised is true; BFT is solved but not listed, because the firmware recovers those itself. test/seed_models_test.dart holds this sentence to that field, so a name added or removed here fails."
+  },
+  "seedTitle": "Відновлення seed Sub-GHz",
+  "@seedTitle": {
+    "description": "Title of the seed recovery page."
+  },
+  "seedNoCaptures": "На цьому Flipper немає захватів",
+  "@seedNoCaptures": {
+    "description": "Shown when the device holds no seed capture files."
+  },
+  "seedNoCapturesHint": "Скористайтеся застосунком Seed Capturer на Flipper, щоб записати пульт, і повертайтеся.",
+  "@seedNoCapturesHint": {
+    "description": "Hint under the empty capture list, naming the app that creates them."
+  },
+  "seedCapturesTitle": "Захвати",
+  "@seedCapturesTitle": {
+    "description": "Header above the list of capture files."
+  },
+  "seedRefresh": "Оновити",
+  "@seedRefresh": {
+    "description": "Button that re-reads the capture list from the device."
+  },
+  "seedHops": "{count, plural, one{{count} натискання} few{{count} натискання} many{{count} натискань} other{{count} натискання}}",
+  "@seedHops": {
+    "description": "How many button presses a capture holds.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "seedFix": "Фікс. код",
+  "@seedFix": {
+    "description": "Label for the remote's fixed code."
+  },
+  "seedSeed": "Seed",
+  "@seedSeed": {
+    "description": "Label for the recovered seed."
+  },
+  "seedCounter": "Лічильник",
+  "@seedCounter": {
+    "description": "Label for the counter inside the last decrypted hop."
+  },
+  "seedManufacturer": "Виробник",
+  "@seedManufacturer": {
+    "description": "Label for the remote's brand."
+  },
+  "seedFrequency": "Частота",
+  "@seedFrequency": {
+    "description": "Label for the capture's frequency."
+  },
+  "seedStart": "Відновити seed",
+  "@seedStart": {
+    "description": "Button that starts the search."
+  },
+  "seedStop": "Зупинити",
+  "@seedStop": {
+    "description": "Button that stops a running search."
+  },
+  "seedStopTitle": "Зупинити відновлення seed?",
+  "@seedStopTitle": {
+    "description": "Title of the confirmation shown before stopping a search."
+  },
+  "seedStopMessage": "Пошук зупиниться там, де він є. Усе вже знайдене буде збережено.",
+  "@seedStopMessage": {
+    "description": "Body of the stop confirmation."
+  },
+  "seedStopCancel": "Продовжити",
+  "@seedStopCancel": {
+    "description": "Cancel button of the stop confirmation."
+  },
+  "seedSearching": "Пошук у просторі seed…",
+  "@seedSearching": {
+    "description": "Shown while a search runs."
+  },
+  "seedFound": "Seed відновлено",
+  "@seedFound": {
+    "description": "Shown when a search succeeds."
+  },
+  "seedUnverified": "Seed знайдено, але кадр не вдалося відтворити",
+  "@seedUnverified": {
+    "description": "Shown when a seed was found but re-encrypting did not reproduce the capture."
+  },
+  "seedUnverifiedHint": "Seed показано для довідки. Пульт не можна зберегти як файл для передавання.",
+  "@seedUnverifiedHint": {
+    "description": "Explains why saving is unavailable after an unverified result."
+  },
+  "seedNothingMatched": "Жоден seed не підійшов до цього захвату",
+  "@seedNothingMatched": {
+    "description": "Shown when the whole space was swept with no match."
+  },
+  "seedNothingMatchedHint": "Це не означає, що пульт неможливо відновити. Цей застосунок має ключі лише для чотирьох виробників, тому перевірте, чи правильно вказано бренд. Кілька пропущених натискань не проблема, але більше натискань допомагає — натисніть кнопку пульта кілька разів поблизу Flipper і зробіть захват знову.",
+  "@seedNothingMatchedHint": {
+    "description": "Explains what a no-match result actually means and what to do."
+  },
+  "seedStopped": "Пошук зупинено",
+  "@seedStopped": {
+    "description": "Shown when the user stopped the search."
+  },
+  "seedEngineBusy": "Інше відновлення вже виконується",
+  "@seedEngineBusy": {
+    "description": "Shown when the engine refuses a second concurrent search."
+  },
+  "seedEngineBroken": "Ця збірка рушія відновлення несправна",
+  "@seedEngineBroken": {
+    "description": "Shown when the engine's own self-tests fail."
+  },
+  "seedEngineFault": "Рушій відновлення дав збій",
+  "@seedEngineFault": {
+    "description": "Shown when the engine reports a fault."
+  },
+  "seedLowConfidence": "Підкріплено лише {count} натисканнями, тому не пропонується для передавання: за двох хибна відповідь можлива. Від {needed} і більше вона малоймовірна, хоча ніколи не виключена повністю. Запишіть ще одне-два натискання та спробуйте знову.",
+  "@seedLowConfidence": {
+    "description": "Explains that a result came from too few hops to be saved, and what to do about it.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "needed": {
+        "type": "int"
+      }
+    }
+  },
+  "seedSave": "Зберегти на Flipper",
+  "@seedSave": {
+    "description": "Button that writes the recovered remote to the device."
+  },
+  "seedSaved": "Збережено до {path}",
+  "@seedSaved": {
+    "description": "Shown after the recovered remote is written.",
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "seedSaveNoFrequency": "Цей захват не має частоти, тому пульт не можна зберегти як файл для передавання.",
+  "@seedSaveNoFrequency": {
+    "description": "Explains why saving is unavailable when the capture carries no frequency."
+  },
+  "seedNameTitle": "Назвіть файл",
+  "@seedNameTitle": {
+    "description": "Title of the dialog asking what to call the recovered remote."
+  },
+  "seedNameHelp": "Зберігається у {dir}. Доступно {max} символів.",
+  "@seedNameHelp": {
+    "description": "Helper text under the file name field. TRANSLATORS: {dir} is a path and is not translated; {max} is an exact figure, currently 63, so choose the grammatical case for 'characters' to match a plain number. This sentence used to warn that a non-English name fits fewer; it no longer needs to, because such a name is refused outright now and the field says so on the first keystroke.",
+    "placeholders": {
+      "dir": {
+        "type": "String"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "seedNameTooLong": "Використайте коротшу назву. Застосунок Sub-GHz вміщує {max} символів.",
+  "@seedNameTooLong": {
+    "description": "Shown when the typed file name is longer than the Sub-GHz app can keep. TRANSLATORS: {max} is an exact figure, currently 63 - render it as a plain number and choose the grammatical case for 'characters' to match, as there is no plural form on this placeholder. Why it is exact rather than hedged is recorded on SeedSubFile.maxBaseNameLength.",
+    "placeholders": {
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "commonNameIllegal": "Назва не може містити {chars}",
+  "@commonNameIllegal": {
+    "description": "Shown when a typed file name holds a character the storage cannot carry. Do not spell the characters out in the translation: {chars} is the list, passed in from the one place the app declares it, so that adding or removing one cannot leave this sentence behind.",
+    "placeholders": {
+      "chars": {
+        "type": "String"
+      }
+    }
+  },
+  "commonNameControlChar": "Назва не може містити невидимий символ. Вставте її у звичайне текстове поле або наберіть вручну.",
+  "@commonNameControlChar": {
+    "description": "Shown when a typed file name holds a C0 control character or DEL - a tab, a newline, or similar. Named separately from commonNameIllegal because that sentence lists the characters it refuses, and these have no printable form to list. A keyboard cannot type one; a paste from a spreadsheet or a web page can carry one in.",
+    "placeholders": {}
+  },
+  "commonNameNonAscii": "У назві Flipper приймає лише англійські літери, цифри та базову пунктуацію.",
+  "@commonNameNonAscii": {
+    "description": "Shown when a typed file name holds a character outside ASCII. TRANSLATORS: 'English letters' means the unaccented Latin A-Z and a-z, and nothing else - German ß, Cyrillic я and an emoji are all refused, so do not render this as 'letters of the English language' in a way that leaves accented Latin sounding acceptable. 'Basic punctuation' is deliberately vague rather than a list: most ASCII punctuation is fine, and the nine characters that are not are refused by their own message, commonNameIllegal, which carries the list. Say that the Flipper refuses the name, not that the name is invalid - the same name is perfectly fine on the phone, and it is the device that will not carry it.",
+    "placeholders": {}
+  },
+  "commonNameDotEdge": "Назва не може починатися або закінчуватися точкою.",
+  "@commonNameDotEdge": {
+    "description": "Shown when a typed file name begins or ends with a period."
+  },
+  "seedReplaceTitle": "Замінити файл?",
+  "@seedReplaceTitle": {
+    "description": "Title of the dialog shown when the chosen file name is already taken."
+  },
+  "seedReplaceMessage": "{path} уже існує на Flipper. Збереження перезапише його.",
+  "@seedReplaceMessage": {
+    "description": "Body of the confirmation shown before an existing file is overwritten.",
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "seedReplace": "Замінити",
+  "@seedReplace": {
+    "description": "Confirm button that overwrites the existing file."
+  },
+  "seedReplaceUnknown": "{path} не вдалося перевірити. Якщо файл там уже є, збереження замінить його.",
+  "@seedReplaceUnknown": {
+    "description": "Body of the overwrite confirmation when the device did not answer whether the file exists.",
+    "placeholders": {
+      "path": {
+        "type": "String"
+      }
+    }
+  },
+  "seedListFailed": "Теку захватів не вдалося прочитати, тому цей список може бути застарілим.",
+  "@seedListFailed": {
+    "description": "Shown when listing the capture folder failed on a connected device."
+  },
+  "seedInvalidName": "Таку назву файлу не можна використати на Flipper.",
+  "@seedInvalidName": {
+    "description": "Shown when a save was refused because of the name rather than by the device."
+  },
+  "seedDeleteCaptureTitle": "Видалити захват?",
+  "@seedDeleteCaptureTitle": {
+    "description": "Title of the prompt offered after the remote has been saved."
+  },
+  "seedDeleteCaptureMessage": "Пульт збережено як {path}, тому {name} більше не потрібен. Видалення залишить у теці захватів лише ті пульти, які ще не розгадано.",
+  "@seedDeleteCaptureMessage": {
+    "description": "Body of the prompt offering to remove a capture that has been solved and saved.",
+    "placeholders": {
+      "path": {
+        "type": "String"
+      },
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "seedDeleteRowMessage": "Видалити {name} з пристрою? Захват — єдиний запис пульта, і якщо його пульт ще не відновлено та не збережено, щоб отримати новий, доведеться знову стояти біля того пульта.",
+  "@seedDeleteRowMessage": {
+    "description": "Body of the prompt shown when a capture is deleted from the list rather than right after a save, where it is not known whether the remote was ever recovered.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "faac_2026-10-07_14-21.seed"
+      }
+    }
+  },
+  "seedDeleteCapture": "Видалити захват",
+  "@seedDeleteCapture": {
+    "description": "Confirm button that removes the solved capture from the device."
+  },
+  "seedKeepCapture": "Залишити",
+  "@seedKeepCapture": {
+    "description": "Decline button that leaves the solved capture on the device."
+  },
+  "seedDeleteFailed": "Захват не вдалося видалити. Можливо, він усе ще на пристрої.",
+  "@seedDeleteFailed": {
+    "description": "Shown when removing a capture fails. Says nothing about a saved remote, because a capture can be deleted from the list without having been solved this session. Says \"may\" because a delete that timed out might have landed and lost only its acknowledgement."
+  },
+  "seedListingStale": "Ці захвати було отримано через з''єднання, якого вже немає. Потягніть вниз, щоб прочитати теку знову.",
+  "@seedListingStale": {
+    "description": "Shown when a delete is refused because the file list belongs to a session that is no longer live. The remedy is to re-list, not to retry."
+  },
+  "seedDeleteUnconfirmed": "{name} видалено, але пристрій цього не підтвердив. Оновіть, щоб переконатися.",
+  "@seedDeleteUnconfirmed": {
+    "description": "Neutral notice, not an error: the delete was accepted but the follow-up check went unanswered, so the row was dropped on the acknowledgement alone.",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "example": "faac_2026-10-07_14-21.seed"
+      }
+    }
+  },
+  "seedRefreshed": "{count, plural, =0{На пристрої немає захватів} one{{count} захват на пристрої} few{{count} захвати на пристрої} many{{count} захватів на пристрої} other{{count} захвату на пристрої}}",
+  "@seedRefreshed": {
+    "description": "Said after the capture list has been re-read, so the button has a visible result even when nothing changed.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "seedSkippedLines": "{count, plural, one{{count} примітка до цього захвату} few{{count} примітки до цього захвату} many{{count} приміток до цього захвату} other{{count} примітки до цього захвату}}",
+  "@seedSkippedLines": {
+    "description": "How many remarks the parser made about the capture file - a line it could not read, a hop it dropped for repeating the one before it, or a count that disagrees with the file.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "seedLoading": "Читання захвату…",
+  "@seedLoading": {
+    "description": "Shown while a capture file is read off the device."
+  },
+  "seedDisconnected": "Flipper не підключено",
+  "@seedDisconnected": {
+    "description": "Shown when the capture list could not be read because the link is down."
+  },
+  "seedUnreadableCapture": "Цей захват не можна використати",
+  "@seedUnreadableCapture": {
+    "description": "Shown when a capture file was read but could not be parsed into a job."
+  },
+  "seedReadFailed": "Захват не вдалося прочитати з Flipper",
+  "@seedReadFailed": {
+    "description": "Shown when reading a capture file off the device failed."
+  },
+  "seedSaveFailed": "Пульт не вдалося зберегти на Flipper",
+  "@seedSaveFailed": {
+    "description": "Shown when writing the recovered .sub to the device failed."
+  },
+  "seedEngineUnavailable": "У цій збірці відсутній рушій відновлення",
+  "@seedEngineUnavailable": {
+    "description": "Shown when the native library could not be loaded at all."
+  },
+  "seedEngineBusyHint": "Дочекайтеся завершення поточного пошуку, потім спробуйте знову.",
+  "@seedEngineBusyHint": {
+    "description": "Hint under the busy message."
+  },
+  "seedEngineBrokenHint": "Із цим захватом нічого не допоможе: рушій відновлення в цій збірці не працює. Будь ласка, повідомте про це.",
+  "@seedEngineBrokenHint": {
+    "description": "Hint shown when the engine failed its own checks or is missing from the build."
   }
 }
