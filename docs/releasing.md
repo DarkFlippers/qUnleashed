@@ -23,11 +23,17 @@ terminal open.
    cut; `local` is anybody's own `flutter run`. The channel comes from the
    trigger, never from the tag's prefix.
 
-A build says which of these it is in two places, in two formats. The Tools
-screen reads `qUnleashed for Android v0.16.0-dev (108170 · abc1234)`, and
-tapping it copies the line. A copied log opens with
-`qUnleashed 0.16.0-dev · 108170 · abc1234`, plus a second line naming the
-submodule commits when there are any. A release shows no suffix in either.
+A build says which of these it is in two places. The Tools screen reads
+`qUnleashed for Android v0.16.0-dev (108170 · abc1234)`, and tapping it copies
+the line; a release shows no suffix. And every event it reports to Sentry
+carries the same identity as its release name and `environment`, with the
+submodule commits as the `flipperlib` and `dartufbt` tags.
+
+That second place used to be a copied log, opening with
+`qUnleashed 0.16.0-dev · 108170 · abc1234` and the submodule commits under it.
+ADR 0013 §1 removed the log and its Copy button, so the Tools screen is the
+only thing a user can read an identity off now - which is also why the tags
+matter: they are how a submodule revision reaches a bug report at all.
 
 ## What happens without you
 

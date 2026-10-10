@@ -45,7 +45,8 @@ tags, 22 are
 seven `dev-*` has been what GitHub calls latest.
 
 **No build carries its commit.** Nothing in the binary, the About screen or a
-copied log says which commit it was built from.
+copied log says which commit it was built from. (The copied log is itself gone
+now - ADR 0013 §1 - which only narrows the places this could have been fixed.)
 
 **What the target imposes:**
 
@@ -99,7 +100,7 @@ validates:
 | `--build-name` → `CFBundleShortVersionString` | `0.15.0` — digits and periods, always |
 | `--build-number` → `CFBundleVersion` | `108080` |
 | The version line on the Tools screen | `0.15.0-dev (108080 · abc1234)` |
-| The head of a copied log | `qUnleashed 0.15.0-dev · 108080 · abc1234` |
+| ~~The head of a copied log~~ | removed with the log, ADR 0013 §1 |
 | The Sentry release (§5) | `qunleashed@0.15.0-dev+108080` |
 
 So a dev build is explicit about being one wherever that helps somebody, and
@@ -158,9 +159,14 @@ on.
 ### 3. The commit is compiled in
 
 `QU_COMMIT`, plus the flipperlib and dartufbt commits. They appear on the
-About screen, on the first line of a copied log, and as tags on every Sentry
-event. Each Sentry release is given its commits in all three repositories, so
-a suspect commit can be found in a submodule as well.
+About screen and as tags on every Sentry event. Each Sentry release is given
+its commits in all three repositories, so a suspect commit can be found in a
+submodule as well.
+
+They were also the first line of a copied log, which ADR 0013 §1 removed along
+with the log itself. The tags are what carry a submodule revision into a bug
+report now, which is the whole of why `BuildStamp.header` could go without
+losing anything.
 
 ### 4. One script derives all of it
 

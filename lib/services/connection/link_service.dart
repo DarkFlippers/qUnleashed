@@ -610,9 +610,19 @@ class LinkService extends ChangeNotifier {
     if (last == null || _userDisconnectedKey == 'ble:${last.id}') return;
     _bleAutoTried = true;
     LogService.info('[Link] auto-connecting to ${last.name}');
+    // Traced like the USB path above and under the same name: both are the app
+    // reconnecting by itself, and `link` is what splits the answer. The device
+    // name is deliberately not attached - [connect] says why.
     try {
-      await _c.connectBleAddress(last.id, name: last.name);
-      await _c.switchToRpcMode();
+      await traced('device.connect.auto', (trace) async {
+        // This whole branch is the `autoConnectBle` one, and `last` is a
+        // `KnownDevice`, which carries no link of its own - so the enum
+        // rather than a bare 'ble' that could drift from the USB path's.
+        trace.note('link', FlipperLink.ble.name);
+        trace.note('trigger', 'remembered');
+        await _c.connectBleAddress(last.id, name: last.name);
+        await _c.switchToRpcMode();
+      });
       _clearAutoFailure('ble:${last.id}');
     } catch (e) {
       LogService.warn('[Link] auto-connect to ${last.name} failed: $e');
@@ -656,11 +666,31 @@ class LinkService extends ChangeNotifier {
     return true;
   }
 
+  /// Timed separately from [connect], for the reason
+  /// [connectDevice] gives about the search: a link the app formed by itself
+  /// when a cable appeared is not the same operation as one a user asked for,
+  /// and one name over both would hide which of them is slow.
+  ///
+  /// It is also the common one. `autoReconnect` is on by default, so most
+  /// connects in the wild arrive here - which is why this had to be traced at
+  /// all: a validation run found `device.connect` producing nothing for a
+  /// session that had plainly connected.
+  ///
+  /// [traced] goes **inside** the `try`, so the failure still reaches the catch
+  /// below. It rethrows rather than swallowing - its own doc says a `traced`
+  /// that swallowed would break the thing it reports on - and marks the
+  /// operation failed on the way past, so the span carries the error status and
+  /// `_recordAutoFailure` still runs.
   Future<void> _autoConnect(FlipperDevice device, String why) async {
     final key = 'usb:${device.id}';
     LogService.info('[Link] auto-connecting to ${device.name} ($why)');
     try {
-      await _open(device, key);
+      await traced('device.connect.auto', (trace) async {
+        trace.note('link', device.link.name);
+        // `why` is one of two literals from the caller, not user text.
+        trace.note('trigger', why);
+        await _open(device, key);
+      });
       _clearAutoFailure(key);
     } catch (e) {
       LogService.warn('[Link] auto-connect to ${device.name} failed: $e');
