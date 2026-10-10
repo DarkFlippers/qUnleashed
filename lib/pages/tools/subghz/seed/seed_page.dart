@@ -351,6 +351,8 @@ class _CaptureCard extends StatelessWidget {
         // dropped can be left with a gap too wide for the engine to tolerate,
         // so the search will find nothing for a reason that is not about the
         // remote - and "unreadable hop: 4010" is the half the user can act on.
+        // A repeated hop appears here too and is not a fault; [SeedCaptureParse]
+        // says why both classes share one list.
         if (controller.captureWarnings.isNotEmpty) ...[
           Padding(
             padding: const EdgeInsets.only(top: 8),

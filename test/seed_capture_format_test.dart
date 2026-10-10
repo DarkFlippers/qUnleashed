@@ -73,6 +73,61 @@ void main() {
       expect(parsed.skipped, contains(contains('ZZZZ')));
     });
 
+    test('drops a hop that repeats the one before it', () {
+      // The engine refuses a step of zero, so the whole-capture sweep is lost
+      // in every case - and the answer with it whenever neither side of the
+      // repeat keeps enough hops for a window, which is this four-hop fixture
+      // with the repeat in the middle.
+      final parsed = SeedCaptureFormat.parse(
+        _capture
+            .replaceFirst('Hops: 3', 'Hops: 4')
+            .replaceFirst('Hop: 40101499', 'Hop: 40101499\nHop: 40101499'),
+      );
+      expect(parsed.capture!.hops, [0x29389EF7, 0x40101499, 0xA1F9C88F]);
+      // An exact list, not `contains`: that is what proves the drop did not
+      // also fire the truncated-write message. Counting hop *lines* is what
+      // keeps those two faults apart, and they carry different advice.
+      expect(parsed.skipped, [contains('repeated hop: "40101499"')]);
+    });
+
+    test('a capture of nothing but one press repeated is refused', () {
+      // The only case where the drop changes the shape of the return rather
+      // than the hops: two lines in, one hop left, which is below the engine's
+      // minimum. Both remarks are kept - "only 1 hop(s)" alone would read as a
+      // parser bug on a file that plainly has two `Hop:` lines.
+      final parsed = SeedCaptureFormat.parse('''
+${_header}Manufacturer: Genius
+Fix: A0DC9330
+Hops: 2
+Hop: 29389EF7
+Hop: 29389EF7
+''');
+      expect(parsed.capture, isNull);
+      expect(parsed.skipped, [
+        contains('repeated hop: "29389EF7"'),
+        contains('only 1 hop(s)'),
+      ]);
+    });
+
+    test('keeps a hop that repeats one further back', () {
+      // Not a repeated write but a direction break: counters that go up and
+      // come back down. The engine has to see it and refuse - the probe pins
+      // that case - so the parser must not quietly make the capture look
+      // solvable.
+      final parsed = SeedCaptureFormat.parse(
+        _capture
+            .replaceFirst('Hops: 3', 'Hops: 4')
+            .replaceFirst('Hop: A1F9C88F', 'Hop: A1F9C88F\nHop: 29389EF7'),
+      );
+      expect(parsed.capture!.hops, [
+        0x29389EF7,
+        0x40101499,
+        0xA1F9C88F,
+        0x29389EF7,
+      ]);
+      expect(parsed.skipped, isEmpty);
+    });
+
     test('says so when the declared count and the hops disagree', () {
       // A truncated write. Worth reporting because the hops that survived can
       // be left with a gap wider than the engine tolerates, and the search
@@ -81,7 +136,7 @@ void main() {
         _capture.replaceFirst('Hops: 3', 'Hops: 9'),
       );
       expect(parsed.capture, isNotNull);
-      expect(parsed.skipped, contains(contains('says 9 hops, found 3')));
+      expect(parsed.skipped, contains(contains('says 9 hop lines, read 3')));
     });
 
     test('ignores comments, blank lines and unknown fields', () {
@@ -215,6 +270,10 @@ Hop: 29389EF7
       );
       expect(parsed.capture!.hops, [0x29389EF7, 0xA1F9C88F]);
       expect(parsed.skipped, contains(contains('4010')));
+      // The other half of what the hop-line counter means: a line that did not
+      // parse is not a hop line read, so this *is* the truncated write the
+      // declared count exists to catch - where a dropped duplicate is not.
+      expect(parsed.skipped, contains(contains('says 3 hop lines, read 2')));
     });
 
     test('some other Flipper file that happens to be here', () {

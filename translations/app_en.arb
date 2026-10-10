@@ -8047,7 +8047,7 @@
     "description": "Shown when the engine reports a fault."
   },
 
-  "seedLowConfidence": "Backed by only {count} hops, so it is not offered for transmission: with two, a wrong answer is as likely as a right one. {needed} or more makes it unlikely, though never impossible. Capture another press or two and try again.",
+  "seedLowConfidence": "Backed by only {count} hops, so it is not offered for transmission: with two, a wrong answer is conceivable. {needed} or more makes it unlikely, though never impossible. Capture another press or two and try again.",
   "@seedLowConfidence": {
     "description": "Explains that a result came from too few hops to be saved, and what to do about it.",
     "placeholders": {
@@ -8245,9 +8245,9 @@
     }
   },
 
-  "seedSkippedLines": "{count, plural, one{{count} line could not be read} other{{count} lines could not be read}}",
+  "seedSkippedLines": "{count, plural, one{{count} note on this capture} other{{count} notes on this capture}}",
   "@seedSkippedLines": {
-    "description": "How many lines of the capture file were skipped.",
+    "description": "How many remarks the parser made about the capture file - a line it could not read, a hop it dropped for repeating the one before it, or a count that disagrees with the file.",
     "placeholders": {
       "count": {
         "type": "int"

@@ -188,10 +188,12 @@ class SeedController extends ChangeNotifier {
   /// already dropped.
   bool get busy => _stage != SeedStage.idle || _saving || _deleting != null;
 
-  /// Lines the capture file had that could not be read. Shown rather than
-  /// logged alone: a file half of whose hops were dropped can be left with a
-  /// gap wider than [SeedCapture.maxCounterGap], and the search would then find
-  /// nothing for a reason that is not about the remote.
+  /// What the parser had to say about the capture file, if anything - faults in
+  /// the file and hops dropped deliberately, in one list. [SeedCaptureParse]
+  /// has the two classes and why each is reported.
+  ///
+  /// Shown rather than logged alone, because every entry is either something
+  /// the user can act on or a reason the screen disagrees with their file.
   List<String> get captureWarnings => _captureWarnings;
 
   /// Whether the recovered remote can be written as a transmittable file.
@@ -425,21 +427,30 @@ class SeedController extends ChangeNotifier {
   /// the same frame twice, or a 16-bit counter that wrapped. A sub-run is not
   /// guaranteed to exclude the break, and nothing here can see where it is.
   ///
-  /// Three windows are enough, and that is worth spelling out because the first
-  /// version of this ladder offered twelve. A window solves exactly when its
-  /// own hops are within the tolerance, and a contiguous sub-run of such a run
-  /// is too - so a *short* window inside a solvable run always solves if a
-  /// longer one does. Meanwhile a sweep costs the same whatever the hop count:
-  /// the engine scans the whole seed space either way, and extra hops only
-  /// filter the candidates it finds. Length therefore buys confidence, not
-  /// reach.
+  /// Three windows, and that is worth spelling out because the first version of
+  /// this ladder offered twelve. A window solves exactly when its own hops are
+  /// within the tolerance, and a contiguous sub-run of such a run is too - so a
+  /// *short* window inside a solvable run always solves if a longer one does.
+  /// Meanwhile a sweep costs the same whatever the hop count: the engine scans
+  /// the whole seed space either way, and extra hops only filter the candidates
+  /// it finds. Length therefore buys confidence, not reach.
   ///
   /// So: the whole capture, for the strongest `hops_used` in one sweep; then
   /// the last [seedHopsConfident] hops, then the first. A single over-wide gap
-  /// at position k leaves the suffix solvable when k is at or below n-3 and the
-  /// prefix when k is at least 3, and for any capture of five or more those two
-  /// ranges meet - every such capture is covered in at most three sweeps
-  /// instead of twelve.
+  /// at position k leaves the suffix solvable while k is at or below
+  /// n - [seedHopsConfident], and the prefix while k is at least
+  /// [seedHopsConfident] - so the two ranges meet, and every position is
+  /// covered, once n reaches 2 * [seedHopsConfident] - 1. Written against the
+  /// constant rather than as numbers, because the native header says moving the
+  /// confidence line is one edit here and one there.
+  ///
+  /// What this declines to do is *invent* a sub-confident window. The whole
+  /// capture is searched whatever its length - that is the user's own data and
+  /// the engine's documented minimum - but a shorter one would cost two more
+  /// whole-space sweeps (`BUILD_NOTES.md` measures one at about 17 seconds on a
+  /// 2026 flagship phone, and warns a mid-range one may differ) to reach an
+  /// answer [canSave] refuses as unconfirmed, at the hop count the native
+  /// header says a false positive is merely "conceivable" at. #288
   ///
   /// Suffix before prefix, which is not cosmetic: the counter and the rebuilt
   /// frame come from the window's *last* hop, so a prefix that solves first
@@ -447,38 +458,41 @@ class SeedController extends ChangeNotifier {
   /// already seen. That is a `.sub` the firmware accepts and the gate ignores.
   @visibleForTesting
   static List<List<int>> windows(List<int> hops) {
-    final found = <List<int>>[];
-
-    void offer(List<int> window) {
-      if (window.length < SeedCapture.minHops) return;
-      if (window.length > SeedCapture.maxHops) return;
-      for (final existing in found) {
-        if (existing.length == window.length &&
-            existing.first == window.first) {
-          return;
-        }
-      }
-      found.add(window);
-    }
+    // The engine's own minimum, and the parser refuses a shorter capture before
+    // it reaches here - so this is a caller fault rather than something to
+    // sweep for.
+    if (hops.length < SeedCapture.minHops) return const [];
 
     // The freshest end of an over-long capture, for the same counter reason.
     final longest = hops.length < SeedCapture.maxHops
         ? hops.length
         : SeedCapture.maxHops;
-    offer(hops.sublist(hops.length - longest));
 
-    // The confident pair alone leaves a gap uncovered only on a capture short
-    // enough that the two windows cannot meet in the middle - which is
-    // n <= 2*seedHopsConfident - 2, so five windows instead of three for the
-    // shortest captures and three for everything else.
-    final lengths = <int>[
-      seedHopsConfident,
-      if (longest <= 2 * seedHopsConfident - 2) SeedCapture.minHops,
+    // Then the freshest confident window, then the oldest. On a capture short
+    // enough that the two cannot meet in the middle these leave an over-wide
+    // gap uncovered, which is the exchange the doc comment above describes.
+    final offered = [
+      hops.sublist(hops.length - longest),
+      if (seedHopsConfident < longest) ...[
+        hops.sublist(hops.length - seedHopsConfident),
+        hops.sublist(0, seedHopsConfident),
+      ],
     ];
-    for (final length in lengths) {
-      if (length >= longest) continue;
-      offer(hops.sublist(hops.length - length));
-      offer(hops.sublist(0, length));
+
+    // Identical *hops*, not identical ranges. The three above always start at
+    // different offsets, but the engine is handed values, and the suffix and
+    // the prefix carry the same ones whenever the capture repeats with a period
+    // that divides its length - which the parser allows, since it drops only a
+    // repeat of the hop before it. Each duplicate left in costs a second sweep
+    // of the whole seed space for an answer already known.
+    //
+    // Compared whole, which is the fix to what used to stand here: a check on
+    // the first hop's *value* alone could drop the prefix of any capture whose
+    // first hop recurred, and 'offers the prefix even when its first hop
+    // recurs' is what pins that.
+    final found = <List<int>>[];
+    for (final window in offered) {
+      if (!found.any((kept) => listEquals(kept, window))) found.add(window);
     }
     return found;
   }
