@@ -1,5 +1,12 @@
 name: Android, iOS, Linux, macOS, and Windows builds
 
+env:
+  # How long an artifact is kept. A dispatch build carries release filenames and
+  # the release key, so it is kept briefly and cannot be mistaken for a
+  # published asset. One place rather than the same expression and the same
+  # two-line comment at each of the three upload steps.
+  ASSET_RETENTION: ${{ github.event_name == 'workflow_dispatch' && 1 || 90 }}
+
 on:
   # A push to `main` builds `dev`; a release tag builds `release`. ADR 0014 §1.
   # Both go through the same jobs, because a stable binary is rebuilt from its
@@ -193,36 +200,15 @@ jobs:
       - name: Build Linux single-file executable
         run: .github/scripts/build/linux.sh
 
+      # continue-on-error stays on the calling step: it is not a composite
+      # action key. This runs after the build and produces nothing a user
+      # downloads, so a fault at Sentry must not throw away a release that is
+      # already built - the symbols can be re-uploaded from the same commit.
       - name: Upload debug symbols to Sentry
-        shell: bash
-        env:
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-        # continue-on-error because this runs after the build and produces
-        # nothing a user downloads. A fault at Sentry must not throw away a
-        # release that is already built; the symbols can be re-uploaded from
-        # the same commit afterwards.
+        uses: ./.github/actions/upload-debug-symbols
         continue-on-error: true
-        # The token is read from the environment and never compiled in: a
-        # --dart-define lands in the binary, and anyone with the APK could read
-        # it out. The DSN is the one that ships.
-        #
-        # The release name comes from SENTRY_RELEASE, which derive_version.sh
-        # wrote to GITHUB_ENV and the plugin reads from the environment ahead of
-        # both its own argument and the pubspec - so there is no flag here to
-        # drift from that line.
-        #
-        # The absent-token check is in the script rather than in `if:`, because
-        # a step's own `env:` is not in scope for its `if:` - the expression
-        # would read an empty `env.SENTRY_AUTH_TOKEN` and skip the step on every
-        # run, including the ones that have the secret. A fork and a dispatch
-        # run by somebody without the secret both have to be able to build; the
-        # release is not gated on symbolication.
-        run: |
-          if [ -z "${SENTRY_AUTH_TOKEN:-}" ]; then
-            echo "::notice::SENTRY_AUTH_TOKEN is not set, so no debug symbols were uploaded. Stack traces from this build will not be symbolicated."
-            exit 0
-          fi
-          dart run sentry_dart_plugin
+        with:
+          auth-token: ${{ secrets.SENTRY_AUTH_TOKEN }}
 
       - name: Upload Android and Linux release assets
         uses: actions/upload-artifact@v4
@@ -232,9 +218,7 @@ jobs:
             dist/qunleashed_*_android_*.apk
             dist/qunleashed_*_linux_x64
           if-no-files-found: error
-          # A dispatch build carries release filenames and the release key.
-          # Keep it briefly so it cannot be mistaken for a published asset.
-          retention-days: ${{ github.event_name == 'workflow_dispatch' && 1 || 90 }}
+          retention-days: ${{ env.ASSET_RETENTION }}
 
   build-windows:
     name: Build Windows release
@@ -297,36 +281,15 @@ jobs:
           _CL_: /D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS
         run: ./.github/scripts/build/windows.ps1
 
+      # continue-on-error stays on the calling step: it is not a composite
+      # action key. This runs after the build and produces nothing a user
+      # downloads, so a fault at Sentry must not throw away a release that is
+      # already built - the symbols can be re-uploaded from the same commit.
       - name: Upload debug symbols to Sentry
-        shell: bash
-        env:
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-        # continue-on-error because this runs after the build and produces
-        # nothing a user downloads. A fault at Sentry must not throw away a
-        # release that is already built; the symbols can be re-uploaded from
-        # the same commit afterwards.
+        uses: ./.github/actions/upload-debug-symbols
         continue-on-error: true
-        # The token is read from the environment and never compiled in: a
-        # --dart-define lands in the binary, and anyone with the APK could read
-        # it out. The DSN is the one that ships.
-        #
-        # The release name comes from SENTRY_RELEASE, which derive_version.sh
-        # wrote to GITHUB_ENV and the plugin reads from the environment ahead of
-        # both its own argument and the pubspec - so there is no flag here to
-        # drift from that line.
-        #
-        # The absent-token check is in the script rather than in `if:`, because
-        # a step's own `env:` is not in scope for its `if:` - the expression
-        # would read an empty `env.SENTRY_AUTH_TOKEN` and skip the step on every
-        # run, including the ones that have the secret. A fork and a dispatch
-        # run by somebody without the secret both have to be able to build; the
-        # release is not gated on symbolication.
-        run: |
-          if [ -z "${SENTRY_AUTH_TOKEN:-}" ]; then
-            echo "::notice::SENTRY_AUTH_TOKEN is not set, so no debug symbols were uploaded. Stack traces from this build will not be symbolicated."
-            exit 0
-          fi
-          dart run sentry_dart_plugin
+        with:
+          auth-token: ${{ secrets.SENTRY_AUTH_TOKEN }}
 
       - name: Upload Windows release asset
         uses: actions/upload-artifact@v4
@@ -336,9 +299,7 @@ jobs:
             dist/qunleashed_*_windows_x64_raw.zip
             dist/qunleashed_*_windows_x64.exe
           if-no-files-found: error
-          # A dispatch build carries release filenames and the release key.
-          # Keep it briefly so it cannot be mistaken for a published asset.
-          retention-days: ${{ github.event_name == 'workflow_dispatch' && 1 || 90 }}
+          retention-days: ${{ env.ASSET_RETENTION }}
 
   build-macos:
     name: Build macOS and iOS releases
@@ -398,36 +359,15 @@ jobs:
       - name: Build iOS release IPA
         run: .github/scripts/build/ios.sh
 
+      # continue-on-error stays on the calling step: it is not a composite
+      # action key. This runs after the build and produces nothing a user
+      # downloads, so a fault at Sentry must not throw away a release that is
+      # already built - the symbols can be re-uploaded from the same commit.
       - name: Upload debug symbols to Sentry
-        shell: bash
-        env:
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-        # continue-on-error because this runs after the build and produces
-        # nothing a user downloads. A fault at Sentry must not throw away a
-        # release that is already built; the symbols can be re-uploaded from
-        # the same commit afterwards.
+        uses: ./.github/actions/upload-debug-symbols
         continue-on-error: true
-        # The token is read from the environment and never compiled in: a
-        # --dart-define lands in the binary, and anyone with the APK could read
-        # it out. The DSN is the one that ships.
-        #
-        # The release name comes from SENTRY_RELEASE, which derive_version.sh
-        # wrote to GITHUB_ENV and the plugin reads from the environment ahead of
-        # both its own argument and the pubspec - so there is no flag here to
-        # drift from that line.
-        #
-        # The absent-token check is in the script rather than in `if:`, because
-        # a step's own `env:` is not in scope for its `if:` - the expression
-        # would read an empty `env.SENTRY_AUTH_TOKEN` and skip the step on every
-        # run, including the ones that have the secret. A fork and a dispatch
-        # run by somebody without the secret both have to be able to build; the
-        # release is not gated on symbolication.
-        run: |
-          if [ -z "${SENTRY_AUTH_TOKEN:-}" ]; then
-            echo "::notice::SENTRY_AUTH_TOKEN is not set, so no debug symbols were uploaded. Stack traces from this build will not be symbolicated."
-            exit 0
-          fi
-          dart run sentry_dart_plugin
+        with:
+          auth-token: ${{ secrets.SENTRY_AUTH_TOKEN }}
 
       - name: Upload macOS and iOS release assets
         uses: actions/upload-artifact@v4
@@ -437,9 +377,7 @@ jobs:
             dist/qunleashed_*_macos_*.dmg
             dist/qunleashed_*_ios_*.ipa
           if-no-files-found: error
-          # A dispatch build carries release filenames and the release key.
-          # Keep it briefly so it cannot be mistaken for a published asset.
-          retention-days: ${{ github.event_name == 'workflow_dispatch' && 1 || 90 }}
+          retention-days: ${{ env.ASSET_RETENTION }}
 
   publish:
     name: Publish GitHub release

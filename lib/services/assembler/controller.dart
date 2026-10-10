@@ -368,41 +368,32 @@ class AssemblerController extends ChangeNotifier {
   /// operation. The same reason `FirmwareInstaller.install` needs it.
   Future<bool> _run(AssemblerJob job, Future<bool> Function() action) async {
     if (busy || !isSupported) return false;
-    return traced(
-      'assembler.${job.name}',
-      (trace) => _runJob(job, action, trace),
-    );
-  }
-
-  Future<bool> _runJob(
-    AssemblerJob job,
-    Future<bool> Function() action,
-    TraceScope trace,
-  ) async {
-    _job = job;
-    _progress = null;
-    notifyListeners();
-    var ok = false;
-    try {
-      ok = await action();
-      if (!ok) trace.failed();
-    } catch (e) {
-      trace.failed('$e');
-      _logger.error('Failed to run operation: $e');
-    } finally {
-      _job = AssemblerJob.none;
+    return traced('assembler.${job.name}', (trace) async {
+      _job = job;
       _progress = null;
-      // A fresh SDK or toolchain is the answer to whatever broke the local
-      // builds, so they get another chance right away.
-      if (ok) _localFaulted = false;
-      // Through refreshStatus for its catch: this runs in a finally, so an
-      // unreadable ufbt state here would replace whatever the operation was
-      // reporting with a filesystem error from the cleanup. Unpinned - no
-      // test drives _run, which would want the installer faked and not just
-      // readStatus - so a change back to a bare readStatus() passes.
-      refreshStatus();
-    }
-    return ok;
+      notifyListeners();
+      var ok = false;
+      try {
+        ok = await action();
+        if (!ok) trace.failed();
+      } catch (e) {
+        trace.failed('$e');
+        _logger.error('Failed to run operation: $e');
+      } finally {
+        _job = AssemblerJob.none;
+        _progress = null;
+        // A fresh SDK or toolchain is the answer to whatever broke the local
+        // builds, so they get another chance right away.
+        if (ok) _localFaulted = false;
+        // Through refreshStatus for its catch: this runs in a finally, so an
+        // unreadable ufbt state here would replace whatever the operation was
+        // reporting with a filesystem error from the cleanup. Unpinned - no
+        // test drives _run, which would want the installer faked and not just
+        // readStatus - so a change back to a bare readStatus() passes.
+        refreshStatus();
+      }
+      return ok;
+    });
   }
 
   void _onEvent(UfbtLogEvent event) {

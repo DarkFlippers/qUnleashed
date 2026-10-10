@@ -25,9 +25,8 @@ enum BuildChannel {
   /// release, and a report from `local` cannot be reproduced from anything in
   /// the repository — the honest reading of a channel nobody can account for.
   static BuildChannel parse(String raw) {
-    for (final channel in values) {
-      if (channel.name == raw) return channel;
-    }
+    final known = values.asNameMap()[raw];
+    if (known != null) return known;
     // Not `warn`: nothing is broken for the user, and the default is already
     // the cautious one. But a CI build demoting itself to `local` would be
     // baffling without a line saying why.

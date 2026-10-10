@@ -26,8 +26,14 @@ class DiagnosticsSettings extends PrefsBackedSettings {
   /// project owns.
   static const bool _defaultShareLogs = true;
 
+  /// Named for the same reason as its sibling, and pointing the other way:
+  /// [onLoadFailed] and [noticeShown] each argue why. Written as a literal in
+  /// three places before, which is how two defaults that must differ come to
+  /// agree by accident.
+  static const bool _defaultNoticeShown = false;
+
   bool _shareLogs = _defaultShareLogs;
-  bool _noticeShown = false;
+  bool _noticeShown = _defaultNoticeShown;
 
   bool get shareLogs => _shareLogs;
 
@@ -48,7 +54,7 @@ class DiagnosticsSettings extends PrefsBackedSettings {
   @override
   void readFrom(PrefsReader reader) {
     _shareLogs = reader.or(_shareLogsKey, _defaultShareLogs);
-    _noticeShown = reader.or(_noticeShownKey, false);
+    _noticeShown = reader.or(_noticeShownKey, _defaultNoticeShown);
     reader.report('[Diagnostics]');
   }
 
@@ -75,7 +81,7 @@ class DiagnosticsSettings extends PrefsBackedSettings {
   @override
   void resetFields() {
     _shareLogs = _defaultShareLogs;
-    _noticeShown = false;
+    _noticeShown = _defaultNoticeShown;
   }
 
   /// Applies the choice to this object and persists it, in that order.
