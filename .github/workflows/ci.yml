@@ -60,6 +60,11 @@ jobs:
       - name: Check the changelog
         run: .github/scripts/check_changelog.sh
 
+      # Only ever runs on a release, which is the least-rehearsed path there
+      # is, and it writes the one file CI refuses a build over.
+      - name: Test the cycle opener
+        run: .github/scripts/open_next_cycle_test.sh
+
       # Why: the probe's own header. The only thing anywhere that runs the
       # generated engine, and it needs no Flutter.
       - name: Check the SubGHz seed-recovery engine
@@ -178,6 +183,9 @@ jobs:
       - name: Test the release version derivation
         run: .github/scripts/derive_version_test.sh
 
-      # Pure bash too, and it uses mktemp, which is where BSD and GNU differ.
+      # Pure bash too, and both use mktemp, which is where BSD and GNU differ.
       - name: Test the changelog guard
         run: .github/scripts/check_changelog_test.sh
+
+      - name: Test the cycle opener
+        run: .github/scripts/open_next_cycle_test.sh

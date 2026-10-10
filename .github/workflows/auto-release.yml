@@ -396,6 +396,9 @@ jobs:
 
   publish:
     name: Publish GitHub release
+    outputs:
+      channel: ${{ steps.channel.outputs.channel }}
+      version: ${{ steps.channel.outputs.version }}
     needs:
       - build-android-linux
       - build-macos
@@ -463,6 +466,7 @@ jobs:
 
           {
             echo "release_tag=$release_tag"
+            echo "channel=$channel"
             echo "version=$version"
             echo "number=$number"
             echo "data=$data"
@@ -601,3 +605,133 @@ jobs:
         run: |
           echo "::error::Push finished without publishing (publish: ${{ needs.publish.result }})."
           exit 1
+
+  # Publishing a release breaks `main` on purpose: until pubspec names a
+  # version that has not been published, every push fails with "Version 0.16.0
+  # has already been published". Two files have to move to clear it, and
+  # `check_changelog.sh` refuses a changelog whose version line disagrees with
+  # pubspec, so they move together.
+  #
+  # This opens a pull request; it does not push to `main`. Three reasons, and
+  # the first is the one that decides it:
+  #
+  #  - the version is a person's call (0014 §2). A minor bump is what this
+  #    project almost always opens, so that is what gets proposed - but a
+  #    proposal in a pull request can be changed to 0.17.0 or 1.0.0 before it
+  #    lands, and a commit pushed straight to `main` cannot.
+  #  - `main` is branch-protected, so pushing would need a bypass or a personal
+  #    token, granted to the workflow that holds the signing keys.
+  #  - a push can race a merge and half-apply, leaving the release published
+  #    and the cycle unopened - the exact state this exists to clear.
+  open-next-cycle:
+    name: Open the next cycle
+    needs: publish
+    if: ${{ needs.publish.outputs.channel == 'release' }}
+    permissions:
+      contents: write
+      pull-requests: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      # `main`, not the tag this run was started from: that is where the bump
+      # has to land, and a release is a tag push so the default ref is wrong.
+      - name: Checkout main
+        uses: actions/checkout@v7
+        with:
+          ref: main
+
+      - name: Write the bump and reset the changelog
+        id: cycle
+        shell: bash
+        env:
+          RELEASED: ${{ needs.publish.outputs.version }}
+        run: |
+          next="$(.github/scripts/open_next_cycle.sh "$RELEASED")"
+          echo "next=$next" >> "$GITHUB_OUTPUT"
+          echo "Opening the $next cycle, released $RELEASED."
+
+      # The pull request below carries no checks of its own: GitHub starts no
+      # workflow for an event caused by the repository's own GITHUB_TOKEN. So
+      # the guard runs here, against the files that are about to be committed,
+      # rather than being first trusted after somebody merges them.
+      - name: Check what it wrote
+        run: .github/scripts/check_changelog.sh
+
+      # The commit and pull request bodies go through files. Inlining them as
+      # `-m "..."` across several lines carries the continuation's own
+      # indentation into the message - two leading spaces on the body's first
+      # line, invisible here and permanent in the commit.
+      - name: Open the pull request
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEXT: ${{ steps.cycle.outputs.next }}
+          RELEASED: ${{ needs.publish.outputs.version }}
+        run: |
+          branch="chore/open-$NEXT"
+
+          cat >"$RUNNER_TEMP/commit-body.txt" <<EOF
+          $RELEASED has been released, so every push to main fails until
+          pubspec names a version that has not been. The changelog's notes
+          shipped with it and go back to a skeleton; the guard refuses the two
+          disagreeing, so they move together.
+
+          The version is a minor bump by default, which is what this project
+          almost always opens. Change it here if this cycle is a patch or a
+          major - ADR 0014 keeps that digit for a person, and this is the pull
+          request where it is still a proposal.
+          EOF
+
+          cat >"$RUNNER_TEMP/pr-body.md" <<EOF
+          $RELEASED is out, so \`main\` is red until pubspec names a version that
+          has not been published. This bumps it to **$NEXT** and resets
+          \`CHANGELOG.md\` to its skeleton, in one commit because
+          \`check_changelog.sh\` refuses the two disagreeing.
+
+          **The version is a default, not a decision.** A minor bump is what
+          this project almost always opens; if $RELEASED should be followed by a
+          patch or a major, change the two lines before merging.
+          [ADR 0014](docs/adr/0014-build-identity.md) §2 keeps that digit for a
+          person, which is why this is a pull request and not a push to
+          \`main\`.
+
+          This carries no checks: GitHub starts no workflow for an event the
+          repository's own token caused. The release run checked the changelog
+          against the committed files before opening this.
+
+          Opened by the release run for $RELEASED.
+          EOF
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add pubspec.yaml CHANGELOG.md
+          git commit -m "Open the $NEXT cycle" -F "$RUNNER_TEMP/commit-body.txt"
+
+          # --force, because re-running a failed release repeats this job and
+          # the branch from the first attempt is still there. The content is
+          # derived from the released version, so a second run writes the same
+          # thing; what must not happen is this failing on a stale branch and
+          # leaving `main` red.
+          git push --force origin "$branch"
+
+          # An open pull request from a first attempt is reused, not
+          # duplicated - `gh pr create` fails on the second call.
+          existing="$(gh pr list --head "$branch" --state open --json number --jq '.[0].number // empty')"
+          if [[ -n "$existing" ]]; then
+            echo "::notice::Pull request #$existing already opens the $NEXT cycle."
+            exit 0
+          fi
+
+          gh pr create \
+            --base main \
+            --head "$branch" \
+            --title "Open the $NEXT cycle" \
+            --body-file "$RUNNER_TEMP/pr-body.md" \
+            --assignee mishamyte
+
+          # Every pull request here carries the milestone, but a missing one is
+          # not worth failing a job whose point is to unblock `main`.
+          gh pr edit "$branch" --milestone "Release preparation" ||
+            echo "::notice::Could not set the milestone; set it by hand."

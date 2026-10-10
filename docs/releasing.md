@@ -91,12 +91,15 @@ dev build named after a released version is refused by TestFlight days later,
 far from the commit, and reported as a store problem rather than a versioning
 one.
 
-So make the bump the first commit after the release. One line, and `main` is
-green again.
+**The release run opens a pull request that does both of these**, bumping
+pubspec to the next minor and resetting the changelog - see the next section.
+Read it, change the version if this cycle is a patch or a major, merge. That is
+the whole release-day job, and `main` is green on the merge.
 
-**Reset `CHANGELOG.md` in the same commit.** Its notes have shipped, and the
-guard below refuses a version line that disagrees with pubspec - so the two
-move together or `main` is red either way:
+By hand, if the bot is ever not what you want: make the bump the first commit
+after the release, and **reset `CHANGELOG.md` in the same commit.** Its notes
+have shipped, and `check_changelog.sh` refuses a version line that disagrees
+with pubspec - so the two move together or `main` is red either way:
 
 ```markdown
 ## Main changes
@@ -146,6 +149,51 @@ all. Most should not - a CI fix, a Crowdin sync, a submodule bump or a
 test-only branch has nothing a user would read - and a gate that is wrong that
 often needs a bypass label, which then gets used without being read. Judgement
 stays with the author and the review.
+
+## The bot that opens the next cycle
+
+`open-next-cycle` in `auto-release.yml` runs after a release publishes, and
+only for a release. It does four things:
+
+1. Reads the version that was just published, from the build job's own output
+   rather than a fresh derivation.
+2. Computes **the next minor** - 0.16.0 becomes 0.17.0 - and writes it to
+   `pubspec.yaml`, leaving every other line alone.
+3. Resets `CHANGELOG.md` to its three-line skeleton, in the same commit,
+   because `check_changelog.sh` refuses a changelog whose version line
+   disagrees with pubspec.
+4. Pushes `chore/open-<version>` and opens a pull request assigned to you.
+
+**It does not push to `main`,** and the first of these three reasons is the one
+that decides it:
+
+- The version is a person's call (fact 2). A minor bump is what this project
+  almost always opens, so that is what gets proposed - but a proposal in a
+  pull request can be changed to a patch or a major before it lands, and a
+  commit pushed straight to `main` cannot.
+- `main` is branch-protected, so a push would need a bypass or a personal
+  token, granted to the workflow that holds the signing keys.
+- A push can race a merge and half-apply, leaving the release published and
+  the cycle unopened - the state it exists to clear.
+
+So the release-day job is: read the pull request, change the version if this
+cycle is not a minor, merge. `main` is green again on the merge.
+
+Two things worth knowing:
+
+- **The pull request carries no checks.** GitHub starts no workflow for an
+  event the repository's own `GITHUB_TOKEN` caused. The release run therefore
+  runs `check_changelog.sh` against the files before committing them, so the
+  content is verified even though the pull request shows nothing. Giving the
+  job a personal access token would get the checks back, at the cost of a
+  long-lived token in the release workflow.
+- **Re-running a failed release re-runs this job.** It force-pushes the branch
+  and reuses an open pull request rather than opening a second one, because the
+  content is derived from the released version and a second run writes the same
+  thing.
+
+`open_next_cycle.sh` is the file-writing half and is tested on its own,
+including that what it writes satisfies `check_changelog.sh`.
 
 ## When CI refuses
 
@@ -306,8 +354,7 @@ Honest list, so nobody waits for something that is not coming.
 | | |
 |---|---|
 | Store uploads | Nothing uploads to TestFlight or the Play internal track. The ADR is shaped for it; the jobs do not exist. |
-| The version bump after a release | Deliberately manual (fact 2). A bot could open the PR; none does. |
-| The changelog reset after a release | Same commit as the bump, so same answer. A bot cannot write the version line without picking the next version, which is the one thing fact 2 keeps for a person. |
+| The *decision* in the version bump after a release | `open-next-cycle` proposes a minor bump and opens the pull request; which digit moves is still a person's call (fact 2). |
 | The R8 mapping | `sentry_dart_plugin` uploads dSYMs, PDBs and native symbols, but not Android's R8 mapping — that wants the Sentry Android Gradle Plugin, which is a change in `android/` that has not been made. Until it is, an obfuscated Android Dart trace is less readable than the other four platforms'. |
 | Release commits in the submodules | Each Sentry release gets the app's commits automatically. [ADR 0013](adr/0013-observability-with-sentry.md) §3 wants flipperlib's and dartufbt's too, so a suspect commit can be found in a submodule; they go as event tags today, not as release commits. |
 | `installerStore` | 0014 §1 wants the actual install source — TestFlight, Play, a sideload — read at runtime and reported. Not read anywhere yet. |
@@ -319,6 +366,7 @@ Honest list, so nobody waits for something that is not coming.
 | `.github/scripts/derive_version.sh` | The one place a trigger becomes a build identity: version, number, channel, three commits. Everything above is this script. |
 | `.github/scripts/derive_version_test.sh` | Its tests. Run it directly; it needs no Flutter. |
 | `.github/scripts/check_changelog.sh` | The changelog's shape, including that its version line agrees with pubspec. Its tests are beside it. |
+| `.github/scripts/open_next_cycle.sh` | The pubspec bump and changelog reset the release-day pull request carries. Its tests are beside it. |
 | `.github/workflows/auto-release.yml` | The triggers, the five builds, the publish job and the rolling prerelease. |
 | `lib/services/build_identity.dart` | How the app reads what was compiled in, and formats it for a person. |
 | `pubspec.yaml` | The version. Nothing else about the identity lives here — the build number is derived. |
