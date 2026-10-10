@@ -472,10 +472,22 @@ jobs:
             echo "data=$data"
           } >> "$GITHUB_OUTPUT"
 
+          # Has anybody written a note yet? A cycle opens with a skeleton
+          # holding its version line and nothing else, so counting bullets
+          # that are not the version line is the question "are there notes".
+          # awk rather than grep because a file with no matches is the normal
+          # case here, and `grep -c` exits 1 on it.
+          changelog="$GITHUB_WORKSPACE/CHANGELOG.md"
+          notes=0
+          if [[ -f "$changelog" ]]; then
+            notes="$(awk '/^- / && !/^- Version: /' "$changelog" | wc -l | tr -d '[:space:]')"
+          fi
+
           if [[ "$channel" == dev ]]; then
             # The name carries the version, since the tag no longer can - every
             # dev build is tagged `dev`, and §2 gives them all one version name
             # too, so the build number and the commit are what tell them apart.
+            body="version: $version-dev ($number) | commit: ${GITHUB_SHA:0:7}"
             {
               echo "release_name=Development build $version-dev ($number)"
               echo "prerelease=true"
@@ -483,23 +495,52 @@ jobs:
               # Notes are generated from the previous tag, and the previous
               # `dev` tag is the one this build is replacing - so they would
               # describe the gap between two dev builds and get shorter the
-              # more often the build runs. The body below says what matters.
+              # more often the build runs. The body says what matters.
               echo "generate_notes=false"
               echo "topic=app_dev"
               echo "title=New qUnleashed app dev build"
-              echo "body=version: $version-dev ($number) | commit: ${GITHUB_SHA:0:7}"
+              echo "body=$body"
             } >> "$GITHUB_OUTPUT"
           else
+            body="version: $version ($number)"
+            # Generated notes list the pull requests since the previous tag.
+            # With the changelog carrying curated prose and a credit per
+            # bullet, that list is the same information worse - so it is only
+            # asked for when there is no changelog to publish instead.
+            generate_notes=true
+            (( notes )) && generate_notes=false
             {
               echo "release_name=${GITHUB_REF_NAME}"
               echo "prerelease=false"
               echo "make_latest=true"
-              echo "generate_notes=true"
+              echo "generate_notes=$generate_notes"
               echo "topic=app_release"
               echo "title=New qUnleashed app released"
-              echo "body=version: $version ($number)"
+              echo "body=$body"
             } >> "$GITHUB_OUTPUT"
           fi
+
+          # The release page gets the one-liner and, under it, the changelog -
+          # which is the whole point of keeping the file: it accumulates until
+          # a stable release, so a dev build publishes everything new since
+          # the last one anybody installed on purpose.
+          #
+          # The one-liner stays either way. A build from the first day of a
+          # cycle has nothing written yet, and a release page whose entire body
+          # is "## Main changes" reads as a broken build rather than a new one.
+          #
+          # `body` keeps the one-liner alone, because the push notification
+          # sends it to a phone.
+          body_path="$RUNNER_TEMP/release-body.md"
+          {
+            printf '%s\n' "$body"
+            if (( notes )); then
+              printf '\n'
+              cat "$changelog"
+            fi
+          } >"$body_path"
+          echo "body_path=$body_path" >> "$GITHUB_OUTPUT"
+          echo "Release body: $notes note(s) from CHANGELOG.md."
 
       - name: Write SHA256SUMS
         run: .github/scripts/checksums.sh dist
@@ -543,7 +584,7 @@ jobs:
         with:
           tag_name: ${{ steps.channel.outputs.release_tag }}
           name: ${{ steps.channel.outputs.release_name }}
-          body: ${{ steps.channel.outputs.body }}
+          body_path: ${{ steps.channel.outputs.body_path }}
           prerelease: ${{ steps.channel.outputs.prerelease }}
           make_latest: ${{ steps.channel.outputs.make_latest }}
           generate_release_notes: ${{ steps.channel.outputs.generate_notes }}
