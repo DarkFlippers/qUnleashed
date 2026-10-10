@@ -10,6 +10,8 @@ import 'package:qunleashed/services/telemetry/settings.dart';
 import 'package:qunleashed/theme/theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'quiet_log.dart';
+
 /// The switch the screen draws, fresh per test.
 ///
 /// Returned rather than held in a variable the tests close over, because the
@@ -25,18 +27,6 @@ Widget wrap(Widget child, {DiagnosticsSettings? settings}) {
     // scope with less ceremony.
     home: DiagnosticsScope(notifier: lastSettings!, child: child),
   );
-}
-
-/// Silences the console while a test records something, so the run stays
-/// readable. Restored inline; flutter_test rejects addTearDown for this.
-void quietly(void Function() body) {
-  final previous = debugPrint;
-  debugPrint = (String? message, {int? wrapWidth}) {};
-  try {
-    body();
-  } finally {
-    debugPrint = previous;
-  }
 }
 
 /// Answers `PackageInfo.fromPlatform()`, which copying now needs.

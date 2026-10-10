@@ -6,22 +6,11 @@
 // repeated line arrives **once**, and that a sink which fails costs neither
 // the local record nor the process.
 import 'package:flipperlib/flipperlib.dart' show FlipperLogLevel, Log;
-import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/services/logging.dart';
 import 'package:qunleashed/services/telemetry/scrub.dart';
 
-/// Silences the console while a test records something, so the run stays
-/// readable. Restored inline; flutter_test rejects addTearDown for this.
-void quietly(void Function() body) {
-  final previous = debugPrint;
-  debugPrint = (String? message, {int? wrapWidth}) {};
-  try {
-    body();
-  } finally {
-    debugPrint = previous;
-  }
-}
+import 'quiet_log.dart';
 
 class _Sink {
   final List<KeptLevel> levels = [];

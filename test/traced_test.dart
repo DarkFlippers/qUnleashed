@@ -17,50 +17,7 @@ import 'package:qunleashed/services/telemetry/scrub.dart';
 import 'package:qunleashed/services/telemetry/traced.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
-/// A transport that accepts everything and sends nothing.
-class _Nowhere implements Transport {
-  @override
-  Future<SentryId?> send(SentryEnvelope envelope) async => SentryId.empty();
-}
-
-/// One captured transaction, read the way the server reads it.
-extension on SentryTransaction {
-  Map<String, dynamic> get _json => toJson();
-
-  Map<String, dynamic> get _trace =>
-      (_json['contexts'] as Map<String, dynamic>)['trace']
-          as Map<String, dynamic>;
-
-  String? get name => _json['transaction'] as String?;
-
-  String? get status => _trace['status'] as String?;
-
-  Map<String, dynamic> get data =>
-      (_trace['data'] as Map<String, dynamic>?) ?? const {};
-
-  List<String> get childOperations => [
-    for (final span in (_json['spans'] as List<dynamic>? ?? const []))
-      (span as Map<String, dynamic>)['op'] as String,
-  ];
-}
-
-/// Brings a hub up with every transaction captured instead of sent.
-Future<List<SentryTransaction>> captureTransactions() async {
-  final sent = <SentryTransaction>[];
-  await Sentry.init((options) {
-    options.dsn = 'https://key@o0.ingest.sentry.io/0';
-    options.tracesSampleRate = 1.0;
-    options.transport = _Nowhere();
-    options.beforeSendTransaction = (transaction, hint) {
-      sent.add(transaction);
-      return transaction;
-    };
-  });
-  // Closed in the teardown as well as in each test: a test that fails before
-  // its own close would otherwise leave the hub up for the next one.
-  addTearDown(Sentry.close);
-  return sent;
-}
+import 'sentry_capture.dart';
 
 void main() {
   setUp(() => Scrub.debugUseHomes([r'C:\Users\Myte']));

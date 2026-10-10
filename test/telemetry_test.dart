@@ -9,6 +9,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/services/build_identity.dart';
 import 'package:qunleashed/services/telemetry/scrub.dart';
 import 'package:qunleashed/services/telemetry/settings.dart';
+import 'package:qunleashed/services/telemetry/plan.dart';
+import 'package:qunleashed/services/telemetry/scrub_event.dart';
 import 'package:qunleashed/services/telemetry/telemetry.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';

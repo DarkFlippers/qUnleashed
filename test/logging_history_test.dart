@@ -6,23 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/services/logging.dart';
 import 'package:qunleashed/services/telemetry/scrub.dart';
 
-/// What `debugPrint` received while [body] ran.
-///
-/// Restored inline rather than through addTearDown, which flutter_test rejects
-/// as changing a debug variable.
-List<String> printed(void Function() body) {
-  final lines = <String>[];
-  final previous = debugPrint;
-  debugPrint = (String? message, {int? wrapWidth}) {
-    if (message != null) lines.add(message);
-  };
-  try {
-    body();
-  } finally {
-    debugPrint = previous;
-  }
-  return lines;
-}
+import 'quiet_log.dart';
 
 void main() {
   setUp(LogService.clearHistory);

@@ -23,33 +23,7 @@ import 'package:qunleashed/pages/archive/browser/controller.dart';
 import 'package:qunleashed/services/logging.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
-/// A transport that accepts everything and sends nothing.
-class _Nowhere implements Transport {
-  @override
-  Future<SentryId?> send(SentryEnvelope envelope) async => SentryId.empty();
-}
-
-/// Brings a hub up with every transaction captured instead of sent.
-///
-/// The span is the only honest instrument here. The controller's own progress
-/// field is throttled by `ProgressThrottle`, so the backwards step the restart
-/// produces is usually swallowed before any listener sees it - while
-/// `trace.count` runs on every `onProgress` call, before the throttle. An
-/// earlier version of this file watched the controller and passed on the reset
-/// to 0 that `writeBytes` does in its `finally`.
-Future<List<SentryTransaction>> captureTransactions() async {
-  final sent = <SentryTransaction>[];
-  await Sentry.init((options) {
-    options.dsn = 'https://key@o0.ingest.sentry.io/0';
-    options.tracesSampleRate = 1.0;
-    options.transport = _Nowhere();
-    options.beforeSendTransaction = (transaction, hint) {
-      sent.add(transaction);
-      return transaction;
-    };
-  });
-  return sent;
-}
+import 'sentry_capture.dart';
 
 /// Raised by [_DroppingFlipper] to look like a lost link.
 class _LinkDropped implements Exception {
@@ -155,14 +129,6 @@ void main() {
   Future<bool> write(int bytes) =>
       ctrl.writeBytes('/ext/big.bin', List.filled(bytes, 7));
 
-  Map<String, dynamic> dataOf(SentryTransaction t) {
-    final json = t.toJson();
-    final trace =
-        (json['contexts'] as Map<String, dynamic>)['trace']
-            as Map<String, dynamic>;
-    return (trace['data'] as Map<String, dynamic>?) ?? const {};
-  }
-
   test('a write interrupted by a link drop still succeeds', () async {
     // The precondition for the count meaning anything: the library really does
     // restart rather than fail, so the caller sees one successful transfer.
@@ -175,7 +141,7 @@ void main() {
     await Sentry.close();
 
     expect(sent, hasLength(1));
-    expect(dataOf(sent.single)['restarts'], 1);
+    expect(sent.single.data['restarts'], 1);
   });
 
   test('a write nobody interrupted counts none', () async {
@@ -188,7 +154,7 @@ void main() {
 
     expect(client.attempts, 1);
     expect(
-      dataOf(sent.single).containsKey('restarts'),
+      sent.single.data.containsKey('restarts'),
       isFalse,
       reason: 'absent rather than zero - the key appears when it happens',
     );
@@ -198,7 +164,7 @@ void main() {
     await write(2048);
     await Sentry.close();
 
-    final data = dataOf(sent.single);
+    final data = sent.single.data;
     expect(
       data['path'],
       '/ext/<name>.bin',
@@ -215,10 +181,6 @@ void main() {
     expect(await write(2048), isFalse);
     await Sentry.close();
 
-    final json = sent.single.toJson();
-    final trace =
-        (json['contexts'] as Map<String, dynamic>)['trace']
-            as Map<String, dynamic>;
-    expect(trace['status'], 'internal_error');
+    expect(sent.single.status, 'internal_error');
   });
 }

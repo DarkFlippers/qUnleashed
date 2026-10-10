@@ -10,21 +10,11 @@
 // ordinary toolchain chatter; admitting `warning` and below would churn the
 // 500-entry buffer the failure's own context lives in.
 import 'package:dartufbt/dartufbt.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/services/assembler/controller.dart';
 import 'package:qunleashed/services/logging.dart';
 
-/// Silences the console while a test records something.
-void quietly(void Function() body) {
-  final previous = debugPrint;
-  debugPrint = (String? message, {int? wrapWidth}) {};
-  try {
-    body();
-  } finally {
-    debugPrint = previous;
-  }
-}
+import 'quiet_log.dart';
 
 void main() {
   late UfbtLogger logger;
