@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/components/open_url.dart';
-import 'package:qunleashed/services/logging.dart';
+
+import 'kept_lines.dart';
 
 /// Opening a link, and what it says when nothing opens.
 ///
@@ -18,7 +19,7 @@ const _url = 'https://example.invalid/help';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  late int logBase;
+  setUp(recordKeptLines);
 
   /// Answers the launcher channel. [fails] is a platform that cannot open a
   /// browser at all - no handler, no default app, a locked-down device.
@@ -33,8 +34,7 @@ void main() {
   }
 
   setUp(() {
-    LogService.clearHistory();
-    logBase = LogService.history.length;
+    clearKeptLines();
     addTearDown(() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(_channel, null);
@@ -42,7 +42,7 @@ void main() {
   });
 
   Iterable<String> lines(String fragment) =>
-      LogService.history.skip(logBase).where((l) => l.contains(fragment));
+      keptLines.where((l) => l.contains(fragment));
 
   /// Taps a link from a real tree, because `openUrl` takes a context.
   ///

@@ -87,7 +87,8 @@ class _WatchLifecycleObserver with WidgetsBindingObserver {
 /// awaits any of these - the app comes up either way - and a signature that
 /// cannot be awaited says so better than an unawaited() at each site did.
 ///
-/// Tagged like every other kept entry, because these now reach the log screen
-/// a user copies into a bug report; before, at info, they reached nothing.
+/// Tagged like every other kept line, because these now reach the reporting
+/// channel and the label is what makes one searchable there; before, at info,
+/// they reached nothing.
 void _start(String label, Future<void> Function() task) =>
     unawaited(guarded('[Bootstrap] ambient service "$label"', task));

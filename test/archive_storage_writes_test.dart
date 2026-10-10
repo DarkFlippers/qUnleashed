@@ -2,8 +2,9 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/services/archive/storage.dart';
-import 'package:qunleashed/services/logging.dart';
 import 'package:qunleashed/services/storage/paths.dart';
+
+import 'kept_lines.dart';
 
 /// What the archive writes down about the user's own choices, and what it does
 /// when it cannot.
@@ -18,9 +19,10 @@ import 'package:qunleashed/services/storage/paths.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  setUp(recordKeptLines);
+
   late Directory root;
   late ArchiveStorage storage;
-  late int logBase;
 
   // One root for the file, not one per case. `ArchiveStorage` caches its root
   // in a static, so a second temp directory would be created and then ignored
@@ -51,12 +53,10 @@ void main() {
     } else {
       devices.createSync(recursive: true);
     }
-    LogService.clearHistory();
-    logBase = LogService.history.length;
+    clearKeptLines();
   });
 
-  bool said(String fragment) =>
-      LogService.history.skip(logBase).any((l) => l.contains(fragment));
+  bool said(String fragment) => keptLines.any((l) => l.contains(fragment));
 
   /// Puts a directory where [file] wants to be, so writing it fails.
   void blockFile(File file) {
@@ -159,7 +159,7 @@ void main() {
       await storage.writeFapIcon('Kitchen', '/ext/apps/Tools/x.fap', const [1]);
 
       expect(
-        LogService.history.skip(logBase),
+        keptLines,
         isEmpty,
         reason: 'best-effort, and the budget entry says so',
       );

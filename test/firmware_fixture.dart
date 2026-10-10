@@ -10,10 +10,11 @@ import 'package:qunleashed/pages/devices/device_scope.dart';
 import 'package:qunleashed/pages/devices/firmware/directory.dart';
 import 'package:qunleashed/pages/devices/firmware/repository.dart';
 import 'package:qunleashed/pages/devices/firmware/update_settings.dart';
-import 'package:qunleashed/services/logging.dart';
 import 'package:qunleashed/services/notifications/push_service.dart';
 import 'package:qunleashed/theme/theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'kept_lines.dart';
 
 import 'quiet_device_title.dart';
 
@@ -116,7 +117,18 @@ void feedFails([Object error = const SocketException('down')]) =>
 /// `flutter_test` answers an unreplaced request with a 400, so without the
 /// last line an unseeded firmware records a failure and logs a line per run.
 void resetFirmwareState() {
-  LogService.clearHistory();
+  // Installs the recorder as well as emptying it. **Call this from `setUp`,
+  // not `setUpAll`**: `recordKeptLines` registers an `addTearDown`, which
+  // needs a test's own zone and throws outside one - and the error points
+  // at `kept_lines.dart` rather than at the caller, so it is worth
+  // knowing here. Most of what this function resets is a process-wide
+  // singleton, which makes `setUpAll` the natural thing to reach for.
+  //
+  // Every caller is a `setUp`,
+  // and `keptAbout` below is the only way the firmware tests see a log line -
+  // so a file that resets state but never installs the sink reads every
+  // `expect(keptAbout(...), hasLength(1))` as a silence that is not there.
+  recordKeptLines();
   SharedPreferences.setMockInitialValues(const {});
   UpdateSettingsStore.instance.reset();
   FirmwareRepository.instance.reset();
@@ -135,7 +147,7 @@ void resetFirmwareState() {
 
 /// The kept log lines mentioning [fragment].
 List<String> keptAbout(String fragment) =>
-    LogService.history.where((l) => l.contains(fragment)).toList();
+    keptLines.where((l) => l.contains(fragment)).toList();
 
 /// Only the connection half of a client.
 ///

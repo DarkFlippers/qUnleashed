@@ -7,7 +7,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/services/guarded.dart';
-import 'package:qunleashed/services/logging.dart';
+
+import 'kept_lines.dart';
 
 /// A rejection shaped like the ones flipperlib produces.
 ///
@@ -21,10 +22,12 @@ import 'package:qunleashed/services/logging.dart';
 Future<void> boom() => Future<void>.error(StateError('boom'), StackTrace.empty);
 
 void main() {
+  setUp(recordKeptLines);
+
   late DebugPrintCallback realPrint;
 
   setUp(() {
-    LogService.clearHistory();
+    clearKeptLines();
     // Silenced rather than captured: every test here records at error level,
     // which prints a full stack in the talking build. Restored in tearDown
     // because debugPrint is a debug variable and leaving it swapped leaks into
@@ -36,7 +39,7 @@ void main() {
 
   tearDown(() {
     debugPrint = realPrint;
-    LogService.clearHistory();
+    clearKeptLines();
   });
 
   test('a rejection is kept at error level, and does not reject the caller', () async {
@@ -52,11 +55,8 @@ void main() {
     // The level, not just the fact of a record. warn is kept too, so asserting
     // only on history cannot tell error from warn - and the prefix is the only
     // thing in the entry that can.
-    expect(LogService.history.single, contains('[error]'));
-    expect(
-      LogService.history.single,
-      contains('[Test] work failed: Bad state: boom'),
-    );
+    expect(keptLines.single, contains('[error]'));
+    expect(keptLines.single, contains('[Test] work failed: Bad state: boom'));
   });
 
   test(
@@ -77,13 +77,13 @@ void main() {
         await Future<void>.delayed(Duration.zero);
       }
       expect(done, isFalse, reason: 'completed before the task settled');
-      expect(LogService.history, isEmpty);
+      expect(keptLines, isEmpty);
 
       gate.complete();
       await result;
 
       expect(done, isTrue);
-      expect(LogService.history.single, contains('[Test] slow failed'));
+      expect(keptLines.single, contains('[Test] slow failed'));
     },
   );
 
@@ -98,7 +98,7 @@ void main() {
       Future<void> gone() => throw StateError('thrown before any future');
 
       await expectLater(guarded('[Test] sync', gone), completes);
-      expect(LogService.history.single, contains('thrown before any future'));
+      expect(keptLines.single, contains('thrown before any future'));
     },
   );
 
@@ -108,7 +108,7 @@ void main() {
     // For a future nobody awaited the stack is the only thing that says where
     // it came from, and history keeps one entry per message rather than per
     // line, so it stays a single event.
-    final kept = LogService.history.single;
+    final kept = keptLines.single;
     expect(kept, contains('guarded_test.dart'));
     expect(kept.split('\n').length, greaterThan(1));
   });
@@ -119,7 +119,7 @@ void main() {
     // ended every such entry with a trailing newline and nothing after it.
     await guarded('[Test] nostack', boom);
 
-    expect(LogService.history.single, endsWith('Bad state: boom'));
+    expect(keptLines.single, endsWith('Bad state: boom'));
   });
 
   test('a task that succeeds keeps nothing and reports nothing', () async {
@@ -130,7 +130,7 @@ void main() {
       onFailure: (_) => notified = true,
     );
 
-    expect(LogService.history, isEmpty);
+    expect(keptLines, isEmpty);
     expect(notified, isFalse);
   });
 
@@ -142,7 +142,7 @@ void main() {
       boom,
       onFailure: (error) {
         seen = error;
-        keptWhenCalled = LogService.history.length;
+        keptWhenCalled = keptLines.length;
       },
     );
 
@@ -162,15 +162,9 @@ void main() {
       completes,
     );
 
-    expect(LogService.history, hasLength(2));
-    expect(
-      LogService.history.first,
-      contains('[Test] notify failed: Bad state: boom'),
-    );
-    expect(
-      LogService.history.last,
-      contains('[Test] notify failure handler threw'),
-    );
+    expect(keptLines, hasLength(2));
+    expect(keptLines.first, contains('[Test] notify failed: Bad state: boom'));
+    expect(keptLines.last, contains('[Test] notify failure handler threw'));
   });
 
   test('an error whose toString() throws is recorded, and does not reject', () async {
@@ -184,27 +178,106 @@ void main() {
     );
 
     expect(
-      LogService.history.single,
-      contains('[Test] nasty failed: an error whose toString() threw'),
+      keptLines.single,
+      contains(
+        '[Test] nasty failed: a _ExplodingOnToString whose toString() threw',
+      ),
     );
   });
 
-  test(
-    'the same failure repeated coalesces rather than filling the buffer',
-    () async {
-      for (var attempt = 0; attempt < 3; attempt++) {
-        await guarded('[Test] repeat', boom);
-      }
+  test('the same failure repeated is sent once', () async {
+    for (var attempt = 0; attempt < 3; attempt++) {
+      await guarded('[Test] repeat', boom);
+    }
 
-      // history holds 500 entries and is the only record of the failure that
-      // explains an episode. A wedged queue failing identically every tick must
-      // not evict it - which needs guarded's message to be stable across
-      // repeats, so putting an attempt counter or a timestamp in `what` would
-      // quietly undo _remember's coalescing.
-      expect(LogService.history, hasLength(1));
-      expect(LogService.history.single, contains('(3×)'));
-    },
-  );
+    // A queue wedged against a device that has gone fails identically every
+    // tick, for as long as it is wedged. The reader at the other end has no
+    // coalescing of its own, so the fold is the only thing between one dead
+    // device and an unbounded stream of identical events - which needs
+    // guarded's message to be stable across repeats, so putting an attempt
+    // counter or a timestamp in `what` would quietly undo it.
+    //
+    // The buffer rendered the repeats as a `(3×)` suffix and this asserted
+    // on that too. Nothing renders them now: they are dropped where the fold
+    // sees them and how many there were is not recoverable.
+    expect(keptLines, hasLength(1));
+    expect(keptLines.single, isNot(contains('×')));
+  });
+
+  group('the second reader', () {
+    tearDown(() => guardedFailureSink = null);
+
+    test('is optional: with none installed nothing changes', () async {
+      guardedFailureSink = null;
+      await guarded('[Test] no sink', boom);
+      expect(keptLines, hasLength(1));
+    });
+
+    test('is handed the error object, not the formatted line', () async {
+      // A crash reporter groups on the exception. Handing it the string would
+      // make every failure in the app one issue with a different title.
+      final sink = _RecordingSink();
+      guardedFailureSink = sink.call;
+
+      await guarded('[Test] sunk', boom);
+
+      expect(sink.calls, ['[Test] sunk failed']);
+      expect(sink.errors.single, isA<StateError>());
+    });
+
+    test('hears about a failure handler that threw, separately', () async {
+      final sink = _RecordingSink();
+      guardedFailureSink = sink.call;
+
+      await guarded(
+        '[Test] sunk',
+        boom,
+        onFailure: (_) => throw StateError('and the handler too'),
+      );
+
+      expect(sink.calls, [
+        '[Test] sunk failed',
+        '[Test] sunk failure handler threw',
+      ]);
+    });
+
+    test('a sink that throws costs neither the log nor the contract', () async {
+      // The whole reason the call is in a `try` of its own. A reporter that
+      // breaks must not strand the queue chaining on this future, and must not
+      // take the local record - the surface somebody can actually open - with
+      // it.
+      guardedFailureSink = (_, _, _, _) => throw StateError('sink is broken');
+
+      await expectLater(guarded('[Test] sunk', boom), completes);
+
+      expect(
+        keptLines.where((e) => e.contains('[Test] sunk failed')),
+        hasLength(1),
+        reason: 'the log line is written before the sink runs',
+      );
+      expect(
+        keptLines.where((e) => e.contains('the guarded sink threw')),
+        hasLength(1),
+        reason: 'and the broken sink is itself reported',
+      );
+    });
+  });
+}
+
+/// The second reader, recorded instead of sent.
+///
+/// `Telemetry` installs one of these when reporting is on. What matters here
+/// is the contract [guarded] offers it, which is the same never-rejects
+/// contract the queues depend on - so these cover what happens when the sink
+/// is absent, when it is present, and when it is the thing that breaks.
+class _RecordingSink {
+  final List<String> calls = [];
+  final List<Object> errors = [];
+
+  void call(String what, String verb, Object error, StackTrace stack) {
+    calls.add('$what $verb');
+    errors.add(error);
+  }
 }
 
 /// An exception whose own toString() fails, which is the case that would

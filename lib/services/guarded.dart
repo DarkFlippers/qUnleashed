@@ -4,10 +4,10 @@ import 'logging.dart';
 ///
 /// For a future nobody is waiting on. There is no caller to hand the failure
 /// back to and no UI path it can take, so the log is the only place it can
-/// land. A rejection with *no* handler at all does reach [LogService.history],
-/// through the uncaught handlers #89 installed — but only as `[uncaught]`,
-/// with nothing saying which operation it was. Catching buys the label; what
-/// catching and then logging at `info` bought was nothing at all.
+/// land. A rejection with *no* handler at all is still recorded, through the
+/// uncaught handlers #89 installed — but only as `[uncaught]`, with nothing
+/// saying which operation it was. Catching buys the label; what catching and
+/// then logging at `info` bought was nothing at all.
 ///
 /// The returned future completes when [task] settles and **never rejects**.
 /// The queues that call this depend on that: they chain the next operation
@@ -59,6 +59,32 @@ Future<void> guarded(
   }
 });
 
+/// A second reader for what [guarded] catches, installed by whoever has one.
+///
+/// [what] is the label the call site passed, [verb] says whether it was the
+/// task or its failure handler that threw, and the error and stack are the
+/// originals rather than the formatted line - a crash reporter wants the
+/// exception object to group on, not a string.
+typedef GuardedFailureSink = void Function(
+  String what,
+  String verb,
+  Object error,
+  StackTrace stack,
+);
+
+/// Where [guarded]'s failures go besides the log, or nowhere.
+///
+/// Null until something installs one. `lib/services/telemetry/` does, when
+/// reporting is on, and clears it again when it is turned off - which is the
+/// direction ADR 0013 §2 asks for: this file knows there may be a second
+/// reader, and nothing about who it is. The alternative was importing the SDK
+/// here, which §2 and `test/sentry_import_guard_test.dart` both forbid.
+///
+/// A plain mutable static rather than a list of listeners. There is one
+/// consumer and no use for a second; a list would be a registry nobody
+/// deregisters from.
+GuardedFailureSink? guardedFailureSink;
+
 /// Writes one failure down without letting it cost the never-rejects contract.
 ///
 /// `'$error'` calls `toString()` on an arbitrary object, and one that throws is
@@ -72,6 +98,12 @@ Future<void> guarded(
 /// through a bare `completeError(error)`, which yields `StackTrace.empty`, so
 /// appending unconditionally would end those entries with a blank line and
 /// nothing after it.
+///
+/// [guardedFailureSink] runs after the log and in a `try` of its own, for the
+/// same contract: a sink that throws must cost neither the log line above it
+/// nor the future the queues are promised cannot reject. It runs second so
+/// that the local record is written even if the remote one is what breaks —
+/// the log is the surface somebody can actually open.
 void _record(String what, String verb, Object error, StackTrace stack) {
   try {
     final trace = stack.toString();
@@ -79,6 +111,35 @@ void _record(String what, String verb, Object error, StackTrace stack) {
       trace.isEmpty ? '$what $verb: $error' : '$what $verb: $error\n$trace',
     );
   } catch (_) {
-    LogService.error('$what $verb: an error whose toString() threw');
+    // `runtimeType`, not the object: interpolating the object is what threw.
+    // The type names the culprit, which "an error" does not.
+    //
+    // And a second try, because this block also covers a `LogService.error`
+    // that throws - in which case calling it again would throw again, escape
+    // the `catchError` callback and reject the future four queues are promised
+    // cannot reject. That is the exact loss the doc above says this guard
+    // exists to prevent.
+    try {
+      LogService.error(
+        '$what $verb: a ${error.runtimeType} whose toString() threw',
+      );
+    } catch (_) {
+      // The logger itself is gone. Nothing can be written, and the contract
+      // that this never rejects outranks the line.
+    }
+  }
+  final sink = guardedFailureSink;
+  if (sink == null) return;
+  try {
+    sink(what, verb, error, stack);
+  } catch (e) {
+    // Not `describe`: that reads the stack of the sink's own failure, and the
+    // one thing worth saying here is which sink broke on which operation.
+    // `$what` only: it is already a String, so this cannot be the thing that
+    // throws. The error is named by type for the reason the fallback above
+    // gives.
+    LogService.warn(
+      '[Telemetry] the guarded sink threw on "$what": ${e.runtimeType}',
+    );
   }
 }

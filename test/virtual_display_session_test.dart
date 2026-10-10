@@ -3,7 +3,8 @@ import 'dart:async';
 import 'package:flipperlib/flipperlib.dart' hide DateTime;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/tools/paint/virtual_display_session.dart';
-import 'package:qunleashed/services/logging.dart';
+
+import 'kept_lines.dart';
 
 /// The virtual display Pixel Draw puts up on the Flipper.
 ///
@@ -129,16 +130,15 @@ class FakeDisplayClient implements FlipperClient {
 }
 
 void main() {
+  setUp(recordKeptLines);
+
   late FakeDisplayClient client;
   late VirtualDisplaySession display;
-
-  late int logBase;
 
   setUp(() {
     client = FakeDisplayClient();
     display = VirtualDisplaySession.forTest(client);
-    LogService.clearHistory();
-    logBase = LogService.history.length;
+    clearKeptLines();
   });
   tearDown(() => client.close());
 
@@ -153,8 +153,7 @@ void main() {
   Future<void> settle() =>
       Future<void>.delayed(const Duration(milliseconds: 60));
 
-  bool said(String fragment) =>
-      LogService.history.skip(logBase).any((l) => l.contains(fragment));
+  bool said(String fragment) => keptLines.any((l) => l.contains(fragment));
 
   group('two pages sharing one display', () {
     test('puts it up for the first holder', () async {

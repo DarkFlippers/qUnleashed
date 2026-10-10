@@ -1,16 +1,19 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/devices/firmware/directory.dart';
 import 'package:qunleashed/pages/devices/firmware/update_settings.dart';
-import 'package:qunleashed/services/logging.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'kept_lines.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  setUp(recordKeptLines);
+
   final store = UpdateSettingsStore.instance;
 
   setUp(() {
-    LogService.clearHistory();
+    clearKeptLines();
     SharedPreferences.setMockInitialValues(const {});
     // The store is a singleton and outlives any one controller, so a test that
     // did not reset it would inherit the previous test's choices.
@@ -130,7 +133,7 @@ void main() {
       // And it says so at a level a release build keeps. Costing only itself
       // is the whole claim, so the count matters as much as the message: a
       // read that gave up on the rest of the walk would be one entry too.
-      final kept = LogService.history
+      final kept = keptLines
           .where((l) => l.contains('[UpdateSettings]'))
           .toList();
       expect(kept, hasLength(1));

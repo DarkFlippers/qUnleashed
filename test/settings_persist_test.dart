@@ -1,8 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:qunleashed/services/logging.dart';
 import 'package:qunleashed/services/settings/persist.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
+
+import 'kept_lines.dart';
 
 /// A setting the user changed that did not survive being written down.
 ///
@@ -35,7 +36,7 @@ class _ReadOnlyStore extends SharedPreferencesStorePlatform {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  late int logBase;
+  setUp(recordKeptLines);
 
   /// Makes every write fail from here on.
   ///
@@ -48,13 +49,12 @@ void main() {
 
   setUp(() {
     SharedPreferences.setMockInitialValues(const {});
-    LogService.clearHistory();
-    logBase = LogService.history.length;
+    clearKeptLines();
     addTearDown(() => SharedPreferences.setMockInitialValues(const {}));
   });
 
   Iterable<String> lines(String fragment) =>
-      LogService.history.skip(logBase).where((l) => l.contains(fragment));
+      keptLines.where((l) => l.contains(fragment));
 
   group('a write that failed', () {
     // The caller is usually a torn-off ValueChanged with nowhere to put a

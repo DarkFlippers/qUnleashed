@@ -1,0 +1,14 @@
+{
+  "_comment": "Copy to dart-defines.local.json, fill in, and pass it with --dart-define-from-file. That copy is gitignored; this template is not, so never put a real value here. docs/releasing.md explains each key and where to get it.",
+
+  "QU_CHANNEL": "local",
+
+  "QU_SENTRY_DSN": "",
+
+  "QU_CARTO_KEY": "",
+  "QU_BUILD_SERVER_URL": "",
+  "QU_BUILD_SERVER_KEY": "",
+
+  "QLOG": "true",
+  "QLOG_LEVEL": "trace"
+}

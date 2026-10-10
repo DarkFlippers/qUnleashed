@@ -4,8 +4,9 @@ import 'dart:io';
 import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/apps/data/manifest_registry.dart';
-import 'package:qunleashed/services/logging.dart';
 import 'package:qunleashed/services/storage/paths.dart';
+
+import 'kept_lines.dart';
 
 /// The list of installed apps the screen shows before the Flipper answers.
 ///
@@ -53,10 +54,11 @@ Map<String, dynamic> record(
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  setUp(recordKeptLines);
+
   late Directory root;
   late FakeCatalogClient client;
   late ManifestRegistry registry;
-  late int logBase;
 
   setUp(() async {
     root = Directory.systemTemp.createTempSync('manifest_cache_test');
@@ -66,11 +68,7 @@ void main() {
     // `Documents/qUnleashed` and leaves it there. The first version of this
     // file did exactly that.
     debugUseDocumentsRoot(root);
-    LogService.clearHistory();
-    // Read after clearing rather than trusting it: the history is a process
-    // singleton, and a line from the case before this one has been seen to
-    // land after its setUp ran. Only what this case adds is looked at.
-    logBase = LogService.history.length;
+    clearKeptLines();
     client = FakeCatalogClient();
     registry = ManifestRegistry(client: client);
     addTearDown(() {
@@ -95,8 +93,7 @@ void main() {
 
   List<String> kept() => registry.all.map((m) => m.path).toList();
 
-  bool said(String fragment) =>
-      LogService.history.skip(logBase).any((l) => l.contains(fragment));
+  bool said(String fragment) => keptLines.any((l) => l.contains(fragment));
 
   group('a catalogue that reads cleanly', () {
     test('indexes every entry', () async {

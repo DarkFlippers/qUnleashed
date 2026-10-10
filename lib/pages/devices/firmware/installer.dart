@@ -12,6 +12,7 @@ import 'package:flutter/foundation.dart';
 import '../../../services/connection/link_service.dart';
 import '../../../services/guarded.dart';
 import '../../../services/progress_throttle.dart';
+import '../../../services/telemetry/traced.dart';
 import 'source.dart';
 import 'update_state.dart';
 import '../../../services/logging.dart';
@@ -60,14 +61,32 @@ class FirmwareInstaller {
   /// Never throws, as before: every failure inside arrives as an
   /// [UpdateError], which is also why the caller's own try/catch around this
   /// call could go.
+  /// Timed as one operation - ADR 0013 §2 - and timed from **outside**
+  /// `runTask`, so the span covers the wait in the request queue as well as
+  /// the install. The user is waiting for both, and a background-priority task
+  /// behind a long file listing is exactly the case where the two differ.
+  ///
+  /// `trace.failed()` rather than a throw, because this method is documented
+  /// as never throwing: every fault arrives as an [UpdateError]. Without that
+  /// call every failed install would be a successful transaction, which is
+  /// worse than none - a real duration with a false verdict.
+  ///
+  /// `outcome` carries the state's type and nothing from inside it. The error
+  /// text is a localised, user-facing string that may name a file.
   static Future<UpdateState> install({
     required FirmwareSource source,
     required FlipperClient client,
     required void Function(UpdateState) onState,
-  }) => client.runTask(
-    FlipperRequestPriority.background,
-    () => _install(source: source, client: client, onState: onState),
-  );
+  }) => traced('firmware.install', (trace) async {
+    trace.note('source', source.isRemote ? 'remote' : 'local');
+    final state = await client.runTask(
+      FlipperRequestPriority.background,
+      () => _install(source: source, client: client, onState: onState),
+    );
+    trace.note('outcome', state.runtimeType.toString());
+    if (state is UpdateError) trace.failed();
+    return state;
+  });
 
   static Future<UpdateState> _install({
     required FirmwareSource source,
@@ -278,7 +297,28 @@ class FirmwareInstaller {
     }
   }
 
+  /// Timed as its own operation — ADR 0013 §2 names DFU separately from the
+  /// install it is reached from.
+  ///
+  /// It arrives as a **child span** of `firmware.install`, because `traced`
+  /// starts a transaction only when nothing else is tracing. That is the shape
+  /// worth having: a DFU recovery is always inside an install, and the two
+  /// durations answer different questions - "was the install slow" and "was it
+  /// slow because it fell back to DFU".
+  ///
+  /// `trace.failed()` for the same reason as its caller: every fault here
+  /// returns an [UpdateError] rather than throwing.
   static Future<UpdateState> _installViaDfu(
+    List<_UpdateFile> files,
+    void Function(UpdateState) onState,
+  ) => traced('firmware.dfu', (trace) async {
+    final state = await _dfu(files, onState);
+    trace.note('outcome', state.runtimeType.toString());
+    if (state is UpdateError) trace.failed();
+    return state;
+  });
+
+  static Future<UpdateState> _dfu(
     List<_UpdateFile> files,
     void Function(UpdateState) onState,
   ) async {

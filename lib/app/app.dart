@@ -3,17 +3,43 @@ import 'package:flutter/material.dart';
 
 import '../pages/devices/controllers/device.dart';
 import '../pages/devices/device_scope.dart';
+import '../pages/option/diagnostics_scope.dart';
 import '../services/localization/controller.dart';
+import '../services/telemetry/settings.dart';
 import '../services/localization/l10n.dart';
 import '../theme/theme.dart';
 import 'shell.dart';
 
 class QUnleashedApp extends StatefulWidget {
-  const QUnleashedApp({super.key, required this.client, this.device});
+  const QUnleashedApp({
+    super.key,
+    required this.client,
+    required this.diagnostics,
+    this.navigatorObservers = const [],
+    this.device,
+  });
 
   /// The one the composition root resolved. Everything below is given this
   /// rather than reaching for the factory itself. ADR 0002.
   final FlipperClient client;
+
+  /// The reporting switch `_initCore` built, on its way to the settings
+  /// screen through [DiagnosticsScope]. `Telemetry` holds the same object and
+  /// follows it; this is the half that draws it.
+  final DiagnosticsSettings diagnostics;
+
+  /// Watchers of every push and pop, which is how reporting learns which
+  /// screen a transaction belongs to.
+  ///
+  /// Empty by default and empty in a build with no DSN. A `NavigatorObserver`
+  /// rather than the SDK's own type, so this file takes a Flutter type and the
+  /// import rule in ADR 0013 §2 stays a rule about one folder.
+  ///
+  /// Read once, when `MaterialApp` is built. `MaterialApp` is rebuilt on every
+  /// theme and locale change, so this must be a value the composition root
+  /// made once rather than one built here - a fresh observer per accent colour
+  /// would start a new trace on each.
+  final List<NavigatorObserver> navigatorObservers;
 
   /// The device controller the whole app reads, for a test that wants to
   /// supply its own. Built here when nobody does.
@@ -63,11 +89,17 @@ class _QUnleashedAppState extends State<QUnleashedApp> {
           supportedLocales: L10n.supportedLocales,
           theme: buildAppTheme(controller.brightness, controller.accent),
           themeAnimationDuration: Duration.zero,
+          navigatorObservers: widget.navigatorObservers,
           // `builder` wraps the Navigator, so a pushed route is inside this
           // scope as well as the shell is. Mounting it in `AppShell` put it
           // on route `/`, and a pushed route is that route's sibling.
-          builder: (context, child) =>
-              DeviceScope(notifier: _device, child: child!),
+          builder: (context, child) => DeviceScope(
+            notifier: _device,
+            child: DiagnosticsScope(
+              notifier: widget.diagnostics,
+              child: child!,
+            ),
+          ),
           home: AppShell(client: widget.client),
         );
       },

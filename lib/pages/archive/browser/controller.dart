@@ -11,6 +11,7 @@ import '../../../components/path.dart';
 import '../../../services/progress_throttle.dart';
 import '../../../services/storage/paths.dart';
 import '../../../services/logging.dart';
+import '../../../services/telemetry/traced.dart';
 
 class RemoteEntry {
   RemoteEntry({
@@ -619,27 +620,71 @@ class FileManagerController extends ChangeNotifier {
     }
   }
 
+  /// Timed as one operation — ADR 0013 §2 names file transfer, and names
+  /// counting the restarts with it.
+  ///
+  /// Here rather than on `writeBytes`, because every write in the batching
+  /// architecture comes through this one method - a single upload, the write
+  /// half of a copy, and each file of a move. One wrap covers all three, where
+  /// the earlier placement on `writeBytes` covered only the first.
+  ///
+  /// **A restart shows as progress going backwards.** `autoReconnect` is on,
+  /// and when the link drops `client/api/storage.dart` waits for the session
+  /// and starts the upload again from offset 0 - **exactly once**, because the
+  /// firmware opens the file with CREATE_ALWAYS so a restart from zero is
+  /// safe. It drives `onProgress` from `offset / total`, so the fall-back is
+  /// visible here; within an attempt progress only rises. The restart is not
+  /// announced through the callback, so this is the only signal on the app's
+  /// side, and `test/transfer_restart_count_test.dart` drives the real library
+  /// rather than trusting that reading.
+  ///
+  /// Counted at the callback, before anything the caller does with the value.
+  /// The progress a *screen* sees is throttled and reset between jobs, so
+  /// nothing watching it could tell a restart from an ordinary finish - which
+  /// is the wrong-reason pass that test records having been fixed. It also
+  /// under-counts when the drop lands before the first `onProgress` of the
+  /// first attempt, since the high-water mark is still zero.
+  ///
+  /// The path is noted and the scrubber earns its keep on it: `/ext/nfc/Office
+  /// badge.nfc` arrives with the filename replaced, leaving the directory and
+  /// the extension - which is the half worth having, since it says what kind
+  /// of thing was being written and not whose card it was.
   Future<bool> _write(
     _Transfer t,
     String remotePath,
     List<int> data,
     void Function(double progress) onProgress,
-  ) async {
+  ) => traced('file.transfer', (trace) async {
+    trace.note('path', remotePath);
+    trace.note('bytes', data.length);
+    var highWater = 0.0;
     try {
       await _client.storageWriteChunked(
         remotePath,
         data,
-        onProgress: onProgress,
+        onProgress: (p) {
+          if (p < highWater) trace.count('restarts');
+          highWater = p;
+          onProgress(p);
+        },
         isCancelled: () => t.cancelled,
       );
       return true;
     } on FlipperCancelledException {
+      // Noted and rethrown. A cancel is the user's own decision rather than a
+      // fault, but `traced` has only two verdicts and a throw is one of them -
+      // so the span says `internal_error` and this field is what tells a
+      // reader it was asked for.
+      trace.note('cancelled', true);
       rethrow;
     } catch (e) {
+      // `trace.failed()` because this catches and answers `false`; without it
+      // a refused write would arrive as a successful transfer.
+      trace.failed('$e');
       _transferFailed('write', remotePath, e);
       return false;
     }
-  }
+  });
 
   Future<String?> _saveLocal(
     String remotePath,
@@ -710,7 +755,7 @@ class FileManagerController extends ChangeNotifier {
       // listing it describes is on screen.
       _error = '$e';
       _entries = const [];
-      LogService.info('[FileManager] list $_path failed: $e');
+      LogService.caught('[FileManager] list $_path failed: $e');
     } finally {
       _loading = false;
       _notify();
@@ -725,7 +770,7 @@ class FileManagerController extends ChangeNotifier {
       );
     } catch (e) {
       _error = _lastFailure = '$e';
-      LogService.info('[FileManager] read $remotePath failed: $e');
+      LogService.caught('[FileManager] read $remotePath failed: $e');
       _notify();
       return null;
     }
@@ -765,7 +810,7 @@ class FileManagerController extends ChangeNotifier {
       return true;
     } catch (e) {
       _error = _lastFailure = '$e';
-      LogService.info('[FileManager] delete $remotePath failed: $e');
+      LogService.caught('[FileManager] delete $remotePath failed: $e');
       _notify();
       return false;
     }
@@ -781,7 +826,7 @@ class FileManagerController extends ChangeNotifier {
       return true;
     } catch (e) {
       _error = _lastFailure = '$e';
-      LogService.info('[FileManager] mkdir $target failed: $e');
+      LogService.caught('[FileManager] mkdir $target failed: $e');
       _notify();
       return false;
     }
@@ -800,7 +845,7 @@ class FileManagerController extends ChangeNotifier {
       rethrow;
     } catch (e) {
       _error = _lastFailure = '$e';
-      LogService.info('[FileManager] appStart $remotePath failed: $e');
+      LogService.caught('[FileManager] appStart $remotePath failed: $e');
       _notify();
       return false;
     }
@@ -966,7 +1011,7 @@ class FileManagerController extends ChangeNotifier {
       return true;
     } catch (e) {
       _error = _lastFailure = '$e';
-      LogService.info('[FileManager] rename $oldPath failed: $e');
+      LogService.caught('[FileManager] rename $oldPath failed: $e');
       _notify();
       return false;
     }

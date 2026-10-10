@@ -2,8 +2,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/archive/map/data/settings.dart';
 import 'package:qunleashed/services/home_widget/settings.dart';
 import 'package:qunleashed/services/localization/l10n.dart';
-import 'package:qunleashed/services/logging.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'kept_lines.dart';
 
 import 'unopenable_prefs.dart';
 
@@ -23,11 +24,13 @@ import 'unopenable_prefs.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  setUp(recordKeptLines);
+
   final map = MapSettings.instance;
   final widgets = HomeWidgetSettings.instance;
 
   setUp(() {
-    LogService.clearHistory();
+    clearKeptLines();
     SharedPreferences.setMockInitialValues(const {});
     map.reset();
     widgets.reset();
@@ -137,14 +140,14 @@ void main() {
       expect(map.trackDevice, isTrue);
       expect(map.scanSubfolders, isFalse);
       expect(map.loaded, isTrue);
-      expect(LogService.history, isEmpty, reason: 'a clean read says nothing');
+      expect(keptLines, isEmpty, reason: 'a clean read says nothing');
     });
 
     test('nothing stored is the documented default, not an error', () async {
       await map.load();
 
       expect(snapshot(), defaults);
-      expect(LogService.history, isEmpty);
+      expect(keptLines, isEmpty);
     });
 
     // Pins keyOf, not the isNotEmpty guard in _load: an entry holding '' and
@@ -171,7 +174,7 @@ void main() {
       await map.load();
 
       expect(map.customMaxZoom, 12.0);
-      expect(LogService.history, isEmpty, reason: 'not a mismatch');
+      expect(keptLines, isEmpty, reason: 'not a mismatch');
     });
 
     // The value reaches TileLayer.maxZoom, where 0 draws nothing. A stored
@@ -227,7 +230,7 @@ void main() {
           );
         }
         expect(map.loaded, isTrue, reason: 'one key, not the read');
-        final kept = LogService.history
+        final kept = keptLines
             .where((l) => l.contains('[MapSettings]'))
             .toList();
         expect(kept, hasLength(1));
@@ -247,9 +250,7 @@ void main() {
 
       await map.load();
 
-      final kept = LogService.history
-          .where((l) => l.contains('[MapSettings]'))
-          .toList();
+      final kept = keptLines.where((l) => l.contains('[MapSettings]')).toList();
       expect(kept, hasLength(1));
       expect(kept.single, contains('ignored 2'));
       expect(
@@ -271,7 +272,7 @@ void main() {
 
         expect(snapshot(), defaults);
         expect(map.loaded, isFalse);
-        final kept = LogService.history
+        final kept = keptLines
             .where((l) => l.contains('[MapSettings] load failed'))
             .toList();
         expect(kept, hasLength(1));
@@ -353,14 +354,14 @@ void main() {
       expect(widgets.captionShown, isFalse);
       expect(widgets.captionSize, WidgetCaptionSize.large);
       expect(widgets.loaded, isTrue, reason: 'which is what sync() gates on');
-      expect(LogService.history, isEmpty);
+      expect(keptLines, isEmpty);
     });
 
     test('nothing stored is the documented default, not an error', () async {
       await widgets.load();
 
       expect(snapshot(), defaults);
-      expect(LogService.history, isEmpty);
+      expect(keptLines, isEmpty);
     });
 
     test('a load notifies', () async {
@@ -395,7 +396,7 @@ void main() {
           );
         }
         expect(widgets.loaded, isTrue, reason: 'one key, not the read');
-        final kept = LogService.history
+        final kept = keptLines
             .where((l) => l.contains('[HomeWidgetSettings]'))
             .toList();
         expect(kept, hasLength(1));
@@ -412,7 +413,7 @@ void main() {
 
       await widgets.load();
 
-      final kept = LogService.history
+      final kept = keptLines
           .where((l) => l.contains('[HomeWidgetSettings]'))
           .toList();
       expect(kept, hasLength(1));
@@ -433,7 +434,7 @@ void main() {
 
         expect(snapshot(), defaults);
         expect(widgets.loaded, isFalse);
-        final kept = LogService.history
+        final kept = keptLines
             .where((l) => l.contains('[HomeWidgetSettings] load failed'))
             .toList();
         expect(kept, hasLength(1));
@@ -521,14 +522,14 @@ void main() {
         () async {
           useUnopenablePrefs();
           await widgets.load();
-          LogService.clearHistory();
+          clearKeptLines();
 
           await widgets.setTheme(WidgetTheme.material);
 
           expect(pushed, isEmpty);
           expect(widgets.theme, WidgetTheme.categories);
           expect(
-            LogService.history.where((l) => l.contains('not applied')),
+            keptLines.where((l) => l.contains('not applied')),
             hasLength(1),
           );
         },

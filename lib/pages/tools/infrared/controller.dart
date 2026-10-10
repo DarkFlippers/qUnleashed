@@ -145,7 +145,7 @@ class IrLibController extends ChangeNotifier {
       _error = '$e';
       // settings_dialog renders controller.error for this one, so the
       // exception text reaches the user.
-      LogService.info('[IRLib] download failed: $e');
+      LogService.caught('[IRLib] download failed: $e');
       return false;
     } finally {
       _downloading = false;
@@ -167,7 +167,7 @@ class IrLibController extends ChangeNotifier {
     } catch (e) {
       _error = '$e';
       // Also rendered by settings_dialog.
-      LogService.info('[IRLib] delete failed: $e');
+      LogService.caught('[IRLib] delete failed: $e');
       notifyListeners();
       return false;
     }
@@ -260,7 +260,7 @@ class IrLibController extends ChangeNotifier {
       _error = '$e';
       // _searchResults is cleared above the try, so the page's error view
       // has the empty list it needs and renders the exception text.
-      LogService.info('[IRLib] search "$q" failed: $e');
+      LogService.caught('[IRLib] search "$q" failed: $e');
     } finally {
       _searching = false;
       notifyListeners();

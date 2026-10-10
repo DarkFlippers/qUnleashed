@@ -745,7 +745,7 @@ void main() {
       expect(read(feed([])).said, isEmpty);
       final nulled = read(<String, dynamic>{'channels': null});
       expect(nulled.directory.channels, isEmpty);
-      // Not `LogService.history`: the reader has no path to it, so that
+      // Not `keptLines`: the reader has no path to it, so that
       // assertion could only ever restate what setUp had already cleared.
       expect(nulled.said, isEmpty);
     });

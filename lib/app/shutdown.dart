@@ -7,6 +7,7 @@ import 'package:window_manager/window_manager.dart';
 import '../services/connection/link_service.dart';
 import '../services/guarded.dart';
 import '../services/logging.dart';
+import '../services/telemetry/telemetry.dart';
 
 /// Closes the link before the desktop window takes the process down with it.
 ///
@@ -23,17 +24,38 @@ import '../services/logging.dart';
 /// and a live process keeps its handles. Handing the port back ourselves, while
 /// Dart is still running and can be relied on, is the part we control.
 ///
+/// It is also the only place the exit path's *log* lines get out. Kept lines
+/// reach Sentry through a batcher, so everything the teardown says about the
+/// link - the one stretch where a wedged transport is most likely to be
+/// described - was still sitting in it when the process went. Issues are not
+/// batched and were never affected. See the flush in [_shutdown].
+///
 /// Desktop only. Android and iOS get no window-close event, their platforms
 /// reclaim resources on process death, and `window_manager` does nothing there.
+/// A mobile exit therefore still loses that buffer. The hook for it would be
+/// `didChangeAppLifecycleState`, not this class - and not with this call: an
+/// app that is only backgrounded comes back, and a [Telemetry.closeForExit]
+/// there would leave reporting off for the rest of the session with the
+/// Diagnostics switch still saying on.
 class AppShutdown with WindowListener {
   AppShutdown(
-    this._client, {
+    this._client,
+    this._telemetry, {
     LinkService? links,
     void Function(int code)? exitProcess,
   }) : _links = links ?? LinkService.instance,
        _exit = exitProcess ?? exit;
 
   final FlipperClient _client;
+
+  /// The reporting channel, closed here so its batcher is drained before the
+  /// process dies.
+  ///
+  /// Positional and required, next to the client, because unlike [_links]
+  /// there is no singleton to fall back to: `_runApp` is handed the one
+  /// `_initCore` started, and anything else would be a second instance
+  /// reporting to nowhere.
+  final Telemetry _telemetry;
 
   /// The keeper that reconnects on its own. Taken as a parameter so a test can
   /// see that it is suspended; the app passes nothing and gets the singleton
@@ -119,21 +141,59 @@ class AppShutdown with WindowListener {
       () => _client.dispose().timeout(const Duration(seconds: 2)),
     );
 
-    // destroy() does not answer on success: the Windows runner tears the engine
-    // down inside WM_DESTROY, before the channel reply can be delivered, so
-    // Dart stops here and nothing below runs. A reply - or a timeout - both mean
-    // the process is still alive, and `setPreventClose` leaves destroy() as the
-    // only way out: a swallowed one used to leave a window only Task Manager
-    // could close, with `_closing` latched so clicking the X again did nothing,
-    // for ever.
+    // The log lines leave here, before destroy() posts WM_QUIT and the process
+    // starts winding down. Sentry batches kept lines behind a five-second timer
+    // (`buffer_config.dart`), which outlasts an exit that hits none of the
+    // budgets above - the normal exit. A local Windows build proved it: three
+    // kept lines produced on the way out, none of them in the project. After
+    // this point everything is console-only, which is what it already was.
+    //
+    // After the two disconnects, so that what they reported is in the batcher
+    // when it drains. Their *issues* go out unbatched and never needed this; it
+    // is the `warn` above and their log lines that did.
+    //
+    // [Telemetry.closeForExit] because there is no public flush that keeps the
+    // hub: `Sentry.close()` is the only drain, and it installs a `NoOpHub`.
+    // `stop()` is the wrong door - it is the switch's, and it ends by
+    // reconciling against a switch that is still on, so it drained the batcher
+    // and then started the SDK again, native layer and all, into a window that
+    // was being destroyed. Found by a review of this very block.
+    //
+    // Bounded like the two above. It never throws, but the close waits on the
+    // network, and a user quitting on a dead connection should not be made to
+    // watch the window stand there while a report retries.
+    await guarded(
+      '[Shutdown] flush the reports',
+      () => _telemetry.closeForExit().timeout(const Duration(seconds: 2)),
+    );
+
+    // `setPreventClose` leaves destroy() as the only way out, which is why it
+    // is bounded and guarded rather than trusted: a swallowed one used to leave
+    // a window only Task Manager could close, with `_closing` latched so
+    // clicking the X again did nothing, for ever.
+    //
+    // It answers. `window_manager`'s Windows `destroy` is `PostQuitMessage(0)`
+    // and the plugin replies `Success(true)` on the spot
+    // (`window_manager.cpp:232`), so the message loop is told to end and Dart
+    // carries on, racing it. This used to say the engine went down inside
+    // WM_DESTROY before the reply could be delivered, which is the runner's
+    // *default* close path and not this one. So the two lines below are the
+    // usual case on Windows rather than the rare one, and a local build
+    // confirms it: every quit logs "still running after destroy".
     await guarded(
       '[Shutdown] destroy the window',
       () => windowManager.destroy().timeout(const Duration(seconds: 2)),
     );
-    // Reached only when the window outlived its own destruction. Nothing is left
-    // to free - dispose() has run, or has had its chance - so taking the process
-    // down is the lesser of that and looking hung.
-    LogService.error('[Shutdown] still running after destroy; exiting');
+    // Nothing is left to free - dispose() has run, or has had its chance - so
+    // taking the process down is the lesser of that and looking hung.
+    //
+    // `info`, which is to say console-only and compiled out of a release. It
+    // used to be `error` on the belief that getting here meant the window had
+    // outlived its own destruction; it does not, as the comment above now says,
+    // and an `error` on every single quit is noise that would have reported
+    // nothing wrong. A destroy that genuinely failed is already reported by its
+    // own `guarded` a few lines up, and that one is a real failure.
+    LogService.info('[Shutdown] still running after destroy; exiting');
     _exit(0);
   }
 }

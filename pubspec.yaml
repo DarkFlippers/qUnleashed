@@ -2,7 +2,16 @@ name: qunleashed
 description: "Flipper Zero BLE/USB companion app."
 homepage: https://aperturefox.ru
 publish_to: 'none'
-version: 0.15.0+15000
+# The version being built *toward*, not the last one released: ADR 0014 §2.
+# Moving it opens the next cycle and is a commit somebody makes on purpose,
+# because choosing patch against minor against major is the decision - CI never
+# picks a digit, it only refuses a tag that disagrees with this and a version
+# that has already been published.
+#
+# No build number. §6 derives it from the commit count, so one here would be a
+# number that means nothing; the build scripts that fall back to reading
+# this line stop at the `+` and are unaffected either way.
+version: 0.16.0
 
 environment:
   # What this actually builds on, rather than a wider window.
@@ -67,6 +76,11 @@ dependencies:
   firebase_messaging: ^16.4.1
   shared_preferences: ^2.5.5
   flutter_foreground_task: ^9.2.2
+  # Pinned exactly, and 9.30.0 is the floor: it fixed a native worker leaked
+  # per engine, reported by a BLE app with a headless engine - the home
+  # widget's shape (sentry-dart#3960). 10.0 requires Swift Package Manager,
+  # which this repository does not use, so moving is its own task. ADR 0013 §7.
+  sentry_flutter: 9.30.1
 
 dev_dependencies:
   flutter_test:
@@ -86,6 +100,16 @@ dev_dependencies:
   # because `extension E on T {` and `mixin M on B {` are spelled exactly like
   # a bare `on T {` catch clause, and only an AST can tell them apart.
   analyzer: ^14.4.0
+  # Uploads debug information so a stack trace in Sentry names functions and
+  # lines rather than addresses: dSYMs, PDBs, Android and Linux native symbols,
+  # and the Dart symbol map. A dev dependency because it is a build-time tool
+  # and nothing in `lib/` imports it - the import ratchet counts it as the SDK
+  # either way, which is correct.
+  #
+  # It does **not** cover the R8 mapping. That wants the Sentry Android Gradle
+  # Plugin with auto-install off, which is its own change in `android/` and is
+  # not here yet. ADR 0013 Consequences.
+  sentry_dart_plugin: ^3.4.0
 
 dependency_overrides:
   super_clipboard:
@@ -96,6 +120,21 @@ dependency_overrides:
     path: lib/modules/irondash/engine_context/dart
   irondash_message_channel:
     path: lib/modules/irondash/message_channel/dart
+
+# How `sentry_dart_plugin` uploads. The org and project are not secrets; the
+# token is, and is read from the environment (`SENTRY_AUTH_TOKEN`) rather than
+# from here - see docs/releasing.md.
+#
+# `release` is left out on purpose. The plugin would otherwise derive it from
+# this file's `version`, which carries no channel and no build number, and
+# every dev build of a cycle would upload under the same name. CI passes the
+# one `derive_version.sh` produces instead, which is the string
+# `BuildStamp.sentryRelease` makes the events carry. 0014 §5.
+sentry:
+  upload_debug_symbols: true
+  upload_source_maps: false
+  org: dark-flippers
+  project: qunleashed
 
 flutter:
   config:

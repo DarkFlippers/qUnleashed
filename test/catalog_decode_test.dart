@@ -2,7 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/apps/data/catalog_api.dart';
 import 'package:qunleashed/pages/apps/data/models/card.dart';
 import 'package:qunleashed/pages/apps/data/models/category.dart';
-import 'package:qunleashed/services/logging.dart';
+
+import 'kept_lines.dart';
 
 /// Decoding a page of the apps catalogue.
 ///
@@ -16,17 +17,13 @@ import 'package:qunleashed/services/logging.dart';
 /// They read entry by entry now, through one shared reader, and say once what
 /// would not read.
 void main() {
-  late int logBase;
+  setUp(recordKeptLines);
 
   setUp(() {
-    LogService.clearHistory();
-    // Read after clearing rather than trusting it: the history is a process
-    // singleton and a line from the case before has been seen to arrive late.
-    logBase = LogService.history.length;
+    clearKeptLines();
   });
 
-  bool said(String fragment) =>
-      LogService.history.skip(logBase).any((l) => l.contains(fragment));
+  bool said(String fragment) => keptLines.any((l) => l.contains(fragment));
 
   Map<String, dynamic> card(String id) => {
     'id': id,
@@ -136,10 +133,7 @@ void main() {
       );
 
       expect(said('dropped 3 of 3 apps'), isTrue);
-      expect(
-        LogService.history.skip(logBase).where((l) => l.contains('dropped')),
-        hasLength(1),
-      );
+      expect(keptLines.where((l) => l.contains('dropped')), hasLength(1));
     });
   });
 

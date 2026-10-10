@@ -4,7 +4,8 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/services/assembler/remote_build_service.dart';
-import 'package:qunleashed/services/logging.dart';
+
+import 'kept_lines.dart';
 
 /// What the remote build service writes down when the server answers with
 /// something it cannot use.
@@ -78,9 +79,10 @@ class _RudeServer {
 }
 
 void main() {
+  setUp(recordKeptLines);
+
   late _RudeServer server;
   late RemoteBuildService service;
-  late int logBase;
 
   setUp(() async {
     server = await _RudeServer.start();
@@ -89,14 +91,12 @@ void main() {
       sharedKey: _secret,
       clientId: _clientId,
     );
-    LogService.clearHistory();
-    logBase = LogService.history.length;
+    clearKeptLines();
   });
 
   tearDown(() => server.stop());
 
-  bool said(String fragment) =>
-      LogService.history.skip(logBase).any((l) => l.contains(fragment));
+  bool said(String fragment) => keptLines.any((l) => l.contains(fragment));
 
   Future<Object?> submit() async {
     try {
@@ -162,9 +162,7 @@ void main() {
 
       expect(said('error body unreadable'), isTrue);
       expect(
-        LogService.history
-            .skip(logBase)
-            .where((l) => l.contains('error body unreadable')),
+        keptLines.where((l) => l.contains('error body unreadable')),
         hasLength(1),
       );
     });

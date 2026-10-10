@@ -1,9 +1,38 @@
-name: Android, iOS, Linux, macOS, and Windows release
+name: Android, iOS, Linux, macOS, and Windows builds
+
+env:
+  # How long an artifact is kept. A dispatch build carries release filenames and
+  # the release key, so it is kept briefly and cannot be mistaken for a
+  # published asset. One place rather than the same expression and the same
+  # two-line comment at each of the three upload steps.
+  ASSET_RETENTION: ${{ github.event_name == 'workflow_dispatch' && 1 || 90 }}
 
 on:
+  # A push to `main` builds `dev`; a release tag builds `release`. ADR 0014 §1.
+  # Both go through the same jobs, because a stable binary is rebuilt from its
+  # tag rather than promoted from a dev one - a promoted binary would carry the
+  # channel it was built with, and a Play track cannot be read at runtime to
+  # correct it.
   push:
+    branches:
+      - main
     tags:
       - "*"
+    # Every push to `main` now builds five platforms, so a push that cannot
+    # change a binary should not pay for it. Deliberately narrow: anything that
+    # might reach the app - translations among them, since they are compiled in
+    # - is left out of this list.
+    #
+    # This key also carries `tags`, so the filter may be in scope for a release
+    # tag as well - and a filtered push produces no run, which
+    # `assert-published` cannot catch. #291 is settling it; `docs/releasing.md`
+    # warns against tagging a docs-only commit in the meantime.
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+      - ".github/ISSUE_TEMPLATE/**"
+      - "fastlane/**"
+      - LICENSE
   # Builds every platform without publishing anything, so a change to the build
   # path can be tried without cutting a release. It does NOT exercise publishing:
   # artifact merging, SHA256SUMS, the release globs and the push notification all
@@ -11,7 +40,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Version tag to build as, e.g. beta-0.13.0. Nothing is published."
+        description: "Tag to build as. It must name the version pubspec.yaml holds, and may not use the dev- prefix. Nothing is published."
         required: true
         type: string
 
@@ -23,6 +52,12 @@ permissions:
 
 # A dispatch can be started from a tag ref, which would otherwise share a group
 # with that tag's release push and cancel it.
+#
+# cancel-in-progress matters more now that every push to `main` builds: a burst
+# of commits builds only the newest rather than queueing five runs of five
+# platforms behind each other. A dev build is disposable, so losing the middle
+# of a burst costs nothing - and the rolling prerelease would have been
+# overwritten by the last one anyway.
 concurrency:
   group: release-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
@@ -34,6 +69,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          # Only the dispatch check below reads history, and this job is the one
+          # thing on the critical path before the builds - so without the
+          # expression a push would pay for a full clone it never looks at.
+          # It gets depth 1.
+          fetch-depth: ${{ github.event_name == 'workflow_dispatch' && 0 || 1 }}
 
       - name: Cancel outside github.com
         if: ${{ github.server_url != 'https://github.com' }}
@@ -45,7 +86,7 @@ jobs:
         if: ${{ github.server_url == 'https://github.com' }}
         run: echo "Running on ${{ github.server_url }}"
 
-      - name: Validate the dispatched tag
+      - name: Validate the dispatched tag against pubspec
         if: ${{ github.event_name == 'workflow_dispatch' }}
         env:
           RELEASE_TAG: ${{ inputs.tag }}
@@ -57,15 +98,27 @@ jobs:
     if: ${{ github.server_url == 'https://github.com' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # The identity the binaries were actually built with, for `publish` to
+    # quote. It must not re-derive it: on a release the slot is
+    # GITHUB_RUN_ATTEMPT, so re-running only the failed `publish` job would
+    # increment it and announce a build number no artifact in the release
+    # carries.
     outputs:
       version-name: ${{ steps.version.outputs.version_name }}
       version-code: ${{ steps.version.outputs.version_code }}
+      channel: ${{ steps.version.outputs.channel }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
         with:
           submodules: recursive
+          # derive_version.sh needs both. The published-version guard reads
+          # `git tag`, and the build number counts commits - a default
+          # checkout has one of them, and a shallow count would be a
+          # plausible number that collides with every other shallow build.
+          # The script refuses to guess rather than produce one.
+          fetch-depth: 0
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -86,13 +139,14 @@ jobs:
           ANDROID_GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.ANDROID_GOOGLE_SERVICES_JSON_BASE64 }}
         run: .github/scripts/restore_firebase_config.sh android
 
-      - name: Derive app version from tag
+      - name: Derive the build identity
         id: version
         shell: bash
         env:
           QU_BUILD_SERVER_URL: ${{ secrets.QU_BUILD_SERVER_URL }}
           QU_BUILD_SERVER_KEY: ${{ secrets.QU_BUILD_SERVER_KEY }}
           QU_CARTO_KEY: ${{ secrets.QU_CARTO_KEY }}
+          QU_SENTRY_DSN: ${{ secrets.QU_SENTRY_DSN }}
           RELEASE_TAG: ${{ inputs.tag }}
         run: .github/scripts/derive_version.sh -- "$RELEASE_TAG"
 
@@ -146,6 +200,16 @@ jobs:
       - name: Build Linux single-file executable
         run: .github/scripts/build/linux.sh
 
+      # continue-on-error stays on the calling step: it is not a composite
+      # action key. This runs after the build and produces nothing a user
+      # downloads, so a fault at Sentry must not throw away a release that is
+      # already built - the symbols can be re-uploaded from the same commit.
+      - name: Upload debug symbols to Sentry
+        uses: ./.github/actions/upload-debug-symbols
+        continue-on-error: true
+        with:
+          auth-token: ${{ secrets.SENTRY_AUTH_TOKEN }}
+
       - name: Upload Android and Linux release assets
         uses: actions/upload-artifact@v4
         with:
@@ -154,9 +218,7 @@ jobs:
             dist/qunleashed_*_android_*.apk
             dist/qunleashed_*_linux_x64
           if-no-files-found: error
-          # A dispatch build carries release filenames and the release key.
-          # Keep it briefly so it cannot be mistaken for a published asset.
-          retention-days: ${{ github.event_name == 'workflow_dispatch' && 1 || 90 }}
+          retention-days: ${{ env.ASSET_RETENTION }}
 
   build-windows:
     name: Build Windows release
@@ -170,6 +232,26 @@ jobs:
         uses: actions/checkout@v7
         with:
           submodules: recursive
+          # derive_version.sh needs both. The published-version guard reads
+          # `git tag`, and the build number counts commits - a default
+          # checkout has one of them, and a shallow count would be a
+          # plausible number that collides with every other shallow build.
+          # The script refuses to guess rather than produce one.
+          fetch-depth: 0
+
+      # Windows needs one too, and not for Gradle. `sentry_flutter` pins `jni`
+      # to 0.14.2, whose Windows CMake target calls `find_package(JNI)` - so
+      # without a JDK the configure step fails with "Could NOT find JNI
+      # (missing: JAVA_INCLUDE_PATH JAVA_INCLUDE_PATH2 JVM)" before anything is
+      # compiled. The runner image happens to ship one, but an image default is
+      # not something a build should rest on, and this pins the same version the
+      # Android job does. ADR 0013 Consequences listed "a JDK on the Windows
+      # runner" as a thing to verify: it is required, and this is it.
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
 
       - name: Set up Flutter
         uses: ./.github/actions/setup-flutter
@@ -180,12 +262,13 @@ jobs:
           FIREBASE_OPTIONS_DART_BASE64: ${{ secrets.FIREBASE_OPTIONS_DART_BASE64 }}
         run: .github/scripts/restore_firebase_config.sh dart
 
-      - name: Derive app version from tag
+      - name: Derive the build identity
         shell: bash
         env:
           QU_BUILD_SERVER_URL: ${{ secrets.QU_BUILD_SERVER_URL }}
           QU_BUILD_SERVER_KEY: ${{ secrets.QU_BUILD_SERVER_KEY }}
           QU_CARTO_KEY: ${{ secrets.QU_CARTO_KEY }}
+          QU_SENTRY_DSN: ${{ secrets.QU_SENTRY_DSN }}
           RELEASE_TAG: ${{ inputs.tag }}
         run: .github/scripts/derive_version.sh -- "$RELEASE_TAG"
 
@@ -198,6 +281,16 @@ jobs:
           _CL_: /D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS
         run: ./.github/scripts/build/windows.ps1
 
+      # continue-on-error stays on the calling step: it is not a composite
+      # action key. This runs after the build and produces nothing a user
+      # downloads, so a fault at Sentry must not throw away a release that is
+      # already built - the symbols can be re-uploaded from the same commit.
+      - name: Upload debug symbols to Sentry
+        uses: ./.github/actions/upload-debug-symbols
+        continue-on-error: true
+        with:
+          auth-token: ${{ secrets.SENTRY_AUTH_TOKEN }}
+
       - name: Upload Windows release asset
         uses: actions/upload-artifact@v4
         with:
@@ -206,9 +299,7 @@ jobs:
             dist/qunleashed_*_windows_x64_raw.zip
             dist/qunleashed_*_windows_x64.exe
           if-no-files-found: error
-          # A dispatch build carries release filenames and the release key.
-          # Keep it briefly so it cannot be mistaken for a published asset.
-          retention-days: ${{ github.event_name == 'workflow_dispatch' && 1 || 90 }}
+          retention-days: ${{ env.ASSET_RETENTION }}
 
   build-macos:
     name: Build macOS and iOS releases
@@ -222,6 +313,12 @@ jobs:
         uses: actions/checkout@v7
         with:
           submodules: recursive
+          # derive_version.sh needs both. The published-version guard reads
+          # `git tag`, and the build number counts commits - a default
+          # checkout has one of them, and a shallow count would be a
+          # plausible number that collides with every other shallow build.
+          # The script refuses to guess rather than produce one.
+          fetch-depth: 0
 
       - name: Set up Flutter
         uses: ./.github/actions/setup-flutter
@@ -243,12 +340,13 @@ jobs:
           IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
         run: .github/scripts/restore_firebase_config.sh ios
 
-      - name: Derive app version from tag
+      - name: Derive the build identity
         shell: bash
         env:
           QU_BUILD_SERVER_URL: ${{ secrets.QU_BUILD_SERVER_URL }}
           QU_BUILD_SERVER_KEY: ${{ secrets.QU_BUILD_SERVER_KEY }}
           QU_CARTO_KEY: ${{ secrets.QU_CARTO_KEY }}
+          QU_SENTRY_DSN: ${{ secrets.QU_SENTRY_DSN }}
           RELEASE_TAG: ${{ inputs.tag }}
         run: .github/scripts/derive_version.sh -- "$RELEASE_TAG"
 
@@ -261,6 +359,16 @@ jobs:
       - name: Build iOS release IPA
         run: .github/scripts/build/ios.sh
 
+      # continue-on-error stays on the calling step: it is not a composite
+      # action key. This runs after the build and produces nothing a user
+      # downloads, so a fault at Sentry must not throw away a release that is
+      # already built - the symbols can be re-uploaded from the same commit.
+      - name: Upload debug symbols to Sentry
+        uses: ./.github/actions/upload-debug-symbols
+        continue-on-error: true
+        with:
+          auth-token: ${{ secrets.SENTRY_AUTH_TOKEN }}
+
       - name: Upload macOS and iOS release assets
         uses: actions/upload-artifact@v4
         with:
@@ -269,9 +377,7 @@ jobs:
             dist/qunleashed_*_macos_*.dmg
             dist/qunleashed_*_ios_*.ipa
           if-no-files-found: error
-          # A dispatch build carries release filenames and the release key.
-          # Keep it briefly so it cannot be mistaken for a published asset.
-          retention-days: ${{ github.event_name == 'workflow_dispatch' && 1 || 90 }}
+          retention-days: ${{ env.ASSET_RETENTION }}
 
   publish:
     name: Publish GitHub release
@@ -279,18 +385,21 @@ jobs:
       - build-android-linux
       - build-macos
       - build-windows
-    # Creates the GitHub release, so only ever for a pushed tag. A dispatch can
-    # be started from a tag ref, so the ref alone does not distinguish them -
-    # event_name is what does.
+    # Creates the GitHub release, so only ever for a push - a tag for a release,
+    # `main` for a dev build. A dispatch can be started from a tag ref, so the
+    # ref alone does not distinguish them; event_name is what does.
     if: ${{ github.server_url == 'https://github.com'
-      && github.event_name == 'push'
-      && startsWith(github.ref, 'refs/tags/') }}
+      && github.event_name == 'push' }}
     permissions:
       contents: write
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
     steps:
+      # A default checkout is enough: the only thing this job asks the script
+      # for is `--print-channel`, which is decided by the trigger and returns
+      # before anything reads git. The version and number come from the build
+      # job's outputs.
       - name: Checkout
         uses: actions/checkout@v7
 
@@ -301,44 +410,124 @@ jobs:
           pattern: release-assets-*
           merge-multiple: true
 
+      # The channel comes from derive_version.sh rather than a `dev-*` test of
+      # this job's own. There were three readers of the tag prefix and they did
+      # not have to agree; ADR 0014 §4 makes the script the only one. It also
+      # means a push to `main`, which has no tag to test, resolves the same way
+      # the build jobs do.
+      # The version and number come from the job that built the binaries, not
+      # from a fresh derivation here: on a release the slot is the run attempt,
+      # so re-running only this job would quote a number no artifact carries.
+      # The channel is derived, because it depends on the trigger alone and
+      # cannot drift between jobs.
       - name: Resolve release channel
         id: channel
         shell: bash
+        env:
+          VERSION: ${{ needs.build-android-linux.outputs.version-name }}
+          NUMBER: ${{ needs.build-android-linux.outputs.version-code }}
         run: |
-          tag="${GITHUB_REF_NAME}"
-          release_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${tag}"
+          channel="$(.github/scripts/derive_version.sh --print-channel)"
+          version="$VERSION"
+          number="$NUMBER"
+          if [[ -z "$version" || -z "$number" ]]; then
+            echo "::error::The build job published no version; refusing to name a release after a guess." >&2
+            exit 1
+          fi
+
+          # A dev build goes to one rolling prerelease tagged `dev`: one tag,
+          # one link to bookmark, no history (ADR 0014 §7). A release goes to
+          # the tag that was pushed.
+          if [[ "$channel" == dev ]]; then
+            release_tag=dev
+          else
+            release_tag="${GITHUB_REF_NAME}"
+          fi
+          release_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${release_tag}"
           data="{\"type\":\"app\",\"url\":\"${release_url}\"}"
-          if [[ "$tag" == dev-* ]]; then
+
+          {
+            echo "release_tag=$release_tag"
+            echo "version=$version"
+            echo "number=$number"
+            echo "data=$data"
+          } >> "$GITHUB_OUTPUT"
+
+          if [[ "$channel" == dev ]]; then
+            # The name carries the version, since the tag no longer can - every
+            # dev build is tagged `dev`, and §2 gives them all one version name
+            # too, so the build number and the commit are what tell them apart.
             {
+              echo "release_name=Development build $version-dev ($number)"
               echo "prerelease=true"
               echo "make_latest=false"
+              # Notes are generated from the previous tag, and the previous
+              # `dev` tag is the one this build is replacing - so they would
+              # describe the gap between two dev builds and get shorter the
+              # more often the build runs. The body below says what matters.
+              echo "generate_notes=false"
               echo "topic=app_dev"
               echo "title=New qUnleashed app dev build"
-              echo "body=version: $tag | commit: ${GITHUB_SHA:0:7}"
-              echo "data=$data"
+              echo "body=version: $version-dev ($number) | commit: ${GITHUB_SHA:0:7}"
             } >> "$GITHUB_OUTPUT"
           else
             {
+              echo "release_name=${GITHUB_REF_NAME}"
               echo "prerelease=false"
               echo "make_latest=true"
+              echo "generate_notes=true"
               echo "topic=app_release"
               echo "title=New qUnleashed app released"
-              echo "body=version: $tag"
-              echo "data=$data"
+              echo "body=version: $version ($number)"
             } >> "$GITHUB_OUTPUT"
           fi
 
       - name: Write SHA256SUMS
         run: .github/scripts/checksums.sh dist
 
+      # The rolling prerelease is replaced rather than updated, and the reason is
+      # the tag rather than the assets: `action-gh-release` uses an existing tag
+      # as-is and will not move it, so an updated `dev` release would keep
+      # pointing at whichever commit first created it while carrying the new
+      # binaries. Its "Source code (zip)" and anything resolving `dev` to a SHA
+      # would then describe a different build from the one attached - the worst
+      # outcome available to a change whose whole point is that a report names a
+      # build. `--cleanup-tag` takes the tag, and the publish step recreates it
+      # here.
+      #
+      # Only "not found" is tolerated. `|| true` covered the first dev build
+      # ever and swallowed everything else with it: a 5xx, a secondary rate
+      # limit, or a later permissions tightening would leave the old release in
+      # place, and the publish step would then update it and inherit the stale
+      # tag - green, with no annotation anywhere.
+      #
+      # After SHA256SUMS, so a run that cannot even assemble its assets fails
+      # with the previous prerelease still standing rather than leaving the
+      # bookmarked link 404ing until the next green build.
+      - name: Clear the previous dev prerelease
+        if: ${{ steps.channel.outputs.release_tag == 'dev' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if out="$(gh release delete dev --cleanup-tag --yes 2>&1)"; then
+            echo "$out"
+          elif grep -qiE 'release not found|HTTP 404' <<<"$out"; then
+            echo "No dev prerelease to clear."
+          else
+            echo "::error::Could not clear the dev prerelease: $out"
+            exit 1
+          fi
+
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          name: ${{ github.ref_name }}
+          tag_name: ${{ steps.channel.outputs.release_tag }}
+          name: ${{ steps.channel.outputs.release_name }}
+          body: ${{ steps.channel.outputs.body }}
           prerelease: ${{ steps.channel.outputs.prerelease }}
           make_latest: ${{ steps.channel.outputs.make_latest }}
-          generate_release_notes: true
+          generate_release_notes: ${{ steps.channel.outputs.generate_notes }}
           # Defaults to false, which would publish a release quietly missing an
           # asset - including SHA256SUMS itself.
           fail_on_unmatched_files: true
@@ -378,60 +567,22 @@ jobs:
   assert-published:
     name: Assert the release published
     needs: publish
-    # `if:` skips do not fail a run, so a tag push that quietly produced no
-    # release would otherwise be green - the worst outcome available here.
-    if: ${{ always() && github.event_name == 'push'
-      && startsWith(github.ref, 'refs/tags/') }}
+    # `if:` skips do not fail a run, so a push that quietly produced no release
+    # would otherwise be green - the worst outcome available here. Both kinds of
+    # push are covered: a release that did not publish is the obvious case, and
+    # a dev build that did not is how a rolling prerelease silently goes stale
+    # while `main` moves on.
+    # `!cancelled()` and not `always()`. `always()` runs on a cancelled run too,
+    # and every push to `main` now shares one concurrency group with
+    # cancel-in-progress - so a burst of commits would end with a failing job
+    # and an error annotation on each superseded run, which is the opposite of
+    # what the comment on that group says.
+    if: ${{ !cancelled() && github.event_name == 'push' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Fail if publish did not run
         if: ${{ needs.publish.result != 'success' }}
         run: |
-          echo "::error::Tag push finished without publishing (publish: ${{ needs.publish.result }})."
+          echo "::error::Push finished without publishing (publish: ${{ needs.publish.result }})."
           exit 1
-
-  sync-version:
-    name: Sync pubspec version with tag
-    needs: [publish, build-android-linux]
-    # Pushes to the default branch, so only ever for a pushed tag.
-    if: ${{ github.server_url == 'https://github.com'
-      && github.event_name == 'push'
-      && startsWith(github.ref, 'refs/tags/') }}
-    permissions:
-      contents: write
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    steps:
-      - name: Checkout default branch
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event.repository.default_branch }}
-
-      - name: Update pubspec.yaml version from tag
-        shell: bash
-        env:
-          VERSION_NAME: ${{ needs.build-android-linux.outputs.version-name }}
-          VERSION_CODE: ${{ needs.build-android-linux.outputs.version-code }}
-        run: |
-          # This job commits to the default branch, so an empty output must
-          # stop it rather than write "version: +" and push that.
-          if [[ -z "$VERSION_NAME" || -z "$VERSION_CODE" ]]; then
-            echo "::error::Version outputs are empty; refusing to rewrite pubspec.yaml."
-            exit 1
-          fi
-          target="${VERSION_NAME}+${VERSION_CODE}"
-
-          current="$(sed -nE 's/^version:[[:space:]]*(.+)[[:space:]]*$/\1/p' pubspec.yaml | head -n 1)"
-          if [[ "$current" == "$target" ]]; then
-            echo "pubspec.yaml already at version $target"
-            exit 0
-          fi
-
-          sed -i -E "s/^version:.*/version: $target/" pubspec.yaml
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "Bump version to $target" pubspec.yaml
-          git push origin "HEAD:${{ github.event.repository.default_branch }}"

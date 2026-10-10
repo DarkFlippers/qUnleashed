@@ -4,7 +4,8 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/services/http/app_http.dart';
-import 'package:qunleashed/services/logging.dart';
+
+import 'kept_lines.dart';
 
 /// What the JSON cache says when it cannot do its job.
 ///
@@ -39,16 +40,16 @@ class FakeServer {
 }
 
 void main() {
+  setUp(recordKeptLines);
+
   late Directory cacheDir;
   late FakeServer server;
-  late int logBase;
 
   setUp(() async {
     cacheDir = Directory.systemTemp.createTempSync('http_cache_failures');
     AppHttp.jsonCacheDirectory = cacheDir;
     server = await FakeServer.start();
-    LogService.clearHistory();
-    logBase = LogService.history.length;
+    clearKeptLines();
   });
 
   tearDown(() async {
@@ -57,8 +58,7 @@ void main() {
     if (cacheDir.existsSync()) cacheDir.deleteSync(recursive: true);
   });
 
-  bool said(String fragment) =>
-      LogService.history.skip(logBase).any((l) => l.contains(fragment));
+  bool said(String fragment) => keptLines.any((l) => l.contains(fragment));
 
   /// The cache file names for [uri], which are keyed by its digest.
   String keyOf(Uri uri) =>
@@ -110,10 +110,7 @@ void main() {
     test('is not reported twice', () async {
       await AppHttp.getJsonCached(server.uri);
 
-      expect(
-        LogService.history.skip(logBase).where((l) => l.contains('unreadable')),
-        hasLength(1),
-      );
+      expect(keptLines.where((l) => l.contains('unreadable')), hasLength(1));
     });
   });
 

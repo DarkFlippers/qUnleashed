@@ -10,8 +10,9 @@ import 'package:qunleashed/components/archive/category.dart';
 import 'package:qunleashed/components/archive/models/key.dart';
 import 'package:qunleashed/pages/archive/overview/controller.dart';
 import 'package:qunleashed/services/archive/storage.dart';
-import 'package:qunleashed/services/logging.dart';
 import 'package:qunleashed/services/storage/paths.dart';
+
+import 'kept_lines.dart';
 
 /// Reconciling what is on the Flipper against what is on the phone, when the
 /// walk did not get to see all of it.
@@ -139,11 +140,12 @@ fl.File tag(String name) =>
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  setUp(recordKeptLines);
+
   late io.Directory root;
   late _WalkingFlipper client;
   late ArchiveStorage storage;
   late ArchiveController ctrl;
-  late int logBase;
 
   // ArchiveStorage caches its root in a static, so the root is set once for
   // the file and the device folder is rebuilt between cases.
@@ -192,8 +194,7 @@ void main() {
     if (device.existsSync()) device.deleteSync(recursive: true);
     await storage.writeLastDeviceName(_device);
     ctrl = ArchiveController(client: client, storage: storage);
-    LogService.clearHistory();
-    logBase = LogService.history.length;
+    clearKeptLines();
     addTearDown(() async {
       ctrl.dispose();
       await client.close();
@@ -206,7 +207,7 @@ void main() {
   Future<void> open() => ctrl.initialize();
 
   Iterable<String> lines(String fragment) =>
-      LogService.history.skip(logBase).where((l) => l.contains(fragment));
+      keptLines.where((l) => l.contains(fragment));
 
   /// Read through the two lists the UI itself reads, rather than the map
   /// behind them: "shows as deleted" is what the bug is about.

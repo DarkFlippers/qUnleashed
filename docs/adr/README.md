@@ -23,8 +23,8 @@ likely to be proposed again.
 | [0010](0010-declared-sdk-window.md) | SDK versions | declare the floor CI covers, and accept the reformat it causes |
 | [0011](0011-device-scope-above-the-navigator.md) | Device scope | `DeviceScope` moves above the Navigator so pushed routes are in it |
 | [0012](0012-the-di-scoreboard-is-the-ratchet.md) | DI metric | amends [0002](0002-dependencies-are-passed-in.md): the scoreboard is the ratchet |
-| [0013](0013-observability-with-sentry.md) | Observability | Sentry behind consent, wired into `LogService`, `guarded` and the classifier; submodules expose hooks *(proposed)* |
-| [0014](0014-build-identity.md) | Build identity | SemVer, pubspec holds the next version, the build number is a counter *(proposed)* |
+| [0013](0013-observability-with-sentry.md) | Observability | Sentry on by default behind a one-time notice, wired into `LogService` and `guarded`; submodules expose hooks |
+| [0014](0014-build-identity.md) | Build identity | SemVer, pubspec holds the next version and the bump is a commit, the build number is a counter, `-dev` everywhere but the two fields a store validates |
 | [0015](0015-hand-written-ffi-bindings.md) | FFI bindings | hand-written and layer-guarded; no `ffigen`, and the two C progress structs stay separate |
 
 ## Reading order

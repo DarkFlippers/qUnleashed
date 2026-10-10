@@ -3,7 +3,7 @@
 // `unawaited(f())` says "I have decided not to await this". In Dart that is the
 // same statement as "I have decided this cannot fail": the future still
 // rejects, and with no listener the rejection goes to the zone. #89's uncaught
-// handlers do put it in `LogService.history`, but as `[uncaught]` with nothing
+// handlers do put it in `keptLines`, but as `[uncaught]` with nothing
 // saying which operation it was - so a bug report has a stack and no subject.
 //
 // Worse, it is also how a failure escapes the catch that was written for it.

@@ -1,5 +1,3 @@
-import 'dart:collection';
-import 'dart:io' as io;
 import 'dart:ui' as ui;
 
 import 'package:flipperlib/flipperlib.dart' show FlipperLogLevel, Log;
@@ -7,6 +5,52 @@ import 'package:flutter/foundation.dart';
 import 'package:logger/logger.dart' as pretty_logging;
 import 'package:logging/logging.dart' as logging;
 import 'package:universal_ble/universal_ble.dart';
+
+/// The three levels `LogService` forwards, and so the only ones a reader can
+/// be told about.
+///
+/// Not every level: `info`, `debug` and `trace` pass no level to `_emit` at
+/// all and const-fold out of a release build, so there is nothing to forward
+/// and no value in a name for it. This is the vocabulary of what is *kept*,
+/// which is why it is three and not six.
+enum KeptLevel {
+  /// Something failed and somebody should look at it.
+  error,
+
+  /// Degraded but not broken.
+  warning,
+
+  /// Caught, handled, and worth reading about afterwards rather than being
+  /// alerted on. [LogService.caught] has the argument.
+  caught,
+}
+
+/// A second reader for the lines [LogService] keeps.
+///
+/// Shaped like flipperlib's `Log.sink` on purpose - a level and a body - so
+/// the two hooks this app installs read the same way.
+///
+/// The body is stamped-free and **raw**: this file redacts nothing, by
+/// decision rather than oversight - the console is a developer's own machine
+/// and wants the real path. Anything sending it off the device must put it
+/// through `Scrub.outbound` first. That is the sink's job, and the only
+/// scrubbing there is.
+typedef KeptLogSink = void Function(KeptLevel level, String body);
+
+/// A reader for flipperlib's running commentary, at the library's own levels.
+///
+/// Separate from [KeptLogSink] because the two carry different things.
+/// [KeptLogSink] gets the three levels this app *keeps* - a record of a
+/// failure. This gets everything the library says, including the `info` lines
+/// nothing keeps, because the value of a breadcrumb is the sequence and not
+/// the severity: "link lost -> reconnecting -> reconnected" in front of a
+/// crash is worth more than any one of those lines on its own.
+///
+/// ADR 0013 §4 argues why flipperlib is the only source. The app's own `info`
+/// is a `const` guard that folds out of a release build, so making it reachable
+/// would mean a release build that prints everything to the platform log -
+/// which is not a trade worth making for commentary.
+typedef BreadcrumbSink = void Function(FlipperLogLevel severity, String body);
 
 class LogService {
   /// Whether anything is logged at all. Follows the build type unless
@@ -34,8 +78,8 @@ class LogService {
 
   /// Resolved once at compile time, so the guards below are const conditions:
   /// the chatty branches are shaken out of the build entirely. [errorOn] and
-  /// [warnOn] gate printing only — see [history] for why those two are still
-  /// recorded in a build that prints nothing.
+  /// [warnOn] gate printing only — see [keptSink] for why those two are still
+  /// forwarded in a build that prints nothing.
   static const int level = !enabled || levelName == 'off'
       ? _off
       : levelName == 'error'
@@ -61,81 +105,103 @@ class LogService {
   static const bool debugOn = level >= _debug;
   static const bool traceOn = level >= _trace;
 
-  /// How many messages [history] keeps before dropping the oldest.
+  /// The last body forwarded, so a run of identical lines is sent once.
   ///
-  /// Messages, not lines — see [history]. A few hundred failures is more than
-  /// a session should produce, and even with stack traces attached that is on
-  /// the order of a megabyte at worst.
-  ///
-  /// Not `MemoryOutput` from package:logger, which is already a dependency and
-  /// does exactly this: it only sees what goes through a `Logger` instance,
-  /// where this file is wired the other way round and captures that package's
-  /// output instead. Its default filter also wraps the check in `assert`, so
-  /// it drops everything in a release build — the bug being fixed here,
-  /// shipped.
-  static const int historyLimit = 500;
-
-  static final ListQueue<String> _history = ListQueue<String>(historyLimit);
+  /// All that is left of the 500-entry buffer this file used to keep. ADR 0013
+  /// §1 makes Sentry the only channel, so there is nothing to hold a history
+  /// *for* - but the fold has to survive, because one timed-out multi-frame
+  /// RPC produces an `[RPC] rx unmatched frame` per leftover frame and an
+  /// ordinary directory listing is hundreds of frames. Without this, that one
+  /// failure would send hundreds of identical lines to a reader that has no
+  /// coalescing of its own.
   static String? _lastKept;
-  static int _repeats = 0;
 
-  /// Errors and warnings, oldest first, whether or not anything printed them.
+  /// Forgets which line went out last, so [_isNewLine] starts fresh.
   ///
-  /// The const guards above compile the chatty levels out of a release build,
-  /// which is right — they run per frame. Letting errors go the same way meant
-  /// every catch handler in the app reported nowhere in exactly the builds
-  /// people run, and there is no second channel: no crash reporting, and the
-  /// console `debugPrint` reaches is not one a user of a shipped build can
-  /// read. So these two are kept here regardless, bounded, and printed only
-  /// when the build is talking.
-  ///
-  /// Errors and warnings only. Anything below them fires often enough to churn
-  /// the buffer, which would cost the failure its context — the one thing this
-  /// exists to hold on to.
-  ///
-  /// One entry per message rather than per line, so a stack trace stays a
-  /// single event. Many of the app's error sites pass `'$e\n$st'`, and a
-  /// Dart stack trace runs to thirty frames or so — split by line, this would
-  /// hold about sixteen failures.
-  ///
-  /// Not everything in the app can reach it. The DFU recovery runs in a
-  /// spawned isolate and statics are isolate-local, so its own logging goes
-  /// nowhere; what is recorded is the failure it reports back over its port.
-  /// A reader should not take this for a complete account of a session.
-  ///
-  /// What arrives from flipperlib is its warnings and errors, in either build —
-  /// see [attachFlipperlibSink] for why both, and for how long that was not
-  /// true of a quiet one.
-  static List<String> get history => List.unmodifiable(_history);
+  /// The fold is the one piece of state in this file that outlives a test: a
+  /// second test logging the body a first one already logged gets no sink call
+  /// at all, and reads as a sink that was never installed. The buffer used to
+  /// carry this reset along with everything else it cleared; with the buffer
+  /// gone this is what is left of it, and `test/flutter_test_config.dart` runs
+  /// it before every test in the suite rather than each file remembering to.
+  @visibleForTesting
+  static void debugForgetLastKept() => _lastKept = null;
 
-  /// Keeps [stamped], unless [body] repeats what was kept last — in which case
-  /// the entry already there gains a count instead of a neighbour.
+  /// Whether [body] is worth forwarding, or repeats the line before it.
   ///
-  /// One timed-out multi-frame RPC produces an `[RPC] rx unmatched frame` per
-  /// leftover frame, and an ordinary directory listing is hundreds of frames.
-  /// Unchecked, that single failure would evict the whole buffer, including
-  /// the timeout that explains it.
-  static void _remember(String stamped, String body) {
-    if (body == _lastKept && _history.isNotEmpty) {
-      _repeats += 1;
-      _history.removeLast();
-      _history.addLast('$stamped  (${_repeats + 1}×)');
-      return;
-    }
+  /// The comparison is against the last *forwarded* body, not the last line
+  /// emitted, so an interleaved `info` does not break a run. That is the same
+  /// comparison the old buffer made when it folded a repeat into a `(N×)`
+  /// count; what is gone is the count, which was a display detail of a screen
+  /// that no longer exists.
+  static bool _isNewLine(String body) {
+    if (body == _lastKept) return false;
     _lastKept = body;
-    _repeats = 0;
-    _history.addLast(stamped);
-    if (_history.length > historyLimit) _history.removeFirst();
+    return true;
   }
 
-  /// Drops everything [history] holds.
+  /// Where kept lines go, and the only place they go.
   ///
-  /// Not test-only: the log screen offers it, because a log is copied into a
-  /// bug report and then wants emptying before reproducing the next one.
-  static void clearHistory() {
-    _history.clear();
-    _lastKept = null;
-    _repeats = 0;
+  /// Null until something installs one. `lib/services/telemetry/` does, when
+  /// reporting is on, and clears it again when it is turned off - the same
+  /// one-way shape `guardedFailureSink` uses, and for the same reason: this
+  /// file knows there may be a second reader and nothing about who it is.
+  static KeptLogSink? keptSink;
+
+  /// Where flipperlib's commentary goes, or nowhere.
+  ///
+  /// Installed by `lib/services/telemetry/` while reporting is on, like
+  /// [keptSink] and `guardedFailureSink`, and cleared with them.
+  ///
+  /// Setting this is not enough on its own: the library's own `Log.level` has
+  /// to admit `info` as well, which is [attachFlipperlibSink]'s business. Both
+  /// gates, the same mistake the pin made once already.
+  static BreadcrumbSink? breadcrumbSink;
+
+  /// Whether [_announce] is already running.
+  ///
+  /// **For a sink that logs, not one that throws.** A throw is caught in
+  /// [_announce] and reported straight to `debugPrint`, which cannot come back
+  /// round. A sink that *logs* can: `Telemetry._reportKept` reports its own
+  /// send failures through [LogService.error], which re-enters [_emit], which
+  /// calls the sink, which logs again - and the only termination is dropping
+  /// the re-entrant line, because the alternative is a stack overflow in the
+  /// logger on a path that exists because something was already broken.
+  static bool _announcing = false;
+
+  /// Hands one kept line to [keptSink] without letting it cost the process.
+  ///
+  /// There is no local record behind this any more, so a sink that throws
+  /// loses the line - which is why the failure is itself reported rather than
+  /// swallowed, and why [_announcing] exists to stop that report becoming the
+  /// next failure.
+  static void _announce(KeptLevel level, String body) {
+    final sink = keptSink;
+    if (sink == null || _announcing) return;
+    _announcing = true;
+    try {
+      sink(level, body);
+    } catch (e) {
+      // **Straight to `debugPrint`, not through [error].** Routing it through
+      // this file's own levels puts it back into [_emit], which calls
+      // [_announce] again - and [_announcing] is still true, so the report is
+      // dropped on the floor. With the history gone there is nothing else
+      // holding it, so a broken sink would be a reporting feature that
+      // silently does nothing, which is the one outcome this catch exists to
+      // prevent.
+      //
+      // Unconditional, unlike every other print in this file: `printing` is a
+      // const that is false in a release build, and this is the one line whose
+      // whole purpose is to survive there. `debugPrint` still reaches the
+      // platform log - `adb logcat`, Console.app - which is the only surface
+      // left once the sink itself is the thing that is broken.
+      //
+      // Not `describe`: the useful fact is which line the sink broke on, not
+      // where inside the sink it happened.
+      debugPrint('[LogService] the kept-log sink threw on "$body": $e');
+    } finally {
+      _announcing = false;
+    }
   }
 
   static bool _initialized = false;
@@ -185,8 +251,8 @@ class LogService {
   /// Routes flipperlib's own logging here.
   ///
   /// Attached even when nothing is printing, and kept apart from the platform
-  /// calls in [initialize] so it can be reached without them, giving [history]
-  /// the transport faults and session failures a bug report actually needs and
+  /// calls in [initialize] so it can be reached without them, forwarding the
+  /// transport faults and session failures a bug report actually needs and
   /// none of the traffic below them.
   ///
   /// Warning, not error, and that is a fix rather than a widening.
@@ -204,13 +270,56 @@ class LogService {
   /// is bounded by what the submodule chooses to warn about, which is its own
   /// review's problem; `Log.error` outnumbers `Log.warn` there by more than an
   /// order of magnitude.
-  @visibleForTesting
+  ///
+  /// **A third pin, `info`, when [breadcrumbSink] is installed.** ADR 0013 §3:
+  /// raising it is a change to a recorded decision rather than a setting that
+  /// already allowed it, which is why it is spelled out here. The library's
+  /// `Log.level` is a mutable static checked at runtime - only `debug` and
+  /// `trace` sit behind a `const` - so raising it in a release build genuinely
+  /// produces lines, where the same move on the app's side produces nothing
+  /// without recompiling.
+  ///
+  /// Nothing is *kept* that was not kept before: [_keptLevelFor] still cuts at
+  /// [_keptFrom], so `info` reaches the breadcrumb hook and is dropped. What
+  /// changes is only what the library bothers to say, and only while somebody
+  /// is listening - [Telemetry.stop] calls this again and the pin returns.
+  ///
+  /// Call it again after changing [breadcrumbSink]; it is idempotent.
+  ///
+  /// No longer `@visibleForTesting`. It was, because [initialize] was the only
+  /// caller and a test wanting the sink without the platform calls was the only
+  /// other reason to reach it. `Telemetry` is a second real caller now: the pin
+  /// is derived from whether [breadcrumbSink] is set, so turning reporting on
+  /// or off has to re-derive it.
   static void attachFlipperlibSink() {
-    Log.level = printing ? _flipperLevel : _keptFrom;
+    Log.level = _flipperlibPin;
     Log.sink = _flipperlibSink;
   }
 
-  /// Routes what nothing else catches into [history].
+  /// The level the library is held at: the **first** of the reasons that
+  /// applies, talking build first.
+  ///
+  /// A priority, not a minimum, and this said "the chattiest" - which the body
+  /// contradicts two paragraphs down. With `QLOG_LEVEL=error` and a breadcrumb
+  /// sink installed the pin is `error`, strictly less chatty than the `info`
+  /// the breadcrumb reason wants. That is deliberate: QLOG asked for its
+  /// levels explicitly.
+  ///
+  /// **Chattiest means the lowest index.** `FlipperLogLevel` runs
+  /// `trace, debug, info, warning, error`, and `Log` admits a severity at or
+  /// above the pin - so `info` admits more than `warning`, and comparing these
+  /// the intuitive way round gets it backwards.
+  ///
+  /// A talking build wins outright, because QLOG asked for its levels
+  /// explicitly and a breadcrumb reader going away must not take them with it.
+  /// Otherwise breadcrumbs beat the bare keep threshold, because they are the
+  /// only reason `info` is wanted at all.
+  static FlipperLogLevel get _flipperlibPin {
+    if (printing) return _flipperLevel;
+    return breadcrumbSink == null ? _keptFrom : FlipperLogLevel.info;
+  }
+
+  /// Routes what nothing else catches into [keptSink].
   ///
   /// The failures with the least surface of all: a framework exception during
   /// build, a rejected future nobody awaited. Every handler the app added for
@@ -234,8 +343,8 @@ class LogService {
   @visibleForTesting
   static void installUncaughtHandlers() {
     // Installing twice wraps the wrappers, and every error would then be
-    // recorded once per install — which _remember coalesces into "(2×)"
-    // rather than duplicating, so it reads as the app having failed twice.
+    // recorded once per install — which [_isNewLine] folds away rather than
+    // sending twice, so a reader would otherwise see the app fail twice.
     //
     // Checked against the slot rather than a flag we set: a test that puts the
     // previous handler back has uninstalled us, and the next install should
@@ -273,7 +382,7 @@ class LogService {
         // the only full record; it is still not worth printing twice.)
         _emit(
           '[error] [flutter]$where ${details.exceptionAsString()}$stack',
-          keep: true,
+          level: KeptLevel.error,
           console: false,
         );
       } catch (_) {
@@ -287,7 +396,11 @@ class LogService {
       try {
         // console: false, as above. Returning unhandled means the zone or the
         // engine reports this itself, so printing here says it twice.
-        _emit('[error] [uncaught] $e\n$st', keep: true, console: false);
+        _emit(
+          '[error] [uncaught] $e\n$st',
+          level: KeptLevel.error,
+          console: false,
+        );
       } catch (_) {
         // Nothing upstream catches this: in the root zone the engine gets the
         // throw, and a guarded zone re-dispatches it without end.
@@ -320,27 +433,58 @@ class LogService {
   }
 
   static void error(String msg) =>
-      _emit('[error] $msg', keep: true, console: errorOn);
+      _emit('[error] $msg', level: KeptLevel.error, console: errorOn);
 
   static void warn(String msg) =>
-      _emit('[warning] $msg', keep: true, console: warnOn);
+      _emit('[warning] $msg', level: KeptLevel.warning, console: warnOn);
+
+  /// A failure that was caught and handled, kept so somebody can read it later.
+  ///
+  /// The distinction from [warn] is the audience, not the severity. [warn] is a
+  /// failure somebody should look at; this is one somebody may need to read
+  /// about afterwards, and the `[caught]` prefix is what lets a reader - and,
+  /// once ADR 0013 lands, a Sentry log at info rather than warning - tell the
+  /// two apart without the second firing any alerting.
+  ///
+  /// Kept like [warn], printed like [info]: a [KeptLevel] with
+  /// `console: infoOn`, which is why this is one line rather than a mechanism.
+  /// The difference from warn's combination is deliberate — in a build made to
+  /// talk at `QLOG_LEVEL=warn` a warning prints and these do not, because the
+  /// console is not the surface they are for. The keeping is the point: [info]
+  /// does not survive, since [infoOn] folds to false in an ordinary release
+  /// build and takes the call site out of the binary with it.
+  ///
+  /// **The rule, and it is narrow on purpose.** Use this where an operation
+  /// did not do what was asked. Commentary about something merely absent, a
+  /// reading that repeats, a wait whose own timeout is the answer - those stay
+  /// [info]. The narrowness is about the person reading: noise in front of
+  /// them costs attention on every failure after it.
+  ///
+  /// It is the catch-all [info]'s doc used to say did not exist. ADR 0013 §5
+  /// argues that reversal; `test/caught_budget_test.dart` is the ceiling that
+  /// keeps it honest, because moving *commentary* here would lower
+  /// `test/log_level_budget_test.dart` as legitimately as a real failure does.
+  static void caught(String msg) =>
+      _emit('[caught] $msg', level: KeptLevel.caught, console: infoOn);
 
   /// Running commentary, and the one level that does not survive.
   ///
-  /// Never kept, in any build: [history] holds errors and warnings only, so
-  /// nothing sent here can reach the log screen. On top of that [infoOn] is a
-  /// const that folds to false in an ordinary release build, so the call
+  /// Never kept, in any build: [keptSink] is handed errors, warnings and
+  /// [caught] only, so nothing sent here is forwarded. On top of that [infoOn]
+  /// is a const that folds to false in an ordinary release build, so the call
   /// usually compiles away — and a build made to talk with `QLOG=true` reaches
-  /// only a console that, per [history], a user of a shipped build cannot read.
+  /// only a console, which a user of a shipped build cannot read.
   ///
   /// Which makes this the right level for saying what the app did, and the
-  /// wrong one for the only report of a failure. That wants [warn] or [error].
+  /// wrong one for the only report of a failure. A failure somebody should
+  /// look at wants [warn] or [error]; one that was handled, where the only
+  /// loss is that nobody can read about it afterwards, wants [caught].
   ///
   /// The rule the triage applies, so the next area need not re-derive it: an
   /// `info` inside a catch stays only when something else keeps a record of
   /// the same failure, or when the site repeats faster than a person can act
-  /// - a loop, a walk, one entry per file of a batch - and would churn
-  /// [history]. Once per tap is not that, however often the tapping.
+  /// - a loop, a walk, one entry per file of a batch - and would flood the
+  /// channel. Once per tap is not that, however often the tapping.
   ///
   /// A site kept for that second reason wants a tally at the batch boundary
   /// rather than a level here, so the count survives without the churn.
@@ -383,7 +527,8 @@ class LogService {
   /// than one ruled to be commentary; where the ruling was made, it is
   /// written next to the call.
   ///
-  /// There is no catch-all to reach for instead. Pick a level at each site.
+  /// There is one catch-all, and it is not this: see [caught]. Commentary
+  /// stays here.
   static void info(String msg) {
     if (!infoOn) return;
     _write(msg);
@@ -427,10 +572,77 @@ class LogService {
   /// unreachable for as long as it did.
   static const FlipperLogLevel _keptFrom = FlipperLogLevel.warning;
 
+  /// The library's own levels, mapped onto the three this app keeps.
+  ///
+  /// Null below [_keptFrom], which is what decides whether the line is kept at
+  /// all. `error` and `warning` are the only two at or above it, so no level
+  /// *other than* `warning` can reach the else arm - which is itself the
+  /// ordinary path for every `Log.warn`, and was described here as
+  /// "unreachable" when only the third case is. It is written as a
+  /// level rather than an assert, because raising [_keptFrom]'s neighbour is
+  /// the kind of change that should degrade to "kept as a warning" instead of
+  /// throwing inside the logger.
+  static KeptLevel? _keptLevelFor(FlipperLogLevel severity) {
+    if (severity.index < _keptFrom.index) return null;
+    return severity == FlipperLogLevel.error
+        ? KeptLevel.error
+        : KeptLevel.warning;
+  }
+
+  /// Whether [_dropCrumb] is already running.
+  ///
+  /// Symmetry with [_announcing] rather than a live hazard: a breadcrumb sink
+  /// that throws is reported with [error], and that reaches [_announce] - the
+  /// *kept* sink - because `_emit` never calls this one. Only
+  /// [_flipperlibSink] does, driven by the library's own `Log`. So the causal
+  /// chain [_announcing] guards against does not exist here, and this said it
+  /// did.
+  ///
+  /// Kept anyway, and separate from [_announcing] on purpose. Sharing one flag
+  /// would be a behaviour change: a failing breadcrumb sink's report currently
+  /// does reach Sentry Logs through the kept sink, and one flag would suppress
+  /// it.
+  static bool _crumbing = false;
+
+  /// Hands one library line to [breadcrumbSink] without letting it cost the
+  /// line.
+  ///
+  /// Not redacted here: the sink scrubs what it sends, as it does for every
+  /// other channel. This used to redact first, because `_emit` redacted what
+  /// it kept and a breadcrumb skipped that path - there is nothing to skip any
+  /// more.
+  static void _dropCrumb(FlipperLogLevel severity, String message) {
+    final sink = breadcrumbSink;
+    if (sink == null || _crumbing) return;
+    _crumbing = true;
+    try {
+      sink(severity, message);
+    } catch (e) {
+      error('[Telemetry] the breadcrumb sink threw on "$message": $e');
+    } finally {
+      _crumbing = false;
+    }
+  }
+
+  /// §4: the hook goes **before** [_emit], not inside it.
+  ///
+  /// Inside, it would have to sit above `_emit`'s `if (level == null &&
+  /// !console) return` - which is #187, where five call sites out of six are
+  /// dropped -
+  /// and would reinstate the timestamp that return exists to avoid, for the
+  /// app's own traffic as well as the library's.
+  ///
+  /// Every severity becomes a breadcrumb, not only `info`. §4 names `info`
+  /// because that is the level the change *unlocks*; the point of a breadcrumb
+  /// is the sequence, and a timeline with the warnings cut out of it is a
+  /// worse timeline. Warnings and errors reach Sentry as Logs too, which is a
+  /// separate stream - having them in the event itself is what makes the event
+  /// readable without cross-referencing.
   static void _flipperlibSink(FlipperLogLevel severity, String message) {
+    _dropCrumb(severity, message);
     _emit(
       '[${severity.name}] $message',
-      keep: severity.index >= _keptFrom.index,
+      level: _keptLevelFor(severity),
       console: printing,
     );
   }
@@ -444,86 +656,7 @@ class LogService {
   // const guard or is installed only in a talking build, so the two agree
   // today; saying it this way stops an ungated caller ever making a quiet
   // build print.
-  static void _write(String msg) => _emit(msg, keep: false, console: printing);
-
-  /// Home directories, longest first, replaced with `~` wherever they appear.
-  ///
-  /// The log is something a user copies into a public issue now, and absolute
-  /// paths are the one category that leaks every time it fires: the IR
-  /// recovery names the tree it could not clear — at every launch — and any
-  /// FileSystemException prints `path = '<absolute>'`. All of them begin with
-  /// the account name.
-  ///
-  /// It is also the only category that can be removed mechanically. What a
-  /// message says about the user's own files, folders and devices — a card
-  /// called `Office badge.nfc`, a Flipper's name, a card's UID inside a
-  /// dictionary filename — is not distinguishable from any other text, which
-  /// is why the log screen says what the log can contain and shows it to the
-  /// user before offering to copy it.
-  static List<RegExp> _homes = _resolveHomes(_environmentHomes());
-
-  static List<String> _environmentHomes() => [
-    for (final key in const ['USERPROFILE', 'HOME'])
-      ?io.Platform.environment[key],
-  ];
-
-  /// Builds the patterns for [homes], in both the spellings a message can
-  /// carry them in.
-  ///
-  /// A path reaches the log two ways and they do not look alike. A
-  /// FileSystemException prints the native form — `C:\Users\Myte\...` — while
-  /// a stack frame prints a URI, `file:///C:/Users/Myte/...`, with the
-  /// separators flipped and the drive behind a scheme. Matching only the
-  /// environment value catches the first and misses the second, which is
-  /// exactly backwards: the entries carrying stacks are the ones most likely
-  /// to be pasted into an issue.
-  ///
-  /// Each is anchored so that the next character cannot continue a name.
-  /// Without that, a HOME of `/root` — ordinary in a container — would rewrite
-  /// `/rootfs` to `~fs` and corrupt messages that had no path in them at all.
-  static List<RegExp> _resolveHomes(List<String> homes) {
-    final spellings = <String>{};
-    for (final home in homes) {
-      // Too short to be a home directory, and long enough to appear inside
-      // unrelated text.
-      if (home.length <= 3) continue;
-      spellings.add(home);
-      // The separator flipped, which is how a stack frame spells it. A URI
-      // form — `file:///C:/Users/Myte/...` — contains this string, so the one
-      // spelling covers both it and a bare forward-slash path. On POSIX it is
-      // the same string as above and the set drops it.
-      spellings.add(home.replaceAll(r'\', '/'));
-    }
-    return [
-      for (final spelling in spellings)
-        RegExp('${RegExp.escape(spelling)}(?![A-Za-z0-9_.-])'),
-    ];
-  }
-
-  /// Points redaction at [homes] for the duration of a test.
-  ///
-  /// The real list comes from the environment, which a test cannot vary — and
-  /// the cases worth pinning are all about unusual environments: a Windows
-  /// home reached through a URI, one that is a prefix of an unrelated word,
-  /// two that are the same string.
-  @visibleForTesting
-  static void debugUseHomes(List<String>? homes) =>
-      _homes = _resolveHomes(homes ?? _environmentHomes());
-
-  /// How many patterns redaction scans for. Behaviour cannot show a duplicate
-  /// — replacing the same thing twice is the same answer — so the cost is the
-  /// only way to see one, and on Windows under Git Bash both environment keys
-  /// hold the same string.
-  @visibleForTesting
-  static int get debugHomePatternCount => _homes.length;
-
-  static String _redact(String msg) {
-    var out = msg;
-    for (final home in _homes) {
-      out = out.replaceAll(home, '~');
-    }
-    return out;
-  }
+  static void _write(String msg) => _emit(msg, console: printing);
 
   /// How long a cached zone offset is trusted before it is read again.
   static Duration _zoneOffsetTtl = const Duration(minutes: 1);
@@ -566,8 +699,7 @@ class LogService {
   /// ordinary entry points - and it is the one the skip in [_emit] exists
   /// for, because package:logging and universal_ble keep feeding it.
   @visibleForTesting
-  static void debugEmitUnheard(String msg) =>
-      _emit(msg, keep: false, console: false);
+  static void debugEmitUnheard(String msg) => _emit(msg, console: false);
 
   static String _two(int value) => value < 10 ? '0$value' : '$value';
 
@@ -595,27 +727,30 @@ class LogService {
     return '${_two(wall.hour)}:${_two(wall.minute)}:${_two(wall.second)}';
   }
 
-  /// Stamps [msg], keeps it in [history] if [keep], prints it if [console].
+  /// Writes one line to the two destinations that exist, plus [keptSink].
   ///
-  /// Only what is kept is redacted. The history is the only thing the log
-  /// screen offers to copy, and everything else — five times as many trace,
-  /// debug and info sites as ones that keep — would be paying a scan per home
-  /// directory per message for nothing. It also leaves a developer's own console
-  /// printing the path they are debugging rather than `~`. The trade is that
-  /// a path still reaches logcat, which is not the surface with a copy button
-  /// on it.
-  static void _emit(String msg, {required bool keep, required bool console}) {
+  /// [level] replaced a `required bool keep`. The two carried the same fact -
+  /// a line is kept if and only if it has one of [KeptLevel]'s three levels -
+  /// and the level is what [keptSink] needs, so a second parameter beside the
+  /// bool would have been a redundancy inviting `keep: true, level: null`.
+  /// Null means not kept, which is `info`, `debug`, `trace` and everything
+  /// [_write] forwards.
+  static void _emit(String msg, {KeptLevel? level, required bool console}) {
     // Nobody is listening, so there is nothing to stamp. This is the whole of
     // _write's cost in a build that prints nothing: package:logging and
     // universal_ble keep handing lines to a sink that drops them, and every
     // one of them used to buy a timestamp first.
-    if (!keep && !console) return;
-    final ts = _stamp(DateTime.now());
-    if (keep) {
-      final kept = _redact(msg);
-      _remember('[$ts] $kept', kept);
-    }
+    if (level == null && !console) return;
+    // Only the first of a run is forwarded. One RPC timeout produces hundreds
+    // of identical lines, and the reader at the other end has no coalescing of
+    // its own.
+    //
+    // Not redacted here. Everything that leaves goes through the sink, which
+    // scrubs it; the console is the developer's own machine and wants the real
+    // path.
+    if (level != null && _isNewLine(msg)) _announce(level, msg);
     if (!console) return;
+    final ts = _stamp(DateTime.now());
     for (final line in msg.split('\n')) {
       debugPrint('[$ts] $line');
     }

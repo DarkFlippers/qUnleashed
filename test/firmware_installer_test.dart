@@ -9,7 +9,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/devices/firmware/installer.dart';
 import 'package:qunleashed/pages/devices/firmware/source.dart';
 import 'package:qunleashed/pages/devices/firmware/update_state.dart';
-import 'package:qunleashed/services/logging.dart';
+
+import 'kept_lines.dart';
 
 /// Flashing a firmware, which is the one thing in this app where getting it
 /// wrong bricks a device.
@@ -208,6 +209,8 @@ List<int> utf8Bytes(String s) => s.codeUnits;
 String md5Of(String content) => md5.convert(utf8Bytes(content)).toString();
 
 void main() {
+  setUp(recordKeptLines);
+
   late FakeFlashClient client;
   late List<UpdateState> states;
 
@@ -308,16 +311,14 @@ void main() {
     // A directory that is already there is the ordinary case on every
     // install after the first, and saying so every time would be noise.
     test('says nothing when the directory is already there', () async {
-      LogService.clearHistory();
-      final base = LogService.history.length;
+      clearKeptLines();
+      final base = keptLines.length;
       client.mkdirThrows = StateError('ERROR_STORAGE_EXIST');
 
       await flash(archiveOf(files));
 
       expect(
-        LogService.history
-            .skip(base)
-            .where((l) => l.contains('could not create')),
+        keptLines.skip(base).where((l) => l.contains('could not create')),
         isEmpty,
       );
     });
@@ -325,13 +326,13 @@ void main() {
     // Everything else is a reason the upload two steps later fails with a
     // confusing write error, and the two were indistinguishable. #119.
     test('says so when the card will not take a directory', () async {
-      LogService.clearHistory();
-      final base = LogService.history.length;
+      clearKeptLines();
+      final base = keptLines.length;
       client.mkdirThrows = StateError('ERROR_STORAGE_NOT_READY');
 
       await flash(archiveOf(files));
 
-      final said = LogService.history
+      final said = keptLines
           .skip(base)
           .where((l) => l.contains('could not create'));
       expect(said, hasLength(2), reason: 'one per directory it tried');
@@ -339,14 +340,14 @@ void main() {
     });
 
     test('names the directory it could not make', () async {
-      LogService.clearHistory();
-      final base = LogService.history.length;
+      clearKeptLines();
+      final base = keptLines.length;
       client.mkdirThrows = StateError('ERROR_STORAGE_NOT_READY');
 
       await flash(archiveOf(files));
 
       expect(
-        LogService.history.skip(base).where((l) => l.contains('/ext/update')),
+        keptLines.skip(base).where((l) => l.contains('/ext/update')),
         isNotEmpty,
       );
     });

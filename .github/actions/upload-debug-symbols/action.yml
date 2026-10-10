@@ -1,0 +1,41 @@
+name: Upload debug symbols to Sentry
+description: >
+  Uploads dSYMs, PDBs, Android and Linux native symbols and the Dart symbol map
+  for whatever the calling job has just built, so a stack trace names functions
+  and lines rather than addresses.
+
+inputs:
+  auth-token:
+    description: >
+      The Sentry auth token. Absent on a fork and on a dispatch run by somebody
+      without access to the secret, which is handled rather than failed.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    # The token is read from the environment and never compiled in: a
+    # --dart-define lands in the binary, and anyone with the APK could read it
+    # out. The DSN is the one that ships.
+    #
+    # The release name comes from SENTRY_RELEASE, which derive_version.sh wrote
+    # to GITHUB_ENV and the plugin reads from the environment ahead of both its
+    # own argument and the pubspec - so there is no flag here to drift from
+    # that line.
+    #
+    # The absent-token check is in the script rather than in `if:`, because a
+    # step's own `env:` is not in scope for its `if:` - and `secrets` is not
+    # available to a step `if:` at all, so neither spelling of the expression
+    # would work. A fork and a dispatch run without the secret both have to be
+    # able to build; the release is not gated on symbolication.
+    - name: Upload
+      shell: bash
+      env:
+        SENTRY_AUTH_TOKEN: ${{ inputs.auth-token }}
+      run: |
+        if [ -z "${SENTRY_AUTH_TOKEN:-}" ]; then
+          echo "::notice::SENTRY_AUTH_TOKEN is not set, so no debug symbols were uploaded. Stack traces from this build will not be symbolicated."
+          exit 0
+        fi
+        dart run sentry_dart_plugin

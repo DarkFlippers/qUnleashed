@@ -97,11 +97,11 @@ class HomeWidgetService {
     try {
       return await _channel.invokeMethod<bool>('pin', key.toMap()) ?? false;
     } on PlatformException catch (e) {
-      // Stays at info: the caller renders "pinning is not supported here" on
-      // the false below, and a launcher that refuses the request is exactly
-      // what that says. The user is told the thing they asked for did not
-      // happen, in words that fit the reason.
-      LogService.info('[HomeWidget] pin failed: ${e.message}');
+      // The caller renders "pinning is not supported here" on the false
+      // below, so the user is told. §5 is about the other reader: a launcher
+      // refusing a pin is an operation that did not do what was asked, and it
+      // is bounded by a tap rather than a poll.
+      LogService.caught('[HomeWidget] pin failed: ${e.message}');
       return false;
     }
   }

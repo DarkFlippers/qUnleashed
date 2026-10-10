@@ -23,6 +23,13 @@ generated protobuf and the platform folders, which CI then rejects.
 There is **no code generation**. No `build_runner`, nothing to run before the
 code compiles.
 
+**The version is not yours to pick.** `pubspec.yaml` holds the version being
+built *toward*, every push to `main` publishes a dev build from it, and CI
+refuses a build whose version has already been released or whose tag disagrees
+with pubspec. [`docs/releasing.md`](docs/releasing.md) is the runbook and
+[0014](docs/adr/0014-build-identity.md) the decision; do not bump the version
+or cut a tag without reading the first one.
+
 Submodules (`lib/modules/flipperlib`, `lib/modules/dartufbt`) are separate
 repositories in the same organisation. A change there is a PR in that
 repository plus a submodule bump here.
@@ -58,9 +65,11 @@ Legacy, kept deliberately, not to be imitated:
   [0005](docs/adr/0005-tolerant-decoding.md)
 - **Sentinel values for absence** — `sha256: ''`, `timestamp: 0`. Absence is
   `null`. [0009](docs/adr/0009-absence-is-null.md)
-- **`LogService.info` as the last word on a failure.** `info` is `keep: false`
-  and const-folds away in release, so nothing reaches the in-app log.
-  `test/log_level_budget_test.dart` ratchets the count per directory.
+- **`LogService.info` as the last word on a failure.** `info` passes no
+  `KeptLevel` to `_emit` and const-folds away in release, so the failure is
+  reported nowhere at all. `caught` is the level for one worth keeping and not
+  worth alerting on. `test/log_level_budget_test.dart` ratchets the count per
+  directory.
 - **A bare `unawaited(f())`.** The future still rejects, and with no listener
   the rejection reaches the zone — so it lands in the log as `[uncaught]` with
   nothing saying which operation it was, and a `try` around the call site never
@@ -139,9 +148,12 @@ Each of these has already shipped a bug in this repository.
   lowers the number by making the code worse; the ratchet's own comment says
   so.
 - **Asserting on a log line's count when `LogService` can coalesce it.**
-  `_remember` folds a *consecutive* identical body into the existing entry, so
-  `hasLength(1)` cannot tell "said once" from "said twice". This has produced a
-  test that passed for the wrong reason more than once.
+  `_isNewLine` drops a *consecutive* identical body, so `hasLength(1)` cannot
+  tell "said once" from "said twice". This has produced a test that passed for
+  the wrong reason more than once. It cuts the other way too: the fold is a
+  static that nothing resets by itself, so a test logging a body an earlier
+  test already logged sees **no** sink call and reads as broken wiring.
+  `test/flutter_test_config.dart` resets it before every test.
 - **Trusting that a test fails for the reason its name says.** In this
   codebase, four separate tests have passed on a mechanism other than the one
   they claimed. Mutation runs caught all four; reading caught none.

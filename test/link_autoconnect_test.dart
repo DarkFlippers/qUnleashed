@@ -5,7 +5,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/services/connection/device_settings.dart';
 import 'package:qunleashed/services/connection/known_devices.dart';
 import 'package:qunleashed/services/connection/link_service.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'sentry_capture.dart';
 
 /// When the app dials a Flipper nobody asked it to.
 ///
@@ -70,6 +73,11 @@ class FakeDialClient implements FlipperClient {
   /// Raised by the next `connect`, so a failed attempt can be watched.
   Object? connectThrows;
 
+  /// When set, `connect` hands this back instead of answering - so a case can
+  /// press Disconnect while the dial is still in flight, which is the only way
+  /// to reach the cancel path.
+  Completer<FlipperDevice>? parkConnect;
+
   Future<void> close() async {
     await _usbEvents.close();
     await _sessions.close();
@@ -126,6 +134,8 @@ class FakeDialClient implements FlipperClient {
   @override
   Future<FlipperDevice> connect(FlipperDevice device) async {
     dialled.add('usb:${device.id}');
+    final park = parkConnect;
+    if (park != null) return park.future;
     if (connectThrows != null) throw connectThrows!;
     return device;
   }
@@ -195,6 +205,118 @@ void main() {
   /// Lets the debounce and the reconcile behind it run.
   Future<void> settle() =>
       Future<void>.delayed(const Duration(milliseconds: 400));
+
+  // What a reconnect reports, which for a while was nothing.
+  //
+  // `traced('device.connect')` sits inside `LinkService.connect()`, and both
+  // auto paths bypass it - `_autoConnect` calls `_open` directly and the BLE
+  // branch calls the client. So no automatic link produced a transaction at
+  // all, including the BLE one that is on by default. A local build found it:
+  // a session that had plainly connected had four spans in Sentry and not one
+  // of them was a connect.
+  group('what an automatic link reports', () {
+    test('a cable dialled by itself is one device.connect.auto', () async {
+      final sent = await captureTransactions();
+      links = await serviceWith(usbAuto: true);
+      client.present = [usb('A')];
+
+      client.plugged();
+      await settle();
+      await Sentry.close();
+
+      final connects = sent.where((t) => t.name == 'device.connect.auto');
+      expect(connects, hasLength(1));
+      expect(connects.single.status, 'ok');
+      // The one fact that splits "it took ages to connect", and the reason
+      // this is a separate name from the manual `device.connect` rather than a
+      // note on it: a link the app formed by itself is a different operation.
+      expect(connects.single.data['link'], 'usb');
+      expect(connects.single.data['trigger'], 'plugged in');
+    });
+
+    test('the remembered Flipper reports the same operation', () async {
+      // The branch that is on by default, and the one whose `link` note is
+      // hand-written rather than read off the device - `last` is a
+      // `KnownDevice` and carries no link - so it is the one that can drift
+      // from the USB branch's without anything noticing.
+      final sent = await captureTransactions();
+      links = await serviceWith(bleAuto: true);
+      await KnownDevicesStore.instance.remember(ble('B1'));
+
+      client.plugged();
+      await settle();
+      await Sentry.close();
+
+      final connects = sent.where((t) => t.name == 'device.connect.auto');
+      expect(connects, hasLength(1));
+      expect(connects.single.status, 'ok');
+      expect(connects.single.data['link'], 'ble');
+      expect(connects.single.data['trigger'], 'remembered');
+      expect(client.dialled, ['ble:B1']);
+    });
+
+    // A cancel is swallowed on purpose - it is not a fault - and that is
+    // exactly what made it a lie here: `_open` returned normally, so the span
+    // read `ok` and carried the whole duration of an attempt the user gave up
+    // on. Attempts are given up on *because* they are hanging, so every one of
+    // them landed in the tail of the distribution this operation exists to
+    // measure. `TraceScope.failed` is the mechanism for an operation that did
+    // not do what was asked without raising.
+    test('a dial the user gives up on is not a connect that worked', () async {
+      final sent = await captureTransactions();
+      links = await serviceWith(usbAuto: true);
+      client.present = [usb('A')];
+      final park = client.parkConnect = Completer<FlipperDevice>();
+
+      client.plugged();
+      await settle();
+      // Pressed while it is still dialling, which is what makes this a cancel
+      // rather than a disconnect.
+      final pressed = links.disconnectDevice(
+        usb('A'),
+        id: 'A',
+        link: FlipperLink.usb,
+      );
+      park.completeError(StateError('aborted'));
+      await pressed;
+      await settle();
+      await Sentry.close();
+
+      final connects = sent.where((t) => t.name == 'device.connect.auto');
+      expect(connects, hasLength(1));
+      // `cancelled` (499) and not `internal_error` (500), which is what this
+      // asserted first: an alert on a connect that broke an invariant must not
+      // fire because somebody changed their mind. Not `ok` either - the dial
+      // did not happen, so its duration stays out of the success numbers.
+      expect(connects.single.status, 'cancelled');
+      expect(connects.single.data['failure'], 'cancelled');
+    });
+
+    test('a dial that fails is reported failed, not dropped', () async {
+      // `traced` goes inside the `try`, so the catch that records the failure
+      // still runs - and the span still carries the error. Putting `traced`
+      // around the catch instead would report every failed reconnect as `ok`,
+      // which is worse than not tracing it.
+      final sent = await captureTransactions();
+      links = await serviceWith(usbAuto: true);
+      client.present = [usb('A')];
+      client.connectThrows = StateError('port busy');
+
+      client.plugged();
+      await settle();
+      await Sentry.close();
+
+      final connects = sent.where((t) => t.name == 'device.connect.auto');
+      expect(connects, hasLength(1));
+      // The exact status, not `isNot('ok')`: a span with no status at all
+      // would pass that, and an unfilterable transaction is the thing this is
+      // meant to rule out.
+      expect(connects.single.status, 'internal_error');
+      expect(client.dialled, [
+        'usb:A',
+      ], reason: 'and the existing behaviour is unchanged');
+    });
+  });
 
   group('a cable nobody asked about', () {
     test('is not dialled while the setting is off', () async {

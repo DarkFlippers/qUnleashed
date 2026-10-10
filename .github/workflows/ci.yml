@@ -131,10 +131,17 @@ jobs:
       # talking build. See the header of the test file. QLOG_EXPECT_QUIET is
       # what makes this job fail rather than quietly become a copy of that one
       # if QLOG ever stops reaching the build.
+      #
+      # `kept_sink_test.dart` is here for the same reason: the level flipperlib
+      # is pinned at depends on whether the build prints, so half of its
+      # assertions sit behind `if (!LogService.printing)` and never run in the
+      # pass above. A file whose build-dependent branch is never executed is a
+      # file asserting nothing about it.
       - name: Test the build that prints nothing
         run: >
           flutter test
           --test-randomize-ordering-seed=random
           --dart-define=QLOG=false
           --dart-define=QLOG_EXPECT_QUIET=true
-          test/logging_history_test.dart
+          test/logging_kept_test.dart
+          test/kept_sink_test.dart

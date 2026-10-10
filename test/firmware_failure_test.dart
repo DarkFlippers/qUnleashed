@@ -17,7 +17,8 @@ import 'package:qunleashed/pages/devices/widgets/firmware_changelog_page.dart';
 import 'package:qunleashed/pages/devices/widgets/firmware_update_button.dart';
 import 'package:qunleashed/services/http/app_http.dart';
 import 'package:qunleashed/services/localization/l10n.dart';
-import 'package:qunleashed/services/logging.dart';
+
+import 'kept_lines.dart';
 
 import 'firmware_fixture.dart';
 
@@ -437,7 +438,7 @@ void main() {
       client.arrive();
 
       expect(await waiting, isTrue);
-      expect(LogService.history, isEmpty);
+      expect(keptLines, isEmpty);
     });
 
     // Zero timeout: a device already in hand must not reach the stream at all,
@@ -449,7 +450,7 @@ void main() {
         await FirmwareInstaller.awaitReconnect(client, timeout: Duration.zero),
         isTrue,
       );
-      expect(LogService.history, isEmpty);
+      expect(keptLines, isEmpty);
     });
 
     // The worst outcome this app produces: a device that was flashed and did
@@ -865,7 +866,7 @@ void main() {
       );
       expect(renderer.html, '<p>raw **markdown** text</p>');
       expect(find.text(l10n.firmwareChangelogUnstyled), findsNothing);
-      expect(LogService.history, isEmpty);
+      expect(keptLines, isEmpty);
     });
 
     // A version that shipped without release notes. Reading this from
