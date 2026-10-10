@@ -10,6 +10,7 @@ import 'package:qunleashed/theme/theme.dart';
 import 'package:xterm/xterm.dart';
 
 import 'kept_lines.dart';
+import 'quiet_log.dart';
 
 import 'quiet_device_title.dart';
 
@@ -179,31 +180,16 @@ Widget _wrap(Widget child) => MaterialApp(
   home: child,
 );
 
-/// Silences the console for [body] and hands back what it would have printed.
-///
-/// Restored inline rather than through addTearDown, which flutter_test rejects
-/// as changing a debug variable.
-///
-/// For asserting a failure *was* recorded, read keptLines instead:
-/// what prints follows the build, so these assertions failed outright under
-/// --dart-define=QLOG=false, and they could not tell a handler logging at info
-/// - which a release build compiles away - from one logging at error. The
-/// history is the surface the log screen reads and the one a bug report
-/// carries. What is left here is asserting a line is *absent*, where printing
-/// is the wider net of the two.
-Future<List<String>> recordingLogs(Future<void> Function() body) async {
-  final lines = <String>[];
-  final previous = debugPrint;
-  debugPrint = (String? message, {int? wrapWidth}) {
-    if (message != null) lines.add(message);
-  };
-  try {
-    await body();
-  } finally {
-    debugPrint = previous;
-  }
-  return lines;
-}
+// A fourth copy of `printedAsync` stood here. It is in `quiet_log.dart` now,
+// which is where the other three went; this file calls that one.
+//
+// Why these read the console rather than `keptLines`: what prints follows the
+// build, so an assertion that a line *was* printed fails outright under
+// `--dart-define=QLOG=false` and cannot tell a handler logging at `info` -
+// which a release build compiles away - from one logging at `error`. What is
+// left here is asserting a line is *absent*, where printing is the wider net
+// of the two: a build that prints everything cannot hide a line that a build
+// that prints nothing would.
 
 void main() {
   setUp(recordKeptLines);
@@ -240,7 +226,7 @@ void main() {
     addTearDown(client.text.close);
 
     clearKeptLines();
-    await recordingLogs(() => openThenDispose(tester, client));
+    await printedAsync(() => openThenDispose(tester, client));
 
     expect(client.writeCalls, 1);
     expect(
@@ -261,7 +247,7 @@ void main() {
     addTearDown(client.text.close);
 
     clearKeptLines();
-    await recordingLogs(() => openThenDispose(tester, client));
+    await printedAsync(() => openThenDispose(tester, client));
 
     expect(client.writeCalls, 1);
     expect(
@@ -297,7 +283,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 600));
 
     clearKeptLines();
-    await recordingLogs(() async {
+    await printedAsync(() async {
       await tester.pumpWidget(_wrap(const SizedBox.shrink()));
       await tester.pump(const Duration(milliseconds: 50));
     });
@@ -326,7 +312,7 @@ void main() {
     client.writeFailure = _WriteFailure.throwsSynchronously;
     final before = client.writeCalls;
     clearKeptLines();
-    await recordingLogs(() async {
+    await printedAsync(() async {
       await tester.tap(find.byIcon(Icons.stop_circle_outlined));
       await tester.pump();
     });
@@ -349,7 +335,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 600));
 
     client.writeFailure = _WriteFailure.rejects;
-    await recordingLogs(() async {
+    await printedAsync(() async {
       _terminalOf(tester).textInput('ls');
       await tester.pump();
     });
@@ -370,7 +356,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 600));
 
     client.writeFailure = _WriteFailure.throwsSynchronously;
-    await recordingLogs(() async {
+    await printedAsync(() async {
       _terminalOf(tester).textInput('ls');
       await tester.pump();
     });
@@ -392,7 +378,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 600));
 
     client.writeFailure = _WriteFailure.rejects;
-    await recordingLogs(() async {
+    await printedAsync(() async {
       _terminalOf(tester).textInput('ls');
       await tester.pump();
     });
@@ -419,7 +405,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 600));
 
     client.writeFailure = _WriteFailure.rejects;
-    await recordingLogs(() async {
+    await printedAsync(() async {
       final terminal = _terminalOf(tester);
       terminal.textInput('l');
       terminal.textInput('s');
@@ -440,7 +426,7 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 600));
 
-    await recordingLogs(() async {
+    await printedAsync(() async {
       client.writeFailure = _WriteFailure.rejects;
       _terminalOf(tester).textInput('ls');
       await tester.pump();
@@ -471,7 +457,7 @@ void main() {
     await tester.pump();
 
     client.writeFailure = _WriteFailure.escapeInMessage;
-    await recordingLogs(() async {
+    await printedAsync(() async {
       _terminalOf(tester).textInput('ls');
       await tester.pump();
     });
@@ -488,7 +474,7 @@ void main() {
     final client = _FakeClient()..writeFailure = _WriteFailure.rejects;
     addTearDown(client.text.close);
 
-    await recordingLogs(() async {
+    await printedAsync(() async {
       await tester.pumpWidget(
         _wrap(CliPage(client: client, links: LinkService.instance)),
       );
@@ -569,7 +555,7 @@ void main() {
     await tester.pump();
 
     client.heldWrite = Completer<void>();
-    await recordingLogs(() async {
+    await printedAsync(() async {
       await tester.pumpWidget(_wrap(const SizedBox.shrink()));
       await tester.pump();
       expect(client.closeCalls, 0);
@@ -592,7 +578,7 @@ void main() {
     final held = Completer<void>();
     client.heldWrite = held;
 
-    final logs = await recordingLogs(() async {
+    final logs = await printedAsync(() async {
       await tester.pumpWidget(
         _wrap(CliPage(client: client, links: LinkService.instance)),
       );
@@ -625,7 +611,7 @@ void main() {
     await tester.pump();
 
     client.heldWrite = Completer<void>();
-    await recordingLogs(() async {
+    await printedAsync(() async {
       await tester.pumpWidget(_wrap(const SizedBox.shrink()));
       await tester.pump();
       client

@@ -146,7 +146,6 @@ void main() {
   late _WalkingFlipper client;
   late ArchiveStorage storage;
   late ArchiveController ctrl;
-  late int logBase;
 
   // ArchiveStorage caches its root in a static, so the root is set once for
   // the file and the device folder is rebuilt between cases.
@@ -196,7 +195,6 @@ void main() {
     await storage.writeLastDeviceName(_device);
     ctrl = ArchiveController(client: client, storage: storage);
     clearKeptLines();
-    logBase = keptLines.length;
     addTearDown(() async {
       ctrl.dispose();
       await client.close();
@@ -209,7 +207,7 @@ void main() {
   Future<void> open() => ctrl.initialize();
 
   Iterable<String> lines(String fragment) =>
-      keptLines.skip(logBase).where((l) => l.contains(fragment));
+      keptLines.where((l) => l.contains(fragment));
 
   /// Read through the two lists the UI itself reads, rather than the map
   /// behind them: "shows as deleted" is what the bug is about.

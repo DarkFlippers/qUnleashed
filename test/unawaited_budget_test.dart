@@ -51,8 +51,6 @@ import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'kept_lines.dart';
-
 import 'ratchet.dart';
 
 /// Where each area stood when the ratchet went in. Lower one when a site goes.
@@ -209,8 +207,6 @@ List<int> unawaitedLines(CompilationUnit unit) {
 List<int> linesIn(String source) => unawaitedLines(parseUnit(source));
 
 void main() {
-  setUp(recordKeptLines);
-
   group('the rule', () {
     test('counts a future dropped with no handler', () {
       expect(linesIn('void f() { unawaited(g()); }'), hasLength(1));

@@ -2,8 +2,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/devices/firmware/directory.dart';
 import 'package:qunleashed/pages/devices/firmware/repository.dart';
 
-import 'kept_lines.dart';
-
 import 'firmware_fixture.dart';
 
 /// What survives a directory feed that changed shape — #133.
@@ -19,8 +17,6 @@ import 'firmware_fixture.dart';
 /// level, and whether it has been said already all belong to `FirmwareParser`,
 /// so those cases are at the bottom, through a real fetch.
 void main() {
-  setUp(recordKeptLines);
-
   // resetFirmwareState reaches the theme controller, which reads
   // WidgetsBinding.instance in its constructor.
   TestWidgetsFlutterBinding.ensureInitialized();

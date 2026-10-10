@@ -83,7 +83,6 @@ void main() {
 
   late _RudeServer server;
   late RemoteBuildService service;
-  late int logBase;
 
   setUp(() async {
     server = await _RudeServer.start();
@@ -93,13 +92,11 @@ void main() {
       clientId: _clientId,
     );
     clearKeptLines();
-    logBase = keptLines.length;
   });
 
   tearDown(() => server.stop());
 
-  bool said(String fragment) =>
-      keptLines.skip(logBase).any((l) => l.contains(fragment));
+  bool said(String fragment) => keptLines.any((l) => l.contains(fragment));
 
   Future<Object?> submit() async {
     try {
@@ -165,9 +162,7 @@ void main() {
 
       expect(said('error body unreadable'), isTrue);
       expect(
-        keptLines
-            .skip(logBase)
-            .where((l) => l.contains('error body unreadable')),
+        keptLines.where((l) => l.contains('error body unreadable')),
         hasLength(1),
       );
     });

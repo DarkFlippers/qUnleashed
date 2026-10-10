@@ -65,3 +65,19 @@ Future<List<String>> printedAsync(Future<void> Function() body) async {
   }
   return lines;
 }
+
+/// [quietly], for a [body] that has to be awaited.
+///
+/// [printedAsync] without the list, for a case that reads what was *kept*
+/// rather than what was printed and only wants the console silenced. Passing
+/// an `async` body to [quietly] restores `debugPrint` at the first suspension
+/// and lets the rest of the call print for real.
+Future<void> quietlyAsync(Future<void> Function() body) async {
+  final previous = debugPrint;
+  debugPrint = (String? message, {int? wrapWidth}) {};
+  try {
+    await body();
+  } finally {
+    debugPrint = previous;
+  }
+}

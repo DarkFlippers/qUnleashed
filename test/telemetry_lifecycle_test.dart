@@ -26,27 +26,28 @@ import 'package:qunleashed/services/telemetry/telemetry.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'kept_lines.dart';
 import 'quiet_log.dart';
 
-/// Why this file reads the console and not `LogService.keptSink`.
+/// Which seam each case reads, and why they are not all the same one.
 ///
-/// Every other logging test observes what reporting *sends*, through the
-/// recorder in `kept_lines.dart`. This one cannot, for two reasons that both
-/// come down to it being the file that owns that static:
+/// This file is the one that owns `LogService.keptSink`, so the recorder in
+/// `kept_lines.dart` fights it in two ways:
 ///
-///  * [anySinkInstalled] asserts on whether the hook is set at all, so a
-///    recorder sitting in it makes "nothing was installed" unobservable - and
-///    the no-DSN and switch-off cases are exactly the ones that must install
-///    nothing;
-///  * `Telemetry.stop()` clears all four hooks, so a recorder is gone by the
-///    time the close failure is logged, and `may still be running` reaches
-///    nobody.
+///  * [anySinkInstalled] asserts on whether the hook is set *at all*, and a
+///    recorder sitting in it would make "nothing was installed" unobservable -
+///    which is exactly what the no-DSN and switch-off cases must show. Hence
+///    [keptRecorder]: the predicates below discount it, so the recorder can
+///    stay installed and still be told apart from a sink `Telemetry` wired.
+///  * `Telemetry.stop()` clears all four hooks, so by the time a failed close
+///    is logged the recorder is gone. That one case reads the console, and
+///    [onConsole] is there so it does not silently become vacuous if this file
+///    is ever added to CI's quiet job.
 ///
-/// Which is not a gap: none of the lines asserted on here *can* be reported.
-/// They say reporting is off, has no DSN, or could not be shut down, and the
-/// console is the only channel left in all three cases. `hasLength(printing)`
-/// rather than `hasLength(1)` so the file still means something if it is ever
-/// added to CI's quiet job.
+/// Everything else reads the recorder, deliberately: `caught` and `error` are
+/// kept in a build that prints nothing, which is the whole of §5, and an
+/// assertion that went through the console instead would be build-dependent
+/// for no reason.
 int get onConsole => LogService.printing ? 1 : 0;
 
 /// A stand-in for the SDK's own lifecycle.
@@ -79,21 +80,31 @@ class _FakeSdk {
   }
 }
 
+/// Whether `Telemetry` has a kept-log sink in place.
+///
+/// Discounts the test's own recorder, which `recordKeptLines` leaves in the
+/// same static. Without this every "nothing was installed" assertion below
+/// would be reading the recorder and passing on it.
+bool get telemetryKeptSinkInstalled =>
+    LogService.keptSink != null && LogService.keptSink != keptRecorder;
+
 /// Whether any of the four hooks is installed.
 bool get anySinkInstalled =>
     guardedFailureSink != null ||
-    LogService.keptSink != null ||
+    telemetryKeptSinkInstalled ||
     LogService.breadcrumbSink != null ||
     AppHttp.exchangeSink != null;
 
 /// Whether all four are.
 bool get allSinksInstalled =>
     guardedFailureSink != null &&
-    LogService.keptSink != null &&
+    telemetryKeptSinkInstalled &&
     LogService.breadcrumbSink != null &&
     AppHttp.exchangeSink != null;
 
 void main() {
+  setUp(recordKeptLines);
+
   late _FakeSdk sdk;
   late DiagnosticsSettings settings;
 
@@ -145,12 +156,12 @@ void main() {
 
     test('a build with no DSN installs nothing and says why once', () async {
       final telemetry = build(dsn: '');
-      final lines = await printedAsync(telemetry.start);
+      await quietlyAsync(telemetry.start);
 
       expect(sdk.inits, 0);
       expect(telemetry.running, isFalse);
       expect(anySinkInstalled, isFalse);
-      expect(lines.where((l) => l.contains('no DSN')), hasLength(onConsole));
+      expect(keptLines.where((l) => l.contains('no DSN')), hasLength(1));
     });
 
     test('the switch being off installs nothing', () async {
@@ -158,11 +169,11 @@ void main() {
         'diagnostics.share_logs': false,
       });
       final telemetry = build();
-      final lines = await printedAsync(telemetry.start);
+      await quietlyAsync(telemetry.start);
 
       expect(sdk.inits, 0);
       expect(anySinkInstalled, isFalse);
-      expect(lines.where((l) => l.contains('Settings')), hasLength(onConsole));
+      expect(keptLines.where((l) => l.contains('Settings')), hasLength(1));
     });
 
     test('§6 and §8 reach the options', () async {
@@ -202,14 +213,15 @@ void main() {
       sdk.initThrows = StateError('native integration refused');
       final telemetry = build();
 
-      final lines = await printedAsync(telemetry.start);
+      await quietlyAsync(telemetry.start);
 
       expect(telemetry.running, isFalse);
       expect(sdk.closes, 1, reason: 'the live hub was closed');
       expect(anySinkInstalled, isFalse);
       expect(
-        lines.where((l) => l.contains('[Telemetry] init failed')),
-        hasLength(onConsole),
+        keptLines.where((l) => l.contains('[Telemetry] init failed')),
+        hasLength(1),
+        reason: 'and `_tearDown` put the recorder back before this was logged',
       );
     });
 
@@ -243,6 +255,10 @@ void main() {
         await telemetry.start();
         sdk.closeThrows = StateError('close refused');
 
+        // The console, and the only case that needs it: `stop()` clears all
+        // four hooks before this is logged, so the recorder is not there to
+        // hear it. `onConsole` rather than 1 so a quiet build reads as "not
+        // observable here" instead of silently asserting nothing.
         final lines = await printedAsync(telemetry.stop);
 
         expect(telemetry.running, isTrue);

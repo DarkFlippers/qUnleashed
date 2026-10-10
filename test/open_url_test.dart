@@ -21,8 +21,6 @@ void main() {
 
   setUp(recordKeptLines);
 
-  late int logBase;
-
   /// Answers the launcher channel. [fails] is a platform that cannot open a
   /// browser at all - no handler, no default app, a locked-down device.
   void launcher({required bool fails}) {
@@ -37,7 +35,6 @@ void main() {
 
   setUp(() {
     clearKeptLines();
-    logBase = keptLines.length;
     addTearDown(() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(_channel, null);
@@ -45,7 +42,7 @@ void main() {
   });
 
   Iterable<String> lines(String fragment) =>
-      keptLines.skip(logBase).where((l) => l.contains(fragment));
+      keptLines.where((l) => l.contains(fragment));
 
   /// Taps a link from a real tree, because `openUrl` takes a context.
   ///

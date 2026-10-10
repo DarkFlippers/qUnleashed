@@ -117,7 +117,14 @@ void feedFails([Object error = const SocketException('down')]) =>
 /// `flutter_test` answers an unreplaced request with a 400, so without the
 /// last line an unseeded firmware records a failure and logs a line per run.
 void resetFirmwareState() {
-  // Installs the recorder as well as emptying it. Every caller is a `setUp`,
+  // Installs the recorder as well as emptying it. **Call this from `setUp`,
+  // not `setUpAll`**: `recordKeptLines` registers an `addTearDown`, which
+  // needs a test's own zone and throws outside one - and the error points
+  // at `kept_lines.dart` rather than at the caller, so it is worth
+  // knowing here. Most of what this function resets is a process-wide
+  // singleton, which makes `setUpAll` the natural thing to reach for.
+  //
+  // Every caller is a `setUp`,
   // and `keptAbout` below is the only way the firmware tests see a log line -
   // so a file that resets state but never installs the sink reads every
   // `expect(keptAbout(...), hasLength(1))` as a silence that is not there.

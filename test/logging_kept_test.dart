@@ -365,6 +365,23 @@ void main() {
     // recording twice. The fold is what makes that survivable - without it the
     // reader shows the app failing twice, and a duplicate failure is read as a
     // worse bug than the one that happened.
+    //
+    // **What this does and does not constrain**, because the honest version is
+    // narrower than the name. Deleting the second install below leaves it
+    // green, so it is not evidence that the double-install path works: one
+    // recording gives one line and two give one line, which is the whole
+    // point. The old buffer's `(2×)` suffix was the only thing that ever told
+    // them apart, and it went with the buffer.
+    //
+    // Nothing replaces it. The fold sits in `_emit` *upstream* of every
+    // observer there is - the sink never hears the second line, and the
+    // uncaught path passes `console: false`, so the console does not either
+    // (the test above pins that). "Recorded twice" is now unobservable by
+    // construction.
+    //
+    // It does still fail if the fold goes: then the double install sends two.
+    // That is what it is for, and the second assertion is there so a fold that
+    // swallowed *everything* after the first line could not pass it.
     test('installing twice does not make one failure look like two', () {
       LogService.installUncaughtHandlers();
 
@@ -375,6 +392,18 @@ void main() {
       );
 
       expect(keptLines, hasLength(1));
+
+      printed(
+        () => FlutterError.reportError(
+          FlutterErrorDetails(exception: StateError('twice')),
+        ),
+      );
+
+      expect(
+        keptLines,
+        hasLength(2),
+        reason: 'the fold drops a repeat, not everything after the first',
+      );
     });
   });
 

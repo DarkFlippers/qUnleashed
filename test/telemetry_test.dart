@@ -15,6 +15,8 @@ import 'package:qunleashed/services/telemetry/telemetry.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'sentry_capture.dart';
+
 /// Full SHAs, because that is what the define carries and what a tag has to
 /// hold: the seven-character form is for a person reading a line, not for a
 /// key Sentry resolves against three repositories.
@@ -318,5 +320,83 @@ void main() {
       expect(scrubEvent(event), same(event));
       expect(event.message?.formatted, 'nothing to redact');
     });
+  });
+
+  // The two channels `scrubEvent` does not reach, and which had no test of
+  // their own at all. sentry 9 routes the three event classes to three
+  // different hooks, so "the scrubber runs in front of every event" was only
+  // ever asserted for one of them - and each of these is a second layer whose
+  // own doc says the first one already scrubbed, which is an invitation to
+  // delete it. Deleting either left the whole suite green before this group.
+  group('the other two hooks', () {
+    setUp(() => Scrub.debugUseHomes([r'C:\Users\Myte']));
+    tearDown(() => Scrub.debugUseHomes(null));
+
+    test('a Sentry log body is scrubbed', () {
+      final log = SentryLog(
+        timestamp: DateTime.utc(2026),
+        level: SentryLogLevel.error,
+        // No space in the name on purpose: the bare-name rule's documented
+        // under-reach on spaces is `scrub_test.dart`'s subject, not this
+        // hook's.
+        body: r'[CLI] could not open C:\Users\Myte\badge.nfc',
+        attributes: const <String, SentryAttribute>{},
+      );
+
+      expect(scrubLog(log).body, r'[CLI] could not open ~\<name>.nfc');
+    });
+
+    test('a log with nothing to redact comes back as it went in', () {
+      final log = SentryLog(
+        timestamp: DateTime.utc(2026),
+        level: SentryLogLevel.warn,
+        body: '[RPC] rx unmatched frame',
+        attributes: const <String, SentryAttribute>{},
+      );
+
+      expect(scrubLog(log).body, '[RPC] rx unmatched frame');
+    });
+
+    test(
+      "a span's description is scrubbed, and its string data with it",
+      () async {
+        // Through a real hub, because `SentrySpan` cannot be built from outside
+        // the package: its `tracer` is `@internal` and so is
+        // `SentryTransaction`'s. The payload is read as JSON for the reason
+        // `sentry_capture.dart` gives - it is literally what Sentry receives.
+        //
+        // `spans` is what `scrubEvent` cannot reach, and it is where every
+        // `traced` fact and every HTTP target lives.
+        final sent = <SentryTransaction>[];
+        await Sentry.init((options) {
+          options.dsn = 'https://key@o0.ingest.sentry.io/0';
+          options.tracesSampleRate = 1.0;
+          options.transport = NowhereTransport();
+          options.beforeSendTransaction = (transaction, hint) {
+            sent.add(scrubTransaction(transaction));
+            return transaction;
+          };
+        });
+        addTearDown(Sentry.close);
+
+        final transaction = Sentry.startTransaction('ext-read', 'storage.read');
+        final span = transaction.startChild('storage.read')
+          ..setData('path', r'C:\Users\Myte\badge.nfc')
+          ..setData('bytes', 512);
+        // On the context, because that is the only mutable spelling.
+        span.context.description = r'reading C:\Users\Myte\badge.nfc';
+        await span.finish();
+        await transaction.finish();
+        await Sentry.close();
+
+        final child = sent.single.childSpans.single;
+        expect(child['description'], r'reading ~\<name>.nfc');
+        final data = child['data'] as Map<String, dynamic>;
+        expect(data['path'], r'~\<name>.nfc');
+        // Left alone rather than stringified, for the reason the breadcrumb
+        // case above gives.
+        expect(data['bytes'], 512);
+      },
+    );
   });
 }

@@ -24,6 +24,13 @@ List<String> keptLines = <String>[];
 /// The levels it forwarded them at, in step with [keptLines].
 List<KeptLevel> keptLevels = <KeptLevel>[];
 
+/// The function [recordKeptLines] installed, or null.
+///
+/// Exposed for the one test file that asserts on *who* is wired rather than on
+/// what arrived: `telemetry_lifecycle_test.dart` has to tell "nothing is
+/// installed" from "the recorder is installed", and `keptSink != null` cannot.
+KeptLogSink? keptRecorder;
+
 /// Starts recording, and stops at the end of the test.
 ///
 /// Call from `setUp`. Installs the sink and clears both lists, so a test never
@@ -32,12 +39,14 @@ List<KeptLevel> keptLevels = <KeptLevel>[];
 void recordKeptLines() {
   keptLines = <String>[];
   keptLevels = <KeptLevel>[];
-  LogService.keptSink = (level, body) {
+  keptRecorder = (level, body) {
     keptLevels.add(level);
     keptLines.add(body);
   };
+  LogService.keptSink = keptRecorder;
   addTearDown(() {
     LogService.keptSink = null;
+    keptRecorder = null;
     keptLines = <String>[];
     keptLevels = <KeptLevel>[];
   });
@@ -50,4 +59,11 @@ void recordKeptLines() {
 void clearKeptLines() {
   keptLines.clear();
   keptLevels.clear();
+  // **And the fold.** `LogService.clearHistory`, which this replaced, reset
+  // both; emptying only the lists leaves the trap open inside a single test:
+  // arrange logs `[X] failed`, `clearKeptLines()`, act logs `[X] failed`
+  // again - folded away, never forwarded, and the `hasLength(1)` that follows
+  // fails as though the sink were never installed. `flutter_test_config.dart`
+  // closes it between tests; this closes it within one.
+  LogService.debugForgetLastKept();
 }

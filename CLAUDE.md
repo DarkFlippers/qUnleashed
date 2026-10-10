@@ -148,9 +148,12 @@ Each of these has already shipped a bug in this repository.
   lowers the number by making the code worse; the ratchet's own comment says
   so.
 - **Asserting on a log line's count when `LogService` can coalesce it.**
-  `_remember` folds a *consecutive* identical body into the existing entry, so
-  `hasLength(1)` cannot tell "said once" from "said twice". This has produced a
-  test that passed for the wrong reason more than once.
+  `_isNewLine` drops a *consecutive* identical body, so `hasLength(1)` cannot
+  tell "said once" from "said twice". This has produced a test that passed for
+  the wrong reason more than once. It cuts the other way too: the fold is a
+  static that nothing resets by itself, so a test logging a body an earlier
+  test already logged sees **no** sink call and reads as broken wiring.
+  `test/flutter_test_config.dart` resets it before every test.
 - **Trusting that a test fails for the reason its name says.** In this
   codebase, four separate tests have passed on a mechanism other than the one
   they claimed. Mutation runs caught all four; reading caught none.

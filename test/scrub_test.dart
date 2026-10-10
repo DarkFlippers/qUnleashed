@@ -23,6 +23,10 @@ void main() {
   // and coordinates alone, so the on-screen log stayed readable for the person
   // whose device it was. ADR 0013 §1 removed that log, so there is one level
   // now and everything pays - which is what the rest of this file covers.
+  //
+  // That group was the only thing the split took with it. Nine other tests
+  // went out in the same edit and should not have; see the note above
+  // `group('URL query strings')`.
 
   // These are the shapes a review found going out intact. Every one is a real
   // message from `lib/`, not an invented string.
@@ -72,6 +76,81 @@ void main() {
     test('a word that merely ends in an extension is not a file', () {
       // Anchored on both sides, so it cannot take half a token.
       expect(Scrub.outbound('v2.ir-blaster'), 'v2.ir-blaster');
+    });
+  });
+
+  // Restored. These nine went out with the two-level split, on the mistaken
+  // grounds that they belonged to the on-screen level - they do not: every one
+  // of them drives `Scrub.outbound`, which the split did not touch. Deleting
+  // them left `_query` with no coverage at all, which a mutation run found by
+  // replacing its one `replaceAllMapped` and watching the whole suite stay
+  // green.
+  group('URL query strings', () {
+    test('the key in a tile URL goes, the endpoint stays', () {
+      expect(
+        Scrub.outbound(
+          'GET https://tiles.carto.com/light/3/4/5.png?api_key=abcdef12 failed',
+        ),
+        'GET https://tiles.carto.com/light/3/4/5.png?<query> failed',
+      );
+    });
+
+    test('a URL with no query is untouched', () {
+      expect(
+        Scrub.outbound('GET https://update.flipperzero.one/firmware.json'),
+        'GET https://update.flipperzero.one/firmware.json',
+      );
+    });
+
+    test('a question mark in prose is not a query string', () {
+      expect(Scrub.outbound('is it connected?'), 'is it connected?');
+    });
+  });
+
+  group('filenames on the Flipper', () {
+    test('the name goes, the directory and the extension stay', () {
+      expect(
+        Scrub.outbound('/ext/nfc/Office badge.nfc could not be read'),
+        '/ext/nfc/<name>.nfc could not be read',
+      );
+    });
+
+    test('a directory keeps its name, because that is the diagnostic half', () {
+      // `/ext/nfc` with `nfc` replaced throws away the one part worth reading.
+      expect(
+        Scrub.outbound('listing /ext/subghz failed'),
+        'listing /ext/subghz failed',
+      );
+    });
+
+    test('nested directories survive down to the file', () {
+      expect(
+        Scrub.outbound('/ext/subghz/Gates/front gate.sub'),
+        '/ext/subghz/Gates/<name>.sub',
+      );
+    });
+
+    test('/int is covered as well as /ext', () {
+      expect(Scrub.outbound('/int/Secret.nfc'), '/int/<name>.nfc');
+    });
+
+    test('a sentence after a directory is not read as a filename', () {
+      // The directory rule allows spaces in the stem, so the clause
+      // separators are what bound it: without them `nfc failed, see notes`
+      // reads as one filename and the whole sentence disappears into
+      // `<name>.txt`. `.txt` is also off the bare-name allow-list, so nothing
+      // here is touched at all.
+      expect(
+        Scrub.outbound('listing /ext/nfc failed, see notes.txt'),
+        'listing /ext/nfc failed, see notes.txt',
+      );
+    });
+
+    test('a path somewhere else is left alone', () {
+      // The rule is about the Flipper's two filesystems, not about every
+      // slash in every message. The home-directory rule handles the host's
+      // own.
+      expect(Scrub.outbound('/usr/lib/libusb.so'), '/usr/lib/libusb.so');
     });
   });
 

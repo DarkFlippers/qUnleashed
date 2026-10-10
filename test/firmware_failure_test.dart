@@ -53,8 +53,6 @@ Future<void> drainToast(WidgetTester tester) =>
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  setUp(recordKeptLines);
-
   final repo = FirmwareRepository.instance;
 
   setUp(resetFirmwareState);

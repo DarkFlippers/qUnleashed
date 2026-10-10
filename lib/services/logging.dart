@@ -30,9 +30,11 @@ enum KeptLevel {
 /// Shaped like flipperlib's `Log.sink` on purpose - a level and a body - so
 /// the two hooks this app installs read the same way.
 ///
-/// The body is already stamped-free and already had absolute paths redacted;
-/// anything sending it off the device must still put it through
-/// `Scrub.outbound`, which is the sink's job and not this file's.
+/// The body is stamped-free and **raw**: this file redacts nothing, by
+/// decision rather than oversight - the console is a developer's own machine
+/// and wants the real path. Anything sending it off the device must put it
+/// through `Scrub.outbound` first. That is the sink's job, and the only
+/// scrubbing there is.
 typedef KeptLogSink = void Function(KeptLevel level, String body);
 
 /// A reader for flipperlib's running commentary, at the library's own levels.
@@ -76,8 +78,8 @@ class LogService {
 
   /// Resolved once at compile time, so the guards below are const conditions:
   /// the chatty branches are shaken out of the build entirely. [errorOn] and
-  /// [warnOn] gate printing only — see [history] for why those two are still
-  /// recorded in a build that prints nothing.
+  /// [warnOn] gate printing only — see [keptSink] for why those two are still
+  /// forwarded in a build that prints nothing.
   static const int level = !enabled || levelName == 'off'
       ? _off
       : levelName == 'error'
@@ -103,12 +105,6 @@ class LogService {
   static const bool debugOn = level >= _debug;
   static const bool traceOn = level >= _trace;
 
-  /// How many messages [history] keeps before dropping the oldest.
-  ///
-  /// Messages, not lines — see [history]. A few hundred failures is more than
-  /// a session should produce, and even with stack traces attached that is on
-  /// the order of a megabyte at worst.
-  ///
   /// The last body forwarded, so a run of identical lines is sent once.
   ///
   /// All that is left of the 500-entry buffer this file used to keep. ADR 0013
@@ -255,8 +251,8 @@ class LogService {
   /// Routes flipperlib's own logging here.
   ///
   /// Attached even when nothing is printing, and kept apart from the platform
-  /// calls in [initialize] so it can be reached without them, giving [history]
-  /// the transport faults and session failures a bug report actually needs and
+  /// calls in [initialize] so it can be reached without them, forwarding the
+  /// transport faults and session failures a bug report actually needs and
   /// none of the traffic below them.
   ///
   /// Warning, not error, and that is a fix rather than a widening.
@@ -323,7 +319,7 @@ class LogService {
     return breadcrumbSink == null ? _keptFrom : FlipperLogLevel.info;
   }
 
-  /// Routes what nothing else catches into [history].
+  /// Routes what nothing else catches into [keptSink].
   ///
   /// The failures with the least surface of all: a framework exception during
   /// build, a rejected future nobody awaited. Every handler the app added for
@@ -347,8 +343,8 @@ class LogService {
   @visibleForTesting
   static void installUncaughtHandlers() {
     // Installing twice wraps the wrappers, and every error would then be
-    // recorded once per install — which _remember coalesces into "(2×)"
-    // rather than duplicating, so it reads as the app having failed twice.
+    // recorded once per install — which [_isNewLine] folds away rather than
+    // sending twice, so a reader would otherwise see the app fail twice.
     //
     // Checked against the slot rather than a flag we set: a test that puts the
     // previous handler back has uninstalled us, and the next install should
@@ -473,11 +469,11 @@ class LogService {
 
   /// Running commentary, and the one level that does not survive.
   ///
-  /// Never kept, in any build: [history] holds errors, warnings and [caught]
-  /// only, so nothing sent here is kept. On top of that [infoOn] is a
-  /// const that folds to false in an ordinary release build, so the call
+  /// Never kept, in any build: [keptSink] is handed errors, warnings and
+  /// [caught] only, so nothing sent here is forwarded. On top of that [infoOn]
+  /// is a const that folds to false in an ordinary release build, so the call
   /// usually compiles away — and a build made to talk with `QLOG=true` reaches
-  /// only a console that, per [history], a user of a shipped build cannot read.
+  /// only a console, which a user of a shipped build cannot read.
   ///
   /// Which makes this the right level for saying what the app did, and the
   /// wrong one for the only report of a failure. A failure somebody should
@@ -487,8 +483,8 @@ class LogService {
   /// The rule the triage applies, so the next area need not re-derive it: an
   /// `info` inside a catch stays only when something else keeps a record of
   /// the same failure, or when the site repeats faster than a person can act
-  /// - a loop, a walk, one entry per file of a batch - and would churn
-  /// [history]. Once per tap is not that, however often the tapping.
+  /// - a loop, a walk, one entry per file of a batch - and would flood the
+  /// channel. Once per tap is not that, however often the tapping.
   ///
   /// A site kept for that second reason wants a tally at the batch boundary
   /// rather than a level here, so the count survives without the churn.
@@ -731,13 +727,6 @@ class LogService {
     return '${_two(wall.hour)}:${_two(wall.minute)}:${_two(wall.second)}';
   }
 
-  /// Only what is kept is redacted. The history is the only thing the log
-  /// screen offers to copy, and everything else — five times as many trace,
-  /// debug and info sites as ones that keep — would be paying a scan per home
-  /// directory per message for nothing. It also leaves a developer's own console
-  /// printing the path they are debugging rather than `~`. The trade is that
-  /// a path still reaches logcat, which is not the surface with a copy button
-  /// on it.
   /// Writes one line to the two destinations that exist, plus [keptSink].
   ///
   /// [level] replaced a `required bool keep`. The two carried the same fact -

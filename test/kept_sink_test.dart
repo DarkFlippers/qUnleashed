@@ -134,6 +134,28 @@ void main() {
   });
 
   group('the body it is handed', () {
+    test('is not scrubbed, and the console is not either', () {
+      // The decision's other half, and the one nothing asserted. `_emit`
+      // prints and announces the same `msg`, so a scrub inside `_emit`
+      // breaks the test below - but a scrub applied to the *console
+      // branch only* would pass it, and quietly cost a developer the
+      // path they are debugging. That is this file's stated reason for
+      // not scrubbing here, so it gets an assertion of its own.
+      Scrub.debugUseHomes([r'C:\Users\Myte']);
+      addTearDown(() => Scrub.debugUseHomes(null));
+
+      final lines = printed(
+        () => LogService.error(r'could not open C:\Users\Myte\x.ir'),
+      );
+
+      expect(sink.bodies.single, contains(r'C:\Users\Myte\x.ir'));
+      expect(
+        lines.where((l) => l.contains(r'C:\Users\Myte\x.ir')),
+        hasLength(LogService.printing ? 1 : 0),
+        reason: 'the console gets the real path, not `~`',
+      );
+    });
+
     test('is raw, because the sink is what scrubs', () {
       // This used to arrive with the account name already out of it, because
       // `_emit` redacted what it kept. Nothing is kept now, so there is no

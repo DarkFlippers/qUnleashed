@@ -59,7 +59,6 @@ void main() {
   late Directory root;
   late FakeCatalogClient client;
   late ManifestRegistry registry;
-  late int logBase;
 
   setUp(() async {
     root = Directory.systemTemp.createTempSync('manifest_cache_test');
@@ -70,10 +69,6 @@ void main() {
     // file did exactly that.
     debugUseDocumentsRoot(root);
     clearKeptLines();
-    // Read after clearing rather than trusting it: the history is a process
-    // singleton, and a line from the case before this one has been seen to
-    // land after its setUp ran. Only what this case adds is looked at.
-    logBase = keptLines.length;
     client = FakeCatalogClient();
     registry = ManifestRegistry(client: client);
     addTearDown(() {
@@ -98,8 +93,7 @@ void main() {
 
   List<String> kept() => registry.all.map((m) => m.path).toList();
 
-  bool said(String fragment) =>
-      keptLines.skip(logBase).any((l) => l.contains(fragment));
+  bool said(String fragment) => keptLines.any((l) => l.contains(fragment));
 
   group('a catalogue that reads cleanly', () {
     test('indexes every entry', () async {

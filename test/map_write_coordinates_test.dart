@@ -105,7 +105,6 @@ void main() {
 
   late io.Directory root;
   late io.File local;
-  late int logBase;
 
   setUp(() {
     // The reload behind the save reads the last synced device out of the
@@ -115,7 +114,6 @@ void main() {
     local = io.File('${root.path}${io.Platform.pathSeparator}gate.sub')
       ..writeAsStringSync(_sub);
     clearKeptLines();
-    logBase = keptLines.length;
     addTearDown(() {
       debugUseDocumentsRoot(null);
       if (root.existsSync()) root.deleteSync(recursive: true);
@@ -123,7 +121,7 @@ void main() {
   });
 
   Iterable<String> lines(String fragment) =>
-      keptLines.skip(logBase).where((l) => l.contains(fragment));
+      keptLines.where((l) => l.contains(fragment));
 
   Future<bool> move(_WritingFlipper client, {String? remotePath}) =>
       MapToolController(client: client).writeCoordinates(

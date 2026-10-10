@@ -19,17 +19,11 @@ import 'kept_lines.dart';
 void main() {
   setUp(recordKeptLines);
 
-  late int logBase;
-
   setUp(() {
     clearKeptLines();
-    // Read after clearing rather than trusting it: the history is a process
-    // singleton and a line from the case before has been seen to arrive late.
-    logBase = keptLines.length;
   });
 
-  bool said(String fragment) =>
-      keptLines.skip(logBase).any((l) => l.contains(fragment));
+  bool said(String fragment) => keptLines.any((l) => l.contains(fragment));
 
   Map<String, dynamic> card(String id) => {
     'id': id,
@@ -139,10 +133,7 @@ void main() {
       );
 
       expect(said('dropped 3 of 3 apps'), isTrue);
-      expect(
-        keptLines.skip(logBase).where((l) => l.contains('dropped')),
-        hasLength(1),
-      );
+      expect(keptLines.where((l) => l.contains('dropped')), hasLength(1));
     });
   });
 

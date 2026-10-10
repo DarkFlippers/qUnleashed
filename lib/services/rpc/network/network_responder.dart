@@ -479,7 +479,7 @@ class FlipperNetworkResponder {
       // Per chunk rather than around the loop: hoisting the guard would make
       // these sequential, and the order these reach the Flipper is the RPC
       // queue's business rather than this loop's. A dead session fails every
-      // chunk with the same text, which `_remember` folds into one entry.
+      // chunk with the same text, which the fold in `LogService` sends once.
       unawaited(
         guarded(
           '[Network] forward inbound on $id',

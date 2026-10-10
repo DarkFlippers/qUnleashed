@@ -38,8 +38,6 @@ void main() {
 
   setUp(recordKeptLines);
 
-  late int logBase;
-
   /// Makes every write fail from here on.
   ///
   /// The store rather than the method channel: SharedPreferences caches its
@@ -52,12 +50,11 @@ void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues(const {});
     clearKeptLines();
-    logBase = keptLines.length;
     addTearDown(() => SharedPreferences.setMockInitialValues(const {}));
   });
 
   Iterable<String> lines(String fragment) =>
-      keptLines.skip(logBase).where((l) => l.contains(fragment));
+      keptLines.where((l) => l.contains(fragment));
 
   group('a write that failed', () {
     // The caller is usually a torn-off ValueChanged with nowhere to put a

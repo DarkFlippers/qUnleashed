@@ -369,9 +369,10 @@ class Telemetry {
   /// `warn` is for. The mapping is exhaustive over [KeptLevel] on purpose, so
   /// a fourth level cannot be added without deciding where it lands.
   ///
-  /// `LogService` passes a body with absolute paths already out of it, which
-  /// is all the sink does; §6.2's rest runs here, because this is the point it
-  /// leaves the device.
+  /// The body arrives raw - `LogService` deliberately does not scrub, so the
+  /// console keeps the real path - so `Scrub.outbound` here is the *whole* of
+  /// §6.2 for this channel, starting with the absolute paths, and this is the
+  /// point it leaves the device.
   ///
   /// Nothing is awaited. `_emit` is synchronous and must stay that way - it is
   /// called from inside error handlers - and the SDK batches its own sends;
@@ -412,10 +413,24 @@ class Telemetry {
     final parent = Sentry.getSpan();
     if (parent == null) return;
 
-    // `removeQuery` rather than `replace(query: '')`: Dart treats an empty
-    // string as a component that is present, so that spelling leaves every
-    // description ending in a dangling `?#`.
-    final target = exchange.uri.removeFragment().replace(queryParameters: null);
+    // Rebuilt from components, because neither spelling of "take the query
+    // off" actually does it. `replace(queryParameters: null)` reads null as
+    // *keep this component* and hands the query back intact - the version that
+    // stood here, which left `?key=…` in the target and leaned entirely on
+    // `Scrub.outbound` below. `replace(query: '')` does drop it, but leaves a
+    // dangling `?`, because Dart treats the empty string as a component that
+    // is present. All three spellings were run to check.
+    //
+    // Belt and braces on purpose: `Scrub.outbound` strips the query as well,
+    // and this is the layer that keeps a regression there from being a leak on
+    // its own.
+    final source = exchange.uri;
+    final target = Uri(
+      scheme: source.scheme,
+      host: source.host,
+      port: source.hasPort ? source.port : null,
+      path: source.path,
+    );
     final span = parent.startChild(
       'http.client',
       description: Scrub.outbound('${exchange.method} $target'),
@@ -574,7 +589,7 @@ class Telemetry {
   /// What that allows, without this second flag: a send rejects, the handler
   /// writes `LogService.error`, which is a kept line, which calls the kept
   /// sink, which sends, which rejects. One failure in, one failure out, for as
-  /// long as the network stays broken. The only brake would be `_remember`
+  /// long as the network stays broken. The only brake would be the fold
   /// folding an identical body - and that stops the moment any other kept
   /// line interleaves and moves `_lastKept`, which on this app means any BLE
   /// warning. CLAUDE.md names leaning on that coalescing as an anti-pattern,

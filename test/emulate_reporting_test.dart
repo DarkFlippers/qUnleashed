@@ -18,18 +18,16 @@ void main() {
 
   late FakeAppClient client;
   late EmulateService service;
-  late int logBase;
 
   setUp(() {
     client = FakeAppClient();
     service = EmulateService(client: client);
     clearKeptLines();
-    logBase = keptLines.length;
     addTearDown(client.close);
   });
 
   Iterable<String> lines(String fragment) =>
-      keptLines.skip(logBase).where((l) => l.contains(fragment));
+      keptLines.where((l) => l.contains(fragment));
 
   group('a run the user is told failed', () {
     test('says why the app would not start', () async {

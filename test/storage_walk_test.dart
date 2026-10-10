@@ -20,19 +20,16 @@ void main() {
   setUp(recordKeptLines);
 
   late Directory root;
-  late int logBase;
 
   setUp(() {
     root = Directory.systemTemp.createTempSync('storage_walk_test');
     clearKeptLines();
-    logBase = keptLines.length;
     addTearDown(() {
       if (root.existsSync()) root.deleteSync(recursive: true);
     });
   });
 
-  bool said(String fragment) =>
-      keptLines.skip(logBase).any((l) => l.contains(fragment));
+  bool said(String fragment) => keptLines.any((l) => l.contains(fragment));
 
   File write(String name, int bytes) {
     final file = File('${root.path}${Platform.pathSeparator}$name')

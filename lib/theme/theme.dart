@@ -79,10 +79,12 @@ class QAppThemeController extends ChangeNotifier with WidgetsBindingObserver {
       // here is not a theme that falls back - it is an app that never
       // appears, or a widget engine whose link keeper never comes up.
       //
-      // installUncaughtHandlers would still keep the error, but `history` is
-      // in memory and nothing reads a local log any more, so the record
-      // dies with the process. Caught, it survives into a session someone
-      // can look at. #124.
+      // installUncaughtHandlers would still record the error - and now that
+      // ADR 0013 §1 has made Sentry the only channel, it would even be
+      // reported. What it would not carry is which load failed: an uncaught
+      // rejection arrives as `[uncaught]` with nothing naming the operation,
+      // which is the same argument `guarded` makes. Caught here, it carries
+      // its area. #124.
       LogService.warn('[AppTheme] load failed: ${LogService.describe(e, st)}');
       return;
     }

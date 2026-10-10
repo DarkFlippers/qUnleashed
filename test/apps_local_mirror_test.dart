@@ -106,7 +106,6 @@ void main() {
 
   late io.Directory root;
   late DeviceSource source;
-  late int logBase;
 
   /// Writes a real `.fap` under the mirror and hands back the entry the walk
   /// will see for it.
@@ -133,7 +132,6 @@ void main() {
       engine: _UnusedEngine(),
     );
     clearKeptLines();
-    logBase = keptLines.length;
     addTearDown(() {
       DeviceSource.backupDirectory = null;
       if (root.existsSync()) root.deleteSync(recursive: true);
@@ -141,7 +139,7 @@ void main() {
   });
 
   Iterable<String> lines(String fragment) =>
-      keptLines.skip(logBase).where((l) => l.contains(fragment));
+      keptLines.where((l) => l.contains(fragment));
 
   bool said(String fragment) => lines(fragment).isNotEmpty;
 

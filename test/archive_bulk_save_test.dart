@@ -30,7 +30,6 @@ void main() {
 
   late io.Directory source;
   late io.Directory dest;
-  late int logBase;
 
   io.File real(String name) {
     final file = io.File('${source.path}${io.Platform.pathSeparator}$name')
@@ -42,7 +41,6 @@ void main() {
     source = io.Directory.systemTemp.createTempSync('bulk_save_src');
     dest = io.Directory.systemTemp.createTempSync('bulk_save_dst');
     clearKeptLines();
-    logBase = keptLines.length;
     addTearDown(() {
       if (source.existsSync()) source.deleteSync(recursive: true);
       if (dest.existsSync()) dest.deleteSync(recursive: true);
@@ -50,7 +48,7 @@ void main() {
   });
 
   Iterable<String> lines(String fragment) =>
-      keptLines.skip(logBase).where((l) => l.contains(fragment));
+      keptLines.where((l) => l.contains(fragment));
 
   group('a selection that did not all land', () {
     test('is reported once, however many files failed', () async {

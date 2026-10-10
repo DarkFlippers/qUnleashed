@@ -89,7 +89,6 @@ void main() {
   late _DeletingFlipper client;
   late InstallEngine engine;
   late io.Directory root;
-  late int logBase;
 
   // The manifest cache this uninstall rewrites is filed under the user's
   // documents directory, which the test process cannot otherwise move. It is
@@ -132,11 +131,10 @@ void main() {
       }) async {},
     );
     clearKeptLines();
-    logBase = keptLines.length;
   });
 
   Iterable<String> lines(String fragment) =>
-      keptLines.skip(logBase).where((l) => l.contains(fragment));
+      keptLines.where((l) => l.contains(fragment));
 
   Future<bool> uninstall() =>
       engine.deleteInstalled(alias: 'tool', fapPath: _fapPath);

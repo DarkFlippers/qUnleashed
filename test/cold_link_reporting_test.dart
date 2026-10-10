@@ -94,8 +94,6 @@ void main() {
 
   setUp(recordKeptLines);
 
-  late int logBase;
-
   /// Remembers one BLE device, which is what a cold start dials.
   Future<void> remember(String id) async {
     SharedPreferences.setMockInitialValues(const {});
@@ -109,11 +107,10 @@ void main() {
 
   setUp(() {
     clearKeptLines();
-    logBase = keptLines.length;
   });
 
   Iterable<String> lines(String fragment) =>
-      keptLines.skip(logBase).where((l) => l.contains(fragment));
+      keptLines.where((l) => l.contains(fragment));
 
   group('a widget that could not reach its Flipper', () {
     test('says so, where the false it returns does not', () async {

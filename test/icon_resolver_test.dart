@@ -36,24 +36,21 @@ void main() {
   setUp(recordKeptLines);
 
   late Directory root;
-  late int logBase;
 
   setUp(() {
     root = Directory.systemTemp.createTempSync('icon_resolver_test');
     debugUseDocumentsRoot(root);
     clearKeptLines();
-    logBase = keptLines.length;
     addTearDown(() {
       debugUseDocumentsRoot(null);
       if (root.existsSync()) root.deleteSync(recursive: true);
     });
   });
 
-  bool said(String fragment) =>
-      keptLines.skip(logBase).any((l) => l.contains(fragment));
+  bool said(String fragment) => keptLines.any((l) => l.contains(fragment));
 
   Iterable<String> lines(String fragment) =>
-      keptLines.skip(logBase).where((l) => l.contains(fragment));
+      keptLines.where((l) => l.contains(fragment));
 
   /// Lets the queue drain. Every address below is unroutable, so each attempt
   /// ends in a connection failure rather than a wait.

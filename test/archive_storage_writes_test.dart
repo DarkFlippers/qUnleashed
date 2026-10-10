@@ -23,7 +23,6 @@ void main() {
 
   late Directory root;
   late ArchiveStorage storage;
-  late int logBase;
 
   // One root for the file, not one per case. `ArchiveStorage` caches its root
   // in a static, so a second temp directory would be created and then ignored
@@ -55,11 +54,9 @@ void main() {
       devices.createSync(recursive: true);
     }
     clearKeptLines();
-    logBase = keptLines.length;
   });
 
-  bool said(String fragment) =>
-      keptLines.skip(logBase).any((l) => l.contains(fragment));
+  bool said(String fragment) => keptLines.any((l) => l.contains(fragment));
 
   /// Puts a directory where [file] wants to be, so writing it fails.
   void blockFile(File file) {
@@ -162,7 +159,7 @@ void main() {
       await storage.writeFapIcon('Kitchen', '/ext/apps/Tools/x.fap', const [1]);
 
       expect(
-        keptLines.skip(logBase),
+        keptLines,
         isEmpty,
         reason: 'best-effort, and the budget entry says so',
       );

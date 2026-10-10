@@ -62,6 +62,16 @@ extension CapturedTransaction on SentryTransaction {
   Map<String, dynamic> get data =>
       (_trace['data'] as Map<String, dynamic>?) ?? const {};
 
+  /// The spans underneath, as the wire carries them.
+  ///
+  /// `SentrySpan` exposes `description` and `data` only through `context` and
+  /// an internal field, so the JSON is the readable form here for the same
+  /// reason it is above.
+  List<Map<String, dynamic>> get childSpans => [
+    for (final span in (_json['spans'] as List<dynamic>? ?? const []))
+      span as Map<String, dynamic>,
+  ];
+
   /// The operations of the spans underneath, for the nesting assertions.
   List<String> get childOperations => [
     for (final span in (_json['spans'] as List<dynamic>? ?? const []))

@@ -150,10 +150,12 @@ class AssemblerController extends ChangeNotifier {
       // here is not a setting that falls back - it is an app that never
       // appears, or a widget engine whose link keeper never comes up.
       //
-      // installUncaughtHandlers would still keep the error, but `history` is
-      // in memory and nothing reads a local log any more, so the record
-      // dies with the process. Caught, it survives into a session someone
-      // can look at. #124.
+      // installUncaughtHandlers would still record the error - and now that
+      // ADR 0013 §1 has made Sentry the only channel, it would even be
+      // reported. What it would not carry is which load failed: an uncaught
+      // rejection arrives as `[uncaught]` with nothing naming the operation,
+      // which is the same argument `guarded` makes. Caught here, it carries
+      // its area. #124.
       LogService.warn('[Assembler] load failed: ${LogService.describe(e, st)}');
       return;
     }
@@ -408,7 +410,7 @@ class AssemblerController extends ChangeNotifier {
         );
         // ADR 0013 §3: `error` and `critical` reached only the Assembler
         // console, which is a screen in one feature and nothing a bug report
-        // can carry. They go to the history now, like every other failure the
+        // can carry. They are reported now, like every other failure the
         // app records - and from there to Sentry while reporting is on.
         //
         // `warning` and below stay where they are. The console is a build log
