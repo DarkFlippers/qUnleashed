@@ -184,12 +184,15 @@ ARROW_RIGHT = """
 ...##..
 """
 
-# ✓ : short arm down-right into a long arm up-right.
+# ✓ : short arm down-right meeting a long arm up-right, both two pixels wide,
+# filling the x-height so it does not read as a stray v next to `Compress ✓`.
 CHECK_MARK = """
-.....##
-##..##.
-.####..
-..##...
+......##
+.....##.
+##...##.
+.##.##..
+..####..
+...##...
 """
 
 BULLET = """
