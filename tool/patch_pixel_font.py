@@ -85,6 +85,66 @@ REVERSE_SOLIDUS = """
 ....##
 """
 
+# И/и/Й/й. V2 drew the middle stroke as a full-height vertical bar between the
+# two stems, with a wedge glued to the top of it on the right and to the bottom
+# on the left. That is three heavy verticals in an eight pixel box, and it is
+# the one letter in the Cyrillic set that reads as a blob. Redrawn as a stepped
+# diagonal, three rows per step, so it merges with the left stem at the bottom
+# and the right stem at the top. The font does avoid diagonals - N, М, Ж and Х
+# are all stems plus a bridge - but К, Л, У and V are all stepped like this, so
+# it is a shape the face already owns.
+I_CAP = """
+##..####
+##..####
+##..####
+##.##.##
+##.##.##
+##.##.##
+####..##
+####..##
+####..##
+"""
+
+I_SMALL = """
+##..####
+##..####
+##..####
+##.##.##
+##.##.##
+##.##.##
+####..##
+####..##
+"""
+
+I_SHORT_CAP = """
+..####..
+..####..
+........
+##..####
+##..####
+##..####
+##.##.##
+##.##.##
+##.##.##
+####..##
+####..##
+####..##
+"""
+
+I_SHORT_SMALL = """
+..####..
+..####..
+........
+##..####
+##..####
+##..####
+##.##.##
+##.##.##
+##.##.##
+####..##
+####..##
+"""
+
 # Ґ/ґ: Г with the upstroke on the right end of the bar. The hook sits in the
 # two rows above cap height, where É keeps its acute.
 GHE_UPTURN_CAP = """
@@ -353,10 +413,15 @@ DERIVED = [
     (0x2713, "checkmark", "literal", CHECK_MARK, 64, 64),
 ]
 
-# Glyphs that replace what the font already had.
+# Glyphs that replace what the font already had. These run before DERIVED, so
+# Ѝ and ѝ are built on the redrawn И and и rather than the originals.
 REDRAWN = [
     ("slash", SOLIDUS, 64, 0),
     ("backslash", REVERSE_SOLIDUS, 64, 0),
+    ("afii10026", I_CAP, 64, 0),  # И
+    ("afii10074", I_SMALL, 64, 0),  # и
+    ("afii10027", I_SHORT_CAP, 64, 0),  # Й
+    ("afii10075", I_SHORT_SMALL, 64, 0),  # й
 ]
 
 

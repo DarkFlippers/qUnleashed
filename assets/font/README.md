@@ -44,10 +44,24 @@ middle of it. V3 adds what the app can actually print:
 | Romanian | `Ș ș Ț ț` (V2 already drew `Ş ş Ţ ţ` with a comma below, which is the Romanian form, so these reuse those glyphs) |
 | Punctuation | `– — … • → − ✓ " " ' '` |
 
-It also redraws `/` and `\`. V2 drew them as a zig-zag — two vertical bars
-joined by one horizontal jog, a single step across ten rows — which read as a
-lightning bolt in `Syncing 3/8` and `Installing firmware… 2/41 files`. V3 draws
-a proper staircase, one column per two rows.
+### What V3 redraws
+
+`/` and `\`. V2 drew them as a zig-zag — two vertical bars joined by one
+horizontal jog, a single step across ten rows — which read as a lightning bolt
+in `Syncing 3/8` and `Installing firmware… 2/41 files`. V3 draws a proper
+staircase, one column per two rows.
+
+`И и Й й`. V2 put a full-height vertical bar between the two stems and glued a
+wedge to the top of it on the right and the bottom on the left, so the letter
+was three heavy verticals in an eight pixel box — the one glyph in the Cyrillic
+set that reads as a blob. V3 steps it three rows at a time, merging with the
+left stem at the bottom and the right stem at the top.
+
+The face does avoid diagonals on purpose — `N`, `М`, `Ж` and `Х` are all stems
+plus a bridge, with no diagonal anywhere — so this is not a free choice. It is
+the same stepping `К`, `Л`, `У` and `V` already use, which is why `И` was the
+odd one out rather than the consistent one. `Ѝ` and `ѝ` inherit it, because the
+tool builds them from `И` after the redraw.
 
 ### Still not covered, on purpose
 
