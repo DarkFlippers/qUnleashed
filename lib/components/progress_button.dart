@@ -23,9 +23,8 @@ class ProgressButton extends StatefulWidget {
   static const double defaultHorizontalPadding = 8;
   static const double defaultVerticalPadding = 6;
   static const TextStyle defaultTextStyle = TextStyle(
-    fontFamily: 'FlipperBold',
+    fontFamily: 'Born2bSportyV3',
     fontSize: 40,
-    fontWeight: FontWeight.w500,
     letterSpacing: 0,
     color: Colors.white,
   );
