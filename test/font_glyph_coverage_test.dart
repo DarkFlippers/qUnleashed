@@ -20,10 +20,12 @@
 //     is a string the compiler never checks, and a family Flutter cannot
 //     resolve falls back silently and wholesale - a worse version of the same
 //     bug, the whole label rather than one character.
-//  2. Every codepoint `tool/patch_pixel_font.py` declares is mapped AND has an
-//     outline. Mapped-but-blank is worse than missing: a missing glyph gets
-//     the system face, a blank one gets nothing at all.
-//  3. The tool's declarations and this file's list of them have not drifted.
+//  2. The committed .ttf still maps what `font/src` says it maps. The font is
+//     built from that text, and `python font/build.py --check` in CI is what
+//     proves the bytes; this is the part of it a Dart test can see.
+//  3. The letters this face exists to provide are mapped AND have an outline.
+//     Mapped-but-blank is worse than missing: a missing glyph gets the system
+//     face, a blank one gets nothing at all.
 //  4. Every character of every ARB file - and of its uppercasing, since
 //     `firmware_update_button.dart` uppercases its labels - is in the font,
 //     unless a script in `kFallbackAllowed` names it.
@@ -38,8 +40,9 @@
 // What it still cannot see, and what covers each instead:
 //
 //  * Whether a glyph is any good. The shipped solidus was present the whole
-//    time and drawn as a zig-zag. `tool/patch_pixel_font_test.py` pins the
-//    shapes by reading them back out of the built font.
+//    time and drawn as a zig-zag. Nothing automated can see that; what makes
+//    it reviewable is that the shapes are text in `font/src`, so a redraw is
+//    a readable diff rather than a change of 55 KB of binary.
 //  * Strings that are not in an ARB file. `recover_page.dart` puts a literal
 //    `'…'` on a `ProgressButton`, and runtime values - a Flipper filename, a
 //    device name - can hold any codepoint at all. `ProgressButton` carries a
@@ -62,7 +65,7 @@ final RegExp _fontFamilyLiteral = RegExp("""fontFamily:\\s*['"]([^'"]+)['"]""");
 
 const String kFamily = 'Born2bSportyV3';
 const String kFontPath = 'assets/font/born2b-sporty-v3.ttf';
-const String kToolPath = 'tool/patch_pixel_font.py';
+const String kSourcePath = 'font/src/born2b-sporty-v3.pixelfont';
 
 /// Scripts the pixel font deliberately does not cover, so a character in one
 /// falls back rather than failing this file.
@@ -89,12 +92,15 @@ const List<(int, int, String)> kFallbackAllowed = [
 /// else, so these are named rather than inferred.
 const Set<int> kBlankByDesign = {0x0020, 0x00A0};
 
-/// What `tool/patch_pixel_font.py` adds, as characters rather than numbers so
-/// a reader can see what is at stake. Derived from the tool it would be
-/// circular - the test would agree with whatever the tool did, including
-/// nothing - so it is written out here and cross-checked against the tool's
-/// declarations by its own test below.
-const Map<String, String> kAddedByPatchTool = {
+/// The letters this face exists to provide, as characters rather than numbers
+/// so a reader can see what is at stake.
+///
+/// Written out here rather than read from the font source, which would be
+/// circular: the test would agree with whatever the source said, including a
+/// source that had lost them. Ukrainian is why the font was forked; the rest
+/// came with it. Nothing but this list keeps a letter that no ARB happens to
+/// use today - `Ґ` is one - from quietly disappearing.
+const Map<String, String> kMustBeDrawn = {
   'Ukrainian': 'ЄєІіЇїҐґ',
   'Belarusian': 'Ўў',
   'Macedonian': 'ЅѕЃѓЌќ',
@@ -176,47 +182,48 @@ void main() {
     );
   });
 
-  test('this file and the build tool agree on what was added', () {
-    final tool = File(kToolPath).readAsStringSync();
-    final declared = <int>{};
-    // Alias entries: `0x0406: "I",`
-    for (final m in RegExp(r'0x([0-9A-Fa-f]{4}):\s*"').allMatches(tool)) {
-      declared.add(int.parse(m.group(1)!, radix: 16));
-    }
-    // Derived entries: `(0x0404, "uni0404",`
-    for (final m in RegExp(r'\(0x([0-9A-Fa-f]{4}),\s*"').allMatches(tool)) {
-      declared.add(int.parse(m.group(1)!, radix: 16));
-    }
+  test('the committed font is the one the source describes', () {
+    final source = File(kSourcePath);
     expect(
-      declared,
-      isNotEmpty,
-      reason:
-          'found no codepoint declarations in $kToolPath; the regexes '
-          'above have stopped matching the file they read',
+      source.existsSync(),
+      isTrue,
+      reason: '$kSourcePath is missing; $kFontPath is built from it',
     );
-
-    final listed = kAddedByPatchTool.values
-        .expand((characters) => characters.runes)
+    final mapped = RegExp(r'^map ([0-9A-F]{4}) ', multiLine: true)
+        .allMatches(source.readAsStringSync())
+        .map((m) => int.parse(m.group(1)!, radix: 16))
         .toSet();
     expect(
-      declared.difference(listed).map(_name).toList()..sort(),
+      mapped.length,
+      greaterThan(400),
+      reason:
+          'found only \${mapped.length} map lines in $kSourcePath; the '
+          'format has changed and this check is reading nothing',
+    );
+    // `python font/build.py --check` is what proves the bytes match, and CI
+    // runs it. This is the part of that a Dart test can see: a .ttf edited by
+    // hand, or left behind by a source change, stops agreeing here.
+    expect(
+      mapped.difference(font.cmap.keys.toSet()).map(_name).toList()..sort(),
       isEmpty,
       reason:
-          '$kToolPath adds codepoints this file does not list, so they '
-          'are not held by anything. Add them to kAddedByPatchTool.',
+          'the source maps codepoints the committed font has not got. '
+          'Rebuild it with `python font/build.py`.',
     );
     expect(
-      listed.difference(declared).map(_name).toList()..sort(),
+      font.cmap.keys.toSet().difference(mapped).map(_name).toList()..sort(),
       isEmpty,
-      reason: 'This file lists codepoints $kToolPath no longer adds.',
+      reason:
+          'the committed font maps codepoints the source does not. '
+          'Rebuild it with `python font/build.py`.',
     );
   });
 
-  test('the font still has everything the patch tool put in it', () {
+  test('the letters this face exists to provide are drawn', () {
     final missing = <String>[];
     final blank = <String>[];
     for (final MapEntry(key: language, value: characters)
-        in kAddedByPatchTool.entries) {
+        in kMustBeDrawn.entries) {
       for (final character in characters.runes) {
         final glyph = font.cmap[character];
         if (glyph == null) {
@@ -231,7 +238,7 @@ void main() {
       isEmpty,
       reason:
           '$kFamily lost glyphs it is supposed to have. Rebuild it with '
-          '`python $kToolPath` rather than editing the .ttf.',
+          '`python font/build.py` rather than editing the .ttf.',
     );
     expect(
       blank,
@@ -273,7 +280,7 @@ void main() {
         // uppercase form is as much a rendered string as the stored one.
         for (final character in '$value${value.toUpperCase()}'.runes) {
           if (_isWhitespaceOrControl(character)) continue;
-          if (_fallbackAllowed(character) != null) continue;
+          if (_fallbackAllowed(character)) continue;
           examined.add(character);
           final glyph = font.cmap[character];
           if (glyph != null && font.hasInk(glyph)) continue;
@@ -305,7 +312,7 @@ void main() {
       reason:
           'These characters have no glyph with ink in $kFamily, so a '
           'label containing one renders that character in the system face '
-          'and the rest in the pixel face. Draw them in $kToolPath and '
+          'and the rest in the pixel face. Draw them in $kSourcePath and '
           'rebuild, or add the script to kFallbackAllowed with a reason.\n'
           '${offenders.entries.map((e) => '  ${e.key}: ${e.value.take(3).join(', ')}').join('\n')}',
     );
@@ -316,12 +323,12 @@ String _name(int codepoint) =>
     'U+${codepoint.toRadixString(16).toUpperCase().padLeft(4, '0')} '
     '${String.fromCharCode(codepoint)}';
 
-String? _fallbackAllowed(int codepoint) {
-  for (final (start, end, why) in kFallbackAllowed) {
-    if (codepoint >= start && codepoint <= end) return why;
-  }
-  return null;
-}
+/// The label in [kFallbackAllowed] is documentation for the reader of that
+/// table, not something a caller needs; this only answers whether the
+/// codepoint is in one of those scripts.
+bool _fallbackAllowed(int codepoint) => kFallbackAllowed.any(
+  (range) => codepoint >= range.$1 && codepoint <= range.$2,
+);
 
 bool _isWhitespaceOrControl(int codepoint) =>
     codepoint < 0x20 ||
@@ -343,35 +350,34 @@ class _Font {
 
   static _Font parse(Uint8List bytes) {
     final data = ByteData.sublistView(bytes);
-    final tables = <String, (int, int)>{};
+    final tables = <String, int>{};
     final tableCount = data.getUint16(4);
     for (var i = 0; i < tableCount; i++) {
       final record = 12 + i * 16;
-      final tag = String.fromCharCodes(bytes.sublist(record, record + 4));
-      tables[tag] = (data.getUint32(record + 8), data.getUint32(record + 12));
+      final tag = String.fromCharCodes(
+        Uint8List.sublistView(data, record, record + 4),
+      );
+      tables[tag] = data.getUint32(record + 8);
     }
     return _Font(
-      _readCmap(data, bytes, _need(tables, 'cmap').$1),
+      _readCmap(data, _need(tables, 'cmap')),
       _readInkedGlyphs(data, tables),
     );
   }
 
-  static (int, int) _need(Map<String, (int, int)> tables, String tag) {
-    final entry = tables[tag];
-    if (entry == null) throw StateError('the font has no $tag table');
-    return entry;
+  static int _need(Map<String, int> tables, String tag) {
+    final offset = tables[tag];
+    if (offset == null) throw StateError('the font has no $tag table');
+    return offset;
   }
 
   /// Glyph ids whose `loca` entry has a non-zero length. A glyph with a
   /// zero-length entry is blank - which is what an all-paper bitmap produces,
   /// and what nothing else in the toolchain would notice.
-  static Set<int> _readInkedGlyphs(
-    ByteData data,
-    Map<String, (int, int)> tables,
-  ) {
-    final head = _need(tables, 'head').$1;
-    final maxp = _need(tables, 'maxp').$1;
-    final loca = _need(tables, 'loca').$1;
+  static Set<int> _readInkedGlyphs(ByteData data, Map<String, int> tables) {
+    final head = _need(tables, 'head');
+    final maxp = _need(tables, 'maxp');
+    final loca = _need(tables, 'loca');
     final longFormat = data.getInt16(head + 50) == 1;
     final glyphCount = data.getUint16(maxp + 4);
 
@@ -393,7 +399,7 @@ class _Font {
   /// read, and an unexpected format throws rather than returning a partial
   /// mapping: a mapping with holes in it would make the ARB check above report
   /// fewer offenders, which is a weaker assertion that still passes.
-  static Map<int, int> _readCmap(ByteData data, Uint8List bytes, int start) {
+  static Map<int, int> _readCmap(ByteData data, int start) {
     final subtableCount = data.getUint16(start + 2);
     var best = -1;
     for (var i = 0; i < subtableCount; i++) {
@@ -437,7 +443,7 @@ class _Font {
           // Bounded by the subtable, not the file: a read past the subtable
           // would return whatever the next table holds and report codepoints
           // as covered that are not.
-          if (at + 1 >= end || at + 1 >= bytes.length) {
+          if (at + 1 >= end || at + 1 >= data.lengthInBytes) {
             throw StateError('cmap subtable is truncated at offset $at');
           }
           final raw = data.getUint16(at);

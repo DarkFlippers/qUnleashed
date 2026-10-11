@@ -76,25 +76,21 @@ jobs:
       - name: Test the translation compile summary
         run: .github/scripts/summarize_l10n_failure_test.sh
 
-      # The button font is built from bitmaps in the tool, not drawn in an
-      # editor, so the committed .ttf and the source it claims to come from can
-      # drift apart with nothing to say so - and the Dart coverage test only
-      # reads the cmap, which cannot see a shape. These two run the build and
-      # its own tests. fonttools is pinned because `--check` compares bytes and
-      # a new version may legitimately pad a table differently.
-      - name: Set up Python for the font tool
+      # The button font is built from text, not drawn in an editor: every
+      # glyph is a block of # and . in font/src, and the .ttf is committed so
+      # nothing has to run before the app compiles. This is what keeps the two
+      # from drifting apart. fonttools is pinned because --check compares bytes
+      # and a new version may legitimately pad a table differently.
+      - name: Set up Python for the font build
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
-      - name: Install the font tool's dependency
+      - name: Install the font build's dependency
         run: pip install fonttools==4.56.0
 
-      - name: Test the pixel font builder
-        run: python tool/patch_pixel_font_test.py
-
-      - name: Check the button font is up to date
-        run: python tool/patch_pixel_font.py --check
+      - name: Check the button font matches its source
+        run: python font/build.py --check
 
       # Why any of this exists is in the script's own header. What is specific
       # to running it here:

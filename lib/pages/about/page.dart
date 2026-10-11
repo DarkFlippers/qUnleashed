@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:qunleashed/components/pixel_font.dart';
+
 import '../../components/navigation.dart';
 import '../../components/open_url.dart';
 import '../../services/localization/l10n.dart';
@@ -153,7 +155,7 @@ class _AboutPageState extends State<AboutPage>
                       TextSpan(
                         text: 'FOR ',
                         style: TextStyle(
-                          fontFamily: 'Born2bSportyV3',
+                          fontFamily: kPixelFontFamily,
                           fontSize: titleSize * 0.38,
                           color: Colors.white,
                           height: 1.0,
@@ -162,7 +164,7 @@ class _AboutPageState extends State<AboutPage>
                       TextSpan(
                         text: 'FLIPPER ZERO',
                         style: TextStyle(
-                          fontFamily: 'Born2bSportyV3',
+                          fontFamily: kPixelFontFamily,
                           fontSize: titleSize * 0.38,
                           color: const Color(0xFFFF9700),
                           height: 1.0,

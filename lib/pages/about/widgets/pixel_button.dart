@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:qunleashed/components/pixel_font.dart';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Replicates the pixel-art button from https://flipperunleashed.com/
 //
@@ -106,7 +108,7 @@ class _PixelButtonState extends State<PixelButton>
     final fontSize = widget.large ? 28.0 : 16.0;
     final hPad = widget.large ? 40.0 : 20.0;
     final vPad = widget.large ? 20.0 : 8.0;
-    final fontFamily = widget.large ? 'GravityBold8' : 'Born2bSportyV3';
+    final fontFamily = widget.large ? 'GravityBold8' : kPixelFontFamily;
 
     return GestureDetector(
       onTapDown: (_) => setState(() => _pressed = true),
