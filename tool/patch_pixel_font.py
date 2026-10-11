@@ -8,17 +8,20 @@ the ARB files already use, and with a solidus drawn as a zig-zag rather than a
 diagonal. Flutter papers over a missing glyph by substituting the system face
 for that one character, so a Ukrainian button read `НЕМА З'<serif Є>ДНАННЯ`.
 
-Every glyph below is declared as an absolute bitmap on the font's own 64-unit
-pixel grid, either literally or derived from a glyph this script never touches.
-Running it twice produces the same bytes:
+The build always starts from the vendored pristine V2 beside this script,
+never from its own output. That is what makes `--check` mean something: a
+rebuild from V3 would only ask whether the file is a fixed point of `build()`,
+and since `build()` only ever adds glyphs and cmap entries, deleting a
+declaration below would leave the committed font unchanged and `--check`
+green. From V2, a deleted declaration is a byte difference.
 
-    python tool/patch_pixel_font.py            # rewrite assets/font/born2b-sporty-v3.ttf
-    python tool/patch_pixel_font.py --check    # fail if the file is out of date
-    python tool/patch_pixel_font.py --from V2.ttf   # rebuild from pristine upstream
+    python tool/patch_pixel_font.py            # write assets/font/born2b-sporty-v3.ttf
+    python tool/patch_pixel_font.py --check    # fail if that file is out of date
+    python tool/patch_pixel_font.py --output /tmp/try.ttf   # build somewhere else
 
-Needs `pip install fonttools`. It is not part of the build; the built .ttf is
-committed. `test/font_glyph_coverage_test.dart` is what holds the result in
-place.
+Needs `pip install fonttools`, and must run from the repository root. It is not
+part of the app build; the built .ttf is committed. CI runs `--check`, and
+`test/font_glyph_coverage_test.dart` holds the coverage of the committed file.
 """
 
 from __future__ import annotations
@@ -33,10 +36,13 @@ from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.ttLib import TTFont
 
 PX = 64  # one logical pixel, in font units
+
 FONT = Path("assets/font/born2b-sporty-v3.ttf")
 
-# The pristine upstream file, for anyone who needs to start over:
+# The pristine upstream, vendored so a rebuild needs no network and so a
+# deleted declaration shows up as a byte difference. Identical to
 # https://github.com/olikraus/u8g2/blob/master/tools/font/ttf/Born2bSportyV2.ttf
+UPSTREAM = Path("tool/born2b-sporty-v2-upstream.ttf")
 UPSTREAM_MD5 = "cdd8a53b6e378484bf5003d54fe35c7b"
 
 FAMILY = "Born2bSportyV3"
@@ -46,15 +52,19 @@ COPYRIGHT = (
     "Born2bSportyV3 is a derivative of Born2bSportyV2 by JapanYoshi, which is "
     "public domain. V3 is public domain too."
 )
+LICENSE = "Public domain. No rights reserved."
+LICENSE_URL = "https://creativecommons.org/publicdomain/zero/1.0/"
 DESCRIPTION = (
-    "Born2bSportyV2 by JapanYoshi with the letters Ukrainian, Belarusian, "
-    "Macedonian and Serbian need, Romanian comma-below letters, typographic "
-    "punctuation, and a solidus and reverse solidus redrawn as diagonals "
-    "rather than zig-zags. Built by tool/patch_pixel_font.py in qUnleashed."
+    "Born2bSportyV2 by JapanYoshi with the letters Ukrainian, Belarusian and "
+    "Macedonian need, Romanian comma-below letters, typographic punctuation, "
+    "and a solidus and reverse solidus redrawn as diagonals rather than "
+    "zig-zags. Built for the qUnleashed Flipper Zero companion app."
 )
 
 # --------------------------------------------------------------------------
-# Bitmaps. '#' is ink, '.' is paper, row 0 is the top row.
+# Bitmaps. '#' is ink, '.' is paper, row 0 is the top row. Every row of one
+# bitmap must be the same width; `parse` rejects a ragged block rather than
+# padding it, because a short row is a typo and not a design.
 # --------------------------------------------------------------------------
 
 # The shipped solidus is a Z: two vertical bars joined by a horizontal jog, one
@@ -90,9 +100,12 @@ REVERSE_SOLIDUS = """
 # on the left. That is three heavy verticals in an eight pixel box, and it is
 # the one letter in the Cyrillic set that reads as a blob. Redrawn as a stepped
 # diagonal, three rows per step, so it merges with the left stem at the bottom
-# and the right stem at the top. The font does avoid diagonals - N, М, Ж and Х
-# are all stems plus a bridge - but К, Л, У and V are all stepped like this, so
-# it is a shape the face already owns.
+# and the right stem at the top.
+#
+# The face does mostly avoid diagonals - N, М, Ж and Х are stems plus a bridge -
+# so this is not a free choice. The precedent is К, which steps a column per
+# row; this is the same idea at a shallower cadence, which is what eight
+# columns and nine rows allow. It is not a cadence the face already uses.
 I_CAP = """
 ##..####
 ##..####
@@ -145,8 +158,10 @@ I_SHORT_SMALL = """
 ####..##
 """
 
-# Ґ/ґ: Г with the upstroke on the right end of the bar. The hook sits in the
-# two rows above cap height, where É keeps its acute.
+# Ґ/ґ: Г with the upstroke on the right end of the bar, in the two rows above
+# cap height. É puts its acute in those rows too but keeps a blank row between
+# mark and letter; the hook is part of the letter, so it sits flush and Ґ ends
+# up one row shorter than É.
 GHE_UPTURN_CAP = """
 ....##
 ....##
@@ -185,7 +200,7 @@ ARROW_RIGHT = """
 """
 
 # ✓ : short arm down-right meeting a long arm up-right, both two pixels wide,
-# filling the x-height so it does not read as a stray v next to `Compress ✓`.
+# six of the x-height's eight rows, starting one row above the baseline.
 CHECK_MARK = """
 ......##
 .....##.
@@ -201,12 +216,13 @@ BULLET = """
 ###
 """
 
-# Two rows deep, like the hyphen, and progressively wider than it.
 ELLIPSIS = """
 ##.##.##
 ##.##.##
 """
 
+# Two rows deep like the hyphen, and progressively wider than it: the hyphen is
+# five columns, these are six and eight.
 EN_DASH = """
 ######
 ######
@@ -217,7 +233,7 @@ EM_DASH = """
 ########
 """
 
-# Accents, lifted off É, È and Й. Placed over a base glyph by `stack()`.
+# Accents, lifted pixel for pixel off É, È and Й. `stack` places them.
 ACUTE = """
 .##
 ##.
@@ -235,9 +251,21 @@ BREVE = """
 
 
 def parse(art: str) -> list[list[bool]]:
-    rows = [r for r in art.strip("\n").splitlines() if r]
-    width = max(len(r) for r in rows)
-    return [[c == "#" for c in r.ljust(width, ".")] for r in rows]
+    """Turn an art block into a grid. Rows must all be the same width."""
+    rows = art.strip("\n").splitlines()
+    if not rows:
+        raise ValueError("empty bitmap")
+    widths = {len(r) for r in rows}
+    if len(widths) != 1:
+        raise ValueError(f"ragged bitmap: row widths {sorted(widths)}")
+    for row in rows:
+        bad = set(row) - {"#", "."}
+        if bad:
+            raise ValueError(f"bitmap uses {sorted(bad)}; only '#' and '.'")
+    grid = [[c == "#" for c in row] for row in rows]
+    if not any(any(row) for row in grid):
+        raise ValueError("bitmap has no ink")
+    return grid
 
 
 # --------------------------------------------------------------------------
@@ -296,7 +324,11 @@ def read_bitmap(font: TTFont, glyph_name: str):
 
 
 def rectangles(grid: list[list[bool]]):
-    """Cover the ink with disjoint rectangles, greedily, widest run first."""
+    """Cover the ink with disjoint rectangles.
+
+    Greedy, in scan order: from the first inked cell, take the whole run to its
+    right, then extend that run downward while every cell of it is inked.
+    """
     remaining = [row[:] for row in grid]
     rows, cols = len(grid), len(grid[0])
     out = []
@@ -319,8 +351,31 @@ def rectangles(grid: list[list[bool]]):
     return out
 
 
-def write_bitmap(font: TTFont, glyph_name: str, grid, x0: int, y_bottom: int) -> None:
-    """Install `grid` as `glyph_name`, creating the glyph if it is new."""
+def write_bitmap(
+    font: TTFont,
+    glyph_name: str,
+    grid,
+    x0: int,
+    y_bottom: int,
+    *,
+    create: bool,
+) -> None:
+    """Install `grid` as `glyph_name`.
+
+    `create` says whether the glyph is expected to be new. A redraw that
+    creates would be a typo in the glyph name silently leaving the old shape in
+    place and adding an orphan alongside it; an addition that does not create
+    would be overwriting a letter that is already there.
+    """
+    exists = glyph_name in font.getGlyphOrder()
+    if create and exists:
+        raise AssertionError(f"{glyph_name} already exists; it is not new")
+    if not create and not exists:
+        raise AssertionError(f"{glyph_name} is not in the font; check the name")
+
+    if not any(any(row) for row in grid):
+        raise AssertionError(f"{glyph_name} would have no ink")
+
     y_top = y_bottom + len(grid) * PX
     pen = TTGlyphPen(None)
     for col, row, width, height in rectangles(grid):
@@ -335,10 +390,15 @@ def write_bitmap(font: TTFont, glyph_name: str, grid, x0: int, y_bottom: int) ->
         pen.lineTo((left, bottom))
         pen.closePath()
 
-    if glyph_name not in font.getGlyphOrder():
+    if create:
         font.setGlyphOrder(font.getGlyphOrder() + [glyph_name])
     font["glyf"][glyph_name] = pen.glyph()
-    font["hmtx"][glyph_name] = (x0 + len(grid[0]) * PX, x0)
+    # The face's own convention, which every untouched glyph follows: the
+    # advance is the drawing plus one pixel of left side bearing and nothing on
+    # the right. Measure the bearing from the leftmost ink rather than assuming
+    # the drawing starts at x0, so an indented bitmap cannot shift silently.
+    left_ink = min(c for row in grid for c, on in enumerate(row) if on)
+    font["hmtx"][glyph_name] = (x0 + len(grid[0]) * PX, x0 + left_ink * PX)
 
 
 def mirrored(grid):
@@ -358,17 +418,18 @@ def stack(accent, base, *, nudge: int = 0):
     return top + body
 
 
-def bar(width: int, height: int = 2):
-    return [[True] * width for _ in range(height)]
-
-
 # --------------------------------------------------------------------------
 # What we add
 # --------------------------------------------------------------------------
 
-# Codepoints that reuse an existing glyph outright. Cyrillic І/і/Ѕ/ѕ are the
-# same shapes as Latin I/i/S/s, and the font already draws Ş/ş/Ţ/ţ with a comma
-# below rather than a cedilla, which is exactly the Romanian form.
+# Codepoints that reuse an existing glyph outright, with no new drawing.
+# Cyrillic І/і/Ѕ/ѕ are the same shapes as Latin I/i/S/s. The Romanian four get
+# the font's Ş/ş/Ţ/ţ, whose mark is the same artwork as Ç's cedilla - at six by
+# nine there is one mark for cedilla and comma-below, so this is the usual
+# approximation at this resolution rather than the correct Romanian form. The
+# curly quotes and the minus get their straight ASCII equivalents; no ARB uses
+# one today, and they are here so that a translator who types one does not get
+# the system face for that character alone.
 ALIASES = {
     0x0406: "I",  # Ukrainian І
     0x0456: "i",  # Ukrainian і
@@ -383,12 +444,14 @@ ALIASES = {
     0x2212: "hyphen",  # minus
     0x2018: "quotesingle",
     0x2019: "quotesingle",
+    0x02BC: "quotesingle",  # the apostrophe some Ukrainian keyboards produce
     0x201C: "quotedbl",
     0x201D: "quotedbl",
 }
 
-# Codepoint -> (glyph name, how to build the bitmap, x0, y_bottom).
-# `src` names the glyph a derivation reads from; those are never modified here.
+# Codepoint -> (glyph name, how to build the bitmap, source, x0, y_bottom).
+# A derivation reads the source glyph as it stands at that moment, and REDRAWN
+# runs first - so Ѝ and ѝ are built on the redrawn И and и, deliberately.
 DERIVED = [
     # Ukrainian ------------------------------------------------------------
     (0x0404, "uni0404", "mirror", "afii10047", 64, 0),  # Є
@@ -398,7 +461,7 @@ DERIVED = [
     # Belarusian -----------------------------------------------------------
     (0x040E, "uni040E", "breve", "afii10037", 64, 0),  # Ў
     (0x045E, "uni045E", "breve", "afii10085", 64, -192),  # ў
-    # Macedonian and Serbian ----------------------------------------------
+    # Macedonian, and the accented forms Macedonian and Bulgarian use -------
     (0x0403, "uni0403", "acute", "afii10020", 64, 0),  # Ѓ
     (0x0453, "uni0453", "acute", "afii10068", 64, 0),  # ѓ
     (0x040C, "uni040C", "acute", "afii10028", 64, 0),  # Ќ
@@ -416,8 +479,7 @@ DERIVED = [
     (0x2713, "checkmark", "literal", CHECK_MARK, 64, 64),
 ]
 
-# Glyphs that replace what the font already had. These run before DERIVED, so
-# Ѝ and ѝ are built on the redrawn И and и rather than the originals.
+# Glyphs that replace what the font already had. These run before DERIVED.
 REDRAWN = [
     ("slash", SOLIDUS, 64, 0),
     ("backslash", REVERSE_SOLIDUS, 64, 0),
@@ -427,24 +489,33 @@ REDRAWN = [
     ("afii10075", I_SHORT_SMALL, 64, 0),  # й
 ]
 
+#: Every codepoint this tool is responsible for. The Dart coverage test reads
+#: this back, so a glyph added below cannot go unmonitored.
+ADDED_CODEPOINTS = sorted(list(ALIASES) + [row[0] for row in DERIVED])
+
 
 def build(font: TTFont) -> None:
     for glyph_name, art, x0, y_bottom in REDRAWN:
-        write_bitmap(font, glyph_name, parse(art), x0, y_bottom)
+        write_bitmap(font, glyph_name, parse(art), x0, y_bottom, create=False)
 
+    accents = {"acute": ACUTE, "grave": GRAVE, "breve": BREVE}
     for codepoint, glyph_name, how, source, x0, y_bottom in DERIVED:
         if how == "literal":
             grid = parse(source)
         elif how == "mirror":
             base, _, _ = read_bitmap(font, source)
             grid = mirrored(base)
-        elif how in ("acute", "grave", "breve"):
+        elif how in accents:
             base, _, _ = read_bitmap(font, source)
-            accent = parse({"acute": ACUTE, "grave": GRAVE, "breve": BREVE}[how])
-            grid = stack(accent, base, nudge=1 if how == "acute" else 0)
+            # The acute hangs right of centre in É; match it.
+            grid = stack(parse(accents[how]), base, nudge=1 if how == "acute" else 0)
         else:
             raise AssertionError(how)
-        write_bitmap(font, glyph_name, grid, x0, y_bottom)
+        write_bitmap(font, glyph_name, grid, x0, y_bottom, create=True)
+
+    for codepoint, glyph_name in ALIASES.items():
+        if glyph_name not in font.getGlyphOrder():
+            raise AssertionError(f"alias target {glyph_name} is not in the font")
 
     cmaps = [t for t in font["cmap"].tables if t.format == 4]
     assert cmaps, "expected a format 4 cmap subtable"
@@ -453,16 +524,22 @@ def build(font: TTFont) -> None:
             table.cmap[codepoint] = glyph_name
         for codepoint, glyph_name, *_ in DERIVED:
             table.cmap[codepoint] = glyph_name
+    # The third subtable is an 8 bit Macintosh one (format 6, 195 entries).
+    # None of the codepoints above is representable in it, and the only glyphs
+    # it names that we touch are slash and backslash, which are redrawn in
+    # place - so it picks the new shapes up through the same glyph.
 
     name = font["name"]
     for name_id, value in (
         (0, COPYRIGHT),
         (1, FAMILY),
-        (3, f"JapanYoshi:{FAMILY}:{VERSION}"),
+        (3, f"qUnleashed:{FAMILY}:{VERSION}"),
         (4, FAMILY),
         (5, VERSION),
         (6, FAMILY),
         (10, DESCRIPTION),
+        (13, LICENSE),
+        (14, LICENSE_URL),
     ):
         name.setName(value, name_id, 1, 0, 0)
         name.setName(value, name_id, 3, 1, 0x409)
@@ -483,40 +560,51 @@ def main() -> int:
         help="exit non-zero if the committed font differs from what this would write",
     )
     parser.add_argument(
-        "--from",
-        dest="source",
+        "--output",
         type=Path,
-        help=f"start from this file instead of {FONT} (upstream md5 {UPSTREAM_MD5})",
+        default=FONT,
+        help=f"where to write the built font (default {FONT})",
     )
     args = parser.parse_args()
 
-    source = args.source or FONT
-    if not source.exists():
-        print(f"{source} not found; run this from the repository root", file=sys.stderr)
+    if not UPSTREAM.exists():
+        print(
+            f"{UPSTREAM} not found; run this from the repository root",
+            file=sys.stderr,
+        )
+        return 2
+    source_bytes = UPSTREAM.read_bytes()
+    digest = hashlib.md5(source_bytes).hexdigest()
+    if digest != UPSTREAM_MD5:
+        print(
+            f"{UPSTREAM} is md5 {digest}, expected {UPSTREAM_MD5}. "
+            "That file is the pristine upstream and should never change.",
+            file=sys.stderr,
+        )
         return 2
 
-    before = FONT.read_bytes() if FONT.exists() else b""
     # recalcTimestamp off, so the same input always produces the same bytes.
-    font = TTFont(source, recalcTimestamp=False)
+    font = TTFont(UPSTREAM, recalcTimestamp=False)
     build(font)
-    out = FONT.with_suffix(".ttf.tmp")
-    font.save(out)
-    after = out.read_bytes()
-    out.unlink()
+    scratch = args.output.with_suffix(".ttf.tmp")
+    font.save(scratch)
+    built = scratch.read_bytes()
+    scratch.unlink()
 
-    if after == before:
-        print(f"{FONT} is up to date ({len(before)} bytes)")
+    before = args.output.read_bytes() if args.output.exists() else b""
+    if built == before:
+        print(f"{args.output} is up to date ({len(built)} bytes)")
         return 0
     if args.check:
         print(
-            f"{FONT} is out of date. Run `python tool/patch_pixel_font.py`.",
+            f"{args.output} is out of date. Run `python tool/patch_pixel_font.py`.",
             file=sys.stderr,
         )
         return 1
-    FONT.write_bytes(after)
+    args.output.write_bytes(built)
     print(
-        f"wrote {FONT}: {len(before)} -> {len(after)} bytes, "
-        f"md5 {hashlib.md5(after).hexdigest()}"
+        f"wrote {args.output}: {len(before)} -> {len(built)} bytes, "
+        f"md5 {hashlib.md5(built).hexdigest()}"
     )
     return 0
 

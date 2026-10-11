@@ -22,8 +22,17 @@ class ProgressButton extends StatefulWidget {
   static const double defaultBorderRadius = 9;
   static const double defaultHorizontalPadding = 8;
   static const double defaultVerticalPadding = 6;
+
+  /// Born2bSportyV3 covers Latin, Cyrillic, Greek and the punctuation the app
+  /// uses; `test/font_glyph_coverage_test.dart` keeps it that way for every
+  /// translated string. Not every label is a translated string, though - some
+  /// interpolate a Flipper filename or a device name, which can hold any
+  /// codepoint at all. The fallback is for those: without it such a character
+  /// resolves against whatever Flutter picks, which on some platforms is
+  /// nothing at all.
   static const TextStyle defaultTextStyle = TextStyle(
     fontFamily: 'Born2bSportyV3',
+    fontFamilyFallback: ['Roboto', 'Arial', 'sans-serif'],
     fontSize: 40,
     letterSpacing: 0,
     color: Colors.white,
