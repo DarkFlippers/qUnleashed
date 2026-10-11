@@ -25,6 +25,13 @@ import 'package:analyzer/dart/analysis/utilities.dart';
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+// The file list moved to its own library so a test that wants only that does
+// not pull in `package:analyzer` with it. Imported for this file's own use and
+// re-exported, so every ratchet keeps importing this file exactly as before.
+import 'source_files.dart';
+
+export 'source_files.dart';
+
 /// Parses [source], failing the test rather than counting zero if it cannot.
 ///
 /// A file that does not parse would otherwise contribute nothing without
@@ -45,41 +52,6 @@ CompilationUnit parseUnit(String source, {String? path}) {
   );
   return parsed.unit;
 }
-
-/// Paths matching [pathspec] that git can see, tracked or not.
-///
-/// git rather than a directory walk: submodule contents under lib/modules are
-/// gitlinks rather than tracked files, so flipperlib and dartufbt drop out
-/// without being named, and anything gitignored drops out too. The same
-/// reasoning as check_format.sh.
-///
-/// `--others --exclude-standard` as well as the index, because a file that has
-/// not been added yet is exactly the one its author is about to run this
-/// against. Without it a local run before `git add` is a false green - which is
-/// how the formatting check on the first ratchet came to be missed.
-///
-/// Takes the pathspec because `test/local_defines_test.dart` wants the same
-/// question asked of a different glob, and had a verbatim copy of this
-/// function until it did. The pathspec is the only part that differs.
-List<String> gitVisibleFiles(String pathspec) {
-  final result = Process.runSync('git', [
-    'ls-files',
-    '-z',
-    '--cached',
-    '--others',
-    '--exclude-standard',
-    '--',
-    pathspec,
-  ]);
-  expect(result.exitCode, 0, reason: 'git ls-files failed: ${result.stderr}');
-  return (result.stdout as String)
-      .split(String.fromCharCode(0))
-      .where((path) => path.isNotEmpty)
-      .toList();
-}
-
-/// Dart under `lib/` that git can see, tracked or not.
-List<String> dartFilesUnderLib() => gitVisibleFiles('lib/*.dart');
 
 /// The budget bucket a file belongs to.
 ///

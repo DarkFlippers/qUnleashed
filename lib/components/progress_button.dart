@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'pixel_font.dart';
+
 class ProgressButton extends StatefulWidget {
   const ProgressButton({
     super.key,
@@ -22,10 +24,11 @@ class ProgressButton extends StatefulWidget {
   static const double defaultBorderRadius = 9;
   static const double defaultHorizontalPadding = 8;
   static const double defaultVerticalPadding = 6;
+
   static const TextStyle defaultTextStyle = TextStyle(
-    fontFamily: 'FlipperBold',
+    fontFamily: kPixelFontFamily,
+    fontFamilyFallback: kPixelFontFallback,
     fontSize: 40,
-    fontWeight: FontWeight.w500,
     letterSpacing: 0,
     color: Colors.white,
   );
