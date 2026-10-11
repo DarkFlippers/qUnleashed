@@ -33,6 +33,7 @@
 - Firmware: **An offline launch still shows the directory** it last fetched, instead of nothing (by @mishamyte | PR #209 | Closes #131)
 - Archive: **A pull to refresh waits for the refresh** - four tables ended their spinner in the same frame they started it, while the download or the device scan had not begun (by @mishamyte | PR #219, #222)
 - Settings: **The update channel and build variant are remembered**; Storage no longer reports a size or a clear it did not manage (by @mishamyte | PR #70, #182 | Closes #64)
+- Language: **Ukrainian buttons are set in one typeface again** - the pixel face the big buttons use has no Є, І, Ї or Ґ, and a missing letter is not an error in Flutter: it quietly borrows the system face for that one character. So the firmware button read НЕМА З'ЄДНАННЯ with a serif Є in the middle of it, across fourteen labels. The letters are drawn now, along with Belarusian, Macedonian and Romanian ones and the dashes, ellipsis and arrow the app already used; the slash and И are redrawn; and the face ships once rather than twice under two names (by @mishamyte | PR #299 | Closes #298)
 - Language: **Ukrainian** - the picker names every language in that language, and a language nobody has translated yet is no longer offered as English under another name (by @mishamyte | PR #241, #249, #258)
 - Android: GIF exports are compressed rather than expanded, and the GNSS fix is requested at startup (by @mishamyte | PR #68 | Closes #60, #69)
 ## Other changes
