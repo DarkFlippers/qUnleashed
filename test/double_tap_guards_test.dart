@@ -298,18 +298,29 @@ void main() {
     // frame and absorbs the second click. Through the theme rather than
     // `debugDefaultTargetPlatformOverride`, which the test framework checks is
     // unset by the time the body returns.
+    late _CountingObserver pushes;
+
+    setUp(() => pushes = _CountingObserver());
+
     Widget app() => MaterialApp(
       theme: ThemeData(platform: TargetPlatform.iOS),
+      navigatorObservers: [pushes],
       home: const _PushingPage(),
     );
 
-    // The handler twice rather than two `tester.tap`s, and this is the whole
-    // reason this test says anything: a second tap mid-transition does not
-    // reach the button in a widget test - it lands on the incoming page - so
-    // the tapping version passed with the guard turned into `=> true`. It
-    // proved the pointer missed, not that the guard worked. Two activations
-    // *is* the gesture, minus a question about hit-testing that belongs to
-    // Flutter rather than to this.
+    // Two things in this test were wrong before a mutation run said so, and
+    // both are the same mistake: asserting something other than the thing.
+    //
+    // `expect(find.text('pushed'), findsOneWidget)` passes with *two* pages
+    // stacked, because a route obscured by an opaque one is offstage and
+    // finders skip offstage widgets by default. So the navigator is asked
+    // instead, which is also independent of how the handler is written.
+    //
+    // And two `tester.tap`s do not make the second activation happen: a tap
+    // mid-transition lands on the incoming page rather than the button, so
+    // that version passed with the guard turned into `=> true` - it proved the
+    // pointer missed. Driving the handler is the gesture with Flutter's
+    // hit-testing taken out of the question.
     testWidgets('pushes one page for two activations', (tester) async {
       await tester.pumpWidget(app());
 
@@ -321,7 +332,7 @@ void main() {
       open.onPressed!();
       await tester.pumpAndSettle();
 
-      expect(find.text('pushed'), findsOneWidget);
+      expect(pushes.count, 1);
     });
 
     // And the same with no frame in between at all, which is the push being
@@ -336,7 +347,7 @@ void main() {
       open.onPressed!();
       await tester.pumpAndSettle();
 
-      expect(find.text('pushed'), findsOneWidget);
+      expect(pushes.count, 1);
     });
 
     testWidgets('pushes again after the pushed page is popped', (tester) async {
@@ -349,6 +360,7 @@ void main() {
       await tester.tap(find.text('open'));
       await tester.pumpAndSettle();
 
+      expect(pushes.count, 2);
       expect(find.text('pushed'), findsOneWidget);
     });
   });
@@ -417,4 +429,16 @@ class _DeadContext implements BuildContext {
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+/// Counts the routes a navigator is actually given, which is what these
+/// handlers are judged on. Only the pages pushed by the page under test: the
+/// `home` route is pushed before this is attached.
+class _CountingObserver extends NavigatorObserver {
+  int count = 0;
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    if (previousRoute != null) count++;
+  }
 }
