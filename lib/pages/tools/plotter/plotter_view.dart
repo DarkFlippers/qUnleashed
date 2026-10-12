@@ -1,4 +1,5 @@
 import '../../../services/localization/l10n.dart';
+import '../../../components/sensitive_surface.dart';
 
 import 'dart:math' as math;
 
@@ -29,7 +30,7 @@ const List<({String text, String value})> _slicerOptions = [
 const double _slicerInlineBreakpoint = 480;
 const double _twoColumnBreakpoint = 820;
 
-class PlotterView extends StatefulWidget {
+class PlotterView extends StatefulWidget with SensitiveSurface {
   const PlotterView({super.key, required this.data});
 
   final PlotData data;

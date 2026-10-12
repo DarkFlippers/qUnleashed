@@ -7,10 +7,10 @@ import '../../../services/telemetry/settings.dart';
 import '../../../theme/theme.dart';
 import '../diagnostics_scope.dart';
 
-/// The reporting switch, and nothing else.
+/// The two reporting switches, and nothing else.
 ///
-/// This was the Log screen, then the Log screen plus a switch, and is now the
-/// switch alone. ADR 0013 §1: Sentry is the only channel, so the in-memory
+/// This was the Log screen, then the Log screen plus a switch, and is now two
+/// switches. ADR 0013 §1: Sentry is the only channel, so the in-memory
 /// history, the Copy button, the Clear action and the caution above them are
 /// gone with it. There is no longer a route from "it failed" to a bug report
 /// that runs through the user, because there no longer needs to be — which was
@@ -29,23 +29,57 @@ import '../diagnostics_scope.dart';
 class DiagnosticsSettingsPage extends StatelessWidget {
   const DiagnosticsSettingsPage({super.key});
 
-  /// `guarded`, because the slots here are a [VoidCallback] and a
-  /// `ValueChanged<bool>`, so the future would otherwise be dropped and a
-  /// rejection would land as `[uncaught]` naming nothing. `setShareLogs`
-  /// persists through `persistSetting`, which does not reject — CLAUDE.md and
-  /// #23 are about not depending on that.
+  /// The rows to draw, which is both switches only when the second one can do
+  /// something.
   ///
-  /// Named for the state being moved *to*, so the log line reads as the thing
-  /// that failed rather than as the thing that was true before it.
-  void _toggle(DiagnosticsSettings settings) {
-    final next = !settings.shareLogs;
-    guarded(
-      '[Diagnostics] turning sharing ${next ? 'on' : 'off'}',
-      () => settings.setShareLogs(next),
-    );
+  /// The replay row is dropped with sharing off, because there is then nothing
+  /// for a replay to be attached to, and dropped where
+  /// [DiagnosticsSettings.replaySupported] is false, because the recorder does
+  /// not exist there. Both are the same judgement: a switch that does nothing
+  /// is worse than no switch. The stored value survives either, so a user who
+  /// turns sharing back on - or opens the same build on a phone - finds the
+  /// choice they made rather than the default.
+  ///
+  /// A [_Toggle] list and not an enum with a switch per field, which is what
+  /// this was: three `switch (row)` expressions for title, subtitle and value
+  /// are exhaustive but not *tied together*, so a row could take another row's
+  /// subtitle and still compile. `device.dart` and `push.dart` in this folder
+  /// already carry this shape.
+  ///
+  /// `guarded` in each `onChanged`, because `GroupedCardList`'s slots are a
+  /// [VoidCallback] and a `ValueChanged<bool>` - the future would otherwise be
+  /// dropped and a rejection would land as `[uncaught]` naming nothing.
+  /// `persistSetting` does not reject; CLAUDE.md and #23 are about not
+  /// depending on that. One line per switch, named for the state being moved
+  /// *to*: "turning sharing off" and "turning replay off" are different facts
+  /// about a privacy choice, and a report carrying the wrong one is worse than
+  /// one carrying neither.
+  List<_Toggle> _toggles(BuildContext context, DiagnosticsSettings settings) {
+    final l10n = context.l10n;
+    return [
+      _Toggle(
+        title: l10n.diagnosticsShareTitle,
+        subtitle: l10n.diagnosticsShareSubtitle,
+        value: settings.shareLogs,
+        onChanged: (next) => guarded(
+          '[Diagnostics] turning sharing ${next ? 'on' : 'off'}',
+          () => settings.setShareLogs(next),
+        ),
+      ),
+      if (settings.shareLogs && DiagnosticsSettings.replaySupported)
+        _Toggle(
+          title: l10n.diagnosticsReplayTitle,
+          subtitle: l10n.diagnosticsReplaySubtitle,
+          value: settings.shareReplay,
+          onChanged: (next) => guarded(
+            '[Diagnostics] turning replay ${next ? 'on' : 'off'}',
+            () => settings.setShareReplay(next),
+          ),
+        ),
+    ];
   }
 
-  Widget _tile(BuildContext context, DiagnosticsSettings settings) {
+  Widget _tile(BuildContext context, _Toggle row) {
     final colors = context.appColors;
     return Row(
       children: [
@@ -55,7 +89,7 @@ class DiagnosticsSettingsPage extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(
-                context.l10n.diagnosticsShareTitle,
+                row.title,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -67,8 +101,13 @@ class DiagnosticsSettingsPage extends StatelessWidget {
               ),
               const SizedBox(height: 2),
               Text(
-                context.l10n.diagnosticsShareSubtitle,
-                maxLines: 4,
+                row.subtitle,
+                // Six and not four: the replay subtitle has to say that
+                // recording is continuous *and* what is hidden from it, and
+                // the second half is the one a user needs. Four lines fit the
+                // English and ellipsised the masking clause out of a longer
+                // translation.
+                maxLines: 6,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: colors.textMuted,
@@ -81,10 +120,10 @@ class DiagnosticsSettingsPage extends StatelessWidget {
         ),
         const SizedBox(width: 8),
         Switch(
-          value: settings.shareLogs,
+          value: row.value,
           activeThumbColor: colors.accent,
           materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          onChanged: (_) => _toggle(settings),
+          onChanged: row.onChanged,
         ),
       ],
     );
@@ -104,14 +143,40 @@ class DiagnosticsSettingsPage extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: 10),
         children: [
-          GroupedCardList<DiagnosticsSettings>(
-            items: [settings],
-            onTap: (s) =>
-                () => _toggle(s),
-            itemBuilder: _tile,
+          GroupedCardList<_Toggle>(
+            items: _toggles(context, settings),
+            // The card and the `Switch` are two ways to tap one row, and this
+            // is what keeps them one expression.
+            onTap: (row) =>
+                () => row.onChanged(!row.value),
+            itemBuilder: (context, row) => _tile(context, row),
           ),
         ],
       ),
     );
   }
+}
+
+/// One switch row on this screen.
+///
+/// The same shape as `device.dart`'s and `push.dart`'s `_Toggle`, which is the
+/// folder's answer to "several switch rows inside one `GroupedCardList`" -
+/// that widget keys its separators and its corner rounding off the item list,
+/// so a row built outside the list would be a card of its own.
+class _Toggle {
+  const _Toggle({
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String title;
+  final String subtitle;
+  final bool value;
+
+  /// Takes the state being moved *to*, so both callers - the card's `onTap`
+  /// and the `Switch` - pass the same thing and neither has to know the
+  /// current value twice.
+  final void Function(bool next) onChanged;
 }

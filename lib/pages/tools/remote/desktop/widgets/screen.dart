@@ -1,5 +1,7 @@
 import 'dart:ui' as ui;
 
+import '../../../../../components/sensitive_surface.dart';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -11,7 +13,7 @@ import '../../../../../theme/theme.dart';
 import '../layout.dart';
 import '../models/models.dart';
 
-class RemoteScreen extends StatelessWidget {
+class RemoteScreen extends StatelessWidget with SensitiveSurface {
   const RemoteScreen({
     super.key,
     required this.size,

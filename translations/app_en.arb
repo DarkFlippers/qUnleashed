@@ -251,14 +251,24 @@
     "description": "Explains the switch above it. Two facts, in the order a user asks them: that sending needs no action from them, and what is never included. The second half matters because this app handles card dumps, keys and radio captures, and the user has no way to verify the claim themselves."
   },
 
+  "diagnosticsReplayTitle": "Include a replay of the screen",
+  "@diagnosticsReplayTitle": {
+    "description": "Label of the second switch on the Diagnostics screen, below the sharing switch and shown only while sharing is on. Decides whether a recording of the screen is kept and sent when something fails. On by default, and only ever active on Android and iOS. \"Replay\" is what the service calls it; the label says what it is instead, because the user has no reason to know the term."
+  },
+
+  "diagnosticsReplaySubtitle": "Recording runs the whole time the app is open, and leaves your device only when something goes wrong. Card bytes, signal plots and the Flipper screen are hidden from it.",
+  "@diagnosticsReplaySubtitle": {
+    "description": "Explains the switch above it. Three facts in the order a user asks them: that recording is continuous, that the recording only leaves the device on a failure, and what stays hidden even then. The first is deliberate and must survive translation - the sample rate gates the upload, not the capture, so a user reading only the switch label would think nothing is recorded until something breaks. The third is a promise three masking rules keep rather than a reassurance. Renders at up to six lines and ellipsises after that, so if the translation runs long, keep the first and third facts ahead of the second. \"Hidden\" rather than \"blacked out\": the mask is painted in the theme's primary colour, not black."
+  },
+
   "diagnosticsNoticeTitle": "Failures are shared with the developers",
   "@diagnosticsNoticeTitle": {
     "description": "Heading of the one-time notice shown on the first launch, and once more for people already using the app when sharing was added. States the fact rather than asking a question, because reporting is already on while the notice is on screen - it is a notice, not a consent prompt."
   },
 
-  "diagnosticsNoticeBody": "When something goes wrong, the error and the crash are sent by themselves, with the app version and the build it came from. Card data, keys, captures and your location are never sent. You can turn this off now or at any time in Settings \u2192 Diagnostics.",
+  "diagnosticsNoticeBody": "When something goes wrong, the error and the crash are sent by themselves, with the app version and the build it came from. On Android and iOS a recording of the screen goes with them. Card data, keys, captures and your location are hidden from that recording and are never sent. You can turn this off now or at any time in Settings \u2192 Diagnostics.",
   "@diagnosticsNoticeBody": {
-    "description": "Body of the one-time notice. Three things in the order a user asks them: what is sent, what never is, and how to stop it. No link to a privacy policy, because the project has none yet; the text carries the substance instead."
+    "description": "Body of the one-time notice. Four things in the order a user asks them: what is sent, that a screen recording is part of it, what never is, and how to stop it. The recording sentence names the two platforms because replay is native-backed and does nothing on desktop, so saying it unconditionally would be false for most desktop users. \"Hidden from that recording\" is a claim five masking rules keep, not a reassurance - keep it attached to the recording sentence in translation, because apart they read as two unrelated promises. No link to a privacy policy, because the project has none yet; the text carries the substance instead."
   },
 
   "diagnosticsNoticeTurnOff": "Turn it off",

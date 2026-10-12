@@ -17,6 +17,7 @@
 //
 // The DSN, the init and the shutdown are injected for exactly this.
 import 'package:flipperlib/flipperlib.dart' show FlipperLogLevel, Log;
+import 'package:flutter/widgets.dart' show SizedBox, Widget;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/services/guarded.dart';
 import 'package:qunleashed/services/http/app_http.dart';
@@ -62,6 +63,23 @@ class _FakeSdk {
   /// Thrown by [close] when set.
   Object? closeThrows;
 
+  /// How many closes [closeThrows] applies to, after which [close] succeeds.
+  ///
+  /// A safety valve, and the reason it exists is worth stating: a missing
+  /// termination guard on the replay restart does not spin, it starves the
+  /// event queue, so no timer fires and a test's own `Timeout` cannot fire
+  /// either - the run wedges for good and takes CI with it. Letting the close
+  /// succeed eventually breaks any loop, so the regression arrives as a
+  /// failed count instead of a hang.
+  int closeThrowsLimit = 1 << 30;
+
+  /// The replay error rate each [init] was given, in order.
+  ///
+  /// A count of inits cannot tell a restart carrying a new rate from a second
+  /// init carrying the old one, and that difference is the whole of the replay
+  /// switch.
+  final rates = <double?>[];
+
   /// The options the configure callback produced, so the block is checkable.
   SentryFlutterOptions? options;
 
@@ -70,6 +88,7 @@ class _FakeSdk {
     final built = SentryFlutterOptions();
     configure(built);
     options = built;
+    rates.add(built.replay.onErrorSampleRate);
     final boom = initThrows;
     if (boom != null) throw boom;
   }
@@ -77,7 +96,7 @@ class _FakeSdk {
   Future<void> close() async {
     closes += 1;
     final boom = closeThrows;
-    if (boom != null) throw boom;
+    if (boom != null && closes <= closeThrowsLimit) throw boom;
   }
 }
 
@@ -95,6 +114,50 @@ bool get anySinkInstalled =>
     telemetryKeptSinkInstalled ||
     LogService.breadcrumbSink != null ||
     AppHttp.exchangeSink != null;
+
+/// The masking rules the options block added, §6.4's gate, as
+/// `'<type>: <decision>'`.
+///
+/// Public API throughout: `privacy` and `privacy.toJson()` are both
+/// unannotated, and `toJson` emits `'${rule.name}: ${rule.description}'`.
+/// `options.dart` passes no `description`, so the SDK fills it with the
+/// literal `'mask'` or `'unmask'` and the decision lands in the string. These
+/// therefore read `HexTable: mask`.
+///
+/// **That is the whole point of reading it this way.** The earlier version of
+/// this helper mapped `userMaskingRules` to `rule.name` behind an
+/// `invalid_use_of_internal_member` ignore, and `mask<T>()` and `unmask<T>()`
+/// both append a rule named `T.toString()` - so `mask` -> `unmask` passed
+/// every case in this file, including the one named for these masks. It was
+/// not a hypothetical: a reviewer made that edit and the suite went green.
+/// `unmask` is the worst possible failure here, because it applies to the
+/// subtree and short-circuits later rules, so it also defeats `maskAllText`
+/// inside the hex table.
+///
+/// The honest limit is now one step further out: this asserts the decision the
+/// options block recorded, not what the SDK does with it. A change in how a
+/// constant rule is applied would pass. Covering that means building a
+/// `HexTable`, a `RemoteScreen` and a `PlotterView`, each wanting five
+/// collaborators, in a test about telemetry - and §6.4 still owes a check on a
+/// device either way.
+/// Every rule §6.4's block installs, as `privacy.toJson()` renders them.
+///
+/// One list because there were two, and both were incomplete: they asserted
+/// three of the seven rules that existed, so the four added last - including
+/// the net and the default text editor - were pinned by nothing, while
+/// `options.dart` said the rules "are checked in
+/// `test/telemetry_lifecycle_test.dart` rather than trusted".
+const kMaskedSurfaces = [
+  'SensitiveSurface: mask',
+  'FlutterMap: mask',
+  'CodeEditor: mask',
+  'TerminalView: mask',
+];
+
+Iterable<String> maskedTypes(SentryFlutterOptions options) =>
+    (options.privacy.toJson()['maskingRules'] as List<dynamic>? ??
+            const <dynamic>[])
+        .cast<String>();
 
 /// Whether all four are.
 bool get allSinksInstalled =>
@@ -117,13 +180,15 @@ void main() {
 
   tearDown(resetTelemetrySinks);
 
-  Telemetry build({String dsn = 'https://key@o1.ingest.de.sentry.io/2'}) =>
-      Telemetry(
-        settings: settings,
-        dsn: dsn,
-        init: sdk.init,
-        shutdown: sdk.close,
-      );
+  Telemetry build({
+    String dsn = 'https://key@o1.ingest.de.sentry.io/2',
+    Future<void> Function(void Function(SentryFlutterOptions))? init,
+  }) => Telemetry(
+    settings: settings,
+    dsn: dsn,
+    init: init ?? sdk.init,
+    shutdown: sdk.close,
+  );
 
   group('coming up', () {
     test('installs all four hooks and raises the library pin', () async {
@@ -190,11 +255,56 @@ void main() {
       expect(options.beforeSendLog, isNotNull);
     });
 
-    test('replay stays off, which is phase 3 behind §6.4\'s gate', () async {
+    test('records a replay for an error and never a session', () async {
       await build().start();
       final replay = sdk.options!.replay;
+
+      expect(replay.onErrorSampleRate, 1.0);
+      // Zero, and not pending a decision: continuous recording feeds the same
+      // envelope cache that was measured dropping error events under load.
       expect(replay.sessionSampleRate, anyOf(isNull, 0.0));
-      expect(replay.onErrorSampleRate, anyOf(isNull, 0.0));
+    });
+
+    test('masks every surface §6.4 names, and masks rather than '
+        'unmasks them', () async {
+      // The gate itself. Both defaults are on and neither reaches these: the
+      // hex editor paints card bytes with a `TextPainter` inside a
+      // `CustomPainter`, so it is not a `Text`, and the remote screen is a
+      // `RawImage`, so it is not an `Image`. Without the two rules, switching
+      // replay on records every card dump and the live device screen.
+      await build().start();
+      final options = sdk.options!;
+
+      expect(options.privacy.maskAllText, isTrue);
+      expect(options.privacy.maskAllImages, isTrue);
+      expect(maskedTypes(options), containsAll(kMaskedSurfaces));
+    });
+
+    test('the replay switch off leaves the error rate at zero', () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'diagnostics.share_replay': false,
+      });
+
+      await build().start();
+
+      expect(sdk.options!.replay.onErrorSampleRate, 0.0);
+      // And the rest of reporting is untouched: §1's second switch is one
+      // signal fewer, not a reason to send nothing.
+      expect(sdk.options!.dsn, isNotNull);
+      expect(allSinksInstalled, isTrue);
+    });
+
+    test('masks every surface even with replay switched off', () async {
+      // The rules do not depend on the rate, and should not: the switch can
+      // move while the app runs, and a rule added only on the recording path
+      // would be the one missing from the build that starts recording.
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'diagnostics.share_replay': false,
+      });
+
+      await build().start();
+
+      expect(maskedTypes(sdk.options!), containsAll(kMaskedSurfaces));
     });
   });
 
@@ -271,6 +381,45 @@ void main() {
     });
   });
 
+  group('wrap', () {
+    // The whole of what makes replay capture anything, and it had no test.
+    //
+    // Everything else in this feature fails loudly when it breaks: a dropped
+    // mask fails a case below, a renamed widget fails to compile. This one
+    // fails silently in both directions - without the wrapper
+    // `ScreenshotRecorder.capture` finds no render object and records nothing
+    // for the life of the process, and the SDK's own warning about that is
+    // compiled out of release builds by `RuntimeChecker.kDebugMode`. So the
+    // switch would say replay is on and nothing would ever be recorded, with
+    // no line anywhere.
+    test('puts the recorder above the app when there is a DSN', () {
+      const child = SizedBox.shrink();
+      final wrapped = build().wrap(child);
+
+      expect(wrapped, isA<SentryScreenshotWidget>());
+      expect((wrapped as SentryScreenshotWidget).child, same(child));
+    });
+
+    test('is SentryScreenshotWidget and not SentryWidget', () {
+      // `SentryWidget` is what every SDK example reaches for, and it also
+      // mounts `SentryUserInteractionWidget` - which turns on a breadcrumb
+      // carrying ten ancestors' labels past a scrubber that only rewrites
+      // top-level strings, and a transaction per tap at `tracesSampleRate`
+      // 1.0. `options.dart` pins both flags off; this is the other half of
+      // that, and it is a one-word edit away from being undone.
+      expect(build().wrap(const SizedBox.shrink()), isNot(isA<SentryWidget>()));
+    });
+
+    test('hands the app back untouched with no DSN', () {
+      // The same promise `navigatorObservers` makes: a build nobody reports
+      // from carries no wrapper at all.
+      const child = SizedBox.shrink();
+      final Widget wrapped = build(dsn: '').wrap(child);
+
+      expect(wrapped, same(child));
+    });
+  });
+
   group('the switch', () {
     test('turning it off stops the SDK', () async {
       final telemetry = build();
@@ -299,6 +448,129 @@ void main() {
       expect(telemetry.running, isTrue);
       expect(sdk.inits, 2);
       expect(allSinksInstalled, isTrue);
+    });
+
+    test('the replay switch brings the SDK back up with the new rate', () async {
+      // There is no pause API in 9.30.1: the rates are read once, by `init`.
+      // So `_reconcile` applies a replay change by calling `stop`, and the
+      // main switch - still on - is what brings it back through
+      // `_settleAgainIfTheSwitchMoved`. That second half is implicit, which is
+      // why it is asserted here rather than trusted: a reading of the code
+      // that stops at `stop` would conclude this turns reporting off.
+      final telemetry = build();
+      await telemetry.start();
+      expect(sdk.options!.replay.onErrorSampleRate, 1.0);
+
+      await settings.setShareReplay(false);
+      await pumpEventQueue();
+
+      expect(telemetry.running, isTrue, reason: 'reporting stayed on');
+      expect(sdk.inits, 2, reason: 'the SDK came back up');
+      // Without this a second `init` on top of a live hub would pass, which is
+      // this file's own second historical bug.
+      expect(sdk.closes, 1, reason: 'it went down before it came back');
+      expect(sdk.rates, [1.0, 0.0]);
+      expect(allSinksInstalled, isTrue);
+    });
+
+    test('the replay switch brings it back up when switched back on', () async {
+      // The other direction, which is the one that *starts* recording - and
+      // the only one a user who switched replay off ever exercises again.
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'diagnostics.share_replay': false,
+      });
+      final telemetry = build();
+      await telemetry.start();
+      expect(sdk.rates, [0.0]);
+
+      await settings.setShareReplay(true);
+      await pumpEventQueue();
+
+      expect(telemetry.running, isTrue);
+      expect(sdk.rates, [0.0, 1.0]);
+      expect(allSinksInstalled, isTrue);
+    });
+
+    test('a replay switch whose shutdown fails stops rather than looping', () async {
+      // `_tearDown` leaves `_running` true when the close fails, on purpose,
+      // so the switch cannot claim something that did not happen. Applying a
+      // replay change means calling `stop` while the main switch still says
+      // on. Those two together had no end: the failed stop left the same
+      // disagreement, and `stop`'s `finally` reconciled straight back into it.
+      //
+      // Not a spin - each cycle is synchronous work plus a microtask, so the
+      // event queue is never reached and no timer fires. A `Timeout` on this
+      // test could not have caught it; the fake's `closeThrowsLimit` is what
+      // keeps a regression here from wedging the run.
+      final telemetry = build();
+      await telemetry.start();
+      sdk.closeThrows = StateError('the native layer would not go down');
+      sdk.closeThrowsLimit = 4;
+
+      await settings.setShareReplay(false);
+      await pumpEventQueue();
+
+      expect(sdk.closes, 1, reason: 'one attempt, not one per microtask');
+      expect(telemetry.running, isTrue, reason: 'the close did not happen');
+      // And the switch still works afterwards: putting it back where the SDK
+      // actually is drops the latch, so a later genuine change is applied.
+      await settings.setShareReplay(true);
+      await pumpEventQueue();
+      expect(sdk.closes, 1, reason: 'nothing to do, the SDK has this rate');
+    });
+
+    test('a replay tap during a start is not dropped', () async {
+      // `_settlingTowardReplay`'s entire reason to exist. `_reconcile` declines
+      // to act while `_settling`, so a tap landing after the plan was built
+      // would otherwise be lost - and lost in the direction that keeps
+      // recording with the switch off. Toggling from inside the injected
+      // `init` puts the tap exactly in that window.
+      //
+      // Deleting the branch leaves `inits` at 1, which is what this asserts
+      // against; every other case in this file reaches it while idle and so
+      // passes either way.
+      var toggled = false;
+      final telemetry = build(
+        init: (configure) async {
+          await sdk.init(configure);
+          if (!toggled) {
+            toggled = true;
+            await settings.setShareReplay(false);
+          }
+        },
+      );
+
+      await telemetry.start();
+      await pumpEventQueue();
+
+      expect(sdk.inits, 2, reason: 'the tap was picked up after the start');
+      expect(sdk.rates, [1.0, 0.0], reason: 'and it carried the new rate');
+      expect(telemetry.running, isTrue);
+    });
+
+    test('the replay switch does nothing while sharing is off', () async {
+      // Nothing is running for a replay to be attached to, so there is no
+      // reason to bring an SDK up to tell it about one. The Diagnostics screen
+      // leaves the row out in this state for the same reason.
+      //
+      // Seeded **off** and switched **on**, which is what makes this a test.
+      // The other way round there is nothing to reconcile - `_runningWithReplay`
+      // is still at its initialiser because `start()` bailed - so three
+      // separate guards each make it a no-op and the case passed with the whole
+      // replay branch deleted.
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'diagnostics.share_logs': false,
+        'diagnostics.share_replay': false,
+      });
+      final telemetry = build();
+      await telemetry.start();
+      expect(sdk.inits, 0);
+
+      await settings.setShareReplay(true);
+      await pumpEventQueue();
+
+      expect(telemetry.running, isFalse);
+      expect(sdk.inits, 0);
     });
 
     test('a build that launched with it off can still turn it on', () async {

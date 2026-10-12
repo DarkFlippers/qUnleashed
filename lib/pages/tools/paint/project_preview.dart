@@ -1,4 +1,7 @@
 import 'dart:async';
+
+import '../../../components/sensitive_surface.dart';
+
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -9,7 +12,7 @@ import 'project.dart';
 
 /// Lazily decodes and loops a project's preview frames. Decoding happens once
 /// the row is built (scrolled into view), keeping large libraries cheap.
-class ProjectPreview extends StatefulWidget {
+class ProjectPreview extends StatefulWidget with SensitiveSurface {
   const ProjectPreview({
     super.key,
     required this.project,

@@ -5,8 +5,27 @@
 // get there. Pure: options in, options mutated, nothing of `Telemetry`'s own
 // state touched - which is why these are top-level functions rather than
 // methods.
+import 'package:flutter_map/flutter_map.dart' show FlutterMap;
+import 'package:re_editor/re_editor.dart' show CodeEditor;
 import 'package:sentry_flutter/sentry_flutter.dart';
+import 'package:xterm/xterm.dart' show TerminalView;
 
+// §6.4's surfaces, imported for their types alone - `mask<T>()` takes a widget
+// type and never an instance.
+//
+// `SensitiveSurface` is an app-owned marker in `components/`, and it is what
+// keeps this file from naming pages: a page declares that it shows device
+// content, and this file masks whatever carries the declaration. Three widgets
+// from packages cannot be given a mixin, so those are named by type - a
+// package import in a service is not the layering problem that importing a
+// *page* would be. The alternative considered and rejected is `SentryMask` in
+// the pages, which puts the SDK outside this folder and breaks §2's import
+// rule and the test that holds it.
+//
+// A masking rule that stops matching is silent and streams card bytes, so the
+// rules are checked in `test/telemetry_lifecycle_test.dart` rather than
+// trusted.
+import '../../components/sensitive_surface.dart';
 import '../logging.dart';
 import 'plan.dart';
 import 'scrub_event.dart';
@@ -37,6 +56,34 @@ void configureOptions(SentryFlutterOptions options, TelemetryPlan plan) {
   // time as a breadcrumb, unscrubbed by anything in this file.
   options.enablePrintBreadcrumbs = false;
 
+  // Both on by default, and both inert unless something mounts
+  // `SentryUserInteractionWidget`. Nothing does - `Telemetry.wrap` mounts
+  // `SentryScreenshotWidget` alone - so these two lines are a guard rail and
+  // not the fix: `SentryWidget` is the wrapper every example reaches for, it
+  // mounts the interaction widget as well, and swapping to it would open both
+  // of these without a word. Here is where that costs a failing diff instead.
+  //
+  // The breadcrumb carries `_getTouchPath`: the tapped widget's label plus up
+  // to ten ancestors', as a list of maps. `scrubEvent` rewrites **top-level**
+  // string values only - `scrub_event.dart` says so in as many words, on the
+  // grounds that nothing the app puts in a breadcrumb has a nested one. The
+  // SDK does, and those labels are file names and card names, so they would
+  // leave without passing §6.2 at all.
+  //
+  // The tracing half is a `ui.action.click` **transaction** per tap at
+  // `tracesSampleRate = 1.0`, on all six platforms including the four where
+  // replay records nothing. That is a steadier stream of envelopes than
+  // anything else in the app, into the cache already measured discarding error
+  // events under load - the same argument that holds `sessionSampleRate` at
+  // zero below, and it would be strange to make it there and not here.
+  //
+  // The breadcrumb half is reversible: teach `_scrubStringValues` to walk one
+  // level of lists and maps and it becomes safe to switch back on. §4's title
+  // is "Breadcrumbs come from flipperlib only", so that is an ADR amendment
+  // and not just a code change.
+  options.enableUserInteractionBreadcrumbs = false;
+  options.enableUserInteractionTracing = false;
+
   // §6.2. Every event passes through the scrubber before it leaves.
   //
   // Three hooks, not one, because sentry 9 routes the three event classes
@@ -66,6 +113,121 @@ void configureOptions(SentryFlutterOptions options, TelemetryPlan plan) {
   // `isTracingEnabled()` is false while the rate is null, and a span with no
   // sampled transaction over it is discarded.
   options.tracesSampleRate = 1.0;
+
+  // §1's replay, and §8's answer for it: a replay for every error, and no
+  // session recording at all. The two rates are what `isEnabled` reads, so
+  // leaving `onErrorSampleRate` at zero is also how the switch turns the
+  // feature off - there is no app-facing pause API in this major (the SDK has
+  // internal `replayPaused`/`replayResumed` plumbing and exposes none of it),
+  // which is why `Telemetry._reconcile` restarts the SDK when that switch
+  // moves.
+  //
+  // **`onErrorSampleRate` gates the upload, not the capture.** With it above
+  // zero `isEnabled` is true, and `replayStarted` calls `_replayRecorder.start`
+  // unconditionally; `replayIsBuffering` only decides whether the replay id
+  // goes on the scope. So the screen is captured continuously into a rolling
+  // buffer the native SDK discards unless an error arrives. What makes that an
+  // acceptable default is the masking below, which runs at capture time - the
+  // buffer never holds card bytes to begin with - and §1's switch, which is
+  // how a user says no to it. The Diagnostics subtitle says so in those terms;
+  // it is the one place the user is told, so the two must not drift.
+  //
+  // Session recording stays at zero on purpose and not pending a decision.
+  // What it would add is not more recording - that is already happening - but a
+  // steady stream of envelopes **leaving** the device, into the same cache
+  // already measured discarding error events under load
+  // (`client_discard`/`cache_overflow`, 2026-10-11), and an error is the only
+  // moment a replay answers a question anybody asked.
+  //
+  // **Native-backed, so this is Android and iOS only.** `ReplayIntegration`
+  // gates on `supportsReplay`, so the four desktop targets record nothing
+  // whatever these say.
+  options.replay.onErrorSampleRate = plan.shareReplay ? 1.0 : 0.0;
+  options.replay.sessionSampleRate = 0.0;
+
+  // §6.4's gate, and the whole reason replay could not simply be switched on.
+  //
+  // `maskAllText` and `maskAllImages` are both true by default and neither
+  // reaches any of the three surfaces below. `buildMaskingConfig` adds rules
+  // for `Text`, `EditableText` and `RichText`, and one for `Image` that spares
+  // root-bundle assets. (`maskAllText`'s own dartdoc says "only `Text` and
+  // `EditableText`" and is stale; the config is the source of truth. Read it
+  // and not the doc when adding a surface - a `SelectableText` dump is already
+  // covered by the `RichText` rule, a painted one is not.)
+  //
+  // The defaults do not reach any of this. `buildMaskingConfig` adds rules for
+  // `Text`, `EditableText` and `RichText`, and one for `Image` that spares
+  // root-bundle assets; a `CustomPainter` or a `RenderBox` that draws its own
+  // glyphs is none of them. (`maskAllText`'s own dartdoc says "only `Text` and
+  // `EditableText`" and is stale; read the config, not the doc.)
+  //
+  // **Four rules and not a list of seven, because the list was the problem.**
+  // Two of those seven were found only on a second review pass, and the
+  // mechanism that would have caught them is not statically visible:
+  // `CodeEditor` is a `StatefulWidget` whose `RenderBox` is built inside a
+  // private `State`. Worse, masking by render mechanism was wrong in **both**
+  // directions - the net `mask<RawImage>()` caught every `QIcon` in the app,
+  // because an icon is a `RawImage` here, so a replay came back with grey
+  // boxes where the chrome was; meanwhile the paint tool's canvas, a
+  // `CustomPaint` over the user's own artwork, was not masked at all.
+  //
+  // So the app declares it instead. `SensitiveSurface` is mixed into
+  // `HexTable`, `RemoteScreen`, `PlotterView`, `CanvasView` and
+  // `ProjectPreview`, where the next author will see it, and that file carries
+  // the reasoning. The three from packages keep a type rule each:
+  //
+  // - `FlutterMap` carries the user's own position, auto-centred, with
+  //   GPS-tagged capture pins on it. The whole widget and not its tile layer:
+  //   the tiles are `RawImage`s, so cutting at the wrapper is one check and
+  //   one rect rather than hundreds.
+  // - `CodeEditor` is `re_editor`, a `RenderBox` painting through `_drawText`,
+  //   and **it is the editor a user lands on** - `EditorMode.text` is the
+  //   default and hex is the mode they switch into - so `/ext/nfc/card.nfc`
+  //   shows the UID, ATQA, SAK and plaintext key block, and `.mfkey32.log`
+  //   and `.nested.log` show nonce dumps. Masking the opt-in hex view and not
+  //   this one was close to backwards.
+  // - `TerminalView` is `xterm`, also a `RenderBox`. The CLI is where
+  //   `storage read`, `nfc` and `subghz` output lands as raw text.
+  //
+  // Without these a replay records card dumps, the live device screen, decoded
+  // radio captures and the user's location: the most sensitive content the app
+  // holds, in the one feature that sends pictures. Both
+  // `diagnosticsShareSubtitle` and §1's one-time notice promise the user that
+  // captures and their location are never sent, so this is not only §6.4's
+  // gate, it is whether those two sentences are true.
+  //
+  // Masked by enclosing type, and `WidgetFilter._process` stops descending on
+  // a mask decision - so the whole subtree goes with it, and a widget added
+  // inside any of these is covered the day it is written.
+  //
+  // Per-call `// ignore:` and not `ignore_for_file:`, which would silently
+  // remove the wall that leaves `attachViewHierarchy` alone a few lines above,
+  // turning an enforced decision into stale advice. Trailing, so it costs four
+  // lines rather than eight.
+  //
+  // **No `description:` argument, deliberately.** Left out, the SDK defaults it
+  // to the literal `'mask'` (or `'unmask'`), and `privacy.toJson()` is public
+  // and emits `'<name>: <description>'` - so a test can assert the *decision*
+  // over public API. With a description of our own it cannot: `mask<T>()` and
+  // `unmask<T>()` both append a rule named `T.toString()`, so every name-based
+  // assertion passes either way. That is not hypothetical - a one-word edit
+  // here passed the whole suite, including the case named for these masks.
+  // `unmask` is worse than deleting the line, because it applies to the
+  // subtree and short-circuits later rules, so it would defeat `maskAllText`
+  // inside the hex table too. The prose that used to sit in the argument is
+  // above, where a reader was always better served by it.
+  //
+  // The ignores are not decoration. `mask<T>()` is `@experimental` in 9.30.1,
+  // and `experimental_member_use` is fatal in CI - the same wall that left
+  // `attachViewHierarchy` alone above. That precedent does not carry here:
+  // there the default was already the safe value, so leaving it cost nothing,
+  // and here the default is the unsafe one. Suppressing the warning is the
+  // price of the masks; shipping replay without them is not an option and
+  // leaving the warning unsuppressed is not a build.
+  options.privacy.mask<SensitiveSurface>(); // ignore: experimental_member_use
+  options.privacy.mask<FlutterMap>(); // ignore: experimental_member_use
+  options.privacy.mask<CodeEditor>(); // ignore: experimental_member_use
+  options.privacy.mask<TerminalView>(); // ignore: experimental_member_use
 
   // Off, and not because it is unwanted. Frame timings need
   // `SentryWidgetsFlutterBinding`, and `_initCore` installs Flutter's own -

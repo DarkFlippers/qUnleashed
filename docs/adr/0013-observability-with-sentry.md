@@ -4,10 +4,37 @@ Status: Accepted (2026-10-09). Reporting is **on by default and sent
 automatically**, behind a one-time notice that carries no policy link because
 there is no policy.
 
-**Replay is decided on and not built.** §1 is the decision - on, with a second
-switch of its own - and phase 3 is where it lands, behind §6.4's gate. Both
-sample rates are at zero in the shipped options today. The two halves of that
-sentence were written four lines apart and read as a contradiction.
+**Replay is built, uploaded on errors only.** §1's decision, with §6.4's gate
+opened rather than stepped over: `onErrorSampleRate` is 1.0 behind the second
+switch and `sessionSampleRate` is a flat zero.
+
+**"Errors only" is the upload, not the capture**, which §8 has said all along
+and this block briefly said the opposite of. `onErrorSampleRate` above zero
+makes `replay.isEnabled` true, and `replayStarted` starts the recorder
+unconditionally - `replayIsBuffering` only withholds the replay id from the
+scope. So the screen is captured continuously into a ring buffer the native
+SDK discards unless a failure arrives. What makes that acceptable as a default
+is that the masks in §6.4 run **at capture time**, so the buffer never holds
+card bytes, a key, a capture or a location to begin with; what makes it honest
+is that `diagnosticsReplaySubtitle` and §1's notice both say so in those terms,
+rather than letting a user infer "errors only" means "recorded only then".
+
+The session rate is zero by decision and not by omission. What it would add is
+not more recording - that is already happening - but whole sessions **leaving**
+the device, into the same cache measured discarding error events under load
+(`client_discard`/`cache_overflow` on 2026-10-11, two of the three errors
+captured that day), buying nothing the buffered minute before a failure does
+not already carry.
+
+**Replay is Android and iOS only.** `ReplayIntegration` gates on
+`supportsReplay`, so the four desktop targets and web record nothing whatever
+the rates say. The Diagnostics row is therefore dropped on those platforms
+(`DiagnosticsSettings.replaySupported`), which is the same judgement that
+drops it when sharing is off: a switch that does nothing is worse than no
+switch, and here it also promised a recording that never happens. Restarting
+the SDK for a rate no recorder will read is gated on the same flag - on the
+desktop targets `Sentry.close()` is a synchronous FFI call that cannot be
+interrupted.
 
 Phase 1 is built and **an event has been seen to arrive**: a forced Dart
 error from a local Windows build reached `dark-flippers` as
@@ -31,8 +58,35 @@ span; a ufbt `error` or `critical` now reaches the log rather than only the
 Assembler console; and `traced` covers all six operations §2 names, plus the
 ufbt job.
 
-Phase 3 is untouched: no metrics, and replay is off, which is where §6.4's gate
-still stands.
+**Phase 3 is half built.** Replay is on for errors with §6.4's surfaces masked
+by type, the second switch is on the Diagnostics screen, and
+`SentryScreenshotWidget` wraps the app at `runApp` - without it the recorder
+finds no render object and skips every frame after one log line that release
+builds do not carry.
+
+`SentryScreenshotWidget` and **not** `SentryWidget`, which every SDK example
+reaches for. `SentryWidget` also mounts `SentryUserInteractionWidget`, which is
+what `enableUserInteractionBreadcrumbs` and `enableUserInteractionTracing`
+need - both default true. That would have added a breadcrumb source §4 says
+does not exist ("breadcrumbs come from flipperlib only"), carrying a ten-deep
+list of ancestor widget labels that §6.2's scrubber does not reach, since
+`_scrubStringValues` rewrites top-level strings only and the app keys rows with
+file names and `/ext` paths. It would also have added a `ui.action.click`
+transaction per tap at `tracesSampleRate: 1.0`, on all six platforms - the same
+envelope pressure this document uses to justify `sessionSampleRate: 0`. Both
+flags are pinned off in `options.dart` so a later swap back to `SentryWidget`
+costs a failing diff rather than reopening either quietly.
+
+Three things about it are uncomfortable and are written down rather than
+smoothed over. `privacy.mask<T>()` is `@experimental` in 9.30.1, so every call
+carries `// ignore: experimental_member_use` - the same wall that left
+`attachViewHierarchy` alone, except that there the default was already the safe
+value and here it is the unsafe one. Masking by widget type means
+`telemetry/options.dart` imports three pages for their types, pointing a
+service at the UI; the alternative, `SentryMask` in the pages, puts the SDK
+outside this folder and breaks §2. And the first version of this shipped with
+two surfaces masked when seven needed it - see §6.4, which now states the rule
+rather than only the list.
 
 Owed and not in the phase table: the Android R8 mapping, which wants the Sentry
 Android Gradle Plugin, and §3's submodule commits as release commits rather
@@ -465,8 +519,60 @@ gate it.
    `remote/desktop/frame_decoder.dart` decodes
    (`remote/desktop/widgets/screen.dart:151`) — not an `Image` widget, so
    `maskAllImages` does not reach that one either. Neither surface is masked by
-   anything the SDK does on its own; both are wrapped in `SentryMask` and
-   checked in a recorded replay before replay ships.
+   anything the SDK does on its own.
+
+   **The rule, which matters more than the list.** `maskAllText` reaches
+   `Text`, `EditableText` and `RichText`; `maskAllImages` reaches `Image`,
+   sparing root-bundle assets. A `CustomPainter` or a `RenderBox` that paints
+   its own glyphs or pixels is none of those, so **every custom-painted
+   surface in this app is unmasked until it is named** in
+   `telemetry/options.dart`. (`maskAllText`'s own dartdoc says "only `Text`
+   and `EditableText`" and is stale; `buildMaskingConfig` is the source of
+   truth.)
+
+   This was first written with two rules, for the hex editor and the remote
+   screen. A review found five more, and the shape of the misses is the
+   argument for stating the rule here:
+
+   - `CodeEditor` (`re_editor`, a `RenderBox` painting through `_drawText`) is
+     the editor a user **lands on** - `EditorMode.text` is the default and hex
+     is the mode they switch into - so opening `/ext/nfc/card.nfc` shows the
+     UID, ATQA, SAK and plaintext key block, and `.mfkey32.log`/`.nested.log`
+     show nonce dumps. Masking the opt-in view and not this one was close to
+     backwards.
+   - `TerminalView` (`xterm`, also a `RenderBox`), where `storage read`, `nfc`
+     and `subghz` output lands as raw text.
+   - `PlotterView`, which paints the Sub-GHz pulse plot, with the bits,
+     histogram and raw RF beside it being the same capture in other forms.
+   - `FlutterMap`, which draws every tile as a `RawImage` - so a replay
+     recorded the user's own position, auto-centred, with GPS-tagged pins on
+     it, while §1's notice promised their location is never sent.
+   - `RawImage` itself, as the net under the mechanism rather than another
+     inventory only as good as its last reader. In this app a raw image is
+     device or user content by construction.
+
+   Masked by enclosing type rather than per surface, and `WidgetFilter`
+   stops descending on a mask decision, so a new widget inside any of them is
+   covered the day it is written. Rules and not `SentryMask` in the widget
+   trees, which would have put the SDK outside `telemetry/`.
+
+   `test/telemetry_lifecycle_test.dart` asserts every rule is present **and
+   that it masks rather than unmasks**, with the switch on and off. That
+   second half was missing and mattered: `mask<T>()` and `unmask<T>()` both
+   append a rule named after the type, so a name-based assertion passed either
+   way - a reviewer made that one-word edit and the whole suite stayed green.
+   `unmask` is the worst available outcome, because it applies to the subtree
+   and short-circuits later rules, so it would defeat `maskAllText` inside the
+   hex table too. The assertion now reads `privacy.toJson()`, which is public
+   and carries the SDK's own `'mask'`/`'unmask'` description.
+
+   Two things this gate still owes. **No surface has been checked in a
+   recorded replay on a device** - the test proves the rules the options block
+   recorded, not what the SDK does with them. And there is **no runtime
+   signal** if a rule stops matching: every SDK diagnostic about masking and
+   capture is behind `RuntimeChecker.kDebugMode` and compiled out of release,
+   so a mask that silently stops applying, or a missing
+   `SentryScreenshotWidget`, would be invisible in a shipped build.
 
 ### 7. `sentry_flutter` 9.30.1, written to move to 10
 
@@ -584,6 +690,12 @@ with a second switch of its own. §1 is the decision; this is the consequence
 of it, which is that the one category recording the screen is also on by
 default, and §6.4's gate is the only thing between it and a card dump leaving
 a device. That gate is therefore load-bearing rather than cautious.
+
+It is now open, and the two rules holding it are four lines of code with an
+analyzer suppression on each. Errors-only sampling is the second half of the
+answer: a replay exists only where a failure already did, so the window in
+which that gate matters is the width of one crash rather than the whole
+session.
 
 **Every `LogService.error` as an issue.** No exception object to group on, and
 most of them are expected.
