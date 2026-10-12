@@ -88,8 +88,8 @@ class _IrInfraredsPageState extends State<IrInfraredsPage> {
     // closes the rest: a rebuild is only scheduled by setState, so two
     // activations before it lands both see an enabled tile, and this awaits a
     // backend fetch before pushing.
-    if (!_fetching.add(f.id)) return;
-    setState(() {});
+    if (_fetching.contains(f.id)) return;
+    setState(() => _fetching.add(f.id));
     try {
       final content = await _api.getKeyContent(f.id);
       if (!mounted) return;
@@ -114,6 +114,8 @@ class _IrInfraredsPageState extends State<IrInfraredsPage> {
         type: QNotificationType.error,
       );
     } finally {
+      // Removed whatever happened, and outside setState when the State has
+      // gone: a file left in the set would wedge every later open of it.
       _fetching.remove(f.id);
       if (mounted) setState(() {});
     }

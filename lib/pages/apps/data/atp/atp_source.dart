@@ -238,12 +238,15 @@ class AtpArchive {
       // reported to the zone as unhandled on top of the one the caller sees.
       // Storing the derived future means the one awaited is the one that
       // carries the cleanup.
-      tally = await (_unpacking[key] ??= _unpack(
-        entry.pack,
-        url,
-        tag,
-        onProgress,
-      ).whenComplete(() => _unpacking.remove(key)));
+      tally = await (_unpacking[key] ??=
+          _unpack(entry.pack, url, tag, onProgress).whenComplete(() {
+            // Braces, not an arrow. `whenComplete` awaits a future its callback
+            // returns, and `Map.remove` answers with the value it removed - which
+            // here is this very future, so the arrow form waited on itself and
+            // every unpack hung. The same two characters were the bug in
+            // FileManagerController's listing map (#244), found there by a probe.
+            _unpacking.remove(key);
+          }));
     }
     if (!await file.exists()) {
       // Why it is missing, when the unpack knows. Without this the user is

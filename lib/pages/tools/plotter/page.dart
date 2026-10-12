@@ -98,37 +98,35 @@ class _PulsePlotterPageState extends State<PulsePlotterPage> {
     if (_picking) return;
     setState(() => _picking = true);
     try {
-      await _pick();
+      final result = await FilePicker.platform.pickFiles(withData: true);
+      if (result == null) return;
+      final file = result.files.single;
+      final bytes = file.bytes;
+      if (bytes == null) {
+        if (mounted) {
+          context.showNotification(
+            l10n.plotReadFailed,
+            type: QNotificationType.error,
+          );
+        }
+        return;
+      }
+      // The picker is modal to the OS and not to Flutter, so the page behind
+      // it can be left while it is open - and setState after dispose throws.
+      // The same hole was found in the firmware button while testing #250.
+      if (!mounted) return;
+      setState(() {
+        _fileName = file.name;
+        _data = null;
+        _signals = const [];
+        _current = null;
+      });
+      await _handleBytes(bytes);
     } finally {
+      // Every exit above is a `return`, which a finally covers - so the guard
+      // is released without a second method to hold the body.
       if (mounted) setState(() => _picking = false);
     }
-  }
-
-  Future<void> _pick() async {
-    final result = await FilePicker.platform.pickFiles(withData: true);
-    if (result == null) return;
-    final file = result.files.single;
-    final bytes = file.bytes;
-    if (bytes == null) {
-      if (mounted) {
-        context.showNotification(
-          l10n.plotReadFailed,
-          type: QNotificationType.error,
-        );
-      }
-      return;
-    }
-    // The picker is modal to the OS and not to Flutter, so the page behind it
-    // can be left while it is open - and setState after dispose throws. The
-    // same hole was found in the firmware button while testing #250.
-    if (!mounted) return;
-    setState(() {
-      _fileName = file.name;
-      _data = null;
-      _signals = const [];
-      _current = null;
-    });
-    await _handleBytes(bytes);
   }
 
   void _onSelectSignal(IrSignal? signal) {

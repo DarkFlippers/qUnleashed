@@ -524,12 +524,11 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
   ///
   /// `appStart` has a 15-second timeout and both pages that call this stay
   /// interactive throughout, so a second tap on the same card started the app
-  /// twice and pushed two remote controls - two concurrent screen streams on
-  /// one Flipper, since `RemoteSession`'s constructor starts the stream. Here
-  /// rather than in each page because the two pages that launch a favourite -
-  /// the archive overview and its favourites list - are handed the *same*
-  /// controller, so the window covers a second tap after switching between
-  /// them as well as two taps on one.
+  /// twice and pushed two remote controls - which costs what `launchApp`'s own
+  /// guard describes. Here rather than in each page because the two pages that
+  /// launch a favourite - the archive overview and its favourites list - are
+  /// handed the *same* controller, so the window covers a second tap after
+  /// switching between them as well as two taps on one.
   ///
   /// Keyed on the path rather than a bare flag, for the reason the file manager
   /// keys its own on one: launching two *different* apps in quick succession is

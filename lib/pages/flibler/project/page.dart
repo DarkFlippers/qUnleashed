@@ -1,20 +1,19 @@
 import 'dart:async';
 
 import 'package:file_picker/file_picker.dart';
-import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../services/localization/l10n.dart';
 import '../../../components/appbar.dart';
 import '../../../components/cardlist.dart';
-import '../../../components/dialogs/action.dart';
 import '../../../components/icon.dart';
 import '../../../components/navigation.dart';
 import '../../../theme/theme.dart';
 import '../../../components/notification.dart';
 import '../../../components/progress_button.dart';
 import '../../../components/fap_facts.dart';
+import '../../apps/actions.dart';
 import '../page.dart';
 import 'controller.dart';
 import '../../devices/device_scope.dart';
@@ -91,44 +90,19 @@ class _FliblerProjectPageState extends State<FliblerProjectPage> {
     await _ctrl.build();
   }
 
-  // True while the app is being started on the device. Its sibling
-  // `sendToDevice` has guarded on the controller's `_uploading` all along; this
-  // one awaits `appStart` with a 15-second timeout and had nothing, so a second
-  // press started the app again and pushed a second remote control - two
-  // concurrent screen streams on one Flipper. The controller's `busy` cannot
-  // stand in: it covers loading, building and uploading, not launching. #244.
+  // True while the app is being started on the device, for the progress the
+  // button shows. The *guard* is not here: `launchApp` owns it, keyed on the
+  // path, because this page was the third place to hand the screen over to the
+  // remote control and the third to write out the same busy dialog and the same
+  // failure toast. Its sibling `sendToDevice` has guarded on the controller's
+  // `_uploading` all along; this one had nothing, so a second press started the
+  // app again and pushed a second remote control. #244.
   bool _launching = false;
 
   Future<void> _openOnDevice() async {
-    if (_launching) return;
     setState(() => _launching = true);
     try {
-      await _ctrl.launchOnDevice();
-      if (!mounted) return;
-      unawaited(openRoute(context, AppRoute.remoteControl));
-    } on FlipperRpcAppSystemLockedException {
-      if (!mounted) return;
-      final colors = context.appColors;
-      await showDialog<void>(
-        context: context,
-        barrierColor: colors.dialogBarrier,
-        builder: (dialogContext) => FlipperActionDialog(
-          imageAssetPath: kFlipperBusyAssetPath,
-          title: kFlipperBusyTitle,
-          text: kFlipperBusyMessage,
-          actionText: kFlipperBusyAction,
-          onAction: () {
-            Navigator.of(dialogContext).pop();
-            openRoute(context, AppRoute.remoteControl);
-          },
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      context.showNotification(
-        context.l10n.appOpenFailed('$e'),
-        type: QNotificationType.error,
-      );
+      await launchApp(context, _ctrl.launchOnDevice, target: _ctrl.targetPath);
     } finally {
       // Only when still mounted: nothing reads this once the State is gone,
       // and setState after dispose throws. A launch that failed leaves the
@@ -140,11 +114,9 @@ class _FliblerProjectPageState extends State<FliblerProjectPage> {
   void _openConsole() {
     // Nothing is fetched here - the console reads the assembler singleton - so
     // the whole cost of a second tap is a second identical page to dismiss.
-    // Guarded anyway, because it is the same gesture and the same one line.
+    // Guarded anyway, because it is the same gesture and the same one call.
     // #244.
-    if (!isTopRoute(context)) return;
-    Navigator.of(context)
-        .push(MaterialPageRoute(builder: (_) => const AssemblerConsolePage()));
+    pushPage(context, (_) => const AssemblerConsolePage());
   }
 
   void _openSettings() {

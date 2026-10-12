@@ -67,13 +67,11 @@ class _IrBrandsPageState extends State<IrBrandsPage> {
   }
 
   void _open(BrandModel b) {
-    // The pushed page fetches this brand's files in initState, so a second tap
-    // is a second request as well as a second page. #244.
-    if (!isTopRoute(context)) return;
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => IrInfraredsPage(category: widget.category, brand: b),
-      ),
+    // pushPage, not push: the page fetches this brand's files in initState, so
+    // a second tap is a second request as well as a second page. #244.
+    pushPage(
+      context,
+      (_) => IrInfraredsPage(category: widget.category, brand: b),
     );
   }
 

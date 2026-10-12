@@ -330,6 +330,7 @@ class _RemoteControlPageState extends State<RemoteControlPage>
     }
   }
 
+  /// The body, with no guard: call [_openWristRemoteSettings].
   Future<void> _wristRemoteSettings() async {
     Object? startError;
     try {
@@ -535,7 +536,12 @@ class _RemoteControlPageState extends State<RemoteControlPage>
                     if (_mediaRemote.supported)
                       IconButton(
                         tooltip: context.l10n.wristRemoteMappingTitle,
-                        onPressed: _openWristRemoteSettings,
+                        // Gated like the wide layout's action below: the two
+                        // entry points are the same handler, and only one of
+                        // them showed the refusal.
+                        onPressed: _openingWristSettings
+                            ? null
+                            : _openWristRemoteSettings,
                         icon: const Icon(Icons.watch_outlined),
                       ),
                     const SizedBox(width: 8),

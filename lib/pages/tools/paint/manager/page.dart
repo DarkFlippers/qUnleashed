@@ -99,9 +99,7 @@ class _ProjectManagerPageState extends State<ProjectManagerPage> {
     // drafts rather than a clobber. The gallery card was already immune to
     // both - it declares onDoubleTap, which absorbs the second click - and the
     // sheet's Edit and the New button are the doors that were not. #244.
-    if (!isTopRoute(context)) return;
-    await Navigator.of(context)
-        .push(MaterialPageRoute(builder: (_) => PaintPage(project: project)));
+    await pushPage(context, (_) => PaintPage(project: project));
     // Returning from the editor may have created or updated a draft.
     await _ctrl.loadAll(silent: true);
   }

@@ -68,16 +68,12 @@ class _IrCategoriesPageState extends State<IrCategoriesPage> {
   // IRDB browser from the device - so a second tap costs a request as well as a
   // stacked page. #244.
   void _openCategory(DeviceCategory c) {
-    if (!isTopRoute(context)) return;
-    Navigator.of(context)
-        .push(MaterialPageRoute(builder: (_) => IrBrandsPage(category: c)));
+    pushPage(context, (_) => IrBrandsPage(category: c));
   }
 
   void _openIrdb() {
-    if (!isTopRoute(context)) return;
     final client = DeviceScope.of(context).client;
-    Navigator.of(context)
-        .push(MaterialPageRoute(builder: (_) => IrLibPage(client: client)));
+    pushPage(context, (_) => IrLibPage(client: client));
   }
 
   @override

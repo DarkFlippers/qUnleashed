@@ -159,10 +159,12 @@ class AppActionButton extends StatelessWidget {
   Future<void> _launchApp(BuildContext context) => launchApp(
     context,
     () => engine.launch(app, category: category),
-    // The alias is what the engine resolves a path from; the id is the
-    // fallback for a card that has not got one, so two different apps cannot
-    // share a key.
-    target: app.alias.isNotEmpty ? app.alias : app.id,
+    // The *path*, resolved the way the engine resolves it, because the app
+    // manager and the installer key on a path too: keyed on the alias here,
+    // the same app launched from the catalog and from the manager passed both
+    // guards and still gave two screen streams. The alias is the fallback for
+    // an app with no installed manifest, which cannot be launched anyway.
+    target: engine.manifests.byAlias(app.alias)?.path ?? app.alias,
   );
 
   Future<void> _confirmDelete(BuildContext context) =>

@@ -218,21 +218,19 @@ class ToolsPage extends StatelessWidget {
   /// user's key dictionary and both write it back, so one run's recovered keys
   /// are lost. #244.
   VoidCallback? _resolveTap(BuildContext context, ToolItemModel item) {
-    final onTap = item.onTap;
-    if (onTap != null) {
-      return () {
-        if (!isTopRoute(context)) return;
-        onTap(context);
-      };
-    }
     final routeBuilder = item.routeBuilder;
-    if (routeBuilder != null) {
-      return () {
-        if (!isTopRoute(context)) return;
-        Navigator.of(context).push(MaterialPageRoute(builder: routeBuilder));
-      };
-    }
-    return null;
+    final open =
+        item.onTap ??
+        (routeBuilder == null
+            ? null
+            : (BuildContext c) => pushPage(c, routeBuilder));
+    if (open == null) return null;
+    // One guard over both kinds of item, so the mistake the comment above
+    // describes cannot be made again by adding a branch.
+    return () {
+      if (!isTopRoute(context)) return;
+      open(context);
+    };
   }
 
   @override

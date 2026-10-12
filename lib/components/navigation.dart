@@ -91,21 +91,54 @@ Future<T?> openRoute<T>(
 ///
 /// How reachable the second tap is depends on the platform and on where the
 /// control sits. This app overrides no `pageTransitionsTheme`, so the
-/// transition is the framework default per platform - Zoom on Windows and
-/// Linux, FadeForwards on Android for a programmatic push, the Cupertino slide
-/// on iOS and macOS - and what decides whether the click lands on the control
-/// or on the page arriving over it is coverage under hit-testing, not opacity.
-/// The guard does not depend on any of that, which is why it is applied
-/// everywhere rather than behind a platform check. #244.
+/// transition is the framework default per platform, and what decides whether
+/// the click lands on the control or on the page arriving over it is coverage
+/// under hit-testing. The guard does not depend on any of that, which is why
+/// it is applied everywhere rather than behind a platform check. #244.
 ///
-/// What it costs: `isCurrent` stays false for the pusher until a pop's exit
-/// animation has finalized, while the future `Navigator.push` returned
-/// completed when the pop began - so a tap landing inside one transition of
-/// dismissing the pushed page is refused, and the user taps again. One
-/// transition of that, against a duplicate of a page that fetches on open.
+/// It costs no legitimate tap after a pop, which a draft of this comment
+/// claimed it did: `pop()` flushes the history synchronously and leaves the
+/// popped entry past `remove`, so the page below is current again the instant
+/// the pop is requested rather than when the exit animation finalizes -
+/// measured against the pinned SDK, not reasoned. That also settles the
+/// comparison with a flag cleared on the pushed route's future, which would
+/// clear at the same instant and needs a field, a `setState` and
+/// dispose-safety.
+///
+/// What it does refuse is a push from a page with *anything* above it, a
+/// dialog or a bottom sheet included. For a handler whose whole body is a
+/// push, that is right. It is why this is not folded into [openRoute], whose
+/// callers include two that push from a page while a sheet or dialog of their
+/// own is still being dismissed.
+///
+/// [ModalRoute.isCurrentOf] rather than `ModalRoute.of(context)?.isCurrent`:
+/// the aspect-scoped accessor depends on that one field, where the plain `of`
+/// registers a dependency on the whole route scope and rebuilds the caller
+/// when any of five unrelated properties changes.
 ///
 /// True when there is no [ModalRoute] - a widget pumped outside one, which is
 /// most widget tests. Refusing to push when the question cannot be answered
 /// would break navigation to stop a duplicate of it.
 bool isTopRoute(BuildContext context) =>
-    ModalRoute.of(context)?.isCurrent ?? true;
+    ModalRoute.isCurrentOf(context) ?? true;
+
+/// Pushes a page built by [builder], unless something is already above
+/// [context]'s page.
+///
+/// The guarded form of `Navigator.of(context).push(MaterialPageRoute(...))`,
+/// and what a tap handler whose whole effect is a push should call. The check
+/// and the push are worth nothing apart, and nine sites held them adjacent by
+/// hand before this existed - three others in the same files did not, which is
+/// how #244 stayed open at them.
+///
+/// Unnamed, like the two dozen `MaterialPageRoute`s inside features: ADR 0013
+/// puts route names on the ones [openRoute] owns, derived from the enum, and
+/// naming these would be strings to keep in step with nothing enforcing it.
+///
+/// Answers null without pushing when it refuses, which a caller reading the
+/// pop's result cannot tell from a page dismissed with nothing - correctly, as
+/// in both cases nothing came back.
+Future<T?> pushPage<T>(BuildContext context, WidgetBuilder builder) {
+  if (!isTopRoute(context)) return Future<T?>.value();
+  return Navigator.of(context).push<T>(MaterialPageRoute<T>(builder: builder));
+}

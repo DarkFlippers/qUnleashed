@@ -226,6 +226,41 @@ void main() {
       await second;
     });
 
+    // Both halves of the stale-listing rule, which is what lets the maps stay
+    // keyed per path without the screen paying for it.
+    // Neither future is awaited before the gate opens: both listings are
+    // parked in the fake, and awaiting one first would wait on a gate this
+    // body has not opened yet.
+    test('writes nothing for a folder the user has already left', () async {
+      client.gate = Completer<void>();
+      final first = ctrl.refresh();
+      final opened = ctrl.open('/ext/subghz');
+      client.gate!.complete();
+      await Future.wait([first, opened]);
+
+      expect(ctrl.path, '/ext/subghz');
+      // The listing of `/ext` landed last and must have written nothing: not
+      // its entries, and not the `loading` of the one that followed it.
+      expect(ctrl.loading, isFalse);
+    });
+
+    // Its own controller, because this one is disposed inside the body and
+    // ChangeNotifier refuses a second dispose from the teardown.
+    test('sends no trailing listing once the page has gone', () async {
+      final closing = FileManagerController(
+        client: client,
+        initialPath: '/ext',
+      );
+      client.gate = Completer<void>();
+      final first = closing.refresh();
+      final second = closing.refresh();
+      closing.dispose();
+      client.gate!.complete();
+      await Future.wait([first, second]);
+
+      expect(_listCalls(client), 1);
+    });
+
     // The regression a bare `if (_loading) return;` introduces, which is why
     // this is keyed on the path at all: `open()` moves the path and then calls
     // refresh, so a flag would skip the new folder's listing altogether and
@@ -489,16 +524,39 @@ void main() {
 
     testWidgets('pushes again after the pushed page is popped', (tester) async {
       await tester.pumpWidget(app());
+      final open = tester.element(find.text('open'));
 
       await tester.tap(find.text('open'));
       await tester.pumpAndSettle();
       Navigator.of(tester.element(find.text('pushed'))).pop();
+
+      // Before any pump, and this is the assertion worth having: a draft of
+      // isTopRoute's doc claimed a tap inside the pop's exit animation was
+      // refused. `pop()` flushes the history synchronously, so the page below
+      // is current again at once - and the alternative instrument, a flag
+      // cleared on the pushed route's future, clears at this same instant.
+      expect(isTopRoute(open), isTrue);
+
       await tester.pumpAndSettle();
       await tester.tap(find.text('open'));
       await tester.pumpAndSettle();
 
       expect(pushes.count, 2);
       expect(find.text('pushed'), findsOneWidget);
+    });
+
+    // The other half of what it refuses, and the reason it is not folded into
+    // openRoute: anything above the page counts, a dialog included.
+    testWidgets('refuses while a dialog is up', (tester) async {
+      await tester.pumpWidget(app());
+      final open = tester.element(find.text('open'));
+
+      unawaited(
+        showDialog<void>(context: open, builder: (_) => const Text('dialog')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(isTopRoute(open), isFalse);
     });
   });
   // The plotter's picker, which is the firmware bug of #250 in a page that
@@ -532,17 +590,13 @@ void main() {
     });
   });
 
-  // Ratchets in ADR 0004's sense, and the weakest thing in this file by
-  // design. A widget test of each of these sites would cost a backend fake and
-  // a DeviceScope per page - a dozen harnesses to assert a dozen copies of one
-  // line whose behaviour is pinned above. What they cannot do is prove a guard
-  // sits in the right place; what they do is notice one going missing, which is
-  // the mutation nothing else here would catch.
-  //
-  // Counted and anchored rather than `contains`, which a first draft used:
-  // `contains('isTopRoute(context)')` is satisfied by `if (isTopRoute(context))
-  // return;` - the guard inverted, every tool page unopenable, suite green -
-  // and by one guard in a file that needs two.
+  // A ratchet in ADR 0004's sense, and deliberately narrow: that the guard is
+  // still *there*, counted and anchored so an inverted one fails too. What
+  // notices a push site that never had a guard is
+  // test/navigator_push_budget_test.dart, which counts the mechanism per area
+  // instead of the fix per file - the first version of this list went green
+  // with three unguarded sites in lib/, two of them in a file the same commit
+  // edited.
   //
   // A site legitimately rewritten belongs off these lists, in the same commit.
   group('the sites whose whole handler is a push', () {
@@ -551,15 +605,14 @@ void main() {
       'lib/pages/tools/infrared/categories_page.dart': 2,
       'lib/pages/tools/infrared/page.dart': 1,
       'lib/pages/tools/paint/manager/page.dart': 1,
-      // Both branches of _resolveTap: the five cards that declare onTap push
-      // too, and the first draft guarded only the routeBuilder branch.
-      'lib/pages/tools/overview/page.dart': 2,
-      'lib/pages/archive/overview/page.dart': 1,
+      'lib/pages/archive/overview/page.dart': 3,
       'lib/pages/flibler/project/page.dart': 1,
+      'lib/pages/apps/catalog/page.dart': 1,
+      'lib/pages/option/page.dart': 1,
     };
-    final guard = RegExp(r'if \(!isTopRoute\(context\)\) return;');
+    final guard = RegExp(r'pushPage\(');
 
-    test('all still ask whether their page is on top, as often as before', () {
+    test('all still push through the guarded helper', () {
       final counted = {
         for (final path in guarded.keys)
           path: guard.allMatches(io.File(path).readAsStringSync()).length,
@@ -568,19 +621,33 @@ void main() {
       expect(
         counted,
         guarded,
-        reason: 'a tap handler lost or inverted its #244 guard',
+        reason: 'a tap handler went back to a bare Navigator.push (#244)',
+      );
+    });
+
+    // The one site that asks the question itself rather than through
+    // pushPage, because its handler is not only a push: the tool cards run an
+    // `onTap` that may open a route some other way.
+    test('the tool card list still asks before it opens anything', () {
+      final source = io.File('lib/pages/tools/overview/page.dart')
+          .readAsStringSync();
+
+      expect(
+        RegExp(r'if \(!isTopRoute\(context\)\) return;').allMatches(source),
+        hasLength(1),
+        reason: 'the tool cards lost or inverted their #244 guard',
       );
     });
   });
 
   // The other shape, where the guard is a flag or a keyed set rather than a
-  // question to the navigator. Three of these have behavioural tests above;
-  // these four are the ones whose pages need a harness that does not exist.
+  // question to the navigator. Counted the same way as the list above, because
+  // a file with the string twice and the guard once is the hole that list was
+  // written to close.
   group('the sites that guard with a flag', () {
     const guards = {
       'lib/pages/apps/manager/install_page.dart': '_preparingSheet.add(',
-      'lib/pages/tools/infrared/infrareds_page.dart': '_fetching.add(',
-      'lib/pages/flibler/project/page.dart': 'if (_launching) return;',
+      'lib/pages/tools/infrared/infrareds_page.dart': '_fetching.contains(',
       'lib/pages/tools/remote/desktop/page.dart':
           'if (_openingWristSettings) return;',
       'lib/pages/archive/overview/category/favorites_page.dart': 'ok == null',
@@ -597,14 +664,17 @@ void main() {
         missing,
         isEmpty,
         reason:
-            'a handler lost its #244 guard, or a caller stopped honouring '
-            'the null that means "already under way"',
+            'a handler lost its #244 guard, or a caller stopped honouring the '
+            'null that means "already under way"',
       );
     });
   });
 }
 
 /// A page whose button does what the guarded sites do: push, and nothing else.
+///
+/// Through `pushPage`, which is what those sites call now - so this exercises
+/// the helper rather than a copy of what it does.
 class _PushingPage extends StatelessWidget {
   const _PushingPage();
 
@@ -612,15 +682,10 @@ class _PushingPage extends StatelessWidget {
   Widget build(BuildContext context) => Scaffold(
     body: Center(
       child: ElevatedButton(
-        onPressed: () {
-          if (!isTopRoute(context)) return;
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) =>
-                  const Scaffold(body: Center(child: Text('pushed'))),
-            ),
-          );
-        },
+        onPressed: () => pushPage(
+          context,
+          (_) => const Scaffold(body: Center(child: Text('pushed'))),
+        ),
         child: const Text('open'),
       ),
     ),

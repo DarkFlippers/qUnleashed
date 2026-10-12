@@ -80,15 +80,10 @@ class _IrLibPageState extends State<IrLibPage> {
     // not affected: `openPath` re-lists, and the cache it can short-circuit on
     // is not populated until the first listing lands, so a second tap on a
     // folder does fetch again. It replaces the view instead of stacking on it,
-    // which is why it is the lesser half and why `isTopRoute` cannot answer it
+    // which is why it is the lesser half and why a push guard cannot answer it
     // - the page is still on top. It wants what the file manager's listing got
     // and has not had it. #244.
-    if (!isTopRoute(context)) return;
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => IrLibFilePage(controller: _ctrl, entry: entry),
-      ),
-    );
+    pushPage(context, (_) => IrLibFilePage(controller: _ctrl, entry: entry));
   }
 
   @override

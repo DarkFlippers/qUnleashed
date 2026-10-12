@@ -743,10 +743,10 @@ class FileManagerController extends ChangeNotifier {
   /// then calls this, so it would skip the new folder's listing altogether and
   /// leave the previous folder's entries on screen under the new path.
   ///
-  /// What this does not settle: listings of two *different* paths still
-  /// overlap, and the last to land still wins. That is tapping two folders in
-  /// quick succession rather than one twice, and it is not introduced here.
-  /// #244.
+  /// Listings of two *different* paths still overlap - that is tapping two
+  /// folders quickly rather than one twice - but the one that lands for a
+  /// folder the user has left now writes nothing, which is the half of that
+  /// race that reached the screen. #244.
   final Map<String, Future<void>> _listingNow = {};
   final Map<String, Future<void>> _listingNext = {};
 
@@ -758,6 +758,16 @@ class FileManagerController extends ChangeNotifier {
       // Dropped before the next listing starts, so callers arriving during
       // *that* one are promised a further listing rather than this one.
       _listingNext.remove(path);
+      // The one listing here that is still free to drop. Closing the page
+      // between the first landing and this starting otherwise sent a
+      // 30-second request to the device for a result nobody would read -
+      // `_disposed` gates `_notify` only.
+      //
+      // Not an `async` callback, which is what this was: inside one, the
+      // `remove` above becomes a dropped future the analyzer asks to be
+      // `unawaited`, and that is the keyword this repository's budget test
+      // counts. A sync callback returning the future keeps both quiet.
+      if (_disposed) return Future<void>.value();
       return _listOnce(path);
     });
   }
@@ -806,17 +816,30 @@ class FileManagerController extends ChangeNotifier {
           );
         }
       }
+      // Nothing, if the user has moved on. A listing is answered for the path
+      // it asked about, and `_path` can have moved while it was out; writing
+      // it anyway puts one folder's entries on screen under another's name and
+      // clears the spinner of the listing still running. Cheaper and more
+      // general than keeping the two paths from overlapping in the first
+      // place.
+      if (path != _path) return;
       _entries = out;
     } catch (e) {
       // Not _lastFailure: that one belongs to something the user asked for,
       // and the panel below already renders this one for as long as the
       // listing it describes is on screen.
+      LogService.caught('[FileManager] list $path failed: $e');
+      if (path != _path) return;
       _error = '$e';
       _entries = const [];
-      LogService.caught('[FileManager] list $path failed: $e');
     } finally {
-      _loading = false;
-      _notify();
+      // Only for the listing that still describes what is on screen - and the
+      // early returns above skip the finally's body the same way, which is why
+      // this check is here rather than around the writes alone.
+      if (path == _path) {
+        _loading = false;
+        _notify();
+      }
     }
   }
 
