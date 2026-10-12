@@ -43,6 +43,20 @@ jobs:
       - name: Test the Android artifact verification
         run: .github/scripts/verify_apks_test.sh
 
+      # The guard's other two modes run on the release path only, and the thing
+      # they watch - the build image's GLib - cannot be made to move from here.
+      # So this is where their logic is checked: #280 was a published binary
+      # that could not start, and the floor is now a number a test can drive.
+      - name: Test the Linux ABI floor guard
+        run: .github/scripts/check_linux_abi_test.sh
+
+      # This one is not a test of the guard but the guard itself, and it is the
+      # only part of the #280 fix a pull request can see: nothing here builds
+      # Linux, so a change of `runs-on` back to a floating label would
+      # otherwise go green and be caught by the run that publishes.
+      - name: Check the Linux build image is pinned
+        run: .github/scripts/check_linux_abi.sh --check-runner
+
       # The guard itself only ever runs on a tagged release, on macOS. This runs
       # its logic here so it is not first trusted at the moment it matters.
       - name: Test the Apple FFI export guard
@@ -187,6 +201,9 @@ jobs:
   #
   # Only this suite. `checksums_test.sh` calls `sha256sum`, which macOS has
   # not got, and the other suites cover scripts no macOS job runs.
+  # `check_linux_abi_test.sh` is doubly out: its subject uses `declare -A` and
+  # macOS still ships bash 3.2, so adding it here fails on the option, not on
+  # anything about the guard.
   scripts-bsd:
     name: Test the release scripts on BSD userland
     runs-on: macos-latest

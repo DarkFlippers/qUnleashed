@@ -384,6 +384,50 @@ DSN blank the app says `[Telemetry] not reporting: no DSN was compiled in` once
 on the Diagnostics screen's log and sends nothing — which is how to tell "I
 forgot the define" from "the SDK is broken".
 
+## The Linux runtime floor
+
+A Flutter Linux app links against the host's GTK and GLib and ships neither, so
+the oldest system the binary can start on is decided by the image it was
+compiled on. `ubuntu-latest` is not a floor — it is whatever GitHub last
+pointed that label at, and when it moved from 22.04 to 24.04 it took a
+published asset with it: 0.11.2 could not start on Ubuntu 22.04, Mint 21.x,
+Debian 12 or Ubuntu 23.10, because GLib 2.80 had added
+`g_once_init_enter_pointer`, GObject's type machinery picks it up when compiled
+against 2.80 headers, and 2.72 has never had it
+([#280](https://github.com/DarkFlippers/qUnleashed/issues/280)).
+
+So the Linux job pins `runs-on: ubuntu-22.04`, and `check_linux_abi.sh`
+asserts the floor after every Linux build. `check_linux_abi.sh --print-floor`
+prints the current numbers rather than repeating them here.
+
+Two checks, because the ABI has two halves and neither substitutes for the
+other:
+
+| | |
+|---|---|
+| The build machine's GLib | GLib has no symbol versioning, so there is no general rule to apply to the finished binary — only a hand-maintained list of which symbol arrived in which release, which nobody is going to keep. The machine compiling it answers the same question in one number, and this is the half that catches #280. |
+| The bundle's versioned references | glibc, libstdc++ and the C++ ABI do version their symbols, so the artifact states its own requirement and `objdump -T` is asked directly. |
+
+**Raising the floor drops distributions**, so it is a release-note-worthy
+decision and belongs in a commit of its own — one that edits the supported-systems
+table in `README.md` in the same breath, because that table is the promise a
+user reads and nothing checks it against the guard.
+
+Two separate things will force the question, on different dates: GitHub
+retiring the `ubuntu-22.04` runner label, and 22.04 leaving Ubuntu's standard
+support in April 2027. Three ways out, in the order they cost:
+
+1. **Build in an `ubuntu:22.04` container** on a newer runner. Keeps the promise
+   exactly as it stands; costs the container setup on every Linux build.
+2. **Set `GLIB_VERSION_MIN_REQUIRED` and `GLIB_VERSION_MAX_ALLOWED` to
+   `GLIB_VERSION_2_72`** in `linux/CMakeLists.txt`, which sets neither today.
+   That is the gate GObject uses to decide which symbol to emit, so it fixes
+   the GLib half on a newer image — but only the GLib half. glibc, libstdc++
+   and GTK's own `GDK_VERSION_MAX_ALLOWED` still come from the image, and the
+   artifact check would still have to pass. Useful, not sufficient on its own.
+3. **Raise the numbers** in `check_linux_abi.sh`, update the README table, and
+   say in the release notes which systems stopped being supported.
+
 ## What is not automated yet
 
 Honest list, so nobody waits for something that is not coming.
@@ -404,6 +448,7 @@ Honest list, so nobody waits for something that is not coming.
 | `.github/scripts/derive_version_test.sh` | Its tests. Run it directly; it needs no Flutter. |
 | `.github/scripts/check_changelog.sh` | The changelog's shape, including that its version line agrees with pubspec. Its tests are beside it. |
 | `.github/scripts/open_next_cycle.sh` | The pubspec bump and changelog reset the release-day pull request carries. Its tests are beside it. |
+| `.github/scripts/check_linux_abi.sh` | The Linux runtime floor, checked after every Linux build. `--print-floor` states it. Its tests are beside it. |
 | `.github/workflows/auto-release.yml` | The triggers, the five builds, the publish job, the rolling prerelease and the cycle opener. |
 | `lib/services/build_identity.dart` | How the app reads what was compiled in, and formats it for a person. |
 | `pubspec.yaml` | The version. Nothing else about the identity lives here — the build number is derived. |
