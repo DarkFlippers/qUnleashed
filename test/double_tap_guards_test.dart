@@ -303,14 +303,37 @@ void main() {
       home: const _PushingPage(),
     );
 
-    testWidgets('pushes one page for two taps', (tester) async {
+    // The handler twice rather than two `tester.tap`s, and this is the whole
+    // reason this test says anything: a second tap mid-transition does not
+    // reach the button in a widget test - it lands on the incoming page - so
+    // the tapping version passed with the guard turned into `=> true`. It
+    // proved the pointer missed, not that the guard worked. Two activations
+    // *is* the gesture, minus a question about hit-testing that belongs to
+    // Flutter rather than to this.
+    testWidgets('pushes one page for two activations', (tester) async {
       await tester.pumpWidget(app());
 
-      await tester.tap(find.text('open'));
+      final open = tester.widget<ElevatedButton>(find.byType(ElevatedButton));
+      open.onPressed!();
       // One frame, so the push has happened and the transition has not
-      // finished - which is the window the second click lands in.
+      // finished - the window the second click lands in.
       await tester.pump();
-      await tester.tap(find.text('open'), warnIfMissed: false);
+      open.onPressed!();
+      await tester.pumpAndSettle();
+
+      expect(find.text('pushed'), findsOneWidget);
+    });
+
+    // And the same with no frame in between at all, which is the push being
+    // in the navigator's history synchronously rather than a frame later.
+    testWidgets('pushes one page for two activations in one frame', (
+      tester,
+    ) async {
+      await tester.pumpWidget(app());
+
+      final open = tester.widget<ElevatedButton>(find.byType(ElevatedButton));
+      open.onPressed!();
+      open.onPressed!();
       await tester.pumpAndSettle();
 
       expect(find.text('pushed'), findsOneWidget);
