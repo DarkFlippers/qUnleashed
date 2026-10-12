@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:protobuf/protobuf.dart' show GeneratedMessage;
 import 'package:qunleashed/pages/archive/browser/page.dart';
+import 'package:qunleashed/pages/devices/controllers/device.dart';
 
 import 'firmware_fixture.dart';
 
@@ -109,11 +110,17 @@ class _OneFolder implements FlipperClient {
 void main() {
   late _OneFolder client;
 
-  /// The page with its new-folder prompt open.
-  Future<void> openPrompt(WidgetTester tester) async {
+  /// The page with its new-folder prompt open, and the device to close.
+  ///
+  /// Closed in the body rather than from a teardown, which is what
+  /// `closeDevice`'s own doc asks for: the controller starts a DFU detector
+  /// that polls on a one-second timer wherever libusb is present, and the
+  /// binding checks for pending timers *before* teardowns run. Disposing from
+  /// `addTearDown` passes on a Windows dev box and fails on Linux CI, which is
+  /// how this was found.
+  Future<DeviceController> openPrompt(WidgetTester tester) async {
     client = _OneFolder();
     final (device, _) = mountedDevice();
-    addTearDown(() => closeDevice(tester, device));
 
     tester.view.physicalSize = const Size(1200, 1600);
     tester.view.devicePixelRatio = 1;
@@ -129,6 +136,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('New folder'));
     await tester.pumpAndSettle();
+    return device;
   }
 
   TextButton confirm(WidgetTester tester) =>
@@ -142,7 +150,7 @@ void main() {
   );
 
   testWidgets('refuses a name the Flipper will not carry', (tester) async {
-    await openPrompt(tester);
+    final device = await openPrompt(tester);
 
     await tester.enterText(field, 'gate/one');
     await tester.pumpAndSettle();
@@ -150,24 +158,28 @@ void main() {
     expect(find.textContaining(r'\ / : * ? " < > |'), findsOneWidget);
     expect(confirm(tester).onPressed, isNull);
     expect(client.mkdirs, isEmpty);
+
+    await closeDevice(tester, device);
   });
 
   // The collision, which the storage rule knows nothing about and `mkdir`
   // answers with the same cause-free failure.
   testWidgets('refuses a folder that is already there', (tester) async {
-    await openPrompt(tester);
+    final device = await openPrompt(tester);
 
     await tester.enterText(field, 'badusb');
     await tester.pumpAndSettle();
 
     expect(find.text('A file with this name already exists'), findsOneWidget);
     expect(confirm(tester).onPressed, isNull);
+
+    await closeDevice(tester, device);
   });
 
   testWidgets('creates the folder when the name is one the device takes', (
     tester,
   ) async {
-    await openPrompt(tester);
+    final device = await openPrompt(tester);
 
     await tester.enterText(field, 'subghz');
     await tester.pumpAndSettle();
@@ -175,5 +187,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(client.mkdirs, ['/ext/subghz']);
+
+    await closeDevice(tester, device);
   });
 }
