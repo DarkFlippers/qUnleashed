@@ -74,7 +74,19 @@ jobs:
           # thing on the critical path before the builds - so without the
           # expression a push would pay for a full clone it never looks at.
           # It gets depth 1.
-          fetch-depth: ${{ github.event_name == 'workflow_dispatch' && 0 || 1 }}
+          #
+          # Quoted, and that is the whole of why this works. GitHub's `&&`/`||`
+          # yield operand values rather than booleans, and the number 0 is
+          # falsy there - so unquoted, `true && 0` is 0, `0 || 1` is 1, and a
+          # dispatch silently got the depth the push branch asks for. It
+          # shipped that way in #292 and stayed broken until the first dispatch
+          # after it: the tag check right below reads the commit count, and
+          # `derive_version.sh` refuses a shallow one rather than counting
+          # wrong, so the run died in `guard` before any platform built. A
+          # non-empty string is truthy, and checkout parses its inputs as
+          # strings anyway. ASSET_RETENTION above is the same idiom and is
+          # safe only because both of its values happen to be truthy.
+          fetch-depth: ${{ github.event_name == 'workflow_dispatch' && '0' || '1' }}
 
       - name: Cancel outside github.com
         if: ${{ github.server_url != 'https://github.com' }}
