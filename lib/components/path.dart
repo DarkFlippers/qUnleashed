@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io' as io;
 
 /// Joins [parts] with the host path separator, skipping empty segments.
@@ -193,4 +194,114 @@ String basename(String path) {
 String dirname(String path) {
   final slash = path.lastIndexOf('/');
   return slash < 0 ? '' : path.substring(0, slash);
+}
+
+/// Why a name the user typed cannot be written to the Flipper, or null when
+/// nothing is.
+///
+/// An enum rather than a message, so that the rule can live here - where the
+/// character set it reads already does - while the sentence lives where the
+/// localizations are. `NameRule.describe` is the mapping, and it is exhaustive,
+/// so a member added here is a compile error there rather than a name refused
+/// with nothing said. It began as `SeedNameProblem`, in a feature folder four
+/// directories down, which is why the prompts that write a user-named file to
+/// the device did not call it. #277
+enum DeviceNameProblem {
+  /// Nothing, or nothing but space. Every caller refuses this somehow -
+  /// `QNameDialog` by keeping its confirm button disabled and saying nothing,
+  /// the inline rename by closing its editor - so it is here to make the rule
+  /// total rather than because every caller renders it.
+  empty,
+
+  /// Longer than the caller's byte budget. In bytes, not characters: no name
+  /// this accepts can tell the two apart, because [nonAscii] is refused first,
+  /// but `length` got it wrong once at 126 bytes and relaxing that rule would
+  /// make them differ again.
+  tooLong,
+
+  /// One of the nine [reservedNameChars]. Separate from [controlCharacter]
+  /// because the message for this one can list what it refuses and the message
+  /// for that one cannot.
+  illegalCharacter,
+
+  /// A C0 control character or DEL, which a paste can carry in and a keyboard
+  /// cannot type.
+  controlCharacter,
+
+  /// Anything outside ASCII. Its own problem rather than [illegalCharacter]
+  /// because that message lists nine characters, none of which is the one the
+  /// user typed, and the fix is different: there is no escaping or quoting
+  /// that gets a Cyrillic letter onto the device, the name has to be written
+  /// in ASCII. See [isNonAsciiNameChar].
+  nonAscii,
+
+  /// Starts or ends with a dot.
+  dotEdge,
+}
+
+/// The longest name the Flipper's own storage will carry, in bytes.
+///
+/// FatFS's long-file-name entries hold 255 characters and the firmware builds
+/// with `_MAX_LFN 255` (`lib/fatfs/ffconf.h`). It is the default because it is
+/// the volume's limit rather than any feature's: a caller whose own layer is
+/// stricter passes its own number, as the Sub-GHz name does at 63.
+const deviceNameMaxBytes = 255;
+
+/// What is wrong with [raw] as one path segment on the Flipper.
+///
+/// These are the storage layer's rules, not the on-screen keyboard's. The
+/// Flipper's own text input offers `a-z`, `A-Z`, `0-9`, `_` and the space that
+/// its shifted `_` produces (`text_input.c`, `char_to_uppercase`), but a file
+/// written over RPC lands on a FAT volume and is listed by a browser that is
+/// perfectly happy with a dash too - so refusing one would be this app
+/// inventing a rule the device does not have.
+///
+/// Three layers own the refusals, and it is worth keeping them apart because
+/// they are re-derived every time someone asks whether a rule is too strict:
+///
+/// - the **volume**: the nine, which `create_name` refuses or splits on.
+/// - the **RPC layer**: the nine again, and everything outside ASCII, which is
+///   `path_contains_only_ascii`. See [isNonAsciiNameChar].
+/// - **this app**: [DeviceNameProblem.dotEdge] alone, which both layers below
+///   would accept. A leading dot hides the file from the Flipper's own
+///   browser - `browser_filter_by_name` in `file_browser_worker.c` skips any
+///   name starting with one while `hide_dot_files` is set - so the file writes
+///   and the user then cannot find what they just saved, which is worse than
+///   being told no. A trailing dot is refused for the weaker reason that it
+///   reads as a mistake, costs nothing to fix, and keeps the rule one sentence
+///   rather than two.
+///
+/// Takes one segment, not a path: a `/` in [raw] is one of
+/// [reservedNameChars] and is refused rather than read as a separator.
+///
+/// **The order is user-facing policy, not an implementation detail.** A name
+/// that breaks two rules has to report the one whose fix the next refusal
+/// would not undo: a long non-ASCII name reported as
+/// [DeviceNameProblem.tooLong] sends the user to shorten something that is
+/// refused at any length, and a Cyrillic name starting with a dot reported as
+/// [DeviceNameProblem.dotEdge] does one problem over. So every character rule
+/// runs before the length one, control characters before the nine - by the
+/// time [reservedNameCharsPattern] runs, the only thing it can be reporting is
+/// a character its message can name - and non-ASCII before both.
+/// `test/device_name_rule_test.dart` holds the order as a table.
+DeviceNameProblem? deviceNameProblem(
+  String raw, {
+  int maxBytes = deviceNameMaxBytes,
+}) {
+  final name = raw.trim();
+  if (name.isEmpty) return DeviceNameProblem.empty;
+  if (name.codeUnits.any(isControlNameChar)) {
+    return DeviceNameProblem.controlCharacter;
+  }
+  if (name.codeUnits.any(isNonAsciiNameChar)) {
+    return DeviceNameProblem.nonAscii;
+  }
+  if (reservedNameCharsPattern.hasMatch(name)) {
+    return DeviceNameProblem.illegalCharacter;
+  }
+  if (name.startsWith('.') || name.endsWith('.')) {
+    return DeviceNameProblem.dotEdge;
+  }
+  if (utf8.encode(name).length > maxBytes) return DeviceNameProblem.tooLong;
+  return null;
 }

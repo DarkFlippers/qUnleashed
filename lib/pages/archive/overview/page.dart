@@ -14,6 +14,7 @@ import '../../devices/device_scope.dart';
 import 'category/category_page.dart';
 import 'category/deleted_page.dart';
 import 'controller.dart';
+import 'rename_key.dart';
 import '../../../components/archive/category.dart';
 import '../../../components/archive/models/fap.dart';
 import '../../../components/archive/models/key.dart';
@@ -198,50 +199,8 @@ class _ArchivePageState extends State<ArchivePage> {
     );
   }
 
-  Future<void> _showRenameDialog(BuildContext context, ArchiveKey key) async {
-    final colors = context.appColors;
-    final ctrl = TextEditingController(text: key.name);
-    final newName = await showDialog<String>(
-      context: context,
-      builder: (c) => AlertDialog(
-        backgroundColor: colors.dialogBackground,
-        title: Text(
-          context.l10n.fmRename,
-          style: TextStyle(color: colors.dialogText),
-        ),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          style: TextStyle(color: colors.dialogText),
-          decoration: InputDecoration(
-            hintText: context.l10n.archiveFileName,
-            hintStyle: TextStyle(color: colors.textMuted),
-          ),
-          onSubmitted: (v) => Navigator.pop(c, v.trim()),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(c),
-            child: Text(context.l10n.commonCancel),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(c, ctrl.text.trim()),
-            child: Text(context.l10n.fmRename),
-          ),
-        ],
-      ),
-    );
-    ctrl.dispose();
-    if (newName != null && newName.isNotEmpty && newName != key.name) {
-      await _ctrl.renameKey(key, newName);
-      if (!context.mounted) return;
-      reportArchiveFailure(
-        context,
-        _ctrl.lastFailure,
-        context.l10n.archiveRenameFailed,
-      );
-    }
-  }
+  Future<void> _showRenameDialog(BuildContext context, ArchiveKey key) =>
+      promptRenameKey(context, controller: _ctrl, key: key);
 
   @override
   Widget build(BuildContext context) {

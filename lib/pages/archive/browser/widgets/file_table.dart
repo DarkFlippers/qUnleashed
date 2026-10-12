@@ -2,6 +2,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../components/cancel_button.dart';
+import '../../../../components/name_rule.dart';
+import '../../../../services/localization/l10n.dart';
+import '../../../../components/notification.dart';
 import '../../../../theme/theme.dart';
 import '../../../../components/filelist/progress_fill.dart';
 import '../columns.dart';
@@ -191,6 +194,17 @@ class _FileTableRowState extends State<FileTableRow> {
     final newName = _renameCtrl.text.trim();
     if (newName.isEmpty || newName == widget.entry.name) {
       setState(() => _editing = false);
+      return;
+    }
+    // The same rule the dialogs use, said in a toast because a row has nowhere
+    // to put an error message. Without it the name went to `rename`, which
+    // answered with a failure that could not say which character was wrong.
+    // #277
+    final problem = deviceNameRule.describe(context.l10n, newName);
+    if (problem != null) {
+      context.showNotification(problem, type: QNotificationType.error);
+      // The editor stays open on the name the user typed, which is the only
+      // place they can fix it.
       return;
     }
     setState(() {

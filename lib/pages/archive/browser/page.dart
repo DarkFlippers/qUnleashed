@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../components/navigation.dart';
+import '../../../components/dialogs/name.dart';
 import '../../../theme/theme.dart';
 
 import 'package:flipperlib/flipperlib.dart';
@@ -680,12 +681,17 @@ class _FileManagerPageState extends State<FileManagerPage> {
   }
 
   Future<void> _createFolder() async {
-    final name = await _promptText(
-      context.l10n.fmNewFolder,
+    // QNameDialog rather than the hand-rolled prompt this had: that one
+    // validated nothing, so `gate/one` went to `mkdir` and came back as
+    // "Could not create the folder" with no cause named. #277
+    final name = await QNameDialog.show(
+      context,
+      title: context.l10n.fmNewFolder,
       hintText: context.l10n.fmFolderName,
+      confirmLabel: context.l10n.fmCreate,
     );
-    if (name == null || name.trim().isEmpty) return;
-    final ok = await _ctrl.mkdir(name.trim());
+    if (name == null || name.isEmpty) return;
+    final ok = await _ctrl.mkdir(name);
     if (ok) await _ctrl.refresh();
     if (!mounted) return;
     if (!ok) {
@@ -794,42 +800,6 @@ class _FileManagerPageState extends State<FileManagerPage> {
           ),
         ) ??
         false;
-  }
-
-  Future<String?> _promptText(
-    String title, {
-    String? initialValue,
-    String? hintText,
-  }) {
-    final controller = TextEditingController(text: initialValue);
-    final colors = context.appColors;
-    return showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: colors.dialogBackground,
-        title: Text(title, style: TextStyle(color: colors.dialogText)),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          style: TextStyle(color: colors.dialogText),
-          decoration: InputDecoration(
-            hintText: hintText,
-            hintStyle: TextStyle(color: colors.dialogMuted),
-          ),
-          onSubmitted: (v) => Navigator.pop(ctx, v),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(context.l10n.commonCancel),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, controller.text),
-            child: Text(context.l10n.fmCreate),
-          ),
-        ],
-      ),
-    );
   }
 
   void _showSortSheet() {

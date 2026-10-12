@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/localization/l10n.dart';
 import '../../theme/theme.dart';
+import '../name_rule.dart';
 
 /// Asks for one name, checked while it is typed.
 ///
@@ -25,6 +26,7 @@ class QNameDialog extends StatefulWidget {
   const QNameDialog({
     super.key,
     required this.title,
+    this.rule = deviceNameRule,
     this.initial = '',
     this.validate,
     this.helperText,
@@ -36,16 +38,30 @@ class QNameDialog extends StatefulWidget {
 
   final String title;
 
+  /// What the name may be. Defaults to what the Flipper's storage will carry,
+  /// which is the answer for every prompt that writes to the device; a caller
+  /// writing through a layer with a narrower limit passes its own budget.
+  ///
+  /// A value and not a callback, which is what this took before: the rule is
+  /// the thing callers were each inventing, so handing it over as data is what
+  /// stops the ninth caller writing the ninth rule. #278
+  final NameRule rule;
+
   /// What the field starts with, selected rather than merely filled.
   final String initial;
 
-  /// What is wrong with the typed value, in the user's language, or null when
-  /// nothing is.
+  /// One more thing wrong with the typed value, past what [rule] already
+  /// judges: that the name is taken, or a convention only this caller has.
   ///
   /// Called on every keystroke, so it does no I/O - it judges the characters,
-  /// not whether the name is free. Gets the text **as typed**, untrimmed, so a
-  /// rule that cares about surrounding space can see it; a rule that does not
-  /// trims for itself, as the caller's own check will have to anyway.
+  /// not whether the name is free, unless the caller already knows the names
+  /// that are. Gets the text **as typed**, untrimmed, so a rule that cares
+  /// about surrounding space can see it; a rule that does not trims for
+  /// itself, as the caller's own check will have to anyway.
+  ///
+  /// Runs after [rule], so a name breaking both is reported as the storage
+  /// problem first: that one is refused whatever it is called, where "taken"
+  /// is fixed by a different name.
   ///
   /// It is never asked about an empty field - the dialog refuses that itself,
   /// and says nothing about it.
@@ -86,6 +102,7 @@ class QNameDialog extends StatefulWidget {
   static Future<String?> show(
     BuildContext context, {
     required String title,
+    NameRule rule = deviceNameRule,
     String initial = '',
     String? Function(String value)? validate,
     String? helperText,
@@ -97,6 +114,7 @@ class QNameDialog extends StatefulWidget {
     context: context,
     builder: (_) => QNameDialog(
       title: title,
+      rule: rule,
       initial: initial,
       validate: validate,
       helperText: helperText,
@@ -148,7 +166,9 @@ class _QNameDialogState extends State<QNameDialog> {
   /// keystroke and is the caller's code.
   ({String? message, bool valid}) get _check {
     if (_name.text.trim().isEmpty) return (message: null, valid: false);
-    final message = widget.validate?.call(_name.text);
+    final message =
+        widget.rule.describe(context.l10n, _name.text) ??
+        widget.validate?.call(_name.text);
     return (message: message, valid: message == null);
   }
 

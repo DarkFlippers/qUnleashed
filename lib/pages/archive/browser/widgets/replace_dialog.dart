@@ -4,6 +4,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../../../../components/format.dart';
 import '../../../../components/path.dart';
 import '../../../../services/localization/l10n.dart';
+import '../../../../components/name_rule.dart';
 import '../../../../theme/theme.dart';
 import '../controller.dart';
 import 'file_row.dart';
@@ -128,12 +129,17 @@ class _ReplaceFilesDialogState extends State<ReplaceFilesDialog> {
     setState(() => _renaming = true);
   }
 
+  /// What is wrong with the typed name, or null when nothing is.
+  ///
+  /// The storage rule first and the collision second: a name the device will
+  /// not take is refused whatever else is on the card, where "taken" is fixed
+  /// by choosing another name. Its own rule used to be `empty / . / .. /
+  /// contains '/'`, which let a tab, a `?` or a 300-byte name straight through
+  /// to an RPC write. #277
   String? _problem(L10n l) {
-    final name = _name.text.trim();
-    if (name.isEmpty || name == '.' || name == '..' || name.contains('/')) {
-      return l.fmConflictRenameInvalid;
-    }
-    if (_isTaken(name)) return l.fmConflictRenameTaken;
+    final problem = deviceNameRule.describe(l, _name.text);
+    if (problem != null) return problem;
+    if (_isTaken(_name.text.trim())) return l.fmConflictRenameTaken;
     return null;
   }
 
