@@ -47,12 +47,13 @@ topic.
 
 You do nothing for this. Three things worth knowing:
 
-- **Its notes are the whole changelog**, re-published every time, because the
-  `dev` release is deleted and recreated on each push. That is the shape the
-  accumulating changelog is for — the page answers "what is new since the last
-  release you installed on purpose" — but nothing on it marks what is new in
-  *this* dev build. The build number and the commit on the first line are what
-  tell two dev builds apart.
+- **Its notes are what is new since the previous dev build**, under a
+  `## New in this build` heading, and every dev page ends with **All changes**
+  linking the changelog as it stood at the built commit. Most pushes add no
+  bullet, and those pages list their commit subjects instead.
+  `release_body.sh` owns every shape it can publish and the reasoning behind
+  them, and has a test suite — read it rather than inferring the rules from a
+  page.
 - A burst of commits builds only the newest. The older runs are cancelled, and
   that is deliberate — a dev build is disposable and the rolling release would
   have been overwritten anyway.
@@ -80,10 +81,11 @@ Four steps. The version is the only decision.
    buildable.
 3. **CI builds and publishes it.** All five platforms, a real release rather
    than a prerelease, marked latest, with **`CHANGELOG.md` as the release
-   notes**, `SHA256SUMS`, and a push notification to `app_release`. The rolling
-   `dev` prerelease is left alone. Check the changelog *before* tagging: it is
-   the release body, and no check runs on a tag push — `ci.yml` triggers on a
-   push to `main` and on pull requests only.
+   notes** (its `- Version:` line dropped, since the body's first line already
+   carries the version), `SHA256SUMS`, and a push notification to
+   `app_release`. The rolling `dev` prerelease is left alone. Check the
+   changelog *before* tagging: it is the release body, and no check runs on a
+   tag push — `ci.yml` triggers on a push to `main` and on pull requests only.
 4. **Open the next cycle immediately.** The release run opens a draft pull
    request that bumps `pubspec.yaml` and resets the changelog; set the version
    and merge it. This is not optional — see below.
@@ -238,6 +240,15 @@ Four refusals, with their text. The fifth, a version already published, has
 its own section above because it is the one you will meet routinely. Each is
 `derive_version.sh` saying the build would not have been what it claimed.
 
+`release_body.sh` refuses on its own account too, in the `publish` job, and its
+text is not listed here: the body it writes is prose rather than a build
+identity, so it prefers publishing the whole changelog with a `::warning::` or
+`::notice::` on the run to blocking a publish. Only three things stop it — a
+shallow checkout (same cause and remedy as the section below, different
+wording), a `GITHUB_SHA` that is not the checked-out commit, and a missing or
+malformed `GITHUB_*`. A red `publish` with none of the four texts below is one
+of those three; read its annotation, which names the variable or the remedy.
+
 ### The tag does not match pubspec
 
 ```
@@ -298,7 +309,19 @@ Re-running `publish` alone is safe: it reuses the artifacts from the first
 attempt, and the version and number it quotes come from the build job's
 outputs rather than from a fresh derivation, so the release cannot describe a
 build nobody made. That is the cheap option when the failure was in publishing
-itself.
+itself. On a **dev** build what the page then says depends on how far the first
+attempt got, and all three outcomes are fine:
+
+- It published. The first attempt retagged `dev` at this very commit, so the
+  re-run baselines against itself and the list is replaced by "Nothing new:
+  this is a rebuild of the commit the previous dev build came from".
+- It failed between clearing the old prerelease and publishing. `dev` is gone,
+  so the re-run publishes the whole changelog under a `::notice::`.
+- It failed before clearing. `dev` still names the previous build, and the
+  re-run produces the ordinary `## New in this build` list.
+
+The binaries and the link are unaffected in all three, and the next push
+restores the usual list.
 
 Re-run the **whole workflow** when the failure was in a build, or when you do
 not know which it was — the binaries then get the new slot as well as the
@@ -449,6 +472,7 @@ Honest list, so nobody waits for something that is not coming.
 | `.github/scripts/check_changelog.sh` | The changelog's shape, including that its version line agrees with pubspec. Its tests are beside it. |
 | `.github/scripts/open_next_cycle.sh` | The pubspec bump and changelog reset the release-day pull request carries. Its tests are beside it. |
 | `.github/scripts/check_linux_abi.sh` | The Linux runtime floor, checked after every Linux build. `--print-floor` states it. Its tests are beside it. |
+| `.github/scripts/release_body.sh` | What a release page says: the whole changelog for a release, what is new since the previous dev build for a dev one. Its tests are beside it. |
 | `.github/workflows/auto-release.yml` | The triggers, the five builds, the publish job, the rolling prerelease and the cycle opener. |
 | `lib/services/build_identity.dart` | How the app reads what was compiled in, and formats it for a person. |
 | `pubspec.yaml` | The version. Nothing else about the identity lives here — the build number is derived. |

@@ -3,7 +3,8 @@
 Status: Accepted (2026-10-09). Proposed 2026-10-01; the version is SemVer and
 §6 settled 2026-10-05; the `-dev` suffix kept wherever a person reads the
 version and dropped only from the two fields a store validates, and the
-automatic version bump replaced by two guards, 2026-10-08.
+automatic version bump replaced by two guards, 2026-10-08; §7's dev body
+narrowed to what is new since the previous dev build, 2026-10-12.
 
 Implemented, apart from `installerStore`. The three parts that waited on
 [0013](0013-observability-with-sentry.md)'s wiring landed with it: §5's Sentry
@@ -268,6 +269,27 @@ The channel step in `auto-release.yml` picks the topic and body, and it now
 asks `derive_version.sh` for the channel rather than testing the tag prefix
 itself (§4). The topic it chooses is unchanged.
 
+One tag with no history costs the page its own notes: the changelog accumulates
+until a stable release, so re-publishing it on every push said nothing about
+which build the reader was looking at. So a dev body names what has appeared in
+the changelog since the **previous dev build** and links the accumulated file
+for the rest.
+
+The baseline is the `dev` tag itself, which §7 already moves to each dev build's
+commit. What keeps it readable is the checkout rather than the step order: the
+job snapshots the tag locally before anything deletes the remote ref.
+`release_body.sh` owns that reasoning and every shape it publishes, including
+what the page says when the tag will not resolve; this section does not restate
+them.
+
+One consequence belongs here, because it is §7's and not the script's: a
+changelog diff is only defined between two revisions of **one** cycle, and
+nothing clears the `dev` tag when a release is cut - so the first dev build of a
+new cycle has a baseline from the previous one. The changelog's `- Version:`
+line is the only record of which cycle a revision belongs to, written by
+`open_next_cycle.sh` in the same commit as the reset and guarded on every push,
+so the comparison is conditioned on it.
+
 ## Rejected alternatives (and why)
 
 **Promoting one binary through the channels.** The channel it was built with
@@ -290,6 +312,16 @@ patch field: a fix to a shipped 0.14.0 has nowhere to go, since `0.14.1` is
 already the name of a dev build. It also bounds a cycle at 1000 commits, which
 the old formula would otherwise carry silently into the next minor, and leaves
 two builds of one commit sharing a number.
+
+**Clearing or retagging `dev` when a release is cut**, so that a dev baseline is
+never from another cycle. It would 404 the one link §7 exists to let somebody
+bookmark, from the release until the next push to `main` - and on release day
+`main` is red until the cycle-opener pull request merges, which is the single
+window where that cannot self-heal. It also only covers the path it is wired
+into: a release published by hand, a cancelled release run or a hand-deleted
+`dev` release produce the same cross-cycle baseline and would no longer be
+detected. Conditioning on the version line is a property of the two files and
+holds for all of them.
 
 **The tag as the source of the version.** A push to `main` has no tag, and
 TestFlight closes a version once it has shipped.
@@ -321,11 +353,12 @@ thing that matters is reading a release list at a glance. §5 has it.
   produce one code. Its regex should still be anchored: `beta-0.14.0-rc1`
   currently builds as `0.14.0`, silently claiming the identity of a release it
   is not.
-- `fetch-depth: 0` on every job that reads git for a version — the three build
-  jobs. `publish` takes a bare checkout and is right to: `--print-channel`
-  returns before anything touches git
-  and `publish`. `guard` takes it only on a dispatch, which is the one trigger
-  whose check reads history.
+- `fetch-depth: 0` on every job that reads git — the three build jobs for the
+  version, and `publish` since 2026-10-12, because `release_body.sh` resolves
+  the `dev` tag and reads the changelog at the commit it names. Before that
+  `publish` took a bare checkout and was right to: `--print-channel`, all it
+  then wanted, returns before anything touches git. `guard` takes it only on a
+  dispatch, which is the one trigger whose check reads history.
 - A push to `main` now builds five platforms, so the trigger carries a
   `paths-ignore` for documentation and store metadata. Translations are **not**
   in it: they are compiled in, so a translation-only push changes the binary.
