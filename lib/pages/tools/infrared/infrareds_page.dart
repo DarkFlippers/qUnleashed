@@ -74,6 +74,16 @@ class _IrInfraredsPageState extends State<IrInfraredsPage> {
   }
 
   Future<void> _open(IfrFileModel f) async {
+    // The tile below is already disabled while its own fetch runs, which is
+    // half of this repository's idiom and was all this had. The other half
+    // matters here: setState only schedules a rebuild, so two taps inside one
+    // frame both see the enabled tile - and this awaits a backend fetch before
+    // pushing, so the second one would fetch again and stack a second page.
+    //
+    // The same file, not any file: fetching a *different* one meanwhile is
+    // legitimate, and refusing it would leave an enabled tile that does
+    // nothing. #244.
+    if (_fetchingId == f.id) return;
     setState(() => _fetchingId = f.id);
     try {
       final content = await _api.getKeyContent(f.id);

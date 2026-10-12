@@ -91,7 +91,17 @@ class _FliblerProjectPageState extends State<FliblerProjectPage> {
     await _ctrl.build();
   }
 
+  // True while the app is being started on the device. Its sibling
+  // `sendToDevice` has guarded on the controller's `_uploading` all along; this
+  // one awaits `appStart` with a 15-second timeout and had nothing, so a second
+  // press started the app again and pushed a second remote control - two
+  // concurrent screen streams on one Flipper. The controller's `busy` cannot
+  // stand in: it covers loading, building and uploading, not launching. #244.
+  bool _launching = false;
+
   Future<void> _openOnDevice() async {
+    if (_launching) return;
+    setState(() => _launching = true);
     try {
       await _ctrl.launchOnDevice();
       if (!mounted) return;
@@ -119,10 +129,20 @@ class _FliblerProjectPageState extends State<FliblerProjectPage> {
         context.l10n.appOpenFailed('$e'),
         type: QNotificationType.error,
       );
+    } finally {
+      // Only when still mounted: nothing reads this once the State is gone,
+      // and setState after dispose throws. A launch that failed leaves the
+      // button pressable, which is the point of releasing it here.
+      if (mounted) setState(() => _launching = false);
     }
   }
 
   void _openConsole() {
+    // Nothing is fetched here - the console reads the assembler singleton - so
+    // the whole cost of a second tap is a second identical page to dismiss.
+    // Guarded anyway, because it is the same gesture and the same one line.
+    // #244.
+    if (!isTopRoute(context)) return;
     Navigator.of(context)
         .push(MaterialPageRoute(builder: (_) => const AssemblerConsolePage()));
   }
@@ -333,11 +353,16 @@ class _FliblerProjectPageState extends State<FliblerProjectPage> {
       return Row(
         children: [
           Expanded(
-            child: _bigButton(
-              context.l10n.fliblerOpenAction,
-              colors.accent,
-              _openOnDevice,
-            ),
+            // Progress rather than a dead button while the launch is in
+            // flight, which is what the loading and building branches above
+            // do with the same slot.
+            child: _launching
+                ? _bigProgress(context.l10n.fliblerOpenAction, colors.accent)
+                : _bigButton(
+                    context.l10n.fliblerOpenAction,
+                    colors.accent,
+                    _openOnDevice,
+                  ),
           ),
           const SizedBox(width: 12),
           _SquareAction(

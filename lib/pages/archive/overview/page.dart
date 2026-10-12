@@ -107,6 +107,9 @@ class _ArchivePageState extends State<ArchivePage> {
   }
 
   void _openFileManager(String initialPath) {
+    // The file manager lists the path in initState, so a second tap is a
+    // second listing as well as a second page. #244.
+    if (!isTopRoute(context)) return;
     final client = DeviceScope.of(context).client;
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -125,7 +128,9 @@ class _ArchivePageState extends State<ArchivePage> {
       return;
     }
     final ok = await _ctrl.launchFapFavorite(fav);
-    if (!mounted) return;
+    // Null is a launch of this path the previous tap already started; it owns
+    // both the remote control and the failure toast.
+    if (!mounted || ok == null) return;
     if (ok) {
       unawaited(openRoute(context, AppRoute.remoteControl));
     } else {

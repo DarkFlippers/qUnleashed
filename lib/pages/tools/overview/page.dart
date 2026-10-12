@@ -207,8 +207,17 @@ class ToolsPage extends StatelessWidget {
     if (onTap != null) return () => onTap(context);
     final routeBuilder = item.routeBuilder;
     if (routeBuilder != null) {
-      return () =>
-          Navigator.of(context).push(MaterialPageRoute(builder: routeBuilder));
+      return () {
+        // One tool page at a time. This is the card list for every tool, so
+        // the cost of a second tap is whatever the pushed page does on its own
+        // in initState - and the worst of those is Recover, which builds its
+        // own controller and calls start(), so `_running` is per-instance and
+        // guards nothing across two of them. Two runs both load the user's key
+        // dictionary and both write it back, so one run's recovered keys are
+        // lost. #244.
+        if (!isTopRoute(context)) return;
+        Navigator.of(context).push(MaterialPageRoute(builder: routeBuilder));
+      };
     }
     return null;
   }

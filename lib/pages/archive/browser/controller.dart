@@ -719,7 +719,38 @@ class FileManagerController extends ChangeNotifier {
 
   Future<void> refresh() => _task(_refresh);
 
+  /// Folders with a listing in flight.
+  ///
+  /// `_loading` has been here all along but nothing ever read it, so the
+  /// toolbar's own gate was the only thing stopping a folder being listed
+  /// twice over - and the retry buttons in both error panels pass `refresh`
+  /// straight through, as does any tap arriving while the first listing is
+  /// still out.
+  ///
+  /// A set of paths and not `if (_loading) return;`, which is what
+  /// `ArchiveController._syncCategory` can afford: `open()` moves `_path` and
+  /// then calls this, so a bare flag would make navigating into a folder while
+  /// a listing was out *skip the new folder's listing altogether* and leave
+  /// the previous folder's entries on screen under the new path. Worse than
+  /// the duplicate it set out to stop.
+  ///
+  /// What it does not settle: two listings of two different paths can still
+  /// overlap, and whichever lands last wins, which need not be the newer one.
+  /// Reachable by tapping two folders in quick succession rather than one
+  /// twice, so it is not this issue, and it is not introduced here. #244.
+  final Set<String> _listingFolders = {};
+
   Future<void> _refresh() async {
+    final path = _path;
+    if (!_listingFolders.add(path)) return;
+    try {
+      await _list(path);
+    } finally {
+      _listingFolders.remove(path);
+    }
+  }
+
+  Future<void> _list(String path) async {
     // Internal storage (`/int`) holds mostly dot-prefixed system files, so
     // reveal hidden entries automatically when first entering that root. The
     // user can still toggle them off afterwards.
@@ -733,7 +764,7 @@ class FileManagerController extends ChangeNotifier {
     _notify();
     try {
       final batch = await _client.storageList(
-        ListRequest(path: _path),
+        ListRequest(path: path),
         timeout: const Duration(seconds: 30),
       );
       final out = <RemoteEntry>[];
@@ -755,7 +786,7 @@ class FileManagerController extends ChangeNotifier {
       // listing it describes is on screen.
       _error = '$e';
       _entries = const [];
-      LogService.caught('[FileManager] list $_path failed: $e');
+      LogService.caught('[FileManager] list $path failed: $e');
     } finally {
       _loading = false;
       _notify();

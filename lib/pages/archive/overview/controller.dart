@@ -520,9 +520,40 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
     [for (final f in _fapFavorites) (path: f.remotePath, name: f.name)],
   );
 
+  /// Paths with a launch in flight.
+  ///
+  /// `appStart` has a 15-second timeout and both pages that call this stay
+  /// interactive throughout, so a second tap on the same card started the app
+  /// twice and pushed two remote controls - two concurrent screen streams on
+  /// one Flipper, since `RemoteSession`'s constructor starts the stream. Here
+  /// rather than in each page because the two pages that launch a favourite -
+  /// the archive overview and its favourites list - are handed the *same*
+  /// controller, so the second tap is as likely to land on the other page as
+  /// on the same one.
+  ///
+  /// Keyed on the path rather than a bare flag, for the reason the file manager
+  /// keys its own on one: launching two *different* apps in quick succession is
+  /// a thing a user does, and only the Flipper gets to refuse it. #244.
+  final Set<String> _launchingFaps = {};
+
   /// Starts a favorited app on the device by its full path. Returns whether the
   /// loader accepted the request; callers open the remote control on success.
-  Future<bool> launchFapFavorite(FapFavorite fav) async {
+  ///
+  /// Null means a launch of this path is already under way and this call did
+  /// nothing: that first call owns the outcome, so a caller must report
+  /// neither success nor failure for this one.
+  Future<bool?> launchFapFavorite(FapFavorite fav) async {
+    if (!_launchingFaps.add(fav.remotePath)) return null;
+    try {
+      return await _launchFapFavorite(fav);
+    } finally {
+      // Not notifyListeners: nothing on screen is drawn from this set. Cleared
+      // whatever happened, so a failed launch leaves the card tappable.
+      _launchingFaps.remove(fav.remotePath);
+    }
+  }
+
+  Future<bool> _launchFapFavorite(FapFavorite fav) async {
     _lastFailure = null;
     if (!_client.isConnected) return false;
     try {

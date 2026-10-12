@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../theme/theme.dart';
 import '../../../../components/filelist/sync_progress_bar.dart';
+import '../../../../components/navigation.dart';
 import '../../../../components/notification.dart';
 import '../../../../components/path.dart';
 
@@ -92,6 +93,11 @@ class _ProjectManagerPageState extends State<ProjectManagerPage> {
   }
 
   Future<void> _openEditor(PaintProject? project) async {
+    // Two editors on one project is the worst of these: each runs its own
+    // 1.2 s autosave timer against the same draft folder. The gallery *card*
+    // was already immune - it declares onDoubleTap, which absorbs the second
+    // click - but the New button and the sheet's Edit are not. #244.
+    if (!isTopRoute(context)) return;
     await Navigator.of(context)
         .push(MaterialPageRoute(builder: (_) => PaintPage(project: project)));
     // Returning from the editor may have created or updated a draft.

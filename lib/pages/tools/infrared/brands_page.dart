@@ -4,6 +4,7 @@ import '../../../services/localization/l10n.dart';
 import '../../../theme/theme.dart';
 
 import 'package:qunleashed/components/appbar.dart';
+import 'package:qunleashed/components/navigation.dart';
 
 import 'backend/infrared_backend_api.dart';
 import 'backend/infrared_backend_models.dart';
@@ -66,6 +67,9 @@ class _IrBrandsPageState extends State<IrBrandsPage> {
   }
 
   void _open(BrandModel b) {
+    // The pushed page fetches this brand's files in initState, so a second tap
+    // is a second request as well as a second page. #244.
+    if (!isTopRoute(context)) return;
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => IrInfraredsPage(category: widget.category, brand: b),

@@ -74,3 +74,30 @@ Future<T?> openRoute<T>(
   final navigator = Navigator.of(context);
   return replace ? navigator.pushReplacement(page) : navigator.push(page);
 }
+
+/// Whether [context]'s page is still the top of the navigator.
+///
+/// The guard for a handler whose whole effect is a synchronous push. A second
+/// tap on the card that pushed a page stacks an identical copy of it, and both
+/// have to be dismissed separately; where the pushed page fetches in
+/// `initState`, it also fetches twice. Once the first push has happened the
+/// pushing page is no longer current - during the transition as well as after
+/// it - so this answers no and the second tap does nothing.
+///
+/// A flag set in the handler cannot do this job here, because there is no await
+/// to hold it across: it would have to be cleared when the pushed route
+/// returns, which means keeping state for a question the navigator already
+/// answers.
+///
+/// Why the exposure exists at all: with no `pageTransitionsTheme` override,
+/// Windows, Linux and Android get the Zoom transition, whose incoming page is
+/// opaque from the first frame and absorbs the second click. macOS and iOS get
+/// the Cupertino slide, which leaves the control exposed for the whole
+/// transition - so an unguarded synchronous double-push is an Apple-only bug,
+/// and the one platform nobody double-clicks on. #244.
+///
+/// True when there is no [ModalRoute] - a widget pumped outside one, which is
+/// most widget tests. Refusing to push when the question cannot be answered
+/// would break navigation to stop a duplicate of it.
+bool isTopRoute(BuildContext context) =>
+    ModalRoute.of(context)?.isCurrent ?? true;

@@ -308,7 +308,26 @@ class _RemoteControlPageState extends State<RemoteControlPage>
     guarded('[Remote] connection dialog', () => promptConnectDevice(context)),
   );
 
+  // True from entering the settings action until its dialog has closed.
+  //
+  // `_mediaRemote.start()` reloads the preferences and re-arms the native
+  // session, and the action stays pressable throughout - so a second press
+  // started it twice and stacked a second settings dialog on the first, each
+  // reading the same store. `_copyScreenshot` below is the same shape with the
+  // guard this was missing. #244.
+  bool _openingWristSettings = false;
+
   Future<void> _openWristRemoteSettings() async {
+    if (_openingWristSettings) return;
+    setState(() => _openingWristSettings = true);
+    try {
+      await _wristRemoteSettings();
+    } finally {
+      if (mounted) setState(() => _openingWristSettings = false);
+    }
+  }
+
+  Future<void> _wristRemoteSettings() async {
     Object? startError;
     try {
       // Reconcile again on an explicit settings action. This re-arms a page

@@ -9,6 +9,7 @@ import 'package:qunleashed/components/format.dart';
 import 'package:qunleashed/components/icon.dart';
 import 'package:qunleashed/theme/colors/category.dart';
 
+import '../../../components/navigation.dart';
 import '../../../components/notification.dart';
 import 'controller.dart';
 import 'file_page.dart';
@@ -75,6 +76,9 @@ class _IrLibPageState extends State<IrLibPage> {
       );
       return;
     }
+    // Only the file branch: a directory tap moves the controller's path in
+    // place, so the second one is already a no-op at the same path. #244.
+    if (!isTopRoute(context)) return;
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => IrLibFilePage(controller: _ctrl, entry: entry),
