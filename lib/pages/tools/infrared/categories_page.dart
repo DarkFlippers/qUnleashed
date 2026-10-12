@@ -10,6 +10,7 @@ import '../../../theme/theme.dart';
 
 import 'package:qunleashed/components/appbar.dart';
 import 'package:qunleashed/components/icon.dart';
+import 'package:qunleashed/components/navigation.dart';
 
 import 'backend/infrared_backend_api.dart';
 import 'backend/infrared_backend_models.dart';
@@ -63,15 +64,16 @@ class _IrCategoriesPageState extends State<IrCategoriesPage> {
     }
   }
 
+  // Both pushed pages load in initState - the brand list from the backend, the
+  // IRDB browser from the device - so a second tap costs a request as well as a
+  // stacked page. #244.
   void _openCategory(DeviceCategory c) {
-    Navigator.of(context)
-        .push(MaterialPageRoute(builder: (_) => IrBrandsPage(category: c)));
+    pushPage(context, (_) => IrBrandsPage(category: c));
   }
 
   void _openIrdb() {
     final client = DeviceScope.of(context).client;
-    Navigator.of(context)
-        .push(MaterialPageRoute(builder: (_) => IrLibPage(client: client)));
+    pushPage(context, (_) => IrLibPage(client: client));
   }
 
   @override

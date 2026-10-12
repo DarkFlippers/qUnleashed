@@ -116,7 +116,7 @@ class _AppsManagerPageState extends State<AppsManagerPage> {
   void _onSort(String key) => setState(() => _sort.select(key));
 
   Future<void> _launch(InstalledApp app) =>
-      launchApp(context, () => _device.launch(app));
+      launchApp(context, () => _device.launch(app), target: app.path);
 
   Future<bool> _confirm(String title, String body) {
     return QConfirmDialog.show(context, title: title, message: body);

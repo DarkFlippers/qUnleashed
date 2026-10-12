@@ -9,6 +9,7 @@ import 'package:qunleashed/components/format.dart';
 import 'package:qunleashed/components/icon.dart';
 import 'package:qunleashed/theme/colors/category.dart';
 
+import '../../../components/navigation.dart';
 import '../../../components/notification.dart';
 import 'controller.dart';
 import 'file_page.dart';
@@ -75,11 +76,14 @@ class _IrLibPageState extends State<IrLibPage> {
       );
       return;
     }
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => IrLibFilePage(controller: _ctrl, entry: entry),
-      ),
-    );
+    // Only the file branch, and the directory one is not covered rather than
+    // not affected: `openPath` re-lists, and the cache it can short-circuit on
+    // is not populated until the first listing lands, so a second tap on a
+    // folder does fetch again. It replaces the view instead of stacking on it,
+    // which is why it is the lesser half and why a push guard cannot answer it
+    // - the page is still on top. It wants what the file manager's listing got
+    // and has not had it. #244.
+    pushPage(context, (_) => IrLibFilePage(controller: _ctrl, entry: entry));
   }
 
   @override

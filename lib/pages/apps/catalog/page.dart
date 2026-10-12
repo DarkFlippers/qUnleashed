@@ -140,14 +140,16 @@ class _CatalogViewState extends State<CatalogView> {
     openRoute(context, AppRoute.assemblerConsole);
   }
 
+  // The detail page fetches the app in initState, so a second tap is a second
+  // request as well as a second page. Found by the push-site census rather
+  // than by the audit in #244, which did not reach this file.
   void _openApp(AppCard app) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => AppDetailPage(
-          alias: app.alias,
-          controller: _ctrl,
-          knownCategory: _ctrl.categoryFor(app),
-        ),
+    pushPage(
+      context,
+      (_) => AppDetailPage(
+        alias: app.alias,
+        controller: _ctrl,
+        knownCategory: _ctrl.categoryFor(app),
       ),
     );
   }

@@ -154,7 +154,30 @@ class _AtpInstallPageState extends State<AtpInstallPage> {
     }
   }
 
+  /// Entries whose action sheet is being prepared, or is open.
+  ///
+  /// The sheet cannot be shown until the `.fap` has been read off disk and
+  /// parsed, and the row stays tappable for as long as that takes - so two taps
+  /// read the file twice and stacked two identical sheets, each to be dismissed
+  /// separately. The release waits for the sheet to close, because showing it
+  /// is awaited; that is wider than the bug needs and costs nothing, since a
+  /// modal sheet already covers the row. Keyed on the entry, because preparing
+  /// a sheet for a different app meanwhile is no worse than preparing the first
+  /// one. #244.
+  final Set<String> _preparingSheet = {};
+
   Future<void> _showActions(AtpEntry entry) async {
+    if (!_preparingSheet.add(entry.appId)) return;
+    try {
+      await _showActionsFor(entry);
+    } finally {
+      // Not in setState: no row is drawn from this. Cleared even once the page
+      // has gone, so an entry left in the set cannot wedge a later tap.
+      _preparingSheet.remove(entry.appId);
+    }
+  }
+
+  Future<void> _showActionsFor(AtpEntry entry) async {
     final colors = context.appColors;
     final card = AppCard.fromAtp(entry, api: _atp.block?.api ?? '');
     final action = _actionFor(entry);
@@ -239,7 +262,7 @@ class _AtpInstallPageState extends State<AtpInstallPage> {
   Future<void> _launch(AtpEntry entry) {
     final path =
         _backend.manifests.byAlias(entry.appId)?.path ?? entry.installPath;
-    return launchApp(context, () => _engine.launchPath(path));
+    return launchApp(context, () => _engine.launchPath(path), target: path);
   }
 
   @override

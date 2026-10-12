@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../theme/theme.dart';
 import '../../../../components/filelist/sync_progress_bar.dart';
+import '../../../../components/navigation.dart';
 import '../../../../components/notification.dart';
 import '../../../../components/path.dart';
 
@@ -92,8 +93,13 @@ class _ProjectManagerPageState extends State<ProjectManagerPage> {
   }
 
   Future<void> _openEditor(PaintProject? project) async {
-    await Navigator.of(context)
-        .push(MaterialPageRoute(builder: (_) => PaintPage(project: project)));
+    // Two editors on one project each run their own 1.2 s autosave timer
+    // against the same draft folder, which is the harm here. Two editors on
+    // *New* do not: each mints its own draft id, so that one costs two stray
+    // drafts rather than a clobber. The gallery card was already immune to
+    // both - it declares onDoubleTap, which absorbs the second click - and the
+    // sheet's Edit and the New button are the doors that were not. #244.
+    await pushPage(context, (_) => PaintPage(project: project));
     // Returning from the editor may have created or updated a draft.
     await _ctrl.loadAll(silent: true);
   }

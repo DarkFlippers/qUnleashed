@@ -84,27 +84,49 @@ class _PulsePlotterPageState extends State<PulsePlotterPage> {
     return PlotData(centerFreqHz: frequency, pulses: pulses);
   }
 
+  // True while the file picker is open.
+  //
+  // `_loading` gates both buttons, but it is armed inside `_handleBytes` -
+  // *after* the picker returns - which is the too-late guard the firmware
+  // button had before #250. For the picker's whole lifetime both buttons
+  // stayed enabled and this handler re-entrant, so a second press opened a
+  // second dialog. The payload is nothing like firmware's; the shape is
+  // identical. #244.
+  bool _picking = false;
+
   Future<void> _pickFile() async {
-    final result = await FilePicker.platform.pickFiles(withData: true);
-    if (result == null) return;
-    final file = result.files.single;
-    final bytes = file.bytes;
-    if (bytes == null) {
-      if (mounted) {
-        context.showNotification(
-          l10n.plotReadFailed,
-          type: QNotificationType.error,
-        );
+    if (_picking) return;
+    setState(() => _picking = true);
+    try {
+      final result = await FilePicker.platform.pickFiles(withData: true);
+      if (result == null) return;
+      final file = result.files.single;
+      final bytes = file.bytes;
+      if (bytes == null) {
+        if (mounted) {
+          context.showNotification(
+            l10n.plotReadFailed,
+            type: QNotificationType.error,
+          );
+        }
+        return;
       }
-      return;
+      // The picker is modal to the OS and not to Flutter, so the page behind
+      // it can be left while it is open - and setState after dispose throws.
+      // The same hole was found in the firmware button while testing #250.
+      if (!mounted) return;
+      setState(() {
+        _fileName = file.name;
+        _data = null;
+        _signals = const [];
+        _current = null;
+      });
+      await _handleBytes(bytes);
+    } finally {
+      // Every exit above is a `return`, which a finally covers - so the guard
+      // is released without a second method to hold the body.
+      if (mounted) setState(() => _picking = false);
     }
-    setState(() {
-      _fileName = file.name;
-      _data = null;
-      _signals = const [];
-      _current = null;
-    });
-    await _handleBytes(bytes);
   }
 
   void _onSelectSignal(IrSignal? signal) {
@@ -130,7 +152,7 @@ class _PulsePlotterPageState extends State<PulsePlotterPage> {
           QPageAppBarAction(
             tooltip: context.l10n.plotOpenFile,
             icon: const Icon(Icons.folder_open_outlined),
-            onPressed: _loading ? null : _pickFile,
+            onPressed: _loading || _picking ? null : _pickFile,
           ),
         ],
       ),
@@ -229,7 +251,7 @@ class _PulsePlotterPageState extends State<PulsePlotterPage> {
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton.icon(
-                    onPressed: _loading ? null : _pickFile,
+                    onPressed: _loading || _picking ? null : _pickFile,
                     icon: const Icon(Icons.file_upload_outlined, size: 20),
                     label: Text(context.l10n.plotSelectFile),
                     style: FilledButton.styleFrom(

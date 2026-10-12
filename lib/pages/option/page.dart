@@ -93,7 +93,9 @@ class SettingsPage extends StatelessWidget {
     if (page == null) {
       return () => openRoute(context, category.route!);
     }
-    return () => Navigator.of(context).push(MaterialPageRoute(builder: page));
+    // Same shape as the tools card list, and guarded for the same reason: a
+    // second tap stacks an identical settings page. #244.
+    return () => pushPage(context, page);
   }
 
   @override

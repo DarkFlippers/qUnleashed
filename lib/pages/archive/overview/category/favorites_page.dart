@@ -234,7 +234,8 @@ class _FavoritesPageState extends State<FavoritesPage> {
       return;
     }
     final ok = await _ctrl.launchFapFavorite(fav);
-    if (!mounted) return;
+    // Null: see launchFapFavorite. The tap that started it owns the outcome.
+    if (!mounted || ok == null) return;
     if (ok) {
       unawaited(openRoute(context, AppRoute.remoteControl));
     } else {

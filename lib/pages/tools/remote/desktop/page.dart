@@ -308,7 +308,30 @@ class _RemoteControlPageState extends State<RemoteControlPage>
     guarded('[Remote] connection dialog', () => promptConnectDevice(context)),
   );
 
+  // True from entering the settings action until its dialog has closed.
+  //
+  // `_mediaRemote.start()` re-arms the native session - and reloads the
+  // preferences, but only after a load that failed, since `ensureLoaded`
+  // memoizes the one that worked. The action stayed pressable throughout, so a
+  // second press re-synced the native state and stacked a second settings
+  // dialog on the first, both editing the same store. `_copyScreenshot` below
+  // is the same shape with the guard this was missing - including handing the
+  // flag to the action, which the first draft of this left out, so the press
+  // was refused with nothing on screen to show it. #244.
+  bool _openingWristSettings = false;
+
   Future<void> _openWristRemoteSettings() async {
+    if (_openingWristSettings) return;
+    setState(() => _openingWristSettings = true);
+    try {
+      await _wristRemoteSettings();
+    } finally {
+      if (mounted) setState(() => _openingWristSettings = false);
+    }
+  }
+
+  /// The body, with no guard: call [_openWristRemoteSettings].
+  Future<void> _wristRemoteSettings() async {
     Object? startError;
     try {
       // Reconcile again on an explicit settings action. This re-arms a page
@@ -461,7 +484,10 @@ class _RemoteControlPageState extends State<RemoteControlPage>
       onCancelGif: _cancelGifRecording,
       onHoldBegin: _onHoldBegin,
       onHoldEnd: _onHoldEnd,
-      onWristRemoteSettings: _mediaRemote.supported
+      // Null while one is opening, so the refused press is visible rather than
+      // merely refused - `savingScreenshot` above does the same job for the
+      // two screenshot actions.
+      onWristRemoteSettings: _mediaRemote.supported && !_openingWristSettings
           ? _openWristRemoteSettings
           : null,
     );
@@ -510,7 +536,12 @@ class _RemoteControlPageState extends State<RemoteControlPage>
                     if (_mediaRemote.supported)
                       IconButton(
                         tooltip: context.l10n.wristRemoteMappingTitle,
-                        onPressed: _openWristRemoteSettings,
+                        // Gated like the wide layout's action below: the two
+                        // entry points are the same handler, and only one of
+                        // them showed the refusal.
+                        onPressed: _openingWristSettings
+                            ? null
+                            : _openWristRemoteSettings,
                         icon: const Icon(Icons.watch_outlined),
                       ),
                     const SizedBox(width: 8),

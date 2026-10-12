@@ -38,18 +38,17 @@ class ArchivePage extends StatefulWidget {
 class _ArchivePageState extends State<ArchivePage> {
   ArchiveController get _ctrl => widget.controller;
 
+  // Both of these load in initState - the category page its metadata, the
+  // deleted page its list - and both were missed by the first pass over this
+  // file, which guarded the storage cards two methods below and left the
+  // category cards above them alone. The push-site census is what found them.
+  // #244.
   void _openCategory(ArchiveCategory cat) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => CategoryPage(controller: _ctrl, category: cat),
-      ),
-    );
+    pushPage(context, (_) => CategoryPage(controller: _ctrl, category: cat));
   }
 
   void _openDeleted() {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => DeletedPage(controller: _ctrl)));
+    pushPage(context, (_) => DeletedPage(controller: _ctrl));
   }
 
   Widget _categoriesCard(BuildContext context) {
@@ -107,12 +106,12 @@ class _ArchivePageState extends State<ArchivePage> {
   }
 
   void _openFileManager(String initialPath) {
+    // The file manager lists the path in initState, so a second tap is a
+    // second listing as well as a second page. #244.
     final client = DeviceScope.of(context).client;
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) =>
-            FileManagerPage(client: client, initialPath: initialPath),
-      ),
+    pushPage(
+      context,
+      (_) => FileManagerPage(client: client, initialPath: initialPath),
     );
   }
 
@@ -125,7 +124,8 @@ class _ArchivePageState extends State<ArchivePage> {
       return;
     }
     final ok = await _ctrl.launchFapFavorite(fav);
-    if (!mounted) return;
+    // Null: see launchFapFavorite. The tap that started it owns the outcome.
+    if (!mounted || ok == null) return;
     if (ok) {
       unawaited(openRoute(context, AppRoute.remoteControl));
     } else {
