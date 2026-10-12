@@ -66,7 +66,7 @@ class _PromptVisitor extends RecursiveAstVisitor<void> {
 }
 
 List<int> _promptsIn(CompilationUnit unit, String path) {
-  if (kExempt.any(path.replaceAll(r'\', '/').endsWith)) return const [];
+  if (isExempt(path, kExempt)) return const [];
   final visitor = _PromptVisitor(
     (offset) => unit.lineInfo.getLocation(offset).lineNumber,
   );

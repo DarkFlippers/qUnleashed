@@ -22,12 +22,12 @@ class NameRule {
   /// The budget in **bytes**, named at the call site so the unit cannot be
   /// mistaken for a character count.
   ///
-  /// Both asserts are checked when the compiler evaluates a `const` rule,
-  /// which is every rule in `lib/`, so a bad budget is a build error rather
-  /// than a prompt that behaves oddly. The upper one closes the one direction
-  /// in which this type could put #277 back: a budget wider than the volume
-  /// accepts a name the volume will not, which is a write that fails with
-  /// nothing useful said.
+  /// Both asserts are checked by the compiler wherever the budget is a
+  /// constant, which is every rule here except the archive rename's - that one
+  /// subtracts the extension the controller will append, so it is evaluated
+  /// per key. The upper assert closes the one direction in which this type
+  /// could put #277 back: a budget wider than the volume accepts a name the
+  /// volume will not, which is a write that fails with nothing useful said.
   const NameRule.ofBytes(this.maxBytes)
     : assert(maxBytes > 0, 'a rule that refuses every name is not a rule'),
       assert(
@@ -38,6 +38,15 @@ class NameRule {
   /// How many bytes the name may run to, for the layer this caller writes
   /// through.
   final int maxBytes;
+
+  /// What is wrong with [value], as the rule's own answer.
+  ///
+  /// Beside [describe] because two callers need the problem rather than the
+  /// sentence: `SeedController` logs it and turns it into a `SeedFailure`, and
+  /// without this the Sub-GHz feature had to keep a second spelling of its own
+  /// budget to get at it.
+  DeviceNameProblem? check(String value) =>
+      deviceNameProblem(value, maxBytes: maxBytes);
 
   /// What is wrong with [value], in the user's language, or null when nothing
   /// is.
@@ -52,18 +61,17 @@ class NameRule {
   /// Takes the text as typed. [deviceNameProblem] trims before judging, which
   /// is the same thing the dialog's result does, so a name is never refused
   /// for space the caller will not keep.
-  String? describe(L10n l10n, String value) =>
-      switch (deviceNameProblem(value, maxBytes: maxBytes)) {
-        null => null,
-        DeviceNameProblem.empty => l10n.commonNameEmpty,
-        DeviceNameProblem.tooLong => l10n.commonNameTooLong(maxBytes),
-        DeviceNameProblem.illegalCharacter => l10n.commonNameIllegal(
-          reservedNameCharsSpelled,
-        ),
-        DeviceNameProblem.controlCharacter => l10n.commonNameControlChar,
-        DeviceNameProblem.nonAscii => l10n.commonNameNonAscii,
-        DeviceNameProblem.dotEdge => l10n.commonNameDotEdge,
-      };
+  String? describe(L10n l10n, String value) => switch (check(value)) {
+    null => null,
+    DeviceNameProblem.empty => l10n.commonNameEmpty,
+    DeviceNameProblem.tooLong => l10n.commonNameTooLong(maxBytes),
+    DeviceNameProblem.illegalCharacter => l10n.commonNameIllegal(
+      reservedNameCharsSpelled,
+    ),
+    DeviceNameProblem.controlCharacter => l10n.commonNameControlChar,
+    DeviceNameProblem.nonAscii => l10n.commonNameNonAscii,
+    DeviceNameProblem.dotEdge => l10n.commonNameDotEdge,
+  };
 }
 
 /// The rule for a name written straight to the Flipper's storage: everything

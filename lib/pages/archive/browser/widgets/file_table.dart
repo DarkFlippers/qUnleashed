@@ -361,11 +361,9 @@ class _FileTableRowState extends State<FileTableRow> {
   Widget _trailing(QAppColors colors) {
     if (_renaming) return _spinner(colors);
     if (_editing) {
-      // Both, because a refused name keeps the editor open: with only the
-      // check button, a user who pasted a name the device will not take could
-      // tap it, read the toast, tap it again, and find nothing on screen
-      // saying how to back out. Clearing the field closes it too, which is
-      // not something anyone would guess.
+      // Both, because a refused name keeps the editor open, and with only the
+      // check button there was nothing on screen saying how to back out.
+      // Clearing the field closes it too, which nobody would guess.
       return Row(
         mainAxisSize: MainAxisSize.min,
         children: [

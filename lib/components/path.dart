@@ -264,6 +264,22 @@ enum DeviceNameProblem {
 /// number, as the Sub-GHz name does at 63.
 const deviceNameMaxBytes = 255;
 
+/// The budget for a base name that [extension] will be appended to, dot
+/// included.
+///
+/// Here rather than at the prompt that needs it, because the prompt is not
+/// where the extension is added: the archive controller composes
+/// `'$name.$extension'` and the field holds only the first half, so a prompt
+/// computing this for itself is reverse-engineering another layer's
+/// composition - and the arithmetic goes quietly wrong the day that layer
+/// appends anything else. #277
+///
+/// Counted through UTF-8 like every other budget here, even though no
+/// extension in this app is anything but ASCII: the one place a byte count
+/// must not be a character count is the type whose whole discipline is bytes.
+int deviceNameBudgetFor(String extension) =>
+    deviceNameMaxBytes - utf8.encode(extension).length - 1;
+
 /// What is wrong with [raw] as one path segment on the Flipper.
 ///
 /// These are the storage layer's rules, not the on-screen keyboard's. The
@@ -273,24 +289,21 @@ const deviceNameMaxBytes = 255;
 /// perfectly happy with a dash too - so refusing one would be this app
 /// inventing a rule the device does not have.
 ///
-/// Three layers own the refusals, and it is worth keeping them apart because
-/// they are re-derived every time someone asks whether a rule is too strict:
+/// Three layers own the refusals, and which owns what is worth keeping
+/// straight because it is re-derived every time someone asks whether a rule is
+/// too strict. Two of them are described where their characters are:
+/// [reservedNameChars] for the volume's, [isNonAsciiNameChar] for the RPC
+/// layer's - and it is eight of the nine there, not nine, because `/` has
+/// already been split on by the time it looks.
 ///
-/// - the **volume**: the nine, which `create_name` refuses or splits on, and
-///   DEL.
-/// - the **RPC layer**: eight of the nine - [reservedNameChars] minus the `/`
-///   it has already split on - plus everything outside `0x20`-`0x7e`, which is
-///   both the non-ASCII half and the control range.
-///   `path_contains_only_ascii` is the one function that owns all of it. See
-///   [isNonAsciiNameChar].
-/// - **this app**: [DeviceNameProblem.dotEdge] alone, which both layers below
-///   would accept. A leading dot hides the file from the Flipper's own
-///   browser - `browser_filter_by_name` in `file_browser_worker.c` skips any
-///   name starting with one while `hide_dot_files` is set - so the file writes
-///   and the user then cannot find what they just saved, which is worse than
-///   being told no. A trailing dot is refused for the weaker reason that it
-///   reads as a mistake, costs nothing to fix, and keeps the rule one sentence
-///   rather than two.
+/// The third is this app's own, and nothing else here states it:
+/// [DeviceNameProblem.dotEdge], which both layers below would accept. A
+/// leading dot hides the file from the Flipper's own browser -
+/// `browser_filter_by_name` in `file_browser_worker.c` skips any name starting
+/// with one while `hide_dot_files` is set - so the file writes and the user
+/// then cannot find what they just saved, which is worse than being told no. A
+/// trailing dot is refused for the weaker reason that it reads as a mistake,
+/// costs nothing to fix, and keeps the rule one sentence rather than two.
 ///
 /// Takes one segment, not a path: a `/` in [raw] is one of
 /// [reservedNameChars] and is refused rather than read as a separator.
@@ -300,12 +313,12 @@ const deviceNameMaxBytes = 255;
 /// would not undo: a long non-ASCII name reported as
 /// [DeviceNameProblem.tooLong] sends the user to shorten something that is
 /// refused at any length, and a Cyrillic name starting with a dot reported as
-/// [DeviceNameProblem.dotEdge] does one problem over. So the order is: a control character first,
-/// because its message is the only one naming something the user cannot see;
-/// then non-ASCII; then the nine, by which point
-/// [reservedNameCharsPattern] can only be reporting a character its message
-/// can name; then the dot rule; and the length last of all.
-/// `test/device_name_rule_test.dart` holds that order as a table.
+/// [DeviceNameProblem.dotEdge] does one problem over. So the order is: a
+/// control character first, for the reason [isControlNameChar] gives; then
+/// non-ASCII; then the nine; then the dot rule; and the length last of all.
+/// `test/device_name_rule_test.dart` holds that order as a table, with the
+/// reasoning for each pair.
+///
 /// [maxBytes] is required rather than defaulted: no caller in `lib/` wants
 /// "whatever the volume takes" without saying so, and a forgotten argument
 /// would quietly mean 255 - which for a Sub-GHz name is one that writes fine

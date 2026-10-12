@@ -540,7 +540,7 @@ class SeedController extends ChangeNotifier {
     final result = _result;
     if (!canSave || capture == null || result == null) return;
 
-    final problem = SeedSubFile.checkBaseName(baseName);
+    final problem = SeedSubFile.nameRule.check(baseName);
     if (problem != null) {
       // Its own failure rather than a write that fails, so the user is told
       // which rule and can act on it. For the non-ASCII arm the Flipper would

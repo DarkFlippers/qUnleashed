@@ -138,11 +138,9 @@ class _ReplaceFilesDialogState extends State<ReplaceFilesDialog> {
 
   /// What is wrong with the typed name, or null when nothing is.
   ///
-  /// The storage rule first and the collision second: a name the device will
-  /// not take is refused whatever else is on the card, where "taken" is fixed
-  /// by choosing another name. Its own rule used to be `empty / . / .. /
-  /// contains '/'`, which let a tab, a `?` or a 300-byte name straight through
-  /// to an RPC write. #277
+  /// Its own rule used to be `empty / . / .. / contains '/'`, which let a tab,
+  /// a `?` or a 300-byte name straight through to an RPC write. The storage
+  /// rule comes first for the reason `QNameDialog.validate` gives. #277
   String? _problem(L10n l) {
     final problem = deviceNameRule.describe(l, _name.text);
     if (problem != null) return problem;

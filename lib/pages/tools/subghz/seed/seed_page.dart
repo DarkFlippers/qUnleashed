@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 
 import '../../../../components/dialogs/confirm.dart';
 import '../../../../components/dialogs/name.dart';
-import '../../../../components/name_rule.dart';
 import '../../../../components/notification.dart';
 import '../../../../services/guarded.dart';
 import '../../../../services/localization/l10n.dart';
@@ -87,7 +86,7 @@ class _SeedPageState extends State<SeedPage> {
       initial: suggested,
       // The Sub-GHz app's limit, not the volume's: everything else about the
       // rule is the device's and is the default.
-      rule: const NameRule.ofBytes(SeedSubFile.maxBaseNameLength),
+      rule: SeedSubFile.nameRule,
       // The extension is shown and not editable, which is the whole reason the
       // field holds a base name.
       suffixText: SeedSubFile.fileExtension,

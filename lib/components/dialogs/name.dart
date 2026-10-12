@@ -29,7 +29,7 @@ class QNameDialog extends StatefulWidget {
   const QNameDialog({
     super.key,
     required this.title,
-    this.rule = deviceNameRule,
+    required this.rule,
     this.initial = '',
     this.validate,
     this.helperText,
@@ -48,6 +48,13 @@ class QNameDialog extends StatefulWidget {
   /// A value and not a callback, which is what this took before: the rule is
   /// the thing callers were each inventing, so handing it over as data is what
   /// stops the ninth caller writing the ninth rule. #278
+  ///
+  /// Required, and not defaulted to [deviceNameRule], for the reason
+  /// [deviceNameProblem] makes `maxBytes` required one layer down: a prompt
+  /// that forgets it would get the device's rule by omission, and the first
+  /// caller whose name is *not* going to the device - the paint editor's host
+  /// folder is the one waiting - would have ASCII-only and the nine applied to
+  /// a host path with nothing saying so.
   final NameRule rule;
 
   /// What the field starts with, selected rather than merely filled.
@@ -76,8 +83,7 @@ class QNameDialog extends StatefulWidget {
 
   /// Shown inside the field while it is empty.
   ///
-  /// Not used by the seed page, whose field is never empty on open. Every one
-  /// of the seven prompts waiting to adopt this dialog passes one, and
+  /// Not used by the seed page, whose field is never empty on open.
   /// [helperText] is not a substitute - it renders underneath.
   final String? hintText;
 
@@ -105,7 +111,7 @@ class QNameDialog extends StatefulWidget {
   static Future<String?> show(
     BuildContext context, {
     required String title,
-    NameRule rule = deviceNameRule,
+    required NameRule rule,
     String initial = '',
     String? Function(String value)? validate,
     String? helperText,
@@ -162,8 +168,7 @@ class _QNameDialogState extends State<QNameDialog> {
   /// about their typing.
   ///
   /// Empty is also not a name on any storage this app writes to, so it is
-  /// refused here rather than in every [QNameDialog.validate] separately, and
-  /// `validate` is never asked about one.
+  /// refused here rather than by each caller separately.
   ///
   /// Computed once per build rather than per read: `validate` runs on every
   /// keystroke and is the caller's code.
@@ -200,7 +205,7 @@ class _QNameDialogState extends State<QNameDialog> {
         autofocus: true,
         // No `maxLength`: it enforces by truncation, which takes the tail off
         // a pasted name with nothing on screen saying so, and leaves the rule
-        // it would be enforcing unsayable. `validate` says it instead.
+        // it would be enforcing unsayable. [rule] says it instead.
         onChanged: (_) => setState(() {}),
         style: TextStyle(color: colors.dialogText),
         decoration: InputDecoration(

@@ -1,3 +1,4 @@
+import '../../../../components/name_rule.dart';
 import '../../../../components/path.dart';
 import 'seed_models.dart';
 
@@ -114,18 +115,20 @@ class SeedSubFile {
   static String pathFor(String raw) =>
       '$seedSubGhzDir/${raw.trim()}$fileExtension';
 
-  /// What is wrong with [raw] as a base name, or null when nothing is.
+  /// What a name for one of these files may be.
   ///
-  /// The rule is [deviceNameProblem], which is where it belongs: the character
-  /// set, the dot rule and the counting are the Flipper's storage, not
-  /// Sub-GHz's, and while this held them four prompts in the file manager and
-  /// the archive wrote user-typed names to the device with no check at all,
-  /// and a fifth with a weak one. #277
+  /// The rule is the Flipper's storage - [deviceNameProblem] - because the
+  /// character set, the dot rule and the counting are its, not Sub-GHz's.
+  /// While this feature held them, four prompts in the file manager and the
+  /// archive wrote user-typed names to the device with no check at all, and a
+  /// fifth with a weak one. #277
   ///
-  /// What is Sub-GHz's is the budget. Takes the name *without* the extension;
+  /// What is Sub-GHz's is [maxBaseNameLength], and this is the one place that
+  /// binds the two: the page hands it to the prompt and the controller asks it
+  /// about a name, where before there were two expressions saying the same
+  /// thing in one folder. It judges the name *without* the extension;
   /// [fileExtension] is added after.
-  static DeviceNameProblem? checkBaseName(String raw) =>
-      deviceNameProblem(raw, maxBytes: maxBaseNameLength);
+  static const nameRule = NameRule.ofBytes(maxBaseNameLength);
 
   /// Everything a generated name leaves out. Tidiness, not a storage rule -
   /// [checkBaseName] accepts a space from a user, and "FAAC SLH" has one.

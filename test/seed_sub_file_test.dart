@@ -211,7 +211,7 @@ void main() {
       // Otherwise the dialog opens on a name its own Save button refuses.
       for (final manufacturer in SeedManufacturer.values) {
         expect(
-          SeedSubFile.checkBaseName(
+          SeedSubFile.nameRule.check(
             SeedSubFile.baseName(manufacturer: manufacturer, fix: 0xA0DC9330),
           ),
           isNull,
@@ -255,14 +255,14 @@ void main() {
       final tooLongForSubGhz = 'x' * (SeedSubFile.maxBaseNameLength + 1);
 
       expect(
-        SeedSubFile.checkBaseName(tooLongForSubGhz),
+        SeedSubFile.nameRule.check(tooLongForSubGhz),
         DeviceNameProblem.tooLong,
       );
       // And exactly the budget is accepted, which is what makes this an
       // off-by-one test rather than a "passes something" one: `maxBytes:
       // maxBaseNameLength - 1` satisfies the row above on its own.
       expect(
-        SeedSubFile.checkBaseName('x' * SeedSubFile.maxBaseNameLength),
+        SeedSubFile.nameRule.check('x' * SeedSubFile.maxBaseNameLength),
         isNull,
       );
       expect(
@@ -276,7 +276,7 @@ void main() {
       // as a fixed suffix rather than leaving the user to type it. Nothing
       // refuses it, and this records that as the choice it is: the firmware
       // lists `gate.sub.sub` perfectly well, it just looks silly.
-      expect(SeedSubFile.checkBaseName('gate.sub'), isNull);
+      expect(SeedSubFile.nameRule.check('gate.sub'), isNull);
     });
   });
 }

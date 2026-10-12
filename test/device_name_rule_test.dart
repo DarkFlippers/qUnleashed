@@ -19,6 +19,12 @@ import 'package:qunleashed/services/localization/l10n.dart';
 /// covered on its own.
 const _subGhzBytes = 63;
 
+/// Judged against the volume's own budget, which is what a name written
+/// straight to the Flipper gets. Spelling it at all seventeen call sites was
+/// what forced most of them onto four lines.
+DeviceNameProblem? volume(String name) =>
+    deviceNameProblem(name, maxBytes: deviceNameMaxBytes);
+
 void main() {
   group('what a name may be', () {
     test('accepts what a user would reasonably type', () {
@@ -40,14 +46,8 @@ void main() {
     });
 
     test('refuses an empty name, including one that is only spaces', () {
-      expect(
-        deviceNameProblem('', maxBytes: deviceNameMaxBytes),
-        DeviceNameProblem.empty,
-      );
-      expect(
-        deviceNameProblem('   ', maxBytes: deviceNameMaxBytes),
-        DeviceNameProblem.empty,
-      );
+      expect(volume(''), DeviceNameProblem.empty);
+      expect(volume('   '), DeviceNameProblem.empty);
     });
 
     test('refuses a name past the budget it was given', () {
@@ -57,13 +57,7 @@ void main() {
       );
       // The same name against the volume's own limit, which is what a caller
       // that passes nothing gets.
-      expect(
-        deviceNameProblem(
-          'x' * (_subGhzBytes + 1),
-          maxBytes: deviceNameMaxBytes,
-        ),
-        isNull,
-      );
+      expect(volume('x' * (_subGhzBytes + 1)), isNull);
     });
 
     // The constant, as a literal. Every other length case is written in
@@ -73,20 +67,8 @@ void main() {
     });
 
     test('counts the default budget up to what FAT will hold', () {
-      expect(
-        deviceNameProblem(
-          'x' * deviceNameMaxBytes,
-          maxBytes: deviceNameMaxBytes,
-        ),
-        isNull,
-      );
-      expect(
-        deviceNameProblem(
-          'x' * (deviceNameMaxBytes + 1),
-          maxBytes: deviceNameMaxBytes,
-        ),
-        DeviceNameProblem.tooLong,
-      );
+      expect(volume('x' * deviceNameMaxBytes), isNull);
+      expect(volume('x' * (deviceNameMaxBytes + 1)), DeviceNameProblem.tooLong);
     });
 
     test('reports the rule whose fix the next refusal would not undo', () {
@@ -167,62 +149,26 @@ void main() {
       );
     });
 
-    test('refuses every character a FAT volume cannot carry', () {
-      // Spelled out rather than a sample: a class that quietly stopped
-      // matching one of these would let a save fail on the device instead,
-      // reported as a write failure that names no cause.
-      for (final bad in [r'\', '/', ':', '*', '?', '"', '<', '>', '|']) {
-        expect(
-          deviceNameProblem('gate${bad}1', maxBytes: deviceNameMaxBytes),
-          DeviceNameProblem.illegalCharacter,
-          reason: '"$bad" should be refused',
-        );
-      }
-      // A control character is refused too, but as its own problem: the
-      // message for the nine lists them, and a newline has no printable form
-      // to list. `test/reserved_name_chars_test.dart` walks the whole range.
-      expect(
-        deviceNameProblem('gate\u0000one', maxBytes: deviceNameMaxBytes),
-        DeviceNameProblem.controlCharacter,
-      );
-      expect(
-        deviceNameProblem('gate\nnewline', maxBytes: deviceNameMaxBytes),
-        DeviceNameProblem.controlCharacter,
-      );
-    });
+    // The nine themselves, and the whole control range, are walked by
+    // `test/reserved_name_chars_test.dart` against the one constant that
+    // declares them - which is the file that exists so the set is written
+    // down once. A third copy of the list here would be a third thing to
+    // edit when it changes.
 
     test('refuses a leading or trailing dot', () {
-      expect(
-        deviceNameProblem('.hidden', maxBytes: deviceNameMaxBytes),
-        DeviceNameProblem.dotEdge,
-      );
-      expect(
-        deviceNameProblem('trailing.', maxBytes: deviceNameMaxBytes),
-        DeviceNameProblem.dotEdge,
-      );
-      expect(
-        deviceNameProblem('.', maxBytes: deviceNameMaxBytes),
-        DeviceNameProblem.dotEdge,
-      );
-      expect(
-        deviceNameProblem('..', maxBytes: deviceNameMaxBytes),
-        DeviceNameProblem.dotEdge,
-      );
+      expect(volume('.hidden'), DeviceNameProblem.dotEdge);
+      expect(volume('trailing.'), DeviceNameProblem.dotEdge);
+      expect(volume('.'), DeviceNameProblem.dotEdge);
+      expect(volume('..'), DeviceNameProblem.dotEdge);
     });
 
     test('judges the trimmed name, which is the one that gets written', () {
       // The surrounding spaces are dropped before the check and before the
       // write, so a name that is legal once trimmed is legal here.
-      expect(
-        deviceNameProblem('  garage  ', maxBytes: deviceNameMaxBytes),
-        isNull,
-      );
+      expect(volume('  garage  '), isNull);
       // And one that is not stays refused rather than being trimmed into
       // legality.
-      expect(
-        deviceNameProblem('  .hidden  ', maxBytes: deviceNameMaxBytes),
-        DeviceNameProblem.dotEdge,
-      );
+      expect(volume('  .hidden  '), DeviceNameProblem.dotEdge);
       // Dart's `trim` reaches past the ASCII space, so these arrive at the
       // check as plain `garage` too. Judging `raw` instead would refuse a name
       // that looks pure ASCII on screen, naming a character that is both
@@ -233,11 +179,7 @@ void main() {
         '\ufeffgarage',
         '\u0085garage',
       ]) {
-        expect(
-          deviceNameProblem(padded, maxBytes: deviceNameMaxBytes),
-          isNull,
-          reason: padded,
-        );
+        expect(volume(padded), isNull, reason: padded);
       }
     });
   });
