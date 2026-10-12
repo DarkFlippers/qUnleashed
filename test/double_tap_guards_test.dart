@@ -3,6 +3,8 @@ import 'dart:io' as io;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flipperlib/flipperlib.dart' hide File;
+// The protobuf File, which the hide above keeps out of the way of dart:io's.
+import 'package:flipperlib/flipperlib.dart' as fl show File;
 import 'package:flipperlib/src/transport/transport.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -12,6 +14,9 @@ import 'package:qunleashed/components/navigation.dart';
 import 'package:qunleashed/pages/apps/actions.dart';
 import 'package:qunleashed/pages/archive/browser/controller.dart';
 import 'package:qunleashed/pages/archive/overview/controller.dart';
+import 'package:qunleashed/pages/tools/infrared/backend/infrared_backend_api.dart';
+import 'package:qunleashed/pages/tools/infrared/backend/infrared_backend_models.dart';
+import 'package:qunleashed/pages/tools/infrared/infrareds_page.dart';
 import 'package:qunleashed/pages/tools/plotter/page.dart';
 import 'package:qunleashed/services/archive/storage.dart';
 
@@ -35,6 +40,11 @@ class _ParkingFlipper implements FlipperClient {
   /// Completed by a test to let the parked call answer. Null means answer at
   /// once.
   Completer<void>? gate;
+
+  /// Per folder, and it wins over [gate]. One gate cannot hold a listing of
+  /// one path while another answers, and "the stale one lands last" is a
+  /// property that needs exactly that.
+  final Map<String, Completer<void>> listingGates = {};
 
   /// Every request this was asked for, in order, as `kind(argument)`.
   final calls = <String>[];
@@ -86,9 +96,22 @@ class _ParkingFlipper implements FlipperClient {
 
   Future<List<Main>> _answer(Main request) async {
     if (request.hasStorageListRequest()) {
-      calls.add('storageList(${request.storageListRequest.path})');
-      await gate?.future;
-      return [Main(storageListResponse: ListResponse())];
+      final path = request.storageListRequest.path;
+      calls.add('storageList($path)');
+      final held = listingGates[path];
+      await (held != null ? held.future : gate?.future);
+      // One entry named after the folder it came from. An empty response made
+      // every listing indistinguishable, so a listing that wrote its entries
+      // over a newer folder's looked exactly like one that wrote nothing.
+      return [
+        Main(
+          storageListResponse: ListResponse(
+            file: [
+              fl.File(name: 'in $path', size: 1, type: File_FileType.FILE),
+            ],
+          ),
+        ),
+      ];
     }
     if (request.hasAppStartRequest()) {
       calls.add('appStart(${request.appStartRequest.name})');
@@ -232,15 +255,17 @@ void main() {
     // parked in the fake, and awaiting one first would wait on a gate this
     // body has not opened yet.
     test('writes nothing for a folder the user has already left', () async {
-      client.gate = Completer<void>();
+      // Only `/ext` is held, so the folder the user moved to answers first and
+      // the listing of the one they left lands *after* it. That order is the
+      // whole test: landing first, it would be overwritten and prove nothing.
+      client.listingGates['/ext'] = Completer<void>();
       final first = ctrl.refresh();
-      final opened = ctrl.open('/ext/subghz');
-      client.gate!.complete();
-      await Future.wait([first, opened]);
+      await ctrl.open('/ext/subghz');
+      client.listingGates['/ext']!.complete();
+      await first;
 
       expect(ctrl.path, '/ext/subghz');
-      // The listing of `/ext` landed last and must have written nothing: not
-      // its entries, and not the `loading` of the one that followed it.
+      expect(ctrl.entries.single.name, 'in /ext/subghz');
       expect(ctrl.loading, isFalse);
     });
 
@@ -590,6 +615,73 @@ void main() {
     });
   });
 
+  // The IR file list, which has the call-site half of the idiom - the tile is
+  // disabled while its own fetch runs - and needed the handler half too. It is
+  // here rather than on a ratchet because the page now takes its backend as a
+  // parameter, which is one line and makes the fetch holdable.
+  group('opening an infrared file', () {
+    testWidgets('fetches it once for two taps', (tester) async {
+      final fetching = Completer<String>();
+      final api = _ParkedInfraredApi(fetching);
+      final (device, _) = mountedDevice();
+
+      await tester.pumpWidget(
+        wrapWithDevice(
+          IrInfraredsPage(category: _irCategory, brand: _irBrand, api: api),
+          device,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // No pump between them: with one, the tile is already disabled and the
+      // call-site half refuses the second tap, so the handler's own guard is
+      // never asked.
+      await tester.tap(find.text('power.ir'));
+      await tester.tap(find.text('power.ir'));
+      await tester.pump();
+
+      expect(api.fetches, 1);
+
+      fetching.complete('# comment');
+      await tester.pumpAndSettle();
+      await closeDevice(tester, device);
+    });
+
+    // Why it is a set and not the single slot it was: a different file fetched
+    // meanwhile used to clear the first one's marker.
+    testWidgets('does not forget one file while another is fetching', (
+      tester,
+    ) async {
+      final fetching = Completer<String>();
+      final api = _ParkedInfraredApi(fetching);
+      final (device, _) = mountedDevice();
+
+      await tester.pumpWidget(
+        wrapWithDevice(
+          IrInfraredsPage(category: _irCategory, brand: _irBrand, api: api),
+          device,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('power.ir'));
+      await tester.pump();
+      await tester.tap(find.text('volume.ir'));
+      await tester.pump();
+      expect(api.fetches, 2);
+
+      // The first file is still out, so it must still be refused.
+      await tester.tap(find.text('power.ir'), warnIfMissed: false);
+      await tester.pump();
+
+      expect(api.fetches, 2);
+
+      fetching.complete('# comment');
+      await tester.pumpAndSettle();
+      await closeDevice(tester, device);
+    });
+  });
+
   // A ratchet in ADR 0004's sense, and deliberately narrow: that the guard is
   // still *there*, counted and anchored so an inverted one fails too. What
   // notices a push site that never had a guard is
@@ -647,7 +739,6 @@ void main() {
   group('the sites that guard with a flag', () {
     const guards = {
       'lib/pages/apps/manager/install_page.dart': '_preparingSheet.add(',
-      'lib/pages/tools/infrared/infrareds_page.dart': '_fetching.contains(',
       'lib/pages/tools/remote/desktop/page.dart':
           'if (_openingWristSettings) return;',
       'lib/pages/archive/overview/category/favorites_page.dart': 'ok == null',
@@ -690,6 +781,56 @@ class _PushingPage extends StatelessWidget {
       ),
     ),
   );
+}
+
+final _irCategory = DeviceCategory(
+  id: 1,
+  meta: CategoryMeta(
+    iconPngBase64: '',
+    iconSvgBase64: '',
+    manifest: CategoryManifest(displayName: 'TVs', singularDisplayName: 'TV'),
+  ),
+  folderName: 'tv',
+);
+
+final _irBrand = BrandModel(id: 2, name: 'Acme', categoryId: 1);
+
+/// An infrared backend whose file list answers at once and whose *content*
+/// fetch is held open, which is the window a second tap lands in.
+class _ParkedInfraredApi implements InfraredBackendApi {
+  _ParkedInfraredApi(this.fetching);
+
+  final Completer<String> fetching;
+
+  int fetches = 0;
+
+  @override
+  Future<List<IfrFileModel>> getInfrareds(int brandId) async => [
+    IfrFileModel(
+      id: 10,
+      brandId: brandId,
+      fileName: 'power.ir',
+      folderName: 'tv',
+    ),
+    IfrFileModel(
+      id: 11,
+      brandId: brandId,
+      fileName: 'volume.ir',
+      folderName: 'tv',
+    ),
+  ];
+
+  @override
+  Future<String> getKeyContent(int ifrFileId) {
+    fetches++;
+    return fetching.future;
+  }
+
+  @override
+  void close() {}
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 /// A file picker held open for as long as the dialog would be.

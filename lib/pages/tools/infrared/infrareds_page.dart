@@ -21,17 +21,24 @@ class IrInfraredsPage extends StatefulWidget {
     super.key,
     required this.category,
     required this.brand,
+    this.api,
   });
 
   final DeviceCategory category;
   final BrandModel brand;
+
+  /// The backend, for a test that needs to hold a fetch open. ADR 0002 asks
+  /// for this to be a required parameter; it is optional because the two pages
+  /// that push this one would both have to take one to pass it down, and that
+  /// is a change to make on purpose rather than in a bug fix.
+  final InfraredBackendApi? api;
 
   @override
   State<IrInfraredsPage> createState() => _IrInfraredsPageState();
 }
 
 class _IrInfraredsPageState extends State<IrInfraredsPage> {
-  final InfraredBackendApi _api = InfraredBackendApi();
+  late final InfraredBackendApi _api = widget.api ?? InfraredBackendApi();
   bool _loading = true;
   String? _error;
   List<IfrFileModel> _files = const [];
