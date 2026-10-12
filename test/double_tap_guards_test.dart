@@ -213,6 +213,19 @@ void main() {
       expect(_listCalls(client), 2);
     });
 
+    // The release, which the count above cannot see: left in the map, the
+    // finished listing is still "in flight", so the next refresh coalesces
+    // onto it and starts a microtask later instead of at once. Two listings
+    // either way - the tell is *when* the second one starts.
+    test('starts the next listing at once, not a hop later', () async {
+      await ctrl.refresh();
+
+      final second = ctrl.refresh();
+
+      expect(_listCalls(client), 2);
+      await second;
+    });
+
     // The regression a bare `if (_loading) return;` introduces, which is why
     // this is keyed on the path at all: `open()` moves the path and then calls
     // refresh, so a flag would skip the new folder's listing altogether and
@@ -502,10 +515,13 @@ void main() {
       await tester.pumpWidget(wrapWithDevice(const PulsePlotterPage(), device));
       await tester.pumpAndSettle();
 
+      // No pump between the taps. With one, the rebuild lands and the button
+      // is already disabled, so the second tap is refused by the enabled
+      // condition and the handler's own guard is never asked - which is how
+      // this test first passed with that guard deleted.
       final open = find.byTooltip('Open signal file');
       await tester.tap(open);
-      await tester.pump();
-      await tester.tap(open, warnIfMissed: false);
+      await tester.tap(open);
       await tester.pump();
 
       expect(picker.opened, 1);
