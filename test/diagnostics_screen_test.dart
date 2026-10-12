@@ -203,6 +203,27 @@ void main() {
       expect(lastSettings!.shareReplay, isFalse);
       expect(lastSettings!.shareLogs, isTrue);
     });
+
+    testWidgets('is not offered where replay cannot record', (tester) async {
+      // Replay is native-backed and `ReplayIntegration` gates on
+      // `supportsReplay`, so the four desktop targets record nothing
+      // whatever the rate says. Offering the switch there promises a
+      // recording that never happens, in the one screen where a false
+      // statement costs the most - and tapping it used to tear the SDK down
+      // and back up to apply a rate no recorder would read, paying a
+      // synchronous `sentry_close()` to do it.
+      //
+      // A `variant` and not a `setUp`: `testWidgets` asserts every
+      // foundation debug variable is unset by the end of the body, so an
+      // override held across the test fails it. The variant brackets the
+      // body properly. Every other case here needs no variant because a
+      // widget test already runs as Android.
+      await tester.pumpWidget(wrap(const DiagnosticsSettingsPage()));
+      await tester.pumpAndSettle();
+
+      expect(find.text(l10nGlobal.diagnosticsShareTitle), findsOneWidget);
+      expect(find.text(l10nGlobal.diagnosticsReplayTitle), findsNothing);
+    }, variant: TargetPlatformVariant.only(TargetPlatform.windows));
   });
 
   testWidgets('nothing offers to copy or clear a log any more', (tester) async {

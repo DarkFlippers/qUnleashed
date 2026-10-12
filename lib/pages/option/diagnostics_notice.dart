@@ -93,12 +93,27 @@ class _DiagnosticsNoticeSheet extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 10),
-            Text(
-              context.l10n.diagnosticsNoticeBody,
-              style: TextStyle(
-                color: colors.dialogText,
-                fontSize: 13.5,
-                height: 1.45,
+            // Scrollable, and `Flexible` so it gives way rather than the
+            // buttons. The body grew by one sentence - that a screen
+            // recording goes with a report - and overflowed by 15px on a
+            // short window, which took two unrelated tests down with it: the
+            // notice is raised over the app on first launch, so a layout
+            // exception here lands in whatever else was being pumped.
+            //
+            // Every translation of this is longer than the English, and §1
+            // makes this the one screen that has to be readable for the
+            // notice to be a notice. A fixed column cannot promise that;
+            // scrolling can.
+            Flexible(
+              child: SingleChildScrollView(
+                child: Text(
+                  context.l10n.diagnosticsNoticeBody,
+                  style: TextStyle(
+                    color: colors.dialogText,
+                    fontSize: 13.5,
+                    height: 1.45,
+                  ),
+                ),
               ),
             ),
             const SizedBox(height: 16),

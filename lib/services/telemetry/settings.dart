@@ -1,3 +1,6 @@
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb;
+
 import '../logging.dart';
 import '../prefs_reader.dart';
 import '../settings/persist.dart';
@@ -33,12 +36,48 @@ class DiagnosticsSettings extends PrefsBackedSettings {
   /// agree by accident.
   static const bool _defaultNoticeShown = false;
 
-  /// On, which is §1's decision and not an oversight - and it is the decision
-  /// the masks in `options.dart` are what make defensible. A replay is only
-  /// recorded when something already failed, so the trade is the same one
-  /// [_defaultShareLogs] makes: a report nobody has to ask for, or too few
-  /// reports to find a fault on a handset nobody on the project owns.
+  /// On, which is §1's decision and not an oversight - and it is the masks in
+  /// `options.dart` that make it defensible, because of what "errors only"
+  /// does and does not mean.
+  ///
+  /// A replay is only **sent** when something already failed. It is
+  /// **recorded** continuously: `onErrorSampleRate` above zero starts the
+  /// native recorder at init, and the frames go into a rolling buffer that is
+  /// discarded unless an error arrives. So this default is not the same trade
+  /// [_defaultShareLogs] makes - that one costs nothing until a failure, this
+  /// one costs a masked screen capture all the time the app is up on Android
+  /// and iOS.
+  ///
+  /// What makes it still the right default is that the masking runs at capture
+  /// time, so the buffer never holds card bytes, a pulse plot or the device
+  /// screen in the first place; the alternative is too few reports to find a
+  /// fault on a handset nobody on the project owns. The user is told this in
+  /// `diagnosticsReplaySubtitle` rather than left to infer it from the word
+  /// "errors".
   static const bool _defaultShareReplay = true;
+
+  /// Whether replay can record on this platform at all.
+  ///
+  /// `ReplayIntegration` gates on `supportsReplay`, which is true only in the
+  /// Java binding and, for Cocoa, only on iOS - so the four desktop targets
+  /// and web record nothing whatever the rates say. The same shape as
+  /// `HomeWidgetService.supported` and `PushService.supported`, and here
+  /// rather than in `Telemetry` because the Diagnostics screen needs it too
+  /// and already holds this object.
+  ///
+  /// Two things read it: the screen, to leave the row out instead of offering
+  /// a switch that does nothing, and `Telemetry._reconcile`, to not tear the
+  /// SDK down for a rate nothing will read.
+  /// [defaultTargetPlatform] and not `Platform.isAndroid`, which is what the
+  /// rest of the app reaches for: a widget test runs on the host, so `dart:io`
+  /// would answer Windows and hide the row from the tests that cover it. This
+  /// one is overridable through `debugDefaultTargetPlatformOverride`, which is
+  /// how `diagnostics_screen_test.dart` pins a phone. It is also the right
+  /// answer on web, where `Platform` throws.
+  static bool get replaySupported =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS);
 
   bool _shareLogs = _defaultShareLogs;
   bool _shareReplay = _defaultShareReplay;
@@ -49,10 +88,14 @@ class DiagnosticsSettings extends PrefsBackedSettings {
   /// Whether a replay of the seconds before a failure goes with it.
   ///
   /// §1's "second switch of its own", and subordinate to [shareLogs] rather
-  /// than independent of it: nothing is recorded at all while sharing is off,
-  /// because there is nothing for a replay to be attached to. The Diagnostics
-  /// screen leaves this row out in that state rather than showing a control
-  /// that does nothing.
+  /// than independent of it: with sharing off the SDK is not running, so
+  /// nothing is captured either, and there would be nothing for a replay to be
+  /// attached to in any case. The Diagnostics screen leaves this row out in
+  /// that state rather than showing a control that does nothing.
+  ///
+  /// On, this is what the user is consenting to: a continuously recorded,
+  /// masked buffer of the screen, uploaded only when something fails. See
+  /// [_defaultShareReplay].
   bool get shareReplay => _shareReplay;
 
   /// Whether §1's one-time notice has been put in front of this user.
@@ -128,10 +171,10 @@ class DiagnosticsSettings extends PrefsBackedSettings {
   /// Applies the replay choice to this object and persists it.
   ///
   /// The same shape as [setShareLogs], and for the same reason - but what
-  /// `Telemetry` does with the notification differs: there is no pause API in
-  /// this major, so a replay sample rate can only be changed by bringing the
-  /// SDK down and up again. `Telemetry._reconcile` owns that; this still
-  /// knows nothing about Sentry.
+  /// `Telemetry` does with the notification differs: there is no app-facing
+  /// pause API in this major, so a replay sample rate can only be changed by
+  /// bringing the SDK down and up again. `Telemetry._reconcile` owns that;
+  /// this still knows nothing about Sentry.
   Future<void> setShareReplay(bool value) async {
     if (value == _shareReplay) return;
     _shareReplay = value;

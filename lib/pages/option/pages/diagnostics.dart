@@ -7,10 +7,10 @@ import '../../../services/telemetry/settings.dart';
 import '../../../theme/theme.dart';
 import '../diagnostics_scope.dart';
 
-/// The reporting switch, and nothing else.
+/// The two reporting switches, and nothing else.
 ///
-/// This was the Log screen, then the Log screen plus a switch, and is now the
-/// switch alone. ADR 0013 §1: Sentry is the only channel, so the in-memory
+/// This was the Log screen, then the Log screen plus a switch, and is now two
+/// switches. ADR 0013 §1: Sentry is the only channel, so the in-memory
 /// history, the Copy button, the Clear action and the caution above them are
 /// gone with it. There is no longer a route from "it failed" to a bug report
 /// that runs through the user, because there no longer needs to be — which was
@@ -26,6 +26,7 @@ import '../diagnostics_scope.dart';
 /// reporting off, or in a build with no DSN, nothing records a failure that the
 /// screen in front of them does not already name. The console still has it,
 /// which is a developer's surface and not theirs.
+
 /// The two switches this screen draws, in the order it draws them.
 ///
 /// An enum rather than two hand-written rows, because `GroupedCardList` keys
@@ -82,8 +83,19 @@ class DiagnosticsSettingsPage extends StatelessWidget {
   /// that is not there. `DiagnosticsSettings.shareReplay` keeps its value
   /// through that, so turning sharing back on restores the row where the user
   /// left it rather than at the default.
+  /// The rows to draw, which is both switches only when the second one can do
+  /// something.
+  ///
+  /// Dropped with sharing off because there is then nothing for a replay to be
+  /// attached to, and dropped where [DiagnosticsSettings.replaySupported] is
+  /// false because the recorder does not exist there. Both are the same
+  /// judgement: a switch that does nothing is worse than no switch. The stored
+  /// value survives either, so a user who turns sharing back on - or opens the
+  /// same account's build on a phone - finds the choice they made.
   List<_Row> _rows(DiagnosticsSettings settings) =>
-      settings.shareLogs ? _Row.values : const [_Row.share];
+      settings.shareLogs && DiagnosticsSettings.replaySupported
+      ? _Row.values
+      : const [_Row.share];
 
   Widget _tile(BuildContext context, DiagnosticsSettings settings, _Row row) {
     final colors = context.appColors;
@@ -120,7 +132,12 @@ class DiagnosticsSettingsPage extends StatelessWidget {
               const SizedBox(height: 2),
               Text(
                 subtitle,
-                maxLines: 4,
+                // Six and not four: the replay subtitle has to say that
+                // recording is continuous *and* what is hidden from it, and
+                // the second half is the one a user needs. Four lines fit the
+                // English and ellipsised the masking clause out of a longer
+                // translation.
+                maxLines: 6,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: colors.textMuted,
@@ -142,8 +159,6 @@ class DiagnosticsSettingsPage extends StatelessWidget {
     );
   }
 
-  /// Routes a tap on [row] to the switch it draws.
-  ///
   /// One place, because the row is tappable in two ways - the card's own
   /// `onTap` and the `Switch` - and the two used to be the same expression
   /// written twice.

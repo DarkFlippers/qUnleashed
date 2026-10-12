@@ -31,11 +31,20 @@ import 'ratchet.dart';
 /// meant to have. 23 of the 42 `LogService.info`-inside-a-catch sites moved;
 /// the other 19 stayed, each on a volume argument its own comment makes.
 ///
-/// `services` is 6: the two `build_identity.dart` sites and the two in
+/// `services` is 7: the two `build_identity.dart` sites and the two in
 /// `telemetry.dart` that were here before, plus a launcher refusing a
 /// home-widget pin and an HTTP request the network responder could not carry.
 /// The relay reply beside that second one runs per frame and stayed at `info`,
 /// which is the distinction the level is for.
+///
+/// The seventh is the replay switch's restart in `telemetry.dart`, and it is
+/// not a failure at all - it is the one line that makes a deliberate gap in
+/// reporting visible. 9.30.1 has no app-facing pause API, so applying a
+/// replay rate means taking the SDK down and bringing it back, and in that
+/// window all four sinks are off and the native handler is down. A crash lost
+/// there is indistinguishable from no crash, so the gap is named once, at
+/// `caught`, and shows up in the timeline of the next report. Once per tap on
+/// one switch, which is as bounded as this level gets.
 ///
 /// Two sites in `pages/archive` did **not** move: the per-node `list` of a
 /// whole-SD walk, and the per-file `md5 check`, which §5 excludes by name
@@ -72,7 +81,7 @@ import 'ratchet.dart';
 /// diagnosing a fork that answers the wrong code and guessing at it. Once per
 /// walk, and only when keys actually moved.
 const Map<String, int> kBudget = {
-  'services': 6,
+  'services': 7,
   'pages/archive': 18,
   'pages/tools': 5,
   'pages/apps': 1,
