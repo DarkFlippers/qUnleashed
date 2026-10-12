@@ -11,17 +11,20 @@ import '../name_rule.dart';
 /// is folding a `bool?` into a `bool`.
 ///
 /// `lib/` held eight hand-rolled `showDialog<String>` prompts sharing one
-/// AlertDialog/TextField/two-TextButton skeleton. Four ask for a name
-/// (`archive/browser`, `archive/overview`, its `category_page` copy, and the
-/// paint editor); the other three ask for a hex offset, a URL and a set of API
-/// keys. Only the seed one validated anything, and its live checking, fixed
-/// extension suffix and pre-selected suggestion were locked behind a private
-/// class in one page file - so the next feature needing a validated prompt
-/// would have written a ninth. #266
+/// AlertDialog/TextField/two-TextButton skeleton, and only the seed one
+/// validated anything - its live checking, fixed extension suffix and
+/// pre-selected suggestion locked behind a private class in one page file, so
+/// the next feature needing a validated prompt would have written a ninth.
+/// #266
 ///
-/// Per CLAUDE.md the seven existing prompts are not converted here; this gives
-/// them somewhere to go when each is next touched. [hintText] is here for that
-/// reason and not for the seed page, which does not pass one: all seven do.
+/// Three of the eight are converted: the file manager's new-folder prompt and
+/// the two archive renames, which wrote user-typed names to the device with no
+/// rule at all. #277 is why, and #278 is why the rule arrives as a value. Four
+/// hand-rolled prompts remain - a hex offset, a URL, a set of API keys, and
+/// the paint editor's host folder name, which has a rule of its own - and
+/// `test/name_prompt_budget_test.dart` is what keeps that number from rising.
+/// [hintText] is here for them rather than for the seed page, which does not
+/// pass one.
 class QNameDialog extends StatefulWidget {
   const QNameDialog({
     super.key,

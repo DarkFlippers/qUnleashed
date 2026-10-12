@@ -26,6 +26,15 @@ class _SpyController extends ArchiveController {
 
   final renames = <String>[];
 
+  /// What the device said, for the half of the prompt that reports it. The
+  /// spy answered null for this at first, so the whole `reportArchiveFailure`
+  /// call could be deleted with every test still green - which is the failure
+  /// #110 is about, one layer up.
+  String? failure;
+
+  @override
+  String? get lastFailure => failure;
+
   @override
   Future<void> renameKey(ArchiveKey key, String newName) async {
     renames.add(newName);
@@ -47,7 +56,7 @@ void main() {
     name: 'gate',
     category: ArchiveCategory.subghz,
     state: ArchiveKeyState.synced,
-    extension: '.sub',
+    extension: 'sub',
     remotePath: '/ext/subghz/gate.sub',
   );
 
@@ -93,10 +102,54 @@ void main() {
   testWidgets('does not rename when the name is unchanged', (tester) async {
     await openPrompt(tester);
 
+    // The field's starting content, asserted: without this the case passes
+    // just as well when the prompt opens *empty*, because then the confirm
+    // button is disabled and nothing is renamed for an unrelated reason.
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller!.text,
+      'gate',
+    );
+
     await tester.tap(find.widgetWithText(TextButton, 'Rename').last);
     await tester.pumpAndSettle();
 
     expect(controller.renames, isEmpty);
+  });
+
+  testWidgets('says what the device said when the rename failed', (
+    tester,
+  ) async {
+    controller.failure = 'ERROR_STORAGE_DENIED';
+    await openPrompt(tester);
+
+    await tester.enterText(find.byType(TextField), 'front gate');
+    await tester.tap(find.widgetWithText(TextButton, 'Rename').last);
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('ERROR_STORAGE_DENIED'), findsOneWidget);
+  });
+
+  // The budget the prompt passes, which is the volume's minus the extension
+  // the controller appends. Nothing else observes the arithmetic, and a name
+  // approved here at 255 would reach `storageRename` at 259.
+  testWidgets('leaves room for the extension the controller adds', (
+    tester,
+  ) async {
+    await openPrompt(tester);
+    final confirm = find.widgetWithText(TextButton, 'Rename').last;
+
+    // 255 - len('sub') - 1 = 251 is the longest base name that fits.
+    await tester.enterText(find.byType(TextField), 'x' * 251);
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<TextButton>(confirm).onPressed,
+      isNotNull,
+      reason: 'exactly the budget is allowed',
+    );
+
+    await tester.enterText(find.byType(TextField), 'x' * 252);
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextButton>(confirm).onPressed, isNull);
   });
 
   testWidgets('does not rename when the prompt is dismissed', (tester) async {

@@ -6378,11 +6378,6 @@
     "description": "Error under the new-name field of the replace-or-skip dialog."
   },
 
-  "fmConflictRenameInvalid": "Enter a valid file name",
-  "@fmConflictRenameInvalid": {
-    "description": "Error under the new-name field of the replace-or-skip dialog when the name is empty or contains a slash."
-  },
-
   "fmConflictForAll": "Apply to all {count}",
   "@fmConflictForAll": {
     "description": "Checkbox in the replace-or-skip dialog applying one choice to every remaining conflict.",
@@ -8116,7 +8111,7 @@
 
   "commonNameTooLong": "Use a shorter name - {max} characters at most.",
   "@commonNameTooLong": {
-    "description": "Shown when a typed file name is longer than the storage it is being written to will carry. TRANSLATORS: {max} is an exact figure - 255 for a file on the Flipper's storage, 63 for a Sub-GHz name, because that app's own screen holds less - so render it as a plain number and choose the grammatical case for 'characters' to match, as there is no plural form on this placeholder. The sentence names no owner for the limit on purpose, since it is shown for both. The limit is counted in bytes, but every name it can appear for is ASCII, so 'characters' is what the user sees and is not a lie. Replaces seedNameTooLong.",
+    "description": "Shown when a typed file name is longer than the storage it is being written to will carry. TRANSLATORS: {max} is an exact figure - 255 for a file on the Flipper's storage, 63 for a Sub-GHz name, because that app's own save buffer holds less - so render it as a plain number and choose the grammatical case for 'characters' to match, as there is no plural form on this placeholder. The sentence names no owner for the limit on purpose, since it is shown for both. The limit is counted in bytes, but every name it can appear for is ASCII, so 'characters' is what the user sees and is not a lie. Replaces seedNameTooLong.",
     "placeholders": {
       "max": {
         "type": "int"

@@ -88,6 +88,37 @@ void main() {
     expect(find.byType(TextField), findsNothing);
   });
 
+  testWidgets('closes without complaining when the field is cleared', (
+    tester,
+  ) async {
+    final asked = <String>[];
+    await pumpRow(tester, onRename: (name) async => asked.add(name));
+
+    await tester.enterText(find.byType(TextField), '');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    expect(asked, isEmpty);
+    expect(find.byType(TextField), findsNothing);
+    // No toast: an error about a field the user has just cleared reads as a
+    // complaint about their typing, which is the same call QNameDialog makes.
+    expect(find.text('Type a name.'), findsNothing);
+  });
+
+  // The way out of an editor a refused name keeps open. Clearing the field
+  // also closes it, which is not something anyone would guess.
+  testWidgets('can be abandoned without renaming', (tester) async {
+    final asked = <String>[];
+    await pumpRow(tester, onRename: (name) async => asked.add(name));
+
+    await tester.enterText(find.byType(TextField), 'gate/one');
+    await tester.tap(find.byIcon(Icons.close_rounded));
+    await tester.pumpAndSettle();
+
+    expect(asked, isEmpty);
+    expect(find.byType(TextField), findsNothing);
+  });
+
   testWidgets('says nothing about a name left unchanged', (tester) async {
     final asked = <String>[];
     await pumpRow(tester, onRename: (name) async => asked.add(name));

@@ -118,9 +118,9 @@ class SeedSubFile {
   ///
   /// The rule is [deviceNameProblem], which is where it belongs: the character
   /// set, the dot rule and the counting are the Flipper's storage, not
-  /// Sub-GHz's, and while this held them the three prompts in the file manager
-  /// and the archive wrote user-typed names to the device with no check at all.
-  /// #277
+  /// Sub-GHz's, and while this held them four prompts in the file manager and
+  /// the archive wrote user-typed names to the device with no check at all,
+  /// and a fifth with a weak one. #277
   ///
   /// What is Sub-GHz's is the budget. Takes the name *without* the extension;
   /// [fileExtension] is added after.

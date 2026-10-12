@@ -185,6 +185,10 @@ class _FileTableRowState extends State<FileTableRow> {
     super.dispose();
   }
 
+  void _cancelEdit() {
+    setState(() => _editing = false);
+  }
+
   void _startEdit() {
     _renameCtrl.text = widget.entry.name;
     setState(() => _editing = true);
@@ -357,7 +361,18 @@ class _FileTableRowState extends State<FileTableRow> {
   Widget _trailing(QAppColors colors) {
     if (_renaming) return _spinner(colors);
     if (_editing) {
-      return _iconBtn(Icons.check_rounded, colors.accent, _commitEdit);
+      // Both, because a refused name keeps the editor open: with only the
+      // check button, a user who pasted a name the device will not take could
+      // tap it, read the toast, tap it again, and find nothing on screen
+      // saying how to back out. Clearing the field closes it too, which is
+      // not something anyone would guess.
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _iconBtn(Icons.close_rounded, colors.textMuted, _cancelEdit),
+          _iconBtn(Icons.check_rounded, colors.accent, _commitEdit),
+        ],
+      );
     }
     if (widget.progress != null) {
       final cancel = widget.onCancel;

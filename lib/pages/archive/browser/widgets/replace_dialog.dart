@@ -108,7 +108,14 @@ class _ReplaceFilesDialogState extends State<ReplaceFilesDialog> {
   String _suggest() {
     final name = basename(_conflict.name);
     final dot = name.lastIndexOf('.');
-    final stem = dot > 0 ? name.substring(0, dot) : name;
+    // Leading dots dropped, because the field refuses a name that starts with
+    // one and a dialog that prefills what it then refuses reads as broken.
+    // `.gitkeep` is the reachable case: it collides, it is suggested, and
+    // `.gitkeep (2)` is `dotEdge`.
+    final stem = (dot > 0 ? name.substring(0, dot) : name).replaceFirst(
+      RegExp(r'^\.+'),
+      '',
+    );
     final ext = dot > 0 ? name.substring(dot) : '';
     for (var n = 2; ; n++) {
       final candidate = '$stem ($n)$ext';

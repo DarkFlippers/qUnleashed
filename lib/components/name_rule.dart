@@ -6,23 +6,37 @@ import 'path.dart';
 /// [QNameDialog] took the rule as a `String? Function(String)`, so the ninth
 /// caller wrote the ninth *rule* and the shared dialog rendered it faithfully:
 /// the widget was prevented, the rule was not. Four prompts that write a
-/// user-named file to the device wrote no rule at all and reached the firmware
-/// with whatever was typed. #277, #278
+/// user-named file to the device wrote no rule at all - the file manager's
+/// new-folder prompt and its inline rename, the archive overview's rename and
+/// its category page's copy - and a fifth, the replace dialog's rename field,
+/// wrote a weak one. All five reached the firmware with names it refuses.
+/// #277, #278
 ///
 /// Carrying a rule rather than describing one: the character set, the dot rule
 /// and the counting are [deviceNameProblem]'s, and the only thing that varies
-/// between callers is the budget. A caller that needs something genuinely its
-/// own - "that name is taken", the paint editor's `_` collapsing - passes
-/// `QNameDialog.validate` as well, which runs after this.
+/// between callers today is the budget. A caller needing something genuinely
+/// its own - that the name is already taken, or a convention only it has - can
+/// pass `QNameDialog.validate` as well, which runs after this; no caller in
+/// `lib/` does.
 class NameRule {
-  const NameRule({this.maxBytes = deviceNameMaxBytes});
-
-  /// The Sub-GHz app's own limit, which is narrower than the volume's. See
-  /// `SeedSubFile.maxBaseNameLength`.
-  const NameRule.ofBytes(this.maxBytes);
+  /// The budget in **bytes**, named at the call site so the unit cannot be
+  /// mistaken for a character count.
+  ///
+  /// Both asserts are checked when the compiler evaluates a `const` rule,
+  /// which is every rule in `lib/`, so a bad budget is a build error rather
+  /// than a prompt that behaves oddly. The upper one closes the one direction
+  /// in which this type could put #277 back: a budget wider than the volume
+  /// accepts a name the volume will not, which is a write that fails with
+  /// nothing useful said.
+  const NameRule.ofBytes(this.maxBytes)
+    : assert(maxBytes > 0, 'a rule that refuses every name is not a rule'),
+      assert(
+        maxBytes <= deviceNameMaxBytes,
+        'a layer is narrower than the volume, never wider',
+      );
 
   /// How many bytes the name may run to, for the layer this caller writes
-  /// through. Defaults to what the volume will carry.
+  /// through.
   final int maxBytes;
 
   /// What is wrong with [value], in the user's language, or null when nothing
@@ -54,4 +68,7 @@ class NameRule {
 
 /// The rule for a name written straight to the Flipper's storage: everything
 /// the volume and the RPC layer refuse, and nothing a feature adds.
-const deviceNameRule = NameRule();
+///
+/// The one place the default budget is spelled, so that a prompt which passes
+/// no rule and one which passes this get the same answer by construction.
+const deviceNameRule = NameRule.ofBytes(deviceNameMaxBytes);

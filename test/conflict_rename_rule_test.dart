@@ -18,6 +18,7 @@ void main() {
   Future<void> openRename(
     WidgetTester tester, {
     List<String> siblings = const [],
+    String conflicting = 'gate.sub',
   }) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -32,7 +33,7 @@ void main() {
               items: 1,
               conflicts: [
                 FileConflict(
-                  name: 'gate.sub',
+                  name: conflicting,
                   size: 10,
                   existingSize: 20,
                   siblings: siblings.toSet(),
@@ -82,6 +83,40 @@ void main() {
 
     expect(find.text('A file with this name already exists'), findsNothing);
     expect(find.textContaining(r'\ / : * ? " < > |'), findsOneWidget);
+  });
+
+  // The disabled button is not the whole gate: the field's own submit calls
+  // `_applyRename` directly, which is where the second check lives. No test
+  // reached that function at all before this one.
+  testWidgets('cannot be submitted from the keyboard either', (tester) async {
+    await openRename(tester);
+
+    await tester.enterText(find.byType(TextField), 'gate?one');
+    await tester.pump();
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byType(TextField),
+      findsOneWidget,
+      reason: 'still asking, not applied',
+    );
+  });
+
+  // The suggestion the dialog prefills has to be one its own field accepts.
+  // For `.gitkeep` the stem is the whole name, so `.gitkeep (2)` was offered
+  // and then refused as a leading dot - a dialog arguing with itself.
+  testWidgets('suggests a name it would accept for a dotted file', (
+    tester,
+  ) async {
+    await openRename(tester, conflicting: '.gitkeep');
+
+    expect(find.textContaining(r'\ / : * ? " < > |'), findsNothing);
+    expect(find.text('A name cannot start or end with a dot.'), findsNothing);
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller!.text,
+      'gitkeep (2)',
+    );
   });
 
   testWidgets('accepts a name the device will take', (tester) async {

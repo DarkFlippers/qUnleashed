@@ -1,17 +1,18 @@
 // A ratchet on prompts that ask for a string by hand.
 //
 // #266 found eight copies of one AlertDialog/TextField/two-TextButton
-// skeleton and extracted `QNameDialog`; #277 found that four of them wrote a
-// user-named file to the Flipper with no rule at all. The dialog now carries
+// skeleton and extracted `QNameDialog`; #277 found that three of those copies
+// wrote a user-named file to the Flipper with no rule at all - as did the
+// inline rename, which is a field in a row rather than one of the eight. The dialog now carries
 // the rule as a value, so a caller cannot forget it - but nothing stopped a
 // ninth hand-rolled prompt from being written beside it, and per ADR 0004 the
 // answer to "we want less of this" is a number, not a sentence in a comment.
 //
-// What is left is not a defect. Three of the four take a hex offset, a URL and
-// a set of API keys rather than a name, so they want a shared *text* prompt
-// rather than this one; the fourth asks for a name through a rule of its own
-// that collapses runs of `_`, which is a different rule rather than a missing
-// one. Each is named below, and the number must not rise.
+// What is left is not a defect. Three of the four ask for numbers, a URL and a
+// set of keys rather than a name, so they want a shared *text* prompt rather
+// than this one; the fourth asks for a name through a rule of its own that
+// collapses runs of `_`, and names a folder on the host rather than a file on
+// the device. Each is named below, and the number must not rise.
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -21,9 +22,13 @@ import 'ratchet.dart';
 /// What each area held when this went in. Lower one when a prompt moves to
 /// `QNameDialog` or to whatever shared text prompt replaces these.
 const Map<String, int> kBudget = {
-  // The hex editor's "go to offset", which takes a number.
+  // One helper in the hex editor, serving four prompts: an offset, a fill
+  // byte, a `count x byte` expression and a run of text to insert. None of
+  // them is a file name.
   'pages/archive': 1,
-  // A Flibler index URL, and the map's API keys.
+  // Two helpers, serving a Flibler index URL and the map's keys, tile URL
+  // template, subdomain list and max zoom. None of them is a file name
+  // either.
   'pages/option': 2,
   // The paint editor's name, whose rule collapses runs of `_` - a rule of its
   // own, not a copy of the device's.

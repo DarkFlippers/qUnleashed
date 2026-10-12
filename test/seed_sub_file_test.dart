@@ -258,7 +258,17 @@ void main() {
         SeedSubFile.checkBaseName(tooLongForSubGhz),
         DeviceNameProblem.tooLong,
       );
-      expect(deviceNameProblem(tooLongForSubGhz), isNull);
+      // And exactly the budget is accepted, which is what makes this an
+      // off-by-one test rather than a "passes something" one: `maxBytes:
+      // maxBaseNameLength - 1` satisfies the row above on its own.
+      expect(
+        SeedSubFile.checkBaseName('x' * SeedSubFile.maxBaseNameLength),
+        isNull,
+      );
+      expect(
+        deviceNameProblem(tooLongForSubGhz, maxBytes: deviceNameMaxBytes),
+        isNull,
+      );
     });
 
     test('accepts a name that carries the extension, deliberately', () {

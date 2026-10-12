@@ -683,7 +683,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
   Future<void> _createFolder() async {
     // QNameDialog rather than the hand-rolled prompt this had: that one
     // validated nothing, so `gate/one` went to `mkdir` and came back as
-    // "Could not create the folder" with no cause named. #277
+    // "Create folder failed" with no cause named. #277
     final name = await QNameDialog.show(
       context,
       title: context.l10n.fmNewFolder,

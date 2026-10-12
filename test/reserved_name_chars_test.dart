@@ -1,7 +1,7 @@
 // One declaration of what a name may not contain, and everything that reads it.
 //
 // Before #266 there were two regexes for one set - a host one in `path.dart`
-// that replaced nine characters, a device one in `path.dart` that
+// that replaced nine characters, a device one in `seed_sub_file.dart` that
 // reported the same nine plus the control range - and the English
 // `seedNameIllegal` spelling the nine out a third time as words. (Only the
 // English: `app_ru.arb` and `app_uk.arb` have never held a `seed` key.) The
@@ -269,7 +269,7 @@ void main() {
     test('reports every reserved character', () {
       for (final bad in _nine) {
         expect(
-          deviceNameProblem('gate${bad}1'),
+          deviceNameProblem('gate${bad}1', maxBytes: deviceNameMaxBytes),
           DeviceNameProblem.illegalCharacter,
           reason: '"$bad" should be refused',
         );
@@ -283,7 +283,7 @@ void main() {
       // nothing about what they typed.
       for (final bad in ['\u0000', '\t', '\n', '\u001f', '\u007f']) {
         expect(
-          deviceNameProblem('gate${bad}1'),
+          deviceNameProblem('gate${bad}1', maxBytes: deviceNameMaxBytes),
           DeviceNameProblem.controlCharacter,
           reason:
               'U+${bad.codeUnitAt(0).toRadixString(16)} should be refused as '
@@ -300,7 +300,10 @@ void main() {
       // written and the device rule refuses, or the reverse.
       for (var unit = 0; unit < 0x80; unit++) {
         final char = String.fromCharCode(unit);
-        final problem = deviceNameProblem('gate${char}1');
+        final problem = deviceNameProblem(
+          'gate${char}1',
+          maxBytes: deviceNameMaxBytes,
+        );
         final refused =
             problem == DeviceNameProblem.illegalCharacter ||
             problem == DeviceNameProblem.controlCharacter;
@@ -324,7 +327,7 @@ void main() {
       // existing install. #282
       for (final char in _nonAscii) {
         expect(
-          deviceNameProblem('gate${char}1'),
+          deviceNameProblem('gate${char}1', maxBytes: deviceNameMaxBytes),
           DeviceNameProblem.nonAscii,
           reason: '"$char" must be refused for the device',
         );
