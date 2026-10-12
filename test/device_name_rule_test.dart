@@ -90,7 +90,14 @@ void main() {
         ('gate\u00a0one', DeviceNameProblem.nonAscii),
         ('gate\nЯ', DeviceNameProblem.controlCharacter),
       ]) {
-        expect(deviceNameProblem(name), problem, reason: name);
+        // The narrow budget, so the long rows below really are over it. With
+        // the volume's 255 they are not, and a rule that judged the length
+        // first would answer these the same way.
+        expect(
+          deviceNameProblem(name, maxBytes: _subGhzBytes),
+          problem,
+          reason: name,
+        );
       }
     });
 

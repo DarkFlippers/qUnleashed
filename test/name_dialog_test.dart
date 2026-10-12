@@ -109,8 +109,11 @@ List<String> actionOrder(WidgetTester tester) => tester
 /// Refuses one name the storage would accept, which is the shape a caller's
 /// *extra* rule has now that the storage rule is the dialog's own: a message,
 /// or null.
+/// Anything *containing* `taken`, not just the exact name: a name that breaks
+/// the storage rule as well has to break this one too, or swapping the two
+/// cannot be told apart.
 String? nameTaken(String value) =>
-    value.trim() == 'taken' ? 'That name is taken' : null;
+    value.trim().contains('taken') ? 'That name is taken' : null;
 
 void main() {
   testWidgets('returns the name that was typed', (tester) async {
