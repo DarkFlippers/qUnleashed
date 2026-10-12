@@ -387,7 +387,28 @@ area:
 | `refresh`, `syncCategory`, `sync` failed | 3 | |
 | `$path is unavailable`, `no hardware name` | | expected absence |
 | `md5 check <path> failed`, per file in a sync | | the per-sync summary at `warn` covers it (#194) |
+| `read <path> failed`, per file in a sync | | **amended 2026-10-12**, same argument - see below |
 | `[Map] location stream`, `[StorageCards] watchStorage` | | stream noise, repeats |
+
+**Amended 2026-10-12: the per-file `read` in a sync leaves `caught`.** It was
+ruled into the 12 above, on the general principle that an operation the user
+asked for and did not get is worth keeping. Three days of real volume says the
+principle has an exception and this is it: that one site produced 2267 entries
+from a single sync, 94% of everything the project sent, because a dead
+transport turns one fault into one failure per queued file. The burst
+overflowed the SDK's envelope cache, and what the cache evicted was **error
+events** - `client_discard`/`cache_overflow` on 2026-10-11, two of the three
+errors captured that day. Keeping those lines cost crash reports.
+
+So it takes the `md5 check` row's treatment, for the row's own stated reason,
+and the per-sync summary at `warn` carries it - now with a count per distinct
+cause rather than one example, since a single `_lastReadError` slot would
+otherwise report whichever failure happened to be last. The per-file line also
+stops being the thing that notices a sync going wrong at scale: the loop waits
+for the session and retries once before giving up, and says so as an outcome.
+
+The general ruling stands for the other eleven. This row is an exception won by
+measurement, which is the only thing that should buy one.
 
 Fifteen of twenty-four. The three excluded kinds are also the only chatty ones,
 so the boundedness #110 and #111 argued for is kept rather than traded away.

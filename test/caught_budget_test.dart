@@ -53,12 +53,27 @@ import 'ratchet.dart';
 /// button asks. Its six other `pages/apps` sites are one-per-app loops or a
 /// cancel the user asked for, and none of them moved.
 ///
-/// `pages/archive` also counts every `list`, `read`, `write`, `delete`,
-/// `mkdir`, `rename` and `appStart` the user asked for, plus `refresh`, `sync`
-/// and `syncCategory`.
+/// `pages/archive` also counts every `list`, `write`, `delete`, `mkdir`,
+/// `rename` and `appStart` the user asked for, plus `refresh`, `sync` and
+/// `syncCategory`. The per-file `read` inside a sync is **no longer one of
+/// them** - §5's table carries the amendment and the reason, which is that
+/// that one site produced 94% of the project's entire log volume and the burst
+/// evicted error events out of the SDK's cache. A `read` the user asked for by
+/// opening one file is still counted.
+///
+/// It rose to 18 for the line that records a whole scope reading as deleted.
+/// That is not a failure at all: an absent directory is now treated as the
+/// empty listing it is, which is right, and the consequence is that every
+/// local key under it is marked `deleted` - #109's outcome, reinstated
+/// deliberately for one status code. The argument rests on
+/// `ERROR_STORAGE_NOT_EXIST` meaning the firmware looked, and these codes are
+/// a firmware contract this repo does not own while the app ships against
+/// forks. One line, in a build that does not print, is the difference between
+/// diagnosing a fork that answers the wrong code and guessing at it. Once per
+/// walk, and only when keys actually moved.
 const Map<String, int> kBudget = {
   'services': 6,
-  'pages/archive': 17,
+  'pages/archive': 18,
   'pages/tools': 5,
   'pages/apps': 1,
 };
