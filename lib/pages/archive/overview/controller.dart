@@ -88,6 +88,29 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
   /// The last file a download could not read, folded into the sync summary
   /// below. Internal: it is not a second error field, it is one line of one.
   String? _lastReadError;
+
+  /// Whether that last read failed because the link died rather than because
+  /// of anything about the file.
+  ///
+  /// The distinction is what [_downloadPending] stops on. Without it that loop
+  /// treats a dead transport as two thousand independent per-file failures,
+  /// asks the device for every remaining file, and fails each one instantly -
+  /// which is both wrong on screen and, since `caught` reaches Sentry Logs,
+  /// 2267 outbound log entries from one sync in the field. The burst overflows
+  /// the SDK's envelope cache, and what it evicts is the error events.
+  ///
+  /// [FlipperClient.isLinkDropError] is the classifier rather than a substring
+  /// match here: it already owns the four spellings a dying link produces, and
+  /// `storageWrite` retries on the same answer.
+  ///
+  /// **Read synchronously by the one caller that cares, and not held.**
+  /// [_readRemoteBytes] has five callers and a favourite launch can run while
+  /// a sync does, so this is only true of the most recent read by anybody;
+  /// [_downloadAndApply] lifts it into its return value in the statement after
+  /// the await, before another flow gets a turn, and [_downloadPending] reads
+  /// that. Keeping it in the field until the loop's own check would have made
+  /// a tap during a sync able to stop the abort.
+  bool _lastReadWasLinkDrop = false;
   Set<String> _favorites = <String>{};
   List<FapFavorite> _fapFavorites = <FapFavorite>[];
 
@@ -1305,17 +1328,30 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
       }
 
       publish(0);
-      final ok = await _downloadAndApply(keyId, key, onProgress: publish);
-      if (!ok) failed++;
+      final attempt = await _downloadAndApply(keyId, key, onProgress: publish);
+      if (!attempt.ok) failed++;
       done++;
       notifyListeners();
+      // Nothing is left to read over a transport that is gone, and the
+      // automatic reconnect cannot help here: `storageReadChunked` has no
+      // restart of its own, so every remaining file would fail at once.
+      // Stopping is also what makes the tally below true - it counts what was
+      // attempted, not what was queued.
+      if (attempt.linkDropped) break;
     }
     if (failed > 0) {
-      final ok = pendingIds.length - failed;
+      // `done` and not `pendingIds.length`: on a link drop the loop stops, and
+      // calling the thousand files it never asked for "failed" - or, worse,
+      // "downloaded" - is a number nobody can act on.
+      final ok = done - failed;
       _lastError =
-          '${l10n.archiveDownloadedSummary(ok, pendingIds.length, failed)}'
+          '${l10n.archiveDownloadedSummary(ok, done, failed)}'
           '${_lastReadError == null ? '' : ': $_lastReadError'}';
-      LogService.info('[Archive] $_lastError');
+      // `warn` and not `info`, which const-folds away in release - so the one
+      // line that replaces the per-file flood was the one line that did not
+      // ship. ADR 0013 §5's per-sync summary at `warn`, which #194 already
+      // settled for the `md5 check` loop next door.
+      LogService.warn('[Archive] $_lastError');
     }
     _syncProgress = SyncProgress(
       current: done,
@@ -1431,17 +1467,34 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
     await refresh();
   }
 
-  Future<bool> _downloadAndApply(
+  /// Reads one key and writes it locally.
+  ///
+  /// Returns whether the file landed, **and** whether a dead link is why it
+  /// did not - the second is what stops [_downloadPending] rather than letting
+  /// it ask for every remaining file. A record and not a bool plus a field,
+  /// because the field it would read is shared with four other callers; see
+  /// [_lastReadWasLinkDrop].
+  Future<({bool ok, bool linkDropped})> _downloadAndApply(
     String keyId,
     ArchiveKey key, {
     void Function(double fileProgress)? onProgress,
   }) async {
     final bytes = await _readRemoteBytes(
       key.remotePath,
+      // Silent per file: [_downloadPending] is the only caller and it reports
+      // a tally with the first failure in it. One line per file is what ADR
+      // 0013 §5 excludes by name - the same argument the per-file `md5 check`
+      // beside it already stands on - and this is the site that proved it, at
+      // 94% of everything the project sent in its first three days.
+      logErrors: false,
       expectedSize: key.remoteSize,
       onProgress: onProgress,
     );
-    if (bytes == null) return false;
+    // Lifted here, in the statement after the await: the field belongs to
+    // whoever read last, and after the next await that may be somebody else.
+    if (bytes == null) {
+      return (ok: false, linkDropped: _lastReadWasLinkDrop);
+    }
     try {
       if (key.hasLocalFile) {
         await _storage.hardDelete(
@@ -1469,11 +1522,14 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
         remoteSize: key.remoteSize > 0 ? key.remoteSize : size,
         mtime: stat.modified,
       );
-      return true;
+      return (ok: true, linkDropped: false);
     } catch (e) {
       _lastReadError = l10n.archiveSaveFailed(key.fileName, '$e');
       LogService.caught('[Archive] ${_lastReadError!}');
-      return false;
+      // A local write failed, not the link. The next file is still worth
+      // asking for - a full disk is per-file, and so is a name the platform
+      // refuses.
+      return (ok: false, linkDropped: false);
     }
   }
 
@@ -1602,6 +1658,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
     int expectedSize = 0,
     void Function(double progress)? onProgress,
   }) async {
+    _lastReadWasLinkDrop = false;
     try {
       return await _client.storageReadChunked(
         path,
@@ -1611,6 +1668,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
       );
     } catch (e) {
       _lastReadError = l10n.archiveReadFailed(path, '$e');
+      _lastReadWasLinkDrop = _client.isLinkDropError(e);
       if (logErrors) {
         LogService.caught('[Archive] ${_lastReadError!}');
       }

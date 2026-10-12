@@ -256,8 +256,36 @@ abstract final class Scrub {
   /// Sub-GHz captures and the map both carry them. Four places is about 11
   /// metres, so nothing with fewer is locating anybody; it also keeps this off
   /// a version (`0.15.0` has none) and off the one- and two-place decimals
-  /// that durations and percentages are written with.
-  static final RegExp _coordinate = RegExp(r'-?\d{1,3}\.\d{4,}');
+  /// a percentage is written with.
+  ///
+  /// **The lookbehind is for `Duration.toString()`,** which writes `H:MM:SS`
+  /// and then *six* places - so every duration in every outbound line was
+  /// over the four-place floor, and a download timeout arrived with
+  /// `0:00:<coord>` where its seconds had been - the one number the reader
+  /// needed, gone. This was
+  /// shipped and measured: it reached Sentry on the firmware installer's
+  /// download timeout and on `reconnect failed`, which are the two failures
+  /// whose whole content is how long it waited.
+  ///
+  /// The comment above used to say this rule stayed off "the one- and
+  /// two-place decimals that durations and percentages are written with",
+  /// and `test/scrub_test.dart` asserted it with `took 1.25s` - a format
+  /// nothing in the app produces. Two places was never the shape at risk.
+  ///
+  /// **Two lookbehinds, and both are load-bearing.** `(?<!\d:\d\d:)` rejects
+  /// a decimal sitting immediately after `H:MM:`, which is `30.000000`. On its
+  /// own that is not enough: `replaceAll` simply advances one character and
+  /// matches `0.000000` instead, so the line came out as `0:00:3<coord>` -
+  /// worse than before, because it looks like a number rather than a
+  /// redaction. `(?<!\d)` is what closes that, by refusing to start the
+  /// integer part in the middle of a digit run. The first version of this fix
+  /// had only the first one and its own test caught it.
+  ///
+  /// Narrow on purpose: neither excludes every colon, so `lat:50.4501` is
+  /// still redacted.
+  static final RegExp _coordinate = RegExp(
+    r'(?<!\d)(?<!\d:\d\d:)-?\d{1,3}\.\d{4,}',
+  );
 
   /// Flipper names the app has seen, longest first, as anchored patterns.
   ///

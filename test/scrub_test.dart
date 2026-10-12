@@ -217,6 +217,30 @@ void main() {
     test('a duration does not', () {
       expect(Scrub.outbound('took 1.25s'), 'took 1.25s');
     });
+
+    // The format the app actually produces. `Duration.toString()` writes six
+    // decimal places, so this is the case the two-place test above was
+    // standing in for and did not cover - it reached Sentry as
+    // `TimeoutException after 0:00:<coord>` on the one failure whose whole
+    // content is the number.
+    test('a Duration.toString does not, at six places', () {
+      expect(
+        Scrub.outbound('TimeoutException after 0:00:30.000000: no data'),
+        'TimeoutException after 0:00:30.000000: no data',
+      );
+      expect(
+        Scrub.outbound(
+          'reconnect failed: TimeoutException after 0:01:30.000000',
+        ),
+        'reconnect failed: TimeoutException after 0:01:30.000000',
+      );
+    });
+
+    // The lookbehind is narrow on purpose: it excludes `H:MM:` and not every
+    // colon, or a labelled coordinate would survive.
+    test('a coordinate after a colon still goes', () {
+      expect(Scrub.outbound('lat:50.4501'), 'lat:<coord>');
+    });
   });
 
   group('Flipper names', () {
