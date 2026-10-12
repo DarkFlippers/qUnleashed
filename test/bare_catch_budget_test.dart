@@ -126,7 +126,21 @@ const Map<String, int> kBudget = {
   // The two left are both commented where they sit: a `mkdir` of a
   // destination that may already exist, and a location fix that has not
   // arrived yet, which the position stream behind it keeps asking for.
-  'pages/archive': 2,
+  //
+  // Then 3, for `overview/controller.dart`'s
+  // `on FlipperRpcStorageNotExistException` in the recursive walk. It is a
+  // body holding only a comment, which this file's own header calls a shape
+  // rather than a measure - and this is the shape that case wants. The clause exists
+  // so the path is **not** added to `unread`, and doing nothing is the whole
+  // of that: the firmware looked and there is no such directory, so there is
+  // no failure to record and nothing further to do with it. Logging it would
+  // have moved the number to the other ratchet for a line that says a healthy
+  // Flipper is healthy.
+  //
+  // The sibling clause in the same change is not here, because it has a
+  // statement to make: `_verifyScope` sets `ok = true` so the reconcile runs
+  // on the empty listing the absent directory implies.
+  'pages/archive': 3,
   // Was 2, and now empty. The temp directory was tens to hundreds of
   // megabytes of extracted firmware left in the system temp folder for good,
   // once per install whose cleanup failed; and the `mkdir` made "it is

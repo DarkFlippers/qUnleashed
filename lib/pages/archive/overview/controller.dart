@@ -1028,6 +1028,24 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
         }
       }
       ok = true;
+    } on FlipperRpcStorageNotExistException {
+      // A directory that is not there holds no files, which is an answer and
+      // not a failure: `remoteFiles` is already empty and the reconcile below
+      // is correct to run on it.
+      //
+      // This is the ordinary state of a Flipper nobody has wardriven with -
+      // `/ext/subghz/wardriving` and its `autosaved` are created by the app
+      // that writes them - so the `warn` below fired on a healthy device every
+      // time the category was opened. 22 of the 90 warnings the project sent
+      // in its first three days were these two paths.
+      //
+      // It also fixes what the comment below describes rather than only
+      // quietening it: `ok = false` skipped the reconcile, and
+      // `_refreshCategory` has already re-ingested every local file as `local`
+      // with no `remoteSize` - so the keys stayed `local`, `onDevice` read
+      // false and the device actions left the sheet, on a device that was
+      // answering perfectly.
+      ok = true;
     } catch (e) {
       // Reached only for wardriving, the one category that is not searched
       // recursively - so this guard covers two scopes, and the unguarded
@@ -1208,6 +1226,23 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
           }
         }
       }
+    } on FlipperRpcStorageNotExistException {
+      // Not added to [unread], which is the whole of this clause: a folder
+      // that is not there is not a folder whose contents are unknown, and
+      // holding it back would leave the keys under it exactly as they were -
+      // forever, on a device that is telling us plainly they are gone.
+      //
+      // The distinction this draws is the one #109 is about. A timeout says
+      // nothing about what is on the card, so the walk must not conclude the
+      // files were deleted. `ERROR_STORAGE_NOT_EXIST` says the opposite: the
+      // firmware looked and there is no such path. Treating the two the same
+      // is what put `badusb: 1 folder(s) could not be listed` in front of
+      // every user with no `/ext/badusb`, 13 times in three days, and held
+      // the category back each time.
+      //
+      // Unlogged for the same reason. The caller's per-walk `warn` counts
+      // [unread], so this clause takes the summary down with it when nothing
+      // was actually unreadable.
     } catch (e) {
       unread.add(relPath);
       // Stays at info, and now legitimately so: this is one node of a walk

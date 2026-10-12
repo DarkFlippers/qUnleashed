@@ -33,6 +33,15 @@ class _WalkingFlipper implements FlipperClient {
   /// a Flipper that is busy running an app.
   final Set<String> refuses = {};
 
+  /// Paths the firmware says are not there, which is what a Flipper nobody
+  /// has used that app on answers - `/ext/badusb` and `/ext/subghz/wardriving`
+  /// are created by the thing that writes into them.
+  ///
+  /// Separate from [refuses] because the walk has to tell them apart: one
+  /// leaves what is on the phone alone, the other is the device saying the
+  /// files are gone.
+  final Set<String> absent = {};
+
   final List<String> listed = [];
 
   final _connection = StreamController<FlipperConnectionState>.broadcast();
@@ -78,6 +87,11 @@ class _WalkingFlipper implements FlipperClient {
     listed.add(path);
     if (refuses.contains(path)) {
       throw StateError('ERROR_STORAGE_NOT_READY');
+    }
+    if (absent.contains(path)) {
+      throw FlipperRpcStorageNotExistException(
+        Main()..commandStatus = CommandStatus.ERROR_STORAGE_NOT_EXIST,
+      );
     }
     return [
       Main(
@@ -355,5 +369,46 @@ void main() {
 
       expect(lines(ArchiveCategory.nfc.name), isNotEmpty);
     });
+  });
+
+  // `ERROR_STORAGE_NOT_EXIST` is the firmware looking and finding nothing,
+  // which is the ordinary state of a directory the user's apps have never
+  // written to. Counting it as unread put a warning in front of every such
+  // device and held the category back on a Flipper that was answering fine.
+  group('a directory the Flipper says is not there', () {
+    test('is not reported as a folder that could not be listed', () async {
+      client.absent.add(_nfcRoot);
+
+      await open();
+
+      expect(lines('could not be listed'), isEmpty);
+    });
+
+    test('does not hold the category back, unlike a refusal', () async {
+      localTag('home');
+      client.absent.add(_nfcRoot);
+
+      await open();
+
+      // The device looked and there is no /ext/nfc, so the local copy is not
+      // on it. A refusal leaves this false - the test at the top of this file
+      // is the same setup with `refuses` and asserts exactly that.
+      expect(readsAsDeleted('home'), isTrue);
+    });
+
+    test(
+      'still lets a real refusal elsewhere in the walk be reported',
+      () async {
+        client.tree[_nfcRoot] = [dir('Locks'), dir('Cards')];
+        client.refuses.add('$_nfcRoot/Locks');
+        client.absent.add('$_nfcRoot/Cards');
+
+        await open();
+
+        // One folder was unreadable, not two.
+        expect(lines('1 folder(s)'), hasLength(1));
+        expect(lines('2 folder(s)'), isEmpty);
+      },
+    );
   });
 }
