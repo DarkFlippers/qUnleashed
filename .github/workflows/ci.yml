@@ -79,6 +79,12 @@ jobs:
       - name: Test the cycle opener
         run: .github/scripts/open_next_cycle_test.sh
 
+      # Its output is published prose rather than a build decision, so nothing
+      # downstream goes red when it is wrong - somebody reads the release page
+      # and finds it describing the wrong build.
+      - name: Test the release body
+        run: .github/scripts/release_body_test.sh
+
       # Why: the probe's own header. The only thing anywhere that runs the
       # generated engine, and it needs no Flutter.
       - name: Check the SubGHz seed-recovery engine
@@ -199,11 +205,18 @@ jobs:
   # merged. The suite is pure bash and builds its own fixture repositories, so
   # running it here costs a runner boot and nothing else.
   #
-  # Only this suite. `checksums_test.sh` calls `sha256sum`, which macOS has
-  # not got, and the other suites cover scripts no macOS job runs.
-  # `check_linux_abi_test.sh` is doubly out: its subject uses `declare -A` and
-  # macOS still ships bash 3.2, so adding it here fails on the option, not on
-  # anything about the guard.
+  # Not every suite. `checksums_test.sh` calls `sha256sum`, which macOS has not
+  # got, and `check_linux_abi_test.sh` is doubly out: its subject uses
+  # `declare -A` and macOS still ships bash 3.2, so adding it here fails on the
+  # option rather than on anything about the guard. The rest are simply not here
+  # yet - `check_ffi_exports.sh` does run on a macOS build, so its suite would
+  # belong.
+  #
+  # `release_body_test.sh` is here although its script runs only on
+  # `ubuntu-latest`, because it leans on the answer for `grep -v -f <empty
+  # file>` - not a thing to assume holds across userlands, and load-bearing for
+  # every note at a cycle boundary. It costs a step on a runner this job has
+  # already booted.
   scripts-bsd:
     name: Test the release scripts on BSD userland
     runs-on: macos-latest
@@ -222,3 +235,6 @@ jobs:
 
       - name: Test the cycle opener
         run: .github/scripts/open_next_cycle_test.sh
+
+      - name: Test the release body
+        run: .github/scripts/release_body_test.sh

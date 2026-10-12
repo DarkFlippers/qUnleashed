@@ -529,12 +529,26 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      # A default checkout is enough: the only thing this job asks the script
-      # for is `--print-channel`, which is decided by the trigger and returns
-      # before anything reads git. The version and number come from
-      # build-android's outputs.
+      # `--print-channel` is decided by the trigger and returns before anything
+      # reads git, and the version and number come from build-android's outputs -
+      # so this job needed no history until `release_body.sh` did. It resolves
+      # the `dev` tag and reads the changelog at it, which a depth-1 checkout
+      # has neither; and nothing clears that tag on a release, so the commit it
+      # names can be older than the last release and no fixed depth covers it.
+      #
+      # Fetching the tag shallowly instead does not work, and fails quietly:
+      # `--depth 1` plus a refspec for `dev` resolves the tag and reads the blob,
+      # but `rev-list --count dev..HEAD` then answers 1 for any distance, so the
+      # commit-subject fallback - the usual path - publishes a single line
+      # forever. That fallback needs ancestry between the tag and HEAD, not just
+      # the tag.
+      #
+      # The version and number still come from build-android, not from a
+      # derivation here.
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Download release assets
         uses: actions/download-artifact@v4
@@ -588,17 +602,6 @@ jobs:
             echo "data=$data"
           } >> "$GITHUB_OUTPUT"
 
-          # Has anybody written a note yet? A cycle opens with a skeleton
-          # holding its version line and nothing else, so counting bullets
-          # that are not the version line is the question "are there notes".
-          # awk rather than grep because a file with no matches is the normal
-          # case here, and `grep -c` exits 1 on it.
-          changelog="$GITHUB_WORKSPACE/CHANGELOG.md"
-          notes=0
-          if [[ -f "$changelog" ]]; then
-            notes="$(awk '/^- / && !/^- Version: /' "$changelog" | wc -l | tr -d '[:space:]')"
-          fi
-
           if [[ "$channel" == dev ]]; then
             # The name carries the version, since the tag no longer can - every
             # dev build is tagged `dev`, and §2 gives them all one version name
@@ -608,10 +611,13 @@ jobs:
               echo "release_name=Development build $version-dev ($number)"
               echo "prerelease=true"
               echo "make_latest=false"
-              # Notes are generated from the previous tag, and the previous
-              # `dev` tag is the one this build is replacing - so they would
-              # describe the gap between two dev builds and get shorter the
-              # more often the build runs. The body says what matters.
+              # Naming the gap between two dev builds is what the body does
+              # now, and it does it from the changelog - curated prose with a
+              # credit per bullet. A generated list of pull request titles is
+              # the same information worse, and measured against whichever tag
+              # survives rather than the one this build replaces: the clear
+              # step below takes `dev` before `action-gh-release` runs, so the
+              # list would reach back to the last stable release.
               echo "generate_notes=false"
               echo "topic=app_dev"
               echo "title=New qUnleashed app dev build"
@@ -622,11 +628,9 @@ jobs:
             # Generated notes list the pull requests since the previous tag,
             # which against curated prose carrying a credit per bullet is the
             # same information worse - and with 172 of them since the last
-            # stable release, very much longer. Off, unconditionally: a release
-            # with nothing written is a mistake to name, not one to paper over
-            # with a list that reads like notes.
-            (( notes )) ||
-              echo "::warning::No notes in CHANGELOG.md, so $version publishes with only its version line."
+            # stable release, very much longer. Off, unconditionally; the
+            # warning for a release with nothing written is
+            # `release_body.sh`'s, which is where the changelog is read.
             {
               echo "release_name=${GITHUB_REF_NAME}"
               echo "prerelease=false"
@@ -638,38 +642,27 @@ jobs:
             } >> "$GITHUB_OUTPUT"
           fi
 
-          # The release page gets the one-liner and, under it, the changelog -
-          # which is the whole point of keeping the file: it accumulates until
-          # a stable release, so a dev build publishes everything new since
-          # the last one anybody installed on purpose.
+          # `release_body.sh` owns the body, its shapes and the reasoning, and
+          # has a test suite. It reads the changelog and the `dev` tag itself,
+          # so all it needs from here is the channel and the one-liner.
           #
-          # The one-liner stays either way. A build from the first day of a
-          # cycle has nothing written yet, and a release page whose entire body
-          # is "## Main changes" reads as a broken build rather than a new one.
-          #
-          # `body` keeps the one-liner alone, because the push notification
+          # `body` stays the one-liner alone, because the push notification
           # sends it to a phone.
           body_path="$RUNNER_TEMP/release-body.md"
-          {
-            printf '%s\n' "$body"
-            if (( notes )); then
-              printf '\n'
-              awk '!/^- Version: /' "$changelog"
-            fi
-          } >"$body_path"
+          .github/scripts/release_body.sh \
+            --channel "$channel" --summary "$body" >"$body_path"
           # An EMPTY body_path file is a successful read as far as the
           # release action is concerned, so it would publish an empty body
-          # rather than falling back to `body`. The one-liner is always written
-          # above, so empty here means something went wrong that nothing else
-          # would report - and a release page with no body is the failure this
-          # whole block exists to avoid.
+          # rather than falling back to `body`. The script writes the one-liner
+          # on every path it can exit 0 from, so empty here means something went
+          # wrong that nothing else would report - and a release page with no
+          # body is the failure this whole block exists to avoid.
           if [[ ! -s "$body_path" ]]; then
             echo "::error::The release body came out empty. Refusing to publish a release page with nothing on it." >&2
             exit 1
           fi
 
           echo "body_path=$body_path" >> "$GITHUB_OUTPUT"
-          echo "Release body: $notes note(s) from CHANGELOG.md."
 
       - name: Write SHA256SUMS
         run: .github/scripts/checksums.sh dist
