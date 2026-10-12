@@ -110,15 +110,19 @@ make_bundle "$BUNDLE"
 undef() { printf '0000000000000000      DF *UND*\t0000000000000000  %s %s\n' "$1" "${2:-a_symbol}"; }
 defined() { printf '0000000000001139 g    DF .text\t000000000000001b  %s %s\n' "$1" "${2:-a_symbol}"; }
 
-# What a bundle built on the floor image really carries. GCC_3.0 is here on
-# purpose: libgcc_s provides it, it is in UNRULED_FAMILIES, and it must not turn
-# the run red. The last line is a *defined* symbol, which must be ignored.
+# What a bundle built on the floor image really carries: these are the five
+# families the first Linux build on the pinned image reported, not a guess.
+# GCC_3.0 is here on purpose: libgcc_s provides it, it is in UNRULED_FAMILIES,
+# and it must not turn the run red. CURL_OPENSSL_4 arrives through
+# sentry-native, which links libcurl as its Linux transport. The last line is a
+# *defined* symbol, which must be ignored.
 ON_FLOOR="$(
   undef GLIBC_2.35 memcpy
   undef GLIBC_2.2.5 printf
   undef GLIBCXX_3.4.29 _ZNSt8__detail
   undef CXXABI_1.3.13 __cxa_throw
   undef GCC_3.0 _Unwind_Resume
+  undef CURL_OPENSSL_4 curl_easy_init
   defined Base qunleashed_main
 )"
 
@@ -251,13 +255,32 @@ expect_green "a symbol below the floor in an earlier component is accepted" \
 # A guard that reads only the binary, or only the libraries, passes everything
 # above - the stub used to answer the same thing for every file, so nothing
 # could tell.
-expect_red "a too-new symbol in a library only is refused" \
-  "needs GLIBC_2.38" -- 2.72.4 "$ON_FLOOR" \
+# The needle is the image and not just the symbol, because naming the bundle
+# is what the first real run did and it left the question open: a reference can
+# come from something built in this job or from a prebuilt library carried in,
+# and which one it is decides the answer. Relative to the bundle, so the
+# fixture's absolute temp path cannot make this pass by accident.
+expect_red "a too-new symbol in a library only is refused, and names it" \
+  "lib/libjni.so needs GLIBC_2.38" -- 2.72.4 "$ON_FLOOR" \
   "STUB_SYMBOLS_libjni_so=$ON_FLOOR$(undef GLIBC_2.38 strlcpy)"
 
-expect_red "a too-new symbol in the app binary only is refused" \
-  "needs GLIBC_2.38" -- 2.72.4 "$ON_FLOOR" \
+expect_red "a too-new symbol in the app binary only is refused, and names it" \
+  "qunleashed needs GLIBC_2.38" -- 2.72.4 "$ON_FLOOR" \
   "STUB_SYMBOLS_qunleashed=$ON_FLOOR$(undef GLIBC_2.38 strlcpy)"
+
+# And on a green run, where no fault names anything, the summary is the only
+# thing that can say where a family came from. Each family here lives in one
+# image only, so the needles hold whichever image the guard happens to pick
+# when several ask for the same family.
+expect_green "the summary names an image for each family" \
+  "CXXABI via qunleashed" "CURL_OPENSSL via lib/libflutter_linux_gtk.so" \
+  -- 2.72.4 "$(
+    undef GLIBC_2.2.5 printf
+    undef CURL_OPENSSL_4 curl_easy_init
+  )" "STUB_SYMBOLS_qunleashed=$(
+    undef GLIBC_2.35 memcpy
+    undef CXXABI_1.3.13 __cxa_throw
+  )"
 
 # objdump failing on one image is the same hole from the other side: the
 # aggregate "found no references" check is satisfied by any one readable file.
@@ -289,12 +312,13 @@ expect_green "a mangled symbol name is not read as a version" \
 expect_red "an unrecorded family is refused, not warned about" \
   "no floor is recorded for OPENSSL" -- 2.72.4 "$ON_FLOOR$(undef OPENSSL_3.2.0 SSL_new)"
 
-# A family carrying an underscore of its own must survive whole. Read as
-# `OPENSSL` at version 4 it both misnames the report and would make a floor
-# added later under the real name silently never match.
+# A family carrying an underscore of its own must survive whole. The floor it
+# is now checked against is what makes this provable: read as `OPENSSL` at
+# version 4, the lookup misses, and the message would be the unruled-family one
+# above instead of this.
 expect_red "a family name with an underscore is not truncated" \
-  "no floor is recorded for CURL_OPENSSL" \
-  -- 2.72.4 "$ON_FLOOR$(undef CURL_OPENSSL_4 curl_easy_init)"
+  "above the CURL_OPENSSL" \
+  -- 2.72.4 "$ON_FLOOR$(undef CURL_OPENSSL_5 curl_easy_init)"
 
 # And the one exemption still passes, and still says so.
 expect_green "a family named as unruled passes and is reported" \
@@ -501,7 +525,7 @@ bump() {
 }
 
 missing=()
-for expected in glib-2.0 GLIBC GLIBCXX CXXABI; do
+for expected in glib-2.0 GLIBC GLIBCXX CXXABI CURL_OPENSSL; do
   [[ -n "$(floor_of "$expected")" ]] || missing+=("$expected")
 done
 if ((${#missing[@]} == 0)); then
@@ -517,7 +541,7 @@ if [[ -n "$printed_glib" ]]; then
     "above the $printed_glib floor" -- "$(bump "$printed_glib")" "$ON_FLOOR"
 fi
 
-for family in GLIBC GLIBCXX CXXABI; do
+for family in GLIBC GLIBCXX CXXABI CURL_OPENSSL; do
   printed="$(floor_of "$family")"
   [[ -n "$printed" ]] || continue
   expect_green "the printed $family floor is itself accepted" \

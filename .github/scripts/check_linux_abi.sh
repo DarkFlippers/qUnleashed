@@ -70,11 +70,22 @@ PKG_CONFIG="${PKG_CONFIG:-pkg-config}"
 #
 # Debian 12 is at or above all four - GLib 2.74, glibc 2.36, GCC 12's 3.4.30,
 # and the same CXXABI_1.3.13 - so promising 22.04 covers it too.
+#
+# CURL_OPENSSL is the odd one and is not a release number at all: Debian and
+# Ubuntu version libcurl's symbols by SSL backend, so the 4 is
+# `libcurl.so.4`'s and not curl 7.81's. It is in the bundle because
+# sentry-native links libcurl as its Linux transport. The number is read off
+# the floor image rather than chosen: the first build on the pinned image
+# references CURL_OPENSSL_4, and `ld` cannot emit a version reference that no
+# library on the machine it linked against defined - so 22.04 provides it. A 5
+# would mean a different soname, which jammy would not have at all, so this
+# floor does carry signal despite the family not ratcheting with releases.
 MAX_GLIB=2.72
 declare -A MAX_SYMBOL_VERSION=(
   [GLIBC]=2.35
   [GLIBCXX]=3.4.29
   [CXXABI]=1.3.13
+  [CURL_OPENSSL]=4
 )
 
 # Families this guard does not rule on.
@@ -83,15 +94,18 @@ declare -A MAX_SYMBOL_VERSION=(
 # floor image's `libgcc_s.so.1` maximum tag off a 22.04 box, and inventing a
 # number to silence it would be a worse lie than saying nothing. One
 # `objdump -T /lib/x86_64-linux-gnu/libgcc_s.so.1` there retires this list - it
-# is an exemption by omission, not by principle, and the name says which.
+# is an exemption by omission, not by principle, and the name says which. What
+# a real bundle asks for today is GCC_3.0, GCC_3.3 and GCC_4.2.0, so the
+# number being looked for is only an upper bound on those.
 #
 # Anything listed in neither table is an error, and that default matters more
 # than it looks. The extraction below is one broad pattern on purpose, so a
 # family nobody thought of still arrives; the first draft of this script warned
-# about those and published anyway. `CURL_*` and `OPENSSL_*` are the reachable
-# case - this job installs libcurl4-openssl-dev and sentry-native links libcurl
-# as its Linux transport - and wanting OpenSSL 3.2 on a machine with 3.0.2 is
-# #280 again, exactly.
+# about those and published anyway. That default has already earned itself:
+# `CURL_OPENSSL_4` was named here as the reachable case while this was still
+# hypothetical, and the first Linux build on the pinned image stopped on
+# exactly it. `OPENSSL_*` is the same shape still waiting - wanting OpenSSL 3.2
+# on a machine with 3.0.2 is #280 again, exactly.
 declare -A UNRULED_FAMILIES=([GCC]=1)
 
 # The build image must be a numbered Ubuntu, and this is the file that says so.
@@ -260,7 +274,13 @@ check_artifact() {
     "Fix its find before trusting a green build."
 
   local -a images=("$bundle/$APP_NAME" "${libraries[@]}")
-  local raw="" dump image
+  # Which image asked for each reference, first one wins. A refusal that names
+  # only the bundle leaves the next person reading 14 images to find out
+  # whether it came from something built in this job or from a prebuilt
+  # library carried in - and that decides the answer completely. The first run
+  # of this guard stopped on CURL_OPENSSL_4 and could not say which.
+  local -A needed_by=()
+  local dump image parsed ref
   for image in "${images[@]}"; do
     # Per image, and fatal. The aggregate "did I find any references" check
     # below cannot see one image being skipped: a single readable library
@@ -275,7 +295,7 @@ check_artifact() {
     # line lets a mangled C++ name that happens to contain NAME_12 be taken for
     # a version requirement. Parens appear around the version in some objdump
     # output and carry no meaning here.
-    raw+="$(
+    parsed="$(
       awk '
         index($0, "*UND*") == 0 { next }
         NF < 2 { next }
@@ -285,16 +305,24 @@ check_artifact() {
           print field
         }
       ' <<<"$dump"
-    )"$'\n'
+    )"
+    while IFS= read -r ref; do
+      # What separates a version reference from objdump's other second-to-last
+      # fields - `Base`, a section name, a symbol carrying no version. Narrow
+      # on the family side and broad on the version side, so a family nobody
+      # recorded still reaches the error below. GLIBC_PRIVATE is deliberately
+      # out: it names no version, so there is nothing to compare.
+      [[ "$ref" =~ ^[A-Z][A-Z0-9_]*_[0-9]+(\.[0-9]+)*$ ]] || continue
+      [[ -n "${needed_by[$ref]:-}" ]] || needed_by[$ref]="$image"
+    done <<<"$parsed"
   done
 
-  # Here the exit status *is* discarded, and that is safe only because the
-  # emptiness check below is the real assertion - unlike the `find` above,
-  # whose short output would have looked like a clean bundle.
   local -a found=()
-  while IFS= read -r line; do
-    [[ -n "$line" ]] && found+=("$line")
-  done < <(sort -u <<<"$raw" | grep -E '^[A-Z][A-Z0-9_]*_[0-9]+(\.[0-9]+)*$' || true)
+  if ((${#needed_by[@]} > 0)); then
+    while IFS= read -r ref; do
+      found+=("$ref")
+    done < <(printf '%s\n' "${!needed_by[@]}" | sort)
+  fi
 
   # Every real ELF references versioned glibc symbols. None at all means
   # objdump said something this parser does not understand, which looks exactly
@@ -305,7 +333,8 @@ check_artifact() {
     "Fix this guard before trusting a green build."
 
   local -a tolerated=()
-  local reference family version floor
+  local -A family_image=()
+  local reference family version floor culprit
   for reference in "${found[@]}"; do
     # From the last underscore, so a family carrying one of its own keeps it.
     # Allowing `[A-Z0-9]*` only read `CURL_OPENSSL_4` as the family `OPENSSL`
@@ -320,15 +349,20 @@ check_artifact() {
     is_version "$version" || die \
       "Could not read a version out of '$reference'." \
       "The extraction and the split disagree; fix this guard."
+    # Relative to the bundle, which is where the interesting part of the path
+    # is: `qunleashed` is this project's own code, `lib/something.so` is a
+    # plugin's, and the absolute prefix is the same for all of them.
+    culprit="${needed_by[$reference]#"$bundle"/}"
+    [[ -n "${family_image[$family]:-}" ]] || family_image[$family]="$culprit"
     floor="${MAX_SYMBOL_VERSION[$family]:-}"
     if [[ -n "$floor" ]]; then
       within_floor "$version" "$floor" ||
-        fault "$bundle needs $reference, above the ${family}_$floor floor."
+        fault "$culprit needs $reference, above the ${family}_$floor floor."
     elif [[ -n "${UNRULED_FAMILIES[$family]:-}" ]]; then
       tolerated+=("$reference")
     else
       fault \
-        "$bundle needs $reference and no floor is recorded for $family, so" \
+        "$culprit needs $reference and no floor is recorded for $family, so" \
         "whether it resolves on the floor image is unknown. Record a floor" \
         "for $family in this script, or add it to UNRULED_FAMILIES if its" \
         "tags cannot go backwards. Do not leave it unruled."
@@ -336,6 +370,16 @@ check_artifact() {
   done
 
   ((${#tolerated[@]} == 0)) || echo "Not ruled on, by name: ${tolerated[*]}."
+  # Every family seen, each with one image that asks for it - not necessarily
+  # the only one. On a red run the fault above names the image; this line is
+  # for the green ones, which is when nobody can otherwise find out that -
+  # say - the libcurl reference comes from sentry-native rather than from
+  # anything this project calls.
+  local summary=""
+  while IFS= read -r family; do
+    summary+="${summary:+, }$family via ${family_image[$family]}"
+  done < <(printf '%s\n' "${!family_image[@]}" | sort)
+  echo "Families seen: $summary."
   echo "Read ${#images[@]} images, ${#found[@]} versioned references."
 }
 
