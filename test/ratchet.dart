@@ -156,6 +156,17 @@ void expectWithinBudget({
   expect(drift.over, isEmpty, reason: '$why\n${offending.join('\n')}');
 }
 
+/// Whether [path] is one of [exempt], matched on the path's tail.
+///
+/// Shared because two ratchets exempt a file - the push census spares the
+/// helper that owns pushing, the prompt census the dialog that owns prompting -
+/// and `ratchet.dart`'s charter is how a file list is obtained and how a path
+/// becomes an area. Both copies also normalised `\` to `/` first, which
+/// cannot matter: `countAcrossLib` takes its paths from `git ls-files`, which
+/// emits forward slashes on Windows too, and `areaOf` has always assumed that
+/// by splitting on one.
+bool isExempt(String path, Set<String> exempt) => exempt.any(path.endsWith);
+
 /// Whether [node] is a call on `LogService`, however it was imported.
 ///
 /// Shared because two ratchets ask it and a third would — the log-level budget

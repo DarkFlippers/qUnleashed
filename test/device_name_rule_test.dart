@@ -1,0 +1,186 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:qunleashed/components/name_rule.dart';
+import 'package:qunleashed/components/path.dart';
+import 'package:qunleashed/services/localization/l10n.dart';
+
+/// What a name written to the Flipper may be.
+///
+/// The rule was `SeedSubFile.checkBaseName`, four directories down in the
+/// Sub-GHz feature, and the four prompts in the file manager and the archive
+/// that write a user-typed name to the device called nothing at all - so
+/// `gate/one` reached the firmware and came back as a write failure naming no
+/// cause. #277
+///
+/// These cases came with the rule. What stayed with the seed is its budget,
+/// which is the only part of the rule that is Sub-GHz's.
+///
+/// The budget here is the Sub-GHz one wherever a case needs a short name,
+/// because a 256-byte literal would make every row unreadable; the default is
+/// covered on its own.
+const _subGhzBytes = 63;
+
+/// Judged against the volume's own budget, which is what a name written
+/// straight to the Flipper gets. Spelling it at all seventeen call sites was
+/// what forced most of them onto four lines.
+DeviceNameProblem? volume(String name) =>
+    deviceNameProblem(name, maxBytes: deviceNameMaxBytes);
+
+void main() {
+  group('what a name may be', () {
+    test('accepts what a user would reasonably type', () {
+      for (final name in [
+        'Genius_A0DC9330',
+        'garage',
+        'Gate 2',
+        'front-gate',
+        'v1.2',
+        'a',
+        'x' * _subGhzBytes,
+      ]) {
+        expect(
+          deviceNameProblem(name, maxBytes: _subGhzBytes),
+          isNull,
+          reason: '"$name" should be accepted',
+        );
+      }
+    });
+
+    test('refuses an empty name, including one that is only spaces', () {
+      expect(volume(''), DeviceNameProblem.empty);
+      expect(volume('   '), DeviceNameProblem.empty);
+    });
+
+    test('refuses a name past the budget it was given', () {
+      expect(
+        deviceNameProblem('x' * (_subGhzBytes + 1), maxBytes: _subGhzBytes),
+        DeviceNameProblem.tooLong,
+      );
+      // The same name against the volume's own limit, which is what a caller
+      // that passes nothing gets.
+      expect(volume('x' * (_subGhzBytes + 1)), isNull);
+    });
+
+    // The constant, as a literal. Every other length case is written in
+    // terms of it and so follows it anywhere, including somewhere wrong.
+    test('holds the volume budget to what FatFS carries', () {
+      expect(deviceNameMaxBytes, 255);
+    });
+
+    test('counts the default budget up to what FAT will hold', () {
+      expect(volume('x' * deviceNameMaxBytes), isNull);
+      expect(volume('x' * (deviceNameMaxBytes + 1)), DeviceNameProblem.tooLong);
+    });
+
+    test('reports the rule whose fix the next refusal would not undo', () {
+      // One table, because this is one invariant: when a name breaks two
+      // rules, the message shown has to be the one the user can act on.
+      //
+      // The budget and the ASCII rule used to be the same subject - the limit
+      // is a buffer and a Cyrillic letter is two bytes - so a long Cyrillic
+      // name came back `tooLong`, sending the user to shorten something that
+      // was never going to be accepted at any length. `.Ворота` reported as
+      // `dotEdge` is the same dead end one problem over.
+      //
+      // A control character outranks even this, because its message names
+      // something the user cannot see and this one does not.
+      for (final (name, problem) in [
+        // Over the budget as well as outside ASCII. The rows this file has to
+        // carry, because no other test can make that pairing.
+        ('я' * 32, DeviceNameProblem.nonAscii),
+        ('🙂' * 16, DeviceNameProblem.nonAscii),
+        // Comfortably inside it, so the refusal cannot be the length check in
+        // disguise.
+        ('Ворота', DeviceNameProblem.nonAscii),
+        // Also dotted, also one of the nine.
+        ('.Ворота', DeviceNameProblem.nonAscii),
+        ('Ворота?', DeviceNameProblem.nonAscii),
+        // One high character in an otherwise ASCII name - a non-breaking
+        // space, which is the shape a paste from a web page arrives in.
+        // Written as an escape, because an invisible literal leaves a reader
+        // unable to see what is asserted.
+        ('gate\u00a0one', DeviceNameProblem.nonAscii),
+        ('gate\nЯ', DeviceNameProblem.controlCharacter),
+      ]) {
+        // The narrow budget, so the long rows below really are over it. With
+        // the volume's 255 they are not, and a rule that judged the length
+        // first would answer these the same way.
+        expect(
+          deviceNameProblem(name, maxBytes: _subGhzBytes),
+          problem,
+          reason: name,
+        );
+      }
+    });
+
+    // The one pairing the table above cannot make: no row there is both
+    // dotted and over the budget, so nothing else notices the length check
+    // moving in front of the dot rule.
+    test('reports the dot before the length', () {
+      expect(
+        deviceNameProblem('.${'x' * 20}', maxBytes: 8),
+        DeviceNameProblem.dotEdge,
+      );
+    });
+
+    // Every arm of the mapping, against the string it is supposed to say.
+    // Four of the six were asserted only by their enum, so swapping the
+    // control-character and non-ASCII sentences, or answering `null` for an
+    // empty name, went unnoticed - and `empty => null` would ungate the one
+    // prompt that renders it and apply a rename to ''.
+    test('says the sentence that belongs to each problem', () {
+      expect(deviceNameRule.describe(l10n, 'garage'), isNull);
+      expect(deviceNameRule.describe(l10n, '   '), l10n.commonNameEmpty);
+      expect(
+        deviceNameRule.describe(l10n, 'gate\u0000one'),
+        l10n.commonNameControlChar,
+      );
+      expect(deviceNameRule.describe(l10n, 'Ворота'), l10n.commonNameNonAscii);
+      expect(
+        deviceNameRule.describe(l10n, 'gate/one'),
+        l10n.commonNameIllegal(reservedNameCharsSpelled),
+      );
+      expect(deviceNameRule.describe(l10n, '.hidden'), l10n.commonNameDotEdge);
+      // The budget reaches the sentence: compared against the message for a
+      // *different* number, this is the only thing that sees the
+      // interpolation at all.
+      expect(
+        const NameRule.ofBytes(8).describe(l10n, 'x' * 9),
+        l10n.commonNameTooLong(8),
+      );
+    });
+
+    // The nine themselves, and the whole control range, are walked by
+    // `test/reserved_name_chars_test.dart` against the one constant that
+    // declares them - which is the file that exists so the set is written
+    // down once. A third copy of the list here would be a third thing to
+    // edit when it changes.
+
+    test('refuses a leading or trailing dot', () {
+      expect(volume('.hidden'), DeviceNameProblem.dotEdge);
+      expect(volume('trailing.'), DeviceNameProblem.dotEdge);
+      expect(volume('.'), DeviceNameProblem.dotEdge);
+      expect(volume('..'), DeviceNameProblem.dotEdge);
+    });
+
+    test('judges the trimmed name, which is the one that gets written', () {
+      // The surrounding spaces are dropped before the check and before the
+      // write, so a name that is legal once trimmed is legal here.
+      expect(volume('  garage  '), isNull);
+      // And one that is not stays refused rather than being trimmed into
+      // legality.
+      expect(volume('  .hidden  '), DeviceNameProblem.dotEdge);
+      // Dart's `trim` reaches past the ASCII space, so these arrive at the
+      // check as plain `garage` too. Judging `raw` instead would refuse a name
+      // that looks pure ASCII on screen, naming a character that is both
+      // invisible and about to be removed anyway.
+      for (final padded in [
+        '\u00a0garage\u00a0',
+        '\u3000garage',
+        '\ufeffgarage',
+        '\u0085garage',
+      ]) {
+        expect(volume(padded), isNull, reason: padded);
+      }
+    });
+  });
+}

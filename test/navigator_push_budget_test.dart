@@ -99,7 +99,7 @@ class _PushVisitor extends RecursiveAstVisitor<void> {
 }
 
 List<int> _pushesIn(CompilationUnit unit, String path) {
-  if (kExempt.any(path.replaceAll(r'\', '/').endsWith)) return const [];
+  if (isExempt(path, kExempt)) return const [];
   final visitor = _PushVisitor(
     (offset) => unit.lineInfo.getLocation(offset).lineNumber,
   );

@@ -10,6 +10,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../components/navigation.dart';
+import '../../../components/dialogs/name.dart';
+import '../../../components/name_rule.dart';
 import '../../../theme/theme.dart';
 
 import 'package:flipperlib/flipperlib.dart';
@@ -563,6 +565,11 @@ class _FileManagerPageState extends State<FileManagerPage> {
 
   /// Picks a free name based on [base] (e.g. `new.txt`, `new1.txt`, …) within
   /// the current directory so creating a file never clobbers an existing one.
+  ///
+  /// [base] has to be a name `deviceNameRule` already accepts: this appends a
+  /// counter and nothing more, so a base the Flipper refuses stays refused.
+  /// Every caller passes a literal, which is why that is a note and not a
+  /// check.
   String _uniqueName(String base) {
     final taken = _ctrl.entries.map((e) => e.name).toSet();
     if (!taken.contains(base)) return base;
@@ -680,12 +687,28 @@ class _FileManagerPageState extends State<FileManagerPage> {
   }
 
   Future<void> _createFolder() async {
-    final name = await _promptText(
-      context.l10n.fmNewFolder,
+    // QNameDialog rather than the hand-rolled prompt this had: that one
+    // validated nothing, so `gate/one` went to `mkdir` and came back as
+    // "Create folder failed" with no cause named. #277
+    final name = await QNameDialog.show(
+      context,
+      title: context.l10n.fmNewFolder,
+      // A folder name, so nothing is appended to it: the volume's own rule.
+      rule: deviceNameRule,
+      // The collision, which is this prompt's own business rather than the
+      // storage's - and the last place in #277's list that still answered a
+      // name it could not use with a failure naming no cause. `mkdir` onto an
+      // existing folder fails, and this call site does not read the reason.
+      validate: (value) => _ctrl.entries.any((e) => e.name == value.trim())
+          ? context.l10n.fmConflictRenameTaken
+          : null,
       hintText: context.l10n.fmFolderName,
+      confirmLabel: context.l10n.fmCreate,
     );
-    if (name == null || name.trim().isEmpty) return;
-    final ok = await _ctrl.mkdir(name.trim());
+    // Null is a dismissal. The dialog cannot answer with an empty name, so
+    // nothing here checks for one.
+    if (name == null) return;
+    final ok = await _ctrl.mkdir(name);
     if (ok) await _ctrl.refresh();
     if (!mounted) return;
     if (!ok) {
@@ -794,42 +817,6 @@ class _FileManagerPageState extends State<FileManagerPage> {
           ),
         ) ??
         false;
-  }
-
-  Future<String?> _promptText(
-    String title, {
-    String? initialValue,
-    String? hintText,
-  }) {
-    final controller = TextEditingController(text: initialValue);
-    final colors = context.appColors;
-    return showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: colors.dialogBackground,
-        title: Text(title, style: TextStyle(color: colors.dialogText)),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          style: TextStyle(color: colors.dialogText),
-          decoration: InputDecoration(
-            hintText: hintText,
-            hintStyle: TextStyle(color: colors.dialogMuted),
-          ),
-          onSubmitted: (v) => Navigator.pop(ctx, v),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(context.l10n.commonCancel),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, controller.text),
-            child: Text(context.l10n.fmCreate),
-          ),
-        ],
-      ),
-    );
   }
 
   void _showSortSheet() {

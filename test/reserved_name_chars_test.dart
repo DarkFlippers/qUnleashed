@@ -21,7 +21,7 @@
 // limit - so #266 leaves it where it is.
 //
 // What it also cannot see, structurally: whether a rule holds its own private
-// copy of an identical regex. Giving `checkBaseName` back its old
+// copy of an identical regex. Giving `deviceNameProblem` back its old
 // `_illegalInName` leaves every test here green, because an identical copy
 // gives identical answers. These tests catch divergence, which is the failure
 // that matters; the single-sourcing itself is held by review.
@@ -30,7 +30,6 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/components/path.dart';
-import 'package:qunleashed/pages/tools/subghz/seed/seed_sub_file.dart';
 import 'package:qunleashed/services/localization/l10n.dart';
 
 /// The nine, spelled out. Windows reserves them and a FAT volume cannot hold
@@ -144,7 +143,7 @@ void main() {
       // problem there, in both locales this app is translated into.
       //
       // The device's refusal is `isNonAsciiNameChar` instead, applied by
-      // `checkBaseName` alone. #282
+      // `deviceNameProblem` alone. #282
       for (final char in _nonAscii) {
         expect(reservedNameCharsPattern.hasMatch(char), isFalse, reason: char);
       }
@@ -175,7 +174,7 @@ void main() {
 
     test('catches both halves of a surrogate pair', () {
       // An emoji is two code units, neither of which is the character itself,
-      // and `checkBaseName` walks `codeUnits` - so this is the spelling the
+      // and `deviceNameProblem` walks `codeUnits` - so this is the spelling the
       // implementation actually depends on. A `runes` assertion beside it
       // would pass for any threshold between 0x7f and 0x1f641 and so pins
       // nothing; it is deliberately not here.
@@ -190,7 +189,7 @@ void main() {
       //
       // No gap: the firmware's `path_contains_only_ascii` accepts exactly
       // 0x20-0x7e, so every other code unit must be caught by one of the two
-      // or `checkBaseName` passes a name the RPC layer will refuse. A gap here
+      // or `deviceNameProblem` passes a name the RPC layer will refuse. A gap here
       // is the whole of #282.
       //
       // No overlap: the two decide which of two messages the user is shown, so
@@ -270,8 +269,8 @@ void main() {
     test('reports every reserved character', () {
       for (final bad in _nine) {
         expect(
-          SeedSubFile.checkBaseName('gate${bad}1'),
-          SeedNameProblem.illegalCharacter,
+          deviceNameProblem('gate${bad}1', maxBytes: deviceNameMaxBytes),
+          DeviceNameProblem.illegalCharacter,
           reason: '"$bad" should be refused',
         );
       }
@@ -284,8 +283,8 @@ void main() {
       // nothing about what they typed.
       for (final bad in ['\u0000', '\t', '\n', '\u001f', '\u007f']) {
         expect(
-          SeedSubFile.checkBaseName('gate${bad}1'),
-          SeedNameProblem.controlCharacter,
+          deviceNameProblem('gate${bad}1', maxBytes: deviceNameMaxBytes),
+          DeviceNameProblem.controlCharacter,
           reason:
               'U+${bad.codeUnitAt(0).toRadixString(16)} should be refused as '
               'a control character, not as one of the nine',
@@ -301,10 +300,13 @@ void main() {
       // written and the device rule refuses, or the reverse.
       for (var unit = 0; unit < 0x80; unit++) {
         final char = String.fromCharCode(unit);
-        final problem = SeedSubFile.checkBaseName('gate${char}1');
+        final problem = deviceNameProblem(
+          'gate${char}1',
+          maxBytes: deviceNameMaxBytes,
+        );
         final refused =
-            problem == SeedNameProblem.illegalCharacter ||
-            problem == SeedNameProblem.controlCharacter;
+            problem == DeviceNameProblem.illegalCharacter ||
+            problem == DeviceNameProblem.controlCharacter;
         expect(
           refused,
           reservedNameCharsPattern.hasMatch(char),
@@ -325,8 +327,8 @@ void main() {
       // existing install. #282
       for (final char in _nonAscii) {
         expect(
-          SeedSubFile.checkBaseName('gate${char}1'),
-          SeedNameProblem.nonAscii,
+          deviceNameProblem('gate${char}1', maxBytes: deviceNameMaxBytes),
+          DeviceNameProblem.nonAscii,
           reason: '"$char" must be refused for the device',
         );
         expect(

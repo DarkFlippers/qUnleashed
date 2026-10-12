@@ -116,14 +116,13 @@ const Map<String, int> kBudget = {
   // completes normally when its ticker is cancelled; only `.orCancel` rejects,
   // and this is not that.
   'components': 3,
-  // Read through. Was 3: `_saveLastFolder` and `_rememberSource` are named
-  // through `guarded` now, the second because it sits inside a `try` whose
-  // catch could never have seen it. What is left is
-  // `project/page.dart`'s `openRoute`, which #23 calls deliberate and is: the
-  // only throw in `openRoute` is the synchronous StateError for an
-  // unregistered route, which the surrounding try does catch, and the pushed
-  // route's future resolves when it is popped.
-  'pages/flibler': 1,
+  // Was 3, then 1, now none. `_saveLastFolder` and `_rememberSource` are named
+  // through `guarded`; the last one was `project/page.dart`'s `openRoute`,
+  // which went when `_openOnDevice` started handing the launch to `launchApp`
+  // rather than writing out the push and the busy dialog itself (#244). The
+  // entry stays at 0 rather than being deleted, because an area with no
+  // budget line is one nobody has looked at.
+  'pages/flibler': 0,
   // Read through. Was 34. Three were the pull-to-refresh handlers, the one
   // place here where the bare shape was a defect a user felt rather than a
   // missing label - see `test/apps_pull_to_refresh_test.dart`. The other thirty

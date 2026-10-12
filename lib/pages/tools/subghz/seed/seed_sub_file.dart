@@ -1,33 +1,6 @@
-import 'dart:convert';
-
+import '../../../../components/name_rule.dart';
 import '../../../../components/path.dart';
 import 'seed_models.dart';
-
-/// Why a name the user typed cannot be used.
-///
-/// An enum rather than a message, so the page can say it in the user's language
-/// and the set stays exhaustive - the same reason `SeedFailure` is one.
-enum SeedNameProblem {
-  empty,
-  tooLong,
-
-  /// One of the nine `reservedNameChars`. Separate from [controlCharacter]
-  /// because the message for this one can list what it refuses and the message
-  /// for that one cannot.
-  illegalCharacter,
-
-  /// A C0 control character or DEL, which a paste can carry in and a keyboard
-  /// cannot type.
-  controlCharacter,
-
-  /// Anything outside ASCII. Its own problem rather than [illegalCharacter]
-  /// because that message lists nine characters, none of which is the one the
-  /// user typed, and the fix is different: there is no escaping or quoting
-  /// that gets a Cyrillic letter onto the device, the name has to be written
-  /// in ASCII. See `isNonAsciiNameChar`.
-  nonAscii,
-  dotEdge,
-}
 
 /// Where the Flipper keeps transmittable Sub-GHz files. A recovered remote
 /// written anywhere else is a number on a screen; written here it appears under
@@ -142,71 +115,20 @@ class SeedSubFile {
   static String pathFor(String raw) =>
       '$seedSubGhzDir/${raw.trim()}$fileExtension';
 
-  /// What is wrong with [raw] as a base name, or null when nothing is.
+  /// What a name for one of these files may be.
   ///
-  /// These are the storage layer's rules, not the on-screen keyboard's. The
-  /// Flipper's own text input offers `a-z`, `A-Z`, `0-9`, `_` and the space
-  /// that its shifted `_` produces (`text_input.c`, `char_to_uppercase`), but
-  /// a file written over RPC lands on a FAT volume and is listed by a browser
-  /// that is perfectly happy with a dash too - so refusing one would be this
-  /// app inventing a rule the device does not have.
+  /// The rule is the Flipper's storage - [deviceNameProblem] - because the
+  /// character set, the dot rule and the counting are its, not Sub-GHz's.
+  /// While this feature held them, four prompts in the file manager and the
+  /// archive wrote user-typed names to the device with no check at all, and a
+  /// fifth with a weak one. #277
   ///
-  /// Three layers own the refusals below, and it is worth keeping them apart
-  /// because they are re-derived every time someone asks whether a rule is
-  /// too strict:
-  ///
-  /// - the **volume**: the nine, which `create_name` refuses or splits on.
-  /// - the **RPC layer**: the nine again, and everything outside ASCII, which
-  ///   is `path_contains_only_ascii`. See `isNonAsciiNameChar`.
-  /// - **this app**: [SeedNameProblem.dotEdge] alone, which both layers below
-  ///   would accept. It is kept on how the name is *browsed* rather than on
-  ///   whether it can be written - see the comment on the check itself.
-  ///
-  /// Non-ASCII is refused, which was #266's open question and #282 is the
-  /// answer. Accepting one bought nothing except a write that failed
-  /// afterwards, saying only that it had failed.
-  ///
-  /// Takes the name *without* the extension; [fileExtension] is added after.
-  static SeedNameProblem? checkBaseName(String raw) {
-    final name = raw.trim();
-    if (name.isEmpty) return SeedNameProblem.empty;
-    // Every character rule before the length one. A name that breaks both gets
-    // the message it can act on: shortening a Cyrillic name is work that ends
-    // in the same refusal, and "use ASCII" is the whole fix either way.
-    //
-    // Control characters before the nine, so that by the time
-    // `reservedNameCharsPattern` runs the only thing it can be reporting is a
-    // character the message can name.
-    if (name.codeUnits.any(isControlNameChar)) {
-      return SeedNameProblem.controlCharacter;
-    }
-    if (name.codeUnits.any(isNonAsciiNameChar)) {
-      return SeedNameProblem.nonAscii;
-    }
-    if (reservedNameCharsPattern.hasMatch(name)) {
-      return SeedNameProblem.illegalCharacter;
-    }
-    // A leading dot hides the file from the Flipper's own browser:
-    // `browser_filter_by_name` in `file_browser_worker.c` skips any name
-    // starting with one while `hide_dot_files` is set, and `.gate` + `.sub`
-    // still starts with a dot. So the file writes, and then the user cannot
-    // find what they just saved - which is worse than being told no.
-    //
-    // The trailing dot is refused for a weaker reason, kept deliberately:
-    // nothing downstream minds it, because [fileExtension] is appended after
-    // this runs, so `gate.` reaches the volume as `gate..sub` and FatFS's
-    // snip-trailing-dots loop never fires. `.` and `..` likewise arrive as
-    // `..sub` and `...sub`, which are ordinary names. What is left is that a
-    // name ending in a dot reads as a mistake and costs the user nothing to
-    // fix, and that the rule is one sentence rather than two.
-    if (name.startsWith('.') || name.endsWith('.')) {
-      return SeedNameProblem.dotEdge;
-    }
-    if (utf8.encode(name).length > maxBaseNameLength) {
-      return SeedNameProblem.tooLong;
-    }
-    return null;
-  }
+  /// What is Sub-GHz's is [maxBaseNameLength], and this is the one place that
+  /// binds the two: the page hands it to the prompt and the controller asks it
+  /// about a name, where before there were two expressions saying the same
+  /// thing in one folder. It judges the name *without* the extension;
+  /// [fileExtension] is added after.
+  static const nameRule = NameRule.ofBytes(maxBaseNameLength);
 
   /// Everything a generated name leaves out. Tidiness, not a storage rule -
   /// [checkBaseName] accepts a space from a user, and "FAAC SLH" has one.
