@@ -156,8 +156,14 @@ class AppActionButton extends StatelessWidget {
     engine.installOrUpdate(app, category: category, detail: detail);
   }
 
-  Future<void> _launchApp(BuildContext context) =>
-      launchApp(context, () => engine.launch(app, category: category));
+  Future<void> _launchApp(BuildContext context) => launchApp(
+    context,
+    () => engine.launch(app, category: category),
+    // The alias is what the engine resolves a path from; the id is the
+    // fallback for a card that has not got one, so two different apps cannot
+    // share a key.
+    target: app.alias.isNotEmpty ? app.alias : app.id,
+  );
 
   Future<void> _confirmDelete(BuildContext context) =>
       confirmDeleteApp(context, engine: engine, app: app, category: category);

@@ -93,10 +93,12 @@ class _ProjectManagerPageState extends State<ProjectManagerPage> {
   }
 
   Future<void> _openEditor(PaintProject? project) async {
-    // Two editors on one project is the worst of these: each runs its own
-    // 1.2 s autosave timer against the same draft folder. The gallery *card*
-    // was already immune - it declares onDoubleTap, which absorbs the second
-    // click - but the New button and the sheet's Edit are not. #244.
+    // Two editors on one project each run their own 1.2 s autosave timer
+    // against the same draft folder, which is the harm here. Two editors on
+    // *New* do not: each mints its own draft id, so that one costs two stray
+    // drafts rather than a clobber. The gallery card was already immune to
+    // both - it declares onDoubleTap, which absorbs the second click - and the
+    // sheet's Edit and the New button are the doors that were not. #244.
     if (!isTopRoute(context)) return;
     await Navigator.of(context)
         .push(MaterialPageRoute(builder: (_) => PaintPage(project: project)));

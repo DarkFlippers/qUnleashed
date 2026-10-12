@@ -262,7 +262,7 @@ class _AtpInstallPageState extends State<AtpInstallPage> {
   Future<void> _launch(AtpEntry entry) {
     final path =
         _backend.manifests.byAlias(entry.appId)?.path ?? entry.installPath;
-    return launchApp(context, () => _engine.launchPath(path));
+    return launchApp(context, () => _engine.launchPath(path), target: path);
   }
 
   @override

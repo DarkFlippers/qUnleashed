@@ -80,21 +80,29 @@ Future<T?> openRoute<T>(
 /// The guard for a handler whose whole effect is a synchronous push. A second
 /// tap on the card that pushed a page stacks an identical copy of it, and both
 /// have to be dismissed separately; where the pushed page fetches in
-/// `initState`, it also fetches twice. Once the first push has happened the
-/// pushing page is no longer current - during the transition as well as after
-/// it - so this answers no and the second tap does nothing.
+/// `initState`, it also fetches twice. `Route.isCurrent` goes false for the
+/// pusher as soon as the pushed entry is present, which happens synchronously
+/// with the push, so the second tap answers no.
 ///
 /// A flag set in the handler cannot do this job here, because there is no await
 /// to hold it across: it would have to be cleared when the pushed route
 /// returns, which means keeping state for a question the navigator already
 /// answers.
 ///
-/// Why the exposure exists at all: with no `pageTransitionsTheme` override,
-/// Windows, Linux and Android get the Zoom transition, whose incoming page is
-/// opaque from the first frame and absorbs the second click. macOS and iOS get
-/// the Cupertino slide, which leaves the control exposed for the whole
-/// transition - so an unguarded synchronous double-push is an Apple-only bug,
-/// and the one platform nobody double-clicks on. #244.
+/// How reachable the second tap is depends on the platform and on where the
+/// control sits. This app overrides no `pageTransitionsTheme`, so the
+/// transition is the framework default per platform - Zoom on Windows and
+/// Linux, FadeForwards on Android for a programmatic push, the Cupertino slide
+/// on iOS and macOS - and what decides whether the click lands on the control
+/// or on the page arriving over it is coverage under hit-testing, not opacity.
+/// The guard does not depend on any of that, which is why it is applied
+/// everywhere rather than behind a platform check. #244.
+///
+/// What it costs: `isCurrent` stays false for the pusher until a pop's exit
+/// animation has finalized, while the future `Navigator.push` returned
+/// completed when the pop began - so a tap landing inside one transition of
+/// dismissing the pushed page is refused, and the user taps again. One
+/// transition of that, against a duplicate of a page that fetches on open.
 ///
 /// True when there is no [ModalRoute] - a widget pumped outside one, which is
 /// most widget tests. Refusing to push when the question cannot be answered

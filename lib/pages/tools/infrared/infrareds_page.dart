@@ -35,7 +35,16 @@ class _IrInfraredsPageState extends State<IrInfraredsPage> {
   bool _loading = true;
   String? _error;
   List<IfrFileModel> _files = const [];
-  int? _fetchingId;
+
+  /// The files whose content is being fetched.
+  ///
+  /// A set and not the single `int?` slot this was: the guard allows a
+  /// *different* file to be fetched meanwhile, which is the path that defeats
+  /// one slot. Tap A, tap B while A is out, and A's completion clears the slot
+  /// while B is still in flight - B's tile re-enables and B can be opened
+  /// twice over. The error path is the reachable one, since a failed fetch
+  /// leaves the whole list on screen. #244.
+  final Set<int> _fetching = {};
 
   @override
   void initState() {
@@ -74,17 +83,13 @@ class _IrInfraredsPageState extends State<IrInfraredsPage> {
   }
 
   Future<void> _open(IfrFileModel f) async {
-    // The tile below is already disabled while its own fetch runs, which is
-    // half of this repository's idiom and was all this had. The other half
-    // matters here: setState only schedules a rebuild, so two taps inside one
-    // frame both see the enabled tile - and this awaits a backend fetch before
-    // pushing, so the second one would fetch again and stack a second page.
-    //
-    // The same file, not any file: fetching a *different* one meanwhile is
-    // legitimate, and refusing it would leave an enabled tile that does
-    // nothing. #244.
-    if (_fetchingId == f.id) return;
-    setState(() => _fetchingId = f.id);
+    // The tile is disabled while its own fetch runs, which is the call-site
+    // half of this repository's idiom and was all this had. The handler half
+    // closes the rest: a rebuild is only scheduled by setState, so two
+    // activations before it lands both see an enabled tile, and this awaits a
+    // backend fetch before pushing.
+    if (!_fetching.add(f.id)) return;
+    setState(() {});
     try {
       final content = await _api.getKeyContent(f.id);
       if (!mounted) return;
@@ -109,7 +114,8 @@ class _IrInfraredsPageState extends State<IrInfraredsPage> {
         type: QNotificationType.error,
       );
     } finally {
-      if (mounted) setState(() => _fetchingId = null);
+      _fetching.remove(f.id);
+      if (mounted) setState(() {});
     }
   }
 
@@ -155,7 +161,7 @@ class _IrInfraredsPageState extends State<IrInfraredsPage> {
         separatorBuilder: (_, _) => const SizedBox(height: 6),
         itemBuilder: (context, i) {
           final f = _files[i];
-          final fetching = _fetchingId == f.id;
+          final fetching = _fetching.contains(f.id);
           return Material(
             color: colors.card,
             borderRadius: BorderRadius.circular(12),

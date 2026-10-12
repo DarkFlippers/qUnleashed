@@ -76,8 +76,13 @@ class _IrLibPageState extends State<IrLibPage> {
       );
       return;
     }
-    // Only the file branch: a directory tap moves the controller's path in
-    // place, so the second one is already a no-op at the same path. #244.
+    // Only the file branch, and the directory one is not covered rather than
+    // not affected: `openPath` re-lists, and the cache it can short-circuit on
+    // is not populated until the first listing lands, so a second tap on a
+    // folder does fetch again. It replaces the view instead of stacking on it,
+    // which is why it is the lesser half and why `isTopRoute` cannot answer it
+    // - the page is still on top. It wants what the file manager's listing got
+    // and has not had it. #244.
     if (!isTopRoute(context)) return;
     Navigator.of(context).push(
       MaterialPageRoute(

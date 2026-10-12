@@ -8,22 +8,24 @@ import '../../components/dialogs/action.dart';
 import '../../components/dialogs/confirm.dart';
 import '../../components/navigation.dart';
 import '../../components/notification.dart';
+import '../../services/logging.dart';
 import '../../theme/theme.dart';
 import 'data/install_engine.dart';
 import 'data/models/card.dart';
 import 'data/models/category.dart';
 
-/// True from the moment a launch is asked for until the remote control has
-/// been opened or the failure reported.
+/// The apps a launch has been asked for and not yet finished answering.
 ///
-/// Process-wide, and not keyed on anything: [start] awaits `appStart` with a
-/// 15-second timeout while the page stays fully interactive, and there is only
-/// one screen to hand over. A second tap in that window started a second app
-/// and pushed a second remote control - and `RemoteSession`'s constructor
-/// starts the screen stream, so that is two concurrent screen streams on one
-/// Flipper. Worse, the second `appStart` usually throws `AppSystemLocked`,
-/// which is handled below by showing the busy dialog *and* opening the remote
-/// control anyway.
+/// [start] awaits `appStart` with a 15-second timeout while the page stays
+/// fully interactive, so a second tap in that window started the app again and
+/// pushed a second remote control - and `RemoteSession`'s constructor starts
+/// the screen stream, so that is two concurrent screen streams on one Flipper.
+///
+/// Keyed on the app, like the archive controller's own launch guard and for the
+/// same reason: tapping Run on a *different* app is a thing a user does, and
+/// the right answer to it is the busy dialog below, which offers to open the
+/// remote control - not a dead button. Unkeyed, as the first draft had it, Run
+/// was silently inert on three pages for up to fifteen seconds.
 ///
 /// A file-level variable rather than a field, because the three callers are
 /// three different pages - the catalog, the app manager and the installer - and
@@ -31,17 +33,25 @@ import 'data/models/category.dart';
 /// cannot hold it either: its per-alias `_actions` map serialises installs and
 /// deletes, but `launchPath` goes straight to the client without touching it.
 /// #244.
-bool _handingOverScreen = false;
+final Set<String> _handingOverScreen = {};
 
 /// Runs [start] and hands the screen over to the remote control, which is where
 /// a launched app shows up. A Flipper that is busy gets the dedicated dialog
-/// instead of a raw error. Does nothing if a launch is already under way.
+/// instead of a raw error.
+///
+/// [target] is what is being launched - an alias or a path - and a second call
+/// naming the same one while the first is still out does nothing.
 Future<void> launchApp(
   BuildContext context,
-  Future<void> Function() start,
-) async {
-  if (_handingOverScreen) return;
-  _handingOverScreen = true;
+  Future<void> Function() start, {
+  required String target,
+}) async {
+  if (!_handingOverScreen.add(target)) {
+    // Not silence: a tap that does nothing is otherwise impossible to tell
+    // from a tap that was never delivered, in a bug report or in a log.
+    LogService.caught('[Apps] launch $target ignored, one already in flight');
+    return;
+  }
   try {
     await start();
     if (context.mounted) {
@@ -75,7 +85,7 @@ Future<void> launchApp(
     // user left cannot wedge the next one. The push above is deliberately not
     // awaited, so by here the remote control is on its way and the page that
     // asked is no longer the one on top.
-    _handingOverScreen = false;
+    _handingOverScreen.remove(target);
   }
 }
 

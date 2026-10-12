@@ -202,19 +202,32 @@ class ToolsPage extends StatelessWidget {
     );
   }
 
+  /// One tool page at a time, whichever way the card opens one.
+  ///
+  /// Both branches, because every item here opens a page: the five that
+  /// declare `onTap` push too - the CLI page directly, the rest through
+  /// `openRoute` - and the first draft of this guard sat inside the
+  /// `routeBuilder` branch only, under a comment claiming it covered the card
+  /// list. It covered six of eleven cards, and the five it missed included the
+  /// worst one: `CliPage.initState` kicks `_bootstrap()` behind a per-instance
+  /// `_busy`, so two of them open two CLI channels on one Flipper.
+  ///
+  /// The worst payload among the rest is Recover, which builds its own
+  /// controller in `initState` and calls `start()` - `_running` is per
+  /// instance, so it guards nothing across two stacked pages. Both load the
+  /// user's key dictionary and both write it back, so one run's recovered keys
+  /// are lost. #244.
   VoidCallback? _resolveTap(BuildContext context, ToolItemModel item) {
     final onTap = item.onTap;
-    if (onTap != null) return () => onTap(context);
+    if (onTap != null) {
+      return () {
+        if (!isTopRoute(context)) return;
+        onTap(context);
+      };
+    }
     final routeBuilder = item.routeBuilder;
     if (routeBuilder != null) {
       return () {
-        // One tool page at a time. This is the card list for every tool, so
-        // the cost of a second tap is whatever the pushed page does on its own
-        // in initState - and the worst of those is Recover, which builds its
-        // own controller and calls start(), so `_running` is per-instance and
-        // guards nothing across two of them. Two runs both load the user's key
-        // dictionary and both write it back, so one run's recovered keys are
-        // lost. #244.
         if (!isTopRoute(context)) return;
         Navigator.of(context).push(MaterialPageRoute(builder: routeBuilder));
       };

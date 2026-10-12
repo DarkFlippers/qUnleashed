@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io' as io;
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flipperlib/src/transport/transport.dart';
 import 'package:flutter/material.dart';
@@ -11,7 +12,10 @@ import 'package:qunleashed/components/navigation.dart';
 import 'package:qunleashed/pages/apps/actions.dart';
 import 'package:qunleashed/pages/archive/browser/controller.dart';
 import 'package:qunleashed/pages/archive/overview/controller.dart';
+import 'package:qunleashed/pages/tools/plotter/page.dart';
 import 'package:qunleashed/services/archive/storage.dart';
+
+import 'firmware_fixture.dart';
 
 /// One gesture must not run an action twice. #244.
 ///
@@ -162,18 +166,46 @@ void main() {
       addTearDown(ctrl.dispose);
     });
 
-    test('happens once when the second tap arrives while it is out', () async {
+    // Coalesced, not dropped. Dropping it was the first draft and it made
+    // `await refresh()` a lie: ten call sites in the page change the folder and
+    // then refresh it, so a dropped listing leaves the pre-change entries on
+    // screen with nothing said. What a second tap costs is one *sequential*
+    // listing instead of a second concurrent one.
+    test('runs a second listing after the first, not alongside it', () async {
       client.gate = Completer<void>();
       final first = ctrl.refresh();
       final second = ctrl.refresh();
+      // Still one while the first is out: the second has not started yet.
+      expect(_listCalls(client), 1);
       client.gate!.complete();
       await Future.wait([first, second]);
 
-      expect(_listCalls(client), 1);
+      expect(_listCalls(client), 2);
     });
 
-    // The guard has to be released, or the folder can never be re-listed - and
-    // a refresh is what every operation in the page ends with.
+    // However many arrive in the window, they share one trailing listing.
+    test('costs one extra listing for five taps, not five', () async {
+      client.gate = Completer<void>();
+      final all = [for (var i = 0; i < 5; i++) ctrl.refresh()];
+      client.gate!.complete();
+      await Future.wait(all);
+
+      expect(_listCalls(client), 2);
+    });
+
+    // The contract the ten mutating call sites rely on: when the future
+    // completes, a listing that started *after* the call has landed.
+    test('is fresh for a caller that arrived while one was out', () async {
+      client.gate = Completer<void>();
+      final first = ctrl.refresh();
+      final after = ctrl.refresh();
+      client.gate!.complete();
+      await after;
+
+      expect(_listCalls(client), 2);
+      await first;
+    });
+
     test('happens again once the first listing has answered', () async {
       await ctrl.refresh();
       await ctrl.refresh();
@@ -182,13 +214,15 @@ void main() {
     });
 
     // The regression a bare `if (_loading) return;` introduces, which is why
-    // the guard is keyed on the path: `open()` moves the path and then calls
+    // this is keyed on the path at all: `open()` moves the path and then calls
     // refresh, so a flag would skip the new folder's listing altogether and
-    // leave the previous folder's entries on screen under the new path.
+    // leave the previous folder's entries on screen under the new path. A
+    // different path also starts at once rather than waiting its turn.
     test('still happens for a folder opened while one is out', () async {
       client.gate = Completer<void>();
       final first = ctrl.refresh();
       final opened = ctrl.open('/ext/subghz');
+      expect(client.calls, ['storageList(/ext)', 'storageList(/ext/subghz)']);
       client.gate!.complete();
       await Future.wait([first, opened]);
 
@@ -240,16 +274,96 @@ void main() {
   });
 
   group('handing the screen to the remote control', () {
-    setUp(
-      () => registerRoute(
+    late _CountingObserver pushes;
+
+    setUp(() {
+      pushes = _CountingObserver();
+      registerRoute(
         AppRoute.remoteControl,
         (context, args) => const Text('remote control'),
-      ),
-    );
+      );
+    });
 
-    // launchApp is what the catalog, the app manager and the installer all
-    // call, so the guard inside it is one guard for three pages.
+    // Counting presses of one button through one `launchApp`, which is what
+    // the catalog, the app manager and the installer all call - so the guard
+    // inside it is one guard for three pages.
+    //
+    // The pushed remote control is counted at the navigator, not with
+    // `find.text`: two stacked remote controls would also satisfy
+    // findsOneWidget, because the obscured route is offstage and finders skip
+    // offstage widgets.
+    Future<VoidCallback> pumpLauncher(
+      WidgetTester tester, {
+      required Future<void> Function() start,
+      String target = 'nfc',
+    }) async {
+      late VoidCallback press;
+      await tester.pumpWidget(
+        MaterialApp(
+          navigatorObservers: [pushes],
+          home: Builder(
+            builder: (context) {
+              press = () => launchApp(context, start, target: target);
+              return ElevatedButton(
+                onPressed: press,
+                child: const Text('open'),
+              );
+            },
+          ),
+        ),
+      );
+      return press;
+    }
+
     testWidgets('starts the app once for two presses', (tester) async {
+      final gate = Completer<void>();
+      var starts = 0;
+      final press = await pumpLauncher(
+        tester,
+        start: () async {
+          starts++;
+          await gate.future;
+        },
+      );
+
+      press();
+      press();
+      gate.complete();
+      await tester.pumpAndSettle();
+
+      expect(starts, 1);
+      expect(pushes.count, 1);
+    });
+
+    // The release, on the path that *did* push - which is the mutation that
+    // matters, because a flag left set here wedges app launching process-wide
+    // for the rest of the session. An earlier version of this test used an
+    // unmounted context for both launches, so it never covered this leg; the
+    // mutation it was meant to catch was caught by that flag leaking into the
+    // next test instead, which is not the same thing as a test.
+    testWidgets('lets the next press through once the first is done', (
+      tester,
+    ) async {
+      var starts = 0;
+      final press = await pumpLauncher(tester, start: () async => starts++);
+
+      press();
+      await tester.pumpAndSettle();
+      press();
+      await tester.pumpAndSettle();
+
+      expect(starts, 2);
+      expect(pushes.count, 2);
+    });
+
+    // Why it is keyed: Run on a *different* app is a thing a user does, and
+    // the answer to it belongs to the Flipper - which says "busy" through the
+    // dialog this function shows - rather than to a dead button on three
+    // pages. Unkeyed, the second app was refused in silence for up to the
+    // fifteen seconds appStart allows.
+    testWidgets('does not block a different app launched meanwhile', (
+      tester,
+    ) async {
       final gate = Completer<void>();
       var starts = 0;
       Future<void> start() async {
@@ -257,47 +371,37 @@ void main() {
         await gate.future;
       }
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Builder(
-            builder: (context) => ElevatedButton(
-              onPressed: () => launchApp(context, start),
-              child: const Text('open'),
-            ),
-          ),
-        ),
-      );
+      final press = await pumpLauncher(tester, start: start, target: 'nfc');
+      press();
+      // Not awaited before the gate is completed: both launches are parked in
+      // `start`, and awaiting one here would wait for a gate this body has not
+      // opened yet.
+      final second = launchApp(_DeadContext(), start, target: 'snake');
+      expect(starts, 2);
 
-      await tester.tap(find.text('open'));
-      await tester.pump();
-      await tester.tap(find.text('open'));
-      await tester.pump();
       gate.complete();
+      await second;
       await tester.pumpAndSettle();
 
-      expect(starts, 1);
-      expect(find.text('remote control'), findsOneWidget);
+      expect(starts, 2);
     });
 
-    test('lets the next launch through once the first is done', () async {
+    test('releases the key even when the page has gone', () async {
       var starts = 0;
-      // No context is needed to prove the release: launchApp bails out of the
-      // push itself when the context has gone, and the flag is cleared in a
-      // finally either way.
-      await launchApp(_DeadContext(), () async => starts++);
-      await launchApp(_DeadContext(), () async => starts++);
+      await launchApp(_DeadContext(), () async => starts++, target: 'nfc');
+      await launchApp(_DeadContext(), () async => starts++, target: 'nfc');
 
       expect(starts, 2);
     });
   });
 
   group('a card whose whole job is a push', () {
-    // iOS, because that is the only place this is reachable: the Cupertino
-    // slide leaves the pushing control exposed for the whole transition, while
-    // the Zoom transition every other platform gets is opaque from the first
-    // frame and absorbs the second click. Through the theme rather than
-    // `debugDefaultTargetPlatformOverride`, which the test framework checks is
-    // unset by the time the body returns.
+    // The platform is pinned so the transition is a known one, and nothing
+    // here depends on which: the handler is driven directly, so whether a real
+    // pointer would have reached the control mid-transition never comes up.
+    // `isTopRoute`'s own doc comment carries what the platforms actually do.
+    // Through the theme rather than `debugDefaultTargetPlatformOverride`,
+    // which the test framework checks is unset by the time the body returns.
     late _CountingObserver pushes;
 
     setUp(() => pushes = _CountingObserver());
@@ -350,6 +454,26 @@ void main() {
       expect(pushes.count, 1);
     });
 
+    // The `?? true` fallback: every caller in the app is under a route, so
+    // nothing here reached this branch, and turning it into `?? false` passed
+    // the whole suite while silently disabling eight guarded navigations under
+    // test.
+    testWidgets('says yes where there is no route to ask about', (
+      tester,
+    ) async {
+      late BuildContext outside;
+      await tester.pumpWidget(
+        Builder(
+          builder: (context) {
+            outside = context;
+            return const SizedBox();
+          },
+        ),
+      );
+
+      expect(isTopRoute(outside), isTrue);
+    });
+
     testWidgets('pushes again after the pushed page is popped', (tester) async {
       await tester.pumpWidget(app());
 
@@ -364,36 +488,101 @@ void main() {
       expect(find.text('pushed'), findsOneWidget);
     });
   });
-  // A ratchet in ADR 0004's sense, and the weakest thing in this file by
-  // design. A widget test of each of these would cost a backend fake and a
-  // DeviceScope per page - seven harnesses to assert seven copies of one line
-  // whose behaviour is already pinned above. What it cannot do is prove the
-  // guard sits in the right place; what it does is notice one going missing,
-  // which is the mutation nothing else here would catch.
-  //
-  // A site legitimately rewritten belongs off this list, in the same commit.
-  group('the sites whose whole handler is a push', () {
-    const guarded = [
-      'lib/pages/tools/infrared/brands_page.dart',
-      'lib/pages/tools/infrared/categories_page.dart',
-      'lib/pages/tools/infrared/page.dart',
-      'lib/pages/tools/paint/manager/page.dart',
-      'lib/pages/tools/overview/page.dart',
-      'lib/pages/archive/overview/page.dart',
-      'lib/pages/flibler/project/page.dart',
-    ];
+  // The plotter's picker, which is the firmware bug of #250 in a page that
+  // needs no device fake: a flag armed only after the picker returns, so both
+  // buttons stayed live while the dialog was open. The picker is parked for as
+  // long as the dialog would be, which is the window the bug lived in.
+  group('picking a file to plot', () {
+    testWidgets('opens one dialog for two presses', (tester) async {
+      final browsing = Completer<void>();
+      final picker = _ParkedPicker(browsing);
+      FilePicker.platform = picker;
+      final (device, _) = mountedDevice();
 
-    test('all still ask whether their page is on top', () {
+      await tester.pumpWidget(wrapWithDevice(const PulsePlotterPage(), device));
+      await tester.pumpAndSettle();
+
+      final open = find.byTooltip('Open signal file');
+      await tester.tap(open);
+      await tester.pump();
+      await tester.tap(open, warnIfMissed: false);
+      await tester.pump();
+
+      expect(picker.opened, 1);
+
+      browsing.complete();
+      await tester.pumpAndSettle();
+      await closeDevice(tester, device);
+    });
+  });
+
+  // Ratchets in ADR 0004's sense, and the weakest thing in this file by
+  // design. A widget test of each of these sites would cost a backend fake and
+  // a DeviceScope per page - a dozen harnesses to assert a dozen copies of one
+  // line whose behaviour is pinned above. What they cannot do is prove a guard
+  // sits in the right place; what they do is notice one going missing, which is
+  // the mutation nothing else here would catch.
+  //
+  // Counted and anchored rather than `contains`, which a first draft used:
+  // `contains('isTopRoute(context)')` is satisfied by `if (isTopRoute(context))
+  // return;` - the guard inverted, every tool page unopenable, suite green -
+  // and by one guard in a file that needs two.
+  //
+  // A site legitimately rewritten belongs off these lists, in the same commit.
+  group('the sites whose whole handler is a push', () {
+    const guarded = {
+      'lib/pages/tools/infrared/brands_page.dart': 1,
+      'lib/pages/tools/infrared/categories_page.dart': 2,
+      'lib/pages/tools/infrared/page.dart': 1,
+      'lib/pages/tools/paint/manager/page.dart': 1,
+      // Both branches of _resolveTap: the five cards that declare onTap push
+      // too, and the first draft guarded only the routeBuilder branch.
+      'lib/pages/tools/overview/page.dart': 2,
+      'lib/pages/archive/overview/page.dart': 1,
+      'lib/pages/flibler/project/page.dart': 1,
+    };
+    final guard = RegExp(r'if \(!isTopRoute\(context\)\) return;');
+
+    test('all still ask whether their page is on top, as often as before', () {
+      final counted = {
+        for (final path in guarded.keys)
+          path: guard.allMatches(io.File(path).readAsStringSync()).length,
+      };
+
+      expect(
+        counted,
+        guarded,
+        reason: 'a tap handler lost or inverted its #244 guard',
+      );
+    });
+  });
+
+  // The other shape, where the guard is a flag or a keyed set rather than a
+  // question to the navigator. Three of these have behavioural tests above;
+  // these four are the ones whose pages need a harness that does not exist.
+  group('the sites that guard with a flag', () {
+    const guards = {
+      'lib/pages/apps/manager/install_page.dart': '_preparingSheet.add(',
+      'lib/pages/tools/infrared/infrareds_page.dart': '_fetching.add(',
+      'lib/pages/flibler/project/page.dart': 'if (_launching) return;',
+      'lib/pages/tools/remote/desktop/page.dart':
+          'if (_openingWristSettings) return;',
+      'lib/pages/archive/overview/category/favorites_page.dart': 'ok == null',
+      'lib/pages/archive/overview/page.dart': 'ok == null',
+    };
+
+    test('all still refuse a second entry', () {
       final missing = [
-        for (final path in guarded)
-          if (!io.File(path).readAsStringSync().contains('isTopRoute(context)'))
-            path,
+        for (final e in guards.entries)
+          if (!io.File(e.key).readAsStringSync().contains(e.value)) e.key,
       ];
 
       expect(
         missing,
         isEmpty,
-        reason: 'a tap handler lost its #244 guard against a double push',
+        reason:
+            'a handler lost its #244 guard, or a caller stopped honouring '
+            'the null that means "already under way"',
       );
     });
   });
@@ -420,6 +609,37 @@ class _PushingPage extends StatelessWidget {
       ),
     ),
   );
+}
+
+/// A file picker held open for as long as the dialog would be.
+class _ParkedPicker extends FilePicker {
+  _ParkedPicker(this.browsing);
+
+  final Completer<void> browsing;
+
+  int opened = 0;
+
+  @override
+  Future<FilePickerResult?> pickFiles({
+    String? dialogTitle,
+    String? initialDirectory,
+    FileType type = FileType.any,
+    List<String>? allowedExtensions,
+    Function(FilePickerStatus)? onFileLoading,
+    bool allowCompression = true,
+    int compressionQuality = 30,
+    bool allowMultiple = false,
+    bool withData = false,
+    bool withReadStream = false,
+    bool lockParentWindow = false,
+    bool readSequential = false,
+  }) async {
+    opened++;
+    await browsing.future;
+    // Nothing usable: the plot is not what this is about, and a null path is
+    // the one outcome the page reports and then forgets.
+    return FilePickerResult([PlatformFile(name: 'ir.ir', size: 0)]);
+  }
 }
 
 /// A context that is never mounted, for the paths that only ask that.

@@ -37,22 +37,30 @@ import 'ratchet.dart';
 /// The relay reply beside that second one runs per frame and stayed at `info`,
 /// which is the distinction the level is for.
 ///
-/// `pages/archive` is 16 — every `list`, `read`, `write`, `delete`, `mkdir`,
-/// `rename` and `appStart` the user asked for, plus `refresh`, `sync` and
-/// `syncCategory`. Two sites in that area did **not** move: the per-node
-/// `list` of a whole-SD walk, and the per-file `md5 check`, which §5 excludes
-/// by name because the per-sync summary at `warn` already covers it (#194).
+/// Two sites in `pages/archive` did **not** move: the per-node `list` of a
+/// whole-SD walk, and the per-file `md5 check`, which §5 excludes by name
+/// because the per-sync summary at `warn` already covers it (#194).
 ///
 /// `pages/tools` is 5: the IR library's download, delete and search, and the
 /// pixel editor's load and send. The two Dolphin walks stayed — one entry per
 /// folder wants a tally at the caller, not a level here.
 ///
-/// `pages/apps` is absent on purpose. All six of its sites are one-per-app
-/// loops or a cancel the user asked for, so none of them moved.
+/// `pages/apps` is 1 and `pages/archive` 17 for the same operation: a launch
+/// refused because one of the same app is already in flight (#244). The tap
+/// did nothing, and the page deliberately shows nothing for it - so without a
+/// line kept in every build, a tap that was swallowed cannot be told from one
+/// that was never delivered, which is the question a bug report about a dead
+/// button asks. Its six other `pages/apps` sites are one-per-app loops or a
+/// cancel the user asked for, and none of them moved.
+///
+/// `pages/archive` also counts every `list`, `read`, `write`, `delete`,
+/// `mkdir`, `rename` and `appStart` the user asked for, plus `refresh`, `sync`
+/// and `syncCategory`.
 const Map<String, int> kBudget = {
   'services': 6,
-  'pages/archive': 16,
+  'pages/archive': 17,
   'pages/tools': 5,
+  'pages/apps': 1,
 };
 
 const String kAdr = 'docs/adr/0013-observability-with-sentry.md';

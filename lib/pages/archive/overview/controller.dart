@@ -528,8 +528,8 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
   /// one Flipper, since `RemoteSession`'s constructor starts the stream. Here
   /// rather than in each page because the two pages that launch a favourite -
   /// the archive overview and its favourites list - are handed the *same*
-  /// controller, so the second tap is as likely to land on the other page as
-  /// on the same one.
+  /// controller, so the window covers a second tap after switching between
+  /// them as well as two taps on one.
   ///
   /// Keyed on the path rather than a bare flag, for the reason the file manager
   /// keys its own on one: launching two *different* apps in quick succession is
@@ -543,7 +543,16 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
   /// nothing: that first call owns the outcome, so a caller must report
   /// neither success nor failure for this one.
   Future<bool?> launchFapFavorite(FapFavorite fav) async {
-    if (!_launchingFaps.add(fav.remotePath)) return null;
+    if (!_launchingFaps.add(fav.remotePath)) {
+      // The caller shows nothing for a null, so without this the dropped tap
+      // is nowhere: not on screen, and not in a log a bug report could carry.
+      // It matters most when the page that asked first has since gone - then
+      // nobody reports the outcome at all.
+      LogService.caught(
+        '[Archive] launch ${fav.remotePath} ignored, one already in flight',
+      );
+      return null;
+    }
     try {
       return await _launchFapFavorite(fav);
     } finally {

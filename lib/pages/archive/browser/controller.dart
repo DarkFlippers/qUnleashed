@@ -719,35 +719,62 @@ class FileManagerController extends ChangeNotifier {
 
   Future<void> refresh() => _task(_refresh);
 
-  /// Folders with a listing in flight.
+  /// Per folder: the listing that is out, and the one promised to callers who
+  /// arrived while it was.
   ///
-  /// `_loading` has been here all along but nothing ever read it, so the
-  /// toolbar's own gate was the only thing stopping a folder being listed
-  /// twice over - and the retry buttons in both error panels pass `refresh`
-  /// straight through, as does any tap arriving while the first listing is
-  /// still out.
+  /// Nothing *in the controller* read `_loading`, so the toolbar's own gate was
+  /// the only thing stopping a folder being listed twice over - and the retry
+  /// buttons in both error panels pass `refresh` straight through, as does
+  /// pull-to-refresh and any tap arriving while the first listing is still out.
+  /// Two listings of one folder overlap, and whichever lands last wins, which
+  /// need not be the newer one.
   ///
-  /// A set of paths and not `if (_loading) return;`, which is what
-  /// `ArchiveController._syncCategory` can afford: `open()` moves `_path` and
-  /// then calls this, so a bare flag would make navigating into a folder while
-  /// a listing was out *skip the new folder's listing altogether* and leave
-  /// the previous folder's entries on screen under the new path. Worse than
-  /// the duplicate it set out to stop.
+  /// Coalesced rather than dropped, which is what this guard first did and what
+  /// `ArchiveController._syncCategory`'s `if (_syncing) return;` can afford.
+  /// Ten call sites here `await refresh()` *after changing the folder* -
+  /// delete, rename, create, paste, upload - and a dropped refresh would make
+  /// that await a lie: the pre-delete listing lands afterwards and the deleted
+  /// file is still on screen with nothing said. So a caller who arrives while a
+  /// listing is out is promised one that starts after it, and everybody who
+  /// arrives in that window shares it. Two taps cost one extra listing, ten
+  /// taps also cost one, and none of them overlap.
   ///
-  /// What it does not settle: two listings of two different paths can still
-  /// overlap, and whichever lands last wins, which need not be the newer one.
-  /// Reachable by tapping two folders in quick succession rather than one
-  /// twice, so it is not this issue, and it is not introduced here. #244.
-  final Set<String> _listingFolders = {};
+  /// A bare flag could not do even the first job: `open()` moves `_path` and
+  /// then calls this, so it would skip the new folder's listing altogether and
+  /// leave the previous folder's entries on screen under the new path.
+  ///
+  /// What this does not settle: listings of two *different* paths still
+  /// overlap, and the last to land still wins. That is tapping two folders in
+  /// quick succession rather than one twice, and it is not introduced here.
+  /// #244.
+  final Map<String, Future<void>> _listingNow = {};
+  final Map<String, Future<void>> _listingNext = {};
 
-  Future<void> _refresh() async {
+  Future<void> _refresh() {
     final path = _path;
-    if (!_listingFolders.add(path)) return;
-    try {
-      await _list(path);
-    } finally {
-      _listingFolders.remove(path);
-    }
+    final now = _listingNow[path];
+    if (now == null) return _listOnce(path);
+    return _listingNext[path] ??= now.then((_) {
+      // Dropped before the next listing starts, so callers arriving during
+      // *that* one are promised a further listing rather than this one.
+      _listingNext.remove(path);
+      return _listOnce(path);
+    });
+  }
+
+  Future<void> _listOnce(String path) {
+    // Registered before it is returned, and before `_list` can suspend: the
+    // whole point is that the next caller in this microtask sees it.
+    //
+    // The braces are load-bearing. `whenComplete` awaits a future its callback
+    // returns, and `Map.remove` answers with the value it removed - which here
+    // is this very future, so the arrow form deadlocked on itself and every
+    // listing hung for ever.
+    final work = _list(path).whenComplete(() {
+      _listingNow.remove(path);
+    });
+    _listingNow[path] = work;
+    return work;
   }
 
   Future<void> _list(String path) async {
