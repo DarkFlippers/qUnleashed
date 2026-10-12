@@ -420,7 +420,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> _syncDeviceFavorites() async {
     const path = '/ext/favorites.txt';
-    final bytes = (await _readRemoteBytes(path, logErrors: false)).bytes;
+    final bytes = (await _readRemoteBytes(path)).bytes;
     if (bytes == null) {
       LogService.info('[Archive] $path is unavailable');
       return;
@@ -490,10 +490,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
       }
 
       if (icon == null) {
-        final bytes = (await _readRemoteBytes(
-          remotePath,
-          logErrors: false,
-        )).bytes;
+        final bytes = (await _readRemoteBytes(remotePath)).bytes;
         if (bytes != null) {
           final extracted = extractFapIcon(Uint8List.fromList(bytes));
           if (extracted != null) {
@@ -609,7 +606,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> _removeDeviceFavorite(String remotePath) async {
     if (!_client.isConnected) return;
     const favPath = '/ext/favorites.txt';
-    final bytes = (await _readRemoteBytes(favPath, logErrors: false)).bytes;
+    final bytes = (await _readRemoteBytes(favPath)).bytes;
     if (bytes == null) return;
     final target = _normalizeFavoritePath(remotePath);
     final lines = const Utf8Decoder(allowMalformed: true)
@@ -1056,12 +1053,17 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
           k.flipperDir == flipperDir &&
           k.subFolder == subFolder,
     );
-    // Nothing was held back on this path - `ok` is false when anything was -
-    // so an empty set is the honest argument. The case this catches is the
-    // wardriving user whose `/ext/subghz/wardriving` has gone: all of their
-    // local captures move to Deleted, and without this nothing anywhere says
-    // why.
-    _reportBulkDelete(cat, flipperDir, remoteFiles, const <String>{}, marked);
+    // Nothing is held back on this path - `ok` is false when anything was -
+    // so an empty listing is the whole of the condition here. The case this
+    // catches is the wardriving user whose `/ext/subghz/wardriving` has gone:
+    // all of their local captures move to Deleted, and without this nothing
+    // anywhere says why.
+    _reportBulkDelete(
+      cat,
+      flipperDir,
+      marked,
+      scopeWasAbsent: remoteFiles.isEmpty,
+    );
   }
 
   Future<void> _verifyCategoryRecursive(
@@ -1097,7 +1099,12 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
           k.flipperDir == flipperDir &&
           _wasWalked(k.subFolder, unread),
     );
-    _reportBulkDelete(cat, flipperDir, remoteFiles, unread, marked);
+    _reportBulkDelete(
+      cat,
+      flipperDir,
+      marked,
+      scopeWasAbsent: remoteFiles.isEmpty && unread.isEmpty,
+    );
   }
 
   /// Records a whole scope moving to `deleted`, which otherwise happens in
@@ -1124,14 +1131,19 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
   ///
   /// Only when it happened: nothing local means nothing marked, which is the
   /// ordinary case the silence is for.
+  ///
+  /// [scopeWasAbsent] is a bool rather than the two collections it used to be
+  /// derived from. Neither was read for its contents, only for `isNotEmpty`,
+  /// and the two callers do not agree on what "the whole scope was absent"
+  /// means - the flat path has an `ok` flag, the recursive walk has an
+  /// `unread` set - so the caller that knows is the one that should say.
   void _reportBulkDelete(
     ArchiveCategory cat,
     String flipperDir,
-    List<_RemoteFile> remoteFiles,
-    Set<String> unread,
-    int marked,
-  ) {
-    if (marked == 0 || remoteFiles.isNotEmpty || unread.isNotEmpty) return;
+    int marked, {
+    required bool scopeWasAbsent,
+  }) {
+    if (marked == 0 || !scopeWasAbsent) return;
     LogService.caught(
       '[Archive] ${cat.name}: ${ArchiveCategory.remoteDirOf(flipperDir)} '
       'listed as not present, so $marked local file(s) now read as deleted',
@@ -1369,7 +1381,10 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> _downloadPending(List<String> pendingIds) async {
     var done = 0;
     var failed = 0;
-    int? stoppedAt;
+    // A bool and not the file it stopped at: that was always `done`, since
+    // nothing changes `done` after the `break`, so it was a second copy of a
+    // live variable that a reader had to prove could not diverge.
+    var stoppedEarly = false;
     final byCause = <String, int>{};
     _lastReadError = null;
     LogService.info(
@@ -1415,34 +1430,34 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
 
       publish(0);
       var attempt = await _downloadAndApply(keyId, key, onProgress: publish);
-      if (attempt.linkDropped) {
-        // `storageReadChunked` has no restart of its own, unlike
-        // `storageWriteChunked`, so *this* read is lost. The **loop** is not,
-        // and that distinction is the whole of this branch:
-        // `isLinkDropError` is by its own definition the class an automatic
-        // reconnect makes whole again, auto-reconnect is on with a 600ms
-        // settle, and a settle landing mid-sync is ordinary on BLE. Breaking
-        // here abandoned the remaining two thousand files for a fault the
-        // transport was already repairing - CLAUDE.md's "a transfer restarts
-        // after the session is restored" pointed backwards.
-        //
-        // So wait the way the write path waits, and ask for the same file
-        // again. Only a session that does not come back ends the sync.
-        if (await _client.waitForRpcSession(const Duration(seconds: 30))) {
-          attempt = await _downloadAndApply(keyId, key, onProgress: publish);
-        }
+      // `storageReadChunked` has no restart of its own, unlike
+      // `storageWriteChunked`, so *this* read is lost. The **loop** is not,
+      // and that distinction is the whole of this branch: `isLinkDropError`
+      // is by its own definition the class an automatic reconnect makes whole
+      // again, auto-reconnect is on with a 600ms settle, and a settle landing
+      // mid-sync is ordinary on BLE. Breaking here abandoned the remaining
+      // two thousand files for a fault the transport was already repairing -
+      // CLAUDE.md's "a transfer restarts after the session is restored"
+      // pointed backwards.
+      //
+      // So wait the way the write path waits, and ask for the same file
+      // again; short-circuit, so a healthy read never reaches the wait. Only
+      // a session that does not come back ends the sync.
+      if (attempt.outcome == _Download.linkDropped &&
+          await _client.waitForRpcSession(const Duration(seconds: 30))) {
+        attempt = await _downloadAndApply(keyId, key, onProgress: publish);
       }
-      if (!attempt.ok) failed++;
-      if (!attempt.ok && _lastReadError != null) {
+      if (attempt.outcome != _Download.saved) {
+        failed++;
         // The shape of the failures, which is the diagnostic value the
-        // per-file lines used to carry. `_lastReadError` is one slot, so a
-        // sync where forty files fail on a corrupting card and the
-        // forty-first fails benignly would otherwise report only the benign
-        // one. Keyed on the exception's own text, truncated: the path varies
-        // per file and the cause does not.
-        final cause = _lastReadError!.split(': ').last;
-        final kind = cause.length > 60 ? cause.substring(0, 60) : cause;
-        byCause.update(kind, (n) => n + 1, ifAbsent: () => 1);
+        // per-file lines used to carry: one slot would report whichever
+        // failure happened to be last, so a sync where forty files fail on a
+        // corrupting card and the forty-first fails benignly would name the
+        // benign one. Keyed on the exception, which is stable and
+        // locale-independent - the rendered line is neither.
+        if (attempt.error != null) {
+          byCause.update('${attempt.error}', (n) => n + 1, ifAbsent: () => 1);
+        }
       }
       done++;
       notifyListeners();
@@ -1450,25 +1465,33 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
       // transport - 2267 outbound entries from one sync in the field, a burst
       // that overflows the SDK's envelope cache and evicts the error events
       // it was holding.
-      if (attempt.linkDropped) {
-        stoppedAt = done;
+      if (attempt.outcome == _Download.linkDropped) {
+        stoppedEarly = true;
         break;
       }
     }
+    // Three at most. The map is bounded by the number of distinct faults,
+    // which for `FlipperRpcException` is the status codes - but a
+    // `FileSystemException` carries its path, so the join is capped rather
+    // than the keys: this string reaches the UI.
     final causes = byCause.entries
+        .take(3)
         .map((e) => '${e.key} x${e.value}')
         .join(', ');
-    if (stoppedAt != null) {
+    final tail = causes.isEmpty ? '' : ' ($causes)';
+    if (stoppedEarly) {
       // Reported as an outcome and not as a ratio. `done` as the total read
       // "Downloaded 0/1; 1 failed" for a sync of two thousand files - tidy,
       // and a claim that it finished; `pendingIds.length` alone called the
       // files it never asked for "failed". Neither is what happened, so the
       // truncation gets its own sentence and the queue keeps the denominator.
-      _lastError = _lastFailure = l10n.archiveSyncStoppedEarly(
-        stoppedAt,
-        pendingIds.length,
-        _lastReadError ?? '',
-      );
+      //
+      // The cause tail is appended here as well, rather than the string
+      // taking one example: a link drop is the case most likely to have
+      // several causes behind it, and the argument above applies to it with
+      // more force, not less.
+      _lastError = _lastFailure =
+          '${l10n.archiveSyncStoppedEarly(done, pendingIds.length)}$tail';
       // `_lastFailure` as well as `_lastError`: that is the field with
       // surfaces a refresh does not clear, which its own doc explains and
       // #110 is about. On the common path - pull to refresh, a non-empty
@@ -1479,7 +1502,7 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
       final ok = done - failed;
       _lastError =
           '${l10n.archiveDownloadedSummary(ok, pendingIds.length, failed)}'
-          '${causes.isEmpty ? '' : ' ($causes)'}';
+          '$tail';
       // `warn` and not `info`, which const-folds away in release - so the one
       // line that replaces the per-file flood was the one line that did not
       // ship. §5's per-sync summary at `warn`, which #194 already settled for
@@ -1602,10 +1625,11 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Reads one key and writes it locally.
   ///
-  /// Returns whether the file landed, **and** whether a dead link is why it
-  /// did not - the second is what [_downloadPending] waits on rather than
-  /// asking for every remaining file over a transport that is gone.
-  Future<({bool ok, bool linkDropped})> _downloadAndApply(
+  /// The outcome is an enum and not two bools: `ok` plus `linkDropped` had four
+  /// combinations for three reachable states, and the unreachable one -
+  /// landed, and the link died - had to be ruled out by reading the body.
+  /// [_downloadPending] branches on all three, which is why they are named.
+  Future<({_Download outcome, Object? error})> _downloadAndApply(
     String keyId,
     ArchiveKey key, {
     void Function(double fileProgress)? onProgress,
@@ -1620,14 +1644,17 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
       // three days, 2267 entries from one sync, and the burst overflowed the
       // SDK's envelope cache and evicted error events. The amendment is in
       // §5's table; [_downloadPending]'s summary is what replaces this, and
-      // it carries a count per cause rather than one example.
-      logErrors: false,
+      // it carries a count per cause rather than one example. The default is
+      // now this, so nothing is passed here.
       expectedSize: key.remoteSize,
       onProgress: onProgress,
     );
     final bytes = read.bytes;
     if (bytes == null) {
-      return (ok: false, linkDropped: read.linkDropped);
+      return (
+        outcome: read.linkDropped ? _Download.linkDropped : _Download.failed,
+        error: read.error,
+      );
     }
     try {
       if (key.hasLocalFile) {
@@ -1656,14 +1683,14 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
         remoteSize: key.remoteSize > 0 ? key.remoteSize : size,
         mtime: stat.modified,
       );
-      return (ok: true, linkDropped: false);
+      return (outcome: _Download.saved, error: null);
     } catch (e) {
       _lastReadError = l10n.archiveSaveFailed(key.fileName, '$e');
       LogService.caught('[Archive] ${_lastReadError!}');
       // A local write failed, not the link. The next file is still worth
       // asking for - a full disk is per-file, and so is a name the platform
       // refuses.
-      return (ok: false, linkDropped: false);
+      return (outcome: _Download.failed, error: e);
     }
   }
 
@@ -1678,6 +1705,9 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
     try {
       final bytes = (await _readRemoteBytes(
         k.remotePath,
+        // The one read a user asked for by name, so this one is worth a line
+        // of its own - which is what makes `logErrors` default to false.
+        logErrors: true,
         expectedSize: k.remoteSize,
         onProgress: (p) {
           _busyProgress = p.clamp(0.0, 1.0);
@@ -1801,9 +1831,22 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
   /// the same answer before restarting an upload - which is the behaviour
   /// [_downloadPending] now mirrors, since `storageReadChunked` has no restart
   /// of its own.
-  Future<({List<int>? bytes, bool linkDropped})> _readRemoteBytes(
+  ///
+  /// `error` is the exception itself and not [_lastReadError]'s rendered line.
+  /// A caller that wants to group failures by cause needs something stable:
+  /// the field holds a localized string, it is shared with `archiveSaveFailed`,
+  /// and recovering a key by splitting it on `': '` lands on the last fragment
+  /// of the message rather than on the fault. Same argument as the record
+  /// itself - an answer belongs with the call that produced it.
+  ///
+  /// `logErrors` defaults to **false**, which is the §5 amendment written into
+  /// the signature: a per-file read inside a sync is the common case and must
+  /// not log, and the one read a user asked for by name opts in. Four of the
+  /// five callers wanted the quiet behaviour, so the default was the minority.
+  Future<({List<int>? bytes, bool linkDropped, Object? error})>
+  _readRemoteBytes(
     String path, {
-    bool logErrors = true,
+    bool logErrors = false,
     int expectedSize = 0,
     void Function(double progress)? onProgress,
   }) async {
@@ -1814,13 +1857,13 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
         onProgress: onProgress,
         timeout: const Duration(minutes: 5),
       );
-      return (bytes: bytes, linkDropped: false);
+      return (bytes: bytes, linkDropped: false, error: null);
     } catch (e) {
       _lastReadError = l10n.archiveReadFailed(path, '$e');
       if (logErrors) {
         LogService.caught('[Archive] ${_lastReadError!}');
       }
-      return (bytes: null, linkDropped: _client.isLinkDropError(e));
+      return (bytes: null, linkDropped: _client.isLinkDropError(e), error: e);
     }
   }
 
@@ -1860,4 +1903,26 @@ class ArchiveController extends ChangeNotifier with WidgetsBindingObserver {
 
   String _keyIdOf(ArchiveKey key) =>
       _localKey(key.flipperDir, key.name, key.extension, key.subFolder);
+}
+
+/// What one file's download did, for [ArchiveController] alone.
+///
+/// Three named states rather than `ok` plus `linkDropped`, which had a fourth
+/// combination that cannot happen - landed, and the link died - and so had to
+/// be ruled out by reading the body rather than by the type.
+///
+/// The distinction [_Download.linkDropped] carries is not severity, it is
+/// whose problem it is: a per-file fault means ask for the next file, a dead
+/// link means stop asking. `storageReadChunked` has no restart of its own, so
+/// the sync loop is where that is decided.
+enum _Download {
+  /// Read, written locally, and the key is `synced`.
+  saved,
+
+  /// This file did not land, and the next one is still worth asking for - a
+  /// refused name, a full disk, a firmware status about this path.
+  failed,
+
+  /// The link died. Nothing else in the queue can be read until it is back.
+  linkDropped,
 }

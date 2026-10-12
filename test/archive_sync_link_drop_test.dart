@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io' as io;
 
@@ -6,12 +5,12 @@ import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flipperlib/flipperlib.dart' as fl show File;
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:protobuf/protobuf.dart' show GeneratedMessage;
 import 'package:qunleashed/components/archive/category.dart';
 import 'package:qunleashed/pages/archive/overview/controller.dart';
 import 'package:qunleashed/services/archive/storage.dart';
 import 'package:qunleashed/services/storage/paths.dart';
 
+import 'archive_fakes.dart';
 import 'kept_lines.dart';
 
 /// What a sync does when the link dies part way through it.
@@ -32,22 +31,16 @@ import 'kept_lines.dart';
 /// restarts the upload. Using the same predicate to *abandon* a sync meant a
 /// 600ms reconnect settle, which is ordinary on BLE, ended a whole-card sync
 /// at whatever file it happened to reach.
-const _device = 'TestFlipper';
 const _nfcRoot = '/ext/nfc';
 
-class _LinkDropped implements Exception {
-  @override
-  String toString() => 'Bad state: Request dropped';
-}
-
-class _SyncFlipper implements FlipperClient {
+class _SyncFlipper with ArchiveRpcFake {
   /// Directory path -> the entries it holds.
   final Map<String, List<fl.File>> tree = {};
 
   /// Remote path -> the bytes a read of it returns.
   final Map<String, String> bodies = {};
 
-  /// Remote paths whose first read throws [_LinkDropped], once each.
+  /// Remote paths whose first read throws [LinkDropped], once each.
   final Set<String> dropOnce = {};
 
   /// Remote path -> an RPC status its read always fails with.
@@ -65,37 +58,8 @@ class _SyncFlipper implements FlipperClient {
   /// How many times the loop waited for a session.
   int waits = 0;
 
-  final _connection = StreamController<FlipperConnectionState>.broadcast();
-  final _info = StreamController<Map<String, String>>.broadcast();
-
-  Future<void> close() async {
-    await _connection.close();
-    await _info.close();
-  }
-
   @override
-  Stream<FlipperConnectionState> get connectionStream => _connection.stream;
-
-  @override
-  Stream<Map<String, String>> get deviceInfoUpdates => _info.stream;
-
-  @override
-  bool get isConnected => true;
-
-  @override
-  bool get isRpcReady => true;
-
-  @override
-  FlipperMode get mode => FlipperMode.rpc;
-
-  @override
-  String? getName() => _device;
-
-  @override
-  Future<String> awaitName() async => _device;
-
-  @override
-  bool isLinkDropError(Object e) => e is _LinkDropped;
+  bool isLinkDropError(Object e) => e is LinkDropped;
 
   @override
   Future<bool> waitForRpcSession(Duration timeout) async {
@@ -104,12 +68,7 @@ class _SyncFlipper implements FlipperClient {
   }
 
   @override
-  Future<T> runTask<T>(
-    FlipperRequestPriority priority,
-    Future<T> Function() body,
-  ) => body();
-
-  List<Main> _framesFor(Main request) {
+  List<Main> framesFor(Main request) {
     if (request.hasStorageListRequest()) {
       final path = request.storageListRequest.path;
       return [
@@ -124,7 +83,7 @@ class _SyncFlipper implements FlipperClient {
       reads.add(path);
       // Once each: the retry has to be able to succeed, or the test would be
       // asserting on a permanently dead link rather than on a settle.
-      if (dropOnce.remove(path)) throw _LinkDropped();
+      if (dropOnce.remove(path)) throw LinkDropped();
       final refusal = refuseRead[path];
       if (refusal != null) throw StateError(refusal);
       final body = bodies[path];
@@ -141,52 +100,8 @@ class _SyncFlipper implements FlipperClient {
   }
 
   @override
-  Future<List<Main>> callRpcFrames(
-    Main request, {
-    Duration timeout = const Duration(seconds: 8),
-    FlipperRequestPriority priority = FlipperRequestPriority.unattended,
-    void Function(Main frame)? onFrame,
-    void Function()? onSent,
-    bool retainFrames = true,
-    bool interleavable = false,
-    bool pipelined = true,
-  }) async {
-    final frames = _framesFor(request);
-    for (final frame in frames) {
-      onFrame?.call(frame);
-    }
-    return frames;
-  }
-
-  @override
-  Future<FlipperRpcBatch<T>> callRpc<T extends GeneratedMessage>(
-    Main request,
-    T? Function(Main frame) pick, {
-    Duration timeout = const Duration(seconds: 8),
-    FlipperRequestPriority priority = FlipperRequestPriority.unattended,
-    void Function(Main frame)? onFrame,
-  }) async {
-    final frames = _framesFor(request);
-    final items = <T>[];
-    for (final frame in frames) {
-      onFrame?.call(frame);
-      final picked = pick(frame);
-      if (picked != null) items.add(picked);
-    }
-    return FlipperRpcBatch<T>(
-      commandId: 0,
-      request: request,
-      frames: frames,
-      items: items,
-    );
-  }
-
-  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
-
-fl.File tag(String name) =>
-    fl.File(name: name, type: File_FileType.FILE, size: 40);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -198,9 +113,14 @@ void main() {
   late ArchiveStorage storage;
   late ArchiveController ctrl;
 
+  // ArchiveStorage caches its root in a static, so the root is set once for
+  // the file and the device folder is rebuilt between cases.
   setUpAll(() {
     root = io.Directory.systemTemp.createTempSync('archive_sync_link_drop');
     debugUseDocumentsRoot(root);
+    // The migration of the pre-Devices layout runs at the top of every
+    // refresh and asks path_provider where the old folders were. Unanswered
+    // it throws, and the whole refresh ends in the catch below it.
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
           const MethodChannel('plugins.flutter.io/path_provider'),
@@ -221,10 +141,12 @@ void main() {
   setUp(() async {
     client = _SyncFlipper();
     storage = ArchiveStorage();
+    // resolveRootDir caches into a static and every path getter asserts on
+    // it, so it has to be awaited before the first deviceDir of the case.
     await storage.resolveRootDir();
-    final device = storage.deviceDir(_device);
+    final device = storage.deviceDir(archiveTestDevice);
     if (device.existsSync()) device.deleteSync(recursive: true);
-    await storage.writeLastDeviceName(_device);
+    await storage.writeLastDeviceName(archiveTestDevice);
     ctrl = ArchiveController(client: client, storage: storage);
     clearKeptLines();
     addTearDown(() async {
@@ -251,17 +173,27 @@ void main() {
   Iterable<String> lines(String fragment) =>
       keptLines.where((l) => l.contains(fragment));
 
+  /// Four tags with the link dropping once on `b`, then a full sync.
+  ///
+  /// The arrange and act of three cases below, which were byte-identical and
+  /// had to be edited in lockstep - the shape where one gets changed and the
+  /// other silently stops testing what its name says. The cases stay separate
+  /// because they make different claims; only the setup is shared.
+  Future<void> syncWithDropOnB({bool comesBack = true}) async {
+    fourTags();
+    client.dropOnce.add('$_nfcRoot/b.nfc');
+    client.sessionComesBack = comesBack;
+    await ctrl.initialize();
+    await ctrl.syncCategory(ArchiveCategory.nfc);
+  }
+
   group('a link drop mid-sync', () {
     test('waits for the session and asks for the same file again', () async {
       // The predicate this branch stops on is flipperlib's own definition of
       // "a reconnect can fix this", and auto-reconnect is on. So the settle
       // is waited out and the file is retried, rather than the remaining
       // queue being abandoned for a fault the transport is already repairing.
-      fourTags();
-      client.dropOnce.add('$_nfcRoot/b.nfc');
-
-      await ctrl.initialize();
-      await ctrl.syncCategory(ArchiveCategory.nfc);
+      await syncWithDropOnB();
 
       expect(client.waits, 1, reason: 'it waited once, for the one drop');
       expect(
@@ -315,23 +247,24 @@ void main() {
       // out of the SDK's envelope cache. Nothing static can see this - the
       // call site is still there, its body just does not run - so this
       // assertion is the only thing standing between here and a revert.
-      fourTags();
-      client.dropOnce.add('$_nfcRoot/b.nfc');
-      client.sessionComesBack = false;
+      await syncWithDropOnB(comesBack: false);
 
-      await ctrl.initialize();
-      await ctrl.syncCategory(ArchiveCategory.nfc);
-
-      final mentions = lines('read $_nfcRoot/b.nfc failed').toList();
       expect(
-        mentions,
-        hasLength(1),
-        reason: 'once, in the summary - not once per file',
+        lines('read $_nfcRoot/b.nfc failed'),
+        isEmpty,
+        reason: 'not once per file, and not once in the summary either',
       );
+      // What does ship is the shape: one line, naming the fault and how many
+      // files met it. The path is deliberately absent - it varies per file
+      // and the cause does not, which is what makes the line groupable in
+      // Sentry rather than 2267 distinct messages.
+      final stopped = lines('Sync stopped after').toList();
+      expect(stopped, hasLength(1));
+      expect(stopped.single, contains('Request dropped x1'));
       expect(
-        mentions.single,
-        contains('Sync stopped after'),
-        reason: 'and that one mention is the summary, not a per-file line',
+        stopped.single,
+        isNot(contains(_nfcRoot)),
+        reason: 'no file path in the one line that ships',
       );
     });
   });

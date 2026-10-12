@@ -1,17 +1,16 @@
-import 'dart:async';
 import 'dart:io' as io;
 
 import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flipperlib/flipperlib.dart' as fl show File;
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:protobuf/protobuf.dart' show GeneratedMessage;
 import 'package:qunleashed/components/archive/category.dart';
 import 'package:qunleashed/components/archive/models/key.dart';
 import 'package:qunleashed/pages/archive/overview/controller.dart';
 import 'package:qunleashed/services/archive/storage.dart';
 import 'package:qunleashed/services/storage/paths.dart';
 
+import 'archive_fakes.dart';
 import 'kept_lines.dart';
 
 /// Reconciling what is on the Flipper against what is on the phone, when the
@@ -22,10 +21,9 @@ import 'kept_lines.dart';
 /// user held locally in that category was then marked deleted - one RPC
 /// timeout, or a BUSY while the Flipper runs an app, and the NFC tab reads as
 /// gone. #109.
-const _device = 'TestFlipper';
 const _nfcRoot = '/ext/nfc';
 
-class _WalkingFlipper implements FlipperClient {
+class _WalkingFlipper with ArchiveRpcFake {
   /// Directory path -> the entries it holds.
   final Map<String, List<fl.File>> tree = {};
 
@@ -52,44 +50,8 @@ class _WalkingFlipper implements FlipperClient {
 
   final List<String> listed = [];
 
-  final _connection = StreamController<FlipperConnectionState>.broadcast();
-  final _info = StreamController<Map<String, String>>.broadcast();
-
-  Future<void> close() async {
-    await _connection.close();
-    await _info.close();
-  }
-
-  /// initialize() subscribes to both before its first refresh; nothing here
-  /// ever pushes to them.
   @override
-  Stream<FlipperConnectionState> get connectionStream => _connection.stream;
-
-  @override
-  Stream<Map<String, String>> get deviceInfoUpdates => _info.stream;
-
-  @override
-  bool get isConnected => true;
-
-  @override
-  bool get isRpcReady => true;
-
-  @override
-  FlipperMode get mode => FlipperMode.rpc;
-
-  @override
-  String? getName() => _device;
-
-  @override
-  Future<String> awaitName() async => _device;
-
-  @override
-  Future<T> runTask<T>(
-    FlipperRequestPriority priority,
-    Future<T> Function() body,
-  ) => body();
-
-  List<Main> _framesFor(Main request) {
+  List<Main> framesFor(Main request) {
     if (!request.hasStorageListRequest()) return const [];
     final path = request.storageListRequest.path;
     listed.add(path);
@@ -110,54 +72,8 @@ class _WalkingFlipper implements FlipperClient {
   }
 
   @override
-  Future<List<Main>> callRpcFrames(
-    Main request, {
-    Duration timeout = const Duration(seconds: 8),
-    FlipperRequestPriority priority = FlipperRequestPriority.unattended,
-    void Function(Main frame)? onFrame,
-    void Function()? onSent,
-    bool retainFrames = true,
-    bool interleavable = false,
-    bool pipelined = true,
-  }) async {
-    final frames = _framesFor(request);
-    for (final frame in frames) {
-      onFrame?.call(frame);
-    }
-    return frames;
-  }
-
-  @override
-  Future<FlipperRpcBatch<T>> callRpc<T extends GeneratedMessage>(
-    Main request,
-    T? Function(Main frame) pick, {
-    Duration timeout = const Duration(seconds: 8),
-    FlipperRequestPriority priority = FlipperRequestPriority.unattended,
-    void Function(Main frame)? onFrame,
-  }) async {
-    final frames = _framesFor(request);
-    final items = <T>[];
-    for (final frame in frames) {
-      onFrame?.call(frame);
-      final picked = pick(frame);
-      if (picked != null) items.add(picked);
-    }
-    return FlipperRpcBatch<T>(
-      commandId: 0,
-      request: request,
-      frames: frames,
-      items: items,
-    );
-  }
-
-  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
-
-fl.File dir(String name) => fl.File(name: name, type: File_FileType.DIR);
-
-fl.File tag(String name) =>
-    fl.File(name: name, type: File_FileType.FILE, size: 64);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -203,7 +119,7 @@ void main() {
   /// the 90 warnings in three days) and the one nothing covered.
   void localCapture(String name, {String subFolder = ''}) {
     final dir = storage.categoryDir(
-      _device,
+      archiveTestDevice,
       ArchiveCategory.wardriving,
       subFolder: subFolder,
     )..createSync(recursive: true);
@@ -215,7 +131,7 @@ void main() {
   /// the fate of.
   void localTag(String name, {String subFolder = ''}) {
     final dir = storage.categoryDir(
-      _device,
+      archiveTestDevice,
       ArchiveCategory.nfc,
       subFolder: subFolder,
     )..createSync(recursive: true);
@@ -229,9 +145,9 @@ void main() {
     // resolveRootDir caches into a static and every path getter asserts on
     // it, so it has to be awaited before the first deviceDir of the case.
     await storage.resolveRootDir();
-    final device = storage.deviceDir(_device);
+    final device = storage.deviceDir(archiveTestDevice);
     if (device.existsSync()) device.deleteSync(recursive: true);
-    await storage.writeLastDeviceName(_device);
+    await storage.writeLastDeviceName(archiveTestDevice);
     ctrl = ArchiveController(client: client, storage: storage);
     clearKeptLines();
     addTearDown(() async {
