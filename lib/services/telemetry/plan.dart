@@ -19,6 +19,7 @@ class TelemetryPlan {
   TelemetryPlan({
     required this.dsn,
     required this.shareLogs,
+    required this.shareReplay,
     required BuildStamp stamp,
     this.nativeDatabasePath,
   }) : release = stamp.sentryRelease,
@@ -35,6 +36,14 @@ class TelemetryPlan {
   final String dsn;
 
   final bool shareLogs;
+
+  /// Whether this build records a replay for an error, §1's second switch.
+  ///
+  /// Not part of [why]: replay off is not a reason to send nothing, it is one
+  /// signal fewer. A build with this on and [shareLogs] off reports nothing at
+  /// all, which is why `DiagnosticsSettings.shareReplay` is documented as
+  /// subordinate rather than independent.
+  final bool shareReplay;
 
   /// 0014 §5, and empty when the platform would not say what version this is.
   final String release;

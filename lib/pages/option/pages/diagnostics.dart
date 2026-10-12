@@ -26,6 +26,21 @@ import '../diagnostics_scope.dart';
 /// reporting off, or in a build with no DSN, nothing records a failure that the
 /// screen in front of them does not already name. The console still has it,
 /// which is a developer's surface and not theirs.
+/// The two switches this screen draws, in the order it draws them.
+///
+/// An enum rather than two hand-written rows, because `GroupedCardList` keys
+/// its separators and its corner rounding off the item list - so a second row
+/// built outside it would be a card of its own rather than the second half of
+/// one.
+enum _Row {
+  /// §1's switch. Everything else here is subordinate to it.
+  share,
+
+  /// §1's second switch: whether a replay of the seconds before a failure
+  /// goes with it.
+  replay,
+}
+
 class DiagnosticsSettingsPage extends StatelessWidget {
   const DiagnosticsSettingsPage({super.key});
 
@@ -45,8 +60,45 @@ class DiagnosticsSettingsPage extends StatelessWidget {
     );
   }
 
-  Widget _tile(BuildContext context, DiagnosticsSettings settings) {
+  /// The same, for §1's second switch.
+  ///
+  /// Separate rather than a branch inside [_toggle], so each log line names
+  /// one switch - "turning sharing off" and "turning replay off" are different
+  /// facts about a user's privacy choice and a report carrying the wrong one
+  /// is worse than a report carrying neither.
+  void _toggleReplay(DiagnosticsSettings settings) {
+    final next = !settings.shareReplay;
+    guarded(
+      '[Diagnostics] turning replay ${next ? 'on' : 'off'}',
+      () => settings.setShareReplay(next),
+    );
+  }
+
+  /// The rows on screen, which is not always both.
+  ///
+  /// The replay row is left out entirely while sharing is off rather than
+  /// shown disabled: with nothing being sent there is nothing for a replay to
+  /// be attached to, and a switch that does nothing is worse than a switch
+  /// that is not there. `DiagnosticsSettings.shareReplay` keeps its value
+  /// through that, so turning sharing back on restores the row where the user
+  /// left it rather than at the default.
+  List<_Row> _rows(DiagnosticsSettings settings) =>
+      settings.shareLogs ? _Row.values : const [_Row.share];
+
+  Widget _tile(BuildContext context, DiagnosticsSettings settings, _Row row) {
     final colors = context.appColors;
+    final title = switch (row) {
+      _Row.share => context.l10n.diagnosticsShareTitle,
+      _Row.replay => context.l10n.diagnosticsReplayTitle,
+    };
+    final subtitle = switch (row) {
+      _Row.share => context.l10n.diagnosticsShareSubtitle,
+      _Row.replay => context.l10n.diagnosticsReplaySubtitle,
+    };
+    final value = switch (row) {
+      _Row.share => settings.shareLogs,
+      _Row.replay => settings.shareReplay,
+    };
     return Row(
       children: [
         Expanded(
@@ -55,7 +107,7 @@ class DiagnosticsSettingsPage extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(
-                context.l10n.diagnosticsShareTitle,
+                title,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -67,7 +119,7 @@ class DiagnosticsSettingsPage extends StatelessWidget {
               ),
               const SizedBox(height: 2),
               Text(
-                context.l10n.diagnosticsShareSubtitle,
+                subtitle,
                 maxLines: 4,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -81,14 +133,24 @@ class DiagnosticsSettingsPage extends StatelessWidget {
         ),
         const SizedBox(width: 8),
         Switch(
-          value: settings.shareLogs,
+          value: value,
           activeThumbColor: colors.accent,
           materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          onChanged: (_) => _toggle(settings),
+          onChanged: (_) => _tap(row, settings),
         ),
       ],
     );
   }
+
+  /// Routes a tap on [row] to the switch it draws.
+  ///
+  /// One place, because the row is tappable in two ways - the card's own
+  /// `onTap` and the `Switch` - and the two used to be the same expression
+  /// written twice.
+  void _tap(_Row row, DiagnosticsSettings settings) => switch (row) {
+    _Row.share => _toggle(settings),
+    _Row.replay => _toggleReplay(settings),
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -104,11 +166,11 @@ class DiagnosticsSettingsPage extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: 10),
         children: [
-          GroupedCardList<DiagnosticsSettings>(
-            items: [settings],
-            onTap: (s) =>
-                () => _toggle(s),
-            itemBuilder: _tile,
+          GroupedCardList<_Row>(
+            items: _rows(settings),
+            onTap: (row) =>
+                () => _tap(row, settings),
+            itemBuilder: (context, row) => _tile(context, settings, row),
           ),
         ],
       ),

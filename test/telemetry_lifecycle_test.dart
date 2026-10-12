@@ -96,6 +96,24 @@ bool get anySinkInstalled =>
     LogService.breadcrumbSink != null ||
     AppHttp.exchangeSink != null;
 
+/// The names of the masking rules the options block added, §6.4's gate.
+///
+/// `mask<T>()` names a rule after the type it was given, so these read
+/// `HexTable` and `RemoteScreen`. Reaching for `userMaskingRules` needs the
+/// ignore: it is `@internal`, and so is every other way to see what the
+/// privacy block decided. Worth the suppression - a rule that stops matching
+/// is silent, and what it would stream is card dumps.
+///
+/// Names and not behaviour, which is the honest limit of this: it catches the
+/// call being dropped, the widget being renamed, and the SDK renaming the API
+/// (that one fails to compile). It would not catch the SDK changing what a
+/// constant mask rule *does*. Covering that means building a `HexTable` and a
+/// `RemoteScreen`, each of which wants five collaborators, in a test about
+/// telemetry.
+Iterable<String> maskedTypes(SentryFlutterOptions options) =>
+    // ignore: invalid_use_of_internal_member
+    options.privacy.userMaskingRules.map((rule) => rule.name);
+
 /// Whether all four are.
 bool get allSinksInstalled =>
     guardedFailureSink != null &&
@@ -190,11 +208,58 @@ void main() {
       expect(options.beforeSendLog, isNotNull);
     });
 
-    test('replay stays off, which is phase 3 behind §6.4\'s gate', () async {
+    test('records a replay for an error and never a session', () async {
       await build().start();
       final replay = sdk.options!.replay;
+
+      expect(replay.onErrorSampleRate, 1.0);
+      // Zero, and not pending a decision: continuous recording feeds the same
+      // envelope cache that was measured dropping error events under load.
       expect(replay.sessionSampleRate, anyOf(isNull, 0.0));
-      expect(replay.onErrorSampleRate, anyOf(isNull, 0.0));
+    });
+
+    test('masks the two surfaces §6.4 names', () async {
+      // The gate itself. Both defaults are on and neither reaches these: the
+      // hex editor paints card bytes with a `TextPainter` inside a
+      // `CustomPainter`, so it is not a `Text`, and the remote screen is a
+      // `RawImage`, so it is not an `Image`. Without the two rules, switching
+      // replay on records every card dump and the live device screen.
+      await build().start();
+      final options = sdk.options!;
+
+      expect(options.privacy.maskAllText, isTrue);
+      expect(options.privacy.maskAllImages, isTrue);
+      expect(maskedTypes(options), containsAll(['HexTable', 'RemoteScreen']));
+    });
+
+    test('the replay switch off leaves the error rate at zero', () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'diagnostics.share_replay': false,
+      });
+
+      await build().start();
+
+      expect(sdk.options!.replay.onErrorSampleRate, 0.0);
+      // And the rest of reporting is untouched: §1's second switch is one
+      // signal fewer, not a reason to send nothing.
+      expect(sdk.options!.dsn, isNotNull);
+      expect(allSinksInstalled, isTrue);
+    });
+
+    test('masks the two surfaces even with replay switched off', () async {
+      // The rules do not depend on the rate, and should not: the switch can
+      // move while the app runs, and a rule added only on the recording path
+      // would be the one missing from the build that starts recording.
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'diagnostics.share_replay': false,
+      });
+
+      await build().start();
+
+      expect(
+        maskedTypes(sdk.options!),
+        containsAll(['HexTable', 'RemoteScreen']),
+      );
     });
   });
 
@@ -299,6 +364,44 @@ void main() {
       expect(telemetry.running, isTrue);
       expect(sdk.inits, 2);
       expect(allSinksInstalled, isTrue);
+    });
+
+    test('the replay switch brings the SDK back up with the new rate', () async {
+      // There is no pause API in 9.30.1: the rates are read once, by `init`.
+      // So `_reconcile` applies a replay change by calling `stop`, and the
+      // main switch - still on - is what brings it back through
+      // `_settleAgainIfTheSwitchMoved`. That second half is implicit, which is
+      // why it is asserted here rather than trusted: a reading of the code
+      // that stops at `stop` would conclude this turns reporting off.
+      final telemetry = build();
+      await telemetry.start();
+      expect(sdk.options!.replay.onErrorSampleRate, 1.0);
+
+      await settings.setShareReplay(false);
+      await pumpEventQueue();
+
+      expect(telemetry.running, isTrue, reason: 'reporting stayed on');
+      expect(sdk.inits, 2, reason: 'the SDK came back up');
+      expect(sdk.options!.replay.onErrorSampleRate, 0.0);
+      expect(allSinksInstalled, isTrue);
+    });
+
+    test('the replay switch does nothing while sharing is off', () async {
+      // Nothing is running for a replay to be attached to, so there is no
+      // reason to bring an SDK up to tell it about one. The Diagnostics screen
+      // leaves the row out in this state for the same reason.
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'diagnostics.share_logs': false,
+      });
+      final telemetry = build();
+      await telemetry.start();
+      expect(sdk.inits, 0);
+
+      await settings.setShareReplay(false);
+      await pumpEventQueue();
+
+      expect(telemetry.running, isFalse);
+      expect(sdk.inits, 0);
     });
 
     test('a build that launched with it off can still turn it on', () async {

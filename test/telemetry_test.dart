@@ -43,8 +43,14 @@ BuildStamp _stamp({
 TelemetryPlan _plan({
   String dsn = 'https://key@o1.ingest.de.sentry.io/2',
   bool shareLogs = true,
+  bool shareReplay = true,
   BuildStamp? stamp,
-}) => TelemetryPlan(dsn: dsn, shareLogs: shareLogs, stamp: stamp ?? _stamp());
+}) => TelemetryPlan(
+  dsn: dsn,
+  shareLogs: shareLogs,
+  shareReplay: shareReplay,
+  stamp: stamp ?? _stamp(),
+);
 
 void main() {
   group('whether anything is sent', () {
@@ -142,6 +148,7 @@ void main() {
       final plan = TelemetryPlan(
         dsn: 'https://key@o1.ingest.de.sentry.io/2',
         shareLogs: true,
+        shareReplay: true,
         stamp: _stamp(),
         nativeDatabasePath: '/support/sentry-native',
       );

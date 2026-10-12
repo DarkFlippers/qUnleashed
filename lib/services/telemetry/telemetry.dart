@@ -1,5 +1,5 @@
 import 'package:flipperlib/flipperlib.dart' show FlipperLogLevel;
-import 'package:flutter/widgets.dart' show NavigatorObserver;
+import 'package:flutter/widgets.dart' show NavigatorObserver, Widget;
 import 'package:path_provider/path_provider.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
@@ -97,6 +97,24 @@ class Telemetry {
 
   bool _running = false;
 
+  /// What the running SDK was told about replay, which is not the same thing
+  /// as what the switch says now.
+  ///
+  /// The sample rates are read once, by `SentryFlutter.init`, and 9.30.1 has
+  /// no pause API - so a replay switch that moved while the SDK is up can only
+  /// be applied by taking it down and bringing it back. [_reconcile] compares
+  /// against this to know whether that is needed, exactly as it compares
+  /// `shareLogs` against [_running].
+  bool _runningWithReplay = false;
+
+  /// What the transition in flight was told about replay.
+  ///
+  /// The replay half of [_settlingToward], and it earns its keep in the same
+  /// place: a tap during a transition would otherwise be dropped, because the
+  /// plan that transition is using was built before it. The logs switch went
+  /// to this trouble already; this is the more sensitive of the two switches.
+  bool _settlingTowardReplay = false;
+
   /// Whether a start or a stop is in flight.
   ///
   /// `start()` awaits `settings.load()`, and a successful read calls
@@ -148,6 +166,22 @@ class Telemetry {
   /// Whether this instance has a DSN at all. Says nothing about the switch.
   bool get configured => dsn.isNotEmpty;
 
+  /// Wraps the app so the recorder can see the tree it is recording.
+  ///
+  /// `SentryWidget` mounts `SentryScreenshotWidget`, and replay captures
+  /// through it: without it `ScreenshotRecorder.capture` finds no render
+  /// object and skips every frame, logging "SentryScreenshotWidget is not
+  /// attached" **once** and then recording nothing in silence. So this is not
+  /// optional decoration around `runApp`.
+  ///
+  /// [child] comes back untouched in a build with no DSN, which is every local
+  /// build by default - so an app nobody reports from carries no wrapper, the
+  /// same promise [navigatorObservers] makes about the observer.
+  ///
+  /// Returns a Flutter type and takes one, so `main.dart` and `app.dart` stay
+  /// free of the SDK. §2.
+  Widget wrap(Widget child) => configured ? SentryWidget(child: child) : child;
+
   /// Brings the SDK up if it should be, and **never throws**.
   ///
   /// `_initCore` awaits this on both entry points, and a throw there is not a
@@ -172,6 +206,7 @@ class Telemetry {
     if (_running || _settling || _closedForExit) return;
     _settling = true;
     _settlingToward = true;
+    _settlingTowardReplay = settings.shareReplay;
     try {
       // Never gated on `loaded`. A preference store that will not open leaves
       // the switch at its default, which is on -
@@ -181,6 +216,7 @@ class Telemetry {
       final plan = TelemetryPlan(
         dsn: dsn,
         shareLogs: settings.shareLogs,
+        shareReplay: settings.shareReplay,
         stamp: await BuildIdentity.resolve(),
         nativeDatabasePath: await _nativeDatabasePath(),
       );
@@ -195,6 +231,7 @@ class Telemetry {
       }
       await _init((options) => configureOptions(options, plan));
       _running = true;
+      _runningWithReplay = plan.shareReplay;
       _wireSinks(on: true);
       await tagScope(plan);
     } catch (e, st) {
@@ -244,8 +281,16 @@ class Telemetry {
   /// genuinely moved, and each run picks up the newer value - so it
   /// terminates.
   void _settleAgainIfTheSwitchMoved() {
-    if (settings.shareLogs == _settlingToward) return;
-    _reconcile();
+    if (settings.shareLogs != _settlingToward) {
+      _reconcile();
+      return;
+    }
+    // The logs switch ended where this transition aimed, and the replay one
+    // may not have. Only worth asking while sharing is on: with it off nothing
+    // is running for a replay to be attached to.
+    if (settings.shareLogs && settings.shareReplay != _settlingTowardReplay) {
+      _reconcile();
+    }
   }
 
   /// Puts the four hooks on or takes them off, in one place.
@@ -275,6 +320,7 @@ class Telemetry {
     if (!_running || _settling) return;
     _settling = true;
     _settlingToward = false;
+    _settlingTowardReplay = settings.shareReplay;
     try {
       await _tearDown();
     } finally {
@@ -628,7 +674,23 @@ class Telemetry {
     // And nothing comes back up once the process is on its way out, whatever
     // the switch says - see [closeForExit].
     if (_closedForExit) return;
-    if (settings.shareLogs == _running) return;
+    if (settings.shareLogs == _running) {
+      // The main switch agrees with reality. The replay one may not, and the
+      // rates are read once at `init` with no pause API in this major - so
+      // the only way to apply it is to bring the SDK down.
+      //
+      // `stop` and not a restart of its own: stopping leaves `_running` false
+      // against a switch that still says on, which is the disagreement this
+      // very listener acts on - `_tearDown` ends by reconciling and `start`
+      // runs again with a plan built from the new value. That implicit second
+      // half is load-bearing rather than incidental, which is why
+      // `test/telemetry_lifecycle_test.dart` asserts the SDK comes back up
+      // carrying the new rate rather than merely that it went down.
+      if (_running && settings.shareReplay != _runningWithReplay) {
+        _guard('following the replay switch failed', stop);
+      }
+      return;
+    }
     // `guarded` and not `unawaited`: a ChangeNotifier listener is a void
     // callback, and both of these are already no-throw - but a bare
     // `unawaited` here is the shape CLAUDE.md and #23 are about.

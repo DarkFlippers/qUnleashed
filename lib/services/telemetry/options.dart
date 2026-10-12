@@ -7,6 +7,15 @@
 // methods.
 import 'package:sentry_flutter/sentry_flutter.dart';
 
+// §6.4's two surfaces, imported for their types alone - `mask<T>()` takes a
+// widget type and never an instance. This points from a service at two pages,
+// which is the wrong way round and is the lesser of the two wrongs available:
+// the alternative is `SentryMask` in both pages, which puts the SDK outside
+// this folder and breaks §2's import rule and the test that holds it. A
+// masking rule that stops matching is silent and streams card bytes, so the
+// rule is checked in `test/telemetry_lifecycle_test.dart` rather than trusted.
+import '../../pages/archive/editor/hex/view.dart' show HexTable;
+import '../../pages/tools/remote/desktop/widgets/screen.dart' show RemoteScreen;
 import '../logging.dart';
 import 'plan.dart';
 import 'scrub_event.dart';
@@ -66,6 +75,55 @@ void configureOptions(SentryFlutterOptions options, TelemetryPlan plan) {
   // `isTracingEnabled()` is false while the rate is null, and a span with no
   // sampled transaction over it is discarded.
   options.tracesSampleRate = 1.0;
+
+  // §1's replay, and §8's answer for it: a replay for every error, and no
+  // session recording at all. The two rates are what `isEnabled` reads, so
+  // leaving `onErrorSampleRate` at zero is also how the switch turns the
+  // feature off - there is no pause API in this major, which is why
+  // `Telemetry._reconcile` restarts the SDK when that switch moves.
+  //
+  // Session recording stays at zero on purpose and not pending a decision.
+  // Continuous recording is a steady stream of envelopes into the same cache
+  // that was already measured discarding error events under load
+  // (`client_discard`/`cache_overflow`, 2026-10-11) - and an error is the only
+  // moment a replay answers a question anybody asked.
+  //
+  // **Native-backed, so this is Android and iOS only.** `ReplayIntegration`
+  // gates on `supportsReplay`, so the four desktop targets record nothing
+  // whatever these say.
+  options.replay.onErrorSampleRate = plan.shareReplay ? 1.0 : 0.0;
+  options.replay.sessionSampleRate = 0.0;
+
+  // §6.4's gate, and the whole reason replay could not simply be switched on.
+  //
+  // `maskAllText` and `maskAllImages` are both true by default and neither
+  // reaches the two surfaces that matter. The defaults add a rule for `Text`
+  // and a rule for `Image`: the hex editor paints card bytes with a
+  // `TextPainter` inside a `CustomPainter`, which is not a `Text`, and the
+  // remote screen is a `RawImage`, which is not an `Image`. So without these
+  // two lines a replay records every card dump and the live device screen -
+  // the most sensitive content the app holds, in the one feature that sends
+  // pictures.
+  //
+  // Masked by enclosing type rather than per surface, so a new widget inside
+  // either one is covered the day it is written rather than the day somebody
+  // remembers.
+  //
+  // The ignores are not decoration. `mask<T>()` is `@experimental` in 9.30.1,
+  // and `experimental_member_use` is fatal in CI - the same wall that left
+  // `attachViewHierarchy` alone above. That precedent does not carry here:
+  // there the default was already the safe value, so leaving it cost nothing,
+  // and here the default is the unsafe one. Suppressing the warning is the
+  // price of the masks; shipping replay without them is not an option and
+  // leaving the warning unsuppressed is not a build.
+  // ignore: experimental_member_use
+  options.privacy.mask<HexTable>(
+    description: 'Card bytes, painted rather than laid out as Text.',
+  );
+  // ignore: experimental_member_use
+  options.privacy.mask<RemoteScreen>(
+    description: 'The live Flipper screen, a RawImage rather than an Image.',
+  );
 
   // Off, and not because it is unwanted. Frame timings need
   // `SentryWidgetsFlutterBinding`, and `_initCore` installs Flutter's own -

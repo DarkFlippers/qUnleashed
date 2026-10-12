@@ -251,6 +251,16 @@
     "description": "Explains the switch above it. Two facts, in the order a user asks them: that sending needs no action from them, and what is never included. The second half matters because this app handles card dumps, keys and radio captures, and the user has no way to verify the claim themselves."
   },
 
+  "diagnosticsReplayTitle": "Include a replay of the screen",
+  "@diagnosticsReplayTitle": {
+    "description": "Label of the second switch on the Diagnostics screen, below the sharing switch and shown only while sharing is on. Decides whether a recording of the seconds before a failure is sent with it. On by default. \"Replay\" is what the service calls it; the label says what it is instead, because the user has no reason to know the term."
+  },
+
+  "diagnosticsReplaySubtitle": "A short recording of what was on screen before the failure, sent only when something goes wrong. Card bytes and the Flipper screen are blacked out of it.",
+  "@diagnosticsReplaySubtitle": {
+    "description": "Explains the switch above it. Three facts in the order a user asks them: what is recorded, that nothing is recorded while the app is working, and what stays hidden even then. The third is the one that matters in this app, and it is a promise two masking rules keep rather than a reassurance."
+  },
+
   "diagnosticsNoticeTitle": "Failures are shared with the developers",
   "@diagnosticsNoticeTitle": {
     "description": "Heading of the one-time notice shown on the first launch, and once more for people already using the app when sharing was added. States the fact rather than asking a question, because reporting is already on while the notice is on screen - it is a notice, not a consent prompt."

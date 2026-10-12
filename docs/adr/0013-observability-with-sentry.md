@@ -4,10 +4,20 @@ Status: Accepted (2026-10-09). Reporting is **on by default and sent
 automatically**, behind a one-time notice that carries no policy link because
 there is no policy.
 
-**Replay is decided on and not built.** §1 is the decision - on, with a second
-switch of its own - and phase 3 is where it lands, behind §6.4's gate. Both
-sample rates are at zero in the shipped options today. The two halves of that
-sentence were written four lines apart and read as a contradiction.
+**Replay is built, for errors only.** §1's decision, with §6.4's gate opened
+rather than stepped over: `onErrorSampleRate` is 1.0 behind the second switch
+and `sessionSampleRate` is a flat zero. Nothing is recorded while the app is
+working, and what is recorded carries both masks.
+
+The session rate is zero by decision and not by omission. Continuous recording
+is a steady stream of envelopes into the same cache that was measured
+discarding error events under load - `client_discard`/`cache_overflow` on
+2026-10-11, two of the three errors captured that day - and an error is the
+only moment a replay answers a question anybody asked.
+
+**Replay is Android and iOS only.** `ReplayIntegration` gates on
+`supportsReplay`, so the four desktop targets record nothing whatever the
+rates say. Nothing in the app surfaces that, and the switch is shown there too.
 
 Phase 1 is built and **an event has been seen to arrive**: a forced Dart
 error from a local Windows build reached `dark-flippers` as
@@ -31,8 +41,19 @@ span; a ufbt `error` or `critical` now reaches the log rather than only the
 Assembler console; and `traced` covers all six operations §2 names, plus the
 ufbt job.
 
-Phase 3 is untouched: no metrics, and replay is off, which is where §6.4's gate
-still stands.
+**Phase 3 is half built.** Replay is on for errors with §6.4's two surfaces
+masked by type, the second switch is on the Diagnostics screen, and
+`SentryWidget` wraps the app at `runApp` - without it the recorder finds no
+render object and skips every frame after one log line. Still no metrics.
+
+Two things about it are uncomfortable and are written down rather than
+smoothed over. `privacy.mask<T>()` is `@experimental` in 9.30.1, so both calls
+carry `// ignore: experimental_member_use` - the same wall that left
+`attachViewHierarchy` alone, except that there the default was already the
+safe value and here it is the unsafe one. And masking by widget type means
+`telemetry/options.dart` imports two pages for their types, pointing a service
+at the UI; the alternative, `SentryMask` in the pages, puts the SDK outside
+this folder and breaks §2.
 
 Owed and not in the phase table: the Android R8 mapping, which wants the Sentry
 Android Gradle Plugin, and §3's submodule commits as release commits rather
@@ -465,8 +486,20 @@ gate it.
    `remote/desktop/frame_decoder.dart` decodes
    (`remote/desktop/widgets/screen.dart:151`) — not an `Image` widget, so
    `maskAllImages` does not reach that one either. Neither surface is masked by
-   anything the SDK does on its own; both are wrapped in `SentryMask` and
-   checked in a recorded replay before replay ships.
+   anything the SDK does on its own.
+
+   **Built as two `privacy.mask<T>()` rules** on `HexTable` and `RemoteScreen`
+   rather than as `SentryMask` in the widget trees, which would have put the
+   SDK outside `telemetry/`. Masking the enclosing type also covers a new
+   widget inside either surface the day it is written rather than the day
+   somebody remembers.
+
+   `test/telemetry_lifecycle_test.dart` asserts both rules are present, with
+   and without the switch, because a masking rule that stops matching is
+   silent and what it would stream is card dumps. The honest limit of that
+   test is in its own comment: it checks the rules exist, not what the SDK
+   does with them. **Neither surface has yet been checked in a recorded
+   replay on a device** - that is what this gate still owes.
 
 ### 7. `sentry_flutter` 9.30.1, written to move to 10
 
@@ -584,6 +617,12 @@ with a second switch of its own. §1 is the decision; this is the consequence
 of it, which is that the one category recording the screen is also on by
 default, and §6.4's gate is the only thing between it and a card dump leaving
 a device. That gate is therefore load-bearing rather than cautious.
+
+It is now open, and the two rules holding it are four lines of code with an
+analyzer suppression on each. Errors-only sampling is the second half of the
+answer: a replay exists only where a failure already did, so the window in
+which that gate matters is the width of one crash rather than the whole
+session.
 
 **Every `LogService.error` as an issue.** No exception object to group on, and
 most of them are expected.

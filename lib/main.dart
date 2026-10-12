@@ -93,11 +93,17 @@ Future<void> _runApp(AppCore core) async {
   if (_appRunning) return;
   _appRunning = true;
   final client = core.client;
+  // Wrapped rather than wrapping inside `app.dart`, so `MaterialApp`'s
+  // rebuild on every theme and locale change does not run through it - and so
+  // the file that builds the UI still names no Sentry type. `Telemetry.wrap`
+  // hands back the child untouched when there is no DSN.
   runApp(
-    QUnleashedApp(
-      client: client,
-      diagnostics: core.telemetry.settings,
-      navigatorObservers: core.telemetry.navigatorObservers,
+    core.telemetry.wrap(
+      QUnleashedApp(
+        client: client,
+        diagnostics: core.telemetry.settings,
+        navigatorObservers: core.telemetry.navigatorObservers,
+      ),
     ),
   );
   bootstrapAmbientServices();

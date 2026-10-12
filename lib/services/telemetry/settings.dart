@@ -17,6 +17,7 @@ import '../settings/store.dart';
 /// three would be a task of its own.
 class DiagnosticsSettings extends PrefsBackedSettings {
   static const String _shareLogsKey = 'diagnostics.share_logs';
+  static const String _replayKey = 'diagnostics.share_replay';
   static const String _noticeShownKey = 'diagnostics.notice_shown';
 
   /// On, and the direction of that default is the decision rather than a
@@ -32,10 +33,27 @@ class DiagnosticsSettings extends PrefsBackedSettings {
   /// agree by accident.
   static const bool _defaultNoticeShown = false;
 
+  /// On, which is §1's decision and not an oversight - and it is the decision
+  /// the masks in `options.dart` are what make defensible. A replay is only
+  /// recorded when something already failed, so the trade is the same one
+  /// [_defaultShareLogs] makes: a report nobody has to ask for, or too few
+  /// reports to find a fault on a handset nobody on the project owns.
+  static const bool _defaultShareReplay = true;
+
   bool _shareLogs = _defaultShareLogs;
+  bool _shareReplay = _defaultShareReplay;
   bool _noticeShown = _defaultNoticeShown;
 
   bool get shareLogs => _shareLogs;
+
+  /// Whether a replay of the seconds before a failure goes with it.
+  ///
+  /// §1's "second switch of its own", and subordinate to [shareLogs] rather
+  /// than independent of it: nothing is recorded at all while sharing is off,
+  /// because there is nothing for a replay to be attached to. The Diagnostics
+  /// screen leaves this row out in that state rather than showing a control
+  /// that does nothing.
+  bool get shareReplay => _shareReplay;
 
   /// Whether §1's one-time notice has been put in front of this user.
   ///
@@ -54,6 +72,7 @@ class DiagnosticsSettings extends PrefsBackedSettings {
   @override
   void readFrom(PrefsReader reader) {
     _shareLogs = reader.or(_shareLogsKey, _defaultShareLogs);
+    _shareReplay = reader.or(_replayKey, _defaultShareReplay);
     _noticeShown = reader.or(_noticeShownKey, _defaultNoticeShown);
     reader.report('[Diagnostics]');
   }
@@ -81,6 +100,7 @@ class DiagnosticsSettings extends PrefsBackedSettings {
   @override
   void resetFields() {
     _shareLogs = _defaultShareLogs;
+    _shareReplay = _defaultShareReplay;
     _noticeShown = _defaultNoticeShown;
   }
 
@@ -102,6 +122,23 @@ class DiagnosticsSettings extends PrefsBackedSettings {
     await persistSetting(
       'share logs with developers',
       (prefs) => prefs.setBool(_shareLogsKey, value),
+    );
+  }
+
+  /// Applies the replay choice to this object and persists it.
+  ///
+  /// The same shape as [setShareLogs], and for the same reason - but what
+  /// `Telemetry` does with the notification differs: there is no pause API in
+  /// this major, so a replay sample rate can only be changed by bringing the
+  /// SDK down and up again. `Telemetry._reconcile` owns that; this still
+  /// knows nothing about Sentry.
+  Future<void> setShareReplay(bool value) async {
+    if (value == _shareReplay) return;
+    _shareReplay = value;
+    notifyListeners();
+    await persistSetting(
+      'send a replay with a failure',
+      (prefs) => prefs.setBool(_replayKey, value),
     );
   }
 

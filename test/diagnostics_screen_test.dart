@@ -1,4 +1,4 @@
-// The Diagnostics screen, which is now one switch.
+// The Diagnostics screen, which is now two switches.
 //
 // This file used to be `log_screen_test.dart` and tested the log list, the
 // caution above it, Copy, Clear and refresh. ADR 0013 §1 removed all of that:
@@ -31,6 +31,17 @@ Widget wrap(Widget child, {DiagnosticsSettings? settings}) {
   );
 }
 
+/// The `Switch` belonging to the row headed [title].
+///
+/// `find.byType(Switch)` was enough while there was one row and is ambiguous
+/// now - it matched both and every tap threw. Scoped through the row's own
+/// `Row` so each case names the switch it means, which is also what makes the
+/// replay cases readable.
+Finder switchFor(String title) => find.descendant(
+  of: find.ancestor(of: find.text(title), matching: find.byType(Row)).first,
+  matching: find.byType(Switch),
+);
+
 void main() {
   setUp(() {
     // The switch reads preferences on its first build. Without a mock store
@@ -47,7 +58,10 @@ void main() {
     // The claim a user of this app cannot check for themselves, which is why
     // it is on the screen and not only in the ADR.
     expect(find.text(l10nGlobal.diagnosticsShareSubtitle), findsOneWidget);
-    expect(tester.widget<Switch>(find.byType(Switch)).value, isTrue);
+    expect(
+      tester.widget<Switch>(switchFor(l10nGlobal.diagnosticsShareTitle)).value,
+      isTrue,
+    );
   });
 
   testWidgets('turning it off moves the switch and the stored value', (
@@ -56,10 +70,13 @@ void main() {
     await tester.pumpWidget(wrap(const DiagnosticsSettingsPage()));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byType(Switch));
+    await tester.tap(switchFor(l10nGlobal.diagnosticsShareTitle));
     await tester.pumpAndSettle();
 
-    expect(tester.widget<Switch>(find.byType(Switch)).value, isFalse);
+    expect(
+      tester.widget<Switch>(switchFor(l10nGlobal.diagnosticsShareTitle)).value,
+      isFalse,
+    );
     expect(lastSettings!.shareLogs, isFalse);
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getBool('diagnostics.share_logs'), isFalse);
@@ -76,7 +93,10 @@ void main() {
     await lastSettings!.setShareLogs(false);
     await tester.pumpAndSettle();
 
-    expect(tester.widget<Switch>(find.byType(Switch)).value, isFalse);
+    expect(
+      tester.widget<Switch>(switchFor(l10nGlobal.diagnosticsShareTitle)).value,
+      isFalse,
+    );
   });
 
   testWidgets('tapping the row is the same as tapping the switch', (
@@ -93,6 +113,96 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(lastSettings!.shareLogs, isFalse);
+  });
+
+  group('the replay row', () {
+    testWidgets('is on, and says what is blacked out of it', (tester) async {
+      await tester.pumpWidget(wrap(const DiagnosticsSettingsPage()));
+      await tester.pumpAndSettle();
+
+      expect(find.text(l10nGlobal.diagnosticsReplayTitle), findsOneWidget);
+      // The masks are a promise the code keeps in `options.dart`, and this is
+      // the only place the user is told about them.
+      expect(find.text(l10nGlobal.diagnosticsReplaySubtitle), findsOneWidget);
+      expect(
+        tester
+            .widget<Switch>(switchFor(l10nGlobal.diagnosticsReplayTitle))
+            .value,
+        isTrue,
+      );
+    });
+
+    testWidgets('turning it off stores the choice and leaves sharing on', (
+      tester,
+    ) async {
+      await tester.pumpWidget(wrap(const DiagnosticsSettingsPage()));
+      await tester.pumpAndSettle();
+
+      await tester.tap(switchFor(l10nGlobal.diagnosticsReplayTitle));
+      await tester.pumpAndSettle();
+
+      expect(lastSettings!.shareReplay, isFalse);
+      // The two are separate answers, and the subordinate one must not drag
+      // the other with it.
+      expect(lastSettings!.shareLogs, isTrue);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool('diagnostics.share_replay'), isFalse);
+    });
+
+    testWidgets('goes away when sharing is turned off', (tester) async {
+      // Rather than sitting there disabled. With nothing being sent there is
+      // nothing for a replay to attach to, and a switch that does nothing is
+      // worse than no switch.
+      await tester.pumpWidget(wrap(const DiagnosticsSettingsPage()));
+      await tester.pumpAndSettle();
+      expect(find.text(l10nGlobal.diagnosticsReplayTitle), findsOneWidget);
+
+      await lastSettings!.setShareLogs(false);
+      await tester.pumpAndSettle();
+
+      expect(find.text(l10nGlobal.diagnosticsReplayTitle), findsNothing);
+    });
+
+    testWidgets('comes back where the user left it', (tester) async {
+      // The value survives the row being hidden, so turning sharing back on
+      // does not quietly re-enable a replay somebody switched off.
+      //
+      // Set through the object rather than seeded into the preference store:
+      // `getInstance` caches per isolate, so a `setMockInitialValues` in a
+      // test body lands after the store this page already read and the case
+      // passes on the default it was trying to override.
+      await tester.pumpWidget(wrap(const DiagnosticsSettingsPage()));
+      await tester.pumpAndSettle();
+      await lastSettings!.setShareReplay(false);
+      await tester.pumpAndSettle();
+
+      await lastSettings!.setShareLogs(false);
+      await tester.pumpAndSettle();
+      await lastSettings!.setShareLogs(true);
+      await tester.pumpAndSettle();
+
+      expect(
+        tester
+            .widget<Switch>(switchFor(l10nGlobal.diagnosticsReplayTitle))
+            .value,
+        isFalse,
+      );
+    });
+
+    testWidgets('tapping its row is the same as tapping its switch', (
+      tester,
+    ) async {
+      // The `onTap` is keyed by row now, so the two rows can and did route to
+      // the same switch - this is what catches that.
+      await tester.pumpWidget(wrap(const DiagnosticsSettingsPage()));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text(l10nGlobal.diagnosticsReplayTitle));
+      await tester.pumpAndSettle();
+
+      expect(lastSettings!.shareReplay, isFalse);
+      expect(lastSettings!.shareLogs, isTrue);
+    });
   });
 
   testWidgets('nothing offers to copy or clear a log any more', (tester) async {
