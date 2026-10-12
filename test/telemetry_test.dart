@@ -5,6 +5,8 @@
 // is made. The decision is what this covers: the three reasons nothing is
 // sent, the release name 0014 §5 pins, the tags §3 asks for, and the scrubber
 // §6 puts in front of every event.
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, debugDefaultTargetPlatformOverride;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/services/build_identity.dart';
 import 'package:qunleashed/services/telemetry/scrub.dart';
@@ -405,5 +407,42 @@ void main() {
         expect(data['bytes'], 512);
       },
     );
+  });
+
+  group('where replay can record', () {
+    // `DiagnosticsSettings.replaySupported` mirrors the SDK's `supportsReplay`
+    // by hand, because that member is `@internal` with no public accessor in
+    // 9.30.1. A test cannot catch the SDK *adding* a platform - nothing can,
+    // short of the upstream API - but it can pin the shape, so a careless edit
+    // does not silently hide the row on a phone, or show it on a desktop where
+    // applying a rate would cost an uninterruptible native close.
+    tearDown(() => debugDefaultTargetPlatformOverride = null);
+
+    test('is the two platforms the recorder exists on', () {
+      for (final platform in [TargetPlatform.android, TargetPlatform.iOS]) {
+        debugDefaultTargetPlatformOverride = platform;
+        expect(
+          DiagnosticsSettings.replaySupported,
+          isTrue,
+          reason: '$platform',
+        );
+      }
+    });
+
+    test('and nowhere else', () {
+      for (final platform in [
+        TargetPlatform.windows,
+        TargetPlatform.linux,
+        TargetPlatform.macOS,
+        TargetPlatform.fuchsia,
+      ]) {
+        debugDefaultTargetPlatformOverride = platform;
+        expect(
+          DiagnosticsSettings.replaySupported,
+          isFalse,
+          reason: '$platform',
+        );
+      }
+    });
   });
 }

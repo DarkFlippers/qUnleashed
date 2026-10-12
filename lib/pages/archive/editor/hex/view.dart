@@ -1,4 +1,7 @@
 import 'dart:async';
+
+import '../../../../components/sensitive_surface.dart';
+
 import 'dart:math';
 
 import 'package:flutter/gestures.dart';
@@ -136,7 +139,7 @@ TextPainter _glyph(String text, Color color) => _glyphs.putIfAbsent(
 
 /// The byte table itself: offsets, hex cells and the decoded column, with the
 /// cursor, the selection and the search matches painted over them.
-class HexTable extends StatefulWidget {
+class HexTable extends StatefulWidget with SensitiveSurface {
   const HexTable({
     super.key,
     required this.document,

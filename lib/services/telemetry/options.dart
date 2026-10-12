@@ -5,22 +5,27 @@
 // get there. Pure: options in, options mutated, nothing of `Telemetry`'s own
 // state touched - which is why these are top-level functions rather than
 // methods.
-import 'package:flutter/widgets.dart' show RawImage;
 import 'package:flutter_map/flutter_map.dart' show FlutterMap;
 import 'package:re_editor/re_editor.dart' show CodeEditor;
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:xterm/xterm.dart' show TerminalView;
 
 // §6.4's surfaces, imported for their types alone - `mask<T>()` takes a widget
-// type and never an instance. This points from a service at three pages, which
-// is the wrong way round and is the lesser of the two wrongs available: the
-// alternative is `SentryMask` in those pages, which puts the SDK outside this
-// folder and breaks §2's import rule and the test that holds it. A masking rule
-// that stops matching is silent and streams card bytes, so the rules are
-// checked in `test/telemetry_lifecycle_test.dart` rather than trusted.
-import '../../pages/archive/editor/hex/view.dart' show HexTable;
-import '../../pages/tools/plotter/plotter_view.dart' show PlotterView;
-import '../../pages/tools/remote/desktop/widgets/screen.dart' show RemoteScreen;
+// type and never an instance.
+//
+// `SensitiveSurface` is an app-owned marker in `components/`, and it is what
+// keeps this file from naming pages: a page declares that it shows device
+// content, and this file masks whatever carries the declaration. Three widgets
+// from packages cannot be given a mixin, so those are named by type - a
+// package import in a service is not the layering problem that importing a
+// *page* would be. The alternative considered and rejected is `SentryMask` in
+// the pages, which puts the SDK outside this folder and breaks §2's import
+// rule and the test that holds it.
+//
+// A masking rule that stops matching is silent and streams card bytes, so the
+// rules are checked in `test/telemetry_lifecycle_test.dart` rather than
+// trusted.
+import '../../components/sensitive_surface.dart';
 import '../logging.dart';
 import 'plan.dart';
 import 'scrub_event.dart';
@@ -150,38 +155,39 @@ void configureOptions(SentryFlutterOptions options, TelemetryPlan plan) {
   // and not the doc when adding a surface - a `SelectableText` dump is already
   // covered by the `RichText` rule, a painted one is not.)
   //
-  // **The rule, which matters more than the list:** a surface that paints its
-  // own glyphs or pixels is unmasked until it is named here. `maskAllText`
-  // reaches three widget types and `maskAllImages` one; a `CustomPainter` or a
-  // `RenderBox` that draws text is none of them. Every entry below is an
-  // instance of that one mechanism, and three of them were missed on the first
-  // pass - so when a new screen renders device content, this block is the
-  // thing to come back to.
+  // The defaults do not reach any of this. `buildMaskingConfig` adds rules for
+  // `Text`, `EditableText` and `RichText`, and one for `Image` that spares
+  // root-bundle assets; a `CustomPainter` or a `RenderBox` that draws its own
+  // glyphs is none of them. (`maskAllText`'s own dartdoc says "only `Text` and
+  // `EditableText`" and is stale; read the config, not the doc.)
   //
-  // What the defaults miss:
+  // **Four rules and not a list of seven, because the list was the problem.**
+  // Two of those seven were found only on a second review pass, and the
+  // mechanism that would have caught them is not statically visible:
+  // `CodeEditor` is a `StatefulWidget` whose `RenderBox` is built inside a
+  // private `State`. Worse, masking by render mechanism was wrong in **both**
+  // directions - the net `mask<RawImage>()` caught every `QIcon` in the app,
+  // because an icon is a `RawImage` here, so a replay came back with grey
+  // boxes where the chrome was; meanwhile the paint tool's canvas, a
+  // `CustomPaint` over the user's own artwork, was not masked at all.
   //
-  // - `HexTable` paints card bytes with a `TextPainter` inside a
-  //   `CustomPainter`, so there is no `Text` in the tree to match.
-  // - `RemoteScreen` is a `RawImage`, which is not an `Image`.
-  // - `PlotterView` paints the SubGHz pulse plot the same way, and the rest of
-  //   that view - bits, histogram, raw RF - is the same capture in other forms.
-  // - `FlutterMap` draws every tile as a `RawImage` (flutter_map 7.0.2), so the
-  //   map records the user's own position, auto-centred, with GPS-tagged
-  //   capture pins on it. The whole widget and not the tile layer: the
-  //   position is the sensitive part, and it is not painted by the tiles.
-  // - `CodeEditor` is `re_editor`, whose body is a `RenderBox` painting
-  //   through `_drawText`. **This is the editor a user lands on** -
-  //   `EditorMode.text` is the default and hex is the mode they have to switch
-  //   into - so opening `/ext/nfc/card.nfc` shows the UID, ATQA, SAK and the
-  //   plaintext key block, and `.mfkey32.log` and `.nested.log` show nonce
-  //   dumps. Masking the opt-in hex view and not this one would have been
-  //   close to backwards.
+  // So the app declares it instead. `SensitiveSurface` is mixed into
+  // `HexTable`, `RemoteScreen`, `PlotterView`, `CanvasView` and
+  // `ProjectPreview`, where the next author will see it, and that file carries
+  // the reasoning. The three from packages keep a type rule each:
+  //
+  // - `FlutterMap` carries the user's own position, auto-centred, with
+  //   GPS-tagged capture pins on it. The whole widget and not its tile layer:
+  //   the tiles are `RawImage`s, so cutting at the wrapper is one check and
+  //   one rect rather than hundreds.
+  // - `CodeEditor` is `re_editor`, a `RenderBox` painting through `_drawText`,
+  //   and **it is the editor a user lands on** - `EditorMode.text` is the
+  //   default and hex is the mode they switch into - so `/ext/nfc/card.nfc`
+  //   shows the UID, ATQA, SAK and plaintext key block, and `.mfkey32.log`
+  //   and `.nested.log` show nonce dumps. Masking the opt-in hex view and not
+  //   this one was close to backwards.
   // - `TerminalView` is `xterm`, also a `RenderBox`. The CLI is where
   //   `storage read`, `nfc` and `subghz` output lands as raw text.
-  // - `RawImage` itself, as the net under all of this. In this app a raw image
-  //   is device or user content by construction - there is no decorative one -
-  //   which is what makes the broad rule cheap, and it covers the paint tool's
-  //   preview and anything else that arrives the same way.
   //
   // Without these a replay records card dumps, the live device screen, decoded
   // radio captures and the user's location: the most sensitive content the app
@@ -190,10 +196,14 @@ void configureOptions(SentryFlutterOptions options, TelemetryPlan plan) {
   // captures and their location are never sent, so this is not only §6.4's
   // gate, it is whether those two sentences are true.
   //
-  // Masked by enclosing type rather than per surface, so a new widget inside
-  // any of them is covered the day it is written rather than the day somebody
-  // remembers. `WidgetFilter._process` stops descending on a mask decision, so
-  // the whole subtree goes with it.
+  // Masked by enclosing type, and `WidgetFilter._process` stops descending on
+  // a mask decision - so the whole subtree goes with it, and a widget added
+  // inside any of these is covered the day it is written.
+  //
+  // Per-call `// ignore:` and not `ignore_for_file:`, which would silently
+  // remove the wall that leaves `attachViewHierarchy` alone a few lines above,
+  // turning an enforced decision into stale advice. Trailing, so it costs four
+  // lines rather than eight.
   //
   // **No `description:` argument, deliberately.** Left out, the SDK defaults it
   // to the literal `'mask'` (or `'unmask'`), and `privacy.toJson()` is public
@@ -214,20 +224,10 @@ void configureOptions(SentryFlutterOptions options, TelemetryPlan plan) {
   // and here the default is the unsafe one. Suppressing the warning is the
   // price of the masks; shipping replay without them is not an option and
   // leaving the warning unsuppressed is not a build.
-  // ignore: experimental_member_use
-  options.privacy.mask<HexTable>();
-  // ignore: experimental_member_use
-  options.privacy.mask<RemoteScreen>();
-  // ignore: experimental_member_use
-  options.privacy.mask<PlotterView>();
-  // ignore: experimental_member_use
-  options.privacy.mask<FlutterMap>();
-  // ignore: experimental_member_use
-  options.privacy.mask<CodeEditor>();
-  // ignore: experimental_member_use
-  options.privacy.mask<TerminalView>();
-  // ignore: experimental_member_use
-  options.privacy.mask<RawImage>();
+  options.privacy.mask<SensitiveSurface>(); // ignore: experimental_member_use
+  options.privacy.mask<FlutterMap>(); // ignore: experimental_member_use
+  options.privacy.mask<CodeEditor>(); // ignore: experimental_member_use
+  options.privacy.mask<TerminalView>(); // ignore: experimental_member_use
 
   // Off, and not because it is unwanted. Frame timings need
   // `SentryWidgetsFlutterBinding`, and `_initCore` installs Flutter's own -

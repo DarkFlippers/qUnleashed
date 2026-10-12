@@ -7,6 +7,7 @@
 // decides whether anything is reported at all, which is the whole screen.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:qunleashed/components/cardlist.dart';
 import 'package:qunleashed/pages/option/diagnostics_scope.dart';
 import 'package:qunleashed/pages/option/pages/diagnostics.dart';
 import 'package:qunleashed/services/localization/l10n.dart';
@@ -35,12 +36,24 @@ Widget wrap(Widget child, {DiagnosticsSettings? settings}) {
 ///
 /// `find.byType(Switch)` was enough while there was one row and is ambiguous
 /// now - it matched both and every tap threw. Scoped through the row's own
-/// `Row` so each case names the switch it means, which is also what makes the
-/// replay cases readable.
+/// `Row`, nearest first, so each case names the switch it means.
+///
+/// Anchored on `GroupedCard`, the widget `GroupedCardList` wraps each item in,
+/// so it survives a `Row` being added inside a tile. `find.ancestor(..., Row)`
+/// with `.first` worked too, but would then quietly pick the inner `Row` and
+/// go on passing while scoping to the wrong thing.
 Finder switchFor(String title) => find.descendant(
-  of: find.ancestor(of: find.text(title), matching: find.byType(Row)).first,
+  of: find.ancestor(of: find.text(title), matching: find.byType(GroupedCard)),
   matching: find.byType(Switch),
 );
+
+/// Where the switch headed [title] is sitting.
+///
+/// A sibling to [switchFor] because `tester.widget<Switch>(...).value` around
+/// it does not fit a line, so every assertion about a switch position was a
+/// four-line block.
+bool switchValue(WidgetTester tester, String title) =>
+    tester.widget<Switch>(switchFor(title)).value;
 
 void main() {
   setUp(() {
@@ -58,10 +71,7 @@ void main() {
     // The claim a user of this app cannot check for themselves, which is why
     // it is on the screen and not only in the ADR.
     expect(find.text(l10nGlobal.diagnosticsShareSubtitle), findsOneWidget);
-    expect(
-      tester.widget<Switch>(switchFor(l10nGlobal.diagnosticsShareTitle)).value,
-      isTrue,
-    );
+    expect(switchValue(tester, l10nGlobal.diagnosticsShareTitle), isTrue);
   });
 
   testWidgets('turning it off moves the switch and the stored value', (
@@ -73,10 +83,7 @@ void main() {
     await tester.tap(switchFor(l10nGlobal.diagnosticsShareTitle));
     await tester.pumpAndSettle();
 
-    expect(
-      tester.widget<Switch>(switchFor(l10nGlobal.diagnosticsShareTitle)).value,
-      isFalse,
-    );
+    expect(switchValue(tester, l10nGlobal.diagnosticsShareTitle), isFalse);
     expect(lastSettings!.shareLogs, isFalse);
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getBool('diagnostics.share_logs'), isFalse);
@@ -93,10 +100,7 @@ void main() {
     await lastSettings!.setShareLogs(false);
     await tester.pumpAndSettle();
 
-    expect(
-      tester.widget<Switch>(switchFor(l10nGlobal.diagnosticsShareTitle)).value,
-      isFalse,
-    );
+    expect(switchValue(tester, l10nGlobal.diagnosticsShareTitle), isFalse);
   });
 
   testWidgets('tapping the row is the same as tapping the switch', (
@@ -124,12 +128,7 @@ void main() {
       // The masks are a promise the code keeps in `options.dart`, and this is
       // the only place the user is told about them.
       expect(find.text(l10nGlobal.diagnosticsReplaySubtitle), findsOneWidget);
-      expect(
-        tester
-            .widget<Switch>(switchFor(l10nGlobal.diagnosticsReplayTitle))
-            .value,
-        isTrue,
-      );
+      expect(switchValue(tester, l10nGlobal.diagnosticsReplayTitle), isTrue);
     });
 
     testWidgets('turning it off stores the choice and leaves sharing on', (
@@ -181,12 +180,7 @@ void main() {
       await lastSettings!.setShareLogs(true);
       await tester.pumpAndSettle();
 
-      expect(
-        tester
-            .widget<Switch>(switchFor(l10nGlobal.diagnosticsReplayTitle))
-            .value,
-        isFalse,
-      );
+      expect(switchValue(tester, l10nGlobal.diagnosticsReplayTitle), isFalse);
     });
 
     testWidgets('tapping its row is the same as tapping its switch', (

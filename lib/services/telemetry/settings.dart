@@ -58,10 +58,12 @@ class DiagnosticsSettings extends PrefsBackedSettings {
 
   /// Whether replay can record on this platform at all.
   ///
-  /// `ReplayIntegration` gates on `supportsReplay`, which is true only in the
-  /// Java binding and, for Cocoa, only on iOS - so the four desktop targets
+  /// `ReplayIntegration` gates on `supportsReplay` - `@internal`, with no
+  /// public accessor anywhere in `sentry_flutter` **9.30.1**, so this mirrors
+  /// it by hand and §7's bump to 10 is the moment to re-check it. It is true
+  /// only in the Java binding and, for Cocoa, only on iOS - so the four desktop targets
   /// and web record nothing whatever the rates say. The same shape as
-  /// `HomeWidgetService.supported` and `PushService.supported`, and here
+  /// `HomeWidgetService.supported` and `PushService.isSupported`, and here
   /// rather than in `Telemetry` because the Diagnostics screen needs it too
   /// and already holds this object.
   ///

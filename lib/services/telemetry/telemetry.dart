@@ -22,7 +22,7 @@ import 'settings.dart';
 /// Phases 1 and 2 of the rollout - errors, crashes, Sentry Logs, breadcrumbs
 /// and tracing - and the replay half of phase 3: `onErrorSampleRate` behind
 /// §1's second switch, `sessionSampleRate` at zero, and §6.4's gate opened
-/// with five masking rules rather than stepped over. Still no metrics.
+/// with four masking rules rather than stepped over. Still no metrics.
 ///
 /// This paragraph has now said the opposite twice, each time because a phase
 /// landed and made it false.
@@ -449,6 +449,22 @@ class Telemetry {
   Future<void> _tearDown() async {
     try {
       await _shutdown();
+      // The recorder's hook does not come off with the SDK. `ReplayIntegration`
+      // registers an `onBuild` callback into a **static** list on
+      // `SentryScreenshotWidget` and never unregisters - it does not override
+      // `close()` - and while `SentryFlutter.init` clears that list (so the
+      // replay switch's restart does not accumulate hooks), `Sentry.close()`
+      // does not. Left alone, turning sharing off keeps the dead options graph
+      // alive for the process - the DSN, every masking rule, all three
+      // `beforeSend` closures - and fires `setReplayConfig` at a closed SDK
+      // once per rotation. Nothing leaves the device, but holding the DSN and
+      // the privacy rules after the user said no is the wrong thing to keep.
+      //
+      // Only on the success path: a shutdown that failed may leave the native
+      // recorder up, and taking its hook off would then be the lie this
+      // method's `_running` handling is careful not to tell.
+      // ignore: invalid_use_of_internal_member
+      SentryScreenshotWidget.reset();
     } catch (e, st) {
       // `_running` is left **true** on purpose. The native handler may still
       // be up, so saying otherwise would make the switch claim something that

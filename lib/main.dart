@@ -93,10 +93,20 @@ Future<void> _runApp(AppCore core) async {
   if (_appRunning) return;
   _appRunning = true;
   final client = core.client;
-  // Wrapped rather than wrapping inside `app.dart`, so `MaterialApp`'s
-  // rebuild on every theme and locale change does not run through it - and so
-  // the file that builds the UI still names no Sentry type. `Telemetry.wrap`
-  // hands back the child untouched when there is no DSN.
+  // Wrapped rather than wrapping inside `app.dart`, so the file that builds
+  // the UI still names no Sentry type - §2's import rule - and so the recorder
+  // has one stable mount point above every route.
+  //
+  // Not for the reason this comment used to give. It claimed the placement
+  // kept `MaterialApp`'s theme and locale rebuilds from running through the
+  // wrapper; above `MaterialApp` the wrapper instead depends on the **root**
+  // `MediaQueryData`, which changes on every frame of a keyboard show or hide
+  // and every resize frame - strictly more often than a theme change. The work
+  // either way is one status allocation and a compare, so the efficiency claim
+  // was both wrong and immaterial; it is written down so nobody optimises
+  // toward it.
+  //
+  // `Telemetry.wrap` hands back the child untouched when there is no DSN.
   runApp(
     core.telemetry.wrap(
       QUnleashedApp(

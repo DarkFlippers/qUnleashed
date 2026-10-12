@@ -17,8 +17,6 @@
 //
 // The DSN, the init and the shutdown are injected for exactly this.
 import 'package:flipperlib/flipperlib.dart' show FlipperLogLevel, Log;
-import 'package:flutter/foundation.dart'
-    show TargetPlatform, debugDefaultTargetPlatformOverride;
 import 'package:flutter/widgets.dart' show SizedBox, Widget;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/services/guarded.dart';
@@ -142,6 +140,20 @@ bool get anySinkInstalled =>
 /// `HexTable`, a `RemoteScreen` and a `PlotterView`, each wanting five
 /// collaborators, in a test about telemetry - and §6.4 still owes a check on a
 /// device either way.
+/// Every rule §6.4's block installs, as `privacy.toJson()` renders them.
+///
+/// One list because there were two, and both were incomplete: they asserted
+/// three of the seven rules that existed, so the four added last - including
+/// the net and the default text editor - were pinned by nothing, while
+/// `options.dart` said the rules "are checked in
+/// `test/telemetry_lifecycle_test.dart` rather than trusted".
+const kMaskedSurfaces = [
+  'SensitiveSurface: mask',
+  'FlutterMap: mask',
+  'CodeEditor: mask',
+  'TerminalView: mask',
+];
+
 Iterable<String> maskedTypes(SentryFlutterOptions options) =>
     (options.privacy.toJson()['maskingRules'] as List<dynamic>? ??
             const <dynamic>[])
@@ -157,12 +169,6 @@ bool get allSinksInstalled =>
 void main() {
   setUp(recordKeptLines);
 
-  // `DiagnosticsSettings.replaySupported` is false on the host, and the
-  // replay restart is gated on it - so without this every case below would
-  // pass by never reaching the code it names.
-  setUp(() => debugDefaultTargetPlatformOverride = TargetPlatform.android);
-  tearDown(() => debugDefaultTargetPlatformOverride = null);
-
   late _FakeSdk sdk;
   late DiagnosticsSettings settings;
 
@@ -174,13 +180,15 @@ void main() {
 
   tearDown(resetTelemetrySinks);
 
-  Telemetry build({String dsn = 'https://key@o1.ingest.de.sentry.io/2'}) =>
-      Telemetry(
-        settings: settings,
-        dsn: dsn,
-        init: sdk.init,
-        shutdown: sdk.close,
-      );
+  Telemetry build({
+    String dsn = 'https://key@o1.ingest.de.sentry.io/2',
+    Future<void> Function(void Function(SentryFlutterOptions))? init,
+  }) => Telemetry(
+    settings: settings,
+    dsn: dsn,
+    init: init ?? sdk.init,
+    shutdown: sdk.close,
+  );
 
   group('coming up', () {
     test('installs all four hooks and raises the library pin', () async {
@@ -257,7 +265,7 @@ void main() {
       expect(replay.sessionSampleRate, anyOf(isNull, 0.0));
     });
 
-    test('masks the three surfaces §6.4 names, and masks rather than '
+    test('masks every surface §6.4 names, and masks rather than '
         'unmasks them', () async {
       // The gate itself. Both defaults are on and neither reaches these: the
       // hex editor paints card bytes with a `TextPainter` inside a
@@ -269,14 +277,7 @@ void main() {
 
       expect(options.privacy.maskAllText, isTrue);
       expect(options.privacy.maskAllImages, isTrue);
-      expect(
-        maskedTypes(options),
-        containsAll([
-          'HexTable: mask',
-          'RemoteScreen: mask',
-          'PlotterView: mask',
-        ]),
-      );
+      expect(maskedTypes(options), containsAll(kMaskedSurfaces));
     });
 
     test('the replay switch off leaves the error rate at zero', () async {
@@ -293,7 +294,7 @@ void main() {
       expect(allSinksInstalled, isTrue);
     });
 
-    test('masks the three surfaces even with replay switched off', () async {
+    test('masks every surface even with replay switched off', () async {
       // The rules do not depend on the rate, and should not: the switch can
       // move while the app runs, and a rule added only on the recording path
       // would be the one missing from the build that starts recording.
@@ -303,14 +304,7 @@ void main() {
 
       await build().start();
 
-      expect(
-        maskedTypes(sdk.options!),
-        containsAll([
-          'HexTable: mask',
-          'RemoteScreen: mask',
-          'PlotterView: mask',
-        ]),
-      );
+      expect(maskedTypes(sdk.options!), containsAll(kMaskedSurfaces));
     });
   });
 
@@ -536,9 +530,7 @@ void main() {
       // against; every other case in this file reaches it while idle and so
       // passes either way.
       var toggled = false;
-      final telemetry = Telemetry(
-        settings: settings,
-        dsn: 'https://key@o1.ingest.de.sentry.io/2',
+      final telemetry = build(
         init: (configure) async {
           await sdk.init(configure);
           if (!toggled) {
@@ -546,7 +538,6 @@ void main() {
             await settings.setShareReplay(false);
           }
         },
-        shutdown: sdk.close,
       );
 
       await telemetry.start();
