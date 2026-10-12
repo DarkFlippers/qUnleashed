@@ -7543,6 +7543,22 @@
     }
   },
 
+  "archiveSyncStoppedEarly": "Sync stopped after {done} of {total}: {error}",
+  "@archiveSyncStoppedEarly": {
+    "description": "Shown when a sync ended before reaching the whole queue because the link to the device went down and did not come back. Distinct from the summary above it: that one reports how a finished sync went, this one says the rest was never attempted. The numbers are the files reached and the files queued, not successes - a user who sees this should try again rather than conclude the remainder failed.",
+    "placeholders": {
+      "done": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      },
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+
   "archiveConnectToRestore": "Connect a device to restore",
   "@archiveConnectToRestore": {
     "description": "Error shown when restoring needs a connected Flipper."

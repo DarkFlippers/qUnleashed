@@ -133,9 +133,18 @@ const Map<String, int> kBudget = {
   // rather than a measure - and this is the shape that case wants. The clause exists
   // so the path is **not** added to `unread`, and doing nothing is the whole
   // of that: the firmware looked and there is no such directory, so there is
-  // no failure to record and nothing further to do with it. Logging it would
-  // have moved the number to the other ratchet for a line that says a healthy
-  // Flipper is healthy.
+  // no failure to record and nothing further to do with it. A line here would
+  // say a healthy Flipper is healthy, 13 times in three days, which is the
+  // whole reason this clause exists.
+  //
+  // It would also raise no ratchet, which is worth saying so the number is not
+  // read as bought: `log_level_budget_test.dart` counts `info` and
+  // `caught_budget_test.dart` counts `caught`, and the level this would have
+  // used is `warn`. The silence is argued, not traded.
+  //
+  // What the *consequence* costs is recorded instead, at `caught`, by
+  // `_reportBulkDelete` - once per walk, and only when an absent directory
+  // actually moved local keys to deleted.
   //
   // The sibling clause in the same change is not here, because it has a
   // statement to make: `_verifyScope` sets `ok = true` so the reconcile runs

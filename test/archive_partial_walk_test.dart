@@ -37,9 +37,17 @@ class _WalkingFlipper implements FlipperClient {
   /// has used that app on answers - `/ext/badusb` and `/ext/subghz/wardriving`
   /// are created by the thing that writes into them.
   ///
-  /// Separate from [refuses] because the walk has to tell them apart: one
-  /// leaves what is on the phone alone, the other is the device saying the
-  /// files are gone.
+  /// Separate from [refuses] because the walk has to tell them apart.
+  /// [refuses] leaves what is on the phone alone - a card that may still hold
+  /// the files; `absent` is the device saying they are gone, so the reconcile
+  /// runs on the empty listing.
+  ///
+  /// Only this one throws the typed exception. [refuses] throws a raw
+  /// `StateError` carrying a status string, where the real client would raise
+  /// `FlipperRpcStorageNotExistException`'s sibling - which is a stand-in, not
+  /// a claim that a status arrives as a string. Both reach the generic clause
+  /// either way, which is all those cases need; the typed one here is load
+  /// bearing, because the client's *type* is what does the deciding.
   final Set<String> absent = {};
 
   final List<String> listed = [];
@@ -186,6 +194,23 @@ void main() {
     if (root.existsSync()) root.deleteSync(recursive: true);
   });
 
+  /// Writes a local copy of a wardriving capture, for the one category that
+  /// reaches `_verifyScope`.
+  ///
+  /// Wardriving is the only category with `recursiveSearch` left false, so it
+  /// is the only route into that clause - which is the one the change's own
+  /// comment leads with (`/ext/subghz/wardriving` and its `autosaved`, 22 of
+  /// the 90 warnings in three days) and the one nothing covered.
+  void localCapture(String name, {String subFolder = ''}) {
+    final dir = storage.categoryDir(
+      _device,
+      ArchiveCategory.wardriving,
+      subFolder: subFolder,
+    )..createSync(recursive: true);
+    io.File('${dir.path}${io.Platform.pathSeparator}$name.sub')
+        .writeAsStringSync('Filetype: Flipper SubGhz RAW File\n');
+  }
+
   /// Writes a local copy of an NFC tag, which is what the reconcile decides
   /// the fate of.
   void localTag(String name, {String subFolder = ''}) {
@@ -232,6 +257,57 @@ void main() {
       .keysFor(ArchiveCategory.nfc)
       .where((k) => k.name == name)
       .firstOrNull;
+
+  group('a wardriving folder that is not there', () {
+    // `_verifyScope`, reached only by the one category that is not searched
+    // recursively. Everything else in this file goes through
+    // `_verifyCategoryRecursive`, so this clause had no coverage at all while
+    // being the case the change was written for.
+    test('says nothing on a Flipper nobody has wardriven with', () async {
+      client.absent.add('/ext/subghz/wardriving');
+      client.absent.add('/ext/subghz/wardriving/autosaved');
+
+      await open();
+
+      expect(
+        lines('could not be listed'),
+        isEmpty,
+        reason: 'the per-walk summary counts unread, and nothing was',
+      );
+      expect(
+        lines('list /ext/subghz/wardriving failed'),
+        isEmpty,
+        reason: 'and the absence is not a failure to report either',
+      );
+    });
+
+    test('marks local captures deleted, and records that it did', () async {
+      // The reconcile now runs, which is the fix - `ok = false` used to skip
+      // it and leave the keys stale. What it does when it runs is mark them
+      // deleted, which is right for a directory the firmware says is gone and
+      // is also #109's outcome for one status code. So it is recorded.
+      localCapture('drive');
+      client.absent.add('/ext/subghz/wardriving');
+      client.absent.add('/ext/subghz/wardriving/autosaved');
+
+      await open();
+
+      final said = lines('now read as deleted').toList();
+      expect(said, hasLength(1), reason: 'once per scope, and kept');
+      expect(said.single, contains('/ext/subghz/wardriving'));
+    });
+
+    test('says nothing about a scope with nothing in it', () async {
+      // The ordinary case the silence is for: no local captures, so nothing
+      // moved, so there is nothing to say.
+      client.absent.add('/ext/subghz/wardriving');
+      client.absent.add('/ext/subghz/wardriving/autosaved');
+
+      await open();
+
+      expect(lines('now read as deleted'), isEmpty);
+    });
+  });
 
   group('a listing the Flipper refused', () {
     // The reported bug, in its plainest form: one failed storageList at the
@@ -410,5 +486,41 @@ void main() {
         expect(lines('2 folder(s)'), isEmpty);
       },
     );
+
+    // The mirror of 'holds back what is underneath it too', for an absence
+    // rather than a refusal - and the one direction this whole change can
+    // lose something. Not adding the path to `unread` is exactly what lets a
+    // key under it flip to deleted, and until now that was only covered when
+    // the absent directory was the category root.
+    test('marks what is under an absent subfolder, and says so', () async {
+      client.tree[_nfcRoot] = [dir('Locks')];
+      client.absent.add('$_nfcRoot/Locks');
+      localTag('spare', subFolder: 'Locks');
+
+      await open();
+
+      expect(readsAsDeleted('spare'), isTrue);
+      // A subfolder going is a smaller event than a category going, and it is
+      // recorded the same way: the root listed fine, so this is the firmware
+      // answering about one path.
+      final said = lines('now read as deleted').toList();
+      expect(said, hasLength(1));
+      expect(said.single, contains('1 local file'));
+    });
+
+    test('leaves a sibling of an absent subfolder alone', () async {
+      // The guard the test above would pass without: only what is actually
+      // under the absent path moves.
+      client.tree[_nfcRoot] = [dir('Locks'), dir('Cards')];
+      client.tree['$_nfcRoot/Cards'] = [tag('work.nfc')];
+      client.absent.add('$_nfcRoot/Locks');
+      localTag('spare', subFolder: 'Locks');
+      localTag('work', subFolder: 'Cards');
+
+      await open();
+
+      expect(readsAsDeleted('spare'), isTrue);
+      expect(readsAsDeleted('work'), isFalse);
+    });
   });
 }

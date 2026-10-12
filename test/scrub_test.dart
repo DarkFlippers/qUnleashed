@@ -214,7 +214,13 @@ void main() {
       );
     });
 
-    test('a duration does not', () {
+    // Renamed from 'a duration does not'. `took 1.25s` is not a format
+    // anything in the app produces - the duration case is the test below, at
+    // six places - and a test named for coverage it does not provide is how
+    // the gap it was standing in for survived three days in production. What
+    // it does pin is real and worth keeping: two places is under the
+    // four-place floor.
+    test('a two-place decimal does not', () {
       expect(Scrub.outbound('took 1.25s'), 'took 1.25s');
     });
 
@@ -240,6 +246,47 @@ void main() {
     // colon, or a labelled coordinate would survive.
     test('a coordinate after a colon still goes', () {
       expect(Scrub.outbound('lat:50.4501'), 'lat:<coord>');
+    });
+
+    // `-?` is the only part of the pattern outside both lookbehinds, which
+    // makes it the part most likely to break when somebody edits them - and
+    // half the planet has a negative coordinate. Nothing covered it.
+    test('a negative coordinate goes, on its own and after a digit', () {
+      expect(Scrub.outbound('lat:-50.4501'), 'lat:<coord>');
+      expect(
+        Scrub.outbound('-50.4501 is the latitude'),
+        '<coord> is the '
+        'latitude',
+      );
+      expect(Scrub.outbound('bbox=10,-50.4501'), 'bbox=10,<coord>');
+      // A pair written with the sign as the separator: `replaceAll` restarts
+      // at the `-`, the first lookbehind rejects there, and the second half
+      // then matches without its sign. Both go; only the minus survives.
+      expect(Scrub.outbound('50.4501-30.5234'), '<coord>-<coord>');
+    });
+
+    // One line pinning both halves at once: the duration survives and the
+    // coordinates beside it do not. This is the shape a real timeout on the
+    // map would take, and it is the case that would catch the duration
+    // exclusion leaking into the rest of the line.
+    test('a duration and a coordinate on one line are told apart', () {
+      expect(
+        Scrub.outbound('after 0:00:30.000000 at 50.4501,30.5234'),
+        'after 0:00:30.000000 at <coord>,<coord>',
+      );
+    });
+
+    // Documented in `scrub.dart` as the cost of `(?<!\d)`, and pinned here so
+    // the cost is a decision rather than a surprise. NMEA runs degrees and
+    // minutes together, so the integer part is four or five digits and the
+    // rule does not reach it. Nothing in the app emits this today - the map
+    // parses decimal degrees, which cap at three - and if that changes this
+    // test is what says the rule has to change with it.
+    test('a four-digit integer part is out of reach, deliberately', () {
+      expect(Scrub.outbound('5027.0067,N'), '5027.0067,N');
+      // And the thing that change bought: it used to redact the tail of any
+      // long decimal, which was never the intent.
+      expect(Scrub.outbound('x=1234.5678'), 'x=1234.5678');
     });
   });
 
