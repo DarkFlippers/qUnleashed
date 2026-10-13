@@ -1544,8 +1544,6 @@ class _FileManagerPageState extends State<FileManagerPage> {
   Widget _dragSource(RemoteEntry e, Widget child) {
     if (e.isDir || e.pending) return child;
     final selected = _selectionMode && _selected.contains(e.name);
-    final draggable = _ctrl.canDownload(selected ? _selectedEntries : [e]);
-    if (!draggable) return child;
     return FileDragSource(
       key: ValueKey('${e.isDir}:${e.name}'),
       file: _dragFile(e),
@@ -1555,6 +1553,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
                 if (!s.isDir && !s.pending) _dragFile(s),
             ]
           : null,
+      canStart: () => _mayDownload(selected ? _selectedEntries : [e]),
       onDropped: selected
           ? () {
               if (mounted) _exitSelection();
