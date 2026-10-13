@@ -86,6 +86,8 @@ Four steps. The version is the only decision.
    `app_release`. The rolling `dev` prerelease is left alone. Check the
    changelog *before* tagging: it is the release body, and no check runs on a
    tag push — `ci.yml` triggers on a push to `main` and on pull requests only.
+   It also **closes the milestone named after the released version**, if one
+   is open — see [Milestones](#milestones).
 4. **Open the next cycle immediately.** The release run opens a draft pull
    request that bumps `pubspec.yaml` and resets the changelog; set the version
    and merge it. This is not optional — see below.
@@ -190,6 +192,10 @@ only for a release. It does four things:
    be merged by reflex, which is the minimum friction that makes the choice
    real on the one day somebody wants `main` green in a hurry.
 
+It carries **no milestone**, which is the point: the version on it is a
+proposal, so the milestone it belongs to has no name yet. The first dev build
+after the merge creates it — see [Milestones](#milestones).
+
 **It does not push to `main`,** and the first of these three reasons is the one
 that decides it:
 
@@ -233,6 +239,51 @@ Two things worth knowing:
 
 `open_next_cycle.sh` is the file-writing half and is tested on its own,
 including that what it writes satisfies `check_changelog.sh`.
+
+## Milestones
+
+**One open milestone per cycle, named after its version, plus `Backlog`.**
+This repository's decision, taken on 2026-10-13 and modelled on
+unleashed-firmware's milestones as they stood then. Two jobs in
+`auto-release.yml` hold the ends of a cycle so nobody has to remember:
+
+| | |
+|---|---|
+| `close-release-milestone` | On a release, closes the milestone whose title is the released version. No such milestone, or one already closed, leaves the run green and says so in an annotation — the binaries are published and this is bookkeeping. Open items left in it are **named** in a `::warning::` and in the step summary, and it closes anyway. And if what it closed held **nothing at all**, it says so and lists what is still open: an empty milestone for the released version means the work is filed under another name — see the retarget below. |
+| `ensure-cycle-milestone` | On every dev build that publishes, creates a milestone titled after the version in `pubspec.yaml`, with no description, unless one of that name already exists. One that exists but is **closed** gets a `::warning::` rather than being recreated: the close was somebody's decision, and a cycle with no open milestone has nowhere to file its work. |
+
+**Why the second runs per dev build rather than on the cycle pull request.**
+The digit in that pull request is a proposal (fact 2), so a milestone created
+alongside it is left behind every time the patch digit was the answer. Reading
+pubspec as merged gets the name right instead, for a job and one lookup per dev
+build — and it means a cycle opened by hand gets its milestone, and one deleted
+mid-cycle is recreated. Recreated empty: deleting a milestone strips it from
+every item that was in it, and nothing restores those.
+
+So a cycle's milestone lives like this: the cycle pull request merges → the
+next dev build whose five platforms and `publish` all succeed creates the
+milestone → work lands in it through the cycle → that version's release closes
+it. The gap between the merge and the milestone is therefore a build, not a
+moment: roughly an hour, and longer if a platform build fails, since the job
+hangs off `publish`. (The cycle opener always edits `pubspec.yaml`, which
+`paths-ignore` does not cover, so that push does always build.)
+
+**Retargeting a version mid-cycle leaves two milestones**, and the release says
+so rather than fixing it. Step 1 above has you push `0.16.1` to `main` before
+tagging it; that push is a dev build, so it creates an empty `0.16.1`
+alongside the `0.16.0` the cycle's work is already in, and the release closes
+the empty one. Renaming the old milestone instead would mean guessing which
+open milestone is the cycle's, which is wrong the first time somebody opens one
+early for triage — so the job warns, names what is still open, and leaves the
+move to you: file the work under the released version, or close the old
+milestone by hand.
+
+Nothing scheduled sits in a closed milestone, and nothing unscheduled sits in a
+version's one: that is `Backlog`.
+
+Neither job touches an item's milestone, and neither maintains `Backlog`.
+Putting a pull request or an issue in the current milestone is still a person's
+job, and anything triaged but not scheduled belongs in `Backlog`.
 
 ## When CI refuses
 
@@ -473,6 +524,6 @@ Honest list, so nobody waits for something that is not coming.
 | `.github/scripts/open_next_cycle.sh` | The pubspec bump and changelog reset the release-day pull request carries. Its tests are beside it. |
 | `.github/scripts/check_linux_abi.sh` | The Linux runtime floor, checked after every Linux build. `--print-floor` states it. Its tests are beside it. |
 | `.github/scripts/release_body.sh` | What a release page says: the whole changelog for a release, what is new since the previous dev build for a dev one. Its tests are beside it. |
-| `.github/workflows/auto-release.yml` | The triggers, the five builds, the publish job, the rolling prerelease and the cycle opener. |
+| `.github/workflows/auto-release.yml` | The triggers, the five builds, the publish job, the rolling prerelease, the cycle opener and the two milestone jobs. |
 | `lib/services/build_identity.dart` | How the app reads what was compiled in, and formats it for a person. |
 | `pubspec.yaml` | The version. Nothing else about the identity lives here — the build number is derived. |
