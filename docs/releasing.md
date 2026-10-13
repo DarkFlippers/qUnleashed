@@ -86,6 +86,8 @@ Four steps. The version is the only decision.
    `app_release`. The rolling `dev` prerelease is left alone. Check the
    changelog *before* tagging: it is the release body, and no check runs on a
    tag push — `ci.yml` triggers on a push to `main` and on pull requests only.
+   It also **closes the milestone named after the released version**, if there
+   is one — see [Milestones](#milestones).
 4. **Open the next cycle immediately.** The release run opens a draft pull
    request that bumps `pubspec.yaml` and resets the changelog; set the version
    and merge it. This is not optional — see below.
@@ -190,6 +192,10 @@ only for a release. It does four things:
    be merged by reflex, which is the minimum friction that makes the choice
    real on the one day somebody wants `main` green in a hurry.
 
+It carries **no milestone**, which is the point: the version on it is a
+proposal, so the milestone it belongs to has no name yet. The first dev build
+after the merge creates it — see [Milestones](#milestones).
+
 **It does not push to `main`,** and the first of these three reasons is the one
 that decides it:
 
@@ -233,6 +239,33 @@ Two things worth knowing:
 
 `open_next_cycle.sh` is the file-writing half and is tested on its own,
 including that what it writes satisfies `check_changelog.sh`.
+
+## Milestones
+
+**One open milestone per cycle, named after its version, plus `Backlog`.** That
+is unleashed-firmware's shape, and two jobs in `auto-release.yml` hold it so
+nobody has to remember:
+
+| | |
+|---|---|
+| `close-release-milestone` | On a release, closes the milestone whose title is the released version. No such milestone is a `::notice::`, not a failure — the binaries are published and this is bookkeeping. Open items left in it get a `::warning::` naming the count, and it closes anyway. |
+| `ensure-cycle-milestone` | On every dev build, creates a milestone titled after the version in `pubspec.yaml` if none exists, open or closed, with no description. |
+
+**Why the second one runs on every push rather than on the cycle pull
+request.** The digit in that pull request is a proposal (fact 2), so a
+milestone created alongside it is a stray `0.17.0` left behind every time
+`0.16.1` was the answer. Reading pubspec as merged costs one request per push
+and gets the name right, and it also means a cycle opened by hand gets its
+milestone, and one deleted mid-cycle comes back.
+
+So the lifecycle of `0.17.0` is: the cycle pull request merges → the next push
+to `main` creates the milestone → work lands in it through the cycle → the
+`0.17.0` release closes it. Nothing scheduled sits in a closed milestone, and
+nothing unscheduled sits in a version's one: that is `Backlog`.
+
+Neither job touches an item's milestone. Putting a pull request or an issue in
+the current milestone is still a person's job, and anything triaged but not
+scheduled belongs in `Backlog`.
 
 ## When CI refuses
 
@@ -473,6 +506,6 @@ Honest list, so nobody waits for something that is not coming.
 | `.github/scripts/open_next_cycle.sh` | The pubspec bump and changelog reset the release-day pull request carries. Its tests are beside it. |
 | `.github/scripts/check_linux_abi.sh` | The Linux runtime floor, checked after every Linux build. `--print-floor` states it. Its tests are beside it. |
 | `.github/scripts/release_body.sh` | What a release page says: the whole changelog for a release, what is new since the previous dev build for a dev one. Its tests are beside it. |
-| `.github/workflows/auto-release.yml` | The triggers, the five builds, the publish job, the rolling prerelease and the cycle opener. |
+| `.github/workflows/auto-release.yml` | The triggers, the five builds, the publish job, the rolling prerelease, the cycle opener and the two milestone jobs. |
 | `lib/services/build_identity.dart` | How the app reads what was compiled in, and formats it for a person. |
 | `pubspec.yaml` | The version. Nothing else about the identity lives here — the build number is derived. |

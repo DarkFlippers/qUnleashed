@@ -918,18 +918,113 @@ jobs:
           git push origin "$branch" ||
             echo "::notice::$branch already opens this cycle; leaving it as it stands."
 
+          # No --milestone. This pull request's whole point is that $NEXT is a
+          # proposal, so the milestone it would belong to is not named yet -
+          # `ensure-cycle-milestone` creates it from pubspec once the digit has
+          # been merged. It used to pass `--milestone "Release preparation"`
+          # with a second, milestone-less `gh pr create` behind a `||`; that
+          # milestone is gone, so the first call could only ever fail and the
+          # fallback did all the work.
           gh pr create \
             --base main \
             --head "$branch" \
             --title "Open the $NEXT cycle - confirm the digit" \
             --body-file "$RUNNER_TEMP/pr-body.md" \
             --assignee mishamyte \
-            --draft \
-            --milestone "Release preparation" ||
-            gh pr create \
-              --base main \
-              --head "$branch" \
-              --title "Open the $NEXT cycle - confirm the digit" \
-              --body-file "$RUNNER_TEMP/pr-body.md" \
-              --assignee mishamyte \
-              --draft
+            --draft
+
+  # One open milestone per cycle, plus `Backlog`, is the shape
+  # unleashed-firmware uses, and the two jobs below are what keeps it without
+  # anybody remembering to. This one closes the milestone the release just
+  # shipped; `ensure-cycle-milestone` opens the next one.
+  #
+  # Milestones are part of the Issues API, so the scope is `issues: write` -
+  # there is nothing named for milestones to grant.
+  close-release-milestone:
+    name: Close the release milestone
+    needs: publish
+    if: ${{ needs.publish.outputs.channel == 'release' }}
+    permissions:
+      issues: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Close the milestone named after the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          VERSION: ${{ needs.publish.outputs.version }}
+        run: |
+          # The title is matched in awk rather than interpolated into a --jq
+          # filter: `gh api --jq` has no --arg, so the version would be spliced
+          # into the jq program as text.
+          number="$(gh api "repos/$REPO/milestones?state=open&per_page=100" \
+            --paginate --jq '.[] | "\(.number)\t\(.title)"' |
+            awk -F'\t' -v v="$VERSION" '$2 == v { print $1 }')"
+
+          # A release cut without a milestone is not a failure. The binaries
+          # are published and the milestone is bookkeeping, so this says so and
+          # stops rather than reddening a run whose release is fine.
+          if [[ -z "$number" ]]; then
+            echo "::notice::No open milestone named $VERSION; nothing to close."
+            exit 0
+          fi
+
+          open="$(gh api "repos/$REPO/milestones/$number" --jq .open_issues)"
+          if [[ "$open" != "0" ]]; then
+            # Closed anyway - the version is out, so the milestone's claim is
+            # settled either way. But an item still open in it shipped in
+            # nothing and drops out of every open-milestone view the moment
+            # this closes, which is why it is said out loud here.
+            echo "::warning::Milestone $VERSION still has $open open item(s); closing it anyway - move them to Backlog."
+          fi
+
+          gh api -X PATCH "repos/$REPO/milestones/$number" -f state=closed --silent
+          echo "Closed milestone $VERSION (#$number)."
+
+  # The cycle's own milestone, created once its version is settled.
+  # `open-next-cycle` cannot do this: the digit it writes is a guess a reviewer
+  # changes in the pull request, so a milestone made there is a stray 0.17.0
+  # left behind every time 0.16.1 was the answer. Here the version is pubspec's
+  # as merged, so the name is the one the cycle actually carries.
+  #
+  # It runs on every dev build rather than on the cycle pull request's merge,
+  # which costs one request per push and buys two things: a cycle opened by
+  # hand gets its milestone too, and a milestone deleted mid-cycle comes back.
+  ensure-cycle-milestone:
+    name: Open the cycle milestone
+    needs: publish
+    if: ${{ needs.publish.outputs.channel == 'dev' }}
+    permissions:
+      issues: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Create the milestone for the version being built toward
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          VERSION: ${{ needs.publish.outputs.version }}
+        run: |
+          # state=all, not state=open: a closed milestone for this version is
+          # an answer, not an absence. `derive_version.sh` refuses a dev build
+          # whose version has been released, so the shape that reaches this is
+          # a cycle reopened on a version whose milestone was already closed -
+          # recreating it there would quietly undo the close.
+          existing="$(gh api "repos/$REPO/milestones?state=all&per_page=100" \
+            --paginate --jq '.[] | "\(.number)\t\(.title)"' |
+            awk -F'\t' -v v="$VERSION" '$2 == v { print $1 }')"
+
+          if [[ -n "$existing" ]]; then
+            echo "Milestone $VERSION already exists (#$existing)."
+            exit 0
+          fi
+
+          # No description, like the release milestones on unleashed-firmware:
+          # the title is the version and there is nothing a sentence adds.
+          number="$(gh api -X POST "repos/$REPO/milestones" -f title="$VERSION" --jq .number)"
+          echo "::notice::Created milestone $VERSION (#$number)."
