@@ -120,19 +120,37 @@ void main() {
       });
     }
 
-    test('does not demand a rebuilt frame of an answer that has none', () async {
-      // The asymmetry in the wholeness check, and the only test that can see
-      // it: `found` promises the rebuilt frame because `render` writes it, and
-      // `unverified` promises the seed and the hop count only. Demanding all
-      // three of both outcomes would turn a legitimate answer into a fault and
-      // throw away a seed that is shown for reference.
+    // The asymmetry in the wholeness check, and the only tests that can see
+    // it: the seed is what both outcomes are for, while the rebuilt frame and
+    // the hop count are `found`'s promises alone - `render` writes the one and
+    // the confidence clause is the only reader of the other, and `notFound`
+    // short-circuits that for every outcome but `found`. Demanding either of
+    // `unverified` turns an answer that renders perfectly well into "The
+    // recovery engine failed" and throws away the seed it was shown for.
+    for (final (figure, recoverer) in [
+      ('rebuilt frame', UnverifiedRecoverer(frameHop: null)),
+      ('hop count', UnverifiedRecoverer(hopsUsed: null)),
+    ]) {
+      test('does not demand a $figure of an answer that has none', () async {
+        final controller = await _searched(
+          seedCaptureFixture,
+          recoverer: recoverer,
+        );
+
+        expect(controller.result!.outcome, SeedOutcome.unverified);
+        expect(controller.result!.seed, isNotNull);
+      });
+    }
+
+    test('does demand both of a found answer', () async {
+      // The other side of the asymmetry, so it cannot pass by exempting
+      // everything: `found` writes a file out of all three.
       final controller = await _searched(
         seedCaptureFixture,
-        recoverer: UnverifiedRecoverer(frameHop: null),
+        recoverer: IncompleteRecoverer(hopsUsed: null),
       );
 
-      expect(controller.result!.outcome, SeedOutcome.unverified);
-      expect(controller.result!.seed, isNotNull);
+      expect(controller.result!.outcome, SeedOutcome.engineFault);
     });
 
     test('keeps a whole answer whole', () async {
@@ -150,9 +168,16 @@ void main() {
     test(
       'is recorded, since the headline asks the user to report it',
       () async {
-        // At a level that survives a release build: a report that arrives with
-        // nothing in the log but `[Seed] searching ...` cannot be acted on.
-        // Once per search, not once per rebuild.
+        // At a level that survives a release build: a report that arrives
+        // with nothing in the log but `[Seed] searching ...` cannot be acted
+        // on.
+        //
+        // Not "once": `LogService` folds a *consecutive* identical body into
+        // the one before, so a count here cannot tell once from twice - the
+        // trap CLAUDE.md names. This suite builds no widget for a per-rebuild
+        // claim to be about either; what holds that is the single call site in
+        // `search`'s `finally`, and `seed_save_hint_test.dart` pins it where
+        // rebuilds happen.
         recordKeptLines();
         await _searched(
           seedCaptureFixture,
@@ -161,7 +186,7 @@ void main() {
 
         expect(
           keptLines.where((l) => l.contains('without the whole answer')),
-          hasLength(1),
+          isNotEmpty,
         );
         expect(keptLevels, contains(KeptLevel.error));
       },
@@ -177,10 +202,14 @@ void main() {
         recoverer: IncompleteRecoverer(seed: null),
       );
 
-      expect(
-        keptLines.singleWhere((l) => l.contains('without the whole answer')),
-        contains('seed=false'),
+      final line = keptLines.singleWhere(
+        (l) => l.contains('without the whole answer'),
       );
+      expect(line, contains('seed=false'));
+      // And which sweep it came out of: `search` tries up to three windows and
+      // only the last answer survives, so the same gap out of a whole-capture
+      // sweep and out of a three-hop retry are different faults.
+      expect(line, contains('3-hop window'));
     });
 
     test('is not recorded for an answer that is merely unconfident', () async {
@@ -202,7 +231,7 @@ void main() {
       // misattribute it, which is what the page used to do.
       final controller = await _searched(
         seedCaptureTwoHops,
-        recoverer: UnverifiedRecoverer(),
+        recoverer: UnverifiedRecoverer(hopsUsed: 2),
       );
 
       // The state that makes this case worth having, and the one a fake
@@ -291,6 +320,7 @@ void main() {
       // frequency is missing, which `_save` passes to `render` with a `!`. Not
       // reaching the write at all is what keeps that out of the log as a
       // failure the device is blamed for.
+      recordKeptLines();
       final client = SeedFakeClient();
       final controller = await _searched(
         seedCaptureNoFrequency,
@@ -299,17 +329,20 @@ void main() {
       );
       expect(controller.saveBlock, SeedSaveBlock.noFrequency);
       client.calls.clear();
+      // The fold as well as the list: `clearKeptLines` resets both, and the
+      // arrangement above logs. Without it a body the search already wrote
+      // could be folded away out of the act and read as missing wiring.
+      clearKeptLines();
 
-      recordKeptLines();
       await controller.save('garage');
 
       expect(client.calls, isEmpty);
       expect(controller.savedTo, isNull);
-      // And says so. This is the one enforcement of the gate and it cannot
-      // report to the user - the page builds no button for a blocked
-      // recovery, so arriving here is a result that changed under a tap or a
-      // caller that skipped the affordance, and either way the screen does not
-      // move. Without a line, neither does anything else.
+      // The user is told, and so is the log. Nothing else on this path moves
+      // the screen - the button is still there and `savedTo` is still null -
+      // so without the failure the app simply does not answer a tap, and
+      // without the line nobody can tell which gate turned it away.
+      expect(controller.error, SeedFailure.saveFailed);
       expect(
         keptLines.singleWhere((l) => l.contains('[Seed] save refused')),
         contains('noFrequency'),

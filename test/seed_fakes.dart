@@ -19,11 +19,15 @@ import 'package:flipperlib/flipperlib.dart' as fl show File;
 // client to size its frames - so a fake has to answer it by name. The archive
 // tests reach for it the same way, for the same call.
 import 'package:flipperlib/src/transport/transport.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:protobuf/protobuf.dart' show GeneratedMessage;
 import 'package:qunleashed/pages/tools/subghz/seed/faaccrack_recoverer.dart';
 import 'package:qunleashed/pages/tools/subghz/seed/seed_controller.dart';
 import 'package:qunleashed/pages/tools/subghz/seed/seed_models.dart';
+import 'package:qunleashed/pages/tools/subghz/seed/seed_page.dart';
+import 'package:qunleashed/services/localization/l10n.dart';
+import 'package:qunleashed/theme/theme.dart';
 
 /// A capture the parser accepts, as the Flipper-side app writes one.
 const seedCaptureFixture = '''
@@ -46,7 +50,9 @@ Hop: A1F9C88F
 /// the same surgery and the line is matched rather than spelled - a literal
 /// would silently stop matching if a fixture's frequency changed.
 String withoutFrequency(String capture) =>
-    capture.replaceFirst(RegExp(r'^Frequency: .*\r?\n', multiLine: true), '');
+    capture.replaceFirst(_frequencyLine, '');
+
+final _frequencyLine = RegExp(r'^Frequency: .*\r?\n', multiLine: true);
 
 /// [seedCaptureFixture] with no frequency.
 final seedCaptureNoFrequency = withoutFrequency(seedCaptureFixture);
@@ -290,10 +296,11 @@ final _fakeDevice = FlipperDevice(
   source: _FakeDiscovered(),
 );
 
-/// The answer the fakes hand back. One spelling: three recoverers below carry
-/// it, and two suites assert on the seed and the hop count - so a fixture
-/// changed in two places out of three leaves them disagreeing about what the
-/// engine said.
+/// The answer the fakes hand back. One spelling, because the three recoverers
+/// below carry the same one and a figure changed in two of the three would
+/// leave them disagreeing about what the engine said. Nothing asserts on these
+/// values - the suites check that a figure is *there* - so the drift would be
+/// silent rather than loud, which is the reason to spell it once.
 const _answerSeed = 0x546AA44F;
 const _answerLrkey = 0x1122334455667788;
 const _answerCounter = 0xC;
@@ -359,12 +366,21 @@ class SlowRecoverer implements FaaccrackRecoverer {
 /// the state the page's `unverified` handling is about: a seed on screen,
 /// backed by too few hops, refused for a reason that is not the hop count.
 class UnverifiedRecoverer implements FaaccrackRecoverer {
-  /// [frameHop] is settable so a test can drop it: the rebuilt frame is the
-  /// one figure `found` promises and this outcome does not, and nothing else
-  /// can build an answer that exercises the difference.
-  UnverifiedRecoverer({this.frameHop = _answerFrameHop});
+  /// [frameHop] and [hopsUsed] are settable so a test can drop them: they are
+  /// the two figures `found` promises and this outcome does not, and nothing
+  /// else can build an answer that exercises the difference.
+  ///
+  /// The count is stated rather than taken from the window, because "drop it"
+  /// and "however many the window carried" cannot both be the default - and a
+  /// test whose subject is the hop count reads better saying which one it
+  /// means than inheriting it from a fixture two files away.
+  UnverifiedRecoverer({
+    this.frameHop = _answerFrameHop,
+    this.hopsUsed = seedHopsConfident,
+  });
 
   final int? frameHop;
+  final int? hopsUsed;
 
   @override
   Future<SeedResult> recover({
@@ -381,7 +397,7 @@ class UnverifiedRecoverer implements FaaccrackRecoverer {
     // Present and meaningless, which is what the struct holds: the frame was
     // rebuilt, it just did not re-encrypt to the captured hop.
     frameHop: frameHop,
-    hopsUsed: hops.length,
+    hopsUsed: hopsUsed,
   );
 }
 
@@ -424,6 +440,37 @@ class IncompleteRecoverer implements FaaccrackRecoverer {
     hopsUsed: hopsUsed,
   );
 }
+
+/// The seed page, mounted with everything it reads off the tree.
+///
+/// Shared because two widget suites need it, which is the rule the header of
+/// this file states. The theme is not optional: the page reads the app's
+/// colour extension, so a bare `MaterialApp` renders as a null check on a
+/// missing theme. The engine is injected because a real search in a widget
+/// test comes back `engineUnavailable`, and every case that needs an answer
+/// would collapse into that one.
+Future<void> mountSeedPage(
+  WidgetTester tester,
+  SeedFakeClient client, {
+  FaaccrackRecoverer? recoverer,
+}) async {
+  // The page builds its own controller and lists on mount, so the folder has
+  // to be there first - unlike the controller tests, which go through a helper.
+  if (client.folder.isEmpty) client.folder['one.txt'] = seedCaptureFixture;
+  await tester.pumpWidget(
+    MaterialApp(
+      localizationsDelegates: L10n.localizationsDelegates,
+      supportedLocales: L10n.supportedLocales,
+      theme: _seedPageTheme,
+      home: SeedPage(client: client, recoverer: recoverer ?? FoundRecoverer()),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+/// Built once: a `ThemeData` per test is one construction per test where one
+/// for the suite does.
+final _seedPageTheme = buildAppTheme(Brightness.dark, const Color(0xFFFF8A00));
 
 /// A controller that has listed the folder and opened one capture in it,
 /// through the real device path rather than a debug setter.

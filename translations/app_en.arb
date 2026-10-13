@@ -8042,7 +8042,7 @@
 
   "seedUnverifiedHint": "The seed is shown for reference. The remote cannot be saved as a transmittable file. A longer capture may settle it: press the remote a few more times and capture again.",
   "@seedUnverifiedHint": {
-    "description": "Explains why saving is unavailable after an unverified result."
+    "description": "Explains why saving is unavailable after an unverified result, and what to try. TRANSLATORS: 'may settle it' is deliberately hedged - more hops let the engine reject a seed it could not verify, but for a long capture the fault is elsewhere and another capture will not help."
   },
 
   "seedNothingMatched": "No seed matched this capture",
@@ -8326,6 +8326,6 @@
 
   "seedEngineBrokenHint": "Nothing you do with this capture will help: the recovery engine in this build is not working. Please report it.",
   "@seedEngineBrokenHint": {
-    "description": "Hint shown when the engine failed its own checks or is missing from the build."
+    "description": "Hint shown when the recovery engine in this build is not working: it failed its own checks, is missing from the build, or answered something this build cannot read. TRANSLATORS: the point is that nothing the user does with this capture will help."
   }
 }
