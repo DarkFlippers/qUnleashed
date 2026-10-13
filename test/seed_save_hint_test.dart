@@ -13,7 +13,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/tools/subghz/seed/faaccrack_recoverer.dart';
 
-import 'kept_lines.dart';
 import 'seed_fakes.dart';
 
 /// Opens one capture and recovers it, leaving the result card on screen.
@@ -83,42 +82,6 @@ void main() {
     // The count, not just the sentence: it is the figure the user decides on.
     expect(find.textContaining('Backed by only 2 hops'), findsOneWidget);
     expect(_save, findsNothing);
-  });
-
-  testWidgets('records the fault once per search, not once per rebuild', (
-    tester,
-  ) async {
-    // The #305 shape: `_ResultCard` reads `saveBlock` on every rebuild, and
-    // `DeviceScope` rebuilds this page on a five-second battery poll - so a
-    // log line on that read is a burst. The guard has to be here rather than
-    // in the controller suite, because only a tree rebuilds.
-    //
-    // `clearKeptLines` is what makes it provable: it resets the fold as well
-    // as the list, so a line emitted again after it is visible rather than
-    // folded into the one the search already wrote.
-    recordKeptLines();
-    await _recover(
-      tester,
-      capture: seedCaptureFixture,
-      recoverer: IncompleteRecoverer(seed: null),
-    );
-    expect(
-      keptLines.where((l) => l.contains('without the whole answer')),
-      isNotEmpty,
-      reason: 'the search itself must record it',
-    );
-
-    clearKeptLines();
-    // A resize marks the whole tree dirty, which is the cheapest honest way to
-    // make the page build again without touching the controller.
-    tester.view.physicalSize = const Size(1000, 1400);
-    addTearDown(tester.view.reset);
-    await tester.pumpAndSettle();
-
-    expect(
-      keptLines.where((l) => l.contains('without the whole answer')),
-      isEmpty,
-    );
   });
 
   testWidgets('an answer missing a field is not announced as a seed', (

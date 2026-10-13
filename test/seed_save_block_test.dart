@@ -192,6 +192,29 @@ void main() {
       },
     );
 
+    test('is not recorded again every time the gate is read', () async {
+      // The #305 shape: `_ResultCard` reads `saveBlock` on every rebuild, and
+      // `DeviceScope` rebuilds this page on a five-second battery poll - so a
+      // line on that read is a burst, which is why the fault is recorded in
+      // `search` instead. Reading the getter is what a rebuild does.
+      //
+      // `clearKeptLines` first, because it resets the fold as well as the
+      // list: without it a repeat of the body the search already wrote folds
+      // into that one and this passes whatever the gate does.
+      recordKeptLines();
+      final controller = await _searched(
+        seedCaptureFixture,
+        recoverer: IncompleteRecoverer(seed: null),
+      );
+      clearKeptLines();
+
+      for (var i = 0; i < 100; i++) {
+        controller.saveBlock;
+      }
+
+      expect(keptLines, isEmpty);
+    });
+
     test('says which field was missing', () async {
       // The field, because the three have different causes - a zeroed
       // `hops_used` from a struct that drifted is not a null seed from a
