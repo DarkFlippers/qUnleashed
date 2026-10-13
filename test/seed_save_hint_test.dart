@@ -2,9 +2,9 @@
 //
 // The other half of #294. `test/seed_save_block_test.dart` pins which refusal
 // the controller reports; this pins that each one reaches the screen as a
-// sentence, because the bug was never in the gate - it was that two of its
-// four refusals were explained nowhere and the user was left with seed rows,
-// no button and nothing to act on.
+// sentence, because the bug was never in the gate - it was that an answer
+// missing a field was explained nowhere, and the user was left with a card
+// that said "Seed recovered", no button, and nothing to act on.
 //
 // The engine is injected for the reason `seed_page_test.dart` gives: a real
 // search in a widget test comes back `engineUnavailable`, the answer is then
@@ -61,6 +61,9 @@ void main() {
     );
 
     expect(_save, findsOneWidget);
+    // Usable, not merely built: `findsOneWidget` matches a disabled button
+    // just as well, and "the button is there" is what this test is named for.
+    expect(tester.widget<FilledButton>(_save).onPressed, isNotNull);
     expect(_lowConfidence, findsNothing);
     expect(_noFrequency, findsNothing);
     expect(_incomplete, findsNothing);
@@ -94,8 +97,9 @@ void main() {
   });
 
   group('a found answer with a field missing', () {
-    // The pair #294 is named for. Each of these showed the seed rows, no
-    // button, and no sentence anywhere.
+    // The three #294 is named for. Each showed a card that claimed a seed
+    // was recovered, no button, and no sentence anywhere - and with the seed
+    // itself absent, not even the rows.
     testWidgets('says the build is at fault when the seed is absent', (
       tester,
     ) async {
@@ -141,14 +145,20 @@ void main() {
     // for any shown seed, so a two-hop unverified answer was refused "because"
     // of its hops when the frame being unbuildable is the reason - and the
     // sentence it printed, "it is not offered for transmission", named the
-    // wrong cause. The unverified hint is the accurate one, and the hop count
-    // is on the capture card above.
+    // wrong cause. The unverified hint is the accurate one - and it carries
+    // the advice the dropped sentence had, since a longer capture is what lets
+    // the engine reject a seed it could not verify. The *capture's* hop count
+    // is on the card above, which is the same figure here and need not be.
     await _recover(
       tester,
       capture: seedCaptureTwoHops,
       recoverer: UnverifiedRecoverer(),
     );
 
+    // The seed is on screen, which is what makes this the state the dropped
+    // sentence used to fire in - and what a fake answering with every field
+    // null could not build.
+    expect(find.text('Seed'), findsOneWidget);
     expect(find.textContaining('The seed is shown for reference'), findsOne);
     expect(_lowConfidence, findsNothing);
     // Nor on anything else. `notFound` is the arm with nothing to add, so a

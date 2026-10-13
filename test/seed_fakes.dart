@@ -49,7 +49,7 @@ final seedCaptureNoFrequency = seedCaptureFixture.replaceFirst(
 
 /// A two-hop capture: the parser's minimum, and below the confidence line.
 ///
-/// The only way to reach [SeedSaveBlock.lowConfidence] since #290 - the window
+/// The only way to reach [SeedSaveBlock.lowConfidence] since #288 - the window
 /// ladder stopped offering sub-confident windows of a longer capture, so a real
 /// two-hop file is what is left.
 const seedCaptureTwoHops = '''
@@ -338,6 +338,13 @@ class SlowRecoverer implements FaaccrackRecoverer {
 }
 
 /// An engine whose answer `canSave` refuses: a seed it could not verify.
+///
+/// Carries the figures the real one does. `seedResultIsMeaningful` is true for
+/// `unverified`, so `faaccrack_recoverer.dart` copies the seed, the counter,
+/// the rebuilt frame and the hop count out of the struct for it exactly as for
+/// `found` - and a fake that answered with every field null could not build
+/// the state the page's `unverified` handling is about: a seed on screen,
+/// backed by too few hops, refused for a reason that is not the hop count.
 class UnverifiedRecoverer implements FaaccrackRecoverer {
   @override
   Future<SeedResult> recover({
@@ -346,7 +353,16 @@ class UnverifiedRecoverer implements FaaccrackRecoverer {
     required List<int> hops,
     void Function(double fraction)? onProgress,
     bool Function()? isCancelled,
-  }) async => seedResult(SeedOutcome.unverified);
+  }) async => seedResult(
+    SeedOutcome.unverified,
+    seed: 0x546AA44F,
+    lrkey: 0x1122334455667788,
+    counter: 0xC,
+    // Present and meaningless, which is what the struct holds: the frame was
+    // rebuilt, it just did not re-encrypt to the captured hop.
+    frameHop: 0x29389EF7,
+    hopsUsed: hops.length,
+  );
 }
 
 /// An engine that answers `found` with part of the answer missing.
@@ -356,11 +372,17 @@ class UnverifiedRecoverer implements FaaccrackRecoverer {
 /// the state #294 is about - a successful recovery the app cannot write and,
 /// before this, said nothing about.
 class IncompleteRecoverer implements FaaccrackRecoverer {
+  /// The defaults are the complete answer, so a test names only the field it
+  /// drops - and the assert refuses the bare constructor, which would be a
+  /// fixture named for incompleteness answering completely.
   IncompleteRecoverer({
     this.seed = 0x546AA44F,
     this.frameHop = 0x29389EF7,
     this.hopsUsed = 3,
-  });
+  }) : assert(
+         seed == null || frameHop == null || hopsUsed == null,
+         'name the field this answer is missing',
+       );
 
   final int? seed;
   final int? frameHop;

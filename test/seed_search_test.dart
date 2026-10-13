@@ -138,8 +138,9 @@ void main() {
     // The other side of #288: the engine's documented minimum is the user's own
     // data, so it is swept - once, with nothing invented below it. The answer
     // comes back with two hops behind it, which `canSave` declines and the page
-    // shows as unconfirmed. That clause of `canSave` has no other test: every
-    // other fixture here answers with three.
+    // shows as unconfirmed. Every other fixture here answers with
+    // three, so this is the search path's only sub-confident answer -
+    // `test/seed_save_block_test.dart` covers the gate's side of it.
     final recoverer = _FakeRecoverer(
       (hops, call) =>
           _result(SeedOutcome.found, seed: 0x789, hopsUsed: hops.length),

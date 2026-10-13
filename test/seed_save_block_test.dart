@@ -1,20 +1,24 @@
 // Why the Save button is not offered, and in which order the reasons win.
 //
-// `canSave` used to be a four-term boolean, and the page explained its absence
-// by re-deriving two of those four terms - so a `found` answer with a field
-// missing, or one that did not say how many hops backed it, showed the seed
-// rows, no button and no sentence anywhere. #294 replaced the bool with the
-// reason; this suite is the half of it that does not need a widget tree.
+// `canSave` used to be a five-term boolean, and the page explained its absence
+// by re-deriving two of those terms - so a `found` answer missing a field said
+// nothing at all: the headline "Seed recovered" over an empty card when the
+// seed was absent, the seed rows with no button and no reason when the rebuilt
+// frame or the hop count was. #294 replaced the bool with the reason; this
+// suite is the half of it that does not need a widget tree.
 //
 // The ordering cases are not decoration. Each refusal names something
 // different to do next, so a capture that breaks two rules has to report the
 // one whose fix the other would not undo - and swapping two clauses is a
 // change nothing else in the repo would notice.
 import 'package:flutter_test/flutter_test.dart';
+import 'package:qunleashed/services/logging.dart';
 import 'package:qunleashed/pages/tools/subghz/seed/faaccrack_recoverer.dart';
+import 'package:qunleashed/pages/tools/subghz/seed/seed_capture_format.dart';
 import 'package:qunleashed/pages/tools/subghz/seed/seed_controller.dart';
 import 'package:qunleashed/pages/tools/subghz/seed/seed_models.dart';
 
+import 'kept_lines.dart';
 import 'seed_fakes.dart';
 
 /// A controller that has searched one capture with [recoverer].
@@ -74,8 +78,7 @@ void main() {
 
     test('found without the rebuilt frame is incompleteAnswer', () async {
       // Its own case rather than a variant of the one above: `render`
-      // dereferences both, and a guard that covered only the seed is what the
-      // comment on the old boolean was there to prevent.
+      // dereferences both, so either one missing is a throw at the same call.
       final controller = await _searched(
         seedCaptureFixture,
         recoverer: IncompleteRecoverer(frameHop: null),
@@ -123,14 +126,19 @@ void main() {
 
   group('two refusals at once report', () {
     test('notFound, which subsumes every clause under it', () async {
-      // The card's own headline and hint already explain an outcome that is
-      // not `found`; a second sentence about the hop count would misattribute
-      // the refusal, which is what the page used to do.
+      // The card's own headline already reads as a refusal for an outcome
+      // that is not `found`; a second sentence about the hop count would
+      // misattribute it, which is what the page used to do.
       final controller = await _searched(
         seedCaptureTwoHops,
         recoverer: UnverifiedRecoverer(),
       );
 
+      // The state that makes this case worth having, and the one a fake
+      // answering with every field null could not build: a seed on screen,
+      // backed by too few hops, refused for a reason that is not the hops.
+      expect(controller.result!.seed, isNotNull);
+      expect(controller.result!.hopsUsed, lessThan(seedHopsConfident));
       expect(controller.saveBlock, SeedSaveBlock.notFound);
     });
 
@@ -143,6 +151,32 @@ void main() {
       );
 
       expect(controller.saveBlock, SeedSaveBlock.incompleteAnswer);
+    });
+
+    test('incompleteAnswer before lowConfidence', () async {
+      // The pair the first version of this suite had only in its degenerate
+      // form: `IncompleteRecoverer` defaults to three hops, so every incomplete
+      // case sat at the confidence line and the two clauses were never both
+      // true. Hoisting the hop-count check above the field check would report a
+      // build fault as "Capture another press or two and try again" - the same
+      // misdirection #294 is about, one member along.
+      final controller = await _searched(
+        seedCaptureTwoHops,
+        recoverer: IncompleteRecoverer(seed: null, hopsUsed: 2),
+      );
+
+      expect(controller.result!.hopsUsed, lessThan(seedHopsConfident));
+      expect(controller.saveBlock, SeedSaveBlock.incompleteAnswer);
+    });
+
+    test('notFound before noFrequency', () async {
+      final controller = await _searched(
+        seedCaptureNoFrequency,
+        recoverer: UnverifiedRecoverer(),
+      );
+
+      expect(controller.capture!.frequencyHz, isNull);
+      expect(controller.saveBlock, SeedSaveBlock.notFound);
     });
 
     test('noFrequency before lowConfidence', () async {
@@ -160,6 +194,77 @@ void main() {
     });
   });
 
+  test('judges the capture it was handed, not the one before it', () async {
+    // `debugSetCapture` is the test-only door into the search, and it used to
+    // leave the previous result standing - so a suite that searched one capture
+    // and swapped in another had `saveBlock` judging the old answer against the
+    // new capture's frequency. The gate is only as honest as the state behind
+    // it, and this is the shape CLAUDE.md names: a test that passes for a
+    // reason other than the one it claims.
+    final controller = await _searched(
+      seedCaptureFixture,
+      recoverer: FoundRecoverer(),
+    );
+    expect(controller.saveBlock, isNull, reason: 'fixture must be saveable');
+
+    controller.debugSetCapture(
+      SeedCaptureFormat.parse(seedCaptureNoFrequency).capture!,
+    );
+
+    expect(controller.result, isNull);
+    expect(controller.saveBlock, SeedSaveBlock.notFound);
+  });
+
+  group('an answer the engine cannot have given', () {
+    test(
+      'is recorded, since its sentence asks the user to report it',
+      () async {
+        // At a level that survives a release build: the user is told this build
+        // is at fault, and a report that arrives with nothing in the log but
+        // `[Seed] searching ...` cannot be acted on. Once per result, not once
+        // per rebuild - `saveBlock` is read by `build`.
+        recordKeptLines();
+        await _searched(
+          seedCaptureFixture,
+          recoverer: IncompleteRecoverer(hopsUsed: null),
+        );
+
+        expect(
+          keptLines.where((l) => l.contains('without the whole answer')),
+          hasLength(1),
+        );
+        expect(keptLevels, contains(KeptLevel.error));
+      },
+    );
+
+    test('says which field was missing', () async {
+      // The field, because the three have different causes - a zeroed
+      // `hops_used` from an ABI mismatch is not the same fault as a null seed.
+      recordKeptLines();
+      await _searched(
+        seedCaptureFixture,
+        recoverer: IncompleteRecoverer(seed: null),
+      );
+
+      expect(
+        keptLines.singleWhere((l) => l.contains('without the whole answer')),
+        contains('seed=false'),
+      );
+    });
+
+    test('is not recorded for an answer that is merely unconfident', () async {
+      // The log line belongs to the one state the engine cannot produce. A
+      // two-hop capture is the user's own data and nothing is wrong with it.
+      recordKeptLines();
+      await _searched(seedCaptureTwoHops, recoverer: FoundRecoverer());
+
+      expect(
+        keptLines.where((l) => l.contains('without the whole answer')),
+        isEmpty,
+      );
+    });
+  });
+
   group('the gate the rest of the controller reads', () {
     test('refuses to name a file for a blocked recovery', () async {
       final controller = await _searched(
@@ -171,10 +276,10 @@ void main() {
     });
 
     test('writes nothing for a blocked recovery', () async {
-      // `render` refuses an outcome that is not `found` and dereferences the
-      // seed, so this is the guard that keeps the throw out of a discarded
-      // future. Here the outcome *is* `found` - only the frequency is missing,
-      // which `render` would dereference with `!`.
+      // The gate, not `render`: here the outcome *is* `found` and only the
+      // frequency is missing, which `_save` passes to `render` with a `!`. Not
+      // reaching the write at all is what keeps that out of the log as a
+      // failure the device is blamed for.
       final client = SeedFakeClient()
         ..folder['one.txt'] = seedCaptureNoFrequency;
       final controller = await openedSeedController(client);

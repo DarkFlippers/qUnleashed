@@ -39,21 +39,27 @@ enum SeedFailure {
 
 /// Why a recovered remote cannot be written as a transmittable `.sub`.
 ///
-/// An enum rather than the four-term boolean it replaces, for the reason
+/// An enum rather than the five-term boolean it replaces, for the reason
 /// [SeedFailure] is one: the page says it in the user's language, the set is
-/// exhaustive, and each member is a different thing to do next - which is the
-/// test for whether it earns one. [SeedController.saveBlock] holds the clauses.
+/// exhaustive, and each member is a different thing to say - with [notFound]
+/// the deliberate nothing. [SeedController.saveBlock] holds the clauses.
 ///
-/// Ordered by whose fix the next refusal would not undo. A missing frequency
-/// cannot be fixed on this capture at all, so it is named before the hop count,
-/// which another press or two answers: a user sent off to capture more presses
-/// into a file that records no frequency arrives back at the same refusal.
+/// Two rules set the order, and they are not one rule. A fault in the build
+/// comes first, because a malfunctioning engine makes every sentence about the
+/// user's own data unreliable - fixing it leaves the same capture refusals
+/// standing, and that is deliberate. Among the refusals that *are* about the
+/// capture, the one whose fix the other would not undo comes first: a missing
+/// frequency cannot be fixed on this capture at all, so it is named before the
+/// hop count, which another press or two answers - a user sent off to capture
+/// more presses into a file that records no frequency arrives back at the same
+/// refusal.
 enum SeedSaveBlock {
   /// The search did not end in [SeedOutcome.found] - including not having run.
   ///
-  /// The arm with nothing to add: the result card's own headline and hint
-  /// already say the answer is not one to transmit. A named member rather than
-  /// an absence, so the page covers it deliberately instead of by default.
+  /// The arm with nothing to add: the card's headline already reads as a
+  /// refusal for every one of these outcomes, and five of the seven add a hint
+  /// of their own. A named member rather than an absence, so the page covers it
+  /// deliberately instead of by default.
   notFound,
 
   /// `found`, but the seed, the rebuilt frame or the hop count did not come
@@ -61,8 +67,8 @@ enum SeedSaveBlock {
   ///
   /// A fault in this build rather than anything about the capture: the native
   /// result struct carries all three as plain integers, so the engine cannot
-  /// answer this way and a recoverer that does is broken. It is one of the two
-  /// the page used to be silent about, and that silence is #294.
+  /// answer this way and a recoverer that does is broken. It covers both of the
+  /// silences #294 is about.
   incompleteAnswer,
 
   /// The capture carries no frequency, and a `.sub` cannot be transmitted
@@ -237,21 +243,28 @@ class SeedController extends ChangeNotifier {
   /// null when it can.
   ///
   /// The reason rather than a bool, because the absence of the Save button is
-  /// something the page has to explain and the page could only re-derive it:
-  /// it re-checked two of these four clauses, had no sentence for the other
-  /// two, and so a `found` answer with a field missing showed the seed rows,
-  /// no button, and no word anywhere about why. One expression behind both
-  /// now, and a fifth clause is a compile error in the page rather than a
-  /// fifth silence. #294
+  /// something the page has to explain and the page could only re-derive it.
+  /// It re-derived the frequency and the hop count, and said nothing at all
+  /// for an answer missing a field - the headline "Seed recovered" over an
+  /// empty card when the seed was absent, the seed rows with no button and no
+  /// reason when the rebuilt frame or the hop count was. One expression behind
+  /// both now, and a fifth [SeedSaveBlock] member is a compile error in the
+  /// page rather than a fifth silence. #294
+  /// The clauses are in [SeedSaveBlock]'s declaration order, and the order is
+  /// behaviour rather than tidiness - the enum's doc says which two rules set
+  /// it, and the `two refusals at once report` group in
+  /// `test/seed_save_block_test.dart` is what holds it.
   SeedSaveBlock? get saveBlock {
     final result = _result;
     if (result == null || result.outcome != SeedOutcome.found) {
       return SeedSaveBlock.notFound;
     }
-    // Checked because `render` dereferences the seed and the rebuilt frame.
-    // Without this the throw escapes `_save`, escapes `runTask`, and lands in
-    // a discarded future as an `[uncaught]` naming no operation - with the
-    // page unchanged. `hopsUsed` is judged here rather than with the count
+    // Checked because `render` dereferences the seed and the rebuilt frame
+    // (`seed_sub_file.dart`). `_save`'s own try/catch would turn that throw
+    // into `SeedFailure.saveFailed` - "The remote could not be saved to the
+    // Flipper" - so what this buys is not catching it but never offering the
+    // button: an internal fault reported as itself rather than as a write the
+    // device refused. `hopsUsed` is judged here rather than with the count
     // below, because an answer that does not say how many hops back it cannot
     // be judged at all - and "backed by only 0 hops" is not the sentence for
     // one that does not say.
@@ -403,6 +416,11 @@ class SeedController extends ChangeNotifier {
   @visibleForTesting
   void debugSetCapture(SeedCapture capture) {
     _capture = capture;
+    // The three move together, as they do in `_open`. Without this a test that
+    // searches one capture and then swaps in another has `saveBlock` judging
+    // the old result against the new capture's frequency.
+    _result = null;
+    _savedTo = null;
     _stage = SeedStage.idle;
   }
 
@@ -476,6 +494,20 @@ class SeedController extends ChangeNotifier {
       last = seedResult(SeedOutcome.engineFault);
     } finally {
       _result = last;
+      // Said once here rather than from `saveBlock`, which `_ResultCard` reads
+      // on every rebuild - the burst that cost #305 94% of its Sentry volume
+      // was one loop logging per frame. `error` because the sentence this
+      // state puts on screen asks the user to report it, and a report that
+      // arrives with nothing but `[Seed] searching ...` in the log cannot be
+      // acted on: the native struct carries all three fields as plain
+      // integers, so this is an engine or ABI fault and the variant matters.
+      if (saveBlock == SeedSaveBlock.incompleteAnswer) {
+        LogService.error(
+          '[Seed] engine answered found without the whole answer: '
+          'seed=${last.seed != null} frame=${last.frameHop != null} '
+          'hops=${last.hopsUsed}',
+        );
+      }
       _stage = SeedStage.idle;
       _changed();
     }
