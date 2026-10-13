@@ -90,8 +90,9 @@
 // Whose call that is: this repository's, not MMX's. No translation unit of the
 // engine reads this macro - it is not in `keep.txt` and the generated source
 // does not spell it - so it is policy living in a hand-written header, and its
-// only consumer is `SeedController.canSave` through `seedHopsConfident`. Moving
-// it is one edit here and one there, with no engine drop involved.
+// only consumers are `SeedController.saveBlock` and the sentence the page
+// shows for it, both through `seedHopsConfident`. Moving it is one edit here
+// and one there, with no engine drop involved.
 #define FAACCRACK_HOPS_CONFIDENT 3
 
 // Workers the engine will start. More is accepted and silently clamped, which

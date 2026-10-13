@@ -125,7 +125,11 @@ SeedOutcome seedOutcomeFor(int status) {
 /// The C side fills it for a find and for a frame that would not rebuild, and
 /// zeroes it otherwise - and zero is a legal seed, so the outcome is the only
 /// thing that says the struct means anything.
-@visibleForTesting
+///
+/// Not test-only: `SeedController._answerOrFault` asks the same question about
+/// an answer coming the other way - whether the figures this outcome promises
+/// actually arrived - and a second `||` over the same two members in the
+/// controller is exactly the drift this one spelling exists to prevent.
 bool seedResultIsMeaningful(SeedOutcome outcome) =>
     outcome == SeedOutcome.found || outcome == SeedOutcome.unverified;
 
