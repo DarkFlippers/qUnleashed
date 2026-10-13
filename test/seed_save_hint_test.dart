@@ -141,6 +141,13 @@ void main() {
       find.textContaining('The seed is shown for reference'),
       findsOneWidget,
     );
+    // The advice, which is the half of the dropped sentence worth keeping:
+    // more hops is what lets the engine reject a seed it could not verify, and
+    // this hint is the one this path shows.
+    expect(
+      find.textContaining('press the remote a few more times'),
+      findsOneWidget,
+    );
     expect(_lowConfidence, findsNothing);
     // Nor on anything else. `notFound` is the arm with nothing to add, so a
     // sentence here would be a second, wrong explanation beside the hint that

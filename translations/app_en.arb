@@ -8040,7 +8040,7 @@
     "description": "Shown when a seed was found but re-encrypting did not reproduce the capture."
   },
 
-  "seedUnverifiedHint": "The seed is shown for reference. The remote cannot be saved as a transmittable file.",
+  "seedUnverifiedHint": "The seed is shown for reference. The remote cannot be saved as a transmittable file. A longer capture may settle it: press the remote a few more times and capture again.",
   "@seedUnverifiedHint": {
     "description": "Explains why saving is unavailable after an unverified result."
   },
