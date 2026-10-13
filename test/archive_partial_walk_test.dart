@@ -2,13 +2,11 @@ import 'dart:io' as io;
 
 import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flipperlib/flipperlib.dart' as fl show File;
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/components/archive/category.dart';
 import 'package:qunleashed/components/archive/models/key.dart';
 import 'package:qunleashed/pages/archive/overview/controller.dart';
 import 'package:qunleashed/services/archive/storage.dart';
-import 'package:qunleashed/services/storage/paths.dart';
 
 import 'archive_fakes.dart';
 import 'kept_lines.dart';
@@ -80,35 +78,10 @@ void main() {
 
   setUp(recordKeptLines);
 
-  late io.Directory root;
+  useTempArchiveRoot('archive_partial_walk');
   late _WalkingFlipper client;
   late ArchiveStorage storage;
   late ArchiveController ctrl;
-
-  // ArchiveStorage caches its root in a static, so the root is set once for
-  // the file and the device folder is rebuilt between cases.
-  setUpAll(() {
-    root = io.Directory.systemTemp.createTempSync('archive_partial_walk');
-    debugUseDocumentsRoot(root);
-    // The migration of the pre-Devices layout runs at the top of every
-    // refresh and asks path_provider where the old folders were. Unanswered
-    // it throws, and the whole refresh ends in the catch below it.
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(
-          const MethodChannel('plugins.flutter.io/path_provider'),
-          (call) async => '${root.path}${io.Platform.pathSeparator}legacy',
-        );
-  });
-
-  tearDownAll(() {
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(
-          const MethodChannel('plugins.flutter.io/path_provider'),
-          null,
-        );
-    debugUseDocumentsRoot(null);
-    if (root.existsSync()) root.deleteSync(recursive: true);
-  });
 
   /// Writes a local copy of a wardriving capture, for the one category that
   /// reaches `_verifyScope`.

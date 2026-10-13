@@ -4,6 +4,16 @@ import '../../services/localization/l10n.dart';
 import '../icon.dart';
 import '../../theme/theme.dart';
 import '../archive/category.dart';
+import 'columns.dart';
+
+/// Everything the toolbar's sort button needs: what it offers, which sort is
+/// in force and which way it runs, and where to report a pick.
+typedef SortControl = ({
+  String key,
+  bool asc,
+  List<SortOption> opts,
+  ValueChanged<String> onSort,
+});
 
 /// Title inset for the category-style app bars. A pushed page has a back
 /// button separating the title from the edge, so it keeps zero; a page hosted
@@ -198,6 +208,7 @@ class CategoryToolbar extends StatelessWidget {
     required this.colors,
     required this.onQueryChanged,
     required this.onFilterChanged,
+    this.sort,
     this.starredOnly = false,
     this.onStarredToggle,
     this.showStar = true,
@@ -207,6 +218,26 @@ class CategoryToolbar extends StatelessWidget {
   final String query;
   final String? filterVal;
   final List<String> filterOpts;
+
+  /// The sort button, or null for no button at all - which is how the two
+  /// apps-manager tables keep the toolbar they already had.
+  ///
+  /// Their folder is a column of its own with a header to tap, so above the
+  /// 460 logical pixels `appsTableColumns` needs to show it, this sheet would
+  /// add nothing. Below that they have #122's complaint of their own, which
+  /// is their issue to fix and not this one's; the button is off rather than
+  /// absent, so it is one argument away when somebody takes it.
+  ///
+  /// One parameter because the four move together and mean nothing apart: a
+  /// key with no options behind it, or options with nothing to report them to,
+  /// is a button that silently does not appear.
+  ///
+  /// `onSort` takes the key the user picked, exactly as a column header tap
+  /// does, and picking the one already in force turns it around. One handler
+  /// for the two surfaces keeps them from drifting into disagreeing about what
+  /// a second tap means.
+  final SortControl? sort;
+
   final bool starredOnly;
   final Color catColor;
   final QAppColors colors;
@@ -295,6 +326,10 @@ class CategoryToolbar extends StatelessWidget {
                 colors: colors,
                 onChanged: onFilterChanged,
               ),
+            ],
+            if (sort case final sort?) ...[
+              const SizedBox(width: 6),
+              _SortBtn(sort: sort, catColor: catColor, colors: colors),
             ],
             if (showStar && onStarredToggle != null) ...[
               const SizedBox(width: 4),
@@ -396,6 +431,91 @@ class CategorySelectionToolbar extends StatelessWidget {
   }
 }
 
+/// The chrome the toolbars' pill-shaped buttons wear: filled white when the
+/// control is doing something, outlined over the category colour when it is
+/// not.
+///
+/// Five buttons wear it - the selection toolbar's two, the filter, the sort
+/// and the star - through widget classes that had each spelled the same three
+/// properties out, so the alpha values had to be kept in step by eye.
+///
+/// Not the search field, which is an `InputDecoration` carrying its own
+/// `0.16` fill and `0.28` border. Those are already a shade off these, and
+/// whether that is deliberate is older than this function.
+BoxDecoration pillDecoration({required bool active}) => BoxDecoration(
+  color: Colors.white.withValues(alpha: active ? 0.88 : 0.18),
+  borderRadius: BorderRadius.circular(9),
+  border: active
+      ? null
+      : Border.all(color: Colors.white.withValues(alpha: 0.26)),
+);
+
+/// The sheet the filter and the sort buttons both open: a titled card over the
+/// page holding one tappable row per choice.
+///
+/// [rows] is built against the sheet's own context, so a row closes it with
+/// that context rather than the one the button was tapped in.
+void showPickerSheet(
+  BuildContext context, {
+  required QAppColors colors,
+  required String title,
+  required List<Widget> Function(BuildContext sheetContext) rows,
+}) {
+  showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: colors.card,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+    ),
+    builder: (sheetContext) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+            child: Text(
+              title,
+              style: TextStyle(
+                color: colors.textPrimary,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          Divider(height: 1, color: colors.divider),
+          Flexible(
+            child: ListView(
+              shrinkWrap: true,
+              padding: const EdgeInsets.only(bottom: 8),
+              children: rows(sheetContext),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+/// One choice in a [showPickerSheet], which closes the sheet and reports.
+/// [trailing] marks the choice in force, and is null for the rest.
+Widget pickerRow({
+  required BuildContext sheetContext,
+  required QAppColors colors,
+  required String label,
+  required Widget? trailing,
+  required VoidCallback onPick,
+}) {
+  return ListTile(
+    title: Text(label, style: TextStyle(color: colors.textPrimary)),
+    trailing: trailing,
+    onTap: () {
+      Navigator.pop(sheetContext);
+      onPick();
+    },
+  );
+}
+
 class _PillButton extends StatelessWidget {
   const _PillButton({
     required this.onTap,
@@ -415,15 +535,7 @@ class _PillButton extends StatelessWidget {
         height: 36,
         padding: const EdgeInsets.symmetric(horizontal: 10),
         alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: filled
-              ? Colors.white.withValues(alpha: 0.88)
-              : Colors.white.withValues(alpha: 0.18),
-          borderRadius: BorderRadius.circular(9),
-          border: filled
-              ? null
-              : Border.all(color: Colors.white.withValues(alpha: 0.26)),
-        ),
+        decoration: pillDecoration(active: filled),
         child: child,
       ),
     );
@@ -452,15 +564,7 @@ class _FilterBtn extends StatelessWidget {
       onTap: () => _show(context),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 9),
-        decoration: BoxDecoration(
-          color: active
-              ? Colors.white.withValues(alpha: 0.88)
-              : Colors.white.withValues(alpha: 0.18),
-          borderRadius: BorderRadius.circular(9),
-          border: active
-              ? null
-              : Border.all(color: Colors.white.withValues(alpha: 0.26)),
-        ),
+        decoration: pillDecoration(active: active),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -487,67 +591,101 @@ class _FilterBtn extends StatelessWidget {
   }
 
   void _show(BuildContext context) {
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: colors.card,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (_) => SafeArea(
-        child: Column(
+    showPickerSheet(
+      context,
+      colors: colors,
+      title: context.l10n.filterTitle,
+      rows: (sheetContext) => [
+        pickerRow(
+          sheetContext: sheetContext,
+          colors: colors,
+          label: context.l10n.filterAll,
+          trailing: selected == null
+              ? Icon(Icons.check_rounded, color: catColor)
+              : null,
+          onPick: () => onChanged(null),
+        ),
+        for (final o in opts)
+          pickerRow(
+            sheetContext: sheetContext,
+            colors: colors,
+            label: o,
+            trailing: selected == o
+                ? Icon(Icons.check_rounded, color: catColor)
+                : null,
+            onPick: () => onChanged(o),
+          ),
+      ],
+    );
+  }
+}
+
+/// Opens the sheet that picks how the list is ordered.
+///
+/// The sheet exists because the folder sort has no column header to tap, but
+/// it carries every sort the table offers, so the choice is one place rather
+/// than two halves of one.
+class _SortBtn extends StatelessWidget {
+  const _SortBtn({
+    required this.sort,
+    required this.catColor,
+    required this.colors,
+  });
+
+  final SortControl sort;
+  final Color catColor;
+  final QAppColors colors;
+
+  /// Name ascending is the order a page opens in, so it is the one the button
+  /// does not announce. Anything else and the lit pill says why the list is in
+  /// the order it is in, without opening the sheet to find out.
+  bool get _active => sort.key != 'name' || !sort.asc;
+
+  /// Which way the list runs. The button has room for this and not for the
+  /// field, which the sheet names instead.
+  Widget _arrow({required double size}) => Icon(
+    sort.asc ? Icons.arrow_upward_rounded : Icons.arrow_downward_rounded,
+    size: size,
+    color: catColor,
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => _show(context),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9),
+        decoration: pillDecoration(active: _active),
+        child: Row(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-              child: Text(
-                context.l10n.filterTitle,
-                style: TextStyle(
-                  color: colors.textPrimary,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+            Icon(
+              Icons.sort_rounded,
+              size: 15,
+              color: _active ? catColor : Colors.white.withValues(alpha: 0.8),
             ),
-            Divider(height: 1, color: colors.divider),
-            Flexible(
-              child: ListView(
-                shrinkWrap: true,
-                padding: const EdgeInsets.only(bottom: 8),
-                children: [
-                  ListTile(
-                    title: Text(
-                      context.l10n.filterAll,
-                      style: TextStyle(color: colors.textPrimary),
-                    ),
-                    trailing: selected == null
-                        ? Icon(Icons.check_rounded, color: catColor)
-                        : null,
-                    onTap: () {
-                      Navigator.pop(context);
-                      onChanged(null);
-                    },
-                  ),
-                  for (final o in opts)
-                    ListTile(
-                      title: Text(
-                        o,
-                        style: TextStyle(color: colors.textPrimary),
-                      ),
-                      trailing: selected == o
-                          ? Icon(Icons.check_rounded, color: catColor)
-                          : null,
-                      onTap: () {
-                        Navigator.pop(context);
-                        onChanged(o);
-                      },
-                    ),
-                ],
-              ),
-            ),
+            if (_active) ...[const SizedBox(width: 2), _arrow(size: 11)],
           ],
         ),
       ),
+    );
+  }
+
+  void _show(BuildContext context) {
+    showPickerSheet(
+      context,
+      colors: colors,
+      title: context.l10n.sortTitle,
+      rows: (sheetContext) => [
+        for (final o in sort.opts)
+          pickerRow(
+            sheetContext: sheetContext,
+            colors: colors,
+            label: o.label,
+            trailing: sort.key == o.key ? _arrow(size: 18) : null,
+            onPick: () => sort.onSort(o.key),
+          ),
+      ],
     );
   }
 }
@@ -565,15 +703,7 @@ class _StarBtn extends StatelessWidget {
       child: AspectRatio(
         aspectRatio: 1,
         child: Container(
-          decoration: BoxDecoration(
-            color: active
-                ? Colors.white.withValues(alpha: 0.88)
-                : Colors.white.withValues(alpha: 0.18),
-            borderRadius: BorderRadius.circular(9),
-            border: active
-                ? null
-                : Border.all(color: Colors.white.withValues(alpha: 0.26)),
-          ),
+          decoration: pillDecoration(active: active),
           child: Icon(
             active ? Icons.star_rounded : Icons.star_outline_rounded,
             size: 17,

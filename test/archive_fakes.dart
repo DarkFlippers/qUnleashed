@@ -1,8 +1,12 @@
 import 'dart:async';
+import 'dart:io' as io;
 
 import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flipperlib/flipperlib.dart' as fl show File;
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:protobuf/protobuf.dart' show GeneratedMessage;
+import 'package:qunleashed/services/storage/paths.dart';
 
 /// The RPC plumbing every archive fake needs, so only the answers differ.
 ///
@@ -124,3 +128,38 @@ fl.File dir(String name) => fl.File(name: name, type: File_FileType.DIR);
 
 fl.File tag(String name, {int size = 64}) =>
     fl.File(name: name, type: File_FileType.FILE, size: size);
+
+/// Points `ArchiveStorage` at a fresh temp directory for the file, and
+/// answers the `path_provider` call the pre-Devices migration makes.
+///
+/// Registers its own `setUpAll`/`tearDownAll`, so a file calls it once at the
+/// top of `main()`. `ArchiveStorage` caches its root in a static, which is
+/// why the root is per file rather than per case; rebuild the device folder
+/// in `setUp` if cases must not see each other's files.
+///
+/// Shared for the reason this file exists at all: the same twenty lines, down
+/// to the comment explaining the mock, were in three test files. The
+/// migration runs at the top of every refresh and asks `path_provider` where
+/// the old folders were - unanswered it throws, and the whole refresh ends in
+/// the catch below it, which reads as an empty archive rather than an error.
+io.Directory useTempArchiveRoot(String prefix) {
+  final root = io.Directory.systemTemp.createTempSync(prefix);
+  setUpAll(() {
+    debugUseDocumentsRoot(root);
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          const MethodChannel('plugins.flutter.io/path_provider'),
+          (call) async => '${root.path}${io.Platform.pathSeparator}legacy',
+        );
+  });
+  tearDownAll(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          const MethodChannel('plugins.flutter.io/path_provider'),
+          null,
+        );
+    debugUseDocumentsRoot(null);
+    if (root.existsSync()) root.deleteSync(recursive: true);
+  });
+  return root;
+}

@@ -1,3 +1,4 @@
+import '../../../../services/archive/sort_settings.dart';
 import '../../../../services/guarded.dart';
 import '../../../../services/localization/l10n.dart';
 
@@ -24,9 +25,18 @@ import '../failure_toast.dart';
 /// limited to the fields common to all of them (name/folder, protocol, size,
 /// modified).
 class DeletedPage extends StatefulWidget {
-  const DeletedPage({super.key, required this.controller});
+  const DeletedPage({
+    super.key,
+    required this.controller,
+    required this.sortSettings,
+  });
 
   final ArchiveController controller;
+
+  /// Shared with every other archive table and owned by `AppShell`, so a sort
+  /// picked here is the one they all open in - and the rail's other mounted
+  /// tables follow it without being rebuilt by hand.
+  final ArchiveSortSettings sortSettings;
 
   @override
   State<DeletedPage> createState() => _DeletedPageState();
@@ -37,13 +47,25 @@ class _DeletedPageState extends State<DeletedPage> {
 
   String _query = '';
   String? _filterVal;
-  String _sortKey = 'name';
-  bool _sortAsc = true;
 
   bool _selectionMode = false;
   final Set<String> _selected = <String>{};
 
   ArchiveController get _ctrl => widget.controller;
+
+  /// Rebuilds on either the archive's own changes or a sort picked on another
+  /// mounted table. Built once rather than per build, so the `AnimatedBuilder`
+  /// is not resubscribing to a fresh `Listenable` every frame.
+  late final Listenable _repaint = Listenable.merge([
+    _ctrl,
+    widget.sortSettings,
+  ]);
+
+  List<SortOption> get _sortOpts => sortOptionsFor(deletedColumns());
+
+  /// The stored sort, held to the keys this table's columns offer.
+  ({String key, bool asc}) get _sort =>
+      widget.sortSettings.resolve(_sortOpts.map((o) => o.key));
 
   @override
   void initState() {
@@ -95,7 +117,8 @@ class _DeletedPageState extends State<DeletedPage> {
         return false;
       }).toList();
     }
-    return sortArchiveKeys(out, _sortKey, _sortAsc);
+    final sort = _sort;
+    return sortArchiveKeys(out, sort.key, sort.asc);
   }
 
   List<ArchiveKey> get _selectedKeys =>
@@ -135,14 +158,13 @@ class _DeletedPageState extends State<DeletedPage> {
   }
 
   void _onSort(String key) {
-    setState(() {
-      if (_sortKey == key) {
-        _sortAsc = !_sortAsc;
-      } else {
-        _sortKey = key;
-        _sortAsc = true;
-      }
-    });
+    unawaited(
+      guarded(
+        '[ArchiveSort] storing the picked sort',
+        () =>
+            widget.sortSettings.pick(key, offered: _sortOpts.map((o) => o.key)),
+      ),
+    );
   }
 
   Future<void> _bulkRestore() async {
@@ -243,7 +265,7 @@ class _DeletedPageState extends State<DeletedPage> {
     final headerColor = colors.adaptCategoryHeader(colors.accent);
 
     return AnimatedBuilder(
-      animation: _ctrl,
+      animation: _repaint,
       builder: (context, _) {
         final all = _ctrl.deletedKeys();
         final filterOpts = _filterOptions(all);
@@ -295,6 +317,12 @@ class _DeletedPageState extends State<DeletedPage> {
                         query: _query,
                         filterVal: _filterVal,
                         filterOpts: filterOpts,
+                        sort: (
+                          key: _sort.key,
+                          asc: _sort.asc,
+                          opts: _sortOpts,
+                          onSort: _onSort,
+                        ),
                         starredOnly: false,
                         catColor: headerColor,
                         colors: colors,
@@ -342,8 +370,8 @@ class _DeletedPageState extends State<DeletedPage> {
                           children: [
                             ArchiveColumnHeader(
                               cols: cols,
-                              sortKey: _sortKey,
-                              sortAsc: _sortAsc,
+                              sortKey: _sort.key,
+                              sortAsc: _sort.asc,
                               onSort: _onSort,
                               colors: colors,
                               selectionMode: _selectionMode,
