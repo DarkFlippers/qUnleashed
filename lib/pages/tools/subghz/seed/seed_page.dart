@@ -445,35 +445,6 @@ class _ResultCard extends StatelessWidget {
   final SeedController controller;
   final VoidCallback onSave;
 
-  /// The sentence for one refusal of the Save button - null when nothing is
-  /// blocked, and null where the card already carries the reason.
-  ///
-  /// Exhaustive on purpose: a [SeedSaveBlock] member added with nothing to say
-  /// about it does not compile.
-  String? _saveBlockHint(L10n l10n, SeedSaveBlock? block, int? hopsUsed) =>
-      switch (block) {
-        // Nothing is blocked - the button is there.
-        null => null,
-        // Said above already: every outcome that is not `found` has a headline
-        // that reads as a refusal, and five of the seven add a hint. The two
-        // that do not - `stopped` and `engineFault` - carry it in the headline
-        // alone, which is why a new outcome needs a look at the list above
-        // rather than a sentence here.
-        SeedSaveBlock.notFound => null,
-        SeedSaveBlock.incompleteAnswer => l10n.seedSaveIncomplete,
-        SeedSaveBlock.noFrequency => l10n.seedSaveNoFrequency,
-        // `hopsUsed` is non-null whenever this arm is the answer: a result
-        // that does not say is `incompleteAnswer`, which is why that clause is
-        // judged first. The branch for null is therefore unreachable, and it
-        // says what that state would be rather than "backed by only 0 hops" -
-        // a figure nothing measured, which is the sentinel ADR 0009 refuses in
-        // the one place a user would read it.
-        SeedSaveBlock.lowConfidence =>
-          hopsUsed == null
-              ? l10n.seedSaveIncomplete
-              : l10n.seedLowConfidence(hopsUsed, seedHopsConfident),
-      };
-
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
@@ -536,15 +507,19 @@ class _ResultCard extends StatelessWidget {
         // stranded one is restarting - which the bare status does not say.
         if (result.outcome == SeedOutcome.engineBusy)
           _Hint(l10n.seedEngineBusyHint),
+        // `engineFault` among them: one of its causes is an answer this
+        // build does not understand (`SeedController._answerOrFault`), and for
+        // all three nothing the user does to this capture will help.
         if (result.outcome == SeedOutcome.engineSelfTestFailed ||
-            result.outcome == SeedOutcome.engineUnavailable)
+            result.outcome == SeedOutcome.engineUnavailable ||
+            result.outcome == SeedOutcome.engineFault)
           _Hint(l10n.seedEngineBrokenHint),
         // Why there is no Save button, taken from the gate rather than
         // re-derived here. This was two conditions re-deriving the frequency
         // and the hop count, so an answer missing a field said nothing at all:
         // the headline over an empty card with no seed, or the seed rows with
         // no button and no reason. #294
-        if (_saveBlockHint(l10n, blocked, hopsUsed) case final hint?)
+        if (_saveBlockText(l10n, blocked, hopsUsed) case final hint?)
           _Hint(hint),
         if (blocked == null) ...[
           const SizedBox(height: 12),
@@ -740,6 +715,32 @@ class _Hint extends StatelessWidget {
     );
   }
 }
+
+/// The sentence for one refusal of the Save button - null when nothing is
+/// blocked, and null where the card already carries the reason.
+///
+/// A switch rather than a map, for the reason [_failureText] below gives: a
+/// [SeedSaveBlock] member added with nothing to say about it does not compile.
+String? _saveBlockText(L10n l10n, SeedSaveBlock? block, int? hopsUsed) =>
+    switch (block) {
+      // Nothing is blocked - the button is there.
+      null => null,
+      // Said above already: every outcome that is not `found` has a headline
+      // that reads as a refusal, and six of the seven add a hint of their own.
+      // `stopped` is the one that does not, and carries it in the headline
+      // alone - which is why a new outcome needs a look at that list rather
+      // than a sentence here.
+      SeedSaveBlock.notFound => null,
+      SeedSaveBlock.noFrequency => l10n.seedSaveNoFrequency,
+      // `hopsUsed` is there whenever this arm is the answer: a `found` result
+      // that does not say how many hops back it never reaches the gate -
+      // `SeedController._answerOrFault` turns it into an engine fault where
+      // the result is stored.
+      SeedSaveBlock.lowConfidence => l10n.seedLowConfidence(
+        hopsUsed!,
+        seedHopsConfident,
+      ),
+    };
 
 /// What a failed operation is called, in the user's language.
 ///

@@ -38,14 +38,18 @@ Hop: 40101499
 Hop: A1F9C88F
 ''';
 
-/// The same capture with no frequency line: solvable, and not writable.
+/// The same capture with its frequency line taken out: solvable, not writable.
 ///
 /// The frequency is not recoverable from the fix and the hops, so this is the
-/// one refusal of the Save button that nothing about the search can lift.
-final seedCaptureNoFrequency = seedCaptureFixture.replaceFirst(
-  'Frequency: 433920000\n',
-  '',
-);
+/// one refusal of the Save button that nothing about the search can lift. A
+/// function rather than a second fixture, because the two-hop capture needs
+/// the same surgery and the line is matched rather than spelled - a literal
+/// would silently stop matching if a fixture's frequency changed.
+String withoutFrequency(String capture) =>
+    capture.replaceFirst(RegExp(r'^Frequency: .*\r?\n', multiLine: true), '');
+
+/// [seedCaptureFixture] with no frequency.
+final seedCaptureNoFrequency = withoutFrequency(seedCaptureFixture);
 
 /// A two-hop capture: the parser's minimum, and below the confidence line.
 ///
@@ -286,6 +290,15 @@ final _fakeDevice = FlipperDevice(
   source: _FakeDiscovered(),
 );
 
+/// The answer the fakes hand back. One spelling: three recoverers below carry
+/// it, and two suites assert on the seed and the hop count - so a fixture
+/// changed in two places out of three leaves them disagreeing about what the
+/// engine said.
+const _answerSeed = 0x546AA44F;
+const _answerLrkey = 0x1122334455667788;
+const _answerCounter = 0xC;
+const _answerFrameHop = 0x29389EF7;
+
 /// An engine that recovers whatever it is handed.
 class FoundRecoverer implements FaaccrackRecoverer {
   @override
@@ -297,10 +310,10 @@ class FoundRecoverer implements FaaccrackRecoverer {
     bool Function()? isCancelled,
   }) async => seedResult(
     SeedOutcome.found,
-    seed: 0x546AA44F,
-    lrkey: 0x1122334455667788,
-    counter: 0xC,
-    frameHop: 0x29389EF7,
+    seed: _answerSeed,
+    lrkey: _answerLrkey,
+    counter: _answerCounter,
+    frameHop: _answerFrameHop,
     hopsUsed: hops.length,
   );
 }
@@ -346,6 +359,13 @@ class SlowRecoverer implements FaaccrackRecoverer {
 /// the state the page's `unverified` handling is about: a seed on screen,
 /// backed by too few hops, refused for a reason that is not the hop count.
 class UnverifiedRecoverer implements FaaccrackRecoverer {
+  /// [frameHop] is settable so a test can drop it: the rebuilt frame is the
+  /// one figure `found` promises and this outcome does not, and nothing else
+  /// can build an answer that exercises the difference.
+  UnverifiedRecoverer({this.frameHop = _answerFrameHop});
+
+  final int? frameHop;
+
   @override
   Future<SeedResult> recover({
     required SeedManufacturer manufacturer,
@@ -355,12 +375,12 @@ class UnverifiedRecoverer implements FaaccrackRecoverer {
     bool Function()? isCancelled,
   }) async => seedResult(
     SeedOutcome.unverified,
-    seed: 0x546AA44F,
-    lrkey: 0x1122334455667788,
-    counter: 0xC,
+    seed: _answerSeed,
+    lrkey: _answerLrkey,
+    counter: _answerCounter,
     // Present and meaningless, which is what the struct holds: the frame was
     // rebuilt, it just did not re-encrypt to the captured hop.
-    frameHop: 0x29389EF7,
+    frameHop: frameHop,
     hopsUsed: hops.length,
   );
 }
@@ -368,17 +388,17 @@ class UnverifiedRecoverer implements FaaccrackRecoverer {
 /// An engine that answers `found` with part of the answer missing.
 ///
 /// The real one cannot: the native result struct carries the seed, the rebuilt
-/// frame and the hop count as plain integers. So this is the only way to build
-/// the state #294 is about - a successful recovery the app cannot write and,
-/// before this, said nothing about.
+/// frame and the hop count as plain integers. So this is the only way to reach
+/// `SeedController._answerOrFault` - the state #294 is about, a recovery the
+/// app cannot write that used to be announced as a seed anyway.
 class IncompleteRecoverer implements FaaccrackRecoverer {
   /// The defaults are the complete answer, so a test names only the field it
   /// drops - and the assert refuses the bare constructor, which would be a
   /// fixture named for incompleteness answering completely.
   IncompleteRecoverer({
-    this.seed = 0x546AA44F,
-    this.frameHop = 0x29389EF7,
-    this.hopsUsed = 3,
+    this.seed = _answerSeed,
+    this.frameHop = _answerFrameHop,
+    this.hopsUsed = seedHopsConfident,
   }) : assert(
          seed == null || frameHop == null || hopsUsed == null,
          'name the field this answer is missing',
@@ -398,8 +418,8 @@ class IncompleteRecoverer implements FaaccrackRecoverer {
   }) async => seedResult(
     SeedOutcome.found,
     seed: seed,
-    lrkey: 0x1122334455667788,
-    counter: 0xC,
+    lrkey: _answerLrkey,
+    counter: _answerCounter,
     frameHop: frameHop,
     hopsUsed: hopsUsed,
   );

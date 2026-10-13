@@ -25,9 +25,10 @@ import 'seed_fakes.dart';
 Future<SeedController> _searched(
   String capture, {
   required FaaccrackRecoverer recoverer,
+  SeedFakeClient? client,
 }) async {
-  final client = SeedFakeClient()..folder['one.txt'] = capture;
-  final controller = await openedSeedController(client, recoverer: recoverer);
+  final flipper = (client ?? SeedFakeClient())..folder['one.txt'] = capture;
+  final controller = await openedSeedController(flipper, recoverer: recoverer);
   await controller.search();
   return controller;
 }
@@ -67,38 +68,6 @@ void main() {
       expect(controller.saveBlock, SeedSaveBlock.notFound);
     });
 
-    test('found without a seed is incompleteAnswer', () async {
-      final controller = await _searched(
-        seedCaptureFixture,
-        recoverer: IncompleteRecoverer(seed: null),
-      );
-
-      expect(controller.saveBlock, SeedSaveBlock.incompleteAnswer);
-    });
-
-    test('found without the rebuilt frame is incompleteAnswer', () async {
-      // Its own case rather than a variant of the one above: `render`
-      // dereferences both, so either one missing is a throw at the same call.
-      final controller = await _searched(
-        seedCaptureFixture,
-        recoverer: IncompleteRecoverer(frameHop: null),
-      );
-
-      expect(controller.saveBlock, SeedSaveBlock.incompleteAnswer);
-    });
-
-    test('found without a hop count is incompleteAnswer', () async {
-      // Not lowConfidence. An answer that does not say how many hops back it
-      // cannot be judged at all, and "backed by only 0 hops" is a figure
-      // nothing measured.
-      final controller = await _searched(
-        seedCaptureFixture,
-        recoverer: IncompleteRecoverer(hopsUsed: null),
-      );
-
-      expect(controller.saveBlock, SeedSaveBlock.incompleteAnswer);
-    });
-
     test('a capture with no frequency is noFrequency', () async {
       final controller = await _searched(
         seedCaptureNoFrequency,
@@ -124,6 +93,108 @@ void main() {
     });
   });
 
+  // The state #294 was filed about: a `found` answer the app cannot write and,
+  // before this, said nothing about. It is not a fourth refusal of the Save
+  // button - it is an answer this build does not understand, so it never
+  // reaches the gate as `found` at all. The headline says "The recovery engine
+  // failed" rather than "Seed recovered" over a card with nothing in it.
+  group('an answer the engine cannot have given', () {
+    for (final (field, recoverer) in [
+      ('seed', IncompleteRecoverer(seed: null)),
+      // Its own case rather than a variant: `render` dereferences both the
+      // seed and the rebuilt frame, so either one missing is the same throw.
+      ('rebuilt frame', IncompleteRecoverer(frameHop: null)),
+      // And not `lowConfidence`: an answer that does not say how many hops
+      // back it cannot be judged, and "backed by only 0 hops" is a figure
+      // nothing measured.
+      ('hop count', IncompleteRecoverer(hopsUsed: null)),
+    ]) {
+      test('found without the $field is an engine fault', () async {
+        final controller = await _searched(
+          seedCaptureFixture,
+          recoverer: recoverer,
+        );
+
+        expect(controller.result!.outcome, SeedOutcome.engineFault);
+        expect(controller.saveBlock, SeedSaveBlock.notFound);
+      });
+    }
+
+    test('does not demand a rebuilt frame of an answer that has none', () async {
+      // The asymmetry in the wholeness check, and the only test that can see
+      // it: `found` promises the rebuilt frame because `render` writes it, and
+      // `unverified` promises the seed and the hop count only. Demanding all
+      // three of both outcomes would turn a legitimate answer into a fault and
+      // throw away a seed that is shown for reference.
+      final controller = await _searched(
+        seedCaptureFixture,
+        recoverer: UnverifiedRecoverer(frameHop: null),
+      );
+
+      expect(controller.result!.outcome, SeedOutcome.unverified);
+      expect(controller.result!.seed, isNotNull);
+    });
+
+    test('keeps a whole answer whole', () async {
+      // The other side of it, so the check cannot pass by refusing
+      // everything: `unverified` carries its figures too, and is not a fault.
+      final controller = await _searched(
+        seedCaptureFixture,
+        recoverer: UnverifiedRecoverer(),
+      );
+
+      expect(controller.result!.outcome, SeedOutcome.unverified);
+      expect(controller.result!.seed, isNotNull);
+    });
+
+    test(
+      'is recorded, since the headline asks the user to report it',
+      () async {
+        // At a level that survives a release build: a report that arrives with
+        // nothing in the log but `[Seed] searching ...` cannot be acted on.
+        // Once per search, not once per rebuild.
+        recordKeptLines();
+        await _searched(
+          seedCaptureFixture,
+          recoverer: IncompleteRecoverer(hopsUsed: null),
+        );
+
+        expect(
+          keptLines.where((l) => l.contains('without the whole answer')),
+          hasLength(1),
+        );
+        expect(keptLevels, contains(KeptLevel.error));
+      },
+    );
+
+    test('says which field was missing', () async {
+      // The field, because the three have different causes - a zeroed
+      // `hops_used` from a struct that drifted is not a null seed from a
+      // bridge that is not the engine.
+      recordKeptLines();
+      await _searched(
+        seedCaptureFixture,
+        recoverer: IncompleteRecoverer(seed: null),
+      );
+
+      expect(
+        keptLines.singleWhere((l) => l.contains('without the whole answer')),
+        contains('seed=false'),
+      );
+    });
+
+    test('is not recorded for an answer that is merely unconfident', () async {
+      // A two-hop capture is the user's own data and nothing is wrong with it.
+      recordKeptLines();
+      await _searched(seedCaptureTwoHops, recoverer: FoundRecoverer());
+
+      expect(
+        keptLines.where((l) => l.contains('without the whole answer')),
+        isEmpty,
+      );
+    });
+  });
+
   group('two refusals at once report', () {
     test('notFound, which subsumes every clause under it', () async {
       // The card's own headline already reads as a refusal for an outcome
@@ -142,32 +213,22 @@ void main() {
       expect(controller.saveBlock, SeedSaveBlock.notFound);
     });
 
-    test('incompleteAnswer before anything about the capture', () async {
-      // A fault in the build, so nothing the user does to the capture is the
-      // thing to say first.
-      final controller = await _searched(
-        seedCaptureNoFrequency,
-        recoverer: IncompleteRecoverer(seed: null),
-      );
+    test(
+      'notFound for a malformed answer, whatever the capture holds',
+      () async {
+        // A fault in the build outranks everything about the capture, and it
+        // does so by never arriving as `found`: the frequency and the hop count
+        // are both wrong here too, and neither is what the user is told.
+        final controller = await _searched(
+          withoutFrequency(seedCaptureTwoHops),
+          recoverer: IncompleteRecoverer(seed: null, hopsUsed: 2),
+        );
 
-      expect(controller.saveBlock, SeedSaveBlock.incompleteAnswer);
-    });
-
-    test('incompleteAnswer before lowConfidence', () async {
-      // The pair the first version of this suite had only in its degenerate
-      // form: `IncompleteRecoverer` defaults to three hops, so every incomplete
-      // case sat at the confidence line and the two clauses were never both
-      // true. Hoisting the hop-count check above the field check would report a
-      // build fault as "Capture another press or two and try again" - the same
-      // misdirection #294 is about, one member along.
-      final controller = await _searched(
-        seedCaptureTwoHops,
-        recoverer: IncompleteRecoverer(seed: null, hopsUsed: 2),
-      );
-
-      expect(controller.result!.hopsUsed, lessThan(seedHopsConfident));
-      expect(controller.saveBlock, SeedSaveBlock.incompleteAnswer);
-    });
+        expect(controller.capture!.frequencyHz, isNull);
+        expect(controller.result!.outcome, SeedOutcome.engineFault);
+        expect(controller.saveBlock, SeedSaveBlock.notFound);
+      },
+    );
 
     test('notFound before noFrequency', () async {
       final controller = await _searched(
@@ -184,7 +245,7 @@ void main() {
       // sent off to capture more presses into a file that records no frequency
       // arrives back at the same refusal.
       final controller = await _searched(
-        seedCaptureTwoHops.replaceFirst('Frequency: 433920000\n', ''),
+        withoutFrequency(seedCaptureTwoHops),
         recoverer: FoundRecoverer(),
       );
 
@@ -215,56 +276,6 @@ void main() {
     expect(controller.saveBlock, SeedSaveBlock.notFound);
   });
 
-  group('an answer the engine cannot have given', () {
-    test(
-      'is recorded, since its sentence asks the user to report it',
-      () async {
-        // At a level that survives a release build: the user is told this build
-        // is at fault, and a report that arrives with nothing in the log but
-        // `[Seed] searching ...` cannot be acted on. Once per result, not once
-        // per rebuild - `saveBlock` is read by `build`.
-        recordKeptLines();
-        await _searched(
-          seedCaptureFixture,
-          recoverer: IncompleteRecoverer(hopsUsed: null),
-        );
-
-        expect(
-          keptLines.where((l) => l.contains('without the whole answer')),
-          hasLength(1),
-        );
-        expect(keptLevels, contains(KeptLevel.error));
-      },
-    );
-
-    test('says which field was missing', () async {
-      // The field, because the three have different causes - a zeroed
-      // `hops_used` from an ABI mismatch is not the same fault as a null seed.
-      recordKeptLines();
-      await _searched(
-        seedCaptureFixture,
-        recoverer: IncompleteRecoverer(seed: null),
-      );
-
-      expect(
-        keptLines.singleWhere((l) => l.contains('without the whole answer')),
-        contains('seed=false'),
-      );
-    });
-
-    test('is not recorded for an answer that is merely unconfident', () async {
-      // The log line belongs to the one state the engine cannot produce. A
-      // two-hop capture is the user's own data and nothing is wrong with it.
-      recordKeptLines();
-      await _searched(seedCaptureTwoHops, recoverer: FoundRecoverer());
-
-      expect(
-        keptLines.where((l) => l.contains('without the whole answer')),
-        isEmpty,
-      );
-    });
-  });
-
   group('the gate the rest of the controller reads', () {
     test('refuses to name a file for a blocked recovery', () async {
       final controller = await _searched(
@@ -280,17 +291,29 @@ void main() {
       // frequency is missing, which `_save` passes to `render` with a `!`. Not
       // reaching the write at all is what keeps that out of the log as a
       // failure the device is blamed for.
-      final client = SeedFakeClient()
-        ..folder['one.txt'] = seedCaptureNoFrequency;
-      final controller = await openedSeedController(client);
-      await controller.search();
+      final client = SeedFakeClient();
+      final controller = await _searched(
+        seedCaptureNoFrequency,
+        recoverer: FoundRecoverer(),
+        client: client,
+      );
       expect(controller.saveBlock, SeedSaveBlock.noFrequency);
       client.calls.clear();
 
+      recordKeptLines();
       await controller.save('garage');
 
       expect(client.calls, isEmpty);
       expect(controller.savedTo, isNull);
+      // And says so. This is the one enforcement of the gate and it cannot
+      // report to the user - the page builds no button for a blocked
+      // recovery, so arriving here is a result that changed under a tap or a
+      // caller that skipped the affordance, and either way the screen does not
+      // move. Without a line, neither does anything else.
+      expect(
+        keptLines.singleWhere((l) => l.contains('[Seed] save refused')),
+        contains('noFrequency'),
+      );
     });
   });
 }

@@ -8108,11 +8108,6 @@
     "description": "Explains why saving is unavailable when the capture carries no frequency."
   },
 
-  "seedSaveIncomplete": "The recovery came back without everything the file needs, so the remote cannot be saved. Nothing about this capture caused it - this build of the app is at fault. Please report it.",
-  "@seedSaveIncomplete": {
-    "description": "Explains why saving is unavailable when a successful recovery did not carry the seed, the rebuilt frame or the hop count back with it. TRANSLATORS: this is an internal fault, not something the user can fix by capturing differently, and the sentence says so deliberately."
-  },
-
   "seedNameTitle": "Name the File",
   "@seedNameTitle": {
     "description": "Title of the dialog asking what to call the recovered remote."

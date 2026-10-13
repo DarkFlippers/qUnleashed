@@ -46,9 +46,7 @@ Future<void> _recover(
 final _save = find.widgetWithText(FilledButton, 'Save to Flipper');
 final _lowConfidence = find.textContaining('Backed by only');
 final _noFrequency = find.textContaining('This capture has no frequency');
-final _incomplete = find.textContaining(
-  'came back without everything the file needs',
-);
+final _brokenEngine = find.textContaining('Nothing you do with this capture');
 
 void main() {
   testWidgets('an answer that can be saved gets the button and no hint', (
@@ -66,7 +64,7 @@ void main() {
     expect(tester.widget<FilledButton>(_save).onPressed, isNotNull);
     expect(_lowConfidence, findsNothing);
     expect(_noFrequency, findsNothing);
-    expect(_incomplete, findsNothing);
+    expect(_brokenEngine, findsNothing);
   });
 
   testWidgets('a capture with no frequency says so, and offers no Save', (
@@ -96,46 +94,26 @@ void main() {
     expect(_save, findsNothing);
   });
 
-  group('a found answer with a field missing', () {
-    // The three #294 is named for. Each showed a card that claimed a seed
-    // was recovered, no button, and no sentence anywhere - and with the seed
-    // itself absent, not even the rows.
-    testWidgets('says the build is at fault when the seed is absent', (
+  testWidgets('an answer missing a field is not announced as a seed', (
+    tester,
+  ) async {
+    // The state #294 was filed about. The card used to headline "Seed
+    // recovered" over no figures, no button and no sentence; the answer never
+    // reaches the page as `found` now, so the headline is the engine's fault
+    // and the hint says nothing the user does with this capture will help.
+    await _recover(
       tester,
-    ) async {
-      await _recover(
-        tester,
-        capture: seedCaptureFixture,
-        recoverer: IncompleteRecoverer(seed: null),
-      );
+      capture: seedCaptureFixture,
+      recoverer: IncompleteRecoverer(hopsUsed: null),
+    );
 
-      expect(_incomplete, findsOneWidget);
-      expect(_save, findsNothing);
-    });
-
-    testWidgets('says it when the rebuilt frame is absent', (tester) async {
-      await _recover(
-        tester,
-        capture: seedCaptureFixture,
-        recoverer: IncompleteRecoverer(frameHop: null),
-      );
-
-      expect(_incomplete, findsOneWidget);
-      expect(_save, findsNothing);
-    });
-
-    testWidgets('says it when the hop count is absent', (tester) async {
-      // And does not say "backed by only 0 hops", which is what reporting this
-      // as the confidence refusal would have put on screen.
-      await _recover(
-        tester,
-        capture: seedCaptureFixture,
-        recoverer: IncompleteRecoverer(hopsUsed: null),
-      );
-
-      expect(_incomplete, findsOneWidget);
-      expect(_lowConfidence, findsNothing);
-    });
+    expect(find.text('Seed recovered'), findsNothing);
+    expect(find.text('The recovery engine failed'), findsOneWidget);
+    expect(_brokenEngine, findsOneWidget);
+    expect(_save, findsNothing);
+    // And not "backed by only 0 hops", which is what reporting a missing hop
+    // count as the confidence refusal would have put on screen.
+    expect(_lowConfidence, findsNothing);
   });
 
   testWidgets('an unverified answer is not also blamed on its hop count', (
@@ -159,12 +137,15 @@ void main() {
     // sentence used to fire in - and what a fake answering with every field
     // null could not build.
     expect(find.text('Seed'), findsOneWidget);
-    expect(find.textContaining('The seed is shown for reference'), findsOne);
+    expect(
+      find.textContaining('The seed is shown for reference'),
+      findsOneWidget,
+    );
     expect(_lowConfidence, findsNothing);
     // Nor on anything else. `notFound` is the arm with nothing to add, so a
     // sentence here would be a second, wrong explanation beside the hint that
     // is already right.
-    expect(_incomplete, findsNothing);
+    expect(_brokenEngine, findsNothing);
     expect(_noFrequency, findsNothing);
     expect(_save, findsNothing);
   });

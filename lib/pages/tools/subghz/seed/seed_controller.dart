@@ -44,32 +44,24 @@ enum SeedFailure {
 /// exhaustive, and each member is a different thing to say - with [notFound]
 /// the deliberate nothing. [SeedController.saveBlock] holds the clauses.
 ///
-/// Two rules set the order, and they are not one rule. A fault in the build
-/// comes first, because a malfunctioning engine makes every sentence about the
-/// user's own data unreliable - fixing it leaves the same capture refusals
-/// standing, and that is deliberate. Among the refusals that *are* about the
-/// capture, the one whose fix the other would not undo comes first: a missing
-/// frequency cannot be fixed on this capture at all, so it is named before the
-/// hop count, which another press or two answers - a user sent off to capture
-/// more presses into a file that records no frequency arrives back at the same
-/// refusal.
+/// Ordered by whose fix the next refusal would not undo. A missing frequency
+/// cannot be fixed on this capture at all, so it is named before the hop count,
+/// which another press or two answers: a user sent off to capture more presses
+/// into a file that records no frequency arrives back at the same refusal.
+///
+/// There is no member for an answer that came back without its figures. That
+/// is not a refusal to save - it is an answer this build does not understand,
+/// and [SeedController._answerOrFault] turns it into
+/// [SeedOutcome.engineFault] where the result is stored, so it arrives here as
+/// [notFound] with a headline that says so.
 enum SeedSaveBlock {
   /// The search did not end in [SeedOutcome.found] - including not having run.
   ///
   /// The arm with nothing to add: the card's headline already reads as a
-  /// refusal for every one of these outcomes, and five of the seven add a hint
+  /// refusal for every one of these outcomes, and six of the seven add a hint
   /// of their own. A named member rather than an absence, so the page covers it
   /// deliberately instead of by default.
   notFound,
-
-  /// `found`, but the seed, the rebuilt frame or the hop count did not come
-  /// back with it.
-  ///
-  /// A fault in this build rather than anything about the capture: the native
-  /// result struct carries all three as plain integers, so the engine cannot
-  /// answer this way and a recoverer that does is broken. It covers both of the
-  /// silences #294 is about.
-  incompleteAnswer,
 
   /// The capture carries no frequency, and a `.sub` cannot be transmitted
   /// without one. Not recoverable from the fix and the hops.
@@ -245,13 +237,12 @@ class SeedController extends ChangeNotifier {
   /// The reason rather than a bool, because the absence of the Save button is
   /// something the page has to explain and the page could only re-derive it.
   /// It re-derived the frequency and the hop count, and said nothing at all
-  /// for an answer missing a field - the headline "Seed recovered" over an
-  /// empty card when the seed was absent, the seed rows with no button and no
-  /// reason when the rebuilt frame or the hop count was. One expression behind
-  /// both now, and a fifth [SeedSaveBlock] member is a compile error in the
-  /// page rather than a fifth silence. #294
+  /// for an answer missing a field. One expression behind both now, and a
+  /// fourth [SeedSaveBlock] member is a compile error in the page rather than
+  /// a fourth silence. #294
+  ///
   /// The clauses are in [SeedSaveBlock]'s declaration order, and the order is
-  /// behaviour rather than tidiness - the enum's doc says which two rules set
+  /// behaviour rather than tidiness - the enum's doc says the rule that sets
   /// it, and the `two refusals at once report` group in
   /// `test/seed_save_block_test.dart` is what holds it.
   SeedSaveBlock? get saveBlock {
@@ -259,20 +250,11 @@ class SeedController extends ChangeNotifier {
     if (result == null || result.outcome != SeedOutcome.found) {
       return SeedSaveBlock.notFound;
     }
-    // Checked because `render` dereferences the seed and the rebuilt frame
-    // (`seed_sub_file.dart`). `_save`'s own try/catch would turn that throw
-    // into `SeedFailure.saveFailed` - "The remote could not be saved to the
-    // Flipper" - so what this buys is not catching it but never offering the
-    // button: an internal fault reported as itself rather than as a write the
-    // device refused. `hopsUsed` is judged here rather than with the count
-    // below, because an answer that does not say how many hops back it cannot
-    // be judged at all - and "backed by only 0 hops" is not the sentence for
-    // one that does not say.
-    if (result.seed == null ||
-        result.frameHop == null ||
-        result.hopsUsed == null) {
-      return SeedSaveBlock.incompleteAnswer;
-    }
+    // No clause for a `found` answer missing its figures: [_answerOrFault]
+    // turns that into `engineFault` where the result is stored, so `found`
+    // here carries the seed, the rebuilt frame and the hop count - which is
+    // what `render` dereferences and what the sentence below counts.
+    //
     // The frequency is the one that is easy to forget: it is not recoverable
     // from a fix and a hop, so a capture without it can be solved but not
     // written.
@@ -378,11 +360,8 @@ class SeedController extends ChangeNotifier {
   Future<void> _open(SeedCaptureFile file) async {
     _stage = SeedStage.loading;
     _error = null;
-    _result = null;
-    _savedTo = null;
-    _capture = null;
+    _loadCapture(null);
     _openedFile = file;
-    _captureWarnings = const [];
     _changed();
 
     try {
@@ -415,13 +394,23 @@ class SeedController extends ChangeNotifier {
   /// device. `open()` is the real path and goes through the Flipper.
   @visibleForTesting
   void debugSetCapture(SeedCapture capture) {
+    _loadCapture(capture);
+    _stage = SeedStage.idle;
+  }
+
+  /// Puts [capture] in front of the user, and drops what belonged to the last
+  /// one.
+  ///
+  /// One assignment point for the group, because [saveBlock] judges `_result`
+  /// against `_capture`: a seam that set the capture and left the previous
+  /// result standing would answer `noFrequency` for an answer that was never
+  /// judged against that file. `_open` and `debugSetCapture` are the two
+  /// callers, and a field added to the group joins it once.
+  void _loadCapture(SeedCapture? capture) {
     _capture = capture;
-    // The three move together, as they do in `_open`. Without this a test that
-    // searches one capture and then swaps in another has `saveBlock` judging
-    // the old result against the new capture's frequency.
     _result = null;
     _savedTo = null;
-    _stage = SeedStage.idle;
+    _captureWarnings = const [];
   }
 
   /// Runs the search over the loaded capture, retrying over the windows a
@@ -493,24 +482,49 @@ class SeedController extends ChangeNotifier {
       );
       last = seedResult(SeedOutcome.engineFault);
     } finally {
-      _result = last;
-      // Said once here rather than from `saveBlock`, which `_ResultCard` reads
-      // on every rebuild - the burst that cost #305 94% of its Sentry volume
-      // was one loop logging per frame. `error` because the sentence this
-      // state puts on screen asks the user to report it, and a report that
-      // arrives with nothing but `[Seed] searching ...` in the log cannot be
-      // acted on: the native struct carries all three fields as plain
-      // integers, so this is an engine or ABI fault and the variant matters.
-      if (saveBlock == SeedSaveBlock.incompleteAnswer) {
-        LogService.error(
-          '[Seed] engine answered found without the whole answer: '
-          'seed=${last.seed != null} frame=${last.frameHop != null} '
-          'hops=${last.hopsUsed}',
-        );
-      }
+      _result = _answerOrFault(last);
       _stage = SeedStage.idle;
       _changed();
     }
+  }
+
+  /// [result], or [SeedOutcome.engineFault] when it did not bring the figures
+  /// its outcome promises.
+  ///
+  /// `seedResultIsMeaningful` says which outcomes carry figures at all; this
+  /// says whether they arrived. The native result struct holds the seed, the
+  /// rebuilt frame and the hop count as plain integers, so a gap is a broken
+  /// bridge - an ABI mismatch, or a recoverer that is not the engine - and not
+  /// a thin answer about the remote. `engineFault` is the outcome documented
+  /// for "answered something this build does not know", and it is also the
+  /// honest headline: reported as `found`, this put "Seed recovered" above a
+  /// card with no figures, no Save button and nothing saying why, which is the
+  /// silence #294 is about.
+  ///
+  /// Here because `_result` is assigned in one other place and that one sets
+  /// it to null, so [saveBlock] may read a `found` result as whole without
+  /// re-checking it - and the fault is recorded once per search rather than
+  /// once per rebuild, which is what reading it off the gate would have cost.
+  static SeedResult _answerOrFault(SeedResult result) {
+    if (!seedResultIsMeaningful(result.outcome)) return result;
+    // The rebuilt frame is only promised by `found`; the other two are
+    // promised by both, since an answer that cannot say how many hops back it
+    // cannot be judged for confidence either.
+    final whole =
+        result.seed != null &&
+        result.hopsUsed != null &&
+        (result.outcome != SeedOutcome.found || result.frameHop != null);
+    if (whole) return result;
+    // `error`, and naming the field: the three have different causes - a
+    // zeroed `hops_used` from a struct that drifted is not a null seed from a
+    // bridge that is not the engine - and "The recovery engine failed" on
+    // screen asks the user to report something.
+    LogService.error(
+      '[Seed] engine answered ${result.outcome.name} without the whole '
+      'answer: seed=${result.seed != null} '
+      'frame=${result.frameHop != null} hops=${result.hopsUsed}',
+    );
+    return seedResult(SeedOutcome.engineFault);
   }
 
   /// The hop sets to try.
@@ -636,7 +650,15 @@ class SeedController extends ChangeNotifier {
   Future<void> _save(String baseName, {required bool replace}) async {
     final capture = _capture;
     final result = _result;
-    if (!canSave || capture == null || result == null) return;
+    final blocked = saveBlock;
+    if (blocked != null || capture == null || result == null) {
+      // Recorded, because this is the one enforcement of the gate and it
+      // cannot report: the page builds no button for a blocked recovery, so
+      // arriving here is a result that changed under a tap - or a caller that
+      // skipped the affordance - and either way nothing on screen changes.
+      LogService.error('[Seed] save refused: ${blocked?.name ?? 'no capture'}');
+      return;
+    }
 
     final problem = SeedSubFile.nameRule.check(baseName);
     if (problem != null) {

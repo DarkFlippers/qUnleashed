@@ -250,6 +250,9 @@ void main() {
     await controller.search();
 
     expect(controller.result!.outcome, SeedOutcome.found);
-    expect(controller.canSave, isFalse);
+    // The reason, not just the refusal: with only the bool asserted this
+    // passed on any of the four clauses, and the answer here is complete in
+    // every way except the one the test is named for.
+    expect(controller.saveBlock, SeedSaveBlock.noFrequency);
   });
 }
