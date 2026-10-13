@@ -249,7 +249,7 @@ unleashed-firmware's milestones as they stood then. Two jobs in
 
 | | |
 |---|---|
-| `close-release-milestone` | On a release, closes the milestone whose title is the released version. No such milestone, or one already closed, leaves the run green and says so in an annotation — the binaries are published and this is bookkeeping. Open items left in it are **named** in a `::warning::` and in the step summary, and it closes anyway. It then warns if any milestone other than `Backlog` is still open, which is how a version retargeted mid-cycle shows up. |
+| `close-release-milestone` | On a release, closes the milestone whose title is the released version. No such milestone, or one already closed, leaves the run green and says so in an annotation — the binaries are published and this is bookkeeping. Open items left in it are **named** in a `::warning::` and in the step summary, and it closes anyway. And if what it closed held **nothing at all**, it says so and lists what is still open: an empty milestone for the released version means the work is filed under another name — see the retarget below. |
 | `ensure-cycle-milestone` | On every dev build that publishes, creates a milestone titled after the version in `pubspec.yaml`, with no description, unless one of that name already exists. One that exists but is **closed** gets a `::warning::` rather than being recreated: the close was somebody's decision, and a cycle with no open milestone has nowhere to file its work. |
 
 **Why the second runs per dev build rather than on the cycle pull request.**
@@ -264,8 +264,19 @@ So a cycle's milestone lives like this: the cycle pull request merges → the
 next dev build whose five platforms and `publish` all succeed creates the
 milestone → work lands in it through the cycle → that version's release closes
 it. The gap between the merge and the milestone is therefore a build, not a
-moment, and a push filtered by `paths-ignore` produces no build at all — so a
-cycle opened by a docs-only commit waits for the next real one.
+moment: roughly an hour, and longer if a platform build fails, since the job
+hangs off `publish`. (The cycle opener always edits `pubspec.yaml`, which
+`paths-ignore` does not cover, so that push does always build.)
+
+**Retargeting a version mid-cycle leaves two milestones**, and the release says
+so rather than fixing it. Step 1 above has you push `0.16.1` to `main` before
+tagging it; that push is a dev build, so it creates an empty `0.16.1`
+alongside the `0.16.0` the cycle's work is already in, and the release closes
+the empty one. Renaming the old milestone instead would mean guessing which
+open milestone is the cycle's, which is wrong the first time somebody opens one
+early for triage — so the job warns, names what is still open, and leaves the
+move to you: file the work under the released version, or close the old
+milestone by hand.
 
 Nothing scheduled sits in a closed milestone, and nothing unscheduled sits in a
 version's one: that is `Backlog`.

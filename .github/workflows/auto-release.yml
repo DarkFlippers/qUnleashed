@@ -770,20 +770,27 @@ jobs:
           echo "::error::Push finished without publishing (publish: ${{ needs.publish.result }})."
           exit 1
 
-      # The same argument one step down. `close-release-milestone` and
-      # `ensure-cycle-milestone` are each keyed on `channel` matching one
-      # literal, and an `if:` that matches neither skips both of them on a
-      # green run - milestone management stopping for good, with nothing
-      # anywhere disagreeing. The two conditions are exhaustive only because
-      # `derive_version.sh` yields exactly `dev` or `release`; nothing in this
-      # file holds it to that, so a third channel or a renamed output lands
-      # here instead of in silence.
-      - name: Fail on a channel no job matched
-        if: ${{ needs.publish.result == 'success'
-          && needs.publish.outputs.channel != 'dev'
+      # The same argument one step down, for the three jobs that hang off
+      # `publish` and gate on its `channel` output: `open-next-cycle`,
+      # `close-release-milestone` and `ensure-cycle-milestone`. Each matches
+      # one literal, so a value matching none skips all three on a green run -
+      # and a skipped `open-next-cycle` is the expensive one, leaving `main`
+      # red with no pull request to merge and nothing saying why.
+      #
+      # Not a third channel: `derive_version.sh` refuses any value but `dev`
+      # and `release` before it prints one, and `derive_version_test.sh`
+      # covers it. What this catches is the wiring between the two files
+      # breaking - `id: channel` renamed, the step-output key renamed, the
+      # job-level `outputs:` block dropped. `publish` is green in all of them
+      # and the output is the empty string, which is why the text below says
+      # so rather than quoting a value the reader would go looking for.
+      # Only a consumer can check this: what is being asserted is an agreement
+      # about a name, and a producer cannot see how it is spelled here.
+      - name: Fail on a channel no post-publish job matched
+        if: ${{ needs.publish.outputs.channel != 'dev'
           && needs.publish.outputs.channel != 'release' }}
         run: |
-          echo "::error::publish reported channel '${{ needs.publish.outputs.channel }}', which no milestone job matches."
+          echo "::error::publish succeeded but its channel output is '${{ needs.publish.outputs.channel }}' - no post-publish job matches it, so the cycle opener and both milestone jobs skipped. The output wiring between derive_version.sh and publish.outputs.channel is broken."
           exit 1
 
   # Publishing a release breaks `main` on purpose: until pubspec names a
@@ -945,11 +952,11 @@ jobs:
             --assignee mishamyte \
             --draft
 
-  # One open milestone per cycle, named after its version, plus `Backlog`. That
-  # is this repository's decision, taken on 2026-10-13 and modelled on
-  # unleashed-firmware's milestones as they stood then; the two jobs below hold
-  # the ends of a cycle so nobody has to remember. Neither maintains `Backlog`,
-  # and neither puts an item into a milestone - filing is still a person's job.
+  # One open milestone per cycle, named after its version, plus `Backlog`. The
+  # convention, its provenance and the lifecycle these two jobs hold up live in
+  # docs/releasing.md#milestones - this is the half a reader of the workflow
+  # needs. Neither job files an item into a milestone, and neither maintains
+  # `Backlog`.
   #
   # Milestones are part of the Issues API, so the scope is `issues: write` -
   # there is nothing named for milestones to grant.
@@ -971,33 +978,43 @@ jobs:
           VERSION: ${{ needs.publish.outputs.version }}
         run: |
           # Stated rather than inherited. `shell: bash` runs as `-eo pipefail`
-          # and a bare `run:` does not, so without this line the pipelines
-          # below would go quietly empty on an API failure the day somebody
-          # drops the `shell:` key - ci.yml has its own note on the same trap.
+          # and a bare `run:` does not, so without this line a failed API call
+          # would leave an empty pipeline for the branches below to read as an
+          # answer - ci.yml has its own note on the same trap.
           set -euo pipefail
+
+          # `; `-joined, in one pass, without rewriting a `;` that was inside a
+          # title. `--slurp` would do it in jq, but gh refuses it alongside
+          # `--jq`: "the --slurp option is not supported with --jq".
+          join_lines() {
+            awk 'NR > 1 { printf "; " } { printf "%s", $0 } END { if (NR) print "" }'
+          }
 
           if [[ -z "$VERSION" ]]; then
             echo "::error::No version from publish; refusing to guess which milestone to close." >&2
             exit 1
           fi
 
-          # `select(.title == env.VERSION)` - an exact comparison, evaluated by
-          # gojq, which is what `gh` embeds and which implements `env`. No
-          # --arg is needed and no second pass has to split a title on
-          # whitespace.
+          # gojq is what `gh` embeds and it implements `env`, so the title is
+          # compared where the data is. `gh api --jq` has no `--arg`.
+          #
+          # The counts come from this same response: the list endpoint carries
+          # `open_issues` and `closed_issues` on every milestone, so nothing
+          # below has to re-fetch one, and `state` and the counts cannot
+          # disagree with each other.
           #
           # `if !` rather than a bare assignment, so "the API could not be
-          # reached" cannot arrive as "there is no such milestone". The two
+          # reached" cannot arrive as "there is no such milestone" - the two
           # take different exits, the way check_linux_abi.sh does it.
           if ! found="$(gh api "repos/$REPO/milestones?state=all&per_page=100" \
-            --paginate --jq '.[] | select(.title == env.VERSION) | "\(.number) \(.state)"')"; then
+            --paginate --jq '.[] | select(.title == env.VERSION) | "\(.number) \(.state) \(.open_issues) \(.closed_issues)"')"; then
             echo "::error::Could not list milestones, so whether $VERSION has one is unknown." >&2
             exit 1
           fi
 
-          read -r number state <<<"${found:-}"
+          read -r number state open closed <<<"$found"
 
-          if [[ -z "${number:-}" ]]; then
+          if [[ -z "$number" ]]; then
             # Not a failure - the binaries are published and this is
             # bookkeeping, so the run stays green. A warning rather than a
             # notice, though: by the time a release runs,
@@ -1006,64 +1023,69 @@ jobs:
             # happened, or somebody renamed or deleted it, and none of those
             # three is the "nothing to do" a notice would suggest.
             echo "::warning::No milestone named $VERSION. The cycle had none, or it was renamed or deleted - $VERSION is published either way, only the bookkeeping is missing."
-          elif [[ "$state" == closed ]]; then
-            echo "::notice::Milestone $VERSION (#$number) was already closed."
-          else
-            open="$(gh api "repos/$REPO/milestones/$number" --jq .open_issues)"
-            if [[ "$open" != "0" ]]; then
-              # Named, not counted. The moment this closes, they drop out of
-              # every open-milestone view - so a bare count asks for a move
-              # whose subjects the reader then has to go and reconstruct. The
-              # step summary gets the same line, because an annotation on a
-              # green run is out of sight as soon as the next release run
-              # exists, and the summary stays attached to this one.
-              items="$(gh api "repos/$REPO/issues?milestone=$number&state=open&per_page=100" \
-                --paginate --jq '.[] | "#\(.number) \(.title)"' | paste -sd';' - | sed 's/;/; /g')"
-              echo "::warning::Milestone $VERSION still has $open open item(s); closing it anyway - move them to Backlog: $items"
-              echo "Milestone \`$VERSION\` was closed with $open open item(s) still in it: $items" >>"$GITHUB_STEP_SUMMARY"
-            fi
-
-            gh api -X PATCH "repos/$REPO/milestones/$number" -f state=closed --silent
-            echo "Closed milestone $VERSION (#$number)."
-          fi
-
-          # A version retargeted mid-cycle is what this catches, and it is a
-          # documented path: the cycle ran toward one version, `releasing.md`
-          # step 1 says to push the patch digit to `main` before tagging it,
-          # and that push created an empty milestone for the block above to
-          # close - leaving the cycle's own one open with everything that
-          # actually shipped in it. An exact-match lookup cannot see that, and
-          # neither can the open-items warning, since what it closed is empty.
-          #
-          # `Backlog` by name, because it is the one milestone meant to outlive
-          # every release.
-          if ! leftover="$(gh api "repos/$REPO/milestones?state=open&per_page=100" \
-            --paginate --jq '.[] | select(.title != "Backlog") | "\(.title) (#\(.number))"' |
-            paste -sd';' - | sed 's/;/; /g')"; then
-            echo "::warning::Could not re-list milestones to check whether one was left open."
             exit 0
           fi
 
-          if [[ -n "$leftover" ]]; then
-            echo "::warning::$VERSION is released, but these milestones are still open: $leftover. If the cycle's work sits in one of them - a version retargeted mid-cycle, or a title that does not match - close it and move anything unscheduled to Backlog."
+          if [[ "$state" == closed ]]; then
+            echo "::notice::Milestone $VERSION (#$number) was already closed."
+            exit 0
+          fi
+
+          if [[ "$open" != "0" ]]; then
+            # Named, not counted. The moment this closes, they drop out of
+            # every open-milestone view - so a bare count asks for a move whose
+            # subjects the reader then has to go and reconstruct. The step
+            # summary gets the same line, because an annotation on a green run
+            # is out of sight as soon as the next release run exists, and the
+            # summary stays attached to this one.
+            items="$(gh api "repos/$REPO/issues?milestone=$number&state=open&per_page=100" \
+              --paginate --jq '.[] | "#\(.number) \(.title)"' | join_lines)"
+            echo "::warning::Milestone $VERSION still has $open open item(s); closing it anyway - move them to Backlog: $items"
+            echo "Milestone \`$VERSION\` was closed with $open open item(s) still in it: $items" >>"$GITHUB_STEP_SUMMARY"
+          fi
+
+          gh api -X PATCH "repos/$REPO/milestones/$number" -f state=closed --silent
+          echo "Closed milestone $VERSION (#$number)."
+
+          # A version retargeted mid-cycle, caught by its signature rather than
+          # by a list of names: what this just closed held nothing at all.
+          #
+          # It is a documented path - the cycle ran toward one version,
+          # releasing.md step 1 says to push the patch digit to `main` before
+          # tagging it, and that push created a second, empty milestone for
+          # this job to close, leaving the cycle's own one open holding
+          # everything that shipped. An exact-match lookup cannot see that, and
+          # the open-items warning above cannot either, since what it closed is
+          # empty.
+          #
+          # Asking "was it empty" rather than "is anything but `Backlog` still
+          # open" is what keeps this quiet in the normal case: a release that
+          # closes a milestone with a cycle's work in it says nothing, and a
+          # second milestone somebody opened early for triage does not make
+          # every release warn for ever.
+          if [[ "$open" == "0" && "$closed" == "0" ]]; then
+            others="$(gh api "repos/$REPO/milestones?state=open&per_page=100" \
+              --paginate --jq '.[] | "\(.title) (#\(.number))"' | join_lines)"
+            echo "::warning::Milestone $VERSION held nothing, so the work released as $VERSION is filed somewhere else - a version retargeted mid-cycle, or a title that does not match. Still open: ${others:-nothing}."
           fi
 
   # The cycle's own milestone, created once its version is settled.
   # `open-next-cycle` cannot do this: the digit it writes is a guess a reviewer
   # changes in the pull request, so a milestone created there is left behind
-  # whenever the patch digit turned out to be the answer. Here the version is
-  # pubspec's as merged, so the name is the one the cycle actually carries.
+  # whenever the patch digit turned out to be the answer. And open_next_cycle.sh
+  # is pure file-writing with no network and no token, which is what makes it
+  # testable on its own; a `gh` call there would cost that.
   #
-  # It runs on every dev build that publishes rather than on the cycle pull
-  # request's merge. That costs a job and one lookup per dev build and buys two
-  # things: a cycle opened by hand gets its milestone too, and one deleted
-  # mid-cycle is recreated - empty, since deleting a milestone strips it from
-  # every item that was in it.
+  # Here the version is pubspec's as merged, so the name is the one the cycle
+  # actually carries. It runs on every dev build that publishes rather than on
+  # the cycle pull request's merge: that costs a job and one lookup per dev
+  # build and buys a cycle opened by hand its milestone too, with nothing kept
+  # between runs.
   ensure-cycle-milestone:
     name: Open the cycle milestone
     needs: publish
     if: ${{ needs.publish.outputs.channel == 'dev' }}
-    # issues: write - see close-release-milestone above.
+    # See close-release-milestone for why the scope is issues: write.
     permissions:
       issues: write
     runs-on: ubuntu-latest
@@ -1084,6 +1106,10 @@ jobs:
             exit 1
           fi
 
+          # The same lookup as close-release-milestone, deliberately to the
+          # letter: the projection and the `read` below have to stay in step
+          # across the two, so they are easier to compare than to diff.
+          #
           # state=all, not state=open: a closed milestone for this version is
           # an answer, not an absence. Guard two in derive_version.sh refuses a
           # dev build whose version a tag already names, so a closed milestone
@@ -1092,24 +1118,23 @@ jobs:
           # milestone is closed has nowhere to file its work, which is the
           # state this job exists to prevent.
           if ! found="$(gh api "repos/$REPO/milestones?state=all&per_page=100" \
-            --paginate --jq '.[] | select(.title == env.VERSION) | "\(.number) \(.state)"')"; then
+            --paginate --jq '.[] | select(.title == env.VERSION) | "\(.number) \(.state) \(.open_issues) \(.closed_issues)"')"; then
             echo "::error::Could not list milestones, so whether $VERSION has one is unknown." >&2
             exit 1
           fi
 
-          read -r number state <<<"${found:-}"
+          read -r number state open closed <<<"$found"
 
-          if [[ -n "${number:-}" ]]; then
+          if [[ -n "$number" ]]; then
             if [[ "$state" == closed ]]; then
-              echo "::warning::Milestone $VERSION (#$number) exists but is closed, while this cycle builds toward $VERSION - nothing can be filed in it. Reopen it, or move the cycle on."
+              echo "::warning::Milestone $VERSION (#$number) exists but is closed, with $closed item(s) in it, while this cycle builds toward $VERSION - nothing can be filed in it. Reopen it, or move the cycle on."
             else
-              echo "Milestone $VERSION already exists (#$number)."
+              echo "Milestone $VERSION already exists (#$number), with $open open and $closed closed."
             fi
             exit 0
           fi
 
-          # No description, which is how the release milestones this convention
-          # was modelled on are written: the title is the version, and a
-          # sentence adds nothing to it.
+          # No description: the title is the version, and a sentence adds
+          # nothing to it.
           number="$(gh api -X POST "repos/$REPO/milestones" -f title="$VERSION" --jq .number)"
           echo "::notice::Created milestone $VERSION (#$number)."
