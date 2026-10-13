@@ -200,13 +200,21 @@
   "@diagnosticsShareSubtitle": {
     "description": "Explains the switch above it. Two facts, in the order a user asks them: that sending needs no action from them, and what is never included. The second half matters because this app handles card dumps, keys and radio captures, and the user has no way to verify the claim themselves."
   },
+  "diagnosticsReplayTitle": "Прилагать запись экрана",
+  "@diagnosticsReplayTitle": {
+    "description": "Label of the second switch on the Diagnostics screen, below the sharing switch and shown only while sharing is on. Decides whether a recording of the screen is kept and sent when something fails. On by default, and only ever active on Android and iOS. \"Replay\" is what the service calls it; the label says what it is instead, because the user has no reason to know the term."
+  },
+  "diagnosticsReplaySubtitle": "Запись идёт всё время, пока открыто приложение, и покидает устройство только тогда, когда что-то идёт не так. Байты карт, графики сигналов и экран Flipper из неё скрыты.",
+  "@diagnosticsReplaySubtitle": {
+    "description": "Explains the switch above it. Three facts in the order a user asks them: that recording is continuous, that the recording only leaves the device on a failure, and what stays hidden even then. The first is deliberate and must survive translation - the sample rate gates the upload, not the capture, so a user reading only the switch label would think nothing is recorded until something breaks. The third is a promise three masking rules keep rather than a reassurance. Renders at up to six lines and ellipsises after that, so if the translation runs long, keep the first and third facts ahead of the second. \"Hidden\" rather than \"blacked out\": the mask is painted in the theme's primary colour, not black."
+  },
   "diagnosticsNoticeTitle": "Сбои отправляются разработчикам",
   "@diagnosticsNoticeTitle": {
     "description": "Heading of the one-time notice shown on the first launch, and once more for people already using the app when sharing was added. States the fact rather than asking a question, because reporting is already on while the notice is on screen - it is a notice, not a consent prompt."
   },
-  "diagnosticsNoticeBody": "Когда что-то идёт не так, ошибка и сбой отправляются сами, вместе с версией приложения и сборкой, из которой он получен. Данные карт, ключи, захваты и ваше местоположение не отправляются никогда. Вы можете отключить это сейчас или в любой момент в Настройки → Диагностика.",
+  "diagnosticsNoticeBody": "Когда что-то идёт не так, ошибка и сбой отправляются сами, вместе с версией приложения и сборкой, из которой он получен. На Android и iOS вместе с ними отправляется запись экрана. Данные карт, ключи, захваты и ваше местоположение скрыты из этой записи и не отправляются никогда. Вы можете отключить это сейчас или в любой момент в Настройки → Диагностика.",
   "@diagnosticsNoticeBody": {
-    "description": "Body of the one-time notice. Three things in the order a user asks them: what is sent, what never is, and how to stop it. No link to a privacy policy, because the project has none yet; the text carries the substance instead."
+    "description": "Body of the one-time notice. Four things in the order a user asks them: what is sent, that a screen recording is part of it, what never is, and how to stop it. The recording sentence names the two platforms because replay is native-backed and does nothing on desktop, so saying it unconditionally would be false for most desktop users. \"Hidden from that recording\" is a claim five masking rules keep, not a reassurance - keep it attached to the recording sentence in translation, because apart they read as two unrelated promises. No link to a privacy policy, because the project has none yet; the text carries the substance instead."
   },
   "diagnosticsNoticeTurnOff": "Отключить",
   "@diagnosticsNoticeTurnOff": {
@@ -5303,10 +5311,6 @@
   "@fmConflictRenameTaken": {
     "description": "Error under the new-name field of the replace-or-skip dialog."
   },
-  "fmConflictRenameInvalid": "Введите корректное имя файла",
-  "@fmConflictRenameInvalid": {
-    "description": "Error under the new-name field of the replace-or-skip dialog when the name is empty or contains a slash."
-  },
   "fmConflictForAll": "Применить ко всем {count}",
   "@fmConflictForAll": {
     "description": "Checkbox in the replace-or-skip dialog applying one choice to every remaining conflict.",
@@ -6268,6 +6272,18 @@
       }
     }
   },
+  "archiveSyncStoppedEarly": "Синхронизация остановлена после {done} из {total}",
+  "@archiveSyncStoppedEarly": {
+    "description": "Shown when a sync ended before reaching the whole queue because the link to the device went down and did not come back. Distinct from the summary above it: that one reports how a finished sync went, this one says the rest was never attempted. The numbers are the files reached and the files queued, not successes - a user who sees this should try again rather than conclude the remainder failed. Carries no error text: the caller appends the same parenthesised cause counts it appends to the summary above, because which faults occurred is a property of the sync and not of one of its two endings.",
+    "placeholders": {
+      "done": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
   "archiveConnectToRestore": "Подключите устройство для восстановления",
   "@archiveConnectToRestore": {
     "description": "Error shown when restoring needs a connected Flipper."
@@ -6686,7 +6702,7 @@
   },
   "seedUnverifiedHint": "Seed показан для справки. Пульт нельзя сохранить как файл для передачи.",
   "@seedUnverifiedHint": {
-    "description": "Explains why saving is unavailable after an unverified result."
+    "description": "Explains why saving is unavailable after an unverified result, and what to try. TRANSLATORS: 'may settle it' is deliberately hedged - more hops let the engine reject a seed it could not verify, but for a long capture the fault is elsewhere and another capture will not help."
   },
   "seedNothingMatched": "Ни один seed не подошёл к этому захвату",
   "@seedNothingMatched": {
@@ -6757,9 +6773,14 @@
       }
     }
   },
-  "seedNameTooLong": "Используйте более короткое имя. Приложение Sub-GHz вмещает {max} символов.",
-  "@seedNameTooLong": {
-    "description": "Shown when the typed file name is longer than the Sub-GHz app can keep. TRANSLATORS: {max} is an exact figure, currently 63 - render it as a plain number and choose the grammatical case for 'characters' to match, as there is no plural form on this placeholder. Why it is exact rather than hedged is recorded on SeedSubFile.maxBaseNameLength.",
+  "commonNameEmpty": "Введите имя.",
+  "@commonNameEmpty": {
+    "description": "Shown when a name field has been left empty, or holds nothing but spaces. Only the prompts that are not QNameDialog render this - that dialog keeps its confirm button disabled and says nothing, because an error on a field the user has just cleared reads as a complaint about their typing.",
+    "placeholders": {}
+  },
+  "commonNameTooLong": "Используйте более короткое имя — не более {max} символов.",
+  "@commonNameTooLong": {
+    "description": "Shown when a typed file name is longer than the storage it is being written to will carry. TRANSLATORS: {max} is an exact figure - 255 for a file on the Flipper's storage, 63 for a Sub-GHz name, because that app's own save buffer holds less - so render it as a plain number and choose the grammatical case for 'characters' to match, as there is no plural form on this placeholder. The sentence names no owner for the limit on purpose, since it is shown for both. The limit is counted in bytes, but every name it can appear for is ASCII, so 'characters' is what the user sees and is not a lie. Replaces seedNameTooLong.",
     "placeholders": {
       "max": {
         "type": "int"
@@ -6923,6 +6944,6 @@
   },
   "seedEngineBrokenHint": "С этим захватом ничего не поможет: движок восстановления в этой сборке не работает. Пожалуйста, сообщите об этом.",
   "@seedEngineBrokenHint": {
-    "description": "Hint shown when the engine failed its own checks or is missing from the build."
+    "description": "Hint shown when the recovery engine in this build is not working: it failed its own checks, is missing from the build, or answered something this build cannot read. TRANSLATORS: the point is that nothing the user does with this capture will help."
   }
 }
