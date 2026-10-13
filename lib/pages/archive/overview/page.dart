@@ -24,13 +24,22 @@ import 'widgets/key_actions_sheet.dart';
 import '../../../components/filelist/progress_fill.dart';
 import 'widgets/sync_progress_view.dart';
 import 'failure_toast.dart';
+import '../../../services/archive/sort_settings.dart';
 
 class ArchivePage extends StatefulWidget {
-  const ArchivePage({super.key, required this.controller});
+  const ArchivePage({
+    super.key,
+    required this.controller,
+    required this.sortSettings,
+  });
 
   /// Built and owned by [AppShell], which keeps it across slot changes - so
   /// this page neither creates nor disposes one.
   final ArchiveController controller;
+
+  /// Carried only to hand on to the two tables this page pushes. Nothing on
+  /// this screen is sorted by it.
+  final ArchiveSortSettings sortSettings;
 
   @override
   State<ArchivePage> createState() => _ArchivePageState();
@@ -45,11 +54,21 @@ class _ArchivePageState extends State<ArchivePage> {
   // category cards above them alone. The push-site census is what found them.
   // #244.
   void _openCategory(ArchiveCategory cat) {
-    pushPage(context, (_) => CategoryPage(controller: _ctrl, category: cat));
+    pushPage(
+      context,
+      (_) => CategoryPage(
+        controller: _ctrl,
+        sortSettings: widget.sortSettings,
+        category: cat,
+      ),
+    );
   }
 
   void _openDeleted() {
-    pushPage(context, (_) => DeletedPage(controller: _ctrl));
+    pushPage(
+      context,
+      (_) => DeletedPage(controller: _ctrl, sortSettings: widget.sortSettings),
+    );
   }
 
   Widget _categoriesCard(BuildContext context) {

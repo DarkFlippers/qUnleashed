@@ -1,3 +1,4 @@
+import '../../../../services/archive/sort_settings.dart';
 import '../../../../services/guarded.dart';
 import '../../../../services/localization/l10n.dart';
 
@@ -30,10 +31,17 @@ class CategoryPage extends StatefulWidget {
   const CategoryPage({
     super.key,
     required this.controller,
+    required this.sortSettings,
     required this.category,
   });
 
   final ArchiveController controller;
+
+  /// Shared with every other archive table and owned by `AppShell`, so a sort
+  /// picked here is the one they all open in - and the rail's other mounted
+  /// tables follow it without being rebuilt by hand.
+  final ArchiveSortSettings sortSettings;
+
   final ArchiveCategory category;
 
   @override
@@ -46,14 +54,26 @@ class _CategoryPageState extends State<CategoryPage> {
   String _query = '';
   String? _filterVal;
   bool _starredOnly = false;
-  String _sortKey = 'name';
-  bool _sortAsc = true;
 
   bool _selectionMode = false;
   final Set<String> _selected = <String>{};
 
   ArchiveController get _ctrl => widget.controller;
   ArchiveCategory get _cat => widget.category;
+
+  /// Rebuilds on either the archive's own changes or a sort picked on another
+  /// mounted table. Built once rather than per build, so the `AnimatedBuilder`
+  /// is not resubscribing to a fresh `Listenable` every frame.
+  late final Listenable _repaint = Listenable.merge([
+    _ctrl,
+    widget.sortSettings,
+  ]);
+
+  List<SortOption> get _sortOpts => sortOptionsFor(columnsFor(_cat));
+
+  /// The stored sort, held to the keys this category's columns offer.
+  ({String key, bool asc}) get _sort =>
+      widget.sortSettings.resolve(_sortOpts.map((o) => o.key));
 
   @override
   void initState() {
@@ -129,7 +149,8 @@ class _CategoryPageState extends State<CategoryPage> {
         return false;
       }).toList();
     }
-    return sortArchiveKeys(keys, _sortKey, _sortAsc);
+    final sort = _sort;
+    return sortArchiveKeys(keys, sort.key, sort.asc);
   }
 
   List<ArchiveKey> get _selectedKeys =>
@@ -178,14 +199,13 @@ class _CategoryPageState extends State<CategoryPage> {
   }
 
   void _onSort(String key) {
-    setState(() {
-      if (_sortKey == key) {
-        _sortAsc = !_sortAsc;
-      } else {
-        _sortKey = key;
-        _sortAsc = true;
-      }
-    });
+    unawaited(
+      guarded(
+        '[ArchiveSort] storing the picked sort',
+        () =>
+            widget.sortSettings.pick(key, offered: _sortOpts.map((o) => o.key)),
+      ),
+    );
   }
 
   Future<void> _showKeyActions(BuildContext context, ArchiveKey key) {
@@ -270,7 +290,7 @@ class _CategoryPageState extends State<CategoryPage> {
     final catColor = colors.adaptCategoryHeader(_cat.color);
 
     return AnimatedBuilder(
-      animation: _ctrl,
+      animation: _repaint,
       builder: (context, _) {
         final filtered = _filtered;
         final total = _allKeys.length;
@@ -326,6 +346,12 @@ class _CategoryPageState extends State<CategoryPage> {
                         query: _query,
                         filterVal: _filterVal,
                         filterOpts: filterOpts,
+                        sort: (
+                          key: _sort.key,
+                          asc: _sort.asc,
+                          opts: _sortOpts,
+                          onSort: _onSort,
+                        ),
                         starredOnly: _starredOnly,
                         catColor: catColor,
                         colors: colors,
@@ -405,8 +431,8 @@ class _CategoryPageState extends State<CategoryPage> {
                   children: [
                     ArchiveColumnHeader(
                       cols: visibleCols,
-                      sortKey: _sortKey,
-                      sortAsc: _sortAsc,
+                      sortKey: _sort.key,
+                      sortAsc: _sort.asc,
                       onSort: _onSort,
                       colors: colors,
                       selectionMode: _selectionMode,

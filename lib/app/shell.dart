@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flipperlib/flipperlib.dart' hide DateTime, File;
 import 'package:flutter/material.dart';
 
@@ -19,6 +21,7 @@ import '../pages/devices/models/connection_state.dart';
 import '../pages/devices/page.dart';
 import '../pages/option/diagnostics_notice.dart';
 import '../pages/option/diagnostics_scope.dart';
+import '../services/archive/sort_settings.dart';
 import '../services/guarded.dart';
 import '../services/home_widget/service.dart';
 import '../services/localization/l10n.dart';
@@ -56,6 +59,11 @@ class _AppShellState extends State<AppShell> {
     client: widget.client,
   );
 
+  /// How the archive tables are ordered. Owned here rather than by a page
+  /// because the rail keeps several of them mounted at once, and a sort the
+  /// user changes on one has to reach the others. ADR 0002.
+  final ArchiveSortSettings _archiveSort = ArchiveSortSettings();
+
   int _slot = _slotDevice;
 
   /// Slots built so far. Everything the mobile layout used to build eagerly
@@ -67,6 +75,17 @@ class _AppShellState extends State<AppShell> {
     super.initState();
     _archiveController.addListener(_onArchiveChanged);
     _archiveController.initialize();
+    // Started as early as there is anywhere to start it, so the stored sort
+    // is normally in hand before an archive table is reachable - but this is
+    // a platform round trip and nothing waits for it. A table opened before
+    // it lands shows name ascending and reorders once when it arrives, and
+    // `ArchiveSortSettings` holds off the read for a user who picked first.
+    //
+    // `load` never rejects; `guarded` is for the dropped future, not the
+    // error. #23.
+    unawaited(
+      guarded('[ArchiveSort] reading the stored sort', _archiveSort.load),
+    );
     HomeWidgetService.instance.pickRequests.addListener(_onWidgetPickRequest);
     PushService.instance.taps.addListener(_onPushTap);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -96,6 +115,7 @@ class _AppShellState extends State<AppShell> {
     PushService.instance.taps.removeListener(_onPushTap);
     _archiveController.removeListener(_onArchiveChanged);
     _archiveController.dispose();
+    _archiveSort.dispose();
     super.dispose();
   }
 
@@ -208,21 +228,31 @@ class _AppShellState extends State<AppShell> {
     if (!wide && _isArchiveDetail(slot)) return const SizedBox.shrink();
     if (slot == _slotDevice) return const DeviceTab();
     if (slot == _slotArchive) {
-      return ArchivePage(controller: _archiveController);
+      return ArchivePage(
+        controller: _archiveController,
+        sortSettings: _archiveSort,
+      );
     }
     if (slot == _slotFavorites) {
-      return FavoritesPage(controller: _archiveController);
+      return FavoritesPage(
+        controller: _archiveController,
+        sortSettings: _archiveSort,
+      );
     }
     if (slot == _slotFiles) {
       return FileManagerPage(client: widget.client, initialPath: '/ext');
     }
     if (slot == _slotDeleted) {
-      return DeletedPage(controller: _archiveController);
+      return DeletedPage(
+        controller: _archiveController,
+        sortSettings: _archiveSort,
+      );
     }
     if (slot == _slotApps) return const AppsCatalogPage();
     if (slot == _slotTools) return const ToolsPage();
     return CategoryPage(
       controller: _archiveController,
+      sortSettings: _archiveSort,
       category: ArchiveCategory.values[slot - _slotCategory],
     );
   }

@@ -1,3 +1,4 @@
+import '../../../../services/archive/sort_settings.dart';
 import '../../../../services/guarded.dart';
 import '../../../../services/localization/l10n.dart';
 
@@ -18,6 +19,7 @@ import '../../widgets/actions_sheet.dart';
 import '../../../../components/filelist/empty_view.dart';
 import '../widgets/key_actions_sheet.dart';
 import '../../../../components/filelist/columns.dart';
+import '../../../../components/filelist/folder_sort.dart';
 import 'sort.dart';
 import '../../../../components/filelist/table.dart';
 import '../../../../components/filelist/toolbar.dart';
@@ -30,9 +32,18 @@ import '../../widgets/drag_source.dart';
 /// app rows have no key metadata, so they trail the keys and leave those
 /// columns blank.
 class FavoritesPage extends StatefulWidget {
-  const FavoritesPage({super.key, required this.controller});
+  const FavoritesPage({
+    super.key,
+    required this.controller,
+    required this.sortSettings,
+  });
 
   final ArchiveController controller;
+
+  /// Shared with every other archive table and owned by `AppShell`, so a sort
+  /// picked here is the one they all open in - and the rail's other mounted
+  /// tables follow it without being rebuilt by hand.
+  final ArchiveSortSettings sortSettings;
 
   @override
   State<FavoritesPage> createState() => _FavoritesPageState();
@@ -45,13 +56,25 @@ class _FavoritesPageState extends State<FavoritesPage> {
 
   String _query = '';
   String? _filterVal;
-  String _sortKey = 'name';
-  bool _sortAsc = true;
 
   bool _selectionMode = false;
   final Set<String> _selected = <String>{};
 
   ArchiveController get _ctrl => widget.controller;
+
+  /// Rebuilds on either the archive's own changes or a sort picked on another
+  /// mounted table. Built once rather than per build, so the `AnimatedBuilder`
+  /// is not resubscribing to a fresh `Listenable` every frame.
+  late final Listenable _repaint = Listenable.merge([
+    _ctrl,
+    widget.sortSettings,
+  ]);
+
+  List<SortOption> get _sortOpts => sortOptionsFor(deletedColumns());
+
+  /// The stored sort, held to the keys this table's columns offer.
+  ({String key, bool asc}) get _sort =>
+      widget.sortSettings.resolve(_sortOpts.map((o) => o.key));
 
   @override
   void initState() {
@@ -111,11 +134,14 @@ class _FavoritesPageState extends State<FavoritesPage> {
         return false;
       }).toList();
     }
-    return sortArchiveKeys(out, _sortKey, _sortAsc);
+    final sort = _sort;
+    return sortArchiveKeys(out, sort.key, sort.asc);
   }
 
   /// Apps have no protocol, so an active protocol filter hides them all. They
-  /// only ever sort by name, following the name column's direction.
+  /// carry a name and the folder under `/ext/apps` they were found in and
+  /// nothing else, so those two sorts are the ones they can follow; under any
+  /// other key they hold the name order.
   List<FapFavorite> _visibleFaps(List<FapFavorite> faps) {
     if (_filterVal != null) return const [];
     var out = faps;
@@ -127,10 +153,31 @@ class _FavoritesPageState extends State<FavoritesPage> {
         return false;
       }).toList();
     }
-    out = [...out]
-      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
-    if (_sortKey == 'name' && !_sortAsc) return out.reversed.toList();
-    return out;
+    final sort = _sort;
+    if (sort.key == 'folder') {
+      // One comparator carrying the name as its tiebreak, rather than a name
+      // sort with a folder sort laid over it. `List.sort` promises no
+      // stability at any length and measurably has none past 32 entries,
+      // where it leaves its insertion-sort path for a dual-pivot quicksort -
+      // so the second pass would hand back each folder's apps in whatever
+      // order it happened to leave them. A favourites list reaches 32.
+      return [...out]..sort(
+        (a, b) => compareFolderThenName(
+          folderSortKey(a.subFolder),
+          a.name.toLowerCase(),
+          folderSortKey(b.subFolder),
+          b.name.toLowerCase(),
+          sort.asc,
+        ),
+      );
+    }
+    // Under every other key the apps have nothing to answer with, so they hold
+    // the name order; only the name itself turns around with the direction.
+    final descending = sort.key == 'name' && !sort.asc;
+    return [...out]..sort((a, b) {
+      final byName = a.name.toLowerCase().compareTo(b.name.toLowerCase());
+      return descending ? -byName : byName;
+    });
   }
 
   List<ArchiveKey> get _selectedKeys =>
@@ -174,14 +221,13 @@ class _FavoritesPageState extends State<FavoritesPage> {
   }
 
   void _onSort(String key) {
-    setState(() {
-      if (_sortKey == key) {
-        _sortAsc = !_sortAsc;
-      } else {
-        _sortKey = key;
-        _sortAsc = true;
-      }
-    });
+    unawaited(
+      guarded(
+        '[ArchiveSort] storing the picked sort',
+        () =>
+            widget.sortSettings.pick(key, offered: _sortOpts.map((o) => o.key)),
+      ),
+    );
   }
 
   Future<void> _bulkUnstar() async {
@@ -295,7 +341,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
     final headerColor = colors.adaptCategoryHeader(_starColor);
 
     return AnimatedBuilder(
-      animation: _ctrl,
+      animation: _repaint,
       builder: (context, _) {
         final allKeys = _starredKeys();
         final allFaps = _ctrl.fapFavorites;
@@ -347,6 +393,12 @@ class _FavoritesPageState extends State<FavoritesPage> {
                         query: _query,
                         filterVal: _filterVal,
                         filterOpts: filterOpts,
+                        sort: (
+                          key: _sort.key,
+                          asc: _sort.asc,
+                          opts: _sortOpts,
+                          onSort: _onSort,
+                        ),
                         starredOnly: false,
                         catColor: headerColor,
                         colors: colors,
@@ -395,8 +447,8 @@ class _FavoritesPageState extends State<FavoritesPage> {
                           children: [
                             ArchiveColumnHeader(
                               cols: cols,
-                              sortKey: _sortKey,
-                              sortAsc: _sortAsc,
+                              sortKey: _sort.key,
+                              sortAsc: _sort.asc,
                               onSort: _onSort,
                               colors: colors,
                               selectionMode: _selectionMode,

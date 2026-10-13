@@ -1996,6 +1996,21 @@
     "description": "Filter entry that shows files of every type."
   },
 
+  "sortTitle": "Sort by",
+  "@sortTitle": {
+    "description": "Title of the sheet that chooses how a file list is ordered."
+  },
+
+  "sortByName": "Name",
+  "@sortByName": {
+    "description": "Sort entry ordering files by name alone, ignoring the folders they are in."
+  },
+
+  "sortByFolder": "Folder, then name",
+  "@sortByFolder": {
+    "description": "Sort entry grouping files by the folder they live in, ordering each folder's files by name."
+  },
+
   "categoryNfc": "NFC",
   "@categoryNfc": {
     "description": "Archive category for contactless cards and tags. NFC is a standard abbreviation, usually left as is."

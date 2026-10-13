@@ -71,6 +71,15 @@ abstract class PrefsBackedSettings extends ChangeNotifier {
   ///
   /// The report belongs here rather than in [_read] because it carries the
   /// store's own tag, which is the same reason [onLoadFailed] is abstract.
+  ///
+  /// **This runs after an await, and it overwrites.** A store the user can
+  /// change before the read lands has to say so itself: the read's
+  /// continuation comes second and will put the stored value back, reverting
+  /// the change on screen while the write of it still reaches the disk - so
+  /// it reappears at the next launch. The stores here that are only written
+  /// from a settings screen cannot be reached in that window;
+  /// `ArchiveSortSettings` can, and guards this with a flag of its own. If a
+  /// second one needs that, it belongs up here instead.
   @protected
   void readFrom(PrefsReader reader);
 
