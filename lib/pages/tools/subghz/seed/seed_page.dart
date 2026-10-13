@@ -445,6 +445,30 @@ class _ResultCard extends StatelessWidget {
   final SeedController controller;
   final VoidCallback onSave;
 
+  /// The sentence for one refusal of the Save button, or null where the card
+  /// already carries it.
+  ///
+  /// Exhaustive on purpose: a clause added to [SeedController.saveBlock] with
+  /// nothing to say about it does not compile.
+  String? _saveBlockHint(L10n l10n, SeedSaveBlock? block, int? hopsUsed) =>
+      switch (block) {
+        // Nothing is blocked - the button is there.
+        null => null,
+        // The headline and the outcome's own hint above already say the answer
+        // is not one to transmit, for every outcome that is not `found`.
+        SeedSaveBlock.notFound => null,
+        SeedSaveBlock.incompleteAnswer => l10n.seedSaveIncomplete,
+        SeedSaveBlock.noFrequency => l10n.seedSaveNoFrequency,
+        // `hopsUsed` is non-null whenever this arm is the answer: a result that
+        // does not say is `incompleteAnswer`, which is why that clause is
+        // judged first. The fallback is the unreachable branch, not a sentence
+        // anyone is shown.
+        SeedSaveBlock.lowConfidence => l10n.seedLowConfidence(
+          hopsUsed ?? 0,
+          seedHopsConfident,
+        ),
+      };
+
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
@@ -472,6 +496,9 @@ class _ResultCard extends StatelessWidget {
     final seed = result.seed;
     final counter = result.counter;
     final hopsUsed = result.hopsUsed;
+    // Once, and read by both the sentence and the button: they are the same
+    // answer, and the bug this closes was the two of them derived apart.
+    final blocked = controller.saveBlock;
 
     return _Card(
       children: [
@@ -507,11 +534,14 @@ class _ResultCard extends StatelessWidget {
         if (result.outcome == SeedOutcome.engineSelfTestFailed ||
             result.outcome == SeedOutcome.engineUnavailable)
           _Hint(l10n.seedEngineBrokenHint),
-        if (seed != null && hopsUsed != null && hopsUsed < seedHopsConfident)
-          _Hint(l10n.seedLowConfidence(hopsUsed, seedHopsConfident)),
-        if (result.outcome == SeedOutcome.found && capture.frequencyHz == null)
-          _Hint(l10n.seedSaveNoFrequency),
-        if (controller.canSave) ...[
+        // Why there is no Save button, taken from the gate rather than
+        // re-derived here. This was two conditions spelling out two of the
+        // gate's four clauses, so the other two - a `found` answer missing a
+        // field, and one that does not say how many hops back it - showed the
+        // seed rows, no button and no reason. #294
+        if (_saveBlockHint(l10n, blocked, hopsUsed) case final hint?)
+          _Hint(hint),
+        if (blocked == null) ...[
           const SizedBox(height: 12),
           FilledButton.icon(
             // `saving`, not just `savedTo`: the stat and the write take a

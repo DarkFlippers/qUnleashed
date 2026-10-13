@@ -37,6 +37,43 @@ enum SeedFailure {
   listingStale,
 }
 
+/// Why a recovered remote cannot be written as a transmittable `.sub`.
+///
+/// An enum rather than the four-term boolean it replaces, for the reason
+/// [SeedFailure] is one: the page says it in the user's language, the set is
+/// exhaustive, and each member is a different thing to do next - which is the
+/// test for whether it earns one. [SeedController.saveBlock] holds the clauses.
+///
+/// Ordered by whose fix the next refusal would not undo. A missing frequency
+/// cannot be fixed on this capture at all, so it is named before the hop count,
+/// which another press or two answers: a user sent off to capture more presses
+/// into a file that records no frequency arrives back at the same refusal.
+enum SeedSaveBlock {
+  /// The search did not end in [SeedOutcome.found] - including not having run.
+  ///
+  /// The arm with nothing to add: the result card's own headline and hint
+  /// already say the answer is not one to transmit. A named member rather than
+  /// an absence, so the page covers it deliberately instead of by default.
+  notFound,
+
+  /// `found`, but the seed, the rebuilt frame or the hop count did not come
+  /// back with it.
+  ///
+  /// A fault in this build rather than anything about the capture: the native
+  /// result struct carries all three as plain integers, so the engine cannot
+  /// answer this way and a recoverer that does is broken. It is one of the two
+  /// the page used to be silent about, and that silence is #294.
+  incompleteAnswer,
+
+  /// The capture carries no frequency, and a `.sub` cannot be transmitted
+  /// without one. Not recoverable from the fix and the hops.
+  noFrequency,
+
+  /// Fewer than [seedHopsConfident] hops backed the answer, so it is shown
+  /// rather than offered for transmission.
+  lowConfidence,
+}
+
 /// What a stat said about one path.
 ///
 /// Three states and not a bool, because the two callers want different things
@@ -196,27 +233,56 @@ class SeedController extends ChangeNotifier {
   /// the user can act on or a reason the screen disagrees with their file.
   List<String> get captureWarnings => _captureWarnings;
 
+  /// Why the recovered remote cannot be written as a transmittable file, or
+  /// null when it can.
+  ///
+  /// The reason rather than a bool, because the absence of the Save button is
+  /// something the page has to explain and the page could only re-derive it:
+  /// it re-checked two of these four clauses, had no sentence for the other
+  /// two, and so a `found` answer with a field missing showed the seed rows,
+  /// no button, and no word anywhere about why. One expression behind both
+  /// now, and a fifth clause is a compile error in the page rather than a
+  /// fifth silence. #294
+  SeedSaveBlock? get saveBlock {
+    final result = _result;
+    if (result == null || result.outcome != SeedOutcome.found) {
+      return SeedSaveBlock.notFound;
+    }
+    // Checked because `render` dereferences the seed and the rebuilt frame.
+    // Without this the throw escapes `_save`, escapes `runTask`, and lands in
+    // a discarded future as an `[uncaught]` naming no operation - with the
+    // page unchanged. `hopsUsed` is judged here rather than with the count
+    // below, because an answer that does not say how many hops back it cannot
+    // be judged at all - and "backed by only 0 hops" is not the sentence for
+    // one that does not say.
+    if (result.seed == null ||
+        result.frameHop == null ||
+        result.hopsUsed == null) {
+      return SeedSaveBlock.incompleteAnswer;
+    }
+    // The frequency is the one that is easy to forget: it is not recoverable
+    // from a fix and a hop, so a capture without it can be solved but not
+    // written.
+    if (_capture?.frequencyHz == null) return SeedSaveBlock.noFrequency;
+    // The hop count is the one that matters most: the native header draws the
+    // confidence line at [seedHopsConfident] and says an answer below it
+    // should be shown "rather than offered for transmission", and a two-hop
+    // false positive is exactly what it calls conceivable.
+    //
+    // `round_trip_ok` is not independent protection here. It checks that the
+    // plaintext layout was right for the protocol, not that the key is right,
+    // so a wrong seed from too few hops still arrives as a success.
+    if (result.hopsUsed! < seedHopsConfident) {
+      return SeedSaveBlock.lowConfidence;
+    }
+    return null;
+  }
+
   /// Whether the recovered remote can be written as a transmittable file.
   ///
-  /// Four things have to hold. The frequency is the one that is easy to forget:
-  /// it is not recoverable from a fix and a hop, so a capture without it can be
-  /// solved but not written. The hop count is the one that matters most: the
-  /// native header draws the confidence line at [seedHopsConfident] and says an
-  /// answer below it should be shown "rather than offered for transmission", and
-  /// a two-hop false positive is exactly what it calls conceivable.
-  ///
-  /// `round_trip_ok` is not independent protection here. It checks that the
-  /// plaintext layout was right for the protocol, not that the key is right, so
-  /// a wrong seed from too few hops still arrives as a success.
-  bool get canSave =>
-      _result?.outcome == SeedOutcome.found &&
-      _result?.frameHop != null &&
-      // Checked because `render` dereferences it. Without this the throw
-      // escapes `_save`, escapes `runTask`, and lands in a discarded future as
-      // an `[uncaught]` naming no operation - with the page unchanged.
-      _result?.seed != null &&
-      (_result?.hopsUsed ?? 0) >= seedHopsConfident &&
-      _capture?.frequencyHz != null;
+  /// [saveBlock] is the same answer with the reason attached; this is for the
+  /// callers that only gate on it.
+  bool get canSave => saveBlock == null;
 
   /// Runs a device operation as one task on this Flipper's session, after
   /// clearing whatever failed last.

@@ -38,6 +38,31 @@ Hop: 40101499
 Hop: A1F9C88F
 ''';
 
+/// The same capture with no frequency line: solvable, and not writable.
+///
+/// The frequency is not recoverable from the fix and the hops, so this is the
+/// one refusal of the Save button that nothing about the search can lift.
+final seedCaptureNoFrequency = seedCaptureFixture.replaceFirst(
+  'Frequency: 433920000\n',
+  '',
+);
+
+/// A two-hop capture: the parser's minimum, and below the confidence line.
+///
+/// The only way to reach [SeedSaveBlock.lowConfidence] since #290 - the window
+/// ladder stopped offering sub-confident windows of a longer capture, so a real
+/// two-hop file is what is left.
+const seedCaptureTwoHops = '''
+Filetype: Flipper SubGhz Seed Capture
+Version: 1
+Manufacturer: Genius
+Frequency: 433920000
+Fix: A0DC9330
+Hops: 2
+Hop: 29389EF7
+Hop: 40101499
+''';
+
 /// A Flipper holding a capture folder and a Sub-GHz folder.
 class SeedFakeClient implements FlipperClient {
   /// What the capture folder holds, by file name.
@@ -322,6 +347,40 @@ class UnverifiedRecoverer implements FaaccrackRecoverer {
     void Function(double fraction)? onProgress,
     bool Function()? isCancelled,
   }) async => seedResult(SeedOutcome.unverified);
+}
+
+/// An engine that answers `found` with part of the answer missing.
+///
+/// The real one cannot: the native result struct carries the seed, the rebuilt
+/// frame and the hop count as plain integers. So this is the only way to build
+/// the state #294 is about - a successful recovery the app cannot write and,
+/// before this, said nothing about.
+class IncompleteRecoverer implements FaaccrackRecoverer {
+  IncompleteRecoverer({
+    this.seed = 0x546AA44F,
+    this.frameHop = 0x29389EF7,
+    this.hopsUsed = 3,
+  });
+
+  final int? seed;
+  final int? frameHop;
+  final int? hopsUsed;
+
+  @override
+  Future<SeedResult> recover({
+    required SeedManufacturer manufacturer,
+    required int fix,
+    required List<int> hops,
+    void Function(double fraction)? onProgress,
+    bool Function()? isCancelled,
+  }) async => seedResult(
+    SeedOutcome.found,
+    seed: seed,
+    lrkey: 0x1122334455667788,
+    counter: 0xC,
+    frameHop: frameHop,
+    hopsUsed: hopsUsed,
+  );
 }
 
 /// A controller that has listed the folder and opened one capture in it,
