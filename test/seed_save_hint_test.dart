@@ -151,6 +151,11 @@ void main() {
 
     expect(find.textContaining('The seed is shown for reference'), findsOne);
     expect(_lowConfidence, findsNothing);
+    // Nor on anything else. `notFound` is the arm with nothing to add, so a
+    // sentence here would be a second, wrong explanation beside the hint that
+    // is already right.
+    expect(_incomplete, findsNothing);
+    expect(_noFrequency, findsNothing);
     expect(_save, findsNothing);
   });
 }
