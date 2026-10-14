@@ -26,7 +26,9 @@ const String kArbDir = 'translations';
 // with the filename. `gen-l10n` runs inside `flutter pub get`, so a file that
 // breaks it breaks the command `flutter test` needs to have succeeded - an
 // assertion here could never fire in CI. It is
-// `.github/scripts/check_arb_locales.sh` instead, before the Flutter setup.
+// `.github/scripts/check_arb_locales.sh` instead, which the setup-flutter
+// action runs immediately before `pub get`. That it is still wired in is what
+// `arb_locale_guard_test.dart` checks.
 
 /// The ARB files git can see, English included.
 List<File> arbFiles() =>

@@ -152,15 +152,48 @@ if [[ "$out" != *"nothing blamed a translation"* ]]; then
 else
   fail "and is not reported as a failure nothing blamed on one: $out"
 fi
-if [[ "$out" == *"es-ES"* ]] && [[ "$out" == *"Current filename extension: es"* ]]; then
-  pass "and the two values gen-l10n printed survive, since it names no file"
+if [[ "$out" == *"check_arb_locales.sh"* ]]; then
+  pass "and names the script that settles it"
 else
-  fail "and the two values gen-l10n printed survive: $out"
+  fail "and names the script that settles it: $out"
 fi
 if [[ "$err" == *"::error::"* ]] && [[ "$out" != *"::error::"* ]]; then
   pass "and its annotation goes to the run, not into the body"
 else
   fail "and its annotation goes to the run: out=$out err=$err"
+fi
+
+# The two values are the last thing gen-l10n prints and the excerpt below keeps
+# the first sixty lines, so a pub get that resolved a hundred packages first
+# pushes them out of the body entirely. That is what run 38542162783's pull
+# request showed: package versions, and nothing about the failure. They are
+# quoted into the prose now, and this is the case that says so.
+{
+  echo "Resolving dependencies..."
+  for i in $(seq 1 120); do
+    echo "  package_$i 1.0.0 (1.1.0 available)"
+  done
+  cat "$work/locale.txt"
+} > "$work/locale-buried.txt"
+run 1 deps "$work/locale-buried.txt"
+if [[ "$out" == *"Current @@locale value: es-ES"* ]] &&
+  [[ "$out" == *"Current filename extension: es"* ]]; then
+  pass "the two values reach the body even when the excerpt cannot hold them"
+else
+  fail "the two values reach the body even when the excerpt cannot hold them: $out"
+fi
+
+# gen-l10n reports every error it found, so one run carries both shapes. An
+# elif would have dropped whichever lost - and the locale shape is the one with
+# no filename in it, so it is the one a reader cannot reconstruct.
+cat "$work/icu.txt" "$work/locale.txt" > "$work/both.txt"
+run 1 deps "$work/both.txt"
+if [[ "$out" == *"app_ru.arb:commonCopyFailed"* ]] &&
+  [[ "$out" == *"declares a locale its filename contradicts"* ]] &&
+  [[ "$out" == *"Current @@locale value: es-ES"* ]]; then
+  pass "a run carrying both shapes reports both"
+else
+  fail "a run carrying both shapes reports both: $out"
 fi
 
 # The case that made this an analyze check rather than a gen-l10n one.

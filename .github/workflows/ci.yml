@@ -96,17 +96,16 @@ jobs:
       - name: Test the translation compile summary
         run: .github/scripts/summarize_l10n_failure_test.sh
 
-      # Same reason as the line above: the sync is what runs this one with
-      # --write, and its pull requests run no jobs of their own.
+      # The guard below is only as good as the fixer the sync runs with
+      # --write, and nothing else exercises that path - the sync's own runs are
+      # nightly and its pull request is the first place a mistake would show.
       - name: Test the ARB locale guard
         run: .github/scripts/check_arb_locales_test.sh
 
-      # Here rather than after the Flutter setup, because `pub get` generates
-      # the localizations and this failure arrives from there - where it looks
-      # like a stale pubspec.lock. The script's header has the whole account.
-      # It needs nothing but the checkout, so it costs nothing to ask first.
-      - name: Check every translation declares the locale its filename says
-        run: .github/scripts/check_arb_locales.sh
+      # Which of the two families of pub get failure a job is looking at. The
+      # call is in setup-flutter, where no test can reach it.
+      - name: Test the pub get failure message
+        run: .github/scripts/pub_get_failure_message_test.sh
 
       # The button font is built from text, not drawn in an editor: every
       # glyph is a block of # and . in font/src, and the .ttf is committed so

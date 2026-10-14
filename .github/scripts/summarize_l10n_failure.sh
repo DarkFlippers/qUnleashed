@@ -65,10 +65,16 @@ fi
 #                       argument its callers do not pass
 #   `@@locale` against the filename - gen-l10n names no file at all, only the
 #                       two values, so there is nothing for the loop below to
-#                       match on and it needs a branch of its own. #320
+#                       match on and it is reported separately. Run
+#                       38542162783 is one.
 #
 # The third is why this is not a gen-l10n check. `{area}` to `{zona}` compiles
 # clean and breaks the build on main; only the analyzer sees it.
+#
+# The fourth is reported *as well as* the first two rather than instead of
+# them. gen-l10n reports every error it found - "failed with 2 errors" - so one
+# run can carry a shape that names a file and a shape that does not, and an
+# `elif` would have dropped whichever lost.
 sites=()
 while IFS= read -r line || [[ -n "$line" ]]; do
   case "$line" in
@@ -84,6 +90,33 @@ while IFS= read -r line || [[ -n "$line" ]]; do
   esac
 done < "$output"
 
+locale_mismatch=0
+if grep -q 'The locale specified in @@locale and the arb filename do not match' \
+  "$output"; then
+  locale_mismatch=1
+fi
+
+# The two values gen-l10n printed, quoted into the prose rather than left to
+# the excerpt at the end of this script. They are the last lines of its output
+# and that excerpt keeps the first sixty, and a `pub get` that resolved a
+# hundred packages first fills those sixty by itself - which is exactly what
+# run 38542162783's pull request body showed: a list of package versions, and
+# nothing about the failure at all.
+locale_note() {
+  echo "::error::gen-l10n refused a translation whose @@locale disagrees with its filename" >&2
+  { grep -e 'Current @@locale value' -e 'Current filename extension' "$output" ||
+    true; } | sed 's/^[[:space:]]*/    /'
+  echo
+  echo "gen-l10n names no file for that one - the file is the one whose name"
+  echo "carries the second value. \`.github/scripts/check_arb_locales.sh\` is"
+  echo "what settles it, and its header says why Crowdin sends it this way and"
+  echo "why the filename is the side that wins. This branch is normalised by"
+  echo "the step above the build, so a file that got here without it is either"
+  echo "that step not running or \`translations/app_en.arb\`, which is this"
+  echo "repository's own and is corrected by hand."
+  echo
+}
+
 if ((${#sites[@]} > 0)); then
   echo "A translation does not build."
   echo
@@ -92,18 +125,15 @@ if ((${#sites[@]} > 0)); then
     echo "- \`$what\`"
   done
   echo
-elif grep -q 'The locale specified in @@locale and the arb filename do not match' \
-  "$output"; then
-  echo "::error::gen-l10n refused a translation whose @@locale disagrees with its filename" >&2
-  echo "A translation declares a locale its filename contradicts."
+  if ((locale_mismatch)); then
+    echo "One of them also declares a locale its filename contradicts:"
+    echo
+    locale_note
+  fi
+elif ((locale_mismatch)); then
+  echo "A translation declares a locale its filename contradicts:"
   echo
-  echo "gen-l10n names no file for this one, only the two values below - the"
-  echo "file is the one whose name carries the second of them."
-  echo
-  echo "This branch is normalised by \`.github/scripts/check_arb_locales.sh\`,"
-  echo "whose header says why Crowdin sends it this way and why the filename"
-  echo "wins. A file that got here without it means that step did not run."
-  echo
+  locale_note
 elif [[ "$phase" == "analyze" ]]; then
   echo "A translation builds, but no longer matches the code that uses it."
   echo
