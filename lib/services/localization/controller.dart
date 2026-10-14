@@ -27,6 +27,31 @@ class QLocaleController extends ChangeNotifier with WidgetsBindingObserver {
 
   static List<Locale> get supported => L10n.supportedLocales;
 
+  /// What the app renders in when it has nothing better: the ARB template's
+  /// own language.
+  ///
+  /// It has to be named rather than taken from the head of the list.
+  /// `basicLocaleListResolution` answers with the *first* entry of whatever it
+  /// is given - both when nothing matches and when the device offers no
+  /// preference at all (`app.dart:154` and `:237` in the framework) - and
+  /// `gen-l10n` emits `supportedLocales` sorted, so the head of that list is
+  /// whichever language sorts first. It was `en` until Belarusian arrived from
+  /// Crowdin and silently became `be`, which would have rendered the whole app
+  /// in Belarusian on every device whose language it does not speak.
+  static const Locale fallback = Locale('en');
+
+  /// [supported], with [fallback] first, for anything that resolves a device
+  /// language. The picker uses [supported] instead, where sorted is what a
+  /// reader wants.
+  ///
+  /// This list is what `MaterialApp.supportedLocales` is given as well, because
+  /// the framework runs the same resolution for the widget tree and would
+  /// otherwise fall back to the sorted head on its own.
+  static final List<Locale> resolutionOrder = <Locale>[
+    fallback,
+    ...L10n.supportedLocales.where((locale) => locale != fallback),
+  ];
+
   /// Locale the app actually renders in, with the device language mapped onto
   /// a supported one.
   Locale get resolved {
@@ -35,10 +60,10 @@ class QLocaleController extends ChangeNotifier with WidgetsBindingObserver {
     try {
       return basicLocaleListResolution(
         WidgetsBinding.instance.platformDispatcher.locales,
-        L10n.supportedLocales,
+        resolutionOrder,
       );
     } catch (_) {
-      return L10n.supportedLocales.first;
+      return fallback;
     }
   }
 
