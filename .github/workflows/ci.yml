@@ -96,6 +96,17 @@ jobs:
       - name: Test the translation compile summary
         run: .github/scripts/summarize_l10n_failure_test.sh
 
+      # The guard below is only as good as the fixer the sync runs with
+      # --write, and nothing else exercises that path - the sync's own runs are
+      # nightly and its pull request is the first place a mistake would show.
+      - name: Test the ARB locale guard
+        run: .github/scripts/check_arb_locales_test.sh
+
+      # Which of the two families of pub get failure a job is looking at. The
+      # call is in setup-flutter, where no test can reach it.
+      - name: Test the pub get failure message
+        run: .github/scripts/pub_get_failure_message_test.sh
+
       # The button font is built from text, not drawn in an editor: every
       # glyph is a block of # and . in font/src, and the .ttf is committed so
       # nothing has to run before the app compiles. This is what keeps the two

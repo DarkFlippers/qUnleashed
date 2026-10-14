@@ -19,11 +19,9 @@ inputs:
     default: "3.47.1"
   pub-get:
     description: >
-      Set to "false" to install the SDK without fetching dependencies. Only the
-      Crowdin sync does: it needs to run pub get itself and read what comes
-      back, because `generate: true` makes pub get compile the translations,
-      and the --enforce-lockfile failure below would report a broken
-      translation as a stale lockfile.
+      Set to "false" to install the SDK without fetching dependencies, and to
+      skip the translation preflight with it. Only the Crowdin sync does, and
+      crowdin-rx.yml says why where it does it.
     required: false
     default: "true"
   swift-package-manager:
@@ -73,11 +71,38 @@ runs:
     # lib/modules/dartufbt record a version string and no hash, so a submodule
     # whose code moved still satisfies the lockfile. What pins those is the
     # gitlink plus `submodules: recursive` on every checkout.
+    #
+    # The preflight, before the command it is a preflight for. `pub get`
+    # compiles the translations, so a translation that does not compile fails
+    # it - and for one shape, an `@@locale` that contradicts its own filename,
+    # gen-l10n names no file at all. This names it, and it needs nothing but
+    # the checkout. Its header has the rest, including why it is here rather
+    # than in ci.yml: five jobs call this action and only one of them is
+    # ci.yml's.
+    - name: Check every translation declares the locale its filename says
+      if: inputs.pub-get != 'false'
+      shell: bash
+      run: "${GITHUB_WORKSPACE}/.github/scripts/check_arb_locales.sh"
+
+    # `generate: true` makes this command compile the translations as well, so
+    # it fails for two unrelated families of reason and the lockfile is only
+    # one of them. Which it was is decided by pub_get_failure_message.sh, whose
+    # header has the run that paid for it, from the output kept here - not from
+    # the exit status, which is 1 either way.
+    #
+    # The output goes to a file and is printed afterwards rather than through
+    # `tee`: in a pipeline a `tee` that cannot write - a full disk, an
+    # unwritable RUNNER_TEMP - fails the pipeline under `pipefail`, and a
+    # successful install would then be reported as the very lockfile failure
+    # this is here to stop misreporting.
     - name: Install Flutter dependencies
       if: inputs.pub-get != 'false'
       shell: bash
       run: |
-        if ! flutter pub get --enforce-lockfile; then
-          echo "::error::pubspec.lock does not match pubspec.yaml or the pinned Flutter SDK. Run 'flutter pub get' locally and commit the regenerated pubspec.lock. Do not drop --enforce-lockfile - that is what keeps CI and releases on the committed dependency set."
-          exit 1
-        fi
+        status=0
+        flutter pub get --enforce-lockfile > "${RUNNER_TEMP}/pub-get.txt" 2>&1 || status=$?
+        cat "${RUNNER_TEMP}/pub-get.txt"
+        ((status == 0)) && exit 0
+        "${GITHUB_WORKSPACE}/.github/scripts/pub_get_failure_message.sh" \
+          "${RUNNER_TEMP}/pub-get.txt"
+        exit 1
