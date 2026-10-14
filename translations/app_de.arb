@@ -1,0 +1,278 @@
+{
+  "@@locale": "de",
+  "languageName": "Deutsch",
+  "@languageName": {
+    "description": "This language's own name, for the list in Settings -> Language. Translate it as the name of YOUR language written in YOUR language - Deutsch, Русский, Українська - not as a translation of the word \"English\". It is the one entry every language carries a different answer to, and it is what the picker shows for that language whatever the app is currently running in."
+  },
+  "settingsLanguageSubtitle": "App Sprache, Systemstandard",
+  "@settingsLanguageSubtitle": {
+    "description": "Subtitle under the Language tile on the Settings screen."
+  },
+  "languageSystemDefault": "Systemstandard",
+  "@languageSystemDefault": {
+    "description": "First entry of the language list: use the language the device is set to."
+  },
+  "languageSystemDefaultSubtitle": "Halten Sie sich an die Sprache des Geräts.",
+  "@languageSystemDefaultSubtitle": {
+    "description": "Explanation under the System default entry of the language list."
+  },
+  "navArchive": "Archiv",
+  "@navArchive": {
+    "description": "Bottom navigation tab that opens the file archive."
+  },
+  "navApps": "Apps",
+  "@navApps": {
+    "description": "Bottom navigation tab that opens the apps catalog."
+  },
+  "navTools": "Werkzeuge",
+  "@navTools": {
+    "description": "Bottom navigation tab that opens the tools list."
+  },
+  "deviceStateNoDevice": "Kein Gerät",
+  "@deviceStateNoDevice": {
+    "description": "Device tab label when no Flipper has ever been paired."
+  },
+  "deviceStateDisconnected": "Verbindung getrennt",
+  "@deviceStateDisconnected": {
+    "description": "Device tab label when a known Flipper is not currently connected."
+  },
+  "deviceStateConnecting": "Verbindung wird hergestellt",
+  "@deviceStateConnecting": {
+    "description": "Device tab label while the link to the Flipper is being established."
+  },
+  "deviceStateDfu": "DFU",
+  "@deviceStateDfu": {
+    "description": "Device tab label while the Flipper is in firmware recovery (DFU) mode. Technical abbreviation, usually left as is."
+  },
+  "deviceStateRecovering": "Wiederherstellung",
+  "@deviceStateRecovering": {
+    "description": "Device tab label while the Flipper firmware is being repaired."
+  },
+  "deviceStateSyncing": "Synchronisiere",
+  "@deviceStateSyncing": {
+    "description": "Device tab label while the archive is being read from the Flipper."
+  },
+  "deviceStateSynced": "Synchronisiert",
+  "@deviceStateSynced": {
+    "description": "Device tab label when the archive finished syncing."
+  },
+  "deviceStateConnected": "Verbunden",
+  "@deviceStateConnected": {
+    "description": "Device tab label when the Flipper is connected."
+  },
+  "themeModeFirmware": "Firmware anpassen",
+  "@themeModeFirmware": {
+    "description": "Theme option: take light or dark from the connected firmware."
+  },
+  "settingsTitle": "Einstellungen",
+  "@settingsTitle": {
+    "description": "Title of the Settings screen, and tooltip of the button that opens it."
+  },
+  "aboutTitle": "Über",
+  "@aboutTitle": {
+    "description": "Title of the About screen."
+  },
+  "aboutShopEu": "Shop (EU)",
+  "@aboutShopEu": {
+    "description": "Button on the About screen linking to the European hardware shop."
+  },
+  "aboutShopRu": "Shop (RU)",
+  "@aboutShopRu": {
+    "description": "Button on the About screen linking to the Russian hardware shop."
+  },
+  "aboutAppGithub": "App GitHub",
+  "@aboutAppGithub": {
+    "description": "Button linking to the source repository of this app, as opposed to the firmware repository."
+  },
+  "aboutDonateFirmware": "Für Firmware spenden",
+  "@aboutDonateFirmware": {
+    "description": "Button linking to the donation page of the Unleashed firmware project."
+  },
+  "aboutDonateApp": "Für App spenden",
+  "@aboutDonateApp": {
+    "description": "Button linking to the donation page of this app."
+  },
+  "aboutUnleashedWeb": "Unleashed Web",
+  "@aboutUnleashedWeb": {
+    "description": "Button linking to the Unleashed firmware website."
+  },
+  "aboutApertureFoxWeb": "ApertureFox Web",
+  "@aboutApertureFoxWeb": {
+    "description": "Button linking to the website of the app author."
+  },
+  "aboutDevBuilds": "Dev-Builds",
+  "@aboutDevBuilds": {
+    "description": "Button linking to nightly, unreleased firmware builds."
+  },
+  "aboutWebUpdater": "Web Updater",
+  "@aboutWebUpdater": {
+    "description": "Button linking to the browser-based firmware updater."
+  },
+  "aboutLicense": "Lizenz",
+  "@aboutLicense": {
+    "description": "Button on the About screen that opens the app license text."
+  },
+  "licenseTitle": "GPL v3 Lizenz",
+  "@licenseTitle": {
+    "description": "Title of the screen showing the full app license."
+  },
+  "settingsDeviceTitle": "Gerät",
+  "@settingsDeviceTitle": {
+    "description": "Title of the device settings screen, and of its tile on the Settings screen."
+  },
+  "settingsDeviceSubtitle": "Automatische Verbindung, Uhr Sync",
+  "@settingsDeviceSubtitle": {
+    "description": "Subtitle under the Device tile on the Settings screen."
+  },
+  "deviceGroupAutoConnect": "Automatische Verbindung",
+  "@deviceGroupAutoConnect": {
+    "description": "Heading of the group of auto-connect toggles on the device settings screen."
+  },
+  "deviceAutoConnectUsb": "Automatische USB Verbindung",
+  "@deviceAutoConnectUsb": {
+    "description": "Toggle: connect on its own to a Flipper plugged in over USB."
+  },
+  "deviceAutoConnectUsbSubtitle": "Verbinden Sie sich mit einem Flipper, sobald er mit einem Kabel verbunden ist.",
+  "@deviceAutoConnectUsbSubtitle": {
+    "description": "Explanation under the USB auto-connect toggle."
+  },
+  "deviceAutoConnectBle": "Automatische Bluetooth-Verbindung",
+  "@deviceAutoConnectBle": {
+    "description": "Toggle: connect on its own to the last remembered Bluetooth device."
+  },
+  "deviceAutoConnectBleSubtitle": "Verbinden Sie sich mit dem zuletzt gespeicherten Gerät, wenn es in Reichweite ist.",
+  "@deviceAutoConnectBleSubtitle": {
+    "description": "Explanation under the Bluetooth auto-connect toggle."
+  },
+  "deviceGroupSync": "Synchronisierung",
+  "@deviceGroupSync": {
+    "description": "Heading of the group of synchronization toggles on the device settings screen."
+  },
+  "deviceSyncTime": "Sync-Zeit beim Start",
+  "@deviceSyncTime": {
+    "description": "Toggle: send the phone clock to the device after connecting."
+  },
+  "deviceSyncTimeSubtitle": "Senden Sie die Telefonuhr an das Gerät, sobald sie verbunden ist.",
+  "@deviceSyncTimeSubtitle": {
+    "description": "Explanation under the Sync time on start toggle."
+  },
+  "settingsNotificationsTitle": "Benachrichtigungen",
+  "@settingsNotificationsTitle": {
+    "description": "Title of the notification settings screen, and of its tile on the Settings screen."
+  },
+  "settingsNotificationsSubtitle": "App- und Firmware-Versionen",
+  "@settingsNotificationsSubtitle": {
+    "description": "Subtitle under the Notifications tile on the Settings screen."
+  },
+  "settingsDiagnosticsTitle": "Diagnose",
+  "@settingsDiagnosticsTitle": {
+    "description": "Title of the Diagnostics screen and of its tile on the Settings screen. Holds the switch for sharing failures with the developers, and below it the log of errors and warnings this device recorded. Was called \"Log\" before the switch was added."
+  },
+  "settingsDiagnosticsSubtitle": "Teile was fehlschlägt, und lese das Log",
+  "@settingsDiagnosticsSubtitle": {
+    "description": "Subtitle under the Diagnostics tile on the Settings screen. Names both halves of the screen: the sharing switch and the recorded log."
+  },
+  "diagnosticsShareTitle": "Logs mit Entwicklern teilen",
+  "@diagnosticsShareTitle": {
+    "description": "Label of the switch that decides whether errors and crashes are sent to the developers. On by default. Phrased as what the user gets rather than as the name of a service, because the service is an implementation detail that may change."
+  },
+  "diagnosticsShareSubtitle": "Fehler und Abstürze werden automatisch gemeldet, damit sie behoben werden können. Es werden zu keinem Zeitpunkt Kartendaten, Schlüssel oder Aufnahmen übertragen.",
+  "@diagnosticsShareSubtitle": {
+    "description": "Explains the switch above it. Two facts, in the order a user asks them: that sending needs no action from them, and what is never included. The second half matters because this app handles card dumps, keys and radio captures, and the user has no way to verify the claim themselves."
+  },
+  "storageAppIconCache": "App-Symbol-Cache",
+  "@storageAppIconCache": {
+    "description": "Storage area: cached icons of catalog apps."
+  },
+  "storageAppIconCacheSubtitle": "Cache-App-Symbole",
+  "@storageAppIconCacheSubtitle": {
+    "description": "Explanation of the App icon cache storage area."
+  },
+  "storageNetworkCache": "Netzwerk-Cache",
+  "@storageNetworkCache": {
+    "description": "Storage area: cached HTTP responses."
+  },
+  "storageNetworkCacheSubtitle": "Cache-App-Katalogantworten",
+  "@storageNetworkCacheSubtitle": {
+    "description": "Explanation of the Network cache storage area."
+  },
+  "storageShareCache": "Cache teilen",
+  "@storageShareCache": {
+    "description": "Storage area: temporary copies made when sharing a file."
+  },
+  "storageShareCacheSubtitle": "Temporäre Dateien zum Teilen erstellt",
+  "@storageShareCacheSubtitle": {
+    "description": "Explanation of the Share cache storage area."
+  },
+  "storageFirmwareSdk": "Firmware-SDK",
+  "@storageFirmwareSdk": {
+    "description": "Storage area: the firmware SDK used to build apps from source."
+  },
+  "storageFirmwareSdkSubtitle": "Für Builds verwendetes SDK",
+  "@storageFirmwareSdkSubtitle": {
+    "description": "Explanation of the Firmware SDK storage area."
+  },
+  "storageArmToolchain": "ARM Toolchain",
+  "@storageArmToolchain": {
+    "description": "Storage area: the GCC cross-compiler for the Flipper CPU."
+  },
+  "storageArmToolchainSubtitle": "GCC Toolchain zum Kompilieren",
+  "@storageArmToolchainSubtitle": {
+    "description": "Explanation of the ARM toolchain storage area."
+  },
+  "storageClearTitle": "{area} leeren?",
+  "@storageClearTitle": {
+    "description": "Confirmation dialog title before emptying a storage area. {area} is the area name, lowercased in English.",
+    "placeholders": {
+      "area": {
+        "type": "String"
+      }
+    }
+  },
+  "storageClearBody": "Das löscht permanent alles in diesem Ordner.",
+  "@storageClearBody": {
+    "description": "Body of the confirmation dialog before emptying a storage area."
+  },
+  "storageCleared": "{area} geleert",
+  "@storageCleared": {
+    "description": "Toast shown after a storage area was emptied. {area} is the area name.",
+    "placeholders": {
+      "area": {
+        "type": "String"
+      }
+    }
+  },
+  "storageClearFailed": "Fehler beim Löschen: {error}",
+  "@storageClearFailed": {
+    "description": "Toast shown when emptying a storage area failed. {error} is the technical error text.",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "themeModeFirmwareSubtitle": "Folgen Sie der verbundenen Firmware.",
+  "@themeModeFirmwareSubtitle": {
+    "description": "Explanation under the \"Match firmware\" theme option."
+  },
+  "themeModeSystemSubtitle": "Beachten Sie die Hell-Dunkel-Einstellung des Geräts.",
+  "@themeModeSystemSubtitle": {
+    "description": "Explanation under the \"Match system\" theme option."
+  },
+  "themeModeDarkSubtitle": "Immer das dunkle Theme verwenden.",
+  "@themeModeDarkSubtitle": {
+    "description": "Explanation under the \"Always dark\" theme option."
+  },
+  "themeModeLightSubtitle": "Immer das helle Theme verwenden.",
+  "@themeModeLightSubtitle": {
+    "description": "Explanation under the \"Always light\" theme option."
+  },
+  "appsModeAuto": "Automatisch",
+  "@appsModeAuto": {
+    "description": "Catalog mode option: let the app choose how to get apps for this firmware."
+  },
+  "appsModeAutoSubtitle": "Wählt den Modus für diese Firmware",
+  "@appsModeAutoSubtitle": {
+    "description": "Explanation of the Automatic catalog mode."
+  }
+}
