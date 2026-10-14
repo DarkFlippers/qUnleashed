@@ -20,10 +20,10 @@ inputs:
   pub-get:
     description: >
       Set to "false" to install the SDK without fetching dependencies. Only the
-      Crowdin sync does: it needs to run pub get itself and read what comes
-      back, because `generate: true` makes pub get compile the translations,
-      and the --enforce-lockfile failure below would report a broken
-      translation as a stale lockfile.
+      Crowdin sync does: `generate: true` makes pub get compile the
+      translations, and the sync needs the output of that - not just a verdict
+      on it - to write what it found into the pull request body, and to tell
+      the caller which of the two commands it ran produced the status.
     required: false
     default: "true"
   swift-package-manager:
@@ -73,11 +73,30 @@ runs:
     # lib/modules/dartufbt record a version string and no hash, so a submodule
     # whose code moved still satisfies the lockfile. What pins those is the
     # gitlink plus `submodules: recursive` on every checkout.
+    #
+    # `generate: true` makes this command compile the translations as well, so
+    # it fails for two unrelated reasons and the lockfile is only one of them.
+    # Every job in the repository comes through here, which is what made naming
+    # the wrong one expensive: #320 was a translation declaring a locale its
+    # filename contradicted, and this step reported it as a stale pubspec.lock
+    # on every job at once. The four shapes a translation fails in are listed
+    # in summarize_l10n_failure.sh's header; all of them arrive here.
+    #
+    # The output is kept so the message can be chosen from it. Which failed is
+    # not inferred from the exit status - both are 1 - and not from the
+    # diagnostics either, which name files either way; the one line gen-l10n
+    # prints before them says plainly whose failure it is.
     - name: Install Flutter dependencies
       if: inputs.pub-get != 'false'
       shell: bash
       run: |
-        if ! flutter pub get --enforce-lockfile; then
-          echo "::error::pubspec.lock does not match pubspec.yaml or the pinned Flutter SDK. Run 'flutter pub get' locally and commit the regenerated pubspec.lock. Do not drop --enforce-lockfile - that is what keeps CI and releases on the committed dependency set."
-          exit 1
+        if flutter pub get --enforce-lockfile 2>&1 | tee "${RUNNER_TEMP}/pub-get.txt"; then
+          exit 0
         fi
+        if grep -qE 'Generating (synthetic )?localizations package failed' \
+          "${RUNNER_TEMP}/pub-get.txt"; then
+          echo "::error::A translation failed to compile. pub get generates the localizations, so this command is what reports it - the gen-l10n output above says which file, and nothing is wrong with pubspec.lock."
+        else
+          echo "::error::pubspec.lock does not match pubspec.yaml or the pinned Flutter SDK. Run 'flutter pub get' locally and commit the regenerated pubspec.lock. Do not drop --enforce-lockfile - that is what keeps CI and releases on the committed dependency set."
+        fi
+        exit 1

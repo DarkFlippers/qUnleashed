@@ -121,6 +121,48 @@ else
   fail "a placeholder ICU cannot lex names the file and the key ($rc): $out"
 fi
 
+# Crowdin's es-ES arriving in app_es.arb, which is the one shape gen-l10n
+# reports without naming a file. Captured from the sync's own run on
+# 2026-10-14: the pull request it wrote said nothing blamed a translation, and
+# the lockfile the other job blamed was fine.
+cat > "$work/locale.txt" <<'FIXTURE'
+Resolving dependencies...
+Downloading packages...
+  analyzer 14.4.0 (14.5.0 available)
+Got dependencies!
+96 packages have newer versions incompatible with dependency constraints.
+Try `flutter pub outdated` for more information.
+Generating synthetic localizations package failed with 1 error:
+
+Error: The locale specified in @@locale and the arb filename do not match.
+Please make sure that they match, since this prevents any confusion
+with which locale to use. Otherwise, specify the locale in either the
+filename or the @@locale key only.
+Current @@locale value: es-ES
+Current filename extension: es
+FIXTURE
+run 1 deps "$work/locale.txt"
+if ((rc == 1)) && [[ "$out" == *"declares a locale its filename contradicts"* ]]; then
+  pass "a locale that disagrees with its filename is blamed on the translation"
+else
+  fail "a locale that disagrees with its filename is blamed ($rc): $out"
+fi
+if [[ "$out" != *"nothing blamed a translation"* ]]; then
+  pass "and is not reported as a failure nothing blamed on one"
+else
+  fail "and is not reported as a failure nothing blamed on one: $out"
+fi
+if [[ "$out" == *"es-ES"* ]] && [[ "$out" == *"Current filename extension: es"* ]]; then
+  pass "and the two values gen-l10n printed survive, since it names no file"
+else
+  fail "and the two values gen-l10n printed survive: $out"
+fi
+if [[ "$err" == *"::error::"* ]] && [[ "$out" != *"::error::"* ]]; then
+  pass "and its annotation goes to the run, not into the body"
+else
+  fail "and its annotation goes to the run: out=$out err=$err"
+fi
+
 # The case that made this an analyze check rather than a gen-l10n one.
 run 1 analyze "$work/analyzer.txt"
 if ((rc == 1)); then

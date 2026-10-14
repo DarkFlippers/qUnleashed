@@ -55,14 +55,17 @@ if [[ "$status" == "0" ]]; then
   exit 0
 fi
 
-# Three failures, three shapes, all of them real - each was reproduced against
-# this repository before this was written.
+# Four failures, four shapes, all of them real - each was reproduced against
+# this repository before it was written down here.
 #
 #   truncated file      gen-l10n names a path and a FormatException
 #   placeholder renamed to a name ICU cannot lex - names file and key
 #   placeholder renamed to a name it can - gen-l10n is silent and the analyzer
 #                       fails instead, because the generated method grew an
 #                       argument its callers do not pass
+#   `@@locale` against the filename - gen-l10n names no file at all, only the
+#                       two values, so there is nothing for the loop below to
+#                       match on and it needs a branch of its own. #320
 #
 # The third is why this is not a gen-l10n check. `{area}` to `{zona}` compiles
 # clean and breaks the build on main; only the analyzer sees it.
@@ -88,6 +91,18 @@ if ((${#sites[@]} > 0)); then
     echo "::error::gen-l10n rejected $what" >&2
     echo "- \`$what\`"
   done
+  echo
+elif grep -q 'The locale specified in @@locale and the arb filename do not match' \
+  "$output"; then
+  echo "::error::gen-l10n refused a translation whose @@locale disagrees with its filename" >&2
+  echo "A translation declares a locale its filename contradicts."
+  echo
+  echo "gen-l10n names no file for this one, only the two values below - the"
+  echo "file is the one whose name carries the second of them."
+  echo
+  echo "This branch is normalised by \`.github/scripts/check_arb_locales.sh\`,"
+  echo "whose header says why Crowdin sends it this way and why the filename"
+  echo "wins. A file that got here without it means that step did not run."
   echo
 elif [[ "$phase" == "analyze" ]]; then
   echo "A translation builds, but no longer matches the code that uses it."
