@@ -86,7 +86,10 @@ class _QUnleashedAppState extends State<QUnleashedApp> {
           debugShowCheckedModeBanner: false,
           locale: locales.locale,
           localizationsDelegates: L10n.localizationsDelegates,
-          supportedLocales: L10n.supportedLocales,
+          // Not `L10n.supportedLocales`: the framework resolves a device
+          // language against the head of this list, and gen-l10n sorts it.
+          // QLocaleController.resolutionOrder says what that cost.
+          supportedLocales: QLocaleController.resolutionOrder,
           theme: buildAppTheme(controller.brightness, controller.accent),
           themeAnimationDuration: Duration.zero,
           navigatorObservers: widget.navigatorObservers,

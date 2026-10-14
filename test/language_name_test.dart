@@ -58,7 +58,24 @@ void main() {
   test('a language the app does not speak falls back to its tag', () {
     // `lookupL10n` throws for these rather than returning null, so the point
     // is that nothing reaches it.
-    expect(QLocaleController.nameOf(const Locale('de')), 'de');
-    expect(QLocaleController.nameOf(const Locale('pt', 'BR')), 'pt-BR');
+    //
+    // Checked to be unsupported rather than assumed. This read `de` until
+    // German arrived from Crowdin and the app began naming it `Deutsch`,
+    // which failed this test for the one reason it was never about - and the
+    // same will happen to any language named here the day it is enabled.
+    const candidates = <Locale>[Locale('ja'), Locale('ko'), Locale('pt', 'BR')];
+    final unspoken = candidates
+        .where((locale) => !L10n.delegate.isSupported(locale))
+        .toList();
+    expect(
+      unspoken,
+      isNotEmpty,
+      reason:
+          'every candidate is a language the app now speaks, so this asserted '
+          'nothing - name one it does not',
+    );
+    for (final locale in unspoken) {
+      expect(QLocaleController.nameOf(locale), locale.toLanguageTag());
+    }
   });
 }
