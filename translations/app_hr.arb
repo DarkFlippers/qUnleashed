@@ -1,0 +1,203 @@
+{
+  "@@locale": "hr",
+  "appTitle": "qUnleashed",
+  "@appTitle": {
+    "description": "Application name shown in the OS task switcher. Product name, keep untranslated."
+  },
+  "languageName": "Hrvatski",
+  "@languageName": {
+    "description": "This language's own name, for the list in Settings -> Language. Translate it as the name of YOUR language written in YOUR language - Deutsch, Русский, Українська - not as a translation of the word \"English\". It is the one entry every language carries a different answer to, and it is what the picker shows for that language whatever the app is currently running in."
+  },
+  "settingsLanguageTitle": "Jezik",
+  "@settingsLanguageTitle": {
+    "description": "Title of the language settings screen and of its tile on the Settings screen."
+  },
+  "settingsLanguageSubtitle": "Jezik Aplikacije",
+  "@settingsLanguageSubtitle": {
+    "description": "Subtitle under the Language tile on the Settings screen."
+  },
+  "languageSystemDefault": "Sistemski zadano",
+  "@languageSystemDefault": {
+    "description": "First entry of the language list: use the language the device is set to."
+  },
+  "languageSystemDefaultSubtitle": "Prati jezik uređaja",
+  "@languageSystemDefaultSubtitle": {
+    "description": "Explanation under the System default entry of the language list."
+  },
+  "navArchive": "Arhiva",
+  "@navArchive": {
+    "description": "Bottom navigation tab that opens the file archive."
+  },
+  "navApps": "Aplikacije",
+  "@navApps": {
+    "description": "Bottom navigation tab that opens the apps catalog."
+  },
+  "navTools": "Alati",
+  "@navTools": {
+    "description": "Bottom navigation tab that opens the tools list."
+  },
+  "deviceStateNoDevice": "Nema Uređaja",
+  "@deviceStateNoDevice": {
+    "description": "Device tab label when no Flipper has ever been paired."
+  },
+  "deviceStateDisconnected": "Odspojeno",
+  "@deviceStateDisconnected": {
+    "description": "Device tab label when a known Flipper is not currently connected."
+  },
+  "deviceStateConnecting": "Spajanje",
+  "@deviceStateConnecting": {
+    "description": "Device tab label while the link to the Flipper is being established."
+  },
+  "deviceStateDfu": "DFU",
+  "@deviceStateDfu": {
+    "description": "Device tab label while the Flipper is in firmware recovery (DFU) mode. Technical abbreviation, usually left as is."
+  },
+  "deviceStateRecovering": "Oporavak",
+  "@deviceStateRecovering": {
+    "description": "Device tab label while the Flipper firmware is being repaired."
+  },
+  "deviceStateSyncing": "Sinkronizacija",
+  "@deviceStateSyncing": {
+    "description": "Device tab label while the archive is being read from the Flipper."
+  },
+  "deviceStateSynced": "Sinkronizirano",
+  "@deviceStateSynced": {
+    "description": "Device tab label when the archive finished syncing."
+  },
+  "deviceStateConnected": "Spojeno",
+  "@deviceStateConnected": {
+    "description": "Device tab label when the Flipper is connected."
+  },
+  "themeModeFirmware": "Uskladi firmware",
+  "@themeModeFirmware": {
+    "description": "Theme option: take light or dark from the connected firmware."
+  },
+  "themeModeSystem": "Uskladi sistem",
+  "@themeModeSystem": {
+    "description": "Theme option: follow the device light/dark setting."
+  },
+  "themeModeDark": "Uvijek mračno",
+  "@themeModeDark": {
+    "description": "Theme option: always use the dark theme."
+  },
+  "themeModeLight": "Uvijek svijetlo",
+  "@themeModeLight": {
+    "description": "Theme option: always use the light theme."
+  },
+  "settingsTitle": "Postavke",
+  "@settingsTitle": {
+    "description": "Title of the Settings screen, and tooltip of the button that opens it."
+  },
+  "aboutTitle": "O",
+  "@aboutTitle": {
+    "description": "Title of the About screen."
+  },
+  "aboutShopEu": "Trgovina (EU)",
+  "@aboutShopEu": {
+    "description": "Button on the About screen linking to the European hardware shop."
+  },
+  "aboutShopRu": "Trgovina (RU)",
+  "@aboutShopRu": {
+    "description": "Button on the About screen linking to the Russian hardware shop."
+  },
+  "aboutAppGithub": "Aplikacija GitHub",
+  "@aboutAppGithub": {
+    "description": "Button linking to the source repository of this app, as opposed to the firmware repository."
+  },
+  "aboutDonateFirmware": "Donirati Firmware",
+  "@aboutDonateFirmware": {
+    "description": "Button linking to the donation page of the Unleashed firmware project."
+  },
+  "aboutDonateApp": "Donirati Aplikaciju",
+  "@aboutDonateApp": {
+    "description": "Button linking to the donation page of this app."
+  },
+  "aboutUnleashedWeb": "Unleashed Web stranica",
+  "@aboutUnleashedWeb": {
+    "description": "Button linking to the Unleashed firmware website."
+  },
+  "aboutApertureFoxWeb": "ApertureFox Web stranica",
+  "@aboutApertureFoxWeb": {
+    "description": "Button linking to the website of the app author."
+  },
+  "aboutDevBuilds": "Razvojne Izgradnje",
+  "@aboutDevBuilds": {
+    "description": "Button linking to nightly, unreleased firmware builds."
+  },
+  "aboutWebUpdater": "Web Ažurator",
+  "@aboutWebUpdater": {
+    "description": "Button linking to the browser-based firmware updater."
+  },
+  "aboutLicense": "Licenca",
+  "@aboutLicense": {
+    "description": "Button on the About screen that opens the app license text."
+  },
+  "licenseTitle": "GPL v3 Licenca",
+  "@licenseTitle": {
+    "description": "Title of the screen showing the full app license."
+  },
+  "settingsDeviceTitle": "Uređaj",
+  "@settingsDeviceTitle": {
+    "description": "Title of the device settings screen, and of its tile on the Settings screen."
+  },
+  "settingsDeviceSubtitle": "Automatsko-spajanje, sinkronizacija sata",
+  "@settingsDeviceSubtitle": {
+    "description": "Subtitle under the Device tile on the Settings screen."
+  },
+  "deviceGroupAutoConnect": "Automatsko-spajanje",
+  "@deviceGroupAutoConnect": {
+    "description": "Heading of the group of auto-connect toggles on the device settings screen."
+  },
+  "deviceAutoConnectUsb": "USB Automatsko-spajanje",
+  "@deviceAutoConnectUsb": {
+    "description": "Toggle: connect on its own to a Flipper plugged in over USB."
+  },
+  "deviceAutoConnectUsbSubtitle": "Povežite se na Flipper čim ga priključite kabelom.",
+  "@deviceAutoConnectUsbSubtitle": {
+    "description": "Explanation under the USB auto-connect toggle."
+  },
+  "deviceAutoConnectBle": "Bluetooth Automatsko-spajanje",
+  "@deviceAutoConnectBle": {
+    "description": "Toggle: connect on its own to the last remembered Bluetooth device."
+  },
+  "deviceAutoConnectBleSubtitle": "Povežite se s posljednjim zapamćenim uređajem kada je u dometu.",
+  "@deviceAutoConnectBleSubtitle": {
+    "description": "Explanation under the Bluetooth auto-connect toggle."
+  },
+  "deviceGroupSync": "Sinkronizacija",
+  "@deviceGroupSync": {
+    "description": "Heading of the group of synchronization toggles on the device settings screen."
+  },
+  "deviceSyncTime": "Sinkroniziraj vrijeme pri pokretanju",
+  "@deviceSyncTime": {
+    "description": "Toggle: send the phone clock to the device after connecting."
+  },
+  "deviceSyncTimeSubtitle": "Pošaljite sat telefona na uređaj čim se poveže.",
+  "@deviceSyncTimeSubtitle": {
+    "description": "Explanation under the Sync time on start toggle."
+  },
+  "settingsNotificationsTitle": "Obavijesti",
+  "@settingsNotificationsTitle": {
+    "description": "Title of the notification settings screen, and of its tile on the Settings screen."
+  },
+  "settingsNotificationsSubtitle": "Izdanja aplikacija i firmvera",
+  "@settingsNotificationsSubtitle": {
+    "description": "Subtitle under the Notifications tile on the Settings screen."
+  },
+  "settingsDiagnosticsTitle": "Dijagnostika",
+  "@settingsDiagnosticsTitle": {
+    "description": "Title of the Diagnostics screen and of its tile on the Settings screen. Holds the switch for sharing failures with the developers, and below it the log of errors and warnings this device recorded. Was called \"Log\" before the switch was added."
+  },
+  "settingsDiagnosticsSubtitle": "Podijelite ono što ne uspijeva i pročitajte zapisnik.",
+  "@settingsDiagnosticsSubtitle": {
+    "description": "Subtitle under the Diagnostics tile on the Settings screen. Names both halves of the screen: the sharing switch and the recorded log."
+  },
+  "diagnosticsShareTitle": "Podijelite zapisnike s programerima",
+  "@diagnosticsShareTitle": {
+    "description": "Label of the switch that decides whether errors and crashes are sent to the developers. On by default. Phrased as what the user gets rather than as the name of a service, because the service is an implementation detail that may change."
+  },
+  "diagnosticsShareSubtitle": "Greške i padovi se šalju automatski kako bi se mogli ispraviti. Nikada se ne šalju podaci o karticama, ključevi niti snimke.",
+  "@diagnosticsShareSubtitle": {
+    "description": "Explains the switch above it. Two facts, in the order a user asks them: that sending needs no action from them, and what is never included. The second half matters because this app handles card dumps, keys and radio captures, and the user has no way to verify the claim themselves."
+  }
+}
