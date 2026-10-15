@@ -109,11 +109,12 @@ locale_note() {
   echo
   echo "gen-l10n names no file for that one - the file is the one whose name"
   echo "carries the second value. \`.github/scripts/check_arb_locales.sh\` is"
-  echo "what settles it, and its header says why Crowdin sends it this way and"
-  echo "why the filename is the side that wins. This branch is normalised by"
-  echo "the step above the build, so a file that got here without it is either"
-  echo "that step not running or \`translations/app_en.arb\`, which is this"
-  echo "repository's own and is corrected by hand."
+  echo "what names it, and its header says why Crowdin sends it this way and"
+  echo "why the filename is the side that wins. Crowdin normalises its own"
+  echo "export now, so a file that got here wrong means the post-export app"
+  echo "did not run, is not configured for this project, or does not cover"
+  echo "this language's filename - unless it is \`translations/app_en.arb\`,"
+  echo "which is this repository's own and is corrected by hand."
   echo
 }
 

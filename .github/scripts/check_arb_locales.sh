@@ -9,8 +9,9 @@
 # The reason here is this directory's own: everything in it except the English
 # source is Crowdin's, check_translation_sources.sh blocks a hand edit to one,
 # and a script that rewrote those files because somebody ran it to see what it
-# said would be handing them a commit that guard then refuses. The sync passes
-# --write; CI calls it bare.
+# said would be handing them a commit that guard then refuses. Nothing in CI
+# passes --write any more; what it is still for is below, and so is why it
+# stopped being the sync's job.
 #
 # ## Why anything has to be normalised
 #
@@ -30,10 +31,10 @@
 # underscores - `parserResult.toString().replaceAll('-', '_')`, in the
 # `AppResourceBundle(File)` factory in gen_l10n_types.dart, which is also where
 # the throw lives. So the comparison is `es-ES` against `es_ES`, and no
-# filename can produce a dashed left-hand side. Every country-coded entry in
-# `crowdin.yml`'s mapping is the same shape: `pt-PT`, `pt-BR`, `zh-CN`,
-# `zh-TW`, `zh-HK`, `es-MX`, `fr-CA`, `sr-CS`. Spanish is simply the first one
-# anybody enabled.
+# filename can produce a dashed left-hand side. Every hyphenated entry in
+# `crowdin.yml`'s `languages_mapping` is the same shape, the script subtag
+# `sr-Latn` among them - that file is the one place the list lives, and
+# Spanish is simply the first entry anybody enabled.
 #
 # ## Where this runs
 #
@@ -49,9 +50,25 @@
 # runners too, which is what keeps it to bash 3.2 and portable `sed` - the same
 # constraint check_ffi_exports.sh carries, and for the same reason.
 #
-# The Crowdin sync is the exception: it passes `pub-get: false` and runs its own
-# `pub get`, so it does not get this preflight. It gets --write instead, which
-# is better - it fixes the file rather than reporting it.
+# The Crowdin sync passes `pub-get: false` and runs its own `pub get`, so it
+# does not get that preflight. crowdin-rx.yml calls this script itself instead,
+# after it has laid the pull request's translations over main.
+#
+# It used to call it with --write. That repaired the file on the Crowdin branch
+# *after* the action had already committed, which left the branch one value
+# apart from what Crowdin exports for good: every sync then had a diff whether
+# a translation had changed or not, and #323 is the pull request that produces -
+# two commits that cancel each other, nothing else in it. The rewrite moved to
+# Crowdin, to a Custom Post-Export Processor app that applies this same rule to
+# the export before the download - the rule above in JavaScript, kept in this
+# repository at `.github/crowdin/normalise_locale.js`. The mapping cannot do it
+# for the reason given there, and docs/adr/0016-the-translation-branch-has-one-owner.md
+# is why the export is where it is fixed.
+#
+# --write stays as a hand lever: check_translation_sources.sh refuses a hand
+# edit to a Crowdin-owned ARB on any branch but `CROWDIN_BRANCH`, so that
+# branch is the only place its output may be committed - once, to unblock a
+# release, which is not the every-sync repair #323 was.
 #
 # ## Why the filename wins, and why the key is kept
 #
@@ -128,8 +145,9 @@ declared_locales() {
   sed -n 's/^[[:space:]]*"@@locale"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$1"
 }
 
-# Only --write needs one, and only --write runs on a Linux runner, so the
-# default path leaves nothing behind on the five jobs that just read.
+# Only --write needs one, and the only thing that passes it is this script's
+# own test suite, in a fixture - so the default path leaves nothing behind on
+# any job that checks the repository's translations.
 if ((write)); then
   tmp="$(mktemp "${TMPDIR:-/tmp}/arb-locale-XXXXXX")"
   trap 'rm -f "$tmp"' EXIT
@@ -235,10 +253,14 @@ cat <<'MESSAGE' >&2
 gen-l10n refuses the pair from inside `flutter pub get`. This script's header
 has why Crowdin sends it that way and why the filename is the side that wins.
 
+Crowdin normalises its own export now, so a translation that arrived wrong
+means the post-export app did not run, is not configured for this project, or
+does not cover this language's filename. Fixing it there rather than here is
+what keeps the next sync from reopening it.
+
 `check_arb_locales.sh --write` settles every file but `translations/app_en.arb`,
-which is this repository's own and is corrected by hand. The sync runs --write
-on the Crowdin branch, so a file that got here without it is either that step
-not running or the English source.
+which is this repository's own and is corrected by hand. Use it to see what the
+value should be; see the header for the one branch it may be committed on.
 MESSAGE
 
 # 2 outranks 1: a file this cannot read is a different problem from one it can,

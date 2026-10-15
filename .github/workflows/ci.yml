@@ -96,9 +96,9 @@ jobs:
       - name: Test the translation compile summary
         run: .github/scripts/summarize_l10n_failure_test.sh
 
-      # The guard below is only as good as the fixer the sync runs with
-      # --write, and nothing else exercises that path - the sync's own runs are
-      # nightly and its pull request is the first place a mistake would show.
+      # The sync no longer passes --write; this suite is the only thing that
+      # exercises it, so it is the only thing that would notice it rotting.
+      # What the flag is still for is in check_arb_locales.sh's header.
       - name: Test the ARB locale guard
         run: .github/scripts/check_arb_locales_test.sh
 

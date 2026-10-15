@@ -110,74 +110,8 @@ jobs:
         with:
           submodules: recursive
 
-      # Why a translation arrives declaring a locale its filename contradicts
-      # is in check_arb_locales.sh's header.
-      #
-      # A second commit on the branch, because the action downloads, commits
-      # and opens the pull request in one step: our first look at these files
-      # is once they are already on it. `push_translations: false` would hand
-      # them over before any commit, and it is declined rather than
-      # unavailable. What it costs is this workflow owning the branch, its
-      # force-push semantics, and the pull request's creation, title and base -
-      # three things the action does today at lines 44-48 and 54-66. What it
-      # buys is one commit instead of two, for a rewrite of one value that is
-      # idempotent, re-applies itself on the next sync, and is verified
-      # downstream in this same run. Not the plumbing scars above: those were
-      # the container running as root, which argues for owning less of this,
-      # not more.
-      #
-      # After the checkout above, not before it, and that is load-bearing: the
-      # Crowdin action may have left the workspace on the localization branch,
-      # which is a tree that does not carry this script - the same reason the
-      # checkout exists at all. Run from there it would die on a missing file,
-      # and every step after it is gated on success, so the build and the
-      # verdict would go with it.
-      #
-      # In a worktree, so the script keeps coming from main's tree while the
-      # commit lands on the branch. Before the overlay below, which fetches the
-      # branch again and therefore tests what is now on it.
-      #
-      # continue-on-error, because this step is not the verification - it is a
-      # repair. If it fails, the build below still runs and the summariser says
-      # plainly that a translation declares a locale its filename contradicts,
-      # which is a better pull request than no verdict at all.
-      - name: Make every translation declare the locale its filename says
-        if: steps.pr.outputs.number != ''
-        continue-on-error: true
-        env:
-          GIT_AUTHOR_NAME: github-actions[bot]
-          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
-          GIT_COMMITTER_NAME: github-actions[bot]
-          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
-        run: |
-          # A worktree left behind by an earlier run on a reused workspace
-          # would make `worktree add` refuse the path.
-          git worktree prune
-          git fetch --depth=1 origin l10n/crowdin
-          git worktree add --detach "${RUNNER_TEMP}/l10n" FETCH_HEAD
-          .github/scripts/check_arb_locales.sh --write "${RUNNER_TEMP}/l10n/translations"
-          # `diff --quiet` answers 0 for same and 1 for different, and anything
-          # else is git having failed. Reading "not 1" as "nothing to do" would
-          # drop the fix that was just written, delete the worktree holding it
-          # and leave the step green.
-          changed=0
-          git -C "${RUNNER_TEMP}/l10n" diff --quiet -- translations || changed=$?
-          case "$changed" in
-            0) echo "Nothing to normalise." ;;
-            1)
-              git -C "${RUNNER_TEMP}/l10n" --no-pager diff --stat -- translations
-              git -C "${RUNNER_TEMP}/l10n" commit -m \
-                "Make every translation declare the locale its filename says" -- translations
-              git -C "${RUNNER_TEMP}/l10n" push origin HEAD:refs/heads/l10n/crowdin
-              ;;
-            *)
-              echo "::error::git diff failed ($changed); not committing."
-              exit 1
-              ;;
-          esac
-          git worktree remove --force "${RUNNER_TEMP}/l10n"
-
       - name: Lay the pull request's translations over it
+        id: overlay
         if: steps.pr.outputs.number != ''
         run: |
           git fetch --depth=1 origin l10n/crowdin
@@ -247,6 +181,42 @@ jobs:
           cat "${RUNNER_TEMP}/verdict.md" >> "$GITHUB_STEP_SUMMARY"
           exit "$verdict"
 
+      # Why a translation arrives declaring a locale its filename contradicts,
+      # and why this is a check rather than the repair it was until #323, is in
+      # check_arb_locales.sh's header.
+      #
+      # After the overlay, because the pull request's translations are what it
+      # has to read. After the build, because a failure here must not skip it:
+      # the verdict in the body is built from the build's output, and every
+      # step between carries a bare `if:` that GitHub ANDs with success().
+      # Gated on the overlay rather than on the chain - that is the dependency
+      # the note above the checkout actually describes, and naming it is what
+      # lets this step be fatal instead of reporting through a flag.
+      #
+      # It writes its own section for the body, the way the build writes
+      # verdict.md. The fence substitution and the 60-line cap are
+      # summarize_l10n_failure.sh's, whose comment has why both: `gh pr edit`
+      # refuses a body over 65536 characters, and `head` would SIGPIPE its
+      # producer under pipefail.
+      - name: Check every translation declares the locale its filename says
+        if: "!cancelled() && steps.pr.outputs.number != '' && steps.overlay.outcome == 'success'"
+        run: |
+          # To a file and printed after, not through `tee`: setup-flutter's own
+          # comment has why.
+          status=0
+          .github/scripts/check_arb_locales.sh > "${RUNNER_TEMP}/locales.txt" 2>&1 || status=$?
+          cat "${RUNNER_TEMP}/locales.txt"
+          if ((status != 0)); then
+            {
+              echo "Crowdin sent a translation whose \`@@locale\` its filename contradicts:"
+              echo
+              echo '```'
+              sed 's/```/\x27\x27\x27/g' "${RUNNER_TEMP}/locales.txt" | sed -n '1,60p'
+              echo '```'
+            } > "${RUNNER_TEMP}/locale-finding.md"
+          fi
+          exit "$status"
+
       # The verdict goes above the status table, not below it. A broken
       # translation under twenty rows of language percentages is a notice
       # nobody reads.
@@ -264,6 +234,16 @@ jobs:
             exit 0
           fi
           : > "${RUNNER_TEMP}/pr-body.md"
+          # Above the verdict, because this names the file and gen-l10n for
+          # this one shape does not.
+          if [ -f "${RUNNER_TEMP}/locale-finding.md" ]; then
+            {
+              cat "${RUNNER_TEMP}/locale-finding.md"
+              echo
+              echo "---"
+              echo
+            } >> "${RUNNER_TEMP}/pr-body.md"
+          fi
           if [ -f "${RUNNER_TEMP}/verdict.md" ]; then
             {
               cat "${RUNNER_TEMP}/verdict.md"

@@ -100,8 +100,8 @@ expect_out "and the file, what it declares and what was expected are named" \
   "app_es.arb declares es-ES, its filename says es"
 expect_err "and the file is annotated for the pull request" \
   "::error file=translations/app_es.arb::"
-expect_err "and the fix is named for whoever reads the red job" \
-  "check_arb_locales.sh --write"
+expect_err "and the red job is told where it is fixed" \
+  "Crowdin normalises its own export"
 
 # The failure this exists for: #320, one key, a build nobody could read.
 fixture
@@ -122,26 +122,28 @@ expect_same_bytes "and a file that already agreed is untouched" \
 # This is GNU sed's answer. BSD sed terminates a final line that lacked a
 # newline, so on macOS the file would come back a byte longer - which is why
 # this suite is not in ci.yml's scripts-bsd job, unlike the four whose scripts
-# run on a developer's own machine. Nothing runs --write but the sync, on
-# ubuntu-latest; the bare check that the setup-flutter action runs on every
-# runner reads the file and does not rewrite it, so that path is
-# platform-independent either way.
+# run on a developer's own machine.
+#
+# The byte-exactness is the point of the assertion, so it is not softened to
+# an expectation per platform; what that leaves uncovered is a one-off hand
+# repair run on BSD, whose diff is one visible byte.
 printf '{\n  "@@locale": "es"\n}' > "$work/want-es.arb"
 expect_same_bytes "and only that value changed, down to the missing newline" \
   translations/app_es.arb "$work/want-es.arb"
 
-# Running it twice is what the sync does across two days.
+# Idempotence: a second run has to be a no-op, or a hand repair run twice
+# would keep producing a diff.
 run --write
 expect_rc "a second --write has nothing to do" 0
 run
 expect_rc "and the check passes once it has run" 0
 
-# The sync's own invocation: --write and a directory, from somewhere else. No
-# other caller writes, and its pull requests are not where a mistake shows.
+# --write and a directory, from somewhere else: the shape a hand repair takes
+# when it is run from outside the tree it is repairing. No workflow passes it.
 fixture
 cd "$HERE"
 run --write "$work/translations"
-expect_rc "--write with a directory is the sync's call and works" 0
+expect_rc "--write with a directory works" 0
 expect_locale "and it writes to that directory" "$work/translations/app_es.arb" "es"
 cd "$work"
 

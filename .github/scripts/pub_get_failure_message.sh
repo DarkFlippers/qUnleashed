@@ -55,7 +55,7 @@ if [[ ! -f "$output" ]]; then
 fi
 
 if grep -q 'The locale specified in @@locale and the arb filename do not match' "$output"; then
-  echo "::error::A translation declares an @@locale its filename contradicts, and gen-l10n refuses the pair. It names no file - the file is the one named for the 'Current filename extension' value above. '.github/scripts/check_arb_locales.sh' names it, and --write settles it. Nothing is wrong with pubspec.lock." >&2
+  echo "::error::A translation declares an @@locale its filename contradicts, and gen-l10n refuses the pair. It names no file - the file is the one named for the 'Current filename extension' value above. '.github/scripts/check_arb_locales.sh' names it, and --write shows locally what the value should be. Where it is fixed is Crowdin's export, not this tree - that script's header says why. Nothing is wrong with pubspec.lock." >&2
 elif grep -qE 'Generating (synthetic )?localizations package failed' "$output"; then
   echo "::error::A translation failed to compile. pub get generates the localizations, so this command is what reports it, and the gen-l10n output above names the file. Nothing is wrong with pubspec.lock." >&2
 elif grep -q 'pubspec.lock' "$output"; then
