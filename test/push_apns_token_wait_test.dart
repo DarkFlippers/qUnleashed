@@ -13,6 +13,7 @@
 // would never terminate. `package:clock` is the change that would make fake
 // time work here, and it is not made - so the elapsed-time assertions below
 // are lower bounds, which real timers can only overshoot.
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/services/notifications/push_service.dart';
 
@@ -48,8 +49,10 @@ void main() {
       );
 
       expect(arrived, isTrue);
-      // Exactly four, not "at least": a second read per iteration would be a
-      // doubled method channel call for the life of every launch.
+      // Exactly four: it neither gave up over the three nulls nor read past
+      // the token. Note this cannot catch a loop that reads twice per
+      // iteration - that one reaches the token on read 4 as well. The sleep
+      // count is what catches it, and the defaults case below does that.
       expect(reads, 4);
     });
 
@@ -89,12 +92,17 @@ void main() {
       var reads = 0;
       final elapsed = Stopwatch()..start();
       // No named arguments: the production defaults are otherwise never
-      // executed by anything, and a `Duration(milliseconds: 20)` typo on the
-      // poll constant would leave every other test in this file green.
+      // executed by anything, and a mistyped first gap would leave every
+      // other test in this file green.
       //
-      // It is the poll this pins and not the timeout - a mistyped timeout
+      // It is the gap this pins and not the timeout - a mistyped timeout
       // still sleeps once and still arrives on the second read. Nothing here
       // bounds the 20 seconds, because a test that did would take 20 seconds.
+      //
+      // The bound is the full 50ms rather than a margin under it: a sleep
+      // cannot finish early, only late, so there is nothing to leave room
+      // for. It also fails a loop that reads twice before sleeping, which is
+      // the mutant the read count two tests up cannot see.
       final arrived = await PushService.awaitApnsToken(() async {
         reads++;
         return reads < 2 ? null : 'apns-token';
@@ -104,8 +112,81 @@ void main() {
       expect(reads, 2);
       expect(
         elapsed.elapsed,
-        greaterThanOrEqualTo(const Duration(milliseconds: 150)),
+        greaterThanOrEqualTo(const Duration(milliseconds: 50)),
       );
+    });
+
+    test('the gap doubles rather than staying where it started', () async {
+      var reads = 0;
+      final elapsed = Stopwatch()..start();
+      final arrived = await PushService.awaitApnsToken(
+        () async {
+          reads++;
+          return reads < 4 ? null : 'apns-token';
+        },
+        timeout: const Duration(seconds: 5),
+        poll: const Duration(milliseconds: 20),
+        pollCap: const Duration(milliseconds: 200),
+      );
+
+      expect(arrived, isTrue);
+      expect(reads, 4);
+      // 20 + 40 + 80. A loop that kept the first gap would be at 60ms, so the
+      // bound is what separates backing off from not - and it is a floor, so
+      // a slow machine overshooting it cannot turn this red.
+      expect(
+        elapsed.elapsed,
+        greaterThanOrEqualTo(const Duration(milliseconds: 140)),
+      );
+    });
+
+    test('the gap stops doubling at the cap', () async {
+      var reads = 0;
+      final elapsed = Stopwatch()..start();
+      await PushService.awaitApnsToken(
+        () async {
+          reads++;
+          return null;
+        },
+        timeout: const Duration(milliseconds: 250),
+        poll: const Duration(milliseconds: 20),
+        pollCap: const Duration(milliseconds: 40),
+      );
+
+      // Without a cap the gaps would be 20, 40, 80, 160 - four sleeps to pass
+      // 250ms. Capped at 40 they are 20, 40, 40, 40, 40, 40, so the read count
+      // is what tells the two apart.
+      expect(reads, greaterThanOrEqualTo(6));
+      expect(
+        elapsed.elapsed,
+        greaterThanOrEqualTo(const Duration(milliseconds: 250)),
+      );
+    });
+  });
+
+  group('PushService.topicsSupported', () {
+    // The platform decision reads `defaultTargetPlatform` rather than
+    // `dart:io` precisely so this test can exist: on the host `Platform`
+    // answers Windows and nothing below would be reachable.
+    tearDown(() => debugDefaultTargetPlatformOverride = null);
+
+    test('is the two platforms FCM topics work on', () {
+      for (final platform in [TargetPlatform.android, TargetPlatform.iOS]) {
+        debugDefaultTargetPlatformOverride = platform;
+        expect(PushService.topicsSupported, isTrue, reason: '$platform');
+      }
+    });
+
+    test('and not macOS, which has no aps-environment entitlement', () {
+      for (final platform in [
+        TargetPlatform.macOS,
+        TargetPlatform.windows,
+        TargetPlatform.linux,
+        TargetPlatform.fuchsia,
+      ]) {
+        debugDefaultTargetPlatformOverride = platform;
+        expect(PushService.topicsSupported, isFalse, reason: '$platform');
+      }
     });
   });
 }

@@ -54,6 +54,32 @@ class PushService {
   static bool get isSupported =>
       !kIsWeb && (Platform.isAndroid || Platform.isIOS || Platform.isMacOS);
 
+  /// Whether FCM topic subscriptions can work here at all.
+  ///
+  /// Narrower than [isSupported], which gates Firebase init and the local
+  /// notification centre - `ConnectionNotificationService` depends on those
+  /// running on macOS, so macOS cannot simply drop out of it. What macOS
+  /// cannot do is receive a remote push: APNS registers nothing without an
+  /// `aps-environment` entitlement and `macos/Runner/*.entitlements` carries
+  /// none, so `getAPNSToken()` stays null for the life of every process and a
+  /// topic call can only throw. 7 of the first 19 reports on Sentry
+  /// QUNLEASHED-2 were macOS.
+  ///
+  /// Settings reads this too, so the page says push is unavailable on this
+  /// platform instead of offering four switches that persist a preference and
+  /// then do nothing. Delete the `macOS` half the day the entitlement is
+  /// added; nothing else here is macOS-specific.
+  ///
+  /// Spelled out rather than composed with [isSupported], and on
+  /// [defaultTargetPlatform] rather than `dart:io`, for the reason
+  /// `DiagnosticsSettings.replaySupported` gives: a test runs on the host, so
+  /// `Platform` answers Windows and every branch that hangs off this would be
+  /// unreachable from the tests that cover it.
+  static bool get topicsSupported =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS);
+
   static bool get isUnavailable => _unavailable;
 
   Future<void> start() async {
@@ -141,7 +167,7 @@ class PushService {
       _prefAppReleases,
       (prefs) => prefs.setBool(_prefAppReleases, enabled),
     );
-    if (isSupported && !_unavailable) await _applySubscriptions();
+    await _applySubscriptions();
   }
 
   Future<bool> isAppDevEnabled() async {
@@ -154,7 +180,7 @@ class PushService {
       _prefAppDev,
       (prefs) => prefs.setBool(_prefAppDev, enabled),
     );
-    if (isSupported && !_unavailable) await _applySubscriptions();
+    await _applySubscriptions();
   }
 
   Future<bool> isFirmwareReleasesEnabled() async {
@@ -167,7 +193,7 @@ class PushService {
       _prefEnabled,
       (prefs) => prefs.setBool(_prefEnabled, enabled),
     );
-    if (isSupported && !_unavailable) await _applySubscriptions();
+    await _applySubscriptions();
   }
 
   Future<bool> isFirmwareDevEnabled() async {
@@ -180,15 +206,34 @@ class PushService {
       _prefDevUpdates,
       (prefs) => prefs.setBool(_prefDevUpdates, enabled),
     );
-    if (isSupported && !_unavailable) await _applySubscriptions();
+    await _applySubscriptions();
   }
 
-  Future<void> _applySubscriptions() async {
-    // First, and before the preferences are read. Every Apple path below can
-    // sit here for twenty seconds, and reading the four preferences after the
-    // wait rather than before it keeps two toggles inside that window from
-    // carrying two different snapshots of `active` to the loop in whichever
-    // order they happen to finish.
+  /// The apply currently in flight, joined rather than duplicated.
+  ///
+  /// Each of the four Settings toggles starts one of these and nobody awaits
+  /// any of them, so without this a device whose token never arrives ran four
+  /// concurrent twenty-second waits - none of them seeing the latch the first
+  /// one was about to set - and then four rounds of six topic calls for a
+  /// state that converges on one set.
+  ///
+  /// Joining is correct rather than merely cheaper because the preferences
+  /// are read *after* the wait: a toggle that lands while one of these is
+  /// waiting has already persisted its value, so the apply it joins picks
+  /// that value up. The window left is a toggle during the topic loop itself,
+  /// which is what it was before any of this.
+  static Future<void>? _applying;
+
+  Future<void> _applySubscriptions() =>
+      _applying ??= _applyOnce().whenComplete(() => _applying = null);
+
+  Future<void> _applyOnce() async {
+    // The guard the four setters used to repeat. It lives here now, so a
+    // fifth toggle cannot forget it.
+    if (!isSupported || _unavailable) return;
+    // Before the preferences are read: every Apple path in here can sit for
+    // twenty seconds, and reading them afterwards is what lets a concurrent
+    // toggle join this apply instead of racing it.
     if (!await _apnsReady()) return;
 
     final messaging = FirebaseMessaging.instance;
@@ -225,14 +270,7 @@ class PushService {
   ///
   /// The three Apple answers, in the order they are cheap to give:
   ///
-  ///  * **macOS: never.** APNS registers nothing without an `aps-environment`
-  ///    entitlement, and `macos/Runner/{Release,DebugProfile}.entitlements`
-  ///    carries none - so the token cannot arrive, and a wait would only
-  ///    convert a fast failure into a twenty-second one. 7 of the first 19
-  ///    reports on Sentry QUNLEASHED-2 were macOS. Local notifications are
-  ///    unaffected, which is why this is not a change to [isSupported]. Delete
-  ///    the branch the day the entitlement is added; nothing else here is
-  ///    macOS-specific.
+  ///  * **macOS: never**, and [topicsSupported] says why.
   ///  * **Permission not granted: never, until the user changes their mind in
   ///    iOS Settings.** Asked afresh each time rather than remembered from
   ///    [start]: changing their mind there is the recovery path this branch
@@ -247,16 +285,13 @@ class PushService {
   /// Leaving the topics alone is the honest outcome when the token never
   /// comes. The preferences have already been written by then - as far as
   /// `persistSetting` got, which logs rather than throws if the write failed -
-  /// so the *next launch* applies them once the token is there. Not the next
-  /// `start()`: `_started` sees to it that there is no second one this
-  /// process. Within the session the retry is any Settings toggle, which
-  /// re-enters here and, thanks to [_apnsTimedOut], costs a single read.
+  /// so the *next launch* applies them, and within this one any Settings
+  /// toggle re-enters here and costs a single read.
   static Future<bool> _apnsReady() async {
-    if (Platform.isMacOS) return false;
-    if (!Platform.isIOS) return true;
+    if (!topicsSupported) return false;
+    if (defaultTargetPlatform != TargetPlatform.iOS) return true;
 
     final messaging = FirebaseMessaging.instance;
-    final bool arrived;
     try {
       final status =
           (await messaging.getNotificationSettings()).authorizationStatus;
@@ -268,58 +303,57 @@ class PushService {
         return false;
       }
 
-      Future<String?> read() => messaging.getAPNSToken();
-      arrived = _apnsTimedOut
-          ? await read() != null
-          : await awaitApnsToken(read);
-    } on FirebaseException catch (error) {
-      // Not "not yet" - the channel could not answer the question at all, and
-      // retrying that for twenty seconds would report the wrong cause. Narrow
-      // on purpose: a `MissingPluginException` is structural and belongs to
-      // whoever is reading the report, not to this branch.
-      LogService.warn('[Push] could not read the APNS token: ${error.code}');
-      return false;
-    }
+      if (_apnsTimedOut) return await messaging.getAPNSToken() != null;
+      if (await awaitApnsToken(messaging.getAPNSToken)) return true;
 
-    if (arrived) return true;
-    if (!_apnsTimedOut) {
       _apnsTimedOut = true;
       LogService.warn(
         '[Push] authorised but no APNS token after '
         '${_apnsTokenTimeout.inSeconds}s; topics left unchanged',
       );
+      return false;
+    } on FirebaseException catch (error) {
+      // Not "not yet" - the channel could not answer at all, and retrying
+      // that for twenty seconds would report the wrong cause. It covers both
+      // reads above, so it names neither. Narrow on purpose: a
+      // `MissingPluginException` is structural and belongs to whoever is
+      // reading the report, not to this branch.
+      LogService.warn('[Push] could not ask iOS about push: ${error.code}');
+      return false;
     }
-    return false;
   }
 
-  /// How long [awaitApnsToken] waits for APNS, and how often it looks.
+  /// How long [awaitApnsToken] waits for APNS before giving up.
   ///
-  /// Apple registers the device with APNS asynchronously, and the token can
-  /// arrive seconds after `requestPermission` has returned - longer on a cold
-  /// network. 20 seconds covers that.
+  /// Registration can take seconds on a cold network, and 20 covers that.
   ///
-  /// It is bounded at all because the token may never come. The iOS
-  /// Simulator is the case a developer meets daily and usually never
-  /// registers; a denied permission and no network are the rest. An
-  /// unbounded wait would hold the caller for the life of the process.
-  ///
-  /// Nobody watches it elapse. The Settings toggles call this path without
-  /// awaiting it ([_applySubscriptions] is reached from four `set*Enabled`
-  /// methods that `lib/pages/option/pages/push.dart` fires and forgets), so
-  /// the wait is a detached future with no spinner in front of it. The bound
-  /// is there because a detached poll should not outlive the user's interest
-  /// in its answer, not because anyone is sitting through it.
+  /// It is bounded at all because the token may never come: the iOS Simulator
+  /// usually never registers, and a denied permission or no network do the
+  /// same. Nobody watches it elapse either - the Settings toggles reach
+  /// [_applySubscriptions] through four `set*Enabled` methods that
+  /// `lib/pages/option/pages/push.dart` fires and forgets, so this is a
+  /// detached future with no spinner in front of it. The bound is about how
+  /// long a detached poll should outlive the user's interest in its answer,
+  /// not about anyone sitting through it.
   static const _apnsTokenTimeout = Duration(seconds: 20);
-  static const _apnsTokenPoll = Duration(milliseconds: 200);
+
+  /// The first gap between reads, and the ceiling the gap doubles towards.
+  ///
+  /// A fixed 200ms would make 101 channel round trips of a wait that runs out,
+  /// all of them in the busiest twenty seconds the app has. Doubling from 50ms
+  /// to a 2s ceiling reaches the same bound in about fifteen, and finds a
+  /// token that lands early *sooner* than the fixed gap did.
+  static const _apnsPollFirst = Duration(milliseconds: 50);
+  static const _apnsPollCap = Duration(seconds: 2);
 
   /// Waits for APNS to hand Firebase a device token; says whether it came.
   ///
   /// The contract this is written against: on iOS and macOS,
   /// `subscribeToTopic` and `unsubscribeFromTopic` throw
-  /// `FirebaseException(code: 'apns-token-not-set')` while the token is null.
-  /// The token arrives *after* `requestPermission` completes, so the apply at
-  /// launch raced it and lost - 19 reports from 8 users in four days, Sentry
-  /// QUNLEASHED-2.
+  /// `FirebaseException(code: 'apns-token-not-set')` while the token is null,
+  /// and the token arrives *after* `requestPermission` completes - so the
+  /// apply at launch raced it and lost. 19 reports from 8 users in four days,
+  /// Sentry QUNLEASHED-2.
   ///
   /// The mechanism behind that contract, as of
   /// `firebase_messaging_platform_interface` 4.9.0, is a private
@@ -339,7 +373,8 @@ class PushService {
   static Future<bool> awaitApnsToken(
     Future<String?> Function() reader, {
     Duration timeout = _apnsTokenTimeout,
-    Duration poll = _apnsTokenPoll,
+    Duration poll = _apnsPollFirst,
+    Duration pollCap = _apnsPollCap,
   }) async {
     // Stopwatch, not DateTime.now(): the bound above is the whole design, and
     // wall-clock time is not monotonic. A phone that NTP-syncs backwards just
@@ -347,10 +382,15 @@ class PushService {
     // also when this runs - would leave a DateTime deadline permanently in
     // the future and poll until the process died.
     final elapsed = Stopwatch()..start();
+    var gap = poll;
     while (true) {
       if (await reader() != null) return true;
       if (elapsed.elapsed >= timeout) return false;
-      await Future<void>.delayed(poll);
+      await Future<void>.delayed(gap);
+      if (gap < pollCap) {
+        gap = gap * 2;
+        if (gap > pollCap) gap = pollCap;
+      }
     }
   }
 

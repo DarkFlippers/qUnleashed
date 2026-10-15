@@ -125,7 +125,11 @@ class _NotificationsSettingsPageState extends State<NotificationsSettingsPage> {
   Widget build(BuildContext context) {
     final colors = context.appColors;
     final unavailable = PushService.isUnavailable;
-    final supported = PushService.isSupported && !unavailable;
+    // topicsSupported, not isSupported: macOS can raise a local notification
+    // but can never receive a remote one, so the switches here would persist
+    // a preference and then do nothing. pushUnsupportedPlatform already says
+    // exactly that.
+    final supported = PushService.topicsSupported && !unavailable;
     return Scaffold(
       backgroundColor: colors.background,
       appBar: AppBar(
