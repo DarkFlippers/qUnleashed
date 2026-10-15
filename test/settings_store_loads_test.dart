@@ -552,6 +552,43 @@ void main() {
       // #120's claim, which the ordering alone never kept: a write the store
       // refuses must not redraw the home screen, because sync() would push
       // the stored look back at the next launch and undo it hours later.
+      // The half that gating this push does not reach. toMap() sends all
+      // five, so before the stored shadow a refused value sat in the field
+      // and rode out on the *next* accepted setter - the launcher showing a
+      // look that is on no disk, for sync() to take back at the next launch.
+      // Which is #120, arriving one gesture later than the gate looks for.
+      test('a refused write does not ride out on the next one', () async {
+        useRefusingPrefs({
+          ...stored,
+          'home_widget.caption': false,
+          'home_widget.border': 'none',
+        });
+        await widgets.load();
+
+        // Refused: the store answers false for everything.
+        await widgets.setCaptionShown(true);
+        // Accepted from here on, so the next setter does push.
+        SharedPreferences.setMockInitialValues({
+          ...stored,
+          'home_widget.caption': false,
+          'home_widget.border': 'none',
+        });
+        await widgets.setBorder(WidgetBorder.thin);
+
+        expect(pushed, hasLength(1), reason: 'only the accepted one pushed');
+        expect(pushed.single['border'], 'thin');
+        expect(
+          pushed.single['captionShown'],
+          isFalse,
+          reason: 'what the store holds, not the refused choice',
+        );
+        expect(
+          widgets.captionShown,
+          isTrue,
+          reason: 'the control still stays where the user put it; #120',
+        );
+      });
+
       test('a write the store refuses pushes nothing and says so', () async {
         useRefusingPrefs(stored);
         await widgets.load();
