@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../logging.dart';
-import '../telemetry/scrub.dart';
 
 class KnownDevice {
   const KnownDevice({
@@ -55,28 +54,11 @@ class KnownDevicesStore extends ChangeNotifier {
   static const String _prefsKey = 'known_devices_v1';
   static const int _maxEntries = 8;
 
-  List<KnownDevice> _devicesValue = const [];
-
-  List<KnownDevice> get _devices => _devicesValue;
-
-  /// Replaces the list, and tells the scrubber every name in it.
-  ///
-  /// A setter rather than four call sites, because four is what there are and
-  /// a fifth would be added without remembering this one.
-  ///
-  /// This is the only place that knows a Flipper's name **before** a session
-  /// exists. `Scrub.rememberDeviceName` used to be fed solely from
-  /// `hardware_name` off a live RPC stream, so the auto-connect failure paths
-  /// in `link_service.dart` - which log the remembered name at `warn` - sent
-  /// it to Sentry intact: the connect that would have taught the scrubber is
-  /// the thing that failed. Launching with a remembered Flipper out of range
-  /// is the ordinary case, not an edge. ADR 0013 §6.2.
-  set _devices(List<KnownDevice> next) {
-    _devicesValue = next;
-    for (final device in next) {
-      Scrub.rememberDeviceName(device.name);
-    }
-  }
+  /// A plain field again. It was a getter over `_devicesValue` with a setter
+  /// that fed every name to `Scrub.rememberDeviceName`, because this is the
+  /// only place that knows a Flipper's name *before* a session exists. ADR
+  /// 0013 §6.2 no longer redacts device names, so there is nothing to feed.
+  List<KnownDevice> _devices = const [];
 
   Future<void>? _loading;
 

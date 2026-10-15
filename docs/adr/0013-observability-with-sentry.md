@@ -502,8 +502,22 @@ gate it.
 1. **Not collected:** `sendDefaultPii: false`; no screenshots, no view
    hierarchy; print breadcrumbs off, since `LogService` feeds Sentry directly.
 2. **One scrubber, client-side.** `_redact` moves to `telemetry/scrub.dart`
-   and gains known Flipper names, file names under `/ext` and `/int` (the
-   extension survives), long hex runs, coordinates and URL query strings. It
+   and gains file names under `/ext` and `/int` (the extension survives),
+   coordinates and URL query strings.
+
+   **Amended: two rules were removed.** It also held known Flipper names and
+   long hex runs, and both are gone. A Flipper's name is generated rather
+   than a person's, and a UID, a key, a MAC or a serial is the thing a report
+   about this app has to contain - `recovered <hex> for sector 3` is not a
+   report, it is the shape of one. §6.4's masks were opened for the same
+   facts in the same change, so the log, the event and the replay channels
+   now agree; the old arrangement was the worst of both, a screen recording
+   that showed nothing beside a log that said nothing.
+
+   What that cost, named because it was not part of the decision: the FAAC
+   `fix` is logged in hex by `[Seed] search failed for ...`, so that
+   identifier now leaves intact. It names a remote rather than opening one,
+   and the seed beside it is not logged at all. It
    runs before every event, breadcrumb, log and transaction is sent - which,
    since the amendment to §1, is the only place it runs. It is applied in the
    sinks rather than in `_emit`, so the console keeps the real path: a
@@ -513,7 +527,7 @@ gate it.
    addresses" on. Native crashes do not pass through Dart's `beforeSend`, and
    their module paths carry `C:\Users\<name>\…` — the Windows launcher
    extracts into `%TEMP%`.
-4. **Replay masks.** `maskAllText` masks text widgets. The hex editor paints
+4. **Replay masks, and one unmask.** `maskAllText` masks text widgets. The hex editor paints
    card bytes with `TextPainter` (`pages/archive/editor/hex/view.dart`), and
    the remote-desktop screen is a `RawImage` fed the `ui.Image` that
    `remote/desktop/frame_decoder.dart` decodes
@@ -565,6 +579,32 @@ gate it.
    and short-circuits later rules, so it would defeat `maskAllText` inside the
    hex table too. The assertion now reads `privacy.toJson()`, which is public
    and carries the SDK's own `'mask'`/`'unmask'` description.
+
+   **The blanket also made the feature unusable, and that is the amendment.**
+   `maskAllText` reaches every `Text` in the app, so the first replays to
+   arrive were a rectangle where each button, tab and title had been - five
+   minutes of silent video nobody could read. Two `unmask` rules answer it:
+   `VisibleSurface`, an app-owned marker that is the inverse of
+   `SensitiveSurface`, and `ButtonStyleButton`, which is every Material
+   button in one line.
+
+   **Only the safe direction is enumerated, and that is the whole argument.**
+   Turning `maskAllText` off and listing the sensitive surfaces instead is
+   the enumeration this section already rejected once, and it fails the wrong
+   way round: a `Text` nobody thought of ships a card dump. Under an unmask
+   list the same oversight is a grey box. What carries the marker today is
+   the nav bar's two tab widgets, the app bar's device subtitle and
+   `FlipperInfoLine` - so a Flipper's name, its serial, its BLE MAC and the
+   rest of `device info` are legible, matching §6.2's half of the same
+   decision. The app bar *title* is deliberately not unmasked: three of its
+   sixteen call sites pass a filename or a brand, and one rule cannot tell
+   those from the thirteen constants.
+
+   Recovered MIFARE keys and card UIDs stay masked in the replay although
+   §6.2 now sends them in logs, and the reason is not privacy but copy:
+   `diagnosticsShareSubtitle` and §1's notice both promise in as many words
+   that keys are never sent. Changing that promise is a translation cycle
+   across nine locales, so it is its own task rather than a line in this one.
 
    Two things this gate still owes. **No surface has been checked in a
    recorded replay on a device** - the test proves the rules the options block
