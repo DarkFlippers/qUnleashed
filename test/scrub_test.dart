@@ -2,7 +2,8 @@
 //
 // The two directions both have a cost and the tests say which is which.
 // Under-redaction sends a card dump to a third party, which cannot be taken
-// back. Over-redaction sends `<hex> failed on <name>`, which is an event
+// back. Over-redaction sends `reading <name>.nfc failed` with the one
+// detail the reader needed gone, which is an event
 // nobody can act on - and the whole reason errors are reported at all. So
 // every rule here has a case for what it takes out *and* a case for what it
 // must leave alone.
@@ -281,29 +282,21 @@ void main() {
     });
   });
 
-  // Also inverted, and the whole learning mechanism went with the rule:
-  // `rememberDeviceName`, the anchored patterns, the four-character floor and
-  // the longest-first sort. A Flipper's name is generated rather than a
-  // person's, and the two call sites that used to feed this - the device
-  // controller and `known_devices.dart` - no longer do.
-  group('Flipper names', () {
-    test('a name is sent whole', () {
-      expect(
-        Scrub.outbound('[BLE] Ubl4te dropped the link'),
-        '[BLE] Ubl4te dropped the link',
-      );
-    });
-
-    test('a name that is an ordinary word no longer corrupts the message', () {
-      // The old rule was an unanchored `replaceAll`, so a Flipper called
-      // `File` turned `FileSystemException` into `<device>SystemException`.
-      // Anchoring fixed that; removing the rule ends the question.
-      expect(
-        Scrub.outbound('[Archive] FileSystemException on File'),
-        '[Archive] FileSystemException on File',
-      );
-    });
-  });
+  // `group('Flipper names')` stood here, and was deleted rather than
+  // inverted. The hex group above could be inverted because its rule matched
+  // a *shape* - restore the rule and the assertions go red, which a mutation
+  // run confirmed. The name rule matched a *learned set*, empty until
+  // `rememberDeviceName` was called, and that API went away with it. So a
+  // test that feeds the scrubber a name and expects it back passes against
+  // every version of this file that has ever existed, including the one with
+  // the rule still in. It read as cover for a guarantee it could not make,
+  // which is CLAUDE.md's "trusting that a test fails for the reason its name
+  // says" with the reasoning written directly above it.
+  //
+  // The decision lives in ADR 0013 §6.2 and in `Scrub`'s own doc. A
+  // source-level ratchet over `lib/` - no `rememberDeviceName`, no literal
+  // `'<device>'` - is the thing that would actually catch a reintroduction,
+  // and `test/ratchet.dart` is the machinery for it if that day comes.
 
   // The home directory, which is every absolute path's first component and the
   // one category that can be taken out mechanically. These tests were in
@@ -385,10 +378,11 @@ void main() {
     });
   });
 
-  test('one line, every rule that is left', () {
-    // The home directory, the filename and the coordinate go; the device name
-    // and the block stay. This used to lose all five, and what it keeps now is
-    // the half somebody triaging the report needs.
+  test('one line, three of the rules at once', () {
+    // The home directory, the bare filename and the coordinate - not the
+    // query string or the quoted filename, which have their own groups. The
+    // device name and the block stay, and that is the half this used to lose:
+    // what somebody triaging the report actually needs.
     expect(
       Scrub.outbound(
         r'[Archive] reading C:\Users\Myte\cache\/ext/nfc/Office badge.nfc '

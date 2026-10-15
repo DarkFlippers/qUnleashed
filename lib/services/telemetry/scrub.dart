@@ -33,16 +33,25 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 /// become `<hex>`. The project looked at both and decided they are not worth
 /// hiding: a Flipper's name is generated, not a person's, and a key or a UID
 /// is the thing the app exists to recover and the thing a bug report about it
-/// has to contain. The replay masks were opened for the same facts in the
-/// same change, so the three channels now agree - a report that says what
-/// went wrong on screen and a log that says `<hex>` was the worst of both.
+/// has to contain. A report that says what went wrong on screen beside a log
+/// that says `<hex>` was the worst of both.
+///
+/// **The replay does not follow all the way**, and the exception matters
+/// before the rest is read as a principle: a recovered key and a card UID
+/// stay masked there, because `diagnosticsShareSubtitle` and §1's notice
+/// promise the user that keys are never sent. ADR 0013 §6.4 has the
+/// argument. Device name, serial, BLE MAC and the `device info` dump are open
+/// on all three channels.
 ///
 /// One consequence worth knowing, since the hex rule was broad: the FAAC
-/// `fix` is logged in hex by `[Seed] search failed for ...`
-/// (`tools/subghz/seed/seed_controller.dart`), so that identifier now leaves
-/// intact too. It names a remote rather than opening one, and the seed beside
-/// it is not logged at all - but it was not part of the decision, and the two
-/// call sites are the place to change if it should be.
+/// `fix` is logged in hex by `tools/subghz/seed/seed_controller.dart`, at
+/// `[Seed] searching ...` on every run and `[Seed] search failed for ...`
+/// when one fails, so that identifier now leaves intact. It names a remote
+/// rather than opening one, and the seed beside it is never logged - only
+/// `seed=<bool>`. The old rule did not reliably take it either, since
+/// `toRadixString(16)` drops leading zeros and the rule wanted eight
+/// characters with a letter among them. It was not part of the decision, and
+/// those two call sites are the place to change if it should be.
 abstract final class Scrub {
   /// Home directories replaced with `~` wherever they appear.
   ///
@@ -228,9 +237,11 @@ abstract final class Scrub {
   /// So a multi-word unquoted basename loses its last word and keeps the
   /// rest - `restore Office badge.nfc` becomes `restore Office <name>.nfc`.
   /// That is a partial redaction, chosen over destroying the message: the
-  /// outbound log exists to be read, and a filename is lower-value than the
-  /// keys and UIDs the hex rule takes. Quote the name at the call site and it
-  /// is covered in full.
+  /// outbound log exists to be read, and half a filename still says what kind
+  /// of thing failed. Quote the name at the call site and it is covered in
+  /// full. (This used to weigh the loss against "the keys and UIDs the hex
+  /// rule takes"; that rule is gone, and the class doc now argues the
+  /// opposite valuation, so the comparison went with it.)
   static final RegExp _bareFile = RegExp(
     // A backslash ends the stem as well as a slash: without it the rule
     // swallowed the `~` that [paths] had just left behind, so
@@ -291,11 +302,11 @@ abstract final class Scrub {
 
   /// [msg] made fit to leave the device.
   ///
-  /// §6.2's whole list, and the order within it no longer carries anything:
-  /// the one ordering constraint was that the hex rule ran last, so that it
-  /// did not eat pieces of a path before the pattern that knew what they were
-  /// had looked at them. With that rule gone the four that remain match
-  /// disjoint shapes.
+  /// §6.2's whole list. One ordering constraint went with the hex rule, which
+  /// ran last so that it could not eat pieces of a path before the pattern
+  /// that knew what they were had looked at them. The others stand, and the
+  /// comments inside say so: [_paths] before [_bareFile], and [_quotedFile]
+  /// before [_bareFile].
   ///
   /// Every rule replaces rather than drops. A scrubber that returned null on
   /// something it did not recognise would lose exactly the failures nobody has

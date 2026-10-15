@@ -233,8 +233,9 @@ console.
 everywhere else. `Telemetry.start` is awaited in `_initCore` on both entry
 points and never throws; it sends nothing unless a DSN was compiled in and the
 Diagnostics switch is on. `telemetry/scrub.dart` owns one level of redaction,
-`Scrub.outbound`: home directories, filenames, hex runs, coordinates, query
-strings and learned device names, taken out of everything that leaves. It runs
+`Scrub.outbound`: home directories, filenames, coordinates and query strings,
+taken out of everything that leaves. Hex runs and learned device names were
+rules here too and were removed deliberately - ADR 0013 §6.2. It runs
 in the sinks and not in `_emit`, so the console keeps the real path. ADR 0013.
 
 ## 9. Models and serialization

@@ -292,10 +292,11 @@ void main() {
     });
 
     test('unmasks the chrome, so a replay is legible', () async {
-      // The other half of the gate. `maskAllText` greys out every `Text` in
-      // the app, which is what the four rules above rest on - and also what
-      // made the first replays useless: a rectangle where each button, tab
-      // and title had been. These two rules name what may be seen.
+      // The other half of the gate. The four rules above exist because
+      // `maskAllText` does *not* reach a `CustomPainter` or a `RenderBox`;
+      // these two exist because it reaches everything else, which is what
+      // made the first replays useless - a rectangle where each button, tab
+      // and title had been. These name what may be seen.
       await build().start();
 
       expect(maskedTypes(sdk.options!), containsAll(kUnmaskedSurfaces));

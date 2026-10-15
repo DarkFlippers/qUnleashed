@@ -41,25 +41,33 @@ mixin SensitiveSurface on Widget {}
 ///
 /// Two kinds of thing carry it, and they are not the same claim:
 ///
-///  * **Chrome** - a label that is a translated constant. `_BottomTab` and
-///    `_RailButton` in `app/nav_bar.dart`. Buttons are covered by a type rule
-///    in `telemetry/options.dart` instead, since they are `ButtonStyleButton`
-///    from the framework and cannot be given a mixin.
-///  * **Device facts the project has decided it is willing to see** - the
-///    Flipper's name, its serial, its BLE MAC, the rest of `device info`, and
-///    a recovered MIFARE key with the card's UID. These are not chrome; they
-///    are content, and somebody looked at each one and said yes. They are
-///    also no longer redacted from the log and the event channels, so the
-///    three agree - `telemetry/scrub.dart` carries that half.
+///  * **Chrome** - a label that is a translated constant. `_BottomTab` in
+///    `app/nav_bar.dart` is the one that carries it; `_RailButton` beside it
+///    renders an icon and no text, so a marker there would do nothing.
+///    Buttons are covered by a type rule in `telemetry/options.dart` instead,
+///    since they are the framework's and cannot be given a mixin.
+///  * **Device identity the project has decided it is willing to see** - the
+///    Flipper's name, its serial, its BLE MAC and the rest of `device info`,
+///    through `_DeviceSubtitle` and `FlipperInfoLine`. Not chrome: content,
+///    looked at and accepted. `telemetry/scrub.dart` stopped redacting the
+///    same facts from the log and event channels in the same change.
 ///
-/// What it must **not** go on: a file or folder name, a coordinate, a build
-/// log line carrying a host path, an infrared dump, a Sub-GHz seed. Those are
-/// the surfaces the blanket is still for.
+/// What it must **not** go on, and the first entry is the one that will be
+/// tempting: **a recovered MIFARE key or a card UID.** Those are sent in logs
+/// now, but `diagnosticsShareSubtitle` and §1's one-time notice both promise
+/// the user in as many words that keys are never sent, so the replay keeps
+/// them masked until that copy is rewritten - ADR 0013 §6.4. Nor on a file or
+/// folder name, a coordinate, a build log line carrying a host path, an
+/// infrared dump, or a Sub-GHz seed.
 ///
-/// Mind the subtree. `WidgetFilter` stops descending on an unmask decision, so
-/// everything inside one of these is unmasked too - which is why these sit on
-/// leaf-ish widgets and never on a page or a scaffold. A [SensitiveSurface]
-/// *above* one still wins, because the walk meets it first.
+/// Mind the subtree, in both directions. `WidgetFilter` stops descending on an
+/// unmask decision, so everything inside one of these is unmasked too - which
+/// is why these sit on leaf-ish widgets and never on a page or a scaffold. A
+/// [SensitiveSurface] *above* one still wins, because the breadth-first walk
+/// meets it first and never queues the subtree. A [SensitiveSurface] *below*
+/// one **loses**, and silently: the walk stops before it is ever visited. That
+/// is the hazard to check when adding a marker, and it applies to the
+/// `ButtonStyleButton` rule too, which covers every `IconButton` in the app.
 mixin VisibleSurface on Widget {}
 
 /// [SensitiveSurface] for a widget this project does not own.

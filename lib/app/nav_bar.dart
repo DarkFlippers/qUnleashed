@@ -155,7 +155,7 @@ class _SideRail extends StatelessWidget {
   }
 }
 
-class _RailButton extends StatelessWidget with VisibleSurface {
+class _RailButton extends StatelessWidget {
   const _RailButton({required this.item});
 
   final FlipperRailItem item;

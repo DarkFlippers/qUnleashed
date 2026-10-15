@@ -252,32 +252,88 @@ class PushService {
       if (devEnabled) active.addAll(PushTopics.dev);
     }
 
-    // Around the loop and not inside it: when a topic call fails the reason is
-    // almost always the connection, so the next five fail the same way and one
-    // line says it once. The topics left unvisited are reapplied on the next
-    // launch, which is the same recovery `_apnsReady` relies on.
+    await applyTopics(
+      active,
+      messaging.subscribeToTopic,
+      messaging.unsubscribeFromTopic,
+    );
+  }
+
+  /// Brings the six topic subscriptions in line with [active], and reports
+  /// rather than throws when one of them will not go through.
+  ///
+  /// [subscribe] and [unsubscribe] are parameters for the reason
+  /// [awaitApnsToken]'s [reader] is: `_applyOnce` reaches
+  /// `FirebaseMessaging.instance` and is gated behind `isSupported`, which
+  /// reads `dart:io`'s `Platform` and is false on every test host, so nothing
+  /// above this line can be driven from a test at all.
+  ///
+  /// **Nothing here may throw, and that is the point.** `start()` awaits this
+  /// through `_applySubscriptions`, and `start()` runs inside
+  /// `guarded('[Bootstrap] ambient service "push notifications"', ...)`, which
+  /// reports a rejection with `Sentry.captureException`. The Settings toggles
+  /// reach it a second way, from `void` handlers that await nothing, so there
+  /// the rejection went to the zone. Both paths end in an event carrying an
+  /// `exceptions` list, and that is exactly what `ReplayEventProcessor` keys
+  /// on: on iOS it flushes the replay buffer and the session keeps uploading
+  /// afterwards. So an offline launch turned §8's "recorded continuously,
+  /// uploaded on failure" into "uploaded always" - Sentry QUNLEASHED-2, and
+  /// every iOS replay the project has received so far began at one of its
+  /// events.
+  ///
+  /// **The level is not what does that work; the catch is.** All three
+  /// `KeptLevel`s land in Sentry Logs through `Telemetry._reportKept`, and a
+  /// log carries no `exceptions`, so `warn` is as replay-safe as `caught`.
+  /// `warn` then wins on its own merits: `_apnsReady` makes the same
+  /// judgement about the same exception type with the same consequence, and
+  /// the causes it enumerates - macOS, unauthorised, no token yet - no longer
+  /// reach this far. What lands here is the unexplained remainder, which is a
+  /// thing to look at rather than a thing to read about later.
+  ///
+  /// This does **not** make the path replay-free, and it should not be read
+  /// as doing so. A `MissingPluginException` from `_apnsReady`, a throw from
+  /// the four preference reads, and every other `guarded()` call site in the
+  /// app all still produce an exception event. 0013 §8 carries what would fix
+  /// that generally.
+  @visibleForTesting
+  static Future<void> applyTopics(
+    Set<String> active,
+    Future<void> Function(String) subscribe,
+    Future<void> Function(String) unsubscribe,
+  ) async {
+    // Counted, because the catch is outside the loop. A throw on the nth
+    // topic leaves the ones before it applied and the ones after it alone, so
+    // "topics left unchanged" would be false for every case but the first -
+    // and that matters to the user, not only to the report: the Settings
+    // switch has already moved and the preference has already persisted, so a
+    // partial apply is a switch that reads off while the topic is still
+    // subscribed until the next launch reapplies it.
     //
-    // **`caught`, and that is the whole point of this catch.** Uncaught, this
-    // reached the zone and became a `captureException` - and on iOS an error
-    // event is what makes the native SDK flush the replay buffer and then keep
-    // uploading for the rest of the session (§8's `onErrorSampleRate`). So an
-    // offline launch did not merely report a benign failure: it turned
-    // "recorded continuously, uploaded on failure" into "uploaded always", for
-    // every iOS user, against what `diagnosticsReplaySubtitle` tells them.
-    // Sentry QUNLEASHED-2 is the issue; every iOS replay in the project so far
-    // was triggered by one of its events.
+    // One line and not six: when a topic call fails the reason is usually the
+    // connection, so the rest fail the same way. `error.message` rides along
+    // because `convertPlatformException` defaults `code` to `unknown` when the
+    // native error carries nothing it maps, and `unknown` on its own is not a
+    // report. Topic names are constants from [PushTopics] and carry nothing of
+    // the user's, so there is no scrubbing question.
+    var applied = 0;
+    String? stoppedAt;
     try {
       for (final topic in PushTopics.all) {
+        stoppedAt = topic;
         if (active.contains(topic)) {
-          await messaging.subscribeToTopic(topic);
+          await subscribe(topic);
         } else {
-          await messaging.unsubscribeFromTopic(topic);
+          await unsubscribe(topic);
         }
+        applied++;
       }
     } on FirebaseException catch (error) {
       // Narrow, like `_apnsReady`'s: a `MissingPluginException` is structural
       // and belongs to whoever reads the report, not to this branch.
-      LogService.caught('[Push] topics left unchanged: ${error.code}');
+      LogService.warn(
+        '[Push] $applied of ${PushTopics.all.length} topic changes applied, '
+        'stopped at $stoppedAt: ${error.code} ${error.message}',
+      );
     }
   }
 
