@@ -69,23 +69,30 @@ is_elf() {
   [[ "$magic" == $'\x7fELF' ]]
 }
 
-# Does this ELF image carry DWARF? Call only on something `is_elf` accepted:
-# objdump failing here is a broken tool or an unreadable file, never a normal
-# outcome, and it is fatal rather than false. Returning false would make the
-# leak scan below report "clean" for a file it could not read, which is the
-# silent-success shape this whole change exists to remove.
+# Does this ELF image have the named section? Call only on something `is_elf`
+# accepted: objdump failing here is a broken tool or an unreadable file, never
+# a normal outcome, and it is fatal rather than false. Returning false would
+# make the leak scan below report "clean" for a file it could not read, which
+# is the silent-success shape this whole change exists to remove.
 #
-# Captured rather than piped into `grep -q`, for the reason `check_linux_abi.sh`
-# gives: under `pipefail` a producer killed by SIGPIPE makes the pipeline
-# non-zero, and the failure direction here ships debug information.
-has_debug_info() {
+# Captured rather than piped into `grep -q`, the argument
+# `check_arb_locales.sh` makes: `grep -q` exits on its first match, which can
+# leave the producer killed by SIGPIPE, and under `pipefail` the pipeline is
+# then non-zero. Not reachable on `objdump -h` output, which is a few KB and
+# fits the pipe buffer - but the failure direction here ships debug
+# information, so it is not worth depending on the size.
+has_section() {
   local sections
   if ! sections="$("$OBJDUMP" -h "$1" 2>&1)"; then
     echo "::error::$OBJDUMP could not read $1, so this guard would check less" >&2
     echo "::error::of the bundle than it reports. Refusing to pass: $sections" >&2
     exit 1
   fi
-  [[ "$sections" == *".debug_info"* ]]
+  [[ "$sections" == *"$2"* ]]
+}
+
+has_debug_info() {
+  has_section "$1" ".debug_info"
 }
 
 # Every regular file in a directory, as an array, with `find`'s exit status
@@ -153,9 +160,14 @@ echo "===== QU-DEBUG end ====="
 # The runner and our own FFI libraries, not merely "something in the bundle".
 # The runner alone would be the weakest possible check: it is the one target
 # whose debug information survives a partial regression, because it is the
-# closest to where the flag is set. The three in `lib/modules/cpp` are the ones
-# that went unoptimized and undebuggable when `-g` was appended before C was
-# enabled, and they are most of what a native crash is.
+# closest to where the flag is set. The three in `lib/modules/cpp` are most of
+# what a native crash is.
+#
+# What this does NOT catch, so nobody assumes it does: appending `-g` before C
+# is enabled replaces the C defaults with exactly ` -g`, which still produces
+# DWARF. Every image this loop names passes in that state. The damage there is
+# the lost `-O3 -DNDEBUG`, which no debug-file check can see; only
+# `enable_language(C)` prevents it.
 #
 # `libapp.so` and `libflutter_linux_gtk.so` are deliberately not here: the
 # first is the Dart AOT snapshot and the second a prebuilt engine, and neither
@@ -165,9 +177,12 @@ for lib in mfkey32 hardnested faaccrack; do
   required_images+=("$BUILD_DIR/lib/libqunleashed_$lib.so")
 done
 
+# `is_elf` before `has_debug_info`, which is fatal on anything objdump cannot
+# read: a path that exists but is not an ELF image belongs in `missing` with
+# the others, not reported as a broken toolchain.
 missing=()
 for image in "${required_images[@]}"; do
-  if [[ ! -f "$image" ]] || ! has_debug_info "$image"; then
+  if [[ ! -f "$image" ]] || ! is_elf "$image" || ! has_debug_info "$image"; then
     missing+=("$image")
   fi
 done
@@ -216,11 +231,7 @@ for f in "${staged[@]}"; do
   if has_debug_info "$f"; then
     leaked+=("$f")
   fi
-  # Piped, unlike `has_debug_info`, and deliberately: this one fails closed.
-  # An objdump that printed nothing lands the file in `unloadable` and stops
-  # the build, where the same shape in `has_debug_info` would have reported
-  # "clean" and shipped it.
-  if ! "$OBJDUMP" -h "$f" 2>/dev/null | grep -q '\.dynsym'; then
+  if ! has_section "$f" ".dynsym"; then
     unloadable+=("$f")
   fi
 done

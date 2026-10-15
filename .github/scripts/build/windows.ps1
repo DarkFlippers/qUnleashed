@@ -83,9 +83,13 @@ if ([string]::IsNullOrWhiteSpace($BuildDir)) {
 # weakest possible check: it lands here from the linker's default and would
 # still be here with `CMAKE_PDB_OUTPUT_DIRECTORY` deleted, so a guard that
 # names only it passes while every plugin PDB is missing. The three in
-# `lib/modules/cpp` are the ones that went unoptimized and undebuggable when
-# `/Zi` was appended before C was enabled, and they are most of what a desktop
-# crash is.
+# `lib/modules/cpp` are most of what a desktop crash is.
+#
+# What this does NOT catch, so nobody assumes it does: appending `/Zi` before
+# C is enabled replaces the C defaults with exactly ` /Zi`, which still
+# produces a PDB. Every file this loop names is present in that state. The
+# damage there is the lost `/O2 /Ob2 /DNDEBUG /MD`, which no debug-file check
+# can see; only `enable_language(C)` prevents it.
 $ExpectedPdbs = @("$AppName.pdb")
 foreach ($lib in @("mfkey32", "hardnested", "faaccrack")) {
     $ExpectedPdbs += "${AppName}_$lib.pdb"
@@ -108,10 +112,11 @@ Write-Host "Debug files for Sentry: $PdbCount PDB(s) in the bundle."
 # of its own. Top-level entries are what the old `"*"` glob passed too, and
 # directories still go in whole.
 #
-# `-Force` so a hidden or system file still goes in: the old `"$BuildDir\*"`
-# glob was expanded by `Compress-Archive` itself and did not filter them, and a
-# file silently absent from the shipped ZIP is the same class of fault as a
-# file silently present in it.
+# `-Force` so a hidden or system file still goes in. Neither the old
+# `"$BuildDir\*"` glob nor a bare `Get-ChildItem` sees one - this is a change
+# in behaviour rather than a restoration of it - and a file silently absent
+# from the shipped ZIP is the same class of fault as a file silently present
+# in it. Today's bundle has none either way.
 $BundleEntries = Get-ChildItem -Path $BuildDir -Exclude "*.pdb" -Force
 Compress-Archive -Path $BundleEntries -DestinationPath $RawZipFile -CompressionLevel Optimal -Force
 

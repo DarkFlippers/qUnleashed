@@ -57,11 +57,15 @@ endif()
 # `${CMAKE_C_FLAGS_RELEASE}` expands to **nothing** - the append would not
 # extend the defaults, it would replace them with ` /Zi` and shadow the cache
 # entry that `lib/modules/cpp`'s own `project(... LANGUAGES C)` writes later.
-# Measured on a cold configure: the three C libraries then build Release with
-# `Optimization=''`, no `/Ob2`, no `NDEBUG`, and `RuntimeLibrary=MultiThreaded`
-# - unoptimized, asserts live, and against the static CRT while the clang-cl
-# objects beside them stay `/MD`, which is the two-heap `_aligned_free` fault
-# `hardnested/CMakeLists.txt` records having already been paid for once.
+# Measured on a cold configure: the generated project then carries
+# `Optimization=''`, no `/Ob2`, no `NDEBUG` and `RuntimeLibrary=''` for the
+# three C libraries - and an empty `RuntimeLibrary` emits no `/M` switch, so
+# cl defaults to `/MT`. Unoptimized, asserts live, and against the static CRT
+# while the clang-cl objects beside them stay `/MD`, which is the two-heap
+# `_aligned_free` fault `hardnested/CMakeLists.txt` records having already
+# been paid for once. Note `/Zi` itself still applies in that state - the
+# append replaces the defaults with exactly ` /Zi` - so no debug-file check
+# can see this; only this line prevents it.
 #
 # None of that shows up in a warm build directory, where the cache entry
 # already exists and the append lands on it correctly. It only appears on a
@@ -89,13 +93,16 @@ set(CMAKE_SHARED_LINKER_FLAGS_RELEASE
 # in `.github/` has to learn a new one. CMake appends the configuration to a
 # plain path, so this resolves to `build/windows/x64/runner/Release`.
 #
-# Written out rather than reusing `BUILD_BUNDLE_DIR`, because that is defined
-# a hundred lines below and `CMAKE_PDB_OUTPUT_DIRECTORY` is captured into each
-# target's properties as the target is created - it has to be set before the
-# first `add_subdirectory` or it reaches nothing. (A generator expression would
-# also suppress the per-configuration append, so the two spellings are not
-# interchangeable even where both are in scope.) What catches the two drifting
-# apart is `windows.ps1` refusing to package a build whose PDBs are not here.
+# Written out rather than reusing `BUILD_BUNDLE_DIR`, which is not defined
+# until the install block below. `CMAKE_PDB_OUTPUT_DIRECTORY` is captured into
+# a target's properties as that target is created, so a value set down there
+# would still reach the plugins - but not the runner, and not the three
+# `lib/modules/cpp` libraries, which are created inside `add_subdirectory`
+# above it. Those are exactly the four `windows.ps1` checks. (A generator
+# expression would also suppress the per-configuration append, so the two
+# spellings are not interchangeable even where both are in scope.) What
+# catches the two drifting apart is `windows.ps1` refusing to package a build
+# whose PDBs are not here.
 #
 # Profile gets these PDBs too - the property is not per-configuration - and
 # inherits the flags above from the block below, which copies the Release ones.

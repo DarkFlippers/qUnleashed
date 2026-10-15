@@ -54,9 +54,10 @@ endif()
 # `${CMAKE_C_FLAGS_RELEASE}` expands to **nothing** - the append would not
 # extend the defaults, it would replace them with ` -g` and shadow the cache
 # entry that `lib/modules/cpp`'s own `project(... LANGUAGES C)` writes later.
-# The three C libraries would then build Release with no `-O3` and no
-# `-DNDEBUG`: unoptimized, asserts live. They are the MIFARE and SubGHz
-# bruteforce engines, where throughput is the entire point.
+# All three C libraries would then lose `-DNDEBUG`, and `qunleashed_mfkey32`
+# would lose `-O3` outright - hardnested and faaccrack's engine objects add
+# `-O3` themselves, so they keep it. They are the MIFARE and SubGHz
+# bruteforce engines, where throughput is the point.
 #
 # None of that shows up in a warm build directory, where the cache entry
 # already exists and the append lands on it correctly. It only appears on a
