@@ -321,38 +321,40 @@ class _TextEditorPageState extends State<TextEditorPage> {
     }
     final doc = _doc!;
     final root = _highlightTheme.theme['root'];
-    return CodeEditor(
-      controller: _controller,
-      findController: _find,
-      autofocus: false,
-      chunkAnalyzer: const NonCodeChunkAnalyzer(),
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      style: CodeEditorStyle(
-        fontSize: kEditorFontSize,
-        fontHeight: kEditorLineHeight,
-        fontFamily: kEditorFontFamily,
-        textColor: root?.color,
-        backgroundColor: root?.backgroundColor ?? colors.terminalBackground,
-        cursorColor: colors.accent,
-        selectionColor: colors.accent.withValues(alpha: 0.35),
-        highlightColor: colors.accent.withValues(alpha: 0.55),
-        codeTheme: _highlightTheme,
+    return EditorSelectionMenuScope(
+      builder: (toolbar) => CodeEditor(
+        controller: _controller,
+        findController: _find,
+        autofocus: false,
+        chunkAnalyzer: const NonCodeChunkAnalyzer(),
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        style: CodeEditorStyle(
+          fontSize: kEditorFontSize,
+          fontHeight: kEditorLineHeight,
+          fontFamily: kEditorFontFamily,
+          textColor: root?.color,
+          backgroundColor: root?.backgroundColor ?? colors.terminalBackground,
+          cursorColor: colors.accent,
+          selectionColor: colors.accent.withValues(alpha: 0.35),
+          highlightColor: colors.accent.withValues(alpha: 0.55),
+          codeTheme: _highlightTheme,
+        ),
+        indicatorBuilder:
+            (context, editingController, chunkController, notifier) {
+              return EditorLineNumbers(
+                controller: editingController,
+                notifier: notifier,
+                document: doc,
+              );
+            },
+        findBuilder: (context, controller, readOnly) => EditorFindPanel(
+          controller: controller,
+          readOnly: readOnly,
+          background: colors.accent,
+          foreground: colors.onAccent,
+        ),
+        toolbarController: toolbar,
       ),
-      indicatorBuilder:
-          (context, editingController, chunkController, notifier) {
-            return EditorLineNumbers(
-              controller: editingController,
-              notifier: notifier,
-              document: doc,
-            );
-          },
-      findBuilder: (context, controller, readOnly) => EditorFindPanel(
-        controller: controller,
-        readOnly: readOnly,
-        background: colors.accent,
-        foreground: colors.onAccent,
-      ),
-      toolbarController: editorSelectionToolbar,
     );
   }
 }
