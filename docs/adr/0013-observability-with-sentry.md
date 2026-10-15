@@ -502,18 +502,44 @@ gate it.
 1. **Not collected:** `sendDefaultPii: false`; no screenshots, no view
    hierarchy; print breadcrumbs off, since `LogService` feeds Sentry directly.
 2. **One scrubber, client-side.** `_redact` moves to `telemetry/scrub.dart`
-   and gains known Flipper names, file names under `/ext` and `/int` (the
-   extension survives), long hex runs, coordinates and URL query strings. It
-   runs before every event, breadcrumb, log and transaction is sent - which,
-   since the amendment to §1, is the only place it runs. It is applied in the
-   sinks rather than in `_emit`, so the console keeps the real path: a
+   and gains file names under `/ext` and `/int` (the extension survives),
+   coordinates and URL query strings.
+
+   **Amended: two rules were removed.** It also held known Flipper names and
+   long hex runs, and both are gone. A Flipper's name is generated rather
+   than a person's, and a UID, a key, a MAC or a serial is the thing a report
+   about this app has to contain - `recovered <hex> for sector 3` is not a
+   report, it is the shape of one. §6.4's masks were opened for the same
+   facts in the same change, with one exception §6.4 argues: a recovered key
+   and a card UID stay masked in the replay. Everything else - device name,
+   serial, BLE MAC, the `device info` dump - is open on all three channels.
+   The old arrangement was the worst of both, a screen recording that showed
+   nothing beside a log that said nothing.
+
+   What that cost, named because it was not part of the decision: the FAAC
+   `fix` is logged in hex by `seed_controller.dart` - `[Seed] searching ...`
+   on every run, `[Seed] search failed for ...` when one fails - so that
+   identifier now leaves intact. It names a remote rather than opening one,
+   and the seed beside it is never logged, only `seed=<bool>`. The old rule
+   did not reliably take it either: `toRadixString(16)` drops leading zeros,
+   and the rule wanted eight characters with a letter among them.
+
+   **§6.3's server-side rules are the other half and are not changed here.**
+   If they still strip long hex runs, a key never reaches a report however
+   this file is written, and the amendment is defeated in transit. Checking
+   them is a console task, not a code one.
+
+   The scrubber runs before every event, breadcrumb, log and transaction is
+   sent - which, since the amendment to §1, is the only place it runs. It is
+   applied in the sinks rather than in `_emit`, so the console keeps the real
+   path: a
    developer reading their own terminal is not the threat model, and
    `<redacted>` there is a worse terminal for no gain.
 3. **Server-side rules for the same patterns,** and "Prevent storing IP
    addresses" on. Native crashes do not pass through Dart's `beforeSend`, and
    their module paths carry `C:\Users\<name>\…` — the Windows launcher
    extracts into `%TEMP%`.
-4. **Replay masks.** `maskAllText` masks text widgets. The hex editor paints
+4. **Replay masks, and two unmasks.** `maskAllText` masks text widgets. The hex editor paints
    card bytes with `TextPainter` (`pages/archive/editor/hex/view.dart`), and
    the remote-desktop screen is a `RawImage` fed the `ui.Image` that
    `remote/desktop/frame_decoder.dart` decodes
@@ -565,6 +591,76 @@ gate it.
    and short-circuits later rules, so it would defeat `maskAllText` inside the
    hex table too. The assertion now reads `privacy.toJson()`, which is public
    and carries the SDK's own `'mask'`/`'unmask'` description.
+
+   **The blanket also made the feature unusable, and that is the amendment.**
+   `maskAllText` reaches every `Text` in the app, so the first replays to
+   arrive were a rectangle where each button, tab and title had been - five
+   minutes of silent video nobody could read. Two `unmask` rules answer it:
+   `VisibleSurface`, an app-owned marker that is the inverse of
+   `SensitiveSurface`, and `ButtonStyleButton`, which is every Material
+   button in one line.
+
+   **Only the safe direction is enumerated, and that is the whole argument.**
+   Turning `maskAllText` off and listing the sensitive surfaces instead is
+   the enumeration this section already rejected once, and it fails the wrong
+   way round: a `Text` nobody thought of ships a card dump. Under an unmask
+   list the same oversight is a grey box. What carries the marker today is
+   the nav bar's bottom tab, the app bar's device subtitle and
+   `FlipperInfoLine` - so a Flipper's name, its serial, its BLE MAC and the
+   rest of `device info` are legible, matching §6.2's half of the same
+   decision. The app bar *title* is deliberately not unmasked: seven of its
+   sixteen call sites pass something that is not a constant - a filename
+   (`archive/editor/page.dart`, `tools/infrared/widgets/ir_file_viewer.dart`),
+   a directory name (`tools/infrared/page.dart`), a brand or category from
+   downloaded data (`infrareds_page.dart`, `brands_page.dart`), a catalog
+   app's name (`apps/catalog/detail_page.dart`) and a version
+   (`firmware_changelog_page.dart`) - and one rule cannot tell those from the
+   nine constants.
+
+   **`ButtonStyleButton` is wider than the four obvious button types.** With
+   `useMaterial3: true` an `IconButton` builds an `_IconButtonM3` that
+   extends it, so every `IconButton` subtree is unmasked too, and
+   `SegmentedButton`, `MenuItemButton` and `DropdownMenu` would be if the app
+   used them. The audit that accepted the rule covered that whole set. The
+   hazard it leaves is the inverse of the usual one: a `SensitiveSurface`
+   placed *inside* a button is never reached, because `WidgetFilter` stops
+   descending on an unmask.
+
+   Recovered MIFARE keys and card UIDs stay masked in the replay although
+   §6.2 now sends them in logs, and the reason is not privacy but copy:
+   `diagnosticsShareSubtitle` and §1's notice both promise in as many words
+   that keys are never sent. Changing that promise is a translation cycle
+   across eight locales, so it is its own task rather than a line in this
+   one. **The copy stays, and this is what it now rests on.** The promise
+   says "never sent", not "hidden from the recording", so the replay masks
+   alone would not keep it - §6.2's half decides it too. It holds, and by
+   measurement rather than by rule: no `LogService` call in
+   `lib/pages/tools/mifare/` interpolates a key or a cuid. They log a sector
+   and key *name*, a path, or exception text, and a cuid dictionary filename
+   is still taken by `_flipperExtensions`. What the hex rule actually carried
+   away was BLE addresses, serials, the `device info` dump, commit SHAs and
+   the FAAC fix.
+
+   So the sentence is true because of what the app happens to log, where it
+   used to be true because a rule enforced it. That is a real weakening and
+   it is the reason this paragraph exists: a future
+   `LogService.error('[Recover] bad key $key')` makes the sentence false with
+   nothing failing. Whoever adds a key to a log body owns rewriting the copy,
+   or `Scrub` owns a call-site-scoped rule - a regex over shape cannot tell a
+   key from a MAC, which is why the blanket went.
+
+   **What actually triggers a replay upload**, since it is the fact this
+   whole amendment turns on: `ReplayEventProcessor` keys on an event with a
+   non-empty `exceptions` list. A `captureMessage` is not one, and neither is
+   a Sentry Log - so `LogService` at any of its three kept levels is
+   replay-safe, and the level is never the lever. Two things follow. *Every*
+   `guarded()` failure on iOS uploads a replay, through `_reportGuarded`'s
+   `captureException`, so silencing one call site hands the role to the next.
+   And `beforeSend` is not a backstop: event processors run first, so a
+   filter there uploads the replay and then drops the event. If "replay for
+   crashes only" is wanted, the lever is in `_reportGuarded` - a
+   `captureMessage` at error level with the error in a context is reported,
+   grouped and alertable, and carries no `exceptions` list.
 
    Two things this gate still owes. **No surface has been checked in a
    recorded replay on a device** - the test proves the rules the options block

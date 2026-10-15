@@ -2,7 +2,8 @@
 //
 // The two directions both have a cost and the tests say which is which.
 // Under-redaction sends a card dump to a third party, which cannot be taken
-// back. Over-redaction sends `<hex> failed on <name>`, which is an event
+// back. Over-redaction sends `reading <name>.nfc failed` with the one
+// detail the reader needed gone, which is an event
 // nobody can act on - and the whole reason errors are reported at all. So
 // every rule here has a case for what it takes out *and* a case for what it
 // must leave alone.
@@ -10,14 +11,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/services/telemetry/scrub.dart';
 
 void main() {
-  setUp(() {
-    Scrub.debugUseHomes([r'C:\Users\Myte']);
-    Scrub.debugForgetDeviceNames();
-  });
-  tearDown(() {
-    Scrub.debugUseHomes(null);
-    Scrub.debugForgetDeviceNames();
-  });
+  setUp(() => Scrub.debugUseHomes([r'C:\Users\Myte']));
+  tearDown(() => Scrub.debugUseHomes(null));
 
   // A group stood here asserting that the *sink* level left filenames, UIDs
   // and coordinates alone, so the on-screen log stayed readable for the person
@@ -154,48 +149,45 @@ void main() {
     });
   });
 
-  group('hex runs', () {
-    test('a UID goes', () {
-      expect(Scrub.outbound('UID 04511E2A'), 'UID <hex>');
+  // What used to be `group('hex runs')`, inverted. A long hex run became
+  // `<hex>`, and the rule is gone: a UID, a key, a MAC and a serial are now
+  // sent whole, by decision - `Scrub`'s own doc records who decided and why.
+  //
+  // Asserted rather than deleted, because a deleted test cannot tell a
+  // decision from a rule that quietly came back. These are the strings the
+  // old group proved were taken out.
+  group('identifiers the scrubber deliberately leaves whole', () {
+    test('a card UID survives', () {
+      expect(Scrub.outbound('UID 04511E2A'), 'UID 04511E2A');
     });
 
-    test('a key goes', () {
+    test('a recovered key survives', () {
       expect(
         Scrub.outbound('recovered FFFFFFFFFFFA for sector 3'),
-        'recovered <hex> for sector 3',
+        'recovered FFFFFFFFFFFA for sector 3',
       );
     });
 
-    test('a timestamp does not, because it is only digits', () {
-      // The whole reason a letter is required. Without it this reads
-      // `<hex>`, and so does every byte count and every build number.
+    test('a BLE address survives, which is the breadcrumb that wanted it', () {
+      // `[FlipperClient] connecting to ... (ble:<uuid>)` used to arrive with
+      // both halves of the identifier replaced, so the line said nothing
+      // about which unit it had failed to reach.
+      const line =
+          '[FlipperClient] connecting to '
+          '(ble:8C4F2B10-D2A5-790D-D1F6-A1B2C3D4E5F6)';
+      expect(Scrub.outbound(line), line);
+    });
+
+    test('a full commit SHA survives', () {
+      final sha = 'a' * 40;
+      expect(Scrub.outbound('built from $sha'), 'built from $sha');
+    });
+
+    test('a timestamp was never touched and still is not', () {
       expect(
         Scrub.outbound('gave up after 1760000000 ms'),
         'gave up after 1760000000 ms',
       );
-    });
-
-    test('a short error code does not', () {
-      expect(Scrub.outbound('error code 126'), 'error code 126');
-    });
-
-    test('an abbreviated commit survives, a full one does not', () {
-      // Seven characters is what git abbreviates to and what the build header
-      // carries, so it has to live. A 40-character SHA is over the floor and
-      // goes - which costs nothing, because the commit reaches Sentry as a
-      // tag and tags do not pass through here.
-      expect(Scrub.outbound('built from abc1234'), 'built from abc1234');
-      expect(Scrub.outbound('built from ${'a' * 40}'), 'built from <hex>');
-    });
-
-    test('a hyphenated value is one value, not two', () {
-      // `\\b` treats the hyphen as a boundary and would leave the dash
-      // stranded between two replacements.
-      expect(Scrub.outbound('a1b2c3d4-e5f6a7b8'), '<hex>-<hex>');
-    });
-
-    test('an ordinary word of eight letters is not hex', () {
-      expect(Scrub.outbound('transport unavailable'), 'transport unavailable');
     });
   });
 
@@ -290,67 +282,21 @@ void main() {
     });
   });
 
-  group('Flipper names', () {
-    test('a learned name goes', () {
-      Scrub.rememberDeviceName('Mykhailo');
-      expect(
-        Scrub.outbound('[BLE] Mykhailo dropped the link'),
-        '[BLE] <device> dropped the link',
-      );
-    });
-
-    test('a name nobody has seen stays, because nothing can match it', () {
-      expect(
-        Scrub.outbound('[BLE] Mykhailo dropped the link'),
-        '[BLE] Mykhailo dropped the link',
-      );
-    });
-
-    test('a name too short to be one is refused', () {
-      // Three characters would match inside unrelated words and corrupt every
-      // message carrying one - and identifies nobody.
-      Scrub.rememberDeviceName('Ace');
-      expect(
-        Scrub.outbound('[BLE] Ace and Facebook'),
-        '[BLE] Ace and Facebook',
-      );
-    });
-
-    test('a common four-letter name does not corrupt every message', () {
-      // The replacement was an unanchored `replaceAll`, so a Flipper called
-      // `File` turned `FileSystemException` into `<device>SystemException` -
-      // degrading exactly the reports that had already failed. The home
-      // patterns are anchored for this reason, and the four-character floor's
-      // own comment cites that argument without having applied it.
-      Scrub.rememberDeviceName('File');
-      expect(
-        Scrub.outbound('[Archive] FileSystemException on File'),
-        '[Archive] FileSystemException on <device>',
-      );
-    });
-
-    test('a name is still taken when punctuation surrounds it', () {
-      // The anchor excludes word characters only, so quotes and brackets do
-      // not hide a name from it.
-      Scrub.rememberDeviceName('Mykhailo');
-      expect(
-        Scrub.outbound('[BLE] connect to "Mykhailo" failed'),
-        '[BLE] connect to "<device>" failed',
-      );
-    });
-
-    test('a name that is a prefix of another does not strand the rest', () {
-      Scrub.rememberDeviceName('Flip');
-      Scrub.rememberDeviceName('Flipper');
-      expect(Scrub.outbound('Flipper lost'), '<device> lost');
-    });
-
-    test('the same name twice is remembered once', () {
-      Scrub.rememberDeviceName('Zero');
-      Scrub.rememberDeviceName('Zero');
-      expect(Scrub.outbound('Zero Zero'), '<device> <device>');
-    });
-  });
+  // `group('Flipper names')` stood here, and was deleted rather than
+  // inverted. The hex group above could be inverted because its rule matched
+  // a *shape* - restore the rule and the assertions go red, which a mutation
+  // run confirmed. The name rule matched a *learned set*, empty until
+  // `rememberDeviceName` was called, and that API went away with it. So a
+  // test that feeds the scrubber a name and expects it back passes against
+  // every version of this file that has ever existed, including the one with
+  // the rule still in. It read as cover for a guarantee it could not make,
+  // which is CLAUDE.md's "trusting that a test fails for the reason its name
+  // says" with the reasoning written directly above it.
+  //
+  // The decision lives in ADR 0013 §6.2 and in `Scrub`'s own doc. A
+  // source-level ratchet over `lib/` - no `rememberDeviceName`, no literal
+  // `'<device>'` - is the thing that would actually catch a reintroduction,
+  // and `test/ratchet.dart` is the machinery for it if that day comes.
 
   // The home directory, which is every absolute path's first component and the
   // one category that can be taken out mechanically. These tests were in
@@ -432,15 +378,18 @@ void main() {
     });
   });
 
-  test('a card dump in a stack trace loses every part of itself', () {
-    Scrub.rememberDeviceName('Mykhailo');
+  test('one line, three of the rules at once', () {
+    // The home directory, the bare filename and the coordinate - not the
+    // query string or the quoted filename, which have their own groups. The
+    // device name and the block stay, and that is the half this used to lose:
+    // what somebody triaging the report actually needs.
     expect(
       Scrub.outbound(
         r'[Archive] reading C:\Users\Myte\cache\/ext/nfc/Office badge.nfc '
-        'from Mykhailo failed: block 4 is 04511E2AFFFFFFFF at 50.4501',
+        'from Ubl4te failed: block 4 is 04511E2AFFFFFFFF at 50.4501',
       ),
-      r'[Archive] reading ~\cache\/ext/nfc/<name>.nfc from <device> failed: '
-      'block 4 is <hex> at <coord>',
+      r'[Archive] reading ~\cache\/ext/nfc/<name>.nfc from Ubl4te failed: '
+      'block 4 is 04511E2AFFFFFFFF at <coord>',
     );
   });
 }

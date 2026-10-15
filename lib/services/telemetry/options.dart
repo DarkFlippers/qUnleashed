@@ -5,6 +5,7 @@
 // get there. Pure: options in, options mutated, nothing of `Telemetry`'s own
 // state touched - which is why these are top-level functions rather than
 // methods.
+import 'package:flutter/material.dart' show ButtonStyleButton;
 import 'package:flutter_map/flutter_map.dart' show FlutterMap;
 import 'package:re_editor/re_editor.dart' show CodeEditor;
 import 'package:sentry_flutter/sentry_flutter.dart';
@@ -214,7 +215,9 @@ void configureOptions(SentryFlutterOptions options, TelemetryPlan plan) {
   // here passed the whole suite, including the case named for these masks.
   // `unmask` is worse than deleting the line, because it applies to the
   // subtree and short-circuits later rules, so it would defeat `maskAllText`
-  // inside the hex table too. The prose that used to sit in the argument is
+  // inside the hex table too. (Two deliberate `unmask` rules are installed
+  // below, for the chrome. That is the same mechanism pointed somewhere it
+  // is wanted, and it is why the test pins the decision and not the name.) The prose that used to sit in the argument is
   // above, where a reader was always better served by it.
   //
   // The ignores are not decoration. `mask<T>()` is `@experimental` in 9.30.1,
@@ -228,6 +231,61 @@ void configureOptions(SentryFlutterOptions options, TelemetryPlan plan) {
   options.privacy.mask<FlutterMap>(); // ignore: experimental_member_use
   options.privacy.mask<CodeEditor>(); // ignore: experimental_member_use
   options.privacy.mask<TerminalView>(); // ignore: experimental_member_use
+
+  // §6.4's gate the other way round, and the reason the feature was unusable.
+  //
+  // `maskAllText` stays **on** - everything above still rests on it. What it
+  // also did was grey out every button, tab and title in the app, so the
+  // replays that arrived showed a rectangle where the UI had been and nobody
+  // could tell what the user had been doing. Five minutes of silent video is
+  // not a diagnostic.
+  //
+  // So the chrome is named instead, and only the chrome. The alternative -
+  // `maskAllText = false` plus a list of the sensitive surfaces - is the
+  // enumeration this file's masks already rejected once, and it fails the
+  // wrong way: a `Text` nobody thought of ships a card dump rather than a grey
+  // box. Here a surface nobody thought of simply stays masked. `VisibleSurface`
+  // carries the reasoning and the rule about subtrees.
+  //
+  // `ButtonStyleButton` and not a mixin, because the Material buttons are the
+  // framework's. It is **wider than the four obvious ones** - `ElevatedButton`,
+  // `TextButton`, `FilledButton`, `OutlinedButton` - and the width is the part
+  // to carry forward: `theme.dart` sets `useMaterial3: true`, so an
+  // `IconButton` builds an `_IconButtonM3 extends ButtonStyleButton` and its
+  // subtree is unmasked as well. `SegmentedButton`, `MenuItemButton` and
+  // `DropdownMenu` each build a real `TextButton` inside, so they would be
+  // too; the app uses none of them today. Anyone auditing what this rule
+  // reaches has to walk `IconButton` as well as the four, which is how the
+  // example below was nearly missed - the update badge in
+  // `apps/manager/page.dart` is an `IconButton`.
+  //
+  // Checked before adding it, across that whole set: no button here renders
+  // anything but an l10n constant, a literal, or that badge's count. A button
+  // whose label interpolates a file name would be a leak, and so would a
+  // `SensitiveSurface` placed *inside* a button, since the unmask stops the
+  // walk before reaching it. Both are review matters rather than things the
+  // rule can see.
+  //
+  // **Not the app bar title.** It was the obvious next candidate and it is
+  // wrong: seven of its sixteen call sites pass something that is not a
+  // constant - `archive/editor/page.dart` and
+  // `tools/infrared/widgets/ir_file_viewer.dart` pass a filename,
+  // `tools/infrared/page.dart` a directory name,
+  // `tools/infrared/infrareds_page.dart` and `brands_page.dart` a brand or
+  // category from downloaded data, `apps/catalog/detail_page.dart` a catalog
+  // app's name, and `devices/widgets/firmware_changelog_page.dart` a version.
+  // One rule cannot tell those from the nine constants, so the title stays
+  // masked and a page that wants to be legible can mix `VisibleSurface` into
+  // a title widget of its own.
+  //
+  // `test/telemetry_lifecycle_test.dart` pins these by decision and not by
+  // name, for the reason the file's own comment gives: `mask<T>()` and
+  // `unmask<T>()` both append a rule named after the type, so an assertion on
+  // the name alone passes either way. That cuts both ways now - an `unmask`
+  // turned into a `mask` here would quietly put the grey boxes back.
+  options.privacy.unmask<VisibleSurface>(); // ignore: experimental_member_use
+  options.privacy
+      .unmask<ButtonStyleButton>(); // ignore: experimental_member_use
 
   // Off, and not because it is unwanted. Frame timings need
   // `SentryWidgetsFlutterBinding`, and `_initCore` installs Flutter's own -

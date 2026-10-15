@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../services/localization/l10n.dart';
 import '../theme/theme.dart';
+import 'sensitive_surface.dart';
 
 class QPageAppBar extends StatelessWidget implements PreferredSizeWidget {
   const QPageAppBar({
@@ -229,7 +230,7 @@ class _Subtitle extends StatelessWidget {
   }
 }
 
-class _DeviceSubtitle extends StatelessWidget {
+class _DeviceSubtitle extends StatelessWidget with VisibleSurface {
   const _DeviceSubtitle({
     required this.name,
     required this.connected,

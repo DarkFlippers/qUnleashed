@@ -142,6 +142,10 @@ bool get anySinkInstalled =>
 /// device either way.
 /// Every rule §6.4's block installs, as `privacy.toJson()` renders them.
 ///
+/// Named for the whole list and not for the masks: since §6.4 gained two
+/// `unmask` rules this returns both kinds, and `maskedTypes` would have read
+/// as a filter it never was.
+///
 /// One list because there were two, and both were incomplete: they asserted
 /// three of the seven rules that existed, so the four added last - including
 /// the net and the default text editor - were pinned by nothing, while
@@ -154,7 +158,18 @@ const kMaskedSurfaces = [
   'TerminalView: mask',
 ];
 
-Iterable<String> maskedTypes(SentryFlutterOptions options) =>
+/// The two rules §6.4 installs in the other direction.
+///
+/// Pinned with the same care and for a sharper reason: these are the only
+/// `unmask` rules in the app, and an `unmask` turned into a `mask` would put
+/// the grey boxes back over every button and tab - the state that made replay
+/// unusable in the first place, and one nothing else here would notice.
+const kUnmaskedSurfaces = [
+  'VisibleSurface: unmask',
+  'ButtonStyleButton: unmask',
+];
+
+Iterable<String> maskingRules(SentryFlutterOptions options) =>
     (options.privacy.toJson()['maskingRules'] as List<dynamic>? ??
             const <dynamic>[])
         .cast<String>();
@@ -277,7 +292,18 @@ void main() {
 
       expect(options.privacy.maskAllText, isTrue);
       expect(options.privacy.maskAllImages, isTrue);
-      expect(maskedTypes(options), containsAll(kMaskedSurfaces));
+      expect(maskingRules(options), containsAll(kMaskedSurfaces));
+    });
+
+    test('unmasks the chrome, so a replay is legible', () async {
+      // The other half of the gate. The four rules above exist because
+      // `maskAllText` does *not* reach a `CustomPainter` or a `RenderBox`;
+      // these two exist because it reaches everything else, which is what
+      // made the first replays useless - a rectangle where each button, tab
+      // and title had been. These name what may be seen.
+      await build().start();
+
+      expect(maskingRules(sdk.options!), containsAll(kUnmaskedSurfaces));
     });
 
     test('the replay switch off leaves the error rate at zero', () async {
@@ -304,7 +330,10 @@ void main() {
 
       await build().start();
 
-      expect(maskedTypes(sdk.options!), containsAll(kMaskedSurfaces));
+      expect(
+        maskingRules(sdk.options!),
+        containsAll([...kMaskedSurfaces, ...kUnmaskedSurfaces]),
+      );
     });
   });
 
