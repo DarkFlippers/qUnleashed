@@ -167,14 +167,18 @@ class HomeWidgetSettings extends PrefsBackedSettings {
     // failed left sync() pushing the old look back at the next launch - the
     // change undoing itself hours later, with nothing to connect the two.
     // This way a write that fails never reaches the launcher at all. #120.
-    await persistSetting('$_prefix$key', (prefs) async {
-      switch (value) {
-        case final String s:
-          await prefs.setString('$_prefix$key', s);
-        case final bool b:
-          await prefs.setBool('$_prefix$key', b);
-      }
-    });
+    await persistSetting(
+      '$_prefix$key',
+      (prefs) => switch (value) {
+        final String s => prefs.setString('$_prefix$key', s),
+        final bool b => prefs.setBool('$_prefix$key', b),
+        // Unreachable from the five setters above, which pass a `.name` or a
+        // bool. It throws rather than returning false because there is a
+        // third answer here - nothing was written and nothing was wrong with
+        // the store - and persistSetting logs it instead of a wrong reason.
+        _ => throw ArgumentError.value(value, 'value', 'not a String or bool'),
+      },
+    );
     await push(toMap());
   }
 }

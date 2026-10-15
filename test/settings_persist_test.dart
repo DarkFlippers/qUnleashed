@@ -33,6 +33,29 @@ class _ReadOnlyStore extends SharedPreferencesStorePlatform {
   Future<bool> clear() async => throw StateError('write failed');
 }
 
+/// A store that answers `false` instead of throwing, the way Android's legacy
+/// backend does when `Editor.commit()` could not write to persistent storage.
+///
+/// `SharedPreferences` has updated its own cache before it asks the store, so
+/// an app reading the setting back in the same session is told the write
+/// landed. The next launch reads the disk and disagrees.
+class _RefusingStore extends SharedPreferencesStorePlatform {
+  final Map<String, Object> _values = {};
+
+  @override
+  Future<Map<String, Object>> getAll() async => Map.of(_values);
+
+  @override
+  Future<bool> setValue(String valueType, String key, Object value) async =>
+      false;
+
+  @override
+  Future<bool> remove(String key) async => false;
+
+  @override
+  Future<bool> clear() async => false;
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -45,6 +68,11 @@ void main() {
   /// handler installed there is not on the path a write takes.
   void refuseWrites() {
     SharedPreferencesStorePlatform.instance = _ReadOnlyStore();
+  }
+
+  /// Makes every write come back `false` from here on, without throwing.
+  void declineWrites() {
+    SharedPreferencesStorePlatform.instance = _RefusingStore();
   }
 
   setUp(() {
@@ -63,9 +91,10 @@ void main() {
       refuseWrites();
 
       await expectLater(
-        persistSetting('device.auto_connect_usb', (p) async {
-          await p.setBool('device.auto_connect_usb', true);
-        }),
+        persistSetting(
+          'device.auto_connect_usb',
+          (p) => p.setBool('device.auto_connect_usb', true),
+        ),
         completes,
       );
     });
@@ -73,9 +102,10 @@ void main() {
     test('is kept where a release build can read it', () async {
       refuseWrites();
 
-      await persistSetting('device.auto_connect_usb', (p) async {
-        await p.setBool('device.auto_connect_usb', true);
-      });
+      await persistSetting(
+        'device.auto_connect_usb',
+        (p) => p.setBool('device.auto_connect_usb', true),
+      );
 
       expect(lines('did not persist'), hasLength(1));
     });
@@ -85,9 +115,7 @@ void main() {
     test('names the setting rather than the operation', () async {
       refuseWrites();
 
-      await persistSetting('map.retina', (p) async {
-        await p.setBool('map.retina', true);
-      });
+      await persistSetting('map.retina', (p) => p.setBool('map.retina', true));
 
       expect(lines('map.retina'), hasLength(1));
     });
@@ -95,27 +123,72 @@ void main() {
     test('says what went wrong', () async {
       refuseWrites();
 
-      await persistSetting('map.retina', (p) async {
-        await p.setBool('map.retina', true);
-      });
+      await persistSetting('map.retina', (p) => p.setBool('map.retina', true));
 
       expect(lines('write failed'), isNotEmpty);
     });
   });
 
+  // The half of the failures that never reach the catch. `setBool` and the
+  // rest return `Future<bool>`, and typing the callback `void` discarded that
+  // answer with no analyzer warning - `void` is a top type - so a store that
+  // declined the write produced no log line at all. #313.
+  group('a write that failed without throwing', () {
+    test('is kept where a release build can read it', () async {
+      declineWrites();
+
+      await persistSetting(
+        'device.sync_time',
+        (p) => p.setBool('device.sync_time', true),
+      );
+
+      expect(lines('did not persist'), isNotEmpty);
+    });
+
+    test('names the setting rather than the operation', () async {
+      declineWrites();
+
+      await persistSetting(
+        'map.track_device',
+        (p) => p.setBool('map.track_device', true),
+      );
+
+      expect(lines('map.track_device'), isNotEmpty);
+    });
+
+    // There is no exception to quote, so the line has to say why by itself -
+    // and it has to say something other than what a throw says, or a reader
+    // cannot tell a store that refused from a store that was not there.
+    test('says the store refused rather than quoting an exception', () async {
+      declineWrites();
+
+      await persistSetting(
+        'theme.mode',
+        (p) => p.setString('theme.mode', 'dark'),
+      );
+
+      expect(lines('the store refused the write'), isNotEmpty);
+    });
+
+    test('does not come back to the caller', () async {
+      declineWrites();
+
+      await expectLater(
+        persistSetting('push.enabled', (p) => p.setBool('push.enabled', true)),
+        completes,
+      );
+    });
+  });
+
   group('a write that worked', () {
     test('says nothing', () async {
-      await persistSetting('map.retina', (p) async {
-        await p.setBool('map.retina', true);
-      });
+      await persistSetting('map.retina', (p) => p.setBool('map.retina', true));
 
       expect(lines('[Settings]'), isEmpty);
     });
 
     test('actually wrote it', () async {
-      await persistSetting('map.retina', (p) async {
-        await p.setBool('map.retina', true);
-      });
+      await persistSetting('map.retina', (p) => p.setBool('map.retina', true));
 
       final prefs = await SharedPreferences.getInstance();
       expect(prefs.getBool('map.retina'), isTrue);

@@ -19,13 +19,28 @@ import '../logging.dart';
 ///
 /// [what] names the setting, not the operation - a log that says "save
 /// failed" five times over cannot tell a reader which control went back.
+///
+/// [write] returns the `Future<bool>` that `setString` and the rest hand back,
+/// because a write can fail without throwing: on Android the legacy backend
+/// returns `Editor.commit()` straight through, and that is `false` when the
+/// write to persistent storage did not land. `SharedPreferences` has already
+/// updated its own cache by then, so the setting reads back correctly for the
+/// rest of the session and is gone at the next launch. Typing this `void`
+/// discarded that `false` with no analyzer warning - `void` is a top type, so
+/// `Future<bool>` satisfies it silently - and the one promise this function
+/// makes was not kept for the whole half of the failures that do not throw.
+/// #313.
 Future<void> persistSetting(
   String what,
-  Future<void> Function(SharedPreferences prefs) write,
+  Future<bool> Function(SharedPreferences prefs) write,
 ) async {
   try {
     final prefs = await SharedPreferences.getInstance();
-    await write(prefs);
+    if (!await write(prefs)) {
+      LogService.warn(
+        '[Settings] "$what" did not persist: the store refused the write',
+      );
+    }
   } catch (e) {
     LogService.warn('[Settings] "$what" did not persist: $e');
   }
