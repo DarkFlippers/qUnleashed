@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../http/app_http.dart';
 import '../logging.dart';
+import '../settings/persist.dart';
 import '../localization/l10n.dart';
 
 /// The builder address is public; only the signing key is a secret, so the
@@ -388,7 +389,13 @@ class RemoteBuildService {
         16,
         (_) => random.nextInt(256),
       ).map((b) => b.toRadixString(16).padLeft(2, '0')).join();
-      await prefs.setString(_clientIdPrefsKey, id);
+      // Best effort, and deliberately not fatal: the id is already in
+      // `_clientId` for this session, so a store that will not take it costs
+      // a new id at the next launch and nothing else. Before this it was an
+      // unguarded write on the path that signs every remote build request,
+      // where a throw failed the build with an error about preferences.
+      final at = _clientIdPrefsKey;
+      await persistSetting(at, (prefs) => prefs.setString(at, id!));
     }
     return _clientId = id;
   }

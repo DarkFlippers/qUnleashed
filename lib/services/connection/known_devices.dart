@@ -136,13 +136,19 @@ class KnownDevicesStore extends ChangeNotifier {
     await _persist();
   }
 
+  /// Not [persistSetting], which logs at warn: the ruling below is error,
+  /// and this is a device list rather than a setting. What it shares is the
+  /// half #313 was about - `setString` answering `false` without throwing.
   Future<void> _persist() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(
+      final stored = await prefs.setString(
         _prefsKey,
         jsonEncode([for (final device in _devices) device.toJson()]),
       );
+      if (!stored) {
+        LogService.error('[KnownDevices] save failed: the store refused it');
+      }
     } catch (e) {
       // error, not warn, alone in this sweep: it is the only failure here
       // that loses something durable. notifyListeners has already run, so the

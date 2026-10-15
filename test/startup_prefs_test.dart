@@ -9,7 +9,7 @@ import 'package:qunleashed/theme/theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'kept_lines.dart';
-
+import 'refusing_prefs.dart';
 import 'unopenable_prefs.dart';
 
 /// The three preference reads `_initCore` awaits — #124.
@@ -112,6 +112,56 @@ void main() {
       final kept = keptLines.where((l) => l.contains('[Locale]')).toList();
       expect(kept, hasLength(1));
       expect(kept.single, contains('locale.code'));
+    });
+  });
+
+  // The write half of the controller above. `setLocale` is torn off into a
+  // `VoidCallback` by the language page, so until #313 a store that would not
+  // open reached the zone as an unlabelled `[uncaught]` naming no setting,
+  // and a store that refused the write said nothing at all.
+  group('QLocaleController.setLocale', () {
+    final locale = QLocaleController.instance;
+    tearDown(() => locale.setLocale(null));
+
+    test('a store that will not open says which setting went back', () async {
+      useUnopenablePrefs();
+
+      await expectLater(locale.setLocale(const Locale('ru')), completes);
+
+      expect(
+        keptLines.where((l) => l.contains('locale.code')),
+        isNotEmpty,
+        reason: 'the caller is a VoidCallback with nowhere to put a throw',
+      );
+    });
+
+    test('a store that refuses the write says so too', () async {
+      useRefusingPrefs();
+
+      await locale.setLocale(const Locale('ru'));
+
+      expect(keptLines.where((l) => l.contains('did not persist')), isNotEmpty);
+    });
+
+    // #120's rule: the choice stays where the user put it and takes itself
+    // back at the next launch, rather than snapping back under them.
+    test('keeps the language on screen either way', () async {
+      useRefusingPrefs();
+
+      await locale.setLocale(const Locale('ru'));
+
+      expect(locale.locale, const Locale('ru'));
+    });
+
+    test('following the system removes the preference', () async {
+      SharedPreferences.setMockInitialValues(const {'locale.code': 'ru'});
+      await locale.loadLocale();
+
+      await locale.setLocale(null);
+
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('locale.code'), isNull);
+      expect(keptLines, isEmpty, reason: 'a removal that worked says nothing');
     });
   });
 
