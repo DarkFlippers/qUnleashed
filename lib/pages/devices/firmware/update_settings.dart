@@ -98,9 +98,9 @@ class UpdateSettingsStore {
     await load();
     if (channelId != null) _channels[shortName] = channelId;
     if (variant != null) _variants[shortName] = variant;
-    // One call per write rather than one try around both: a callback can
-    // only return one answer, so a pair would report a failure without
-    // saying which half, and these two are set independently.
+    // One call per write, which is what persistSetting asks for and what
+    // these two want anyway: they are set independently, and a reader has to
+    // know which of them went back.
     //
     // persistSetting is what keeps the promise in the doc above, and its warn
     // is the right level for this site rather than a choice made here: the

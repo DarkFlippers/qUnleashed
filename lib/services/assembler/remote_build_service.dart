@@ -160,7 +160,7 @@ class RemoteBuildService {
     }
     _activeAlias = alias;
     try {
-      final clientId = await _ensureClientId();
+      final clientId = await ensureClientId();
       var status = await _postJson('/api/v1/builds', clientId, {
         'bundle_url': bundleUrl,
         'alias': alias,
@@ -393,16 +393,21 @@ class RemoteBuildService {
   /// level is the site's own call and that function fixes it at warn. Nothing
   /// is lost when this write does not land - the id is returned either way
   /// and serves the session - so there is nothing for anyone to do about it,
-  /// which is `caught` rather than a warning somebody should look at.
-  /// [_ensureClientId], for the cases about the store rather than a build.
+  /// which is `caught` rather than a warning somebody should look at. The
+  /// reason is carried out to one call for the same reason that function
+  /// does it: the line's one literal has one home.
   ///
-  /// A seam because the alternative is a fake build server per case: every
-  /// test that reaches `build()` passes `clientId:`, so the generate-and-
-  /// store path below had no coverage at all until this existed.
+  /// `Random.secure()` is the one step outside the guard. It throws only
+  /// where the platform has no secure source at all, which none of the six
+  /// targets is, and a build signed with a predictable id is not a better
+  /// answer than failing.
+  ///
+  /// Public only so a test can reach it: every test that gets as far as
+  /// `build()` passes `clientId:`, so nothing exercised the path below until
+  /// this stopped being private. `build()` calls it from the same library,
+  /// where `@visibleForTesting` does not complain.
   @visibleForTesting
-  Future<String> ensureClientId() => _ensureClientId();
-
-  Future<String> _ensureClientId() async {
+  Future<String> ensureClientId() async {
     final existing = _clientId;
     if (existing != null && existing.isNotEmpty) return existing;
 
@@ -412,19 +417,23 @@ class RemoteBuildService {
       (_) => random.nextInt(256),
     ).map((b) => b.toRadixString(16).padLeft(2, '0')).join();
 
+    String? reason;
     try {
       final prefs = await SharedPreferences.getInstance();
       final stored = prefs.getString(_clientIdPrefsKey);
       if (stored != null && stored.isNotEmpty) return _clientId = stored;
       if (!await prefs.setString(_clientIdPrefsKey, fresh)) {
-        LogService.caught(
-          '[RemoteBuild] the store refused the client id; '
-          'this session uses a fresh one',
-        );
+        // The same words `persistSetting` and `KnownDevices` use, so one
+        // grep finds every store that declined a write.
+        reason = 'the store refused the write';
       }
     } catch (e, st) {
+      reason = LogService.describe(e, st);
+    }
+    if (reason != null) {
       LogService.caught(
-        '[RemoteBuild] client id unavailable: ${LogService.describe(e, st)}',
+        '[RemoteBuild] the client id was not remembered: $reason; '
+        'this session uses a fresh one',
       );
     }
     return _clientId = fresh;

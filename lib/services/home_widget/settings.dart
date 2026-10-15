@@ -183,8 +183,11 @@ class HomeWidgetSettings extends PrefsBackedSettings {
   /// here: [_rememberStored] writes exactly the five keys, and [_set] takes
   /// its key from the five setters below. A sixth setting added without a
   /// [_fieldFor] entry would throw from here, on the push, one step away from
-  /// the write that caused it - so the two lists are checked against each
-  /// other by `every setter writes its own key`.
+  /// the write that caused it. What checks the two lists against each other
+  /// is `a setter after a good read pushes the whole look`, which asserts the
+  /// pushed map entire - not `every setter writes its own key`, which reads
+  /// only the preference side and would fail on the null check rather than on
+  /// what it is named for.
   Map<String, Object> toMap() => {
     for (final MapEntry(:key, :value) in _stored.entries)
       _fieldFor[key]!: value,
@@ -246,8 +249,10 @@ class HomeWidgetSettings extends PrefsBackedSettings {
   /// four strings and a bool, and dispatching on the runtime type needed a
   /// third branch for everything else - a programmer error that could only be
   /// reported as a storage failure, in a `switch` arm nothing could reach and
-  /// no test could cover. The type parameter keeps that choice at compile
-  /// time while letting [stored] and [write] agree.
+  /// no test could cover. The type parameter does not oblige [write] to store
+  /// [stored] - nothing here could - it just lets the serialized value be
+  /// spelled once per call site instead of twice, with the write still chosen
+  /// at compile time.
   Future<void> _set<T extends Object>(
     bool changed,
     void Function() apply,
@@ -260,7 +265,11 @@ class HomeWidgetSettings extends PrefsBackedSettings {
     // alone it would make re-picking the same value a no-op, so a setting
     // refused once could not be retried for the rest of the session - the
     // user's only route back would be picking another and picking this again.
-    if (!changed && _stored[key] == stored) return;
+    //
+    // The shadow half only applies once loaded, because it is empty until
+    // then and every key would read as a mismatch - turning a tap before the
+    // read lands from a silent no-op into a line in the log.
+    if (!changed && (!loaded || _stored[key] == stored)) return;
     if (!loaded) {
       // The same reason [sync] gates its push. The shadow is empty until a
       // read lands, so honouring one tap here would send the native store a

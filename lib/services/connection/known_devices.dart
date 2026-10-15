@@ -146,11 +146,11 @@ class KnownDevicesStore extends ChangeNotifier {
   Future<void> _persist() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final stored = await prefs.setString(
+      final accepted = await prefs.setString(
         _prefsKey,
         jsonEncode([for (final device in _devices) device.toJson()]),
       );
-      if (!stored) {
+      if (!accepted) {
         LogService.error(
           '[KnownDevices] save failed: the store refused the write',
         );

@@ -9,15 +9,11 @@ import 'unopenable_prefs.dart';
 
 /// The id that identifies this install to the build server.
 ///
-/// It sits on the path that signs every remote build request, and `build()`
-/// has no catch - so anything thrown here reached the user as the stated
-/// reason their firmware build failed, an error about preferences. Every step
-/// is best effort now, and nothing it can hit is fatal.
-///
-/// The level is `caught` rather than `warn` on purpose: the id is returned
-/// either way and serves the session, so a store that will not take it costs
-/// a fresh id at the next launch and there is nothing for anyone to do about
-/// it. That is this site's own ruling, which is why it is not `persistSetting`.
+/// It sits on the path that signs every remote build request and `build()`
+/// has no catch, so anything thrown here reached the user as the stated
+/// reason their firmware build failed. The ruling - best effort throughout,
+/// and `caught` rather than the `warn` `persistSetting` would log - is
+/// written beside the code in `remote_build_service.dart`.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -28,17 +24,18 @@ void main() {
     clearKeptLines();
   });
 
-  RemoteBuildService service() => RemoteBuildService.test(
+  RemoteBuildService newService() => RemoteBuildService.test(
     serverUrl: 'https://example.invalid',
     sharedKey: 'k',
   );
 
   const key = 'remote_build_client_id';
+  final isAClientId = matches(RegExp(r'^[0-9a-f]{32}$'));
 
   test('a generated id is stored for the next launch', () async {
-    final id = await service().ensureClientId();
+    final id = await newService().ensureClientId();
 
-    expect(id, matches(RegExp(r'^[0-9a-f]{32}$')));
+    expect(id, isAClientId);
     SharedPreferences.resetStatic();
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getString(key), id);
@@ -48,14 +45,11 @@ void main() {
   test('a stored id is reused rather than regenerated', () async {
     SharedPreferences.setMockInitialValues(const {key: 'abc123'});
 
-    expect(await service().ensureClientId(), 'abc123');
+    expect(await newService().ensureClientId(), 'abc123');
   });
 
   test('the id is remembered for the session after the first call', () async {
-    final service = RemoteBuildService.test(
-      serverUrl: 'https://example.invalid',
-      sharedKey: 'k',
-    );
+    final service = newService();
 
     final first = await service.ensureClientId();
 
@@ -70,19 +64,24 @@ void main() {
     test('does not take the build down with it', () async {
       useUnopenablePrefs();
 
-      final id = await service().ensureClientId();
+      final id = await newService().ensureClientId();
 
-      expect(id, matches(RegExp(r'^[0-9a-f]{32}$')));
+      expect(id, isAClientId);
     });
 
     test('says so, and says it is not worth alerting on', () async {
       useUnopenablePrefs();
 
-      await service().ensureClientId();
+      await newService().ensureClientId();
 
       expect(
-        keptLines.where((l) => l.contains('client id unavailable')),
+        keptLines.where((l) => l.contains('was not remembered')),
         isNotEmpty,
+      );
+      expect(
+        keptLines.where((l) => l.contains('could not be opened')),
+        isNotEmpty,
+        reason: 'this store cannot open; it did not merely refuse',
       );
       expect(keptLevels, everyElement(KeptLevel.caught));
     });
@@ -92,20 +91,18 @@ void main() {
     test('still hands back an id for this session', () async {
       useRefusingPrefs();
 
-      expect(
-        await service().ensureClientId(),
-        matches(RegExp(r'^[0-9a-f]{32}$')),
-      );
+      expect(await newService().ensureClientId(), isAClientId);
     });
 
     test('says the store refused it, at caught', () async {
       useRefusingPrefs();
 
-      await service().ensureClientId();
+      await newService().ensureClientId();
 
       expect(
-        keptLines.where((l) => l.contains('refused the client id')),
+        keptLines.where((l) => l.contains('the store refused the write')),
         isNotEmpty,
+        reason: 'the words persistSetting and KnownDevices use',
       );
       expect(keptLevels, everyElement(KeptLevel.caught));
     });

@@ -145,10 +145,10 @@ class QLocaleController extends ChangeNotifier with WidgetsBindingObserver {
     // write said nothing at all.
     //
     // Following the system is an absent preference, not a stored "system",
-    // so the null case removes rather than writes. One of the two runs per
-    // call, which is the single write persistSetting asks for. A refused
-    // removal reads as "locale.code did not persist" and means the old
-    // language is still on disk and comes back at the next launch.
+    // so the null case removes rather than writes - one of the two per call,
+    // never both. A refused removal reads as "locale.code did not persist"
+    // and means the old language is still on disk and comes back at the next
+    // launch.
     await persistSetting(
       _prefLocale,
       (prefs) => locale == null

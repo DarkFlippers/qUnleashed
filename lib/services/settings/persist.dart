@@ -36,11 +36,19 @@ import '../logging.dart';
 /// answer, and `&&` would report a failure without saying which half - which
 /// is the shape `ArchiveSortSettings` already refuses for its own pair.
 ///
-/// `MediaRemoteBridge._write` is the one other place in `lib/` that reads
-/// this `false`, and it answers by throwing, because its caller is a dialog
-/// that has to tell a failed save from a failed start. That is the exception;
-/// a setting the user flipped has no such surface, which is what the rest of
-/// this comment is about.
+/// Three places in `lib/` read this `false` without coming through here, each
+/// because the level or the shape is its own:
+///
+///  * `MediaRemoteBridge._write` throws, because its caller is a dialog that
+///    has to tell a failed save from a failed start.
+///  * `KnownDevices._persist` logs at `error`: it is the one write that loses
+///    something durable.
+///  * `RemoteBuildService.ensureClientId` logs at `caught` and carries on,
+///    and is a read and a conditional write rather than the one write below.
+///
+/// All three say `the store refused the write`, so one grep finds every
+/// store that declined one. A setting the user flipped has no surface worth
+/// more than that, which is what the rest of this comment is about.
 ///
 /// Returns whether the setting stuck. Most callers ignore it and should: they
 /// have applied the value to what is on screen already and have nowhere to put

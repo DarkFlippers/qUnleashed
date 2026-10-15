@@ -1,9 +1,11 @@
 // A ceiling on `LogService.caught`, the level ADR 0013 §5 adds.
 //
-// Unlike every other budget here, this number is meant to *rise* - once, as
-// §5's re-ruling of the `info`-in-a-catch sites lands, and not after. It counts
-// something the project wants a bounded amount of rather than less of, which is
-// why the failure message asks a different question.
+// Unlike every other budget here, this number is meant to *rise*. §5's
+// re-ruling of the `info`-in-a-catch sites was the bulk of it and has landed;
+// what rises after is one site at a time, each judged against §5's own rule
+// and named in the comment on the number. It counts something the project
+// wants a bounded amount of rather than less of, which is why the failure
+// message asks a different question.
 //
 // It exists because `caught` is a legitimate way to lower
 // `log_level_budget_test.dart`: moving a genuine failure off `info` makes that
@@ -27,24 +29,15 @@ import 'ratchet.dart';
 
 /// What each area may record at `caught`.
 ///
-/// §5's re-ruling has landed, which is the one rise this ratchet was ever
-/// meant to have. 23 of the 42 `LogService.info`-inside-a-catch sites moved;
-/// the other 19 stayed, each on a volume argument its own comment makes.
+/// §5's re-ruling has landed: 23 of the 42 `LogService.info`-inside-a-catch
+/// sites moved; the other 19 stayed, each on a volume argument its own
+/// comment makes. A rise after it is one site with its reason written here.
 ///
-/// `services` is 9: the two `build_identity.dart` sites and the two in
+/// `services` is 8: the two `build_identity.dart` sites and the two in
 /// `telemetry.dart` that were here before, plus a launcher refusing a
 /// home-widget pin and an HTTP request the network responder could not carry.
 /// The relay reply beside that second one runs per frame and stayed at `info`,
 /// which is the distinction the level is for.
-///
-/// It rose to 9 for the two in `remote_build_service.dart`'s
-/// `_ensureClientId`: a preferences store that will not open, and one that
-/// refuses the write. Both are an operation that did not do what was asked -
-/// the id was not remembered for the next launch - and both are deliberately
-/// not `warn`, which is what `persistSetting` would have logged. The id is
-/// returned either way and serves the session, so there is nothing for anyone
-/// to do about it; the cost is a fresh id next launch. Once per process, since
-/// the field is set on the way out whatever happened. #313.
 ///
 /// The seventh is the replay switch's restart in `telemetry.dart`, and it is
 /// not a failure at all - it is the one line that makes a deliberate gap in
@@ -54,6 +47,15 @@ import 'ratchet.dart';
 /// there is indistinguishable from no crash, so the gap is named once, at
 /// `caught`, and shows up in the timeline of the next report. Once per tap on
 /// one switch, which is as bounded as this level gets.
+///
+/// The eighth is `RemoteBuildService.ensureClientId`, which rose it from 7:
+/// the client id was not remembered for the next launch, because the store
+/// would not open or would not take it. That is an operation that did not do
+/// what was asked, and deliberately not the `warn` `persistSetting` would
+/// have logged - the id is returned either way and serves the session, so
+/// there is nothing for anyone to do about it and the cost is a fresh id next
+/// launch. One line whichever of the two happened, and once per process,
+/// since the field is set on the way out regardless. #313.
 ///
 /// Two sites in `pages/archive` did **not** move: the per-node `list` of a
 /// whole-SD walk, and the per-file `md5 check`, which §5 excludes by name
@@ -90,7 +92,7 @@ import 'ratchet.dart';
 /// diagnosing a fork that answers the wrong code and guessing at it. Once per
 /// walk, and only when keys actually moved.
 const Map<String, int> kBudget = {
-  'services': 9,
+  'services': 8,
   'pages/archive': 18,
   'pages/tools': 5,
   'pages/apps': 1,

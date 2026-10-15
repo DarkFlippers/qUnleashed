@@ -10,11 +10,8 @@ import 'refusing_prefs.dart';
 /// The remembered-device list that will not save, which is the one failure in
 /// the #313 sweep that loses something durable.
 ///
-/// `_persist` is deliberately not on `persistSetting` - that function fixes
-/// the level at warn, and this is `error`, because `notifyListeners` has
-/// already run and the picker shows a Flipper that will be gone at the next
-/// launch. What it shares is the half #313 was about: `setString` answering
-/// `false` without throwing.
+/// `_persist` is deliberately not on `persistSetting`; the ruling, and the
+/// level it turns on, are written beside the code in `known_devices.dart`.
 class _Discovered implements DiscoveredDevice {
   const _Discovered(this.id, this.transport);
 
@@ -52,33 +49,20 @@ void main() {
     clearKeptLines();
   });
 
-  Iterable<String> errors(String fragment) => [
-    for (var i = 0; i < keptLines.length; i++)
-      if (keptLevels[i] == KeptLevel.error && keptLines[i].contains(fragment))
-        keptLines[i],
-  ];
-
+  // The level is the whole reason this site did not move onto persistSetting,
+  // so it is asserted rather than assumed: `warn` - which is what that
+  // function logs - is dropped by a log kept at QLOG_LEVEL=error, and this
+  // one has to survive there.
   test('a store that refuses the write says so, at error', () async {
     useRefusingPrefs();
 
     await known.remember(_ble('B1'));
 
-    expect(errors('the store refused the write'), isNotEmpty);
-  });
-
-  // The level is the whole reason this site did not move onto persistSetting,
-  // so it is asserted rather than assumed: `warn` would be dropped by a log
-  // kept at QLOG_LEVEL=error, which is where this one has to survive.
-  test('the refusal is not reported at warn', () async {
-    useRefusingPrefs();
-
-    await known.remember(_ble('B1'));
-
     expect(
-      keptLevels.where((l) => l == KeptLevel.warning),
-      isEmpty,
-      reason: 'persistSetting would have logged at warn; this must not',
+      keptLines.where((l) => l.contains('the store refused the write')),
+      isNotEmpty,
     );
+    expect(keptLevels, everyElement(KeptLevel.error));
   });
 
   // #120's rule reaches here too: the list on screen keeps the device, and
