@@ -518,20 +518,32 @@ void main() {
         expect(notifications, 1, reason: 'the page reads its state from here');
       });
 
-      // The bool of the five. `setBool` is where #313's refused write comes
-      // from on Android, and until this case the only setter any test drove
-      // was a String one - so both halves of the write could have been
-      // dropped and the suite stayed green.
-      test('a bool setter writes and pushes like the rest', () async {
+      // What each setter puts on disk, which no test asserted before: the
+      // existing cases above read `pushed` and the in-memory fields, both of
+      // which are filled before the write is attempted. Every arm could have
+      // written nothing - or written its neighbour's key - and the suite
+      // stayed green. All five, not one of each, because the five writes are
+      // five copies of a line whose only difference is the key.
+      //
+      // `setCaptionShown` is also the only `setBool` of the five, and
+      // `setBool` is where #313's refused write arrives from on Android.
+      test('every setter writes its own key', () async {
         SharedPreferences.setMockInitialValues(stored);
         await widgets.load();
 
+        await widgets.setTheme(WidgetTheme.categories);
+        await widgets.setIconStyle(WidgetIconStyle.plain);
+        await widgets.setBorder(WidgetBorder.thin);
         await widgets.setCaptionShown(true);
+        await widgets.setCaptionSize(WidgetCaptionSize.small);
 
-        expect(pushed, hasLength(1));
-        expect(pushed.single['captionShown'], isTrue);
         final prefs = await SharedPreferences.getInstance();
+        expect(prefs.getString('home_widget.theme'), 'categories');
+        expect(prefs.getString('home_widget.icon_style'), 'plain');
+        expect(prefs.getString('home_widget.border'), 'thin');
         expect(prefs.getBool('home_widget.caption'), isTrue);
+        expect(prefs.getString('home_widget.caption_size'), 'small');
+        expect(pushed, hasLength(5), reason: 'one push per accepted write');
       });
 
       // #120's claim, which the ordering alone never kept: a write the store
