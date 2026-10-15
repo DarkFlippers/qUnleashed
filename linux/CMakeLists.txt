@@ -49,6 +49,20 @@ endif()
 # that call it. This reaches every target in the tree, which is the point: the
 # plugin shared objects are most of what a native crash is.
 #
+# `enable_language(C)` first, and it is not decoration. `project()` above
+# declares `LANGUAGES CXX`, so without this line C is still unenabled here and
+# `${CMAKE_C_FLAGS_RELEASE}` expands to **nothing** - the append would not
+# extend the defaults, it would replace them with ` -g` and shadow the cache
+# entry that `lib/modules/cpp`'s own `project(... LANGUAGES C)` writes later.
+# The three C libraries would then build Release with no `-O3` and no
+# `-DNDEBUG`: unoptimized, asserts live. They are the MIFARE and SubGHz
+# bruteforce engines, where throughput is the entire point.
+#
+# None of that shows up in a warm build directory, where the cache entry
+# already exists and the append lands on it correctly. It only appears on a
+# clean checkout - which is every CI run.
+enable_language(C)
+
 # `-g` does not change code generation; `-O3` still applies. What it changes is
 # the size of the output, and on ELF that size ships - the DWARF goes *into*
 # the `.so`, where Windows would have written a separate PDB. `build/linux.sh`

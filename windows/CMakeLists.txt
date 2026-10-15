@@ -40,7 +40,7 @@ endif()
 # all it ever got for our modules, so a minidump resolved them to the nearest
 # exported symbol. That is where `guard_dispatch_icall$thunk$...` came from.
 # Engine frames resolve to `file:line` because Flutter *ships*
-# `flutter_windows.dll.pdb`, and the upload step has always found that one.
+# `flutter_windows.dll.pdb`, which `sentry_dart_plugin` 3.4.0 names outright.
 #
 # `/DEBUG` on its own also turns `/OPT:REF` and `/OPT:ICF` off, which the
 # Release default relies on, so both are named back and the shipped binary
@@ -51,6 +51,23 @@ endif()
 # `APPLY_STANDARD_SETTINGS`, because that function reaches only the targets
 # that call it. These reach every target in the tree, which is the point: the
 # plugin DLLs and sentry-native are most of what a desktop crash is.
+#
+# `enable_language(C)` first, and it is not decoration. `project()` above
+# declares `LANGUAGES CXX`, so without this line C is still unenabled here and
+# `${CMAKE_C_FLAGS_RELEASE}` expands to **nothing** - the append would not
+# extend the defaults, it would replace them with ` /Zi` and shadow the cache
+# entry that `lib/modules/cpp`'s own `project(... LANGUAGES C)` writes later.
+# Measured on a cold configure: the three C libraries then build Release with
+# `Optimization=''`, no `/Ob2`, no `NDEBUG`, and `RuntimeLibrary=MultiThreaded`
+# - unoptimized, asserts live, and against the static CRT while the clang-cl
+# objects beside them stay `/MD`, which is the two-heap `_aligned_free` fault
+# `hardnested/CMakeLists.txt` records having already been paid for once.
+#
+# None of that shows up in a warm build directory, where the cache entry
+# already exists and the append lands on it correctly. It only appears on a
+# clean checkout - which is every CI run.
+enable_language(C)
+
 set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} /Zi")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Zi")
 set(CMAKE_EXE_LINKER_FLAGS_RELEASE
@@ -58,32 +75,36 @@ set(CMAKE_EXE_LINKER_FLAGS_RELEASE
 set(CMAKE_SHARED_LINKER_FLAGS_RELEASE
   "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} /DEBUG /OPT:REF /OPT:ICF")
 
-# Every PDB into the bundle directory, which is where the runner's would land
-# anyway and where a plugin's would not - a plugin builds under
+# Every *linker* PDB into the bundle directory - which is where the runner's
+# would land anyway and where a plugin's would not, since a plugin builds under
 # `build/windows/x64/plugins/<name>/` and only its DLL is installed here.
-# Collecting them is what makes one upload cover the whole application.
+# Collecting them is what makes one upload cover the whole application. A
+# static target's *compile* PDB is a different property
+# (`CMAKE_COMPILE_PDB_OUTPUT_DIRECTORY`) and stays put; its CodeView ends up in
+# the PDB of whatever links it, so there is nothing to collect.
 #
 # The bundle directory is deliberate rather than convenient: it is the one path
 # `sentry_dart_plugin` already hands to `sentry-cli debug-files upload`
-# (`flutter_debug_files.dart`), so nothing in `.github/` has to learn a new
-# one. CMake appends the configuration, so this resolves to
-# `build/windows/x64/runner/Release`.
+# (`flutter_debug_files.dart`, as of the 3.4.0 the lockfile pins), so nothing
+# in `.github/` has to learn a new one. CMake appends the configuration to a
+# plain path, so this resolves to `build/windows/x64/runner/Release`.
 #
-# Spelled out rather than reusing `BUILD_BUNDLE_DIR` below, which is
-# `$<TARGET_FILE_DIR:${BINARY_NAME}>` and already carries the configuration -
-# CMake appends it here too, so the generator expression would resolve to
-# `.../Release/Release`. The cost of spelling it out is that the two could
-# drift apart; what catches that is `windows.ps1` refusing to package a build
-# with no `qunleashed.pdb` beside the executable, which is also what catches
-# the flags above silently ceasing to apply.
+# Written out rather than reusing `BUILD_BUNDLE_DIR`, because that is defined
+# a hundred lines below and `CMAKE_PDB_OUTPUT_DIRECTORY` is captured into each
+# target's properties as the target is created - it has to be set before the
+# first `add_subdirectory` or it reaches nothing. (A generator expression would
+# also suppress the per-configuration append, so the two spellings are not
+# interchangeable even where both are in scope.) What catches the two drifting
+# apart is `windows.ps1` refusing to package a build whose PDBs are not here.
+#
+# Profile gets these PDBs too - the property is not per-configuration - and
+# inherits the flags above from the block below, which copies the Release ones.
+# Both are wanted: a profile build is for local work, where a symbolicated
+# native frame is worth the same as it is in a crash report.
 #
 # These must not reach a user. `windows.ps1` excludes them from the archive and
 # fails the build if one is in it anyway - that guard is the thing to keep if
 # this ever moves.
-#
-# Profile inherits all of this from the block below, which copies the Release
-# flags. That is wanted: a profile build is for local work, where a symbolicated
-# native frame is worth the same as it is in a crash report.
 set(CMAKE_PDB_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/runner")
 
 # Define settings for the Profile build mode.

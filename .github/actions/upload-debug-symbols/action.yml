@@ -15,18 +15,25 @@ inputs:
 
 # `sentry_dart_plugin` finds native debug files by handing a fixed list of
 # build directories to `sentry-cli debug-files upload`
-# (`lib/src/utils/flutter_debug_files.dart`, read against 3.4.0 - its own
-# authors mark the Windows entry provisional). The `app*.{dSYM,symbols}`
-# regexp beside it is only for the Dart symbol map. So the question per
-# platform is never whether the plugin looks; it is whether the build wrote
-# anything for it to find, which until #310 it did not on Windows or Linux.
+# (`lib/src/utils/flutter_debug_files.dart`, read against the 3.4.0 the
+# lockfile pins). The `app*.{dSYM,symbols}` regexp beside it adds Flutter's
+# `--split-debug-info` output to the same upload; no build here passes that
+# flag, which is harmless, because without `--obfuscate` the AOT snapshot
+# keeps its names.
 #
-# Both now assert that it did, and fail the build rather than publish
-# something Sentry cannot read: `build/windows.ps1` wants the runner's PDB
-# beside the executable, `build/linux.sh` wants `.debug_info` in it.
+# So the question per platform is never whether the plugin looks. It is what
+# the build wrote for it to find, and until #310 that was a PDB on no Windows
+# target and no DWARF in any Linux binary - export and symbol tables only,
+# which is why a frame resolved to the nearest export instead of to nothing.
+# `build/windows.ps1` and `build/linux.sh` now refuse to package a build in
+# that state.
 #
-# There is no Dart symbol map, because no build passes `--split-debug-info`.
-# That is harmless - without `--obfuscate` the AOT snapshot keeps its names.
+# What they cannot assert is this step. Publication is not gated on it: the
+# calling step is `continue-on-error`, deliberately, so a Sentry outage does
+# not discard a built release - which means a failure here has to be loud in
+# the job summary or it is invisible on a green run. That is what the
+# `|| { ... }` below is for.
+#
 # The Android R8 mapping is still owed and wants the Sentry Android Gradle
 # Plugin. ADR 0013 Consequences holds the full inventory and is the copy to
 # update first.
@@ -52,8 +59,36 @@ runs:
       env:
         SENTRY_AUTH_TOKEN: ${{ inputs.auth-token }}
       run: |
+        # Both branches below write to the step summary, not only to an
+        # annotation. `::notice::` is the quietest thing GitHub has and a
+        # collapsed step inside a green job is not read; the summary is what
+        # somebody actually looks at after a release. Without this, "the
+        # symbols did not reach Sentry" looks exactly like a successful run
+        # until the next crash report comes back unsymbolicated - which is how
+        # #310 lasted three releases.
         if [ -z "${SENTRY_AUTH_TOKEN:-}" ]; then
           echo "::notice::SENTRY_AUTH_TOKEN is not set, so no debug symbols were uploaded. Stack traces from this build will not be symbolicated."
+          {
+            echo "### Debug symbols were not uploaded"
+            echo "No \`SENTRY_AUTH_TOKEN\` on this \`${RUNNER_OS}\` build, which is expected on a fork or a dispatch without the secret. Native frames from it will not symbolicate."
+          } >> "$GITHUB_STEP_SUMMARY"
           exit 0
         fi
-        dart run sentry_dart_plugin
+
+        # `exit 0` on failure is deliberate and matches the `continue-on-error`
+        # on every caller: the release is built and must not be thrown away
+        # over Sentry. The point is that it says so where it will be seen, and
+        # names the command that re-does it from this same commit.
+        if ! dart run sentry_dart_plugin; then
+          echo "::warning::sentry_dart_plugin failed. This build's native frames will NOT symbolicate until the symbols are re-uploaded."
+          {
+            echo "### Debug symbols were not uploaded"
+            echo "The \`${RUNNER_OS}\` build of \`${SENTRY_RELEASE:-unknown}\` published **without** symbols."
+            echo ""
+            echo "Re-upload from this commit:"
+            echo '```'
+            echo "SENTRY_RELEASE=${SENTRY_RELEASE:-<release>} SENTRY_AUTH_TOKEN=<token> dart run sentry_dart_plugin"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+        fi

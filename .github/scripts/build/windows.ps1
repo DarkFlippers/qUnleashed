@@ -79,12 +79,23 @@ if ([string]::IsNullOrWhiteSpace($BuildDir)) {
 # fail is a rubber stamp; `check_ffi_exports.sh` argues the same about a regex
 # that matches nothing.
 #
-# The runner's own PDB by name, not merely "some PDB", so that a build which
-# produced only a plugin's is still caught.
-$RunnerPdb = Join-Path $BuildDir "$AppName.pdb"
-if (-not (Test-Path $RunnerPdb)) {
-    throw "No $AppName.pdb in $BuildDir, so Sentry cannot symbolicate a Windows crash. Release must compile with /Zi and link with /DEBUG - see the debug information block in windows/CMakeLists.txt. (#310)"
+# The runner AND our own FFI libraries, by name. The runner alone would be the
+# weakest possible check: it lands here from the linker's default and would
+# still be here with `CMAKE_PDB_OUTPUT_DIRECTORY` deleted, so a guard that
+# names only it passes while every plugin PDB is missing. The three in
+# `lib/modules/cpp` are the ones that went unoptimized and undebuggable when
+# `/Zi` was appended before C was enabled, and they are most of what a desktop
+# crash is.
+$ExpectedPdbs = @("$AppName.pdb")
+foreach ($lib in @("mfkey32", "hardnested", "faaccrack")) {
+    $ExpectedPdbs += "${AppName}_$lib.pdb"
 }
+$MissingPdbs = $ExpectedPdbs | Where-Object { -not (Test-Path (Join-Path $BuildDir $_)) }
+if ($MissingPdbs) {
+    throw "No $($MissingPdbs -join ', ') in $BuildDir, so Sentry cannot symbolicate a Windows crash. Release must compile with /Zi and link with /DEBUG, and C must be enabled before the append - see the debug information block in windows/CMakeLists.txt. (#310)"
+}
+$PdbCount = @(Get-ChildItem -Path $BuildDir -Filter *.pdb -Force).Count
+Write-Host "Debug files for Sentry: $PdbCount PDB(s) in the bundle."
 
 # Preserve the standard Flutter Windows bundle before creating the optional
 # self-extracting executable, minus the PDBs. `windows/CMakeLists.txt` collects
@@ -96,7 +107,12 @@ if (-not (Test-Path $RunnerPdb)) {
 # `-Exclude` has to go on `Get-ChildItem`: `Compress-Archive` has no exclusion
 # of its own. Top-level entries are what the old `"*"` glob passed too, and
 # directories still go in whole.
-$BundleEntries = Get-ChildItem -Path $BuildDir -Exclude "*.pdb"
+#
+# `-Force` so a hidden or system file still goes in: the old `"$BuildDir\*"`
+# glob was expanded by `Compress-Archive` itself and did not filter them, and a
+# file silently absent from the shipped ZIP is the same class of fault as a
+# file silently present in it.
+$BundleEntries = Get-ChildItem -Path $BuildDir -Exclude "*.pdb" -Force
 Compress-Archive -Path $BundleEntries -DestinationPath $RawZipFile -CompressionLevel Optimal -Force
 
 # The exclusion above is the only thing standing between a debug file and a
@@ -106,7 +122,10 @@ Compress-Archive -Path $BundleEntries -DestinationPath $RawZipFile -CompressionL
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zip = [System.IO.Compression.ZipFile]::OpenRead($RawZipFile)
 try {
-    $leaked = $zip.Entries.FullName -like "*.pdb"
+    # `@(...)` because member enumeration over a one-entry collection yields a
+    # scalar, and `-like` on a scalar returns a bool - the throw below would
+    # then say "True" instead of naming the file.
+    $leaked = @($zip.Entries.FullName) -like "*.pdb"
 }
 finally {
     $zip.Dispose()

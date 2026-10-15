@@ -50,9 +50,7 @@ fi
 
 # `objdump` rather than `readelf`, to match `check_linux_abi.sh`, which reads
 # the same bundle in the same job and takes the same override so its tests can
-# stub it. Both tools are load-bearing below rather than optional extras: a
-# missing `strip` aborts loudly under `set -e`, but a missing section reader
-# makes the leak check a silent no-op.
+# stub it.
 OBJDUMP="${OBJDUMP:-objdump}"
 for tool in strip "$OBJDUMP"; do
   if ! command -v "$tool" >/dev/null 2>&1; then
@@ -61,18 +59,49 @@ for tool in strip "$OBJDUMP"; do
   fi
 done
 
-# Is this an ELF image? Four magic bytes, read in bash, because the alternative
-# is a process per file across the whole bundle and because a name pattern
-# would miss the runner (no extension) or a plugin named something new.
+# Is this an ELF image? Four magic bytes, read in bash rather than by asking a
+# tool, so that "not an ELF file" is decided by the file itself and not by
+# whether a tool happened to succeed. A name pattern would miss the runner,
+# which has no extension, or a plugin named something new.
 is_elf() {
   local magic
   IFS= read -r -N 4 -d '' magic < "$1" 2>/dev/null || return 1
   [[ "$magic" == $'\x7fELF' ]]
 }
 
-# Does this file carry DWARF?
+# Does this ELF image carry DWARF? Call only on something `is_elf` accepted:
+# objdump failing here is a broken tool or an unreadable file, never a normal
+# outcome, and it is fatal rather than false. Returning false would make the
+# leak scan below report "clean" for a file it could not read, which is the
+# silent-success shape this whole change exists to remove.
+#
+# Captured rather than piped into `grep -q`, for the reason `check_linux_abi.sh`
+# gives: under `pipefail` a producer killed by SIGPIPE makes the pipeline
+# non-zero, and the failure direction here ships debug information.
 has_debug_info() {
-  "$OBJDUMP" -h "$1" 2>/dev/null | grep -q '\.debug_info'
+  local sections
+  if ! sections="$("$OBJDUMP" -h "$1" 2>&1)"; then
+    echo "::error::$OBJDUMP could not read $1, so this guard would check less" >&2
+    echo "::error::of the bundle than it reports. Refusing to pass: $sections" >&2
+    exit 1
+  fi
+  [[ "$sections" == *".debug_info"* ]]
+}
+
+# Every regular file in a directory, as an array, with `find`'s exit status
+# honoured. `check_linux_abi.sh` spells out why this is not a process
+# substitution: `find` prints what it reached before erroring on a directory it
+# could not descend, and a process substitution's status is invisible to both
+# `set -e` and `pipefail` - so the list would be silently short and every
+# check over it green.
+list_files() {
+  local listed
+  if ! listed="$(find "$1" -type f)"; then
+    echo "::error::find failed under $1, so the list below is short and every" >&2
+    echo "::error::check over it would pass over a subset. Refusing to pass." >&2
+    exit 1
+  fi
+  mapfile -t "$2" <<<"$listed"
 }
 
 mkdir -p "$DIST_DIR"
@@ -106,38 +135,95 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 # scan finds nothing, and a green build means only that nothing was there.
 # `check_ffi_exports.sh` makes the same argument about a regex that matches
 # nothing: a guard that cannot fail is a rubber stamp.
-if ! has_debug_info "$BUILD_DIR/$APP_NAME"; then
-  echo "::error::$BUILD_DIR/$APP_NAME carries no .debug_info, so Sentry cannot" >&2
-  echo "::error::symbolicate a Linux crash. Release must compile with -g - see" >&2
-  echo "::error::the debug information block in linux/CMakeLists.txt. (#310)" >&2
+# The runner and our own FFI libraries, not merely "something in the bundle".
+# The runner alone would be the weakest possible check: it is the one target
+# whose debug information survives a partial regression, because it is the
+# closest to where the flag is set. The three in `lib/modules/cpp` are the ones
+# that went unoptimized and undebuggable when `-g` was appended before C was
+# enabled, and they are most of what a native crash is.
+#
+# `libapp.so` and `libflutter_linux_gtk.so` are deliberately not here: the
+# first is the Dart AOT snapshot and the second a prebuilt engine, and neither
+# is built by this tree.
+required_images=("$BUILD_DIR/$APP_NAME")
+for lib in mfkey32 hardnested faaccrack; do
+  required_images+=("$BUILD_DIR/lib/libqunleashed_$lib.so")
+done
+
+missing=()
+for image in "${required_images[@]}"; do
+  if [[ ! -f "$image" ]] || ! has_debug_info "$image"; then
+    missing+=("$image")
+  fi
+done
+if (( ${#missing[@]} )); then
+  echo "::error::No .debug_info in the following, so Sentry cannot symbolicate" >&2
+  echo "::error::a Linux crash in them. Release must compile with -g, and C must" >&2
+  echo "::error::be enabled before the append - see the debug information block" >&2
+  echo "::error::in linux/CMakeLists.txt. (#310)" >&2
+  printf '  %s\n' "${missing[@]}" >&2
   exit 1
 fi
+echo "Debug information for Sentry: ${#required_images[@]} image(s) carry DWARF."
 
 STAGE_DIR="$TMP_DIR/bundle"
 cp -a "$BUILD_DIR" "$STAGE_DIR"
 
-# `--strip-debug`, not the default `strip`: the symbol tables have to survive
-# or nothing resolves at load. `libapp.so` is the Dart AOT snapshot, never
-# compiled with `-g`, so it passes through either way.
-while IFS= read -r f; do
-  if is_elf "$f"; then
-    strip --strip-debug "$f"
-  fi
-done < <(find "$STAGE_DIR" -type f)
+list_files "$STAGE_DIR" staged
+# A bundle that came back empty or reshaped would make every check below pass
+# over nothing. `check_linux_abi.sh` refuses the same state rather than
+# reporting a green run across a subset.
+if (( ${#staged[@]} < 2 )) || [[ ! -f "$STAGE_DIR/$APP_NAME" ]]; then
+  echo "::error::The staged bundle has ${#staged[@]} file(s) and no $APP_NAME at" >&2
+  echo "::error::its root. The layout changed and the checks below would cover" >&2
+  echo "::error::almost nothing. Fix the staging before trusting a green build." >&2
+  exit 1
+fi
 
-# Re-derived from the file system rather than from the list above, so that a
-# misjudgement by `is_elf` is caught here instead of being shared. This strip
-# is the only thing between the download a user gets and one several times its
-# size.
+# `--strip-debug`, not the default `strip`: the symbol tables have to survive
+# or nothing resolves at load. `libapp.so` is the Dart AOT snapshot and carries
+# no `.debug_info`, so the strip is a no-op on it.
+for f in "${staged[@]}"; do
+  if is_elf "$f"; then
+    strip --strip-debug "$f" \
+      || { echo "::error::strip failed on $f; refusing to package it." >&2; exit 1; }
+  fi
+done
+
+# Two assertions over the stripped copy. The first is the one that keeps the
+# download small; the second is the one that keeps it working, because
+# `--strip-debug` damaging a shared object is the #280 shape - green build,
+# uploaded asset, dies at launch.
 leaked=()
-while IFS= read -r f; do
+unloadable=()
+for f in "${staged[@]}"; do
+  is_elf "$f" || continue
   if has_debug_info "$f"; then
     leaked+=("$f")
   fi
-done < <(find "$STAGE_DIR" -type f)
+  if ! "$OBJDUMP" -h "$f" 2>/dev/null | grep -q '\.dynsym'; then
+    unloadable+=("$f")
+  fi
+done
 if (( ${#leaked[@]} )); then
   echo "::error::Debug info survived the strip and would ship to users:" >&2
   printf '  %s\n' "${leaked[@]}" >&2
+  exit 1
+fi
+if (( ${#unloadable[@]} )); then
+  echo "::error::The strip removed the dynamic symbol table from the following," >&2
+  echo "::error::so they would not resolve at load:" >&2
+  printf '  %s\n' "${unloadable[@]}" >&2
+  exit 1
+fi
+
+# The bundle the Sentry step reads runs after this script and must still carry
+# what the upload needs. Asserted because the strip above operates on a copy,
+# and a refactor that stripped in place would make the leak check greener while
+# silently restoring #310.
+if ! has_debug_info "$BUILD_DIR/$APP_NAME"; then
+  echo "::error::$BUILD_DIR/$APP_NAME lost its .debug_info while packaging. The" >&2
+  echo "::error::Sentry upload step reads that bundle, not the archive." >&2
   exit 1
 fi
 
