@@ -69,9 +69,52 @@ if ([string]::IsNullOrWhiteSpace($BuildDir)) {
     throw "Expected app binary not found in: $($buildCandidates -join ', ')"
 }
 
+# The PDBs have to exist before there is any point excluding them, and this
+# check is the important one of the two. #310 was not a bundle that shipped too
+# much; it was a toolchain that produced nothing and a pipeline that reported
+# success anyway. In that state the exclusion below excludes nothing, the leak
+# assertion finds nothing, `sentry-cli` uploads the PEs and exits 0, and the
+# Sentry step is `continue-on-error` regardless - so every gate is green and
+# Windows traces are back to `guard_dispatch_icall$thunk$`. A guard that cannot
+# fail is a rubber stamp; `check_ffi_exports.sh` argues the same about a regex
+# that matches nothing.
+#
+# The runner's own PDB by name, not merely "some PDB", so that a build which
+# produced only a plugin's is still caught.
+$RunnerPdb = Join-Path $BuildDir "$AppName.pdb"
+if (-not (Test-Path $RunnerPdb)) {
+    throw "No $AppName.pdb in $BuildDir, so Sentry cannot symbolicate a Windows crash. Release must compile with /Zi and link with /DEBUG - see the debug information block in windows/CMakeLists.txt. (#310)"
+}
+
 # Preserve the standard Flutter Windows bundle before creating the optional
-# self-extracting executable. This archive contains the original release files.
-Compress-Archive -Path (Join-Path $BuildDir "*") -DestinationPath $RawZipFile -CompressionLevel Optimal -Force
+# self-extracting executable, minus the PDBs. `windows/CMakeLists.txt` collects
+# every target's PDB into this directory so one upload covers the whole
+# application; they are for Sentry, not for a download, and they outweigh the
+# thing being shipped. The upload step runs after this script and reads the
+# directory, not the archive, so excluding them here costs nothing.
+#
+# `-Exclude` has to go on `Get-ChildItem`: `Compress-Archive` has no exclusion
+# of its own. Top-level entries are what the old `"*"` glob passed too, and
+# directories still go in whole.
+$BundleEntries = Get-ChildItem -Path $BuildDir -Exclude "*.pdb"
+Compress-Archive -Path $BundleEntries -DestinationPath $RawZipFile -CompressionLevel Optimal -Force
+
+# The exclusion above is the only thing standing between a debug file and a
+# user, and the self-extracting EXE below is built from this same archive - so
+# it is asserted rather than trusted. A PDB nested inside a subdirectory would
+# slip past `-Exclude`, which only sees the top level.
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$zip = [System.IO.Compression.ZipFile]::OpenRead($RawZipFile)
+try {
+    $leaked = $zip.Entries.FullName -like "*.pdb"
+}
+finally {
+    $zip.Dispose()
+}
+if ($leaked) {
+    throw "Debug symbols leaked into $RawZipFile and would ship to users: $($leaked -join ', ')"
+}
+
 Write-Host "Built raw Windows archive:"
 Write-Host $RawZipFile
 

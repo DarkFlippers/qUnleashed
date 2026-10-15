@@ -23,6 +23,69 @@ else()
       "Debug" "Profile" "Release")
   endif()
 endif()
+
+# === Debug information in Release ===
+#
+# Not Flutter's. CMake's MSVC defaults give the Release configuration no debug
+# information at all: `CMAKE_CXX_FLAGS_RELEASE` is `/MD /O2 /Ob2 /DNDEBUG` with
+# no `/Zi`, and `CMAKE_EXE_LINKER_FLAGS_RELEASE` is `/INCREMENTAL:NO` with no
+# `/DEBUG`. The generated project therefore carries an empty
+# `DebugInformationFormat` and `GenerateDebugInformation=false`, and **not one
+# PDB is written** - not for the runner, not for a plugin DLL, not for the
+# three libraries in `lib/modules/cpp`.
+#
+# That, and not the upload step, is why no Windows native frame has ever
+# symbolicated (#310). The upload was never empty - a PE carries an export
+# table and unwind info, and `sentry-cli` takes it - but export-level data is
+# all it ever got for our modules, so a minidump resolved them to the nearest
+# exported symbol. That is where `guard_dispatch_icall$thunk$...` came from.
+# Engine frames resolve to `file:line` because Flutter *ships*
+# `flutter_windows.dll.pdb`, and the upload step has always found that one.
+#
+# `/DEBUG` on its own also turns `/OPT:REF` and `/OPT:ICF` off, which the
+# Release default relies on, so both are named back and the shipped binary
+# keeps its size. It gains only a debug directory entry naming the PDB - which
+# is the record Sentry matches the uploaded PDB against.
+#
+# Set on the configuration-level variables rather than inside
+# `APPLY_STANDARD_SETTINGS`, because that function reaches only the targets
+# that call it. These reach every target in the tree, which is the point: the
+# plugin DLLs and sentry-native are most of what a desktop crash is.
+set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} /Zi")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Zi")
+set(CMAKE_EXE_LINKER_FLAGS_RELEASE
+  "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /DEBUG /OPT:REF /OPT:ICF")
+set(CMAKE_SHARED_LINKER_FLAGS_RELEASE
+  "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} /DEBUG /OPT:REF /OPT:ICF")
+
+# Every PDB into the bundle directory, which is where the runner's would land
+# anyway and where a plugin's would not - a plugin builds under
+# `build/windows/x64/plugins/<name>/` and only its DLL is installed here.
+# Collecting them is what makes one upload cover the whole application.
+#
+# The bundle directory is deliberate rather than convenient: it is the one path
+# `sentry_dart_plugin` already hands to `sentry-cli debug-files upload`
+# (`flutter_debug_files.dart`), so nothing in `.github/` has to learn a new
+# one. CMake appends the configuration, so this resolves to
+# `build/windows/x64/runner/Release`.
+#
+# Spelled out rather than reusing `BUILD_BUNDLE_DIR` below, which is
+# `$<TARGET_FILE_DIR:${BINARY_NAME}>` and already carries the configuration -
+# CMake appends it here too, so the generator expression would resolve to
+# `.../Release/Release`. The cost of spelling it out is that the two could
+# drift apart; what catches that is `windows.ps1` refusing to package a build
+# with no `qunleashed.pdb` beside the executable, which is also what catches
+# the flags above silently ceasing to apply.
+#
+# These must not reach a user. `windows.ps1` excludes them from the archive and
+# fails the build if one is in it anyway - that guard is the thing to keep if
+# this ever moves.
+#
+# Profile inherits all of this from the block below, which copies the Release
+# flags. That is wanted: a profile build is for local work, where a symbolicated
+# native frame is worth the same as it is in a crash report.
+set(CMAKE_PDB_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/runner")
+
 # Define settings for the Profile build mode.
 set(CMAKE_EXE_LINKER_FLAGS_PROFILE "${CMAKE_EXE_LINKER_FLAGS_RELEASE}")
 set(CMAKE_SHARED_LINKER_FLAGS_PROFILE "${CMAKE_SHARED_LINKER_FLAGS_RELEASE}")

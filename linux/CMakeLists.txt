@@ -34,6 +34,32 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     "Debug" "Profile" "Release")
 endif()
 
+# === Debug information in Release ===
+#
+# Not Flutter's. The Release configuration compiles at `-O3` with no `-g`, so
+# the binaries carry a symbol table and unwind info but no DWARF -
+# `sentry-cli debug-files check` on one reports `symtab, unwind` where a `-g`
+# build reports `symtab, debug, unwind`. The upload step is not failing and the
+# bundle is not empty; what Sentry receives simply cannot name a file or a
+# line, and an inlined frame is gone entirely. Same shortfall #310 found on
+# Windows, where the MSVC Release default wrote no PDB at all.
+#
+# Set on the configuration-level variable rather than inside
+# `APPLY_STANDARD_SETTINGS`, because that function reaches only the targets
+# that call it. This reaches every target in the tree, which is the point: the
+# plugin shared objects are most of what a native crash is.
+#
+# `-g` does not change code generation; `-O3` still applies. What it changes is
+# the size of the output, and on ELF that size ships - the DWARF goes *into*
+# the `.so`, where Windows would have written a separate PDB. `build/linux.sh`
+# therefore packages a stripped copy and leaves this bundle, the one the upload
+# step reads, alone. That strip is the thing to keep if this ever moves.
+#
+# If this block ever stops applying, `build/linux.sh` refuses to package the
+# build rather than quietly shipping one Sentry cannot read.
+set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -g")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -g")
+
 # Compilation settings that should be applied to most targets.
 #
 # Be cautious about adding new options here, as plugins use this function by

@@ -1,8 +1,9 @@
 name: Upload debug symbols to Sentry
 description: >
-  Uploads dSYMs, PDBs, Android and Linux native symbols and the Dart symbol map
-  for whatever the calling job has just built, so a stack trace names functions
-  and lines rather than addresses.
+  Uploads the debug files for whatever the calling job has just built, so a
+  stack trace names functions and lines rather than addresses. Apple dSYMs,
+  Windows PDBs, and the Linux and Android native libraries. Not a Dart symbol
+  map, and not the Android R8 mapping - see the note below for both.
 
 inputs:
   auth-token:
@@ -12,6 +13,23 @@ inputs:
     required: false
     default: ""
 
+# `sentry_dart_plugin` finds native debug files by handing a fixed list of
+# build directories to `sentry-cli debug-files upload`
+# (`lib/src/utils/flutter_debug_files.dart`, read against 3.4.0 - its own
+# authors mark the Windows entry provisional). The `app*.{dSYM,symbols}`
+# regexp beside it is only for the Dart symbol map. So the question per
+# platform is never whether the plugin looks; it is whether the build wrote
+# anything for it to find, which until #310 it did not on Windows or Linux.
+#
+# Both now assert that it did, and fail the build rather than publish
+# something Sentry cannot read: `build/windows.ps1` wants the runner's PDB
+# beside the executable, `build/linux.sh` wants `.debug_info` in it.
+#
+# There is no Dart symbol map, because no build passes `--split-debug-info`.
+# That is harmless - without `--obfuscate` the AOT snapshot keeps its names.
+# The Android R8 mapping is still owed and wants the Sentry Android Gradle
+# Plugin. ADR 0013 Consequences holds the full inventory and is the copy to
+# update first.
 runs:
   using: composite
   steps:

@@ -90,7 +90,7 @@ rather than only the list.
 
 Owed and not in the phase table: the Android R8 mapping, which wants the Sentry
 Android Gradle Plugin, and §3's submodule commits as release commits rather
-than event tags. Facts last checked against the tree 2026-10-09; git holds how
+than event tags. Facts last checked against the tree 2026-10-15; git holds how
 the decision got here.
 
 Build identity — release, channel, commit — is its own decision,
@@ -806,10 +806,19 @@ most of them are expected.
   platform.
 - `classifyConnectError` gets a feed of the strings it misses.
 - A new ratchet: `package:sentry*` imports outside `lib/services/telemetry/`.
-- Every distributed build uploads debug files: dSYMs, PDBs, Android and Linux
-  native symbols through `sentry_dart_plugin`; the R8 mapping through the
-  Sentry Android Gradle Plugin with auto-install off, which the Dart plugin does
-  not cover.
+- Every distributed build uploads debug files through `sentry_dart_plugin`:
+  dSYMs, PDBs, and the Linux and Android native libraries; the R8 mapping
+  through the Sentry Android Gradle Plugin with auto-install off, which the
+  Dart plugin does not cover. **This bullet was true in the letter and wrong in
+  the substance for three releases.** Uploading was never the hard part - the
+  plugin hands whole build directories to `sentry-cli`, which reads any debug
+  file in them, and it did upload something for every platform. The hard part
+  is what a Release toolchain writes by default: no PDB at all from CMake's
+  MSVC configuration, and no DWARF from its Linux one. What reached Sentry for
+  those two was export tables and symbol tables, so a frame resolved to the
+  nearest exported symbol and never to a file and line. Both are fixed in
+  their respective `CMakeLists.txt`, and both build scripts now keep the debug
+  information out of what ships. #310.
 - Store paperwork, and more of it than an opt-in build would need: Google
   Play Data safety declaring crash logs, diagnostics and - because replay is
   on - screen recordings, as collected and optional; App Store privacy labels
