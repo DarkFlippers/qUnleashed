@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../components/sensitive_surface.dart';
 import '../services/localization/l10n.dart';
 import '../theme/theme.dart';
 
@@ -154,7 +155,7 @@ class _SideRail extends StatelessWidget {
   }
 }
 
-class _RailButton extends StatelessWidget {
+class _RailButton extends StatelessWidget with VisibleSurface {
   const _RailButton({required this.item});
 
   final FlipperRailItem item;
@@ -208,7 +209,7 @@ class FlipperRailIcon extends StatelessWidget {
   }
 }
 
-class _BottomTab extends StatelessWidget {
+class _BottomTab extends StatelessWidget with VisibleSurface {
   const _BottomTab({
     required this.icon,
     required this.label,

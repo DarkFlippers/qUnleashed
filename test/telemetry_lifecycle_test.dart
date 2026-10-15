@@ -154,6 +154,17 @@ const kMaskedSurfaces = [
   'TerminalView: mask',
 ];
 
+/// The two rules §6.4 installs in the other direction.
+///
+/// Pinned with the same care and for a sharper reason: these are the only
+/// `unmask` rules in the app, and an `unmask` turned into a `mask` would put
+/// the grey boxes back over every button and tab - the state that made replay
+/// unusable in the first place, and one nothing else here would notice.
+const kUnmaskedSurfaces = [
+  'VisibleSurface: unmask',
+  'ButtonStyleButton: unmask',
+];
+
 Iterable<String> maskedTypes(SentryFlutterOptions options) =>
     (options.privacy.toJson()['maskingRules'] as List<dynamic>? ??
             const <dynamic>[])
@@ -280,6 +291,16 @@ void main() {
       expect(maskedTypes(options), containsAll(kMaskedSurfaces));
     });
 
+    test('unmasks the chrome, so a replay is legible', () async {
+      // The other half of the gate. `maskAllText` greys out every `Text` in
+      // the app, which is what the four rules above rest on - and also what
+      // made the first replays useless: a rectangle where each button, tab
+      // and title had been. These two rules name what may be seen.
+      await build().start();
+
+      expect(maskedTypes(sdk.options!), containsAll(kUnmaskedSurfaces));
+    });
+
     test('the replay switch off leaves the error rate at zero', () async {
       SharedPreferences.setMockInitialValues(<String, Object>{
         'diagnostics.share_replay': false,
@@ -305,6 +326,7 @@ void main() {
       await build().start();
 
       expect(maskedTypes(sdk.options!), containsAll(kMaskedSurfaces));
+      expect(maskedTypes(sdk.options!), containsAll(kUnmaskedSurfaces));
     });
   });
 
