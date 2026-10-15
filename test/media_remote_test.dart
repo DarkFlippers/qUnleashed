@@ -5,8 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/pages/tools/remote/desktop/media_remote.dart';
 import 'package:qunleashed/pages/tools/remote/desktop/models/models.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
-import 'package:shared_preferences_platform_interface/types.dart';
+
+import 'refusing_prefs.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -307,13 +307,7 @@ void main() {
   });
 
   test('a failed write is not reported as a failed start', () async {
-    SharedPreferencesStorePlatform.instance = _FailingStore();
-    SharedPreferences.resetStatic();
-    addTearDown(() {
-      SharedPreferencesStorePlatform.instance =
-          InMemorySharedPreferencesStore.empty();
-      SharedPreferences.resetStatic();
-    });
+    useRefusingPrefs();
 
     final bridge = MediaRemoteBridge(
       onButton: (_, _) {},
@@ -335,36 +329,4 @@ void main() {
     );
     expect(bridge.enabled, isFalse, reason: 'nothing was persisted');
   });
-}
-
-/// A store whose writes report failure, like a full or corrupt prefs file.
-class _FailingStore extends SharedPreferencesStorePlatform {
-  final Map<String, Object> _values = {};
-
-  @override
-  Future<bool> clear() async => false;
-
-  @override
-  Future<bool> clearWithParameters(ClearParameters parameters) async => false;
-
-  @override
-  Future<bool> clearWithPrefix(String prefix) async => false;
-
-  @override
-  Future<Map<String, Object>> getAll() async => _values;
-
-  @override
-  Future<Map<String, Object>> getAllWithParameters(
-    GetAllParameters parameters,
-  ) async => _values;
-
-  @override
-  Future<Map<String, Object>> getAllWithPrefix(String prefix) async => _values;
-
-  @override
-  Future<bool> remove(String key) async => false;
-
-  @override
-  Future<bool> setValue(String valueType, String key, Object value) async =>
-      false;
 }

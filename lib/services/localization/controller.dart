@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../logging.dart';
 import '../prefs_reader.dart';
+import '../settings/persist.dart';
 import 'gen/l10n_generated.dart';
 
 class QLocaleController extends ChangeNotifier with WidgetsBindingObserver {
@@ -137,12 +138,23 @@ class QLocaleController extends ChangeNotifier with WidgetsBindingObserver {
     if (locale == _locale) return;
     _locale = locale;
     notifyListeners();
-    final prefs = await SharedPreferences.getInstance();
-    if (locale == null) {
-      await prefs.remove(_prefLocale);
-    } else {
-      await prefs.setString(_prefLocale, locale.languageCode);
-    }
+    // Through persistSetting rather than SharedPreferences directly. The
+    // language page wraps this in a VoidCallback, which discards the future,
+    // so before #313 a store that would not open reached the zone as an
+    // unlabelled `[uncaught]` naming no setting, and a store that refused the
+    // write said nothing at all.
+    //
+    // Following the system is an absent preference, not a stored "system",
+    // so the null case removes rather than writes - one of the two per call,
+    // never both. A refused removal reads as "locale.code did not persist"
+    // and means the old language is still on disk and comes back at the next
+    // launch.
+    await persistSetting(
+      _prefLocale,
+      (prefs) => locale == null
+          ? prefs.remove(_prefLocale)
+          : prefs.setString(_prefLocale, locale.languageCode),
+    );
   }
 
   @override

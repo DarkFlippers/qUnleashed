@@ -4,6 +4,7 @@ import 'package:qunleashed/pages/devices/firmware/update_settings.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'kept_lines.dart';
+import 'refusing_prefs.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -98,6 +99,46 @@ void main() {
       await store.load();
 
       expect(store.channelFor('unlshd'), isNull);
+    });
+  });
+
+  // The doc on `remember` promises a line in the log for a choice that did
+  // not persist. Before #313 it kept that promise only for a store that
+  // threw; one that answered `false` - a full disk on Android - was recorded
+  // nowhere, and the selector showed a channel that was gone at the next
+  // launch.
+  group('a choice that did not persist', () {
+    test('says so when the store refuses the write', () async {
+      useRefusingPrefs();
+
+      await store.remember('unlshd', channelId: 'release');
+
+      expect(keptLines.where((l) => l.contains('did not persist')), isNotEmpty);
+    });
+
+    // Two writes, so one line cannot stand for both: a reader has to know
+    // whether the channel or the variant is the one that went back.
+    test('names which of the two went back', () async {
+      useRefusingPrefs();
+
+      await store.remember(
+        'unlshd',
+        channelId: 'release',
+        variant: UnleashedVariant.base,
+      );
+
+      expect(keptLines.where((l) => l.contains('unlshd.channel')), isNotEmpty);
+      expect(keptLines.where((l) => l.contains('unlshd.variant')), isNotEmpty);
+    });
+
+    // #120's rule: the choice stays on screen, and takes itself back at the
+    // next launch. Nothing here reverts it.
+    test('keeps the choice for the rest of the session', () async {
+      useRefusingPrefs();
+
+      await store.remember('unlshd', channelId: 'release');
+
+      expect(store.channelFor('unlshd'), 'release');
     });
   });
 

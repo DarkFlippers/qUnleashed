@@ -5,7 +5,7 @@ import 'package:qunleashed/services/localization/l10n.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'kept_lines.dart';
-
+import 'refusing_prefs.dart';
 import 'unopenable_prefs.dart';
 
 /// What a settings store does with a read it cannot complete — #123.
@@ -477,6 +477,38 @@ void main() {
       expect(widgets.loaded, isFalse);
     });
 
+    // What each setter leaves in the store, which nothing asserted before:
+    // the push cases below read `pushed` and the in-memory fields, and both
+    // are filled before the write is even attempted. Every arm could have
+    // written nothing - or written its neighbour's key - and the suite stayed
+    // green. All five rather than one of each, because the five writes are
+    // five copies of one line whose only difference is the key, and a wrong
+    // key is the mistake that shape makes.
+    //
+    // `setCaptionShown` is also the only `setBool` of the five, and `setBool`
+    // is where #313's refused write arrives from on Android.
+    test('every setter writes its own key', () async {
+      SharedPreferences.setMockInitialValues(stored);
+      await widgets.load();
+
+      await widgets.setTheme(WidgetTheme.categories);
+      await widgets.setIconStyle(WidgetIconStyle.plain);
+      await widgets.setBorder(WidgetBorder.thin);
+      await widgets.setCaptionShown(true);
+      await widgets.setCaptionSize(WidgetCaptionSize.small);
+
+      // Read through a fresh instance, so this is what the store holds and
+      // not what the cache was told: _setValue fills the cache before it asks
+      // the store, which is the whole reason a refused write is invisible.
+      SharedPreferences.resetStatic();
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('home_widget.theme'), 'categories');
+      expect(prefs.getString('home_widget.icon_style'), 'plain');
+      expect(prefs.getString('home_widget.border'), 'thin');
+      expect(prefs.getBool('home_widget.caption'), isTrue);
+      expect(prefs.getString('home_widget.caption_size'), 'small');
+    });
+
     // What the native store is told. It is a second, durable copy that every
     // home-screen widget draws from, so pushing after a lost read replaces a
     // look the user chose with the initialisers - and keeps doing it, since
@@ -511,10 +543,96 @@ void main() {
         await widgets.setBorder(WidgetBorder.thin);
 
         expect(pushed, hasLength(1));
-        expect(pushed.single['border'], 'thin');
-        expect(pushed.single['theme'], 'material', reason: 'all five fields');
         expect(widgets.border, WidgetBorder.thin);
         expect(notifications, 1, reason: 'the page reads its state from here');
+        // The whole map, by the names the native side reads. WidgetSettings.kt
+        // takes each one as `map["iconStyle"] as? String ?: base.iconStyle`,
+        // so a key spelled wrong in _fieldFor is read as absent and the
+        // launcher silently keeps the look it already had. Asserting field by
+        // field left `iconStyle` and `captionSize` unpinned.
+        expect(pushed.single, {
+          'theme': 'material',
+          'iconStyle': 'tinted',
+          'border': 'thin',
+          'captionShown': false,
+          'captionSize': 'large',
+        });
+      });
+
+      // The half that gating the push does not reach. toMap() read the
+      // fields, and apply() puts a refused value there on purpose, so it rode
+      // out on the *next* accepted setter - the launcher showing a look that
+      // is on no disk, for sync() to take back at the next launch. Which is
+      // #120, arriving one gesture later than the gate looks for.
+      test('a refused write does not ride out on the next one', () async {
+        // `border` differs from `stored` so that setBorder below is a change.
+        final onDisk = <String, Object>{
+          ...stored,
+          'home_widget.border': 'none',
+        };
+        useRefusingPrefs(onDisk);
+        await widgets.load();
+
+        // Refused: the store answers false for everything.
+        await widgets.setCaptionShown(true);
+        // Accepted from here on, so the next setter does push.
+        SharedPreferences.setMockInitialValues(onDisk);
+        await widgets.setBorder(WidgetBorder.thin);
+
+        expect(pushed, hasLength(1), reason: 'only the accepted one pushed');
+        expect(pushed.single['border'], 'thin');
+        expect(
+          pushed.single['captionShown'],
+          isFalse,
+          reason: 'what the store holds, not the refused choice',
+        );
+        expect(
+          widgets.captionShown,
+          isTrue,
+          reason: 'the control still stays where the user put it; #120',
+        );
+      });
+
+      // #120's claim, which the ordering alone never kept: a write the store
+      // refuses must not redraw the home screen, because sync() would push
+      // the stored look back at the next launch and undo it hours later.
+      test('a write the store refuses pushes nothing and says so', () async {
+        useRefusingPrefs(stored);
+        await widgets.load();
+        clearKeptLines();
+
+        await widgets.setCaptionShown(true);
+
+        expect(pushed, isEmpty);
+        expect(
+          keptLines.where((l) => l.contains('home_widget.caption')),
+          isNotEmpty,
+        );
+        expect(
+          widgets.captionShown,
+          isTrue,
+          reason: 'the control stays where the user put it; #120',
+        );
+      });
+
+      // Because the control keeps the refused choice, `changed` against the
+      // field alone makes re-picking it a no-op - so one refusal would lock
+      // the setting out for the session, and the user's only way back would
+      // be picking another value and picking this one again.
+      test('a refused write is retried when the user picks it again', () async {
+        useRefusingPrefs(stored);
+        await widgets.load();
+        await widgets.setCaptionShown(true);
+        expect(pushed, isEmpty, reason: 'refused, so nothing was pushed');
+
+        // The store recovers, and the user taps the same option again.
+        SharedPreferences.setMockInitialValues(stored);
+        await widgets.setCaptionShown(true);
+
+        expect(pushed, hasLength(1));
+        expect(pushed.single['captionShown'], isTrue);
+        final prefs = await SharedPreferences.getInstance();
+        expect(prefs.getBool('home_widget.caption'), isTrue);
       });
 
       test(

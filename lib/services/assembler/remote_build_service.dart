@@ -4,10 +4,12 @@ import 'dart:io' as io;
 import 'dart:math';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../http/app_http.dart';
 import '../logging.dart';
+import '../settings/persist.dart';
 import '../localization/l10n.dart';
 
 /// The builder address is public; only the signing key is a secret, so the
@@ -158,7 +160,7 @@ class RemoteBuildService {
     }
     _activeAlias = alias;
     try {
-      final clientId = await _ensureClientId();
+      final clientId = await ensureClientId();
       var status = await _postJson('/api/v1/builds', clientId, {
         'bundle_url': bundleUrl,
         'alias': alias,
@@ -377,19 +379,63 @@ class RemoteBuildService {
     };
   }
 
-  Future<String> _ensureClientId() async {
+  /// The id that identifies this install to the build server, remembered
+  /// across launches when the store will take it.
+  ///
+  /// Every step is best effort, and the whole function is on the path that
+  /// signs every remote build request: `build()` has no catch, so anything
+  /// thrown here reached the user as the stated reason their firmware build
+  /// failed - an error about preferences. Reading was the likelier of the two
+  /// to throw and was the one left unguarded, because `getInstance` is what a
+  /// store that will not open fails at.
+  ///
+  /// Not [persistSetting], for the same reason `KnownDevices` is not: the
+  /// level is the site's own call and that function fixes it at warn. Nothing
+  /// is lost when this write does not land - the id is returned either way
+  /// and serves the session - so there is nothing for anyone to do about it,
+  /// which is `caught` rather than a warning somebody should look at. The
+  /// reason is carried out to one call for the same reason that function
+  /// does it: the line's one literal has one home.
+  ///
+  /// `Random.secure()` is the one step outside the guard. It throws only
+  /// where the platform has no secure source at all, which none of the six
+  /// targets is, and a build signed with a predictable id is not a better
+  /// answer than failing.
+  ///
+  /// Public only so a test can reach it: every test that gets as far as
+  /// `build()` passes `clientId:`, so nothing exercised the path below until
+  /// this stopped being private. `build()` calls it from the same library,
+  /// where `@visibleForTesting` does not complain.
+  @visibleForTesting
+  Future<String> ensureClientId() async {
     final existing = _clientId;
     if (existing != null && existing.isNotEmpty) return existing;
-    final prefs = await SharedPreferences.getInstance();
-    var id = prefs.getString(_clientIdPrefsKey);
-    if (id == null || id.isEmpty) {
-      final random = Random.secure();
-      id = List.generate(
-        16,
-        (_) => random.nextInt(256),
-      ).map((b) => b.toRadixString(16).padLeft(2, '0')).join();
-      await prefs.setString(_clientIdPrefsKey, id);
+
+    final random = Random.secure();
+    final fresh = List.generate(
+      16,
+      (_) => random.nextInt(256),
+    ).map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+
+    String? reason;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final stored = prefs.getString(_clientIdPrefsKey);
+      if (stored != null && stored.isNotEmpty) return _clientId = stored;
+      if (!await prefs.setString(_clientIdPrefsKey, fresh)) {
+        // The same words `persistSetting` and `KnownDevices` use, so one
+        // grep finds every store that declined a write.
+        reason = 'the store refused the write';
+      }
+    } catch (e, st) {
+      reason = LogService.describe(e, st);
     }
-    return _clientId = id;
+    if (reason != null) {
+      LogService.caught(
+        '[RemoteBuild] the client id was not remembered: $reason; '
+        'this session uses a fresh one',
+      );
+    }
+    return _clientId = fresh;
   }
 }
