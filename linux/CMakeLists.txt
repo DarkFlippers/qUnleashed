@@ -83,9 +83,6 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -g")
 # a command line is harmless.
 add_compile_options("$<$<CONFIG:Release>:-g>")
 
-# TEMPORARY, remove before merge: the CI run is the only place this can be
-# observed, so it reports what each scope actually sees.
-message(STATUS "QU-DEBUG top-level: BUILD_TYPE='${CMAKE_BUILD_TYPE}' C_FLAGS_RELEASE='${CMAKE_C_FLAGS_RELEASE}' CXX_FLAGS_RELEASE='${CMAKE_CXX_FLAGS_RELEASE}'")
 
 # Compilation settings that should be applied to most targets.
 #

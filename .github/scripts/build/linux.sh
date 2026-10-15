@@ -135,6 +135,21 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 # scan finds nothing, and a green build means only that nothing was there.
 # `check_ffi_exports.sh` makes the same argument about a regex that matches
 # nothing: a guard that cannot fail is a rubber stamp.
+# TEMPORARY, remove before merge. Flutter swallows CMake's STATUS output, so
+# the only way to see what the build actually used is to read what CMake
+# generated. #310.
+CMAKE_DIR="$ROOT_DIR/build/linux/$TARGET_ARCH/release"
+echo "===== QU-DEBUG begin ====="
+echo "--- CMakeCache flags ---"
+grep -E "^CMAKE_(C|CXX)_FLAGS(_RELEASE)?:|^CMAKE_BUILD_TYPE:" "$CMAKE_DIR/CMakeCache.txt" 2>/dev/null || echo "(no CMakeCache.txt at $CMAKE_DIR)"
+echo "--- build.ninja: C flags for a mfkey32 object ---"
+grep -A3 -m2 "mfkey32.*\.c\.o:" "$CMAKE_DIR/build.ninja" 2>/dev/null | head -20 || echo "(no build.ninja)"
+echo "--- build.ninja: any FLAGS line mentioning crapto1 or mfkey32 ---"
+grep -m4 -E "FLAGS = .*" "$CMAKE_DIR/build.ninja" 2>/dev/null | head -4
+echo "--- built (pre-install) library, if present ---"
+find "$CMAKE_DIR" -name "libqunleashed_mfkey32.so" -exec sh -c 'echo "  {}"; objdump -h "{}" | grep -c debug_info || true' \; 2>/dev/null | head -6
+echo "===== QU-DEBUG end ====="
+
 # The runner and our own FFI libraries, not merely "something in the bundle".
 # The runner alone would be the weakest possible check: it is the one target
 # whose debug information survives a partial regression, because it is the
