@@ -126,37 +126,48 @@ jobs:
           git --no-pager diff --stat HEAD -- translations
 
       # Why a translation would arrive declaring a locale its filename
-      # contradicts is in check_arb_locales.sh's header. Crowdin settles it at
-      # the source now: a Custom Post-Export Processor app applies that same
-      # rule to the export, before the download. So this is a check, and no
-      # longer the repair it used to be.
-      #
-      # The repair is what the move was for. It ran on the branch, after the
-      # action had already committed, which left the branch one value apart
-      # from what Crowdin exports for good - so every sync had a diff whether
-      # a translation had changed or not. #323 is the pull request that
-      # produces: two commits that cancel each other, nothing else in it.
-      # Correcting the export settles every country-coded language at once, and
-      # `pt-PT`, `pt-BR`, `zh-CN`, `zh-TW`, `zh-HK`, `es-MX`, `fr-CA` and
-      # `sr-CS` are all the same shape as the Spanish that found it.
+      # contradicts, and why the filename is the side that wins, is in
+      # check_arb_locales.sh's header - including why this is a check now and
+      # not the repair it was until #323.
       #
       # After the overlay, because the pull request's translations are what the
       # build below reads and so what this has to check. Run before it, it
       # would check main's, which are already known good.
       #
-      # continue-on-error, as the repair was and for the same reason: this step
-      # is not the verification. If it fails, the build below still runs and
-      # the summariser puts a verdict on the pull request, which is better than
-      # a red run that says nothing.
+      # continue-on-error, and not for the reason the repair had. A repair must
+      # not block the verification that follows it; a check's output *is* a
+      # verdict, and discarding one is how a guard becomes decoration. What the
+      # flag buys here is only that `Build the translations` still runs - every
+      # step below is gated on a bare `if:`, which GitHub ANDs with an implicit
+      # success(), so a fatal failure here would skip the build, leave no
+      # verdict.md, and have `Refresh the pull request` overwrite the body with
+      # the status table alone. The status is kept and spent twice below
+      # instead: in the pull request body, and in a terminal gate that reddens
+      # the run once that body has been written.
       #
-      # `pub-get: false` below skips the copy of this inside setup-flutter, so
-      # without this step the sync is the one path that checks no translation
-      # at all - and if that Crowdin app is ever uninstalled, this is what
-      # names the file.
+      # Spending it is the point. `flutter pub get` catches the one shape
+      # Crowdin has ever produced, but this script is deliberately stricter
+      # than gen-l10n - which ignores a filename it cannot parse and accepts a
+      # lowercase region - so an unreadable `@@locale`, a duplicate one whose
+      # last value happens to match, a three-letter code outside gen-l10n's ISO
+      # set and a lowercase region all build clean. For those the build is not
+      # a second opinion; this step is the only one there is.
+      #
+      # `pub-get: false` below skips the copy of this inside setup-flutter,
+      # which is why the sync calls it itself.
       - name: Check every translation declares the locale its filename says
+        id: locales
         if: steps.pr.outputs.number != ''
         continue-on-error: true
-        run: .github/scripts/check_arb_locales.sh
+        run: |
+          # To a file and printed afterwards rather than through `tee`, for the
+          # reason setup-flutter's own comment gives: a `tee` that cannot write
+          # fails the pipeline under pipefail, and a clean check would then be
+          # reported as the failure this exists to report.
+          status=0
+          .github/scripts/check_arb_locales.sh > "${RUNNER_TEMP}/locales.txt" 2>&1 || status=$?
+          cat "${RUNNER_TEMP}/locales.txt"
+          exit "$status"
 
       # pub-get: false, then run it below. Not because of the message any more
       # - the action now picks that from the output - but because this job
@@ -223,6 +234,9 @@ jobs:
           CROWDIN_PROJECT_ID: ${{ secrets.CROWDIN_PROJECT_ID }}
           CROWDIN_PERSONAL_TOKEN: ${{ secrets.CROWDIN_PERSONAL_TOKEN }}
           NUMBER: ${{ steps.pr.outputs.number }}
+          # outcome, not conclusion: continue-on-error rewrites conclusion
+          # to success and leaves outcome as the step's real answer.
+          LOCALES: ${{ steps.locales.outcome }}
         run: |
           python3 .github/scripts/crowdin_summary.py > "${RUNNER_TEMP}/status.md"
           if [ -z "$NUMBER" ]; then
@@ -230,6 +244,21 @@ jobs:
             exit 0
           fi
           : > "${RUNNER_TEMP}/pr-body.md"
+          # Above the verdict, because this names the file and gen-l10n for
+          # this one shape does not. Fenced, with any fence in the output
+          # turned into tildes so a filename cannot close the block early.
+          if [ "$LOCALES" = failure ] && [ -f "${RUNNER_TEMP}/locales.txt" ]; then
+            {
+              echo '`check_arb_locales.sh` refused the translations on this branch:'
+              echo
+              echo '```'
+              sed 's/```/~~~/g' "${RUNNER_TEMP}/locales.txt"
+              echo '```'
+              echo
+              echo "---"
+              echo
+            } >> "${RUNNER_TEMP}/pr-body.md"
+          fi
           if [ -f "${RUNNER_TEMP}/verdict.md" ]; then
             {
               cat "${RUNNER_TEMP}/verdict.md"
@@ -242,6 +271,17 @@ jobs:
           gh pr edit "$NUMBER" --repo "$GITHUB_REPOSITORY" \
             --body-file "${RUNNER_TEMP}/pr-body.md"
           echo "Refreshed pull request #${NUMBER}."
+
+      # After the body, so the run's colour and the pull request agree. The
+      # check above is non-fatal where it runs, for the reasons given there;
+      # this is where its answer is paid for. `!cancelled()` rather than the
+      # implicit success(), so it still fires when the build has already failed
+      # for its own reason.
+      - name: Fail if a translation declares the wrong locale
+        if: "!cancelled() && steps.locales.outcome == 'failure'"
+        run: |
+          echo "::error::check_arb_locales.sh refused a translation; the pull request body names the file."
+          exit 1
 
       # Built once above rather than fetched again: this is four Crowdin API
       # round trips, and the job already has the answer.

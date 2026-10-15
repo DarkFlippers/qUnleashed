@@ -7,15 +7,22 @@
 // `test/arb.dart` says so where someone would look for the rule, the guard is
 // a shell script instead, and `check_arb_locales_test.sh` covers the script.
 //
-// What neither covers is whether anything still calls it. Delete the step from
-// the setup-flutter action and every suite stays green while the five jobs that
-// run `pub get` go back to reporting a broken translation as a stale
-// `pubspec.lock`; drop the call from the Crowdin sync and the one path that
-// runs `pub get` with `pub-get: false` checks no translation at all, which
-// nothing looks at until a release. The script's own header calls that "how a
-// guard becomes decoration", and this repository
-// already reads a shell script from Dart for the same kind of seam - see
-// `dart_define_keys_test.dart`.
+// What neither covers is whether anything still calls it, and whether calling
+// it still has a consequence. Delete the step from the setup-flutter action and
+// every suite stays green while the five jobs that run `pub get` go back to
+// reporting a broken translation as a stale `pubspec.lock`. Drop the Crowdin
+// sync's own call and the mismatch still fails its build - but gen-l10n names
+// no file for that one shape, so the sync stops saying which translation is
+// wrong, and the four shapes stricter than gen-l10n's own check stop being
+// caught at all. Stop consuming that call's outcome and it reports to nobody.
+// The script's own header calls all three "how a guard becomes decoration",
+// and this repository already reads a shell script from Dart for the same kind
+// of seam - see `dart_define_keys_test.dart`.
+//
+// Anchored on the `run:` line rather than on the script's name, because the
+// comments in these workflows name scripts constantly: an assertion that only
+// looked for `check_arb_locales.sh` was satisfied by the prose above the step
+// and stayed green when the step itself was deleted.
 //
 // The mode is here because `chmod +x` on Windows does not reach the index:
 // both of this guard's scripts were committed 100644 first time out and CI
@@ -113,30 +120,64 @@ void main() {
 
   test('the Crowdin sync checks what it is about to merge', () {
     final yaml = File(sync).readAsStringSync();
+
+    // The invocation, not the name: see the header. A comment cannot satisfy
+    // this, because the path has to open the line. The negative lookahead is
+    // so a neighbouring `check_arb_locales_test.sh` cannot stand in for it.
+    final call = RegExp(
+      r'^\s*\.github/scripts/check_arb_locales\.sh(?![-\w])',
+      multiLine: true,
+    );
+    final called = call.firstMatch(yaml);
     expect(
-      yaml,
-      contains('check_arb_locales.sh'),
+      called,
+      isNotNull,
       reason:
           'the sync passes pub-get: false, which skips the copy of this inside '
-          'setup-flutter - so without its own call it is the one path that '
-          'checks no translation at all',
+          'setup-flutter - so without its own call it stops naming the file, '
+          'and stops catching the shapes gen-l10n itself lets through',
     );
-    // Crowdin normalises its own export now, so this call is a check and not
-    // the repair it was; check_arb_locales.sh's header has that story. What
-    // the sync must not go back to is repairing the branch after the action
-    // has committed to it, because the branch then differs from the export
-    // for good and every sync opens a pull request whose commits cancel.
+
+    // After the overlay, or it reads main's translations - which are already
+    // known good - and passes on a branch it never looked at. The overlay's
+    // own line is asserted first: compared blind, an overlay that was renamed
+    // or deleted gives indexOf -1, and -1 is less than anything.
+    const overlay = 'git checkout FETCH_HEAD -- translations';
+    expect(yaml, contains(overlay), reason: 'the overlay step is gone');
+    expect(
+      yaml.indexOf(overlay),
+      lessThan(called!.start),
+      reason: "the guard has to see the pull request's files, not main's",
+    );
+
+    // Called is not the same as heard. The step is deliberately
+    // continue-on-error, so its status is only worth anything if something
+    // downstream spends it - crowdin-rx.yml does that twice, in the pull
+    // request body and in a terminal gate.
     expect(
       yaml,
-      isNot(contains('check_arb_locales.sh --write')),
+      contains("steps.locales.outcome == 'failure'"),
+      reason: 'nothing fails the run when the guard refuses a translation',
+    );
+    expect(
+      yaml,
+      contains(r'LOCALES: ${{ steps.locales.outcome }}'),
+      reason: "the guard's finding never reaches the pull request body",
+    );
+
+    // #323: the branch was repaired after the Crowdin action had committed to
+    // it, so it never again matched the export and every sync became a diff.
+    // The flag is not the mechanism - a worktree that commits and pushes
+    // reproduces it without `--write` - so both are named.
+    expect(
+      yaml,
+      isNot(contains('--write')),
       reason: 'see #323: a repair on the branch makes a diff out of every sync',
     );
-    // After the overlay, or it reads main's translations - which are already
-    // known good - and passes on a branch it never looked at.
     expect(
-      yaml.indexOf('git checkout FETCH_HEAD -- translations'),
-      lessThan(yaml.indexOf('check_arb_locales.sh')),
-      reason: "the guard has to see the pull request's files, not main's",
+      yaml,
+      isNot(contains('refs/heads/l10n/crowdin')),
+      reason: 'see #323: this job must not push to the Crowdin branch',
     );
   });
 }

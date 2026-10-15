@@ -97,9 +97,9 @@ jobs:
         run: .github/scripts/summarize_l10n_failure_test.sh
 
       # Nothing in CI runs --write any more - Crowdin normalises its own export
-      # now, and check_arb_locales.sh's header says why - but the flag is still
-      # the lever for a repair by hand if that app is ever gone, and this is the
-      # only thing that exercises it.
+      # now, and check_arb_locales.sh's header says why, along with the two
+      # things the flag is still for. This suite is the only thing left that
+      # exercises it, so it is the only thing that would notice it rotting.
       - name: Test the ARB locale guard
         run: .github/scripts/check_arb_locales_test.sh
 

@@ -10,8 +10,8 @@
 # source is Crowdin's, check_translation_sources.sh blocks a hand edit to one,
 # and a script that rewrote those files because somebody ran it to see what it
 # said would be handing them a commit that guard then refuses. Nothing in CI
-# passes --write any more: it is the lever for a repair by hand, and why it
-# stopped being the sync's job is below.
+# passes --write any more; what it is still for is below, and so is why it
+# stopped being the sync's job.
 #
 # ## Why anything has to be normalised
 #
@@ -31,10 +31,12 @@
 # underscores - `parserResult.toString().replaceAll('-', '_')`, in the
 # `AppResourceBundle(File)` factory in gen_l10n_types.dart, which is also where
 # the throw lives. So the comparison is `es-ES` against `es_ES`, and no
-# filename can produce a dashed left-hand side. Every country-coded entry in
-# `crowdin.yml`'s mapping is the same shape: `pt-PT`, `pt-BR`, `zh-CN`,
-# `zh-TW`, `zh-HK`, `es-MX`, `fr-CA`, `sr-CS`. Spanish is simply the first one
-# anybody enabled.
+# filename can produce a dashed left-hand side. Every hyphenated entry in
+# `crowdin.yml`'s `languages_mapping` is the same shape - all ten of them, the
+# script subtag `sr-Latn` included, which fails identically and which this
+# script's own `locale_pattern` below accepts as `sr_Latn`. That file is the
+# one place the list lives; Spanish is simply the first entry anybody enabled,
+# and today it is still the only one of the ten the Crowdin project targets.
 #
 # ## Where this runs
 #
@@ -60,10 +62,22 @@
 # a translation had changed or not, and #323 is the pull request that produces -
 # two commits that cancel each other, nothing else in it. The rewrite moved to
 # Crowdin, to a Custom Post-Export Processor app that applies this same rule to
-# the export before the download. Crowdin's language mapping cannot do it -
-# it renames the file and never touches what is inside it, which Crowdin
-# support confirms is deliberate - and that app is the only place in the
-# product where the exported bytes can be changed.
+# the export before the download. Crowdin's language mapping cannot do it: it
+# renames the file and never touches what is inside it, which is deliberate -
+# https://community.crowdin.com/t/locale-settings-is-not-applied/13571 - and a
+# post-export processor is the only mechanism we found that reaches the
+# exported bytes.
+#
+# ## What --write is still for
+#
+# Not a repair this tree can hold: check_translation_sources.sh refuses a hand
+# edit to a Crowdin-owned ARB on any branch but `CROWDIN_BRANCH`. So it is two
+# things. It shows locally what value a file should carry, which is what the
+# five `pub get` jobs' annotation points at. And on the Crowdin branch itself,
+# where that guard does allow it, it unblocks a release once by hand if the
+# export arrives wrong - a one-off, which is not what #323 was. #323 was doing
+# it on every sync, automatically, so that the branch never again matched the
+# export.
 #
 # ## Why the filename wins, and why the key is kept
 #
@@ -140,8 +154,8 @@ declared_locales() {
   sed -n 's/^[[:space:]]*"@@locale"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$1"
 }
 
-# Only --write needs one, and only --write runs on a Linux runner, so the
-# default path leaves nothing behind on the five jobs that just read.
+# Only --write needs one, and no workflow passes --write, so the default path
+# leaves nothing behind on any of the jobs - all of which just read.
 if ((write)); then
   tmp="$(mktemp "${TMPDIR:-/tmp}/arb-locale-XXXXXX")"
   trap 'rm -f "$tmp"' EXIT
@@ -247,11 +261,14 @@ cat <<'MESSAGE' >&2
 gen-l10n refuses the pair from inside `flutter pub get`. This script's header
 has why Crowdin sends it that way and why the filename is the side that wins.
 
+Crowdin normalises its own export now, so a translation that arrived wrong
+means the post-export app did not run, is not configured for this project, or
+does not cover this language's filename. Fixing it there rather than here is
+what keeps the next sync from reopening it.
+
 `check_arb_locales.sh --write` settles every file but `translations/app_en.arb`,
-which is this repository's own and is corrected by hand. Crowdin normalises its
-own export now, so a translation that arrived wrong means that app is gone or
-its code was changed - fixing it there rather than here is what keeps the next
-sync from reopening it.
+which is this repository's own and is corrected by hand. Use it to see what the
+value should be; see the header for the one branch it may be committed on.
 MESSAGE
 
 # 2 outranks 1: a file this cannot read is a different problem from one it can,
