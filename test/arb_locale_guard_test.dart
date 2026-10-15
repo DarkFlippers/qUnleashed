@@ -15,9 +15,9 @@
 // no file for that one shape, so the sync stops saying which translation is
 // wrong, and the four shapes stricter than gen-l10n's own check stop being
 // caught at all. Stop consuming that call's outcome and it reports to nobody.
-// The script's own header calls all three "how a guard becomes decoration",
-// and this repository already reads a shell script from Dart for the same kind
-// of seam - see `dart_define_keys_test.dart`.
+// All three are how a guard becomes decoration, which is this repository's own
+// phrase for it - and it already reads a shell script from Dart for the same
+// kind of seam, in `dart_define_keys_test.dart`.
 //
 // Anchored on the `run:` line rather than on the script's name, because the
 // comments in these workflows name scripts constantly: an assertion that only
@@ -118,17 +118,20 @@ void main() {
     );
   });
 
+  // The call, matched on the line that makes it rather than on the script's
+  // name: the comments in these workflows name scripts constantly, and an
+  // assertion that only looked for `check_arb_locales.sh` was satisfied by the
+  // prose above the step and stayed green when the step itself was deleted.
+  // `[ \t]` rather than `\s`, which under `multiLine` crosses a newline and
+  // would put the match on the line before.
+  final syncCall = RegExp(
+    r'^[ \t]*\.github/scripts/check_arb_locales\.sh([^\n]*)',
+    multiLine: true,
+  );
+
   test('the Crowdin sync checks what it is about to merge', () {
     final yaml = File(sync).readAsStringSync();
-
-    // The invocation, not the name: see the header. A comment cannot satisfy
-    // this, because the path has to open the line. The negative lookahead is
-    // so a neighbouring `check_arb_locales_test.sh` cannot stand in for it.
-    final call = RegExp(
-      r'^\s*\.github/scripts/check_arb_locales\.sh(?![-\w])',
-      multiLine: true,
-    );
-    final called = call.firstMatch(yaml);
+    final called = syncCall.firstMatch(yaml);
     expect(
       called,
       isNotNull,
@@ -149,34 +152,72 @@ void main() {
       lessThan(called!.start),
       reason: "the guard has to see the pull request's files, not main's",
     );
+  });
 
-    // Called is not the same as heard. The step is deliberately
-    // continue-on-error, so its status is only worth anything if something
-    // downstream spends it - crowdin-rx.yml does that twice, in the pull
-    // request body and in a terminal gate.
+  test('the Crowdin sync spends the check it runs', () {
+    final yaml = File(sync).readAsStringSync();
+
+    // Called is not the same as heard. The step names the file that gen-l10n
+    // for this one shape does not, and it is the only report at all for the
+    // shapes gen-l10n accepts - so its finding has to reach the pull request
+    // body, which is where this job delivers everything it has to say.
     expect(
       yaml,
-      contains("steps.locales.outcome == 'failure'"),
-      reason: 'nothing fails the run when the guard refuses a translation',
-    );
-    expect(
-      yaml,
-      contains(r'LOCALES: ${{ steps.locales.outcome }}'),
-      reason: "the guard's finding never reaches the pull request body",
+      stringContainsInOrder([
+        r'> "${RUNNER_TEMP}/locale-finding.md"',
+        r'if [ -f "${RUNNER_TEMP}/locale-finding.md" ]; then',
+      ]),
+      reason:
+          'the guard writes a finding nothing reads, or reads one nothing '
+          'writes - either way it reports to nobody',
     );
 
+    // The step runs after the build, and a bare `if:` is ANDed with an
+    // implicit success() - so without `!cancelled()` it would skip whenever
+    // the build had already failed, which is the case it exists for.
+    final gate = yaml.substring(
+      yaml.indexOf('- name: Check every translation'),
+      yaml.indexOf('run: |', yaml.indexOf('- name: Check every translation')),
+    );
+    expect(
+      gate,
+      contains('!cancelled()'),
+      reason:
+          'the guard is skipped by the build failure it is meant to explain',
+    );
+    // `!cancelled()` on its own would also run it when the overlay failed,
+    // against main's translations, which pass - the job's own note above the
+    // checkout is that a tree that was never overlaid must not be reported on.
+    expect(
+      gate,
+      contains('steps.overlay.outcome'),
+      reason:
+          "the guard can pass on main's translations and call it the branch's",
+    );
+  });
+
+  test('the Crowdin sync does not repair the branch it is reading', () {
     // #323: the branch was repaired after the Crowdin action had committed to
     // it, so it never again matched the export and every sync became a diff.
-    // The flag is not the mechanism - a worktree that commits and pushes
-    // reproduces it without `--write` - so both are named.
+    // Asserted against the file with its comments stripped, so that explaining
+    // #323 here does not fail a test about what this job does.
+    final steps = File(sync)
+        .readAsLinesSync()
+        .where((line) => !RegExp(r'^\s*#').hasMatch(line))
+        .join('\n');
+
+    // Not only the flag. A `--write` with no commit would repair the files in
+    // the runner workspace, so the build would compile repaired translations
+    // and pass while the branch stayed broken; a worktree that commits and
+    // pushes reproduces #323 without the flag. Both are named.
     expect(
-      yaml,
+      syncCall.firstMatch(steps)?.group(1) ?? '',
       isNot(contains('--write')),
-      reason: 'see #323: a repair on the branch makes a diff out of every sync',
+      reason: 'see #323: a sync that repairs what it checks reports nothing',
     );
     expect(
-      yaml,
-      isNot(contains('refs/heads/l10n/crowdin')),
+      steps,
+      isNot(contains('git push')),
       reason: 'see #323: this job must not push to the Crowdin branch',
     );
   });

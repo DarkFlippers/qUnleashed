@@ -26,6 +26,7 @@ likely to be proposed again.
 | [0013](0013-observability-with-sentry.md) | Observability | Sentry on by default behind a one-time notice, wired into `LogService` and `guarded`; submodules expose hooks |
 | [0014](0014-build-identity.md) | Build identity | SemVer, pubspec holds the next version and the bump is a commit, the build number is a counter, `-dev` everywhere but the two fields a store validates |
 | [0015](0015-hand-written-ffi-bindings.md) | FFI bindings | hand-written and layer-guarded; no `ffigen`, and the two C progress structs stay separate |
+| [0016](0016-the-translation-branch-has-one-owner.md) | Translation branch | one owner: Crowdin normalises `@@locale` in the export, the snippet is in the repository, and the sync checks rather than repairs |
 
 ## Reading order
 

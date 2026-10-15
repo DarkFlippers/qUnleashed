@@ -100,8 +100,8 @@ expect_out "and the file, what it declares and what was expected are named" \
   "app_es.arb declares es-ES, its filename says es"
 expect_err "and the file is annotated for the pull request" \
   "::error file=translations/app_es.arb::"
-expect_err "and the fix is named for whoever reads the red job" \
-  "check_arb_locales.sh --write"
+expect_err "and the red job is told where it is fixed" \
+  "Crowdin normalises its own export"
 
 # The failure this exists for: #320, one key, a build nobody could read.
 fixture
@@ -124,18 +124,9 @@ expect_same_bytes "and a file that already agreed is untouched" \
 # this suite is not in ci.yml's scripts-bsd job, unlike the four whose scripts
 # run on a developer's own machine.
 #
-# That reason was "nothing runs --write but the sync, on ubuntu-latest" until
-# the sync stopped running it. --write is now a hand lever, which does put it
-# on a developer's own machine - so the exclusion is the weaker claim it used
-# to lean on: what CI covers is GNU sed, and a --write on macOS may add the
-# trailing newline this asserts the absence of. It is left here rather than
-# moved because the byte-exactness is the point of the assertion and a second
-# expectation per platform would blunt it; what is not covered is a one-off
-# hand repair on BSD, where the diff it produces is one byte and visible.
-#
-# The bare check that the setup-flutter action runs on every runner reads the
-# file and does not rewrite it, so that path is platform-independent either
-# way.
+# The byte-exactness is the point of the assertion, so it is not softened to
+# an expectation per platform; what that leaves uncovered is a one-off hand
+# repair run on BSD, whose diff is one visible byte.
 printf '{\n  "@@locale": "es"\n}' > "$work/want-es.arb"
 expect_same_bytes "and only that value changed, down to the missing newline" \
   translations/app_es.arb "$work/want-es.arb"

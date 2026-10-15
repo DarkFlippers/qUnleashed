@@ -96,10 +96,9 @@ jobs:
       - name: Test the translation compile summary
         run: .github/scripts/summarize_l10n_failure_test.sh
 
-      # Nothing in CI runs --write any more - Crowdin normalises its own export
-      # now, and check_arb_locales.sh's header says why, along with the two
-      # things the flag is still for. This suite is the only thing left that
+      # The sync no longer passes --write; this suite is the only thing that
       # exercises it, so it is the only thing that would notice it rotting.
+      # What the flag is still for is in check_arb_locales.sh's header.
       - name: Test the ARB locale guard
         run: .github/scripts/check_arb_locales_test.sh
 

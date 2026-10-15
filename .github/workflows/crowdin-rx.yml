@@ -111,6 +111,7 @@ jobs:
           submodules: recursive
 
       - name: Lay the pull request's translations over it
+        id: overlay
         if: steps.pr.outputs.number != ''
         run: |
           git fetch --depth=1 origin l10n/crowdin
@@ -124,50 +125,6 @@ jobs:
           git checkout FETCH_HEAD -- translations
           test -f translations/app_en.arb
           git --no-pager diff --stat HEAD -- translations
-
-      # Why a translation would arrive declaring a locale its filename
-      # contradicts, and why the filename is the side that wins, is in
-      # check_arb_locales.sh's header - including why this is a check now and
-      # not the repair it was until #323.
-      #
-      # After the overlay, because the pull request's translations are what the
-      # build below reads and so what this has to check. Run before it, it
-      # would check main's, which are already known good.
-      #
-      # continue-on-error, and not for the reason the repair had. A repair must
-      # not block the verification that follows it; a check's output *is* a
-      # verdict, and discarding one is how a guard becomes decoration. What the
-      # flag buys here is only that `Build the translations` still runs - every
-      # step below is gated on a bare `if:`, which GitHub ANDs with an implicit
-      # success(), so a fatal failure here would skip the build, leave no
-      # verdict.md, and have `Refresh the pull request` overwrite the body with
-      # the status table alone. The status is kept and spent twice below
-      # instead: in the pull request body, and in a terminal gate that reddens
-      # the run once that body has been written.
-      #
-      # Spending it is the point. `flutter pub get` catches the one shape
-      # Crowdin has ever produced, but this script is deliberately stricter
-      # than gen-l10n - which ignores a filename it cannot parse and accepts a
-      # lowercase region - so an unreadable `@@locale`, a duplicate one whose
-      # last value happens to match, a three-letter code outside gen-l10n's ISO
-      # set and a lowercase region all build clean. For those the build is not
-      # a second opinion; this step is the only one there is.
-      #
-      # `pub-get: false` below skips the copy of this inside setup-flutter,
-      # which is why the sync calls it itself.
-      - name: Check every translation declares the locale its filename says
-        id: locales
-        if: steps.pr.outputs.number != ''
-        continue-on-error: true
-        run: |
-          # To a file and printed afterwards rather than through `tee`, for the
-          # reason setup-flutter's own comment gives: a `tee` that cannot write
-          # fails the pipeline under pipefail, and a clean check would then be
-          # reported as the failure this exists to report.
-          status=0
-          .github/scripts/check_arb_locales.sh > "${RUNNER_TEMP}/locales.txt" 2>&1 || status=$?
-          cat "${RUNNER_TEMP}/locales.txt"
-          exit "$status"
 
       # pub-get: false, then run it below. Not because of the message any more
       # - the action now picks that from the output - but because this job
@@ -224,6 +181,42 @@ jobs:
           cat "${RUNNER_TEMP}/verdict.md" >> "$GITHUB_STEP_SUMMARY"
           exit "$verdict"
 
+      # Why a translation arrives declaring a locale its filename contradicts,
+      # and why this is a check rather than the repair it was until #323, is in
+      # check_arb_locales.sh's header.
+      #
+      # After the overlay, because the pull request's translations are what it
+      # has to read. After the build, because a failure here must not skip it:
+      # the verdict in the body is built from the build's output, and every
+      # step between carries a bare `if:` that GitHub ANDs with success().
+      # Gated on the overlay rather than on the chain - that is the dependency
+      # the note above the checkout actually describes, and naming it is what
+      # lets this step be fatal instead of reporting through a flag.
+      #
+      # It writes its own section for the body, the way the build writes
+      # verdict.md. The fence substitution and the 60-line cap are
+      # summarize_l10n_failure.sh's, whose comment has why both: `gh pr edit`
+      # refuses a body over 65536 characters, and `head` would SIGPIPE its
+      # producer under pipefail.
+      - name: Check every translation declares the locale its filename says
+        if: "!cancelled() && steps.pr.outputs.number != '' && steps.overlay.outcome == 'success'"
+        run: |
+          # To a file and printed after, not through `tee`: setup-flutter's own
+          # comment has why.
+          status=0
+          .github/scripts/check_arb_locales.sh > "${RUNNER_TEMP}/locales.txt" 2>&1 || status=$?
+          cat "${RUNNER_TEMP}/locales.txt"
+          if ((status != 0)); then
+            {
+              echo 'Crowdin sent a translation whose `@@locale` its filename contradicts:'
+              echo
+              echo '```'
+              sed 's/```/\x27\x27\x27/g' "${RUNNER_TEMP}/locales.txt" | sed -n '1,60p'
+              echo '```'
+            } > "${RUNNER_TEMP}/locale-finding.md"
+          fi
+          exit "$status"
+
       # The verdict goes above the status table, not below it. A broken
       # translation under twenty rows of language percentages is a notice
       # nobody reads.
@@ -234,9 +227,6 @@ jobs:
           CROWDIN_PROJECT_ID: ${{ secrets.CROWDIN_PROJECT_ID }}
           CROWDIN_PERSONAL_TOKEN: ${{ secrets.CROWDIN_PERSONAL_TOKEN }}
           NUMBER: ${{ steps.pr.outputs.number }}
-          # outcome, not conclusion: continue-on-error rewrites conclusion
-          # to success and leaves outcome as the step's real answer.
-          LOCALES: ${{ steps.locales.outcome }}
         run: |
           python3 .github/scripts/crowdin_summary.py > "${RUNNER_TEMP}/status.md"
           if [ -z "$NUMBER" ]; then
@@ -245,15 +235,10 @@ jobs:
           fi
           : > "${RUNNER_TEMP}/pr-body.md"
           # Above the verdict, because this names the file and gen-l10n for
-          # this one shape does not. Fenced, with any fence in the output
-          # turned into tildes so a filename cannot close the block early.
-          if [ "$LOCALES" = failure ] && [ -f "${RUNNER_TEMP}/locales.txt" ]; then
+          # this one shape does not.
+          if [ -f "${RUNNER_TEMP}/locale-finding.md" ]; then
             {
-              echo '`check_arb_locales.sh` refused the translations on this branch:'
-              echo
-              echo '```'
-              sed 's/```/~~~/g' "${RUNNER_TEMP}/locales.txt"
-              echo '```'
+              cat "${RUNNER_TEMP}/locale-finding.md"
               echo
               echo "---"
               echo
@@ -271,17 +256,6 @@ jobs:
           gh pr edit "$NUMBER" --repo "$GITHUB_REPOSITORY" \
             --body-file "${RUNNER_TEMP}/pr-body.md"
           echo "Refreshed pull request #${NUMBER}."
-
-      # After the body, so the run's colour and the pull request agree. The
-      # check above is non-fatal where it runs, for the reasons given there;
-      # this is where its answer is paid for. `!cancelled()` rather than the
-      # implicit success(), so it still fires when the build has already failed
-      # for its own reason.
-      - name: Fail if a translation declares the wrong locale
-        if: "!cancelled() && steps.locales.outcome == 'failure'"
-        run: |
-          echo "::error::check_arb_locales.sh refused a translation; the pull request body names the file."
-          exit 1
 
       # Built once above rather than fetched again: this is four Crowdin API
       # round trips, and the job already has the answer.
