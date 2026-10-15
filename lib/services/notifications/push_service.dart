@@ -41,6 +41,20 @@ class PushService {
   bool _started = false;
   static bool _unavailable = false;
 
+  /// What iOS said when [start] asked, or null before it has asked.
+  ///
+  /// Read only by [_apnsReady], and only on iOS.
+  static AuthorizationStatus? _authorization;
+
+  /// Whether a full [awaitApnsToken] wait has already run out this process.
+  ///
+  /// It makes the `warn` fire once per launch rather than once per toggle,
+  /// and it shortens every later attempt to a single read - see [_apnsReady].
+  /// Cleared again the moment a token does turn up, because a slow
+  /// registration that lands at 25 seconds should not cost the session its
+  /// subscriptions.
+  static bool _apnsGaveUp = false;
+
   final ValueNotifier<PushIntent?> taps = ValueNotifier<PushIntent?>(null);
 
   static bool get isSupported =>
@@ -65,7 +79,16 @@ class PushService {
       await _ensureAndroidChannel();
 
       final messaging = FirebaseMessaging.instance;
-      await messaging.requestPermission(alert: true, badge: false, sound: true);
+      // Kept, not discarded. On iOS the status here is the whole answer to
+      // "will an APNS token ever arrive": a user who tapped Don't Allow is
+      // never registered with APNS, so waiting for the token would spend the
+      // timeout on a question already answered, once per launch and once per
+      // toggle. See [_apnsReady].
+      _authorization = (await messaging.requestPermission(
+        alert: true,
+        badge: false,
+        sound: true,
+      )).authorizationStatus;
 
       await messaging.setForegroundNotificationPresentationOptions(
         alert: true,
@@ -87,10 +110,22 @@ class PushService {
     // Before the subscriptions, not after. None of these three needs anything
     // from APNS, and when the apply below threw it was them that paid: a
     // launch with no foreground display, no tap handling and no cold-start
-    // intent at all, for the whole run (QUNLEASHED-2).
+    // intent at all, for the whole run (Sentry QUNLEASHED-2).
+    //
+    // `_started` is already true and is never cleared, so there is no second
+    // attempt at any of this within the process.
     FirebaseMessaging.onMessage.listen(_showForeground);
     FirebaseMessaging.onMessageOpenedApp.listen(_open);
-    _open(await FirebaseMessaging.instance.getInitialMessage());
+    // Its own catch, so the two directions stay independent: the cold-start
+    // read goes through `convertPlatformException` like every other channel
+    // call and can throw, and before this it would have taken the apply below
+    // down with it - the same coupling that caused the incident, pointing the
+    // other way.
+    try {
+      _open(await FirebaseMessaging.instance.getInitialMessage());
+    } on FirebaseException catch (error) {
+      LogService.warn('[Push] cold-start message not read: ${error.code}');
+    }
 
     await _applySubscriptions();
   }
@@ -164,6 +199,13 @@ class PushService {
   }
 
   Future<void> _applySubscriptions() async {
+    // First, and before the preferences are read. Every Apple path below can
+    // sit here for twenty seconds, and reading the four preferences after the
+    // wait rather than before it keeps two toggles inside that window from
+    // carrying two different snapshots of `active` to the loop in whichever
+    // order they happen to finish.
+    if (!await _apnsReady()) return;
+
     final messaging = FirebaseMessaging.instance;
     final appEnabled = await isAppReleasesEnabled();
     final appDevEnabled = await isAppDevEnabled();
@@ -180,23 +222,6 @@ class PushService {
       if (devEnabled) active.addAll(PushTopics.dev);
     }
 
-    // Nothing below this line works on an Apple platform until APNS has
-    // registered the device; see [awaitApnsToken]. Leaving the topics alone
-    // is the honest outcome when it never does - the preferences are already
-    // written, so the next start() applies them once the token is there.
-    if (Platform.isIOS || Platform.isMacOS) {
-      final arrived = await awaitApnsToken(
-        () => FirebaseMessaging.instance.getAPNSToken(),
-      );
-      if (!arrived) {
-        LogService.warn(
-          '[Push] no APNS token after $_apnsTokenTimeout; '
-          'topic subscriptions left unchanged',
-        );
-        return;
-      }
-    }
-
     for (final topic in PushTopics.all) {
       if (active.contains(topic)) {
         await messaging.subscribeToTopic(topic);
@@ -206,46 +231,141 @@ class PushService {
     }
   }
 
+  /// Whether Firebase can be asked to change a topic subscription right now.
+  ///
+  /// `subscribeToTopic` and `unsubscribeFromTopic` throw
+  /// `FirebaseException(code: 'apns-token-not-set')` on iOS and macOS while
+  /// the APNS token is null, so on those two platforms this is what stands
+  /// between the loop and the incident. Everywhere else it is true.
+  ///
+  /// The three Apple answers, in the order they are cheap to give:
+  ///
+  ///  * **macOS: never.** APNS registers nothing without an `aps-environment`
+  ///    entitlement, and `macos/Runner/{Release,DebugProfile}.entitlements`
+  ///    carries none - so the token cannot arrive, and a wait would only
+  ///    convert a fast failure into a twenty-second one. 7 of the first 19
+  ///    reports on Sentry QUNLEASHED-2 were macOS. Local notifications are
+  ///    unaffected, which is why this is not a change to [isSupported]. Delete
+  ///    the branch the day the entitlement is added; nothing else here is
+  ///    macOS-specific.
+  ///  * **Permission not granted: never, until the user changes their mind in
+  ///    iOS Settings.** `info`, not `warn`: the operation did nothing, but the
+  ///    reason is the user's own choice and nobody should be alerted to it.
+  ///    [LogService.caught]'s rule excludes this by name.
+  ///  * **Granted: wait.** [awaitApnsToken] polls, because registration
+  ///    completes some time after `requestPermission` returns.
+  ///
+  /// Leaving the topics alone is the honest outcome when the token never
+  /// comes. The preferences have already been written by then - as far as
+  /// `persistSetting` got, which logs rather than throws if the write failed -
+  /// so the *next launch* applies them once the token is there. Not the next
+  /// `start()`: `_started` sees to it that there is no second one this
+  /// process. Within the session the retry is any Settings toggle, which
+  /// re-enters here and, thanks to [_apnsGaveUp], costs a single read.
+  static Future<bool> _apnsReady() async {
+    if (Platform.isMacOS) return false;
+    if (!Platform.isIOS) return true;
+
+    if (_authorization != AuthorizationStatus.authorized &&
+        _authorization != AuthorizationStatus.provisional) {
+      LogService.info('[Push] notifications not authorised; topics unchanged');
+      return false;
+    }
+
+    final bool arrived;
+    try {
+      arrived = await awaitApnsToken(
+        () => FirebaseMessaging.instance.getAPNSToken(),
+        // A read that has already waited out the full timeout once gets one
+        // look from here on. `awaitApnsToken` reads before it checks the
+        // deadline, so zero still asks - it just does not sleep on the answer.
+        timeout: _apnsGaveUp ? Duration.zero : _apnsTokenTimeout,
+      );
+    } on FirebaseException catch (error) {
+      // Not "not yet" - the channel could not answer the question at all, and
+      // retrying that for twenty seconds would report the wrong cause. Narrow
+      // on purpose: a `MissingPluginException` is structural and belongs to
+      // whoever is reading the report, not to this branch.
+      LogService.warn('[Push] could not read the APNS token: ${error.code}');
+      return false;
+    }
+
+    if (arrived) {
+      _apnsGaveUp = false;
+      return true;
+    }
+    if (!_apnsGaveUp) {
+      _apnsGaveUp = true;
+      LogService.warn(
+        '[Push] authorised but no APNS token after '
+        '${_apnsTokenTimeout.inSeconds}s; topics left unchanged',
+      );
+    }
+    return false;
+  }
+
   /// How long [awaitApnsToken] waits for APNS, and how often it looks.
   ///
   /// Apple registers the device with APNS asynchronously, and the token can
   /// arrive seconds after `requestPermission` has returned - longer on a cold
-  /// network. 20 seconds covers that and still bounds a Settings toggle,
-  /// which awaits the same path, at something a user would not sit through
-  /// twice.
+  /// network. 20 seconds covers that.
+  ///
+  /// Nobody watches it elapse. The Settings toggles call this path without
+  /// awaiting it ([_applySubscriptions] is reached from four `set*Enabled`
+  /// methods that `lib/pages/option/pages/push.dart` fires and forgets), so
+  /// the wait is a detached future with no spinner in front of it. The bound
+  /// is there because a detached poll should not outlive the user's interest
+  /// in its answer, not because anyone is sitting through it.
   static const _apnsTokenTimeout = Duration(seconds: 20);
   static const _apnsTokenPoll = Duration(milliseconds: 200);
 
   /// Waits for APNS to hand Firebase a device token; says whether it came.
   ///
-  /// `subscribeToTopic` and `unsubscribeFromTopic` both open with an internal
-  /// `_APNSTokenCheck` that throws `apns-token-not-set` on iOS and macOS for
-  /// as long as the token is null. That token arrives *after*
-  /// `requestPermission` completes, so the apply at launch raced it and lost
-  /// - on release builds as much as dev, 14 of the first 19 reports
-  /// (QUNLEASHED-2). There is no stream to listen to here, only a getter that
-  /// is null until it is not, so this polls.
+  /// The contract this is written against: on iOS and macOS,
+  /// `subscribeToTopic` and `unsubscribeFromTopic` throw
+  /// `FirebaseException(code: 'apns-token-not-set')` while the token is null.
+  /// The token arrives *after* `requestPermission` completes, so the apply at
+  /// launch raced it and lost - 19 reports from 8 users in four days, Sentry
+  /// QUNLEASHED-2.
   ///
-  /// The wait is bounded because the token may never come at all: a denied
-  /// permission, provisioning with no push entitlement, or no network each
-  /// leave it null for the life of the process, and an unbounded wait would
-  /// hold the caller there.
+  /// The mechanism behind that contract, as of
+  /// `firebase_messaging_platform_interface` 4.9.0, is a private
+  /// `_APNSTokenCheck` both methods open with, added for flutterfire#10625.
+  /// It is a workaround and may be removed; the throw is the part to rely on.
+  ///
+  /// `getAPNSToken()` is an async method and there is no stream beside it -
+  /// `onTokenRefresh` carries the FCM token, not this one - so this polls.
+  ///
+  /// The wait is bounded because the token may never come at all. The iOS
+  /// Simulator is the case a developer meets daily and usually never
+  /// registers; a denied permission, provisioning without the push
+  /// entitlement, and no network are the rest. An unbounded wait would hold
+  /// the caller for the life of the process.
   ///
   /// [reader] is a parameter so the loop can be tested without a platform
-  /// channel, and it returns null for "not yet". The platform check is the
-  /// caller's: off Apple the real reader returns null forever, so calling
-  /// this there would spend the timeout and then skip the subscriptions
-  /// Android was going to make.
+  /// channel, and it returns null for "not yet"; it may also throw, which is
+  /// [_apnsReady]'s to handle rather than this loop's. The platform check is
+  /// the caller's too: off Apple the real reader returns null forever, so
+  /// calling this there would spend the timeout and then skip the
+  /// subscriptions Android was going to make.
+  ///
+  /// A [timeout] of zero still gets one read - the loop asks before it checks
+  /// the clock - which is what [_apnsReady] leans on for its later attempts.
   @visibleForTesting
   static Future<bool> awaitApnsToken(
     Future<String?> Function() reader, {
     Duration timeout = _apnsTokenTimeout,
     Duration poll = _apnsTokenPoll,
   }) async {
-    final deadline = DateTime.now().add(timeout);
+    // Stopwatch, not DateTime.now(): the bound above is the whole design, and
+    // wall-clock time is not monotonic. A phone that NTP-syncs backwards just
+    // after launch - the ordinary case on a freshly booted device, which is
+    // also when this runs - would leave a DateTime deadline permanently in
+    // the future and poll until the process died.
+    final elapsed = Stopwatch()..start();
     while (true) {
       if (await reader() != null) return true;
-      if (!DateTime.now().isBefore(deadline)) return false;
+      if (elapsed.elapsed >= timeout) return false;
       await Future<void>.delayed(poll);
     }
   }
