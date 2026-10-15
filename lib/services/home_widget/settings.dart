@@ -200,7 +200,7 @@ class HomeWidgetSettings extends PrefsBackedSettings {
     // toMap() sends all five, so the next accepted setter carries the refused
     // one to the launcher after all. Closing that means tracking what was
     // last persisted separately from what is on screen, which is a bigger
-    // change than #313 and has an issue of its own.
+    // change than #313 and is not made here.
     final at = '$_prefix$key';
     if (!await persistSetting(at, (prefs) => write(prefs, at))) return;
     await push(toMap());
