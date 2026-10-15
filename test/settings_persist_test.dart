@@ -15,8 +15,11 @@ import 'refusing_prefs.dart';
 /// control took itself back at the next launch with nothing connecting the
 /// two. #120.
 
-/// A store that reads back what is there and refuses every write, the way a
+/// A store that reads back what is there and throws on every write, the way a
 /// full disk or a profile the app cannot write to does.
+///
+/// The other half is `useRefusingPrefs`, whose writes answer `false` instead.
+/// Both are failures; only this one reaches a `catch`, which is #313.
 class _ReadOnlyStore extends SharedPreferencesStorePlatform {
   final Map<String, Object> _values = {};
 
@@ -39,7 +42,7 @@ void main() {
 
   setUp(recordKeptLines);
 
-  /// Makes every write fail from here on.
+  /// Makes every write throw from here on.
   ///
   /// The store rather than the method channel: SharedPreferences caches its
   /// instance and the in-memory mock never reaches a channel at all, so a
@@ -57,46 +60,59 @@ void main() {
   Iterable<String> lines(String fragment) =>
       keptLines.where((l) => l.contains(fragment));
 
-  group('a write that failed', () {
+  Future<bool> write(String key) =>
+      persistSetting(key, (p) => p.setBool(key, true));
+
+  // The two ways a write fails owe the caller the same three things, and owe
+  // them identically. Written once so a change to the contract is one edit;
+  // what actually differs between the two is in the groups below.
+  for (final (how, breakWrites) in <(String, void Function())>[
+    ('threw', refuseWrites),
+    ('was refused without throwing', useRefusingPrefs),
+  ]) {
+    group('a write that $how', () {
+      test('is kept where a release build can read it', () async {
+        breakWrites();
+
+        await write('map.retina');
+
+        expect(lines('did not persist'), isNotEmpty);
+      });
+
+      // A log that says "save failed" five times over cannot tell a reader
+      // which control went back.
+      test('names the setting rather than the operation', () async {
+        breakWrites();
+
+        await write('map.retina');
+
+        expect(lines('map.retina'), isNotEmpty);
+      });
+
+      // What the caller that *does* read the answer depends on.
+      // `HomeWidgetSettings` gates its push on it; nothing else would catch a
+      // refusal reported as success.
+      test('comes back as false', () async {
+        breakWrites();
+
+        expect(await write('map.retina'), isFalse);
+      });
+    });
+  }
+
+  group('a write that threw', () {
     // The caller is usually a torn-off ValueChanged with nowhere to put a
     // rejection, so this has to be the end of it.
     test('does not come back to the caller', () async {
       refuseWrites();
 
-      await expectLater(
-        persistSetting(
-          'device.auto_connect_usb',
-          (p) => p.setBool('device.auto_connect_usb', true),
-        ),
-        completes,
-      );
-    });
-
-    test('is kept where a release build can read it', () async {
-      refuseWrites();
-
-      await persistSetting(
-        'device.auto_connect_usb',
-        (p) => p.setBool('device.auto_connect_usb', true),
-      );
-
-      expect(lines('did not persist'), isNotEmpty);
-    });
-
-    // A log that says "save failed" five times over cannot tell a reader
-    // which control went back.
-    test('names the setting rather than the operation', () async {
-      refuseWrites();
-
-      await persistSetting('map.retina', (p) => p.setBool('map.retina', true));
-
-      expect(lines('map.retina'), isNotEmpty);
+      await expectLater(write('map.retina'), completes);
     });
 
     test('says what went wrong', () async {
       refuseWrites();
 
-      await persistSetting('map.retina', (p) => p.setBool('map.retina', true));
+      await write('map.retina');
 
       expect(lines('write failed'), isNotEmpty);
     });
@@ -107,59 +123,24 @@ void main() {
     test('keeps the stack, not just the message', () async {
       refuseWrites();
 
-      await persistSetting('map.retina', (p) => p.setBool('map.retina', true));
+      await write('map.retina');
 
       expect(lines('settings_persist_test.dart'), isNotEmpty);
     });
-
-    test('comes back as false', () async {
-      refuseWrites();
-
-      final stuck = await persistSetting(
-        'map.retina',
-        (p) => p.setBool('map.retina', true),
-      );
-
-      expect(stuck, isFalse);
-    });
   });
 
-  // The half of the failures that never reach the catch. `setBool` and the
-  // rest return `Future<bool>`, and typing the callback `void` discarded that
-  // answer with no analyzer warning - `void` is a top type - so a store that
-  // declined the write produced no log line at all. #313.
-  group('a write that failed without throwing', () {
-    // Why none of this is visible from inside the session, and why the test
-    // above it cannot be written as "read it back and see".
+  // The failure that never reaches the catch, and the whole of #313.
+  // `persistSetting`'s own doc has which platforms answer this way.
+  group('a write that was refused without throwing', () {
+    // Why none of it is visible from inside the session, and why the cases
+    // above cannot be written as "read it back and see".
     test('still reads back as though it had worked', () async {
       useRefusingPrefs();
 
-      await persistSetting('map.retina', (p) => p.setBool('map.retina', true));
+      await write('map.retina');
 
       final prefs = await SharedPreferences.getInstance();
       expect(prefs.getBool('map.retina'), isTrue, reason: 'from the cache');
-    });
-
-    test('is kept where a release build can read it', () async {
-      useRefusingPrefs();
-
-      await persistSetting(
-        'device.sync_time',
-        (p) => p.setBool('device.sync_time', true),
-      );
-
-      expect(lines('did not persist'), isNotEmpty);
-    });
-
-    test('names the setting rather than the operation', () async {
-      useRefusingPrefs();
-
-      await persistSetting(
-        'map.track_device',
-        (p) => p.setBool('map.track_device', true),
-      );
-
-      expect(lines('map.track_device'), isNotEmpty);
     });
 
     // There is no exception to quote, so the line has to say why by itself -
@@ -168,50 +149,28 @@ void main() {
     test('says the store refused rather than quoting an exception', () async {
       useRefusingPrefs();
 
-      await persistSetting(
-        'theme.mode',
-        (p) => p.setString('theme.mode', 'dark'),
-      );
+      await write('map.retina');
 
       expect(lines('the store refused the write'), isNotEmpty);
-    });
-
-    // What the caller that *does* read the answer depends on.
-    // `HomeWidgetSettings` gates its push on it; nothing else would catch a
-    // refusal reported as success.
-    test('comes back as false', () async {
-      useRefusingPrefs();
-
-      final stuck = await persistSetting(
-        'push.enabled',
-        (p) => p.setBool('push.enabled', true),
-      );
-
-      expect(stuck, isFalse);
     });
   });
 
   group('a write that worked', () {
     test('says nothing', () async {
-      await persistSetting('map.retina', (p) => p.setBool('map.retina', true));
+      await write('map.retina');
 
       expect(lines('[Settings]'), isEmpty);
     });
 
     test('actually wrote it', () async {
-      await persistSetting('map.retina', (p) => p.setBool('map.retina', true));
+      await write('map.retina');
 
       final prefs = await SharedPreferences.getInstance();
       expect(prefs.getBool('map.retina'), isTrue);
     });
 
     test('comes back as true', () async {
-      final stuck = await persistSetting(
-        'map.retina',
-        (p) => p.setBool('map.retina', true),
-      );
-
-      expect(stuck, isTrue);
+      expect(await write('map.retina'), isTrue);
     });
   });
 }

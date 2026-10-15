@@ -5,7 +5,6 @@ import 'package:qunleashed/services/localization/l10n.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'kept_lines.dart';
-
 import 'refusing_prefs.dart';
 import 'unopenable_prefs.dart';
 
@@ -478,6 +477,38 @@ void main() {
       expect(widgets.loaded, isFalse);
     });
 
+    // What each setter leaves in the store, which nothing asserted before:
+    // the push cases below read `pushed` and the in-memory fields, and both
+    // are filled before the write is even attempted. Every arm could have
+    // written nothing - or written its neighbour's key - and the suite stayed
+    // green. All five rather than one of each, because the five writes are
+    // five copies of one line whose only difference is the key, and a wrong
+    // key is the mistake that shape makes.
+    //
+    // `setCaptionShown` is also the only `setBool` of the five, and `setBool`
+    // is where #313's refused write arrives from on Android.
+    test('every setter writes its own key', () async {
+      SharedPreferences.setMockInitialValues(stored);
+      await widgets.load();
+
+      await widgets.setTheme(WidgetTheme.categories);
+      await widgets.setIconStyle(WidgetIconStyle.plain);
+      await widgets.setBorder(WidgetBorder.thin);
+      await widgets.setCaptionShown(true);
+      await widgets.setCaptionSize(WidgetCaptionSize.small);
+
+      // Read through a fresh instance, so this is what the store holds and
+      // not what the cache was told: _setValue fills the cache before it asks
+      // the store, which is the whole reason a refused write is invisible.
+      SharedPreferences.resetStatic();
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('home_widget.theme'), 'categories');
+      expect(prefs.getString('home_widget.icon_style'), 'plain');
+      expect(prefs.getString('home_widget.border'), 'thin');
+      expect(prefs.getBool('home_widget.caption'), isTrue);
+      expect(prefs.getString('home_widget.caption_size'), 'small');
+    });
+
     // What the native store is told. It is a second, durable copy that every
     // home-screen widget draws from, so pushing after a lost read replaces a
     // look the user chose with the initialisers - and keeps doing it, since
@@ -516,34 +547,6 @@ void main() {
         expect(pushed.single['theme'], 'material', reason: 'all five fields');
         expect(widgets.border, WidgetBorder.thin);
         expect(notifications, 1, reason: 'the page reads its state from here');
-      });
-
-      // What each setter puts on disk, which no test asserted before: the
-      // existing cases above read `pushed` and the in-memory fields, both of
-      // which are filled before the write is attempted. Every arm could have
-      // written nothing - or written its neighbour's key - and the suite
-      // stayed green. All five, not one of each, because the five writes are
-      // five copies of a line whose only difference is the key.
-      //
-      // `setCaptionShown` is also the only `setBool` of the five, and
-      // `setBool` is where #313's refused write arrives from on Android.
-      test('every setter writes its own key', () async {
-        SharedPreferences.setMockInitialValues(stored);
-        await widgets.load();
-
-        await widgets.setTheme(WidgetTheme.categories);
-        await widgets.setIconStyle(WidgetIconStyle.plain);
-        await widgets.setBorder(WidgetBorder.thin);
-        await widgets.setCaptionShown(true);
-        await widgets.setCaptionSize(WidgetCaptionSize.small);
-
-        final prefs = await SharedPreferences.getInstance();
-        expect(prefs.getString('home_widget.theme'), 'categories');
-        expect(prefs.getString('home_widget.icon_style'), 'plain');
-        expect(prefs.getString('home_widget.border'), 'thin');
-        expect(prefs.getBool('home_widget.caption'), isTrue);
-        expect(prefs.getString('home_widget.caption_size'), 'small');
-        expect(pushed, hasLength(5), reason: 'one push per accepted write');
       });
 
       // #120's claim, which the ordering alone never kept: a write the store

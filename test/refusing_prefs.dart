@@ -6,29 +6,23 @@ import 'package:shared_preferences_platform_interface/types.dart';
 /// Installs a preferences store that reads back and refuses every write
 /// without throwing, until the test ends.
 ///
-/// The failure #313 is about. On Android the legacy backend returns
-/// `Editor.commit()` straight through and that is `false` when the write to
-/// persistent storage did not land; Windows and Linux answer the same way for
-/// a preferences file they cannot write. Nothing throws, so a `catch` never
-/// sees it.
+/// The failure `persistSetting` could not report before #313, and the one a
+/// `catch` never sees. Its doc has which platforms answer this way and why a
+/// refused write still reads back correctly; what matters here is that no
+/// write mutates [initial], so a second read finds what the next launch would.
 ///
-/// What makes it invisible is the read: `SharedPreferences` updates its own
-/// cache before it asks the store and does not roll back, so the setting reads
-/// back as the user left it for the rest of the session. [initial] is what a
-/// *fresh* read would find, which is the next launch's answer and the one that
-/// differs.
-///
-/// Through the platform interface for the same reason [useUnopenablePrefs]
-/// is: `setMockInitialValues` can only describe preferences that write
+/// Through the platform interface for the same reason [useUnopenablePrefs] is:
+/// `setMockInitialValues` can only describe preferences that write
 /// successfully.
 void useRefusingPrefs([Map<String, Object> initial = const {}]) {
   SharedPreferencesStorePlatform.instance = _RefusingStore({
     // The legacy API asserts every key a store hands back starts with
-    // `flutter.` and strips it, so a store that answers in app keys fails the
-    // read instead of the write - which is a different test, and passes this
-    // one for the wrong reason. `setMockInitialValues` prefixes them the same
-    // way, and is not usable here because it cannot describe a refusal.
-    for (final e in initial.entries) 'flutter.${e.key}': e.value,
+    // `flutter.` and strips it, so a store answering in app keys fails the
+    // read instead of the write - a different test, passing this one for the
+    // wrong reason. Guarded the way `setMockInitialValues` guards it, so an
+    // already-prefixed key does not become `flutter.flutter.x`.
+    for (final e in initial.entries)
+      e.key.startsWith('flutter.') ? e.key : 'flutter.${e.key}': e.value,
   });
   SharedPreferences.resetStatic();
   addTearDown(() {
@@ -37,25 +31,14 @@ void useRefusingPrefs([Map<String, Object> initial = const {}]) {
   });
 }
 
-class _RefusingStore extends SharedPreferencesStorePlatform {
-  _RefusingStore(this._stored);
-
-  /// What is on disk, which no write here ever changes.
-  final Map<String, Object> _stored;
-
-  @override
-  Future<Map<String, Object>> getAll() async => Map.of(_stored);
-
-  @override
-  Future<Map<String, Object>> getAllWithParameters(
-    GetAllParameters parameters,
-  ) async => Map.of(_stored);
-
-  @override
-  Future<Map<String, Object>> getAllWithPrefix(String prefix) async => {
-    for (final e in _stored.entries)
-      if (e.key.startsWith(prefix)) e.key: e.value,
-  };
+/// Reads like the real thing, declines every write.
+///
+/// The read half is inherited rather than written out: the parent filters on
+/// prefix and allow-list the way a real store does, and the three refusals
+/// below are the only methods that mutate, so every read path stays honest
+/// and every write path answers `false`.
+class _RefusingStore extends InMemorySharedPreferencesStore {
+  _RefusingStore(super.data) : super.withData();
 
   @override
   Future<bool> setValue(String valueType, String key, Object value) async =>
@@ -65,11 +48,5 @@ class _RefusingStore extends SharedPreferencesStorePlatform {
   Future<bool> remove(String key) async => false;
 
   @override
-  Future<bool> clear() async => false;
-
-  @override
   Future<bool> clearWithParameters(ClearParameters parameters) async => false;
-
-  @override
-  Future<bool> clearWithPrefix(String prefix) async => false;
 }

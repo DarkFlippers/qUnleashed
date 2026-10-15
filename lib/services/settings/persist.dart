@@ -36,6 +36,12 @@ import '../logging.dart';
 /// answer, and `&&` would report a failure without saying which half - which
 /// is the shape `ArchiveSortSettings` already refuses for its own pair.
 ///
+/// `MediaRemoteBridge._write` is the one other place in `lib/` that reads
+/// this `false`, and it answers by throwing, because its caller is a dialog
+/// that has to tell a failed save from a failed start. That is the exception;
+/// a setting the user flipped has no such surface, which is what the rest of
+/// this comment is about.
+///
 /// Returns whether the setting stuck. Most callers ignore it and should: they
 /// have applied the value to what is on screen already and have nowhere to put
 /// a failure. It is there for the caller that has a second, durable copy to
@@ -45,11 +51,9 @@ Future<bool> persistSetting(
   String what,
   Future<bool> Function(SharedPreferences prefs) write,
 ) async {
-  // The reason is carried out rather than logged where it is found, so there
-  // is exactly one call to the logger and it sits outside the catch. Logging
-  // the refusal inside the `try` put a second reason within reach of the same
-  // handler, and a throwing sink would have escaped as a rejection - which
-  // the fire-and-forget callers above have nowhere to put.
+  // Carried out rather than logged where it is found, so the line's one
+  // literal has one home. Logging at each site meant two copies of
+  // `did not persist` to keep in step, and the tests match on it.
   String reason;
   try {
     final prefs = await SharedPreferences.getInstance();

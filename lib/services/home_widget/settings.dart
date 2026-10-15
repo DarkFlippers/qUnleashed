@@ -133,36 +133,32 @@ class HomeWidgetSettings extends PrefsBackedSettings {
     await push(toMap());
   }
 
-  Future<void> setTheme(WidgetTheme v) => _set(
-    v != _theme,
-    () => _theme = v,
-    'theme',
-    (prefs, at) => prefs.setString(at, v.name),
-  );
-  Future<void> setIconStyle(WidgetIconStyle v) => _set(
-    v != _iconStyle,
-    () => _iconStyle = v,
-    'icon_style',
-    (prefs, at) => prefs.setString(at, v.name),
-  );
-  Future<void> setBorder(WidgetBorder v) => _set(
-    v != _border,
-    () => _border = v,
-    'border',
-    (prefs, at) => prefs.setString(at, v.name),
-  );
+  Future<void> setTheme(WidgetTheme v) =>
+      _setEnum(v != _theme, () => _theme = v, 'theme', v);
+  Future<void> setIconStyle(WidgetIconStyle v) =>
+      _setEnum(v != _iconStyle, () => _iconStyle = v, 'icon_style', v);
+  Future<void> setBorder(WidgetBorder v) =>
+      _setEnum(v != _border, () => _border = v, 'border', v);
+  Future<void> setCaptionSize(WidgetCaptionSize v) =>
+      _setEnum(v != _captionSize, () => _captionSize = v, 'caption_size', v);
   Future<void> setCaptionShown(bool v) => _set(
     v != _captionShown,
     () => _captionShown = v,
     'caption',
     (prefs, at) => prefs.setBool(at, v),
   );
-  Future<void> setCaptionSize(WidgetCaptionSize v) => _set(
-    v != _captionSize,
-    () => _captionSize = v,
-    'caption_size',
-    (prefs, at) => prefs.setString(at, v.name),
-  );
+
+  /// Four of the five are an enum stored as its [Enum.name], which is how
+  /// [readFrom] reads them back. `Enum` rather than a type parameter because
+  /// nothing here needs the specific type, and `name` is a member of `Enum` -
+  /// so this still chooses the write at compile time, which is the whole
+  /// reason [_set] stopped taking an `Object`.
+  Future<void> _setEnum(
+    bool changed,
+    void Function() apply,
+    String key,
+    Enum v,
+  ) => _set(changed, apply, key, (prefs, at) => prefs.setString(at, v.name));
 
   /// [write] is handed the prefixed key rather than composing it again, so the
   /// one place that knows about [_prefix] is the one place that applies it.
@@ -195,11 +191,16 @@ class HomeWidgetSettings extends PrefsBackedSettings {
     // redrew the widget on the home screen immediately, and a Dart write that
     // then failed left sync() pushing the old look back at the next launch -
     // the change undoing itself hours later, with nothing to connect the two.
-    // This way a write that fails never reaches the launcher at all. #120.
+    // #120. The ordering alone never prevented that, and said it did until
+    // #313: a refused write was logged and then pushed, because
+    // persistSetting had no way to report one.
     //
-    // The ordering alone never did that, and claimed it did until #313: a
-    // refused write was logged and then pushed, because persistSetting had no
-    // way to report one. The `if` is the half that was missing.
+    // What the gate covers is **this** push. The field stays applied in
+    // memory, deliberately - the control stays where the user put it - and
+    // toMap() sends all five, so the next accepted setter carries the refused
+    // one to the launcher after all. Closing that means tracking what was
+    // last persisted separately from what is on screen, which is a bigger
+    // change than #313 and has an issue of its own.
     final at = '$_prefix$key';
     if (!await persistSetting(at, (prefs) => write(prefs, at))) return;
     await push(toMap());
