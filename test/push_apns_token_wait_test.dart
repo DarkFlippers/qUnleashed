@@ -1,11 +1,11 @@
 // The wait that Sentry QUNLEASHED-2 was missing.
 //
-// `subscribeToTopic` throws `apns-token-not-set` on iOS and macOS until APNS
-// has registered the device, and that happens after `requestPermission`
-// returns - so the apply at launch raced it and lost, taking the rest of
-// `PushService.start()` with it. The loop under test is the seam that makes
-// the race a wait; its only caller in `lib/` is `_apnsReady`, behind the
-// platform checks the real `getAPNSToken` makes necessary.
+// A topic call throws without an APNS token, and the token arrives after
+// `requestPermission` returns - so the apply at launch raced it and lost,
+// taking the rest of `PushService.start()` with it. `awaitApnsToken`'s own
+// doc carries that contract; the loop under test is the seam that makes the
+// race a wait. Its only caller in `lib/` is `_apnsReady`, behind the platform
+// checks the real `getAPNSToken` makes necessary.
 //
 // Real timers rather than `fakeAsync`: `fakeAsync` intercepts
 // `Future.delayed` but not a `Stopwatch`, so elapsing fake time would advance
@@ -85,32 +85,16 @@ void main() {
       },
     );
 
-    test('a zero timeout still asks once', () async {
-      var reads = 0;
-      final arrived = await PushService.awaitApnsToken(
-        () async {
-          reads++;
-          return null;
-        },
-        timeout: Duration.zero,
-        poll: const Duration(days: 1),
-      );
-
-      expect(arrived, isFalse);
-      // `_apnsReady` passes zero for every attempt after the first full wait
-      // has run out, and relies on that attempt still being a real read - so
-      // a token that arrives late is picked up by the next Settings toggle
-      // instead of being refused for the rest of the session.
-      expect(reads, 1);
-    });
-
     test('the shipped poll interval is the one that runs', () async {
       var reads = 0;
       final elapsed = Stopwatch()..start();
       // No named arguments: the production defaults are otherwise never
       // executed by anything, and a `Duration(milliseconds: 20)` typo on the
-      // timeout constant would leave every other test in this file green
-      // while shipping the original bug back.
+      // poll constant would leave every other test in this file green.
+      //
+      // It is the poll this pins and not the timeout - a mistyped timeout
+      // still sleeps once and still arrives on the second read. Nothing here
+      // bounds the 20 seconds, because a test that did would take 20 seconds.
       final arrived = await PushService.awaitApnsToken(() async {
         reads++;
         return reads < 2 ? null : 'apns-token';
