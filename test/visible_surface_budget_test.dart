@@ -48,32 +48,46 @@ const String kAdr = 'docs/adr/0013-observability-with-sentry.md';
 /// name appears in prose in `sensitive_surface.dart` and in this file, and a
 /// text match would count both and then count them differently the day
 /// somebody rewraps a comment.
+///
+/// `ClassTypeAlias` as well as `ClassDeclaration`, because
+/// `class A = B with VisibleSurface;` is the same decision in the other
+/// spelling. Neither override calls `super`: Dart has no nested class, so
+/// descending into a class body would be looking for something that cannot
+/// be there.
 class _MixinVisitor extends RecursiveAstVisitor<void> {
   _MixinVisitor(this.unit);
 
   final CompilationUnit unit;
   final List<int> lines = [];
 
-  void _check(NamedType? type, int offset) {
-    if (type?.name.lexeme == 'VisibleSurface') {
-      lines.add(unit.lineInfo.getLocation(offset).lineNumber);
+  void _take(WithClause? clause) {
+    for (final type in clause?.mixinTypes ?? const <NamedType>[]) {
+      if (type.name.lexeme == 'VisibleSurface') {
+        // The type's own offset, not the declaration's: an `AnnotatedNode`
+        // starts at its doc comment, so a marked widget that grows a `///`
+        // would otherwise have the failure cite the comment's line.
+        lines.add(unit.lineInfo.getLocation(type.offset).lineNumber);
+      }
     }
   }
 
   @override
-  void visitClassDeclaration(ClassDeclaration node) {
-    for (final type in node.withClause?.mixinTypes ?? const <NamedType>[]) {
-      _check(type, node.offset);
-    }
-    super.visitClassDeclaration(node);
-  }
+  void visitClassDeclaration(ClassDeclaration node) => _take(node.withClause);
+
+  @override
+  void visitClassTypeAlias(ClassTypeAlias node) => _take(node.withClause);
 }
 
+/// The lines of the counted clauses in [unit], in source order.
+///
+/// **Nothing is exempt, including `components/sensitive_surface.dart`.** An
+/// exemption stood there for the declaration site, and it was both dead and
+/// dangerous: `mixin VisibleSurface on Widget {}` is a `MixinDeclaration` and
+/// was never counted anyway, while that file is the likeliest home for a
+/// `VisibleSurfaceBox` - the symmetric partner of `SensitiveSurfaceBox`, and
+/// the one marker that would unmask whatever it wrapped, anywhere in the app.
+/// That is the single site this census most needs to see.
 List<int> _linesIn(CompilationUnit unit, String path) {
-  // `sensitive_surface.dart` declares the mixin and must not count as a use
-  // of it. `SensitiveSurfaceBox` lives there too and mixes in the *other*
-  // marker, so this is about the declaration site rather than that class.
-  if (isExempt(path, const {'components/sensitive_surface.dart'})) return [];
   final visitor = _MixinVisitor(unit);
   unit.visitChildren(visitor);
   return visitor.lines;
@@ -81,23 +95,36 @@ List<int> _linesIn(CompilationUnit unit, String path) {
 
 void main() {
   test('the rule counts a class that mixes the marker in', () {
-    final unit = parseUnit('''
-mixin VisibleSurface on Widget {}
-class A extends StatelessWidget with VisibleSurface {}
-class B extends StatelessWidget {}
-''');
-    final visitor = _MixinVisitor(unit);
-    unit.visitChildren(visitor);
-    expect(visitor.lines, hasLength(1));
+    final unit = parseUnit(
+      'class A extends StatelessWidget with VisibleSurface {}\n'
+      'class B extends StatelessWidget {}',
+    );
+    expect(_linesIn(unit, 'lib/app/x.dart'), hasLength(1));
+  });
+
+  test('the rule counts the other spelling of the same decision', () {
+    final unit = parseUnit('class A = B with VisibleSurface;');
+    expect(_linesIn(unit, 'lib/app/x.dart'), hasLength(1));
   });
 
   test('the rule is not the other marker', () {
-    final unit = parseUnit('''
-class A extends StatelessWidget with SensitiveSurface {}
-''');
-    final visitor = _MixinVisitor(unit);
-    unit.visitChildren(visitor);
-    expect(visitor.lines, isEmpty);
+    final unit = parseUnit(
+      'class A extends StatelessWidget with SensitiveSurface {}',
+    );
+    expect(_linesIn(unit, 'lib/app/x.dart'), isEmpty);
+  });
+
+  test('the declaring file is counted like any other', () {
+    // The exemption that used to sit here excluded nothing - the mixin itself
+    // is a `MixinDeclaration` - while hiding the one file a
+    // `VisibleSurfaceBox` would land in.
+    final unit = parseUnit(
+      'class VisibleSurfaceBox extends StatelessWidget with VisibleSurface {}',
+    );
+    expect(
+      _linesIn(unit, 'lib/components/sensitive_surface.dart'),
+      hasLength(1),
+    );
   });
 
   test('no area shows more in a replay than its budget', () {

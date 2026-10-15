@@ -316,10 +316,8 @@ class PushService {
     // report. Topic names are constants from [PushTopics] and carry nothing of
     // the user's, so there is no scrubbing question.
     var applied = 0;
-    String? stoppedAt;
     try {
       for (final topic in PushTopics.all) {
-        stoppedAt = topic;
         if (active.contains(topic)) {
           await subscribe(topic);
         } else {
@@ -330,9 +328,16 @@ class PushService {
     } on FirebaseException catch (error) {
       // Narrow, like `_apnsReady`'s: a `MissingPluginException` is structural
       // and belongs to whoever reads the report, not to this branch.
+      //
+      // `all[applied]` and not a second cursor: the catch is reachable only
+      // from inside the loop, where the topic that threw is the one the
+      // counter has not reached yet. A `stoppedAt` assigned beside the
+      // increment says the same thing and has to stay in step with it across
+      // the await.
       LogService.warn(
         '[Push] $applied of ${PushTopics.all.length} topic changes applied, '
-        'stopped at $stoppedAt: ${error.code} ${error.message}',
+        'stopped at ${PushTopics.all[applied]}: '
+        '${error.code} ${error.message}',
       );
     }
   }

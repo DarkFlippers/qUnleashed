@@ -216,8 +216,8 @@ void configureOptions(SentryFlutterOptions options, TelemetryPlan plan) {
   // `unmask` is worse than deleting the line, because it applies to the
   // subtree and short-circuits later rules, so it would defeat `maskAllText`
   // inside the hex table too. (Two deliberate `unmask` rules are installed
-  // below, for the chrome. That is the same mechanism pointed somewhere it is
-  // wanted, and it is why the test now pins the decision and not the name.) The prose that used to sit in the argument is
+  // below, for the chrome. That is the same mechanism pointed somewhere it
+  // is wanted, and it is why the test pins the decision and not the name.) The prose that used to sit in the argument is
   // above, where a reader was always better served by it.
   //
   // The ignores are not decoration. `mask<T>()` is `@experimental` in 9.30.1,

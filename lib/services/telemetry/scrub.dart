@@ -55,10 +55,9 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 abstract final class Scrub {
   /// Home directories replaced with `~` wherever they appear.
   ///
-  /// Not sorted. Order does not matter here because
-  /// each pattern is anchored against continuing a name, so a home that is a
-  /// prefix of another cannot leave the remainder behind - the anchor carries
-  /// what sorting would. This used to say "longest first", which a reader
+  /// Not sorted. Order does not matter here because each pattern is anchored
+  /// against continuing a name, so a home that is a prefix of another cannot
+  /// leave the remainder behind - the anchor carries what sorting would. This used to say "longest first", which a reader
   /// would reasonably have taken for a guarantee.
   ///
   /// The log is something a user copies into a public issue, and absolute

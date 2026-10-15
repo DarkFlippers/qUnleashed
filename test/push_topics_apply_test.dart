@@ -25,23 +25,30 @@ import 'package:qunleashed/services/notifications/push_service.dart';
 
 import 'kept_lines.dart';
 
-/// Records what was asked of each topic, in order.
-class _Calls {
+/// The two calls `applyTopics` makes, recorded, and optionally throwing.
+///
+/// One class rather than a record of closures over a second class: the knobs
+/// and the recording belong to the same fake, and `subscribe`/`unsubscribe`
+/// are handed over as tear-offs. [visited] is one list in call order, which
+/// is what the partial-apply case is actually about - two lists concatenated
+/// by direction read as order only while every call happens to be an
+/// unsubscribe.
+class _Topics {
+  _Topics({this.failOn, this.code = 'unavailable', this.message});
+
+  /// The topic whose call throws, or null for a run that goes through.
+  final String? failOn;
+  final String code;
+  final String? message;
+
   final List<String> subscribed = <String>[];
   final List<String> unsubscribed = <String>[];
+  final List<String> visited = <String>[];
 
-  List<String> get visited => [...subscribed, ...unsubscribed];
-}
+  Future<void> subscribe(String topic) => _act(subscribed, topic);
+  Future<void> unsubscribe(String topic) => _act(unsubscribed, topic);
 
-/// A `subscribe`/`unsubscribe` pair that throws on [failOn], if given.
-({
-  Future<void> Function(String) subscribe,
-  Future<void> Function(String) unsubscribe,
-  _Calls calls,
-})
-_pair({String? failOn, String code = 'unavailable', String? message}) {
-  final calls = _Calls();
-  Future<void> act(List<String> log, String topic) async {
+  Future<void> _act(List<String> log, String topic) async {
     if (topic == failOn) {
       throw FirebaseException(
         plugin: 'messaging',
@@ -50,13 +57,8 @@ _pair({String? failOn, String code = 'unavailable', String? message}) {
       );
     }
     log.add(topic);
+    visited.add(topic);
   }
-
-  return (
-    subscribe: (topic) => act(calls.subscribed, topic),
-    unsubscribe: (topic) => act(calls.unsubscribed, topic),
-    calls: calls,
-  );
 }
 
 void main() {
@@ -65,19 +67,16 @@ void main() {
   test(
     'applies every topic and says nothing when they all go through',
     () async {
-      final p = _pair();
+      final topics = _Topics();
 
       await PushService.applyTopics(
         {PushTopics.appRelease, PushTopics.unlRelease},
-        p.subscribe,
-        p.unsubscribe,
+        topics.subscribe,
+        topics.unsubscribe,
       );
 
-      expect(p.calls.subscribed, [
-        PushTopics.appRelease,
-        PushTopics.unlRelease,
-      ]);
-      expect(p.calls.visited, hasLength(PushTopics.all.length));
+      expect(topics.subscribed, [PushTopics.appRelease, PushTopics.unlRelease]);
+      expect(topics.visited, hasLength(PushTopics.all.length));
       // The quiet path is quiet: a line here would be commentary at a level
       // that is kept in every build.
       expect(keptLines, isEmpty);
@@ -87,12 +86,12 @@ void main() {
   test(
     'a failed topic call does not reject, so no exception event is made',
     () async {
-      final p = _pair(failOn: PushTopics.unlRelease);
+      final topics = _Topics(failOn: PushTopics.unlRelease);
 
       // The whole regression. Before the catch this threw, `start()` rejected,
       // and `guarded` turned it into a `captureException`.
       await expectLater(
-        PushService.applyTopics(const {}, p.subscribe, p.unsubscribe),
+        PushService.applyTopics(const {}, topics.subscribe, topics.unsubscribe),
         completes,
       );
     },
@@ -100,13 +99,16 @@ void main() {
 
   test('the line names where it stopped and how much got through', () async {
     // `ofwRelease` is fourth in `PushTopics.all`, so three changes precede it.
-    final p = _pair(
+    final topics = _Topics(
       failOn: PushTopics.ofwRelease,
-      code: 'unavailable',
       message: 'The Internet connection appears to be offline.',
     );
 
-    await PushService.applyTopics(const {}, p.subscribe, p.unsubscribe);
+    await PushService.applyTopics(
+      const {},
+      topics.subscribe,
+      topics.unsubscribe,
+    );
 
     // Not "topics left unchanged", which is what this said first and is false
     // for every case but a failure on the first topic: three went through.
@@ -130,20 +132,32 @@ void main() {
     // `KeptLevel`s become Sentry Logs, and a log carries no `exceptions`. It
     // decides who looks: `_apnsReady` has already taken out every cause
     // QUNLEASHED-2 named, so what reaches here is unexplained.
-    final p = _pair(failOn: PushTopics.appRelease, code: 'internal-error');
+    final topics = _Topics(
+      failOn: PushTopics.appRelease,
+      code: 'internal-error',
+    );
 
-    await PushService.applyTopics(const {}, p.subscribe, p.unsubscribe);
+    await PushService.applyTopics(
+      const {},
+      topics.subscribe,
+      topics.unsubscribe,
+    );
 
     expect(keptLevels, [KeptLevel.warning]);
   });
 
   test('the topics after the failure are left for the next launch', () async {
-    final p = _pair(failOn: PushTopics.appDev);
+    final topics = _Topics(failOn: PushTopics.appDev);
 
-    await PushService.applyTopics(const {}, p.subscribe, p.unsubscribe);
+    await PushService.applyTopics(
+      const {},
+      topics.subscribe,
+      topics.unsubscribe,
+    );
 
-    // `appRelease` only: the loop stops where it threw, which is what the
-    // recorded line has to say and what the next launch has to repair.
-    expect(p.calls.visited, [PushTopics.appRelease]);
+    // `appRelease` only, and in call order: the loop stops where it threw,
+    // which is what the recorded line has to say and what the next launch has
+    // to repair.
+    expect(topics.visited, [PushTopics.appRelease]);
   });
 }

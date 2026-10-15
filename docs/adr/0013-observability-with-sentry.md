@@ -605,7 +605,7 @@ gate it.
    the enumeration this section already rejected once, and it fails the wrong
    way round: a `Text` nobody thought of ships a card dump. Under an unmask
    list the same oversight is a grey box. What carries the marker today is
-   the nav bar's two tab widgets, the app bar's device subtitle and
+   the nav bar's bottom tab, the app bar's device subtitle and
    `FlipperInfoLine` - so a Flipper's name, its serial, its BLE MAC and the
    rest of `device info` are legible, matching §6.2's half of the same
    decision. The app bar *title* is deliberately not unmasked: seven of its
@@ -631,10 +631,23 @@ gate it.
    `diagnosticsShareSubtitle` and §1's notice both promise in as many words
    that keys are never sent. Changing that promise is a translation cycle
    across eight locales, so it is its own task rather than a line in this
-   one. **Note what that leaves open**: the promise says "never sent", not
-   "hidden from the recording", so §6.2's half makes it false on the log
-   channel whatever the replay does. Either the copy is rewritten or the hex
-   rule comes back - these masks only decide which surface shows it.
+   one. **The copy stays, and this is what it now rests on.** The promise
+   says "never sent", not "hidden from the recording", so the replay masks
+   alone would not keep it - §6.2's half decides it too. It holds, and by
+   measurement rather than by rule: no `LogService` call in
+   `lib/pages/tools/mifare/` interpolates a key or a cuid. They log a sector
+   and key *name*, a path, or exception text, and a cuid dictionary filename
+   is still taken by `_flipperExtensions`. What the hex rule actually carried
+   away was BLE addresses, serials, the `device info` dump, commit SHAs and
+   the FAAC fix.
+
+   So the sentence is true because of what the app happens to log, where it
+   used to be true because a rule enforced it. That is a real weakening and
+   it is the reason this paragraph exists: a future
+   `LogService.error('[Recover] bad key $key')` makes the sentence false with
+   nothing failing. Whoever adds a key to a log body owns rewriting the copy,
+   or `Scrub` owns a call-site-scoped rule - a regex over shape cannot tell a
+   key from a MAC, which is why the blanket went.
 
    **What actually triggers a replay upload**, since it is the fact this
    whole amendment turns on: `ReplayEventProcessor` keys on an event with a

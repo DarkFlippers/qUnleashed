@@ -4,8 +4,8 @@ import 'package:flipperlib/flipperlib.dart';
 import 'package:flutter/material.dart';
 
 import '../services/localization/l10n.dart';
-import 'sensitive_surface.dart';
 import '../theme/theme.dart';
+import 'sensitive_surface.dart';
 
 class QPageAppBar extends StatelessWidget implements PreferredSizeWidget {
   const QPageAppBar({

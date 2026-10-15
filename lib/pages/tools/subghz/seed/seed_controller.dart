@@ -450,6 +450,12 @@ class SeedController extends ChangeNotifier {
     _error = null;
     _changed();
 
+    // The `fix` leaves the device intact, here and at the failure line below.
+    // It used to be taken by `Scrub`'s hex rule, which ADR 0013 §6.2 removed
+    // so that UIDs, keys and BLE addresses could be read in a report; the fix
+    // was swept up rather than decided on. It identifies a remote and does
+    // not open one, and the seed beside it is never logged - only whether one
+    // was found. If that trade is ever revisited, these two lines are it.
     LogService.warn(
       '[Seed] searching ${capture.manufacturer.label} '
       '${capture.fix.toRadixString(16)} with ${capture.hops.length} hop(s) '
