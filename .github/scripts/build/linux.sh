@@ -201,6 +201,10 @@ for f in "${staged[@]}"; do
   if has_debug_info "$f"; then
     leaked+=("$f")
   fi
+  # Piped, unlike `has_debug_info`, and deliberately: this one fails closed.
+  # An objdump that printed nothing lands the file in `unloadable` and stops
+  # the build, where the same shape in `has_debug_info` would have reported
+  # "clean" and shipped it.
   if ! "$OBJDUMP" -h "$f" 2>/dev/null | grep -q '\.dynsym'; then
     unloadable+=("$f")
   fi

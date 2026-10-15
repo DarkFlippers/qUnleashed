@@ -74,6 +74,19 @@ enable_language(C)
 set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -g")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -g")
 
+# And again as a directory property, which is not the same mechanism twice.
+# The variables above are inherited by value and a nested `project()` can
+# re-initialize them out from under a subdirectory; `COMPILE_OPTIONS` is a
+# directory property that every subdirectory added below inherits outright,
+# so it survives whatever the three `lib/modules/cpp` scopes do with their own
+# `cmake_minimum_required` and `project(... LANGUAGES C)`. A duplicate `-g` on
+# a command line is harmless.
+add_compile_options("$<$<CONFIG:Release>:-g>")
+
+# TEMPORARY, remove before merge: the CI run is the only place this can be
+# observed, so it reports what each scope actually sees.
+message(STATUS "QU-DEBUG top-level: BUILD_TYPE='${CMAKE_BUILD_TYPE}' C_FLAGS_RELEASE='${CMAKE_C_FLAGS_RELEASE}' CXX_FLAGS_RELEASE='${CMAKE_CXX_FLAGS_RELEASE}'")
+
 # Compilation settings that should be applied to most targets.
 #
 # Be cautious about adding new options here, as plugins use this function by
