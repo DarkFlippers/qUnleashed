@@ -252,12 +252,32 @@ class PushService {
       if (devEnabled) active.addAll(PushTopics.dev);
     }
 
-    for (final topic in PushTopics.all) {
-      if (active.contains(topic)) {
-        await messaging.subscribeToTopic(topic);
-      } else {
-        await messaging.unsubscribeFromTopic(topic);
+    // Around the loop and not inside it: when a topic call fails the reason is
+    // almost always the connection, so the next five fail the same way and one
+    // line says it once. The topics left unvisited are reapplied on the next
+    // launch, which is the same recovery `_apnsReady` relies on.
+    //
+    // **`caught`, and that is the whole point of this catch.** Uncaught, this
+    // reached the zone and became a `captureException` - and on iOS an error
+    // event is what makes the native SDK flush the replay buffer and then keep
+    // uploading for the rest of the session (§8's `onErrorSampleRate`). So an
+    // offline launch did not merely report a benign failure: it turned
+    // "recorded continuously, uploaded on failure" into "uploaded always", for
+    // every iOS user, against what `diagnosticsReplaySubtitle` tells them.
+    // Sentry QUNLEASHED-2 is the issue; every iOS replay in the project so far
+    // was triggered by one of its events.
+    try {
+      for (final topic in PushTopics.all) {
+        if (active.contains(topic)) {
+          await messaging.subscribeToTopic(topic);
+        } else {
+          await messaging.unsubscribeFromTopic(topic);
+        }
       }
+    } on FirebaseException catch (error) {
+      // Narrow, like `_apnsReady`'s: a `MissingPluginException` is structural
+      // and belongs to whoever reads the report, not to this branch.
+      LogService.caught('[Push] topics left unchanged: ${error.code}');
     }
   }
 

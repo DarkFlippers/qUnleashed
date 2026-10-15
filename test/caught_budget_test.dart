@@ -81,7 +81,14 @@ import 'ratchet.dart';
 /// diagnosing a fork that answers the wrong code and guessing at it. Once per
 /// walk, and only when keys actually moved.
 const Map<String, int> kBudget = {
-  'services': 7,
+  // 8 since `PushService._applyOnce` caught a failed topic subscription. The
+  // operation that did not happen is the subscribe/unsubscribe loop, and the
+  // catch is not only about reporting it well: uncaught, it reached the zone
+  // as a `captureException`, and on iOS an error event is what makes the
+  // native SDK upload the replay buffer and keep uploading for the rest of
+  // the session. Every iOS replay the project had received was triggered by
+  // this one line. Sentry QUNLEASHED-2.
+  'services': 8,
   'pages/archive': 18,
   'pages/tools': 5,
   'pages/apps': 1,
