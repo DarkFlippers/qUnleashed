@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../settings/persist.dart';
 import '../settings/store.dart';
@@ -132,22 +133,50 @@ class HomeWidgetSettings extends PrefsBackedSettings {
     await push(toMap());
   }
 
-  Future<void> setTheme(WidgetTheme v) =>
-      _set(v != _theme, () => _theme = v, 'theme', v.name);
-  Future<void> setIconStyle(WidgetIconStyle v) =>
-      _set(v != _iconStyle, () => _iconStyle = v, 'icon_style', v.name);
-  Future<void> setBorder(WidgetBorder v) =>
-      _set(v != _border, () => _border = v, 'border', v.name);
-  Future<void> setCaptionShown(bool v) =>
-      _set(v != _captionShown, () => _captionShown = v, 'caption', v);
-  Future<void> setCaptionSize(WidgetCaptionSize v) =>
-      _set(v != _captionSize, () => _captionSize = v, 'caption_size', v.name);
+  Future<void> setTheme(WidgetTheme v) => _set(
+    v != _theme,
+    () => _theme = v,
+    'theme',
+    (prefs, at) => prefs.setString(at, v.name),
+  );
+  Future<void> setIconStyle(WidgetIconStyle v) => _set(
+    v != _iconStyle,
+    () => _iconStyle = v,
+    'icon_style',
+    (prefs, at) => prefs.setString(at, v.name),
+  );
+  Future<void> setBorder(WidgetBorder v) => _set(
+    v != _border,
+    () => _border = v,
+    'border',
+    (prefs, at) => prefs.setString(at, v.name),
+  );
+  Future<void> setCaptionShown(bool v) => _set(
+    v != _captionShown,
+    () => _captionShown = v,
+    'caption',
+    (prefs, at) => prefs.setBool(at, v),
+  );
+  Future<void> setCaptionSize(WidgetCaptionSize v) => _set(
+    v != _captionSize,
+    () => _captionSize = v,
+    'caption_size',
+    (prefs, at) => prefs.setString(at, v.name),
+  );
 
+  /// [write] is handed the prefixed key rather than composing it again, so the
+  /// one place that knows about [_prefix] is the one place that applies it.
+  ///
+  /// A callback rather than the `Object` this took before. Five setters pass
+  /// four strings and a bool, and dispatching on the runtime type needed a
+  /// third branch for everything else - a programmer error that could only be
+  /// reported as a storage failure, in a `switch` arm nothing could reach and
+  /// no test could cover. Choosing the write at the call site deletes it.
   Future<void> _set(
     bool changed,
     void Function() apply,
     String key,
-    Object value,
+    Future<bool> Function(SharedPreferences prefs, String at) write,
   ) async {
     if (!changed) return;
     if (!loaded) {
@@ -162,23 +191,17 @@ class HomeWidgetSettings extends PrefsBackedSettings {
     }
     apply();
     notifyListeners();
-    // Persisted before the push, not after. The other order redrew the
-    // widget on the home screen immediately, and a Dart write that then
-    // failed left sync() pushing the old look back at the next launch - the
-    // change undoing itself hours later, with nothing to connect the two.
+    // Persisted before the push, and the push gated on it. The other order
+    // redrew the widget on the home screen immediately, and a Dart write that
+    // then failed left sync() pushing the old look back at the next launch -
+    // the change undoing itself hours later, with nothing to connect the two.
     // This way a write that fails never reaches the launcher at all. #120.
-    await persistSetting(
-      '$_prefix$key',
-      (prefs) => switch (value) {
-        final String s => prefs.setString('$_prefix$key', s),
-        final bool b => prefs.setBool('$_prefix$key', b),
-        // Unreachable from the five setters above, which pass a `.name` or a
-        // bool. It throws rather than returning false because there is a
-        // third answer here - nothing was written and nothing was wrong with
-        // the store - and persistSetting logs it instead of a wrong reason.
-        _ => throw ArgumentError.value(value, 'value', 'not a String or bool'),
-      },
-    );
+    //
+    // The ordering alone never did that, and claimed it did until #313: a
+    // refused write was logged and then pushed, because persistSetting had no
+    // way to report one. The `if` is the half that was missing.
+    final at = '$_prefix$key';
+    if (!await persistSetting(at, (prefs) => write(prefs, at))) return;
     await push(toMap());
   }
 }

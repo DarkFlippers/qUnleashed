@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'kept_lines.dart';
 
+import 'refusing_prefs.dart';
 import 'unopenable_prefs.dart';
 
 /// What a settings store does with a read it cannot complete — #123.
@@ -515,6 +516,44 @@ void main() {
         expect(pushed.single['theme'], 'material', reason: 'all five fields');
         expect(widgets.border, WidgetBorder.thin);
         expect(notifications, 1, reason: 'the page reads its state from here');
+      });
+
+      // The bool of the five. `setBool` is where #313's refused write comes
+      // from on Android, and until this case the only setter any test drove
+      // was a String one - so both halves of the write could have been
+      // dropped and the suite stayed green.
+      test('a bool setter writes and pushes like the rest', () async {
+        SharedPreferences.setMockInitialValues(stored);
+        await widgets.load();
+
+        await widgets.setCaptionShown(true);
+
+        expect(pushed, hasLength(1));
+        expect(pushed.single['captionShown'], isTrue);
+        final prefs = await SharedPreferences.getInstance();
+        expect(prefs.getBool('home_widget.caption'), isTrue);
+      });
+
+      // #120's claim, which the ordering alone never kept: a write the store
+      // refuses must not redraw the home screen, because sync() would push
+      // the stored look back at the next launch and undo it hours later.
+      test('a write the store refuses pushes nothing and says so', () async {
+        useRefusingPrefs(stored);
+        await widgets.load();
+        clearKeptLines();
+
+        await widgets.setCaptionShown(true);
+
+        expect(pushed, isEmpty);
+        expect(
+          keptLines.where((l) => l.contains('home_widget.caption')),
+          isNotEmpty,
+        );
+        expect(
+          widgets.captionShown,
+          isTrue,
+          reason: 'the control stays where the user put it; #120',
+        );
       });
 
       test(

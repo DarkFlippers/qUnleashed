@@ -21,27 +21,45 @@ import '../logging.dart';
 /// failed" five times over cannot tell a reader which control went back.
 ///
 /// [write] returns the `Future<bool>` that `setString` and the rest hand back,
-/// because a write can fail without throwing: on Android the legacy backend
+/// because a write can fail without throwing. On Android the legacy backend
 /// returns `Editor.commit()` straight through, and that is `false` when the
-/// write to persistent storage did not land. `SharedPreferences` has already
-/// updated its own cache by then, so the setting reads back correctly for the
-/// rest of the session and is gone at the next launch. Typing this `void`
-/// discarded that `false` with no analyzer warning - `void` is a top type, so
-/// `Future<bool>` satisfies it silently - and the one promise this function
-/// makes was not kept for the whole half of the failures that do not throw.
-/// #313.
-Future<void> persistSetting(
+/// write to persistent storage failed; Windows and Linux answer the same way
+/// when the preferences file cannot be written. Apple cannot - its
+/// implementation ends in a literal `return true`. `SharedPreferences`
+/// updates its own cache before it asks the store, so a refused write reads
+/// back correctly for the rest of the session and is gone at the next launch.
+/// Typing [write] `Future<void>` discarded that `false` with no analyzer
+/// warning - `void` is a top type, so a `Future<bool>` satisfies it silently -
+/// and the promise above was kept only for the failures that throw. #313.
+///
+/// [write] performs **one** write. Two in one callback can only return one
+/// answer, and `&&` would report a failure without saying which half - which
+/// is the shape `ArchiveSortSettings` already refuses for its own pair.
+///
+/// Returns whether the setting stuck. Most callers ignore it and should: they
+/// have applied the value to what is on screen already and have nowhere to put
+/// a failure. It is there for the caller that has a second, durable copy to
+/// keep in step - `HomeWidgetSettings` does not push a look to the launcher
+/// that the next launch would take back.
+Future<bool> persistSetting(
   String what,
   Future<bool> Function(SharedPreferences prefs) write,
 ) async {
+  // The reason is carried out rather than logged where it is found, so there
+  // is exactly one call to the logger and it sits outside the catch. Logging
+  // the refusal inside the `try` put a second reason within reach of the same
+  // handler, and a throwing sink would have escaped as a rejection - which
+  // the fire-and-forget callers above have nowhere to put.
+  String reason;
   try {
     final prefs = await SharedPreferences.getInstance();
-    if (!await write(prefs)) {
-      LogService.warn(
-        '[Settings] "$what" did not persist: the store refused the write',
-      );
-    }
-  } catch (e) {
-    LogService.warn('[Settings] "$what" did not persist: $e');
+    if (await write(prefs)) return true;
+    reason = 'the store refused the write';
+  } catch (e, st) {
+    // The stack is what names the setter that passed a bad value; the
+    // message alone names only the preference key.
+    reason = LogService.describe(e, st);
   }
+  LogService.warn('[Settings] "$what" did not persist: $reason');
+  return false;
 }
