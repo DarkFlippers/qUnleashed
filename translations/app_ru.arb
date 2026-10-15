@@ -1636,6 +1636,18 @@
   "@filterAll": {
     "description": "Filter entry that shows files of every type."
   },
+  "sortTitle": "Сортировка",
+  "@sortTitle": {
+    "description": "Title of the sheet that chooses how a file list is ordered."
+  },
+  "sortByName": "Имя",
+  "@sortByName": {
+    "description": "Sort entry ordering files by name alone, ignoring the folders they are in."
+  },
+  "sortByFolder": "Папка, затем имя",
+  "@sortByFolder": {
+    "description": "Sort entry grouping files by the folder they live in, ordering each folder's files by name."
+  },
   "categoryNfc": "NFC",
   "@categoryNfc": {
     "description": "Archive category for contactless cards and tags. NFC is a standard abbreviation, usually left as is."
@@ -6700,7 +6712,7 @@
   "@seedUnverified": {
     "description": "Shown when a seed was found but re-encrypting did not reproduce the capture."
   },
-  "seedUnverifiedHint": "Seed показан для справки. Пульт нельзя сохранить как файл для передачи.",
+  "seedUnverifiedHint": "Seed показан для справки. Пульт нельзя сохранить как файл для передачи. Более длинный захват может это решить: нажмите кнопку пульта ещё несколько раз и сделайте захват снова.",
   "@seedUnverifiedHint": {
     "description": "Explains why saving is unavailable after an unverified result, and what to try. TRANSLATORS: 'may settle it' is deliberately hedged - more hops let the engine reject a seed it could not verify, but for a long capture the fault is elsewhere and another capture will not help."
   },
