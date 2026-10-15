@@ -84,11 +84,15 @@ class PushService {
       return;
     }
 
-    await _applySubscriptions();
-
+    // Before the subscriptions, not after. None of these three needs anything
+    // from APNS, and when the apply below threw it was them that paid: a
+    // launch with no foreground display, no tap handling and no cold-start
+    // intent at all, for the whole run (QUNLEASHED-2).
     FirebaseMessaging.onMessage.listen(_showForeground);
     FirebaseMessaging.onMessageOpenedApp.listen(_open);
     _open(await FirebaseMessaging.instance.getInitialMessage());
+
+    await _applySubscriptions();
   }
 
   void _open(RemoteMessage? message) {
@@ -176,12 +180,73 @@ class PushService {
       if (devEnabled) active.addAll(PushTopics.dev);
     }
 
+    // Nothing below this line works on an Apple platform until APNS has
+    // registered the device; see [awaitApnsToken]. Leaving the topics alone
+    // is the honest outcome when it never does - the preferences are already
+    // written, so the next start() applies them once the token is there.
+    if (Platform.isIOS || Platform.isMacOS) {
+      final arrived = await awaitApnsToken(
+        () => FirebaseMessaging.instance.getAPNSToken(),
+      );
+      if (!arrived) {
+        LogService.warn(
+          '[Push] no APNS token after $_apnsTokenTimeout; '
+          'topic subscriptions left unchanged',
+        );
+        return;
+      }
+    }
+
     for (final topic in PushTopics.all) {
       if (active.contains(topic)) {
         await messaging.subscribeToTopic(topic);
       } else {
         await messaging.unsubscribeFromTopic(topic);
       }
+    }
+  }
+
+  /// How long [awaitApnsToken] waits for APNS, and how often it looks.
+  ///
+  /// Apple registers the device with APNS asynchronously, and the token can
+  /// arrive seconds after `requestPermission` has returned - longer on a cold
+  /// network. 20 seconds covers that and still bounds a Settings toggle,
+  /// which awaits the same path, at something a user would not sit through
+  /// twice.
+  static const _apnsTokenTimeout = Duration(seconds: 20);
+  static const _apnsTokenPoll = Duration(milliseconds: 200);
+
+  /// Waits for APNS to hand Firebase a device token; says whether it came.
+  ///
+  /// `subscribeToTopic` and `unsubscribeFromTopic` both open with an internal
+  /// `_APNSTokenCheck` that throws `apns-token-not-set` on iOS and macOS for
+  /// as long as the token is null. That token arrives *after*
+  /// `requestPermission` completes, so the apply at launch raced it and lost
+  /// - on release builds as much as dev, 14 of the first 19 reports
+  /// (QUNLEASHED-2). There is no stream to listen to here, only a getter that
+  /// is null until it is not, so this polls.
+  ///
+  /// The wait is bounded because the token may never come at all: a denied
+  /// permission, provisioning with no push entitlement, or no network each
+  /// leave it null for the life of the process, and an unbounded wait would
+  /// hold the caller there.
+  ///
+  /// [reader] is a parameter so the loop can be tested without a platform
+  /// channel, and it returns null for "not yet". The platform check is the
+  /// caller's: off Apple the real reader returns null forever, so calling
+  /// this there would spend the timeout and then skip the subscriptions
+  /// Android was going to make.
+  @visibleForTesting
+  static Future<bool> awaitApnsToken(
+    Future<String?> Function() reader, {
+    Duration timeout = _apnsTokenTimeout,
+    Duration poll = _apnsTokenPoll,
+  }) async {
+    final deadline = DateTime.now().add(timeout);
+    while (true) {
+      if (await reader() != null) return true;
+      if (!DateTime.now().isBefore(deadline)) return false;
+      await Future<void>.delayed(poll);
     }
   }
 
