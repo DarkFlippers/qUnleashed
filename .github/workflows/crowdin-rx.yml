@@ -208,7 +208,7 @@ jobs:
           cat "${RUNNER_TEMP}/locales.txt"
           if ((status != 0)); then
             {
-              echo 'Crowdin sent a translation whose `@@locale` its filename contradicts:'
+              echo "Crowdin sent a translation whose \`@@locale\` its filename contradicts:"
               echo
               echo '```'
               sed 's/```/\x27\x27\x27/g' "${RUNNER_TEMP}/locales.txt" | sed -n '1,60p'
