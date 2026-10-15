@@ -10,9 +10,10 @@
 // What neither covers is whether anything still calls it. Delete the step from
 // the setup-flutter action and every suite stays green while the five jobs that
 // run `pub get` go back to reporting a broken translation as a stale
-// `pubspec.lock`; drop `--write` from the Crowdin sync and the nightly branch
-// stops being repaired, which nothing looks at until a release. The script's
-// own header calls that "how a guard becomes decoration", and this repository
+// `pubspec.lock`; drop the call from the Crowdin sync and the one path that
+// runs `pub get` with `pub-get: false` checks no translation at all, which
+// nothing looks at until a release. The script's own header calls that "how a
+// guard becomes decoration", and this repository
 // already reads a shell script from Dart for the same kind of seam - see
 // `dart_define_keys_test.dart`.
 //
@@ -110,13 +111,32 @@ void main() {
     );
   });
 
-  test('the Crowdin sync runs the guard with --write', () {
+  test('the Crowdin sync checks what it is about to merge', () {
+    final yaml = File(sync).readAsStringSync();
     expect(
-      File(sync).readAsStringSync(),
-      contains('check_arb_locales.sh --write'),
+      yaml,
+      contains('check_arb_locales.sh'),
       reason:
-          'without --write the sync reports the branch instead of repairing '
-          'it, and its pull requests run no jobs that would say so',
+          'the sync passes pub-get: false, which skips the copy of this inside '
+          'setup-flutter - so without its own call it is the one path that '
+          'checks no translation at all',
+    );
+    // Crowdin normalises its own export now, so this call is a check and not
+    // the repair it was; check_arb_locales.sh's header has that story. What
+    // the sync must not go back to is repairing the branch after the action
+    // has committed to it, because the branch then differs from the export
+    // for good and every sync opens a pull request whose commits cancel.
+    expect(
+      yaml,
+      isNot(contains('check_arb_locales.sh --write')),
+      reason: 'see #323: a repair on the branch makes a diff out of every sync',
+    );
+    // After the overlay, or it reads main's translations - which are already
+    // known good - and passes on a branch it never looked at.
+    expect(
+      yaml.indexOf('git checkout FETCH_HEAD -- translations'),
+      lessThan(yaml.indexOf('check_arb_locales.sh')),
+      reason: "the guard has to see the pull request's files, not main's",
     );
   });
 }

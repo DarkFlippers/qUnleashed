@@ -9,8 +9,9 @@
 # The reason here is this directory's own: everything in it except the English
 # source is Crowdin's, check_translation_sources.sh blocks a hand edit to one,
 # and a script that rewrote those files because somebody ran it to see what it
-# said would be handing them a commit that guard then refuses. The sync passes
-# --write; CI calls it bare.
+# said would be handing them a commit that guard then refuses. Nothing in CI
+# passes --write any more: it is the lever for a repair by hand, and why it
+# stopped being the sync's job is below.
 #
 # ## Why anything has to be normalised
 #
@@ -49,9 +50,20 @@
 # runners too, which is what keeps it to bash 3.2 and portable `sed` - the same
 # constraint check_ffi_exports.sh carries, and for the same reason.
 #
-# The Crowdin sync is the exception: it passes `pub-get: false` and runs its own
-# `pub get`, so it does not get this preflight. It gets --write instead, which
-# is better - it fixes the file rather than reporting it.
+# The Crowdin sync passes `pub-get: false` and runs its own `pub get`, so it
+# does not get that preflight. crowdin-rx.yml calls this script itself instead,
+# after it has laid the pull request's translations over main.
+#
+# It used to call it with --write. That repaired the file on the Crowdin branch
+# *after* the action had already committed, which left the branch one value
+# apart from what Crowdin exports for good: every sync then had a diff whether
+# a translation had changed or not, and #323 is the pull request that produces -
+# two commits that cancel each other, nothing else in it. The rewrite moved to
+# Crowdin, to a Custom Post-Export Processor app that applies this same rule to
+# the export before the download. Crowdin's language mapping cannot do it -
+# it renames the file and never touches what is inside it, which Crowdin
+# support confirms is deliberate - and that app is the only place in the
+# product where the exported bytes can be changed.
 #
 # ## Why the filename wins, and why the key is kept
 #
@@ -236,9 +248,10 @@ gen-l10n refuses the pair from inside `flutter pub get`. This script's header
 has why Crowdin sends it that way and why the filename is the side that wins.
 
 `check_arb_locales.sh --write` settles every file but `translations/app_en.arb`,
-which is this repository's own and is corrected by hand. The sync runs --write
-on the Crowdin branch, so a file that got here without it is either that step
-not running or the English source.
+which is this repository's own and is corrected by hand. Crowdin normalises its
+own export now, so a translation that arrived wrong means that app is gone or
+its code was changed - fixing it there rather than here is what keeps the next
+sync from reopening it.
 MESSAGE
 
 # 2 outranks 1: a file this cannot read is a different problem from one it can,

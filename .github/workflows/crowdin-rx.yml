@@ -110,73 +110,6 @@ jobs:
         with:
           submodules: recursive
 
-      # Why a translation arrives declaring a locale its filename contradicts
-      # is in check_arb_locales.sh's header.
-      #
-      # A second commit on the branch, because the action downloads, commits
-      # and opens the pull request in one step: our first look at these files
-      # is once they are already on it. `push_translations: false` would hand
-      # them over before any commit, and it is declined rather than
-      # unavailable. What it costs is this workflow owning the branch, its
-      # force-push semantics, and the pull request's creation, title and base -
-      # three things the action does today at lines 44-48 and 54-66. What it
-      # buys is one commit instead of two, for a rewrite of one value that is
-      # idempotent, re-applies itself on the next sync, and is verified
-      # downstream in this same run. Not the plumbing scars above: those were
-      # the container running as root, which argues for owning less of this,
-      # not more.
-      #
-      # After the checkout above, not before it, and that is load-bearing: the
-      # Crowdin action may have left the workspace on the localization branch,
-      # which is a tree that does not carry this script - the same reason the
-      # checkout exists at all. Run from there it would die on a missing file,
-      # and every step after it is gated on success, so the build and the
-      # verdict would go with it.
-      #
-      # In a worktree, so the script keeps coming from main's tree while the
-      # commit lands on the branch. Before the overlay below, which fetches the
-      # branch again and therefore tests what is now on it.
-      #
-      # continue-on-error, because this step is not the verification - it is a
-      # repair. If it fails, the build below still runs and the summariser says
-      # plainly that a translation declares a locale its filename contradicts,
-      # which is a better pull request than no verdict at all.
-      - name: Make every translation declare the locale its filename says
-        if: steps.pr.outputs.number != ''
-        continue-on-error: true
-        env:
-          GIT_AUTHOR_NAME: github-actions[bot]
-          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
-          GIT_COMMITTER_NAME: github-actions[bot]
-          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
-        run: |
-          # A worktree left behind by an earlier run on a reused workspace
-          # would make `worktree add` refuse the path.
-          git worktree prune
-          git fetch --depth=1 origin l10n/crowdin
-          git worktree add --detach "${RUNNER_TEMP}/l10n" FETCH_HEAD
-          .github/scripts/check_arb_locales.sh --write "${RUNNER_TEMP}/l10n/translations"
-          # `diff --quiet` answers 0 for same and 1 for different, and anything
-          # else is git having failed. Reading "not 1" as "nothing to do" would
-          # drop the fix that was just written, delete the worktree holding it
-          # and leave the step green.
-          changed=0
-          git -C "${RUNNER_TEMP}/l10n" diff --quiet -- translations || changed=$?
-          case "$changed" in
-            0) echo "Nothing to normalise." ;;
-            1)
-              git -C "${RUNNER_TEMP}/l10n" --no-pager diff --stat -- translations
-              git -C "${RUNNER_TEMP}/l10n" commit -m \
-                "Make every translation declare the locale its filename says" -- translations
-              git -C "${RUNNER_TEMP}/l10n" push origin HEAD:refs/heads/l10n/crowdin
-              ;;
-            *)
-              echo "::error::git diff failed ($changed); not committing."
-              exit 1
-              ;;
-          esac
-          git worktree remove --force "${RUNNER_TEMP}/l10n"
-
       - name: Lay the pull request's translations over it
         if: steps.pr.outputs.number != ''
         run: |
@@ -191,6 +124,39 @@ jobs:
           git checkout FETCH_HEAD -- translations
           test -f translations/app_en.arb
           git --no-pager diff --stat HEAD -- translations
+
+      # Why a translation would arrive declaring a locale its filename
+      # contradicts is in check_arb_locales.sh's header. Crowdin settles it at
+      # the source now: a Custom Post-Export Processor app applies that same
+      # rule to the export, before the download. So this is a check, and no
+      # longer the repair it used to be.
+      #
+      # The repair is what the move was for. It ran on the branch, after the
+      # action had already committed, which left the branch one value apart
+      # from what Crowdin exports for good - so every sync had a diff whether
+      # a translation had changed or not. #323 is the pull request that
+      # produces: two commits that cancel each other, nothing else in it.
+      # Correcting the export settles every country-coded language at once, and
+      # `pt-PT`, `pt-BR`, `zh-CN`, `zh-TW`, `zh-HK`, `es-MX`, `fr-CA` and
+      # `sr-CS` are all the same shape as the Spanish that found it.
+      #
+      # After the overlay, because the pull request's translations are what the
+      # build below reads and so what this has to check. Run before it, it
+      # would check main's, which are already known good.
+      #
+      # continue-on-error, as the repair was and for the same reason: this step
+      # is not the verification. If it fails, the build below still runs and
+      # the summariser puts a verdict on the pull request, which is better than
+      # a red run that says nothing.
+      #
+      # `pub-get: false` below skips the copy of this inside setup-flutter, so
+      # without this step the sync is the one path that checks no translation
+      # at all - and if that Crowdin app is ever uninstalled, this is what
+      # names the file.
+      - name: Check every translation declares the locale its filename says
+        if: steps.pr.outputs.number != ''
+        continue-on-error: true
+        run: .github/scripts/check_arb_locales.sh
 
       # pub-get: false, then run it below. Not because of the message any more
       # - the action now picks that from the output - but because this job
