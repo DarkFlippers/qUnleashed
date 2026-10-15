@@ -1,4 +1,4 @@
 ## Main changes
 - Version: 0.17.0
-- Notifications: **Push works after a launch again on iOS, and macOS stops pretending** - a launch could end with push notifications entirely inert: nothing shown while the app was open, a tap on a notification doing nothing, a notification that opened the app dropped, and no topic subscribed. It lasted until the app was restarted and nothing on screen said so. The subscriptions were applied before the message listeners were registered, and on iOS they throw until APNS has registered the device - which happens after the permission prompt returns - so the throw took the three listeners with it. They are registered first now, and the subscriptions wait for the token rather than racing it. On macOS push could never have worked at all, for want of an entitlement, so Settings -> Notifications says the platform is unsupported instead of offering four switches that remember a preference and then do nothing (by @mishamyte | PR #325 | Closes #324)
+- Keep push alive through the APNS token race, and stop pretending macOS has push (by @mishamyte | PR #325 | Closes #324)
 ## Other changes
