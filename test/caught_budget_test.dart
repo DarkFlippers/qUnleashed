@@ -31,11 +31,20 @@ import 'ratchet.dart';
 /// meant to have. 23 of the 42 `LogService.info`-inside-a-catch sites moved;
 /// the other 19 stayed, each on a volume argument its own comment makes.
 ///
-/// `services` is 7: the two `build_identity.dart` sites and the two in
+/// `services` is 9: the two `build_identity.dart` sites and the two in
 /// `telemetry.dart` that were here before, plus a launcher refusing a
 /// home-widget pin and an HTTP request the network responder could not carry.
 /// The relay reply beside that second one runs per frame and stayed at `info`,
 /// which is the distinction the level is for.
+///
+/// It rose to 9 for the two in `remote_build_service.dart`'s
+/// `_ensureClientId`: a preferences store that will not open, and one that
+/// refuses the write. Both are an operation that did not do what was asked -
+/// the id was not remembered for the next launch - and both are deliberately
+/// not `warn`, which is what `persistSetting` would have logged. The id is
+/// returned either way and serves the session, so there is nothing for anyone
+/// to do about it; the cost is a fresh id next launch. Once per process, since
+/// the field is set on the way out whatever happened. #313.
 ///
 /// The seventh is the replay switch's restart in `telemetry.dart`, and it is
 /// not a failure at all - it is the one line that makes a deliberate gap in
@@ -81,7 +90,7 @@ import 'ratchet.dart';
 /// diagnosing a fork that answers the wrong code and guessing at it. Once per
 /// walk, and only when keys actually moved.
 const Map<String, int> kBudget = {
-  'services': 7,
+  'services': 9,
   'pages/archive': 18,
   'pages/tools': 5,
   'pages/apps': 1,

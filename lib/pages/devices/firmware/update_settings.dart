@@ -102,12 +102,12 @@ class UpdateSettingsStore {
     // only return one answer, so a pair would report a failure without
     // saying which half, and these two are set independently.
     //
-    // persistSetting is what keeps the promise in the doc above, at a level
-    // that survives to be read: the choice is already on screen and will be
-    // gone next launch, with nothing else to say it never persisted. Warn
-    // rather than the error KnownDevices uses for its save - that one is
-    // invisible until the device is wanted, this one is on screen the next
-    // time anyone opens the selector.
+    // persistSetting is what keeps the promise in the doc above, and its warn
+    // is the right level for this site rather than a choice made here: the
+    // choice is already on screen and will be gone next launch, with nothing
+    // else to say it never persisted. Not the error KnownDevices keeps for
+    // its save - that one is invisible until the device is wanted, this one
+    // is on screen the next time anyone opens the selector.
     if (channelId != null) {
       final pref = _channelPref(shortName);
       await persistSetting(pref, (prefs) => prefs.setString(pref, channelId));

@@ -138,12 +138,17 @@ class QLocaleController extends ChangeNotifier with WidgetsBindingObserver {
     if (locale == _locale) return;
     _locale = locale;
     notifyListeners();
-    // Through persistSetting rather than SharedPreferences directly: this is
-    // torn off into a VoidCallback by the language page, so before #313 a
-    // store that would not open reached the zone as an unlabelled
-    // `[uncaught]` naming no setting, and a store that refused the write said
-    // nothing at all. Following the system is an absent preference, not a
-    // stored "system", so the null case removes rather than writes.
+    // Through persistSetting rather than SharedPreferences directly. The
+    // language page wraps this in a VoidCallback, which discards the future,
+    // so before #313 a store that would not open reached the zone as an
+    // unlabelled `[uncaught]` naming no setting, and a store that refused the
+    // write said nothing at all.
+    //
+    // Following the system is an absent preference, not a stored "system",
+    // so the null case removes rather than writes. One of the two runs per
+    // call, which is the single write persistSetting asks for. A refused
+    // removal reads as "locale.code did not persist" and means the old
+    // language is still on disk and comes back at the next launch.
     await persistSetting(
       _prefLocale,
       (prefs) => locale == null

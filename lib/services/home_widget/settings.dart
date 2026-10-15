@@ -52,7 +52,13 @@ class HomeWidgetSettings extends PrefsBackedSettings {
   bool _captionShown = _defaultCaptionShown;
   WidgetCaptionSize _captionSize = _defaultCaptionSize;
 
-  /// What the store last took, in [toMap]'s keys.
+  /// What the next launch will read back, in the preference keys without
+  /// [_prefix] - which is why [_fieldFor] exists to translate them.
+  ///
+  /// Not quite "what the store took": after a read it holds what [readFrom]
+  /// resolved, so a key that was absent or unreadable is in here as the
+  /// fallback. That is the same value the next launch resolves it to, which
+  /// is the property this is for.
   ///
   /// The launcher is drawn from this and not from the fields above. The
   /// fields are what the user chose, and they keep that choice on screen even
@@ -68,7 +74,15 @@ class HomeWidgetSettings extends PrefsBackedSettings {
   /// [toMap] sends it under.
   ///
   /// Written down once because the two spellings are not derivable from each
-  /// other - `caption` is `captionShown`, `icon_style` is `iconStyle`.
+  /// other: `caption` is `captionShown`. The other four are snake to camel
+  /// and would survive a rule, which is exactly why one key that is not would
+  /// have been the bug.
+  ///
+  /// The native side reads these names and nothing else -
+  /// `WidgetSettings.kt` does `map["iconStyle"] as? String ?: base.iconStyle`
+  /// - so a misspelling here is read as absent, the launcher keeps the old
+  /// value, and nothing corrects it. `a setter after a good read pushes the
+  /// whole look` asserts all five.
   static const Map<String, String> _fieldFor = {
     'theme': 'theme',
     'icon_style': 'iconStyle',
@@ -110,9 +124,12 @@ class HomeWidgetSettings extends PrefsBackedSettings {
 
   /// Takes the shadow from the fields wholesale.
   ///
-  /// For the two places the fields are set other than by a write: a finished
-  /// read, and [resetFields]. Everywhere else exactly one setting changed and
-  /// [_set] updates that one entry, after the store has taken it.
+  /// For the two places the fields are set other than by a write. [readFrom]
+  /// is the one that matters and has tests; [resetFields] is belt and braces,
+  /// because `reset()` clears [loaded] in the same call and both readers of
+  /// the shadow gate on it - so no test can observe that call, and nothing is
+  /// missing one. Everywhere else exactly one setting changed and [_set]
+  /// updates that entry, after the store has taken it.
   void _rememberStored() {
     _stored
       ..clear()
@@ -159,9 +176,15 @@ class HomeWidgetSettings extends PrefsBackedSettings {
 
   /// What the launcher is told: the stored look, not the look on screen.
   ///
-  /// `_fieldFor[key]!` cannot fail - [_rememberStored] is the only thing that
-  /// fills [_stored] wholesale and it writes exactly these five keys, and
-  /// [_set] only ever updates one of them.
+  /// **Empty before a read lands**, because [_stored] is. Both callers gate
+  /// on [loaded] first, which is set only after [readFrom] has filled it.
+  ///
+  /// `_fieldFor[key]!` holds because of the call sites rather than anything
+  /// here: [_rememberStored] writes exactly the five keys, and [_set] takes
+  /// its key from the five setters below. A sixth setting added without a
+  /// [_fieldFor] entry would throw from here, on the push, one step away from
+  /// the write that caused it - so the two lists are checked against each
+  /// other by `every setter writes its own key`.
   Map<String, Object> toMap() => {
     for (final MapEntry(:key, :value) in _stored.entries)
       _fieldFor[key]!: value,
@@ -232,14 +255,20 @@ class HomeWidgetSettings extends PrefsBackedSettings {
     T stored,
     Future<bool> Function(SharedPreferences prefs, String at, T value) write,
   ) async {
-    if (!changed) return;
+    // `changed` is measured against the field, which a refused write leaves
+    // holding the user's choice while the shadow keeps the stored one. Taken
+    // alone it would make re-picking the same value a no-op, so a setting
+    // refused once could not be retried for the rest of the session - the
+    // user's only route back would be picking another and picking this again.
+    if (!changed && _stored[key] == stored) return;
     if (!loaded) {
-      // The same reason [sync] gates its push. toMap() sends all five fields,
-      // so honouring one tap here would write the other four as initialisers
-      // into the native store - the look the user never chose. The tile does
-      // not move either, because the page reads its state from this store, so
-      // the control is inert and only the log says why: #124 is what makes
-      // this reachable, and it wants a surface before it is.
+      // The same reason [sync] gates its push. The shadow is empty until a
+      // read lands, so honouring one tap here would send the native store a
+      // single setting in place of a look - and the four it left out are read
+      // there as absent, keeping whatever the launcher drew last. The tile
+      // does not move either, because the page reads its state from this
+      // store, so the control is inert and only the log says why: #124 is
+      // what makes this reachable, and it wants a surface before it is.
       LogService.warn('[HomeWidgetSettings] "$key" not applied: never read');
       return;
     }
@@ -253,10 +282,11 @@ class HomeWidgetSettings extends PrefsBackedSettings {
     // said it did until #313: a refused write was logged and then pushed,
     // because persistSetting had no way to report one.
     //
-    // Gating this push is not enough on its own, because toMap() sends all
-    // five fields: a refused value left in the shadow would ride out on the
-    // next accepted setter's push. So the shadow moves forward here, after
-    // the answer, and never for a write the store did not take.
+    // Gating this push is not enough on its own. apply() has already put the
+    // refused value in the field, deliberately, and before the shadow existed
+    // toMap() read the fields - so that value rode out on the next accepted
+    // setter's push. The shadow moves forward here instead, after the answer,
+    // and never for a write the store did not take.
     final at = '$_prefix$key';
     if (!await persistSetting(at, (prefs) => write(prefs, at, stored))) return;
     _stored[key] = stored;

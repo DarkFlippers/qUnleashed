@@ -136,9 +136,13 @@ class KnownDevicesStore extends ChangeNotifier {
     await _persist();
   }
 
-  /// Not [persistSetting], which logs at warn: the ruling below is error,
+  /// Not `persistSetting`, which logs at warn: the ruling below is error,
   /// and this is a device list rather than a setting. What it shares is the
   /// half #313 was about - `setString` answering `false` without throwing.
+  ///
+  /// The two bodies say the same thing as that function's, deliberately: a
+  /// reader grepping for one failure should not have to know there are two
+  /// spellings of it.
   Future<void> _persist() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -147,15 +151,23 @@ class KnownDevicesStore extends ChangeNotifier {
         jsonEncode([for (final device in _devices) device.toJson()]),
       );
       if (!stored) {
-        LogService.error('[KnownDevices] save failed: the store refused it');
+        LogService.error(
+          '[KnownDevices] save failed: the store refused the write',
+        );
       }
-    } catch (e) {
+    } catch (e, st) {
       // error, not warn, alone in this sweep: it is the only failure here
       // that loses something durable. notifyListeners has already run, so the
       // picker shows the device as remembered and the user finds out at the
       // next launch, when it is gone. Worth having in a log kept at
       // QLOG_LEVEL=error, and it cannot repeat - one write per mutation.
-      LogService.error('[KnownDevices] save failed: $e');
+      //
+      // With the stack, which is the only thing naming which mutation was
+      // saving - remember, updateName or forget. A PlatformException arrives
+      // with none of that in its message.
+      LogService.error(
+        '[KnownDevices] save failed: ${LogService.describe(e, st)}',
+      );
     }
   }
 }

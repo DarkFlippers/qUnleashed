@@ -4,6 +4,7 @@ import 'dart:io' as io;
 import 'dart:math';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../http/app_http.dart';
@@ -378,25 +379,54 @@ class RemoteBuildService {
     };
   }
 
+  /// The id that identifies this install to the build server, remembered
+  /// across launches when the store will take it.
+  ///
+  /// Every step is best effort, and the whole function is on the path that
+  /// signs every remote build request: `build()` has no catch, so anything
+  /// thrown here reached the user as the stated reason their firmware build
+  /// failed - an error about preferences. Reading was the likelier of the two
+  /// to throw and was the one left unguarded, because `getInstance` is what a
+  /// store that will not open fails at.
+  ///
+  /// Not [persistSetting], for the same reason `KnownDevices` is not: the
+  /// level is the site's own call and that function fixes it at warn. Nothing
+  /// is lost when this write does not land - the id is returned either way
+  /// and serves the session - so there is nothing for anyone to do about it,
+  /// which is `caught` rather than a warning somebody should look at.
+  /// [_ensureClientId], for the cases about the store rather than a build.
+  ///
+  /// A seam because the alternative is a fake build server per case: every
+  /// test that reaches `build()` passes `clientId:`, so the generate-and-
+  /// store path below had no coverage at all until this existed.
+  @visibleForTesting
+  Future<String> ensureClientId() => _ensureClientId();
+
   Future<String> _ensureClientId() async {
     final existing = _clientId;
     if (existing != null && existing.isNotEmpty) return existing;
-    final prefs = await SharedPreferences.getInstance();
-    var id = prefs.getString(_clientIdPrefsKey);
-    if (id == null || id.isEmpty) {
-      final random = Random.secure();
-      id = List.generate(
-        16,
-        (_) => random.nextInt(256),
-      ).map((b) => b.toRadixString(16).padLeft(2, '0')).join();
-      // Best effort, and deliberately not fatal: the id is already in
-      // `_clientId` for this session, so a store that will not take it costs
-      // a new id at the next launch and nothing else. Before this it was an
-      // unguarded write on the path that signs every remote build request,
-      // where a throw failed the build with an error about preferences.
-      final at = _clientIdPrefsKey;
-      await persistSetting(at, (prefs) => prefs.setString(at, id!));
+
+    final random = Random.secure();
+    final fresh = List.generate(
+      16,
+      (_) => random.nextInt(256),
+    ).map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final stored = prefs.getString(_clientIdPrefsKey);
+      if (stored != null && stored.isNotEmpty) return _clientId = stored;
+      if (!await prefs.setString(_clientIdPrefsKey, fresh)) {
+        LogService.caught(
+          '[RemoteBuild] the store refused the client id; '
+          'this session uses a fresh one',
+        );
+      }
+    } catch (e, st) {
+      LogService.caught(
+        '[RemoteBuild] client id unavailable: ${LogService.describe(e, st)}',
+      );
     }
-    return _clientId = id;
+    return _clientId = fresh;
   }
 }

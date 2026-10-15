@@ -115,14 +115,18 @@ void main() {
     });
   });
 
-  // The write half of the controller above. `setLocale` is torn off into a
-  // `VoidCallback` by the language page, so until #313 a store that would not
-  // open reached the zone as an unlabelled `[uncaught]` naming no setting,
-  // and a store that refused the write said nothing at all.
+  // The write half of the controller above. The language page wraps
+  // `setLocale` in a `VoidCallback`, which discards the future, so until #313
+  // a store that would not open reached the zone as an unlabelled
+  // `[uncaught]` naming no setting, and a store that refused the write said
+  // nothing at all.
   group('QLocaleController.setLocale', () {
     final locale = QLocaleController.instance;
     tearDown(() => locale.setLocale(null));
 
+    // Both of the next two name `locale.code` and say "did not persist", so
+    // each also asserts the reason - otherwise they are one test written
+    // twice and swapping the two stores leaves both green.
     test('a store that will not open says which setting went back', () async {
       useUnopenablePrefs();
 
@@ -131,7 +135,11 @@ void main() {
       expect(
         keptLines.where((l) => l.contains('locale.code')),
         isNotEmpty,
-        reason: 'the caller is a VoidCallback with nowhere to put a throw',
+        reason: 'the caller discards the future and cannot see a throw',
+      );
+      expect(
+        keptLines.where((l) => l.contains('could not be opened')),
+        isNotEmpty,
       );
     });
 
@@ -141,6 +149,22 @@ void main() {
       await locale.setLocale(const Locale('ru'));
 
       expect(keptLines.where((l) => l.contains('did not persist')), isNotEmpty);
+      expect(
+        keptLines.where((l) => l.contains('refused the write')),
+        isNotEmpty,
+        reason: 'and not the unopenable store\'s reason',
+      );
+    });
+
+    // The round trip. The two failure cases above would both pass against a
+    // write that stored the wrong value, or the wrong key.
+    test('a language that persisted is what the next launch reads', () async {
+      await locale.setLocale(const Locale('ru'));
+
+      SharedPreferences.resetStatic();
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('locale.code'), 'ru');
+      expect(keptLines, isEmpty, reason: 'a write that worked says nothing');
     });
 
     // #120's rule: the choice stays where the user put it and takes itself
