@@ -67,6 +67,33 @@ void main() {
     );
   });
 
+  test('what a failed tool ran is kept with the failure', () {
+    // The other half of the same gap. A tool's own output goes out through
+    // `logger.raw`, which `_onEvent` gives to the console alone, so the
+    // command and the working directory survive only if they travel on the
+    // message - which is what `FapBuildException.reported` is for. A tool
+    // that failed without a word leaves nothing else at all.
+    const failure = FapBuildException(
+      'arm-none-eabi-gcc.exe failed with exit code 1',
+      diagnostics:
+          'it wrote nothing to stdout or stderr\n'
+          r'ran in: C:\sdk\scripts\ufbt'
+          '\n'
+          r'"C:\tools\arm none\gcc.exe" -c frame_can.c',
+    );
+
+    final kept = keptFrom(() => logger.error(failure.reported));
+
+    expect(kept.single, contains('exit code 1'));
+    expect(kept.single, contains('wrote nothing'));
+    expect(kept.single, contains(r'ran in: C:\sdk\scripts\ufbt'));
+    expect(
+      kept.single,
+      contains(r'"C:\tools\arm none\gcc.exe"'),
+      reason: 'quoted, or a toolchain under a profile path reads as two args',
+    );
+  });
+
   test('the console still gets everything', () {
     // The forwarding is in addition to the console, not instead of it: the
     // Assembler screen is where somebody watches a build happen.
