@@ -90,7 +90,7 @@ void main() {
         isBle: true,
       );
     }
-    await settleAndClose();
+    await settleAndClose(seen);
     return [for (final event in seen.events) event.fingerprint!.join(' ')];
   }
 
@@ -104,7 +104,7 @@ void main() {
         attempt: ConnectAttempt.auto,
         isBle: true,
       );
-      await settleAndClose();
+      await settleAndClose(seen);
 
       expect(seen.metric.name, 'device.connect.failed');
       expect(seen.metric.value, 1);
@@ -130,7 +130,7 @@ void main() {
           attempt: ConnectAttempt.scan,
           isBle: true,
         );
-        await settleAndClose();
+        await settleAndClose(seen);
 
         expect(seen.events, isEmpty);
         expect(
@@ -156,7 +156,7 @@ void main() {
         attempt: ConnectAttempt.manual,
         isBle: false,
       );
-      await settleAndClose();
+      await settleAndClose(seen);
 
       final crumb = seen.crumbs.singleWhere((c) => c.category == 'connection');
       expect(crumb.message, 'connect failed: tooManyDevices on usb (manual)');
@@ -174,7 +174,7 @@ void main() {
         attempt: ConnectAttempt.manual,
         isBle: true,
       );
-      await settleAndClose();
+      await settleAndClose(seen);
 
       expect(seen.metrics, isEmpty);
       final event = seen.events.single;
@@ -260,7 +260,7 @@ void main() {
         attempt: ConnectAttempt.manual,
         isBle: true,
       );
-      await settleAndClose();
+      await settleAndClose(seen);
 
       final event = seen.events.single;
       final context = event.contexts['connect']! as Map<String, dynamic>;
@@ -284,7 +284,7 @@ void main() {
         attempt: ConnectAttempt.manual,
         isBle: false,
       );
-      await settleAndClose();
+      await settleAndClose(seen);
 
       expect(seen.events, isEmpty);
       expect(
@@ -305,7 +305,7 @@ void main() {
         attempt: ConnectAttempt.auto,
         isBle: false,
       );
-      await settleAndClose();
+      await settleAndClose(seen);
 
       final crumb = seen.crumbs.singleWhere((c) => c.category == 'connection');
       expect(crumb.message, 'connect failed: unknown on usb (auto)');
@@ -325,7 +325,7 @@ void main() {
         attempt: ConnectAttempt.manual,
         isBle: true,
       );
-      await settleAndClose();
+      await settleAndClose(seen);
 
       // Anchored on the precondition, because an absence cannot be: with no
       // sink there is no output whose arrival would prove the pipeline ran.

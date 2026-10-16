@@ -102,6 +102,13 @@ class CapturedSignals {
   /// equality would break on an SDK bump that gave us more of them for free.
   Map<String, Object?> get attributes =>
       metric.attributes.map((key, value) => MapEntry(key, value.value));
+
+  /// How much has arrived, over all three channels.
+  ///
+  /// What [settleAndClose] watches for a stop, and the only reason it is here:
+  /// a test asserts on one channel, but "has the SDK finished" is a question
+  /// about all of them.
+  int get count => metrics.length + events.length + crumbs.length;
 }
 
 /// Brings a hub up with metrics, issues and breadcrumbs kept instead of sent.
@@ -134,13 +141,50 @@ Future<CapturedSignals> captureSignals() async {
 
 /// Lets the SDK finish what the app handed it, then closes the hub.
 ///
-/// Both halves earn their place, for opposite reasons. `Sentry.metrics.count`
-/// and `captureException` are **unawaited** by the code under test - the
-/// telemetry guard hands the SDK a future and returns, which is what keeps
-/// reporting off a path where a user is waiting - so a case that closed
-/// straight away would assert against a pipeline still in flight. The close is
-/// then what drains the buffers.
-Future<void> settleAndClose() async {
-  await Future<void>.delayed(Duration.zero);
+/// The SDK is handed its work **unawaited**: `Sentry.metrics.count` returns
+/// void and unawaits its own capture, and `Telemetry._guard` hands
+/// `captureException` a future and returns - which is what keeps reporting off
+/// a path where a user is waiting. So a case that asserted straight away would
+/// be reading a pipeline still in flight, and the close is what then drains
+/// the buffers.
+///
+/// **How many turns that takes is not ours to know**, which is the whole shape
+/// of this function. The metric pipeline awaits a lifecycle dispatch and then
+/// builds the default attributes before it reaches `beforeSendMetric`, and
+/// `captureException` runs a longer chain still. One `Duration.zero` hop was
+/// enough on a warm developer machine and not on CI, where nine cases read an
+/// empty list and the suite was green locally - so this drains the event loop
+/// until nothing new has arrived for [_quietTurns] consecutive turns, instead
+/// of guessing a number.
+///
+/// A case that expects nothing settles immediately, at zero, which is correct:
+/// the loop is watching for *stability*, not for arrival.
+Future<void> settleAndClose(CapturedSignals seen) async {
+  var quiet = 0;
+  var last = -1;
+  for (var turn = 0; turn < _maxTurns; turn++) {
+    if (turn >= _minTurns && quiet >= _quietTurns) break;
+    // A zero-duration timer and not `await null`: this has to yield the whole
+    // event loop, not just drain microtasks, because the SDK's own chain
+    // crosses timers.
+    await Future<void>.delayed(Duration.zero);
+    quiet = seen.count == last ? quiet + 1 : 0;
+    last = seen.count;
+  }
   await Sentry.close();
 }
+
+/// Turns with nothing new before the SDK is taken to be done.
+const int _quietTurns = 5;
+
+/// Turns to drain before the quiet count may end the loop at all.
+///
+/// The floor matters more than the quiet count: stability at *zero* is what a
+/// case expecting nothing looks like and also what a case whose first signal
+/// has not arrived yet looks like, and only the floor tells them apart. Twenty
+/// zero-duration timers cost less than a millisecond.
+const int _minTurns = 20;
+
+/// The ceiling, so a hung pipeline fails as a missing signal rather than as a
+/// test that never returns.
+const int _maxTurns = 200;
