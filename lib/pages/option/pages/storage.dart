@@ -10,10 +10,13 @@ import '../../../components/icon.dart';
 import '../../../services/http/app_http.dart';
 import '../../../services/localization/l10n.dart';
 import '../../../services/logging.dart';
+import '../../../services/permissions/permission.dart';
 import '../../../services/storage/paths.dart';
 import '../../../services/storage/fap_icons.dart';
 import '../../../theme/theme.dart';
+import '../../../components/dialogs/storage_permission.dart';
 import '../../../components/notification.dart';
+import '../../../components/permission_notice.dart';
 import '../../../services/assembler/controller.dart';
 
 class _StorageArea {
@@ -307,6 +310,19 @@ class _StorageSettingsPageState extends State<StorageSettingsPage> {
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: 10),
         children: [
+          // This page reported 0 B for every folder under a denied storage
+          // permission: `directorySize` cannot walk what it may not list, and
+          // the failure went to the log only. A user reading zeroes here has
+          // every reason to think their keys and dumps are gone. #351.
+          PermissionNotice(
+            permission: AppPermission.storage,
+            severity: PermissionNoticeSeverity.blocking,
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+            title: context.l10n.permissionStorageDeniedTitle,
+            body: context.l10n.permissionStorageDeniedSizes,
+            actionLabel: context.l10n.permissionStorageGrant,
+            onAction: () => unawaited(promptStorageAccess(context)),
+          ),
           for (final group in _buildGroups(context.l10n)) ...[
             GroupedCardList<int>(
               title: group,

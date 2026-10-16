@@ -4,6 +4,8 @@ import 'package:qunleashed/app/app.dart';
 import 'package:qunleashed/pages/devices/controllers/device.dart';
 import 'package:qunleashed/pages/devices/device_scope.dart';
 import 'package:qunleashed/pages/option/diagnostics_scope.dart';
+import 'package:qunleashed/services/permissions/center.dart';
+import 'package:qunleashed/services/permissions/scope.dart';
 import 'package:qunleashed/services/telemetry/settings.dart';
 
 import 'firmware_fixture.dart';
@@ -25,6 +27,15 @@ import 'firmware_fixture.dart';
 /// ADR 0013 §1 puts the reporting switch on the settings screen, which is
 /// reached by a push through the `AppRoute` registry - so it is one of the 25
 /// that the first shape above would have left outside.
+///
+/// `PermissionScope` joins them for a third version of the same reason, and
+/// it is the one with the sharpest failure. Every surface that draws a
+/// permission notice is reached by a push - Settings → Storage, Settings →
+/// Push, the IR library dialog - and a notice outside the scope draws
+/// *nothing at all* rather than throwing, because `maybeOf` returning null
+/// is the same silence an ungranted permission produces. That is precisely
+/// the failure #351 exists to end, so it is pinned here rather than left to
+/// be noticed on a device.
 ///
 /// Both end with [closeDevice]. `mountedDevice` builds a real
 /// `DeviceController`, which starts a DFU detector that polls on a one-second
@@ -53,15 +64,31 @@ void main() {
         ?.notifier;
   }
 
+  /// The permission record found at [key]'s context, or null if there is
+  /// no scope.
+  PermissionCenter? permissionsReachedFrom(GlobalKey key) {
+    final context = key.currentContext;
+    if (context == null) return null;
+    return context
+        .dependOnInheritedWidgetOfExactType<PermissionScope>()
+        ?.notifier;
+  }
+
   testWidgets('a route pushed over the app is inside the scope', (
     tester,
   ) async {
     final (device, client) = mountedDevice();
     final key = GlobalKey();
     final diagnostics = DiagnosticsSettings();
+    final permissions = PermissionCenter();
 
     await tester.pumpWidget(
-      QUnleashedApp(client: client, diagnostics: diagnostics, device: device),
+      QUnleashedApp(
+        client: client,
+        diagnostics: diagnostics,
+        permissions: permissions,
+        device: device,
+      ),
     );
     await tester.pump();
 
@@ -73,6 +100,7 @@ void main() {
     // whatever this says, or a failure here is reported as a pending timer.
     final reached = reachedFrom(key);
     final reachedSwitch = switchReachedFrom(key);
+    final reachedPermissions = permissionsReachedFrom(key);
     await closeDevice(tester, device);
 
     expect(
@@ -84,6 +112,13 @@ void main() {
       reachedSwitch,
       same(diagnostics),
       reason: 'the same switch Telemetry follows, not a second one',
+    );
+    expect(
+      reachedPermissions,
+      same(permissions),
+      reason:
+          'the same record the storage path writes to, not a second '
+          'one - a notice reading an empty copy draws nothing',
     );
   });
 

@@ -105,16 +105,19 @@ class IrLibLocalRepo {
   /// has no third answer, and absent is the one that matches what the app can
   /// do with what it found.
   ///
-  /// Kept at `caught` because it is the only account of why the page offers to
-  /// download a library that is already on disk. The user is still told
-  /// nothing, which wants a notice of its own beside `_StrandedNotice` and is
-  /// not this change.
+  /// Kept at `caught` because it is the account of why the page offers to
+  /// download a library that is already on disk. The user is told as well
+  /// now: #351 added the storage notice beside `_StrandedNotice` in
+  /// `settings_dialog.dart`, which says the folder cannot be read and offers
+  /// to fix it. This line is still what connects the two for a reader of a
+  /// bug report.
   ///
   /// The listing only. A resources folder this process cannot even create
-  /// still throws out of `resolveRoot`, where `appDocumentsDirectory` ignores
-  /// what `ensureAndroidStoragePermission` answered - so this covers the half
-  /// of a denied permission that reaches a folder already on disk, not all of
-  /// it.
+  /// still throws out of `resolveRoot`, where `appDocumentsDirectory` does
+  /// not branch on what `ensureAndroidStoragePermission` answered - so this
+  /// covers the half of a denied permission that reaches a folder already on
+  /// disk, not all of it. The answer itself is no longer discarded; it goes
+  /// to `PermissionCenter`, which is what draws the notice.
   Future<bool> exists() async {
     final dir = await resolveRoot();
     if (!await dir.exists()) return false;

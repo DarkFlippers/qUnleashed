@@ -140,7 +140,31 @@ Future<io.Directory?> _androidPublicDocumentsDirectory() async {
   return io.Directory('${sep}storage${sep}emulated${sep}0${sep}Documents');
 }
 
+/// The app's folder under the user's Documents directory, created if missing.
+///
+/// Still returns the directory when the storage permission was refused, and
+/// still throws if creating it then fails. That is deliberate and it is the
+/// shape every caller already handles: the folder is the right answer to
+/// "where does this go", the OS is what refuses, and the refusal arrives at
+/// the operation the user actually started rather than here.
+///
+/// What changed in #351 is that the refusal is now *also* written down.
+/// `ensureAndroidStoragePermission` reports it to `PermissionCenter`, so the
+/// surfaces that hang off this path can say why they are empty — the IR
+/// library dialog, Archive and Settings → Storage. Before, this bare `await`
+/// was the single place a denied `MANAGE_EXTERNAL_STORAGE` went to die, for
+/// every storage path in the app.
+///
+/// The bool is deliberately not branched on here. Refusing to return a path
+/// would turn one denial into a throw out of every caller, including the
+/// startup recovery pass that #350 had to stop reporting as a failed ambient
+/// service; and `getApplicationDocumentsDirectory()` is not a fallback the
+/// product wants, because users back up their own key dumps with a file
+/// manager and a sandbox folder is invisible to one.
 Future<io.Directory> appDocumentsDirectory() async {
+  // Called, not read. The answer reaches `PermissionCenter` through the sink
+  // the composition root installed; the bool is dropped here deliberately,
+  // and the paragraph above is why.
   await ensureAndroidStoragePermission();
   final base = await userDocumentsDirectory();
   final dir = io.Directory(pathJoin([base.path, kAppDocumentsFolderName]));

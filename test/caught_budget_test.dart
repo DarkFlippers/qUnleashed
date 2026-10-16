@@ -174,10 +174,58 @@ import 'ratchet.dart';
 /// one is the outlier, but moving it is its own change - it would lower
 /// `log_level_budget_test.dart` and raise this, and the sentence it shows the
 /// user would have to change with it.
+///
+/// Then #351, which is the block below. It landed against the four pickers
+/// above rather than before them, so `pages/tools` carries one from each: the
+/// infrared search walk here, and the pixel editor's export pick there.
+/// `services` rose from 9 to 17 for #351, and every one of the eight is an
+/// operation that did not do what was asked. They are listed because the
+/// number invites the wrong reading: this is a permission layer whose whole
+/// job is to stop a failure being absorbed, so the places it cannot get an
+/// answer are exactly the places worth a kept line.
+///
+/// None is `warn`. In every case the app still works and what the user is
+/// told is true — it is the *completeness* or the *timeliness* that suffers,
+/// which is what `caught` is for. And none is `info`: the whole defect #351
+/// fixes is a failure reported nowhere, and `info` const-folds away in a
+/// release build, so it would reproduce the bug inside its own fix.
+///
+///  * `permissions/center.dart` ×2 — the dismissal store refusing to open
+///    (every dismissible notice then returns at the next launch, for the life
+///    of the install), and a permission that could not be re-read on resume
+///    (its notice will not clear when the user grants it, which is the half of
+///    #351 the widget cannot supply).
+///  * `storage/asked_store.dart` — the asked flag unreadable. While that
+///    fails, a standing storage denial cannot be reported at all, so three
+///    screens stay silent about a permission the user refused.
+///  * `storage/permissions.dart` ×3 — the Android version read, the
+///    permission status read, and the prompt itself. Each used to be a bare
+///    catch folded into "not granted", and the caller then reported that as a
+///    *refusal*: a plugin hiccup during startup put a non-dismissible gate on
+///    three screens and disabled the IR download button.
+///  * `connection/foreground_service.dart` ×2 — the location read (it was a
+///    `catch (_)` to false; the service started without
+///    `ForegroundServiceTypes.location` and nothing said why) and the
+///    notification prompt, which moved up *from* `info` because its outcome
+///    stopped being ignored. On the `widgetMain()` path that throw is routine,
+///    and after it the background link can die with the user told nothing.
+///
+/// `pages/tools` rose to 11 for `infrared/api.dart`'s search walk. A folder
+/// that will not list prunes its entire subtree, so one failure near the root
+/// can cost most of the library, and the `catch (_) { continue; }` it replaces
+/// handed the short result back as though it were whole. One line after the
+/// walk with the count and the first cause, not one per folder — a line per
+/// folder is a log burst, and bodies differing by path defeat `LogService`'s
+/// consecutive fold.
+///
+/// Both replaced catches had non-empty bodies (`return false;` and
+/// `continue;`), so neither was ever counted by `bare_catch_budget_test.dart`
+/// and its figures do not move. The exchange that file's header describes is
+/// between itself and `log_level_budget_test.dart`; this is not that trade.
 const Map<String, int> kBudget = {
-  'services': 9,
+  'services': 17,
   'pages/archive': 20,
-  'pages/tools': 11,
+  'pages/tools': 12,
   'pages/flibler': 1,
   'pages/apps': 1,
 };

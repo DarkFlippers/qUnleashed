@@ -15,8 +15,15 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:qunleashed/services/logging.dart';
+import 'package:qunleashed/services/storage/permissions.dart';
 
 Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   setUp(LogService.debugForgetLastKept);
+  // `storage/permissions.dart` holds the resolved permission, the
+  // once-per-process prompt and the outcome sink as library statics with
+  // no owner - the same shape as the log fold above, and the same failure:
+  // a test that reaches them leaks a memoised answer, or a stale sink, into
+  // every test after it. #351.
+  setUp(debugResetStoragePermissionState);
   await testMain();
 }
