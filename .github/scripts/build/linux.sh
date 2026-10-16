@@ -142,26 +142,6 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 # scan finds nothing, and a green build means only that nothing was there.
 # `check_ffi_exports.sh` makes the same argument about a regex that matches
 # nothing: a guard that cannot fail is a rubber stamp.
-# TEMPORARY, remove before merge. #310.
-CMAKE_DIR="$ROOT_DIR/build/linux/$TARGET_ARCH/release"
-echo "===== QU-DEBUG begin ====="
-echo "--- built vs bundled copy of each FFI library ---"
-for lib in mfkey32 hardnested faaccrack; do
-  built="$(find "$CMAKE_DIR" -path "*/cpp/$lib/libqunleashed_$lib.so" -print -quit 2>/dev/null)"
-  bundled="$BUILD_DIR/lib/libqunleashed_$lib.so"
-  for f in "$built" "$bundled"; do
-    [ -n "$f" ] && [ -f "$f" ] || { echo "  MISSING $f"; continue; }
-    printf '  %-9s %10s bytes  debug_info=%s  buildid=%s  %s
-'       "$lib" "$(stat -c%s "$f")"       "$(objdump -h "$f" | grep -c '\.debug_info' || true)"       "$(objdump -s -j .note.gnu.build-id "$f" 2>/dev/null | tail -2 | tr -d ' 
-' | cut -c1-24)"       "$f"
-  done
-done
-echo "--- does the generated install script strip? ---"
-grep -rn "STRIP\|strip" "$CMAKE_DIR/cmake_install.cmake" 2>/dev/null | head -10 || echo "  (no strip in cmake_install.cmake)"
-find "$CMAKE_DIR" -name "cmake_install.cmake" -exec grep -l "STRIP" {} + 2>/dev/null | head -5
-echo "--- any strip in build.ninja ---"
-grep -c "strip" "$CMAKE_DIR/build.ninja" 2>/dev/null || echo "  0"
-echo "===== QU-DEBUG end ====="
 
 # The runner and our own FFI libraries, not merely "something in the bundle".
 # The runner alone would be the weakest possible check: it is the one target
@@ -186,18 +166,33 @@ done
 # `is_elf` before `has_debug_info`, which is fatal on anything objdump cannot
 # read: a path that exists but is not an ELF image belongs in `missing` with
 # the others, not reported as a broken toolchain.
-missing=()
+#
+# Absent and present-but-undebuggable are reported apart, because they have
+# different causes and the first version of this guard conflated them: it said
+# "no .debug_info" about three libraries that were not in the bundle at all,
+# and cost an afternoon of looking for a stripping step that did not exist.
+absent=()
+undebuggable=()
 for image in "${required_images[@]}"; do
-  if [[ ! -f "$image" ]] || ! is_elf "$image" || ! has_debug_info "$image"; then
-    missing+=("$image")
+  if [[ ! -f "$image" ]]; then
+    absent+=("$image")
+  elif ! is_elf "$image" || ! has_debug_info "$image"; then
+    undebuggable+=("$image")
   fi
 done
-if (( ${#missing[@]} )); then
+if (( ${#absent[@]} )); then
+  echo "::error::These are missing from the bundle entirely, so the app cannot" >&2
+  echo "::error::load them and Sentry has nothing to symbolicate. Check that the" >&2
+  echo "::error::install step still covers QUNLEASHED_FFI_LIBRARIES - see the" >&2
+  echo "::error::note in linux/runner/CMakeLists.txt." >&2
+  printf '  %s\n' "${absent[@]}" >&2
+  exit 1
+fi
+if (( ${#undebuggable[@]} )); then
   echo "::error::No .debug_info in the following, so Sentry cannot symbolicate" >&2
-  echo "::error::a Linux crash in them. Release must compile with -g, and C must" >&2
-  echo "::error::be enabled before the append - see the debug information block" >&2
-  echo "::error::in linux/CMakeLists.txt. (#310)" >&2
-  printf '  %s\n' "${missing[@]}" >&2
+  echo "::error::a Linux crash in them. Release must compile with -g - see the" >&2
+  echo "::error::debug information block in linux/CMakeLists.txt. (#310)" >&2
+  printf '  %s\n' "${undebuggable[@]}" >&2
   exit 1
 fi
 echo "Debug information for Sentry: ${#required_images[@]} image(s) carry DWARF."

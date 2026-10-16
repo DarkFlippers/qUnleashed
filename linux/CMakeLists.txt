@@ -157,6 +157,18 @@ foreach(bundled_library ${PLUGIN_BUNDLED_LIBRARIES})
     COMPONENT Runtime)
 endforeach(bundled_library)
 
+# The three `lib/modules/cpp` libraries, which are not Flutter plugins and so
+# are not in the list above. They used to append to it from
+# `runner/CMakeLists.txt`, but `flutter/generated_plugins.cmake` clears that
+# variable and is included after this subdirectory - so they were silently
+# dropped and no Linux release has ever shipped them. See the note beside
+# `QUNLEASHED_FFI_LIBRARIES` in `runner/CMakeLists.txt`.
+foreach(ffi_library ${QUNLEASHED_FFI_LIBRARIES})
+  install(FILES "${ffi_library}"
+    DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+    COMPONENT Runtime)
+endforeach(ffi_library)
+
 # Copy the native assets provided by the build.dart from all packages.
 set(NATIVE_ASSETS_DIR "${PROJECT_BUILD_DIR}native_assets/linux/")
 install(DIRECTORY "${NATIVE_ASSETS_DIR}"
