@@ -97,13 +97,41 @@ class IrLibLocalRepo {
   /// method that reads as a query renamed trees and ran recursive deletes.
   /// [recoverStranded] runs at startup instead, so by the time anything asks
   /// this, the repair has already happened.
+  ///
+  /// A library the OS will not let this process list reads as absent rather
+  /// than throwing. The library sits inside the resources folder in Android's
+  /// shared storage, and a run without MANAGE_EXTERNAL_STORAGE is told it is
+  /// there and then refused the listing with errno 1. A query returning bool
+  /// has no third answer, and absent is the one that matches what the app can
+  /// do with what it found.
+  ///
+  /// Kept at `caught` because it is the only account of why the page offers to
+  /// download a library that is already on disk. The user is still told
+  /// nothing, which wants a notice of its own beside `_StrandedNotice` and is
+  /// not this change.
+  ///
+  /// The listing only. A resources folder this process cannot even create
+  /// still throws out of `resolveRoot`, where `appDocumentsDirectory` ignores
+  /// what `ensureAndroidStoragePermission` answered - so this covers the half
+  /// of a denied permission that reaches a folder already on disk, not all of
+  /// it.
   Future<bool> exists() async {
     final dir = await resolveRoot();
     if (!await dir.exists()) return false;
-    await for (final _ in dir.list(followLinks: false)) {
-      return true;
+    try {
+      // isEmpty cancels after the first entry, so this is the same single
+      // read as the loop it replaced.
+      return !await dir.list(followLinks: false).isEmpty;
+    } on io.PathAccessException catch (e) {
+      // What was decided, and then the exception - which already carries the
+      // folder and the errno, so neither is restated here.
+      LogService.caught('[IrLib] reading the library as absent: $e');
+      return false;
+    } on io.PathNotFoundException {
+      // The library went away between the two calls above. Absent is the
+      // right answer to that race, and there is nothing worth keeping.
+      return false;
     }
-    return false;
   }
 
   Future<DateTime?> lastModified() async {
@@ -258,6 +286,21 @@ class IrLibLocalRepo {
   );
 
   /// Every superseded tree beside the library, newest first.
+  ///
+  /// Throws whatever the listing throws, the `PathAccessException` a
+  /// shared-storage folder gives a run with no MANAGE_EXTERNAL_STORAGE
+  /// included. Deliberately not answered here, because the two callers want
+  /// different things from a folder that will not open. `_recoverInterrupted`
+  /// has nothing to repair and says so; `_deleteAll` lets it out, because its
+  /// order is load-bearing - sidecars first, the library last - and a short
+  /// list would take the library out while leaving the trees that make the
+  /// next recovery pass hand it straight back, which is the one signature its
+  /// own comment is written to avoid.
+  ///
+  /// A partial read is not returned either, and is no safer than none: the
+  /// newest of a partial list is not the newest tree, so a restore would swear
+  /// in an older library and the pass after it - seeing a root in place - would
+  /// sweep up the real one as a leftover.
   static Future<List<io.Directory>> _supersededTrees(io.Directory root) async {
     final parent = root.parent;
     if (!await parent.exists()) return const [];
@@ -270,6 +313,33 @@ class IrLibLocalRepo {
     }
     found.sort((a, b) => b.path.compareTo(a.path));
     return found;
+  }
+
+  /// [_supersededTrees], or null when the folder would not open.
+  ///
+  /// A permission the user declined, not a library that is broken: Android
+  /// answers exists() on the resources folder in shared storage and then
+  /// refuses the listing with errno 1. It used to leave `_recoverInterrupted`
+  /// as a throw, which `guarded` reported as a failed ambient service
+  /// (QUNLEASHED-J) - and which `IrLibController.initialize`, awaiting the same
+  /// memoised pass with no catch of its own, let break the IR page for the rest
+  /// of the session.
+  ///
+  /// Only here, and only this exception. `_deleteAll` needs the throw for the
+  /// reason [_supersededTrees] gives, and ENOTDIR - `irlib` left as a file by a
+  /// failed unpack - EIO from a dying card and a descriptor leak anywhere else
+  /// in the process all reach the same `list`. None of those is a declined
+  /// permission, and answering "nothing to do" to a dying card would be this
+  /// app's own defect, so they stay uncaught and stay reported.
+  static Future<List<io.Directory>?> _supersededTreesIfReadable(
+    io.Directory root,
+  ) async {
+    try {
+      return await _supersededTrees(root);
+    } on io.PathAccessException catch (e) {
+      LogService.caught('[IrLib] leaving the library untouched: $e');
+      return null;
+    }
   }
 
   /// Where the staging trees live: beside the library, never inside it.
@@ -412,7 +482,16 @@ class IrLibLocalRepo {
 
   static Future<io.Directory?> _recoverInterrupted(io.Directory root) async {
     final incoming = _sidecar(root, _kIncomingSuffix);
-    final superseded = await _supersededTrees(root);
+
+    final superseded = await _supersededTreesIfReadable(root);
+    // Nothing can be repaired or swept without the listing, and the record has
+    // to survive: clearing it would take the notice off the settings dialog
+    // while the tree it names is still the only copy of the library on disk.
+    // The startup pass is memoised and runs before anything else, so there the
+    // record is still null and the two readings coincide; what this protects is
+    // the download() route, which reaches here again with a strand already on
+    // the dialog.
+    if (superseded == null) return _stranded.value;
 
     // The newest is the one the interrupted swap set aside; anything older is
     // a background delete that never finished.

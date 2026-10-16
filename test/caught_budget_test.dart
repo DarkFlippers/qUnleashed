@@ -75,6 +75,35 @@ import 'ratchet.dart';
 /// other. Pixel Draw counts one, for the same `catch` reaching the same kind
 /// of failure; its toast prints the exception and kept nothing.
 ///
+/// It rose to 10 for the two listings the IR library cannot make of its own
+/// folder, after QUNLEASHED-J. Android answers `exists()` on a shared-storage
+/// folder and then refuses the listing with errno 1 when
+/// MANAGE_EXTERNAL_STORAGE is not granted, and both sites used to let that
+/// out: the recovery pass, where `guarded` reported a permission the user
+/// declined as a failure of the IR library - and where the same rejection,
+/// awaited by `IrLibController.initialize` with no catch of its own, left the
+/// IR page in its initial state for the session - and `exists()`, a query
+/// returning `bool` that the page awaits and that has no third answer. Both
+/// now read as "nothing here this process can get at", which is the one state
+/// where the library the user can see and the library the app can use differ.
+/// Each line carries the errno, because that is the whole of what tells a
+/// report about an absent library from a report about a declined permission.
+///
+/// Neither is once per process, and the fold does not save them: the startup
+/// pass is memoised, but `download()` and `deleteAll()` reach the same listing
+/// outside it, and the two bodies name different folders, so a refresh
+/// alternates them and each breaks the other's run. What bounds them is that
+/// every one of those is a tap - `initialize`, `updateSettings`, a refresh, a
+/// delete - so the ceiling is two lines per thing the user asked for, nothing
+/// like the burst Section 5 of the ADR was written for.
+///
+/// A third site was deliberately not added. `_supersededTrees` throws the
+/// refusal rather than answering it, because `_deleteAll` needs it to: a short
+/// list there takes the library out while leaving the trees that make the next
+/// recovery pass hand it back. Only `_recoverInterrupted` catches, and only
+/// `PathAccessException` - ENOTDIR, EIO and a descriptor leak reach the same
+/// `list`, are not a declined permission, and still belong in a report.
+///
 /// `pages/apps` is 1 and `pages/archive` 17 for the same operation: a launch
 /// refused because one of the same app is already in flight (#244). The tap
 /// did nothing, and the page deliberately shows nothing for it - so without a
@@ -109,7 +138,7 @@ import 'ratchet.dart';
 const Map<String, int> kBudget = {
   'services': 9,
   'pages/archive': 18,
-  'pages/tools': 8,
+  'pages/tools': 10,
   'pages/apps': 1,
 };
 
