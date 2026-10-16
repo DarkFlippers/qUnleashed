@@ -43,6 +43,22 @@ class _AppDetailPageState extends State<AppDetailPage> {
   Object? _error;
   bool _loading = true;
 
+  /// The three markdown fields, converted once.
+  ///
+  /// `buildChangelogHtml` is a markdown parse plus a handful of regex passes -
+  /// between 1 and 14 ms per field for a real app's text - and `_load` is the
+  /// only thing that changes what goes into it. Converting in `build` instead
+  /// repeated all three on every rebuild of the body, and `flutter_html` skips
+  /// an equal string anyway, so the work bought nothing.
+  String? _shortDescriptionHtml;
+  String? _descriptionHtml;
+  String? _changelogHtml;
+
+  static String? _htmlOrNull(String? markdown) =>
+      markdown == null || markdown.isEmpty
+      ? null
+      : buildChangelogHtml(markdown);
+
   @override
   void initState() {
     super.initState();
@@ -59,6 +75,11 @@ class _AppDetailPageState extends State<AppDetailPage> {
       if (!mounted) return;
       setState(() {
         _detail = d;
+        _shortDescriptionHtml = _htmlOrNull(
+          d.card.currentVersion?.shortDescription,
+        );
+        _descriptionHtml = _htmlOrNull(d.description);
+        _changelogHtml = _htmlOrNull(d.changelog);
         _loading = false;
       });
     } catch (e) {
@@ -70,46 +91,32 @@ class _AppDetailPageState extends State<AppDetailPage> {
     }
   }
 
+  /// Neither the device scope nor the catalog controller is listened to from
+  /// here.
+  ///
+  /// The body carries up to three `SelectionArea`s over `flutter_html`, and a
+  /// rebuild throws away a live text selection in them. A selection handle
+  /// dragged across that rebuild then crashes inside a gesture callback, where
+  /// nothing on this page can catch it. Both of the tickers that used to reach
+  /// the whole body now stop at the widget they describe: the scope at
+  /// [_DetailAppBar], the controller at the bar's actions and the install
+  /// button. `test/app_detail_rebuild_scope_test.dart` holds the mechanism and
+  /// the two notification rates. QUNLEASHED-F.
+  ///
+  /// A theme or locale change still rebuilds the body - `context.appColors`
+  /// below is an inherited dependency, and `lib/app/app.dart` rebuilds the
+  /// `MaterialApp` on both - and so does a reload through `_load`. Neither is
+  /// on a timer, and neither is this page's to decide.
   @override
   Widget build(BuildContext context) {
-    final colors = context.appColors;
-    return AnimatedBuilder(
-      animation: _ctrl,
-      builder: (context, _) => Scaffold(
-        backgroundColor: colors.background,
-        appBar: QPageAppBar(
-          client: DeviceScope.of(context).client,
-          title: _detail?.card.name ?? context.l10n.appDetailFallbackTitle,
-          backgroundColor: colors.accent,
-          foregroundColor: colors.onAccent,
-          actions: [
-            if (_detail != null) ...[
-              if (_ctrl.engine.isInstalled(_detail!.card))
-                QPageAppBarAction(
-                  tooltip: context.l10n.appDeleteTooltip,
-                  icon: const Icon(Icons.delete_outline),
-                  onPressed: () => confirmDeleteApp(
-                    context,
-                    engine: _ctrl.engine,
-                    app: _detail!.card,
-                    category: widget.knownCategory,
-                  ),
-                ),
-              QPageAppBarAction(
-                tooltip: context.l10n.appOpenPageTooltip,
-                icon: const Icon(Icons.open_in_new),
-                onPressed: () {
-                  final url = _detail!.links?.manifestUri ?? '';
-                  if (url.isNotEmpty) {
-                    openUrl(context, url, inApp: false);
-                  }
-                },
-              ),
-            ],
-          ],
-        ),
-        body: _buildBody(context),
+    return Scaffold(
+      backgroundColor: context.appColors.background,
+      appBar: _DetailAppBar(
+        controller: _ctrl,
+        detail: _detail,
+        knownCategory: widget.knownCategory,
       ),
+      body: _buildBody(context),
     );
   }
 
@@ -139,28 +146,28 @@ class _AppDetailPageState extends State<AppDetailPage> {
           _ScreenshotsRow(screenshots: cv.screenshots, title: card.name),
           const SizedBox(height: 18),
         ],
-        if (cv != null && cv.shortDescription.isNotEmpty) ...[
+        if (_shortDescriptionHtml case final String html) ...[
           _SectionTitle(title: context.l10n.appSectionDescription),
           const SizedBox(height: 6),
           ChangelogRenderer(
-            html: buildChangelogHtml(cv.shortDescription),
+            html: html,
             textColor: colors.textPrimary,
             mutedColor: colors.textSecondary,
           ),
         ],
-        if (detail.description.isNotEmpty) ...[
+        if (_descriptionHtml case final String html) ...[
           ChangelogRenderer(
-            html: buildChangelogHtml(detail.description),
+            html: html,
             textColor: colors.textPrimary,
             mutedColor: colors.textSecondary,
           ),
           const SizedBox(height: 12),
         ],
-        if (detail.changelog.isNotEmpty) ...[
+        if (_changelogHtml case final String html) ...[
           _SectionTitle(title: context.l10n.appSectionChangelog),
           const SizedBox(height: 6),
           ChangelogRenderer(
-            html: buildChangelogHtml(detail.changelog),
+            html: html,
             textColor: colors.textPrimary,
             mutedColor: colors.textSecondary,
           ),
@@ -170,6 +177,66 @@ class _AppDetailPageState extends State<AppDetailPage> {
         const SizedBox(height: 6),
         _DeveloperLinks(detail: detail),
       ],
+    );
+  }
+}
+
+/// The page's bar, and the only place the page reaches for [DeviceScope].
+///
+/// Both of the things that make this rebuild - the scope's device-info poll
+/// and the catalog controller - stop here rather than at the page, which is
+/// the point of it being its own widget. See [_AppDetailPageState.build].
+class _DetailAppBar extends StatelessWidget implements PreferredSizeWidget {
+  const _DetailAppBar({
+    required this.controller,
+    required this.detail,
+    this.knownCategory,
+  });
+
+  final AppsCatalogController controller;
+  final AppDetail? detail;
+  final AppCategory? knownCategory;
+
+  @override
+  Size get preferredSize => QPageAppBar.preferredSizeWithoutBottom;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.appColors;
+    final detail = this.detail;
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) => QPageAppBar(
+        client: DeviceScope.of(context).client,
+        title: detail?.card.name ?? context.l10n.appDetailFallbackTitle,
+        backgroundColor: colors.accent,
+        foregroundColor: colors.onAccent,
+        actions: [
+          if (detail != null) ...[
+            if (controller.engine.isInstalled(detail.card))
+              QPageAppBarAction(
+                tooltip: context.l10n.appDeleteTooltip,
+                icon: const Icon(Icons.delete_outline),
+                onPressed: () => confirmDeleteApp(
+                  context,
+                  engine: controller.engine,
+                  app: detail.card,
+                  category: knownCategory,
+                ),
+              ),
+            QPageAppBarAction(
+              tooltip: context.l10n.appOpenPageTooltip,
+              icon: const Icon(Icons.open_in_new),
+              onPressed: () {
+                final url = detail.links?.manifestUri ?? '';
+                if (url.isNotEmpty) {
+                  openUrl(context, url, inApp: false);
+                }
+              },
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -246,13 +313,18 @@ class _Header extends StatelessWidget {
         const SizedBox(height: 16),
         SizedBox(
           width: double.infinity,
-          child: AppActionButton(
-            engine: controller.engine,
-            state: controller.stateFor(card),
-            app: card,
-            category: knownCategory,
-            detail: detail,
-            size: AppActionButtonSize.large,
+          // The install button is the one thing in the body that a controller
+          // notification describes, so it is the only thing that listens.
+          child: AnimatedBuilder(
+            animation: controller,
+            builder: (context, _) => AppActionButton(
+              engine: controller.engine,
+              state: controller.stateFor(card),
+              app: card,
+              category: knownCategory,
+              detail: detail,
+              size: AppActionButtonSize.large,
+            ),
           ),
         ),
       ],
