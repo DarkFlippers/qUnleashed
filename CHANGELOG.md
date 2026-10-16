@@ -1,5 +1,6 @@
 ## Main changes
 - Version: 0.17.0
+- Localization: translated app to Belarusian, Croatian, French, German and Spanish (by @mishamyte | PR #320, #323)
 - Notifications: keep push alive through the APNS token race, and stop pretending macOS has push (by @mishamyte | PR #325 | Closes #324)
 - Diagnostics: **Screen replays show the interface again** - the SDK's blanket text mask was greying out every button, tab and title, so a recording of a failure showed nothing anybody could read (by @mishamyte | PR #334 | Closes #331)
 - Settings: a setting that does not persist is recorded instead of lost in silence, and the home-screen widget stops showing a look that was never saved (by @mishamyte | PR #335 | Closes #313)
