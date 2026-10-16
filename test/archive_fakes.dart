@@ -3,6 +3,9 @@ import 'dart:io' as io;
 
 import 'package:flipperlib/flipperlib.dart' hide File;
 import 'package:flipperlib/flipperlib.dart' as fl show File;
+// Not exported by the package root, and `FlipperClient` declares `transport`,
+// so this mixin has to name the type to answer it.
+import 'package:flipperlib/src/transport/transport.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:protobuf/protobuf.dart' show GeneratedMessage;
@@ -60,11 +63,38 @@ mixin ArchiveRpcFake implements FlipperClient {
   @override
   Future<String> awaitName() async => archiveTestDevice;
 
+  /// Read off the client by `storageWriteChunked` to size its frames, so any
+  /// fake on an upload path has to answer it. Null is what every archive fake
+  /// answered by hand before this moved here.
+  @override
+  Transport? get transport => null;
+
+  /// False unless a fake says otherwise - `archive_sync_link_drop_test.dart`
+  /// is the one that does, and a declaration on the class wins over this.
+  @override
+  bool isLinkDropError(Object e) => false;
+
   @override
   Future<T> runTask<T>(
     FlipperRequestPriority priority,
     Future<T> Function() body,
   ) => body();
+
+  /// Pumps the sender once and answers nothing, which is every current fake's
+  /// behaviour: the write path calls it, and no test asserts on the frames it
+  /// sends back.
+  @override
+  Future<List<Main>> callRpcFramesMulti(
+    Future<void> Function(Future<void> Function(Main frame) sendFrame) send, {
+    Duration timeout = const Duration(seconds: 8),
+    FlipperRequestPriority priority = FlipperRequestPriority.unattended,
+    void Function(Main frame)? onFrame,
+    bool retainFrames = true,
+    bool interleavable = false,
+  }) async {
+    await send((_) async {});
+    return const [];
+  }
 
   @override
   Future<List<Main>> callRpcFrames(

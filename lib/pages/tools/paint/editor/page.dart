@@ -390,10 +390,10 @@ class _PaintPageState extends State<PaintPage> {
   /// this page, so what notices is `test/picker_guard_test.dart`'s fourth
   /// condition, which is the cheap half of that gap rather than all of it.
   Future<String?> _pickDestination() async {
-    // Outside the `try`, because it is not the picker.
-    final title = context.l10n.paintChooseExportLocation;
     try {
-      return await FilePicker.platform.getDirectoryPath(dialogTitle: title);
+      return await FilePicker.platform.getDirectoryPath(
+        dialogTitle: context.l10n.paintChooseExportLocation,
+      );
     } catch (e, st) {
       LogService.caught(
         '[Paint] the export folder pick failed: ${LogService.describe(e, st)}',

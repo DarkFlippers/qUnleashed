@@ -157,10 +157,13 @@ import 'ratchet.dart';
 /// four bodies differ, so no two sites fold into each other. **What the fold
 /// does drop is a repeat at one site** - the same tap, the same broken
 /// provider, twice - and nothing counts the drop. That is acceptable here
-/// because the second line would say exactly what the first one said; it would
-/// not be acceptable for a test to assert on the count, which is CLAUDE.md's
-/// `hasLength(1)` anti-pattern. `test/unguarded_pick_test.dart` asserts on one
-/// site's body and level instead.
+/// because the second line would say exactly what the first one said.
+///
+/// `test/unguarded_pick_test.dart` does assert `hasLength(1)` on this area's
+/// lines, which is CLAUDE.md's named anti-pattern everywhere the fold is live -
+/// and is safe there for one reason worth writing down: the fold is a static
+/// that `test/flutter_test_config.dart` resets before every test, so inside one
+/// test a count of one means said once. It would not be safe across two.
 ///
 /// Six pickers already caught before this and were left alone. Three of them
 /// record nothing - two in the file browser and the archive's save dialog -

@@ -40,19 +40,15 @@
 // lists.
 import 'package:file_picker/file_picker.dart';
 import 'package:flipperlib/flipperlib.dart' hide DateTime, File;
-import 'package:flipperlib/flipperlib.dart' as fl show File;
-// Not exported by the package root, and `FlipperClient` declares it, so a fake
-// has to answer it by name.
-import 'package:flipperlib/src/transport/transport.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:protobuf/protobuf.dart' show GeneratedMessage;
 import 'package:qunleashed/pages/archive/browser/page.dart';
 import 'package:qunleashed/pages/devices/controllers/device.dart';
 import 'package:qunleashed/services/localization/l10n.dart';
 import 'package:qunleashed/services/logging.dart';
 
+import 'archive_fakes.dart';
 import 'firmware_fixture.dart';
 import 'kept_lines.dart';
 
@@ -155,95 +151,16 @@ class _RefusingPicker extends FilePicker {
 
 /// One folder with one file in it, and nothing else answered.
 ///
-/// Lifted from `file_manager_double_open_test.dart`'s fake rather than shared
-/// with it: that one parks a read to hold a download in flight, which is a
-/// state this has no use for, and a fake that serves both grows a flag per
-/// test.
-class _Listing implements FlipperClient {
-  final _listing = <String, List<fl.File>>{
-    '/ext': [fl.File(name: 'notes.txt', type: File_FileType.FILE, size: 16)],
-  };
-
+/// `ArchiveRpcFake` carries the rest. The ~90 lines of `callRpcFrames`,
+/// `callRpc` and `runTask` boilerplate that used to sit here is what that
+/// mixin was pulled out of three other files to hold, and the signatures come
+/// from a submodule this repo bumps - so a named parameter added upstream is
+/// one line there instead of a compile error in every copy.
+class _Listing with ArchiveRpcFake {
   @override
-  bool get isConnected => true;
-
-  @override
-  bool get isRpcReady => true;
-
-  @override
-  FlipperMode get mode => FlipperMode.rpc;
-
-  @override
-  Transport? get transport => null;
-
-  @override
-  bool isLinkDropError(Object e) => false;
-
-  @override
-  Future<T> runTask<T>(
-    FlipperRequestPriority priority,
-    Future<T> Function() body,
-  ) => body();
-
-  @override
-  Future<List<Main>> callRpcFrames(
-    Main request, {
-    Duration timeout = const Duration(seconds: 8),
-    FlipperRequestPriority priority = FlipperRequestPriority.unattended,
-    void Function(Main frame)? onFrame,
-    void Function()? onSent,
-    bool retainFrames = true,
-    bool interleavable = false,
-    bool pipelined = true,
-  }) async {
-    if (request.hasStorageListRequest()) {
-      return [
-        Main(
-          storageListResponse: ListResponse()
-            ..file.addAll(
-              _listing[request.storageListRequest.path] ?? const [],
-            ),
-        ),
-      ];
-    }
-    return const [];
-  }
-
-  @override
-  Future<List<Main>> callRpcFramesMulti(
-    Future<void> Function(Future<void> Function(Main frame) sendFrame) send, {
-    Duration timeout = const Duration(seconds: 8),
-    FlipperRequestPriority priority = FlipperRequestPriority.unattended,
-    void Function(Main frame)? onFrame,
-    bool retainFrames = true,
-    bool interleavable = false,
-  }) async {
-    await send((_) async {});
-    return const [];
-  }
-
-  @override
-  Future<FlipperRpcBatch<T>> callRpc<T extends GeneratedMessage>(
-    Main request,
-    T? Function(Main frame) pick, {
-    Duration timeout = const Duration(seconds: 8),
-    FlipperRequestPriority priority = FlipperRequestPriority.unattended,
-    void Function(Main frame)? onFrame,
-  }) async {
-    final frames = await callRpcFrames(request);
-    final items = <T>[];
-    for (final frame in frames) {
-      onFrame?.call(frame);
-      final picked = pick(frame);
-      if (picked != null) items.add(picked);
-    }
-    return FlipperRpcBatch<T>(
-      commandId: 0,
-      request: request,
-      frames: frames,
-      items: items,
-    );
-  }
+  List<Main> framesFor(Main request) => request.hasStorageListRequest()
+      ? [Main(storageListResponse: ListResponse()..file.add(tag('notes.txt')))]
+      : const [];
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

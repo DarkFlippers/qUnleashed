@@ -27,7 +27,7 @@
 // caught for themselves and the four that did not moved in the same change, so
 // zero is both the current count and the target.
 //
-// **It holds the three things that put a listener on the rejection**, because
+// **It holds the four things that put a listener on the rejection**, because
 // any one of them missing is the incident again:
 //
 //  1. the call is awaited, so the enclosing `try` is on the stack when the
@@ -70,6 +70,12 @@ import 'ratchet.dart';
 /// `import 'package:file_picker/file_picker.dart' as fp;` would take a whole
 /// file out of the count, and nobody adding that import would connect it to a
 /// ratchet.
+///
+/// Deliberately not shared with `picker_bytes_guard_test.dart`, which matches
+/// `pickFiles` by name with no target check and has unit tests pinning that.
+/// This is the stricter of the two and belongs beside `isLogServiceCall` in
+/// `ratchet.dart` the moment a second ratchet asks for it - which is that
+/// file's own rule: extracted when the second and third arrive, not before.
 bool isPickerCall(MethodInvocation node) {
   final target = node.target;
   if (target is PrefixedIdentifier) {
@@ -97,20 +103,24 @@ bool isAwaited(AstNode node) {
   return parent is AwaitExpression && parent.expression == node;
 }
 
-/// Whether [clause] catches every error, rather than one type.
+/// Whether [clause] is a guard: it catches every error and keeps it.
 ///
-/// Condition (3). `on PlatformException catch (e)` would be enough for today's
+/// Conditions (3) and (4), together because neither is worth anything without
+/// the other - a clause that catches everything and rethrows leaves the
+/// rejection exactly where an `on`-typed clause does.
+///
+/// On (3): `on PlatformException catch (e)` would be enough for today's
 /// Android path and for nothing else: the Linux picker throws a bare
 /// `Exception` when no `zenity` is on the path, Windows a `WindowsException`,
 /// and a missing plugin a `MissingPluginException`. Those have no common
 /// supertype worth naming, so the only clause that can be shown to cover a
 /// picker is the unqualified one.
-bool catchesEverything(CatchClause clause) =>
+bool guards(CatchClause clause) =>
     clause.exceptionType == null && !rethrows(clause.body);
 
 /// Whether [body] hands the error straight back out again.
 ///
-/// Condition (4), and the one a review asked for by name. `_pickDestination`
+/// The second half of [guards], and the one a review asked for by name. `_pickDestination`
 /// in the pixel editor returns a value into three callers that each read null
 /// as "cancelled", so its contract is "report, then answer null" - and a
 /// `rethrow` there reads as correct, because every one of those callers has a
@@ -133,10 +143,12 @@ class _RethrowVisitor extends RecursiveAstVisitor<void> {
   void visitRethrowExpression(RethrowExpression node) => found = true;
 }
 
-/// Whether [node] sits in the body of a `try` that catches, in the same
+/// Whether [node] sits in the body of a `try` that guards, in the same
 /// function.
 ///
-/// Conditions (2) and (3). A `catch` or `finally` clause is deliberately not a
+/// Condition (2), and it asks [guards] for (3) and (4) rather than answering
+/// position alone - so a node that *is* inside a try body still counts when
+/// every clause on that try is `on`-typed or rethrows. A `catch` or `finally` clause is deliberately not a
 /// body: a picker call there is as unguarded as one with no `try` in sight, and
 /// it reads as covered. A `try` whose only clause is a `finally` is likewise
 /// not a guard - it runs the clause and lets the error past, which
@@ -164,7 +176,7 @@ bool isInsideTryBody(AstNode node) {
   AstNode child = node;
   for (AstNode? parent = node.parent; parent != null; parent = parent.parent) {
     if (parent is TryStatement && parent.body == child) {
-      return parent.catchClauses.any(catchesEverything);
+      return parent.catchClauses.any(guards);
     }
     if (parent is FunctionExpression) return false;
     child = parent;

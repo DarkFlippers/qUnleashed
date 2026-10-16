@@ -720,6 +720,22 @@ class _FileManagerPageState extends State<FileManagerPage> {
     }
   }
 
+  /// Picks files and uploads them, reporting a refused pick.
+  ///
+  /// **Reached through `guarded`, not a bare call**, like `_onEntryTap` and
+  /// `_openFile` on this page. The pick catches for itself now, but the upload
+  /// behind it does not: `_upload` catches only `FlipperCancelledException`,
+  /// and `uploadLocal`'s planning pass stats every chosen path and lists the
+  /// folder with nothing around either. A cache copy evicted between the pick
+  /// and the stat - the same provider misbehaviour that produced
+  /// QUNLEASHED-K's `unknown_path` - rejects out of here, and from a bare call
+  /// that reaches the zone as a fatal naming nothing.
+  ///
+  /// CLAUDE.md names that shape, and **nothing mechanical holds it**:
+  /// `unawaited_budget_test.dart` counts the literal `unawaited(...)` and
+  /// lists a future dropped without one under what it cannot see, on the
+  /// grounds that `unawaited_futures` covers it - and that lint fires only in
+  /// an `async` body, which a tap closure is not. #23 has the gap.
   Future<void> _uploadFromPath() async {
     final FilePickerResult? result;
     try {
@@ -941,7 +957,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
               ),
               onTap: () {
                 Navigator.of(sheetContext).pop();
-                _createEmptyFile();
+                guarded('[FileManager] creating a file', _createEmptyFile);
               },
             ),
             ListTile(
@@ -960,7 +976,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
               ),
               onTap: () {
                 Navigator.of(sheetContext).pop();
-                _createFolder();
+                guarded('[FileManager] creating a folder', _createFolder);
               },
             ),
             ListTile(
@@ -977,17 +993,6 @@ class _FileManagerPageState extends State<FileManagerPage> {
                 context.l10n.fmUploadFiles,
                 style: TextStyle(color: colors.textPrimary),
               ),
-              // `guarded` and not a bare call, as everywhere else on this page
-              // (`_onEntryTap`, `_openFile`). The pick itself now catches, but
-              // the upload behind it does not: `_upload` catches only
-              // `FlipperCancelledException`, and the planning pass in
-              // `uploadLocal` stats every chosen path and lists the folder with
-              // nothing around either. A cache copy evicted between the pick
-              // and the stat - the same provider misbehaviour that produced
-              // QUNLEASHED-K's `unknown_path` - rejects out of here, and from a
-              // bare call that lands in the zone as a fatal with nothing naming
-              // it. CLAUDE.md names this shape and `unawaited_budget_test.dart`
-              // counts it.
               onTap: () {
                 Navigator.of(sheetContext).pop();
                 guarded(
@@ -1005,8 +1010,6 @@ class _FileManagerPageState extends State<FileManagerPage> {
                 context.l10n.fmUploadFolder,
                 style: TextStyle(color: colors.textPrimary),
               ),
-              // Same reasoning as the entry above: the folder pick catches, the
-              // walk and upload behind it do not.
               onTap: () {
                 Navigator.of(sheetContext).pop();
                 guarded(
