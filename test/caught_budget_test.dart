@@ -33,7 +33,7 @@ import 'ratchet.dart';
 /// sites moved; the other 19 stayed, each on a volume argument its own
 /// comment makes. A rise after it is one site with its reason written here.
 ///
-/// `services` is 8: the two `build_identity.dart` sites and the two in
+/// `services` is 9: the two `build_identity.dart` sites and the two in
 /// `telemetry.dart` that were here before, plus a launcher refusing a
 /// home-widget pin and an HTTP request the network responder could not carry.
 /// The relay reply beside that second one runs per frame and stayed at `info`,
@@ -101,8 +101,13 @@ import 'ratchet.dart';
 /// forks. One line, in a build that does not print, is the difference between
 /// diagnosing a fork that answers the wrong code and guessing at it. Once per
 /// walk, and only when keys actually moved.
+///
+/// The ninth is ADR 0013 §2's connect-failure hook: reporting runs inside a
+/// `catch` that still has a user waiting, so the call is wrapped, and the one
+/// line is what keeps a lost report from being silent. `connect_report.dart`
+/// has which two things in there can throw.
 const Map<String, int> kBudget = {
-  'services': 8,
+  'services': 9,
   'pages/archive': 18,
   'pages/tools': 8,
   'pages/apps': 1,

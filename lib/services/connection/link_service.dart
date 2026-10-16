@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import '../guarded.dart';
 import '../logging.dart';
 import '../telemetry/traced.dart';
+import 'connect_report.dart';
 import 'device_settings.dart';
 import 'known_devices.dart';
 
@@ -168,8 +169,50 @@ class LinkService extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _recordAutoFailure(String key, String name, Object error) {
+  /// Remembers one failed automatic attempt, and reports it - ADR 0013 §2.
+  ///
+  /// The reporting goes here rather than in the two catches that call it,
+  /// because this is already the funnel: [_autoDial] covers both auto-dials
+  /// and [_restoreCli] the CLI handoff, all three of them land here, and
+  /// [AutoConnectFailure.isBle] already derives the transport from [key] - so
+  /// the alternative was the same call twice with the transport spelled two
+  /// different ways, one of them hardcoded.
+  ///
+  /// **A cancel is not reported.** [connect] and [_open] never get this far:
+  /// they set an activity, so `disconnectDevice` puts the key in [_cancelled]
+  /// and they swallow the abort at [_cancelledAndSaidSo]. The remembered-BLE
+  /// dial sets no activity and so cannot be in [_cancelled] at all - it
+  /// reaches its catch carrying flipperlib's own `BLE connect aborted`, a
+  /// string no needle matches, which over BLE is an issue. One user cancelling
+  /// the opening dial would have filed one, in the list §2 keeps for strings
+  /// the classifier can learn from. [_restoreCli] had the same hole from the
+  /// other side: it *does* set an activity, and its catch does not consult it.
+  ///
+  /// [_userDisconnectedKey] and not [_cancelled], because
+  /// `disconnectDevice` sets it unconditionally and it is the same signal
+  /// [_maybeAutoConnect] refuses to re-dial on - so one condition covers all
+  /// three paths.
+  ///
+  /// The hint still goes up for a cancel, and says "auto-connect failed" when
+  /// the user is the one who called it off. That is wrong, predates this, and
+  /// wants the remembered dial to grow the activity discipline the other two
+  /// have - which moves `LinkEntry.busy` on a connect path and is its own
+  /// task, not telemetry's.
+  void _recordAutoFailure(
+    String key,
+    String name,
+    Object error,
+    StackTrace stack,
+  ) {
     _autoFailure = AutoConnectFailure(key: key, name: name, error: error);
+    if (_userDisconnectedKey != key) {
+      reportConnectFailure(
+        error,
+        stack,
+        attempt: ConnectAttempt.auto,
+        isBle: _autoFailure!.isBle,
+      );
+    }
     notifyListeners();
   }
 
@@ -673,9 +716,9 @@ class LinkService extends ChangeNotifier {
       }
       hold.channel = channel;
       hold.onChannel(channel);
-    } catch (e) {
+    } catch (e, st) {
       LogService.warn('[Link] CLI on ${device.name} failed: $e');
-      _recordAutoFailure(key, device.name, e);
+      _recordAutoFailure(key, device.name, e, st);
       if (identical(_cliHold, hold)) hold.onFailure(e);
     } finally {
       _setActivity(key, LinkActivity.idle);
@@ -727,9 +770,9 @@ class LinkService extends ChangeNotifier {
         await dial(trace);
       });
       _clearAutoFailure(key);
-    } catch (e) {
+    } catch (e, st) {
       LogService.warn('[Link] auto-connect to $name failed: $e');
-      _recordAutoFailure(key, name, e);
+      _recordAutoFailure(key, name, e, st);
     }
   }
 

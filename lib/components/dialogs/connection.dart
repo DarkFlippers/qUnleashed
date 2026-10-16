@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../cancel_spinner.dart';
 import '../notification.dart';
+import '../../services/connection/connect_report.dart';
 import '../../services/connection/link_service.dart';
 import '../../services/localization/l10n.dart';
 import '../../services/guarded.dart';
@@ -43,7 +44,16 @@ Future<void> connectPickedDevice(
 ) async {
   try {
     await LinkService.instance.connectDevice(device);
-  } catch (e) {
+  } catch (e, st) {
+    // Reported before the mounted check, not after: a user who left the
+    // screen while the dial was in flight is a failure nobody sees a dialog
+    // for, which is the one most worth counting. ADR 0013 §2.
+    reportConnectFailure(
+      e,
+      st,
+      attempt: ConnectAttempt.manual,
+      isBle: device.isBle,
+    );
     if (!context.mounted) return;
     await showConnectionFailedDialog(context, e, isBle: device.isBle);
   }
@@ -55,7 +65,13 @@ Future<void> connectPickedDevice(
 Future<void> connectLinkEntry(BuildContext context, LinkEntry entry) async {
   try {
     await LinkService.instance.connect(entry);
-  } catch (e) {
+  } catch (e, st) {
+    reportConnectFailure(
+      e,
+      st,
+      attempt: ConnectAttempt.manual,
+      isBle: entry.isBle,
+    );
     if (!context.mounted) return;
     await showConnectionFailedDialog(context, e, isBle: entry.isBle);
   }
@@ -129,8 +145,17 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
       } else {
         await _client.refreshDevices(bleTimeout: const Duration(seconds: 10));
       }
-    } catch (e) {
+    } catch (e, st) {
       LogService.warn('[Picker] scan error: $e');
+      // A scan is a connect attempt as far as the classifier is concerned -
+      // Bluetooth off and a busy adapter are the same two buckets - and it is
+      // the only one of the three the user starts without naming a device.
+      reportConnectFailure(
+        e,
+        st,
+        attempt: ConnectAttempt.scan,
+        isBle: !widget.usbOnly,
+      );
       // The list the finally rebuilds is a partial one: refreshDevices
       // clears it and re-adds held sessions and USB devices before the BLE
       // scan that threw, so a short list reads as the whole list - worse
