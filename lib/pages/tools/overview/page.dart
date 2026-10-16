@@ -97,7 +97,6 @@ class ToolsPage extends StatelessWidget {
           title: s.toolMifare,
           description: s.toolMifareSubtitle,
           routeBuilder: _buildRecoverPage,
-          badge: s.toolBadgeBeta,
         ),
         ToolItemModel(
           iconAsset: 'assets/ic/fileformat/sub.svg',
