@@ -8197,9 +8197,9 @@
     }
   },
 
-  "commonPickFailed": "The system file picker failed, and nothing was chosen",
+  "commonPickFailed": "The system picker failed, and nothing was chosen",
   "@commonPickFailed": {
-    "description": "Toast shown when the operating system's file or folder picker answered with an error instead of a selection, so the operation did not start. TRANSLATORS: 'the system file picker' is the operating system's own dialog, not a screen of this app - the app cannot say why it failed, which is why the sentence does not try to. The second half is there because the user has just been in that dialog and needs to know the pick did not half-happen: nothing was uploaded, saved or exported."
+    "description": "Toast shown when the operating system's file or folder picker answered with an error instead of a selection, so the operation did not start. TRANSLATORS: 'the system picker' is the operating system's own dialog, not a screen of this app. It deliberately says neither 'file' nor 'folder': one of the four screens that show this is choosing files to upload and the other three are choosing a folder to save into, so a word for either would be wrong somewhere - pick a noun that covers both, or drop it. The app also cannot say why the dialog failed, which is why the sentence does not try to. The second half is there because the user has just been in that dialog and needs to know the pick did not half-happen: nothing was uploaded, saved or exported."
   },
 
   "seedReplaceTitle": "Replace File?",

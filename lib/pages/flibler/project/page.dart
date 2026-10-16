@@ -50,16 +50,20 @@ class _FliblerProjectPageState extends State<FliblerProjectPage> {
 
   Future<void> _pickFolder() async {
     final lastFolder = _ctrl.lastFolder;
+    // Outside the `try`, because it is not the picker.
+    final title = context.l10n.fliblerPickFolder;
     final String? path;
     try {
       path = await FilePicker.platform.getDirectoryPath(
-        dialogTitle: context.l10n.fliblerPickFolder,
+        dialogTitle: title,
         initialDirectory: lastFolder.isEmpty ? null : lastFolder,
       );
     } catch (e, st) {
       // Reached from a button, so a rejection here has no listener at all and
-      // lands in the zone as a fatal uncaught error - which is how
-      // QUNLEASHED-K killed the app from the file browser's own pick.
+      // lands in the zone as a fatal uncaught error - the mechanism of
+      // QUNLEASHED-K. Not its failure: `getDirectoryPath` swallows its own
+      // `PlatformException` on Android and iOS, so what lands here is a
+      // desktop refusal or a missing plugin. See `category_page.dart`.
       LogService.caught(
         '[Flibler] the folder pick failed: ${LogService.describe(e, st)}',
       );

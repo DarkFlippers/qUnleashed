@@ -730,13 +730,17 @@ class _FileManagerPageState extends State<FileManagerPage> {
       );
     } catch (e, st) {
       // The pick rejects rather than answering, and this is reached from a
-      // `ListTile.onTap` - so without a catch the rejection has no listener
-      // anywhere, reaches the zone as a fatal uncaught error, and the app dies
-      // behind the picker the user is still looking at. QUNLEASHED-K was
-      // Android's `unknown_path`: the chosen item's provider handed back no
-      // stream, so the *whole* pick failed instead of returning a file with a
-      // null path, which the `skipped` count below is what handles. The folder
-      // pick beside this one wraps the same API for the same reason.
+      // `ListTile.onTap` - so before this catch the rejection had no listener
+      // anywhere, reached the zone as a fatal uncaught error, and the app died
+      // behind the picker the user was still looking at.
+      //
+      // QUNLEASHED-K was Android's `unknown_path`, and only the single-
+      // selection branch of it: `FileUtils.openFileStream` answered null for
+      // the chosen item, so `FilePickerDelegate` failed the whole call. This
+      // pick passes `allowMultiple: true`, where the same delegate drops the
+      // unreadable item and reports success instead - so a multi-select never
+      // arrives here, and `skipped` below cannot see it either, because what
+      // it counts is a file returned with a null path. #352 has that gap.
       LogService.caught(
         '[FileManager] the file pick failed: ${LogService.describe(e, st)}',
       );
@@ -973,9 +977,23 @@ class _FileManagerPageState extends State<FileManagerPage> {
                 context.l10n.fmUploadFiles,
                 style: TextStyle(color: colors.textPrimary),
               ),
+              // `guarded` and not a bare call, as everywhere else on this page
+              // (`_onEntryTap`, `_openFile`). The pick itself now catches, but
+              // the upload behind it does not: `_upload` catches only
+              // `FlipperCancelledException`, and the planning pass in
+              // `uploadLocal` stats every chosen path and lists the folder with
+              // nothing around either. A cache copy evicted between the pick
+              // and the stat - the same provider misbehaviour that produced
+              // QUNLEASHED-K's `unknown_path` - rejects out of here, and from a
+              // bare call that lands in the zone as a fatal with nothing naming
+              // it. CLAUDE.md names this shape and `unawaited_budget_test.dart`
+              // counts it.
               onTap: () {
                 Navigator.of(sheetContext).pop();
-                _uploadFromPath();
+                guarded(
+                  '[FileManager] uploading picked files',
+                  _uploadFromPath,
+                );
               },
             ),
             ListTile(
@@ -987,9 +1005,14 @@ class _FileManagerPageState extends State<FileManagerPage> {
                 context.l10n.fmUploadFolder,
                 style: TextStyle(color: colors.textPrimary),
               ),
+              // Same reasoning as the entry above: the folder pick catches, the
+              // walk and upload behind it do not.
               onTap: () {
                 Navigator.of(sheetContext).pop();
-                _uploadFolder();
+                guarded(
+                  '[FileManager] uploading a picked folder',
+                  _uploadFolder,
+                );
               },
             ),
             const SizedBox(height: 8),
