@@ -31,11 +31,11 @@ add_dependencies(${BINARY_NAME} qunleashed_hardnested)
 add_dependencies(${BINARY_NAME} qunleashed_faaccrack)
 
 # Its own variable, not `PLUGIN_BUNDLED_LIBRARIES`, which is what this used to
-# append to. That does not survive: `flutter/generated_plugins.cmake` opens
-# with a bare `set(PLUGIN_BUNDLED_LIBRARIES)` that clears it, and the parent
-# includes that file *after* this subdirectory - so all three libraries were
-# dropped before the install step read the list, and no Linux release has ever
-# carried them. `DynamicLibrary.open` then fails and MIFARE and SubGHz seed
+# append to. That does not survive: `flutter/generated_plugins.cmake` carries a
+# bare `set(PLUGIN_BUNDLED_LIBRARIES)` before its own loops, which clears it,
+# and the parent includes that file *after* this subdirectory - so all three
+# libraries were dropped before the install step read the list, and no Linux
+# release has ever carried them. `DynamicLibrary.open` then fails and MIFARE and SubGHz seed
 # recovery raise `NativeEngineUnavailable`, which is exactly the "packaging
 # fault" its doc comment was written for.
 #

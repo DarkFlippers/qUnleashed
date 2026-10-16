@@ -75,15 +75,6 @@ enable_language(C)
 set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -g")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -g")
 
-# And again as a directory property, which is not the same mechanism twice.
-# The variables above are inherited by value and a nested `project()` can
-# re-initialize them out from under a subdirectory; `COMPILE_OPTIONS` is a
-# directory property that every subdirectory added below inherits outright,
-# so it survives whatever the three `lib/modules/cpp` scopes do with their own
-# `cmake_minimum_required` and `project(... LANGUAGES C)`. A duplicate `-g` on
-# a command line is harmless.
-add_compile_options("$<$<CONFIG:Release>:-g>")
-
 
 # Compilation settings that should be applied to most targets.
 #
@@ -163,6 +154,19 @@ endforeach(bundled_library)
 # variable and is included after this subdirectory - so they were silently
 # dropped and no Linux release has ever shipped them. See the note beside
 # `QUNLEASHED_FFI_LIBRARIES` in `runner/CMakeLists.txt`.
+#
+# Empty means `runner/CMakeLists.txt` stopped setting it, or something cleared
+# it the way `generated_plugins.cmake` clears the variable this replaced. A
+# `foreach` over nothing is CMake's quietest construct - it would configure,
+# build and install silently, and only `build/linux.sh` would notice, in a job
+# that runs on no pull request. Failing here puts it in front of anyone who
+# runs `flutter build linux` at all.
+if(NOT QUNLEASHED_FFI_LIBRARIES)
+  message(FATAL_ERROR
+    "QUNLEASHED_FFI_LIBRARIES is empty, so the mfkey32, hardnested and "
+    "faaccrack libraries would not be installed into the bundle and the app "
+    "could not load them. See runner/CMakeLists.txt. (#338)")
+endif()
 foreach(ffi_library ${QUNLEASHED_FFI_LIBRARIES})
   install(FILES "${ffi_library}"
     DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"

@@ -94,6 +94,22 @@ $ExpectedPdbs = @("$AppName.pdb")
 foreach ($lib in @("mfkey32", "hardnested", "faaccrack")) {
     $ExpectedPdbs += "${AppName}_$lib.pdb"
 }
+# The DLLs first, by a separate check, because they reach this directory by a
+# different route than their PDBs: the DLLs via the POST_BUILD
+# `copy_if_different` in `windows/runner/CMakeLists.txt`, the PDBs via
+# `CMAKE_PDB_OUTPUT_DIRECTORY`. Break the copy and the PDB check below still
+# passes on all four files while the libraries themselves are gone - Sentry
+# would hold symbols for a DLL that does not ship and the app would fail to
+# load it. That is #338 on the other platform, and nothing else would catch it.
+$ExpectedDlls = @()
+foreach ($lib in @("mfkey32", "hardnested", "faaccrack")) {
+    $ExpectedDlls += "${AppName}_$lib.dll"
+}
+$MissingDlls = $ExpectedDlls | Where-Object { -not (Test-Path (Join-Path $BuildDir $_)) }
+if ($MissingDlls) {
+    throw "No $($MissingDlls -join ', ') in $BuildDir, so the app cannot load them. Check the POST_BUILD copy in windows/runner/CMakeLists.txt. (#338)"
+}
+
 $MissingPdbs = $ExpectedPdbs | Where-Object { -not (Test-Path (Join-Path $BuildDir $_)) }
 if ($MissingPdbs) {
     throw "No $($MissingPdbs -join ', ') in $BuildDir, so Sentry cannot symbolicate a Windows crash. Release must compile with /Zi and link with /DEBUG, and C must be enabled before the append - see the debug information block in windows/CMakeLists.txt. (#310)"

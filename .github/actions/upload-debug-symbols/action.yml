@@ -71,15 +71,30 @@ runs:
           {
             echo "### Debug symbols were not uploaded"
             echo "No \`SENTRY_AUTH_TOKEN\` on this \`${RUNNER_OS}\` build, which is expected on a fork or a dispatch without the secret. Native frames from it will not symbolicate."
-          } >> "$GITHUB_STEP_SUMMARY"
+          } >> "${GITHUB_STEP_SUMMARY:-/dev/stderr}"
           exit 0
         fi
 
+        # The exit status is not sufficient on its own. `_executeAndLog` in
+        # `sentry_dart_plugin` 3.4.0 catches an exception from *starting*
+        # sentry-cli, logs one plain line and returns false - and its caller
+        # discards that bool, so the plugin finalizes the release and exits 0.
+        # A binary that failed to download or spawn therefore looks exactly
+        # like a successful upload, which is #310's shape one layer up from
+        # where this change fixed it. A non-zero exit *code* from sentry-cli
+        # does propagate, so both signals are read: the status, and the line
+        # the plugin prints when it swallows one.
+        #
         # `exit 0` on failure is deliberate and matches the `continue-on-error`
         # on every caller: the release is built and must not be thrown away
         # over Sentry. The point is that it says so where it will be seen, and
         # names the command that re-does it from this same commit.
-        if ! dart run sentry_dart_plugin; then
+        log="${RUNNER_TEMP:-/tmp}/sentry-upload.log"
+        set +e
+        dart run sentry_dart_plugin 2>&1 | tee "$log"
+        status="${PIPESTATUS[0]}"
+        set -e
+        if [ "$status" -ne 0 ] || grep -qE "^Failed to (upload|create|finalize)" "$log"; then
           echo "::warning::sentry_dart_plugin failed. This build's native frames will NOT symbolicate until the symbols are re-uploaded."
           {
             echo "### Debug symbols were not uploaded"
@@ -89,6 +104,15 @@ runs:
             echo '```'
             echo "SENTRY_RELEASE=${SENTRY_RELEASE:-<release>} SENTRY_AUTH_TOKEN=<token> dart run sentry_dart_plugin"
             echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
+          } >> "${GITHUB_STEP_SUMMARY:-/dev/stderr}"
           exit 0
         fi
+
+        # And a line on success, so that "uploaded" and "this step never ran"
+        # stop looking identical. Three different things produced an empty
+        # summary before: a good upload, the step being dropped from a job, and
+        # the swallowed-failure case above. Only one of them is fine.
+        {
+          echo "### Debug symbols uploaded"
+          echo "\`${RUNNER_OS}\` build of \`${SENTRY_RELEASE:-unknown}\`."
+        } >> "${GITHUB_STEP_SUMMARY:-/dev/stderr}"

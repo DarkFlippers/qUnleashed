@@ -65,6 +65,14 @@ done
 # which has no extension, or a plugin named something new.
 is_elf() {
   local magic
+  # Unreadable is not "not an ELF file". Returning false for it would drop the
+  # file out of the strip and out of both scans below without a word, which is
+  # the same silent-pass shape `has_section` refuses a few lines down.
+  if [[ ! -r "$1" ]]; then
+    echo "::error::$1 cannot be read, so it would be skipped by the strip and" >&2
+    echo "::error::by both checks below without being reported. Refusing to pass." >&2
+    exit 1
+  fi
   IFS= read -r -N 4 -d '' magic < "$1" 2>/dev/null || return 1
   [[ "$magic" == $'\x7fELF' ]]
 }
@@ -88,7 +96,14 @@ has_section() {
     echo "::error::of the bundle than it reports. Refusing to pass: $sections" >&2
     exit 1
   fi
-  [[ "$sections" == *"$2"* ]]
+  # Anchored on the name column, not a substring of the whole output. The first
+  # line of `objdump -h` is the file's own path, so a substring match would let
+  # a bundle path containing `.dynsym` satisfy that check vacuously and make
+  # one containing `.debug_info` read as a leak. It also means a renamed or
+  # compressed section (`.zdebug_info`) is reported absent rather than matched
+  # by accident - which fails loudly in the positive checks and is the safe
+  # direction in the leak check.
+  awk -v want="$2" '$2 == want { found = 1 } END { exit !found }' <<<"$sections"
 }
 
 has_debug_info() {
@@ -163,20 +178,33 @@ for lib in mfkey32 hardnested faaccrack; do
   required_images+=("$BUILD_DIR/lib/libqunleashed_$lib.so")
 done
 
-# `is_elf` before `has_debug_info`, which is fatal on anything objdump cannot
-# read: a path that exists but is not an ELF image belongs in `missing` with
-# the others, not reported as a broken toolchain.
+# Three outcomes, not two, because sending someone to the wrong file is what
+# the absent/undebuggable split exists to stop: gone from the bundle, there but
+# not an ELF image at all, and there but carrying no DWARF. `is_elf` comes
+# before `has_debug_info`, which is fatal on anything objdump cannot read.
 #
 # Absent and present-but-undebuggable are reported apart, because they have
 # different causes and the first version of this guard conflated them: it said
 # "no .debug_info" about three libraries that were not in the bundle at all,
 # and cost an afternoon of looking for a stripping step that did not exist.
+# A floor on the list itself. Nothing can empty it as the code stands, but the
+# only thing between an empty list and a green run is the `echo` below - and a
+# log line as the last word on a failure is the shape CLAUDE.md names.
+if (( ${#required_images[@]} < 4 )); then
+  echo "::error::The required-images list has ${#required_images[@]} entries and" >&2
+  echo "::error::should have at least 4. Refusing to report a green bundle." >&2
+  exit 1
+fi
+
 absent=()
+malformed=()
 undebuggable=()
 for image in "${required_images[@]}"; do
   if [[ ! -f "$image" ]]; then
     absent+=("$image")
-  elif ! is_elf "$image" || ! has_debug_info "$image"; then
+  elif ! is_elf "$image"; then
+    malformed+=("$image")
+  elif ! has_debug_info "$image"; then
     undebuggable+=("$image")
   fi
 done
@@ -186,6 +214,14 @@ if (( ${#absent[@]} )); then
   echo "::error::install step still covers QUNLEASHED_FFI_LIBRARIES - see the" >&2
   echo "::error::note in linux/runner/CMakeLists.txt." >&2
   printf '  %s\n' "${absent[@]}" >&2
+  exit 1
+fi
+if (( ${#malformed[@]} )); then
+  echo "::error::These are in the bundle but are not ELF images - truncated, or" >&2
+  echo "::error::something other than a shared object was installed over them." >&2
+  echo "::error::Neither -g nor the install step is the cause; look at what" >&2
+  echo "::error::wrote them." >&2
+  printf '  %s\n' "${malformed[@]}" >&2
   exit 1
 fi
 if (( ${#undebuggable[@]} )); then
@@ -201,9 +237,12 @@ STAGE_DIR="$TMP_DIR/bundle"
 cp -a "$BUILD_DIR" "$STAGE_DIR"
 
 list_files "$STAGE_DIR" staged
-# A bundle that came back empty or reshaped would make every check below pass
-# over nothing. `check_linux_abi.sh` refuses the same state rather than
-# reporting a green run across a subset.
+# A tripwire, not a check against today's `cp`: `$STAGE_DIR` is a copy of a
+# directory whose runner was asserted present above, under `set -e`, so this
+# cannot fire as the code stands. It is here so that a future rewrite of the
+# staging step cannot leave the assertions below sweeping an empty directory
+# and reporting green - which is the failure mode this whole script exists to
+# close, one level up.
 if (( ${#staged[@]} < 2 )) || [[ ! -f "$STAGE_DIR/$APP_NAME" ]]; then
   echo "::error::The staged bundle has ${#staged[@]} file(s) and no $APP_NAME at" >&2
   echo "::error::its root. The layout changed and the checks below would cover" >&2
@@ -212,8 +251,9 @@ if (( ${#staged[@]} < 2 )) || [[ ! -f "$STAGE_DIR/$APP_NAME" ]]; then
 fi
 
 # `--strip-debug`, not the default `strip`: the symbol tables have to survive
-# or nothing resolves at load. `libapp.so` is the Dart AOT snapshot and carries
-# no `.debug_info`, so the strip is a no-op on it.
+# or nothing resolves at load. `libapp.so` is the Dart AOT snapshot, not built
+# by this tree, so the strip is expected to be a no-op on it - but it is not
+# skipped, and the assertions below cover it like anything else.
 for f in "${staged[@]}"; do
   if is_elf "$f"; then
     strip --strip-debug "$f" \
