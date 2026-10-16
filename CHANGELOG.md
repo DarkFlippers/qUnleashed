@@ -11,3 +11,4 @@
 - Diagnostics: device names, serials, BLE addresses and card identifiers are no longer replaced with placeholders in the reports sent to the developers, so a report says which unit and which card it is about (by @mishamyte | PR #334)
 - Crash reports: Windows and Linux builds carry debug information now, so a native crash names the function and line instead of the nearest export (by @mishamyte | PR #330 | Closes #310)
 - Fixed: MIFARE and SubGHz seed recovery on Linux, where the three native libraries were never copied into the release bundle and every attempt failed to load them (by @mishamyte | PR #330 | Closes #338)
+- Apps: stop a text selection in an app's description or changelog crashing the app when its handle is dragged, and stop the detail page redoing its markdown twelve times a minute (by @mishamyte | PR #339)
