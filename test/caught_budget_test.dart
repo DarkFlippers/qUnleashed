@@ -65,6 +65,16 @@ import 'ratchet.dart';
 /// pixel editor's load and send. The two Dolphin walks stayed — one entry per
 /// folder wants a tally at the caller, not a level here.
 ///
+/// It rose to 8 for the two import pickers, after QUNLEASHED-E. All three are
+/// failures of a file the user chose, which is the user's environment rather
+/// than a defect, so none of them is worth an alert — and none of them had
+/// any record at all before. The plotter counts two: a read or a pick that
+/// threw, and a pick that came back with no path, which every target this app
+/// ships does supply. They show the user the same sentence, so the log line
+/// is the only thing that can tell a report about one from a report about the
+/// other. Pixel Draw counts one, for the same `catch` reaching the same kind
+/// of failure; its toast prints the exception and kept nothing.
+///
 /// `pages/apps` is 1 and `pages/archive` 17 for the same operation: a launch
 /// refused because one of the same app is already in flight (#244). The tap
 /// did nothing, and the page deliberately shows nothing for it - so without a
@@ -94,7 +104,7 @@ import 'ratchet.dart';
 const Map<String, int> kBudget = {
   'services': 8,
   'pages/archive': 18,
-  'pages/tools': 5,
+  'pages/tools': 8,
   'pages/apps': 1,
 };
 

@@ -8184,6 +8184,19 @@
     "description": "Shown when a typed file name begins or ends with a period."
   },
 
+  "commonFileTooLarge": "That file is {size}. Pick one under {limit}.",
+  "@commonFileTooLarge": {
+    "description": "Shown when a file chosen in a picker is too big for the app to read into memory. TRANSLATORS: {size} and {limit} arrive already formatted and already in English units - '115.8 MB', '2.0 MB' - so place them, do not try to inflect around them. {limit} differs between screens, so do not hard-code it in the translation. The sentence states the size rather than calling the file invalid, because the file is fine and it is this importer that will not take it; the second half says what to do instead, since the user is standing in front of a picker.",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      },
+      "limit": {
+        "type": "String"
+      }
+    }
+  },
+
   "seedReplaceTitle": "Replace File?",
   "@seedReplaceTitle": {
     "description": "Title of the dialog shown when the chosen file name is already taken."
