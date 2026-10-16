@@ -5,13 +5,36 @@ import 'package:flutter/material.dart';
 import 'package:qunleashed/components/appbar.dart';
 
 import '../../../services/localization/l10n.dart';
+import '../../../services/logging.dart';
 import '../../../theme/theme.dart';
+import '../../../components/format.dart';
 import '../../../components/notification.dart';
+import '../../../components/picked_file.dart';
 import 'models.dart';
 import 'parsing.dart';
 import 'plotter_view.dart';
 import 'ui.dart';
 import '../../devices/device_scope.dart';
+
+/// The largest capture this page will read, and it is small for a reason.
+///
+/// `parsePlotterFile` is not a streaming parser and does not pretend to be:
+/// it turns the whole buffer into a UTF-16 `String` (twice the bytes), splits
+/// that into a list of every line, and for a SubGHz RAW capture builds the
+/// pulse string with `rawData += raw` inside a loop, which is quadratic, then
+/// boxes a `double` per token. A limit set by what the *file* costs would be
+/// a limit on the wrong number - the heap this page needs is some multiple of
+/// it, and the device that produced QUNLEASHED-E allowed 256 MB in total.
+///
+/// Measured on a desktop, replaying `_processSubGhz` over synthetic RAW
+/// input: 2 MB parses in about half a second, 7 MB in four, and 32 MB in 74 -
+/// behind a spinner with no cancel, and a phone is several times slower. The
+/// curve is the quadratic, not the read.
+///
+/// 2 MB is still far past anything real: a long SubGHz recording is tens of
+/// kilobytes, an `.ir` library a few hundred. The margin is for a capture
+/// nobody has made yet, not for a file picked by mistake.
+const int _plotterImportLimit = 2 * 1024 * 1024;
 
 const double _maxContentWidth = 720;
 const double _wideContentThreshold = 1000;
@@ -98,11 +121,21 @@ class _PulsePlotterPageState extends State<PulsePlotterPage> {
     if (_picking) return;
     setState(() => _picking = true);
     try {
-      final result = await FilePicker.platform.pickFiles(withData: true);
-      if (result == null) return;
-      final file = result.files.single;
-      final bytes = file.bytes;
-      if (bytes == null) {
+      // `withData: false` (the default); the bytes are read in Dart. See
+      // `readPickedFile` for why. Sentry QUNLEASHED-E.
+      final result = await FilePicker.platform.pickFiles();
+      // `files` can be empty on a non-null result, and `single` throws on it -
+      // which the catch below would then report as a read that failed.
+      if (result == null || result.files.isEmpty) return;
+      final file = result.files.first;
+      final path = file.path;
+      if (path == null) {
+        // Every target this app ships supplies a path, so this is a condition
+        // nobody expects rather than one the user did something to cause. It
+        // shows the same sentence as a failed read, because there is nothing
+        // different for the user to do - but a report quoting that sentence
+        // can be told apart from the other one only if this is written down.
+        LogService.caught('[Plotter] the pick carried no path: ${file.name}');
         if (mounted) {
           context.showNotification(
             l10n.plotReadFailed,
@@ -111,6 +144,7 @@ class _PulsePlotterPageState extends State<PulsePlotterPage> {
         }
         return;
       }
+      final bytes = await readPickedFile(path, limit: _plotterImportLimit);
       // The picker is modal to the OS and not to Flutter, so the page behind
       // it can be left while it is open - and setState after dispose throws.
       // The same hole was found in the firmware button while testing #250.
@@ -122,6 +156,32 @@ class _PulsePlotterPageState extends State<PulsePlotterPage> {
         _current = null;
       });
       await _handleBytes(bytes);
+    } on PickedFileTooLarge catch (e) {
+      if (!mounted) return;
+      context.showNotification(
+        l10n.commonFileTooLarge(formatBytes(e.size), formatBytes(e.limit)),
+        type: QNotificationType.error,
+      );
+    } catch (e, st) {
+      // Reading the file is this method's own I/O now, and it is reached from
+      // a VoidCallback - so without a catch a rejection is discarded and lands
+      // in the log as [uncaught] with nothing naming it, while on screen the
+      // button just flicks back to enabled. The firmware button wraps its
+      // picker for the same reason.
+      //
+      // `caught` and not `error`: the picker refusing, or a file that went
+      // away between the pick and the read, is the user's environment rather
+      // than a defect, and an alert per occurrence is what crowded the real
+      // errors out of the SDK's cache once already. The sentence names the
+      // whole span, because the try covers the pick as well as the read.
+      LogService.caught(
+        '[Plotter] picking or reading a file failed: ${LogService.describe(e, st)}',
+      );
+      if (!mounted) return;
+      context.showNotification(
+        l10n.plotReadFailed,
+        type: QNotificationType.error,
+      );
     } finally {
       // Every exit above is a `return`, which a finally covers - so the guard
       // is released without a second method to hold the body.
