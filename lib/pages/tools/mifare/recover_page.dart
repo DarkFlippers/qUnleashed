@@ -44,13 +44,13 @@ class _RecoverPageState extends State<RecoverPage> {
     super.initState();
     _controller =
         (widget.controller ?? RecoverController(client: widget.client))
-          ..addListener(_onChanged);
+          ..entriesChanged.addListener(_onChanged);
     _controller.start();
   }
 
   @override
   void dispose() {
-    _controller.removeListener(_onChanged);
+    _controller.entriesChanged.removeListener(_onChanged);
     _controller.dispose();
     super.dispose();
   }
@@ -114,27 +114,39 @@ class _RecoverPageState extends State<RecoverPage> {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
-    return PopScope(
-      canPop: !_controller.running,
-      onPopInvokedWithResult: (didPop, result) async {
-        if (didPop) return;
-        final navigator = Navigator.of(context);
-        if (await _confirmAbort() && mounted) navigator.pop();
-      },
-      child: Scaffold(
-        backgroundColor: colors.background,
-        appBar: AppBar(
-          backgroundColor: colors.accent,
-          foregroundColor: colors.onAccent,
-          title: Text(context.l10n.toolMifare),
-        ),
-        body: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            _StatusBlock(controller: _controller),
-            if (_controller.canStop) _stopButton(context),
-            ..._buildGroups(_controller),
-          ],
+    // Built out here, so these instances are made again only when this State
+    // rebuilds: a row was added, or the theme or locale changed. The builder
+    // below is what a progress tick rebuilds, and it closes over these - the
+    // framework sees the same widget instance and skips each row's subtree.
+    // Sentry QUNLEASHED-H: rebuilding them twice a second for the hours a
+    // hardnested attack runs hung the macOS main thread for at least 2 s.
+    final rows = _buildGroups(_controller);
+    return ListenableBuilder(
+      listenable: _controller,
+      builder: (context, _) => PopScope(
+        canPop: !_controller.running,
+        onPopInvokedWithResult: (didPop, result) async {
+          if (didPop) return;
+          final navigator = Navigator.of(context);
+          if (await _confirmAbort() && mounted) navigator.pop();
+        },
+        child: Scaffold(
+          backgroundColor: colors.background,
+          appBar: AppBar(
+            backgroundColor: colors.accent,
+            foregroundColor: colors.onAccent,
+            title: Text(context.l10n.toolMifare),
+          ),
+          body: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              // The heads are rebuilt every tick, which is the point - they
+              // are what a tick changes. The rows are not.
+              _StatusBlock(controller: _controller),
+              if (_controller.canStop) _stopButton(context),
+              ...rows,
+            ],
+          ),
         ),
       ),
     );
@@ -234,7 +246,7 @@ class _CardBlock extends StatelessWidget {
         children: [
           if (cuidHex != null) ...[
             Text(
-              l10n.mfCardTitle(cuidHex!),
+              context.l10n.mfCardTitle(cuidHex!),
               style: TextStyle(
                 color: colors.textPrimary,
                 fontSize: 14,
@@ -260,7 +272,11 @@ class _EntryRow extends StatelessWidget {
 
   final RecoverEntry entry;
 
-  static String _kindLabel(RecoverKind kind) => switch (kind) {
+  /// Takes the strings rather than reading the global `l10n`, so the caller's
+  /// `context.l10n` is the only way in. That keeps the row a `Localizations`
+  /// dependent, which is what makes it follow a language change - the global
+  /// registers no dependency, and these rows outlive many a rebuild.
+  static String _kindLabel(L10n l10n, RecoverKind kind) => switch (kind) {
     RecoverKind.mfkey32 => 'mfkey32',
     RecoverKind.weakNested => l10n.mfKindWeakNested,
     RecoverKind.staticNonce => l10n.mfKindStaticNonce,
@@ -272,6 +288,7 @@ class _EntryRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
+    final l10n = context.l10n;
     final where = (entry.sectorName != null && entry.keyName != null)
         ? l10n.mfSectorKey('${entry.sectorName}', '${entry.keyName}')
         : null;
@@ -285,7 +302,9 @@ class _EntryRow extends StatelessWidget {
       final tag = entry.isNew == false
           ? l10n.mfTagAlreadyInDict
           : l10n.mfTagNew;
-      line = '${where ?? ''} — ${entry.key}  [${_kindLabel(entry.kind)}, $tag]';
+      line =
+          '${where ?? ''} — ${entry.key}  '
+          '[${_kindLabel(l10n, entry.kind)}, $tag]';
     } else if (entry.candidateCount != null && entry.cuid != null) {
       line = l10n.mfCandidateKeys(
         entry.candidateCount!,
@@ -294,7 +313,8 @@ class _EntryRow extends StatelessWidget {
       explainer = l10n.mfCandidateExplainer;
       color = colors.textMuted;
     } else {
-      line = '${where != null ? '$where — ' : ''}${_kindLabel(entry.kind)}';
+      line =
+          '${where != null ? '$where — ' : ''}${_kindLabel(l10n, entry.kind)}';
       color = colors.textMuted;
     }
 
