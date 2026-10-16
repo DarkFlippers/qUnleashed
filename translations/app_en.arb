@@ -8197,6 +8197,11 @@
     }
   },
 
+  "commonPickFailed": "The system file picker failed, and nothing was chosen",
+  "@commonPickFailed": {
+    "description": "Toast shown when the operating system's file or folder picker answered with an error instead of a selection, so the operation did not start. TRANSLATORS: 'the system file picker' is the operating system's own dialog, not a screen of this app - the app cannot say why it failed, which is why the sentence does not try to. The second half is there because the user has just been in that dialog and needs to know the pick did not half-happen: nothing was uploaded, saved or exported."
+  },
+
   "seedReplaceTitle": "Replace File?",
   "@seedReplaceTitle": {
     "description": "Title of the dialog shown when the chosen file name is already taken."

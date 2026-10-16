@@ -2,6 +2,7 @@ import 'dart:async';
 
 import '../../../services/localization/l10n.dart';
 import '../../../services/guarded.dart';
+import '../../../services/logging.dart';
 
 import 'dart:typed_data';
 
@@ -720,11 +721,33 @@ class _FileManagerPageState extends State<FileManagerPage> {
   }
 
   Future<void> _uploadFromPath() async {
-    final result = await FilePicker.platform.pickFiles(
-      allowMultiple: true,
-      withData: false,
-      withReadStream: false,
-    );
+    final FilePickerResult? result;
+    try {
+      result = await FilePicker.platform.pickFiles(
+        allowMultiple: true,
+        withData: false,
+        withReadStream: false,
+      );
+    } catch (e, st) {
+      // The pick rejects rather than answering, and this is reached from a
+      // `ListTile.onTap` - so without a catch the rejection has no listener
+      // anywhere, reaches the zone as a fatal uncaught error, and the app dies
+      // behind the picker the user is still looking at. QUNLEASHED-K was
+      // Android's `unknown_path`: the chosen item's provider handed back no
+      // stream, so the *whole* pick failed instead of returning a file with a
+      // null path, which the `skipped` count below is what handles. The folder
+      // pick beside this one wraps the same API for the same reason.
+      LogService.caught(
+        '[FileManager] the file pick failed: ${LogService.describe(e, st)}',
+      );
+      if (mounted) {
+        context.showNotification(
+          context.l10n.commonPickFailed,
+          type: QNotificationType.error,
+        );
+      }
+      return;
+    }
     if (result == null || result.files.isEmpty) return;
     await _upload([
       for (final f in result.files)

@@ -1,5 +1,6 @@
 import '../../../../services/archive/sort_settings.dart';
 import '../../../../services/guarded.dart';
+import '../../../../services/logging.dart';
 import '../../../../services/localization/l10n.dart';
 
 import 'dart:async';
@@ -529,9 +530,26 @@ class _CategoryPageState extends State<CategoryPage> {
       return;
     }
 
-    final dir = await FilePicker.platform.getDirectoryPath(
-      dialogTitle: context.l10n.archiveSaveFiles(keys.length),
-    );
+    final String? dir;
+    try {
+      dir = await FilePicker.platform.getDirectoryPath(
+        dialogTitle: context.l10n.archiveSaveFiles(keys.length),
+      );
+    } catch (e, st) {
+      // Reached from a toolbar button, so a rejection here has no listener at
+      // all and lands in the zone as a fatal uncaught error - which is how
+      // QUNLEASHED-K killed the app from the file browser's own pick.
+      LogService.caught(
+        '[Archive] the folder pick failed: ${LogService.describe(e, st)}',
+      );
+      if (context.mounted) {
+        context.showNotification(
+          context.l10n.commonPickFailed,
+          type: QNotificationType.error,
+        );
+      }
+      return;
+    }
     if (dir == null) return;
 
     final saved = await saveKeysInto(keys, dir);

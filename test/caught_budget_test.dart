@@ -135,10 +135,32 @@ import 'ratchet.dart';
 /// `catch` that still has a user waiting, so the call is wrapped, and the one
 /// line is what keeps a lost report from being silent. `connect_report.dart`
 /// has which two things in there can throw.
+/// It rose by four for the pickers that had no `try` at all, after
+/// QUNLEASHED-K - two in `pages/archive`, one in `pages/tools`, and the new
+/// `pages/flibler`. They are one rule, not four judgements: a picker the user
+/// opened answered with an error instead of a selection, so the upload, the
+/// save or the export never started. That is an operation that did not do what
+/// was asked, and it is the user's environment rather than a defect - Android
+/// answers `unknown_path` when the chosen item's provider hands back no
+/// stream - so none of them is worth an alert, and none of them had any record
+/// at all before, because the rejection was going to the zone as a fatal
+/// instead.
+///
+/// The line is also the only thing that can tell the two refusals apart. All
+/// four show `commonPickFailed`, which deliberately does not guess at a cause,
+/// so a report quoting that sentence says nothing about whether the picker was
+/// missing or the file was unreachable. Each is one tap, and the four sentences
+/// differ, so the fold does not hide a repeat.
+///
+/// The three pickers that already caught were left alone: they tell the user
+/// something and keep nothing, which is a smaller fault than this one and not
+/// this issue's. `test/picker_guard_test.dart` holds the `try`; what the catch
+/// then records is still per-site judgement.
 const Map<String, int> kBudget = {
   'services': 9,
-  'pages/archive': 18,
-  'pages/tools': 10,
+  'pages/archive': 20,
+  'pages/tools': 11,
+  'pages/flibler': 1,
   'pages/apps': 1,
 };
 
