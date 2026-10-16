@@ -32,7 +32,7 @@ class EditorAppBar extends StatelessWidget implements PreferredSizeWidget {
   final VoidCallback onImport;
 
   @override
-  Size get preferredSize => const Size.fromHeight(QPageAppBar.toolbarHeight);
+  Size get preferredSize => QPageAppBar.preferredSizeWithoutBottom;
 
   @override
   Widget build(BuildContext context) {

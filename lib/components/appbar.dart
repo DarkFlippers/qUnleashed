@@ -45,6 +45,13 @@ class QPageAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   static const double toolbarHeight = 68;
 
+  /// What a bar with no [bottom] prefers.
+  ///
+  /// For the `PreferredSizeWidget`s that wrap one of these - `Scaffold.appBar`
+  /// wants the size before the bar is built, so a wrapper has to answer for
+  /// it, and the height should not be restated per feature.
+  static const Size preferredSizeWithoutBottom = Size.fromHeight(toolbarHeight);
+
   @override
   Size get preferredSize =>
       Size.fromHeight(toolbarHeight + (bottom?.preferredSize.height ?? 0));
