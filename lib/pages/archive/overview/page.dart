@@ -3,7 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../services/localization/l10n.dart';
+import '../../../services/permissions/permission.dart';
 import '../../../components/cardlist.dart';
+import '../../../components/dialogs/storage_permission.dart';
+import '../../../components/permission_notice.dart';
 import '../../../components/icon.dart';
 import '../../../components/navigation.dart';
 import '../../../theme/theme.dart';
@@ -239,6 +242,21 @@ class _ArchivePageState extends State<ArchivePage> {
               child: CustomScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 slivers: [
+                  // Above the Flipper's own storage cards, because the two are
+                  // easy to confuse and the distinction is the reassurance:
+                  // what is on the device is unaffected, it is the copy on
+                  // this phone that cannot be read. #351.
+                  SliverToBoxAdapter(
+                    child: PermissionNotice(
+                      permission: AppPermission.storage,
+                      severity: PermissionNoticeSeverity.blocking,
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                      title: context.l10n.permissionStorageDeniedTitle,
+                      body: context.l10n.permissionStorageDeniedArchive,
+                      actionLabel: context.l10n.permissionStorageGrant,
+                      onAction: () => unawaited(promptStorageAccess(context)),
+                    ),
+                  ),
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: const EdgeInsets.only(top: 16, bottom: 4),

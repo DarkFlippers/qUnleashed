@@ -1,7 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../../../components/dialogs/storage_permission.dart';
+import '../../../components/permission_notice.dart';
 import '../../../services/localization/l10n.dart';
+import '../../../services/permissions/permission.dart';
 import '../../../theme/theme.dart';
 
 import 'package:qunleashed/components/appbar.dart';
@@ -135,6 +140,21 @@ class _IrLibPageState extends State<IrLibPage> {
                     onSubmitted: (q) => _ctrl.startSearch(q),
                     onClear: _ctrl.clearSearch,
                   ),
+                  // The actionable half of a storage denial. The partial-search
+                  // sentence below says a list may be short; it does not say why
+                  // or offer a way out, and this is the page where a denied
+                  // permission is most visible - a local library reads as absent
+                  // because the folder cannot be listed. The same notice Archive
+                  // and Settings -> Storage mount. #351.
+                  PermissionNotice(
+                    permission: AppPermission.storage,
+                    severity: PermissionNoticeSeverity.blocking,
+                    padding: const EdgeInsets.fromLTRB(10, 0, 10, 6),
+                    title: context.l10n.permissionStorageDeniedTitle,
+                    body: context.l10n.permissionStorageDeniedIrLibrary,
+                    actionLabel: context.l10n.permissionStorageGrant,
+                    onAction: () => unawaited(promptStorageAccess(context)),
+                  ),
                   Expanded(child: _buildBody(context)),
                 ],
               ),
@@ -188,6 +208,13 @@ class _IrLibPageState extends State<IrLibPage> {
         title: isSearch
             ? context.l10n.irNoMatchesFor(_ctrl.searchQuery)
             : context.l10n.irEmptyFolder,
+        // The case this matters most in: a search that found nothing
+        // because a folder near the root would not list reads as a
+        // library with no match for the query, which is a different
+        // and wrong answer. #351.
+        subtitle: isSearch && _ctrl.searchWasPartial
+            ? context.l10n.irSearchPartial
+            : null,
       );
     }
 
@@ -207,9 +234,27 @@ class _IrLibPageState extends State<IrLibPage> {
           if (isSearch && i == 0) {
             return Padding(
               padding: const EdgeInsets.fromLTRB(6, 6, 6, 8),
-              child: Text(
-                context.l10n.irResultCount(list.length, _ctrl.searchQuery),
-                style: TextStyle(color: colors.textMuted, fontSize: 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    context.l10n.irResultCount(list.length, _ctrl.searchQuery),
+                    style: TextStyle(color: colors.textMuted, fontSize: 12),
+                  ),
+                  // Beside the count, because the count is the claim this
+                  // qualifies: a pruned subtree makes it an undercount.
+                  if (_ctrl.searchWasPartial) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      context.l10n.irSearchPartial,
+                      style: TextStyle(
+                        color: colors.danger,
+                        fontSize: 12,
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ],
               ),
             );
           }
@@ -318,8 +363,12 @@ class _IrEntryCard extends StatelessWidget {
 }
 
 class _EmptyView extends StatelessWidget {
-  const _EmptyView({required this.title});
+  const _EmptyView({required this.title, this.subtitle});
   final String title;
+
+  /// A qualifier under the title, for when the emptiness itself is in
+  /// doubt rather than a plain fact.
+  final String? subtitle;
 
   @override
   Widget build(BuildContext context) {
@@ -334,8 +383,21 @@ class _EmptyView extends StatelessWidget {
             const SizedBox(height: 12),
             Text(
               title,
+              textAlign: TextAlign.center,
               style: TextStyle(color: colors.textPrimary, fontSize: 15),
             ),
+            if (subtitle != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                subtitle!,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: colors.danger,
+                  fontSize: 13,
+                  height: 1.3,
+                ),
+              ),
+            ],
           ],
         ),
       ),

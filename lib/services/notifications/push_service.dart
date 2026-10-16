@@ -10,6 +10,8 @@ import '../settings/persist.dart';
 
 import '../localization/l10n.dart';
 import '../logging.dart';
+import '../permissions/center.dart';
+import '../permissions/permission.dart';
 import 'firebase_options.dart';
 import 'notification_center.dart';
 import 'push_intent.dart';
@@ -82,7 +84,44 @@ class PushService {
 
   static bool get isUnavailable => _unavailable;
 
-  Future<void> start() async {
+  /// Sets [isUnavailable] from a test.
+  ///
+  /// There is no other way in. `_unavailable` is written in exactly one place
+  /// — the Firebase catch in [start] — and a test cannot reach it without a
+  /// Firebase, so the Settings → Push branch that renders "this build is not
+  /// signed for push" was unreachable from any test. That is the branch #351
+  /// is about: it asserted a wrong cause for a denied permission, and the test
+  /// written to prove the fix passed either way because the sentence it
+  /// searched for could never appear.
+  ///
+  /// Call `debugSetUnavailable(false)` in a tearDown — this is a static with
+  /// no owner, so a test that leaves it set changes the next one.
+  @visibleForTesting
+  static void debugSetUnavailable(bool value) => _unavailable = value;
+
+  /// Maps Firebase's answer onto the app's.
+  ///
+  /// `provisional` is iOS delivering quietly without having asked, which
+  /// is not a refusal and not something to offer a settings link for.
+  /// `notDetermined` has not been answered at all.
+  static PermissionOutcome _outcomeOf(AuthorizationStatus status) {
+    return switch (status) {
+      AuthorizationStatus.authorized => PermissionOutcome.granted,
+      AuthorizationStatus.provisional => PermissionOutcome.granted,
+      AuthorizationStatus.denied => PermissionOutcome.denied,
+      AuthorizationStatus.notDetermined => PermissionOutcome.unknown,
+    };
+  }
+
+  /// Brings push up.
+  ///
+  /// [permissions] is where the notification permission's answer goes.
+  ///
+  /// Required rather than nullable: the one caller
+  /// (`bootstrapAmbientServices`) always has one, and an optional parameter
+  /// bought nothing except a `?.` that could silently drop the answer this
+  /// whole change exists to keep.
+  Future<void> start({required PermissionCenter permissions}) async {
     if (_started || !isSupported) return;
     _started = true;
 
@@ -99,7 +138,19 @@ class PushService {
       await _ensureAndroidChannel();
 
       final messaging = FirebaseMessaging.instance;
-      await messaging.requestPermission(alert: true, badge: false, sound: true);
+      // The answer is read now. It was discarded here, and the only thing
+      // the user was ever told about a denial was Settings -> Push
+      // claiming the build is not signed for it - a confident statement
+      // of the wrong cause. #351.
+      final settings = await messaging.requestPermission(
+        alert: true,
+        badge: false,
+        sound: true,
+      );
+      permissions.record(
+        AppPermission.pushNotifications,
+        _outcomeOf(settings.authorizationStatus),
+      );
 
       await messaging.setForegroundNotificationPresentationOptions(
         alert: true,

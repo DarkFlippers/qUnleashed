@@ -46,6 +46,7 @@ class IrLibController extends ChangeNotifier {
   bool _searching = false;
   String _searchQuery = '';
   List<IrEntry> _searchResults = const [];
+  bool _searchWasPartial = false;
   String _searchProgressPath = '';
 
   String _deviceName = '';
@@ -81,6 +82,15 @@ class IrLibController extends ChangeNotifier {
   bool get searching => _searching;
   String get searchQuery => _searchQuery;
   List<IrEntry> get searchResults => _searchResults;
+
+  /// Whether at least one folder could not be listed during the last
+  /// search, so [searchResults] may be missing matches.
+  ///
+  /// Not an error: the search returned, and what it returned is real. It is
+  /// the completeness that is in doubt, which is a different sentence and
+  /// belongs beside the results rather than in place of them.
+  bool get searchWasPartial => _searchWasPartial;
+
   String get searchProgressPath => _searchProgressPath;
   bool get isConnected => _client.isConnected;
   String get deviceName => _deviceName;
@@ -241,6 +251,7 @@ class IrLibController extends ChangeNotifier {
     if (_searching) return;
     _searching = true;
     _searchResults = const [];
+    _searchWasPartial = false;
     _searchProgressPath = '';
     // A search starting is a new answer to the same question, so whatever
     // the last one said no longer applies.
@@ -248,14 +259,19 @@ class IrLibController extends ChangeNotifier {
     notifyListeners();
     try {
       final throttle = ProgressThrottle();
-      final results = await _api.searchAllIrFiles(
+      final search = await _api.searchAllIrFiles(
         query: q,
         onProgress: (found, current) {
           _searchProgressPath = current;
           if (throttle.tick()) notifyListeners();
         },
       );
-      _searchResults = results;
+      _searchResults = search.entries;
+      // A folder that would not list prunes its whole subtree, and the result
+      // cap cuts the walk off, so this list can be short for a reason the user
+      // cannot see. Saying so is the difference between a short list and a
+      // wrong one. #351.
+      _searchWasPartial = !search.complete;
     } catch (e) {
       _error = '$e';
       // _searchResults is cleared above the try, so the page's error view
@@ -270,6 +286,7 @@ class IrLibController extends ChangeNotifier {
   void clearSearch() {
     _searchQuery = '';
     _searchResults = const [];
+    _searchWasPartial = false;
     _searching = false;
     // Back to the listing, so a search's error stops describing what is on
     // screen. Leaving it is how the page came to explain an empty folder

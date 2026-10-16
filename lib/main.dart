@@ -8,6 +8,10 @@ import 'app/shutdown.dart';
 import 'services/localization/controller.dart';
 import 'services/assembler/controller.dart';
 import 'services/connection/foreground_service.dart';
+import 'services/permissions/center.dart';
+import 'services/permissions/permission.dart';
+import 'services/permissions/probes.dart';
+import 'services/storage/permissions.dart';
 import 'services/home_widget/service.dart';
 import 'services/home_widget/settings.dart';
 import 'services/logging.dart';
@@ -30,7 +34,11 @@ Future<void> main() async {
 /// standing warning is that anything assembled in `_runApp` does not exist in
 /// `widgetMain()`. Assembling both here is what keeps the headless isolate
 /// reporting at all.
-typedef AppCore = ({FlipperClient client, Telemetry telemetry});
+typedef AppCore = ({
+  FlipperClient client,
+  Telemetry telemetry,
+  PermissionCenter permissions,
+});
 
 /// Entry point of the engine a home-screen widget starts while the app is not
 /// running: the same isolate the activity later attaches to, minus the UI and
@@ -38,7 +46,20 @@ typedef AppCore = ({FlipperClient client, Telemetry telemetry});
 /// survives the screen going dark. `promote` turns it into the full app.
 @pragma('vm:entry-point')
 Future<void> widgetMain() async {
-  await BleForegroundService.instance.start((await _initCore()).client);
+  final core = await _initCore();
+  // The centre goes in here too. CLAUDE.md's standing warning is that
+  // anything assembled in `_runApp` does not exist on this path, and this
+  // service is where two of the five permissions in #351 are answered - so a
+  // centre wired only in `_runApp` would lose exactly the answers a cold
+  // widget-started session produces.
+  //
+  // No observer is installed here and none should be: there is no screen to
+  // update, and the activity that attaches later runs `_runApp`, which calls
+  // `install()` on this same object.
+  await BleForegroundService.instance.start(
+    core.client,
+    permissions: core.permissions,
+  );
 }
 
 /// Everything that has to exist before there is a UI.
@@ -75,7 +96,19 @@ Future<AppCore> _initCore() async {
   // widget serves taps with it on either path. Constructing it touches no
   // disk and no platform channel, so it does not need a catch of its own.
   final client = FlipperOneClient().get();
-  final core = (client: client, telemetry: telemetry);
+  // Here and not in `_runApp`, because `widgetMain()` never reaches `_runApp`
+  // and the foreground service it starts answers two of these five
+  // permissions. Constructing it touches no disk and no platform channel -
+  // the probes are closures nothing has called yet - so it is safe on a path
+  // that must never throw. #351.
+  final permissions = PermissionCenter(probes: buildPermissionProbes(client));
+  // The storage permission is answered deep inside `paths.dart`, on a path
+  // the home-screen widget's isolate and a dozen unit tests also reach. A
+  // sink rather than an import is what lets those paths stay unchanged.
+  reportStoragePermissionTo(
+    (outcome) => permissions.record(AppPermission.storage, outcome),
+  );
+  final core = (client: client, telemetry: telemetry, permissions: permissions);
   HomeWidgetService.instance.install(
     client: client,
     promote: () => _runApp(core),
@@ -112,11 +145,12 @@ Future<void> _runApp(AppCore core) async {
       QUnleashedApp(
         client: client,
         diagnostics: core.telemetry.settings,
+        permissions: core.permissions,
         navigatorObservers: core.telemetry.navigatorObservers,
       ),
     ),
   );
-  bootstrapAmbientServices();
+  bootstrapAmbientServices(core.permissions);
   // Here and not in _initCore: widgetMain() never reaches _runApp and has no
   // window to hook, and _initCore must never throw. See AppShutdown.
   await AppShutdown(client, core.telemetry).install();

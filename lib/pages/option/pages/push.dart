@@ -1,8 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../components/cardlist.dart';
+import '../../../components/permission_notice.dart';
 import '../../../services/localization/l10n.dart';
 import '../../../services/notifications/push_service.dart';
+import '../../../services/permissions/permission.dart';
+import '../../../services/permissions/scope.dart';
 import '../../../theme/theme.dart';
 
 class _Toggle {
@@ -38,6 +43,10 @@ class _NotificationsSettingsPageState extends State<NotificationsSettingsPage> {
     super.initState();
     _load();
   }
+
+  /// The shared route, which also tells the user when it cannot open.
+  void _openSettings() =>
+      unawaited(openPermissionSettings(context, '[Push] opening app settings'));
 
   Future<void> _load() async {
     final appReleases = await PushService.instance.isAppReleasesEnabled();
@@ -130,6 +139,23 @@ class _NotificationsSettingsPageState extends State<NotificationsSettingsPage> {
     // a preference and then do nothing. pushUnsupportedPlatform already says
     // exactly that.
     final supported = PushService.topicsSupported && !unavailable;
+    // A refused notification permission is the one cause this page used to
+    // get wrong. `isUnavailable` is set for any throw out of `start` - a
+    // missing Play Services, a network blip during Firebase init, a denial -
+    // and the page asserted "this build is not signed for push" for all of
+    // them. A confident claim about the wrong cause stops the reader
+    // looking, so the denial is named first and the build sentence is kept
+    // only for the case it is actually true of. #351.
+    // `outcomeOf`, not `shouldNotice`. A dismissal is the user asking the
+    // notice to stop nagging; it is not permission to state a false cause
+    // instead. Keyed off `shouldNotice` this flipped to false on the first tap
+    // of Dismiss and the page went straight back to asserting the
+    // unsigned-build sentence to a user whose permission was still refused.
+    final denied =
+        PermissionScope.maybeOf(context)
+            ?.outcomeOf(AppPermission.pushNotifications)
+            .warrantsNotice ??
+        false;
     return Scaffold(
       backgroundColor: colors.background,
       appBar: AppBar(
@@ -140,7 +166,20 @@ class _NotificationsSettingsPageState extends State<NotificationsSettingsPage> {
       body: ListView(
         padding: const EdgeInsets.symmetric(vertical: 10),
         children: [
-          if (!supported)
+          PermissionNotice(
+            permission: AppPermission.pushNotifications,
+            severity: PermissionNoticeSeverity.informational,
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+            icon: Icons.notifications_off_outlined,
+            title: context.l10n.permissionPushDeniedTitle,
+            body: context.l10n.permissionPushDeniedBody,
+            actionLabel: context.l10n.permissionPushTurnOn,
+            onAction: _openSettings,
+          ),
+          // Only once the denial has been ruled out. Both of these are
+          // true statements about a build or a platform; neither is true
+          // of a user who said no, and saying one to them is the defect.
+          if (!supported && !denied)
             Padding(
               padding: const EdgeInsets.fromLTRB(26, 0, 26, 8),
               child: Text(

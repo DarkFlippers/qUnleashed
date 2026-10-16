@@ -5,6 +5,7 @@ import 'dart:io' as io;
 import 'package:flutter/foundation.dart';
 
 import '../../../services/http/app_http.dart';
+import '../../../services/logging.dart';
 import 'models.dart';
 
 class IrLibException implements Exception {
@@ -136,22 +137,54 @@ class IrLibApi {
     return out;
   }
 
-  Future<List<IrEntry>> searchAllIrFiles({
+  /// Walks the whole tree for files matching [query].
+  ///
+  /// Returns what was found **and** whether the walk was complete, because
+  /// those are two different answers and the caller needs both. A folder that
+  /// fails to list prunes its entire subtree, so one failure near the root can
+  /// cost most of the library - and until #351 the `catch (_) { continue; }`
+  /// here meant the short result was handed back as though it were whole.
+  /// CLAUDE.md names that shape as one that has already shipped bugs here.
+  ///
+  /// `complete` is false for **either** reason a list can be short: a folder
+  /// that would not list, or [maxResults] cutting the walk off. The second was
+  /// an unreported cause of exactly the same defect - a capped search is also
+  /// a partial answer presented as a total - and the sentence the page shows
+  /// names no cause, so one flag serves both.
+  ///
+  /// Still not a throw. A search that found ninety of a hundred matches is
+  /// more use than an exception, and the remote tree has folders that fail for
+  /// reasons the user cannot act on.
+  Future<({List<IrEntry> entries, bool complete})> searchAllIrFiles({
     required String query,
     required void Function(int found, String currentPath) onProgress,
     int maxResults = 200,
   }) async {
     final results = <IrEntry>[];
+    var unreadable = 0;
+    var truncated = false;
+    String? firstFailure;
     final q = query.trim().toLowerCase();
-    if (q.isEmpty) return results;
+    if (q.isEmpty) {
+      return (entries: results, complete: true);
+    }
     final stack = <String>[''];
     while (stack.isNotEmpty && results.length < maxResults) {
       final p = stack.removeLast();
-      onProgress(results.length, p.isEmpty ? '/' : p);
+      final label = p.isEmpty ? '/' : p;
+      onProgress(results.length, label);
       List<IrEntry> entries;
       try {
         entries = await listDir(p);
-      } catch (_) {
+      } catch (e, st) {
+        // Counted here, reported once after the walk. A line per folder is a
+        // log burst: the bodies differ by path so `LogService`'s consecutive
+        // fold cannot collapse them, and a rate-limited remote fails *every*
+        // folder - which is how one Archive loop came to be 94 % of this
+        // app's Sentry volume and client-discarded two of every three real
+        // errors.
+        unreadable++;
+        firstFailure ??= '"$label": ${LogService.describe(e, st)}';
         continue;
       }
       for (final e in entries) {
@@ -159,11 +192,28 @@ class IrLibApi {
           stack.add(e.path);
         } else if (e.isIrFile && e.name.toLowerCase().contains(q)) {
           results.add(e);
-          if (results.length >= maxResults) break;
+          if (results.length >= maxResults) {
+            // Flagged where the truncation happens, not reconstructed after
+            // the walk. Inferred from the stack still holding paths, a cap
+            // filled on the last directory - while this `break` abandoned the
+            // rest of its entries, subdirectories included - reported the list
+            // as whole.
+            truncated = true;
+            break;
+          }
         }
       }
     }
-    return results;
+    if (unreadable > 0) {
+      // One line, with the count and the first cause. At `caught` because the
+      // search still returned something - but a release build that said
+      // nothing is how a pruned subtree came to look like an empty library.
+      LogService.caught(
+        '[IRLib] search "$q" skipped $unreadable folder(s), first '
+        '$firstFailure',
+      );
+    }
+    return (entries: results, complete: unreadable == 0 && !truncated);
   }
 
   Future<List<int>> fetchFile(IrEntry entry) async {

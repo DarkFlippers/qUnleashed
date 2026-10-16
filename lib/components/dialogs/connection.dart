@@ -5,11 +5,16 @@ import 'package:flutter/material.dart';
 
 import '../cancel_spinner.dart';
 import '../notification.dart';
+import '../permission_notice.dart';
 import '../../services/connection/connect_report.dart';
 import '../../services/connection/link_service.dart';
 import '../../services/localization/l10n.dart';
 import '../../services/guarded.dart';
 import '../../services/logging.dart';
+import '../../services/permissions/center.dart';
+import '../../services/permissions/permission.dart';
+import '../../services/permissions/probes.dart';
+import '../../services/permissions/scope.dart';
 import '../../theme/theme.dart';
 import '../../pages/devices/device_scope.dart';
 import 'connection_error.dart';
@@ -125,6 +130,42 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
     super.dispose();
   }
 
+  /// Writes the transport's answer into the shared record.
+  ///
+  /// Through the scope rather than a field, so the notice below clears
+  /// itself when the user grants the permission in system settings and
+  /// comes back - the picker can be the thing on screen the whole time.
+  void _recordBleAccess(BleAccess access) {
+    // Captured in `initState` rather than looked up here, which is what lets
+    // this record unconditionally. Guarded on `mounted` it discarded the
+    // *answer* and not just the redraw: the system BLE dialog being answered
+    // is what closes this sheet, so the denial arrived at an unmounted picker
+    // and reached nobody. Android permission dialogs do not reliably take the
+    // activity out of `resumed`, so the lifecycle re-read may never fire
+    // either, and the user is back to "No devices found." #351.
+    _permissions?.record(AppPermission.bluetooth, outcomeOfBleAccess(access));
+  }
+
+  /// The permission record, captured while this still has a context.
+  ///
+  /// `didChangeDependencies` and not `initState`, because reading an
+  /// inherited widget in `initState` does not register the dependency.
+  PermissionCenter? _permissions;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _permissions = PermissionScope.maybeOf(context);
+  }
+
+  bool get _bluetoothDenied =>
+      _permissions?.outcomeOf(AppPermission.bluetooth).warrantsNotice ?? false;
+
+  /// The shared route, which also tells the user when it cannot open.
+  void _openSettings() => unawaited(
+    openPermissionSettings(context, '[Picker] opening app settings'),
+  );
+
   static String _keyOf(FlipperDevice device) =>
       '${device.link.name}:${device.id}';
 
@@ -139,7 +180,11 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
     if (_scanning) return;
     if (mounted) setState(() => _scanning = true);
     try {
-      await _client.initialize();
+      // The answer is recorded rather than discarded. `requestPermissions`
+      // returned `Future<void>` until #351, so a refused BLUETOOTH_SCAN
+      // left this picker showing "No devices found." - which blames the
+      // hardware, on first run, for something the user did.
+      _recordBleAccess(await _client.initialize());
       if (widget.usbOnly) {
         await _client.refreshUsbOnly();
       } else {
@@ -331,6 +376,24 @@ class _ConnectionDialogState extends State<ConnectionDialog> {
   Widget _buildList() {
     final colors = context.appColors;
     if (_displayed.isEmpty) {
+      // A denial before the empty-room sentence, on a BLE-capable picker
+      // that has finished scanning. Not on a USB-only one: there the
+      // Bluetooth permission is beside the point, and saying so would be a
+      // second wrong cause rather than a fix for the first.
+      if (!widget.usbOnly && !_scanning && _bluetoothDenied) {
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+          child: PermissionNotice(
+            permission: AppPermission.bluetooth,
+            severity: PermissionNoticeSeverity.blocking,
+            padding: EdgeInsets.zero,
+            icon: Icons.bluetooth_disabled,
+            title: context.l10n.permissionBluetoothDeniedTitle,
+            body: context.l10n.permissionBluetoothDeniedPicker,
+            onAction: _openSettings,
+          ),
+        );
+      }
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
         child: Text(

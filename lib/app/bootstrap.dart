@@ -11,14 +11,43 @@ import '../services/connection/link_service.dart';
 import '../services/connection/notification_service.dart';
 import '../services/guarded.dart';
 import '../services/notifications/push_service.dart';
+import '../services/permissions/center.dart';
 import '../services/rpc/gps/geolocator_gps_provider.dart';
 import '../services/rpc/gps/gps_responder.dart';
 import '../services/rpc/network/network_responder.dart';
 
 /// genuinely unexpected runtime errors (IO, OS permission denials), not a
 /// substitute for correct per-platform configuration.
-void bootstrapAmbientServices() {
+void bootstrapAmbientServices(PermissionCenter permissions) {
   final client = FlipperOneClient().get();
+
+  // Starts watching for the user coming back from system settings, so a
+  // granted permission clears its notice without a restart. Here and not in
+  // the constructor: `widgetMain()`'s isolate records outcomes but has no
+  // screen to update, and a bare unit test has no `WidgetsBinding` to add an
+  // observer to - which is the trap `localization/controller.dart` is in. #351.
+  permissions.install();
+
+  // One read at startup, so a standing denial is known before the user walks
+  // into the surface it affects. Reads only - no probe raises a prompt, which
+  // is what makes this safe here rather than an ask at launch, the thing #351
+  // explicitly rules out. It is also what gives the iOS blocking screen its
+  // signal: nothing else would ask about Bluetooth until a scan.
+  //
+  // The no-prompt half rests on `ios/Runner/Info.plist` declaring the
+  // `bluetooth-central` background mode: universal_ble answers the
+  // authorisation read without instantiating a `CBCentralManager` only when
+  // it is there, and creating that manager is what raises the iOS prompt.
+  // Drop the key and this line starts prompting at launch.
+  // One ordered entry, not two concurrent ones. Started separately, a probe
+  // recording `granted` could beat the dismissal read, and then the stored
+  // dismissal was re-added by a read that arrived after the clear - see
+  // `PermissionCenter._clearDismissal`. Reading the dismissals first also
+  // means a notice never flickers in before its dismissal is known.
+  _start('permission status', () async {
+    await permissions.load();
+    await permissions.refresh();
+  });
 
   LinkService.instance.start(client);
 
@@ -29,7 +58,7 @@ void bootstrapAmbientServices() {
 
   _start(
     'ble foreground service',
-    () => BleForegroundService.instance.start(client),
+    () => BleForegroundService.instance.start(client, permissions: permissions),
   );
 
   // Answers GPS requests from custom firmware apps with the phone's location.
@@ -50,7 +79,10 @@ void bootstrapAmbientServices() {
   // in the background saves both the phone's and the Flipper's battery.
   WidgetsBinding.instance.addObserver(_WatchLifecycleObserver());
 
-  _start('push notifications', () => PushService.instance.start());
+  _start(
+    'push notifications',
+    () => PushService.instance.start(permissions: permissions),
+  );
 
   // A refresh killed mid-swap leaves the IR library under a name only recovery
   // looks for. Repairing it here rather than when the IR page opens means the

@@ -5,6 +5,8 @@ import '../pages/devices/controllers/device.dart';
 import '../pages/devices/device_scope.dart';
 import '../pages/option/diagnostics_scope.dart';
 import '../services/localization/controller.dart';
+import '../services/permissions/center.dart';
+import '../services/permissions/scope.dart';
 import '../services/telemetry/settings.dart';
 import '../services/localization/l10n.dart';
 import '../theme/theme.dart';
@@ -15,6 +17,7 @@ class QUnleashedApp extends StatefulWidget {
     super.key,
     required this.client,
     required this.diagnostics,
+    required this.permissions,
     this.navigatorObservers = const [],
     this.device,
   });
@@ -27,6 +30,14 @@ class QUnleashedApp extends StatefulWidget {
   /// screen through [DiagnosticsScope]. `Telemetry` holds the same object and
   /// follows it; this is the half that draws it.
   final DiagnosticsSettings diagnostics;
+
+  /// Which permissions were granted and which notices the user has put away,
+  /// on its way to every surface that draws one through [PermissionScope].
+  ///
+  /// Built in `_initCore` rather than here, because the foreground service
+  /// records two of them and runs in `widgetMain()` where this widget never
+  /// exists. #351.
+  final PermissionCenter permissions;
 
   /// Watchers of every push and pop, which is how reporting learns which
   /// screen a transaction belongs to.
@@ -100,7 +111,10 @@ class _QUnleashedAppState extends State<QUnleashedApp> {
             notifier: _device,
             child: DiagnosticsScope(
               notifier: widget.diagnostics,
-              child: child!,
+              child: PermissionScope(
+                notifier: widget.permissions,
+                child: child!,
+              ),
             ),
           ),
           home: AppShell(client: widget.client),

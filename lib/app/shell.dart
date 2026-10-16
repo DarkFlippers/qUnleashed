@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'nav_bar.dart';
 import '../components/archive/category.dart';
 import '../components/open_url.dart';
+import '../components/permission_notice.dart';
 import '../pages/apps/catalog/page.dart';
 import '../pages/archive/browser/page.dart';
 import '../pages/archive/home_widget/picker_page.dart';
@@ -27,6 +28,8 @@ import '../services/home_widget/service.dart';
 import '../services/localization/l10n.dart';
 import '../services/notifications/push_intent.dart';
 import '../services/notifications/push_service.dart';
+import '../services/permissions/permission.dart';
+import '../services/permissions/scope.dart';
 import '../theme/theme.dart';
 
 class AppShell extends StatefulWidget {
@@ -151,6 +154,47 @@ class _AppShellState extends State<AppShell> {
     if (mounted) setState(() {});
   }
 
+  /// Whether a Bluetooth denial leaves this app with nothing to do.
+  ///
+  /// Two conditions, and both matter. The platform one is iOS alone -
+  /// Android keeps USB-OTG, which makes the same denial a feature gate the
+  /// device picker draws instead. The outcome one is `denied` exactly: an
+  /// unknown or unavailable answer must never raise this screen, because
+  /// blocking the whole app on a guess is worse than the silence it
+  /// replaces.
+  bool _bluetoothBlocks(BuildContext context) {
+    final center = PermissionScope.maybeOf(context);
+    if (center == null) return false;
+    // Asked through `tierOf` rather than re-derived from `Platform.isIOS`
+    // here. `AppPermission.tier` was made a pure function precisely so this
+    // decision could be tested on both platforms, and open-coding it meant
+    // the one branch that blacks out the whole app had no test at all.
+    if (center.tierOf(AppPermission.bluetooth) != PermissionTier.blocking) {
+      return false;
+    }
+    // `denied` exactly. An unknown or unavailable answer must never raise
+    // this screen: blocking the app on a guess is worse than the silence it
+    // replaces.
+    return center.outcomeOf(AppPermission.bluetooth).warrantsNotice;
+  }
+
+  Widget _blockingGate(BuildContext context) {
+    return PermissionGate(
+      icon: Icons.bluetooth_disabled,
+      title: context.l10n.permissionBluetoothBlockedTitle,
+      body: context.l10n.permissionBluetoothBlockedBody,
+      hint: context.l10n.permissionBluetoothBlockedHint,
+      actionLabel: context.l10n.permissionOpenSettings,
+      // No re-check button beside it. `PermissionCenter` re-reads on
+      // resume, so coming back from settings clears this by itself -
+      // which is what the footnote on the screen promises.
+      onAction: _openAppSettings,
+    );
+  }
+
+  void _openAppSettings() =>
+      unawaited(openPermissionSettings(context, '[Gate] opening app settings'));
+
   @override
   Widget build(BuildContext context) {
     final colors = context.appColors;
@@ -161,6 +205,16 @@ class _AppShellState extends State<AppShell> {
     // Provided above the Navigator now, so this reads it like every other
     // page rather than owning it - ADR 0011.
     final device = DeviceScope.of(context);
+
+    // Tier 1. The only permission that reaches it is Bluetooth on iOS,
+    // where `transport/usb/ios.dart` throws `UnsupportedError` and there is
+    // no second transport - so every tab behind this is furniture and a
+    // notice inside one of them would be a notice on a dead screen. #351.
+    //
+    // Replaces the shell rather than covering it: there is nothing usable
+    // underneath, and a dismissible sheet over an empty app is how the user
+    // ends up staring at the empty app.
+    if (_bluetoothBlocks(context)) return _blockingGate(context);
 
     return ListenableBuilder(
       listenable: device,
