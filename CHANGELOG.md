@@ -9,3 +9,5 @@
 - Translations: Stop the Crowdin sync opening an empty pull request every night (by @mishamyte | PR #327 | Closes #326)
 - Fixed: a push topic call that failed while offline uploaded a full session replay from every iOS launch, instead of the buffered minute before a failure (by @mishamyte | PR #334 | Closes #332)
 - Diagnostics: device names, serials, BLE addresses and card identifiers are no longer replaced with placeholders in the reports sent to the developers, so a report says which unit and which card it is about (by @mishamyte | PR #334)
+- Crash reports: Windows and Linux builds carry debug information now, so a native crash names the function and line instead of the nearest export (by @mishamyte | PR #330 | Closes #310)
+- Fixed: MIFARE and SubGHz seed recovery on Linux, where the three native libraries were never copied into the release bundle and every attempt failed to load them (by @mishamyte | PR #330 | Closes #338)

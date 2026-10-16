@@ -510,7 +510,7 @@ Honest list, so nobody waits for something that is not coming.
 |---|---|
 | Store uploads | Nothing uploads to TestFlight or the Play internal track. The ADR is shaped for it; the jobs do not exist. |
 | The *decision* in the version bump after a release | `open-next-cycle` proposes a minor bump and opens the pull request; which digit moves is still a person's call (fact 2). |
-| The R8 mapping | `sentry_dart_plugin` uploads dSYMs, PDBs and native symbols, but not Android's R8 mapping — that wants the Sentry Android Gradle Plugin, which is a change in `android/` that has not been made. Until it is, an obfuscated Android Dart trace is less readable than the other four platforms'. |
+| The R8 mapping | `sentry_dart_plugin` uploads dSYMs, PDBs and the Linux and Android native libraries, but not Android's R8 mapping — that wants the Sentry Android Gradle Plugin, which is a change in `android/` that has not been made. Until it is, an obfuscated Android Dart trace is less readable than the other four platforms'. |
 | Release commits in the submodules | Each Sentry release gets the app's commits automatically. [ADR 0013](adr/0013-observability-with-sentry.md) §3 wants flipperlib's and dartufbt's too, so a suspect commit can be found in a submodule; they go as event tags today, not as release commits. |
 | `installerStore` | 0014 §1 wants the actual install source — TestFlight, Play, a sideload — read at runtime and reported. Not read anywhere yet. |
 

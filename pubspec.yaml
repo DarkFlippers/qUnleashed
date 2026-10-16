@@ -130,9 +130,20 @@ dependency_overrides:
 # every dev build of a cycle would upload under the same name. CI passes the
 # one `derive_version.sh` produces instead, which is the string
 # `BuildStamp.sentryRelease` makes the events carry. 0014 §5.
+#
+# `wait_for_processing` is what makes the upload step's failure branch mean
+# anything. It defaults to false (`configuration.dart`), which omits
+# `sentry-cli --wait`, so the command returns as soon as the server has
+# accepted the chunks - before it has parsed them. A debug file Sentry then
+# rejects, or a PDB whose debug id pairs with nothing that shipped, never
+# changes the exit code and nothing reports it. With this on, a server-side
+# rejection becomes a non-zero exit, which the action turns into a warning and
+# a step-summary line. It costs the upload's processing time; #310 is what it
+# costs not to have it.
 sentry:
   upload_debug_symbols: true
   upload_source_maps: false
+  wait_for_processing: true
   org: dark-flippers
   project: qunleashed
 
