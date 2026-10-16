@@ -372,11 +372,40 @@ class _PaintPageState extends State<PaintPage> {
     return _promptProjectName(initial: _suggestedName());
   }
 
-  /// Opens the system folder picker; returns null when cancelled.
-  Future<String?> _pickDestination() {
-    return FilePicker.platform.getDirectoryPath(
-      dialogTitle: context.l10n.paintChooseExportLocation,
-    );
+  /// Opens the system folder picker; returns null when cancelled and when the
+  /// picker refused.
+  ///
+  /// The three export entry points await this *before* their own `try`, and
+  /// each is reached from a sheet entry - so a rejection from here had no
+  /// listener anywhere and landed in the zone as a fatal uncaught error, which
+  /// is the mechanism of QUNLEASHED-K. What reaches the catch is not that
+  /// failure: `getDirectoryPath` swallows its own `PlatformException` on
+  /// Android and iOS, so this is a desktop refusal or a missing plugin.
+  ///
+  /// **The two nulls are not distinguishable, and the callers rely on that.**
+  /// All three treat null as "cancelled" and return silently, which is right
+  /// only because the refusal is reported from in here before it answers. A
+  /// `rethrow` in the catch would read as correct - every caller has a `try` -
+  /// and would put the crash back on all three export paths. No test mounts
+  /// this page, so what notices is `test/picker_guard_test.dart`'s fourth
+  /// condition, which is the cheap half of that gap rather than all of it.
+  Future<String?> _pickDestination() async {
+    try {
+      return await FilePicker.platform.getDirectoryPath(
+        dialogTitle: context.l10n.paintChooseExportLocation,
+      );
+    } catch (e, st) {
+      LogService.caught(
+        '[Paint] the export folder pick failed: ${LogService.describe(e, st)}',
+      );
+      if (mounted) {
+        context.showNotification(
+          context.l10n.commonPickFailed,
+          type: QNotificationType.error,
+        );
+      }
+      return null;
+    }
   }
 
   /// Binds the editor to [dirPath]/[name] as its project, redirecting autosave

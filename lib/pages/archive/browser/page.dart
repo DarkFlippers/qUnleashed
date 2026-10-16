@@ -2,6 +2,7 @@ import 'dart:async';
 
 import '../../../services/localization/l10n.dart';
 import '../../../services/guarded.dart';
+import '../../../services/logging.dart';
 
 import 'dart:typed_data';
 
@@ -719,12 +720,54 @@ class _FileManagerPageState extends State<FileManagerPage> {
     }
   }
 
+  /// Picks files and uploads them, reporting a refused pick.
+  ///
+  /// **Reached through `guarded`, not a bare call**, like `_onEntryTap` and
+  /// `_openFile` on this page. The pick catches for itself now, but the upload
+  /// behind it does not: `_upload` catches only `FlipperCancelledException`,
+  /// and `uploadLocal`'s planning pass stats every chosen path and lists the
+  /// folder with nothing around either. A cache copy evicted between the pick
+  /// and the stat - the same provider misbehaviour that produced
+  /// QUNLEASHED-K's `unknown_path` - rejects out of here, and from a bare call
+  /// that reaches the zone as a fatal naming nothing.
+  ///
+  /// CLAUDE.md names that shape, and **nothing mechanical holds it**:
+  /// `unawaited_budget_test.dart` counts the literal `unawaited(...)` and
+  /// lists a future dropped without one under what it cannot see, on the
+  /// grounds that `unawaited_futures` covers it - and that lint fires only in
+  /// an `async` body, which a tap closure is not. #23 has the gap.
   Future<void> _uploadFromPath() async {
-    final result = await FilePicker.platform.pickFiles(
-      allowMultiple: true,
-      withData: false,
-      withReadStream: false,
-    );
+    final FilePickerResult? result;
+    try {
+      result = await FilePicker.platform.pickFiles(
+        allowMultiple: true,
+        withData: false,
+        withReadStream: false,
+      );
+    } catch (e, st) {
+      // The pick rejects rather than answering, and this is reached from a
+      // `ListTile.onTap` - so before this catch the rejection had no listener
+      // anywhere, reached the zone as a fatal uncaught error, and the app died
+      // behind the picker the user was still looking at.
+      //
+      // QUNLEASHED-K was Android's `unknown_path`, and only the single-
+      // selection branch of it: `FileUtils.openFileStream` answered null for
+      // the chosen item, so `FilePickerDelegate` failed the whole call. This
+      // pick passes `allowMultiple: true`, where the same delegate drops the
+      // unreadable item and reports success instead - so a multi-select never
+      // arrives here, and `skipped` below cannot see it either, because what
+      // it counts is a file returned with a null path. #352 has that gap.
+      LogService.caught(
+        '[FileManager] the file pick failed: ${LogService.describe(e, st)}',
+      );
+      if (mounted) {
+        context.showNotification(
+          context.l10n.commonPickFailed,
+          type: QNotificationType.error,
+        );
+      }
+      return;
+    }
     if (result == null || result.files.isEmpty) return;
     await _upload([
       for (final f in result.files)
@@ -914,7 +957,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
               ),
               onTap: () {
                 Navigator.of(sheetContext).pop();
-                _createEmptyFile();
+                guarded('[FileManager] creating a file', _createEmptyFile);
               },
             ),
             ListTile(
@@ -933,7 +976,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
               ),
               onTap: () {
                 Navigator.of(sheetContext).pop();
-                _createFolder();
+                guarded('[FileManager] creating a folder', _createFolder);
               },
             ),
             ListTile(
@@ -952,7 +995,10 @@ class _FileManagerPageState extends State<FileManagerPage> {
               ),
               onTap: () {
                 Navigator.of(sheetContext).pop();
-                _uploadFromPath();
+                guarded(
+                  '[FileManager] uploading picked files',
+                  _uploadFromPath,
+                );
               },
             ),
             ListTile(
@@ -966,7 +1012,10 @@ class _FileManagerPageState extends State<FileManagerPage> {
               ),
               onTap: () {
                 Navigator.of(sheetContext).pop();
-                _uploadFolder();
+                guarded(
+                  '[FileManager] uploading a picked folder',
+                  _uploadFolder,
+                );
               },
             ),
             const SizedBox(height: 8),

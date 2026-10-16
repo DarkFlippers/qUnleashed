@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../../services/localization/l10n.dart';
+import '../../../services/logging.dart';
 import '../../../components/appbar.dart';
 import '../../../components/cardlist.dart';
 import '../../../components/icon.dart';
@@ -49,10 +50,28 @@ class _FliblerProjectPageState extends State<FliblerProjectPage> {
 
   Future<void> _pickFolder() async {
     final lastFolder = _ctrl.lastFolder;
-    final path = await FilePicker.platform.getDirectoryPath(
-      dialogTitle: context.l10n.fliblerPickFolder,
-      initialDirectory: lastFolder.isEmpty ? null : lastFolder,
-    );
+    final String? path;
+    try {
+      path = await FilePicker.platform.getDirectoryPath(
+        dialogTitle: context.l10n.fliblerPickFolder,
+        initialDirectory: lastFolder.isEmpty ? null : lastFolder,
+      );
+    } catch (e, st) {
+      // Reached from a button, so a rejection here has no listener at all and
+      // lands in the zone as a fatal uncaught error - the mechanism of
+      // QUNLEASHED-K, and not its failure. `category_page.dart` has which
+      // refusals can and cannot reach a folder pick.
+      LogService.caught(
+        '[Flibler] the folder pick failed: ${LogService.describe(e, st)}',
+      );
+      if (mounted) {
+        context.showNotification(
+          context.l10n.commonPickFailed,
+          type: QNotificationType.error,
+        );
+      }
+      return;
+    }
     if (path == null) return;
     _repoField.clear();
     _ctrl.setFolder(path);

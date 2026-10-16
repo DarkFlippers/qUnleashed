@@ -135,10 +135,50 @@ import 'ratchet.dart';
 /// `catch` that still has a user waiting, so the call is wrapped, and the one
 /// line is what keeps a lost report from being silent. `connect_report.dart`
 /// has which two things in there can throw.
+///
+/// The tenth through thirteenth are the pickers that had no `try` at all,
+/// after QUNLEASHED-K - two in `pages/archive`, one in `pages/tools`, and the
+/// new `pages/flibler`. They are one rule, not four judgements: a picker the
+/// user opened answered with an error instead of a selection, so the upload,
+/// the save or the export never started. That is an operation that did not do
+/// what was asked, and it is the user's environment rather than a defect, so
+/// none of them is worth an alert - and none of them had any record at all
+/// before, because the rejection was going to the zone as a fatal instead.
+///
+/// The cause differs by site and by platform, which is why the line carries
+/// `describe` rather than a sentence of its own. The file pick is Android's
+/// `unknown_path`, the one in the incident. The three folder picks cannot be:
+/// `getDirectoryPath` swallows its own `PlatformException` on Android and iOS
+/// and answers null, so what reaches them is a desktop refusal - no `zenity`
+/// on the path - or a missing plugin.
+///
+/// The line is also the only thing that can tell those apart, because all four
+/// show `commonPickFailed` and it deliberately does not guess at a cause. The
+/// four bodies differ, so no two sites fold into each other. **What the fold
+/// does drop is a repeat at one site** - the same tap, the same broken
+/// provider, twice - and nothing counts the drop. That is acceptable here
+/// because the second line would say exactly what the first one said.
+///
+/// `test/unguarded_pick_test.dart` does assert `hasLength(1)` on this area's
+/// lines, which is CLAUDE.md's named anti-pattern everywhere the fold is live -
+/// and is safe there for one reason worth writing down: the fold is a static
+/// that `test/flutter_test_config.dart` resets before every test, so inside one
+/// test a count of one means said once. It would not be safe across two.
+///
+/// Six pickers already caught before this and were left alone. Three of them
+/// record nothing - two in the file browser and the archive's save dialog -
+/// and that is a smaller fault than a crash and not this issue's. The other
+/// three do keep a line, and one of them disagrees with these four:
+/// `firmware_update_button.dart` records the same mechanism at `error` and
+/// shows the user the exception. Under §5's rule these four are right and that
+/// one is the outlier, but moving it is its own change - it would lower
+/// `log_level_budget_test.dart` and raise this, and the sentence it shows the
+/// user would have to change with it.
 const Map<String, int> kBudget = {
   'services': 9,
-  'pages/archive': 18,
-  'pages/tools': 10,
+  'pages/archive': 20,
+  'pages/tools': 11,
+  'pages/flibler': 1,
   'pages/apps': 1,
 };
 

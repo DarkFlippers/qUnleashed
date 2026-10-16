@@ -1,5 +1,6 @@
 import '../../../../services/archive/sort_settings.dart';
 import '../../../../services/guarded.dart';
+import '../../../../services/logging.dart';
 import '../../../../services/localization/l10n.dart';
 
 import 'dart:async';
@@ -529,9 +530,35 @@ class _CategoryPageState extends State<CategoryPage> {
       return;
     }
 
-    final dir = await FilePicker.platform.getDirectoryPath(
-      dialogTitle: context.l10n.archiveSaveFiles(keys.length),
-    );
+    // Outside the `try`, because it is not the picker: a plural selector that
+    // threw would otherwise be reported as the system picker failing, at a
+    // level that never alerts.
+    final title = context.l10n.archiveSaveFiles(keys.length);
+    final String? dir;
+    try {
+      dir = await FilePicker.platform.getDirectoryPath(dialogTitle: title);
+    } catch (e, st) {
+      // Reached from a bulk-actions sheet entry whose `onTap` is a
+      // `VoidCallback`, so a rejection here has no listener at all and lands in
+      // the zone as a fatal uncaught error - the mechanism of QUNLEASHED-K,
+      // which killed the app from the file browser's *file* pick.
+      //
+      // Not that failure, though: on Android and iOS `getDirectoryPath`
+      // swallows its own `PlatformException` and answers null, so what reaches
+      // here is a desktop refusal - no `zenity` on the path, a Windows
+      // `CoInitializeEx` failure - or a missing plugin. A refused folder pick
+      // on mobile is still an unexplained null, and #352 has that gap.
+      LogService.caught(
+        '[Archive] the folder pick failed: ${LogService.describe(e, st)}',
+      );
+      if (context.mounted) {
+        context.showNotification(
+          context.l10n.commonPickFailed,
+          type: QNotificationType.error,
+        );
+      }
+      return;
+    }
     if (dir == null) return;
 
     final saved = await saveKeysInto(keys, dir);
